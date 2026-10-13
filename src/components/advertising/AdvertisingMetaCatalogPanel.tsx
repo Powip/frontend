@@ -116,14 +116,15 @@ export function AdvertisingMetaCatalogPanel({
         .map((account) => account.timeZone) ?? [],
     ),
   ];
+  const businessEnabled =
+    validPeriod &&
+    (props.level === "ad" || props.level === "campaign") &&
+    !!catalog &&
+    storeId !== "none";
   const business = useAdvertisingBusinessAnalytics(
     {
       ...props,
-      enabled:
-        validPeriod &&
-        (props.level === "ad" || props.level === "campaign") &&
-        !!catalog &&
-        storeId !== "none",
+      enabled: businessEnabled,
     },
     {
       from: props.from,
@@ -135,12 +136,7 @@ export function AdvertisingMetaCatalogPanel({
       channelId: "all",
     },
   );
-  const extraBusinessEnabled =
-    validPeriod &&
-    (props.level === "ad" || props.level === "campaign") &&
-    !!catalog &&
-    storeId !== "none" &&
-    moreMetrics;
+  const extraBusinessEnabled = businessEnabled && moreMetrics;
   const salesBusiness = useAdvertisingBusinessAnalytics(
     { ...props, enabled: extraBusinessEnabled },
     {
@@ -165,6 +161,11 @@ export function AdvertisingMetaCatalogPanel({
       channelId: "all",
     },
   );
+  const businessFailures = [
+    { enabled: businessEnabled, query: business },
+    { enabled: extraBusinessEnabled, query: salesBusiness },
+    { enabled: extraBusinessEnabled, query: paidBusiness },
+  ].filter((source) => source.enabled && source.query.isError);
   const observedStore = useRef(storeId);
   useEffect(() => {
     if (observedStore.current === storeId) return;
@@ -182,12 +183,27 @@ export function AdvertisingMetaCatalogPanel({
     const compatibleScope =
       (analytics?.storeId ?? "all") === storeId && (analytics?.channelId ?? "all") === "all";
     let cpe: string | null = null;
+    let cpeReason: string | null =
+      storeId === "none"
+        ? "Asigna una tienda para comparar."
+        : props.level === "adset"
+          ? "No hay vinculación de pedidos por conjunto."
+          : business.isError
+            ? advertisingErrorMessage(business.error)
+            : business.isPending
+              ? "Consultando entregas de Powip."
+              : "Sin pedidos vinculados.";
     if (match && analytics && compatibleScope && storeId !== "none") {
       try {
-        cpe = businessResult(match, analytics, catalog ?? null).cpe;
+        const result = businessResult(match, analytics, catalog ?? null);
+        cpe = result.cpe;
+        cpeReason = result.reason ?? (cpe === null ? "Sin entregados en el periodo." : null);
       } catch {
         cpe = null;
+        cpeReason = "Datos de pedidos por revisar.";
       }
+    } else if (analytics && !compatibleScope) {
+      cpeReason = "La tienda o el canal no coincide.";
     }
     const extraValues = advertisingMetaBusinessValues(
       row,
@@ -199,7 +215,14 @@ export function AdvertisingMetaCatalogPanel({
       },
       storeId,
     );
-    return advertisingMetaTableValues(row, resultType, cpe, match?.deliveredCount, extraValues);
+    return advertisingMetaTableValues(
+      row,
+      resultType,
+      cpe,
+      match?.deliveredCount,
+      extraValues,
+      cpeReason,
+    );
   }
   function exportCsv() {
     if (!catalog || query.isAccessDenied) return;
@@ -591,11 +614,35 @@ export function AdvertisingMetaCatalogPanel({
                     Exportar página CSV
                   </Button>
                 </div>
+                {businessFailures.length ? (
+                  <Alert
+                    className="mb-3"
+                    variant={
+                      businessFailures.some((source) => source.query.isAccessDenied)
+                        ? "destructive"
+                        : "default"
+                    }
+                  >
+                    <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+                      <p>{advertisingErrorMessage(businessFailures[0].query.error)}</p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={businessFailures.some((source) => source.query.isFetching)}
+                        onClick={() => {
+                          for (const source of businessFailures) void source.query.refetch();
+                        }}
+                      >
+                        Reintentar datos de Powip
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
                 {moreMetrics ? (
                   <p className="mb-3 text-xs text-muted-foreground">
                     {props.level === "ad"
                       ? "Ventas: fecha de registro. Entregados: fecha de entrega. ROAS: fecha de cobro. Solo pedidos con anuncio confirmado. Meta dice: compras reportadas por Meta."
-                      : "CPA plataforma: costo por compra reportada por Meta. Las métricas de ventas por campaña aún están pendientes."}{" "}
+                      : "Ventas: fecha de registro. Entregados: fecha de entrega. ROAS: fecha de cobro. Solo pedidos con campaña confirmada. CPA plataforma: costo por compra reportada por Meta."}{" "}
                     Leads: reportados por Meta. Devueltos y reparto de pedidos sin anuncio:
                     pendientes.
                   </p>

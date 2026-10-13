@@ -19,6 +19,14 @@ export function advertisingStoreChannelTimeZone(summary: AdvertisingSummaryV11, 
     : null;
 }
 
+export interface AdvertisingStoreChannelComparison {
+  spend: string | null;
+  deliveredCount: number | null;
+  deliveredCountStatus: "confirmed" | "partial" | null;
+  costPerDelivered: string | null;
+  reason: string | null;
+}
+
 /** A channel comparison only uses explicitly identified origins on both sides. */
 export function compareAdvertisingStoreChannel(
   summary: AdvertisingSummaryV11,
@@ -26,42 +34,58 @@ export function compareAdvertisingStoreChannel(
   currency: string,
   business: AdvertisingBusinessMetrics | undefined,
   storeBusiness: AdvertisingBusinessMetrics | undefined,
-) {
-  const pending = (reason: string) => ({
+): AdvertisingStoreChannelComparison {
+  let deliveredCount: number | null = null;
+  let deliveredCountStatus: AdvertisingStoreChannelComparison["deliveredCountStatus"] = null;
+  const pending = (reason: string): AdvertisingStoreChannelComparison => ({
     spend: null,
-    deliveredCount: null,
+    deliveredCount,
+    deliveredCountStatus,
     costPerDelivered: null,
     reason,
   });
   if (["all", "none", ""].includes(summary.storeId) || ["all", "none", ""].includes(channelId))
     return pending("Selecciona tienda y canal");
-  if (!business || !storeBusiness) return pending("Entregas pendientes");
-  for (const [data, expectedChannel] of [
-    [business, channelId],
-    [storeBusiness, "all"],
-  ] as const) {
+  if (!business) return pending("Entregas pendientes");
+  const scopeReason = (data: AdvertisingBusinessMetrics, expectedChannel: string) => {
     if (
       data.source !== "powip-business-metrics" ||
       data.definition !== "delivered-order-grand-total-v1" ||
       data.basis !== "delivered"
     )
-      return pending("Fecha de entrega por confirmar");
+      return "Fecha de entrega por confirmar";
     if (
       data.from !== summary.from ||
       data.to !== summary.to ||
       data.storeId !== summary.storeId ||
       data.channelId !== expectedChannel
     )
-      return pending("Periodo, tienda o canal distintos");
-    if (!data.coverage?.complete) return pending("Entregas por completar");
-  }
+      return "Periodo, tienda o canal distintos";
+    return null;
+  };
+  const channelScopeReason = scopeReason(business, channelId);
+  if (channelScopeReason) return pending(channelScopeReason);
+  const matchingOrders = Array.isArray(business.currencies)
+    ? business.currencies.filter((row) => row?.currency === currency)
+    : [];
+  const orders = matchingOrders.length === 1 ? matchingOrders[0] : undefined;
+  if (!orders || !Number.isSafeInteger(orders.deliveredCount) || orders.deliveredCount < 0)
+    return pending("Entregados por confirmar");
+  // A verified channel count remains useful even when the spend cannot be compared.
+  deliveredCount = orders.deliveredCount;
+  deliveredCountStatus = business.coverage?.complete === true ? "confirmed" : "partial";
+  if (business.coverage?.complete !== true) return pending("Entregas por completar");
+  if (!storeBusiness) return pending("Entregas de la tienda pendientes");
+  const storeScopeReason = scopeReason(storeBusiness, "all");
+  if (storeScopeReason) return pending(storeScopeReason);
+  if (storeBusiness.coverage?.complete !== true) return pending("Entregas por completar");
   if (
     !Number.isSafeInteger(storeBusiness.unknownChannelCount) ||
     storeBusiness.unknownChannelCount !== 0
   )
     return pending("Hay entregas sin canal confirmado");
   const total = summary.currencies.find((row) => row.currency === currency);
-  if (!total || total.coverage !== "complete" || total.spendSource !== "effective")
+  if (total?.coverage !== "complete" || total.spendSource !== "effective")
     return pending("Gasto por completar");
   const rows = (summary.channelDaily ?? []).filter(
     (row) => row.storeId === summary.storeId && row.currency === currency,
@@ -92,9 +116,7 @@ export function compareAdvertisingStoreChannel(
     )
   )
     return pending("Moneda o zona horaria distinta");
-  const orders = business.currencies.find((row) => row.currency === currency);
-  if (!orders || !Number.isSafeInteger(orders.deliveredCount) || orders.deliveredCount < 1)
-    return pending("Sin entregados comparables");
+  if (orders.deliveredCount < 1) return pending("Sin entregados comparables");
   try {
     const spend = sumAdvertisingDecimals(selected.map((row) => row.spend));
     if (spend === null) return pending("Gasto del canal por confirmar");
@@ -102,6 +124,7 @@ export function compareAdvertisingStoreChannel(
     return {
       spend,
       deliveredCount: orders.deliveredCount,
+      deliveredCountStatus,
       costPerDelivered,
       reason: costPerDelivered === null ? "Importes por revisar" : null,
     };

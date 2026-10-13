@@ -103,6 +103,11 @@ export function AdvertisingStoreChannelCost({
                     ? "Pendiente"
                     : new Intl.NumberFormat("es-PE").format(result.deliveredCount)}
                 </dd>
+                {result.deliveredCountStatus ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {result.deliveredCountStatus === "partial" ? "Datos parciales" : "Confirmados"}
+                  </p>
+                ) : null}
               </div>
               <div>
                 <dt className="text-xs text-muted-foreground">Costo por entregado</dt>

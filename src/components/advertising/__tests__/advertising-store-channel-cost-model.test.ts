@@ -29,17 +29,17 @@ function fixture() {
     channelId: "channel-a",
   };
   const store = { ...business, channelId: "all" };
-  return { summary, business, store };
+  return { summary: { ...summary, channelDaily: summary.channelDaily }, business, store };
 }
 it("compara gasto exacto y entregas sólo del mismo canal y tienda", () => {
   const { summary, business, store } = fixture();
-  summary.channelDaily!.push({
-    ...summary.channelDaily![0],
+  summary.channelDaily.push({
+    ...summary.channelDaily[0],
     storeId: "store-b",
     spend: "9999",
   });
-  summary.channelDaily!.push({
-    ...summary.channelDaily![0],
+  summary.channelDaily.push({
+    ...summary.channelDaily[0],
     channelId: "channel-b",
     spend: "8888",
   });
@@ -47,6 +47,7 @@ it("compara gasto exacto y entregas sólo del mismo canal y tienda", () => {
   expect(result).toEqual({
     spend: "100.10000001",
     deliveredCount: 10,
+    deliveredCountStatus: "confirmed",
     costPerDelivered: "10.010000",
     reason: null,
   });
@@ -89,7 +90,7 @@ it("bloquea fechas, moneda, provisionales y cobertura desconocidos", () => {
       compareAdvertisingStoreChannel(
         {
           ...summary,
-          channelDaily: [{ ...summary.channelDaily![0], ...changes }],
+          channelDaily: [{ ...summary.channelDaily[0], ...changes }],
         },
         "channel-a",
         "PEN",
@@ -103,7 +104,7 @@ it("no reparte gastos ni entregas sin canal, ni inventa cero", () => {
   const { summary, business, store } = fixture();
   const unassigned = {
     ...summary,
-    channelDaily: [...summary.channelDaily!, { ...summary.channelDaily![0], channelId: null }],
+    channelDaily: [...summary.channelDaily, { ...summary.channelDaily[0], channelId: null }],
   };
   expect(
     compareAdvertisingStoreChannel(unassigned, "channel-a", "PEN", business, store).reason,
@@ -136,14 +137,143 @@ it("solo consulta una zona acreditada por todas las cuentas del canal", () => {
   expect(advertisingStoreChannelTimeZone({ ...summary, byAccount: [] }, "channel-a")).toBeNull();
   const mixed = {
     ...summary,
-    channelDaily: [
-      ...summary.channelDaily!,
-      { ...summary.channelDaily![0], accountId: "account-b" },
-    ],
+    channelDaily: [...summary.channelDaily, { ...summary.channelDaily[0], accountId: "account-b" }],
     byAccount: [
       ...summary.byAccount,
       { ...summary.byAccount[0], accountId: "account-b", timeZone: "UTC" },
     ],
   };
   expect(advertisingStoreChannelTimeZone(mixed, "channel-a")).toBeNull();
+});
+
+it.each(["partial", "missing", "provisional", "channel-partial"] as const)(
+  "conserva entregados confirmados cuando el gasto está %s, sin calcular el costo",
+  (state) => {
+    const { summary, business, store } = fixture();
+    if (state === "partial") summary.currencies[0].coverage = "partial";
+    if (state === "missing") {
+      summary.currencies = [];
+      summary.channelDaily = [];
+    }
+    if (state === "provisional") summary.channelDaily[0].provisional = true;
+    if (state === "channel-partial") summary.channelDaily[0].coverage = "partial";
+
+    const result = compareAdvertisingStoreChannel(summary, "channel-a", "PEN", business, store);
+    expect(result).toMatchObject({
+      deliveredCount: 10,
+      deliveredCountStatus: "confirmed",
+      spend: null,
+      costPerDelivered: null,
+    });
+    expect(result.reason).toBe(
+      state === "partial" || state === "missing"
+        ? "Gasto por completar"
+        : "Gasto del canal por confirmar",
+    );
+  },
+);
+
+it("identifica entregados parciales sin usarlos como denominador completo", () => {
+  const { summary, business, store } = fixture();
+  const result = compareAdvertisingStoreChannel(
+    summary,
+    "channel-a",
+    "PEN",
+    { ...business, coverage: { complete: false, reasons: ["missing-delivered-date"] } },
+    store,
+  );
+  expect(result).toMatchObject({
+    deliveredCount: 10,
+    deliveredCountStatus: "partial",
+    costPerDelivered: null,
+    reason: "Entregas por completar",
+  });
+});
+
+it.each(["from", "to", "storeId", "channelId", "source", "definition", "basis"])(
+  "no muestra conteos cuyo %s no corresponde al canal y periodo consultados",
+  (field) => {
+    const { summary, business, store } = fixture();
+    const result = compareAdvertisingStoreChannel(
+      summary,
+      "channel-a",
+      "PEN",
+      { ...business, [field]: "other" },
+      store,
+    );
+    expect(result.deliveredCount).toBeNull();
+    expect(result.deliveredCountStatus).toBeNull();
+    expect(result.costPerDelivered).toBeNull();
+  },
+);
+
+it("muestra cero entregados cuando se conoce, sin dividir entre cero", () => {
+  const { summary, business, store } = fixture();
+  const result = compareAdvertisingStoreChannel(
+    summary,
+    "channel-a",
+    "PEN",
+    { ...business, currencies: [{ ...business.currencies[0], deliveredCount: 0 }] },
+    store,
+  );
+  expect(result).toMatchObject({
+    deliveredCount: 0,
+    deliveredCountStatus: "confirmed",
+    costPerDelivered: null,
+    reason: "Sin entregados comparables",
+  });
+});
+
+it.each([undefined, null, -1, 1.5, "10", Number.NaN, Number.MAX_SAFE_INTEGER + 1])(
+  "no inventa un conteo a partir del valor inválido %s",
+  (deliveredCount) => {
+    const { summary, business, store } = fixture();
+    const result = compareAdvertisingStoreChannel(
+      summary,
+      "channel-a",
+      "PEN",
+      {
+        ...business,
+        currencies: [{ ...business.currencies[0], deliveredCount: deliveredCount as number }],
+      },
+      store,
+    );
+    expect(result.deliveredCount).toBeNull();
+    expect(result.costPerDelivered).toBeNull();
+  },
+);
+
+it("no infiere ni combina la moneda de entregados ausentes o duplicados", () => {
+  const { summary, business, store } = fixture();
+  for (const currencies of [
+    [],
+    [{ ...business.currencies[0], currency: null }],
+    [{ ...business.currencies[0], currency: "USD" }],
+    [business.currencies[0], business.currencies[0]],
+  ]) {
+    const result = compareAdvertisingStoreChannel(
+      summary,
+      "channel-a",
+      "PEN",
+      { ...business, currencies },
+      store,
+    );
+    expect(result.deliveredCount).toBeNull();
+    expect(result.costPerDelivered).toBeNull();
+  }
+});
+
+it("conserva solo el conteo del canal si falta el total de la tienda o su atribución", () => {
+  const { summary, business, store } = fixture();
+  for (const storeBusiness of [undefined, { ...store, unknownChannelCount: 1 }]) {
+    const result = compareAdvertisingStoreChannel(
+      summary,
+      "channel-a",
+      "PEN",
+      business,
+      storeBusiness,
+    );
+    expect(result.deliveredCount).toBe(10);
+    expect(result.costPerDelivered).toBeNull();
+  }
 });

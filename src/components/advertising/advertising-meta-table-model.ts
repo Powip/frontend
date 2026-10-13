@@ -115,6 +115,7 @@ export function advertisingMetaTableValues(
   cpe: string | null,
   deliveredCount?: number,
   business?: AdvertisingMetaBusinessValues,
+  cpeReason?: string | null,
 ) {
   const result = row.insights.results;
   const legacy = row.insights.resultMetrics?.[resultType];
@@ -139,6 +140,7 @@ export function advertisingMetaTableValues(
     ctr: formatAdvertisingMetric(row.insights.ctr, " %"),
     frequency: `${formatAdvertisingMetric(row.insights.frequency)}${row.insights.frequencyApproximate ? " · aprox." : ""}`,
     cpe: cpe ? formatMetaSpend(cpe, row.currency) : "Pendiente",
+    cpeReason: cpe ? null : (cpeReason ?? "Solo pedidos con anuncio confirmado."),
     recommendation:
       cpe && deliveredCount !== undefined && deliveredCount < 10
         ? "Pocos datos"
@@ -172,7 +174,7 @@ export function advertisingMetaTableCsv(
     "Gasto",
     "Tipo de resultado",
     "Resultados",
-    "Costo por resultado",
+    "Costo por resultado · Meta",
     "CTR de enlace",
     "Frecuencia",
     "Costo por entregado",

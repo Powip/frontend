@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { AdvertisingBusinessMetrics } from "@/services/advertisingBusinessMetricsService";
+import { advertisingErrorMessage } from "@/services/advertisingService";
 import type { AdvertisingSummaryV11 } from "@/services/advertisingV11Service";
 import {
   compareAdvertisingBusinessCurrency,
@@ -13,10 +14,12 @@ export function AdvertisingSummaryCards({
   summary,
   business,
   accountSelected = false,
+  businessError,
 }: {
   summary: AdvertisingSummaryV11;
   business?: AdvertisingBusinessMetrics;
   accountSelected?: boolean;
+  businessError?: unknown;
 }) {
   return (
     <div className="space-y-5" aria-live="polite">
@@ -46,7 +49,7 @@ export function AdvertisingSummaryCards({
               </Metric>
               <Card>
                 <CardContent className="space-y-3 pt-5">
-                  <h3 className="text-sm font-medium">Costo por resultado</h3>
+                  <h3 className="text-sm font-medium">Costo por resultado · Meta</h3>
                   {total.costPerResult.length ? (
                     <dl className="space-y-2">
                       {total.costPerResult.map((result) => (
@@ -74,13 +77,7 @@ export function AdvertisingSummaryCards({
                   <p className="text-xs text-muted-foreground">Resultados reportados por Meta.</p>
                 </CardContent>
               </Card>
-              <Metric
-                title="CTR de enlace · Meta"
-                value={formatAdvertisingMetric(
-                  total.periodMetricsStatus === "available" ? total.ctr : null,
-                  " %",
-                )}
-              >
+              <Metric title="CTR de enlace · Meta" value={formatAdvertisingMetric(total.ctr, " %")}>
                 <p className="text-xs text-muted-foreground">Clics en el enlace ÷ impresiones.</p>
               </Metric>
               <Metric
@@ -109,7 +106,9 @@ export function AdvertisingSummaryCards({
                 }
               >
                 <p className="text-xs text-muted-foreground">
-                  {comparison.reason ?? "Gasto ÷ entregados de Powip."}
+                  {businessError
+                    ? advertisingErrorMessage(businessError)
+                    : (comparison.reason ?? "Gasto ÷ entregados de Powip.")}
                 </p>
               </Metric>
             </div>

@@ -49,7 +49,7 @@ export function AdvertisingMetaMetricsTable({
               <TableHead className="text-right">Gasto</TableHead>
               <TableHead>Tipo de resultado</TableHead>
               <TableHead className="text-right">Resultados</TableHead>
-              <TableHead className="text-right">Costo por resultado</TableHead>
+              <TableHead className="text-right">Costo por resultado · Meta</TableHead>
               <TableHead className="text-right">CTR de enlace</TableHead>
               <TableHead className="text-right">Frecuencia</TableHead>
               <TableHead className="text-right">Costo por entregado</TableHead>
@@ -101,7 +101,14 @@ export function AdvertisingMetaMetricsTable({
                   <NumberCell>{values.costPerResult}</NumberCell>
                   <NumberCell>{values.ctr}</NumberCell>
                   <NumberCell>{values.frequency}</NumberCell>
-                  <NumberCell>{values.cpe}</NumberCell>
+                  <TableCell className="max-w-56 text-right">
+                    <p className="tabular-nums">{values.cpe}</p>
+                    {values.cpeReason ? (
+                      <p className="mt-1 whitespace-normal text-xs text-muted-foreground">
+                        {values.cpeReason}
+                      </p>
+                    ) : null}
+                  </TableCell>
                   <TableCell className="text-xs">{values.recommendation}</TableCell>
                   {more ? (
                     <>
@@ -143,10 +150,14 @@ export function AdvertisingMetaMetricsTable({
               <dl className="grid min-w-0 grid-cols-2 gap-3">
                 <MobileMetric label="Gasto" value={values.spend} />
                 <MobileMetric label="Resultados" value={values.count} />
-                <MobileMetric label="Costo por resultado" value={values.costPerResult} />
+                <MobileMetric label="Costo por resultado · Meta" value={values.costPerResult} />
                 <MobileMetric label="CTR de enlace" value={values.ctr} />
                 <MobileMetric label="Frecuencia" value={values.frequency} />
-                <MobileMetric label="Costo por entregado" value={values.cpe} />
+                <MobileMetric
+                  label="Costo por entregado"
+                  value={values.cpe}
+                  description={values.cpeReason}
+                />
                 <MobileMetric label="Recomendación" value={values.recommendation} />
                 {more ? (
                   <>
@@ -177,11 +188,20 @@ export function AdvertisingMetaMetricsTable({
 function NumberCell({ children }: { children: ReactNode }) {
   return <TableCell className="whitespace-nowrap text-right tabular-nums">{children}</TableCell>;
 }
-function MobileMetric({ label, value }: { label: string; value: string }) {
+function MobileMetric({
+  label,
+  value,
+  description,
+}: {
+  label: string;
+  value: string;
+  description?: string | null;
+}) {
   return (
     <div className="min-w-0">
       <dt className="text-xs text-muted-foreground">{label}</dt>
       <dd className="break-words text-base font-semibold tabular-nums">{value}</dd>
+      {description ? <dd className="text-xs text-muted-foreground">{description}</dd> : null}
     </div>
   );
 }
