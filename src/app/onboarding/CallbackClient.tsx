@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import AuthLayout from "@/components/auth/AuthLayout";
 import AuthPanel from "@/components/auth/AuthPanel";
 import { AuthErrorNotice } from "@/components/forms/AuthFeedback";
+import ExistingSubscriptionNotice from "@/components/onboarding/ExistingSubscriptionNotice";
 import SubscriptionSuccess from "@/components/onboarding/SubscriptionSuccess";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOnboardingFlow } from "@/hooks/useOnboardingFlow";
@@ -63,6 +64,7 @@ export default function CallbackClient() {
         addOnIds: matching?.addOnIds ?? [],
         userId,
         cardToken: token,
+        ...(matching?.subscriptionId ? { subscriptionId: matching.subscriptionId } : {}),
       });
     }
     setIntent({ key, token });
@@ -118,6 +120,20 @@ export default function CallbackClient() {
             />
           }
         />
+      </AuthLayout>
+    );
+  }
+
+  if (state.step === "EXISTING_SUBSCRIPTION" && state.subscription && initStatus === "ready") {
+    return (
+      <AuthLayout>
+        <div className="w-full rounded-2xl border border-gray-200 bg-white p-8">
+          <ExistingSubscriptionNotice
+            subscription={state.subscription}
+            continueHref={auth?.company || auth?.user?.companyId ? "/" : "/new-company"}
+            refreshSession={refreshSession}
+          />
+        </div>
       </AuthLayout>
     );
   }

@@ -90,3 +90,15 @@ it("la limpieza tardía de un usuario no elimina el checkout de otro", () => {
   clearOnboardingState("user-a");
   expect(getStoredOnboardingState()).toBeNull();
 });
+
+it("preserva el ID de suscripción cuando existe y permite metadata legacy sin ID", () => {
+  saveOnboardingState({ ...checkout, subscriptionId: "subscription-a" });
+  expect(getStoredOnboardingState("user-a")?.subscriptionId).toBe("subscription-a");
+  saveOnboardingState(checkout);
+  expect(getStoredOnboardingState("user-a")).toEqual(checkout);
+});
+
+it.each(["", " ", 12, null])("rechaza un ID de suscripción inválido %s", (subscriptionId) => {
+  localStorage.setItem(KEY, JSON.stringify({ ...checkout, subscriptionId }));
+  expect(getStoredOnboardingState("user-a")).toBeNull();
+});

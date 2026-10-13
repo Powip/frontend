@@ -17,6 +17,7 @@ import AuthLayout from "@/components/auth/AuthLayout";
 import AuthPanel from "@/components/auth/AuthPanel";
 import RegisterForm from "@/components/forms/RegisterForm";
 import EnterpriseContactModal from "@/components/modals/EnterpriseContactModal";
+import ExistingSubscriptionNotice from "@/components/onboarding/ExistingSubscriptionNotice";
 import FlowWidgetStep from "@/components/onboarding/FlowWidgetStep";
 import PlanPicker from "@/components/onboarding/PlanPicker";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1136,6 +1137,20 @@ export default function OnboardingClient({
     if (typeof scroller?.scrollTo === "function") scroller.scrollTo({ top: 0, left: 0 });
     headingRef.current?.focus({ preventScroll: true });
   }, [screenKey]);
+
+  if (flowState.step === "EXISTING_SUBSCRIPTION" && flowState.subscription) {
+    return (
+      <AuthLayout>
+        <div className={styles.stepCard}>
+          <ExistingSubscriptionNotice
+            subscription={flowState.subscription}
+            continueHref={auth?.company || auth?.user?.companyId ? "/" : "/new-company"}
+            refreshSession={refreshSession}
+          />
+        </div>
+      </AuthLayout>
+    );
+  }
 
   if (currentStep === 1 && !initialAuth) {
     return (

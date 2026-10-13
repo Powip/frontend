@@ -310,6 +310,7 @@ describe("useOnboardingFlow", () => {
   it("resumeSession no cambia un flujo terminado", async () => {
     mocked.fetchMySubscription.mockResolvedValue(active);
     const { result } = setup();
+    await reachWidget(result);
     await act(() => result.current.checkPaymentAgain());
     const before = result.current.state;
 
@@ -363,15 +364,15 @@ describe("useOnboardingFlow", () => {
     });
   });
 
-  it("checkout de alguien que ya pagó lo lleva directo al final", async () => {
+  it("checkout con suscripción previa informa el plan existente sin simular un pago nuevo", async () => {
     mocked.startFlowCheckout.mockRejectedValue(apiError(409, "ALREADY_SUBSCRIBED"));
     mocked.fetchMySubscription.mockResolvedValue(active);
     const { result, onActivated } = setup();
 
     await act(() => result.current.initiateCardRegistration());
 
-    expect(result.current.state.step).toBe("DONE");
-    expect(onActivated).toHaveBeenCalled();
+    expect(result.current.state.step).toBe("EXISTING_SUBSCRIPTION");
+    expect(onActivated).not.toHaveBeenCalled();
   });
 
   it("checkout con email rechazado por Flow explica que el email tiene que ser real", async () => {
@@ -444,6 +445,7 @@ describe("useOnboardingFlow", () => {
 
   it("volver a verificar desde PAYMENT_PENDING activa cuando el cobro ya se aplicó", async () => {
     const { result } = setup();
+    await reachWidget(result);
     mocked.fetchMySubscription.mockResolvedValue(active);
 
     await act(() => result.current.checkPaymentAgain());

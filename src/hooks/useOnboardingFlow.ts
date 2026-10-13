@@ -31,7 +31,7 @@ type OnboardingAction =
   | { type: "SET_PLAN"; planId: string; planName: string; price: number }
   | { type: "SET_ADD_ONS"; addOnIds: string[] }
   | { type: "SET_USER"; userId: string }
-  | { type: "SET_CHECKOUT"; cardToken: string; redirectUrl: string }
+  | { type: "SET_CHECKOUT"; cardToken: string; redirectUrl: string; subscriptionId: string }
   | { type: "SET_SUBSCRIPTION"; subscription: SubscriptionMe }
   | { type: "SET_ERROR"; error: string }
   | { type: "SET_INLINE_ERROR"; error: string }
@@ -89,7 +89,12 @@ function reducer(state: OnboardingState, action: OnboardingAction): OnboardingSt
     case "SET_USER":
       return { ...state, userId: action.userId };
     case "SET_CHECKOUT":
-      return { ...state, cardToken: action.cardToken, redirectUrl: action.redirectUrl };
+      return {
+        ...state,
+        cardToken: action.cardToken,
+        redirectUrl: action.redirectUrl,
+        checkoutSubscriptionId: action.subscriptionId,
+      };
     case "SET_SUBSCRIPTION":
       return { ...state, subscription: action.subscription };
     case "SET_ERROR":
@@ -131,6 +136,7 @@ export function useOnboardingFlow(
     addOnIds: [],
     userId: initial.initialUserId ?? null,
     cardToken: null,
+    checkoutSubscriptionId: null,
     redirectUrl: null,
     subscription: null,
     error: null,
@@ -139,7 +145,14 @@ export function useOnboardingFlow(
 
   const [state, dispatch] = useReducer(reducer, initialState, (value) => {
     const stored = value.userId ? getStoredOnboardingState(value.userId) : null;
-    return stored ? { ...value, ...stored, step: "CARD_WIDGET" as const } : value;
+    return stored
+      ? {
+          ...value,
+          ...stored,
+          checkoutSubscriptionId: stored.subscriptionId ?? null,
+          step: "CARD_WIDGET" as const,
+        }
+      : value;
   });
 
   const mountedRef = useRef(true);
@@ -150,6 +163,7 @@ export function useOnboardingFlow(
   const paymentRevisionRef = useRef(0);
   const paymentInFlightRef = useRef<number | null>(null);
   const verifyExistingPaymentRef = useRef(false);
+  const existingSubscriptionIdRef = useRef<string | null>(null);
   const registeredAccountsRef = useRef(new Map<string, string>());
   const registrationInFlightRef = useRef(false);
   useEffect(() => {
@@ -192,6 +206,7 @@ export function useOnboardingFlow(
     registeredAccountsRef.current.clear();
     invalidatePayment();
     verifyExistingPaymentRef.current = false;
+    existingSubscriptionIdRef.current = null;
     clearOnboardingState(previousOwner);
     dispatch({
       type: "RESTORE",
@@ -199,6 +214,7 @@ export function useOnboardingFlow(
         step: nextOwner ? "ADDONS" : "REGISTRATION",
         userId: nextOwner,
         cardToken: null,
+        checkoutSubscriptionId: null,
         redirectUrl: null,
         subscription: null,
         addOnIds: [],
@@ -213,10 +229,17 @@ export function useOnboardingFlow(
       if (stateRef.current.planId !== plan.id) {
         invalidatePayment();
         verifyExistingPaymentRef.current = false;
+        existingSubscriptionIdRef.current = null;
         clearOnboardingState(stateRef.current.userId ?? undefined);
         dispatch({
           type: "RESTORE",
-          state: { cardToken: null, redirectUrl: null, subscription: null, isLoading: false },
+          state: {
+            cardToken: null,
+            checkoutSubscriptionId: null,
+            redirectUrl: null,
+            subscription: null,
+            isLoading: false,
+          },
         });
       }
       dispatch({ type: "SET_PLAN", planId: plan.id, planName: plan.name, price: plan.price });
@@ -228,10 +251,16 @@ export function useOnboardingFlow(
     (ids: string[]) => {
       invalidatePayment();
       verifyExistingPaymentRef.current = false;
+      existingSubscriptionIdRef.current = null;
       clearOnboardingState(stateRef.current.userId ?? undefined);
       dispatch({
         type: "RESTORE",
-        state: { cardToken: null, redirectUrl: null, subscription: null },
+        state: {
+          cardToken: null,
+          checkoutSubscriptionId: null,
+          redirectUrl: null,
+          subscription: null,
+        },
       });
       dispatch({ type: "SET_ADD_ONS", addOnIds: ids });
       dispatch({ type: "SET_STEP", step: "CARD_REDIRECT" });
@@ -309,20 +338,57 @@ export function useOnboardingFlow(
       dispatch({
         type: "RESTORE",
         state: stored
-          ? { ...stored, step: "CARD_WIDGET", error: null }
+          ? {
+              ...stored,
+              checkoutSubscriptionId: stored.subscriptionId ?? null,
+              step: "CARD_WIDGET",
+              error: null,
+            }
           : { step: "ADDONS", userId, error: null },
       });
     },
     [state.step, state.isLoading, state.userId],
   );
 
-  /** Espera a que el primer cobro quede aplicado (ACTIVE). Devuelve true si se activó. */
+  /** An existing entitlement is not evidence that this checkout was paid. */
+  const showExistingSubscription = useCallback((subscription: SubscriptionMe) => {
+    verifyExistingPaymentRef.current = true;
+    existingSubscriptionIdRef.current = subscription.id;
+    clearOnboardingState(stateRef.current.userId ?? undefined);
+    dispatch({ type: "SET_SUBSCRIPTION", subscription });
+    dispatch({ type: "SET_STEP", step: "EXISTING_SUBSCRIPTION" });
+  }, []);
+
+  /** Only the same Flow checkout may complete a new payment. */
   const waitForActivation = useCallback(
-    async (first: SubscriptionMe | null, revision: number): Promise<boolean> => {
+    async (
+      first: SubscriptionMe | null,
+      revision: number,
+      subscriptionId: string | null,
+      existing = false,
+    ): Promise<boolean> => {
       let current = first;
+      let expectedId = subscriptionId;
+      const planId = stateRef.current.planId;
       for (let attempt = 0; attempt <= PAYMENT_MAX_ATTEMPTS; attempt++) {
         if (!isCurrentPayment(revision)) return false;
-        if (current && HAS_PLAN.has(current.status)) {
+        if (existing && !expectedId && current) {
+          expectedId = current.id;
+          existingSubscriptionIdRef.current = current.id;
+        }
+        const matches =
+          current &&
+          (existing
+            ? current.id === expectedId
+            : Boolean(expectedId) &&
+              current.id === expectedId &&
+              current.gateway === "FLOW" &&
+              (!planId || current.plan.id === planId));
+        if (current && matches && HAS_PLAN.has(current.status)) {
+          if (existing || current.status === "PENDING_RENEWAL") {
+            showExistingSubscription(current);
+            return true;
+          }
           dispatch({ type: "SET_SUBSCRIPTION", subscription: current });
           try {
             const refreshed = await onActivatedRef.current?.();
@@ -347,11 +413,11 @@ export function useOnboardingFlow(
         if (!isCurrentPayment(revision)) return false;
         current = await fetchMySubscription().catch(() => current);
       }
-      if (current && isCurrentPayment(revision))
+      if (current && current.id === expectedId && isCurrentPayment(revision))
         dispatch({ type: "SET_SUBSCRIPTION", subscription: current });
       return false;
     },
-    [isCurrentPayment],
+    [isCurrentPayment, showExistingSubscription],
   );
 
   const initiateCardRegistration = useCallback(async () => {
@@ -365,7 +431,13 @@ export function useOnboardingFlow(
         return;
       }
       if (verifyExistingPaymentRef.current) {
-        dispatch({ type: "SET_STEP", step: "PAYMENT_PENDING" });
+        dispatch({
+          type: "SET_STEP",
+          step:
+            snapshot.subscription && HAS_PLAN.has(snapshot.subscription.status)
+              ? "EXISTING_SUBSCRIPTION"
+              : "PAYMENT_PENDING",
+        });
         return;
       }
       if (snapshot.cardToken) {
@@ -374,7 +446,12 @@ export function useOnboardingFlow(
       }
       const checkout = await startFlowCheckout(snapshot.planId, snapshot.addOnIds);
       if (!isCurrentPayment(revision)) return;
-      if (!checkout.cardToken || typeof checkout.cardToken !== "string") {
+      if (
+        !checkout.cardToken ||
+        typeof checkout.cardToken !== "string" ||
+        !checkout.subscriptionId ||
+        typeof checkout.subscriptionId !== "string"
+      ) {
         throw new Error("Checkout sin registro de tarjeta.");
       }
       saveOnboardingState({
@@ -384,11 +461,13 @@ export function useOnboardingFlow(
         addOnIds: snapshot.addOnIds,
         userId: snapshot.userId,
         cardToken: checkout.cardToken,
+        subscriptionId: checkout.subscriptionId,
       });
       dispatch({
         type: "SET_CHECKOUT",
         cardToken: checkout.cardToken,
         redirectUrl: checkout.redirectUrl,
+        subscriptionId: checkout.subscriptionId,
       });
       dispatch({ type: "SET_STEP", step: "CARD_WIDGET" });
     } catch (err: unknown) {
@@ -398,8 +477,9 @@ export function useOnboardingFlow(
         verifyExistingPaymentRef.current = true;
         const subscription = await fetchMySubscription().catch(() => null);
         if (!isCurrentPayment(revision)) return;
+        existingSubscriptionIdRef.current = subscription?.id ?? null;
         if (subscription && HAS_PLAN.has(subscription.status)) {
-          await waitForActivation(subscription, revision);
+          showExistingSubscription(subscription);
           return;
         }
         if (subscription?.status === "PENDING_PAYMENT") {
@@ -421,12 +501,13 @@ export function useOnboardingFlow(
     } finally {
       endPayment(revision);
     }
-  }, [beginPayment, endPayment, isCurrentPayment, waitForActivation]);
+  }, [beginPayment, endPayment, isCurrentPayment, showExistingSubscription]);
 
   const confirmPayment = useCallback(async () => {
     const revision = beginPayment();
     if (revision === null) return;
     const token = stateRef.current.cardToken;
+    let subscriptionId = stateRef.current.checkoutSubscriptionId ?? null;
     if (!token) {
       dispatch({
         type: "SET_ERROR",
@@ -445,7 +526,36 @@ export function useOnboardingFlow(
           const result = await confirmFlowCheckout(token);
           if (!isCurrentPayment(revision)) return;
           if (!result.pending) {
-            const activated = await waitForActivation(result.subscription, revision);
+            // A successful confirm is scoped to the authenticated user's card token.
+            // It can bind legacy storage, but may never replace an already bound ID.
+            const subscription = result.subscription;
+            if (
+              !subscription?.id ||
+              subscription.gateway !== "FLOW" ||
+              (subscriptionId && subscription.id !== subscriptionId) ||
+              (stateRef.current.planId && subscription.plan.id !== stateRef.current.planId)
+            ) {
+              dispatch({
+                type: "SET_ERROR",
+                error:
+                  "No pudimos vincular la confirmación a este pago. Vuelve a verificar o contacta a soporte.",
+              });
+              return;
+            }
+            subscriptionId = subscription.id;
+            dispatch({ type: "RESTORE", state: { checkoutSubscriptionId: subscriptionId } });
+            const snapshot = stateRef.current;
+            if (snapshot.userId)
+              saveOnboardingState({
+                planId: snapshot.planId,
+                planName: snapshot.planName,
+                price: snapshot.price,
+                addOnIds: snapshot.addOnIds,
+                userId: snapshot.userId,
+                cardToken: token,
+                subscriptionId,
+              });
+            const activated = await waitForActivation(subscription, revision, subscriptionId);
             if (!activated && isCurrentPayment(revision))
               dispatch({ type: "SET_STEP", step: "PAYMENT_PENDING" });
             return;
@@ -462,18 +572,27 @@ export function useOnboardingFlow(
               // A successful first confirm can lose its response, then return 404 on retry.
               const subscription = await fetchMySubscription().catch(() => null);
               if (!isCurrentPayment(revision)) return;
-              if (subscription && HAS_PLAN.has(subscription.status)) {
-                await waitForActivation(subscription, revision);
+              const matches =
+                subscription &&
+                subscriptionId &&
+                subscription.id === subscriptionId &&
+                subscription.gateway === "FLOW" &&
+                (!stateRef.current.planId || subscription.plan.id === stateRef.current.planId);
+              if (subscription && matches && HAS_PLAN.has(subscription.status)) {
+                await waitForActivation(subscription, revision, subscriptionId);
                 return;
               }
-              if (subscription?.status === "PENDING_PAYMENT") {
+              if (matches && subscription?.status === "PENDING_PAYMENT") {
                 dispatch({ type: "SET_SUBSCRIPTION", subscription });
                 dispatch({ type: "SET_STEP", step: "PAYMENT_PENDING" });
                 return;
               }
             }
             clearOnboardingState(stateRef.current.userId ?? undefined);
-            dispatch({ type: "RESTORE", state: { cardToken: null, redirectUrl: null } });
+            dispatch({
+              type: "RESTORE",
+              state: { cardToken: null, checkoutSubscriptionId: null, redirectUrl: null },
+            });
             const message =
               code === "CARD_REJECTED"
                 ? "Flow no pudo registrar tu tarjeta. Probá con otra tarjeta."
@@ -506,7 +625,18 @@ export function useOnboardingFlow(
     try {
       const current = await fetchMySubscription().catch(() => null);
       if (!isCurrentPayment(revision)) return;
-      const activated = await waitForActivation(current, revision);
+      const checkoutId = stateRef.current.checkoutSubscriptionId ?? null;
+      const existing = verifyExistingPaymentRef.current || !checkoutId;
+      const subscriptionId = existing ? existingSubscriptionIdRef.current : checkoutId;
+      // Bind a recovered pending payment before polling, even if the first /me
+      // lookup after a conflict was temporarily unavailable.
+      if (existing && !subscriptionId && current) existingSubscriptionIdRef.current = current.id;
+      const activated = await waitForActivation(
+        current,
+        revision,
+        subscriptionId ?? (existing ? (current?.id ?? null) : null),
+        existing,
+      );
       if (!activated && isCurrentPayment(revision)) {
         dispatch({ type: "SET_STEP", step: "PAYMENT_PENDING" });
       }
@@ -522,10 +652,12 @@ export function useOnboardingFlow(
       if (!safe || !owner || safe.userId !== owner) return;
       invalidatePayment();
       verifyExistingPaymentRef.current = false;
+      existingSubscriptionIdRef.current = null;
       dispatch({
         type: "RESTORE",
         state: {
           ...safe,
+          checkoutSubscriptionId: safe.subscriptionId ?? null,
           step: "CARD_WIDGET",
           error: null,
           isLoading: false,
@@ -540,23 +672,34 @@ export function useOnboardingFlow(
     dispatch({
       type: "SET_STEP",
       step:
-        verifyExistingPaymentRef.current ||
-        (stateRef.current.subscription &&
-          (HAS_PLAN.has(stateRef.current.subscription.status) ||
-            stateRef.current.subscription.status === "PENDING_PAYMENT"))
-          ? "PAYMENT_PENDING"
-          : stateRef.current.cardToken
-            ? "CARD_WIDGET"
-            : "CARD_REDIRECT",
+        stateRef.current.subscription &&
+        HAS_PLAN.has(stateRef.current.subscription.status) &&
+        (verifyExistingPaymentRef.current ||
+          stateRef.current.subscription.status === "PENDING_RENEWAL")
+          ? "EXISTING_SUBSCRIPTION"
+          : verifyExistingPaymentRef.current ||
+              (stateRef.current.subscription &&
+                (HAS_PLAN.has(stateRef.current.subscription.status) ||
+                  stateRef.current.subscription.status === "PENDING_PAYMENT"))
+            ? "PAYMENT_PENDING"
+            : stateRef.current.cardToken
+              ? "CARD_WIDGET"
+              : "CARD_REDIRECT",
     });
   }, [invalidatePayment]);
   const goBack = useCallback(() => {
     invalidatePayment();
     verifyExistingPaymentRef.current = false;
+    existingSubscriptionIdRef.current = null;
     clearOnboardingState(stateRef.current.userId ?? undefined);
     dispatch({
       type: "RESTORE",
-      state: { cardToken: null, redirectUrl: null, subscription: null },
+      state: {
+        cardToken: null,
+        checkoutSubscriptionId: null,
+        redirectUrl: null,
+        subscription: null,
+      },
     });
     dispatch({ type: "SET_STEP", step: "ADDONS" });
   }, [invalidatePayment]);

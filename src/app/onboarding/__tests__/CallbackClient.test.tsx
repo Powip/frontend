@@ -7,7 +7,10 @@ import { getStoredOnboardingState } from "@/lib/onboardingStorage";
 import type { OnboardingState, StoredOnboardingState, SubscriptionMe } from "@/types/onboarding";
 import CallbackClient from "../CallbackClient";
 
-jest.mock("next/navigation", () => ({ useSearchParams: jest.fn() }));
+jest.mock("next/navigation", () => ({
+  useSearchParams: jest.fn(),
+  useRouter: () => ({ push: jest.fn() }),
+}));
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: jest.fn() }));
 jest.mock("@/hooks/useOnboardingFlow", () => ({ useOnboardingFlow: jest.fn() }));
 jest.mock("@/lib/onboardingStorage", () => ({ getStoredOnboardingState: jest.fn() }));
@@ -178,10 +181,11 @@ it("permite iniciar sesión dentro del callback y retoma el token recibido sin a
 });
 
 it("restaura el checkout de la cuenta autenticada y confirma una sola vez entre rerenders", async () => {
-  jest.mocked(getStoredOnboardingState).mockReturnValue(storedCheckout());
+  const stored = storedCheckout({ subscriptionId: "matching-checkout" });
+  jest.mocked(getStoredOnboardingState).mockReturnValue(stored);
   const page = render(<CallbackClient />);
   await waitFor(() => expect(confirmPayment).toHaveBeenCalledTimes(1));
-  expect(restoreFromStorage).toHaveBeenCalledWith(storedCheckout());
+  expect(restoreFromStorage).toHaveBeenCalledWith(stored);
   expect(getStoredOnboardingState).toHaveBeenCalledWith(USER);
 
   setSession();
@@ -195,6 +199,7 @@ it("el token de la URL prevalece y no reutiliza el plan de otro checkout", async
   jest.mocked(getStoredOnboardingState).mockReturnValue(
     storedCheckout({
       cardToken: "old-card-token",
+      subscriptionId: "different-checkout",
       planId: "large",
       planName: "Large",
       price: 269,
@@ -298,6 +303,22 @@ it.each(["ACTIVE", "PENDING_RENEWAL"] as const)(
     expect(initiateCardRegistration).not.toHaveBeenCalled();
   },
 );
+
+it("muestra un plan existente recuperado sin token sin anunciar un pago nuevo", async () => {
+  setToken(null);
+  setSession({ subscription: activeSubscription() });
+  flowState = {
+    ...flowState,
+    step: "EXISTING_SUBSCRIPTION",
+    subscription: activeSubscription(),
+  };
+  render(<CallbackClient />);
+  await screen.findByRole("heading", { name: "Ya tienes una suscripción vigente" });
+  expect(screen.queryByText("Suscripción activada")).not.toBeInTheDocument();
+  expect(screen.queryByText("Pagado")).not.toBeInTheDocument();
+  expect(refreshSession).not.toHaveBeenCalled();
+  expect(confirmPayment).not.toHaveBeenCalled();
+});
 
 it("distingue un checkout ausente de una sesión expirada y ofrece elegir el plan", () => {
   setToken(null);
