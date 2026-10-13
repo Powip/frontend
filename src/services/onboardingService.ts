@@ -36,7 +36,10 @@ export async function registerAccount(payload: RegisterPayload): Promise<{ userI
   return data;
 }
 
-export async function loginAccount(email: string, password: string): Promise<{ accessToken: string }> {
+export async function loginAccount(
+  email: string,
+  password: string,
+): Promise<{ accessToken: string }> {
   const { data } = await axios.post<{ accessToken: string }>(
     `${API_USERS}/auth/login`,
     { email, password },
@@ -45,17 +48,22 @@ export async function loginAccount(email: string, password: string): Promise<{ a
   return data;
 }
 
-export async function fetchPlans(): Promise<BackendPlan[]> {
-  const { data } = await axiosAuth.get<BackendPlan[]>(`${GATEWAY.subscription}/plans`);
+export async function fetchPlans(signal?: AbortSignal): Promise<BackendPlan[]> {
+  const { data } = await axiosAuth.get<BackendPlan[]>(`${GATEWAY.subscription}/plans`, { signal });
   return Array.isArray(data) ? data : [];
 }
 
 export async function fetchAddOns(signal?: AbortSignal): Promise<BackendAddOn[]> {
-  const { data } = await axiosAuth.get<BackendAddOn[]>(`${GATEWAY.subscription}/add-ons`, { signal });
+  const { data } = await axiosAuth.get<BackendAddOn[]>(`${GATEWAY.subscription}/add-ons`, {
+    signal,
+  });
   return Array.isArray(data) ? data : [];
 }
 
-export async function startFlowCheckout(planId: string, addOnIds: string[]): Promise<FlowCheckoutResponse> {
+export async function startFlowCheckout(
+  planId: string,
+  addOnIds: string[],
+): Promise<FlowCheckoutResponse> {
   const { data } = await axiosAuth.post<FlowCheckoutResponse>(
     `${GATEWAY.subscription}/subscriptions/flow/checkout`,
     { planId, addOnIds },

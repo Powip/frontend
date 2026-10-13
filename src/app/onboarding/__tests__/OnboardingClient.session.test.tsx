@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchAddOns, fetchPlans, registerAccount } from "@/services/onboardingService";
 import OnboardingClient from "../OnboardingClient";
@@ -22,6 +22,13 @@ function setSession(value: { auth: unknown; login?: unknown; refreshSession?: un
   jest.mocked(useAuth).mockReturnValue(value as ReturnType<typeof useAuth>);
 }
 
+async function findPlanHeading() {
+  const title = await screen.findByRole("heading", { name: "Configura tu cuenta", level: 1 });
+  const content = title.closest("header")?.parentElement;
+  if (!content) throw new Error("Falta el contenido de la suscripción");
+  return within(content).findByRole("heading", { name: "Elige tu plan", level: 2 });
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
   jest.mocked(fetchPlans).mockResolvedValue([
@@ -39,7 +46,7 @@ it("retoma el plan preseleccionado cuando la sesión se recupera después de mon
   setSession(session);
   page.rerender(<OnboardingClient planName="Basic Anual" />);
 
-  await screen.findByRole("heading", { name: "Elige tu plan", level: 3 });
+  await findPlanHeading();
   await waitFor(() => expect(screen.getByText("S/ 999/año")).toBeInTheDocument());
   expect(registerAccount).not.toHaveBeenCalled();
 
@@ -53,7 +60,7 @@ it("una cuenta con sesión activa entra al plan sin mostrar otro formulario de r
   setSession(session);
   render(<OnboardingClient planName="Basic" />);
 
-  await screen.findByRole("heading", { name: "Elige tu plan", level: 3 });
+  await findPlanHeading();
   expect(screen.queryByRole("heading", { name: "Crea tu cuenta" })).not.toBeInTheDocument();
   expect(registerAccount).not.toHaveBeenCalled();
 });

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   createContext,
@@ -59,6 +59,13 @@ function field(id: string) {
   const input = document.getElementById(id);
   if (!input) throw new Error(`Falta el campo de prueba: ${id}`);
   return input;
+}
+
+async function findPlanHeading() {
+  const title = await screen.findByRole("heading", { name: "Configura tu cuenta", level: 1 });
+  const content = title.closest("header")?.parentElement;
+  if (!content) throw new Error("Falta el contenido de la suscripción");
+  return within(content).findByRole("heading", { name: "Elige tu plan", level: 2 });
 }
 
 function authFor(userId: string, companyId?: string) {
@@ -212,7 +219,7 @@ it("conserva la página al crear la sesión y continúa registro → planes → 
   expect(mockPageMount).toHaveBeenCalledTimes(1);
   expect(service.registerAccount).toHaveBeenCalledTimes(1);
   expect(service.loginAccount).toHaveBeenCalledWith("registration@fixture.invalid", "synthetic123");
-  await screen.findByRole("heading", { name: "Elige tu plan", level: 3 });
+  await findPlanHeading();
   expect(screen.queryByLabelText("Nombre", { exact: true })).not.toBeInTheDocument();
   await user.click(await screen.findByRole("button", { name: /Medium/ }));
   await user.click(screen.getByRole("button", { name: "Continuar al pago" }));
