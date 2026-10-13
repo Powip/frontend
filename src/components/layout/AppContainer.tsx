@@ -1,27 +1,48 @@
 "use client";
 
-import { Sidebar } from "@/components/layout/Sidebar";
 import { usePathname } from "next/navigation";
+import { Fragment, useState } from "react";
 import AuthGuard from "@/components/auth/AuthGuard";
-import { useAuth } from "@/contexts/AuthContext";
-import { Fragment } from "react";
-import { BusinessScopeProvider, useBusinessScope } from "@/contexts/BusinessScopeContext";
 import { BusinessScopeBar } from "@/components/header/BusinessScopeBar";
+import { Sidebar } from "@/components/layout/Sidebar";
+import { useAuth } from "@/contexts/AuthContext";
+import { BusinessScopeProvider, useBusinessScope } from "@/contexts/BusinessScopeContext";
 import { isBusinessScopeRoute, shouldResetBusinessView } from "@/lib/businessScopeRoutes";
 
-export default function AppContainer({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return <BusinessScopeProvider><ScopedAppContainer>{children}</ScopedAppContainer></BusinessScopeProvider>;
+const publicAuthFlowRoutes = ["/onboarding", "/login", "/restablecer-contrasena"];
+
+export default function AppContainer({ children }: { children: React.ReactNode }) {
+  return (
+    <BusinessScopeProvider>
+      <ScopedAppContainer>{children}</ScopedAppContainer>
+    </BusinessScopeProvider>
+  );
 }
 
 function ScopedAppContainer({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { auth } = useAuth();
   const { scopeKey } = useBusinessScope();
-  const viewKey = shouldResetBusinessView(pathname) ? scopeKey : JSON.stringify([auth?.company?.id, auth?.user?.id]);
+  const userId = auth?.user?.id;
+  const [publicSession, setPublicSession] = useState({ userId, revision: 0 });
+  let publicSessionRevision = publicSession.revision;
+
+  // Creating the first session must keep the public flow's state. Once signed
+  // in, logout or switching accounts must discard the previous user's checkout.
+  // Adjust before rendering children so another account never sees that state.
+  if (publicSession.userId !== userId) {
+    if (publicSession.userId !== undefined) publicSessionRevision += 1;
+    setPublicSession({ userId, revision: publicSessionRevision });
+  }
+
+  const isPublicAuthFlow = publicAuthFlowRoutes.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
+  const viewKey = isPublicAuthFlow
+    ? JSON.stringify(["public-auth-flow", pathname, publicSessionRevision])
+    : shouldResetBusinessView(pathname)
+      ? scopeKey
+      : JSON.stringify([auth?.company?.id, userId]);
 
   const noSidebarRoutes = [
     "/login",
