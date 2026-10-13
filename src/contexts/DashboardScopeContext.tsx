@@ -4,11 +4,11 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
-import { hasAdminAccess, isSuperadmin } from "@/config/permissions.config";
 import { useAuth } from "./AuthContext";
 
 export type DashboardScope = "business" | "store";
@@ -42,9 +42,16 @@ export function DashboardScopeProvider({ children }: { children: ReactNode }) {
   const userId = auth?.user?.id;
   const companyId = auth?.company?.id;
   const companyStores = auth?.company?.stores;
-  const canViewBusiness =
-    hasAdminAccess(auth?.user?.role) || isSuperadmin(auth?.user?.email);
+  const canViewBusiness = Boolean(auth?.accessToken && userId && companyId);
   const [choice, setChoice] = useState<ScopeChoice | null>(null);
+
+  useEffect(() => {
+    setChoice((current) =>
+      canViewBusiness && current?.userId === userId && current?.companyId === companyId
+        ? current
+        : null,
+    );
+  }, [canViewBusiness, userId, companyId]);
 
   const currentChoice =
     choice && choice.userId === userId && choice.companyId === companyId
@@ -56,7 +63,7 @@ export function DashboardScopeProvider({ children }: { children: ReactNode }) {
 
   const setScope = useCallback(
     (nextScope: DashboardScope) => {
-      if (nextScope === "business" && !canViewBusiness) return;
+      if (!canViewBusiness) return;
       setChoice({ userId, companyId, scope: nextScope });
     },
     [userId, companyId, canViewBusiness],
@@ -79,7 +86,7 @@ export function DashboardScopeProvider({ children }: { children: ReactNode }) {
       : { storeId: storeIds[0] || "" },
     [scope, storeIds],
   );
-  const canFetch = Boolean(auth?.accessToken && userId && storeIds.length > 0);
+  const canFetch = canViewBusiness && storeIds.length > 0;
   const scopeKey = JSON.stringify([companyId, userId, scope, storeIds]);
 
   const value = useMemo(
