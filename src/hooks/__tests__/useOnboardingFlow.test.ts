@@ -1,5 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { AxiosError, AxiosHeaders } from "axios";
+import { toast } from "sonner";
 import { getStoredOnboardingState } from "@/lib/onboardingStorage";
 import * as api from "@/services/onboardingService";
 import type { SubscriptionMe } from "@/types/onboarding";
@@ -107,6 +108,16 @@ describe("useOnboardingFlow", () => {
 
     expect(result.current.state.step).toBe("REGISTRATION");
     expect(result.current.state.error).toMatch(/ya está registrado/);
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(toast.error).toHaveBeenCalledWith(
+      "No pudimos completar el registro",
+      expect.objectContaining({
+        id: "auth-feedback",
+        description: result.current.state.error,
+        duration: 6000,
+        closeButton: true,
+      }),
+    );
   });
 
   it.each([null, undefined])("no avanza si AuthContext.login devuelve %s", async (session) => {

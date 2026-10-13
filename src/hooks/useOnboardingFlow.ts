@@ -1,8 +1,9 @@
 "use client";
 
-import axios from "axios";
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { toast } from "sonner";
+import { registrationErrorMessage } from "@/lib/authErrors";
+import { notifyAuthError } from "@/lib/authToast";
 import { clearOnboardingState, saveOnboardingState } from "@/lib/onboardingStorage";
 import {
   apiErrorCode,
@@ -50,64 +51,6 @@ export const POLL_DELAY_MS = 3000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const HAS_PLAN = new Set(["ACTIVE", "PENDING_RENEWAL"]);
-
-function serverErrorText(value: unknown): string | undefined {
-  if (typeof value === "string") return value.trim() || undefined;
-  if (Array.isArray(value)) {
-    const messages = value
-      .map(serverErrorText)
-      .filter((message): message is string => Boolean(message));
-    return messages.length > 0 ? messages.join(". ") : undefined;
-  }
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    for (const field of ["errors", "message", "error", "defaultMessage"]) {
-      const message = serverErrorText(record[field]);
-      if (message) return message;
-    }
-  }
-  return undefined;
-}
-
-function registrationErrorMessage(err: unknown): string {
-  const fallback = "No pudimos crear tu cuenta. Intenta nuevamente.";
-  if (!axios.isAxiosError(err)) return fallback;
-  const payload: unknown = err.response?.data;
-  const record =
-    payload && typeof payload === "object" && !Array.isArray(payload)
-      ? (payload as Record<string, unknown>)
-      : {};
-  const message = serverErrorText(payload);
-  const code = serverErrorText(record.code) ?? serverErrorText(record.errorCode) ?? "";
-  const details = `${code} ${message ?? ""}`
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[_-]/g, " ")
-    .toLowerCase();
-  const isDuplicate =
-    err.response?.status === 409 ||
-    (err.response?.status === 400 &&
-      /already\s*(?:exists|registered|used)|duplicate|duplicad|ya (?:existe|esta registrad|registrad|esta en uso)|(?:email|correo|identity document|dni|ruc)\s*(?:exists|registered|taken)/.test(
-        details,
-      ));
-  if (isDuplicate) {
-    const hasDocument = /identity\s*document|documento|\bdni\b|\bruc\b/.test(details);
-    const hasEmail = /email|correo/.test(details);
-    if (hasDocument && !hasEmail) {
-      return "El documento de identidad ya está registrado. Revisa tus datos o contacta a soporte.";
-    }
-    if (hasEmail && !hasDocument) {
-      return "Este email ya está registrado. Inicia sesión para continuar con tu suscripción.";
-    }
-    return "Estos datos ya están registrados. Si ya tienes una cuenta, inicia sesión para continuar.";
-  }
-  if (err.response?.status === 400) {
-    return message && message !== "Bad Request"
-      ? message
-      : "Datos inválidos. Revisa los campos e intenta nuevamente.";
-  }
-  return message ?? fallback;
-}
 
 export interface UseOnboardingFlowReturn {
   state: OnboardingState;
@@ -240,7 +183,7 @@ export function useOnboardingFlow(
           } catch (err: unknown) {
             if (!mountedRef.current) return;
             const message = registrationErrorMessage(err);
-            toast.error(message);
+            notifyAuthError("No pudimos completar el registro", message);
             dispatch({ type: "SET_INLINE_ERROR", error: message });
             return;
           }
@@ -261,8 +204,8 @@ export function useOnboardingFlow(
         } catch {
           if (!mountedRef.current) return;
           const message =
-            "Tu cuenta fue creada, pero no pudimos iniciar la sesión. Reintenta con tus credenciales o inicia sesión para continuar con tu suscripción.";
-          toast.error(message);
+            "Tu cuenta fue creada, pero no pudimos iniciar la sesión. Reintenta o inicia sesión para continuar.";
+          notifyAuthError("Tu cuenta ya fue creada", message);
           dispatch({ type: "SET_INLINE_ERROR", error: message });
         }
       } finally {

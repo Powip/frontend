@@ -1,0 +1,22 @@
+.toast[data-sonner-toast][data-styled="true"][data-type="error"] {
+  font-family: var(--next-font-manrope), Arial, Helvetica, sans-serif;
+  --error-bg: #fff;
+  --error-border: #e9c6cc;
+  --error-text: #a3273d;
+  border-left: 3px solid #b8324b;
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 8px 28px rgb(48 38 69 / 12%);
+}
+
+.toast[data-sonner-toast][data-styled="true"] .title {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.toast[data-sonner-toast][data-styled="true"][data-type="error"] .description {
+  color: #51454f;
+  font-size: 13px;
+  line-height: 1.5;
+}
