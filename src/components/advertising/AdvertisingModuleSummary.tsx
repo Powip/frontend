@@ -30,6 +30,7 @@ import { useAdvertisingSummaryV11 } from "@/hooks/useAdvertisingV11";
 import { advertisingErrorMessage, advertisingErrorStatus } from "@/services/advertisingService";
 import type { AdvertisingSeriesBy } from "@/services/advertisingV11Service";
 import { AdvertisingAccountHistory } from "./AdvertisingAccountHistory";
+import { AdvertisingSalesCostCard } from "./AdvertisingSalesCostCard";
 import { AdvertisingStackedSpendChart } from "./AdvertisingStackedSpendChart";
 import { useAdvertisingStoreFilter } from "./AdvertisingStoreFilterContext";
 import { AdvertisingSummaryCards } from "./AdvertisingSummaryCards";
@@ -559,6 +560,15 @@ function AdvertisingModuleSummaryV11({
           </Select>
         </div>
       </div>
+      {storeId !== "none" ? (
+        <AdvertisingSalesCostCard
+          identity={identity}
+          from={from}
+          to={to}
+          storeId={storeId}
+          summary={global.isError ? undefined : global.data}
+        />
+      ) : null}
       {query.isError ? (
         <Alert variant={query.isAccessDenied ? "destructive" : "default"}>
           <AlertDescription>
@@ -614,7 +624,7 @@ function AdvertisingModuleSummaryV11({
               summary={summary}
               business={business.data}
               businessError={business.isError ? business.error : undefined}
-              accountSelected={accountId !== "all" || provider !== "all"}
+              accountSelected={accountId !== "all" || provider !== "all" || currency !== "all"}
             />
           ) : (
             <Card>

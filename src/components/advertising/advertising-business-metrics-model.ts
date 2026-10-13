@@ -21,7 +21,7 @@ export function compareAdvertisingBusinessCurrency(
   } => ({ costPerDelivered: null, revenueToSpend: null, reason });
   if (!business) return pending("Pedidos pendientes");
   if (summary.storeId === "none") return pending("Gasto sin asignar");
-  if (accountSelected) return pending("Pedidos de la cuenta por confirmar");
+  if (accountSelected) return pending("Consulta el costo del negocio sin filtrar el gasto");
   if (
     business.source !== "powip-business-metrics" ||
     business.definition !== "delivered-order-grand-total-v1" ||
@@ -55,6 +55,8 @@ export function compareAdvertisingBusinessCurrency(
   // A single-currency business expense may be divided by its confirmed order volume.
   // Currency remains mandatory for revenue ratios, not for counting orders.
   const useBusinessVolume = Boolean(business.countCoverage && summary.currencies.length === 1);
+  if (!useBusinessVolume && !business.coverage.complete)
+    return pending("Moneda de las entregas por confirmar");
   const deliveredCount = useBusinessVolume ? business.deliveredCount : orders?.deliveredCount;
   if (!useBusinessVolume && !orders) return pending("Moneda por confirmar");
   if (
@@ -64,7 +66,14 @@ export function compareAdvertisingBusinessCurrency(
   )
     return pending("Sin entregados comparables");
   try {
-    const costPerDelivered = divideOrderDecimals(spend.spend, String(deliveredCount));
+    const costPerDelivered =
+      summary.currencies.length === 1
+        ? divideOrderDecimals(spend.spend, String(deliveredCount))
+        : null;
+    const reason =
+      summary.currencies.length === 1
+        ? null
+        : "El costo general requiere inversión en una sola moneda";
     const revenueCoverage = business.revenueCoverage ?? {
       ...business.coverage,
       basis: business.basis,
@@ -73,13 +82,13 @@ export function compareAdvertisingBusinessCurrency(
       return {
         costPerDelivered,
         revenueToSpend: null,
-        reason: null,
+        reason,
         revenueReason: "Venta con moneda por confirmar",
       };
     return {
       costPerDelivered,
       revenueToSpend: divideOrderDecimals(orders.deliveredRevenue, spend.spend, 2),
-      reason: null,
+      reason,
     };
   } catch {
     return pending("Importes por revisar");

@@ -44,7 +44,7 @@ export function AdvertisingSalesCostCard({
     basis,
     timeZone: "America/Lima",
   });
-  const business = query.isError ? undefined : query.data;
+  const business = !query.isError && query.data?.basis === basis ? query.data : undefined;
   const result = advertisingSalesCost(summary, business);
   const coverage = business?.countCoverage ?? business?.coverage;
   const count = business
@@ -67,7 +67,9 @@ export function AdvertisingSalesCostCard({
         <div className="space-y-1">
           <CardTitle className="text-base">Inversión por venta · Powip</CardTitle>
           <p className="text-xs text-muted-foreground">
-            Todas las cuentas y plataformas de la tienda consultada.
+            {storeId === "all"
+              ? "Todo el negocio: todas las tiendas, cuentas, plataformas y canales."
+              : "Toda la publicidad y los pedidos de la tienda consultada."}
           </p>
         </div>
         <div className="min-w-0 space-y-1 sm:w-48">

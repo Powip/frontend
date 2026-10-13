@@ -63,6 +63,16 @@ export function AdvertisingSummaryCards({
                               ? formatMetaSpend(result.costPerResult, total.currency)
                               : "Pendiente"}
                           </dd>
+                          {result.count !== null ? (
+                            <p className="text-xs text-muted-foreground">
+                              {formatAdvertisingMetric(result.count)} resultados
+                              {result.status === "partial" ? " · parcial" : ""}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              Sin datos de este resultado en la importación.
+                            </p>
+                          )}
                           {result.limitation === "optimization-event-unconfirmed" ? (
                             <p className="text-xs text-muted-foreground">
                               Evento optimizado por confirmar.
@@ -78,7 +88,11 @@ export function AdvertisingSummaryCards({
                 </CardContent>
               </Card>
               <Metric title="CTR de enlace · Meta" value={formatAdvertisingMetric(total.ctr, " %")}>
-                <p className="text-xs text-muted-foreground">Clics en el enlace ÷ impresiones.</p>
+                <p className="text-xs text-muted-foreground">
+                  {total.ctr === null
+                    ? "Sin datos de clics de enlace en esta importación."
+                    : "Clics en el enlace ÷ impresiones."}
+                </p>
               </Metric>
               <Metric
                 title="Frecuencia · Meta"
@@ -87,9 +101,11 @@ export function AdvertisingSummaryCards({
                 )}
               >
                 <p className="text-xs text-muted-foreground">
-                  {total.frequencyApproximate
-                    ? "Aproximada entre cuentas."
-                    : "Veces por persona en el periodo."}
+                  {total.periodMetricsStatus !== "available" || total.frequency === null
+                    ? "Sin alcance confirmado para este periodo."
+                    : total.frequencyApproximate
+                      ? "Aproximada entre cuentas."
+                      : "Veces por persona en el periodo."}
                 </p>
                 {total.periodMetricsStatus === "available" &&
                 total.frequencyHigh &&
