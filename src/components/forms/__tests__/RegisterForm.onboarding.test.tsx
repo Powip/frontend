@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { toast } from "sonner";
 import type { RegisterData } from "@/hooks/useOnboardingFlow";
 import RegisterForm from "../RegisterForm";
 
@@ -47,6 +48,87 @@ function reachAccountStep() {
 }
 
 describe("RegisterForm — integración con onboarding", () => {
+  beforeEach(() => jest.clearAllMocks());
+  afterEach(() => jest.restoreAllMocks());
+
+  it("identifica el primer campo inválido, lo enfoca sin scroll y actualiza su error al editar", () => {
+    const focus = jest.spyOn(HTMLElement.prototype, "focus");
+    const onNext = jest.fn<Promise<void>, [RegisterData]>().mockResolvedValue(undefined);
+    render(<RegisterForm isLoading={false} error={null} onNext={onNext} />);
+
+    continueStep();
+
+    const name = screen.getByLabelText(/^Nombre$/);
+    expect(name).toHaveFocus();
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+    expect(name).toHaveAccessibleDescription("Este campo es obligatorio.");
+    expect(toast.error).toHaveBeenCalledWith(
+      "Revisa tus datos",
+      expect.objectContaining({
+        description: "Nombre: Este campo es obligatorio.",
+      }),
+    );
+
+    change(/^Nombre$/, "A");
+    expect(name).toHaveAttribute("aria-invalid", "true");
+    expect(name).toHaveAccessibleDescription("Mínimo 2 caracteres.");
+    change(/^Nombre$/, account.name);
+    expect(name).toHaveAttribute("aria-invalid", "false");
+    expect(name).not.toHaveAttribute("aria-describedby");
+    expect(document.getElementById("register-name-error")).toBeNull();
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(onNext).not.toHaveBeenCalled();
+  });
+
+  it("vuelve al paso del primer error pendiente y enfoca su input antes de registrar", () => {
+    const onNext = jest.fn<Promise<void>, [RegisterData]>().mockResolvedValue(undefined);
+    render(<RegisterForm isLoading={false} error={null} onNext={onNext} />);
+    reachAccountStep();
+    fireEvent.click(screen.getByRole("button", { name: "Datos personales" }));
+    change(/^Apellido$/, "");
+    fireEvent.click(screen.getByRole("button", { name: "Acceso a tu cuenta" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
+
+    expect(screen.getByRole("button", { name: "Datos personales" })).toHaveAttribute(
+      "aria-current",
+      "step",
+    );
+    expect(screen.getByLabelText(/^Apellido$/)).toHaveFocus();
+    expect(toast.error).toHaveBeenCalledWith(
+      "Revisa tus datos",
+      expect.objectContaining({
+        description: "Apellido: Este campo es obligatorio.",
+      }),
+    );
+    expect(onNext).not.toHaveBeenCalled();
+  });
+
+  it("presenta la regla de contraseña compacta y corrige también una confirmación ya inválida", () => {
+    const onNext = jest.fn<Promise<void>, [RegisterData]>().mockResolvedValue(undefined);
+    render(<RegisterForm isLoading={false} error={null} onNext={onNext} />);
+    reachAccountStep();
+    change(/^Contraseña$/, "a1");
+    change(/^Confirmar contraseña$/, "otra123");
+
+    fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
+
+    expect(screen.getByLabelText(/^Contraseña$/)).toHaveFocus();
+    expect(screen.getByLabelText(/^Contraseña$/)).toHaveAccessibleDescription(
+      "Usa 6 caracteres o más, una minúscula y un número.",
+    );
+    expect(screen.getByLabelText(/^Confirmar contraseña$/)).toHaveAccessibleDescription(
+      "Las contraseñas no coinciden.",
+    );
+    change(/^Contraseña$/, "otra123");
+    expect(screen.getByLabelText(/^Contraseña$/)).toHaveAttribute("aria-invalid", "false");
+    expect(screen.getByLabelText(/^Confirmar contraseña$/)).toHaveAttribute(
+      "aria-invalid",
+      "false",
+    );
+    expect(document.getElementById("register-confirm-error")).toBeNull();
+    expect(onNext).not.toHaveBeenCalled();
+  });
   it("bloquea el avance con teléfono o documento no numéricos y acepta un DNI de 8 dígitos", () => {
     const onNext = jest.fn<Promise<void>, [RegisterData]>().mockResolvedValue(undefined);
     render(<RegisterForm isLoading={false} error={null} onNext={onNext} />);
@@ -116,7 +198,9 @@ describe("RegisterForm — integración con onboarding", () => {
       await waitFor(() => expect(onNext).toHaveBeenCalledTimes(1));
 
       rerender(<RegisterForm isLoading={false} error={error} onNext={onNext} />);
+      expect(screen.getByRole("alert")).toHaveTextContent("No pudimos continuar");
       expect(screen.getByRole("alert")).toHaveTextContent(error);
+      expect(toast.error).not.toHaveBeenCalled();
       expect(screen.getByLabelText(/^Contraseña$/)).toHaveValue(account.password);
       change(/^Correo electrónico$/, "nuevo@negocio.com");
       fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
@@ -126,11 +210,50 @@ describe("RegisterForm — integración con onboarding", () => {
     },
   );
 
+  it("prioriza los errores de campo sobre un aviso anterior del servidor", () => {
+    const onNext = jest.fn<Promise<void>, [RegisterData]>().mockResolvedValue(undefined);
+    const error = "El correo electrónico ya existe.";
+    render(<RegisterForm isLoading={false} error={error} onNext={onNext} />);
+    reachAccountStep();
+    expect(screen.getByRole("alert")).toHaveTextContent("No pudimos continuar");
+    expect(toast.error).not.toHaveBeenCalled();
+    change(/^Correo electrónico$/, "correo-inválido");
+
+    fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^Correo electrónico$/)).toHaveAccessibleDescription(
+      "El correo electrónico no es válido.",
+    );
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(onNext).not.toHaveBeenCalled();
+  });
+
+  it("marca el formulario ocupado mientras el flujo procesa el registro", () => {
+    const onNext = jest.fn<Promise<void>, [RegisterData]>().mockResolvedValue(undefined);
+    const { rerender } = render(<RegisterForm isLoading={false} error={null} onNext={onNext} />);
+    const form = screen.getByRole("button", { name: "Continuar" }).closest("form");
+    expect(form).toHaveAttribute("aria-busy", "false");
+
+    rerender(<RegisterForm isLoading={true} error={null} onNext={onNext} />);
+
+    expect(form).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("button", { name: "Creando cuenta..." })).toBeDisabled();
+    expect(onNext).not.toHaveBeenCalled();
+  });
+
   it("abre los documentos legales oficiales sin abandonar el formulario ni crear una cuenta", () => {
     const onNext = jest.fn<Promise<void>, [RegisterData]>().mockResolvedValue(undefined);
     render(<RegisterForm isLoading={false} error={null} onNext={onNext} />);
     expect(screen.queryByRole("link", { name: /^Términos de Servicio/ })).not.toBeInTheDocument();
-    reachAccountStep();
+    fillPersonalData();
+    continueStep();
+    expect(screen.queryByRole("link", { name: /^Términos de Servicio/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^Política de Privacidad/ })).not.toBeInTheDocument();
+    change(/^Distrito$/, account.district);
+    change(/^Dirección$/, account.address);
+    continueStep();
+    fillAccountStep();
 
     const terms = screen.getByRole("link", { name: /^Términos de Servicio/ });
     const privacy = screen.getByRole("link", { name: /^Política de Privacidad/ });

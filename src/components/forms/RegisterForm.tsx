@@ -2,10 +2,10 @@
 import { ArrowLeft, ArrowRight, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import type { RegisterData } from "@/hooks/useOnboardingFlow";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { AuthErrorNotice, FieldError, notifyAuthError } from "./AuthFeedback";
 import styles from "./auth-form.module.css";
 
 type RegisterFormData = RegisterData & { confirmPassword: string };
@@ -35,19 +35,26 @@ const REGISTER_STEPS: { label: string; shortLabel: string; fields: (keyof Regist
     },
   ];
 
+const FIELD_INFO: Record<keyof RegisterFormData, { id: string; label: string }> = {
+  name: { id: "register-name", label: "Nombre" },
+  surname: { id: "register-surname", label: "Apellido" },
+  identityDocument: { id: "register-document", label: "DNI / RUC" },
+  phone: { id: "register-phone", label: "WhatsApp" },
+  district: { id: "register-district", label: "Distrito" },
+  address: { id: "register-address", label: "Dirección" },
+  email: { id: "register-email", label: "Correo electrónico" },
+  password: { id: "register-password", label: "Contraseña" },
+  confirmPassword: { id: "register-confirm", label: "Confirmar contraseña" },
+};
+
 export default function RegisterForm({ isLoading, error, onNext }: RegisterFormProps) {
   const submittingRef = useRef(false);
   const [step, setStep] = useState(0);
   const [furthestStep, setFurthestStep] = useState(0);
-  const stepTitleRef = useRef<HTMLLegendElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const pendingFocusRef = useRef<keyof RegisterFormData | null>(null);
   const previousStepRef = useRef(step);
 
-  useEffect(() => {
-    if (previousStepRef.current !== step) {
-      stepTitleRef.current?.focus({ preventScroll: true });
-      previousStepRef.current = step;
-    }
-  }, [step]);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -64,65 +71,67 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
   });
   const [errors, setErrors] = useState<Partial<Record<keyof RegisterFormData, string>>>({});
 
-  const validateFields = (fields: (keyof RegisterFormData)[]) => {
+  useEffect(() => {
+    const pendingField = pendingFocusRef.current;
+    if (pendingField && errors[pendingField]) {
+      formRef.current
+        ?.querySelector<HTMLInputElement>(`#${FIELD_INFO[pendingField].id}`)
+        ?.focus({ preventScroll: true });
+      pendingFocusRef.current = null;
+    } else if (previousStepRef.current !== step) {
+      formRef.current
+        ?.querySelector<HTMLInputElement>("input:not(:disabled)")
+        ?.focus({ preventScroll: true });
+    }
+    previousStepRef.current = step;
+  }, [step, errors]);
+
+  const validateFields = (fields: (keyof RegisterFormData)[], values = registerData) => {
     const newErrors: Partial<Record<keyof RegisterFormData, string>> = {};
 
     fields.forEach((field) => {
-      if (!registerData[field].trim()) {
+      if (!values[field].trim()) {
         newErrors[field] = "Este campo es obligatorio.";
       }
     });
 
     for (const field of ["name", "surname"] as const) {
-      if (
-        fields.includes(field) &&
-        registerData[field].trim() &&
-        registerData[field].trim().length < 2
-      ) {
+      if (fields.includes(field) && values[field].trim() && values[field].trim().length < 2) {
         newErrors[field] = "Mínimo 2 caracteres.";
       }
     }
 
-    if (fields.includes("phone") && registerData.phone && !/^\d{9}$/.test(registerData.phone)) {
+    if (fields.includes("phone") && values.phone && !/^\d{9}$/.test(values.phone)) {
       newErrors.phone = "Ingresa 9 dígitos, solo números.";
     }
 
     if (
       fields.includes("identityDocument") &&
-      registerData.identityDocument &&
-      !/^(\d{8}|\d{11})$/.test(registerData.identityDocument)
+      values.identityDocument &&
+      !/^(\d{8}|\d{11})$/.test(values.identityDocument)
     ) {
       newErrors.identityDocument = "DNI (8 dígitos) o RUC (11 dígitos).";
     }
 
-    if (
-      fields.includes("address") &&
-      registerData.address.trim() &&
-      registerData.address.trim().length < 5
-    ) {
+    if (fields.includes("address") && values.address.trim() && values.address.trim().length < 5) {
       newErrors.address = "Mínimo 5 caracteres.";
     }
 
-    if (
-      fields.includes("email") &&
-      registerData.email &&
-      !/\S+@\S+\.\S+/.test(registerData.email)
-    ) {
+    if (fields.includes("email") && values.email && !/\S+@\S+\.\S+/.test(values.email)) {
       newErrors.email = "El correo electrónico no es válido.";
     }
 
-    if (fields.includes("password") && registerData.password) {
+    if (fields.includes("password") && values.password) {
       const passwordRegex = /^(?=.*[a-z])(?=.*\d).{6,}$/;
-      if (!passwordRegex.test(registerData.password)) {
-        newErrors.password =
-          "La contraseña debe tener al menos 6 caracteres, una letra minúscula y un número.";
+      if (!passwordRegex.test(values.password)) {
+        newErrors.password = "Usa 6 caracteres o más, una minúscula y un número.";
       }
     }
 
     if (
       fields.includes("confirmPassword") &&
-      registerData.confirmPassword &&
-      registerData.password !== registerData.confirmPassword
+      values.confirmPassword &&
+      values.password !== values.confirmPassword
     ) {
       newErrors.confirmPassword = "Las contraseñas no coinciden.";
     }
@@ -130,15 +139,41 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
     return newErrors;
   };
 
+  const updateField = (field: keyof RegisterFormData, value: string) => {
+    const nextData = { ...registerData, [field]: value };
+    setRegisterData(nextData);
+    const affectedFields: (keyof RegisterFormData)[] = [field];
+    if (field === "password") affectedFields.push("confirmPassword");
+    const invalidFields = affectedFields.filter((item) => Boolean(errors[item]));
+    if (invalidFields.length === 0) return;
+    const updatedErrors = validateFields(invalidFields, nextData);
+    setErrors((previousErrors) => {
+      const nextErrors = { ...previousErrors };
+      for (const item of invalidFields) {
+        delete nextErrors[item];
+      }
+      return { ...nextErrors, ...updatedErrors };
+    });
+  };
+
+  const reportValidationErrors = (newErrors: Partial<Record<keyof RegisterFormData, string>>) => {
+    const firstField = REGISTER_STEPS.flatMap((item) => item.fields).find(
+      (field) => newErrors[field],
+    );
+    if (!firstField) return;
+    pendingFocusRef.current = firstField;
+    setStep(REGISTER_STEPS.findIndex((item) => item.fields.includes(firstField)));
+    notifyAuthError(
+      "Revisa tus datos",
+      `${FIELD_INFO[firstField].label}: ${newErrors[firstField]}`,
+    );
+  };
+
   const handleOnRegister = async () => {
     const newErrors = validateFields(REGISTER_STEPS.flatMap((item) => item.fields));
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) {
-      const firstErrorStep = REGISTER_STEPS.findIndex((item) =>
-        item.fields.some((field) => newErrors[field]),
-      );
-      setStep(firstErrorStep);
-      toast.error("Por favor completa correctamente el formulario.");
+      reportValidationErrors(newErrors);
       return;
     }
     submittingRef.current = true;
@@ -177,7 +212,7 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
       return { ...nextErrors, ...newErrors };
     });
     if (Object.keys(newErrors).length > 0) {
-      toast.error("Por favor completa correctamente el formulario.");
+      reportValidationErrors(newErrors);
       return;
     }
 
@@ -186,9 +221,17 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
     setFurthestStep((previousFurthestStep) => Math.max(previousFurthestStep, nextStep));
   };
 
+  const hasCurrentErrors = REGISTER_STEPS[step].fields.some((field) => Boolean(errors[field]));
+
   return (
     <div className="w-full">
-      <form onSubmit={handleSubmit} className={`${styles.form} ${styles.registration}`} noValidate>
+      <form
+        ref={formRef}
+        onSubmit={handleSubmit}
+        className={`${styles.form} ${styles.registration}`}
+        aria-busy={isLoading}
+        noValidate
+      >
         <nav aria-label="Progreso del registro">
           <ol className={styles.stepper}>
             {REGISTER_STEPS.map((item, index) => (
@@ -213,9 +256,7 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
         </nav>
         {step === 0 && (
           <fieldset className={styles.section}>
-            <legend ref={stepTitleRef} tabIndex={-1} className={styles.legend}>
-              Datos personales
-            </legend>
+            <legend className={styles.legend}>Datos personales</legend>
             <div className={styles.fieldGrid}>
               <div className={styles.field}>
                 <Label htmlFor="register-name" className={styles.label}>
@@ -227,17 +268,13 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
                   autoComplete="given-name"
                   placeholder="Juan"
                   value={registerData.name}
-                  onChange={(e) => setRegisterData({ ...registerData, name: e.target.value })}
+                  onChange={(e) => updateField("name", e.target.value)}
                   disabled={isLoading}
                   className={styles.input}
                   aria-invalid={Boolean(errors.name)}
                   aria-describedby={errors.name ? "register-name-error" : undefined}
                 />
-                {errors.name && (
-                  <p id="register-name-error" className={styles.error}>
-                    {errors.name}
-                  </p>
-                )}
+                <FieldError id="register-name-error" message={errors.name} />
               </div>
 
               <div className={styles.field}>
@@ -250,17 +287,13 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
                   autoComplete="family-name"
                   placeholder="Pérez"
                   value={registerData.surname}
-                  onChange={(e) => setRegisterData({ ...registerData, surname: e.target.value })}
+                  onChange={(e) => updateField("surname", e.target.value)}
                   disabled={isLoading}
                   className={styles.input}
                   aria-invalid={Boolean(errors.surname)}
                   aria-describedby={errors.surname ? "register-surname-error" : undefined}
                 />
-                {errors.surname && (
-                  <p id="register-surname-error" className={styles.error}>
-                    {errors.surname}
-                  </p>
-                )}
+                <FieldError id="register-surname-error" message={errors.surname} />
               </div>
 
               <div className={styles.field}>
@@ -273,22 +306,13 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
                   inputMode="numeric"
                   placeholder="12345678"
                   value={registerData.identityDocument}
-                  onChange={(e) =>
-                    setRegisterData({
-                      ...registerData,
-                      identityDocument: e.target.value,
-                    })
-                  }
+                  onChange={(e) => updateField("identityDocument", e.target.value)}
                   disabled={isLoading}
                   className={styles.input}
                   aria-invalid={Boolean(errors.identityDocument)}
                   aria-describedby={errors.identityDocument ? "register-document-error" : undefined}
                 />
-                {errors.identityDocument && (
-                  <p id="register-document-error" className={styles.error}>
-                    {errors.identityDocument}
-                  </p>
-                )}
+                <FieldError id="register-document-error" message={errors.identityDocument} />
               </div>
 
               <div className={styles.field}>
@@ -302,17 +326,13 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
                   autoComplete="tel-national"
                   placeholder="987654321"
                   value={registerData.phone}
-                  onChange={(e) => setRegisterData({ ...registerData, phone: e.target.value })}
+                  onChange={(e) => updateField("phone", e.target.value)}
                   disabled={isLoading}
                   className={styles.input}
                   aria-invalid={Boolean(errors.phone)}
                   aria-describedby={errors.phone ? "register-phone-error" : undefined}
                 />
-                {errors.phone && (
-                  <p id="register-phone-error" className={styles.error}>
-                    {errors.phone}
-                  </p>
-                )}
+                <FieldError id="register-phone-error" message={errors.phone} />
               </div>
             </div>
           </fieldset>
@@ -320,9 +340,7 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
 
         {step === 1 && (
           <fieldset className={styles.section}>
-            <legend ref={stepTitleRef} tabIndex={-1} className={styles.legend}>
-              Ubicación
-            </legend>
+            <legend className={styles.legend}>Ubicación</legend>
             <div className={styles.fieldGrid}>
               <div className={styles.field}>
                 <Label htmlFor="register-district" className={styles.label}>
@@ -334,17 +352,13 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
                   autoComplete="address-level3"
                   placeholder="Miraflores"
                   value={registerData.district}
-                  onChange={(e) => setRegisterData({ ...registerData, district: e.target.value })}
+                  onChange={(e) => updateField("district", e.target.value)}
                   disabled={isLoading}
                   className={styles.input}
                   aria-invalid={Boolean(errors.district)}
                   aria-describedby={errors.district ? "register-district-error" : undefined}
                 />
-                {errors.district && (
-                  <p id="register-district-error" className={styles.error}>
-                    {errors.district}
-                  </p>
-                )}
+                <FieldError id="register-district-error" message={errors.district} />
               </div>
 
               <div className={styles.field}>
@@ -357,17 +371,13 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
                   autoComplete="street-address"
                   placeholder="Av. Larco 123"
                   value={registerData.address}
-                  onChange={(e) => setRegisterData({ ...registerData, address: e.target.value })}
+                  onChange={(e) => updateField("address", e.target.value)}
                   disabled={isLoading}
                   className={styles.input}
                   aria-invalid={Boolean(errors.address)}
                   aria-describedby={errors.address ? "register-address-error" : undefined}
                 />
-                {errors.address && (
-                  <p id="register-address-error" className={styles.error}>
-                    {errors.address}
-                  </p>
-                )}
+                <FieldError id="register-address-error" message={errors.address} />
               </div>
             </div>
           </fieldset>
@@ -375,9 +385,7 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
 
         {step === 2 && (
           <fieldset className={styles.section}>
-            <legend ref={stepTitleRef} tabIndex={-1} className={styles.legend}>
-              Acceso a tu cuenta
-            </legend>
+            <legend className={styles.legend}>Acceso a tu cuenta</legend>
             <div className={styles.fieldGrid}>
               <div className={`${styles.field} ${styles.fullWidth}`}>
                 <Label htmlFor="register-email" className={styles.label}>
@@ -389,17 +397,13 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
                   autoComplete="email"
                   placeholder="tu@negocio.com"
                   value={registerData.email}
-                  onChange={(e) => setRegisterData({ ...registerData, email: e.target.value })}
+                  onChange={(e) => updateField("email", e.target.value)}
                   disabled={isLoading}
                   className={styles.input}
                   aria-invalid={Boolean(errors.email)}
                   aria-describedby={errors.email ? "register-email-error" : undefined}
                 />
-                {errors.email && (
-                  <p id="register-email-error" className={styles.error}>
-                    {errors.email}
-                  </p>
-                )}
+                <FieldError id="register-email-error" message={errors.email} />
               </div>
 
               <div className={styles.field}>
@@ -413,7 +417,7 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
                     autoComplete="new-password"
                     placeholder="••••••••"
                     value={registerData.password}
-                    onChange={(e) => setRegisterData({ ...registerData, password: e.target.value })}
+                    onChange={(e) => updateField("password", e.target.value)}
                     disabled={isLoading}
                     className={styles.passwordInput}
                     aria-invalid={Boolean(errors.password)}
@@ -438,14 +442,10 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
                 </div>
                 {!errors.password && (
                   <p id="register-password-hint" className={styles.hint}>
-                    Mínimo 6 caracteres, una letra minúscula y un número.
+                    Mínimo 6 caracteres, minúscula y número.
                   </p>
                 )}
-                {errors.password && (
-                  <p id="register-password-error" className={styles.error}>
-                    {errors.password}
-                  </p>
-                )}
+                <FieldError id="register-password-error" message={errors.password} />
               </div>
 
               <div className={styles.field}>
@@ -459,12 +459,7 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
                     autoComplete="new-password"
                     placeholder="••••••••"
                     value={registerData.confirmPassword}
-                    onChange={(e) =>
-                      setRegisterData({
-                        ...registerData,
-                        confirmPassword: e.target.value,
-                      })
-                    }
+                    onChange={(e) => updateField("confirmPassword", e.target.value)}
                     disabled={isLoading}
                     className={styles.passwordInput}
                     aria-invalid={Boolean(errors.confirmPassword)}
@@ -489,20 +484,14 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
                     )}
                   </button>
                 </div>
-                {errors.confirmPassword && (
-                  <p id="register-confirm-error" className={styles.error}>
-                    {errors.confirmPassword}
-                  </p>
-                )}
+                <FieldError id="register-confirm-error" message={errors.confirmPassword} />
               </div>
             </div>
           </fieldset>
         )}
 
-        {step === REGISTER_STEPS.length - 1 && error && (
-          <p className={styles.error} role="alert">
-            {error}
-          </p>
+        {step === REGISTER_STEPS.length - 1 && error && !hasCurrentErrors && (
+          <AuthErrorNotice title="No pudimos continuar" message={error} />
         )}
 
         <div className={styles.actions}>
