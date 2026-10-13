@@ -28,6 +28,16 @@ export function useSaleOrigin({ scope, editing, saved, stores, inventories }: Op
     ? saved?.inventoryId ?? ""
     : inventories.find((inventory) => inventory.id === current?.inventoryId)?.id ??
       (inventories.length === 1 ? inventories[0].id : "");
+  // A historical sale can browse an authorized warehouse without assigning
+  // that warehouse to its stock history. Modern sales keep their saved source.
+  const browsingHistoricalSale = Boolean(editing && saved && !saved.inventoryId);
+  const historicalStoreInventories = browsingHistoricalSale
+    ? inventories.filter((inventory) => inventory.storeId === saved?.storeId)
+    : [];
+  const catalogInventoryId = browsingHistoricalSale
+    ? inventories.find((inventory) => inventory.id === current?.inventoryId)?.id ??
+      (historicalStoreInventories.length === 1 ? historicalStoreInventories[0].id : "")
+    : inventoryId;
 
   function chooseStore(value: string) {
     if (editing || !stores.some((store) => store.id === value)) return;
@@ -39,7 +49,7 @@ export function useSaleOrigin({ scope, editing, saved, stores, inventories }: Op
   }
 
   function chooseInventory(value: string) {
-    if (editing || !inventories.some((inventory) => inventory.id === value)) return;
+    if ((editing && !browsingHistoricalSale) || !inventories.some((inventory) => inventory.id === value)) return;
     setChoice((previous) => ({
       scope,
       storeId: previous.scope === scope ? previous.storeId : "",
@@ -54,6 +64,8 @@ export function useSaleOrigin({ scope, editing, saved, stores, inventories }: Op
   return {
     storeId,
     inventoryId,
+    catalogInventoryId,
+    browsingHistoricalSale,
     chooseStore,
     chooseInventory,
     reset,

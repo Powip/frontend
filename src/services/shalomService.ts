@@ -234,19 +234,21 @@ export const trackShalomGuide = async (
 export const getShalomTicketPdfUrl = (
   orderNumber: string,
   orderCode: string,
+  companyId: string,
 ): string =>
-  `${API_INTEGRATIONS}/shalom/ticket-pdf/${orderNumber}/${orderCode}`;
+  `${API_INTEGRATIONS}/shalom/ticket-pdf/${encodeURIComponent(orderNumber)}/${encodeURIComponent(orderCode)}?${new URLSearchParams({ companyId })}`;
 
 export const generateShalomTicketPdf = async (
   token: string,
   externalTrackingNumber: string, // ⬅️ 8 dígitos de Shalom
   shippingCode: string, // ⬅️ 4 caracteres de Shalom
+  companyId: string,
 ): Promise<Blob> => {
-  // ✅ CAMBIO: GET con parámetros de ruta en lugar de POST con body
   const res = await axios.get(
-    `${API_INTEGRATIONS}/shalom/ticket-pdf/${externalTrackingNumber}/${shippingCode}`,
+    `${API_INTEGRATIONS}/shalom/ticket-pdf/${encodeURIComponent(externalTrackingNumber)}/${encodeURIComponent(shippingCode)}`,
     {
       headers: headers(token),
+      params: { companyId },
       responseType: "blob",
     },
   );
@@ -256,17 +258,20 @@ export const generateShalomTicketPdf = async (
 export const getShalomLabelPdfUrl = (
   orderNumber: string,
   orderCode: string,
-): string => `${API_INTEGRATIONS}/shalom/label/${orderNumber}/${orderCode}`;
+  companyId: string,
+): string => `${API_INTEGRATIONS}/shalom/label/${encodeURIComponent(orderNumber)}/${encodeURIComponent(orderCode)}?${new URLSearchParams({ companyId })}`;
 
 export const generateShalomLabelPdf = async (
   token: string,
   externalTrackingNumber: string, // ⬅️ 8 dígitos de Shalom
   shippingCode: string, // ⬅️ 4 caracteres de Shalom
+  companyId: string,
 ): Promise<Blob> => {
   const res = await axios.get(
-    `${API_INTEGRATIONS}/shalom/label/${externalTrackingNumber}/${shippingCode}`,
+    `${API_INTEGRATIONS}/shalom/label/${encodeURIComponent(externalTrackingNumber)}/${encodeURIComponent(shippingCode)}`,
     {
       headers: headers(token),
+      params: { companyId },
       responseType: "blob",
     },
   );

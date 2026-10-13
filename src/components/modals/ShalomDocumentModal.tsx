@@ -19,12 +19,13 @@ interface ShalomDocState {
   blob: Blob | null;
   loading: boolean;
   error: boolean;
+  errorMessage: string | null;
   fetched: boolean;
 }
 
 const EMPTY_DOCS: Record<ShalomDocTab, ShalomDocState> = {
-  comprobante: { url: null, blob: null, loading: false, error: false, fetched: false },
-  rotulo: { url: null, blob: null, loading: false, error: false, fetched: false },
+  comprobante: { url: null, blob: null, loading: false, error: false, errorMessage: null, fetched: false },
+  rotulo: { url: null, blob: null, loading: false, error: false, errorMessage: null, fetched: false },
 };
 
 export type WhatsAppRecipientKey = "cliente" | "destinatario";
@@ -72,47 +73,61 @@ export function useShalomDocumentViewer(
   const [docs, setDocs] = useState<Record<ShalomDocTab, ShalomDocState>>(EMPTY_DOCS);
   const [recipientKey, setRecipientKey] = useState<WhatsAppRecipientKey>("cliente");
   const urlsRef = useRef<string[]>([]);
+  const requestGeneration = useRef(0);
+  const companyId = auth?.company?.id;
+  const canLoadDocument = Boolean(active && auth?.accessToken && companyId && order?.externalTrackingNumber && order?.shippingCode);
 
   const fetchDoc = useCallback(
     async (tab: ShalomDocTab) => {
-      if (!auth?.accessToken || !order?.externalTrackingNumber || !order?.shippingCode) {
-        setDocs((prev) => ({ ...prev, [tab]: { url: null, blob: null, loading: false, error: true, fetched: true } }));
+      if (!active) return;
+      const generation = requestGeneration.current;
+      if (!auth?.accessToken || !companyId || !order?.externalTrackingNumber || !order?.shippingCode) {
+        const missingTracking = !order?.externalTrackingNumber || !order?.shippingCode;
+        const errorMessage = missingTracking
+          ? "Falta el número o código de seguimiento de Shalom en este pedido."
+          : "Esperando la sesión y empresa para cargar el documento…";
+        setDocs((prev) => ({ ...prev, [tab]: {
+          url: null, blob: null, loading: !missingTracking, error: missingTracking,
+          errorMessage, fetched: missingTracking,
+        } }));
         return;
       }
-      setDocs((prev) => ({ ...prev, [tab]: { ...prev[tab], loading: true, error: false } }));
+      setDocs((prev) => ({ ...prev, [tab]: { ...prev[tab], loading: true, error: false, errorMessage: null } }));
       try {
         const blob =
           tab === "comprobante"
-            ? await generateShalomTicketPdf(auth.accessToken, order.externalTrackingNumber, order.shippingCode)
-            : await generateShalomLabelPdf(auth.accessToken, order.externalTrackingNumber, order.shippingCode);
+            ? await generateShalomTicketPdf(auth.accessToken, order.externalTrackingNumber, order.shippingCode, companyId)
+            : await generateShalomLabelPdf(auth.accessToken, order.externalTrackingNumber, order.shippingCode, companyId);
+        if (generation !== requestGeneration.current) return;
         const url = URL.createObjectURL(blob);
         urlsRef.current.push(url);
-        setDocs((prev) => ({ ...prev, [tab]: { url, blob, loading: false, error: false, fetched: true } }));
-      } catch (error) {
-        console.error(`❌ Error loading ${tab} PDF:`, error);
-        setDocs((prev) => ({ ...prev, [tab]: { url: null, blob: null, loading: false, error: true, fetched: true } }));
+        setDocs((prev) => ({ ...prev, [tab]: { url, blob, loading: false, error: false, errorMessage: null, fetched: true } }));
+      } catch {
+        if (generation !== requestGeneration.current) return;
+        const docLabel = tab === "comprobante" ? "comprobante" : "rótulo";
+        setDocs((prev) => ({ ...prev, [tab]: {
+          url: null, blob: null, loading: false, error: true, fetched: true,
+          errorMessage: `No se pudo cargar el ${docLabel} de Shalom. Reintenta en unos momentos.`,
+        } }));
       }
     },
-    [auth?.accessToken, order?.externalTrackingNumber, order?.shippingCode],
+    [active, auth?.accessToken, companyId, order?.externalTrackingNumber, order?.shippingCode],
   );
 
   useEffect(() => {
+    requestGeneration.current += 1;
     if (!active) return;
-    urlsRef.current.forEach((u) => URL.revokeObjectURL(u));
-    urlsRef.current = [];
     setActiveTab("comprobante");
     setRecipientKey("cliente");
     setDocs(EMPTY_DOCS);
     fetchDoc("comprobante");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, order?.id]);
-
-  useEffect(() => {
     return () => {
+      // Invalidate requests before they can attach the previous order's PDF.
+      requestGeneration.current += 1;
       urlsRef.current.forEach((u) => URL.revokeObjectURL(u));
       urlsRef.current = [];
     };
-  }, []);
+  }, [active, order?.id, fetchDoc]);
 
   function selectTab(tab: ShalomDocTab) {
     setActiveTab(tab);
@@ -259,10 +274,28 @@ export function useShalomDocumentViewer(
     recipientError,
     setRecipientKey,
     shareMode,
+    canRetry: canLoadDocument && current.error,
+    retryDocument: () => fetchDoc(activeTab),
   };
 }
 
 type ShalomDocumentViewer = ReturnType<typeof useShalomDocumentViewer>;
+
+function DocumentLoadError({ viewer }: { viewer: ShalomDocumentViewer }) {
+  return (
+    <div className="h-full flex flex-col items-center justify-center gap-2 text-muted-foreground px-6 text-center">
+      <FileText className="h-8 w-8 opacity-30" />
+      <span className="text-xs font-medium" role="status">
+        {viewer.current.errorMessage ?? "Esperando el documento…"}
+      </span>
+      {viewer.canRetry && (
+        <Button type="button" size="sm" variant="outline" onClick={viewer.retryDocument}>
+          Reintentar
+        </Button>
+      )}
+    </div>
+  );
+}
 
 /**
  * Bloque común (card embebida y modal) que muestra a qué teléfono se va a
@@ -396,12 +429,7 @@ export function ShalomDocumentCard({ order }: { order: OrderHeader | null }) {
             <span className="text-xs font-medium">Cargando documento…</span>
           </div>
         ) : current.error || !current.url ? (
-          <div className="h-full flex flex-col items-center justify-center gap-2 text-muted-foreground px-6 text-center">
-            <FileText className="h-8 w-8 opacity-30" />
-            <span className="text-xs font-medium">
-              {activeTab === "comprobante" ? "Comprobante" : "Rótulo"} no disponible desde {courierName}.
-            </span>
-          </div>
+          <DocumentLoadError viewer={viewer} />
         ) : (
           <embed src={current.url} type="application/pdf" className="w-full h-full border-none" />
         )}
@@ -528,12 +556,7 @@ export default function ShalomDocumentModal({
               <span className="text-xs font-medium">Cargando documento…</span>
             </div>
           ) : current.error || !current.url ? (
-            <div className="h-full flex flex-col items-center justify-center gap-2 text-muted-foreground px-6 text-center">
-              <FileText className="h-8 w-8 opacity-30" />
-              <span className="text-xs font-medium">
-                {activeTab === "comprobante" ? "Comprobante" : "Rótulo"} no disponible desde {courierName}.
-              </span>
-            </div>
+            <DocumentLoadError viewer={viewer} />
           ) : (
             <embed src={current.url} type="application/pdf" className="w-full h-full border-none" />
           )}

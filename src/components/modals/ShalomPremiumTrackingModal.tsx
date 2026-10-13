@@ -63,7 +63,7 @@ export default function ShalomPremiumTrackingModal({
   const [loadingPdf, setLoadingPdf] = useState(false);
 
   const loadPdf = useCallback(async () => {
-    if (!auth?.accessToken || !order?.externalTrackingNumber || !order?.shippingCode) return;
+    if (!auth?.accessToken || !auth?.company?.id || !order?.externalTrackingNumber || !order?.shippingCode) return;
 
     setLoadingPdf(true);
     setDynamicPdfUrl(null);
@@ -72,6 +72,7 @@ export default function ShalomPremiumTrackingModal({
         auth.accessToken,
         order.externalTrackingNumber,
         order.shippingCode,
+        auth.company.id,
       );
       const url = URL.createObjectURL(blob) + "#toolbar=0&navpanes=0&scrollbar=0&view=FitH";
       setDynamicPdfUrl(url);
@@ -80,7 +81,7 @@ export default function ShalomPremiumTrackingModal({
     } finally {
       setLoadingPdf(false);
     }
-  }, [auth?.accessToken, order?.externalTrackingNumber, order?.shippingCode]);
+  }, [auth?.accessToken, auth?.company?.id, order?.externalTrackingNumber, order?.shippingCode]);
 
   const loadTracking = useCallback(async () => {
     if (!auth?.accessToken || !auth?.company?.id || !order?.externalTrackingNumber || !order?.shippingCode) return;

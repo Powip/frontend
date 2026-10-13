@@ -13,7 +13,7 @@ import {
 import type { SaleStore } from "@/services/saleContextService";
 
 interface Props {
-  label: "Tienda de la venta" | "Almacén de salida";
+  label: "Tienda de la venta" | "Almacén de salida" | "Almacén para buscar productos";
   options: SaleStore[];
   value: string;
   onChange: (value: string) => void;
@@ -21,6 +21,7 @@ interface Props {
   disabled?: boolean;
   loading?: boolean;
   hint?: string;
+  required?: boolean;
 }
 
 export function SaleOriginField({
@@ -32,6 +33,7 @@ export function SaleOriginField({
   disabled = false,
   loading = false,
   hint,
+  required = true,
 }: Props) {
   const id = useId();
   const isStore = label === "Tienda de la venta";
@@ -46,7 +48,7 @@ export function SaleOriginField({
   return (
     <div className="min-w-0 space-y-1">
       <Label htmlFor={id}>
-        {label} {!readOnly && <span className="text-destructive">*</span>}
+        {label} {!readOnly && required && <span className="text-destructive">*</span>}
       </Label>
       {readOnly || (options.length === 1 && value === options[0].id) ? (
         <Input
@@ -60,7 +62,7 @@ export function SaleOriginField({
         <Select value={value} onValueChange={onChange} disabled={disabled || loading || !options.length}>
           <SelectTrigger
             id={id}
-            aria-required="true"
+            aria-required={required}
             aria-describedby={hint ? `${id}-hint` : undefined}
             className="min-w-0 overflow-hidden text-left [&>[data-slot=select-value]]:min-w-0 [&>[data-slot=select-value]]:flex-1 [&>[data-slot=select-value]]:truncate"
           >

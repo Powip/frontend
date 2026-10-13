@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 /** Full-page sale origin verification with fictitious data.
  * The page, origin hook/fields, client form, cart state, submission logic and
- * sale-context HTTP service are real. HTTP/Auth/navigation are mocked.
+ * sale-context HTTP service and catalogue matrix are real. HTTP/Auth/navigation are mocked.
  * Radix Select uses a native adapter because jsdom has no pointer capture;
- * catalogue matrix, suggestions and receipt visuals are outside this contract.
+ * suggestions and receipt visuals are outside this contract.
  */
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
@@ -28,7 +28,7 @@ jest.mock("@/services/promos.service", () => ({
   listVolumePromos: jest.fn().mockResolvedValue([]), createVolumePromo: jest.fn(), updatePromo: jest.fn(), deletePromo: jest.fn(),
 }));
 jest.mock("@/services/inventoryItems.service", () => ({
-  searchInventoryItems: jest.fn().mockResolvedValue({ data: [], meta: { page: 1, total: 0, totalPages: 1 } }),
+  searchInventoryItems: jest.fn(),
 }));
 jest.mock("@/components/ui/select", () => {
   const React = require("react");
@@ -57,13 +57,6 @@ jest.mock("@/components/ui/select", () => {
   const Pass = ({ children }: any) => <>{children}</>;
   return { Select, SelectContent: Pass, SelectTrigger: Pass, SelectItem: Pass, SelectValue: () => null };
 });
-jest.mock("@/components/registrar-venta/ProductSearchMatrix", () => ({
-  __esModule: true,
-  default: ({ onAddVariant }: any) => <button type="button" onClick={() => onAddVariant({
-    inventoryItemId: "item-in-warehouse-a", variantId: "variant-1", productName: "Producto ficticio",
-    sku: "FIXTURE-1", price: 100, availableStock: 10, physicalStock: 10,
-  })}>Agregar producto ficticio</button>,
-}));
 jest.mock("@/components/registrar-venta/CartLines", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/registrar-venta/SuggestionsPanel", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/modals/orderReceiptModal", () => ({ __esModule: true, default: () => null }));
@@ -85,6 +78,10 @@ const context = {
   companyId: "company-1",
   stores: [{ id: "store-a", name: "Marca A" }, { id: "store-b", name: "Marca B" }],
   inventories: [{ id: "warehouse-a", name: "Almacén compartido A", storeId: "store-a" }],
+};
+const catalogueProduct = {
+  inventoryItemId: "item-in-warehouse-a", variantId: "variant-1", productName: "Producto ficticio",
+  sku: "FIXTURE-1", price: 100, availableStock: 10, physicalStock: 10, attributes: { color: "Dorado" },
 };
 const existingOrder = {
   id: "order-existing", orderNumber: "ORD-FIXTURE", storeId: "store-b", inventoryId: "warehouse-a",
@@ -123,6 +120,9 @@ beforeEach(() => {
   } as unknown as ReturnType<typeof useAuth>);
   jest.mocked(fetchClientByPhone).mockResolvedValue(client as any);
   jest.mocked(updateClient).mockResolvedValue(client as any);
+  jest.mocked(searchInventoryItems).mockResolvedValue({
+    data: [catalogueProduct], meta: { page: 1, limit: 12, total: 1, totalPages: 1 },
+  });
   http.get.mockImplementation((url: string) => {
     if (url.endsWith("/order-header/sale-context")) return contextFails ? Promise.reject(new Error("Context unavailable")) : Promise.resolve({ data: responseContext });
     if (url.endsWith("/order-header/manual/order-existing")) return orderFails ? Promise.reject(new Error("Order unavailable")) : Promise.resolve({ data: responseOrder });
@@ -145,7 +145,8 @@ async function fillRequired(channelChoice = "WHATSAPP") {
   const user = userEvent.setup();
   await user.type(screen.getByPlaceholderText("Número de teléfono"), `${client.phoneNumber}{Enter}`);
   await screen.findByText(/cliente encontrado/i);
-  await user.click(screen.getByRole("button", { name: /agregar producto ficticio/i }));
+  await user.click(await screen.findByRole("button", { name: /producto ficticio FIXTURE-1/i }));
+  await user.click(screen.getByRole("button", { name: /color: Dorado FIXTURE-1/i }));
   await user.selectOptions(field(/método de pago/i).getByRole("combobox"), "EFECTIVO");
   await user.selectOptions(field(/canal de venta/i).getByRole("combobox"), channelChoice);
   await user.selectOptions(field(/canal de cierre/i).getByRole("combobox"), "WHATSAPP");
@@ -265,6 +266,116 @@ describe("Registrar venta — tienda comercial y almacén independientes", () =>
     expect(http.put.mock.calls[0][1]).not.toHaveProperty("stockStoreId");
     expect(http.post).not.toHaveBeenCalled();
     expect(mockSetNavigationStore).not.toHaveBeenCalled();
+  }, 15000);
+
+  it("una venta histórica permite buscar y agregar productos sin asignarle un almacén", async () => {
+    responseOrder = { ...existingOrder, inventoryId: null, stockStoreId: null, stockVersion: 0 };
+    responseContext = { ...context, inventories: [{ ...context.inventories[0], storeId: existingOrder.storeId }] };
+    const addedProduct = { ...catalogueProduct, variantId: "variant-2", sku: "FIXTURE-2", productName: "Producto añadido" };
+    jest.mocked(searchInventoryItems).mockResolvedValue({
+      data: [addedProduct], meta: { page: 1, limit: 12, total: 1, totalPages: 1 },
+    });
+    mockSearchParams = new URLSearchParams({ orderId: existingOrder.id });
+    mountPage();
+
+    expect(await screen.findByDisplayValue("Almacén no registrado")).toHaveAttribute("readonly");
+    const search = screen.getByPlaceholderText(/Buscar por modelo, color, talla o SKU/i);
+    await waitFor(() => expect(search).toBeEnabled());
+    expect(searchInventoryItems).toHaveBeenCalledWith(expect.objectContaining({
+      inventoryId: "warehouse-a", companyId: "company-1",
+    }), expect.anything());
+    await userEvent.type(search, "añadido");
+    await waitFor(() => expect(searchInventoryItems).toHaveBeenCalledWith(expect.objectContaining({
+      inventoryId: "warehouse-a", companyId: "company-1", q: "añadido",
+    }), expect.anything()));
+    await userEvent.click(await screen.findByRole("button", { name: /producto añadido FIXTURE-2/i }));
+    await userEvent.click(screen.getByRole("button", { name: /color: Dorado FIXTURE-2/i }));
+    await userEvent.click(screen.getByRole("button", { name: /actualizar venta/i }));
+    await waitFor(() => expect(http.put).toHaveBeenCalled());
+    const [url, body] = http.put.mock.calls[0];
+    expect(url).toMatch(/\/order-header\/manual\/order-existing\/full$/);
+    expect(body.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ productVariantId: "variant-1", quantity: 1 }),
+      expect.objectContaining({ productVariantId: "variant-2", quantity: 1 }),
+    ]));
+    for (const source of ["storeId", "inventoryId", "stockStoreId"]) expect(body).not.toHaveProperty(source);
+    expect(responseOrder.inventoryId).toBeNull();
+    expect(responseOrder.stockStoreId).toBeNull();
+    expect(mockSetNavigationStore).not.toHaveBeenCalled();
+  }, 15000);
+
+  it("buscar productos en otra tienda requiere elegir el almacén y conserva el origen histórico", async () => {
+    responseOrder = { ...existingOrder, inventoryId: null, stockStoreId: null, stockVersion: 0 };
+    mockSearchParams = new URLSearchParams({ orderId: existingOrder.id });
+    mountPage();
+    expect(await screen.findByDisplayValue("Almacén no registrado")).toHaveAttribute("readonly");
+    const search = screen.getByPlaceholderText(/Buscar por modelo, color, talla o SKU/i);
+    expect(search).toBeDisabled();
+    expect(searchInventoryItems).not.toHaveBeenCalled();
+    await userEvent.selectOptions(field(/almacén para buscar productos/i).getByRole("combobox"), "warehouse-a");
+    await waitFor(() => expect(search).toBeEnabled());
+    expect(await screen.findByDisplayValue("Almacén no registrado")).toHaveAttribute("readonly");
+    expect(searchInventoryItems).toHaveBeenCalledWith(expect.objectContaining({ inventoryId: "warehouse-a" }), expect.anything());
+    await userEvent.click(screen.getByRole("button", { name: /actualizar venta/i }));
+    await waitFor(() => expect(http.put).toHaveBeenCalled());
+    for (const source of ["storeId", "inventoryId", "stockStoreId"]) expect(http.put.mock.calls[0][1]).not.toHaveProperty(source);
+  }, 15000);
+
+  it("cambiar el almacén de búsqueda cancela el debounce del almacén anterior", async () => {
+    jest.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    responseOrder = { ...existingOrder, inventoryId: null, stockStoreId: null, stockVersion: 0 };
+    responseContext = { ...context, inventories: [
+      { ...context.inventories[0], storeId: existingOrder.storeId },
+      { id: "warehouse-b", name: "Almacén B", storeId: existingOrder.storeId },
+    ] };
+    jest.mocked(searchInventoryItems).mockImplementation(async ({ inventoryId }) => ({
+      data: [{ ...catalogueProduct, productName: inventoryId === "warehouse-a" ? "Catálogo A" : "Catálogo B" }],
+      meta: { page: 1, limit: 12, total: 1, totalPages: 1 },
+    }));
+    mockSearchParams = new URLSearchParams({ orderId: existingOrder.id });
+    const page = mountPage();
+
+    try {
+      const warehouse = await screen.findByRole("combobox", { name: "Almacén para buscar productos" });
+      const search = screen.getByPlaceholderText(/Buscar por modelo, color, talla o SKU/i);
+      await user.selectOptions(warehouse, "warehouse-a");
+      await screen.findByRole("button", { name: /catálogo A FIXTURE-1/i });
+      jest.mocked(searchInventoryItems).mockClear();
+
+      await user.type(search, "consulta");
+      await user.selectOptions(warehouse, "warehouse-b");
+      await screen.findByRole("button", { name: /catálogo B FIXTURE-1/i });
+      await act(async () => { await jest.advanceTimersByTimeAsync(500); });
+
+      expect(searchInventoryItems).not.toHaveBeenCalledWith(expect.objectContaining({
+        inventoryId: "warehouse-a", q: "consulta",
+      }), expect.anything());
+      expect(searchInventoryItems).toHaveBeenCalledTimes(1);
+      expect(warehouse).toHaveValue("warehouse-b");
+      expect(screen.getByRole("button", { name: /catálogo B FIXTURE-1/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /catálogo A FIXTURE-1/i })).not.toBeInTheDocument();
+      expect(screen.getByDisplayValue("Almacén no registrado")).toHaveAttribute("readonly");
+    } finally {
+      page.unmount();
+      jest.clearAllTimers();
+      jest.useRealTimers();
+    }
+  });
+
+  it("sin almacenes de catálogo una venta histórica sigue permitiendo guardar sus datos", async () => {
+    responseOrder = { ...existingOrder, inventoryId: null, stockStoreId: null, stockVersion: 0 };
+    responseContext = { ...context, inventories: [] };
+    mockSearchParams = new URLSearchParams({ orderId: existingOrder.id });
+    mountPage();
+    expect(await screen.findByText("No hay almacenes disponibles para buscar productos.")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Buscar por modelo, color, talla o SKU/i)).toBeDisabled();
+    const submit = screen.getByRole("button", { name: /actualizar venta/i });
+    await waitFor(() => expect(submit).toBeEnabled());
+    await userEvent.click(submit);
+    await waitFor(() => expect(http.put).toHaveBeenCalled());
+    expect(searchInventoryItems).not.toHaveBeenCalled();
+    for (const source of ["storeId", "inventoryId", "stockStoreId"]) expect(http.put.mock.calls[0][1]).not.toHaveProperty(source);
   }, 15000);
 
   it("carga fallida de edición no se convierte en venta nueva", async () => {
