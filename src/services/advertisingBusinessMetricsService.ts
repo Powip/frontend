@@ -40,6 +40,8 @@ export interface AdvertisingBusinessMetrics {
     legacyStoreCount: number;
   }>;
   coverage: { complete: boolean; reasons: string[] };
+  countCoverage?: { basis: AdvertisingOrderBasis; complete: boolean; reasons: string[] };
+  revenueCoverage?: { basis: AdvertisingOrderBasis; complete: boolean; reasons: string[] };
 }
 export async function getAdvertisingBusinessMetrics(
   token: string,
