@@ -356,7 +356,8 @@ function RegistrarVentaContent() {
     stores,
     inventories,
   });
-  const selectedInventory = origin.inventoryId;
+  const selectedInventory = origin.catalogInventoryId;
+  const productDebounceInventory = useRef("");
   const warehouseOptions = inventories.map((inventory) => ({
     id: inventory.id,
     name: inventories.some((other) => other.id !== inventory.id && other.name === inventory.name)
@@ -812,14 +813,18 @@ function RegistrarVentaContent() {
   // parezca que los resultados viejos siguen siendo válidos para el texto
   // nuevo justo antes de que la búsqueda real los reemplace.
   useEffect(() => {
-    if (!selectedInventory) return;
+    const inventoryChanged = productDebounceInventory.current !== selectedInventory;
+    productDebounceInventory.current = selectedInventory;
+    // The inventory effect already fetches immediately; this dependency
+    // cancels the previous warehouse's timer without issuing a second fetch.
+    if (!selectedInventory || inventoryChanged) return;
     setProductsLoading(true);
     const timer = setTimeout(() => {
       searchProducts(1);
     }, 500);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productQuery]);
+  }, [productQuery, selectedInventory]);
 
   const validateClientForm = () => {
     const errors: Partial<Record<keyof typeof emptyClientForm, string>> = {};
@@ -2128,7 +2133,7 @@ function RegistrarVentaContent() {
                     <SaleOriginField
                       label="Almacén de salida"
                       options={warehouseOptions}
-                      value={selectedInventory}
+                      value={origin.inventoryId}
                       onChange={origin.chooseInventory}
                       readOnly={Boolean(orderId)}
                       disabled={isSubmitting || cart.length > 0 || saleContext.isError}
@@ -2139,6 +2144,22 @@ function RegistrarVentaContent() {
                           : undefined
                       }
                     />
+                    {origin.browsingHistoricalSale && (
+                      <div className="mt-3">
+                        <SaleOriginField
+                          label="Almacén para buscar productos"
+                          options={warehouseOptions}
+                          value={selectedInventory}
+                          onChange={origin.chooseInventory}
+                          disabled={isSubmitting || saleContext.isError}
+                          loading={saleContext.isLoading}
+                          required={false}
+                          hint={inventories.length
+                            ? "Puedes agregar productos de este almacén. El origen de la venta se conserva."
+                            : "No hay almacenes disponibles para buscar productos."}
+                        />
+                      </div>
+                    )}
                   </div>
 
                   {/* Buscador de productos */}

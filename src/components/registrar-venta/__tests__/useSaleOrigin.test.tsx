@@ -10,6 +10,7 @@ describe("Origen comercial de la venta", () => {
     const { result } = renderHook(() => useSaleOrigin({ ...defaults, stores: [stores[0]] }));
     expect(result.current.storeId).toBe("a");
     expect(result.current.inventoryId).toBe("shared");
+    expect(result.current.catalogInventoryId).toBe("shared");
     expect(result.current.hasStore && result.current.hasInventory).toBe(true);
   });
 
@@ -56,7 +57,65 @@ describe("Origen comercial de la venta", () => {
       ...defaults, editing: true, saved: { storeId: "a", inventoryId: null },
     }));
     expect(result.current.inventoryId).toBe("");
+    expect(result.current.catalogInventoryId).toBe("shared");
     expect(result.current.hasInventory).toBe(true);
+  });
+
+  it("al editar historia exige elegir entre varios almacenes sólo para buscar productos", () => {
+    const { result } = renderHook(() => useSaleOrigin({
+      ...defaults, editing: true, saved: { storeId: "a", inventoryId: null },
+      inventories: [...inventories, { id: "second", name: "Almacén 2", storeId: "a" }],
+    }));
+    expect(result.current.catalogInventoryId).toBe("");
+    act(() => result.current.chooseInventory("second"));
+    expect(result.current.catalogInventoryId).toBe("second");
+    expect(result.current.inventoryId).toBe("");
+    expect(result.current.storeId).toBe("a");
+    expect(result.current.hasInventory).toBe(true);
+    act(() => result.current.chooseInventory("foreign"));
+    expect(result.current.catalogInventoryId).toBe("second");
+  });
+
+  it("requiere una elección explícita para buscar en el almacén de otra tienda de la empresa", () => {
+    const { result } = renderHook(() => useSaleOrigin({
+      ...defaults, editing: true, saved: { storeId: "b", inventoryId: null },
+    }));
+    expect(result.current.catalogInventoryId).toBe("");
+    act(() => result.current.chooseInventory("shared"));
+    expect(result.current.catalogInventoryId).toBe("shared");
+    expect(result.current.inventoryId).toBe("");
+    expect(result.current.storeId).toBe("b");
+  });
+
+  it("un almacén registrado se conserva aunque ya no esté en el contexto disponible", () => {
+    const { result } = renderHook(() => useSaleOrigin({
+      ...defaults, editing: true, saved: { storeId: "a", inventoryId: "retired" },
+    }));
+    act(() => result.current.chooseInventory("shared"));
+    expect(result.current.inventoryId).toBe("retired");
+    expect(result.current.catalogInventoryId).toBe("retired");
+    expect(result.current.browsingHistoricalSale).toBe(false);
+  });
+
+  it("historia sin almacenes disponibles permite editar sus datos sin inventar un catálogo", () => {
+    const { result } = renderHook(() => useSaleOrigin({
+      ...defaults, editing: true, saved: { storeId: "a", inventoryId: null }, inventories: [],
+    }));
+    expect(result.current.inventoryId).toBe("");
+    expect(result.current.catalogInventoryId).toBe("");
+    expect(result.current.hasInventory).toBe(true);
+  });
+
+  it("no conserva el almacén de búsqueda cuando cambia a otra venta histórica", () => {
+    const options = {
+      ...defaults, editing: true, saved: { storeId: "a", inventoryId: null },
+      inventories: [...inventories, { id: "second", name: "Almacén 2", storeId: "a" }],
+    };
+    const { result, rerender } = renderHook((props) => useSaleOrigin(props), { initialProps: options });
+    act(() => result.current.chooseInventory("second"));
+    rerender({ ...options, scope: "company:owner:other-order" });
+    expect(result.current.catalogInventoryId).toBe("");
+    expect(result.current.inventoryId).toBe("");
   });
 
   it("no permite crear una venta mientras se carga una edición", () => {

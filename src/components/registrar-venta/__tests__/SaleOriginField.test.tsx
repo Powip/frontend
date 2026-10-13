@@ -30,4 +30,11 @@ describe("Campo de origen de venta", () => {
     expect(field).toBeDisabled();
     expect(field).toHaveAccessibleDescription("Vacía el carrito para cambiar de almacén.");
   });
+
+  it("identifica el almacén opcional para buscar productos y conserva su explicación accesible", () => {
+    render(<SaleOriginField label="Almacén para buscar productos" options={[{ id: "a", name: "A" }, { id: "b", name: "B" }]} value="" onChange={jest.fn()} required={false} hint="El origen de la venta se conserva." />);
+    const field = screen.getByRole("combobox", { name: "Almacén para buscar productos" });
+    expect(field).toHaveAttribute("aria-required", "false");
+    expect(field).toHaveAccessibleDescription("El origen de la venta se conserva.");
+  });
 });
