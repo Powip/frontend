@@ -11,7 +11,7 @@ import {
 import { Check, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "../ui/button";
 import { useRouter } from "next/navigation";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 import { toast } from "sonner";
 
 interface Props {
@@ -44,7 +44,8 @@ export default function SubscriptionModal({
         autoRenewal: true,
       };
 
-      const response = await axios.post(
+      // Con la sesión: ms-subscription exige token para crear la suscripción.
+      const response = await axiosAuth.post(
         `${process.env.NEXT_PUBLIC_API_SUBS}/subscriptions`,
         body,
       );

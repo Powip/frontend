@@ -21,7 +21,8 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
-import { ISubscription } from "@/interfaces/ISubscription";
+import { fetchMySubscription } from "@/services/onboardingService";
+import type { SubscriptionMe } from "@/types/onboarding";
 import axios from "axios";
 import { Check } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -46,7 +47,7 @@ export default function EmpresaPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [subscription, setSubscription] = useState<ISubscription | null>(null)
+  const [subscription, setSubscription] = useState<SubscriptionMe | null>(null)
   const router = useRouter();
   const { auth } = useAuth();
 
@@ -63,12 +64,8 @@ export default function EmpresaPage() {
         setCompany(companyRes.data);
 
         // --- Fetch Subscription ---
-        const subRes = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_SUBS}/subscriptions/${auth.subscription?.id}`
-        );
-
-        setSubscription(subRes.data);
-        console.log("Subscription:", subRes.data);
+        // /me (gateway, con la sesión): ms-subscription ya no responde por id sin token.
+        setSubscription(await fetchMySubscription(auth.accessToken));
       } catch (error) {
         console.log("Error al cargar datos de empresa o suscripción:", error);
       } finally {
