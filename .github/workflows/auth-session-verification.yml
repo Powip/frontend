@@ -8,6 +8,11 @@ on:
       - 'src/lib/server/authProxy.ts'
       - 'src/contexts/AuthContext.tsx'
       - 'src/contexts/__tests__/AuthContext*.test.tsx'
+      - 'src/components/layout/AppContainer.tsx'
+      - 'src/components/layout/__tests__/AppContainer*.test.tsx'
+      - 'src/components/auth/AuthGuard.tsx'
+      - 'src/components/advertising/__tests__/AdvertisingSessionRecovery.test.tsx'
+      - 'src/app/configuracion/integraciones/publicidad/callback/**'
       - 'src/components/forms/LoginForm.tsx'
       - 'src/components/forms/__tests__/LoginForm*.test.tsx'
       - 'src/services/onboardingService.ts'
@@ -23,6 +28,11 @@ on:
       - 'src/lib/server/authProxy.ts'
       - 'src/contexts/AuthContext.tsx'
       - 'src/contexts/__tests__/AuthContext*.test.tsx'
+      - 'src/components/layout/AppContainer.tsx'
+      - 'src/components/layout/__tests__/AppContainer*.test.tsx'
+      - 'src/components/auth/AuthGuard.tsx'
+      - 'src/components/advertising/__tests__/AdvertisingSessionRecovery.test.tsx'
+      - 'src/app/configuracion/integraciones/publicidad/callback/**'
       - 'src/components/forms/LoginForm.tsx'
       - 'src/components/forms/__tests__/LoginForm*.test.tsx'
       - 'src/services/onboardingService.ts'
@@ -66,6 +76,10 @@ jobs:
           src/lib/server/authProxy.ts
           src/contexts/AuthContext.tsx
           'src/contexts/__tests__/AuthContext*.test.tsx'
+          src/components/layout/AppContainer.tsx
+          'src/components/layout/__tests__/AppContainer*.test.tsx'
+          src/components/advertising/__tests__/AdvertisingSessionRecovery.test.tsx
+          src/app/configuracion/integraciones/publicidad/callback/page.tsx
           src/components/forms/LoginForm.tsx
           'src/components/forms/__tests__/LoginForm*.test.tsx'
           src/services/onboardingService.ts
@@ -76,6 +90,8 @@ jobs:
           npm test -- --runInBand --silent
           src/app/api/auth
           src/contexts/__tests__
+          src/components/layout/__tests__/AppContainer
+          src/components/advertising/__tests__/AdvertisingSessionRecovery.test.tsx
           src/components/forms/__tests__/LoginForm
           src/services/__tests__/onboardingService.auth.test.ts
           src/hooks/__tests__/useOnboardingFlow

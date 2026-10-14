@@ -61,11 +61,25 @@ it("conserva la elección entre reportes y limpia los detalles al cambiar de rep
   expect(screen.queryByText("Detalle abierto")).not.toBeInTheDocument();
 });
 
-it("mantiene vendedores en su tienda sin selector de negocio", () => {
+it("inicia vendedores con todas las tiendas y conserva la tienda elegida al cambiar de alcance", () => {
   session.auth!.user.role = "VENTAS";
   render(<DashboardScopeProvider><BusinessScopeBar /><MetricsLayout><Report /></MetricsLayout></DashboardScopeProvider>);
+
+  expect(screen.getByText("business:empty,web")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Ver datos de" })).toHaveTextContent("business");
+  expect(session.selectedStoreId).toBe("empty");
+  expect(session.setSelectedStore).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: "Ver datos de" }));
   expect(screen.getByText("store:empty")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Ver datos de" })).toHaveTextContent("empty");
+  expect(session.setSelectedStore).toHaveBeenCalledTimes(1);
+  expect(session.setSelectedStore).toHaveBeenCalledWith("empty");
+
+  fireEvent.click(screen.getByRole("button", { name: "Ver datos de" }));
+  expect(screen.getByText("business:empty,web")).toBeInTheDocument();
+  expect(session.selectedStoreId).toBe("empty");
+  expect(session.setSelectedStore).toHaveBeenCalledTimes(1);
 });
 
 it("espera una sesión válida antes de montar el reporte", () => {

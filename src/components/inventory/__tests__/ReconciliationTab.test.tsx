@@ -18,6 +18,8 @@
  * Mocks: service de reconciliación (`listReconciliationTaskPage` + acciones),
  * `getStockByVariants`, sonner. Radix Tabs/AlertDialog/Checkbox sin mockear.
  * `ReconciliationProvisionalCard` usa react-query → `QueryClientProvider`.
+ * Los hooks de detalle y stock del diálogo reciben una sesión autenticada
+ * de la misma empresa que las tareas; sus queries siguen siendo reales.
  */
 
 import { act, render, screen, waitFor, within } from '@testing-library/react';
@@ -26,6 +28,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
+
+jest.mock('@/contexts/AuthContext', () => ({ useAuth: jest.fn() }));
 
 jest.mock('sonner', () => ({
   toast: {
@@ -63,6 +67,7 @@ jest.mock('@/services/inventoryItems.service', () => ({
 // ── Imports bajo prueba (después de los mocks) ────────────────────────────────
 
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   listReconciliationTaskPage,
   confirmReconciliationProvisional,
@@ -90,6 +95,7 @@ const mockSearchVariants = jest.mocked(searchReconciliationVariants);
 const mockGetTaskDetails = jest.mocked(getReconciliationTaskDetails);
 const mockGetStock = jest.mocked(getStockByVariants);
 const mockToast = toast as jest.Mocked<typeof toast>;
+const mockUseAuth = jest.mocked(useAuth);
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -257,6 +263,20 @@ async function openTab(name: RegExp) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockUseAuth.mockReturnValue({
+    auth: {
+      accessToken: 'test-token',
+      user: { id: 'user-1', email: 'inventory@fixture.invalid', role: 'ADMINISTRADOR', permissions: [] },
+      company: { id: 'company-1', name: 'Fixture Company', stores: [] },
+      subscription: null,
+      exp: 9999999999,
+    },
+    loading: false,
+    login: jest.fn(), logout: jest.fn(), updateCompany: jest.fn(),
+    selectedStoreId: null, setSelectedStore: jest.fn(),
+    inventories: [], refreshInventories: jest.fn(), hasPermission: jest.fn(),
+    refreshSession: jest.fn(), refreshSubscription: jest.fn(),
+  });
   mockListPage.mockResolvedValue({
     data: [],
     meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
@@ -340,6 +360,8 @@ describe('ReconciliationTab', () => {
       );
 
       expect(mockListPage).not.toHaveBeenCalled();
+      expect(mockGetTaskDetails).not.toHaveBeenCalled();
+      expect(mockGetStock).not.toHaveBeenCalled();
       expect(screen.getByText(/no hay posibles duplicados para unificar/i)).toBeInTheDocument();
       expect(container.querySelector('.animate-pulse')).not.toBeInTheDocument();
     });
