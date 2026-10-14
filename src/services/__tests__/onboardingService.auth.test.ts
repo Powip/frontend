@@ -10,9 +10,9 @@ let service: typeof import("../onboardingService");
 const previousUsersApi = process.env.NEXT_PUBLIC_API_USERS;
 const usersApi = "https://auth.fixture.invalid/api/v1";
 
-beforeAll(() => {
+beforeAll(async () => {
   process.env.NEXT_PUBLIC_API_USERS = usersApi;
-  jest.isolateModules(() => { service = require("../onboardingService"); });
+  await jest.isolateModulesAsync(async () => { service = await import("../onboardingService"); });
 });
 
 afterAll(() => {

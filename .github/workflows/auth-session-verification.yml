@@ -57,6 +57,20 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Verify TypeScript
         run: npm run typecheck
+      - name: Verify auth ESLint rules used by the production build
+        env:
+          NODE_ENV: production
+        run: >-
+          npx eslint
+          src/app/api/auth
+          src/lib/server/authProxy.ts
+          src/contexts/AuthContext.tsx
+          'src/contexts/__tests__/AuthContext*.test.tsx'
+          src/components/forms/LoginForm.tsx
+          'src/components/forms/__tests__/LoginForm*.test.tsx'
+          src/services/onboardingService.ts
+          src/services/__tests__/onboardingService.auth.test.ts
+          scripts/verify-safari-auth.mjs
       - name: Verify auth, onboarding and session regressions
         run: >-
           npm test -- --runInBand --silent
