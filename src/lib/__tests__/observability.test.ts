@@ -101,7 +101,7 @@ it("strips credentials, request bodies, customer records and identifier-bearing 
       method: "POST",
       headers: { Authorization: "Bearer secret" },
       data: { fullName: "Private Person" },
-      cookies: "session=secret",
+      cookies: { session: "secret" },
     },
     extra: {
       config: { headers: { Authorization: "Bearer secret" }, data: { client: "Private Person" } },
