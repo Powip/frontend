@@ -1,6 +1,7 @@
 "use client";
 
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MutationCache, QueryCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { captureAppError } from "@/lib/observability";
 import { ReactNode, useState } from "react";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
@@ -8,6 +9,10 @@ export default function QueryProvider({ children }: { children: ReactNode }) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
+        queryCache: new QueryCache({ onError: (error) => captureAppError(error, "query") }),
+        mutationCache: new MutationCache({
+          onError: (error) => captureAppError(error, "mutation"),
+        }),
         defaultOptions: {
           queries: {
             staleTime: 5 * 60 * 1000,
