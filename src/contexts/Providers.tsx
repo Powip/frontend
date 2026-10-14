@@ -2,12 +2,17 @@
 
 import {
   isServer,
+  MutationCache,
+  QueryCache,
   QueryClient,
   QueryClientProvider,
 } from "@tanstack/react-query";
+import { captureAppError } from "@/lib/observability";
 
 function makeQueryClient() {
   return new QueryClient({
+    queryCache: new QueryCache({ onError: (error) => captureAppError(error, "query") }),
+    mutationCache: new MutationCache({ onError: (error) => captureAppError(error, "mutation") }),
     defaultOptions: {
       queries: {
         staleTime: 5 * 60 * 1000,
@@ -32,7 +37,5 @@ function getQueryClient() {
 export default function Providers({ children }: { children: React.ReactNode }) {
   const queryClient = getQueryClient();
 
-  return (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-  );
+  return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }

@@ -1,7 +1,8 @@
 import axios from "axios";
 import { tokenStore } from "./tokenStore";
+import { instrumentAxiosInstance } from "./httpErrorReporting";
 
-const axiosAuth = axios.create();
+const axiosAuth = instrumentAxiosInstance(axios.create());
 
 axiosAuth.interceptors.request.use((config) => {
   const token = tokenStore.get();

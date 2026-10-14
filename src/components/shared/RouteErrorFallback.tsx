@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { captureAppError } from "@/lib/observability";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,7 +27,7 @@ export function RouteErrorFallback({
   section,
 }: RouteErrorFallbackProps) {
   useEffect(() => {
-    // Único rastro del crash: hoy no queda ninguno en la consola.
+    captureAppError(error, "route-boundary", section);
     console.error("[RouteError]", section, error);
   }, [error, section]);
 
