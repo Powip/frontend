@@ -350,9 +350,9 @@ it("blocked preference cleanup still logs out on the server and clears auth, bea
   await act(async () => { await currentAuth.logout(); });
 
   expect(axios.post).toHaveBeenCalledWith(
-    expect.stringMatching(/\/api\/v1\/auth\/logout$/),
+    "/api/auth/logout",
     {},
-    { withCredentials: true },
+    { withCredentials: true, headers: { Authorization: `Bearer ${TOKEN_A}` } },
   );
   expect(currentAuth.auth).toBeNull();
   expect(tokenStore.get()).toBeNull();

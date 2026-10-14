@@ -117,12 +117,12 @@ beforeEach(() => {
         typeof value === "object" && value !== null && "isAxiosError" in value,
     );
   post.mockImplementation(async (url) => {
-    if (url.endsWith("/api/v1/auth/refresh")) {
+    if (url === "/api/auth/refresh") {
       if (pendingRefresh) await pendingRefresh;
       if (refreshFails) throw { isAxiosError: true, response: { status: 401 } };
       return { data: { accessToken: TOKEN } };
     }
-    if (url === "https://auth.example.test/api/v1/auth/login") {
+    if (url === "/api/auth/login") {
       return { data: { accessToken: TOKEN } };
     }
     if (url === CALLBACK_ENDPOINT) {
@@ -217,7 +217,7 @@ describe("advertising callback session recovery with the real guard and Auth pro
 
     await waitFor(() => expect(callbackRequests()).toHaveLength(1));
     expect(post).toHaveBeenCalledWith(
-      "https://auth.example.test/api/v1/auth/login",
+      "/api/auth/login",
       { email: LOGIN_EMAIL, password: LOGIN_PASSWORD },
       { withCredentials: true },
     );
