@@ -1,10 +1,10 @@
-import { QueryClient, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useQueryClient } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import axios from "axios";
-import React from "react";
 import QueryProvider from "@/components/providers/QueryProvider";
 import { partnersKeys } from "@/features/partners/keys/partners.keys";
 import { tokenStore } from "@/lib/tokenStore";
+import { renewCurrentSession } from "@/lib/sessionRefresh";
 import { fetchCompanyById, fetchUserCompany } from "@/services/companyService";
 import { fetchUserSubscription } from "@/services/fetchUserSubscription";
 import { AuthProvider, useAuth } from "../AuthContext";
@@ -333,4 +333,110 @@ it("a retained A subscription callback cannot request or modify data after B log
   expect(fetchUserSubscription).not.toHaveBeenCalled();
   expect(currentAuth.auth).toBe(newerAuth);
   expect(tokenStore.get()).toBe(TOKEN_B);
+});
+
+it("automatic renewal updates the JWT without reloading or replacing the company and subscription", async () => {
+  await renderSession();
+  jest.mocked(fetchUserCompany).mockResolvedValueOnce(company);
+  jest.mocked(fetchUserSubscription).mockResolvedValueOnce(subscriptionA);
+  await login(token(USER_A, COMPANY_A));
+  const previous = currentAuth.auth;
+  const refreshedToken = token(USER_A, COMPANY_A, "ADMINISTRADOR");
+  jest.mocked(axios.post).mockClear().mockResolvedValueOnce({ data: { accessToken: refreshedToken } });
+  jest.mocked(fetchUserCompany).mockClear();
+  jest.mocked(fetchUserSubscription).mockClear();
+  const session = tokenStore.snapshot();
+
+  await act(async () => { expect(await renewCurrentSession(session)).toBe(true); });
+
+  expect(axios.post).toHaveBeenCalledTimes(1);
+  expect(currentAuth.auth?.accessToken).toBe(refreshedToken);
+  expect(currentAuth.auth?.user.role).toBe("ADMINISTRADOR");
+  expect(currentAuth.auth?.company).toBe(previous?.company);
+  expect(currentAuth.auth?.subscription).toBe(previous?.subscription);
+  expect(tokenStore.isCurrent(session)).toBe(true);
+  expect(fetchUserCompany).not.toHaveBeenCalled();
+  expect(fetchUserSubscription).not.toHaveBeenCalled();
+  expect(renderedSessions.every((entry) => entry.accessToken === entry.bearer)).toBe(true);
+});
+
+it.each(["different-user", "different-company", "invalid-token"])("automatic renewal preserves the current session when refresh returns %s", async (change) => {
+  await renderSession();
+  await login(token(USER_A, COMPANY_A));
+  const previous = currentAuth.auth;
+  const accessToken = change === "invalid-token" ? "invalid" :
+    token(change === "different-user" ? USER_B : USER_A, change === "different-company" ? "other-company" : COMPANY_A);
+  jest.mocked(axios.post).mockResolvedValueOnce({ data: { accessToken } });
+
+  await act(async () => { expect(await renewCurrentSession(tokenStore.snapshot())).toBe(false); });
+
+  expect(currentAuth.auth).toBe(previous);
+  expect(tokenStore.get()).toBe(previous?.accessToken);
+});
+
+it("a company switch invalidates automatic renewal even when the bearer text is unchanged", async () => {
+  await renderSession();
+  jest.mocked(fetchUserCompany).mockResolvedValueOnce(company);
+  await login(token(USER_A, COMPANY_A));
+  const session = tokenStore.snapshot();
+  const pending = deferred<{ data: { accessToken: string } }>();
+  jest.mocked(axios.post).mockImplementationOnce(() => pending.promise);
+  let renewing!: Promise<boolean>;
+  act(() => { renewing = renewCurrentSession(session); });
+  act(() => { currentAuth.updateCompany({ ...company, id: "other-company" }); });
+
+  await act(async () => {
+    pending.resolve({ data: { accessToken: token(USER_A, COMPANY_A, "ADMINISTRADOR") } });
+    expect(await renewing).toBe(false);
+  });
+
+  expect(tokenStore.isCurrent(session)).toBe(false);
+  expect(tokenStore.get()).toBe(session.token);
+  expect(currentAuth.auth?.company?.id).toBe("other-company");
+});
+
+it("public refresh and automatic recovery share one cookie rotation", async () => {
+  await renderSession();
+  await login(TOKEN_A);
+  const pending = deferred<{ data: { accessToken: string } }>();
+  const refreshedToken = token(USER_A, undefined, "ADMINISTRADOR");
+  jest.mocked(axios.post).mockClear().mockImplementationOnce(() => pending.promise);
+  let full!: Promise<boolean>;
+  let automatic!: Promise<boolean>;
+  act(() => {
+    full = currentAuth.refreshSession();
+    automatic = renewCurrentSession(tokenStore.snapshot());
+  });
+
+  await act(async () => {
+    pending.resolve({ data: { accessToken: refreshedToken } });
+    expect(await Promise.all([full, automatic])).toEqual([true, true]);
+  });
+
+  expect(axios.post).toHaveBeenCalledTimes(1);
+  expect(tokenStore.get()).toBe(refreshedToken);
+});
+
+it("late public profile data cannot replace a more recently renewed bearer", async () => {
+  await renderSession();
+  await login(TOKEN_A);
+  const olderToken = token(USER_A, undefined, "ADMINISTRADOR");
+  const newerToken = token(USER_A, undefined, "OPERADOR");
+  const profile = deferred<null>();
+  jest.mocked(axios.post).mockResolvedValueOnce({ data: { accessToken: olderToken } })
+    .mockResolvedValueOnce({ data: { accessToken: newerToken } });
+  jest.mocked(fetchUserCompany).mockImplementationOnce(() => profile.promise);
+  let full!: Promise<boolean>;
+  act(() => { full = currentAuth.refreshSession(); });
+  await waitFor(() => expect(fetchUserCompany).toHaveBeenLastCalledWith(USER_A, olderToken));
+
+  await act(async () => { expect(await renewCurrentSession(tokenStore.snapshot())).toBe(true); });
+  await act(async () => {
+    profile.resolve(null);
+    expect(await full).toBe(false);
+  });
+
+  expect(currentAuth.auth?.accessToken).toBe(newerToken);
+  expect(currentAuth.auth?.user.role).toBe("OPERADOR");
+  expect(tokenStore.get()).toBe(newerToken);
 });

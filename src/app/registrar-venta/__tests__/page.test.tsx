@@ -75,6 +75,7 @@ import {
   waitFor,
   within,
   fireEvent,
+  act,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -269,6 +270,7 @@ jest.mock("@/components/registrar-venta/SuggestionsPanel", () => ({
 // ── Imports bajo prueba (después de los mocks) ──────────────────────────────
 
 import axiosAuth from "@/lib/axiosAuth";
+import { tokenStore } from "@/lib/tokenStore";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -376,6 +378,7 @@ const MOCK_AUTH = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  tokenStore.set("fake-token", "test-user-company");
   mockUseSearchParams.mockReturnValue(
     new URLSearchParams() as ReturnType<typeof useSearchParams>,
   );
@@ -521,8 +524,142 @@ describe("RegistrarVentaPage — guardar precios manuales superiores al PVP", ()
 
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
-  return render(<QueryClientProvider client={queryClient}><RegistrarVentaPage /></QueryClientProvider>);
+  const page = () => <QueryClientProvider client={queryClient}><RegistrarVentaPage /></QueryClientProvider>;
+  const result = render(page());
+  return { ...result, rerenderPage: () => result.rerender(page()) };
 }
+
+function mockEditableOrder(orderId = "order-session") {
+  mockUseSearchParams.mockReturnValue(
+    new URLSearchParams(`orderId=${orderId}`) as ReturnType<typeof useSearchParams>,
+  );
+  mockedAxiosAuth.get.mockImplementation((url: string) => Promise.resolve({
+    data: url.includes(`/order-header/manual/${orderId}`)
+      ? {
+          id: orderId,
+          storeId: "store-1",
+          customer: FOUND_CLIENT,
+          orderType: "VENTA",
+          status: "PENDIENTE",
+          salesChannel: "WHATSAPP",
+          closingChannel: "WHATSAPP",
+          deliveryType: "RETIRO_TIENDA",
+          salesRegion: "LIMA",
+          taxMode: "INCLUIDO",
+          shippingTotal: 10,
+          items: [{
+            productVariantId: "bracelet", productName: "Pulsera", sku: "BRA",
+            quantity: 1, unitPrice: 45, discountAmount: 0,
+          }],
+          payments: [{
+            id: "paid-1", status: "PAID", amount: 20, paymentMethod: "EFECTIVO",
+            created_at: "2026-10-14T12:00:00Z",
+          }],
+        }
+      : url.endsWith("/order-header/sale-context")
+        ? SALE_CONTEXT
+        : url.endsWith("/inventory-item/search")
+          ? { data: [], meta: { page: 1, total: 0, totalPages: 1 } }
+          : [],
+  }));
+}
+
+describe("RegistrarVentaPage — sesión durante la edición", () => {
+  it("conserva precio y fecha sin recargar el pedido cuando se renueva el token", async () => {
+    mockEditableOrder();
+    mockedAxiosAuth.put.mockResolvedValue({ data: {} });
+    const { rerenderPage } = renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Fijar Pulsera en 50" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: /programar venta/i }));
+    fireEvent.change(screen.getByLabelText("Fecha", { exact: true }), { target: { value: "2099-10-15" } });
+
+    mockUseAuth.mockReturnValue({
+      ...MOCK_AUTH,
+      auth: { ...MOCK_AUTH.auth, accessToken: "renewed-token" },
+    } as unknown as ReturnType<typeof useAuth>);
+    rerenderPage();
+
+    expect(screen.getByText("Total", { exact: true }).parentElement).toHaveTextContent("S/ 60.00");
+    expect(screen.getByLabelText("Fecha", { exact: true })).toHaveValue("2099-10-15");
+    expect(mockedAxiosAuth.get.mock.calls.filter(([url]) => url.includes("/order-header/manual/"))).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
+    await waitFor(() => expect(mockedAxiosAuth.put).toHaveBeenCalledWith(
+      expect.stringContaining("/order-session/full"),
+      expect.objectContaining({
+        items: [expect.objectContaining({ unitPrice: 50 })],
+        callStatus: "SCHEDULED",
+      }),
+    ));
+  });
+
+  it("conserva lo editado tras un 401 definitivo y permite guardar al recuperar la sesión", async () => {
+    mockEditableOrder();
+    mockedAxiosAuth.put.mockRejectedValueOnce({ response: { status: 401 } });
+    mockedAxiosAuth.put.mockResolvedValueOnce({ data: {} });
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Fijar Pulsera en 50" }));
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith(
+      expect.stringContaining("Tu sesión venció y no se pudo renovar"),
+    ));
+    expect(screen.getByText("Total", { exact: true }).parentElement).toHaveTextContent("S/ 60.00");
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
+    await waitFor(() => expect(mockToast.success).toHaveBeenCalledWith("Venta actualizada correctamente"));
+    expect(mockedAxiosAuth.put).toHaveBeenCalledTimes(2);
+    expect(mockedAxiosAuth.put.mock.calls[1][1]).toEqual(mockedAxiosAuth.put.mock.calls[0][1]);
+  });
+
+  it.each(["user", "company", "order"])("limpia el borrador al cambiar %s y bloquea guardar mientras carga", async (changedScope) => {
+    mockEditableOrder();
+    const { rerenderPage } = renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Fijar Pulsera en 50" }));
+    mockedAxiosAuth.get.mockImplementation(() => new Promise(() => {}));
+    if (changedScope === "order") {
+      mockUseSearchParams.mockReturnValue(new URLSearchParams("orderId=another-order") as ReturnType<typeof useSearchParams>);
+    } else {
+      mockUseAuth.mockReturnValue({
+        ...MOCK_AUTH,
+        auth: {
+          ...MOCK_AUTH.auth,
+          ...(changedScope === "user"
+            ? { user: { ...MOCK_AUTH.auth.user, id: "another-user" } }
+            : { company: { ...MOCK_AUTH.auth.company, id: "another-company" } }),
+        },
+      } as unknown as ReturnType<typeof useAuth>);
+    }
+    rerenderPage();
+    expect(screen.queryByRole("button", { name: "Fijar Pulsera en 50" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Actualizar venta" })).toBeDisabled();
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.put).not.toHaveBeenCalled();
+  });
+
+  it("no continúa el guardado de una sesión anterior después de cambiar de cuenta", async () => {
+    mockEditableOrder();
+    let finishClientUpdate!: (client: Client) => void;
+    mockUpdateClient.mockImplementationOnce(() => new Promise((resolve) => { finishClientUpdate = resolve; }));
+    const { rerenderPage } = renderPage();
+    await screen.findByRole("button", { name: "Fijar Pulsera en 50" });
+    const address = within(fieldByLabel(/^dirección/i)).getByRole("textbox");
+    fireEvent.change(address, { target: { value: "Dirección editada" } });
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
+    await waitFor(() => expect(mockUpdateClient).toHaveBeenCalled());
+
+    tokenStore.invalidate();
+    tokenStore.set("another-account-token", "another-account");
+    mockUseAuth.mockReturnValue({
+      ...MOCK_AUTH,
+      auth: { ...MOCK_AUTH.auth, user: { ...MOCK_AUTH.auth.user, id: "another-user" } },
+    } as unknown as ReturnType<typeof useAuth>);
+    rerenderPage();
+    await act(async () => { finishClientUpdate({ ...FOUND_CLIENT, address: "Dirección editada" }); });
+
+    expect(mockedAxiosAuth.put).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+    expect(mockToast.success).not.toHaveBeenCalled();
+  });
+});
 
 /** Ubica un <label> por su texto y devuelve su contenedor (div hermano del
  *  control), para poder escalar con `within(...)` — los Label de este form no
