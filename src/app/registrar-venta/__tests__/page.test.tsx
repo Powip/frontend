@@ -47,9 +47,9 @@
  * - `@/components/registrar-venta/ProductSearchMatrix` — se reemplaza por un
  *   botón que agrega 1 producto fijo al carrito vía `onAddVariant`; el
  *   buscador/matriz real no es parte de lo que se prueba acá.
- * - `@/components/registrar-venta/CartLines` y `SuggestionsPanel` — no
- *   aportan a `canSubmit` (que depende del estado `cart`, no de estos
- *   componentes) y se mockean a `null` para reducir superficie.
+ * - `@/components/registrar-venta/CartLines` — expone botones mínimos para
+ *   ejercer los callbacks reales de precio individual y masivo del formulario.
+ *   `SuggestionsPanel` se mockea a `null` para reducir superficie.
  * - `@/components/modals/orderReceiptModal` — se abre tras un submit
  *   exitoso; se mockea a `null` porque no es parte de este flujo.
  *
@@ -106,7 +106,7 @@ jest.mock("@/contexts/AuthContext", () => ({
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
   usePathname: () => "/registrar-venta",
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: jest.fn(() => new URLSearchParams()),
 }));
 
 jest.mock("@/services/clients.service", () => ({
@@ -239,7 +239,26 @@ jest.mock("@/components/registrar-venta/ProductSearchMatrix", () => ({
 
 jest.mock("@/components/registrar-venta/CartLines", () => ({
   __esModule: true,
-  default: () => null,
+  default: ({
+    cart,
+    onSetPrice,
+    onBulkPrice,
+  }: {
+    cart: { id: string; productName: string }[];
+    onSetPrice: (id: string, price: number) => void;
+    onBulkPrice: (price: number) => void;
+  }) => (
+    <>
+      {cart.map((item) => (
+        <button key={item.id} type="button" onClick={() => onSetPrice(item.id, 50)}>
+          Fijar {item.productName} en 50
+        </button>
+      ))}
+      <button type="button" onClick={() => onBulkPrice(125)}>
+        Fijar todos en 125
+      </button>
+    </>
+  ),
 }));
 
 jest.mock("@/components/registrar-venta/SuggestionsPanel", () => ({
@@ -258,6 +277,7 @@ import {
 } from "@/services/clients.service";
 import RegistrarVentaPage from "../page";
 import type { Client } from "@/interfaces/ICliente";
+import { useSearchParams } from "next/navigation";
 
 process.env.NEXT_PUBLIC_API_VENTAS = "http://ventas";
 
@@ -271,6 +291,7 @@ const mockToast = toast as jest.Mocked<typeof toast>;
 const mockUseAuth = jest.mocked(useAuth);
 const mockFetchClientByPhone = fetchClientByPhone as jest.Mock;
 const mockUpdateClient = updateClient as jest.Mock;
+const mockUseSearchParams = jest.mocked(useSearchParams);
 
 // `crypto.randomUUID` no existe en el jsdom de jest-environment-jsdom 29 y
 // `addToCart` lo usa para el `id` del CartItem. Se parchea solo para este
@@ -278,11 +299,13 @@ const mockUpdateClient = updateClient as jest.Mock;
 type PatchTarget = { randomUUID?: () => string };
 let patchedCryptoTarget: PatchTarget | null = null;
 beforeAll(() => {
+  let uuidSequence = 0;
+  const randomUUID = () => `test-uuid-${++uuidSequence}`;
   const cryptoObj = globalThis.crypto as (Crypto & PatchTarget) | undefined;
   if (!cryptoObj) {
     Object.defineProperty(globalThis, "crypto", {
       configurable: true,
-      value: { randomUUID: () => "test-uuid" },
+      value: { randomUUID },
     });
     patchedCryptoTarget = globalThis.crypto as unknown as PatchTarget;
     return;
@@ -291,7 +314,7 @@ beforeAll(() => {
     Object.defineProperty(cryptoObj, "randomUUID", {
       configurable: true,
       writable: true,
-      value: () => "test-uuid",
+      value: randomUUID,
     });
     patchedCryptoTarget = cryptoObj;
   }
@@ -353,6 +376,9 @@ const MOCK_AUTH = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockUseSearchParams.mockReturnValue(
+    new URLSearchParams() as ReturnType<typeof useSearchParams>,
+  );
   mockUseAuth.mockReturnValue(MOCK_AUTH as unknown as ReturnType<typeof useAuth>);
   mockedAxiosAuth.get.mockImplementation((url: string) => {
     if (url.endsWith("/order-header/sale-context"))
@@ -363,6 +389,132 @@ beforeEach(() => {
   });
   mockFetchClientByPhone.mockResolvedValue(FOUND_CLIENT);
   mockUpdateClient.mockResolvedValue(FOUND_CLIENT);
+});
+
+describe("RegistrarVentaPage — guardar precios manuales superiores al PVP", () => {
+  it("al editar guarda el precio 50 de la pulsera y conserva total 149 y saldo 119", async () => {
+    mockUseSearchParams.mockReturnValue(
+      new URLSearchParams("orderId=order-manual") as ReturnType<typeof useSearchParams>,
+    );
+    mockedAxiosAuth.get.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.includes("/order-header/manual/order-manual")
+          ? {
+              id: "order-manual",
+              storeId: "store-1",
+              customer: FOUND_CLIENT,
+              orderType: "VENTA",
+              status: "PENDIENTE",
+              salesChannel: "WHATSAPP",
+              closingChannel: "WHATSAPP",
+              deliveryType: "RETIRO_TIENDA",
+              salesRegion: "LIMA",
+              taxMode: "INCLUIDO",
+              shippingTotal: 0,
+              items: [
+                {
+                  productVariantId: "box",
+                  productName: "Caja",
+                  sku: "BOX",
+                  quantity: 1,
+                  unitPrice: 99,
+                  discountAmount: 11.8,
+                },
+                {
+                  productVariantId: "engraving",
+                  productName: "Grabado",
+                  sku: "ENG",
+                  quantity: 1,
+                  unitPrice: 20,
+                  discountAmount: 8.2,
+                },
+                {
+                  productVariantId: "bracelet",
+                  productName: "Pulsera",
+                  sku: "BRA",
+                  quantity: 1,
+                  unitPrice: 45,
+                  discountAmount: 0,
+                },
+              ],
+              payments: [
+                {
+                  id: "payment-1",
+                  status: "PENDING",
+                  amount: 30,
+                  paymentMethod: "EFECTIVO",
+                  created_at: "2026-10-14T12:00:00Z",
+                },
+              ],
+            }
+          : url.endsWith("/order-header/sale-context")
+            ? SALE_CONTEXT
+            : url.endsWith("/inventory-item/search")
+              ? { data: [], meta: { page: 1, total: 0, totalPages: 1 } }
+              : [],
+      }),
+    );
+    mockedAxiosAuth.put.mockResolvedValue({ data: {} });
+
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Fijar Pulsera en 50" }));
+
+    const displayedGross = screen.getByText("Importe productos").parentElement?.textContent;
+    const displayedDiscounts = screen.getByText("Total descuentos").parentElement?.textContent;
+    expect(screen.getByText("Total", { exact: true }).parentElement).toHaveTextContent("S/ 149.00");
+    expect(screen.getByText("Pendiente de pago").parentElement).toHaveTextContent("S/ 119.00");
+
+    const saveButton = screen.getByRole("button", { name: "Actualizar venta" });
+    expect(saveButton).toBeEnabled();
+    await userEvent.click(saveButton);
+
+    await waitFor(() => expect(mockedAxiosAuth.put).toHaveBeenCalled());
+    expect(mockedAxiosAuth.put.mock.calls[0][0]).toContain("/order-header/manual/order-manual/full");
+    const savedItems = mockedAxiosAuth.put.mock.calls[0][1].items as {
+      unitPrice: number;
+      quantity: number;
+      discountAmount: number;
+    }[];
+    const savedTotal = savedItems.reduce(
+      (sum, item) => sum + item.unitPrice * item.quantity - item.discountAmount,
+      0,
+    );
+    expect(savedTotal).toBe(149);
+    expect(savedTotal - 30).toBe(119);
+    expect(savedItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          productVariantId: "bracelet",
+          unitPrice: 50,
+          discountType: "NONE",
+          discountAmount: 0,
+        }),
+      ]),
+    );
+    expect(displayedGross).toContain("S/ 169.00");
+    expect(displayedDiscounts).toContain("S/ 20.00");
+    expect(mockToast.error).not.toHaveBeenCalled();
+  });
+
+  it("al crear envía el precio masivo de 125 sobre el PVP original de 100", async () => {
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "order-bulk", payments: [] } });
+    renderPage();
+    await fillCommonRequiredFields();
+    await userEvent.click(screen.getByRole("button", { name: "Fijar todos en 125" }));
+    await userEvent.click(screen.getByRole("button", { name: /confirmar venta/i }));
+
+    await waitFor(() =>
+      expect(mockedAxiosAuth.post).toHaveBeenCalledWith(
+        expect.stringContaining("/order-header"),
+        expect.objectContaining({
+          items: [
+            expect.objectContaining({ unitPrice: 125, discountType: "NONE", discountAmount: 0 }),
+          ],
+        }),
+      ),
+    );
+    expect(mockToast.error).not.toHaveBeenCalled();
+  });
 });
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
