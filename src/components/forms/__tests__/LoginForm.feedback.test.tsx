@@ -132,7 +132,7 @@ it.each([
     expect(fields.password).toHaveValue(PASSWORD);
     expect(mockPost).toHaveBeenCalledTimes(1);
     expect(mockPost).toHaveBeenCalledWith(
-      expect.stringContaining("/auth/login"),
+      "/api/auth/login",
       { email: EMAIL, password: PASSWORD },
       { withCredentials: true },
     );

@@ -50,7 +50,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
 
 let scopedStoreIds = ['store-1'];
-jest.mock('@/contexts/BusinessScopeContext', () => ({ useBusinessScope: () => ({ storeIds: scopedStoreIds, canFetch: true, scopeKey: `company-1:business:${scopedStoreIds.join(',')}` }) }));
+jest.mock('@/contexts/BusinessScopeContext', () => ({ useBusinessScope: () => ({ storeIds: scopedStoreIds, scope: 'business', canFetch: true, scopeKey: `company-1:business:${scopedStoreIds.join(',')}` }) }));
 jest.mock('@/lib/axiosAuth', () => ({ __esModule: true, default: jest.requireMock('axios') }));
 function render(ui: ReactElement) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -124,7 +124,7 @@ process.env.NEXT_PUBLIC_API_COURIER = 'http://courier';
 const MOCK_AUTH = {
   auth: {
     user: { id: 'user-1', name: 'Ana', surname: 'Vendedora', email: 'ana@powip.com', role: 'ADMIN', permissions: [] },
-    company: { id: 'company-1', name: 'Powip Test', stores: [] },
+    company: { id: 'company-1', name: 'Powip Test', stores: [{ id: 'store-1', name: 'Tienda Test' }] },
     accessToken: 'fake-token',
     subscription: null,
     exp: 9999999999,
@@ -616,6 +616,19 @@ describe('FinanzasPage — leads COD del endpoint /leads-cod', () => {
 
 
 describe('Finanzas — alcance del negocio', () => {
+  beforeEach(() => {
+    mockUseAuth.mockReturnValue({
+      ...MOCK_AUTH,
+      auth: {
+        ...MOCK_AUTH.auth,
+        company: {
+          ...MOCK_AUTH.auth.company,
+          stores: [{ id: 'KUNCA', name: 'KUNCA' }, { id: 'WEB', name: 'WEB' }],
+        },
+      },
+    } as unknown as ReturnType<typeof useAuth>);
+  });
+
   it('incluye pagos de WEB aunque KUNCA esté vacía y conserva guías compartidas por pedido', async () => {
     scopedStoreIds = ['KUNCA', 'WEB'];
     mockedAxios.get.mockImplementation(async (url: string) => {

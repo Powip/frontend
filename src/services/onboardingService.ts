@@ -11,10 +11,9 @@ import type {
 /**
  * Llamadas del onboarding (FEAT-11).
  *
- * - Registro y login van a ms-auth por NEXT_PUBLIC_API_USERS (el mismo host que
- *   LoginForm): ms-auth deja la cookie httpOnly de refresh en SU dominio y el
- *   silentRefresh de AuthContext la busca ahí. Por el gateway la cookie quedaría
- *   en otro dominio y la sesión se perdería al volver de Flow.
+ * - Registro va a ms-auth por NEXT_PUBLIC_API_USERS. Login usa el proxy de
+ *   la aplicación, como LoginForm, para que la cookie HttpOnly de refresh sea
+ *   del mismo origen y permita recuperar la sesión al volver de Flow en Safari.
  * - Todo lo de suscripción va por el gateway (/subscription/** → ms-subscription)
  *   con el JWT real; ms-subscription saca el usuario del token.
  */
@@ -41,7 +40,7 @@ export async function loginAccount(
   password: string,
 ): Promise<{ accessToken: string }> {
   const { data } = await axios.post<{ accessToken: string }>(
-    `${API_USERS}/auth/login`,
+    "/api/auth/login",
     { email, password },
     { withCredentials: true },
   );

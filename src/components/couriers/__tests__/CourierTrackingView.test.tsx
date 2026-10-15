@@ -91,7 +91,11 @@ jest.mock("@/services/courierService", () => ({
 
 jest.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
-    auth: { accessToken: "token", company: { id: "company-1" } },
+    auth: {
+      accessToken: "token",
+      user: { id: "user-1" },
+      company: { id: "company-1", stores: [{ id: "store-1", name: "Tienda Test" }] },
+    },
     selectedStoreId: "store-1",
   }),
 }));

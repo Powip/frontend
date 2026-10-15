@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import AdvertisingCallbackPage from "@/app/configuracion/integraciones/publicidad/callback/page";
 import LoginForm from "@/components/forms/LoginForm";
 import AppContainer from "@/components/layout/AppContainer";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -42,6 +42,7 @@ jest.mock("axios", () => {
 const post = jest.mocked(axios.post);
 const get = jest.mocked(axios.get);
 const ACTOR_ID = "a1111111-1111-4111-8111-111111111111";
+const OTHER_ACTOR_ID = "a3333333-3333-4333-8333-333333333333";
 const COMPANY_ID = "b2222222-2222-4222-8222-222222222222";
 const CODE = "fixture-one-use-meta-code";
 const STATE = "s".repeat(43);
@@ -63,6 +64,14 @@ const TOKEN = `${encoded({ alg: "HS256", typ: "JWT" })}.${encoded({
   companyId: COMPANY_ID,
   exp: Math.floor(Date.now() / 1000) + 3600,
 })}.fixture-signature`;
+const OTHER_TOKEN = `${encoded({ alg: "HS256", typ: "JWT" })}.${encoded({
+  id: OTHER_ACTOR_ID,
+  email: "other-recovery@example.test",
+  role: "ADMINISTRADOR",
+  permissions: ["VIEW_FINANCES", "MANAGE_ADVERTISING_CONNECTIONS"],
+  companyId: COMPANY_ID,
+  exp: Math.floor(Date.now() / 1000) + 3600,
+})}.fixture-signature`;
 
 const previousEnvironment = {
   users: process.env.NEXT_PUBLIC_API_USERS,
@@ -75,11 +84,28 @@ let companyAvailable = true;
 let callbackStatus: number | null = null;
 let releaseRefresh: (() => void) | null = null;
 let pendingRefresh: Promise<void> | null = null;
+let releaseCallback: (() => void) | null = null;
+let pendingCallback: Promise<void> | null = null;
 let storageWrites: jest.SpyInstance;
 let queryClients: QueryClient[] = [];
 
 function callbackRequests() {
   return post.mock.calls.filter(([url]) => url === CALLBACK_ENDPOINT);
+}
+
+function SessionControls() {
+  const { auth, login, logout } = useAuth();
+  return (
+    <aside aria-label="Fixture session controls">
+      <output data-testid="session-actor">{auth?.user.id ?? "anonymous"}</output>
+      <button type="button" onClick={() => void logout()}>
+        End fixture session
+      </button>
+      <button type="button" onClick={() => void login({ accessToken: OTHER_TOKEN })}>
+        Use other fixture account
+      </button>
+    </aside>
+  );
 }
 
 function renderApplication(path: string, children: ReactNode = <AdvertisingCallbackPage />) {
@@ -109,6 +135,8 @@ beforeEach(() => {
   callbackStatus = null;
   releaseRefresh = null;
   pendingRefresh = null;
+  releaseCallback = null;
+  pendingCallback = null;
   storageWrites = jest.spyOn(Storage.prototype, "setItem");
   jest
     .mocked(axios.isAxiosError)
@@ -117,18 +145,20 @@ beforeEach(() => {
         typeof value === "object" && value !== null && "isAxiosError" in value,
     );
   post.mockImplementation(async (url) => {
-    if (url.endsWith("/api/v1/auth/refresh")) {
+    if (url === "/api/auth/refresh") {
       if (pendingRefresh) await pendingRefresh;
       if (refreshFails) throw { isAxiosError: true, response: { status: 401 } };
       return { data: { accessToken: TOKEN } };
     }
-    if (url === "https://auth.example.test/api/v1/auth/login") {
+    if (url === "/api/auth/login") {
       return { data: { accessToken: TOKEN } };
     }
+    if (url === "/api/auth/logout") return { data: { message: "Fixture session ended" } };
     if (url === CALLBACK_ENDPOINT) {
       expect(window.location.search).toBe("?provider=meta");
       expect(window.location.href).not.toContain(CODE);
       expect(window.location.href).not.toContain(STATE);
+      if (pendingCallback) await pendingCallback;
       if (callbackStatus) throw { isAxiosError: true, response: { status: callbackStatus } };
       return { data: { connected: true } };
     }
@@ -137,6 +167,7 @@ beforeEach(() => {
   get.mockImplementation(async (url) => {
     if (
       url === `https://company.example.test/company/user/${ACTOR_ID}` ||
+      url === `https://company.example.test/company/user/${OTHER_ACTOR_ID}` ||
       url === `https://company.example.test/company/${COMPANY_ID}/with-stores`
     ) {
       return {
@@ -217,7 +248,7 @@ describe("advertising callback session recovery with the real guard and Auth pro
 
     await waitFor(() => expect(callbackRequests()).toHaveLength(1));
     expect(post).toHaveBeenCalledWith(
-      "https://auth.example.test/api/v1/auth/login",
+      "/api/auth/login",
       { email: LOGIN_EMAIL, password: LOGIN_PASSWORD },
       { withCredentials: true },
     );
@@ -245,6 +276,56 @@ describe("advertising callback session recovery with the real guard and Auth pro
     expect(mockPush).not.toHaveBeenCalled();
     expect(storageWrites).not.toHaveBeenCalled();
   });
+
+  it.each(["logout then login", "switch account"])(
+    "discards captured OAuth parameters and ignores the old callback response after %s",
+    async (transition) => {
+      pendingCallback = new Promise<void>((resolve) => {
+        releaseCallback = resolve;
+      });
+      const user = userEvent.setup();
+      renderApplication(`${CALLBACK_PATH}?provider=meta&code=${CODE}&state=${STATE}`, (
+        <>
+          <SessionControls />
+          <AdvertisingCallbackPage />
+        </>
+      ));
+      await waitFor(() => expect(callbackRequests()).toHaveLength(1));
+      expect(screen.getByTestId("session-actor")).toHaveTextContent(ACTOR_ID);
+      expect(mockReplace).not.toHaveBeenCalled();
+
+      if (transition === "logout then login") {
+        await user.click(screen.getByRole("button", { name: "End fixture session" }));
+        await waitFor(() =>
+          expect(screen.getByTestId("session-actor")).toHaveTextContent("anonymous"),
+        );
+        expect(await screen.findByRole("alert")).toHaveTextContent("Vuelve a iniciarla.");
+      }
+      await user.click(screen.getByRole("button", { name: "Use other fixture account" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("session-actor")).toHaveTextContent(OTHER_ACTOR_ID),
+      );
+      expect(await screen.findByRole("alert")).toHaveTextContent("Vuelve a iniciarla.");
+      expect(window.location.search).toBe("?provider=meta");
+      expect(window.location.href).not.toContain(CODE);
+      expect(window.location.href).not.toContain(STATE);
+      expect(callbackRequests()).toHaveLength(1);
+      expect(callbackRequests()[0]).toEqual([
+        CALLBACK_ENDPOINT,
+        { state: STATE, code: CODE },
+        expect.objectContaining({ headers: { Authorization: `Bearer ${TOKEN}` } }),
+      ]);
+
+      await act(async () => {
+        releaseCallback?.();
+      });
+      expect(callbackRequests()).toHaveLength(1);
+      expect(mockReplace).not.toHaveBeenCalled();
+      expect(mockPush).not.toHaveBeenCalled();
+      expect(screen.getByRole("alert")).toHaveTextContent("Vuelve a iniciarla.");
+      expect(storageWrites).not.toHaveBeenCalled();
+    },
+  );
 
   it("keeps a backend rejection as an error without reporting a connection", async () => {
     callbackStatus = 403;

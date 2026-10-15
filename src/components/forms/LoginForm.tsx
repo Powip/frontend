@@ -124,9 +124,9 @@ export default function LoginForm({ onAuthenticated }: LoginFormProps = {}) {
 
     try {
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_USERS}/auth/login`,
+        "/api/auth/login",
         { ...loginData, email: loginData.email.trim() },
-        { withCredentials: true }, // Para recibir httpOnly cookie
+        { withCredentials: true }, // Cookie HttpOnly del mismo origen que la aplicación.
       );
 
       // login() retorna AuthData con company, subscription, etc.

@@ -22,10 +22,6 @@ import { partnersKeys } from "@/features/partners/keys/partners.keys";
 // Configurar axios para enviar cookies automáticamente (httpOnly cookies)
 axios.defaults.withCredentials = true;
 
-const API_AUTH =
-  process.env.NEXT_PUBLIC_API_USERS?.replace("/api/v1", "") ||
-  "http://localhost:8080";
-
 interface Subscription {
   id: string;
   status: string;
@@ -109,6 +105,23 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // Solo guardamos preferencias no sensibles
 const STORE_PREFERENCE_KEY = "selectedStoreId";
 
+function readStorePreference(): string | null {
+  try {
+    return localStorage.getItem(STORE_PREFERENCE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function saveStorePreference(storeId: string | null): void {
+  try {
+    if (storeId) localStorage.setItem(STORE_PREFERENCE_KEY, storeId);
+    else localStorage.removeItem(STORE_PREFERENCE_KEY);
+  } catch {
+    // Optional preferences must not block a valid session in restricted browsers.
+  }
+}
+
 const resolveSelectedStoreId = (
   stores: Store[] | undefined,
   preferredStoreId: string | null,
@@ -125,6 +138,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [inventories, setInventories] = useState<Inventory[]>([]);
   const currentUserId = useRef<string | null>(null);
   const sessionVersion = useRef(0);
+  const refreshRequest = useRef<{
+    version: number;
+    promise: Promise<boolean>;
+    controller: AbortController;
+  } | null>(null);
   const inventoryRequestVersion = useRef(0);
 
   const setSession = useCallback((nextAuth: AuthData | null, clearPartners = false) => {
@@ -165,80 +183,86 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (preferredStoreId !== selectedStoreId) {
       setPreferredStoreId(selectedStoreId);
     }
-    if (selectedStoreId) {
-      localStorage.setItem(STORE_PREFERENCE_KEY, selectedStoreId);
-    } else {
-      localStorage.removeItem(STORE_PREFERENCE_KEY);
-    }
+    saveStorePreference(selectedStoreId);
   }, [auth, preferredStoreId, selectedStoreId]);
 
   // ---- SILENT REFRESH: Intenta recuperar sesión usando httpOnly cookie ----
-  const silentRefresh = useCallback(async (): Promise<boolean> => {
+  const silentRefresh = useCallback((): Promise<boolean> => {
+    const inFlight = refreshRequest.current;
+    if (inFlight && inFlight.version === sessionVersion.current) return inFlight.promise;
     const refreshingSession = ++sessionVersion.current;
-    try {
-      // Llamar al endpoint de refresh - el refreshToken viene en httpOnly cookie
-      const response = await axios.post(
-        `${API_AUTH}/api/v1/auth/refresh`,
-        {},
-        {
-          withCredentials: true, // Enviar cookies
-        },
-      );
-
-      if (response.data?.accessToken) {
-        // Decodificar y establecer auth
-        const decoded = decodeToken(response.data.accessToken);
-        if (!decoded) return false;
-
-        const user = {
-          email: decoded.email,
-          id: decoded.id,
-          role: decoded.role,
-          permissions: decoded.permissions || [],
-          name: decoded.name,
-          surname: decoded.surname,
-          companyId: decoded.companyId ?? null,
-        };
-
-        let company = await fetchUserCompany(
-          decoded.id,
-          response.data.accessToken,
+    const controller = new AbortController();
+    const promise = (async (): Promise<boolean> => {
+      try {
+        // The same-origin proxy owns the HttpOnly refresh cookie.
+        const response = await axios.post(
+          "/api/auth/refresh",
+          {},
+          {
+            withCredentials: true, // Enviar cookies
+            signal: controller.signal,
+          },
         );
-        if (!company && decoded.companyId) {
-          company = await fetchCompanyById(
-            decoded.companyId,
+
+        if (response.data?.accessToken) {
+          // Decodificar y establecer auth
+          const decoded = decodeToken(response.data.accessToken);
+          if (!decoded) return false;
+
+          const user = {
+            email: decoded.email,
+            id: decoded.id,
+            role: decoded.role,
+            permissions: decoded.permissions || [],
+            name: decoded.name,
+            surname: decoded.surname,
+            companyId: decoded.companyId ?? null,
+          };
+
+          let company = await fetchUserCompany(
+            decoded.id,
             response.data.accessToken,
           );
+          if (!company && decoded.companyId) {
+            company = await fetchCompanyById(
+              decoded.companyId,
+              response.data.accessToken,
+            );
+          }
+
+          const subscription = await fetchUserSubscription(
+            decoded.id,
+            response.data.accessToken,
+          );
+
+          if (refreshingSession !== sessionVersion.current) return false;
+
+          setSession({
+            accessToken: response.data.accessToken,
+            user,
+            company,
+            subscription,
+            exp: decoded.exp,
+          });
+
+          // Solo guardamos preferencia de tienda (no sensible)
+          const storedStore = readStorePreference();
+          setPreferredStoreId(
+            resolveSelectedStoreId(company?.stores, storedStore),
+          );
+
+          return true;
         }
-
-        const subscription = await fetchUserSubscription(
-          decoded.id,
-          response.data.accessToken,
-        );
-
-        if (refreshingSession !== sessionVersion.current) return false;
-
-        setSession({
-          accessToken: response.data.accessToken,
-          user,
-          company,
-          subscription,
-          exp: decoded.exp,
-        });
-
-        // Solo guardamos preferencia de tienda (no sensible)
-        const storedStore = localStorage.getItem(STORE_PREFERENCE_KEY);
-        setPreferredStoreId(
-          resolveSelectedStoreId(company?.stores, storedStore),
-        );
-
-        return true;
+      } catch (error) {
+        // No hay sesión válida o refresh token expirado
+        console.log("No hay sesión activa");
       }
-    } catch (error) {
-      // No hay sesión válida o refresh token expirado
-      console.log("No hay sesión activa");
-    }
-    return false;
+      return false;
+    })().finally(() => {
+      if (refreshRequest.current?.version === refreshingSession) refreshRequest.current = null;
+    });
+    refreshRequest.current = { version: refreshingSession, promise, controller };
+    return promise;
   }, [setSession]);
 
   // ---- INICIALIZACIÓN: Intentar recuperar sesión al cargar ----
@@ -297,6 +321,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }): Promise<AuthData | null> => {
     const decoded = decodeToken(accessToken);
     if (!decoded) return null;
+    // Cancel an older cookie rotation before replacing the session.
+    refreshRequest.current?.controller.abort();
     const loggingInSession = ++sessionVersion.current;
 
     const user = {
@@ -332,9 +358,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setPreferredStoreId(defaultStore);
 
     // Solo guardamos preferencia de tienda (no sensible)
-    if (defaultStore) {
-      localStorage.setItem(STORE_PREFERENCE_KEY, defaultStore);
-    }
+    if (defaultStore) saveStorePreference(defaultStore);
 
     return newAuth;
   };
@@ -348,27 +372,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // ---- LOGOUT ----
   const logout = async () => {
+    const accessToken = tokenStore.get();
+    // A late refresh response must not restore the cookie after logout.
+    refreshRequest.current?.controller.abort();
     ++sessionVersion.current;
     setSession(null, true);
     setPreferredStoreId(null);
     setInventories([]);
-    try {
-      localStorage.removeItem(STORE_PREFERENCE_KEY);
-    } catch {
-      // A blocked preference store must not prevent server-side logout.
-    }
+    saveStorePreference(null);
 
     try {
       // Llamar al backend para borrar la cookie httpOnly
       await axios.post(
-        `${API_AUTH}/api/v1/auth/logout`,
+        "/api/auth/logout",
         {},
         {
           withCredentials: true,
+          ...(accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : {}),
         },
       );
-    } catch (error) {
-      console.error("Error en logout:", error);
+    } catch {
+      console.error("No pudimos confirmar el cierre de sesión con el servidor.");
     }
   };
 

@@ -10,6 +10,7 @@ import { BusinessScopeProvider, useBusinessScope } from "@/contexts/BusinessScop
 import { isBusinessScopeRoute, shouldResetBusinessView } from "@/lib/businessScopeRoutes";
 
 const publicAuthFlowRoutes = ["/onboarding", "/login", "/restablecer-contrasena"];
+const advertisingCallbackRoute = "/configuracion/integraciones/publicidad/callback";
 
 export default function AppContainer({ children }: { children: React.ReactNode }) {
   return (
@@ -28,14 +29,14 @@ function ScopedAppContainer({ children }: { children: React.ReactNode }) {
   let publicSessionRevision = publicSession.revision;
 
   // Creating the first session must keep the public flow's state. Once signed
-  // in, logout or switching accounts must discard the previous user's checkout.
+  // in, logout or switching accounts must discard the previous user's flow data.
   // Adjust before rendering children so another account never sees that state.
   if (publicSession.userId !== userId) {
     if (publicSession.userId !== undefined) publicSessionRevision += 1;
     setPublicSession({ userId, revision: publicSessionRevision });
   }
 
-  const isPublicAuthFlow = publicAuthFlowRoutes.some(
+  const isPublicAuthFlow = pathname === advertisingCallbackRoute || publicAuthFlowRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
   const viewKey = isPublicAuthFlow
@@ -54,7 +55,7 @@ function ScopedAppContainer({ children }: { children: React.ReactNode }) {
   ];
 
   const hideSidebar =
-    pathname === "/configuracion/integraciones/publicidad/callback" ||
+    pathname === advertisingCallbackRoute ||
     noSidebarRoutes.some((r) => pathname.startsWith(r)) ||
     (!auth && pathname === "/partners/solicitud");
 

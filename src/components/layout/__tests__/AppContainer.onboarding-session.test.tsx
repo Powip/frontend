@@ -244,7 +244,7 @@ it("conserva la página al crear la sesión y continúa registro → planes → 
   expect(mockPageMount).toHaveBeenCalledTimes(3);
 });
 
-it.each(["/onboarding", "/onboarding/callback", "/login", "/restablecer-contrasena"])(
+it.each(["/onboarding", "/onboarding/callback", "/login", "/restablecer-contrasena", "/configuracion/integraciones/publicidad/callback"])(
   "%s conserva el estado local durante autenticación y cambio de empresa",
   async (pathname) => {
     mockPathname = pathname;
@@ -263,7 +263,7 @@ it.each(["/onboarding", "/onboarding/callback", "/login", "/restablecer-contrase
   },
 );
 
-it.each(["/configuracion", "/onboarding-extra"])(
+it.each(["/configuracion", "/onboarding-extra", "/configuracion/integraciones/publicidad/callback-extra", "/configuracion/integraciones/publicidad/callback/other"])(
   "%s sigue reiniciando la página al cambiar empresa, usuario y cerrar sesión",
   (pathname) => {
     mockPathname = pathname;
@@ -281,7 +281,7 @@ it.each(["/configuracion", "/onboarding-extra"])(
   },
 );
 
-it.each(["/onboarding", "/onboarding/callback", "/login", "/restablecer-contrasena"])(
+it.each(["/onboarding", "/onboarding/callback", "/login", "/restablecer-contrasena", "/configuracion/integraciones/publicidad/callback"])(
   "%s conserva refresh/empresa del mismo usuario y descarta datos al cambiar usuario o cerrar sesión",
   async (pathname) => {
     mockPathname = pathname;

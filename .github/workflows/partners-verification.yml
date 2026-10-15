@@ -1,12 +1,10 @@
-name: Partners verification
+name: Frontend verification
 
 on:
   pull_request:
     branches: [main]
     paths:
-      - 'src/**/partners/**'
-      - 'src/**/partners*.ts'
-      - 'src/**/partners*.tsx'
+      - 'src/**'
       - 'package.json'
       - 'package-lock.json'
       - 'jest.config.ts'
@@ -16,9 +14,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'src/**/partners/**'
-      - 'src/**/partners*.ts'
-      - 'src/**/partners*.tsx'
+      - 'src/**'
       - 'package.json'
       - 'package-lock.json'
       - 'jest.config.ts'
