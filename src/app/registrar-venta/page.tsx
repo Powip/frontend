@@ -66,6 +66,7 @@ import { fetchSaleContext } from "@/services/saleContextService";
 import ubigeos from "@/utils/json/ubigeos.json";
 import { bumpProductFrequency, getProductFrequencies } from "@/utils/productFrequency";
 import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
+import { buildOrderItem, getOrderItemPricing } from "./orderItemPricing";
 
 type ClientSearchState = "idle" | "found" | "not_found" | "error";
 
@@ -477,7 +478,7 @@ function RegistrarVentaContent() {
         quantity: item.quantity,
         price: netUnit,
         pvp: grossUnit,
-        discount: totalDiscount, // informativo/legado, no se usa para derivar price (buildOrderItem usa pvp - price)
+        discount: totalDiscount, // informativo/legado; buildOrderItem deriva el descuento del precio de cierre
         packId: null,
       };
     });
@@ -1007,35 +1008,6 @@ function RegistrarVentaContent() {
 
       const sellerDisplayName = `${auth?.user?.name || ""} ${auth?.user?.surname || ""}`.trim();
 
-      // El precio de cierre (item.price) ya refleja cualquier descuento manual,
-      // % o pack aplicado — acá solo reconstruimos el monto de descuento en
-      // formato FIXED para que discountType/discountAmount no queden en
-      // "NONE"/0 cuando la línea sí tiene descuento (item.discount es un
-      // campo legado que el editor de precios/packs nunca actualiza).
-      // packId/isGift/giftValue van igual: si el backend de order-header
-      // todavía no los conoce los va a ignorar, pero quedan listos para
-      // cuando los soporte (ver lista de gaps pedida al backend).
-      const buildOrderItem = (item: CartItem) => {
-        const pvp = item.pvp ?? item.price;
-        const discountAmount = Math.max(
-          0,
-          Math.round((pvp - item.price) * item.quantity * 100) / 100,
-        );
-        return {
-          productVariantId: item.variantId,
-          sku: item.sku,
-          productName: item.productName,
-          quantity: item.quantity,
-          unitPrice: pvp,
-          discountType: discountAmount > 0 ? "FIXED" : "NONE",
-          discountAmount,
-          attributes: item.attributes,
-          packId: item.packId ?? null,
-          isGift: item.isGift ?? false,
-          ...(item.isGift ? { giftValue: item.giftValue ?? 0 } : {}),
-        };
-      };
-
       const payload = {
         // --- Comprobante ---
         receiptType: "BOLETA",
@@ -1476,12 +1448,12 @@ function RegistrarVentaContent() {
   };
 
   /* ---------------- Totales ---------------- */
-  // Subtotal bruto (PVP * cantidad) — antes se calculaba como price*qty
-  // (que ya es el precio de cierre, no el bruto) y el descuento salía de
-  // item.discount, un campo que el editor de precios/packs nunca actualiza.
-  // Eso hacía que "Total descuentos" nunca se mostrara aunque la línea sí
-  // tuviera descuento o pack aplicado.
-  const subtotalBruto = cart.reduce((acc, p) => acc + (p.pvp ?? p.price) * p.quantity, 0);
+  // El bruto debe coincidir con lo enviado al backend, incluso cuando un
+  // precio manual supera el PVP, para no compensar descuentos de otras líneas.
+  const subtotalBruto = cart.reduce(
+    (acc, p) => acc + getOrderItemPricing(p).unitPrice * p.quantity,
+    0,
+  );
   // Subtotal neto (precio de cierre real, después de descuentos/packs)
   const subtotal = cart.reduce((acc, p) => acc + p.price * p.quantity, 0);
   // Total de descuentos por item, derivado (bruto - neto)
