@@ -6,6 +6,11 @@ on:
     paths:
       - 'src/app/api/auth/**'
       - 'src/lib/server/authProxy.ts'
+      - 'src/lib/axiosAuth.ts'
+      - 'src/lib/tokenStore.ts'
+      - 'src/lib/sessionRefresh.ts'
+      - 'src/lib/__tests__/axiosAuth*.test.ts'
+      - 'src/app/registrar-venta/__tests__/sessionRecovery.integration.test.tsx'
       - 'src/contexts/AuthContext.tsx'
       - 'src/contexts/__tests__/AuthContext*.test.tsx'
       - 'src/components/layout/AppContainer.tsx'
@@ -26,6 +31,11 @@ on:
     paths:
       - 'src/app/api/auth/**'
       - 'src/lib/server/authProxy.ts'
+      - 'src/lib/axiosAuth.ts'
+      - 'src/lib/tokenStore.ts'
+      - 'src/lib/sessionRefresh.ts'
+      - 'src/lib/__tests__/axiosAuth*.test.ts'
+      - 'src/app/registrar-venta/__tests__/sessionRecovery.integration.test.tsx'
       - 'src/contexts/AuthContext.tsx'
       - 'src/contexts/__tests__/AuthContext*.test.tsx'
       - 'src/components/layout/AppContainer.tsx'
@@ -74,6 +84,10 @@ jobs:
           npx eslint
           src/app/api/auth
           src/lib/server/authProxy.ts
+          src/lib/axiosAuth.ts
+          src/lib/tokenStore.ts
+          src/lib/sessionRefresh.ts
+          'src/lib/__tests__/axiosAuth*.test.ts'
           src/contexts/AuthContext.tsx
           'src/contexts/__tests__/AuthContext*.test.tsx'
           src/components/layout/AppContainer.tsx
@@ -90,6 +104,8 @@ jobs:
           npm test -- --runInBand --silent
           src/app/api/auth
           src/contexts/__tests__
+          src/lib/__tests__/axiosAuth
+          src/app/registrar-venta/__tests__/sessionRecovery.integration.test.tsx
           src/components/layout/__tests__/AppContainer
           src/components/advertising/__tests__/AdvertisingSessionRecovery.test.tsx
           src/components/forms/__tests__/LoginForm

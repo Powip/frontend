@@ -62,6 +62,7 @@ jest.mock("@/components/registrar-venta/SuggestionsPanel", () => ({ __esModule: 
 jest.mock("@/components/modals/orderReceiptModal", () => ({ __esModule: true, default: () => null }));
 
 import axiosAuth from "@/lib/axiosAuth";
+import { tokenStore } from "@/lib/tokenStore";
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchClientByPhone, updateClient } from "@/services/clients.service";
 import type { SaleSalesChannel } from "@/services/saleContextService";
@@ -105,6 +106,7 @@ beforeAll(() => {
 });
 beforeEach(() => {
   jest.clearAllMocks();
+  tokenStore.set("fixture-token", JSON.stringify(["seller-1", "company-1"]));
   mockSearchParams = new URLSearchParams();
   responseContext = context;
   responseOrder = existingOrder;

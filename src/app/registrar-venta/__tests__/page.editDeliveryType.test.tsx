@@ -189,6 +189,7 @@ jest.mock("@/components/registrar-venta/SuggestionsPanel", () => ({
 // ── Imports bajo prueba (después de los mocks) ──────────────────────────────
 
 import axiosAuth from "@/lib/axiosAuth";
+import { tokenStore } from "@/lib/tokenStore";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import RegistrarVentaPage from "../page";
@@ -320,6 +321,7 @@ const MOCK_AUTH = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  tokenStore.set(MOCK_AUTH.auth.accessToken, JSON.stringify([MOCK_AUTH.auth.user.id, MOCK_AUTH.auth.company.id]));
   mockSearchParams = new URLSearchParams({ orderId: ORDER_ID, returnTo: RETURN_TO });
   mockUseAuth.mockReturnValue(MOCK_AUTH as unknown as ReturnType<typeof useAuth>);
   mockedAxiosAuth.get.mockImplementation((url: string) => {

@@ -59,6 +59,7 @@ import type { GiftOption, Pack, VolumePack } from "@/interfaces/IPack";
 import type { InventoryItemForSale } from "@/interfaces/IProduct";
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
+import { tokenStore } from "@/lib/tokenStore";
 import { cn } from "@/lib/utils";
 import { createClient, fetchClientByPhone, updateClient } from "@/services/clients.service";
 import { searchInventoryItems } from "@/services/inventoryItems.service";
@@ -327,6 +328,12 @@ function RegistrarVentaContent() {
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
+  const editorActive = useRef(true);
+
+  useEffect(() => {
+    editorActive.current = true;
+    return () => { editorActive.current = false; };
+  }, []);
 
   /* ---------------- Modal ---------------- */
   const [orderData, setOrderData] = useState<OrderHeader | null>(null);
@@ -341,6 +348,8 @@ function RegistrarVentaContent() {
   const { auth } = useAuth();
 
   const companyId = auth?.company?.id;
+  const userId = auth?.user.id;
+  const hasSession = Boolean(auth?.accessToken);
   const saleContext = useQuery({
     queryKey: ["sale-context", auth?.user.id, companyId],
     queryFn: ({ signal }) => fetchSaleContext(companyId!, signal),
@@ -399,7 +408,7 @@ function RegistrarVentaContent() {
     orderRequest.current?.abort();
     setOrderData(null);
     setOrderLoadError(false);
-    if (!orderId || !companyId || !auth?.accessToken) return;
+    if (!orderId || !companyId || !userId || !hasSession) return;
     const request = new AbortController();
     orderRequest.current = request;
     setOrderLoading(true);
@@ -413,7 +422,7 @@ function RegistrarVentaContent() {
     } finally {
       if (!request.signal.aborted) setOrderLoading(false);
     }
-  }, [orderId, companyId, auth?.accessToken]);
+  }, [orderId, companyId, userId, hasSession]);
 
   useEffect(() => {
     void loadOrder();
@@ -896,6 +905,12 @@ function RegistrarVentaContent() {
 
   const handleConfirmSale = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
+    const submitSession = tokenStore.snapshot();
+    const isCurrentEditor = () => editorActive.current && tokenStore.isCurrent(submitSession);
+    if (!submitSession.active) {
+      toast.error("La sesión está cambiando. Espera a que termine antes de guardar.");
+      return;
+    }
 
     if (!saleContext.data || saleContext.isError || !origin.hasStore || !origin.hasInventory) {
       toast.error(
@@ -952,12 +967,14 @@ function RegistrarVentaContent() {
             longitude: clientForm.longitude ? Number(clientForm.longitude) : undefined,
             googleMapsUrl: clientForm.googleMapsUrl || undefined,
           });
+          if (!isCurrentEditor()) return;
           setClientFound(createdClient);
           setOriginalClient(createdClient);
           setSearchState("found");
           setClientErrors({});
           activeClient = createdClient;
         } catch {
+          if (!isCurrentEditor()) return;
           toast.error("Error al crear el cliente. Verifica los datos.");
           return;
         }
@@ -981,10 +998,12 @@ function RegistrarVentaContent() {
             longitude: clientForm.longitude ? Number(clientForm.longitude) : undefined,
             googleMapsUrl: clientForm.googleMapsUrl || undefined,
           });
+          if (!isCurrentEditor()) return;
           setClientFound(updated);
           setOriginalClient(updated);
           activeClient = updated;
         } catch {
+          if (!isCurrentEditor()) return;
           toast.error("Error al guardar los cambios del cliente.");
           return;
         }
@@ -1075,8 +1094,10 @@ function RegistrarVentaContent() {
           : null;
 
       try {
+        if (!isCurrentEditor()) return;
         if (!orderId) {
           const response = await axiosAuth.post(`${GATEWAY.ventas}/order-header/manual`, payload);
+          if (!isCurrentEditor()) return;
 
           const createdOrderId = response.data.id;
 
@@ -1095,8 +1116,10 @@ function RegistrarVentaContent() {
                 const fresh = await axiosAuth.get<{
                   payments?: { id: string }[];
                 }>(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${createdOrderId}`);
+                if (!isCurrentEditor()) return;
                 firstPaymentId = fresh.data?.payments?.[0]?.id;
               } catch (err) {
+                if (!isCurrentEditor()) return;
                 console.error("Error releyendo la orden para adjuntar el comprobante", err);
               }
             }
@@ -1123,7 +1146,9 @@ function RegistrarVentaContent() {
                     },
                   },
                 );
+                if (!isCurrentEditor()) return;
               } catch (err) {
+                if (!isCurrentEditor()) return;
                 console.error("Error subiendo comprobante", err);
                 proofFailed = true;
                 toast.error(
@@ -1142,10 +1167,12 @@ function RegistrarVentaContent() {
                 callbackAt: scheduledCallbackAt,
                 callStatus: "SCHEDULED",
               });
+              if (!isCurrentEditor()) return;
               toast.success(
                 `Venta registrada y reprogramada para el ${new Date(scheduledCallbackAt).toLocaleDateString("es-PE")}`,
               );
             } catch {
+              if (!isCurrentEditor()) return;
               toast.warning("Venta registrada, pero no se pudo programar la fecha de envío");
             }
           } else if (!proofFailed) {
@@ -1228,6 +1255,7 @@ function RegistrarVentaContent() {
             `${GATEWAY.ventas}/order-header/manual/${orderData.id}/full`,
             updatePayload,
           );
+          if (!isCurrentEditor()) return;
 
           const updatedId = orderData.id;
           toast.success("Venta actualizada correctamente");
@@ -1243,13 +1271,18 @@ function RegistrarVentaContent() {
           setReceiptOpen(true);
         }
       } catch (error) {
+        if (!isCurrentEditor()) return;
         if (orderData) {
           // El form no se resetea en error: lo editado sigue cargado.
-          const apiMessage = (error as { response?: { data?: { message?: string | string[] } } })
-            ?.response?.data?.message;
+          const response = (error as {
+            response?: { status?: number; data?: { message?: string | string[] } };
+          })?.response;
+          const apiMessage = response?.data?.message;
           const detail = Array.isArray(apiMessage) ? apiMessage.join(", ") : apiMessage;
           toast.error(
-            `No se pudo actualizar la venta${detail ? `: ${detail}` : ""}. Tus cambios siguen en el formulario; podés reintentar.`,
+            response?.status === 401
+              ? "Tu sesión venció y no se pudo renovar. Tus cambios siguen en el formulario. Inicia sesión en otra pestaña y vuelve a intentar guardar."
+              : `No se pudo actualizar la venta${detail ? `: ${detail}` : ""}. Tus cambios siguen en el formulario; podés reintentar.`,
           );
         } else {
           toast.error("Error al registrar la venta");
@@ -2855,14 +2888,25 @@ function RegistrarVentaContent() {
   );
 }
 
+function ScopedRegistrarVentaContent() {
+  const { auth } = useAuth();
+  const searchParams = useSearchParams();
+  // Renewing the bearer keeps the draft. A different account, company or order
+  // starts a fresh editor, including the pack engine's state.
+  const scope = `${auth?.user.id ?? ""}:${auth?.company?.id ?? ""}:${searchParams.get("orderId") ?? "new"}`;
+  return (
+    <PacksProvider key={scope}>
+      <RegistrarVentaContent />
+    </PacksProvider>
+  );
+}
+
 export default function RegistrarVentaPage() {
   return (
     <Suspense
       fallback={<div className="flex items-center justify-center h-screen">Cargando...</div>}
     >
-      <PacksProvider>
-        <RegistrarVentaContent />
-      </PacksProvider>
+      <ScopedRegistrarVentaContent />
     </Suspense>
   );
 }

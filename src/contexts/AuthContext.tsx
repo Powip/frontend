@@ -7,7 +7,7 @@ import {
   useState,
   useCallback,
   useRef,
-  ReactNode,
+  type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { decodeToken, isExpired } from "@/lib/jwt";
@@ -17,6 +17,11 @@ import axios from "axios";
 import { GATEWAY } from "@/lib/gateway";
 import { isSuperadmin } from "@/config/permissions.config";
 import { tokenStore } from "@/lib/tokenStore";
+import {
+  cancelSessionRefresh,
+  registerSessionRefresher,
+  requestSessionToken,
+} from "@/lib/sessionRefresh";
 import { partnersKeys } from "@/features/partners/keys/partners.keys";
 
 // Configurar axios para enviar cookies automáticamente (httpOnly cookies)
@@ -133,6 +138,7 @@ const resolveSelectedStoreId = (
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient();
   const [auth, setAuth] = useState<AuthData | null>(null);
+  const authRef = useRef<AuthData | null>(null);
   const [loading, setLoading] = useState(true);
   const [preferredStoreId, setPreferredStoreId] = useState<string | null>(null);
   const [inventories, setInventories] = useState<Inventory[]>([]);
@@ -141,7 +147,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const refreshRequest = useRef<{
     version: number;
     promise: Promise<boolean>;
-    controller: AbortController;
   } | null>(null);
   const inventoryRequestVersion = useRef(0);
 
@@ -157,7 +162,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
     currentUserId.current = nextUserId;
     // Publish the bearer before any query can render with the new user's key.
-    tokenStore.set(nextAuth?.accessToken ?? null);
+    authRef.current = nextAuth;
+    const scope = nextAuth
+      ? JSON.stringify([nextAuth.user.id, nextAuth.company?.id ?? nextAuth.user.companyId ?? null])
+      : null;
+    tokenStore.set(nextAuth?.accessToken ?? null, scope);
     setAuth(nextAuth);
   }, [queryClient]);
 
@@ -191,22 +200,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const inFlight = refreshRequest.current;
     if (inFlight && inFlight.version === sessionVersion.current) return inFlight.promise;
     const refreshingSession = ++sessionVersion.current;
-    const controller = new AbortController();
+    const session = tokenStore.snapshot();
     const promise = (async (): Promise<boolean> => {
       try {
-        // The same-origin proxy owns the HttpOnly refresh cookie.
-        const response = await axios.post(
-          "/api/auth/refresh",
-          {},
-          {
-            withCredentials: true, // Enviar cookies
-            signal: controller.signal,
-          },
-        );
-
-        if (response.data?.accessToken) {
+        const accessToken = await requestSessionToken(session);
+        if (accessToken) {
           // Decodificar y establecer auth
-          const decoded = decodeToken(response.data.accessToken);
+          const decoded = decodeToken(accessToken);
           if (!decoded) return false;
 
           const user = {
@@ -221,24 +221,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
           let company = await fetchUserCompany(
             decoded.id,
-            response.data.accessToken,
+            accessToken,
           );
           if (!company && decoded.companyId) {
             company = await fetchCompanyById(
               decoded.companyId,
-              response.data.accessToken,
+              accessToken,
             );
           }
 
           const subscription = await fetchUserSubscription(
             decoded.id,
-            response.data.accessToken,
+            accessToken,
           );
 
-          if (refreshingSession !== sessionVersion.current) return false;
+          const currentBearer = tokenStore.get();
+          if (
+            refreshingSession !== sessionVersion.current || !tokenStore.isCurrent(session) ||
+            (currentBearer !== session.token && currentBearer !== accessToken)
+          ) return false;
 
           setSession({
-            accessToken: response.data.accessToken,
+            accessToken,
             user,
             company,
             subscription,
@@ -253,7 +257,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
           return true;
         }
-      } catch (error) {
+      } catch {
         // No hay sesión válida o refresh token expirado
         console.log("No hay sesión activa");
       }
@@ -261,9 +265,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     })().finally(() => {
       if (refreshRequest.current?.version === refreshingSession) refreshRequest.current = null;
     });
-    refreshRequest.current = { version: refreshingSession, promise, controller };
+    refreshRequest.current = { version: refreshingSession, promise };
     return promise;
   }, [setSession]);
+
+  const renewAccessToken = useCallback(async (): Promise<boolean> => {
+    const previous = authRef.current;
+    const session = tokenStore.snapshot();
+    const renewingVersion = sessionVersion.current;
+    if (!previous || !session.active || !session.token) return false;
+    const accessToken = await requestSessionToken(session);
+    if (!accessToken || !tokenStore.isCurrent(session) || renewingVersion !== sessionVersion.current) {
+      return false;
+    }
+    const decoded = decodeToken(accessToken);
+    const current = authRef.current;
+    // Automatic retries must keep the account and company that issued the
+    // original request. Explicit public refresh can still adopt onboarding changes.
+    if (
+      !decoded || !current || !Number.isFinite(decoded.exp) || isExpired(decoded.exp) ||
+      decoded.id !== current.user.id ||
+      (decoded.companyId ?? null) !== (current.user.companyId ?? null)
+    ) return false;
+    setSession({
+      ...current,
+      accessToken,
+      user: {
+        id: decoded.id,
+        email: decoded.email,
+        role: decoded.role,
+        permissions: decoded.permissions || [],
+        name: decoded.name,
+        surname: decoded.surname,
+        companyId: decoded.companyId ?? null,
+      },
+      exp: decoded.exp,
+    });
+    return true;
+  }, [setSession]);
+
+  useEffect(() => registerSessionRefresher(renewAccessToken), [renewAccessToken]);
 
   // ---- INICIALIZACIÓN: Intentar recuperar sesión al cargar ----
   useEffect(() => {
@@ -322,7 +363,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const decoded = decodeToken(accessToken);
     if (!decoded) return null;
     // Cancel an older cookie rotation before replacing the session.
-    refreshRequest.current?.controller.abort();
+    cancelSessionRefresh();
+    tokenStore.invalidate();
     const loggingInSession = ++sessionVersion.current;
 
     const user = {
@@ -364,17 +406,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateCompany = (company: Company) => {
-    setAuth((prev) => {
-      if (!prev) return prev;
-      return { ...prev, company };
-    });
+    const previous = authRef.current;
+    if (!previous) return;
+    if (previous.company?.id !== company.id) {
+      cancelSessionRefresh();
+      tokenStore.invalidate();
+      refreshRequest.current = null;
+    }
+    setSession({ ...previous, company });
   };
 
   // ---- LOGOUT ----
   const logout = async () => {
     const accessToken = tokenStore.get();
     // A late refresh response must not restore the cookie after logout.
-    refreshRequest.current?.controller.abort();
+    cancelSessionRefresh();
     ++sessionVersion.current;
     setSession(null, true);
     setPreferredStoreId(null);
@@ -405,7 +451,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (currentUserId.current !== userId || tokenStore.get() !== accessToken) return;
 
     const subscription = await fetchUserSubscription(userId, accessToken);
-    setAuth((prev) => {
+    const prev = authRef.current;
       // A retained callback or late response must not modify another session.
       if (
         refreshingSession !== sessionVersion.current ||
@@ -413,10 +459,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         !prev ||
         prev.user.id !== userId ||
         prev.accessToken !== accessToken
-      ) return prev;
-      return { ...prev, subscription };
-    });
-  }, [auth?.accessToken, auth?.user.id]);
+      ) return;
+      setSession({ ...prev, subscription });
+  }, [auth?.accessToken, auth?.user.id, setSession]);
 
   // ---- CHECK PERMISSION ----
   const hasPermission = (permission: string): boolean => {
