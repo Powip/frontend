@@ -468,6 +468,7 @@ export default function EvaOrderTrackingView() {
                             district={order.customer?.district ?? ""}
                             address={order.customer?.address ?? ""}
                             amount={getPendingPayment(order)}
+                            items={order.items}
                             onSuccess={fetchOrders}
                             variant="outline"
                             size="sm"

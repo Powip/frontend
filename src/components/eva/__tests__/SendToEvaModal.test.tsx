@@ -64,6 +64,10 @@ jest.mock('@/services/evaService', () => ({
   getEvaCredentials: jest.fn(),
   getEvaDistricts: jest.fn(),
   createEvaOrder: jest.fn(),
+  getEvaSkuMap: jest.fn(),
+  saveEvaSkuMap: jest.fn(),
+  getEvaShippingRates: jest.fn(),
+  fetchEvaOrderItems: jest.fn(),
 }));
 
 /**
@@ -264,6 +268,7 @@ jest.mock('lucide-react', () => ({
   Loader2: ({ className }: { className?: string }) => <span data-testid="loader" className={className} />,
   CheckCircle2: () => null,
   AlertCircle: () => null,
+  AlertTriangle: () => null,
   Package: () => null,
 }));
 
@@ -271,7 +276,15 @@ jest.mock('lucide-react', () => ({
 
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
-import { getEvaCredentials, getEvaDistricts, createEvaOrder } from '@/services/evaService';
+import {
+  getEvaCredentials,
+  getEvaDistricts,
+  createEvaOrder,
+  getEvaSkuMap,
+  saveEvaSkuMap,
+  getEvaShippingRates,
+  fetchEvaOrderItems,
+} from '@/services/evaService';
 import SendToEvaModal from '../SendToEvaModal';
 
 // ── Casts ────────────────────────────────────────────────────────────────────
@@ -280,6 +293,10 @@ const mockUseAuth = jest.mocked(useAuth);
 const mockGetCredentials = jest.mocked(getEvaCredentials);
 const mockGetDistricts = jest.mocked(getEvaDistricts);
 const mockCreateOrder = jest.mocked(createEvaOrder);
+const mockGetSkuMap = jest.mocked(getEvaSkuMap);
+const mockSaveSkuMap = jest.mocked(saveEvaSkuMap);
+const mockGetShippingRates = jest.mocked(getEvaShippingRates);
+const mockFetchItems = jest.mocked(fetchEvaOrderItems);
 const mockToast = toast as jest.Mocked<typeof toast>;
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -366,6 +383,9 @@ beforeEach(() => {
   mockGetCredentials.mockResolvedValue(MOCK_CREDENTIAL_RECOJO);
   mockGetDistricts.mockResolvedValue(DEFAULT_DISTRICTS);
   mockCreateOrder.mockResolvedValue(MOCK_CREATE_RESULT);
+  mockGetSkuMap.mockResolvedValue([]);
+  mockGetShippingRates.mockResolvedValue({ defaultCost: null, districts: {} });
+  mockFetchItems.mockResolvedValue([]);
 });
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -927,6 +947,138 @@ describe('SendToEvaModal', () => {
       expect(mockGetDistricts).toHaveBeenCalledTimes(1);
       expect(mockGetCredentials).toHaveBeenCalledTimes(1);
       expect(mockCreateOrder).not.toHaveBeenCalled();
+    });
+  });
+  // ── FEAT-26: vínculo de SKU, costo de envío y SOLO ENTREGAR ──────────────
+
+  describe('FEAT-26', () => {
+    const ITEMS = [
+      { productVariantId: 'v1', sku: 'SINSIN-1', productName: 'Billetera', quantity: 1 },
+      { productVariantId: 'v2', sku: 'SINSIN-2', productName: 'Monedero', quantity: 2 },
+    ];
+
+    async function clickCreateWhenEnabled() {
+      const btn = await screen.findByRole('button', { name: /crear pedido en eva/i });
+      await waitFor(() => expect(btn).not.toBeDisabled());
+      await userEvent.click(btn);
+    }
+
+    it('ALMACEN con productos sin vincular arranca en el paso Vincular y al guardar pasa al formulario ya completo', async () => {
+      mockGetCredentials.mockResolvedValue(MOCK_CREDENTIAL_ALMACEN);
+      mockGetSkuMap.mockResolvedValue([{ variantId: 'v2', evaSku: 'FEMI070', powipSku: null, productName: null, updatedAt: '' }]);
+      mockSaveSkuMap.mockResolvedValue([]);
+      render(<SendToEvaModal {...BASE_PROPS} items={ITEMS} />);
+      const input = await screen.findByLabelText('SKU EVA de Billetera');
+      expect(screen.queryByRole('button', { name: /crear pedido en eva/i })).not.toBeInTheDocument();
+      await userEvent.type(input, 'FEMI064');
+      await userEvent.click(screen.getByRole('button', { name: /guardar vínculos y seguir/i }));
+      expect(mockSaveSkuMap).toHaveBeenCalledWith('fake-token', 'company-1', [
+        { variantId: 'v1', evaSku: 'FEMI064', powipSku: 'SINSIN-1', productName: 'Billetera' },
+      ]);
+      await screen.findByRole('button', { name: /crear pedido en eva/i });
+      expect(screen.getByLabelText('SKU EVA de Billetera')).toHaveValue('FEMI064');
+      expect(screen.getByLabelText('SKU EVA de Monedero')).toHaveValue('FEMI070');
+    });
+
+    it('ALMACEN: si el PUT del vínculo falla, se queda en el paso y avisa', async () => {
+      mockGetCredentials.mockResolvedValue(MOCK_CREDENTIAL_ALMACEN);
+      mockSaveSkuMap.mockRejectedValue(new Error('boom'));
+      render(<SendToEvaModal {...BASE_PROPS} items={ITEMS} />);
+      await userEvent.type(await screen.findByLabelText('SKU EVA de Billetera'), 'FEMI064');
+      await userEvent.click(screen.getByRole('button', { name: /guardar vínculos y seguir/i }));
+      await waitFor(() => expect(mockToast.error).toHaveBeenCalled());
+      expect(screen.getByRole('button', { name: /guardar vínculos y seguir/i })).toBeInTheDocument();
+    });
+
+    it('ALMACEN todo vinculado: envía items y no manda sku', async () => {
+      mockGetCredentials.mockResolvedValue(MOCK_CREDENTIAL_ALMACEN);
+      mockGetSkuMap.mockResolvedValue([
+        { variantId: 'v1', evaSku: 'FEMI064', powipSku: null, productName: null, updatedAt: '' },
+        { variantId: 'v2', evaSku: 'FEMI070', powipSku: null, productName: null, updatedAt: '' },
+      ]);
+      render(<SendToEvaModal {...BASE_PROPS} items={ITEMS} />);
+      await clickCreateWhenEnabled();
+      await waitFor(() => expect(mockCreateOrder).toHaveBeenCalled());
+      const payload = mockCreateOrder.mock.calls[0][1];
+      expect(payload.items).toEqual([
+        { variantId: 'v1', evaSku: 'FEMI064', quantity: 1, powipSku: 'SINSIN-1', productName: 'Billetera' },
+        { variantId: 'v2', evaSku: 'FEMI070', quantity: 2, powipSku: 'SINSIN-2', productName: 'Monedero' },
+      ]);
+      expect(payload.sku).toBeUndefined();
+    });
+
+    it('ALMACEN: un ítem sin variante tiene su propio campo y no pasa por el paso Vincular', async () => {
+      mockGetCredentials.mockResolvedValue(MOCK_CREDENTIAL_ALMACEN);
+      render(
+        <SendToEvaModal
+          {...BASE_PROPS}
+          items={[{ productVariantId: null, sku: 'S/SKU', productName: 'Suelto', quantity: 1 }]}
+        />,
+      );
+      const input = await screen.findByLabelText('SKU EVA de Suelto');
+      expect(screen.queryByRole('button', { name: /guardar vínculos y seguir/i })).not.toBeInTheDocument();
+      await userEvent.type(input, 'FEMI099');
+      await clickCreateWhenEnabled();
+      await waitFor(() => expect(mockCreateOrder).toHaveBeenCalled());
+      expect(mockCreateOrder.mock.calls[0][1].items).toEqual([
+        { evaSku: 'FEMI099', quantity: 1, powipSku: 'S/SKU', productName: 'Suelto' },
+      ]);
+    });
+
+    it('sin items en props los carga con fetchEvaOrderItems', async () => {
+      renderModal();
+      await waitFor(() => expect(mockFetchItems).toHaveBeenCalledWith('fake-token', 'order-1'));
+    });
+
+    it('con items en props no llama a fetchEvaOrderItems', async () => {
+      render(<SendToEvaModal {...BASE_PROPS} items={ITEMS} />);
+      await screen.findByRole('button', { name: /crear pedido en eva/i });
+      expect(mockFetchItems).not.toHaveBeenCalled();
+    });
+
+    it('precarga el costo según el distrito y lo manda en el payload', async () => {
+      mockGetShippingRates.mockResolvedValue({ defaultCost: 10, districts: { MIRAFLORES: 12.5 } });
+      render(<SendToEvaModal {...BASE_PROPS} items={ITEMS} />);
+      await waitFor(() => expect(screen.getByLabelText(/costo envío/i)).toHaveValue(12.5));
+      await clickCreateWhenEnabled();
+      await waitFor(() => expect(mockCreateOrder).toHaveBeenCalled());
+      expect(mockCreateOrder.mock.calls[0][1].shippingCost).toBe(12.5);
+    });
+
+    it('sin tarifa el costo queda vacío y no viaja en el payload', async () => {
+      render(<SendToEvaModal {...BASE_PROPS} items={ITEMS} />);
+      expect(await screen.findByLabelText(/costo envío/i)).toHaveValue(null);
+      await clickCreateWhenEnabled();
+      await waitFor(() => expect(mockCreateOrder).toHaveBeenCalled());
+      expect(mockCreateOrder.mock.calls[0][1]).not.toHaveProperty('shippingCost');
+    });
+
+    it('si falla la tarifa avisa con un toast y deja cargar el costo a mano', async () => {
+      mockGetShippingRates.mockRejectedValue(new Error('boom'));
+      render(<SendToEvaModal {...BASE_PROPS} items={ITEMS} />);
+      await screen.findByLabelText(/costo envío/i);
+      expect(mockToast.warning).toHaveBeenCalled();
+    });
+
+    it('RECOJO precarga producto y bultos desde los ítems', async () => {
+      render(<SendToEvaModal {...BASE_PROPS} items={ITEMS} />);
+      expect(await screen.findByLabelText(/producto/i)).toHaveValue('Billetera, Monedero');
+      expect(screen.getByLabelText(/bultos/i)).toHaveValue(2);
+    });
+
+    it('monto 0 arranca en SOLO ENTREGAR', async () => {
+      renderModal({ amount: 0 });
+      await screen.findByRole('button', { name: /crear pedido en eva/i });
+      const selects = screen.getAllByTestId('select-mock') as HTMLSelectElement[];
+      expect(selects.some((el) => el.value === 'SOLO ENTREGAR')).toBe(true);
+    });
+
+    it('monto mayor a 0 arranca en EFECTIVO', async () => {
+      renderModal();
+      await screen.findByRole('button', { name: /crear pedido en eva/i });
+      const selects = screen.getAllByTestId('select-mock') as HTMLSelectElement[];
+      expect(selects.some((el) => el.value === 'EFECTIVO')).toBe(true);
+      expect(selects.some((el) => el.value === 'SOLO ENTREGAR')).toBe(false);
     });
   });
 });

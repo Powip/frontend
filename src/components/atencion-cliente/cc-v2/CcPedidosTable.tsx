@@ -249,6 +249,7 @@ export function CcPedidosTable({
                         district={order.customer?.district ?? ""}
                         address={order.customer?.address ?? ""}
                         amount={porCobrar}
+                        items={order.items}
                         onSuccess={() => onEvaSent?.(order)}
                         variant="outline"
                         size="sm"

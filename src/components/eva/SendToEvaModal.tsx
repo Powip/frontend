@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -26,12 +26,28 @@ import {
   getEvaCredentials,
   getEvaDistricts,
   createEvaOrder,
+  getEvaSkuMap,
+  saveEvaSkuMap,
+  getEvaShippingRates,
+  fetchEvaOrderItems,
   type EvaCredentialSafe,
   type EvaPaymentMethod,
   type EvaServiceType,
   type EvaCreateOrderResult,
   type CreateEvaOrderPayload,
+  type EvaLinkableItem,
+  type EvaShippingRates,
 } from "@/services/evaService";
+import EvaLinkProductsStep from "./EvaLinkProductsStep";
+import EvaSkuItemsEditor from "./EvaSkuItemsEditor";
+import {
+  buildEvaItemsPayload,
+  codesFromMappings,
+  findUnlinkedVariants,
+  itemsHaveEvaSku,
+  resolveEvaShippingCost,
+  type EvaLinkCandidate,
+} from "./evaModalHelpers";
 
 // ─── CONSTANTES ─────────────────────────────────────────
 
@@ -88,6 +104,11 @@ interface SendToEvaModalProps {
   district: string;
   address: string;
   amount: number;
+  /**
+   * Ítems del pedido (FEAT-26). Si no llegan, el modal los carga del recibo
+   * de ms-ventas para armar el SKU EVA (ALMACEN) o el producto (RECOJO).
+   */
+  items?: EvaLinkableItem[];
   onSuccess?: () => void;
 }
 
@@ -103,6 +124,7 @@ export default function SendToEvaModal({
   district,
   address,
   amount,
+  items,
   onSuccess,
 }: SendToEvaModalProps) {
   const { auth } = useAuth();
@@ -136,6 +158,25 @@ export default function SendToEvaModal({
   const [reference, setReference] = useState("");
   const [observations, setObservations] = useState("");
 
+  // FEAT-26: ítems con su código EVA (ALMACEN) y costo de envío
+  const [orderItems, setOrderItems] = useState<EvaLinkableItem[]>([]);
+  const [codes, setCodes] = useState<Record<string, string>>({});
+  const [linkedCodes, setLinkedCodes] = useState<Record<string, string>>({});
+  const [linkCandidates, setLinkCandidates] = useState<EvaLinkCandidate[]>([]);
+  const [savingLinks, setSavingLinks] = useState(false);
+  const [rates, setRates] = useState<EvaShippingRates | null>(null);
+  const [shippingCost, setShippingCost] = useState("");
+  const [shippingCostTouched, setShippingCostTouched] = useState(false);
+
+  // Los ítems se leen por ref y el efecto depende de una clave estable: si el
+  // llamador re-renderiza con un array nuevo de los mismos ítems, el formulario
+  // no se resetea mientras el usuario escribe.
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const itemsKey = (items ?? [])
+    .map((i) => `${i.productVariantId ?? ""}:${i.sku}:${i.quantity}`)
+    .join("|");
+
   // Envío
   const [sending, setSending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -156,7 +197,7 @@ export default function SendToEvaModal({
     setLocalAddress(address ?? "");
     setLocalAmount(amount != null && !Number.isNaN(amount) ? String(amount) : "");
     setServiceType(1);
-    setPaymentMethod("EFECTIVO");
+    setPaymentMethod(amount === 0 ? "SOLO ENTREGAR" : "EFECTIVO");
     setProduct("");
     setPackages("1");
     setSku("");
@@ -167,10 +208,33 @@ export default function SendToEvaModal({
     setDistricts([]);
     setDistrictsError(null);
     setDistrictMismatch(false);
+    setOrderItems([]);
+    setCodes({});
+    setLinkedCodes({});
+    setLinkCandidates([]);
+    setSavingLinks(false);
+    setRates(null);
+    setShippingCost("");
+    setShippingCostTouched(false);
 
+    const providedItems = itemsRef.current;
     setLoadingCredential(true);
-    getEvaCredentials(token, companyId)
-      .then((cred) => {
+    Promise.all([
+      getEvaCredentials(token, companyId),
+      providedItems && providedItems.length > 0
+        ? Promise.resolve(providedItems)
+        : fetchEvaOrderItems(token, orderId).catch(
+            () => [] as EvaLinkableItem[],
+          ),
+      getEvaSkuMap(token, companyId).catch(() => []),
+      getEvaShippingRates(token, companyId).catch(() => {
+        toast.warning(
+          "No se pudo cargar la tarifa de EVA: completá el costo de envío a mano.",
+        );
+        return null;
+      }),
+    ])
+      .then(([cred, loadedItems, mappings, loadedRates]) => {
         if (!cred || !cred.isActive) {
           setCredentialError(
             "La integración con EVA no está configurada o activa para esta empresa. Configurala en Configuración > Integraciones > EVA.",
@@ -178,6 +242,25 @@ export default function SendToEvaModal({
           return;
         }
         setCredential(cred);
+        setOrderItems(loadedItems);
+        setRates(loadedRates);
+        if (cred.clientType === "RECOJO" && loadedItems.length > 0) {
+          setProduct(
+            loadedItems
+              .map((i) => i.productName)
+              .join(", ")
+              .slice(0, 180),
+          );
+          setPackages(String(loadedItems.length));
+        }
+        const initialCodes = codesFromMappings(mappings);
+        setCodes(initialCodes);
+        setLinkedCodes(initialCodes);
+        setLinkCandidates(
+          cred.clientType === "ALMACEN"
+            ? findUnlinkedVariants([{ items: loadedItems }], initialCodes)
+            : [],
+        );
       })
       .catch(() => {
         setCredentialError("Error al verificar la configuración de EVA.");
@@ -211,7 +294,42 @@ export default function SendToEvaModal({
         );
       })
       .finally(() => setLoadingDistricts(false));
-  }, [open, companyId, token, recipientName, recipientPhone, district, address, amount]);
+  }, [open, companyId, token, orderId, recipientName, recipientPhone, district, address, amount, itemsKey]);
+
+  // Precarga del costo según el distrito elegido, hasta que el usuario lo edite.
+  useEffect(() => {
+    if (shippingCostTouched) return;
+    const cost = resolveEvaShippingCost(rates, localDistrict);
+    setShippingCost(cost === null ? "" : String(cost));
+  }, [rates, localDistrict, shippingCostTouched]);
+
+  // ─── VÍNCULO DE PRODUCTOS (ALMACEN) ───────────────────
+
+  const handleSaveLinks = async (written: Record<string, string>) => {
+    if (!companyId) return;
+    const toSave = linkCandidates
+      .filter((c) => written[c.variantId])
+      .map((c) => ({
+        variantId: c.variantId,
+        evaSku: written[c.variantId],
+        powipSku: c.powipSku,
+        productName: c.productName,
+      }));
+    setSavingLinks(true);
+    try {
+      if (toSave.length > 0) await saveEvaSkuMap(token, companyId, toSave);
+      const saved = Object.fromEntries(
+        toSave.map((entry) => [`v:${entry.variantId}`, entry.evaSku]),
+      );
+      setCodes((prev) => ({ ...prev, ...saved }));
+      setLinkedCodes((prev) => ({ ...prev, ...saved }));
+      setLinkCandidates([]);
+    } catch {
+      toast.error("No se pudieron guardar los vínculos de SKU. Probá de nuevo.");
+    } finally {
+      setSavingLinks(false);
+    }
+  };
 
   // ─── VALIDACIÓN ───────────────────────────────────────
 
@@ -227,6 +345,12 @@ export default function SendToEvaModal({
   /** El distrito seleccionado debe ser SIEMPRE uno exacto del maestro cargado. */
   const isDistrictValid = districts.includes(localDistrict);
 
+  /** ALMACEN con ítems cargados: un código EVA por ítem en vez del campo libre "SKU(s)". */
+  const useItemsEditor =
+    credential?.clientType === "ALMACEN" && orderItems.length > 0;
+  const parsedShippingCost = Number(shippingCost);
+  const hasShippingCost = shippingCost.trim() !== "";
+
   const canSubmit = useMemo(() => {
     if (!credential || sending) return false;
     if (!localName.trim() || !isDistrictValid || !localAddress.trim())
@@ -238,8 +362,18 @@ export default function SendToEvaModal({
         return false;
     }
     if (credential.clientType === "ALMACEN") {
-      if (!sku.trim()) return false;
+      if (
+        useItemsEditor
+          ? !itemsHaveEvaSku(orderId, orderItems, codes)
+          : !sku.trim()
+      )
+        return false;
     }
+    if (
+      hasShippingCost &&
+      (Number.isNaN(parsedShippingCost) || parsedShippingCost < 0)
+    )
+      return false;
     return true;
   }, [
     credential,
@@ -252,6 +386,12 @@ export default function SendToEvaModal({
     product,
     parsedPackages,
     sku,
+    useItemsEditor,
+    orderId,
+    orderItems,
+    codes,
+    hasShippingCost,
+    parsedShippingCost,
   ]);
 
   // ─── SUBMIT ───────────────────────────────────────────
@@ -277,7 +417,11 @@ export default function SendToEvaModal({
           product: product.trim(),
           packages: parsedPackages,
         }),
-        ...(credential.clientType === "ALMACEN" && { sku: sku.trim() }),
+        ...(credential.clientType === "ALMACEN" &&
+          (useItemsEditor
+            ? { items: buildEvaItemsPayload(orderId, orderItems, codes) }
+            : { sku: sku.trim() })),
+        ...(hasShippingCost && { shippingCost: parsedShippingCost }),
       };
 
       const result = await createEvaOrder(token, payload);
@@ -376,8 +520,25 @@ export default function SendToEvaModal({
                 </div>
               )}
 
+              {/* Estado: paso "Vincular productos" (ALMACEN, FEAT-26) */}
+              {!loadingCredential &&
+                !credentialError &&
+                credential?.clientType === "ALMACEN" &&
+                linkCandidates.length > 0 &&
+                !isSuccess && (
+                  <EvaLinkProductsStep
+                    candidates={linkCandidates}
+                    saving={savingLinks}
+                    onSave={handleSaveLinks}
+                  />
+                )}
+
               {/* Estado: Formulario auto-completado */}
-              {!loadingCredential && !credentialError && credential && !isSuccess && (
+              {!loadingCredential &&
+                !credentialError &&
+                credential &&
+                linkCandidates.length === 0 &&
+                !isSuccess && (
                 <>
                   {/* Datos del destinatario */}
                   <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3">
@@ -506,6 +667,28 @@ export default function SendToEvaModal({
                         className="h-9 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-600 dark:text-slate-100"
                       />
                     </div>
+
+                    <div className="space-y-1.5">
+                      <Label
+                        htmlFor="eva-shipping-cost"
+                        className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase"
+                      >
+                        Costo envío (S/)
+                      </Label>
+                      <Input
+                        id="eva-shipping-cost"
+                        type="number"
+                        min={0}
+                        step={0.01}
+                        value={shippingCost}
+                        onChange={(e) => {
+                          setShippingCostTouched(true);
+                          setShippingCost(e.target.value);
+                        }}
+                        placeholder="Sin tarifa configurada"
+                        className="h-9 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-600 dark:text-slate-100"
+                      />
+                    </div>
                   </div>
 
                   {/* Datos del servicio EVA */}
@@ -619,8 +802,21 @@ export default function SendToEvaModal({
                       </div>
                     )}
 
-                    {/* ALMACEN: sku */}
-                    {credential.clientType === "ALMACEN" && (
+                    {/* ALMACEN con ítems: un código EVA por producto (FEAT-26) */}
+                    {useItemsEditor && (
+                      <EvaSkuItemsEditor
+                        orderId={orderId}
+                        items={orderItems}
+                        codes={codes}
+                        linkedCodes={linkedCodes}
+                        onChange={(key, value) =>
+                          setCodes((prev) => ({ ...prev, [key]: value }))
+                        }
+                      />
+                    )}
+
+                    {/* ALMACEN sin ítems: campo libre "SKU(s)" (respaldo) */}
+                    {credential.clientType === "ALMACEN" && !useItemsEditor && (
                       <div className="space-y-1.5">
                         <Label
                           htmlFor="eva-sku"
