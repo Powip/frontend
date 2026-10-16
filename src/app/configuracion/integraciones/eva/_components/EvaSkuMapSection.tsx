@@ -110,7 +110,9 @@ export default function EvaSkuMapSection({
   const toDelete = changed.filter(
     (v) => (values[v.variantId] ?? "").trim() === "" && saved[v.variantId],
   );
-  const hasInvalid = toUpsert.some((v) => !isValidEvaSkuCode(values[v.variantId]));
+  const hasInvalid = toUpsert.some(
+    (v) => !isValidEvaSkuCode(values[v.variantId]),
+  );
 
   const handleSave = async () => {
     setSaving(true);
@@ -194,15 +196,33 @@ export default function EvaSkuMapSection({
                     {v.sku}
                   </p>
                 </div>
-                <input
-                  aria-label={`SKU EVA de ${variantLabel(v)}`}
-                  value={values[v.variantId] ?? ""}
-                  onChange={(e) =>
-                    setValues((p) => ({ ...p, [v.variantId]: e.target.value }))
-                  }
-                  placeholder="Código EVA"
-                  className={`w-36 rounded border px-2 py-1 font-mono text-xs dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 ${values[v.variantId]?.trim() && !isValidEvaSkuCode(values[v.variantId]) ? "border-red-400" : ""}`}
-                />
+                <div className="flex shrink-0 items-center gap-2">
+                  {saved[v.variantId] && (values[v.variantId] ?? "") !== "" && (
+                    <button
+                      type="button"
+                      aria-label={`Quitar vínculo de ${variantLabel(v)}`}
+                      title="Quitar vínculo (se aplica al guardar)"
+                      onClick={() =>
+                        setValues((p) => ({ ...p, [v.variantId]: "" }))
+                      }
+                      className="text-xs text-gray-400 hover:text-red-500"
+                    >
+                      ✕
+                    </button>
+                  )}
+                  <input
+                    aria-label={`SKU EVA de ${variantLabel(v)}`}
+                    value={values[v.variantId] ?? ""}
+                    onChange={(e) =>
+                      setValues((p) => ({
+                        ...p,
+                        [v.variantId]: e.target.value,
+                      }))
+                    }
+                    placeholder="Código EVA"
+                    className={`w-36 rounded border px-2 py-1 font-mono text-xs dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 ${values[v.variantId]?.trim() && !isValidEvaSkuCode(values[v.variantId]) ? "border-red-400" : ""}`}
+                  />
+                </div>
               </div>
             ))}
           </div>

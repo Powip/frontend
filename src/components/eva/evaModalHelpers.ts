@@ -123,3 +123,11 @@ export function isValidShippingCostInput(value: string): boolean {
     Math.abs(Math.round(n * 100) - n * 100) < 1e-6
   );
 }
+
+/** Error HTTP 404 (p. ej. la tarifa de una empresa sin credencial EVA): no amerita aviso. */
+export function isNotFoundError(error: unknown): boolean {
+  return (
+    (error as { response?: { status?: number } } | null)?.response?.status ===
+    404
+  );
+}

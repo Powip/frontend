@@ -44,6 +44,7 @@ import {
   buildEvaItemsPayload,
   codesFromMappings,
   findUnlinkedVariants,
+  isNotFoundError,
   isValidShippingCostInput,
   itemsHaveEvaSku,
   resolveEvaShippingCost,
@@ -238,10 +239,13 @@ export default function SendToEvaModal({
         );
         return [];
       }),
-      getEvaShippingRates(token, companyId).catch(() => {
-        toast.warning(
-          "No se pudo cargar la tarifa de EVA: completá el costo de envío a mano.",
-        );
+      getEvaShippingRates(token, companyId).catch((error: unknown) => {
+        // 404 = la empresa no tiene credencial EVA: ya se muestra ese error.
+        if (!isNotFoundError(error)) {
+          toast.warning(
+            "No se pudo cargar la tarifa de EVA: completá el costo de envío a mano.",
+          );
+        }
         return null;
       }),
     ])

@@ -52,6 +52,7 @@ import {
   buildEvaItemsPayload,
   codesFromMappings,
   findUnlinkedVariants,
+  isNotFoundError,
   isValidShippingCostInput,
   itemsHaveEvaSku,
   resolveEvaShippingCost,
@@ -383,10 +384,13 @@ export default function SendToEvaGuideModal({
         );
         return [];
       }),
-      getEvaShippingRates(token, companyId).catch(() => {
-        toast.warning(
-          "No se pudo cargar la tarifa de EVA: completá el costo de envío a mano.",
-        );
+      getEvaShippingRates(token, companyId).catch((error: unknown) => {
+        // 404 = la empresa no tiene credencial EVA: ya se muestra ese error.
+        if (!isNotFoundError(error)) {
+          toast.warning(
+            "No se pudo cargar la tarifa de EVA: completá el costo de envío a mano.",
+          );
+        }
         return null;
       }),
     ])
@@ -519,13 +523,20 @@ export default function SendToEvaGuideModal({
     });
   }, [orders, rows, credential, codes]);
 
-  /** Suma de los costos de envío de los pedidos que se van a enviar. */
-  const selectedShippingCostTotal = selectedValidOrders.reduce((sum, order) => {
-    const cost = Number(rows[order.id]?.shippingCost);
-    return rows[order.id]?.shippingCost.trim() && Number.isFinite(cost)
-      ? sum + cost
-      : sum;
-  }, 0);
+  /**
+   * Costo que va a quedar en la guía si se envían todos los seleccionados: lo ya
+   * enviado más los costos de los pedidos nuevos (los que ya están en EVA vienen
+   * dentro de alreadySentShippingCost). Mismo cálculo que el PATCH del envío.
+   */
+  const guideShippingCostPreview = roundToCents(
+    selectedValidOrders.reduce((sum, order) => {
+      if (order.evaStatus) return sum;
+      const cost = Number(rows[order.id]?.shippingCost);
+      return rows[order.id]?.shippingCost.trim() && Number.isFinite(cost)
+        ? sum + cost
+        : sum;
+    }, alreadySentShippingCost ?? 0),
+  );
 
   const allSelected =
     orders.length > 0 && orders.every((order) => rows[order.id]?.selected);
@@ -1280,10 +1291,10 @@ export default function SendToEvaGuideModal({
                       </div>
                       <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg p-3 flex items-center justify-between text-sm">
                         <span className="text-slate-600 dark:text-slate-300 font-medium">
-                          Costo envío total
+                          Costo envío de la guía
                         </span>
                         <span className="font-mono font-bold text-slate-800 dark:text-slate-100">
-                          S/ {selectedShippingCostTotal.toFixed(2)}
+                          S/ {guideShippingCostPreview.toFixed(2)}
                         </span>
                       </div>
 

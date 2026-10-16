@@ -1350,6 +1350,23 @@ describe('SendToEvaGuideModal', () => {
       await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
     });
 
+    it('el resumen muestra el costo que va a quedar en la guía (ya enviados + nuevos)', async () => {
+      mockGetShippingRates.mockResolvedValue({ defaultCost: 10, districts: {} });
+      const fresh = makeOrder({ id: 'o-new' });
+      const resent = makeOrder({ id: 'o-old', evaStatus: 'REGISTRADO', carrierShippingCost: '12.00' });
+      render(<SendToEvaGuideModal {...BASE_PROPS} orders={[fresh, resent]} alreadySentShippingCost={12} />);
+      await waitForTableReady();
+      expect(screen.getByText('Costo envío de la guía').parentElement).toHaveTextContent('S/ 22.00');
+    });
+
+    it('sin tarifa ni credencial EVA (404) no muestra el aviso de tarifa', async () => {
+      mockGetCredentials.mockResolvedValue(null);
+      mockGetShippingRates.mockRejectedValue({ response: { status: 404 } });
+      renderModal({ orders: [makeOrder()] });
+      await screen.findByText(/no está configurada o activa/i);
+      expect(mockToast.warning).not.toHaveBeenCalled();
+    });
+
     it('cambiar el distrito recalcula el costo si no se editó a mano', async () => {
       mockGetShippingRates.mockResolvedValue({ defaultCost: 10, districts: { MIRAFLORES: 12.5 } });
       renderModal({ orders: [makeOrder()] });

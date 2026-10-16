@@ -88,3 +88,14 @@ it('recorta nombre y SKU de Powip a lo que acepta el backend', async () => {
   expect(items[0].productName).toHaveLength(200);
   expect(items[0].powipSku).toHaveLength(100);
 });
+
+it('"Quitar vínculo" vacía el código y al guardar lo borra; solo aparece en los vinculados', async () => {
+  render(<EvaSkuMapSection companyId="company-1" token="tk" />);
+  await screen.findByLabelText('SKU EVA de Monedero');
+  expect(screen.queryByRole('button', { name: 'Quitar vínculo de Billetera (Gris)' })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Quitar vínculo de Monedero' }));
+  expect(screen.getByLabelText('SKU EVA de Monedero')).toHaveValue('');
+  await userEvent.click(screen.getByRole('button', { name: /guardar cambios/i }));
+  expect(mockDeleteMapping).toHaveBeenCalledWith('tk', 'company-1', 'v2');
+  expect(mockSaveSkuMap).not.toHaveBeenCalled();
+});

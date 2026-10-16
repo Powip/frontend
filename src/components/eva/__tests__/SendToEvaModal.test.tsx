@@ -1102,6 +1102,14 @@ describe('SendToEvaModal', () => {
       expect(mockToast.warning).toHaveBeenCalledWith(expect.stringMatching(/vínculos/i));
     });
 
+    it('sin credencial EVA (tarifa 404) no muestra el aviso de tarifa', async () => {
+      mockGetCredentials.mockResolvedValue(null);
+      mockGetShippingRates.mockRejectedValue({ response: { status: 404 } });
+      renderModal();
+      await screen.findByText(/no está configurada o activa/i);
+      expect(mockToast.warning).not.toHaveBeenCalled();
+    });
+
     it('monto mayor a 0 arranca en EFECTIVO', async () => {
       renderModal();
       await screen.findByRole('button', { name: /crear pedido en eva/i });
