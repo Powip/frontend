@@ -274,6 +274,7 @@ import { tokenStore } from "@/lib/tokenStore";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  createClient,
   fetchClientByPhone,
   updateClient,
 } from "@/services/clients.service";
@@ -292,6 +293,7 @@ const mockedAxiosAuth = axiosAuth as unknown as {
 const mockToast = toast as jest.Mocked<typeof toast>;
 const mockUseAuth = jest.mocked(useAuth);
 const mockFetchClientByPhone = fetchClientByPhone as jest.Mock;
+const mockCreateClient = createClient as jest.Mock;
 const mockUpdateClient = updateClient as jest.Mock;
 const mockUseSearchParams = jest.mocked(useSearchParams);
 
@@ -919,4 +921,164 @@ describe("RegistrarVentaPage — hasClientChanges (fix orden de claves province/
     );
     expect(mockToast.error).not.toHaveBeenCalled();
   }, 15000);
+});
+
+describe("RegistrarVentaPage — documentos de identidad en provincia", () => {
+  const provinceClient: Client = {
+    ...FOUND_CLIENT,
+    province: "Arequipa",
+    city: "Arequipa",
+    district: "Cayma",
+    documentType: "CARNET",
+    documentNumber: "CE1234567",
+  };
+  const documentChecklist =
+    "Completa el documento de identidad del cliente (obligatorio para ventas de provincia)";
+
+  function prepareProvinceEditing(client = provinceClient) {
+    const order = {
+      id: "order-province-document",
+      storeId: "store-1",
+      customer: client,
+      orderType: "VENTA",
+      status: "PENDIENTE",
+      salesChannel: "WHATSAPP",
+      closingChannel: "WHATSAPP",
+      deliveryType: "RETIRO_TIENDA",
+      salesRegion: "PROVINCIA",
+      taxMode: "INCLUIDO",
+      shippingTotal: 0,
+      items: [{
+        productVariantId: "product-1",
+        productName: "Producto guardado",
+        sku: "SKU-1",
+        quantity: 1,
+        unitPrice: 100,
+        discountAmount: 0,
+      }],
+      payments: [],
+    };
+    mockUseSearchParams.mockReturnValue(
+      new URLSearchParams(`orderId=${order.id}`) as ReturnType<typeof useSearchParams>,
+    );
+    mockedAxiosAuth.get.mockImplementation((url: string) =>
+      Promise.resolve({
+        data: url.includes(`/order-header/manual/${order.id}`)
+          ? order
+          : url.endsWith("/order-header/sale-context")
+            ? SALE_CONTEXT
+            : url.endsWith("/inventory-item/search")
+              ? { data: [], meta: { page: 1, total: 0, totalPages: 1 } }
+              : [],
+      }),
+    );
+    mockedAxiosAuth.put.mockResolvedValue({ data: order });
+    return order;
+  }
+
+  it.each([
+    ["CE", "CARNET", "CE1234567"],
+    ["CE numérico con cero inicial", "CARNET", "001234567"],
+    ["pasaporte", "PASAPORTE", "AB123456"],
+    ["DNI", "DNI", "12345678"],
+  ] as const)("permite confirmar una venta de provincia con cliente encontrado y %s válido", async (_label, documentType, documentNumber) => {
+    mockFetchClientByPhone.mockResolvedValue({ ...provinceClient, documentType, documentNumber });
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "order-document", payments: [] } });
+    renderPage();
+    await fillCommonRequiredFields();
+
+    expect(screen.getByText(documentChecklist)).toBeInTheDocument();
+    const confirmButton = screen.getByRole("button", { name: /confirmar venta/i });
+    expect(confirmButton).toBeEnabled();
+    await userEvent.click(confirmButton);
+
+    await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledWith(
+      expect.stringContaining("/order-header"),
+      expect.objectContaining({ customerId: provinceClient.id, salesRegion: "PROVINCIA" }),
+    ));
+    expect(mockUpdateClient).not.toHaveBeenCalled();
+    expect(mockToast.error).not.toHaveBeenCalled();
+  });
+
+  it("habilita Actualizar venta con CE válido en provincia y guarda la edición", async () => {
+    const order = prepareProvinceEditing();
+    renderPage();
+    await screen.findByDisplayValue(provinceClient.documentNumber!);
+    await userEvent.selectOptions(
+      within(fieldByLabel(/método de pago/i)).getByRole("combobox"),
+      "EFECTIVO",
+    );
+
+    const updateButton = screen.getByRole("button", { name: "Actualizar venta" });
+    expect(updateButton).toBeEnabled();
+    await userEvent.click(updateButton);
+
+    await waitFor(() => expect(mockedAxiosAuth.put).toHaveBeenCalledWith(
+      expect.stringContaining(`/order-header/manual/${order.id}/full`),
+      expect.objectContaining({
+        customerId: provinceClient.id,
+        salesRegion: "PROVINCIA",
+        items: [expect.objectContaining({ productVariantId: "product-1", unitPrice: 100 })],
+      }),
+    ));
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+    expect(mockToast.error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["sin tipo", undefined, ""],
+    ["CE vacío", "CARNET", ""],
+    ["CE demasiado corto", "CARNET", "12345"],
+    ["CE con caracteres inválidos", "CARNET", "CE12-3456"],
+    ["DNI inválido", "DNI", "123456"],
+  ] as const)("bloquea actualizar una venta de provincia con documento %s", async (_label, documentType, documentNumber) => {
+    prepareProvinceEditing({ ...provinceClient, documentType, documentNumber });
+    renderPage();
+    await screen.findByDisplayValue(provinceClient.fullName);
+    await userEvent.selectOptions(
+      within(fieldByLabel(/método de pago/i)).getByRole("combobox"),
+      "EFECTIVO",
+    );
+
+    expect(screen.getByText(documentChecklist)).toBeInTheDocument();
+    const updateButton = screen.getByRole("button", { name: "Actualizar venta" });
+    expect(updateButton).toBeDisabled();
+    await userEvent.click(updateButton);
+    expect(mockedAxiosAuth.put).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+  });
+
+  it("crea un cliente con CE de provincia al confirmar si la nueva búsqueda falla", async () => {
+    mockFetchClientByPhone.mockResolvedValueOnce(provinceClient).mockRejectedValueOnce(new Error("network unavailable"));
+    const createdClient = { ...provinceClient, id: "created-ce-client", phoneNumber: "999888778" };
+    mockCreateClient.mockResolvedValue(createdClient);
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "order-new-ce-client", payments: [] } });
+    renderPage();
+    await fillCommonRequiredFields();
+
+    // La búsqueda fallida conserva los datos completados y activa la creación
+    // automática de cliente, que además ejecuta validateClientForm al confirmar.
+    const phoneInput = screen.getByPlaceholderText("Número de teléfono");
+    fireEvent.change(phoneInput, { target: { value: createdClient.phoneNumber } });
+    fireEvent.keyDown(phoneInput, { key: "Enter" });
+    await screen.findByText(/no se pudo buscar el cliente.*completa los datos manualmente/i);
+    mockToast.error.mockClear();
+
+    const confirmButton = screen.getByRole("button", { name: /confirmar venta/i });
+    expect(confirmButton).toBeEnabled();
+    await userEvent.click(confirmButton);
+
+    await waitFor(() => expect(mockCreateClient).toHaveBeenCalledWith(expect.objectContaining({
+      documentType: "CARNET",
+      documentNumber: provinceClient.documentNumber,
+      fullName: provinceClient.fullName,
+      phoneNumber: createdClient.phoneNumber,
+      city: "Arequipa",
+    })));
+    await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledWith(
+      expect.stringContaining("/order-header"),
+      expect.objectContaining({ customerId: createdClient.id, salesRegion: "PROVINCIA" }),
+    ));
+    expect(mockToast.error).not.toHaveBeenCalled();
+  });
 });

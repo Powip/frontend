@@ -68,6 +68,7 @@ import ubigeos from "@/utils/json/ubigeos.json";
 import { bumpProductFrequency, getProductFrequencies } from "@/utils/productFrequency";
 import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
 import { buildOrderItem, getOrderItemPricing } from "./orderItemPricing";
+import { validateClientDocument } from "./clientDocumentValidation";
 
 type ClientSearchState = "idle" | "found" | "not_found" | "error";
 
@@ -836,34 +837,21 @@ function RegistrarVentaContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productQuery, selectedInventory]);
 
+  const clientDocumentErrors = validateClientDocument(
+    clientForm.documentType,
+    clientForm.documentNumber,
+    salesRegion === "PROVINCIA",
+  );
+
   const validateClientForm = () => {
-    const errors: Partial<Record<keyof typeof emptyClientForm, string>> = {};
+    const errors: Partial<Record<keyof typeof emptyClientForm, string>> = {
+      ...clientDocumentErrors,
+    };
     if (!clientForm.fullName.trim()) errors.fullName = "Debes completar este dato.";
     if (!clientForm.province.trim()) errors.province = "Debes completar este dato.";
     if (!clientForm.department.trim()) errors.department = "Debes completar este dato.";
     if (!clientForm.district.trim()) errors.district = "Debes completar este dato.";
     if (!clientForm.address.trim()) errors.address = "Debes completar este dato.";
-
-    if (salesRegion === "PROVINCIA") {
-      // Fuera de Lima el DNI es obligatorio (requisito de couriers de
-      // provincia para poder despachar el pedido).
-      if (clientForm.documentType !== "DNI") {
-        errors.documentType = "El DNI es obligatorio para ventas de provincia.";
-      } else if (!clientForm.documentNumber.trim()) {
-        errors.documentNumber = "El DNI es obligatorio para ventas de provincia.";
-      } else if (!/^\d{7,8}$/.test(clientForm.documentNumber)) {
-        errors.documentNumber = "DNI debe tener 7 u 8 dígitos.";
-      }
-    } else if (clientForm.documentType) {
-      if (!clientForm.documentNumber.trim()) {
-        errors.documentNumber = "Debes completar este dato.";
-      } else if (
-        clientForm.documentType === "DNI" &&
-        !/^\d{7,8}$/.test(clientForm.documentNumber)
-      ) {
-        errors.documentNumber = "DNI debe tener 7 u 8 dígitos.";
-      }
-    }
 
     setClientErrors(errors);
     return Object.keys(errors).length === 0;
@@ -1511,11 +1499,8 @@ function RegistrarVentaContent() {
 
   const hasValidPayments = !!paymentMethod;
 
-  // Fuera de Lima el DNI es obligatorio (aplica a cliente nuevo o encontrado,
-  // ya que clientForm refleja los datos que realmente se van a enviar).
-  const hasValidDocumentForRegion =
-    salesRegion !== "PROVINCIA" ||
-    (clientForm.documentType === "DNI" && /^\d{7,8}$/.test(clientForm.documentNumber.trim()));
+  // La misma validación habilita la venta y valida clientes nuevos o encontrados.
+  const hasValidDocumentForRegion = Object.keys(clientDocumentErrors).length === 0;
 
   // Cliente válido: ya encontrado/creado, o nuevo con los datos mínimos requeridos
   const hasValidClientForNew =
@@ -1524,8 +1509,7 @@ function RegistrarVentaContent() {
     !!clientForm.province.trim() &&
     !!clientForm.department.trim() &&
     !!clientForm.district.trim() &&
-    !!clientForm.address.trim() &&
-    (!clientForm.documentType || !!clientForm.documentNumber.trim());
+    !!clientForm.address.trim();
 
   const canSubmit =
     !!saleContext.data &&
@@ -1553,7 +1537,7 @@ function RegistrarVentaContent() {
     },
     {
       ok: hasValidDocumentForRegion,
-      msg: "Completa el DNI del cliente (obligatorio para ventas de provincia)",
+      msg: "Completa el documento de identidad del cliente (obligatorio para ventas de provincia)",
     },
     { ok: !!orderDetails.orderType, msg: "Selecciona el tipo de orden" },
     { ok: hasValidSalesChannel, msg: "Selecciona el canal de venta de esta tienda" },
@@ -2004,8 +1988,8 @@ function RegistrarVentaContent() {
                         <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-400">
                           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                           <p className="text-xs font-medium">
-                            Venta de provincia detectada. El DNI es obligatorio para poder despachar
-                            el pedido.
+                            Venta de provincia detectada. Completa el documento
+                            de identidad del cliente (DNI, CE o pasaporte).
                           </p>
                         </div>
                       )}
