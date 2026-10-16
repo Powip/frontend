@@ -86,3 +86,18 @@ it('si el backend rechaza muestra su mensaje', async () => {
   await userEvent.click(screen.getByRole('button', { name: /guardar tarifas/i }));
   expect(toast.error).toHaveBeenCalledWith('Distritos no válidos para EVA: X');
 });
+
+it('si falla la carga no deja guardar (no pisa la tarifa guardada) y permite reintentar', async () => {
+  mockGetRates.mockRejectedValueOnce(new Error('boom'));
+  render(<EvaShippingRatesSection companyId="company-1" token="tk" />);
+  expect(await screen.findByRole('alert')).toHaveTextContent(/no se pudo cargar/i);
+  expect(screen.queryByRole('button', { name: /guardar tarifas/i })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /reintentar/i }));
+  expect(await screen.findByLabelText('Costo MIRAFLORES')).toHaveValue(12.5);
+});
+
+it('un costo con más de 2 decimales deshabilita guardar', async () => {
+  render(<EvaShippingRatesSection companyId="company-1" token="tk" />);
+  await userEvent.type(await screen.findByLabelText('Costo MIRAFLORES'), '55');
+  expect(screen.getByRole('button', { name: /guardar tarifas/i })).toBeDisabled();
+});

@@ -1073,6 +1073,35 @@ describe('SendToEvaModal', () => {
       expect(selects.some((el) => el.value === 'SOLO ENTREGAR')).toBe(true);
     });
 
+    it('monto con residuo de punto flotante (pagado en cuotas) arranca en SOLO ENTREGAR con 0', async () => {
+      renderModal({ amount: 12.3 - 12.1 - 0.2 });
+      await screen.findByRole('button', { name: /crear pedido en eva/i });
+      const selects = screen.getAllByTestId('select-mock') as HTMLSelectElement[];
+      expect(selects.some((el) => el.value === 'SOLO ENTREGAR')).toBe(true);
+      expect(screen.getByLabelText(/monto a cobrar/i)).toHaveValue(0);
+    });
+
+    it('el monto se redondea a centavos', async () => {
+      renderModal({ amount: 89.9 - 30 - 29.9 });
+      expect(await screen.findByLabelText(/monto a cobrar/i)).toHaveValue(30);
+    });
+
+    it('un costo con más de 2 decimales deshabilita crear', async () => {
+      render(<SendToEvaModal {...BASE_PROPS} items={ITEMS} />);
+      const btn = await screen.findByRole('button', { name: /crear pedido en eva/i });
+      await waitFor(() => expect(btn).not.toBeDisabled());
+      await userEvent.type(screen.getByLabelText(/costo envío/i), '12.555');
+      expect(btn).toBeDisabled();
+    });
+
+    it('si falla la carga de vínculos avisa con un toast', async () => {
+      mockGetCredentials.mockResolvedValue(MOCK_CREDENTIAL_ALMACEN);
+      mockGetSkuMap.mockRejectedValue(new Error('boom'));
+      render(<SendToEvaModal {...BASE_PROPS} items={ITEMS} />);
+      await screen.findByLabelText('SKU EVA de Billetera');
+      expect(mockToast.warning).toHaveBeenCalledWith(expect.stringMatching(/vínculos/i));
+    });
+
     it('monto mayor a 0 arranca en EFECTIVO', async () => {
       renderModal();
       await screen.findByRole('button', { name: /crear pedido en eva/i });

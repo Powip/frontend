@@ -6,6 +6,8 @@ import {
   itemsHaveEvaSku,
   buildEvaItemsPayload,
   isValidEvaSkuCode,
+  isValidShippingCostInput,
+  roundToCents,
 } from "../evaModalHelpers";
 
 const RATES = { defaultCost: 10, districts: { MIRAFLORES: 12.5 } };
@@ -72,5 +74,22 @@ describe("códigos por ítem", () => {
     expect(isValidEvaSkuCode(" ")).toBe(false);
     expect(isValidEvaSkuCode("A,B")).toBe(false);
     expect(isValidEvaSkuCode("X".repeat(61))).toBe(false);
+  });
+});
+
+describe("isValidShippingCostInput", () => {
+  it.each(["", " ", "0", "12.5", "12.50", "9999.99", "0.07"])("acepta %p", (v) => {
+    expect(isValidShippingCostInput(v)).toBe(true);
+  });
+  it.each(["-1", "10000", "12.555", "abc"])("rechaza %p", (v) => {
+    expect(isValidShippingCostInput(v)).toBe(false);
+  });
+});
+
+describe("roundToCents", () => {
+  it("limpia los residuos de punto flotante", () => {
+    expect(roundToCents(12.3 - 12.1 - 0.2)).toBe(0);
+    expect(roundToCents(89.9 - 30 - 29.9)).toBe(30);
+    expect(roundToCents(25.299999999999997)).toBe(25.3);
   });
 });

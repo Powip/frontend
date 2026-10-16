@@ -44,8 +44,10 @@ import {
   buildEvaItemsPayload,
   codesFromMappings,
   findUnlinkedVariants,
+  isValidShippingCostInput,
   itemsHaveEvaSku,
   resolveEvaShippingCost,
+  roundToCents,
   type EvaLinkCandidate,
 } from "./evaModalHelpers";
 
@@ -195,9 +197,13 @@ export default function SendToEvaModal({
     setLocalPhone(recipientPhone ?? "");
     setLocalDistrict("");
     setLocalAddress(address ?? "");
-    setLocalAmount(amount != null && !Number.isNaN(amount) ? String(amount) : "");
+    // Redondeo a centavos: el pendiente que calculan los llamadores arrastra
+    // residuos de punto flotante cuando el pedido se pagó en cuotas.
+    const roundedAmount =
+      amount != null && !Number.isNaN(amount) ? roundToCents(amount) : null;
+    setLocalAmount(roundedAmount === null ? "" : String(roundedAmount));
     setServiceType(1);
-    setPaymentMethod(amount === 0 ? "SOLO ENTREGAR" : "EFECTIVO");
+    setPaymentMethod(roundedAmount === 0 ? "SOLO ENTREGAR" : "EFECTIVO");
     setProduct("");
     setPackages("1");
     setSku("");
@@ -226,7 +232,12 @@ export default function SendToEvaModal({
         : fetchEvaOrderItems(token, orderId).catch(
             () => [] as EvaLinkableItem[],
           ),
-      getEvaSkuMap(token, companyId).catch(() => []),
+      getEvaSkuMap(token, companyId).catch(() => {
+        toast.warning(
+          "No se pudieron cargar los vínculos de SKU EVA: revisá los códigos antes de enviar.",
+        );
+        return [];
+      }),
       getEvaShippingRates(token, companyId).catch(() => {
         toast.warning(
           "No se pudo cargar la tarifa de EVA: completá el costo de envío a mano.",
@@ -350,6 +361,7 @@ export default function SendToEvaModal({
     credential?.clientType === "ALMACEN" && orderItems.length > 0;
   const parsedShippingCost = Number(shippingCost);
   const hasShippingCost = shippingCost.trim() !== "";
+  const isShippingCostValid = isValidShippingCostInput(shippingCost);
 
   const canSubmit = useMemo(() => {
     if (!credential || sending) return false;
@@ -369,11 +381,7 @@ export default function SendToEvaModal({
       )
         return false;
     }
-    if (
-      hasShippingCost &&
-      (Number.isNaN(parsedShippingCost) || parsedShippingCost < 0)
-    )
-      return false;
+    if (!isShippingCostValid) return false;
     return true;
   }, [
     credential,
@@ -390,8 +398,7 @@ export default function SendToEvaModal({
     orderId,
     orderItems,
     codes,
-    hasShippingCost,
-    parsedShippingCost,
+    isShippingCostValid,
   ]);
 
   // ─── SUBMIT ───────────────────────────────────────────

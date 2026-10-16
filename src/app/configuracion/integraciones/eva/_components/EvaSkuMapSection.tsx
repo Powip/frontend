@@ -122,8 +122,9 @@ export default function EvaSkuMapSection({
           toUpsert.map((v) => ({
             variantId: v.variantId,
             evaSku: values[v.variantId].trim(),
-            powipSku: v.sku,
-            productName: v.productName,
+            // Snapshots para mostrar: el backend acepta hasta 100 y 200 caracteres.
+            powipSku: v.sku?.slice(0, 100),
+            productName: v.productName?.slice(0, 200),
           })),
         );
       }

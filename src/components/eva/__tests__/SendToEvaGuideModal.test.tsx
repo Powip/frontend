@@ -1307,6 +1307,49 @@ describe('SendToEvaGuideModal', () => {
       expect(payloads.map((p) => p.shippingCost)).toEqual([12.5, 10]);
     });
 
+    it('pagado en dos cuotas con residuo de punto flotante igual va SOLO ENTREGAR con monto 0', async () => {
+      const paid = makeOrder({ id: 'o-paid', totals: { grandTotal: 12.3 }, payments: [{ amount: 12.1, status: 'PAID' }, { amount: 0.2, status: 'PAID' }] });
+      const partial = makeOrder({ id: 'o-partial', totals: { grandTotal: 89.9 }, payments: [{ amount: 30, status: 'PAID' }, { amount: 29.9, status: 'PAID' }] });
+      renderModal({ orders: [paid, partial] });
+      await waitForTableReady();
+      await userEvent.click(screen.getByRole('button', { name: /enviar guía a eva/i }));
+      await waitFor(() => expect(mockCreateOrdersBulk).toHaveBeenCalled());
+      const payloads = mockCreateOrdersBulk.mock.calls[0][1];
+      expect(payloads.find((p) => p.orderId === 'o-paid')).toEqual(expect.objectContaining({ paymentMethod: 'SOLO ENTREGAR', amount: 0 }));
+      expect(payloads.find((p) => p.orderId === 'o-partial')).toEqual(expect.objectContaining({ paymentMethod: 'EFECTIVO', amount: 30 }));
+    });
+
+    it('un costo con más de 2 decimales deja la fila fuera del envío', async () => {
+      renderModal({ orders: [makeOrder()] });
+      await waitForTableReady();
+      const input = within(getCardByOrderId(BASE_ORDER_ID)).getByLabelText(/costo envío/i);
+      await userEvent.type(input, '12.555');
+      expect(screen.getByRole('button', { name: /enviar guía a eva \(0\)/i })).toBeDisabled();
+    });
+
+    it('si falla la carga de vínculos avisa con un toast', async () => {
+      mockGetCredentials.mockResolvedValue(MOCK_CREDENTIAL_ALMACEN);
+      mockGetSkuMap.mockRejectedValue(new Error('boom'));
+      renderModal({ orders: [makeOrder({ items: [VAR_ITEM] })] });
+      await screen.findByLabelText('SKU EVA de Billetera');
+      expect(mockToast.warning).toHaveBeenCalledWith(expect.stringMatching(/vínculos/i));
+    });
+
+    it('espera el PATCH del costo de la guía antes de avisar onSuccess', async () => {
+      mockGetShippingRates.mockResolvedValue({ defaultCost: 10, districts: {} });
+      mockCreateOrdersBulk.mockResolvedValue([makeBulkResult(BASE_ORDER_ID, 'created', { trackingId: 'T1' })]);
+      let resolvePatch: (v: unknown) => void = () => {};
+      mockAxiosAuth.patch.mockReturnValue(new Promise((r) => { resolvePatch = r; }) as never);
+      const onSuccess = jest.fn();
+      render(<SendToEvaGuideModal {...BASE_PROPS} orders={[makeOrder()]} onSuccess={onSuccess} />);
+      await waitForTableReady();
+      await userEvent.click(screen.getByRole('button', { name: /enviar guía a eva/i }));
+      await waitFor(() => expect(mockAxiosAuth.patch).toHaveBeenCalled());
+      expect(onSuccess).not.toHaveBeenCalled();
+      resolvePatch({});
+      await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+    });
+
     it('cambiar el distrito recalcula el costo si no se editó a mano', async () => {
       mockGetShippingRates.mockResolvedValue({ defaultCost: 10, districts: { MIRAFLORES: 12.5 } });
       renderModal({ orders: [makeOrder()] });

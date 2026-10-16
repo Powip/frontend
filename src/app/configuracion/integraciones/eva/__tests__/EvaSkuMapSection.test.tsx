@@ -75,3 +75,16 @@ it('si falla la carga muestra el error', async () => {
   render(<EvaSkuMapSection companyId="company-1" token="tk" />);
   expect(await screen.findByRole('alert')).toHaveTextContent(/no se pudieron cargar/i);
 });
+
+it('recorta nombre y SKU de Powip a lo que acepta el backend', async () => {
+  mockFetchItems.mockResolvedValue([
+    { inventoryItemId: 'i9', variantId: 'v9', productName: 'N'.repeat(250), sku: 'S'.repeat(150), inventoryId: 'inv1', storeId: 's1' },
+  ] as never);
+  mockGetSkuMap.mockResolvedValue([]);
+  render(<EvaSkuMapSection companyId="company-1" token="tk" />);
+  await userEvent.type(await screen.findByLabelText(`SKU EVA de ${'N'.repeat(250)}`), 'FEMI064');
+  await userEvent.click(screen.getByRole('button', { name: /guardar cambios/i }));
+  const [[, , items]] = mockSaveSkuMap.mock.calls;
+  expect(items[0].productName).toHaveLength(200);
+  expect(items[0].powipSku).toHaveLength(100);
+});

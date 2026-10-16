@@ -52,8 +52,10 @@ import {
   buildEvaItemsPayload,
   codesFromMappings,
   findUnlinkedVariants,
+  isValidShippingCostInput,
   itemsHaveEvaSku,
   resolveEvaShippingCost,
+  roundToCents,
   type EvaLinkCandidate,
 } from "./evaModalHelpers";
 
@@ -220,7 +222,8 @@ function computeOrderAmounts(order: EvaGuideOrderItem): {
     order.payments
       ?.filter((p) => p.status === "PAID")
       .reduce((sum, p) => sum + Number(p.amount), 0) ?? 0;
-  const pending = Math.max(total - paid, 0);
+  // Redondeo a centavos: pagos en cuotas dejan residuos (12.30 - 12.10 - 0.20 ≠ 0).
+  const pending = Math.max(roundToCents(total - paid), 0);
   return { total, paid, pending };
 }
 
@@ -288,11 +291,7 @@ function isRowValid(
 
   if (clientType === "ALMACEN" && !skuComplete) return false;
 
-  if (
-    row.shippingCost.trim() !== "" &&
-    (Number.isNaN(Number(row.shippingCost)) || Number(row.shippingCost) < 0)
-  )
-    return false;
+  if (!isValidShippingCostInput(row.shippingCost)) return false;
 
   return true;
 }
@@ -378,7 +377,12 @@ export default function SendToEvaGuideModal({
     Promise.all([
       getEvaCredentials(token, companyId),
       getEvaDistricts(token),
-      getEvaSkuMap(token, companyId).catch(() => []),
+      getEvaSkuMap(token, companyId).catch(() => {
+        toast.warning(
+          "No se pudieron cargar los vínculos de SKU EVA: revisá los códigos antes de enviar.",
+        );
+        return [];
+      }),
       getEvaShippingRates(token, companyId).catch(() => {
         toast.warning(
           "No se pudo cargar la tarifa de EVA: completá el costo de envío a mano.",
@@ -595,10 +599,13 @@ export default function SendToEvaGuideModal({
           ? sum + cost
           : sum;
       }, 0);
+      // Se espera antes de onSuccess(): el padre vuelve a pedir la guía y tiene
+      // que ver el quotedAmount ya actualizado.
       if (guideId && newCost > 0) {
-        const guideTotal =
-          Math.round(((alreadySentShippingCost ?? 0) + newCost) * 100) / 100;
-        axiosAuth
+        const guideTotal = roundToCents(
+          (alreadySentShippingCost ?? 0) + newCost,
+        );
+        await axiosAuth
           .patch(`${API.courier}/shipping-guides/${guideId}/quote`, {
             quotedAmount: guideTotal,
             quotedCurrency: "PEN",

@@ -8,23 +8,15 @@ import {
   getEvaShippingRates,
   saveEvaShippingRates,
 } from "@/services/evaService";
+import { isValidShippingCostInput } from "@/components/eva/evaModalHelpers";
 
-const MAX_COST = 9999.99;
-
-/** Vacío = sin valor; si no, el número (puede ser NaN si no es válido). */
+/** Vacío = sin valor; si no, el número. */
 function parseCost(value: string): number | null {
   return value.trim() === "" ? null : Number(value);
 }
 
 function isInvalidCost(value: string): boolean {
-  const n = parseCost(value);
-  return (
-    n !== null &&
-    (Number.isNaN(n) ||
-      n < 0 ||
-      n > MAX_COST ||
-      Math.abs(Math.round(n * 100) - n * 100) > 1e-6)
-  );
+  return !isValidShippingCostInput(value);
 }
 
 /** Tarifa de envío EVA: precio por defecto + precios por distrito (FEAT-26). */
@@ -42,10 +34,14 @@ export default function EvaShippingRatesSection({
   const [districts, setDistricts] = useState<string[]>([]);
   const [adding, setAdding] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  // Si la carga falla no se muestra el formulario: guardar uno vacío pisaría la
+  // tarifa que ya está guardada.
+  const load = () => {
     setLoading(true);
+    setLoadError(false);
     Promise.all([getEvaShippingRates(token, companyId), getEvaDistricts(token)])
       .then(([rates, list]) => {
         setDefaultCost(
@@ -59,9 +55,13 @@ export default function EvaShippingRatesSection({
         );
         setDistricts(list);
       })
-      .catch(() => toast.error("No se pudo cargar la tarifa de EVA."))
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
-  }, [companyId, token]);
+  };
+
+  useEffect(() => {
+    load();
+  }, [companyId, token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const invalid =
     isInvalidCost(defaultCost) ||
@@ -106,6 +106,19 @@ export default function EvaShippingRatesSection({
         <p className="text-xs text-gray-400 dark:text-slate-500">
           Cargando tarifa...
         </p>
+      ) : loadError ? (
+        <div className="flex items-center justify-between gap-3">
+          <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+            No se pudo cargar la tarifa de EVA.
+          </p>
+          <button
+            type="button"
+            onClick={load}
+            className="text-xs font-medium text-indigo-600 dark:text-indigo-300"
+          >
+            Reintentar
+          </button>
+        </div>
       ) : (
         <>
           <label className="block text-xs font-medium text-gray-600 dark:text-slate-300">

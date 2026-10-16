@@ -103,3 +103,23 @@ export function buildEvaItemsPayload(
     productName: item.productName?.slice(0, 200),
   }));
 }
+
+/** Redondea a centavos: los montos que salen de restar pagos arrastran residuos de punto flotante. */
+export function roundToCents(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * Costo de envío escrito en un input: vacío es válido (no se informa); si no, mismas
+ * reglas que el backend: número entre 0 y 9999.99 con hasta 2 decimales.
+ */
+export function isValidShippingCostInput(value: string): boolean {
+  if (value.trim() === "") return true;
+  const n = Number(value);
+  return (
+    Number.isFinite(n) &&
+    n >= 0 &&
+    n <= 9999.99 &&
+    Math.abs(Math.round(n * 100) - n * 100) < 1e-6
+  );
+}
