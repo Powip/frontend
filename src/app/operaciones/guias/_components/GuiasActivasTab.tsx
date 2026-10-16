@@ -27,6 +27,7 @@ import {
   GuideStatus,
 } from "@/constants/operationsDomain";
 import GuideDetailsModal, { ShippingGuide } from "@/components/modals/GuideDetailsModal";
+import { guideShippingCost } from "./guideShippingCost";
 
 /* -----------------------------------------------------------------------
    Guías Activas — tabla de guías de la tienda con filtros por estado
@@ -65,6 +66,11 @@ export default function GuiasActivasTab() {
   const [courierFilter, setCourierFilter] = useState<string>("ALL");
   const [page, setPage] = useState(1);
   // La fecha de venta se resuelve desde los pedidos del mismo alcance.
+  // Respaldo del costo de la guía: suma de carrierShippingCost de sus pedidos (FEAT-26).
+  const ordersById = useMemo(
+    () => new Map(orderQuery.orders.map((order) => [order.id, order])),
+    [orderQuery.orders],
+  );
   const saleDates = useMemo(() => {
     const dates = new Map(orderQuery.orders.map((order) => [order.id, order.created_at]));
     return Object.fromEntries(guides.map((guide) => [guide.id, dates.get(guide.orderIds?.[0]) ?? null]));
@@ -253,7 +259,7 @@ export default function GuiasActivasTab() {
                         {money(g.amountToCollect)}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums">
-                        {g.quotedAmount ? `${g.quotedCurrency || "S/"} ${g.quotedAmount}` : "-"}
+                        {money(guideShippingCost(g, ordersById))}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap text-xs text-muted-foreground">
                         {saleDates[g.id]

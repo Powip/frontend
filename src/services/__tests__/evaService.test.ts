@@ -35,11 +35,15 @@ jest.mock('axios', () => ({
   default: {
     get: jest.fn(),
     post: jest.fn(),
+    put: jest.fn(),
+    delete: jest.fn(),
     defaults: { withCredentials: false },
     isAxiosError: jest.fn(),
   },
   get: jest.fn(),
   post: jest.fn(),
+  put: jest.fn(),
+  delete: jest.fn(),
   defaults: { withCredentials: false },
   isAxiosError: jest.fn(),
 }));
@@ -50,6 +54,12 @@ import {
   saveEvaCredentials,
   testEvaConnection,
   createEvaOrder,
+  getEvaSkuMap,
+  saveEvaSkuMap,
+  deleteEvaSkuMapping,
+  getEvaShippingRates,
+  saveEvaShippingRates,
+  fetchEvaOrderItems,
 } from '@/services/evaService';
 import type {
   EvaCredentialSafe,
@@ -59,6 +69,8 @@ import type {
 
 const mockAxiosGet = jest.mocked(axios.get);
 const mockAxiosPost = jest.mocked(axios.post);
+const mockAxiosPut = jest.mocked(axios.put);
+const mockAxiosDelete = jest.mocked(axios.delete);
 const mockIsAxiosError = jest.mocked(axios.isAxiosError);
 
 const FAKE_TOKEN = 'test-token-xyz';
@@ -345,6 +357,68 @@ describe('evaService', () => {
 
       expect(result).toEqual(['MIRAFLORES']);
       expect(axiosGetMock).toHaveBeenCalledTimes(2);
+    });
+  });
+  // ─── FEAT-26: vínculo SKU, tarifa e ítems del pedido ──────────────
+  describe('FEAT-26', () => {
+    const AUTH = expect.objectContaining({
+      headers: expect.objectContaining({ Authorization: `Bearer ${FAKE_TOKEN}` }),
+    });
+
+    it('getEvaSkuMap hace GET a /eva/sku-map/:companyId y devuelve items', async () => {
+      const items = [{ variantId: 'v1', evaSku: 'FEMI064', powipSku: null, productName: null, updatedAt: 'x' }];
+      mockAxiosGet.mockResolvedValue({ data: { items } });
+      await expect(getEvaSkuMap(FAKE_TOKEN, COMPANY_ID)).resolves.toEqual(items);
+      expect(mockAxiosGet).toHaveBeenCalledWith(`${BASE_URL}/eva/sku-map/${COMPANY_ID}`, AUTH);
+    });
+
+    it('saveEvaSkuMap hace PUT con { items } y devuelve la lista actualizada', async () => {
+      const items = [{ variantId: 'v1', evaSku: 'FEMI064' }];
+      mockAxiosPut.mockResolvedValue({ data: { items: [{ ...items[0], powipSku: null, productName: null, updatedAt: 'x' }] } });
+      const result = await saveEvaSkuMap(FAKE_TOKEN, COMPANY_ID, items);
+      expect(result[0].evaSku).toBe('FEMI064');
+      expect(mockAxiosPut).toHaveBeenCalledWith(`${BASE_URL}/eva/sku-map/${COMPANY_ID}`, { items }, AUTH);
+    });
+
+    it('deleteEvaSkuMapping hace DELETE a /eva/sku-map/:companyId/:variantId', async () => {
+      mockAxiosDelete.mockResolvedValue({ data: undefined });
+      await deleteEvaSkuMapping(FAKE_TOKEN, COMPANY_ID, 'v1');
+      expect(mockAxiosDelete).toHaveBeenCalledWith(`${BASE_URL}/eva/sku-map/${COMPANY_ID}/v1`, AUTH);
+    });
+
+    it('getEvaShippingRates hace GET a /eva/shipping-rates/:companyId', async () => {
+      const rates = { defaultCost: 10, districts: { MIRAFLORES: 12.5 } };
+      mockAxiosGet.mockResolvedValue({ data: rates });
+      await expect(getEvaShippingRates(FAKE_TOKEN, COMPANY_ID)).resolves.toEqual(rates);
+      expect(mockAxiosGet).toHaveBeenCalledWith(`${BASE_URL}/eva/shipping-rates/${COMPANY_ID}`, AUTH);
+    });
+
+    it('saveEvaShippingRates hace PUT con la tarifa', async () => {
+      const rates = { defaultCost: null, districts: { MIRAFLORES: 12.5 } };
+      mockAxiosPut.mockResolvedValue({ data: rates });
+      await expect(saveEvaShippingRates(FAKE_TOKEN, COMPANY_ID, rates)).resolves.toEqual(rates);
+      expect(mockAxiosPut).toHaveBeenCalledWith(`${BASE_URL}/eva/shipping-rates/${COMPANY_ID}`, rates, AUTH);
+    });
+
+    it('fetchEvaOrderItems pega al recibo de ms-ventas y mapea los ítems', async () => {
+      mockAxiosGet.mockResolvedValue({
+        data: {
+          items: [
+            { sku: 'SINSIN-1', quantity: '2', unitPrice: 10, productName: 'Billetera', productVariantId: 'v1' },
+            { sku: 'S/SKU', quantity: 1, unitPrice: 5, productName: 'Suelto', productVariantId: null },
+          ],
+        },
+      });
+      await expect(fetchEvaOrderItems(FAKE_TOKEN, ORDER_ID)).resolves.toEqual([
+        { productVariantId: 'v1', sku: 'SINSIN-1', productName: 'Billetera', quantity: 2, attributes: undefined },
+        { productVariantId: null, sku: 'S/SKU', productName: 'Suelto', quantity: 1, attributes: undefined },
+      ]);
+      expect(mockAxiosGet).toHaveBeenCalledWith(expect.stringMatching(/\/order-header\/order-123\/receipt$/), AUTH);
+    });
+
+    it('fetchEvaOrderItems sin items devuelve []', async () => {
+      mockAxiosGet.mockResolvedValue({ data: {} });
+      await expect(fetchEvaOrderItems(FAKE_TOKEN, ORDER_ID)).resolves.toEqual([]);
     });
   });
 });

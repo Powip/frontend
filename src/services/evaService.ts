@@ -4,6 +4,8 @@ const API_INTEGRATIONS = (
   process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3004"
 ).replace(/\/$/, "");
 
+const API_VENTAS = (process.env.NEXT_PUBLIC_API_VENTAS || "").replace(/\/$/, "");
+
 const headers = (token: string) => ({ Authorization: `Bearer ${token}` });
 
 // ─── TIPOS ──────────────────────────────────────────────
@@ -70,6 +72,43 @@ export interface CreateEvaOrderPayload {
   packages?: number;
   /** Requerido si la cuenta EVA de la empresa es ALMACEN. Formato CODIGO(cant)[,CODIGO(cant)...]. */
   sku?: string;
+  /** ALMACEN (FEAT-26): ítems con código EVA; el backend arma `sku`. */
+  items?: EvaOrderItemPayload[];
+  /** Costo del envío EVA de este pedido (S/). */
+  shippingCost?: number;
+}
+
+/** Ítem con su código de almacén EVA (cuentas ALMACEN, FEAT-26). */
+export interface EvaOrderItemPayload {
+  variantId?: string;
+  evaSku: string;
+  quantity: number;
+  powipSku?: string;
+  productName?: string;
+}
+
+/** Vínculo variante Powip → código de almacén EVA guardado en ms-integrations. */
+export interface EvaSkuMapping {
+  variantId: string;
+  evaSku: string;
+  powipSku: string | null;
+  productName: string | null;
+  updatedAt: string;
+}
+
+/** Tarifa de envío EVA de la empresa: precio por defecto + precios por distrito canónico. */
+export interface EvaShippingRates {
+  defaultCost: number | null;
+  districts: Record<string, number>;
+}
+
+/** Ítem de un pedido tal como lo necesitan los modales de EVA. */
+export interface EvaLinkableItem {
+  productVariantId?: string | null;
+  sku: string;
+  productName: string;
+  quantity: number;
+  attributes?: Record<string, string>;
 }
 
 export interface EvaCreateOrderResult {
@@ -191,4 +230,93 @@ export const getEvaDistricts = async (token: string): Promise<string[]> => {
   );
   cachedEvaDistricts = res.data.districts;
   return cachedEvaDistricts;
+};
+
+// ─── VÍNCULO SKU / TARIFAS (FEAT-26) ────────────────────
+
+export const getEvaSkuMap = async (
+  token: string,
+  companyId: string,
+): Promise<EvaSkuMapping[]> => {
+  const res = await axios.get<{ items: EvaSkuMapping[] }>(
+    `${API_INTEGRATIONS}/eva/sku-map/${companyId}`,
+    { headers: headers(token) },
+  );
+  return res.data.items;
+};
+
+export const saveEvaSkuMap = async (
+  token: string,
+  companyId: string,
+  items: Array<{
+    variantId: string;
+    evaSku: string;
+    powipSku?: string;
+    productName?: string;
+  }>,
+): Promise<EvaSkuMapping[]> => {
+  const res = await axios.put<{ items: EvaSkuMapping[] }>(
+    `${API_INTEGRATIONS}/eva/sku-map/${companyId}`,
+    { items },
+    { headers: headers(token) },
+  );
+  return res.data.items;
+};
+
+export const deleteEvaSkuMapping = async (
+  token: string,
+  companyId: string,
+  variantId: string,
+): Promise<void> => {
+  await axios.delete(
+    `${API_INTEGRATIONS}/eva/sku-map/${companyId}/${variantId}`,
+    { headers: headers(token) },
+  );
+};
+
+export const getEvaShippingRates = async (
+  token: string,
+  companyId: string,
+): Promise<EvaShippingRates> => {
+  const res = await axios.get<EvaShippingRates>(
+    `${API_INTEGRATIONS}/eva/shipping-rates/${companyId}`,
+    { headers: headers(token) },
+  );
+  return res.data;
+};
+
+export const saveEvaShippingRates = async (
+  token: string,
+  companyId: string,
+  rates: EvaShippingRates,
+): Promise<EvaShippingRates> => {
+  const res = await axios.put<EvaShippingRates>(
+    `${API_INTEGRATIONS}/eva/shipping-rates/${companyId}`,
+    rates,
+    { headers: headers(token) },
+  );
+  return res.data;
+};
+
+/**
+ * Ítems del pedido (con productVariantId) desde el recibo de ms-ventas — para
+ * cuando el llamador del modal no los trae.
+ */
+export const fetchEvaOrderItems = async (
+  token: string,
+  orderId: string,
+): Promise<EvaLinkableItem[]> => {
+  const res = await axios.get<{ items?: EvaLinkableItem[] }>(
+    `${API_VENTAS}/order-header/${orderId}/receipt`,
+    { headers: headers(token) },
+  );
+  return (res.data.items ?? []).map(
+    ({ productVariantId, sku, productName, quantity, attributes }) => ({
+      productVariantId,
+      sku,
+      productName,
+      quantity: Number(quantity),
+      attributes,
+    }),
+  );
 };

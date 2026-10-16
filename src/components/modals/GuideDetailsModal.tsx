@@ -2,7 +2,7 @@
 
 import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Image from "next/image";
 import {
   Dialog,
@@ -132,6 +132,7 @@ export interface OrderDetail {
     quantity: number;
     unitPrice: number;
     attributes?: Record<string, string>;
+    productVariantId?: string | null;
   }>;
   totals?: {
     grandTotal: number;
@@ -261,6 +262,16 @@ export default function GuideDetailsModal({
   const [assigning, setAssigning] = useState(false);
   const [selectedCourier, setSelectedCourier] = useState("");
   const [ordersDetails, setOrdersDetails] = useState<OrderDetail[]>([]);
+
+  // FEAT-26: costo de envío de los pedidos que ya están en EVA — el modal de
+  // envío lo suma a los nuevos al actualizar quotedAmount de la guía.
+  const alreadySentEvaShippingCost = useMemo(
+    () =>
+      ordersDetails
+        .filter((o) => o.evaStatus)
+        .reduce((sum, o) => sum + (Number(o.carrierShippingCost) || 0), 0),
+    [ordersDetails],
+  );
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedPaymentOrder, setSelectedPaymentOrder] = useState<{
@@ -2235,6 +2246,7 @@ export default function GuideDetailsModal({
             ? ordersDetails.filter((o) => selectedOrderIds.has(o.id))
             : ordersDetails
         }
+        alreadySentShippingCost={alreadySentEvaShippingCost}
         onClose={() => setEvaModalOpen(false)}
         onSuccess={() => {
           fetchGuide();
