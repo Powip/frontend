@@ -70,6 +70,26 @@ const PAYMENT_METHODS = [
   { value: "POS", label: "POS" },
 ];
 
+const PROOF_FILE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+];
+const PROOF_FILE_ACCEPT = PROOF_FILE_TYPES.join(",");
+
+function validateProofFile(file: File) {
+  if (!PROOF_FILE_TYPES.includes(file.type)) {
+    toast.error("Tipo de archivo no permitido. Use JPG, PNG, WEBP o PDF.");
+    return false;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    toast.error("El archivo es muy grande. Máximo 5MB.");
+    return false;
+  }
+  return true;
+}
+
 export default function PaymentVerificationModal({
   open,
   onClose,
@@ -108,29 +128,39 @@ export default function PaymentVerificationModal({
   const [amount, setAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const activeOrderIdRef = useRef<string | null>(null);
+  const orderRequestRef = useRef(0);
 
   const fetchOrderData = useCallback(async () => {
-    if (!orderId) return;
+    if (!orderId || activeOrderIdRef.current !== orderId) return;
 
+    const requestId = ++orderRequestRef.current;
+    const isCurrentRequest = () =>
+      activeOrderIdRef.current === orderId &&
+      orderRequestRef.current === requestId;
     setIsLoading(true);
     try {
       const res = await axiosAuth.get(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
       );
+      if (!isCurrentRequest()) return;
       setOrderData({
         grandTotal: Number(res.data.grandTotal),
         payments: res.data.payments || [],
       });
     } catch (error) {
+      if (!isCurrentRequest()) return;
       console.error("Error cargando datos de la orden", error);
       toast.error("Error al cargar datos de la orden");
     } finally {
-      setIsLoading(false);
+      if (isCurrentRequest()) setIsLoading(false);
     }
   }, [orderId]);
 
   useEffect(() => {
+    activeOrderIdRef.current = open ? orderId : null;
     if (open && orderId) {
+      setOrderData(null);
       fetchOrderData();
       setAmount("");
       setPaymentMethod("");
@@ -139,6 +169,10 @@ export default function PaymentVerificationModal({
       setEditAmountValue("");
       setSavingAmountForId(null);
     }
+    return () => {
+      activeOrderIdRef.current = null;
+      orderRequestRef.current += 1;
+    };
   }, [open, orderId, fetchOrderData]);
 
   const totalPaid =
@@ -334,10 +368,44 @@ export default function PaymentVerificationModal({
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const selectedFile = e.target.files?.[0];
-    if (selectedFile) {
+    e.target.value = "";
+    if (selectedFile && validateProofFile(selectedFile)) {
       handleUploadProofToPayment(paymentId, selectedFile);
     }
   };
+
+  const renderProofUpload = (payment: Payment) => (
+    <div className="flex items-center gap-2">
+      <input
+        type="file"
+        ref={(el) => {
+          fileInputRefs.current[payment.id] = el;
+        }}
+        accept={PROOF_FILE_ACCEPT}
+        className="hidden"
+        onChange={(e) => handleProofFileChange(payment.id, e)}
+      />
+      <Button
+        size="sm"
+        variant="outline"
+        className="text-xs"
+        disabled={uploadingProofForId === payment.id}
+        onClick={() => fileInputRefs.current[payment.id]?.click()}
+      >
+        {uploadingProofForId === payment.id ? (
+          <>
+            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+            Subiendo...
+          </>
+        ) : (
+          <>
+            <ImagePlus className="h-3 w-3 mr-1" />
+            Agregar comprobante
+          </>
+        )}
+      </Button>
+    </div>
+  );
 
   const formatCurrency = (value: number) => {
     return `S/ ${value.toFixed(2)}`;
@@ -506,42 +574,7 @@ export default function PaymentVerificationModal({
                       </div>
 
                       {/* Botón para subir comprobante si no tiene */}
-                      {!payment.paymentProofUrl && (
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="file"
-                            ref={(el) => {
-                              fileInputRefs.current[payment.id] = el;
-                            }}
-                            accept="image/*"
-                            className="hidden"
-                            onChange={(e) =>
-                              handleProofFileChange(payment.id, e)
-                            }
-                          />
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-xs"
-                            disabled={uploadingProofForId === payment.id}
-                            onClick={() =>
-                              fileInputRefs.current[payment.id]?.click()
-                            }
-                          >
-                            {uploadingProofForId === payment.id ? (
-                              <>
-                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-                                Subiendo...
-                              </>
-                            ) : (
-                              <>
-                                <ImagePlus className="h-3 w-3 mr-1" />
-                                Agregar comprobante
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      )}
+                      {!payment.paymentProofUrl && renderProofUpload(payment)}
                     </div>
                   ))}
                 </div>
@@ -577,9 +610,12 @@ export default function PaymentVerificationModal({
                               Ver comprobante
                             </a>
                           ) : (
-                            <span className="text-xs text-muted-foreground italic">
-                              Sin comprobante adjunto
-                            </span>
+                            <>
+                              <span className="text-xs text-muted-foreground italic">
+                                Sin comprobante adjunto
+                              </span>
+                              {renderProofUpload(payment)}
+                            </>
                           )}
                         </div>
                         <span className="text-green-600 text-xs font-medium">
@@ -636,8 +672,16 @@ export default function PaymentVerificationModal({
                       <Input
                         id="proof"
                         type="file"
-                        accept="image/*"
-                        onChange={(e) => setFile(e.target.files?.[0] || null)}
+                        accept={PROOF_FILE_ACCEPT}
+                        onChange={(e) => {
+                          const selectedFile = e.target.files?.[0];
+                          if (!selectedFile || !validateProofFile(selectedFile)) {
+                            setFile(null);
+                            e.target.value = "";
+                            return;
+                          }
+                          setFile(selectedFile);
+                        }}
                         className="flex-1"
                       />
                       {file && (
