@@ -69,6 +69,11 @@ import { bumpProductFrequency, getProductFrequencies } from "@/utils/productFreq
 import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
 import { buildOrderItem, getOrderItemPricing } from "./orderItemPricing";
 import { validateClientDocument } from "./clientDocumentValidation";
+import {
+  resolvePaymentProofTarget,
+  type ProofPayment,
+  type SavedOrderProof,
+} from "./paymentProofTarget";
 
 type ClientSearchState = "idle" | "found" | "not_found" | "error";
 
@@ -322,6 +327,8 @@ function RegistrarVentaContent() {
   const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
   const [paymentProofPreview, setPaymentProofPreview] = useState<string | null>(null);
   const paymentProofInputRef = useRef<HTMLInputElement>(null);
+  const [selectedProofPaymentId, setSelectedProofPaymentId] = useState("");
+  const [pendingProofUpload, setPendingProofUpload] = useState<SavedOrderProof | null>(null);
 
   /* ---------------- Modal ---------------- */
 
@@ -338,6 +345,21 @@ function RegistrarVentaContent() {
 
   /* ---------------- Modal ---------------- */
   const [orderData, setOrderData] = useState<OrderHeader | null>(null);
+  const activeProofPayments = (orderData?.payments ?? []).filter(
+    (payment) => payment.status !== "LOST",
+  );
+  const pendingProofPayments = activeProofPayments.filter(
+    (payment) => payment.status === "PENDING",
+  );
+  const proofPaymentId =
+    selectedProofPaymentId ||
+    (pendingProofPayments.length === 1
+      ? pendingProofPayments[0].id
+      : pendingProofPayments.length === 0 && advancePayment > 0
+        ? "new"
+        : activeProofPayments.length === 1
+          ? activeProofPayments[0].id
+          : "");
   const [orderLoadError, setOrderLoadError] = useState(false);
   const [orderLoading, setOrderLoading] = useState(false);
   const orderRequest = useRef<AbortController | null>(null);
@@ -432,6 +454,7 @@ function RegistrarVentaContent() {
 
   useEffect(() => {
     if (!orderData) return;
+    setSelectedProofPaymentId("");
 
     // --- Cliente ---
     const cust = orderData.customer;
@@ -789,6 +812,9 @@ function RegistrarVentaContent() {
     setPrefilledPayment(null);
     setPaymentProofFile(null);
     setPaymentProofPreview(null);
+    setSelectedProofPaymentId("");
+    setPendingProofUpload(null);
+    if (paymentProofInputRef.current) paymentProofInputRef.current.value = "";
     setTaxMode("INCLUIDO");
 
     // Order data (para modo edición)
@@ -891,6 +917,38 @@ function RegistrarVentaContent() {
     }
   };
 
+  const uploadSavedOrderProof = async (
+    context: SavedOrderProof,
+    file: File,
+    isCurrentEditor: () => boolean,
+    savedPayments?: ProofPayment[],
+  ) => {
+    if (!isCurrentEditor()) return false;
+    // Retain the saved sale and file so retrying never creates another payment.
+    setPendingProofUpload(context);
+    let paymentId = savedPayments
+      ? resolvePaymentProofTarget(savedPayments, context)
+      : undefined;
+    if (!paymentId) {
+      const fresh = await axiosAuth.get<{ payments?: ProofPayment[] }>(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${context.orderId}`,
+      );
+      if (!isCurrentEditor()) return false;
+      paymentId = resolvePaymentProofTarget(fresh.data.payments ?? [], context);
+    }
+    if (!paymentId) throw new Error("No se pudo identificar el pago del comprobante");
+
+    setPendingProofUpload({ ...context, paymentId });
+    const formData = new FormData();
+    formData.append("file", file);
+    await axiosAuth.patch(
+      `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/upload-proof`,
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } },
+    );
+    return isCurrentEditor();
+  };
+
   const handleConfirmSale = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     const submitSession = tokenStore.snapshot();
@@ -900,21 +958,24 @@ function RegistrarVentaContent() {
       return;
     }
 
-    if (!saleContext.data || saleContext.isError || !origin.hasStore || !origin.hasInventory) {
+    if (
+      !pendingProofUpload &&
+      (!saleContext.data || saleContext.isError || !origin.hasStore || !origin.hasInventory)
+    ) {
       toast.error(
         !origin.hasStore ? "Selecciona la tienda de la venta." : "Selecciona el almacén de salida.",
       );
       return;
     }
-    if (orderId && !orderData) {
+    if (!pendingProofUpload && orderId && !orderData) {
       toast.error("La venta aún no se ha cargado.");
       return;
     }
-    if (!hasValidDelivery) {
+    if (!pendingProofUpload && !hasValidDelivery) {
       toast.error("Selecciona un método de envío disponible para esta empresa.");
       return;
     }
-    if (!hasValidSalesChannel) {
+    if (!pendingProofUpload && !hasValidSalesChannel) {
       toast.error("Selecciona el canal de venta de esta tienda.");
       return;
     }
@@ -928,6 +989,31 @@ function RegistrarVentaContent() {
       // Cerrar cualquier Select/Popover abierto antes de iniciar el submit
       // para evitar que Radix quede en estado inconsistente si hay error
       (document.activeElement as HTMLElement)?.blur();
+
+      if (pendingProofUpload) {
+        if (!paymentProofFile) {
+          toast.warning("La venta ya está guardada. Selecciona el comprobante para reintentar la subida.");
+          return;
+        }
+        try {
+          if (!(await uploadSavedOrderProof(pendingProofUpload, paymentProofFile, isCurrentEditor))) return;
+          toast.success("Comprobante guardado correctamente. La venta ya estaba registrada.");
+          const savedOrderId = pendingProofUpload.orderId;
+          resetForm();
+          if (orderId && returnTo) {
+            const sep = returnTo.includes("?") ? "&" : "?";
+            router.replace(`${returnTo}${sep}updated=${encodeURIComponent(savedOrderId)}`);
+            return;
+          }
+          setReceiptOrderId(savedOrderId);
+          setReceiptOpen(true);
+        } catch (error) {
+          if (!isCurrentEditor()) return;
+          console.error("Error reintentando guardar el comprobante", error);
+          toast.error("La venta ya está guardada. No se pudo subir el comprobante; vuelve a reintentarlo.");
+        }
+        return;
+      }
 
       let activeClient = clientFound;
 
@@ -1013,6 +1099,18 @@ function RegistrarVentaContent() {
         return;
       }
 
+      if (orderData && paymentProofFile) {
+        if (!proofPaymentId) {
+          toast.warning("Selecciona a qué pago corresponde el comprobante.");
+          return;
+        }
+        const target = activeProofPayments.find((payment) => payment.id === proofPaymentId);
+        if ((proofPaymentId === "new" || target?.status === "PENDING") && advancePayment <= 0) {
+          toast.warning("Ingresa un adelanto mayor a cero para guardar el comprobante de ese pago.");
+          return;
+        }
+      }
+
       const sellerDisplayName = `${auth?.user?.name || ""} ${auth?.user?.surname || ""}`.trim();
 
       const payload = {
@@ -1089,63 +1187,22 @@ function RegistrarVentaContent() {
 
           const createdOrderId = response.data.id;
 
-          // Si hay comprobante de pago, adjuntarlo al pago del adelanto (queda
-          // PENDING, la aprobación es manual desde /finanzas). La subida va
-          // DIRECTO a ms-ventas (NEXT_PUBLIC_API_VENTAS): el gateway daba
-          // errores al proxear el multipart del comprobante.
           let proofFailed = false;
           if (paymentProofFile && advancePayment > 0) {
-            // El POST de order-header no siempre devuelve payments hidratado.
-            // Se relee la orden (el GET sí trae relations: ['payments']) para
-            // obtener el id del pago del adelanto.
-            let firstPaymentId: string | undefined = response.data?.payments?.[0]?.id;
-            if (!firstPaymentId) {
-              try {
-                const fresh = await axiosAuth.get<{
-                  payments?: { id: string }[];
-                }>(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${createdOrderId}`);
-                if (!isCurrentEditor()) return;
-                firstPaymentId = fresh.data?.payments?.[0]?.id;
-              } catch (err) {
-                if (!isCurrentEditor()) return;
-                console.error("Error releyendo la orden para adjuntar el comprobante", err);
-              }
-            }
-
-            if (!firstPaymentId) {
+            try {
+              if (!(await uploadSavedOrderProof(
+                { orderId: createdOrderId, previousPaymentIds: [] },
+                paymentProofFile,
+                isCurrentEditor,
+                response.data.payments,
+              ))) return;
+            } catch (error) {
+              if (!isCurrentEditor()) return;
+              console.error("Error guardando comprobante", error);
               proofFailed = true;
-              console.error(
-                "No se encontró el pago de la orden recién creada; comprobante no adjuntado",
-              );
               toast.error(
-                "La venta se creó, pero el comprobante no se pudo adjuntar. Cargalo desde Finanzas › Gestionar Pagos.",
+                "La venta se registró, pero el comprobante no se guardó. Conservamos el archivo para que puedas reintentar.",
               );
-            } else {
-              try {
-                const formData = new FormData();
-                formData.append("file", paymentProofFile);
-
-                await axiosAuth.patch(
-                  `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${firstPaymentId}/upload-proof`,
-                  formData,
-                  {
-                    headers: {
-                      "Content-Type": "multipart/form-data",
-                    },
-                  },
-                );
-                if (!isCurrentEditor()) return;
-              } catch (err) {
-                if (!isCurrentEditor()) return;
-                console.error("Error subiendo comprobante", err);
-                proofFailed = true;
-                toast.error(
-                  "La venta se creó, pero el comprobante no se pudo adjuntar. Cargalo desde Finanzas › Gestionar Pagos.",
-                );
-              }
-              // El pago del adelanto queda PENDING con el comprobante ya
-              // adjunto. La aprobación/rechazo es exclusivamente manual desde
-              // /finanzas — no se auto-confirma acá (ver FIX-aprobacion-pagos-solo-finanzas).
             }
           }
 
@@ -1156,9 +1213,11 @@ function RegistrarVentaContent() {
                 callStatus: "SCHEDULED",
               });
               if (!isCurrentEditor()) return;
-              toast.success(
-                `Venta registrada y reprogramada para el ${new Date(scheduledCallbackAt).toLocaleDateString("es-PE")}`,
-              );
+              if (!proofFailed) {
+                toast.success(
+                  `Venta registrada y reprogramada para el ${new Date(scheduledCallbackAt).toLocaleDateString("es-PE")}`,
+                );
+              }
             } catch {
               if (!isCurrentEditor()) return;
               toast.warning("Venta registrada, pero no se pudo programar la fecha de envío");
@@ -1170,6 +1229,7 @@ function RegistrarVentaContent() {
                 : "Venta registrada",
             );
           }
+          if (proofFailed) return;
           setReceiptOrderId(createdOrderId);
           setReceiptOpen(true);
           resetForm();
@@ -1239,11 +1299,33 @@ function RegistrarVentaContent() {
               : {}),
           };
 
-          await axiosAuth.put(
+          const response = await axiosAuth.put(
             `${GATEWAY.ventas}/order-header/manual/${orderData.id}/full`,
             updatePayload,
           );
           if (!isCurrentEditor()) return;
+
+          if (paymentProofFile) {
+            try {
+              if (!(await uploadSavedOrderProof(
+                {
+                  orderId: orderData.id,
+                  paymentId: proofPaymentId === "new" ? undefined : proofPaymentId,
+                  previousPaymentIds: (orderData.payments ?? []).map((payment) => payment.id),
+                },
+                paymentProofFile,
+                isCurrentEditor,
+                response.data?.payments,
+              ))) return;
+            } catch (error) {
+              if (!isCurrentEditor()) return;
+              console.error("Error guardando comprobante de la venta editada", error);
+              toast.error(
+                "La venta se actualizó, pero el comprobante no se guardó. Conservamos el archivo para que puedas reintentar.",
+              );
+              return;
+            }
+          }
 
           const updatedId = orderData.id;
           toast.success("Venta actualizada correctamente");
@@ -1599,8 +1681,16 @@ function RegistrarVentaContent() {
             </div>
           )}
 
+          {pendingProofUpload && (
+            <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+              La venta ya está guardada. Falta guardar el comprobante de pago.
+              El archivo sigue seleccionado: pulsa «Reintentar comprobante» para
+              terminar sin volver a registrar la venta.
+            </div>
+          )}
+
           <div className="grid gap-6 items-start lg:grid-cols-[1fr_400px]">
-            <div className="space-y-6 min-w-0">
+            <div className="space-y-6 min-w-0" inert={!!pendingProofUpload}>
               {/* Cliente */}
               <Card>
                 <CardHeader>
@@ -2370,13 +2460,52 @@ function RegistrarVentaContent() {
 
                   {/* Comprobante de pago */}
                   <div className="space-y-1">
-                    <Label>Comprobante de pago (opcional)</Label>
+                    <Label htmlFor="sale-payment-proof">Comprobante de pago (opcional)</Label>
+                    {(orderData?.payments ?? [])
+                      .filter((payment) => payment.paymentProofUrl)
+                      .map((payment) => (
+                        <a
+                          key={payment.id}
+                          href={payment.paymentProofUrl!}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block text-sm text-violet-600 underline dark:text-violet-300"
+                        >
+                          Ver comprobante guardado · {payment.paymentMethod} · S/ {Number(payment.amount).toFixed(2)}
+                          {payment.status === "PAID" ? " (aprobado)" : payment.status === "LOST" ? " (rechazado)" : " (pendiente)"}
+                        </a>
+                      ))}
+                    {orderData && activeProofPayments.length > 0 && (
+                      <div className="space-y-1 pb-2">
+                        <Label htmlFor="proof-payment">Pago al que corresponde el comprobante</Label>
+                        <Select
+                          value={proofPaymentId}
+                          onValueChange={setSelectedProofPaymentId}
+                          disabled={isSubmitting}
+                        >
+                          <SelectTrigger id="proof-payment">
+                            <SelectValue placeholder="Selecciona un pago" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {activeProofPayments.map((payment) => (
+                              <SelectItem key={payment.id} value={payment.id}>
+                                {payment.paymentMethod} · S/ {Number(payment.amount).toFixed(2)} · {payment.status === "PAID" ? "Aprobado" : "Pendiente"}
+                              </SelectItem>
+                            ))}
+                            {pendingProofPayments.length === 0 && advancePayment > 0 && (
+                              <SelectItem value="new">Nuevo adelanto · S/ {advancePayment.toFixed(2)}</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <div
                       className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors
                   ${paymentProofFile ? "border-violet-500 bg-violet-50 dark:bg-violet-500/10" : "border-muted-foreground/25 hover:border-violet-400 hover:bg-muted/30"}`}
                       onClick={() => paymentProofInputRef.current?.click()}
                     >
                       <input
+                        id="sale-payment-proof"
                         ref={paymentProofInputRef}
                         type="file"
                         accept="image/jpeg,image/png,image/webp,application/pdf"
@@ -2836,11 +2965,11 @@ function RegistrarVentaContent() {
                     type="button"
                     size="lg"
                     className={`w-full rounded-xl text-base font-semibold transition-all ${
-                      canSubmit && !isSubmitting
+                      (pendingProofUpload || canSubmit) && !isSubmitting
                         ? "bg-gradient-to-br from-violet-600 to-green-600 text-white shadow-lg shadow-violet-600/25 hover:opacity-95"
                         : "bg-muted text-muted-foreground"
                     }`}
-                    disabled={!canSubmit || isSubmitting}
+                    disabled={isSubmitting || (pendingProofUpload ? !paymentProofFile : !canSubmit)}
                     onClick={handleConfirmSale}
                   >
                     {isSubmitting ? (
@@ -2848,6 +2977,8 @@ function RegistrarVentaContent() {
                         <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                         Procesando...
                       </span>
+                    ) : pendingProofUpload ? (
+                      "Reintentar comprobante"
                     ) : orderId ? (
                       "Actualizar venta"
                     ) : (

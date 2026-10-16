@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Upload, X, FileImage, FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 
 interface Props {
     open: boolean;
@@ -58,7 +58,7 @@ export default function PaymentProofUploadModal({ open, paymentId, onClose, onSu
             const formData = new FormData();
             formData.append('file', file);
 
-            await axios.patch(
+            await axiosAuth.patch(
                 `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/upload-proof`,
                 formData,
                 {

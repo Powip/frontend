@@ -30,12 +30,12 @@
  *   con la interop de ts-jest (esModuleInterop).
  * - @/lib/axiosAuth → mockeado (get/post/patch/put) porque aprobar/rechazar
  *   pagos ahora usan la instancia con Bearer token (fix 401 en /finanzas),
- *   mientras el resto de las acciones del modal siguen en axios plano.
+ *   junto con la lectura, registro y subida de comprobantes.
  * - window.confirm → mockeado (jsdom no lo implementa por defecto), solo para
  *   comprobar que YA NO se llama al aprobar.
  */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
@@ -367,6 +367,174 @@ describe('PaymentVerificationModal — formulario "Registrar Nuevo Pago"', () =>
     expect(
       await screen.findByText('Comprobante (opcional)'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('PaymentVerificationModal — comprobantes con sesión autenticada', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData(null) });
+    mockedAxiosAuth.patch.mockResolvedValue({ data: {} });
+    mockedAxiosAuth.post.mockResolvedValue({ data: {} });
+  });
+
+  it('carga el comprobante guardado con el cliente autenticado y lo muestra antes de aprobar', async () => {
+    const proofUrl = 'https://proof.example.com/guardado.pdf';
+    mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData(proofUrl) });
+
+    renderModal();
+
+    expect(await screen.findByRole('link', { name: /ver comprobante/i }))
+      .toHaveAttribute('href', proofUrl);
+    expect(mockedAxiosAuth.get).toHaveBeenCalledWith('http://ventas/order-header/order-1');
+    expect(mockedAxios.get).not.toHaveBeenCalled();
+  });
+
+  it('sube el archivo al pago pendiente con el cliente autenticado y vuelve a consultar el comprobante', async () => {
+    const onPaymentUpdated = jest.fn();
+    const { container } = renderModal({ onPaymentUpdated });
+    await screen.findByText('Sin comprobante adjunto');
+    const file = new File(['receipt'], 'comprobante.jpg', { type: 'image/jpeg' });
+
+    await userEvent.upload(container.querySelector('input[type="file"].hidden') as HTMLInputElement, file);
+
+    await waitFor(() => expect(onPaymentUpdated).toHaveBeenCalledTimes(1));
+    const [url, data] = mockedAxiosAuth.patch.mock.calls[0];
+    expect(url).toBe('http://ventas/payments/payments/payment-1/upload-proof');
+    expect((data as FormData).get('file')).toBe(file);
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.get).toHaveBeenCalledTimes(2);
+  });
+
+  it('permite adjuntar un PDF a un pago aprobado sin comprobante sin volver a aprobarlo', async () => {
+    const order = makeOrderData(null);
+    order.payments[0].status = 'PAID';
+    mockedAxiosAuth.get.mockResolvedValue({ data: order });
+    const onPaymentUpdated = jest.fn();
+    const { container } = renderModal({ onPaymentUpdated });
+    await screen.findByText('✓ Aprobado');
+    expect(screen.getByRole('button', { name: 'Agregar comprobante' })).toBeEnabled();
+    const file = new File(['receipt'], 'comprobante.pdf', { type: 'application/pdf' });
+
+    await userEvent.upload(container.querySelector('input[type="file"].hidden') as HTMLInputElement, file);
+
+    await waitFor(() => expect(onPaymentUpdated).toHaveBeenCalledTimes(1));
+    expect(mockedAxiosAuth.patch).toHaveBeenCalledTimes(1);
+    const [url, data] = mockedAxiosAuth.patch.mock.calls[0];
+    expect(url).toBe('http://ventas/payments/payments/payment-1/upload-proof');
+    expect((data as FormData).get('file')).toBe(file);
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+  });
+
+  it('registra un pago con PDF usando la sesión y sin aprobarlo automáticamente', async () => {
+    renderModal();
+    const amountInput = await screen.findByLabelText('Monto *');
+    await userEvent.type(amountInput, '25');
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'YAPE');
+    const file = new File(['receipt'], 'comprobante.pdf', { type: 'application/pdf' });
+    await userEvent.upload(screen.getByLabelText('Comprobante (opcional)'), file);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar Pago' }));
+
+    await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1));
+    const [url, data] = mockedAxiosAuth.post.mock.calls[0];
+    expect(url).toBe('http://ventas/payments/orders/order-1/payments/with-proof');
+    expect((data as FormData).get('file')).toBe(file);
+    expect((data as FormData).get('amount')).toBe('25');
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.patch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['pago existente', 'tipo', 'Tipo de archivo no permitido. Use JPG, PNG, WEBP o PDF.'],
+    ['pago existente', 'tamaño', 'El archivo es muy grande. Máximo 5MB.'],
+    ['nuevo pago', 'tipo', 'Tipo de archivo no permitido. Use JPG, PNG, WEBP o PDF.'],
+    ['nuevo pago', 'tamaño', 'El archivo es muy grande. Máximo 5MB.'],
+  ])('rechaza el %s con archivo de %s inválido antes de enviarlo', async (target, invalid, message) => {
+    const { container } = renderModal();
+    await screen.findByText('Sin comprobante adjunto');
+    const file = invalid === 'tipo'
+      ? new File(['gif'], 'comprobante.gif', { type: 'image/gif' })
+      : new File([new Uint8Array(5 * 1024 * 1024 + 1)], 'comprobante.pdf', { type: 'application/pdf' });
+    const input = target === 'pago existente'
+      ? container.querySelector('input[type="file"].hidden') as HTMLInputElement
+      : screen.getByLabelText('Comprobante (opcional)') as HTMLInputElement;
+
+    await userEvent.setup({ applyAccept: false }).upload(input, file);
+
+    expect(mockToast.error).toHaveBeenCalledWith(message);
+    expect(mockedAxiosAuth.patch).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+    expect(input).toHaveValue('');
+  });
+
+  it('ignora el GET anterior que termina después de cambiar de orden y adjunta al pago visible', async () => {
+    type Response = { data: ReturnType<typeof makeOrderData> };
+    let resolveFirst!: (response: Response) => void;
+    let resolveSecond!: (response: Response) => void;
+    const firstRequest = new Promise<Response>((resolve) => { resolveFirst = resolve; });
+    const secondRequest = new Promise<Response>((resolve) => { resolveSecond = resolve; });
+    const firstOrder = makeOrderData('https://proof.example.com/orden-anterior.jpg');
+    const secondOrder = makeOrderData(null);
+    secondOrder.payments[0].id = 'payment-2';
+    secondOrder.payments[0].paymentMethod = 'PLIN';
+    mockedAxiosAuth.get.mockReturnValueOnce(firstRequest)
+      .mockReturnValueOnce(secondRequest)
+      .mockResolvedValue({ data: secondOrder });
+    const onClose = jest.fn();
+    const { container, rerender } = render(
+      <PaymentVerificationModal open onClose={onClose} orderId="order-1" orderNumber="ORD-001" />,
+    );
+    await waitFor(() => expect(mockedAxiosAuth.get).toHaveBeenCalledTimes(1));
+
+    rerender(<PaymentVerificationModal open onClose={onClose} orderId="order-2" orderNumber="ORD-002" />);
+    await waitFor(() => expect(mockedAxiosAuth.get).toHaveBeenCalledTimes(2));
+    await act(async () => { resolveSecond({ data: secondOrder }); });
+    expect(screen.getByText('S/ 100.00 - PLIN')).toBeInTheDocument();
+    await act(async () => { resolveFirst({ data: firstOrder }); });
+
+    expect(screen.getByRole('heading', { name: /ORD-002/ })).toBeInTheDocument();
+    expect(screen.getByText('S/ 100.00 - PLIN')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Ver comprobante' })).not.toBeInTheDocument();
+    const file = new File(['receipt'], 'comprobante.jpg', { type: 'image/jpeg' });
+    await userEvent.upload(container.querySelector('input[type="file"].hidden') as HTMLInputElement, file);
+    await waitFor(() => expect(mockedAxiosAuth.patch).toHaveBeenCalledTimes(1));
+    expect(mockedAxiosAuth.patch.mock.calls[0][0]).toBe('http://ventas/payments/payments/payment-2/upload-proof');
+  });
+
+  it('no conserva los comprobantes de la orden anterior si falla la carga de la siguiente', async () => {
+    mockedAxiosAuth.get.mockResolvedValueOnce({ data: makeOrderData('https://proof.example.com/orden-anterior.jpg') })
+      .mockRejectedValueOnce(new Error('order unavailable'));
+    const onClose = jest.fn();
+    const { rerender } = render(
+      <PaymentVerificationModal open onClose={onClose} orderId="order-1" orderNumber="ORD-001" />,
+    );
+    await screen.findByRole('link', { name: 'Ver comprobante' });
+
+    rerender(<PaymentVerificationModal open onClose={onClose} orderId="order-2" orderNumber="ORD-002" />);
+
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith('Error al cargar datos de la orden'));
+    expect(screen.getByRole('heading', { name: /ORD-002/ })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Ver comprobante' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Agregar comprobante' })).not.toBeInTheDocument();
+  });
+
+  it('permite volver a elegir el mismo comprobante después de que falle la subida', async () => {
+    mockedAxiosAuth.patch.mockRejectedValueOnce(new Error('upload unavailable'));
+    const onPaymentUpdated = jest.fn();
+    const { container } = renderModal({ onPaymentUpdated });
+    await screen.findByText('Sin comprobante adjunto');
+    const input = container.querySelector('input[type="file"].hidden') as HTMLInputElement;
+    const file = new File(['receipt'], 'comprobante.jpg', { type: 'image/jpeg' });
+
+    await userEvent.upload(input, file);
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith('Error al subir el comprobante'));
+    expect(onPaymentUpdated).not.toHaveBeenCalled();
+    await userEvent.upload(input, file);
+
+    await waitFor(() => expect(onPaymentUpdated).toHaveBeenCalledTimes(1));
+    expect(mockedAxiosAuth.patch).toHaveBeenCalledTimes(2);
+    expect(mockedAxiosAuth.patch.mock.calls[1][1].get('file')).toBe(file);
   });
 });
 

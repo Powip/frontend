@@ -78,6 +78,7 @@ import {
   act,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { AxiosError } from "axios";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
@@ -209,7 +210,7 @@ jest.mock("@/components/ui/select", () => {
 
 jest.mock("@/components/modals/orderReceiptModal", () => ({
   __esModule: true,
-  default: () => null,
+  default: ({ open }: { open: boolean }) => open ? <div data-testid="receipt-open" /> : null,
 }));
 
 jest.mock("@/components/registrar-venta/ProductSearchMatrix", () => ({
@@ -921,6 +922,186 @@ describe("RegistrarVentaPage — hasClientChanges (fix orden de claves province/
     );
     expect(mockToast.error).not.toHaveBeenCalled();
   }, 15000);
+});
+
+describe("RegistrarVentaPage — persistencia de comprobantes", () => {
+  const savedProofUrl = "https://storage.example.com/comprobante-guardado.pdf";
+  const pendingPayment = {
+    id: "pending-payment",
+    status: "PENDING",
+    amount: 30,
+    paymentMethod: "EFECTIVO",
+    paymentProofUrl: savedProofUrl,
+    created_at: "2026-10-14T12:00:00Z",
+  };
+  const paidPayment = {
+    ...pendingPayment,
+    id: "paid-payment",
+    status: "PAID",
+    amount: 20,
+    created_at: "2026-10-13T12:00:00Z",
+  };
+  const selectedFile = () => new File(["comprobante"], "nuevo-comprobante.pdf", { type: "application/pdf" });
+
+  function prepareEditing(payments = [pendingPayment]) {
+    const order = {
+      id: "order-proofs",
+      storeId: "store-1",
+      inventoryId: "warehouse-1",
+      customer: FOUND_CLIENT,
+      orderType: "VENTA",
+      status: "PENDIENTE",
+      salesChannel: "WHATSAPP",
+      closingChannel: "WHATSAPP",
+      deliveryType: "RETIRO_TIENDA",
+      salesRegion: "LIMA",
+      taxMode: "INCLUIDO",
+      shippingTotal: 0,
+      items: [{
+        productVariantId: "product-1",
+        productName: "Producto guardado",
+        sku: "SKU-1",
+        quantity: 1,
+        unitPrice: 100,
+        discountAmount: 0,
+      }],
+      payments,
+    };
+    mockUseSearchParams.mockReturnValue(
+      new URLSearchParams("orderId=order-proofs") as ReturnType<typeof useSearchParams>,
+    );
+    mockedAxiosAuth.get.mockImplementation((url: string) =>
+      Promise.resolve({ data: url.includes("/order-header/manual/") || url.endsWith("/order-header/order-proofs")
+        ? order
+        : url.endsWith("/order-header/sale-context")
+          ? SALE_CONTEXT
+          : url.endsWith("/inventory-item/search")
+            ? { data: [], meta: { page: 1, total: 0, totalPages: 1 } }
+            : [] }),
+    );
+    mockedAxiosAuth.put.mockResolvedValue({ data: order });
+    mockedAxiosAuth.patch.mockResolvedValue({ data: {} });
+    return order;
+  }
+
+  function attachProof(file = selectedFile()) {
+    fireEvent.change(screen.getByLabelText(/comprobante de pago \(opcional\)/i), {
+      target: { files: [file] },
+    });
+    return file;
+  }
+
+  it("al editar muestra el comprobante guardado y conserva el pago si solo cambia la venta", async () => {
+    prepareEditing();
+    renderPage();
+
+    const savedLink = await screen.findByRole("link", { name: /ver comprobante guardado/i });
+    expect(savedLink).toHaveAttribute("href", savedProofUrl);
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
+
+    await waitFor(() => expect(mockedAxiosAuth.put).toHaveBeenCalledTimes(1));
+    expect(mockedAxiosAuth.put.mock.calls[0][1]).not.toHaveProperty("paymentAmount");
+    expect(mockedAxiosAuth.put.mock.calls[0][1]).not.toHaveProperty("paymentProofUrl");
+    expect(mockedAxiosAuth.patch).not.toHaveBeenCalled();
+  });
+
+  it("al editar sube el nuevo archivo al pago pendiente, conserva el aprobado y no aprueba automáticamente", async () => {
+    prepareEditing([paidPayment, pendingPayment]);
+    renderPage();
+    await screen.findAllByRole("link", { name: /ver comprobante guardado/i });
+    const file = attachProof();
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
+
+    await waitFor(() => expect(mockedAxiosAuth.patch).toHaveBeenCalledTimes(1));
+    const [url, formData] = mockedAxiosAuth.patch.mock.calls[0];
+    expect(url).toContain("/payments/pending-payment/upload-proof");
+    expect((formData as FormData).get("file")).toBe(file);
+    expect(mockedAxiosAuth.put.mock.calls[0][1]).not.toHaveProperty("paymentAmount");
+    expect(mockedAxiosAuth.patch.mock.calls.some(([requestUrl]) => String(requestUrl).includes("/approve"))).toBe(false);
+  });
+
+  it("con varios pendientes exige elegir el pago antes de actualizar y adjunta al elegido", async () => {
+    prepareEditing([pendingPayment, { ...pendingPayment, id: "second-payment", amount: 40 }]);
+    renderPage();
+    await screen.findAllByRole("link", { name: /ver comprobante guardado/i });
+    attachProof();
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
+    expect(mockToast.warning).toHaveBeenCalledWith("Selecciona a qué pago corresponde el comprobante.");
+    expect(mockedAxiosAuth.put).not.toHaveBeenCalled();
+
+    await userEvent.selectOptions(
+      within(fieldByLabel(/pago al que corresponde el comprobante/i)).getByRole("combobox"),
+      "second-payment",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
+    await waitFor(() => expect(mockedAxiosAuth.patch).toHaveBeenCalledTimes(1));
+    expect(mockedAxiosAuth.patch.mock.calls[0][0]).toContain("/payments/second-payment/upload-proof");
+  });
+
+  it("un adelanto nuevo se adjunta al pago creado por la edición y no al ya aprobado", async () => {
+    const order = prepareEditing([paidPayment]);
+    mockedAxiosAuth.put.mockResolvedValue({ data: {
+      ...order,
+      payments: [paidPayment, { ...pendingPayment, id: "new-payment", amount: 50 }],
+    } });
+    renderPage();
+    await screen.findByRole("link", { name: /ver comprobante guardado/i });
+    await userEvent.type(within(fieldByLabel(/adelanto de pago/i)).getByRole("textbox"), "50");
+    attachProof();
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
+
+    await waitFor(() => expect(mockedAxiosAuth.patch).toHaveBeenCalledTimes(1));
+    expect(mockedAxiosAuth.patch.mock.calls[0][0]).toContain("/payments/new-payment/upload-proof");
+    expect(mockedAxiosAuth.put.mock.calls[0][1].paymentAmount).toBe(70);
+  });
+
+  it("si falla la subida al editar conserva el archivo y el reintento no repite la actualización", async () => {
+    prepareEditing();
+    mockedAxiosAuth.patch.mockRejectedValueOnce(new Error("upload unavailable"));
+    renderPage();
+    await screen.findByRole("link", { name: /ver comprobante guardado/i });
+    const file = attachProof();
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
+    const retry = await screen.findByRole("button", { name: "Reintentar comprobante" });
+    expect(retry.closest("[inert]")).toBeNull();
+    expect(screen.getByRole("alert")).toHaveTextContent("La venta ya está guardada");
+    expect(screen.getByText(file.name)).toBeInTheDocument();
+    expect(mockToast.success).not.toHaveBeenCalled();
+
+    await userEvent.click(retry);
+    await waitFor(() => expect(mockedAxiosAuth.patch).toHaveBeenCalledTimes(2));
+    expect(mockedAxiosAuth.put).toHaveBeenCalledTimes(1);
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+    expect((mockedAxiosAuth.patch.mock.calls[1][1] as FormData).get("file")).toBe(file);
+    await waitFor(() => expect(mockToast.success).toHaveBeenCalledWith(
+      "Comprobante guardado correctamente. La venta ya estaba registrada.",
+    ));
+  });
+
+  it("si falla la subida al crear conserva el archivo y reintenta sin duplicar la venta ni el adelanto", async () => {
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "created-order", payments: [pendingPayment] } });
+    const networkError = new AxiosError("Network Error", "ERR_NETWORK");
+    expect(networkError.response).toBeUndefined();
+    mockedAxiosAuth.patch.mockRejectedValueOnce(networkError).mockResolvedValue({ data: {} });
+    renderPage();
+    await fillCommonRequiredFields();
+    await userEvent.type(within(fieldByLabel(/adelanto de pago/i)).getByRole("textbox"), "30");
+    const file = attachProof(new File(["imagen"], "comprobante.jpg", { type: "image/jpeg" }));
+    await userEvent.click(screen.getByRole("button", { name: /confirmar venta/i }));
+    const retry = await screen.findByRole("button", { name: "Reintentar comprobante" });
+    expect(retry.closest("[inert]")).toBeNull();
+    expect(screen.getByText(file.name)).toBeInTheDocument();
+    expect(mockToast.success).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("receipt-open")).not.toBeInTheDocument();
+
+    mockedAxiosAuth.get.mockResolvedValue({ data: { payments: [pendingPayment] } });
+    await userEvent.click(retry);
+    await waitFor(() => expect(mockedAxiosAuth.patch).toHaveBeenCalledTimes(2));
+    expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1);
+    expect(mockedAxiosAuth.put).not.toHaveBeenCalled();
+    expect((mockedAxiosAuth.patch.mock.calls[1][1] as FormData).get("file")).toBe(file);
+    await waitFor(() => expect(screen.getByTestId("receipt-open")).toBeInTheDocument());
+  });
 });
 
 describe("RegistrarVentaPage — documentos de identidad en provincia", () => {
