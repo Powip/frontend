@@ -46,6 +46,16 @@ jest.mock('@/services/evaService', () => ({
   testEvaConnection: jest.fn(),
 }));
 
+// FEAT-26: las secciones de tarifas y SKU EVA tienen sus propios tests.
+jest.mock('../_components/EvaShippingRatesSection', () => ({
+  __esModule: true,
+  default: () => <div data-testid="eva-rates-section" />,
+}));
+jest.mock('../_components/EvaSkuMapSection', () => ({
+  __esModule: true,
+  default: () => <div data-testid="eva-sku-map-section" />,
+}));
+
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
   usePathname: () => '/configuracion/integraciones/eva',
@@ -544,6 +554,30 @@ describe('EvaConfigPage', () => {
       expect(
         await screen.findByText(/conectá tu cuenta de eva courier/i),
       ).toBeInTheDocument();
+    });
+  });
+  // ── FEAT-26: tarifas y SKU EVA ─────────────────────────────────────────────
+
+  describe('secciones FEAT-26', () => {
+    it('credencial activa RECOJO: muestra Tarifas y no Productos (SKU EVA)', async () => {
+      mockGetCredentials.mockResolvedValue(MOCK_CREDENTIAL_ACTIVE);
+      renderPage();
+      expect(await screen.findByTestId('eva-rates-section')).toBeInTheDocument();
+      expect(screen.queryByTestId('eva-sku-map-section')).not.toBeInTheDocument();
+    });
+
+    it('credencial activa ALMACEN: muestra Tarifas y Productos (SKU EVA)', async () => {
+      mockGetCredentials.mockResolvedValue({ ...MOCK_CREDENTIAL_ACTIVE, clientType: 'ALMACEN' as const });
+      renderPage();
+      expect(await screen.findByTestId('eva-rates-section')).toBeInTheDocument();
+      expect(screen.getByTestId('eva-sku-map-section')).toBeInTheDocument();
+    });
+
+    it('credencial inactiva: no muestra las secciones', async () => {
+      mockGetCredentials.mockResolvedValue(MOCK_CREDENTIAL_INACTIVE);
+      renderPage();
+      await screen.findByText(/integración inactiva/i);
+      expect(screen.queryByTestId('eva-rates-section')).not.toBeInTheDocument();
     });
   });
 });
