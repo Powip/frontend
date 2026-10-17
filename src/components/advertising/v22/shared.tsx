@@ -8,6 +8,8 @@ import { money, decimal, pct } from "./model";
 
 export function adsError(error: unknown) {
   if (axios.isAxiosError(error)) {
+    if (!error.response && ["ECONNABORTED", "ETIMEDOUT"].includes(error.code ?? ""))
+      return "La consulta tardó más de lo esperado y los datos siguen pendientes. Vuelve a intentar en unos momentos.";
     const data = error.response?.data;
     if (typeof data?.message === "string") return data.message;
     if (error.response?.status === 403) return "No tienes permiso para ver estos datos.";
