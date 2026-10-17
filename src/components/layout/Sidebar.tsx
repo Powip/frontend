@@ -153,6 +153,11 @@ export function Sidebar({ className }: SidebarProps) {
             icon: ShoppingCart,
           },
           {
+            name: "Cotizaciones",
+            href: "/cotizaciones",
+            icon: FileText,
+          },
+          {
             name: "Registrar venta",
             href: "/registrar-venta",
             icon: FileText,

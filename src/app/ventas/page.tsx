@@ -62,7 +62,7 @@ import {
 } from "@/components/orders/OrderDetailModal";
 import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
-import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
+import { getOrderCollectionAmount } from "@/utils/orderCollectionAmount";
 import CreateGuideModal, {
   CreateGuideData,
 } from "@/components/modals/CreateGuideModal";
@@ -222,7 +222,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
   const advancePayment = order.payments
     .filter((p) => p.status === "PAID")
     .reduce((acc, p) => acc + Number(p.amount || 0), 0);
-  const pendingPayment = Math.max(total - advancePayment, 0);
+  const pendingPayment = getOrderCollectionAmount(order);
   const hasPendingApprovalPayments = order.payments.some(
     (p) => p.status === "PENDING",
   );
@@ -2168,7 +2168,7 @@ Estado: ${sale.status}
                 address: createGuideOrder.customer.address,
                 district: createGuideOrder.customer.district,
                 total: Number(createGuideOrder.grandTotal),
-                pendingPayment: getPendingPayment(createGuideOrder),
+                pendingPayment: getOrderCollectionAmount(createGuideOrder),
                 zone: createGuideOrder.customer.zone,
               },
             ]}

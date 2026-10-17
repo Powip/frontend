@@ -84,14 +84,18 @@ export default function OrderReceiptView({ data }: Props) {
     }))
   );
 
-  const totalPaid = Array.isArray(payments)
+  const isQuotation = typeof totals.quotationPendingAdvance === "number";
+  const totalPaid = isQuotation ? Number(totals.totalPaid || 0) : Array.isArray(payments)
     ? payments.reduce(
         (acc: number, payment: any) => acc + Number(payment.amount || 0),
         0
       )
     : 0;
 
-  const pendingAmount = Math.max(totals.grandTotal - totalPaid, 0);
+  const pendingAmount = isQuotation
+    ? Math.max(Number(totals.pendingAmount) || 0, 0)
+    : Math.max(totals.grandTotal - totalPaid, 0);
+  const fullyPaid = !isQuotation || totalPaid >= Number(totals.grandTotal);
 
   return (
     <div id="receipt-content" className="p-6 text-sm min-w-0">
@@ -196,7 +200,7 @@ export default function OrderReceiptView({ data }: Props) {
               Por cobrar S/ {pendingAmount.toFixed(2)}
             </Badge>
           ) : (
-            <Badge className="bg-emerald-100 text-emerald-700">Pagado</Badge>
+            <Badge className={fullyPaid ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"}>{fullyPaid ? "Pagado" : "Pago por verificar"}</Badge>
           )}
         </div>
       </div>
@@ -348,6 +352,13 @@ export default function OrderReceiptView({ data }: Props) {
           </div>
         )}
 
+        {isQuotation && totals.quotationPendingAdvance > 0 && (
+          <div className="flex justify-between font-medium text-amber-700">
+            <span>Adelanto por verificar:</span>
+            <span>S/ {Number(totals.quotationPendingAdvance).toFixed(2)}</span>
+          </div>
+        )}
+
         {pendingAmount > 0 ? (
           <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
             <span className="font-bold text-red-700">Por Cobrar</span>
@@ -356,9 +367,9 @@ export default function OrderReceiptView({ data }: Props) {
             </span>
           </div>
         ) : (
-          <div className="flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-            <span className="font-bold text-emerald-700">
-              ✓ Pagado en su totalidad
+          <div className={`flex items-center justify-center rounded-lg border px-3 py-2.5 ${fullyPaid ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+            <span className={`font-bold ${fullyPaid ? "text-emerald-700" : "text-amber-800"}`}>
+              {fullyPaid ? "✓ Pagado en su totalidad" : "Pago completo reportado · por verificar"}
             </span>
           </div>
         )}
