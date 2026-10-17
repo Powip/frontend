@@ -525,6 +525,15 @@ export function resultCount(row: AdsRow, channel: string) {
     row.insights.resultMetrics?.[channel === "web" ? "webPurchases" : "messages"]?.count,
   );
 }
+export function rowResultTotal(row: AdsRow, channels: Iterable<string>): number | null {
+  const kinds = [...new Set(channels)];
+  if (!kinds.length || kinds.some((channel) => channel !== "messages" && channel !== "web"))
+    return null;
+  const counts = kinds.map((channel) => resultCount(row, channel));
+  return counts.some((count) => count === null)
+    ? null
+    : counts.reduce<number>((sum, count) => sum + count!, 0);
+}
 export function daysForRow(row: AdsRow, summary: AdsSummary) {
   return summary.days.filter((day) =>
     row.level === "ad"
@@ -640,19 +649,27 @@ export function adFinancial(
   let estimatedContribution = 0;
   let estimatedUnits = 0;
   let contributionKnown =
-    !specificProductId || raw.some((day) => !!day.storeId && day.channel !== "other");
+    raw.length > 0 && raw.every((day) => !!day.storeId && day.channel !== "other");
   let revenueKnown = contributionKnown;
   const segments = [...new Set(raw.map((day) => `${day.storeId ?? "none"}:${day.channel}`))];
   for (const segment of segments) {
     const [store, channel] = segment.split(":");
     if (store === "none" || channel === "other") continue;
     const cohort = summarize(summary, sales, store, channel);
-    const allResults = summary.days
-      .filter((day) => day.storeId === store && day.channel === channel)
-      .reduce((sum, day) => sum + (day.results ?? 0), 0);
-    const ownResults = raw
-      .filter((day) => day.storeId === store && day.channel === channel)
-      .reduce((sum, day) => sum + (day.results ?? 0), 0);
+    const segmentRows = summary.days.filter(
+      (day) => day.storeId === store && day.channel === channel,
+    );
+    const ownSegmentRows = raw.filter((day) => day.storeId === store && day.channel === channel);
+    if (
+      segmentRows.some((day) => day.results === null) ||
+      ownSegmentRows.some((day) => day.results === null)
+    ) {
+      contributionKnown = false;
+      revenueKnown = false;
+      continue;
+    }
+    const allResults = segmentRows.reduce((sum, day) => sum + day.results!, 0);
+    const ownResults = ownSegmentRows.reduce((sum, day) => sum + day.results!, 0);
     const estimate = allResults > 0 ? (ownResults * cohort.delivered) / allResults : 0;
     estimatedSales += estimate;
     const unitsPerOrder = ratio(cohort.deliveredUnits, cohort.delivered);
@@ -701,6 +718,8 @@ export function adFinancial(
     deliveredUnits: estimatedUnits,
     revenue: revenueKnown ? estimatedRevenue : null,
     gain,
+    projectedGain: contributionKnown ? baseline.projectedGain : null,
+    projectedRoas: revenueKnown ? baseline.projectedRoas : null,
     maximum,
     costSale: ratio(spend, estimatedSales),
     costUnit: ratio(spend, estimatedUnits),

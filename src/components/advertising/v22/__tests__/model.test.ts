@@ -21,6 +21,7 @@ import {
   channelData,
   channelRow,
   adStatus,
+  rowResultTotal,
   canScale,
   profitUsage,
   trafficLight,
@@ -359,6 +360,50 @@ describe("Publicidad v2.2 financial contract", () => {
     expect(month.days).toHaveLength(31);
     expect(month.closedDays).toBe(14);
     expect(month.profitableDays).toBe(13);
+  });
+  it("keeps missing result counts unknown and pauses only confirmed zero results", () => {
+    const candidate = row({ daysActive: 5 });
+    candidate.insights.resultMetrics!.messages.count = null;
+    const value = financial(100, metrics(), null);
+    expect(rowResultTotal(candidate, ["messages"])).toBeNull();
+    expect(rowResultTotal(candidate, ["other"])).toBeNull();
+    expect(rowResultTotal(candidate, [])).toBeNull();
+    expect(
+      adStatus(candidate, value, rules, "2026-10-16", rowResultTotal(candidate, ["messages"])),
+    ).toBe("Sin datos suficientes");
+    candidate.insights.resultMetrics!.messages.count = "0";
+    expect(rowResultTotal(candidate, ["messages"])).toBe(0);
+    expect(
+      adStatus(candidate, value, rules, "2026-10-16", rowResultTotal(candidate, ["messages"])),
+    ).toBe("Sin resultados");
+  });
+  it.each(["missing-results", "unassigned-store", "unknown-channel"])(
+    "does not publish estimated revenue or losses without matching evidence: %s",
+    (missing) => {
+      const data = summary();
+      data.days = data.days.map((day) => ({
+        ...day,
+        results: missing === "missing-results" ? null : day.results,
+        storeId: missing === "unassigned-store" ? null : day.storeId,
+        channel: missing === "unknown-channel" ? "other" : day.channel,
+      }));
+      const value = adFinancial(row({ daysActive: 5 }), data, sales());
+      expect(value.revenue).toBeNull();
+      expect(value.gain).toBeNull();
+      expect(value.projectedGain).toBeNull();
+      expect(value.projectedRoas).toBeNull();
+      expect(value.roas).toBeNull();
+      expect(value.maximum).toBeNull();
+      expect(value.usage).toBeNull();
+    },
+  );
+  it("retains a known zero estimate only when store, channel and every result are confirmed", () => {
+    const data = summary();
+    data.days = data.days.map((day) => ({ ...day, results: 0 }));
+    const value = adFinancial(row(), data, sales());
+    expect(value.revenue).toBe(0);
+    expect(value.gain).toBe(-300);
+    expect(value.roas).toBe(0);
   });
   it("uses delivered sales of the same channel and period for ad estimates", () => {
     const value = adFinancial(row(), summary(), sales());
