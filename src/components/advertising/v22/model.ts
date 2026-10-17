@@ -10,6 +10,7 @@ import {
 } from "date-fns";
 import type {
   AdsProduct,
+  AdsDay,
   AdsRules,
   AdsRow,
   AdsSales,
@@ -156,7 +157,25 @@ export function summarySpendAvailable(summary: AdsSummary) {
     (!summary.quality.coverage || summary.quality.coverage === "complete")
   );
 }
+export type FinancialIssue =
+  | "attribution"
+  | "store"
+  | "channel"
+  | "results"
+  | "product"
+  | "historical-cost"
+  | "partial-cost"
+  | "spend"
+  | "currency";
+export interface FinancialEvidence {
+  basis: "measured" | "estimated";
+  partial: boolean;
+  attributionCoverage: number | null;
+  costCoverage: number | null;
+  issues: FinancialIssue[];
+}
 export interface Financial {
+  evidence?: FinancialEvidence;
   spend: number | null;
   orders: number;
   confirmed: number;
@@ -208,7 +227,7 @@ export function financial(
   const gain =
     contribution === null ||
     spend === null ||
-    (eligibleDelivered === 0 && sales.missingCostOrders > 0)
+    ((sales.eligibleBilledUnits ?? eligibleDelivered) === 0 && sales.missingCostOrders > 0)
       ? null
       : contribution - spend;
   const transitRevenue = numeric(sales.inTransitRevenue);
@@ -562,6 +581,9 @@ export function channelData(
     summary: { ...summary, days: summary.days.filter(matches) },
     sales: {
       ...sales,
+      globalAttributedOrders:
+        (sales as AdsSales & { globalAttributedOrders?: number }).globalAttributedOrders ??
+        sales.totals.attributedOrders,
       byChannel,
       byAd: sales.byAd.filter(matches),
       daily: sales.daily.filter(matches),
@@ -615,119 +637,348 @@ export function channelRow(row: AdsRow, summary: AdsSummary, channel: string): A
     },
   };
 }
+const leafKey = (accountId: string, adId: string) => JSON.stringify([accountId, adId]);
+const segmentKey = (storeId: string | null | undefined, channel: string | undefined) =>
+  JSON.stringify([storeId ?? null, channel ?? "other"]);
+const addIndex = <T>(index: Map<string, T[]>, key: string, value: T) => {
+  const rows = index.get(key);
+  if (rows) rows.push(value);
+  else index.set(key, [value]);
+};
+function costEvidence(metric: SalesMetric) {
+  const units = metric.billedUnits ?? metric.deliveredUnits;
+  const eligible =
+    metric.eligibleBilledUnits ??
+    metric.eligibleDeliveredUnits ??
+    (metric.missingCostOrders === 0 ? units : 0);
+  const amounts = [
+    metric.eligibleRevenue,
+    metric.eligibleProductCost,
+    metric.eligibleShippingCost,
+  ].map(numeric);
+  const known =
+    amounts.every((amount) => amount !== null) &&
+    (eligible > 0 ||
+      (units === 0 && numeric(metric.billedRevenue) === 0 && metric.missingCostOrders === 0));
+  return {
+    units,
+    eligible,
+    coverage:
+      units > 0
+        ? Math.min(1, eligible / units)
+        : metric.missingCostOrders > 0 || numeric(metric.billedRevenue) !== 0
+          ? 0
+          : 1,
+    contribution: known ? amounts[0]! - amounts[1]! - amounts[2]! : null,
+  };
+}
+export function financialBasis(value: Financial) {
+  const evidence = value.evidence;
+  if (!evidence) return "Ventas POWIP";
+  return evidence.basis === "estimated"
+    ? "Estimado por canal"
+    : evidence.attributionCoverage !== 1 || evidence.issues.includes("attribution")
+      ? "Medido parcial"
+      : "Medido por anuncio";
+}
+export function financialCauses(value: Financial, includeCosts = true) {
+  const messages: Partial<Record<FinancialIssue, string>> = {
+    attribution:
+      "Este anuncio aún no tiene ventas identificadas; no se interpreta como cero ventas.",
+    store: "Asigna la tienda para conectar las ventas de POWIP.",
+    channel: "Falta identificar si las ventas corresponden a Web o Mensajes.",
+    results: "Faltan resultados de Meta del mismo período para repartir las ventas.",
+    product: "Vincula el producto del anuncio para usar sus ingresos y costos.",
+    spend: "Falta confirmar el gasto de Meta para calcular ROAS y ganancia.",
+    currency: "El gasto y las ventas tienen monedas distintas.",
+    ...(includeCosts
+      ? {
+          "historical-cost": "Faltan costos históricos de producto o envío en las ventas.",
+          "partial-cost": "Ganancia con costos registrados; faltan costos en parte de las ventas.",
+        }
+      : {}),
+  };
+  return (value.evidence?.issues ?? []).flatMap((issue) =>
+    messages[issue] ? [messages[issue]!] : [],
+  );
+}
+/** Build indexes once for the catalog; server pages and the complete export keep the same scope. */
+export function createAdFinancialCalculator(summary: AdsSummary, sales: AdsSales) {
+  const dayIndex = new Map<string, AdsDay[]>();
+  const segmentDays = new Map<string, AdsDay[]>();
+  const accountsByAd = new Map<string, Set<string>>();
+  const assignment = new Map(
+    summary.adProducts.map((item) => [leafKey(item.accountId, item.adId), item.productId]),
+  );
+  for (const day of summary.days) {
+    const accounts = accountsByAd.get(day.adId) ?? new Set<string>();
+    accounts.add(day.accountId);
+    accountsByAd.set(day.adId, accounts);
+    for (const [level, id] of [
+      ["ad", day.adId],
+      ["adset", day.adsetId],
+      ["campaign", day.campaignId],
+      ["account", day.accountId],
+      ["store", day.storeId],
+    ] as const) {
+      if (id) addIndex(dayIndex, `${level}:${id}`, day);
+    }
+    addIndex(segmentDays, segmentKey(day.storeId, day.channel), day);
+  }
+  const channelSales = new Map<string, SalesGroup[]>();
+  const productSales = new Map<string, SalesGroup[]>();
+  for (const group of sales.byChannel)
+    addIndex(channelSales, segmentKey(group.storeId, group.channel), group);
+  for (const group of sales.byProduct ?? []) {
+    if (group.productId && group.channel && group.channel !== "other")
+      addIndex(
+        productSales,
+        `${segmentKey(group.storeId, group.channel)}:${group.productId}`,
+        group,
+      );
+  }
+  const pools = new Map([...channelSales].map(([key, rows]) => [key, sumSales(rows)]));
+  const products = new Map([...productSales].map(([key, rows]) => [key, sumSales(rows)]));
+  const salesByLeaf = new Map<string, SalesGroup[]>();
+  const legacySalesByAd = new Map<string, SalesGroup[]>();
+  for (const group of sales.byAd) {
+    if (!group.adId) continue;
+    if (group.accountId) addIndex(salesByLeaf, leafKey(group.accountId, group.adId), group);
+    else addIndex(legacySalesByAd, group.adId, group);
+  }
+  const attribution =
+    (sales as AdsSales & { globalAttributedOrders?: number }).globalAttributedOrders ??
+    sales.totals.attributedOrders;
+  const resultPools = new Map(
+    [...segmentDays].map(([key, days]) => {
+      const productResults = new Map<string, number>();
+      let total = 0;
+      let complete = true;
+      for (const day of days) {
+        if (day.results === null || !Number.isFinite(day.results)) complete = false;
+        else {
+          total += day.results;
+          const id = assignment.get(leafKey(day.accountId, day.adId));
+          if (id && id !== "varios")
+            productResults.set(id, (productResults.get(id) ?? 0) + day.results);
+        }
+      }
+      const hasProductPool = [...productResults.keys()].some((id) => products.has(`${key}:${id}`));
+      return [key, { total, complete, productResults, hasProductPool }] as const;
+    }),
+  );
+  return (row: AdsRow): Financial => {
+    const raw = (dayIndex.get(`${row.level}:${row.id}`) ?? []).filter(
+      (day) => !row.accountId || row.level === "store" || row.accountId === day.accountId,
+    );
+    const ids = new Set(raw.map((day) => leafKey(day.accountId, day.adId)));
+    if (row.level === "ad") ids.add(leafKey(row.accountId, row.id));
+    const ownSpendConfirmed =
+      row.level === "store" ? undefined : row.insights.coverage?.spendAvailable;
+    const spend =
+      (ownSpendConfirmed ?? summarySpendAvailable(summary)) ? numeric(row.insights.spend) : null;
+    const issues = new Set<FinancialIssue>();
+    if (spend === null) issues.add("spend");
+    if (row.currency !== "PEN") issues.add("currency");
+    const scopeSegments = new Set(raw.map((day) => segmentKey(day.storeId, day.channel)));
+    const scopeRows = sales.byChannel.filter(
+      (group) =>
+        group.channel !== "other" &&
+        (scopeSegments.size
+          ? scopeSegments.has(segmentKey(group.storeId, group.channel))
+          : !row.store?.id || row.store.id === group.storeId),
+    );
+    const scope = sumSales(scopeRows);
+    const coverage = ratio(scope.attributedOrders, scope.orders);
+    if (attribution > 0) {
+      const ownRows = [
+        ...new Set(
+          [...ids].flatMap((id) => {
+            const [accountId, adId] = JSON.parse(id) as [string, string];
+            const accounts = accountsByAd.get(adId);
+            const legacy = legacySalesByAd.get(adId) ?? [];
+            const uniqueAccount = accounts?.size === 1 && accounts.has(accountId);
+            if (legacy.length > 0 && !uniqueAccount) issues.add("attribution");
+            return [...(salesByLeaf.get(id) ?? []), ...(uniqueAccount ? legacy : [])];
+          }),
+        ),
+      ].filter((group) => row.level !== "store" || group.storeId === row.id);
+      const own = sumSales(ownRows);
+      const costs = costEvidence(own);
+      const value = cohortFinancial(spend, ownRows, sales);
+      const hasOrders = ownRows.length > 0 && own.orders > 0;
+      if (!hasOrders) issues.add("attribution");
+      if (hasOrders && costs.contribution === null) issues.add("historical-cost");
+      else if (hasOrders && costs.coverage < 1) issues.add("partial-cost");
+      return comparableCurrency(row, {
+        ...value,
+        ...(!hasOrders
+          ? {
+              revenue: null,
+              gain: null,
+              roas: null,
+              maximum: null,
+              projectedGain: null,
+              projectedRoas: null,
+            }
+          : {}),
+        evidence: {
+          basis: "measured",
+          partial:
+            !hasOrders ||
+            coverage === null ||
+            coverage < 1 ||
+            costs.coverage < 1 ||
+            issues.size > 0,
+          attributionCoverage: coverage,
+          costCoverage: hasOrders ? costs.coverage : null,
+          issues: [...issues],
+        },
+      });
+    }
+    if (!raw.length || raw.some((day) => !day.storeId)) issues.add("store");
+    if (!summarySpendAvailable(summary)) issues.add("results");
+    if (raw.some((day) => day.channel === "other")) issues.add("channel");
+    const leafSegments = new Map<string, AdsDay[]>();
+    for (const day of raw)
+      addIndex(
+        leafSegments,
+        JSON.stringify([day.accountId, day.adId, day.storeId, day.channel]),
+        day,
+      );
+    let delivered = 0,
+      deliveredUnits = 0,
+      revenue = 0,
+      contribution = 0,
+      eligibleSales = 0;
+    let coveredUnits = 0,
+      billedUnits = 0,
+      missingCosts = 0;
+    let revenueKnown = !issues.has("store") && !issues.has("channel") && !issues.has("results");
+    let contributionKnown = revenueKnown;
+    let hasKnownCost = false;
+    for (const days of leafSegments.values()) {
+      const first = days[0];
+      if (!first.storeId || first.channel === "other") continue;
+      const key = segmentKey(first.storeId, first.channel);
+      const results = resultPools.get(key)!;
+      const cohort = pools.get(key) ?? emptySales();
+      if (!results.complete || days.some((day) => day.results === null)) {
+        issues.add("results");
+        revenueKnown = contributionKnown = false;
+        continue;
+      }
+      const ownResults = days.reduce((sum, day) => sum + day.results!, 0);
+      const share = results.total > 0 ? ownResults / results.total : 0;
+      delivered += share * cohort.delivered;
+      const productId = assignment.get(leafKey(first.accountId, first.adId));
+      let pool = cohort;
+      let poolShare = share;
+      if (productId && productId !== "varios") {
+        const ownProduct = products.get(`${key}:${productId}`);
+        const denominator = results.productResults.get(productId) ?? 0;
+        if (!ownProduct || denominator <= 0) {
+          issues.add(ownProduct ? "results" : "product");
+          revenueKnown = contributionKnown = false;
+          continue;
+        }
+        pool = ownProduct;
+        poolShare = ownResults / denominator;
+      } else if (results.hasProductPool) {
+        issues.add("product");
+        revenueKnown = contributionKnown = false;
+        continue;
+      }
+      const net = numeric(pool.billedRevenue);
+      if (net === null) {
+        issues.add("product");
+        revenueKnown = false;
+      } else revenue += poolShare * net;
+      deliveredUnits += poolShare * pool.deliveredUnits;
+      const costs = costEvidence(pool);
+      coveredUnits += poolShare * costs.eligible;
+      billedUnits += poolShare * costs.units;
+      eligibleSales += share * cohort.delivered * costs.coverage;
+      missingCosts += poolShare * pool.missingCostOrders;
+      if (costs.contribution === null) {
+        issues.add("historical-cost");
+      } else {
+        hasKnownCost = true;
+        contribution += poolShare * costs.contribution;
+      }
+      if (costs.coverage < 1 && costs.contribution !== null) issues.add("partial-cost");
+    }
+    const baseline = financial(spend, emptySales(), null);
+    if (hasKnownCost && issues.has("historical-cost")) {
+      issues.delete("historical-cost");
+      issues.add("partial-cost");
+    }
+    const maximum = contributionKnown && hasKnownCost ? ratio(contribution, eligibleSales) : null;
+    const gain = contributionKnown && hasKnownCost && spend !== null ? contribution - spend : null;
+    const costCoverage =
+      billedUnits > 0
+        ? Math.min(1, coveredUnits / billedUnits)
+        : issues.has("historical-cost")
+          ? 0
+          : 1;
+    return comparableCurrency(row, {
+      ...baseline,
+      delivered,
+      deliveredUnits,
+      missingCosts,
+      revenue: revenueKnown ? revenue : null,
+      gain,
+      maximum,
+      costSale: ratio(spend, delivered),
+      costUnit: ratio(spend, deliveredUnits),
+      roas: revenueKnown ? ratio(revenue, spend) : null,
+      ticket: revenueKnown ? ratio(revenue, delivered) : null,
+      gainUnit: ratio(gain, deliveredUnits),
+      usage: profitUsage(ratio(spend, delivered), maximum),
+      projectedGain: null,
+      projectedRoas: null,
+      projectedSales: null,
+      projectedUnits: null,
+      projectedCost: null,
+      evidence: {
+        basis: "estimated",
+        partial: issues.size > 0 || costCoverage < 1,
+        attributionCoverage: coverage,
+        costCoverage,
+        issues: [...issues],
+      },
+    });
+  };
+}
 export function adFinancial(
   row: AdsRow,
   summary: AdsSummary,
   sales: AdsSales,
   product?: AdsProduct,
 ) {
-  const raw = daysForRow(row, summary);
-  const ids = new Set(raw.map((day) => day.adId));
-  if (row.level === "ad") ids.add(row.id);
-  const spend = numeric(row.insights.spend);
-  const measured = sales.totals.attributedOrders > 0;
-  const accountIds = new Set(raw.map((day) => day.accountId));
-  if (row.accountId) accountIds.add(row.accountId);
-  const ownRows = sales.byAd.filter(
-    (group) =>
-      !!group.adId &&
-      ids.has(group.adId) &&
-      (!("accountId" in group) || !group.accountId || accountIds.has(String(group.accountId))),
+  const value = createAdFinancialCalculator(summary, sales)(row);
+  const linked = summary.adProducts.some(
+    (item) =>
+      item.adId === row.id && item.accountId === row.accountId && item.productId === product?.id,
   );
-  const own = sumSales(ownRows);
-  if (measured) return comparableCurrency(row, cohortFinancial(spend, ownRows, sales));
-  const assignedProductIds = new Set(
-    summary.adProducts
-      .filter((assignment) => ids.has(assignment.adId) && accountIds.has(assignment.accountId))
-      .map((assignment) => assignment.productId)
-      .filter((id): id is string => !!id && id !== "varios"),
-  );
-  const specificProductId =
-    product?.id ?? (assignedProductIds.size === 1 ? [...assignedProductIds][0] : null);
-  let estimatedSales = 0;
-  let estimatedRevenue = 0;
-  let estimatedContribution = 0;
-  let estimatedUnits = 0;
-  let contributionKnown =
-    raw.length > 0 && raw.every((day) => !!day.storeId && day.channel !== "other");
-  let revenueKnown = contributionKnown;
-  const segments = [...new Set(raw.map((day) => `${day.storeId ?? "none"}:${day.channel}`))];
-  for (const segment of segments) {
-    const [store, channel] = segment.split(":");
-    if (store === "none" || channel === "other") continue;
-    const cohort = summarize(summary, sales, store, channel);
-    const segmentRows = summary.days.filter(
-      (day) => day.storeId === store && day.channel === channel,
-    );
-    const ownSegmentRows = raw.filter((day) => day.storeId === store && day.channel === channel);
-    if (
-      segmentRows.some((day) => day.results === null) ||
-      ownSegmentRows.some((day) => day.results === null)
-    ) {
-      contributionKnown = false;
-      revenueKnown = false;
-      continue;
-    }
-    const allResults = segmentRows.reduce((sum, day) => sum + day.results!, 0);
-    const ownResults = ownSegmentRows.reduce((sum, day) => sum + day.results!, 0);
-    const estimate = allResults > 0 ? (ownResults * cohort.delivered) / allResults : 0;
-    estimatedSales += estimate;
-    const unitsPerOrder = ratio(cohort.deliveredUnits, cohort.delivered);
-    estimatedUnits += estimate * (unitsPerOrder ?? 0);
-    const shippingPerOrder = ratio(
-      numeric(sumSales(paidRows(sales.byChannel, store, channel)).eligibleShippingCost),
-      cohort.delivered,
-    );
-    const observedProduct = specificProductId
-      ? sumSales(
-          sales.byProduct.filter(
-            (group) =>
-              group.productId === specificProductId &&
-              group.storeId === store &&
-              (!group.channel || group.channel === channel),
-          ),
-        )
-      : null;
-    const price = observedProduct
-      ? ratio(numeric(observedProduct.billedRevenue), observedProduct.billedUnits ?? null)
-      : null;
-    const cost = numeric(product?.unitCost);
-    const maximum =
-      price !== null && cost !== null && unitsPerOrder !== null && shippingPerOrder !== null
-        ? (price - cost) * unitsPerOrder - shippingPerOrder
-        : specificProductId
-          ? null
-          : cohort.maximum;
-    const ticket =
-      price !== null && unitsPerOrder !== null
-        ? price * unitsPerOrder
-        : specificProductId
-          ? null
-          : cohort.ticket;
-    if (maximum === null) contributionKnown = false;
-    else estimatedContribution += estimate * maximum;
-    if (ticket === null) revenueKnown = false;
-    else estimatedRevenue += estimate * ticket;
+  if (product && row.level === "ad" && !linked && value.evidence?.basis === "estimated") {
+    return {
+      ...value,
+      revenue: null,
+      gain: null,
+      roas: null,
+      maximum: null,
+      ticket: null,
+      gainUnit: null,
+      usage: null,
+      evidence: {
+        ...value.evidence,
+        partial: true,
+        issues: [...new Set<FinancialIssue>([...value.evidence.issues, "product"])],
+      },
+    };
   }
-  const baseline = financial(spend, own, null);
-  const maximum = contributionKnown ? ratio(estimatedContribution, estimatedSales) : null;
-  const gain = contributionKnown && spend !== null ? estimatedContribution - spend : null;
-  return comparableCurrency(row, {
-    ...baseline,
-    delivered: estimatedSales,
-    deliveredUnits: estimatedUnits,
-    revenue: revenueKnown ? estimatedRevenue : null,
-    gain,
-    projectedGain: contributionKnown ? baseline.projectedGain : null,
-    projectedRoas: revenueKnown ? baseline.projectedRoas : null,
-    maximum,
-    costSale: ratio(spend, estimatedSales),
-    costUnit: ratio(spend, estimatedUnits),
-    roas: revenueKnown ? ratio(estimatedRevenue, spend) : null,
-    ticket: revenueKnown ? ratio(estimatedRevenue, estimatedSales) : null,
-    gainUnit: ratio(gain, estimatedUnits),
-    usage: profitUsage(ratio(spend, estimatedSales), maximum),
-  });
+  return value;
 }
 function comparableCurrency(row: AdsRow, value: Financial): Financial {
   return row.currency === "PEN"
@@ -869,6 +1120,7 @@ export function adStatus(
   const age = adAge(row, today);
   if (isMetaPaused(row)) return "Pausado";
   if (age !== null && age < rules.noResultsDays) return "Aprendizaje";
+  if (values.evidence?.partial) return "Sin datos suficientes";
   if (
     age !== null &&
     age >= rules.noResultsDays &&

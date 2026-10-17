@@ -57,7 +57,7 @@ beforeEach(() => {
   mockRow.status = "ACTIVE";
   mockRow.effectiveStatus = "ACTIVE";
 });
-it("uses its loaded assigned product cost in the detail and keeps margin unknown until that cost exists", () => {
+it("uses historical product costs even without the current catalog and ignores later catalog cost changes", () => {
   const metric = {
     ...emptySales(),
     delivered: 6,
@@ -65,6 +65,7 @@ it("uses its loaded assigned product cost in the detail and keeps margin unknown
     eligibleDelivered: 6,
     billedRevenue: "600",
     billedUnits: 6,
+    eligibleBilledUnits: 6,
     eligibleRevenue: "600",
     eligibleProductCost: "120",
     eligibleShippingCost: "60",
@@ -104,13 +105,13 @@ it("uses its loaded assigned product cost in the detail and keeps margin unknown
   };
   mockProducts = [];
   const view = render(<AdvertisingAdDetail {...props} />);
-  expect(screen.getByText("Máximo").parentElement).toHaveTextContent("—");
+  expect(screen.getByText("Máximo").parentElement).toHaveTextContent("70.00");
   mockProducts = [
     {
       id: "product",
       name: "Producto",
       storeId: "store",
-      unitCost: "20",
+      unitCost: "999",
       netPrice: null,
       availableStock: "30",
       variants: [],
@@ -124,31 +125,36 @@ it("uses its loaded assigned product cost in the detail and keeps margin unknown
 it.each([
   ["CAMPAIGN_PAUSED", "Pausado por la campaña"],
   ["ADSET_PAUSED", "Pausado por el conjunto"],
-])("explains inherited pause %s without changing the active child's action target", (effectiveStatus, label) => {
-  mockRow.effectiveStatus = effectiveStatus;
-  mockEdit = true;
-  const onAction = jest.fn();
-  render(
-    <AdvertisingAdDetail
-      row={mockRow}
-      summary={{ adProducts: [], days: [], quality: { warnings: [] } } as unknown as AdsSummary}
-      sales={{
-        totals: emptySales(),
-        byAd: [],
-        byChannel: [],
-        byProduct: [],
-        deliveryHistory: [],
-      } as unknown as AdsSales}
-      from="2026-10-01"
-      to="2026-10-16"
-      average={{ hook: null, hold: null, ctr: null, conversion: null }}
-      onClose={jest.fn()}
-      onAction={onAction}
-    />,
-  );
-  expect(screen.getByText(new RegExp(label), { selector: "p" })).toBeInTheDocument();
-  expect(screen.queryByText(new RegExp(effectiveStatus))).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Activar" })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Pausar" }));
-  expect(onAction).toHaveBeenCalledWith({ rows: [mockRow], action: "pause" });
-});
+])(
+  "explains inherited pause %s without changing the active child's action target",
+  (effectiveStatus, label) => {
+    mockRow.effectiveStatus = effectiveStatus;
+    mockEdit = true;
+    const onAction = jest.fn();
+    render(
+      <AdvertisingAdDetail
+        row={mockRow}
+        summary={{ adProducts: [], days: [], quality: { warnings: [] } } as unknown as AdsSummary}
+        sales={
+          {
+            totals: emptySales(),
+            byAd: [],
+            byChannel: [],
+            byProduct: [],
+            deliveryHistory: [],
+          } as unknown as AdsSales
+        }
+        from="2026-10-01"
+        to="2026-10-16"
+        average={{ hook: null, hold: null, ctr: null, conversion: null }}
+        onClose={jest.fn()}
+        onAction={onAction}
+      />,
+    );
+    expect(screen.getByText(new RegExp(label), { selector: "p" })).toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(effectiveStatus))).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Activar" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Pausar" }));
+    expect(onAction).toHaveBeenCalledWith({ rows: [mockRow], action: "pause" });
+  },
+);

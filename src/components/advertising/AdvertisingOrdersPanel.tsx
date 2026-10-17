@@ -293,6 +293,9 @@ function AdvertisingOrderReviewDialog(
           "analytics",
         ],
       });
+      await queryClient.invalidateQueries({
+        queryKey: ["ads-v22", props.actorId ?? null, props.companyId ?? null],
+      });
       setSuccess(message);
     } catch (failure) {
       const status = advertisingErrorStatus(failure);

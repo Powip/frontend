@@ -13,6 +13,7 @@ export type MetaResultMetrics = Record<MetaResultType, MetaResultMetric> & {
   leads?: MetaResultMetric;
 };
 export interface MetaCoverage {
+  spendAvailable?: boolean;
   status: "complete" | "partial" | "pending";
   coveredDays: number;
   totalDays: number;

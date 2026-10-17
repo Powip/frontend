@@ -18,6 +18,9 @@ let mockProfit = true;
 const metric = {
   ...emptySales(),
   delivered: 3,
+  deliveredUnits: 3,
+  billedUnits: 3,
+  eligibleBilledUnits: 3,
   eligibleDelivered: 3,
   orders: 3,
   attributedOrders: 3,
@@ -43,7 +46,9 @@ const source = {
         currency: "PEN",
       },
     ],
-    adProducts: [],
+    adProducts: [
+      { adId: "4", accountId: "account", productId: "product", storeId: "store", origin: "manual" },
+    ],
     quality: { warnings: [], coverage: "complete" },
   } as unknown as AdsSummary,
   sales: {
@@ -278,5 +283,21 @@ describe("product-test decision receipt", () => {
     mockTests = [test];
     render(<AdvertisingTests />);
     expect(screen.getByText("Producto compartido")).toBeInTheDocument();
+  });
+  it("does not recommend a test decision while only part of the scope's orders have an ad identity", () => {
+    const previousTotals = source.sales.totals;
+    const previousChannel = source.sales.byChannel;
+    try {
+      source.sales.totals = { ...metric, orders: 6 };
+      source.sales.byChannel = [{ ...metric, orders: 6, storeId: "store", channel: "web" }];
+      render(<TestRow test={test} />);
+      expect(screen.getByText(/Datos incompletos/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Pasar a escala" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Descartar" })).not.toBeInTheDocument();
+      expect(axios.request).not.toHaveBeenCalled();
+    } finally {
+      source.sales.totals = previousTotals;
+      source.sales.byChannel = previousChannel;
+    }
   });
 });

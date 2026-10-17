@@ -37,6 +37,8 @@ import {
 import { useAdsQuery, useAdsV22, useRefreshAds } from "./context";
 import {
   adFinancial,
+  financialBasis,
+  financialCauses,
   creativeAverage,
   creativeMetrics,
   decimal,
@@ -217,6 +219,17 @@ export function AdvertisingAdDetail({
               <Block title="Qué hacer">
                 <p className="text-sm">{diagnostic.label}</p>
               </Block>
+              <div className="space-y-1 text-sm text-muted-foreground" role="status">
+                <p>
+                  {financialBasis(value)}
+                  {value.evidence?.basis === "measured"
+                    ? ` · ${pct(value.evidence.attributionCoverage)} de pedidos identificados`
+                    : ""}
+                </p>
+                {financialCauses(value, settings!.capabilities.profit).map((cause) => (
+                  <p key={cause}>{cause}</p>
+                ))}
+              </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 {settings!.capabilities.spend && (
                   <MetricCard label="Gasto" value={money(value.spend)} />
