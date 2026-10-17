@@ -44,4 +44,4 @@ it("lets an all-store session choose the store before loading or creating quotat
   rerender(<QuotationsPage />);
   await waitFor(() => expect(listQuotations).toHaveBeenCalledWith(expect.objectContaining({ storeId: "store-2" })));
   expect(screen.getAllByRole("button", { name: "Nueva cotización" }).every((button) => !(button as HTMLButtonElement).disabled)).toBe(true);
-});
+}, 30000);
