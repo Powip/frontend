@@ -60,6 +60,7 @@ export interface IProductResponse extends IProductRequest {
 export interface InventoryItemForSale {
   inventoryItemId: string;
   variantId: string;
+  productId?: string;
   productName: string;
   sku: string;
   companySku?: string | null;

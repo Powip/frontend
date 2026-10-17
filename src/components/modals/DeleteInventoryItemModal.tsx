@@ -12,6 +12,7 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Loader2, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
+import { isAxiosError } from "axios";
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
 
@@ -21,7 +22,7 @@ interface Props {
   productName: string;
   sku: string;
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: () => void | Promise<void>;
 }
 
 export default function DeleteInventoryItemModal({
@@ -43,33 +44,59 @@ export default function DeleteInventoryItemModal({
   };
 
   const handleDelete = async () => {
-    if (!inventoryItemId || confirmText !== expectedText) return;
+    if (!inventoryItemId || confirmText !== expectedText || isSubmitting) return;
 
     setIsSubmitting(true);
     try {
       await axiosAuth.delete(
-        `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/inventory-item/${inventoryItemId}`,
+        `${process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics}/inventory-item/${inventoryItemId}`,
       );
-      toast.success("Producto eliminado del almacén");
-      onSuccess?.();
-      handleClose();
     } catch (error) {
       console.error("Error eliminando producto", error);
-      toast.error("No se pudo eliminar el producto");
+      const message = isAxiosError<{ message?: string | string[] }>(error)
+        ? error.response?.data?.message
+        : undefined;
+      const errorMessage = Array.isArray(message)
+        ? message.filter((value) => typeof value === "string").join(". ")
+        : message;
+      toast.error(errorMessage || "No se pudo eliminar el producto");
+      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      await onSuccess?.();
+      toast.success("Producto eliminado del almacén");
+    } catch (error) {
+      console.error("Error actualizando almacén después de eliminar", error);
+      toast.warning(
+        "Producto eliminado, pero no se pudo actualizar el almacén. Recarga la página.",
+      );
     } finally {
       setIsSubmitting(false);
+      resetAndClose();
     }
   };
 
-  const handleClose = () => {
+  const resetAndClose = () => {
     setConfirmText("");
     setStep(1);
     onClose();
   };
 
+  const handleClose = () => {
+    if (!isSubmitting) resetAndClose();
+  };
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && handleClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent
+        className="max-w-md"
+        aria-describedby="delete-inventory-description"
+        showCloseButton={!isSubmitting}
+        onEscapeKeyDown={(event) => isSubmitting && event.preventDefault()}
+        onInteractOutside={(event) => isSubmitting && event.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-red-600">
             <AlertTriangle className="h-5 w-5" />
@@ -80,7 +107,7 @@ export default function DeleteInventoryItemModal({
         {step === 1 ? (
           <>
             <div className="space-y-3 text-sm text-muted-foreground">
-              <p>
+              <p id="delete-inventory-description">
                 ¿Estás seguro que deseas eliminar el siguiente producto del
                 almacén?
               </p>
@@ -109,7 +136,10 @@ export default function DeleteInventoryItemModal({
                 <p className="text-sm text-red-800">
                   <strong>⚠️ Confirmación final</strong>
                 </p>
-                <p className="text-sm text-red-700 mt-1">
+                <p
+                  id="delete-inventory-description"
+                  className="text-sm text-red-700 mt-1"
+                >
                   Escribe <span className="font-mono font-bold">ELIMINAR</span>{" "}
                   para confirmar la eliminación de:
                 </p>
@@ -117,12 +147,16 @@ export default function DeleteInventoryItemModal({
               </div>
 
               <div className="space-y-2">
-                <Label>Escribe ELIMINAR para confirmar</Label>
+                <Label htmlFor="delete-inventory-confirmation">
+                  Escribe ELIMINAR para confirmar
+                </Label>
                 <Input
+                  id="delete-inventory-confirmation"
                   value={confirmText}
                   onChange={(e) => setConfirmText(e.target.value.toUpperCase())}
                   placeholder="ELIMINAR"
                   className="font-mono"
+                  disabled={isSubmitting}
                 />
               </div>
             </div>

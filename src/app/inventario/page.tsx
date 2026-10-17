@@ -35,6 +35,7 @@ import {
   PackagePlus,
   HelpCircle,
   GitMerge,
+  Camera,
 } from "lucide-react";
 import {
   Tooltip,
@@ -43,7 +44,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
@@ -52,14 +53,15 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import Image from "next/image";
 import { isAxiosError } from "axios";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBusinessScope } from "@/contexts/BusinessScopeContext";
 import { useBusinessInventories } from "@/hooks/useBusinessInventories";
-import { fetchBusinessInventoryItems, filterBusinessInventoryItems } from "@/services/businessInventoryItemsService";
+import { fetchBusinessInventoryItems, filterBusinessInventoryItems, type BusinessInventoryItem } from "@/services/businessInventoryItemsService";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 
 import AddStockModal from "@/components/modals/AddStockModal";
 import DeleteInventoryItemModal from "@/components/modals/DeleteInventoryItemModal";
+import EditProductImageModal from "@/components/modals/EditProductImageModal";
 import ImportExcelModal from "@/components/modals/ImportExcelModal";
 import { Pagination } from "@/components/ui/pagination";
 import ShopifySyncWizard from "../productos/shopify-sync-wizard";
@@ -71,6 +73,7 @@ const ITEMS_PER_PAGE = 10;
 
 export default function AlmacenPage() {
   const { auth } = useAuth();
+  const queryClient = useQueryClient();
   const { scope, storeIds, canFetch } = useBusinessScope();
   const warehouses = useBusinessInventories({ scope, storeIds });
   const storeInventories = warehouses.inventories;
@@ -94,7 +97,12 @@ export default function AlmacenPage() {
   const isLoadingInventories = warehouses.isPending;
   const isLoading = warehouses.isPending || (warehouses.isSuccess && inventoryQuery.isPending);
   const loadError = warehouses.error || inventoryQuery.error;
-  const refreshItems = async () => { await inventoryQuery.refetch(); };
+  const refreshItems = async () => { await inventoryQuery.refetch({ throwOnError: true }); };
+  const handleStockRefresh = () => {
+    void refreshItems().catch(() => {
+      toast.warning("Los cambios se guardaron, pero no se pudo actualizar el almacén. Recarga la página.");
+    });
+  };
   const totals = filteredItems.reduce((sum, row) => ({ physical: sum.physical + row.physicalStock, available: sum.available + row.availableStock }), { physical: 0, available: 0 });
 
   const router = useRouter();
@@ -104,8 +112,14 @@ export default function AlmacenPage() {
   const [selectedItem, setSelectedItem] = useState<InventoryItemForSale | null>(
     null,
   );
+  const [imageItem, setImageItem] = useState<InventoryItemForSale | null>(null);
+  const imageTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedInventoryId]);
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, Math.max(totalPages, 1)));
+  }, [totalPages]);
   useEffect(() => {
     if (selectedInventoryId !== "all" && warehouses.isSuccess && !storeInventories.some((inv) => inv.id === selectedInventoryId)) setSelectedInventoryId("all");
   }, [selectedInventoryId, storeInventories, warehouses.isSuccess]);
@@ -297,6 +311,7 @@ export default function AlmacenPage() {
                   <div className="relative flex-1 sm:max-w-md">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
+                      ref={searchInputRef}
                       placeholder="Buscar por SKU, nombre o variante..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -447,6 +462,16 @@ export default function AlmacenPage() {
                         productsWithDetails.map((prod) => (
                           <TableRow key={prod.inventoryItemId} className="hover:bg-muted/30 transition-colors">
                             <TableCell className="border-r">
+                              <button
+                                type="button"
+                                className="group relative block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                aria-label={`Cambiar imagen de ${prod.productName}`}
+                                title="Cambiar imagen"
+                                onClick={(event) => {
+                                  imageTriggerRef.current = event.currentTarget;
+                                  setImageItem(prod);
+                                }}
+                              >
                               {prod.imageUrl ? (
                                 <Image 
                                   src={prod.imageUrl} 
@@ -460,6 +485,10 @@ export default function AlmacenPage() {
                                   <ShoppingBag className="h-8 w-8" />
                                 </div>
                               )}
+                                <span className="absolute -bottom-1 -right-1 rounded-full border bg-background p-1 text-muted-foreground group-hover:text-primary">
+                                  <Camera className="h-3 w-3" aria-hidden="true" />
+                                </span>
+                              </button>
                             </TableCell>
                             <TableCell className="border-r font-medium text-xs max-w-[130px]" title={prod.companySku ? `${prod.companySku} (POWIP: ${prod.sku})` : prod.sku}>
                               {prod.companySku ? (
@@ -586,14 +615,14 @@ export default function AlmacenPage() {
         open={importOpen}
         onClose={() => setImportOpen(false)}
         inventoryId={selectedInventoryId === "all" ? "" : selectedInventoryId}
-        onSuccess={refreshItems}
+        onSuccess={handleStockRefresh}
       />
 
       <AddStockModal
         open={addStockOpen}
         item={selectedItem}
         onClose={() => setAddStockOpen(false)}
-        onSuccess={refreshItems}
+        onSuccess={handleStockRefresh}
       />
 
       <DeleteInventoryItemModal
@@ -604,6 +633,38 @@ export default function AlmacenPage() {
         onClose={() => setDeleteOpen(false)}
         onSuccess={refreshItems}
       />
+
+      {imageItem && (
+        <EditProductImageModal
+          key={imageItem.inventoryItemId}
+          item={imageItem}
+          onClose={() => setImageItem(null)}
+          onCloseAutoFocus={() => {
+            if (imageTriggerRef.current?.isConnected) {
+              imageTriggerRef.current.focus();
+            } else {
+              searchInputRef.current?.focus();
+            }
+          }}
+          onSuccess={async (imageUrl) => {
+            const queryKey = ["business-inventory-items", companyId, auth.user?.id];
+            await queryClient.cancelQueries({ queryKey }, { revert: false, silent: true });
+            queryClient.setQueriesData<BusinessInventoryItem[]>(
+              { queryKey },
+              (items) => items?.map((item) =>
+                (imageItem.productId
+                  ? item.productId === imageItem.productId
+                  : item.variantId === imageItem.variantId)
+                  ? { ...item, imageUrl }
+                  : item,
+              ),
+            );
+            void refreshItems().catch(() => {
+              toast.warning("Imagen guardada, pero no se pudo actualizar el almacén. Recarga la página.");
+            });
+          }}
+        />
+      )}
     </div>
   );
 }
