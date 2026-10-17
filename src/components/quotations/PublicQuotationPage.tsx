@@ -209,13 +209,14 @@ export default function PublicQuotationPage({ token }: { token: string }) {
     );
 
   const converted = quote.status === "CONVERTIDA";
+  const cancelled = converted && quote.trackingStatus === "ANULADO";
   const expired =
     quote.status === "VENCIDA" || (!converted && new Date(quote.expiresAt).getTime() <= Date.now());
   const active = !converted && !expired;
   const stockProblem = quote.lines.some((line) => line.stockInsufficient);
   const activePayment = quote.payments[quote.payments.length - 1];
   const pendingPayment =
-    activePayment?.status === "PENDIENTE" && !(converted && quote.verifiedBalance === 0)
+    !cancelled && activePayment?.status === "PENDIENTE" && !(converted && quote.verifiedBalance === 0)
       ? activePayment
       : undefined;
   const fullyPaid =
@@ -261,7 +262,9 @@ export default function PublicQuotationPage({ token }: { token: string }) {
         </header>
         <section className="rounded-3xl bg-teal-800 px-6 py-8 text-white sm:px-9">
           <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15">
-            {expired ? (
+            {cancelled ? (
+              <AlertCircle />
+            ) : expired ? (
               <Clock3 />
             ) : converted ? (
               <Truck />
@@ -273,26 +276,30 @@ export default function PublicQuotationPage({ token }: { token: string }) {
           </div>
           <p className="mb-2 text-sm text-teal-100">Hola, {quote.customerName}</p>
           <h1 className="text-2xl font-bold sm:text-3xl">
-            {expired
-              ? "Tu cotización ha vencido"
-              : converted
-                ? "Sigue tu pedido"
-                : quote.customerConfirmed
-                  ? "Pedido confirmado"
-                  : "Esperando tu confirmación"}
+            {cancelled
+              ? "Tu pedido fue anulado"
+              : expired
+                ? "Tu cotización ha vencido"
+                : converted
+                  ? "Sigue tu pedido"
+                  : quote.customerConfirmed
+                    ? "Pedido confirmado"
+                    : "Esperando tu confirmación"}
           </h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-teal-50/85">
-            {expired
-              ? "El precio y el stock pueden haber cambiado. Contacta al vendedor para renovar tu cotización."
-              : converted
-                ? `Tu pedido ${quote.orderNumber ?? ""} ya está registrado. Aquí podrás consultar su avance.`
-                : quote.paymentType === "COMPLETO"
-                  ? "Revisa tus productos y reporta el pago completo para confirmar tu pedido."
-                  : "Confirma tu pedido o adelanta un monto. Podrás pagar el saldo contraentrega."}
+            {cancelled
+              ? `Tu pedido ${quote.orderNumber ?? ""} fue anulado. Contacta al vendedor si necesitas ayuda.`
+              : expired
+                ? "El precio y el stock pueden haber cambiado. Contacta al vendedor para renovar tu cotización."
+                : converted
+                  ? `Tu pedido ${quote.orderNumber ?? ""} ya está registrado. Aquí podrás consultar su avance.`
+                  : quote.paymentType === "COMPLETO"
+                    ? "Revisa tus productos y reporta el pago completo para confirmar tu pedido."
+                    : "Confirma tu pedido o adelanta un monto. Podrás pagar el saldo contraentrega."}
           </p>
         </section>
 
-        {!expired && (
+        {!expired && !cancelled && (
           <ol aria-label="Estado del pedido" className="my-7 grid grid-cols-4 gap-2">
             {stages.map((label, index) => (
               <li
@@ -323,7 +330,7 @@ export default function PublicQuotationPage({ token }: { token: string }) {
             {error}
           </div>
         )}
-        {notice && (
+        {notice && !cancelled && (
           <div
             role="status"
             className="my-4 flex gap-2 rounded-xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-800"
@@ -675,7 +682,7 @@ export default function PublicQuotationPage({ token }: { token: string }) {
           </section>
         )}
 
-        {converted && (
+        {converted && !cancelled && (
           <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-6">
             <h2 className="font-bold">Información de entrega</h2>
             <p className="mt-3 text-sm text-slate-600">{quote.customerName}</p>
