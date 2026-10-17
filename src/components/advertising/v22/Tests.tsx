@@ -68,9 +68,9 @@ export function AdvertisingTests() {
   const list = tests.data?.tests ?? [];
   const eligibleProducts = (products.data?.products ?? []).filter(
     (product) =>
-      product.unitCost !== null ||
-      (product.variants.length > 0 &&
-        product.variants.every((variant) => variant.unitCost !== null)),
+      product.canTest ??
+      (numeric(product.unitCost) !== null ||
+        product.variants.some((variant) => numeric(variant.unitCost) !== null)),
   );
   async function create() {
     if (!identity || !productId || !adsetId || pending || !canCreate) return;

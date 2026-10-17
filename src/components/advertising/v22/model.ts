@@ -627,12 +627,21 @@ export function adFinancial(
   );
   const own = sumSales(ownRows);
   if (measured) return comparableCurrency(row, cohortFinancial(spend, ownRows, sales));
+  const assignedProductIds = new Set(
+    summary.adProducts
+      .filter((assignment) => ids.has(assignment.adId) && accountIds.has(assignment.accountId))
+      .map((assignment) => assignment.productId)
+      .filter((id): id is string => !!id && id !== "varios"),
+  );
+  const specificProductId =
+    product?.id ?? (assignedProductIds.size === 1 ? [...assignedProductIds][0] : null);
   let estimatedSales = 0;
   let estimatedRevenue = 0;
   let estimatedContribution = 0;
   let estimatedUnits = 0;
-  let contributionKnown = true;
-  let revenueKnown = true;
+  let contributionKnown =
+    !specificProductId || raw.some((day) => !!day.storeId && day.channel !== "other");
+  let revenueKnown = contributionKnown;
   const segments = [...new Set(raw.map((day) => `${day.storeId ?? "none"}:${day.channel}`))];
   for (const segment of segments) {
     const [store, channel] = segment.split(":");
@@ -652,11 +661,11 @@ export function adFinancial(
       numeric(sumSales(paidRows(sales.byChannel, store, channel)).eligibleShippingCost),
       cohort.delivered,
     );
-    const observedProduct = product
+    const observedProduct = specificProductId
       ? sumSales(
           sales.byProduct.filter(
             (group) =>
-              group.productId === product.id &&
+              group.productId === specificProductId &&
               group.storeId === store &&
               (!group.channel || group.channel === channel),
           ),
@@ -669,8 +678,15 @@ export function adFinancial(
     const maximum =
       price !== null && cost !== null && unitsPerOrder !== null && shippingPerOrder !== null
         ? (price - cost) * unitsPerOrder - shippingPerOrder
-        : cohort.maximum;
-    const ticket = price !== null && unitsPerOrder !== null ? price * unitsPerOrder : cohort.ticket;
+        : specificProductId
+          ? null
+          : cohort.maximum;
+    const ticket =
+      price !== null && unitsPerOrder !== null
+        ? price * unitsPerOrder
+        : specificProductId
+          ? null
+          : cohort.ticket;
     if (maximum === null) contributionKnown = false;
     else estimatedContribution += estimate * maximum;
     if (ticket === null) revenueKnown = false;

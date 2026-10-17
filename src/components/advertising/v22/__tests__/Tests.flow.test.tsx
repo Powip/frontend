@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import axios from "axios";
 import { AdvertisingTests, TestRow } from "../Tests";
+import { AdvertisingStoreFilterProvider } from "../../AdvertisingStoreFilterContext";
 import { emptySales } from "../model";
 import type {
   AdsProduct,
@@ -13,6 +14,7 @@ import type {
 const refresh = jest.fn().mockResolvedValue(undefined);
 let mockProducts: AdsProduct[] = [];
 let mockTests: AdsTest[] = [];
+let mockProfit = true;
 const metric = {
   ...emptySales(),
   delivered: 3,
@@ -70,7 +72,7 @@ jest.mock("../context", () => ({
     identity: { token: "token", companyId: "company" },
     settings: {
       rules: { testMinSales: 3, testMultiplier: 2, winPct: 60 },
-      capabilities: { edit: true, spend: true, profit: true },
+      capabilities: { edit: true, spend: true, profit: mockProfit },
     },
   }),
   useRefreshAds: () => refresh,
@@ -94,6 +96,8 @@ describe("product-test decision receipt", () => {
     jest.clearAllMocks();
     mockProducts = [];
     mockTests = [];
+    mockProfit = true;
+    window.history.replaceState({}, "", "/");
     source.sales.byAd = [{ ...metric, adId: "4", storeId: "store", channel: "web" }];
     process.env.NEXT_PUBLIC_API_INTEGRATIONS = "https://integrations.test";
     Object.defineProperty(global.crypto, "randomUUID", {
@@ -170,6 +174,94 @@ describe("product-test decision receipt", () => {
     render(<AdvertisingTests />);
     expect(screen.getByRole("button", { name: "Nueva prueba" })).toBeDisabled();
     expect(screen.getByRole("status")).toHaveTextContent("Selecciona una tienda comercial");
+  });
+  it.each(["supervisor", "advertiser"])(
+    "allows a %s with edit and hidden profit to create a backend-eligible product test",
+    async () => {
+      mockProfit = false;
+      mockProducts = [
+        {
+          id: "product",
+          name: "Producto apto",
+          storeId: "store",
+          unitCost: null,
+          canTest: true,
+          netPrice: null,
+          availableStock: "20",
+          variants: [{ id: "variant", netPrice: null, unitCost: null }],
+        },
+      ];
+      mockTests = [test];
+      (axios.request as jest.Mock).mockResolvedValue({ data: { id: "created-test" } });
+      render(
+        <AdvertisingStoreFilterProvider
+          stores={[{ id: "store", name: "Tienda" }]}
+          initialStoreId="store"
+        >
+          <AdvertisingTests />
+        </AdvertisingStoreFilterProvider>,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Nueva prueba" }));
+      fireEvent.change(screen.getByRole("combobox", { name: "Producto con costo" }), {
+        target: { value: "product" },
+      });
+      fireEvent.change(screen.getByRole("combobox", { name: "Conjunto de anuncios" }), {
+        target: { value: "3" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Crear prueba" }));
+      await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+      expect(axios.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: "post",
+          url: "https://integrations.test/advertising/companies/company/v22/tests",
+          data: expect.objectContaining({
+            productId: "product",
+            accountId: "account",
+            storeId: "store",
+            adsetId: "3",
+            adIds: ["4"],
+          }),
+        }),
+      );
+      expect(screen.queryByText("Máximo")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Pasar a escala" })).not.toBeInTheDocument();
+    },
+  );
+  it("keeps a cost-missing product ineligible for an administrator and accepts a visible zero cost from an older backend", () => {
+    mockProducts = [
+      {
+        id: "missing",
+        name: "Sin costo",
+        storeId: "store",
+        unitCost: null,
+        canTest: false,
+        netPrice: null,
+        availableStock: "20",
+        variants: [],
+      },
+      {
+        id: "zero",
+        name: "Costo cero",
+        storeId: "store",
+        unitCost: "0",
+        netPrice: null,
+        availableStock: "20",
+        variants: [],
+      },
+    ];
+    render(
+      <AdvertisingStoreFilterProvider
+        stores={[{ id: "store", name: "Tienda" }]}
+        initialStoreId="store"
+      >
+        <AdvertisingTests />
+      </AdvertisingStoreFilterProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Nueva prueba" }));
+    expect(screen.queryByRole("option", { name: /Sin costo/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Costo cero/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Crear prueba" })).toBeDisabled();
+    expect(axios.request).not.toHaveBeenCalled();
   });
   it("resolves test product names from the company catalog independently of its warehouse store", () => {
     mockProducts = [

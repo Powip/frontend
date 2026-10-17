@@ -1149,6 +1149,11 @@ function RegistrarVentaContent() {
         // --- Ítems ---
         items: cart.map(buildOrderItem),
 
+        // The selected condition exists even when no payment has been collected.
+        paymentCondition: ["CONTRA_ENTREGA", "CONTRAENTREGA"].includes(paymentMethod)
+          ? "COD"
+          : "PREPAID",
+
         // --- Pagos: solo se incluye si hay un adelanto real (> 0).
         //     Nunca se manda un pago fantasma { amount: 0 }. ---
         ...(advancePayment > 0

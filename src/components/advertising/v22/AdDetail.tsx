@@ -100,10 +100,13 @@ export function AdvertisingAdDetail({
   const detail = query.data;
   const item = detail?.row ?? row;
   const creative = detail?.creative ?? item.creative;
-  const value = adFinancial(item, summary, sales);
+  const assignment = summary.adProducts.find(
+    (ad) => ad.adId === row.id && ad.accountId === row.accountId,
+  );
+  const product = productQuery.data?.products.find((entry) => entry.id === assignment?.productId);
+  const value = adFinancial(item, summary, sales, product);
   const metric = creativeMetrics(item);
   const diagnostic = diagnosis(item, average, undefined, settings!.rules.highFrequency);
-  const assignment = summary.adProducts.find((ad) => ad.adId === row.id);
   const account = detail?.account;
   const metaUrl = `https://www.facebook.com/adsmanager/manage/ads?act=${encodeURIComponent(account?.externalId ?? row.accountId)}&selected_ad_ids=${encodeURIComponent(row.id)}`;
   async function tag(type: "hookId" | "creatorId", value: string) {

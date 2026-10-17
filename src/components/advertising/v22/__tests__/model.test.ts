@@ -21,6 +21,7 @@ import {
   channelData,
   channelRow,
   adStatus,
+  canScale,
   profitUsage,
   trafficLight,
 } from "../model";
@@ -385,6 +386,78 @@ describe("Publicidad v2.2 financial contract", () => {
       variants: [],
     });
     expect(value.maximum).toBe(80);
+  });
+  it.each([
+    { unitCost: null, ownNet: true },
+    { unitCost: "40", ownNet: false },
+    { unitCost: null, ownNet: false },
+  ])(
+    "keeps a specific product margin unknown without its own observed net revenue and cost: %o",
+    ({ unitCost, ownNet }) => {
+      const source = sales();
+      source.byProduct = [
+        {
+          ...metrics({ billedRevenue: "600", billedUnits: 6 }),
+          storeId: "store",
+          channel: "web",
+          productId: "other",
+        },
+        ...(ownNet
+          ? [
+              {
+                ...metrics({ billedRevenue: "300", billedUnits: 3 }),
+                storeId: "store",
+                channel: "web" as const,
+                productId: "product",
+              },
+            ]
+          : []),
+      ];
+      const candidate = row({
+        daysActive: 6,
+        recentCostStable: true,
+        stockDays: 30,
+        budget: { level: "adset", objectId: "set", noRecentIncrease: true },
+      });
+      const value = adFinancial(candidate, summary(), source, {
+        id: "product",
+        name: "Producto sin evidencia propia",
+        storeId: "store",
+        netPrice: null,
+        unitCost,
+        availableStock: "100",
+        variants: [],
+      });
+      expect(value.maximum).toBeNull();
+      expect(value.gain).toBeNull();
+      expect(value.usage).toBeNull();
+      if (!ownNet) {
+        expect(value.revenue).toBeNull();
+        expect(value.ticket).toBeNull();
+        expect(value.roas).toBeNull();
+      }
+      expect(adStatus(candidate, value, rules, "2026-10-16", 30)).toBe("Sin datos suficientes");
+      expect(canScale(candidate, value, rules, "2026-10-16")).toBe(false);
+    },
+  );
+  it("does not borrow another product's margin when an assigned product catalog is unavailable", () => {
+    const data = summary();
+    data.adProducts = [
+      {
+        adId: "ad",
+        accountId: "account",
+        productId: "specific",
+        storeId: "store",
+        origin: "manual",
+      },
+    ];
+    for (const days of [data.days, []]) {
+      const value = adFinancial(row(), { ...data, days }, sales());
+      expect(value.maximum).toBeNull();
+      expect(value.gain).toBeNull();
+      expect(value.revenue).toBeNull();
+      expect(value.usage).toBeNull();
+    }
   });
   it("never mixes foreign ad currency with PEN product margins or revenue ratios", () => {
     const value = adFinancial(row({ currency: "USD" }), summary(), sales());

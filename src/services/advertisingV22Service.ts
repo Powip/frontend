@@ -55,6 +55,7 @@ export interface AdsProduct {
   imageUrl?: string | null;
   netPrice: string | null;
   unitCost: string | null;
+  canTest?: boolean;
   availableStock: string;
   variants: Array<{ id: string; netPrice: string | null; unitCost: string | null }>;
 }
