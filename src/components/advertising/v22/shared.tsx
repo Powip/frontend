@@ -8,6 +8,8 @@ import { money, decimal, pct } from "./model";
 
 export function adsError(error: unknown) {
   if (axios.isAxiosError(error)) {
+    if (!error.response && ["ECONNABORTED", "ETIMEDOUT"].includes(error.code ?? ""))
+      return "La consulta tardó más de lo esperado y los datos siguen pendientes. Vuelve a intentar en unos momentos.";
     const data = error.response?.data;
     if (typeof data?.message === "string") return data.message;
     if (error.response?.status === 403) return "No tienes permiso para ver estos datos.";
@@ -236,7 +238,18 @@ export function dataWarning(code: string) {
           "La importación de Meta está incompleta. Sincroniza las cuentas para comparar el gasto de este período.",
         CURRENT_DAY_PROVISIONAL:
           "Los datos de hoy son provisionales y pueden actualizarse. El gasto importado ya está disponible.",
+        UNASSIGNED_SPEND:
+          "Hay gasto de anuncios sin tienda asignada. Revisa las asignaciones en Configuración para vincularlo con la tienda correspondiente.",
+        PROVISIONAL_META_DATA:
+          "Los resultados recientes de Meta aún pueden cambiar. Vuelve a sincronizar más tarde para confirmar las cifras.",
+        CHANNEL_FAMILY_FROM_META:
+          "El anuncio permite identificar si el canal es Web o Mensajes. Configura los canales de la tienda para vincularlo con su destino.",
+        STORE_CHANNELS_NOT_CONFIGURED:
+          "Esta tienda aún no tiene canales configurados. Añádelos a la tienda para identificar el destino de sus anuncios.",
+        NON_PEN_SPEND_EXCLUDED:
+          "El gasto de cuentas en otras monedas no se incluye en los totales en soles. Revisa cada cuenta para consultar esos importes.",
       } as Record<string, string>
-    )[code] ?? code
+    )[code] ??
+    "Algunos datos del período están pendientes de confirmar. Revisa las conexiones y asignaciones en Configuración antes de interpretar los resultados."
   );
 }
