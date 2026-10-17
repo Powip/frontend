@@ -87,7 +87,7 @@ const tabs: { value: QuotationStatus | "ALL"; label: string }[] = [
 const initialSummary = { PREVENTA: 0, CONVERTIDA: 0, VENCIDA: 0, totalAmount: 0 };
 
 function QuotationsContent() {
-  const { auth, selectedStoreId } = useAuth();
+  const { auth, selectedStoreId, setSelectedStore } = useAuth();
   const [result, setResult] = useState<QuotationListResponse>({
     data: [],
     total: 0,
@@ -242,7 +242,21 @@ function QuotationsContent() {
               Cotiza rápido. Completa el despacho cuando tu cliente decida.
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="grid gap-1 text-xs font-medium text-muted-foreground">
+              Tienda
+              <select
+                aria-label="Tienda de cotización"
+                className="h-10 min-w-44 rounded-md border bg-background px-3 text-sm text-foreground"
+                value={selectedStoreId ?? ""}
+                onChange={(event) => setSelectedStore(event.target.value)}
+              >
+                <option value="" disabled>Selecciona una tienda</option>
+                {(auth?.company?.stores ?? []).map((store) => (
+                  <option key={store.id} value={store.id}>{store.name}</option>
+                ))}
+              </select>
+            </label>
             <Button
               variant="outline"
               disabled={!selected.size}
