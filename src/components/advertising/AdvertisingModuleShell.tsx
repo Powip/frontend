@@ -1,199 +1,153 @@
 "use client";
 
-import { format, parseISO } from "date-fns";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { endOfMonth, format, parseISO, startOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useRef, useState } from "react";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import Header from "@/components/header/Header";
-import { Badge } from "@/components/ui/badge";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { AdminPeriodProvider, useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { useAdvertisingAssignmentsV11 } from "@/hooks/useAdvertisingV11";
-import { cn } from "@/lib/utils";
+import { AdvertisingQuickPeriodButtons } from "./AdvertisingQuickPeriodButtons";
 import {
-  AdvertisingQuickPeriodButtons,
-  advertisingQuickRange,
-} from "./AdvertisingQuickPeriodButtons";
-import {
-  type AdvertisingCommercialStore,
   AdvertisingStoreFilterProvider,
   useAdvertisingStoreFilter,
 } from "./AdvertisingStoreFilterContext";
-import { advertisingAssignmentSpendPeriod } from "./advertising-assignment-period";
+import { advertisingPeriodFromParams } from "./advertising-period";
 import {
   ADVERTISING_SECTIONS,
   advertisingSectionActive,
   advertisingSectionHref,
 } from "./advertising-sections";
-
-const EMPTY_STORES: AdvertisingCommercialStore[] = [];
-
-function periodSummary(from: string, to: string) {
-  const start = parseISO(from);
-  const end = parseISO(to);
-  const currentYear = new Date().getFullYear();
-  const showYear = start.getFullYear() !== currentYear || end.getFullYear() !== currentYear;
-  const endLabel = format(end, showYear ? "d MMM yyyy" : "d MMM", { locale: es });
-  if (from === to) return endLabel;
-  const sameMonth =
-    start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth();
-  const startLabel = format(start, sameMonth ? "d" : showYear ? "d MMM yyyy" : "d MMM", {
-    locale: es,
-  });
-  return `${startLabel}–${endLabel}`;
-}
+import { AdvertisingV22Provider, useAdsV22 } from "./v22/context";
+import { comparisonPeriod, limaToday } from "./v22/model";
+import { Failure, SelectField } from "./v22/shared";
 
 function AdvertisingShell({ children }: { children: ReactNode }) {
-  const { auth, loading, hasPermission } = useAuth();
+  const { auth, loading: authLoading } = useAuth();
+  const { settings, loading, error, reload } = useAdsV22();
   const pathname = usePathname();
   const router = useRouter();
   const { fromDate, toDate, setPeriod } = useAdminPeriod();
   const { storeId, setStoreId, stores } = useAdvertisingStoreFilter();
-  const canView = !!auth && hasPermission("VIEW_FINANCES");
-  const [assignmentPeriod] = useState(advertisingAssignmentSpendPeriod);
-  const assignments = useAdvertisingAssignmentsV11({
-    token: auth?.accessToken,
-    actorId: auth?.user.id,
-    companyId: auth?.company?.id,
-    ...assignmentPeriod,
-    enabled: canView && !loading,
-  });
-  const pendingAssignments = assignments.data?.pending.adsetCount ?? 0;
-  const navigationRef = useRef<HTMLElement>(null);
-
+  const initialized = useRef(false);
+  const [ready, setReady] = useState(false);
   useEffect(() => {
-    if (!loading && !canView) router.replace("/dashboard");
-  }, [loading, canView, router]);
+    const read = () => {
+      const params = new URLSearchParams(window.location.search);
+      const period = advertisingPeriodFromParams(params);
+      if (period) setPeriod(period.from, period.to);
+      const selected = params.get("storeId");
+      if (selected) setStoreId(selected);
+      initialized.current = true;
+      setReady(true);
+    };
+    read();
+    window.addEventListener("popstate", read);
+    return () => window.removeEventListener("popstate", read);
+  }, [setPeriod, setStoreId]);
   useEffect(() => {
-    if (
-      !canView ||
-      !ADVERTISING_SECTIONS.some(({ href }) => advertisingSectionActive(pathname, href))
-    )
-      return;
-    navigationRef.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView?.({
-      block: "nearest",
-      inline: "nearest",
-    });
-  }, [pathname, canView]);
-
-  if (loading || !canView) return null;
-  const connections = pathname === "/publicidad/conexiones";
-
+    if (!ready || !initialized.current) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("from", fromDate);
+    url.searchParams.set("to", toDate);
+    url.searchParams.set("storeId", storeId);
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+  }, [fromDate, toDate, storeId, ready]);
+  useEffect(() => {
+    if (!authLoading && !auth) router.replace("/login");
+  }, [authLoading, auth, router]);
+  if (authLoading || !auth) return null;
+  const hidePeriod =
+    pathname.startsWith("/publicidad/pruebas") || pathname.startsWith("/publicidad/configuracion");
+  const comparison = comparisonPeriod(fromDate, toDate);
+  const dateLabel = (date: string) => format(parseISO(date), "d MMM", { locale: es });
   return (
     <div className="flex h-full min-w-0 flex-col bg-background">
-      <div className="[&>div]:flex-wrap [&>div]:gap-3 [&>div]:px-4 sm:[&>div]:px-6 lg:[&>div]:px-8">
-        <Header />
-      </div>
-      <div className="shrink-0 border-b border-border bg-card">
-        <h1 className="sr-only">Publicidad</h1>
-        <nav
-          ref={navigationRef}
-          aria-label="Secciones de publicidad"
-          className="flex min-w-0 gap-1 overflow-x-auto px-4 sm:px-6 lg:px-8"
-        >
-          {ADVERTISING_SECTIONS.map(({ label, href, icon: Icon }) => {
-            return (
-              <Link
-                key={href}
-                href={advertisingSectionHref(href, fromDate, toDate, {
-                  storeId,
-                })}
-                aria-current={advertisingSectionActive(pathname, href) ? "page" : undefined}
-                className={cn(
-                  "relative inline-flex min-h-11 shrink-0 items-center border-b-2 px-3 py-2 text-sm whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                  advertisingSectionActive(pathname, href)
-                    ? "border-primary font-semibold text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <Icon className="mr-1.5 size-4" aria-hidden="true" />
-                {label}
-                {href === "/publicidad/asignaciones" && pendingAssignments > 0 ? (
-                  <>
-                    <Badge
-                      variant="outline"
-                      className="ml-1.5 border-amber-200 bg-amber-100 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300"
-                      aria-hidden="true"
-                      title={`${pendingAssignments} conjuntos sin tienda`}
-                    >
-                      {pendingAssignments}
-                    </Badge>
-                    <span className="sr-only"> · {pendingAssignments} conjuntos sin tienda</span>
-                  </>
-                ) : null}
-              </Link>
-            );
-          })}
+      <Header />
+      <div className="shrink-0 border-b bg-card px-4 sm:px-6 lg:px-8">
+        <div className="flex flex-wrap items-center justify-between gap-3 py-3">
+          <h1 className="text-xl font-bold">Publicidad</h1>
+          <SelectField
+            label="Tienda"
+            value={storeId}
+            onChange={setStoreId}
+            options={[
+              { value: "all", label: "Todas las tiendas" },
+              ...stores.map((store) => ({ value: store.id, label: store.name })),
+            ]}
+          />
+        </div>
+        <nav aria-label="Secciones de publicidad" className="flex gap-1 overflow-x-auto">
+          {ADVERTISING_SECTIONS.map(({ label, href, icon: Icon }) => (
+            <Link
+              key={href}
+              href={advertisingSectionHref(href, fromDate, toDate, { storeId })}
+              aria-current={advertisingSectionActive(pathname, href) ? "page" : undefined}
+              className={`inline-flex min-h-11 shrink-0 items-center gap-2 border-b-2 px-3 text-sm ${advertisingSectionActive(pathname, href) ? "border-primary font-semibold text-primary" : "border-transparent text-muted-foreground"}`}
+            >
+              <Icon className="size-4" />
+              {label}
+            </Link>
+          ))}
         </nav>
-        {!connections && (
-          <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-t border-border px-4 py-2 sm:px-6 lg:px-8">
-            <div className="flex min-w-0 items-center gap-2">
-              <Label htmlFor="advertising-store-filter" className="text-xs">
-                Tienda
-              </Label>
-              <Select value={storeId} onValueChange={setStoreId}>
-                <SelectTrigger id="advertising-store-filter" className="w-44 sm:w-52">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas las tiendas</SelectItem>
-                  {stores.map((store) => (
-                    <SelectItem key={store.id} value={store.id}>
-                      {store.name}
-                    </SelectItem>
-                  ))}
-                  <SelectItem value="none">Sin asignar</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="min-w-0 overflow-x-auto [&>fieldset]:w-max [&>fieldset]:flex-nowrap [&_button]:shrink-0">
+        {!hidePeriod && (
+          <div className="space-y-2 border-t py-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <PeriodSelector value={{ from: fromDate, to: toDate }} onPeriodChange={setPeriod} />
               <AdvertisingQuickPeriodButtons />
             </div>
-            <fieldset
-              aria-label="Periodo seleccionado"
-              className="flex shrink-0 items-center gap-2"
-            >
-              <span
-                aria-hidden="true"
-                className="max-w-36 truncate text-xs whitespace-nowrap text-muted-foreground sm:max-w-none sm:text-sm"
-                title={`${fromDate} / ${toDate}`}
-              >
-                {periodSummary(fromDate, toDate)}
-              </span>
-              <PeriodSelector
-                className="w-10 shrink-0 [&>button]:h-10 [&>button]:w-10 [&>button]:justify-center [&>button]:p-0 [&>button>span]:sr-only [&>button>svg:first-child]:mr-0 [&>button>svg:last-child]:hidden"
-                value={{ from: fromDate, to: toDate }}
-                onPeriodChange={setPeriod}
-              />
-            </fieldset>
+            <p className="text-xs text-muted-foreground">
+              Datos al {dateLabel(comparison.effectiveTo)}
+              {comparison.effectiveTo === limaToday() ? " (hoy)" : ""} · comparado con{" "}
+              {dateLabel(comparison.from)} – {dateLabel(comparison.to)}
+            </p>
           </div>
         )}
       </div>
-      <div className="min-w-0 flex-1 overflow-auto">{children}</div>
+      <div className="min-w-0 flex-1 overflow-auto">
+        {loading || !ready ? (
+          <Skeleton className="m-6 h-64" aria-label="Cargando acceso a publicidad" />
+        ) : error ? (
+          <div className="p-6">
+            <Failure error={error} retry={reload} />
+          </div>
+        ) : settings?.capabilities.view ? (
+          children
+        ) : (
+          <p role="alert" className="p-6 text-sm">
+            Tu rol no tiene acceso a Publicidad.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
 
 export function AdvertisingModuleShell({ children }: { children: ReactNode }) {
   const { auth, selectedStoreId } = useAuth();
+  const today = parseISO(limaToday());
   return (
     <AdvertisingStoreFilterProvider
       key={`${auth?.user.id ?? "none"}:${auth?.company?.id ?? "none"}`}
-      stores={auth?.company?.stores ?? EMPTY_STORES}
+      stores={auth?.company?.stores ?? []}
       initialStoreId={selectedStoreId}
     >
-      <AdminPeriodProvider initialRange={advertisingQuickRange("30d")}>
-        <AdvertisingShell>{children}</AdvertisingShell>
+      <AdminPeriodProvider
+        initialRange={{
+          from: format(startOfMonth(today), "yyyy-MM-dd"),
+          to: format(endOfMonth(today), "yyyy-MM-dd"),
+        }}
+      >
+        <AdvertisingV22Provider>
+          <AdvertisingShell>{children}</AdvertisingShell>
+        </AdvertisingV22Provider>
       </AdminPeriodProvider>
     </AdvertisingStoreFilterProvider>
   );

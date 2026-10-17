@@ -2,6 +2,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { adsGet, type AdsSettings } from "@/services/advertisingV22Service";
 import { useTheme } from "next-themes";
 import {
   Menu,
@@ -72,7 +74,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import PowipLogoMini from "./logo-mini";
 import PowipLogo from "./logo";
-import { ADVERTISING_SECTIONS } from "@/components/advertising/advertising-sections";
 
 interface SidebarProps {
   className?: string;
@@ -118,6 +119,20 @@ export function Sidebar({ className }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
   const { auth, logout, hasPermission } = useAuth();
+  const advertisingAccess = useQuery({
+    queryKey: ["ads-v22", auth?.user.id, auth?.company?.id, "settings"],
+    queryFn: ({ signal }) =>
+      adsGet<AdsSettings>(
+        { token: auth!.accessToken!, companyId: auth!.company!.id },
+        "/v22/settings",
+        undefined,
+        signal,
+      ),
+    enabled: !!auth?.accessToken && !!auth.company?.id,
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+  });
   const router = useRouter();
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
@@ -295,11 +310,7 @@ export function Sidebar({ className }: SidebarProps) {
       {
         name: "Publicidad",
         icon: Megaphone,
-        children: ADVERTISING_SECTIONS.map((section) => ({
-          name: section.label,
-          href: section.href,
-          icon: section.icon,
-        })),
+        href: "/publicidad",
       },
       {
         name: "Partners",
@@ -362,6 +373,8 @@ export function Sidebar({ className }: SidebarProps) {
   // Filtrar navegación por permisos y mostrar Superadmin solo a autorizados
   const filteredNavigation = navigation
     .filter((item: NavigationItem) => {
+      if (item.name === "Publicidad")
+        return !advertisingAccess.isError && advertisingAccess.data?.capabilities.view === true;
       // Si es Super Admin, verificar específicamente por email
       if (item.name === "Super Admin") {
         return isSuperadmin(auth?.user.email);

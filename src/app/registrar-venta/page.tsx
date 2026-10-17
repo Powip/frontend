@@ -1,5 +1,7 @@
 "use client";
 
+import { AdvertisingAttributionSelect } from "@/components/advertising/v22/AttributionSelect";
+
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -2859,12 +2861,10 @@ function RegistrarVentaContent() {
                     </div>
 
                     <div className="space-y-1">
-                      <Label>ID de publicidad (Meta)</Label>
-                      <Input
-                        type="text"
-                        placeholder="Opcional — ID del panel de ads"
+                      <AdvertisingAttributionSelect
+                        storeId={origin.storeId}
                         value={metaPubliId}
-                        onChange={(e) => setMetaPubliId(e.target.value)}
+                        onChange={setMetaPubliId}
                       />
                     </div>
                   </Disclosure>

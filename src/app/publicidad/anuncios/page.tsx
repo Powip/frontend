@@ -1,5 +1,4 @@
-import { AdvertisingModulePage } from "@/components/advertising/AdvertisingModulePage";
-
-export default function AdvertisingAdsPage() {
-  return <AdvertisingModulePage view="ads" />;
+import { AdvertisingAds } from "@/components/advertising/v22/Ads";
+export default function Page() {
+  return <AdvertisingAds />;
 }
