@@ -943,6 +943,142 @@ describe("RegistrarVentaPage — hasClientChanges (fix orden de claves province/
   }, 15000);
 });
 
+describe("RegistrarVentaPage — actualización parcial del cliente al confirmar", () => {
+  it("guarda la dirección sin reenviar ubicación incompleta ni enlace antiguo sin modificar", async () => {
+    const legacyClient = {
+      ...FOUND_CLIENT,
+      province: "",
+      district: "",
+      googleMapsUrl: "ubicación pendiente",
+    };
+    mockFetchClientByPhone.mockResolvedValue(legacyClient);
+    mockUpdateClient.mockResolvedValue({ ...legacyClient, address: "Av. Nueva 456" });
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "order-legacy-client", payments: [] } });
+    renderPage();
+    await fillCommonRequiredFields();
+
+    fireEvent.change(screen.getByPlaceholderText("Dirección exacta"), {
+      target: { value: "Av. Nueva 456" },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+
+    await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1));
+    expect(mockUpdateClient).toHaveBeenCalledWith(FOUND_CLIENT.id, {
+      companyId: FOUND_CLIENT.companyId,
+      address: "Av. Nueva 456",
+    });
+    expect(mockToast.success).toHaveBeenCalledWith("Venta registrada");
+    expect(mockToast.error).not.toHaveBeenCalled();
+  });
+
+  it("conserva datos, carrito, adelanto y comprobante tras un error y registra una sola venta al reintentar", async () => {
+    mockUpdateClient
+      .mockRejectedValueOnce(new Error("connection interrupted"))
+      .mockResolvedValueOnce({ ...FOUND_CLIENT, address: "Av. Nueva 456" });
+    mockedAxiosAuth.post.mockResolvedValue({
+      data: { id: "order-client-retry", payments: [{ id: "payment-client-retry", status: "PENDING" }] },
+    });
+    mockedAxiosAuth.patch.mockResolvedValue({ data: {} });
+    renderPage();
+    await fillCommonRequiredFields();
+    const address = screen.getByPlaceholderText("Dirección exacta");
+    fireEvent.change(address, { target: { value: "Av. Nueva 456" } });
+    const advance = within(fieldByLabel(/adelanto de pago/i)).getByRole("textbox");
+    fireEvent.change(advance, { target: { value: "20" } });
+    const proof = new File(["comprobante"], "adelanto-cliente.pdf", { type: "application/pdf" });
+    fireEvent.change(screen.getByLabelText(/comprobante de pago \(opcional\)/i), {
+      target: { files: [proof] },
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalled());
+
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.patch).not.toHaveBeenCalled();
+    expect(address).toHaveValue("Av. Nueva 456");
+    expect(screen.getByPlaceholderText("Número de teléfono")).toHaveValue(FOUND_CLIENT.phoneNumber);
+    expect(advance).toHaveValue("20");
+    expect(within(fieldByLabel(/método de pago/i)).getByRole("combobox")).toHaveValue("EFECTIVO");
+    expect(screen.getByRole("button", { name: "Fijar Producto Test en 50" })).toBeInTheDocument();
+    expect(screen.getByText(proof.name)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirmar venta" })).toBeEnabled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+    await screen.findByTestId("receipt-open");
+
+    expect(mockUpdateClient).toHaveBeenCalledTimes(2);
+    expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1);
+    expect(mockedAxiosAuth.post).toHaveBeenCalledWith(
+      expect.stringMatching(/\/order-header(?:\/manual)?$/),
+      expect.objectContaining({
+        customerId: FOUND_CLIENT.id,
+        payments: [expect.objectContaining({ amount: 20, paymentMethod: "EFECTIVO" })],
+        items: [expect.objectContaining({ productVariantId: "var-1", quantity: 1 })],
+      }),
+    );
+    expect(mockedAxiosAuth.patch).toHaveBeenCalledTimes(1);
+    expect(mockedAxiosAuth.patch).toHaveBeenCalledWith(
+      expect.stringContaining("/payments/payments/payment-client-retry/upload-proof"),
+      expect.any(FormData),
+      expect.any(Object),
+    );
+    expect((mockedAxiosAuth.patch.mock.calls[0][1] as FormData).get("file")).toBe(proof);
+  });
+
+  it.each([
+    ["número", "DNI", "87654321"],
+    ["tipo", "CARNET", "12345678"],
+  ] as const)("envía el tipo y el número de documento juntos al cambiar solo el %s", async (field, documentType, documentNumber) => {
+    const client = { ...FOUND_CLIENT, documentType: "DNI" as const, documentNumber: "12345678" };
+    mockFetchClientByPhone.mockResolvedValue(client);
+    mockUpdateClient.mockResolvedValue({ ...client, documentType, documentNumber });
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "order-document-change", payments: [] } });
+    renderPage();
+    await fillCommonRequiredFields();
+
+    if (field === "número") {
+      fireEvent.change(screen.getByPlaceholderText("Número"), { target: { value: documentNumber } });
+    } else {
+      await userEvent.selectOptions(
+        within(fieldByLabel(/^tipo de documento/i)).getByRole("combobox"),
+        documentType,
+      );
+    }
+    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+
+    await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1));
+    expect(mockUpdateClient).toHaveBeenCalledWith(client.id, {
+      companyId: client.companyId,
+      documentType,
+      documentNumber,
+    });
+    expect(mockToast.error).not.toHaveBeenCalled();
+  });
+
+  it("envía null en ambos campos al quitar el documento opcional de una venta de Lima", async () => {
+    const client = { ...FOUND_CLIENT, documentType: "DNI" as const, documentNumber: "12345678" };
+    mockFetchClientByPhone.mockResolvedValue(client);
+    mockUpdateClient.mockResolvedValue({ ...FOUND_CLIENT, documentType: null, documentNumber: null });
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "order-document-cleared", payments: [] } });
+    renderPage();
+    await fillCommonRequiredFields();
+
+    await userEvent.selectOptions(
+      within(fieldByLabel(/^tipo de documento/i)).getByRole("combobox"),
+      "NONE",
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+
+    await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1));
+    expect(mockUpdateClient).toHaveBeenCalledWith(client.id, {
+      companyId: client.companyId,
+      documentType: null,
+      documentNumber: null,
+    });
+    expect(mockToast.error).not.toHaveBeenCalled();
+  });
+});
+
 describe("RegistrarVentaPage — persistencia de comprobantes", () => {
   const savedProofUrl = "https://storage.example.com/comprobante-guardado.pdf";
   const pendingPayment = {

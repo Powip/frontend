@@ -60,24 +60,26 @@ export async function createClient(payload: {
   return res.data;
 }
 
+export type UpdateClientPayload = Partial<{
+  companyId: string;
+  fullName: string;
+  phoneNumber: string;
+  documentType: string | null;
+  documentNumber: string | null;
+  clientType: "TRADICIONAL" | "MAYORISTA";
+  province: string;
+  city: string;
+  district: string;
+  address: string;
+  reference: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  googleMapsUrl: string | null;
+}>;
+
 export async function updateClient(
   id: string,
-  payload: Partial<{
-    companyId: string;
-    fullName: string;
-    phoneNumber?: string;
-    documentType?: string;
-    documentNumber?: string;
-    clientType: "TRADICIONAL" | "MAYORISTA";
-    province: string;
-    city: string;
-    district: string;
-    address: string;
-    reference?: string;
-    latitude?: number;
-    longitude?: number;
-    googleMapsUrl?: string;
-  }>
+  payload: UpdateClientPayload,
 ): Promise<Client> {
   const res = await axiosAuth.patch(`${API_VENTAS}/clients/${id}`, payload);
   return res.data;
