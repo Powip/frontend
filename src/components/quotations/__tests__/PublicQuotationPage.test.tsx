@@ -223,6 +223,47 @@ describe("PublicQuotationPage", () => {
     expect(screen.queryByRole("button", { name: /Confirmar pedido|Pagar|Agregar más productos/ })).not.toBeInTheDocument();
   });
 
+  it.each([
+    { name: "pending advance and balance", payments: [payment({ amount: 30 })], pendingBalance: 70, verifiedBalance: 100 },
+    { name: "approved full payment", payments: [payment({ status: "APROBADO" })], pendingBalance: 0, verifiedBalance: 0 },
+  ])("shows a cancelled converted order without active delivery or payment claims: $name", async ({ payments, pendingBalance, verifiedBalance }) => {
+    api.getPublicQuotation.mockResolvedValue(quotation({
+      status: "CONVERTIDA", orderNumber: "ORD-000001", trackingStatus: "ANULADO",
+      paymentType: "ADELANTO", customerConfirmed: true, payments,
+      pendingBalance, verifiedBalance,
+    }));
+    render(<PublicQuotationPage token="cancelled-token" />);
+
+    expect(await screen.findByRole("heading", { name: "Tu pedido fue anulado" })).toBeInTheDocument();
+    expect(screen.getByText("Tu pedido ORD-000001 fue anulado. Contacta al vendedor si necesitas ayuda.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Resumen del pedido" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Escribir al vendedor/ })).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Estado del pedido" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Pedido recibido")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Saldo pendiente|Pago por verificar|Pedido pagado en su totalidad/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Información de entrega")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Confirmar pedido|Pagar|Agregar más productos/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /Reportar un pago|Completa tu confirmación/ })).not.toBeInTheDocument();
+  });
+
+  it("replaces a prior confirmation notice when a refresh reports that the sale was cancelled", async () => {
+    const user = userEvent.setup({ delay: null });
+    const confirmed = quotation({ paymentType: "ADELANTO", customerConfirmed: true });
+    api.getPublicQuotation.mockResolvedValueOnce(quotation({ paymentType: "ADELANTO" }));
+    api.confirmPublicQuotation.mockResolvedValue(confirmed);
+    render(<PublicQuotationPage token="cancelled-after-confirmation" />);
+
+    await user.click(await screen.findByRole("button", { name: "Confirmar pedido" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Pedido confirmado.");
+    api.getPublicQuotation.mockResolvedValue({ ...confirmed, status: "CONVERTIDA", trackingStatus: "ANULADO" });
+    await user.click(screen.getByRole("button", { name: "Actualizar cotización" }));
+
+    expect(await screen.findByRole("heading", { name: "Tu pedido fue anulado" })).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Estado del pedido" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Saldo pendiente|Pedido pagado en su totalidad/)).not.toBeInTheDocument();
+  });
+
   it("uses the verified sale balance after Finance approves a converted order payment", async () => {
     api.getPublicQuotation.mockResolvedValue(quotation({
       status: "CONVERTIDA", customerConfirmed: true, payments: [payment()],
