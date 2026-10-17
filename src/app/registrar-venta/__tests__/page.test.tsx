@@ -532,7 +532,7 @@ function renderPage() {
   return { ...result, rerenderPage: () => result.rerender(page()) };
 }
 
-function mockEditableOrder(orderId = "order-session") {
+function mockEditableOrder(orderId = "order-session", client = FOUND_CLIENT) {
   mockUseSearchParams.mockReturnValue(
     new URLSearchParams(`orderId=${orderId}`) as ReturnType<typeof useSearchParams>,
   );
@@ -541,7 +541,7 @@ function mockEditableOrder(orderId = "order-session") {
       ? {
           id: orderId,
           storeId: "store-1",
-          customer: FOUND_CLIENT,
+          customer: client,
           orderType: "VENTA",
           status: "PENDIENTE",
           salesChannel: "WHATSAPP",
@@ -944,11 +944,10 @@ describe("RegistrarVentaPage — hasClientChanges (fix orden de claves province/
 });
 
 describe("RegistrarVentaPage — actualización parcial del cliente al confirmar", () => {
-  it("guarda la dirección sin reenviar ubicación incompleta ni enlace antiguo sin modificar", async () => {
+  it("guarda la dirección con distrito válido sin reenviar provincia incompleta ni enlace antiguo sin modificar", async () => {
     const legacyClient = {
       ...FOUND_CLIENT,
       province: "",
-      district: "",
       googleMapsUrl: "ubicación pendiente",
     };
     mockFetchClientByPhone.mockResolvedValue(legacyClient);
@@ -1074,6 +1073,147 @@ describe("RegistrarVentaPage — actualización parcial del cliente al confirmar
       companyId: client.companyId,
       documentType: null,
       documentNumber: null,
+    });
+    expect(mockToast.error).not.toHaveBeenCalled();
+  });
+});
+
+describe("RegistrarVentaPage — distrito obligatorio para clientes encontrados", () => {
+  const resizeObserverDescriptor = Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver");
+  beforeAll(() => {
+    // Radix mide el popover real al abrirlo; jsdom no ofrece esta API de layout.
+    Object.defineProperty(globalThis, "ResizeObserver", {
+      configurable: true,
+      value: class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    });
+  });
+  afterAll(() => {
+    if (resizeObserverDescriptor) {
+      Object.defineProperty(globalThis, "ResizeObserver", resizeObserverDescriptor);
+    } else {
+      Reflect.deleteProperty(globalThis, "ResizeObserver");
+    }
+  });
+
+  function locationControl(field: "department" | "province" | "district") {
+    const index = { department: 0, province: 1, district: 2 }[field];
+    return within(fieldByLabel(/^dirección/i)).getAllByRole("combobox")[index];
+  }
+
+  async function selectLocation(
+    field: "department" | "province" | "district",
+    option: string,
+  ) {
+    await userEvent.click(locationControl(field));
+    await userEvent.click(within(screen.getByRole("dialog")).getByText(option, { exact: true }));
+  }
+
+  function expectDistrictRequired(buttonName = "Confirmar venta") {
+    expect(screen.getByText("9 de 10 pasos completados")).toBeInTheDocument();
+    expect(screen.queryByText("10 de 10 pasos completados")).not.toBeInTheDocument();
+    expect(screen.getByText("Selecciona el distrito del cliente")).toBeInTheDocument();
+    expect(screen.getByText("Selecciona el distrito para continuar.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: buttonName })).toBeDisabled();
+  }
+
+  it.each([
+    ["vacío", ""],
+    ["solo espacios", "   "],
+  ])("no permite confirmar un cliente encontrado con distrito %s aunque se edite su dirección", async (_description, district) => {
+    mockFetchClientByPhone.mockResolvedValue({ ...FOUND_CLIENT, district });
+    renderPage();
+    await fillCommonRequiredFields();
+    expectDistrictRequired();
+
+    fireEvent.change(screen.getByPlaceholderText("Dirección exacta"), {
+      target: { value: "Av. Nueva 456" },
+    });
+    expectDistrictRequired();
+    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+
+    expect(mockUpdateClient).not.toHaveBeenCalled();
+    expect(mockCreateClient).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.put).not.toHaveBeenCalled();
+  });
+
+  it("bloquea Actualizar venta cuando el cliente de una orden existente no tiene distrito", async () => {
+    mockEditableOrder("order-missing-district", { ...FOUND_CLIENT, district: "" });
+    renderPage();
+    await screen.findByRole("button", { name: "Fijar Pulsera en 50" });
+
+    expectDistrictRequired("Actualizar venta");
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
+
+    expect(mockUpdateClient).not.toHaveBeenCalled();
+    expect(mockCreateClient).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.put).not.toHaveBeenCalled();
+  });
+
+  it("completa el checklist y permite guardar al seleccionar el distrito faltante", async () => {
+    mockFetchClientByPhone.mockResolvedValue({ ...FOUND_CLIENT, district: "" });
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "order-district-completed", payments: [] } });
+    renderPage();
+    await fillCommonRequiredFields();
+    expectDistrictRequired();
+
+    await selectLocation("district", "Miraflores");
+
+    expect(screen.getByText("10 de 10 pasos completados")).toBeInTheDocument();
+    expect(screen.queryByText("Selecciona el distrito para continuar.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirmar venta" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+
+    await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1));
+    expect(mockUpdateClient).toHaveBeenCalledWith(FOUND_CLIENT.id, {
+      companyId: FOUND_CLIENT.companyId,
+      district: "Miraflores",
+    });
+    expect(mockToast.error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { field: "province", option: "Barranca", district: "Paramonga" },
+    { field: "department", option: "Arequipa", district: "Cayma" },
+  ] as const)("al cambiar $field limpia el distrito y bloquea hasta seleccionar el nuevo", async ({ field, option, district }) => {
+    const client = { ...FOUND_CLIENT, documentType: "DNI" as const, documentNumber: "12345678" };
+    mockFetchClientByPhone.mockResolvedValue(client);
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "order-location-changed", payments: [] } });
+    renderPage();
+    await fillCommonRequiredFields();
+    expect(screen.getByText("10 de 10 pasos completados")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirmar venta" })).toBeEnabled();
+
+    await selectLocation(field, option);
+
+    expectDistrictRequired();
+    expect(locationControl("district")).toHaveTextContent("Distrito");
+    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+    expect(mockUpdateClient).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+
+    if (field === "department") {
+      expect(locationControl("province")).toHaveTextContent("Provincia");
+      expect(locationControl("district")).toBeDisabled();
+      await selectLocation("province", "Arequipa");
+      expectDistrictRequired();
+    }
+    await selectLocation("district", district);
+
+    expect(screen.getByText("10 de 10 pasos completados")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirmar venta" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+    await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1));
+    expect(mockUpdateClient).toHaveBeenCalledWith(client.id, {
+      companyId: client.companyId,
+      province: option,
+      district,
+      ...(field === "department" ? { city: option } : {}),
     });
     expect(mockToast.error).not.toHaveBeenCalled();
   });
