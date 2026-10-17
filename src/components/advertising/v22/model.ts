@@ -831,6 +831,34 @@ export function diagnosis(
   if (!ample) return { label: "Poca data para diagnosticar", suggested: "brief" };
   return { label: "Funciona: haz variaciones del gancho", suggested: "media" };
 }
+export function isMetaPaused(row: Pick<AdsRow, "effectiveStatus" | "status">) {
+  return (
+    ["PAUSED", "ADSET_PAUSED", "CAMPAIGN_PAUSED"].includes(row.effectiveStatus ?? "") ||
+    row.status === "PAUSED"
+  );
+}
+export function metaPauseDescription(row: AdsRow) {
+  if (row.effectiveStatus === "CAMPAIGN_PAUSED") return "La campaña está pausada.";
+  if (row.effectiveStatus === "ADSET_PAUSED") return "El conjunto está pausado.";
+  return "No está gastando.";
+}
+export function metaStatusLabel(row: Pick<AdsRow, "effectiveStatus" | "status">) {
+  if (row.effectiveStatus === "CAMPAIGN_PAUSED") return "Pausado por la campaña";
+  if (row.effectiveStatus === "ADSET_PAUSED") return "Pausado por el conjunto";
+  if (isMetaPaused(row)) return "Pausado";
+  const labels: Record<string, string> = {
+    ACTIVE: "Activo",
+    IN_PROCESS: "En proceso",
+    PENDING_REVIEW: "En revisión",
+    PREAPPROVED: "Aprobado",
+    DISAPPROVED: "No aprobado",
+    WITH_ISSUES: "Con incidencias",
+    PENDING_BILLING_INFO: "Pendiente de información de pago",
+    ARCHIVED: "Archivado",
+    DELETED: "Eliminado",
+  };
+  return labels[row.effectiveStatus ?? row.status ?? ""] ?? "Estado no disponible";
+}
 export function adStatus(
   row: AdsRow,
   values: Financial,
@@ -839,7 +867,7 @@ export function adStatus(
   results: number | null,
 ) {
   const age = adAge(row, today);
-  if (row.effectiveStatus === "PAUSED" || row.status === "PAUSED") return "Pausado";
+  if (isMetaPaused(row)) return "Pausado";
   if (age !== null && age < rules.noResultsDays) return "Aprendizaje";
   if (
     age !== null &&

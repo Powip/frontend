@@ -40,6 +40,8 @@ import {
   channelRow,
   daysForRow,
   adStatus,
+  isMetaPaused,
+  metaPauseDescription,
   canScale,
   comparisonPeriod,
   creativeAverage,
@@ -237,7 +239,7 @@ export function AdvertisingAds() {
           (item) =>
             item.row.insights.spend === null ||
             (numeric(item.row.insights.spend) ?? 0) > 0 ||
-            (item.row.effectiveStatus === "PAUSED" && item.row.pausedInPeriod === true),
+            (isMetaPaused(item.row) && item.row.pausedInPeriod === true),
         )
         .filter((item) => channel === "all" || item.channels.has(channel))
         .filter((item) =>
@@ -937,7 +939,7 @@ export function AdvertisingAds() {
                               </span>
                               <p className="mt-1 text-muted-foreground">
                                 {rowState === "Pausado"
-                                  ? "No está gastando."
+                                  ? metaPauseDescription(row)
                                   : rowState === "Aprendizaje"
                                     ? "Espera antes de decidir."
                                     : rowState === "Sin resultados"

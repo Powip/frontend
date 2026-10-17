@@ -21,6 +21,7 @@ import {
   channelData,
   channelRow,
   adStatus,
+  isMetaPaused,
   rowResultTotal,
   canScale,
   profitUsage,
@@ -164,6 +165,34 @@ const row = (changes: Partial<AdsRow> = {}): AdsRow => ({
 });
 
 describe("Publicidad v2.2 financial contract", () => {
+  it.each(["PAUSED", "CAMPAIGN_PAUSED", "ADSET_PAUSED"])(
+    "prioritizes the effective pause %s over learning and missing financial data",
+    (effectiveStatus) => {
+      const paused = row({ effectiveStatus, status: "ACTIVE", daysActive: 1 });
+      const value = financial(116.68, emptySales(), null);
+      expect(isMetaPaused(paused)).toBe(true);
+      expect(adStatus(paused, value, rules, "2026-10-16", null)).toBe("Pausado");
+      expect(canScale(paused, value, rules, "2026-10-16")).toBe(false);
+    },
+  );
+  it("keeps an own pause and the existing active learning clock", () => {
+    const value = financial(116.68, emptySales(), null);
+    expect(adStatus(row({ status: "PAUSED" }), value, rules, "2026-10-16", null)).toBe("Pausado");
+    const active = row({ daysActive: 1 });
+    expect(isMetaPaused(active)).toBe(false);
+    expect(adStatus(active, value, rules, "2026-10-16", null)).toBe("Aprendizaje");
+    const eligible = row({
+      daysActive: 5,
+      recentCostStable: true,
+      stockDays: 30,
+      budget: { level: "adset", objectId: "set", noRecentIncrease: true },
+    });
+    const profitable = { ...value, delivered: 3, costSale: 1, maximum: 10 };
+    expect(canScale(eligible, profitable, rules, "2026-10-16")).toBe(true);
+    for (const effectiveStatus of ["CAMPAIGN_PAUSED", "ADSET_PAUSED"]) {
+      expect(canScale({ ...eligible, effectiveStatus }, profitable, rules, "2026-10-16")).toBe(false);
+    }
+  });
   it("classifies a known zero or negative margin as losing money when selling still costs money", () => {
     for (const maximum of [0, -10]) {
       const value = {
