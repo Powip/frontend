@@ -31,11 +31,13 @@ import { useAdsQuery, useAdsV22, useRefreshAds } from "./context";
 import { dayKey, limaToday, money, numeric } from "./model";
 import { Block, Failure, SelectField, exportAdsWorkbook } from "./shared";
 import { subDays, parseISO } from "date-fns";
+import { ProfitConnections } from "./ProfitConnections";
 
 const SECTIONS = [
   { id: "accounts", label: "Cuentas y tiendas" },
   { id: "products", label: "Producto de cada anuncio" },
   { id: "measurement", label: "Medir venta por anuncio" },
+  { id: "sales-costs", label: "Ventas y costos de POWIP" },
   { id: "rules", label: "Reglas y presupuesto del mes" },
   { id: "whatsapp", label: "Resumen diario por WhatsApp" },
   { id: "permissions", label: "Permisos" },
@@ -49,6 +51,7 @@ export function AdvertisingSettings() {
   const { identity, actorId, settings, reload } = useAdsV22();
   const refresh = useRefreshAds();
   const { fromDate, toDate } = useAdminPeriod();
+  const salesTo = toDate > limaToday() ? limaToday() : toDate;
   const { storeId, stores } = useAdvertisingStoreFilter();
   const [section, setSection] = useState("accounts");
   const [draft, setDraft] = useState<AdsSettings>(() => structuredClone(settings!));
@@ -135,6 +138,11 @@ export function AdvertisingSettings() {
     ["measurement", limaToday(), storeId],
     (id, signal) => getAdsSales(id, `${limaToday().slice(0, 7)}-01`, limaToday(), storeId, signal),
     section === "measurement" || section === "legacy",
+  );
+  const periodSales = useAdsQuery(
+    ["profit-connections", fromDate, salesTo, storeId],
+    (id, signal) => getAdsSales(id, fromDate, salesTo, storeId, signal),
+    section === "sales-costs" && fromDate <= salesTo,
   );
   const canAssign = settings!.capabilities.edit;
   const suggestions = (catalog.data?.rows ?? [])
@@ -406,6 +414,23 @@ export function AdvertisingSettings() {
               </>
             )}
           </Block>
+        )}
+        {section === "sales-costs" && fromDate > salesTo && (
+          <Block title="Ventas y costos de POWIP">
+            <p className="text-sm text-muted-foreground">
+              Elige un período que ya haya comenzado para consultar las ventas registradas.
+            </p>
+          </Block>
+        )}
+        {section === "sales-costs" && fromDate <= salesTo && (
+          <ProfitConnections
+            from={fromDate}
+            to={salesTo}
+            sales={periodSales.data}
+            loading={periodSales.isPending}
+            error={periodSales.error}
+            onSection={switchSection}
+          />
         )}
         {section === "measurement" && (
           <Block title="Medir venta por anuncio">

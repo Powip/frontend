@@ -283,8 +283,9 @@ export function TestRow({ test, product }: { test: AdsTest; product?: AdsProduct
       : null;
   const costSale = ratio(spend, delivered);
   const rules = settings!.rules;
-  const verdict =
-    maximum === null || spend === null
+  const verdict = financials.some((value) => value.evidence?.partial)
+    ? "Datos incompletos"
+    : maximum === null || spend === null
       ? "Sin costo suficiente"
       : spend >= maximum * rules.testMultiplier && delivered === 0
         ? "Descartar"

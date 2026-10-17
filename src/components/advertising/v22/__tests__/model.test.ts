@@ -101,6 +101,8 @@ function sales(): AdsSales {
     eligibleDelivered: 6,
     eligibleDeliveredUnits: 9,
     billedRevenue: "600",
+    billedUnits: 9,
+    eligibleBilledUnits: 9,
     eligibleRevenue: "600",
     eligibleProductCost: "180",
     eligibleShippingCost: "60",
@@ -190,7 +192,9 @@ describe("Publicidad v2.2 financial contract", () => {
     const profitable = { ...value, delivered: 3, costSale: 1, maximum: 10 };
     expect(canScale(eligible, profitable, rules, "2026-10-16")).toBe(true);
     for (const effectiveStatus of ["CAMPAIGN_PAUSED", "ADSET_PAUSED"]) {
-      expect(canScale({ ...eligible, effectiveStatus }, profitable, rules, "2026-10-16")).toBe(false);
+      expect(canScale({ ...eligible, effectiveStatus }, profitable, rules, "2026-10-16")).toBe(
+        false,
+      );
     }
   });
   it("classifies a known zero or negative margin as losing money when selling still costs money", () => {
@@ -440,17 +444,35 @@ describe("Publicidad v2.2 financial contract", () => {
     expect(value.costSale).toBe(50);
     expect(value.roas).toBe(2);
   });
-  it("uses observed net product revenue instead of the catalog list price", () => {
+  it("uses observed net revenue and historical costs instead of current catalog prices", () => {
     const source = sales();
     source.byProduct = [
       {
-        ...metrics({ billedRevenue: "600", billedUnits: 6 }),
+        ...metrics({
+          billedRevenue: "600",
+          billedUnits: 6,
+          eligibleBilledUnits: 6,
+          eligibleRevenue: "600",
+          eligibleProductCost: "240",
+          eligibleShippingCost: "60",
+          eligibleDelivered: 6,
+        }),
         storeId: "store",
         channel: "web",
         productId: "product",
       },
     ];
-    const value = adFinancial(row(), summary(), source, {
+    const data = summary();
+    data.adProducts = [
+      {
+        adId: "ad",
+        accountId: "account",
+        productId: "product",
+        origin: "manual",
+        storeId: "store",
+      },
+    ];
+    const value = adFinancial(row(), data, source, {
       id: "product",
       name: "Producto",
       storeId: "store",
@@ -459,7 +481,7 @@ describe("Publicidad v2.2 financial contract", () => {
       availableStock: "100",
       variants: [],
     });
-    expect(value.maximum).toBe(80);
+    expect(value.maximum).toBe(50);
   });
   it.each([
     { unitCost: null, ownNet: true },

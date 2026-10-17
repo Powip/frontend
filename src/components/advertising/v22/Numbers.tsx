@@ -127,7 +127,7 @@ export function AdvertisingNumbers() {
   );
   const definitions: Array<{
     label: string;
-    key: keyof Financial;
+    key: Exclude<keyof Financial, "evidence">;
     type: "count" | "money" | "ratio";
     permission?: "spend" | "profit";
   }> = [
@@ -184,7 +184,7 @@ export function AdvertisingNumbers() {
         <h2 className="text-lg font-semibold">Mis números</h2>
         <span className="rounded-full bg-primary/5 px-3 py-1 text-xs">
           {current.attributed > 0
-            ? `✓ Medido por anuncio · ${pct(ratio(current.attributed, current.orders))} de pedidos`
+            ? `✓ ${current.attributed < current.orders ? "Medido parcial" : "Medido por anuncio"} · ${pct(ratio(current.attributed, current.orders))} de pedidos`
             : "◐ Estimado por canal"}
         </span>
       </div>

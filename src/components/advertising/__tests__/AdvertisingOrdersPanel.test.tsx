@@ -139,6 +139,9 @@ it("sends unknown costs as null and an explicit zero as zero", async () => {
     reason: "Costo de producto confirmado",
   });
   expect(await screen.findByText("Costos guardados.")).toBeInTheDocument();
+  expect(mockInvalidate).toHaveBeenCalledWith({
+    queryKey: ["ads-v22", "actor", "company"],
+  });
 });
 it("blocks a stale review until the user reloads it", async () => {
   jest

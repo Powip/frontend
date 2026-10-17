@@ -35,7 +35,9 @@ import { useAdvertisingStoreFilter } from "../AdvertisingStoreFilterContext";
 import { useAdsQuery, useAdsV22, useRefreshAds } from "./context";
 import {
   adAge,
-  adFinancial,
+  createAdFinancialCalculator,
+  financialBasis,
+  financialCauses,
   channelData,
   channelRow,
   daysForRow,
@@ -208,10 +210,14 @@ export function AdvertisingAds() {
     },
     [data.data, productData.data, scaleData.data, today, channel],
   );
+  const financialCalculator = useMemo(
+    () => (scoped ? createAdFinancialCalculator(scoped.summary, scoped.sales) : null),
+    [scoped],
+  );
   const analyze = useCallback(
     (rows: AdsRow[]) =>
       rows.map(enrich).map((row) => {
-        const value = scoped ? adFinancial(row, scoped.summary, scoped.sales, row.product) : null;
+        const value = financialCalculator?.(row) ?? null;
         const channels = new Set<string>(
           data.data ? daysForRow(row, data.data.summary).map((day) => day.channel) : [],
         );
@@ -225,7 +231,7 @@ export function AdvertisingAds() {
           scalable: value ? canScale(row, value, settings!.rules, today) : false,
         };
       }),
-    [enrich, scoped, data.data, settings!.rules, today],
+    [enrich, financialCalculator, data.data, settings!.rules, today],
   );
   const allItems = useMemo(() => analyze(fullAds.data?.rows ?? []), [analyze, fullAds.data]);
   const baseItems = useMemo(
@@ -347,7 +353,8 @@ export function AdvertisingAds() {
     .map((item) => item.value)
     .filter((value): value is NonNullable<typeof value> => !!value);
   const tested = metrics.filter(
-    (value) => value.maximum !== null && (value.spend ?? 0) >= value.maximum,
+    (value) =>
+      !value.evidence?.partial && value.maximum !== null && (value.spend ?? 0) >= value.maximum,
   );
   const winners = tested.filter(
     (value) =>
@@ -382,6 +389,10 @@ export function AdvertisingAds() {
         Formato: row.creative?.format,
         Gancho: settings!.tags.hooks.find((tag) => tag.id === tags?.hookId)?.name,
         Creador: settings!.tags.creators.find((tag) => tag.id === tags?.creatorId)?.name,
+        "Base del cálculo": value ? financialBasis(value) : undefined,
+        "Cobertura de atribución": value?.evidence?.attributionCoverage,
+        Observaciones: value ? financialCauses(value, permissions.profit).join(" ") : undefined,
+        ...(permissions.profit ? { "Cobertura de costos": value?.evidence?.costCoverage } : {}),
         Estado:
           permissions.profit ||
           !["Rentable", "Pierdes plata", "Cerca del límite"].includes(rowState)
@@ -651,6 +662,16 @@ export function AdvertisingAds() {
           {data.data.sales.totals.attributedOrders === 0 && (
             <p>
               Costos y ROAS estimados con ventas POWIP; faltan referencias de anuncio para medirlos.
+            </p>
+          )}
+          {data.data.sales.totals.attributedOrders > 0 && (
+            <p>
+              {data.data.sales.totals.attributedOrders < data.data.sales.totals.orders
+                ? "Medido parcial"
+                : "Medido por anuncio"}{" "}
+              · {pct(ratio(data.data.sales.totals.attributedOrders, data.data.sales.totals.orders))}{" "}
+              de pedidos con anuncio identificado. Las ventas sin referencia de anuncio no se
+              reparten de nuevo.
             </p>
           )}
           {[
@@ -950,6 +971,19 @@ export function AdvertisingAds() {
                                           ? "Verifica stock antes de escalar."
                                           : ""}
                               </p>
+                              {value?.evidence && (
+                                <div className="mt-1 space-y-1 text-muted-foreground">
+                                  <p>
+                                    {financialBasis(value)}
+                                    {value.evidence.basis === "measured"
+                                      ? ` · ${pct(value.evidence.attributionCoverage)} de pedidos identificados`
+                                      : ""}
+                                  </p>
+                                  {financialCauses(value, permissions.profit).map((cause) => (
+                                    <p key={cause}>{cause}</p>
+                                  ))}
+                                </div>
+                              )}
                             </>
                           )}
                         </td>
@@ -1036,7 +1070,13 @@ export function AdvertisingAds() {
                         )}
                         {permissions.profit && (
                           <td
-                            className={(value?.gain ?? 0) < 0 ? "text-red-600" : "text-emerald-600"}
+                            className={
+                              value?.gain == null
+                                ? "text-muted-foreground"
+                                : value.gain < 0
+                                  ? "text-red-600"
+                                  : "text-emerald-600"
+                            }
                           >
                             {money(value?.gain)}
                           </td>
