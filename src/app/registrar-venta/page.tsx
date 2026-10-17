@@ -847,6 +847,10 @@ function RegistrarVentaContent() {
     clientForm.documentNumber,
     salesRegion === "PROVINCIA",
   );
+  const hasValidClientDistrict = !!clientForm.district.trim();
+  const districtError = clientErrors.district ?? (
+    isFound && !hasValidClientDistrict ? "Selecciona el distrito para continuar." : undefined
+  );
 
   const validateClientForm = () => {
     const errors: Partial<Record<keyof typeof emptyClientForm, string>> = {
@@ -855,7 +859,7 @@ function RegistrarVentaContent() {
     if (!clientForm.fullName.trim()) errors.fullName = "Debes completar este dato.";
     if (!clientForm.province.trim()) errors.province = "Debes completar este dato.";
     if (!clientForm.department.trim()) errors.department = "Debes completar este dato.";
-    if (!clientForm.district.trim()) errors.district = "Debes completar este dato.";
+    if (!hasValidClientDistrict) errors.district = "Selecciona el distrito para continuar.";
     if (!clientForm.address.trim()) errors.address = "Debes completar este dato.";
 
     setClientErrors(errors);
@@ -991,6 +995,17 @@ function RegistrarVentaContent() {
           console.error("Error reintentando guardar el comprobante", error);
           toast.error("La venta ya está guardada. No se pudo subir el comprobante; vuelve a reintentarlo.");
         }
+        return;
+      }
+
+      // Validate the current form even when the client already exists. Changing
+      // province/department clears the district and must block all sale writes.
+      if (!hasValidClientDistrict) {
+        setClientErrors((errors) => ({
+          ...errors,
+          district: "Selecciona el distrito para continuar.",
+        }));
+        toast.error("Selecciona el distrito del cliente antes de confirmar la venta.");
         return;
       }
 
@@ -1544,14 +1559,16 @@ function RegistrarVentaContent() {
   // La misma validación habilita la venta y valida clientes nuevos o encontrados.
   const hasValidDocumentForRegion = Object.keys(clientDocumentErrors).length === 0;
 
-  // Cliente válido: ya encontrado/creado, o nuevo con los datos mínimos requeridos
+  // Los clientes nuevos requieren todos los datos mínimos; el distrito actual
+  // también es obligatorio para clientes existentes.
   const hasValidClientForNew =
     (isNotFound || isSearchError) &&
     !!clientForm.fullName.trim() &&
     !!clientForm.province.trim() &&
     !!clientForm.department.trim() &&
-    !!clientForm.district.trim() &&
+    hasValidClientDistrict &&
     !!clientForm.address.trim();
+  const hasValidClient = (!!clientFound || hasValidClientForNew) && hasValidClientDistrict;
 
   const canSubmit =
     !!saleContext.data &&
@@ -1559,7 +1576,7 @@ function RegistrarVentaContent() {
     origin.hasStore &&
     origin.hasInventory &&
     (!orderId || !!orderData) &&
-    (!!clientFound || hasValidClientForNew) &&
+    hasValidClient &&
     hasValidDocumentForRegion &&
     hasValidCart &&
     !!orderDetails.orderType &&
@@ -1574,8 +1591,10 @@ function RegistrarVentaContent() {
     { ok: origin.hasInventory, msg: "Selecciona el almacén de salida" },
     { ok: hasValidCart, msg: "Agrega al menos un producto al carrito" },
     {
-      ok: !!clientFound || hasValidClientForNew,
-      msg: "Completa los datos del cliente (nombre, dirección)",
+      ok: hasValidClient,
+      msg: formEnabled && !hasValidClientDistrict
+        ? "Selecciona el distrito del cliente"
+        : "Completa los datos del cliente (nombre, dirección y distrito)",
     },
     {
       ok: hasValidDocumentForRegion,
@@ -1883,7 +1902,7 @@ function RegistrarVentaContent() {
                           clientErrors.address ||
                           clientErrors.department ||
                           clientErrors.province ||
-                          clientErrors.district
+                          districtError
                             ? "text-destructive"
                             : ""
                         }
@@ -1967,11 +1986,11 @@ function RegistrarVentaContent() {
                             options={districtOptions}
                             placeholder="Distrito"
                             searchPlaceholder="Buscar distrito..."
-                            className={clientErrors.district ? "border-destructive" : ""}
+                            className={districtError ? "border-destructive" : ""}
                           />
-                          {clientErrors.district && (
+                          {districtError && (
                             <p className="text-[10px] text-destructive mt-1">
-                              {clientErrors.district}
+                              {districtError}
                             </p>
                           )}
                         </div>
