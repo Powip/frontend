@@ -17,6 +17,7 @@ const PUBLIC_ROUTES = [
   "/restablecer-contrasena",
   "/subscriptions",
   "/rastreo",
+  "/c/",
   "/onboarding",
 ];
 
