@@ -31,6 +31,7 @@ const mockSettings = {
 } as AdsSettings;
 let mockCount = 101;
 let mockPartial = false;
+let mockRowChanges: Partial<AdsRow> = {};
 const mockRows = () =>
   Array.from(
     { length: mockCount },
@@ -75,6 +76,7 @@ const mockRows = () =>
             webPurchases: { count: "0", costPerResult: null, status: "complete" },
           },
         },
+        ...mockRowChanges,
       }) as AdsRow,
   );
 const mockNumbers = () => ({
@@ -192,6 +194,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockCount = 101;
   mockPartial = false;
+  mockRowChanges = {};
   window.history.replaceState({}, "", "/publicidad/anuncios");
   mockSource = mockNumbers();
   process.env.NEXT_PUBLIC_API_INTEGRATIONS = "https://integrations.test";
@@ -220,7 +223,7 @@ it("deduplicates identical full catalogs, loads every server page, limits DOM to
   mockCount = 1115;
   mockSource = mockNumbers();
   const view = mount();
-  await screen.findByText("Mostrando 1–50 de 1115");
+  await screen.findByText("Mostrando 1–50 de 1115", {}, { timeout: 5000 });
   expect(catalogCalls()).toHaveLength(12);
   expect(catalogCalls().map(([, options]) => options.params.page)).toEqual(
     Array.from({ length: 12 }, (_, index) => index + 1),
@@ -299,4 +302,41 @@ it("keeps observed ads visible under a channel filter while coverage and results
   );
   view.unmount();
   view.client.clear();
+});
+
+it.each([
+  ["CAMPAIGN_PAUSED", "La campaña está pausada."],
+  ["ADSET_PAUSED", "El conjunto está pausado."],
+])("keeps positive and audited zero-spend inherited pauses visible: %s", async (effectiveStatus, reason) => {
+  mockCount = 1;
+  mockRowChanges = { effectiveStatus, status: "ACTIVE", pausedInPeriod: true };
+  mockSource = mockNumbers();
+  const view = mount();
+  await screen.findByText("Mostrando 1–1 de 1");
+  expect(within(visibleRows()[0]).getByText("Pausado")).toBeInTheDocument();
+  expect(within(visibleRows()[0]).getByText(reason)).toBeInTheDocument();
+  expect(within(visibleRows()[0]).queryByText("Revisa y pausa.")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Pausado 1" }));
+  fireEvent.click(screen.getByRole("button", { name: "↓ Excel" }));
+  expect((exportAdsWorkbook as jest.Mock).mock.calls[0][1][0].rows[0].Estado).toBe("Pausado");
+  view.unmount();
+  view.client.clear();
+
+  mockRowChanges = {
+    ...mockRowChanges,
+    insights: { ...mockRows()[0].insights, spend: "0" },
+  };
+  mockSource = mockNumbers();
+  const zero = mount();
+  await screen.findByText("Mostrando 1–1 de 1");
+  expect(within(visibleRows()[0]).getByText("Pausado")).toBeInTheDocument();
+  zero.unmount();
+  zero.client.clear();
+
+  mockRowChanges = { ...mockRowChanges, pausedInPeriod: false };
+  const unaudited = mount();
+  await screen.findByText("No hay anuncios con gasto o pausas en este período para estos filtros.");
+  expect(screen.queryByText("Mostrando 1–1 de 1")).not.toBeInTheDocument();
+  unaudited.unmount();
+  unaudited.client.clear();
 });

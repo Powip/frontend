@@ -42,6 +42,7 @@ import {
   decimal,
   diagnosis,
   money,
+  metaStatusLabel,
   numeric,
   pct,
   ratio,
@@ -165,7 +166,7 @@ export function AdvertisingAdDetail({
           ) : (
             <div className="space-y-5">
               <p className="text-sm">
-                {item.effectiveStatus} · {creative?.format ?? "—"} · {diagnostic.label}
+                {metaStatusLabel(item)} · {creative?.format ?? "—"} · {diagnostic.label}
               </p>
               <Block
                 title="Vista previa real de Meta"
@@ -375,7 +376,7 @@ export function AdvertisingAdDetail({
                           <td className="p-2">{money(numeric(variant.insights?.spend))}</td>
                         )}
                         <td className="p-2">{decimal(numeric(variant.insights?.ctr), "%")}</td>
-                        <td className="p-2">{variant.effectiveStatus ?? variant.status}</td>
+                        <td className="p-2">{metaStatusLabel(variant)}</td>
                       </tr>
                     ))}
                   </tbody>

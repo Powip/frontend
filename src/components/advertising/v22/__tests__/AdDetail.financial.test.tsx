@@ -1,9 +1,10 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { AdvertisingAdDetail } from "../AdDetail";
 import { emptySales } from "../model";
 import type { AdsProduct, AdsRow, AdsSales, AdsSummary } from "@/services/advertisingV22Service";
 
 let mockProducts: AdsProduct[] = [];
+let mockEdit = false;
 const mockRow = {
   id: "ad",
   accountId: "account",
@@ -34,7 +35,7 @@ jest.mock("../context", () => ({
     identity: { token: "token", companyId: "company" },
     settings: {
       rules: { highFrequency: 3.5 },
-      capabilities: { spend: true, profit: true, edit: false },
+      capabilities: { spend: true, profit: true, edit: mockEdit },
       tags: { hooks: [], creators: [] },
     },
   }),
@@ -50,6 +51,12 @@ jest.mock("../context", () => ({
   }),
 }));
 
+beforeEach(() => {
+  mockEdit = false;
+  mockProducts = [];
+  mockRow.status = "ACTIVE";
+  mockRow.effectiveStatus = "ACTIVE";
+});
 it("uses its loaded assigned product cost in the detail and keeps margin unknown until that cost exists", () => {
   const metric = {
     ...emptySales(),
@@ -112,4 +119,36 @@ it("uses its loaded assigned product cost in the detail and keeps margin unknown
   view.rerender(<AdvertisingAdDetail {...props} />);
   expect(screen.getByText("Máximo").parentElement).toHaveTextContent("70.00");
   expect(screen.getByText("Ganancia").parentElement).toHaveTextContent("360.00");
+});
+
+it.each([
+  ["CAMPAIGN_PAUSED", "Pausado por la campaña"],
+  ["ADSET_PAUSED", "Pausado por el conjunto"],
+])("explains inherited pause %s without changing the active child's action target", (effectiveStatus, label) => {
+  mockRow.effectiveStatus = effectiveStatus;
+  mockEdit = true;
+  const onAction = jest.fn();
+  render(
+    <AdvertisingAdDetail
+      row={mockRow}
+      summary={{ adProducts: [], days: [], quality: { warnings: [] } } as unknown as AdsSummary}
+      sales={{
+        totals: emptySales(),
+        byAd: [],
+        byChannel: [],
+        byProduct: [],
+        deliveryHistory: [],
+      } as unknown as AdsSales}
+      from="2026-10-01"
+      to="2026-10-16"
+      average={{ hook: null, hold: null, ctr: null, conversion: null }}
+      onClose={jest.fn()}
+      onAction={onAction}
+    />,
+  );
+  expect(screen.getByText(new RegExp(label), { selector: "p" })).toBeInTheDocument();
+  expect(screen.queryByText(new RegExp(effectiveStatus))).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Activar" })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Pausar" }));
+  expect(onAction).toHaveBeenCalledWith({ rows: [mockRow], action: "pause" });
 });
