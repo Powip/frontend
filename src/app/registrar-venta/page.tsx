@@ -71,6 +71,8 @@ import { bumpProductFrequency, getProductFrequencies } from "@/utils/productFreq
 import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
 import { buildOrderItem, getOrderItemPricing } from "./orderItemPricing";
 import { validateClientDocument } from "./clientDocumentValidation";
+import { buildClientUpdatePayload, clientToFormFields } from "./clientForm";
+import { clientSaveErrorMessage } from "./clientSaveError";
 import {
   resolvePaymentProofTarget,
   type ProofPayment,
@@ -176,31 +178,6 @@ const emptyClientForm = {
   longitude: "",
   googleMapsUrl: "",
 };
-
-/**
- * Normaliza un `Client` (backend) a la forma del `clientForm` del formulario,
- * aplicando los mismos fallbacks en todos los usos (carga de orden, cliente
- * encontrado por teléfono y snapshot de comparación en `hasClientChanges`).
- * Mantener esta función como única fuente evita que los distintos `useEffect`
- * y la comparación de cambios diverjan entre sí.
- */
-function clientToFormFields(client: Client) {
-  return {
-    fullName: client.fullName ?? "",
-    phoneNumber: client.phoneNumber ?? "",
-    documentType: client.documentType,
-    documentNumber: client.documentNumber ?? "",
-    clientType: client.clientType,
-    department: client.city ?? "",
-    province: client.province ?? "",
-    district: client.district ?? "",
-    address: client.address ?? "",
-    reference: client.reference ?? "",
-    latitude: client.latitude != null ? String(client.latitude) : "",
-    longitude: client.longitude != null ? String(client.longitude) : "",
-    googleMapsUrl: client.googleMapsUrl ?? "",
-  };
-}
 
 function RegistrarVentaContent() {
   /* ---------------- Params ---------------- */
@@ -1060,27 +1037,15 @@ function RegistrarVentaContent() {
         try {
           const updated = await updateClient(clientFound.id, {
             companyId: auth?.company?.id,
-            fullName: clientForm.fullName,
-            phoneNumber: clientForm.phoneNumber,
-            documentType: clientForm.documentType,
-            documentNumber: clientForm.documentType ? clientForm.documentNumber : undefined,
-            clientType: clientForm.clientType,
-            province: clientForm.province,
-            city: clientForm.department,
-            district: clientForm.district,
-            address: clientForm.address,
-            reference: clientForm.reference || undefined,
-            latitude: clientForm.latitude ? Number(clientForm.latitude) : undefined,
-            longitude: clientForm.longitude ? Number(clientForm.longitude) : undefined,
-            googleMapsUrl: clientForm.googleMapsUrl || undefined,
+            ...clientChanges,
           });
           if (!isCurrentEditor()) return;
           setClientFound(updated);
           setOriginalClient(updated);
           activeClient = updated;
-        } catch {
+        } catch (error) {
           if (!isCurrentEditor()) return;
-          toast.error("Error al guardar los cambios del cliente.");
+          toast.error(clientSaveErrorMessage(error));
           return;
         }
       }
@@ -1534,26 +1499,14 @@ function RegistrarVentaContent() {
     try {
       const updated = await updateClient(clientFound.id, {
         companyId: auth.company.id,
-        fullName: clientForm.fullName,
-        phoneNumber: clientForm.phoneNumber,
-        documentType: clientForm.documentType,
-        documentNumber: clientForm.documentType ? clientForm.documentNumber : undefined,
-        clientType: clientForm.clientType,
-        province: clientForm.province,
-        city: clientForm.department, // Mapear department a city
-        district: clientForm.district,
-        address: clientForm.address,
-        reference: clientForm.reference || undefined,
-        latitude: clientForm.latitude ? Number(clientForm.latitude) : undefined,
-        longitude: clientForm.longitude ? Number(clientForm.longitude) : undefined,
-        googleMapsUrl: clientForm.googleMapsUrl || undefined,
+        ...clientChanges,
       });
 
       setClientFound(updated);
       setOriginalClient(updated);
       toast.success("Cliente actualizado");
-    } catch {
-      toast.error("Error al actualizar cliente");
+    } catch (error) {
+      toast.error(clientSaveErrorMessage(error));
     }
   };
 
@@ -1637,9 +1590,8 @@ function RegistrarVentaContent() {
   const checklistDone = checklist.filter((c) => c.ok).length;
   const checklistPct = Math.round((checklistDone / checklist.length) * 100);
 
-  const hasClientChanges =
-    originalClient &&
-    JSON.stringify(clientForm) !== JSON.stringify(clientToFormFields(originalClient));
+  const clientChanges = originalClient ? buildClientUpdatePayload(originalClient, clientForm) : {};
+  const hasClientChanges = Object.keys(clientChanges).length > 0;
 
   if (!auth) return null;
 
