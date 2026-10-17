@@ -14,18 +14,10 @@ import {
 } from "lucide-react";
 
 export const ADVERTISING_SECTIONS = [
-  { label: "Resumen", icon: BarChart3, href: "/publicidad" },
-  { label: "Campañas", icon: Megaphone, href: "/publicidad/campanas" },
-  { label: "Asignaciones", icon: Store, href: "/publicidad/asignaciones" },
+  { label: "Mis números", icon: BarChart3, href: "/publicidad" },
   { label: "Anuncios", icon: Layers, href: "/publicidad/anuncios" },
-  { label: "Resultados", icon: CircleDollarSign, href: "/publicidad/resultados" },
-  { label: "Calidad", icon: CheckCheck, href: "/publicidad/calidad" },
-  { label: "Productos", icon: Package, href: "/publicidad/productos" },
-  { label: "Zonas", icon: MapPin, href: "/publicidad/zonas" },
-  { label: "Atribución", icon: Target, href: "/publicidad/atribucion" },
-  { label: "Alertas", icon: Bell, href: "/publicidad/alertas" },
-  { label: "Planificador", icon: CalendarDays, href: "/publicidad/planificador" },
-  { label: "Conexiones", icon: Link2, href: "/publicidad/conexiones" },
+  { label: "Pruebas", icon: Target, href: "/publicidad/pruebas" },
+  { label: "Configuración", icon: Link2, href: "/publicidad/configuracion" },
 ] as const;
 
 export function advertisingSectionActive(pathname: string, href: string) {

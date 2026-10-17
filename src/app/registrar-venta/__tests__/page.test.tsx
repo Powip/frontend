@@ -725,6 +725,25 @@ async function fillCommonRequiredFields() {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("RegistrarVentaPage — creación de venta con adelanto (FIX aprobacion-pagos-solo-finanzas)", () => {
+  it.each([
+    ["CONTRA_ENTREGA", "COD"],
+    ["EFECTIVO", "PREPAID"],
+  ])("sends paymentCondition %s → %s with zero advance and no invented payment", async (method, condition) => {
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "order-no-advance", payments: [] } });
+    renderPage();
+    await fillCommonRequiredFields();
+    await userEvent.selectOptions(
+      within(fieldByLabel(/método de pago/i)).getByRole("combobox"),
+      method,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+    await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalled());
+    const orderCall = mockedAxiosAuth.post.mock.calls.find(([url]) => /\/order-header(?:\/manual)?$/.test(String(url)));
+    expect(orderCall).toBeDefined();
+    expect(orderCall![1]).toEqual(expect.objectContaining({ paymentCondition: condition }));
+    expect(orderCall![1]).not.toHaveProperty("payments");
+  });
+
   it("con comprobante adjunto: sube el comprobante pero NUNCA llama a /approve, y el toast avisa que queda pendiente de Finanzas", async () => {
     mockedAxiosAuth.post.mockResolvedValue({
       data: { id: "order-123", payments: [{ id: "payment-123" }] },

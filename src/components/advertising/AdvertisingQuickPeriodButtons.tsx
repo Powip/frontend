@@ -1,18 +1,23 @@
 "use client";
 
-import { format, subDays } from "date-fns";
+import { endOfMonth, format, startOfMonth, subDays } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
 
-type QuickPeriod = "today" | "yesterday" | "7d" | "30d";
+type QuickPeriod = "today" | "yesterday" | "7d" | "30d" | "month";
 const PERIODS: Array<{ value: QuickPeriod; label: string }> = [
   { value: "today", label: "Hoy" },
   { value: "yesterday", label: "Ayer" },
   { value: "7d", label: "7 días" },
-  { value: "30d", label: "30 días" },
+  { value: "month", label: "Mes" },
 ];
 
 export function advertisingQuickRange(period: QuickPeriod, now = new Date()) {
+  if (period === "month")
+    return {
+      from: format(startOfMonth(now), "yyyy-MM-dd"),
+      to: format(endOfMonth(now), "yyyy-MM-dd"),
+    };
   const to = period === "yesterday" ? subDays(now, 1) : now;
   const from = period === "7d" ? subDays(to, 6) : period === "30d" ? subDays(to, 29) : to;
   return { from: format(from, "yyyy-MM-dd"), to: format(to, "yyyy-MM-dd") };

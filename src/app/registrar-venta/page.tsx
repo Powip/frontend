@@ -1,5 +1,7 @@
 "use client";
 
+import { AdvertisingAttributionSelect } from "@/components/advertising/v22/AttributionSelect";
+
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -1146,6 +1148,11 @@ function RegistrarVentaContent() {
 
         // --- Ítems ---
         items: cart.map(buildOrderItem),
+
+        // The selected condition exists even when no payment has been collected.
+        paymentCondition: ["CONTRA_ENTREGA", "CONTRAENTREGA"].includes(paymentMethod)
+          ? "COD"
+          : "PREPAID",
 
         // --- Pagos: solo se incluye si hay un adelanto real (> 0).
         //     Nunca se manda un pago fantasma { amount: 0 }. ---
@@ -2859,12 +2866,10 @@ function RegistrarVentaContent() {
                     </div>
 
                     <div className="space-y-1">
-                      <Label>ID de publicidad (Meta)</Label>
-                      <Input
-                        type="text"
-                        placeholder="Opcional — ID del panel de ads"
+                      <AdvertisingAttributionSelect
+                        storeId={origin.storeId}
                         value={metaPubliId}
-                        onChange={(e) => setMetaPubliId(e.target.value)}
+                        onChange={setMetaPubliId}
                       />
                     </div>
                   </Disclosure>

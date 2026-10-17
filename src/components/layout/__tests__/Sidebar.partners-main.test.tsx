@@ -7,6 +7,11 @@ import type { ComponentProps } from "react";
 import { render, screen } from "@testing-library/react";
 import { Sidebar } from "../Sidebar";
 
+let mockAdvertisingView = false;
+jest.mock("@tanstack/react-query", () => ({
+  useQuery: () => ({ data: { capabilities: { view: mockAdvertisingView } }, isError: false }),
+}));
+
 let mockPathname = "/administracion/pauta";
 let mockUser = {
   id: "sidebar-fixture-user",
@@ -43,6 +48,7 @@ describe("Sidebar · Partners with current main", () => {
   beforeEach(() => {
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
     mockPathname = "/administracion/pauta";
+    mockAdvertisingView = false;
     mockUser = {
       id: "sidebar-fixture-user",
       email: "sidebar-user@partners.invalid",
@@ -64,15 +70,19 @@ describe("Sidebar · Partners with current main", () => {
       .toHaveAttribute("href", "/partners");
   });
 
-  it("shows Publicidad as a main section only with financial access", () => {
-    mockPathname = "/publicidad/conexiones";
+  it("shows Publicidad from its live role matrix while preserving Partners", () => {
+    mockPathname = "/publicidad";
     const view = render(<Sidebar />);
-    expect(screen.queryByRole("button", { name: "Publicidad" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Publicidad" })).not.toBeInTheDocument();
     mockUser = { ...mockUser, permissions: ["VIEW_FINANCES"] };
     view.rerender(<Sidebar />);
-    expect(screen.getByRole("button", { name: "Publicidad" })).toBeVisible();
-    expect(screen.getByRole("link", { name: "Conexiones" })).toHaveAttribute("href", "/publicidad/conexiones");
-    expect(screen.getByRole("link", { name: "Resumen" })).toHaveAttribute("href", "/publicidad");
+    expect(screen.queryByRole("link", { name: "Publicidad" })).not.toBeInTheDocument();
+    mockUser = { ...mockUser, permissions: [] };
+    mockAdvertisingView = true;
+    view.rerender(<Sidebar />);
+    expect(screen.getByRole("link", { name: "Publicidad" })).toHaveAttribute("href", "/publicidad");
+    expect(screen.getByRole("link", { name: "Partners" })).toHaveAttribute("href", "/partners");
+    expect(screen.queryByRole("link", { name: "Conexiones" })).not.toBeInTheDocument();
   });
 
   it("an administrative role alone does not show Partners staff navigation", () => {

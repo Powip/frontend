@@ -51,7 +51,8 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/partners/admin/solicitudes": ["PARTNERS_VIEW"],
   "/partners/admin": ["__SUPERADMIN__"],
   "/partners": [],
-  "/publicidad": ["VIEW_FINANCES"],
+  // Publicidad v2.2 authorizes its capabilities from the live role matrix.
+  "/publicidad": [],
   // Métricas: accesibles para cualquier usuario autenticado
   "/metricas/ventas": [],
   "/metricas/inventario": [],
@@ -94,7 +95,7 @@ export const SIDEBAR_ITEMS_PERMISSIONS: Record<string, string> = {
   "Atención al cliente": "",
   Facturación: "",
   Partners: "",
-  Publicidad: "VIEW_FINANCES",
+  Publicidad: "",
   "Partners Admin": "VIEW_PARTNERS_ADMIN",
   "Super Admin": "VIEW_SUPER_ADMIN",
 };

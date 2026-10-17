@@ -1,0 +1,115 @@
+import { render, screen } from "@testing-library/react";
+import { AdvertisingAdDetail } from "../AdDetail";
+import { emptySales } from "../model";
+import type { AdsProduct, AdsRow, AdsSales, AdsSummary } from "@/services/advertisingV22Service";
+
+let mockProducts: AdsProduct[] = [];
+const mockRow = {
+  id: "ad",
+  accountId: "account",
+  campaignId: "campaign",
+  adsetId: "set",
+  level: "ad",
+  name: "Anuncio real",
+  currency: "PEN",
+  status: "ACTIVE",
+  effectiveStatus: "ACTIVE",
+  creative: { format: "image" },
+  insights: { spend: "60", frequency: "1", impressions: "1000", actions: [] },
+  store: { id: "store", name: "Tienda" },
+} as unknown as AdsRow;
+jest.mock("recharts", () => ({
+  Bar: () => null,
+  BarChart: () => null,
+  CartesianGrid: () => null,
+  Line: () => null,
+  LineChart: () => null,
+  ResponsiveContainer: () => null,
+  Tooltip: () => null,
+  XAxis: () => null,
+  YAxis: () => null,
+}));
+jest.mock("../context", () => ({
+  useAdsV22: () => ({
+    identity: { token: "token", companyId: "company" },
+    settings: {
+      rules: { highFrequency: 3.5 },
+      capabilities: { spend: true, profit: true, edit: false },
+      tags: { hooks: [], creators: [] },
+    },
+  }),
+  useRefreshAds: () => jest.fn(),
+  useAdsQuery: (key: string[]) => ({
+    data:
+      key[0] === "products-v22"
+        ? { products: mockProducts }
+        : key[0] === "ad-detail"
+          ? { row: mockRow, daily: [], variations: [], changes: [] }
+          : {},
+    isError: false,
+  }),
+}));
+
+it("uses its loaded assigned product cost in the detail and keeps margin unknown until that cost exists", () => {
+  const metric = {
+    ...emptySales(),
+    delivered: 6,
+    deliveredUnits: 6,
+    eligibleDelivered: 6,
+    billedRevenue: "600",
+    billedUnits: 6,
+    eligibleRevenue: "600",
+    eligibleProductCost: "120",
+    eligibleShippingCost: "60",
+  };
+  const summary = {
+    adProducts: [{ adId: "ad", accountId: "account", productId: "product" }],
+    days: [
+      {
+        date: "2026-10-16",
+        adId: "ad",
+        accountId: "account",
+        storeId: "store",
+        channel: "web",
+        currency: "PEN",
+        spend: "60",
+        results: 6,
+      },
+    ],
+    quality: { warnings: [] },
+  } as unknown as AdsSummary;
+  const sales = {
+    totals: metric,
+    byAd: [],
+    byChannel: [{ ...metric, storeId: "store", channel: "web" }],
+    byProduct: [{ ...metric, productId: "product", storeId: "store", channel: "web" }],
+    deliveryHistory: [],
+  } as unknown as AdsSales;
+  const props = {
+    row: mockRow,
+    summary,
+    sales,
+    from: "2026-10-01",
+    to: "2026-10-16",
+    average: { hook: null, hold: null, ctr: null, conversion: null },
+    onClose: jest.fn(),
+    onAction: jest.fn(),
+  };
+  mockProducts = [];
+  const view = render(<AdvertisingAdDetail {...props} />);
+  expect(screen.getByText("Máximo").parentElement).toHaveTextContent("—");
+  mockProducts = [
+    {
+      id: "product",
+      name: "Producto",
+      storeId: "store",
+      unitCost: "20",
+      netPrice: null,
+      availableStock: "30",
+      variants: [],
+    },
+  ];
+  view.rerender(<AdvertisingAdDetail {...props} />);
+  expect(screen.getByText("Máximo").parentElement).toHaveTextContent("70.00");
+  expect(screen.getByText("Ganancia").parentElement).toHaveTextContent("360.00");
+});
