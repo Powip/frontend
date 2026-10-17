@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { addDays, parseISO, subDays } from "date-fns";
 import {
   Bar,
@@ -53,8 +53,10 @@ import {
   pct,
   ratio,
   resultCount,
+  rowResultTotal,
+  summarySpendAvailable,
 } from "./model";
-import { Block, Failure, MetricCard, SelectField, exportAdsWorkbook } from "./shared";
+import { Block, Failure, MetricCard, SelectField, exportAdsWorkbook, dataWarning } from "./shared";
 import { useNumbers } from "./Numbers";
 import { AdvertisingActionDialog, type ActionSelection } from "./Actions";
 import { AdvertisingAdDetail } from "./AdDetail";
@@ -110,11 +112,12 @@ export function AdvertisingAds() {
   const permissions = settings!.capabilities;
   const pathValue = (selectedLevel: AdsLevel) =>
     path.find((item) => item.level === selectedLevel)?.id;
+  const effectiveStoreId = pathValue("store") ?? storeId;
   const filters = {
     from: fromDate,
     to,
     level,
-    storeId: pathValue("store") ?? storeId,
+    storeId: effectiveStoreId,
     accountId: pathValue("account"),
     campaignId: pathValue("campaign"),
     adsetId: pathValue("adset"),
@@ -125,16 +128,21 @@ export function AdvertisingAds() {
     fromDate <= to,
   );
   const fullAds = useAdsQuery(
-    ["catalog-ads", fromDate, to, storeId],
+    ["catalog", { from: fromDate, to, level: "ad", storeId }],
     (id, signal) => getAllAdsCatalog(id, { from: fromDate, to, level: "ad", storeId }, signal),
     fromDate <= to,
   );
-  const averageCatalog = useAdsQuery(["creative-average", today], (id, signal) =>
-    getAllAdsCatalog(
-      id,
-      { from: dayKey(subDays(parseISO(today), 29)), to: today, level: "ad", storeId: "all" },
-      signal,
-    ),
+  const needsCreativeAverage = view !== "performance" || selected !== null;
+  const averageFilters = {
+    from: dayKey(subDays(parseISO(today), 29)),
+    to: today,
+    level: "ad" as const,
+    storeId: "all",
+  };
+  const averageCatalog = useAdsQuery(
+    ["catalog", averageFilters],
+    (id, signal) => getAllAdsCatalog(id, averageFilters, signal),
+    needsCreativeAverage,
   );
   const data = useNumbers(fromDate, to, "all", "ads");
   const scaleData = useNumbers(dayKey(subDays(parseISO(today), 6)), today, "all", "scale-check");
@@ -144,10 +152,15 @@ export function AdvertisingAds() {
   const saved = useAdsQuery(["saved-views"], (id, signal) =>
     adsGet<{ views: AdsSavedView[] }>(id, "/v22/views", undefined, signal),
   );
-  const average = creativeAverage(averageCatalog.data?.rows ?? []);
-  const scoped = data.data
-    ? channelData(data.data.summary, data.data.sales, channel, pathValue("store") ?? storeId)
-    : null;
+  const average = useMemo(
+    () => creativeAverage(needsCreativeAverage ? (averageCatalog.data?.rows ?? []) : []),
+    [averageCatalog.data, needsCreativeAverage],
+  );
+  const scoped = useMemo(
+    () =>
+      data.data ? channelData(data.data.summary, data.data.sales, channel, effectiveStoreId) : null,
+    [data.data, channel, effectiveStoreId],
+  );
   useEffect(() => {
     if (!fullAds.data) return;
     const adId = new URLSearchParams(window.location.search).get("adId");
@@ -158,108 +171,121 @@ export function AdvertisingAds() {
     const timeout = setTimeout(() => setUndo(null), Math.max(0, undo.until - Date.now()));
     return () => clearTimeout(timeout);
   }, [undo]);
-  function enrich(row: AdsRow) {
-    const assignment = data.data?.summary.adProducts.find((ad) => ad.adId === row.id);
-    const product = productData.data?.products.find((item) => item.id === assignment?.productId);
-    const velocity = data.data?.sales.productVelocity
-      .filter((item) => item.productId === product?.id)
-      .reduce((sum, item) => sum + item.unitsPerDay, 0);
-    const stockDays =
-      product && velocity && velocity > 0 ? Number(product.availableStock) / velocity : null;
-    const sevenDays = scaleData.data?.summary.days
-      .filter((day) => day.adId === row.id)
-      .sort((a, b) => a.date.localeCompare(b.date));
-    let stable: boolean | null = null;
-    if (sevenDays?.length) {
-      const from = dayKey(subDays(parseISO(today), 6));
-      const firstEnd = dayKey(addDays(parseISO(from), 2));
-      const lastStart = dayKey(subDays(parseISO(today), 2));
-      const rate = (records: typeof sevenDays) =>
-        ratio(
-          records.reduce((sum, day) => sum + (numeric(day.spend) ?? 0), 0),
-          records.reduce((sum, day) => sum + (day.results ?? 0), 0),
+  const enrich = useCallback(
+    (row: AdsRow) => {
+      const assignment = data.data?.summary.adProducts.find((ad) => ad.adId === row.id);
+      const product = productData.data?.products.find((item) => item.id === assignment?.productId);
+      const velocity = data.data?.sales.productVelocity
+        .filter((item) => item.productId === product?.id)
+        .reduce((sum, item) => sum + item.unitsPerDay, 0);
+      const stockDays =
+        product && velocity && velocity > 0 ? Number(product.availableStock) / velocity : null;
+      const sevenDays = scaleData.data?.summary.days
+        .filter((day) => day.adId === row.id)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      let stable: boolean | null = null;
+      if (sevenDays?.length) {
+        const from = dayKey(subDays(parseISO(today), 6));
+        const firstEnd = dayKey(addDays(parseISO(from), 2));
+        const lastStart = dayKey(subDays(parseISO(today), 2));
+        const rate = (records: typeof sevenDays) =>
+          ratio(
+            records.reduce((sum, day) => sum + (numeric(day.spend) ?? 0), 0),
+            records.reduce((sum, day) => sum + (day.results ?? 0), 0),
+          );
+        const first = rate(sevenDays.filter((day) => day.date <= firstEnd));
+        const last = rate(sevenDays.filter((day) => day.date >= lastStart));
+        stable = first !== null && last !== null ? last <= first * 1.05 : null;
+      }
+      return {
+        ...(data.data ? channelRow(row, data.data.summary, channel) : row),
+        stockDays,
+        recentCostStable: stable ?? row.recentCostStable,
+        product,
+      };
+    },
+    [data.data, productData.data, scaleData.data, today, channel],
+  );
+  const analyze = useCallback(
+    (rows: AdsRow[]) =>
+      rows.map(enrich).map((row) => {
+        const value = scoped ? adFinancial(row, scoped.summary, scoped.sales, row.product) : null;
+        const channels = new Set<string>(
+          data.data ? daysForRow(row, data.data.summary).map((day) => day.channel) : [],
         );
-      const first = rate(sevenDays.filter((day) => day.date <= firstEnd));
-      const last = rate(sevenDays.filter((day) => day.date >= lastStart));
-      stable = first !== null && last !== null ? last <= first * 1.05 : null;
-    }
-    return {
-      ...(data.data ? channelRow(row, data.data.summary, channel) : row),
-      stockDays,
-      recentCostStable: stable ?? row.recentCostStable,
-      product,
-    };
-  }
-  const allItems = (fullAds.data?.rows ?? []).map(enrich).map((row) => {
-    const value = data.data ? adFinancial(row, scoped!.summary, scoped!.sales, row.product) : null;
-    return {
-      row,
-      value,
-      state: value
-        ? adStatus(
-            row,
-            value,
-            settings!.rules,
-            today,
-            resultCount(row, row.destinationType === "WEBSITE" ? "web" : "messages"),
-          )
-        : "Sin datos suficientes",
-      scalable: value ? canScale(row, value, settings!.rules, today) : false,
-    };
-  });
-  const items = (catalog.data?.rows ?? [])
-    .map(enrich)
-    .map((row) => {
-      const value = data.data
-        ? adFinancial(row, scoped!.summary, scoped!.sales, row.product)
-        : null;
-      const rowDays =
-        data.data?.summary.days.filter((day) =>
-          row.level === "ad"
-            ? day.adId === row.id
-            : row.level === "adset"
-              ? day.adsetId === row.id
-              : row.level === "campaign"
-                ? day.campaignId === row.id
-                : row.level === "account"
-                  ? day.accountId === row.id
-                  : day.storeId === row.id,
-        ) ?? [];
-      const rowChannels = new Set<string>(rowDays.map((day) => day.channel));
-      const status = value
-        ? adStatus(
-            row,
-            value,
-            settings!.rules,
-            today,
-            [...rowChannels].reduce((sum, item) => sum + (resultCount(row, item) ?? 0), 0),
-          )
-        : "Sin datos suficientes";
-      const scalable = value ? canScale(row, value, settings!.rules, today) : false;
-      return { row, value, state: status, scalable, channels: rowChannels };
-    })
-    .filter(
-      (item) =>
-        (numeric(item.row.insights.spend) ?? 0) > 0 ||
-        (item.row.effectiveStatus === "PAUSED" && item.row.pausedInPeriod === true),
-    )
-    .filter((item) => channel === "all" || item.channels.has(channel))
-    .filter((item) =>
-      state === "Todos" || state === "Para escalar"
-        ? state !== "Para escalar" || item.scalable
-        : state === "Escalando"
-          ? !!item.row.budget?.increasedAt
-          : item.state === state,
-    )
-    .filter(
-      (item) =>
-        !search || item.row.name.toLocaleLowerCase("es").includes(search.toLocaleLowerCase("es")),
-    )
-    .sort(
-      (a, b) =>
-        STATUS_ORDER.indexOf(a.state) - STATUS_ORDER.indexOf(b.state) ||
-        (numeric(b.row.insights.spend) ?? 0) - (numeric(a.row.insights.spend) ?? 0),
-    );
+        return {
+          row,
+          value,
+          channels,
+          state: value
+            ? adStatus(row, value, settings!.rules, today, rowResultTotal(row, channels))
+            : "Sin datos suficientes",
+          scalable: value ? canScale(row, value, settings!.rules, today) : false,
+        };
+      }),
+    [enrich, scoped, data.data, settings!.rules, today],
+  );
+  const allItems = useMemo(() => analyze(fullAds.data?.rows ?? []), [analyze, fullAds.data]);
+  const baseItems = useMemo(
+    () => (catalog.data === fullAds.data ? allItems : analyze(catalog.data?.rows ?? [])),
+    [catalog.data, fullAds.data, allItems, analyze],
+  );
+  const items = useMemo(
+    () =>
+      baseItems
+        .filter(
+          (item) =>
+            item.row.insights.spend === null ||
+            (numeric(item.row.insights.spend) ?? 0) > 0 ||
+            (item.row.effectiveStatus === "PAUSED" && item.row.pausedInPeriod === true),
+        )
+        .filter((item) => channel === "all" || item.channels.has(channel))
+        .filter((item) =>
+          state === "Todos" || state === "Para escalar"
+            ? state !== "Para escalar" || item.scalable
+            : state === "Escalando"
+              ? !!item.row.budget?.increasedAt
+              : item.state === state,
+        )
+        .filter(
+          (item) =>
+            !search ||
+            item.row.name.toLocaleLowerCase("es").includes(search.toLocaleLowerCase("es")),
+        )
+        .sort(
+          (a, b) =>
+            STATUS_ORDER.indexOf(a.state) - STATUS_ORDER.indexOf(b.state) ||
+            (numeric(b.row.insights.spend) ?? 0) - (numeric(a.row.insights.spend) ?? 0),
+        ),
+    [baseItems, channel, state, search],
+  );
+  const pageScope = JSON.stringify([
+    fromDate,
+    to,
+    storeId,
+    level,
+    view,
+    channel,
+    state,
+    search,
+    path,
+  ]);
+  const [paging, setPaging] = useState({ scope: pageScope, page: 1 });
+  useEffect(() => setPaging({ scope: pageScope, page: 1 }), [pageScope]);
+  const pageCount = Math.max(1, Math.ceil(items.length / 50));
+  const currentPage = paging.scope === pageScope ? Math.min(paging.page, pageCount) : 1;
+  const pageStart = (currentPage - 1) * 50;
+  const orderedItems = useMemo(
+    () =>
+      view === "gallery"
+        ? [...items].sort((a, b) => (b.value?.delivered ?? 0) - (a.value?.delivered ?? 0))
+        : items,
+    [items, view],
+  );
+  const pageItems = orderedItems.slice(pageStart, pageStart + 50);
+  const totalSpend = items.some((item) => item.value?.spend == null)
+    ? null
+    : items.reduce((sum, item) => sum + item.value!.spend!, 0);
   function drill(row: AdsRow) {
     if (row.level === "ad") {
       setSelected(row);
@@ -335,50 +361,52 @@ export function AdvertisingAds() {
           )
           .map((item) => item.row)
       : [row];
-  const exportRows = items.map(({ row, value, state: rowState }) => {
-    const tags = data.data?.summary.adProducts.find((item) => item.adId === row.id);
-    return {
-      Anuncio: row.name,
-      Moneda: row.currency,
-      Nivel: LEVELS.find((level) => level.value === row.level)?.label,
-      Tienda: row.store?.name,
-      Cuenta: catalog.data?.accounts.find((account) => account.id === row.accountId)?.name,
-      Campaña: row.campaignId,
-      Conjunto: row.adsetId,
-      Canal: [
-        ...new Set(
-          data.data?.summary.days.filter((day) => day.adId === row.id).map((day) => day.channel),
-        ),
-      ].join(", "),
-      Formato: row.creative?.format,
-      Gancho: settings!.tags.hooks.find((tag) => tag.id === tags?.hookId)?.name,
-      Creador: settings!.tags.creators.find((tag) => tag.id === tags?.creatorId)?.name,
-      Estado:
-        permissions.profit || !["Rentable", "Pierdes plata", "Cerca del límite"].includes(rowState)
-          ? rowState
-          : "Activo",
-      ...(permissions.spend
-        ? {
-            Gasto: numeric(row.insights.spend),
-            "Costo por resultado mensajes": numeric(
-              row.insights.resultMetrics?.messages.costPerResult,
-            ),
-            "Costo por resultado web": numeric(
-              row.insights.resultMetrics?.webPurchases.costPerResult,
-            ),
-            "Costo por venta": value?.costSale,
-            ROAS: value?.roas,
-          }
-        : {}),
-      "Resultados mensajes": numeric(row.insights.resultMetrics?.messages.count),
-      "Resultados web": numeric(row.insights.resultMetrics?.webPurchases.count),
-      CTR: numeric(row.insights.ctr),
-      Frecuencia: numeric(row.insights.frequency),
-      Hook: creativeMetrics(row).hook,
-      Hold: creativeMetrics(row).hold,
-      ...(permissions.profit ? { Ganancia: value?.gain } : {}),
-    };
-  });
+  const exportRows = () =>
+    items.map(({ row, value, state: rowState }) => {
+      const tags = data.data?.summary.adProducts.find((item) => item.adId === row.id);
+      return {
+        Anuncio: row.name,
+        Moneda: row.currency,
+        Nivel: LEVELS.find((level) => level.value === row.level)?.label,
+        Tienda: row.store?.name,
+        Cuenta: catalog.data?.accounts.find((account) => account.id === row.accountId)?.name,
+        Campaña: row.campaignId,
+        Conjunto: row.adsetId,
+        Canal: [
+          ...new Set(
+            data.data?.summary.days.filter((day) => day.adId === row.id).map((day) => day.channel),
+          ),
+        ].join(", "),
+        Formato: row.creative?.format,
+        Gancho: settings!.tags.hooks.find((tag) => tag.id === tags?.hookId)?.name,
+        Creador: settings!.tags.creators.find((tag) => tag.id === tags?.creatorId)?.name,
+        Estado:
+          permissions.profit ||
+          !["Rentable", "Pierdes plata", "Cerca del límite"].includes(rowState)
+            ? rowState
+            : "Activo",
+        ...(permissions.spend
+          ? {
+              Gasto: numeric(row.insights.spend),
+              "Costo por resultado mensajes": numeric(
+                row.insights.resultMetrics?.messages.costPerResult,
+              ),
+              "Costo por resultado web": numeric(
+                row.insights.resultMetrics?.webPurchases.costPerResult,
+              ),
+              "Costo por venta": value?.costSale,
+              ROAS: value?.roas,
+            }
+          : {}),
+        "Resultados mensajes": numeric(row.insights.resultMetrics?.messages.count),
+        "Resultados web": numeric(row.insights.resultMetrics?.webPurchases.count),
+        CTR: numeric(row.insights.ctr),
+        Frecuencia: numeric(row.insights.frequency),
+        Hook: creativeMetrics(row).hook,
+        Hold: creativeMetrics(row).hold,
+        ...(permissions.profit ? { Ganancia: value?.gain } : {}),
+      };
+    });
   return (
     <main className="space-y-5 p-4 sm:p-6 lg:p-8">
       <TodayStrip />
@@ -553,7 +581,7 @@ export function AdvertisingAds() {
           disabled={!catalog.data}
           onClick={() =>
             void exportAdsWorkbook(`POWIP_Anuncios_${fromDate}_${to}`, [
-              { name: "Anuncios", rows: exportRows },
+              { name: "Anuncios", rows: exportRows() },
             ]).catch(setError)
           }
         >
@@ -616,6 +644,29 @@ export function AdvertisingAds() {
           </Button>
         ))}
       </div>
+      {data.data && (
+        <div className="space-y-1 text-xs text-muted-foreground" role="status">
+          {data.data.sales.totals.attributedOrders === 0 && (
+            <p>
+              Costos y ROAS estimados con ventas POWIP; faltan referencias de anuncio para medirlos.
+            </p>
+          )}
+          {[
+            ...new Set([
+              ...data.data.summary.quality.warnings,
+              ...(!summarySpendAvailable(data.data.summary) &&
+              data.data.summary.quality.warnings.length === 0
+                ? ["META_DATA_PARTIAL"]
+                : []),
+            ]),
+          ].map((warning) => (
+            <p key={warning}>{dataWarning(warning)}</p>
+          ))}
+        </div>
+      )}
+      {needsCreativeAverage && averageCatalog.isError && (
+        <Failure error={averageCatalog.error} retry={averageCatalog.refetch} />
+      )}
       {catalog.isError || data.isError ? (
         <Failure
           error={catalog.error ?? data.error}
@@ -735,73 +786,71 @@ export function AdvertisingAds() {
           )}
           {view === "gallery" ? (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {[...items]
-                .sort((a, b) => (b.value?.delivered ?? 0) - (a.value?.delivered ?? 0))
-                .map(({ row, value, state: rowState }, index) => (
-                  <button
-                    key={row.id}
-                    className="overflow-hidden rounded-lg border bg-card text-left"
-                    onClick={() => setSelected(row)}
-                  >
-                    <div className="relative flex h-56 items-center justify-center bg-muted">
-                      <AdThumbnail
-                        adId={row.id}
-                        accountId={row.accountId}
-                        source={row.creative?.thumbnailUrl ?? row.creative?.imageUrl}
-                        name={row.name}
-                        className="h-full w-full"
-                      />
-                      <span className="absolute left-3 top-3 rounded bg-background px-2 py-1 text-xs">
-                        #{index + 1} · {rowState}
+              {pageItems.map(({ row, value, state: rowState }, index) => (
+                <button
+                  key={row.id}
+                  className="overflow-hidden rounded-lg border bg-card text-left"
+                  onClick={() => setSelected(row)}
+                >
+                  <div className="relative flex h-56 items-center justify-center bg-muted">
+                    <AdThumbnail
+                      adId={row.id}
+                      accountId={row.accountId}
+                      source={row.creative?.thumbnailUrl ?? row.creative?.imageUrl}
+                      name={row.name}
+                      className="h-full w-full"
+                    />
+                    <span className="absolute left-3 top-3 rounded bg-background px-2 py-1 text-xs">
+                      #{pageStart + index + 1} · {rowState}
+                    </span>
+                  </div>
+                  <div className="space-y-3 p-4">
+                    <h3 className="font-medium">{row.name}</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {row.store?.name} · {row.creative?.format}
+                    </p>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      {permissions.spend && (
+                        <>
+                          <span>
+                            Gasto
+                            <br />
+                            {money(value?.spend, row.currency)}
+                          </span>
+                          <span>
+                            C. venta
+                            <br />
+                            {money(value?.costSale, row.currency)}
+                          </span>
+                          <span>
+                            ROAS
+                            <br />
+                            {decimal(value?.roas, "×")}
+                          </span>
+                        </>
+                      )}
+                      <span>
+                        Hook
+                        <br />
+                        {row.creative?.format === "video" ? pct(creativeMetrics(row).hook) : "—"}
+                      </span>
+                      <span>
+                        Hold
+                        <br />
+                        {row.creative?.format === "video" ? pct(creativeMetrics(row).hold) : "—"}
+                      </span>
+                      <span>
+                        CTR
+                        <br />
+                        {decimal(numeric(row.insights.ctr), "%")}
                       </span>
                     </div>
-                    <div className="space-y-3 p-4">
-                      <h3 className="font-medium">{row.name}</h3>
-                      <p className="text-xs text-muted-foreground">
-                        {row.store?.name} · {row.creative?.format}
-                      </p>
-                      <div className="grid grid-cols-3 gap-2 text-xs">
-                        {permissions.spend && (
-                          <>
-                            <span>
-                              Gasto
-                              <br />
-                              {money(value?.spend, row.currency)}
-                            </span>
-                            <span>
-                              C. venta
-                              <br />
-                              {money(value?.costSale, row.currency)}
-                            </span>
-                            <span>
-                              ROAS
-                              <br />
-                              {decimal(value?.roas, "×")}
-                            </span>
-                          </>
-                        )}
-                        <span>
-                          Hook
-                          <br />
-                          {row.creative?.format === "video" ? pct(creativeMetrics(row).hook) : "—"}
-                        </span>
-                        <span>
-                          Hold
-                          <br />
-                          {row.creative?.format === "video" ? pct(creativeMetrics(row).hold) : "—"}
-                        </span>
-                        <span>
-                          CTR
-                          <br />
-                          {decimal(numeric(row.insights.ctr), "%")}
-                        </span>
-                      </div>
-                      <p className="text-xs">
-                        {diagnosis(row, average, undefined, settings!.rules.highFrequency).label}
-                      </p>
-                    </div>
-                  </button>
-                ))}
+                    <p className="text-xs">
+                      {diagnosis(row, average, undefined, settings!.rules.highFrequency).label}
+                    </p>
+                  </div>
+                </button>
+              ))}
             </div>
           ) : (
             <div className="overflow-x-auto rounded-lg border">
@@ -840,7 +889,7 @@ export function AdvertisingAds() {
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map(({ row, value, state: rowState, scalable, channels }) => {
+                  {pageItems.map(({ row, value, state: rowState, scalable, channels }) => {
                     const metric = creativeMetrics(row);
                     const lowData = (metric.impressions ?? 0) < 1000;
                     return (
@@ -1052,9 +1101,7 @@ export function AdvertisingAds() {
                     <tr className="border-t bg-muted/60 font-semibold">
                       <td>Total · {items.length} grupos</td>
                       <td colSpan={view === "performance" ? 1 : 5}>
-                        {permissions.spend
-                          ? money(items.reduce((sum, item) => sum + (item.value?.spend ?? 0), 0))
-                          : ""}
+                        {permissions.spend ? money(totalSpend) : ""}
                       </td>
                       <td colSpan={12} className="text-xs font-normal text-muted-foreground">
                         Los resultados se conservan por canal. Frecuencia y alcance no se suman.
@@ -1071,6 +1118,39 @@ export function AdvertisingAds() {
             </div>
           )}
         </>
+      )}
+      {catalog.data && data.data && items.length > 0 && (
+        <nav
+          aria-label="Páginas de anuncios"
+          className="flex flex-wrap items-center justify-between gap-3 text-sm"
+        >
+          <p>
+            Mostrando {pageStart + 1}–{Math.min(pageStart + 50, items.length)} de {items.length}
+          </p>
+          <div className="flex items-center gap-3">
+            <Button
+              size="sm"
+              variant="outline"
+              aria-label="Página anterior"
+              disabled={currentPage === 1}
+              onClick={() => setPaging({ scope: pageScope, page: currentPage - 1 })}
+            >
+              Anterior
+            </Button>
+            <span>
+              Página {currentPage} de {pageCount}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              aria-label="Página siguiente"
+              disabled={currentPage === pageCount}
+              onClick={() => setPaging({ scope: pageScope, page: currentPage + 1 })}
+            >
+              Siguiente
+            </Button>
+          </div>
+        </nav>
       )}
       {error != null && <Failure error={error} />}
       <AdvertisingActionDialog
