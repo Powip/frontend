@@ -84,7 +84,7 @@ interface AuthData {
   company: Company | null;
   subscription: Subscription | null;
   /** Acceso de la empresa según la migración a Flow (FEAT-25). null = sin dato: se deja entrar. */
-  access: SubscriptionAccess | null;
+  access?: SubscriptionAccess | null;
   exp: number;
 }
 
