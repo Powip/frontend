@@ -59,13 +59,15 @@ export async function fetchAddOns(signal?: AbortSignal): Promise<BackendAddOn[]>
   return Array.isArray(data) ? data : [];
 }
 
+/** options.migrate: lo manda solo "Pasate a Flow" (FEAT-25); sin él, un plan no-Flow vigente da 409. */
 export async function startFlowCheckout(
   planId: string,
   addOnIds: string[],
+  options?: { migrate?: boolean },
 ): Promise<FlowCheckoutResponse> {
   const { data } = await axiosAuth.post<FlowCheckoutResponse>(
     `${GATEWAY.subscription}/subscriptions/flow/checkout`,
-    { planId, addOnIds },
+    options?.migrate ? { planId, addOnIds, migrate: true } : { planId, addOnIds },
   );
   return data;
 }

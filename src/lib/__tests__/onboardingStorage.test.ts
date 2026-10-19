@@ -3,6 +3,7 @@ import {
   getStoredOnboardingState,
   ONBOARDING_STORAGE_TTL_MS,
   saveOnboardingState,
+  validateStoredOnboardingState,
 } from "../onboardingStorage";
 
 const KEY = "powip_onboarding";
@@ -101,4 +102,17 @@ it("preserva el ID de suscripción cuando existe y permite metadata legacy sin I
 it.each(["", " ", 12, null])("rechaza un ID de suscripción inválido %s", (subscriptionId) => {
   localStorage.setItem(KEY, JSON.stringify({ ...checkout, subscriptionId }));
   expect(getStoredOnboardingState("user-a")).toBeNull();
+});
+
+describe("marca de migración a Flow (FEAT-25)", () => {
+  const valid = { planId: "p1", planName: "Basic", price: 99, addOnIds: [], userId: "u1", cardToken: "tk" };
+
+  it("conserva migrate: true", () => {
+    expect(validateStoredOnboardingState({ ...valid, migrate: true })).toEqual({ ...valid, migrate: true });
+  });
+
+  it("descarta un migrate que no es true sin invalidar el resto", () => {
+    expect(validateStoredOnboardingState({ ...valid, migrate: "si" })).toEqual(valid);
+    expect(validateStoredOnboardingState({ ...valid, migrate: false })).toEqual(valid);
+  });
 });

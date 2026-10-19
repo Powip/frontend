@@ -4,6 +4,7 @@ import { useCallback, useEffect, useReducer, useRef } from "react";
 import { toast } from "sonner";
 import { registrationErrorMessage } from "@/lib/authErrors";
 import { notifyAuthError } from "@/lib/authToast";
+import { isScheduledMigration } from "@/lib/flowMigration";
 import {
   clearOnboardingState,
   getStoredOnboardingState,
@@ -108,6 +109,12 @@ function reducer(state: OnboardingState, action: OnboardingAction): OnboardingSt
   }
 }
 
+/** Checkout guardado del mismo flujo: el de la migración (FEAT-25) y el del onboarding no se mezclan. */
+function storedCheckoutFor(userId: string, migrate: boolean): StoredOnboardingState | null {
+  const stored = getStoredOnboardingState(userId);
+  return stored && (stored.migrate === true) === migrate ? stored : null;
+}
+
 /**
  * Flujo del onboarding (FEAT-11):
  * REGISTRATION → ADDONS → CARD_REDIRECT → CARD_WIDGET → CONFIRMING → DONE.
@@ -124,6 +131,8 @@ export function useOnboardingFlow(
     planName: string;
     price: number;
     initialUserId?: string | null;
+    /** Pantalla "Pasate a Flow" (FEAT-25): checkout con migrate y éxito programado. */
+    migrate?: boolean;
   },
   loginFn: (tokens: { accessToken: string }) => Promise<unknown>,
   onActivated?: () => Promise<boolean> | Promise<void> | boolean | void,
@@ -141,10 +150,12 @@ export function useOnboardingFlow(
     subscription: null,
     error: null,
     isLoading: false,
+    migrate: initial.migrate === true,
+    firstChargeDate: null,
   };
 
   const [state, dispatch] = useReducer(reducer, initialState, (value) => {
-    const stored = value.userId ? getStoredOnboardingState(value.userId) : null;
+    const stored = value.userId ? storedCheckoutFor(value.userId, value.migrate === true) : null;
     return stored
       ? {
           ...value,
@@ -334,7 +345,7 @@ export function useOnboardingFlow(
   const resumeSession = useCallback(
     (userId: string) => {
       if (state.step !== "REGISTRATION" || state.isLoading || state.userId) return;
-      const stored = getStoredOnboardingState(userId);
+      const stored = storedCheckoutFor(userId, state.migrate === true);
       dispatch({
         type: "RESTORE",
         state: stored
@@ -347,7 +358,7 @@ export function useOnboardingFlow(
           : { step: "ADDONS", userId, error: null },
       });
     },
-    [state.step, state.isLoading, state.userId],
+    [state.step, state.isLoading, state.userId, state.migrate],
   );
 
   /** An existing entitlement is not evidence that this checkout was paid. */
@@ -358,6 +369,25 @@ export function useOnboardingFlow(
     dispatch({ type: "SET_SUBSCRIPTION", subscription });
     dispatch({ type: "SET_STEP", step: "EXISTING_SUBSCRIPTION" });
   }, []);
+
+  /**
+   * Migración programada (FEAT-25): Flow ya tiene la suscripción y cobra por primera vez al vencer
+   * lo ya pagado. No hay cobro que esperar; solo se recarga la sesión (y con ella el acceso).
+   */
+  const completeScheduledMigration = useCallback(
+    async (revision: number, firstChargeDate: string, subscription: SubscriptionMe | null) => {
+      clearOnboardingState(stateRef.current.userId ?? undefined);
+      if (subscription) dispatch({ type: "SET_SUBSCRIPTION", subscription });
+      dispatch({ type: "RESTORE", state: { firstChargeDate } });
+      try {
+        await onActivatedRef.current?.();
+      } catch {
+        // La migración ya quedó hecha: el banner se va en la próxima recarga de la sesión.
+      }
+      if (isCurrentPayment(revision)) dispatch({ type: "SET_STEP", step: "MIGRATION_SCHEDULED" });
+    },
+    [isCurrentPayment],
+  );
 
   /** Only the same Flow checkout may complete a new payment. */
   const waitForActivation = useCallback(
@@ -444,7 +474,9 @@ export function useOnboardingFlow(
         dispatch({ type: "SET_STEP", step: "CARD_WIDGET" });
         return;
       }
-      const checkout = await startFlowCheckout(snapshot.planId, snapshot.addOnIds);
+      const checkout = snapshot.migrate
+        ? await startFlowCheckout(snapshot.planId, snapshot.addOnIds, { migrate: true })
+        : await startFlowCheckout(snapshot.planId, snapshot.addOnIds);
       if (!isCurrentPayment(revision)) return;
       if (
         !checkout.cardToken ||
@@ -462,6 +494,7 @@ export function useOnboardingFlow(
         userId: snapshot.userId,
         cardToken: checkout.cardToken,
         subscriptionId: checkout.subscriptionId,
+        ...(snapshot.migrate ? { migrate: true as const } : {}),
       });
       dispatch({
         type: "SET_CHECKOUT",
@@ -477,6 +510,10 @@ export function useOnboardingFlow(
         verifyExistingPaymentRef.current = true;
         const subscription = await fetchMySubscription().catch(() => null);
         if (!isCurrentPayment(revision)) return;
+        if (snapshot.migrate && subscription?.scheduledFlow) {
+          await completeScheduledMigration(revision, subscription.scheduledFlow.firstChargeDate, subscription);
+          return;
+        }
         existingSubscriptionIdRef.current = subscription?.id ?? null;
         if (subscription && HAS_PLAN.has(subscription.status)) {
           showExistingSubscription(subscription);
@@ -501,7 +538,7 @@ export function useOnboardingFlow(
     } finally {
       endPayment(revision);
     }
-  }, [beginPayment, endPayment, isCurrentPayment, showExistingSubscription]);
+  }, [beginPayment, endPayment, isCurrentPayment, showExistingSubscription, completeScheduledMigration]);
 
   const confirmPayment = useCallback(async () => {
     const revision = beginPayment();
@@ -554,7 +591,12 @@ export function useOnboardingFlow(
                 userId: snapshot.userId,
                 cardToken: token,
                 subscriptionId,
+                ...(snapshot.migrate ? { migrate: true as const } : {}),
               });
+            if (snapshot.migrate && isScheduledMigration(subscription) && subscription.startDate) {
+              await completeScheduledMigration(revision, subscription.startDate, subscription);
+              return;
+            }
             const activated = await waitForActivation(subscription, revision, subscriptionId);
             if (!activated && isCurrentPayment(revision))
               dispatch({ type: "SET_STEP", step: "PAYMENT_PENDING" });
@@ -572,6 +614,14 @@ export function useOnboardingFlow(
               // A successful first confirm can lose its response, then return 404 on retry.
               const subscription = await fetchMySubscription().catch(() => null);
               if (!isCurrentPayment(revision)) return;
+              if (
+                stateRef.current.migrate &&
+                subscriptionId &&
+                subscription?.scheduledFlow?.id === subscriptionId
+              ) {
+                await completeScheduledMigration(revision, subscription.scheduledFlow.firstChargeDate, subscription);
+                return;
+              }
               const matches =
                 subscription &&
                 subscriptionId &&
@@ -615,7 +665,7 @@ export function useOnboardingFlow(
     } finally {
       endPayment(revision);
     }
-  }, [beginPayment, endPayment, isCurrentPayment, waitForActivation]);
+  }, [beginPayment, endPayment, isCurrentPayment, waitForActivation, completeScheduledMigration]);
 
   /** Desde PAYMENT_PENDING: vuelve a consultar si el cobro ya se aplicó. */
   const checkPaymentAgain = useCallback(async () => {
@@ -626,6 +676,14 @@ export function useOnboardingFlow(
       const current = await fetchMySubscription().catch(() => null);
       if (!isCurrentPayment(revision)) return;
       const checkoutId = stateRef.current.checkoutSubscriptionId ?? null;
+      if (
+        stateRef.current.migrate &&
+        current?.scheduledFlow &&
+        (!checkoutId || current.scheduledFlow.id === checkoutId)
+      ) {
+        await completeScheduledMigration(revision, current.scheduledFlow.firstChargeDate, current);
+        return;
+      }
       const existing = verifyExistingPaymentRef.current || !checkoutId;
       const subscriptionId = existing ? existingSubscriptionIdRef.current : checkoutId;
       // Bind a recovered pending payment before polling, even if the first /me
@@ -643,7 +701,7 @@ export function useOnboardingFlow(
     } finally {
       endPayment(revision);
     }
-  }, [beginPayment, endPayment, isCurrentPayment, waitForActivation]);
+  }, [beginPayment, endPayment, isCurrentPayment, waitForActivation, completeScheduledMigration]);
 
   const restoreFromStorage = useCallback(
     (stored: StoredOnboardingState) => {
@@ -658,6 +716,7 @@ export function useOnboardingFlow(
         state: {
           ...safe,
           checkoutSubscriptionId: safe.subscriptionId ?? null,
+          migrate: safe.migrate === true,
           step: "CARD_WIDGET",
           error: null,
           isLoading: false,
