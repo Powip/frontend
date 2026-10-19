@@ -8,9 +8,19 @@ export interface UserSubscription {
     id: string;
     name: string;
   };
+  /** FLOW | MERCADOPAGO | MANUAL (FEAT-25: el banner distingue si quedan días pagados). */
+  gateway?: string | null;
+  /** Último día pagado (yyyy-MM-dd). */
+  endDate?: string | null;
 }
 
-type RawSubscription = { id: string; status: string; plan: { id: string; name: string } };
+type RawSubscription = {
+  id: string;
+  status: string;
+  plan: { id: string; name: string };
+  gateway?: string | null;
+  endDate?: string | null;
+};
 
 const PRIORITY = ["ACTIVE", "PENDING_RENEWAL", "PENDING_PAYMENT"];
 
@@ -18,6 +28,8 @@ const toUserSubscription = (sub: RawSubscription): UserSubscription => ({
   id: sub.id,
   status: sub.status,
   plan: { id: sub.plan.id, name: sub.plan.name },
+  gateway: sub.gateway,
+  endDate: sub.endDate,
 });
 
 /**
