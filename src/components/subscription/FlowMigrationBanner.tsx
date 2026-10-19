@@ -15,7 +15,7 @@ const HAS_PLAN = new Set(["ACTIVE", "PENDING_RENEWAL"]);
 export default function FlowMigrationBanner() {
   const { auth } = useAuth();
   const access = auth?.access;
-  if (!access || access.state !== "AVISO" || !access.owner || !access.deadline) return null;
+  if (access?.state !== "AVISO" || !access.owner || !access.deadline) return null;
   if (isSuperadmin(auth?.user?.email)) return null;
 
   const subscription = auth?.subscription;
