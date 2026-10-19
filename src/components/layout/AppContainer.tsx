@@ -53,6 +53,8 @@ function ScopedAppContainer({ children }: { children: React.ReactNode }) {
     "/rastreo",
     "/c/",
     "/onboarding",
+    "/pasate-a-flow",
+    "/cuenta-suspendida",
   ];
 
   const hideSidebar =
