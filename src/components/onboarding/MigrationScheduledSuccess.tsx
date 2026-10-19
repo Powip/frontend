@@ -3,12 +3,16 @@
 import { ArrowRight, Check } from "lucide-react";
 import { formatLimaDate } from "@/lib/flowMigration";
 
-/** Éxito de la migración a Flow programada (FEAT-25): hoy no se cobra nada. */
+/**
+ * Éxito de la migración a Flow (FEAT-25). Con firstChargeDate quedó programada (hoy no se cobró);
+ * sin ella, se cobró en el momento y el plan ya está activo. Siempre vuelve a Powip, nunca a
+ * configurar la empresa: es un cliente que ya la tiene.
+ */
 export default function MigrationScheduledSuccess({
   firstChargeDate,
   onGoToDashboard,
 }: {
-  firstChargeDate: string;
+  firstChargeDate: string | null;
   onGoToDashboard: () => void;
 }) {
   return (
@@ -19,7 +23,9 @@ export default function MigrationScheduledSuccess({
       <div>
         <h3 className="text-xl font-bold text-gray-900">¡Listo, ya estás en Flow!</h3>
         <p className="mt-1 text-sm text-gray-500">
-          {`Tu primer cobro es el ${formatLimaDate(firstChargeDate)}. Hasta entonces sigues con tu plan actual.`}
+          {firstChargeDate
+            ? `Tu primer cobro es el ${formatLimaDate(firstChargeDate)}. Hasta entonces sigues con tu plan actual.`
+            : "Tu plan está activo."}
         </p>
       </div>
       <button

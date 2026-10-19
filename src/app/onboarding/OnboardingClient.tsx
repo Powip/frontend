@@ -1215,9 +1215,13 @@ export default function OnboardingClient({
       <AuthLayout>
         <div className={`${styles.stepCard} space-y-4 text-center`}>
           <p className="text-lg font-semibold text-gray-900">Ya estás en Flow.</p>
-          <Link href="/" className="text-sm font-medium text-[#4F3A96] underline">
+          <button
+            type="button"
+            onClick={handleGoToDashboard}
+            className="text-sm font-medium text-[#4F3A96] underline"
+          >
             Ir a Powip
-          </Link>
+          </button>
         </div>
       </AuthLayout>
     );
@@ -1345,14 +1349,14 @@ export default function OnboardingClient({
               />
             )}
 
-            {flowState.step === "MIGRATION_SCHEDULED" && flowState.firstChargeDate && (
+            {isMigration && currentStep === 4 && (
               <MigrationScheduledSuccess
-                firstChargeDate={flowState.firstChargeDate}
+                firstChargeDate={flowState.step === "MIGRATION_SCHEDULED" ? (flowState.firstChargeDate ?? null) : null}
                 onGoToDashboard={handleGoToDashboard}
               />
             )}
 
-            {(currentStep === 4 || flowState.step === "DONE") && flowState.step !== "MIGRATION_SCHEDULED" && (
+            {!isMigration && (currentStep === 4 || flowState.step === "DONE") && (
               <StepSuccess
                 planName={flowState.planName}
                 price={flowState.price}

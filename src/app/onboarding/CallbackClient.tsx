@@ -142,12 +142,16 @@ export default function CallbackClient() {
     );
   }
 
-  if (state.step === "MIGRATION_SCHEDULED" && state.firstChargeDate && initStatus === "ready") {
+  // "Pasate a Flow" (FEAT-25): programada o cobrada en el momento, vuelve a Powip (ya tiene empresa).
+  if (
+    initStatus === "ready" &&
+    ((state.step === "MIGRATION_SCHEDULED" && state.firstChargeDate) || (state.step === "DONE" && state.migrate))
+  ) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 bg-[#f8f7fc]">
         <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 p-8">
           <MigrationScheduledSuccess
-            firstChargeDate={state.firstChargeDate}
+            firstChargeDate={state.step === "MIGRATION_SCHEDULED" ? (state.firstChargeDate ?? null) : null}
             onGoToDashboard={() => {
               void refreshSession().finally(() => router.push("/"));
             }}

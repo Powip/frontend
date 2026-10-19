@@ -11,11 +11,12 @@ function renderWith({
   endDate = "2026-10-28",
   status = "ACTIVE",
   email = "dueno@test.pe",
-}: { access: Access | null; endDate?: string | null; status?: string; email?: string }) {
+  hasCompany = true,
+}: { access: Access | null; endDate?: string | null; status?: string; email?: string; hasCompany?: boolean }) {
   jest.mocked(useAuth).mockReturnValue({
     auth: {
-      user: { id: "u1", email },
-      company: { id: "c1", name: "29 Superfoods" },
+      user: { id: "u1", email, companyId: hasCompany ? "c1" : null },
+      company: hasCompany ? { id: "c1", name: "29 Superfoods" } : null,
       subscription: { id: "s1", status, plan: { id: "p1", name: "Basic" }, gateway: "MANUAL", endDate },
       access,
     },
@@ -64,6 +65,7 @@ it.each([
   ["una empresa bloqueada", { access: { ...aviso, state: "BLOQUEADO" as const } }],
   ["sin dato de acceso", { access: null }],
   ["un superadmin", { access: aviso, email: "octatoledo7@gmail.com" }],
+  ["un usuario sin empresa (alta nueva en /sin-plan, partners)", { access: aviso, hasCompany: false }],
 ])("no se muestra para %s", (_label, props) => {
   const { container } = renderWith(props);
 

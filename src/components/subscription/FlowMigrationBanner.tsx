@@ -10,13 +10,15 @@ const HAS_PLAN = new Set(["ACTIVE", "PENDING_RENEWAL"]);
 
 /**
  * Aviso de la migración a Flow (FEAT-25): solo para el dueño, mientras su empresa está en AVISO.
- * No se puede cerrar; desaparece cuando migra (el estado pasa a OK).
+ * No se puede cerrar; desaparece cuando migra (el estado pasa a OK). Sin empresa no aplica: a esos
+ * usuarios (altas nuevas, partners) los maneja el gate de FEAT-11.
  */
 export default function FlowMigrationBanner() {
   const { auth } = useAuth();
   const access = auth?.access;
   if (access?.state !== "AVISO" || !access.owner || !access.deadline) return null;
   if (isSuperadmin(auth?.user?.email)) return null;
+  if (!auth?.company && !auth?.user?.companyId) return null;
 
   const subscription = auth?.subscription;
   const hasPaidDays =

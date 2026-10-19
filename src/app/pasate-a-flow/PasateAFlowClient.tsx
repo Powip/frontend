@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import OnboardingClient from "@/app/onboarding/OnboardingClient";
@@ -59,10 +58,16 @@ export default function PasateAFlowClient() {
       </button>
     </div>
   );
+  // Recarga la sesión antes de entrar: el acceso guardado puede estar viejo (pagó en otra pestaña)
+  // y el gate lo devolvería acá.
   const goHomeLink = (label: string) => (
-    <Link href="/" className="text-sm font-medium text-[#4F3A96] underline">
+    <button
+      type="button"
+      onClick={() => void goToPowip()}
+      className="text-sm font-medium text-[#4F3A96] underline"
+    >
       {label}
-    </Link>
+    </button>
   );
 
   const access = auth?.access;

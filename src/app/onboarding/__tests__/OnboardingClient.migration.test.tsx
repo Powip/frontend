@@ -17,6 +17,14 @@ jest.mock("@/services/onboardingService", () => ({
   fetchMySubscription: jest.fn(),
 }));
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
+jest.mock("@/components/onboarding/FlowWidgetStep", () => ({
+  __esModule: true,
+  default: ({ onSuccess }: { onSuccess: () => Promise<void> }) => (
+    <button type="button" onClick={() => void onSuccess()}>
+      Tarjeta registrada en Flow
+    </button>
+  ),
+}));
 jest.mock("@/lib/flowMigration", () => ({
   ...jest.requireActual("@/lib/flowMigration"),
   limaToday: () => "2026-10-20",
@@ -148,8 +156,37 @@ it("si ya tenía Flow vigente no muestra 'Ya tienes una suscripción vigente' si
   });
 
   expect(await screen.findByText("Ya estás en Flow.")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Ir a Powip" })).toHaveAttribute("href", "/");
   expect(screen.queryByText("Ya tienes una suscripción vigente")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Ir a Powip" }));
+  expect(goToDashboard).toHaveBeenCalledTimes(1);
+});
+
+it("con cobro inmediato termina en 'Tu plan está activo' e Ir a Powip, sin configurar la empresa", async () => {
+  mocked.startFlowCheckout.mockResolvedValue({
+    subscriptionId: "s1",
+    status: "PENDING_PAYMENT",
+    redirectUrl: "https://flow.fixture/register",
+    cardToken: "tk",
+  });
+  mocked.confirmFlowCheckout.mockResolvedValue({
+    pending: false,
+    subscription: { ...manualWithScheduled, id: "s1", gateway: "FLOW", status: "ACTIVE", startDate: "2026-10-20", endDate: "2026-11-19", scheduledFlow: null },
+  });
+  renderMigration({ paidUntil: null, blocked: true });
+  await openPayment();
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Registrar tarjeta" }));
+  });
+
+  await act(async () => {
+    fireEvent.click(await screen.findByRole("button", { name: "Tarjeta registrada en Flow" }));
+  });
+
+  expect(await screen.findByRole("heading", { name: "¡Listo, ya estás en Flow!" })).toBeInTheDocument();
+  expect(screen.getByText("Tu plan está activo.")).toBeInTheDocument();
+  expect(screen.queryByText("Configurar mi empresa")).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Ir a Powip" }));
+  expect(goToDashboard).toHaveBeenCalledTimes(1);
 });
 
 it("bloqueado explica que el acceso está suspendido", async () => {

@@ -89,6 +89,18 @@ it("muestra el éxito de la migración programada y vuelve a Powip", async () =>
   expect(push).toHaveBeenCalledWith("/");
 });
 
+it("con cobro inmediato, la migración termina en Powip y no en configurar la empresa", async () => {
+  flowState = { ...flowState, step: "DONE", migrate: true };
+  render(<CallbackClient />);
+
+  expect(await screen.findByRole("heading", { name: "¡Listo, ya estás en Flow!" })).toBeInTheDocument();
+  expect(screen.getByText("Tu plan está activo.")).toBeInTheDocument();
+  expect(screen.queryByText("Configurar mi empresa")).not.toBeInTheDocument();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Ir a Powip" })); });
+  expect(refreshSession).toHaveBeenCalledTimes(1);
+  expect(push).toHaveBeenCalledWith("/");
+});
+
 it("si la migración no se pudo completar, el link vuelve a la pantalla de migración", async () => {
   flowState = { ...flowState, step: "ERROR", error: "Este registro de tarjeta ya no es válido.", cardToken: null, migrate: true };
   render(<CallbackClient />);

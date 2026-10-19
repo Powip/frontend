@@ -60,8 +60,10 @@ it("el personal no puede pagar desde acá", async () => {
   renderWith({ ...aviso, owner: false });
 
   expect(await screen.findByText("Solo el dueño de la cuenta puede registrar la tarjeta.")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Ir al inicio" })).toHaveAttribute("href", "/");
   expect(onboardingProps).not.toHaveBeenCalled();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Ir al inicio" })); });
+  expect(refreshSession).toHaveBeenCalledTimes(1);
+  expect(push).toHaveBeenCalledWith("/");
 });
 
 it("sin dato de acceso no ofrece pagar y deja reintentar", async () => {
@@ -84,8 +86,11 @@ it("con Flow vigente avisa que ya está en Flow", async () => {
   renderWith({ ...aviso, state: "OK", deadline: null }, { ...manual, gateway: "FLOW" });
 
   expect(await screen.findByText("Ya estás en Flow.")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: "Ir a Powip" })).toHaveAttribute("href", "/");
   expect(onboardingProps).not.toHaveBeenCalled();
+  // El acceso de la sesión puede estar viejo (pagó en otra pestaña): se recarga antes de entrar.
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Ir a Powip" })); });
+  expect(refreshSession).toHaveBeenCalledTimes(1);
+  expect(push).toHaveBeenCalledWith("/");
 });
 
 it("con la migración programada muestra el primer cobro y no ofrece pagar otra vez", async () => {
