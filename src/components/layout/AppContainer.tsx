@@ -5,6 +5,7 @@ import { Fragment, useState } from "react";
 import AuthGuard from "@/components/auth/AuthGuard";
 import { BusinessScopeBar } from "@/components/header/BusinessScopeBar";
 import { Sidebar } from "@/components/layout/Sidebar";
+import FlowMigrationBanner from "@/components/subscription/FlowMigrationBanner";
 import { useAuth } from "@/contexts/AuthContext";
 import { BusinessScopeProvider, useBusinessScope } from "@/contexts/BusinessScopeContext";
 import { isBusinessScopeRoute, shouldResetBusinessView } from "@/lib/businessScopeRoutes";
@@ -67,6 +68,7 @@ function ScopedAppContainer({ children }: { children: React.ReactNode }) {
       <div className="flex h-screen overflow-hidden">
         {!hideSidebar && <Sidebar />}
         <main className="flex-1 bg-gray-light overflow-auto">
+          {!hideSidebar && <FlowMigrationBanner />}
           {!hideSidebar && isBusinessScopeRoute(pathname) && <BusinessScopeBar />}
           <Fragment key={viewKey}>{children}</Fragment>
         </main>
