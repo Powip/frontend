@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { SubscriptionMe } from "@/types/onboarding";
@@ -58,6 +59,11 @@ export default function ExistingSubscriptionNotice({
       >
         {isContinuing ? "Actualizando sesión..." : "Continuar con mi plan actual"}
       </button>
+      {subscription.gateway !== "FLOW" && (
+        <Link href="/pasate-a-flow" className="block text-sm font-medium text-[#4F3A96] underline">
+          Pasarme a Flow
+        </Link>
+      )}
     </section>
   );
 }
