@@ -9,7 +9,9 @@ jest.mock("axios", () => ({
 
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: jest.requireMock("axios") }));
 jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: "company-1:business:store-1" }) }));
-jest.mock("@/hooks/useInvalidateBusinessData", () => ({ useInvalidateBusinessData: () => jest.fn() }));
+// Referencia estable: después de una acción, la vista recarga invalidando las consultas del negocio.
+const mockInvalidate = jest.fn();
+jest.mock("@/hooks/useInvalidateBusinessData", () => ({ useInvalidateBusinessData: () => mockInvalidate }));
 jest.mock("sonner", () => ({
   toast: {
     success: jest.fn(),
@@ -253,6 +255,7 @@ describe("VentasPage — imprimir seleccionados en Ventas pendientes", () => {
 
     fireEvent.click(printButton);
     expect(mockedAxios.patch).not.toHaveBeenCalled();
+    expect(mockInvalidate).not.toHaveBeenCalled();
 
     fireEvent.click(
       within(await confirmStep()).getByRole("button", {
@@ -270,7 +273,9 @@ describe("VentasPage — imprimir seleccionados en Ventas pendientes", () => {
       expect.objectContaining({ status: "PREPARADO", userId: "user-1" }),
     );
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(refetch).toHaveBeenCalled();
+    expect(mockInvalidate).toHaveBeenCalled();
+    // Una sola recarga: la invalidación ya refresca cada consulta activa de la vista
+    expect(refetch).not.toHaveBeenCalled();
   });
 });
 

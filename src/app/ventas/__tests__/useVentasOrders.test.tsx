@@ -43,7 +43,8 @@ beforeEach(() => {
     const label = labelOf(from, opts);
     refetches[label] ??= jest.fn();
     retries[label] ??= jest.fn();
-    return { orders: EMPTY, loading: false, error: false, retry: retries[label], refetch: refetches[label], ...fixtures[label] };
+    // fixtures["todas@2026-09-01"]: solo para la consulta con esa fecha desde (una key nueva)
+    return { orders: EMPTY, loading: false, error: false, retry: retries[label], refetch: refetches[label], ...fixtures[label], ...fixtures[`${label}@${from}`] };
   });
   mockCount.mockImplementation((from: string | undefined, _to: string | undefined, opts: Opts) => {
     const label = `count-${labelOf(from, opts)}`;
@@ -162,6 +163,87 @@ describe("useVentasOrders", () => {
     fixtures.anuladas = { error: true };
     const b = renderHook(() => useVentasOrders(base));
     expect(b.result.current.error).toBe(true);
+  });
+
+  it("TODAS_STATUSES tiene todos los estados menos INCOMPLETE", () => {
+    expect([...TODAS_STATUSES].sort()).toEqual([
+      "PREVENTA", "PENDIENTE", "PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO", "ENTREGADO", "ANULADO", "PAGADO",
+    ].sort());
+  });
+
+  describe("ready: la lista de la pestaña está completa para la ventana pedida", () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+    const on = { ...base, todasEnabled: true };
+
+    it("es false en la primera carga y true cuando llegan los datos", () => {
+      fixtures.anuladas = { loading: true };
+      fixtures.todas = { loading: true };
+      const { result, rerender } = renderHook((p) => useVentasOrders(p), { initialProps: on });
+      expect(result.current.anuladas.ready).toBe(false);
+      expect(result.current.todas.ready).toBe(false);
+
+      delete fixtures.anuladas;
+      delete fixtures.todas;
+      rerender(on);
+      expect(result.current.anuladas.ready).toBe(true);
+      expect(result.current.todas.ready).toBe(true);
+    });
+
+    it("todas es false mientras no está habilitada", () => {
+      const { result } = renderHook(() => useVentasOrders(base));
+      expect(result.current.todas.ready).toBe(false);
+      expect(result.current.anuladas.ready).toBe(true);
+    });
+
+    it.each([
+      ["anuladas", "anuladasWindow"],
+      ["todas", "todasWindow"],
+    ] as const)("%s: al agrandar la ventana es false durante el debounce y mientras baja la nueva", (label, key) => {
+      const { result, rerender } = renderHook((p) => useVentasOrders(p), { initialProps: on });
+      expect(result.current[label].ready).toBe(true);
+
+      const wider = { ...on, [key]: { fromDate: "2026-09-01", toDate: "" } };
+      fixtures[`${label}@2026-09-01`] = { loading: true };
+      rerender(wider);
+      expect(result.current[label].ready).toBe(false); // todavía con lo bajado desde 09-21
+
+      act(() => { jest.advanceTimersByTime(400); });
+      expect(mockOrders.mock.calls.some((c) => c[0] === "2026-09-01")).toBe(true);
+      expect(result.current[label].ready).toBe(false); // la ventana nueva está bajando
+
+      delete fixtures[`${label}@2026-09-01`];
+      rerender(wider);
+      expect(result.current[label].ready).toBe(true);
+    });
+
+    it("quitar el tope (Hasta vacío) también es agrandar", () => {
+      const capped = { ...on, todasWindow: { fromDate: "2026-09-21", toDate: "2026-10-01" } };
+      const { result, rerender } = renderHook((p) => useVentasOrders(p), { initialProps: capped });
+      expect(result.current.todas.ready).toBe(true);
+      rerender({ ...capped, todasWindow: { fromDate: "2026-09-21", toDate: "" } });
+      expect(result.current.todas.ready).toBe(false);
+    });
+
+    it("al achicar dentro de lo bajado sigue true, también durante el debounce", () => {
+      const { result, rerender } = renderHook((p) => useVentasOrders(p), { initialProps: on });
+      rerender({
+        ...on,
+        anuladasWindow: { fromDate: "2026-10-01", toDate: "" },
+        todasWindow: { fromDate: "2026-10-14", toDate: "2026-10-18" },
+      });
+      expect(result.current.todas.loading).toBe(true); // espera el debounce
+      expect(result.current.anuladas.ready).toBe(true);
+      expect(result.current.todas.ready).toBe(true);
+    });
+
+    it("es false si la consulta falla", () => {
+      fixtures.anuladas = { error: true };
+      fixtures.todas = { error: true };
+      const { result } = renderHook(() => useVentasOrders(on));
+      expect(result.current.anuladas.ready).toBe(false);
+      expect(result.current.todas.ready).toBe(false);
+    });
   });
 
   it("tras la primera carga de anuladas, su loading ya no tapa la página", () => {

@@ -12,17 +12,23 @@ const DEBOUNCE_MS = 400;
 const PENDIENTES_STATUSES: OrderStatus[] = ["PENDIENTE", "PAGADO"];
 const ANULADAS_STATUSES: OrderStatus[] = ["ANULADO"];
 const KPI_STATUSES: OrderStatus[] = ["PENDIENTE", "PAGADO", "ANULADO"];
+// Un Record exige cada OrderStatus: si se agrega un estado y no se suma acá, tsc falla.
+const ALL_ORDER_STATUSES: Record<OrderStatus, true> = {
+  INCOMPLETE: true, PREVENTA: true, PENDIENTE: true, PREPARADO: true, LLAMADO: true,
+  ASIGNADO_A_GUIA: true, EN_ENVIO: true, ENTREGADO: true, ANULADO: true, PAGADO: true,
+};
 /** Todos los estados menos INCOMPLETE: lo que muestra la pestaña Todas. */
-export const TODAS_STATUSES: OrderStatus[] = [
-  "PREVENTA", "PENDIENTE", "PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA",
-  "EN_ENVIO", "ENTREGADO", "ANULADO", "PAGADO",
-];
+export const TODAS_STATUSES: OrderStatus[] = (Object.keys(ALL_ORDER_STATUSES) as OrderStatus[])
+  .filter((status) => status !== "INCOMPLETE");
 
 export interface QueryState {
   loading: boolean;
   error: boolean;
   retry: () => void;
 }
+
+/** ready: la consulta tiene los datos de la ventana bajada y esa ventana abarca la pedida. */
+export type WindowQueryState = QueryState & { ready: boolean };
 
 export interface VentasOrders {
   orders: OrderHeader[];
@@ -31,8 +37,8 @@ export interface VentasOrders {
   error: boolean;
   retry: () => void;
   refetch: () => Promise<unknown>;
-  anuladas: QueryState;
-  todas: QueryState & { count: number | null };
+  anuladas: WindowQueryState;
+  todas: WindowQueryState & { count: number | null };
   antiguos: QueryState & { count: number | null; countLoading: boolean };
   kpis: QueryState;
 }
@@ -49,6 +55,10 @@ interface Options {
 const isValidDate = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && Number(d.slice(0, 4)) >= 2000;
 const isValidWindow = (w: DateWindow) => isValidDate(w.fromDate) && (w.toDate === "" || isValidDate(w.toDate));
 const sameWindow = (a: DateWindow, b: DateWindow) => a.fromDate === b.fromDate && a.toDate === b.toDate;
+/** ¿Lo bajado (`applied`) abarca lo pedido? `toDate: ""` = sin tope: abarca cualquier Hasta. */
+const coversWindow = (applied: DateWindow, requested: DateWindow) =>
+  applied.fromDate <= requested.fromDate &&
+  (applied.toDate === "" || (requested.toDate !== "" && applied.toDate >= requested.toDate));
 
 /**
  * Ventana que va al servidor: el primer valor válido se usa de inmediato, los
@@ -103,6 +113,9 @@ export function useVentasOrders(opts: Options): VentasOrders {
   const todasFrom = todasWin.value?.fromDate ?? recentFrom;
   const todasTo = todasWin.value?.toDate || undefined;
   const kpiEnabled = kpiWin.value !== null;
+  // Ventanas que se pidieron al servidor (tras el debounce)
+  const anuladasApplied = { fromDate: anuladasFrom, toDate: anuladasWin.value?.toDate ?? "" };
+  const todasApplied = { fromDate: todasFrom, toDate: todasWin.value?.toDate ?? "" };
 
   const pendientes = useBusinessOrders(recentFrom, undefined, { statuses: PENDIENTES_STATUSES });
   const anuladas = useBusinessOrders(anuladasFrom, anuladasTo, { statuses: ANULADAS_STATUSES });
@@ -165,6 +178,11 @@ export function useVentasOrders(opts: Options): VentasOrders {
     refetchAntiguos, refetchKpis, todasEnabled, antiguosEnabled, kpiEnabled,
   ]);
 
+  // Mientras la pestaña no está lista, su lista sería parcial (lo que trajeron otras consultas).
+  // Achicar dentro de lo bajado sigue listo; agrandar espera la ventana nueva.
+  const anuladasReady = !anuladas.loading && !anuladas.error && coversWindow(anuladasApplied, anuladasInput);
+  const todasReady = todasEnabled && !todas.loading && !todas.error && coversWindow(todasApplied, todasInput);
+
   return {
     orders,
     kpiOrders: kpis.orders,
@@ -172,11 +190,17 @@ export function useVentasOrders(opts: Options): VentasOrders {
     error: pendientes.error || (!anuladasLoaded && anuladas.error),
     retry,
     refetch,
-    anuladas: { loading: anuladas.loading || anuladasWin.pending, error: anuladas.error, retry: anuladas.retry },
+    anuladas: {
+      loading: anuladas.loading || anuladasWin.pending,
+      error: anuladas.error,
+      retry: anuladas.retry,
+      ready: anuladasReady,
+    },
     todas: {
       loading: todas.loading || todasWin.pending,
       error: todas.error,
       retry: todas.retry,
+      ready: todasReady,
       count: todasCount.count,
     },
     antiguos: {

@@ -35,6 +35,10 @@ jest.mock("@/services/atencionClienteService", () => ({
 jest.mock("@/hooks/useBusinessOrders", () => ({ useBusinessOrders: jest.fn() }));
 jest.mock("@/hooks/useBusinessOrdersCount", () => ({ useBusinessOrdersCount: jest.fn() }));
 jest.mock("@/lib/peruDate", () => ({ ...jest.requireActual("@/lib/peruDate"), todayInPeru: () => "2026-09-26" }));
+jest.mock("@/utils/exportSalesExcel", () => ({
+  ...jest.requireActual("@/utils/exportSalesExcel"),
+  exportSalesToExcel: jest.fn(),
+}));
 // El período de los KPIs lo elige cada test (el selector real avisa el mes actual al montar).
 let mockKpiPeriod: [string, string] = ["2026-09-01", "2026-09-30"];
 jest.mock("@/components/dashboard/PeriodSelector", () => {
@@ -60,16 +64,18 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessOrders } from "@/hooks/useBusinessOrders";
 import { useBusinessOrdersCount } from "@/hooks/useBusinessOrdersCount";
 import type { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
+import { exportSalesToExcel } from "@/utils/exportSalesExcel";
 import { TODAS_STATUSES } from "../useVentasOrders";
 import VentasPage from "../page";
 
 const mockUseAuth = jest.mocked(useAuth);
 const mockOrders = jest.mocked(useBusinessOrders);
 const mockCount = jest.mocked(useBusinessOrdersCount);
+const mockExport = jest.mocked(exportSalesToExcel);
 
 type Opts = { statuses?: OrderStatus[]; enabled?: boolean };
 type Label = "pendientes" | "antiguos" | "anuladas" | "todas" | "kpis";
-type Override = Partial<{ loading: boolean; error: boolean }>;
+type Override = Partial<{ loading: boolean; error: boolean; orders: OrderHeader[] }>;
 
 const PEND: OrderStatus[] = ["PENDIENTE", "PAGADO"];
 const KPI: OrderStatus[] = ["PENDIENTE", "PAGADO", "ANULADO"];
@@ -221,6 +227,17 @@ describe("VentasPage — Pendientes recientes y antiguos", () => {
     expect(screen.getByRole("button", { name: /Imprimir seleccionados \(0\)/ })).toBeDisabled();
   });
 
+  it("al volver a Recientes deja de pedir los antiguos", () => {
+    render(<VentasPage />);
+    const antiguosCalls = () => mockOrders.mock.calls.filter(([from, to]) => from === undefined && to === "2026-08-27");
+
+    fireEvent.click(screen.getByRole("button", { name: "Pendientes antiguos (2)" }));
+    expect(antiguosCalls().at(-1)).toEqual([undefined, "2026-08-27", { statuses: PEND, enabled: true }]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Recientes" }));
+    expect(antiguosCalls().at(-1)).toEqual([undefined, "2026-08-27", { statuses: PEND, enabled: false }]);
+  });
+
   it("si el contador no está (carga o falla), el acceso sigue habilitado y sin número", () => {
     counts.antiguos = null;
     render(<VentasPage />);
@@ -300,8 +317,9 @@ describe("VentasPage — Anuladas y Todas por período", () => {
 
     expect(within(panel).getByLabelText("Desde")).toHaveValue("2026-09-20");
     expect(ordersIn(panel)).toEqual(["ORD-401", "ORD-101"]); // ORD-301 (09-10) sale de la ventana
-    await waitFor(() =>
-      expect(mockOrders).toHaveBeenCalledWith("2026-09-20", undefined, { statuses: TODAS_STATUSES, enabled: true }),
+    await waitFor(
+      () => expect(mockOrders).toHaveBeenCalledWith("2026-09-20", undefined, { statuses: TODAS_STATUSES, enabled: true }),
+      { timeout: 2000 },
     );
     expect(mockCount).toHaveBeenCalledWith("2026-09-20", undefined, { statuses: TODAS_STATUSES });
   });
@@ -315,13 +333,81 @@ describe("VentasPage — Anuladas y Todas por período", () => {
     overrides.anuladas = { error: true };
     fireEvent.click(within(panel).getByRole("button", { name: "15 días" }));
 
-    await waitFor(() =>
-      expect(mockOrders).toHaveBeenCalledWith("2026-09-12", undefined, { statuses: ["ANULADO"] }),
+    await waitFor(
+      () => expect(mockOrders).toHaveBeenCalledWith("2026-09-12", undefined, { statuses: ["ANULADO"] }),
+      { timeout: 2000 },
     );
     expect(within(panel).getByRole("alert")).toHaveTextContent("No se pudieron cargar las ventas de este período.");
     fireEvent.click(within(panel).getByRole("button", { name: "Reintentar" }));
     expect(retries.anuladas).toHaveBeenCalled();
     expect(screen.getByRole("tab", { name: /Todas las Ventas/ })).toBeInTheDocument();
+  });
+});
+
+describe("VentasPage — Anuladas y Todas no muestran ni usan una lista a medio bajar", () => {
+  it("mientras Todas baja no lista los pedidos de otras consultas ni exporta; al llegar muestra la lista completa", () => {
+    overrides.todas = { loading: true, orders: EMPTY };
+    const { rerender } = render(<VentasPage />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas las Ventas/ }));
+    const panel = () => screen.getByRole("tabpanel");
+    const exportar = () => within(panel()).getByRole("button", { name: /Exportar Excel/ });
+
+    expect(within(panel()).getByText("Cargando ventas...")).toBeInTheDocument();
+    expect(ordersIn(panel())).toEqual([]); // no ORD-101 ni ORD-301, que trajeron Pendientes y Anuladas
+    expect(exportar()).toBeDisabled();
+    fireEvent.click(exportar());
+    expect(mockExport).not.toHaveBeenCalled();
+    expect(screen.getByRole("tab", { name: /Todas las Ventas/ })).toHaveTextContent(/Todas las Ventas\s*1011$/);
+
+    overrides.todas = {};
+    rerender(<VentasPage />);
+
+    expect(ordersIn(panel())).toEqual(["ORD-401", "ORD-101", "ORD-301"]);
+    fireEvent.click(exportar());
+    expect(mockExport).toHaveBeenCalledTimes(1);
+    expect(mockExport.mock.calls[0][0].map((r) => r.orderNumber)).toEqual(["ORD-401", "ORD-101", "ORD-301"]);
+  });
+
+  it("al agrandar el período de Anuladas no muestra lo bajado antes como si fuera el período nuevo", async () => {
+    render(<VentasPage />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Ventas Anuladas/ }));
+    const panel = screen.getByRole("tabpanel");
+    const tab = () => screen.getByRole("tab", { name: /Ventas Anuladas/ });
+    expect(ordersIn(panel)).toEqual(["ORD-301"]);
+    expect(tab()).toHaveTextContent(/Ventas Anuladas\s*1$/);
+
+    fireEvent.change(within(panel).getByLabelText("Desde"), { target: { value: "2026-08-01" } });
+
+    expect(within(panel).getByText("Cargando ventas...")).toBeInTheDocument();
+    expect(ordersIn(panel)).toEqual([]);
+    expect(tab()).toHaveTextContent(/^Ventas Anuladas$/);
+    expect(within(panel).getByRole("button", { name: /Exportar Excel/ })).toBeDisabled();
+
+    await waitFor(() => expect(ordersIn(panel)).toEqual(["ORD-301"]), { timeout: 2000 });
+    expect(mockOrders).toHaveBeenCalledWith("2026-08-01", undefined, { statuses: ["ANULADO"] });
+    expect(tab()).toHaveTextContent(/Ventas Anuladas\s*1$/);
+    expect(within(panel).getByRole("button", { name: /Exportar Excel/ })).toBeEnabled();
+  });
+
+  it("al cambiar el período de Todas o de Anuladas se vacía la selección de esa pestaña", () => {
+    render(<VentasPage />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas las Ventas/ }));
+    let panel = screen.getByRole("tabpanel");
+    fireEvent.click(within(panel).getAllByRole("checkbox")[0]);
+    expect(within(panel).getByRole("button", { name: /Imprimir seleccionados \(3\)/ })).toBeEnabled();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "7 días" }));
+    expect(ordersIn(panel)).toEqual(["ORD-401", "ORD-101"]);
+    expect(within(panel).getByRole("button", { name: /Imprimir seleccionados \(0\)/ })).toBeDisabled();
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Ventas Anuladas/ }));
+    panel = screen.getByRole("tabpanel");
+    fireEvent.click(within(panel).getAllByRole("checkbox")[0]);
+    expect(within(panel).getByRole("button", { name: /Imprimir seleccionados \(1\)/ })).toBeEnabled();
+
+    fireEvent.change(within(panel).getByLabelText("Desde"), { target: { value: "2026-09-01" } });
+    expect(ordersIn(panel)).toEqual(["ORD-301"]);
+    expect(within(panel).getByRole("button", { name: /Imprimir seleccionados \(0\)/ })).toBeDisabled();
   });
 });
 
@@ -346,6 +432,23 @@ describe("VentasPage — KPIs por período", () => {
     fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
 
     expect(retries.kpis).toHaveBeenCalledTimes(1);
+  });
+
+  it("un pedido que pasa a Anulado cuenta en los KPIs aunque su consulta todavía no lo traiga", async () => {
+    overrides.kpis = { orders: [RECIENTE, ANULADA] };
+    const { rerender } = render(<VentasPage />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas las Ventas/ }));
+    await waitFor(() => expect(kpiValue("Anuladas")).toBe("1"));
+    expect(kpiValue("Pendientes")).toBe("1");
+
+    // Se anuló el PREPARADO desde Todas: Todas y Anuladas ya lo traen anulado; los KPIs, todavía no.
+    const anulado = { ...PREPARADO, status: "ANULADO" as OrderStatus };
+    overrides.todas = { orders: [anulado, RECIENTE, ANULADA] };
+    overrides.anuladas = { orders: [anulado, ANULADA] };
+    rerender(<VentasPage />);
+
+    expect(kpiValue("Anuladas")).toBe("2");
+    expect(kpiValue("Pendientes")).toBe("1");
   });
 
   it("con un período más viejo que la ventana cuentan todo ese período", async () => {

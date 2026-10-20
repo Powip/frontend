@@ -198,6 +198,9 @@ export interface Sale extends UnitAssignmentState {
   updatedAt: string;
 }
 
+/** Base de una pestaña mientras su lista no está completa (referencia estable). */
+const NO_SALES: Sale[] = [];
+
 function formatSoles(amount: number): string {
   return `S/ ${amount.toFixed(2)}`;
 }
@@ -326,9 +329,9 @@ export default function VentasPage() {
   const [todasWindow, setTodasWindow] = useState<DateWindow>(() => ({ fromDate: ventasRecentFrom(today), toDate: "" }));
   // Todas se baja recién al entrar a la pestaña; después queda activa
   const [todasVisited, setTodasVisited] = useState(false);
-  // Pendientes: los recientes (30 días) o los antiguos, que se bajan recién al elegirlos
+  // Pendientes: los recientes (30 días) o los antiguos, que se bajan solo mientras están elegidos
   const [pendientesView, setPendientesView] = useState<"recientes" | "antiguos">("recientes");
-  const [antiguosEnabled, setAntiguosEnabled] = useState(false);
+  const antiguosEnabled = pendientesView === "antiguos";
 
   // Paginación para Todas las Ventas
   const [pageAll, setPageAll] = useState(1);
@@ -460,12 +463,13 @@ export default function VentasPage() {
 
   const { scopeKey } = useBusinessScope();
   const ventas = useVentasOrders({ today, anuladasWindow, todasWindow, todasEnabled: todasVisited, antiguosEnabled, kpiPeriod });
-  const { orders: ordersData, refetch: refetchVentas } = ventas;
+  const { orders: ordersData } = ventas;
   // El hook marca "cargando" mientras espera el debounce, aunque no se haya entrado a Todas
   const todasLoading = todasVisited && ventas.todas.loading;
   const todasError = todasVisited && ventas.todas.error;
   const invalidateBusinessData = useInvalidateBusinessData();
-  const refetchOrders = useCallback(() => { void refetchVentas(); void invalidateBusinessData(); }, [refetchVentas, invalidateBusinessData]);
+  // Invalidar "business-orders" ya refresca cada consulta activa de la vista (listas, contadores y KPIs)
+  const refetchOrders = useCallback(() => { void invalidateBusinessData(); }, [invalidateBusinessData]);
   const importStore = auth?.company?.stores?.find((store) => store.id === selectedStoreId);
   const canExport = isSuperadmin(auth?.user?.email) || hasAdminAccess(auth?.user?.role);
 
@@ -1762,14 +1766,25 @@ Estado: ${sale.status}
     [sales, today, anuladasWindow, todasWindow],
   );
   const allPendientes = pendientesView === "antiguos" ? split.antiguos : split.pendientes;
-  const allAnulados = split.anulados;
+  // Anuladas y Todas quedan vacías hasta que su consulta cubre el período pedido: ni la tabla
+  // ni las acciones (exportar, imprimir, WhatsApp, copiar, masivas) usan una lista parcial
+  const allAnulados = ventas.anuladas.ready ? split.anulados : NO_SALES;
+  const allTodas = ventas.todas.ready ? split.todas : NO_SALES;
 
   // Recientes y Antiguos comparten la selección de Pendientes: se vacía al cambiar
   const changePendientesView = (view: "recientes" | "antiguos") => {
     if (view === pendientesView) return;
-    if (view === "antiguos") setAntiguosEnabled(true);
     setPendientesView(view);
     setSelectedPendientesIds(new Set());
+  };
+  // Lo mismo al cambiar el período de Anuladas o Todas: se vacía la selección de esa pestaña
+  const changeAnuladasWindow = (period: DateWindow) => {
+    setAnuladasWindow(period);
+    setSelectedAnuladosIds(new Set());
+  };
+  const changeTodasWindow = (period: DateWindow) => {
+    setTodasWindow(period);
+    setSelectedTodasIds(new Set());
   };
 
   const pendientes = useMemo(
@@ -1783,8 +1798,8 @@ Estado: ${sale.status}
   );
 
   const todasLasVentas = useMemo(
-    () => applyFilters(split.todas, filtersAll),
-    [split.todas, filtersAll],
+    () => applyFilters(allTodas, filtersAll),
+    [allTodas, filtersAll],
   );
 
   // Opciones del filtro Producto: los productos de toda la pestaña (no solo
@@ -1798,15 +1813,22 @@ Estado: ${sale.status}
     [allAnulados],
   );
   const productOptionsAll = useMemo(
-    () => buildProductFilterOptions(split.todas),
-    [split.todas],
+    () => buildProductFilterOptions(allTodas),
+    [allTodas],
   );
 
   // Base de los KPIs: su propia consulta del período. Si el pedido también está
   // en `sales`, se usa esa versión, así un cambio local se refleja al instante.
+  // También suma los de `sales` en un estado de KPI que esa consulta todavía no
+  // trae (p. ej. un PREPARADO recién anulado); el filtro de fecha de abajo sigue.
   const kpiSales = useMemo(() => {
     const byId = new Map(sales.map((s) => [s.id, s]));
-    return ventas.kpiOrders.map((o) => byId.get(o.id) ?? mapOrderToSale(o));
+    const kpiIds = new Set(ventas.kpiOrders.map((o) => o.id));
+    const fromQuery = ventas.kpiOrders.map((o) => byId.get(o.id) ?? mapOrderToSale(o));
+    const movedIn = sales.filter(
+      (s) => !kpiIds.has(s.id) && (isPendienteStatus(s.status) || s.status === ORDER_STATUS.ANULADO),
+    );
+    return [...fromQuery, ...movedIn];
   }, [sales, ventas.kpiOrders]);
 
   const kpis = useMemo(() => {
@@ -1851,11 +1873,12 @@ Estado: ${sale.status}
 
   // Carga o error de la consulta de una pestaña: se ve en su tabla, sin tapar la página
   const renderQueryStatus = (
-    state: { loading: boolean; error: boolean; retry: () => void },
+    // ready: false mientras la lista no cubre el período pedido (loader en vez de filas)
+    state: { loading: boolean; error: boolean; retry: () => void; ready?: boolean },
     loadingLabel: string,
     errorText: string,
   ) =>
-    state.loading ? (
+    state.loading || (state.ready === false && !state.error) ? (
       <PowipPulseLoader label={loadingLabel} />
     ) : state.error ? (
       <div role="alert" className="flex flex-col items-center gap-3 py-6 text-sm text-muted-foreground">
@@ -1870,9 +1893,8 @@ Estado: ${sale.status}
   const kpiText = (value: string | number) =>
     ventas.kpis.loading ? "…" : ventas.kpis.error ? "—" : value;
 
-  // Número de Todas: el conteo del servidor mientras no bajó su lista; después, lo que muestra
-  const todasTabCount =
-    !todasVisited || todasLoading || todasError ? ventas.todas.count : todasLasVentas.length;
+  // Número de Todas: el conteo del servidor mientras su lista no está lista; después, lo que muestra
+  const todasTabCount = ventas.todas.ready ? todasLasVentas.length : ventas.todas.count;
 
   if (!auth) return null;
   if (ventas.loading) return <main className="p-6"><PowipPulseLoader label="Cargando ventas..." /></main>;
@@ -2016,9 +2038,11 @@ Estado: ${sale.status}
               </TabsTrigger>
               <TabsTrigger value="anuladas">
                 Ventas Anuladas
+                {ventas.anuladas.ready && (
                 <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
                   {anulados.length}
                 </span>
+                )}
               </TabsTrigger>
               <TabsTrigger value="todas">
                 Todas las Ventas
@@ -2147,6 +2171,7 @@ Estado: ${sale.status}
                   <CardTitle>Ventas Anuladas</CardTitle>
                   <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
                     <BulkStatusSelect
+                      disabled={!ventas.anuladas.ready}
                       selectedCount={selectedSaleIds.size}
                       availableStatuses={bulkAvailableStatuses}
                       onStatusChange={handleBulkStatusChange}
@@ -2199,6 +2224,7 @@ Estado: ${sale.status}
                       <Button
                         variant="outline"
                         className="w-full lg:w-auto"
+                        disabled={!ventas.anuladas.ready}
                         onClick={() =>
                           handleExportExcel(
                             anulados,
@@ -2219,7 +2245,7 @@ Estado: ${sale.status}
                     onFiltersChange={setFiltersAnulado}
                     showProductFilter
                     availableProducts={productOptionsAnulados}
-                    dateWindow={{ value: anuladasWindow, today, defaultFromDate: ventasRecentFrom(today), onChange: setAnuladasWindow }}
+                    dateWindow={{ value: anuladasWindow, today, defaultFromDate: ventasRecentFrom(today), onChange: changeAnuladasWindow }}
                   />
                   {renderAnuladosTable(anulados.slice((anuladosPage - 1) * ITEMS_PER_PAGE, anuladosPage * ITEMS_PER_PAGE), activeTab === "todas", renderQueryStatus(ventas.anuladas, "Cargando ventas...", "No se pudieron cargar las ventas de este período."))}
                 </CardContent>
@@ -2241,6 +2267,7 @@ Estado: ${sale.status}
                   <CardTitle>Todas las Ventas</CardTitle>
                   <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
                     <BulkStatusSelect
+                      disabled={!ventas.todas.ready}
                       selectedCount={selectedSaleIds.size}
                       availableStatuses={bulkAvailableStatuses}
                       onStatusChange={handleBulkStatusChange}
@@ -2305,6 +2332,7 @@ Estado: ${sale.status}
                       <Button
                         variant="outline"
                         className="w-full lg:w-auto"
+                        disabled={!ventas.todas.ready}
                         onClick={() =>
                           handleExportExcel(
                             todasLasVentas,
@@ -2328,7 +2356,7 @@ Estado: ${sale.status}
                     }}
                     showProductFilter
                     availableProducts={productOptionsAll}
-                    dateWindow={{ value: todasWindow, today, defaultFromDate: ventasRecentFrom(today), onChange: setTodasWindow }}
+                    dateWindow={{ value: todasWindow, today, defaultFromDate: ventasRecentFrom(today), onChange: changeTodasWindow }}
                   />
                   {renderPendientesTable(
                     todasLasVentas.slice(
@@ -2336,7 +2364,7 @@ Estado: ${sale.status}
                       todasPage * ITEMS_PER_PAGE,
                     ),
                     activeTab === "todas",
-                    { status: renderQueryStatus({ loading: todasLoading, error: todasError, retry: ventas.todas.retry }, "Cargando ventas...", "No se pudieron cargar las ventas de este período.") },
+                    { status: renderQueryStatus({ loading: todasLoading, error: todasError, retry: ventas.todas.retry, ready: ventas.todas.ready }, "Cargando ventas...", "No se pudieron cargar las ventas de este período.") },
                   )}
                 </CardContent>
                 <Pagination
