@@ -24,7 +24,12 @@ export interface VentasTabSale {
   updatedAt: string;
 }
 
-const isPendiente = (status: OrderStatus) => status === "PENDIENTE" || status === "PAGADO";
+// PAGADO es "PENDIENTE ya cobrado al 100%", no una etapa de fulfillment
+// distinta (ver ORDER_STATUS_FLOW/FULFILLMENT_RANK en orders-status-flow.ts,
+// donde PAGADO comparte rango con PENDIENTE) — debe listarse junto con
+// PENDIENTE en "Ventas Pendientes", si no la tab queda en 0 apenas se cobra
+// un pedido y solo se lo ve en "Todas las Ventas".
+export const isPendienteStatus = (status: OrderStatus) => status === "PENDIENTE" || status === "PAGADO";
 
 /** Días de Perú sin movimiento (hoy − updatedAt), mínimo 0. */
 export function daysWithoutMovement(updatedAt: string, today: string): number {
@@ -46,7 +51,7 @@ export function splitVentasTabs<T extends VentasTabSale>(
   const todas: T[] = [];
 
   for (const s of sales) {
-    if (isPendiente(s.status)) {
+    if (isPendienteStatus(s.status)) {
       if (peruDateOf(s.createdAt) >= recentFrom) pendientes.push(s);
       else antiguos.push(s);
     }

@@ -36,6 +36,14 @@ jest.mock("@/services/atencionClienteService", () => ({
 jest.mock("@/hooks/useBusinessOrders", () => ({
   useBusinessOrders: jest.fn(),
 }));
+jest.mock("@/hooks/useBusinessOrdersCount", () => ({
+  useBusinessOrdersCount: () => ({ count: 0, loading: false, error: false, retry: jest.fn(), refetch: jest.fn() }),
+}));
+// Hoy fijo en 09-26: los pedidos del 09-01 y 09-02 entran en la ventana de 30 días.
+jest.mock("@/lib/peruDate", () => ({
+  ...jest.requireActual("@/lib/peruDate"),
+  todayInPeru: () => "2026-09-26",
+}));
 
 jest.mock("@/utils/bulk-receipt-printer", () => ({
   ...jest.requireActual("@/utils/bulk-receipt-printer"),
