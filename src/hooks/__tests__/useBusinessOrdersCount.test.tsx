@@ -11,7 +11,7 @@ jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-  return { wrapper };
+  return { wrapper, client };
 }
 
 beforeEach(() => jest.clearAllMocks());
@@ -29,6 +29,16 @@ it("sums the count of every store using the /count endpoint and the status filte
     expect(String(url)).toMatch(/\/order-header\/store\/[ab]\/count$/);
     expect(config?.params).toMatchObject({ fromDate: "2026-09-21", toDate: "2026-10-20", status: "PENDIENTE,PAGADO" });
   }
+});
+
+it("uses a queryKey under the business-orders prefix, so invalidating business data refreshes it", async () => {
+  jest.mocked(axiosAuth.get).mockResolvedValue({ data: { count: 1 } });
+  const { wrapper, client } = setup();
+  const { result } = renderHook(() => useBusinessOrdersCount("2026-09-21", undefined, { statuses: ["PENDIENTE"] }), { wrapper });
+  await waitFor(() => expect(result.current.count).toBe(2));
+  const keys = client.getQueryCache().getAll().map((q) => q.queryKey);
+  expect(keys).toHaveLength(1);
+  expect(keys[0][0]).toBe("business-orders");
 });
 
 it("reports error with a null count when one store fails", async () => {
