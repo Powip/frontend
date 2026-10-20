@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Search, X, ChevronDown, ChevronUp, Filter } from "lucide-react";
 import { OrderStatus } from "@/interfaces/IOrder";
 import { getStatusLabel } from "@/utils/domain/orders-status-flow";
+import { shiftPeruDate, type DateWindow } from "@/lib/peruDate";
 
 export interface SalesFilters {
   dateFrom: string;
@@ -135,6 +136,16 @@ interface SalesTableFiltersProps {
   availableChannels?: string[];
   /** Productos presentes en la vista actual (ver buildProductFilterOptions). */
   availableProducts?: ProductFilterOption[];
+  /**
+   * Período que se pide al servidor. Si viene, se muestra siempre (fuera del panel),
+   * reemplaza a "Fecha Desde/Hasta" del panel y no cuenta como filtro activo.
+   */
+  dateWindow?: {
+    value: DateWindow;
+    today: string;
+    defaultFromDate: string;
+    onChange: (w: DateWindow) => void;
+  };
 }
 
 /** "TIENDA_FISICA" → "TIENDA FISICA" — mismo criterio que el <select> de Canal de venta en Registrar Venta. */
@@ -214,9 +225,12 @@ export function SalesTableFilters({
   availableStatuses = [],
   availableChannels = [],
   availableProducts = [],
+  dateWindow,
 }: SalesTableFiltersProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const productSelectId = useId();
+  const fromDateId = useId();
+  const toDateId = useId();
 
   const updateFilter = <K extends keyof SalesFilters>(
     key: K,
@@ -229,13 +243,17 @@ export function SalesTableFilters({
     onFiltersChange(emptySalesFilters);
   };
 
-  const hasActiveFilters = Object.values(filters).some((v) => v !== "");
-  const activeFiltersCount = Object.values(filters).filter((v) => v !== "").length;
+  // Con dateWindow el período no es un filtro: lo define el control de período.
+  const countedFilters = Object.entries(filters).filter(
+    ([key, v]) => v !== "" && !(dateWindow && (key === "dateFrom" || key === "dateTo"))
+  );
+  const hasActiveFilters = countedFilters.length > 0;
+  const activeFiltersCount = countedFilters.length;
 
   return (
     <div className="mb-4">
       {/* Toggle Button */}
-      <div className="flex items-center gap-2 mb-2">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
         <Button
           variant="outline"
           size="sm"
@@ -267,6 +285,58 @@ export function SalesTableFilters({
             Limpiar
           </Button>
         )}
+
+        {dateWindow && (
+          <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+            <Label htmlFor={fromDateId} className="text-xs">
+              Desde
+            </Label>
+            <Input
+              id={fromDateId}
+              type="date"
+              value={dateWindow.value.fromDate}
+              onChange={(e) =>
+                dateWindow.onChange({
+                  fromDate: e.target.value || dateWindow.defaultFromDate,
+                  toDate: dateWindow.value.toDate,
+                })
+              }
+              className="h-8 text-sm w-auto"
+            />
+            <Label htmlFor={toDateId} className="text-xs">
+              Hasta
+            </Label>
+            <Input
+              id={toDateId}
+              type="date"
+              value={dateWindow.value.toDate}
+              onChange={(e) =>
+                dateWindow.onChange({
+                  fromDate: dateWindow.value.fromDate,
+                  toDate: e.target.value,
+                })
+              }
+              className="h-8 text-sm w-auto"
+            />
+            {[7, 15, 30].map((n) => (
+              <Button
+                key={n}
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8"
+                onClick={() =>
+                  dateWindow.onChange({
+                    fromDate: shiftPeruDate(dateWindow.today, -(n - 1)),
+                    toDate: "",
+                  })
+                }
+              >
+                {n} días
+              </Button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Collapsible Filters */}
@@ -287,6 +357,7 @@ export function SalesTableFilters({
             </div>
 
             {/* Fecha Desde */}
+            {!dateWindow && (
             <div className="space-y-1">
               <Label className="text-xs">Fecha Desde</Label>
               <Input
@@ -297,7 +368,10 @@ export function SalesTableFilters({
               />
             </div>
 
+            )}
+
             {/* Fecha Hasta */}
+            {!dateWindow && (
             <div className="space-y-1">
               <Label className="text-xs">Fecha Hasta</Label>
               <Input
@@ -307,6 +381,7 @@ export function SalesTableFilters({
                 className="h-8 text-sm"
               />
             </div>
+            )}
 
             {/* Producto */}
             {showProductFilter && (
