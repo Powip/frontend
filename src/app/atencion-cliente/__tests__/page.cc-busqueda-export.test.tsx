@@ -19,6 +19,7 @@
 import { render as rtlRender, screen, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { OrderHeader, SubEstadoCc } from '@/interfaces/IOrder';
+import { useBusinessOrders } from '@/hooks/useBusinessOrders';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
@@ -27,7 +28,7 @@ function render(ui: ReactElement) {
   return rtlRender(ui, { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
 }
 jest.mock('@/contexts/BusinessScopeContext', () => ({ useBusinessScope: () => ({ storeIds: ['store-1'], scope: 'business', scopeKey: 'company-1:business:store-1', canFetch: true }) }));
-jest.mock('@/hooks/useBusinessOrders', () => ({ useBusinessOrders: () => ({ orders: [], loading: false, error: false, refetch: jest.fn() }) }));
+jest.mock('@/hooks/useBusinessOrders', () => ({ useBusinessOrders: jest.fn(() => ({ orders: [], loading: false, error: false, refetch: jest.fn() })) }));
 
 /* ---------------- Backend en memoria ---------------- */
 type Filters = {
@@ -407,5 +408,13 @@ describe('Gestión COD — buscador', () => {
     expect(exportButton()).toHaveTextContent('(1)');
     await act(async () => { await typeSearch('cliente 2'); });
     expect(exportButton()).toBeDisabled();
+  });
+});
+
+/* ---------------- Carga de pedidos legacy ---------------- */
+describe('Atención al cliente — pedidos legacy', () => {
+  it('pide al servidor solo INCOMPLETE y PREVENTA', async () => {
+    render(<AtencionClientePage />);
+    expect(useBusinessOrders).toHaveBeenCalledWith(undefined, undefined, { includeCcLeads: true, statuses: ['INCOMPLETE', 'PREVENTA'] });
   });
 });
