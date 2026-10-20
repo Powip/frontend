@@ -1,8 +1,12 @@
 "use client";
 
+import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
+import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
+import { type SaleUnitLifecycleAction } from "@/services/saleUnitLifecycleService";
+import { assignmentBlockReason, hasUnitAssignment, unitAssignmentLabel, requiresAuthenticatedSaleMutation, saleMutationUrl, saleReceiptUrl, type UnitAssignmentState } from "@/services/saleTrackingService";
 import Link from "next/link";
 import Image from "next/image";
-import { Fragment, useEffect, useMemo, useState, useCallback } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import {
   Plus,
   Pencil,
@@ -149,7 +153,7 @@ const ALL_STATUSES: OrderStatus[] = [
   "ANULADO",
 ];
 
-export interface Sale {
+export interface Sale extends UnitAssignmentState {
   id: string;
   storeId: string;
   inventoryId?: string | null;
@@ -254,6 +258,13 @@ function mapOrderToSale(order: OrderHeader): Sale {
     advancePayment,
     pendingPayment,
     hasStockIssue: order.hasStockIssue ?? false,
+    unitAssignmentStatus: order.unitAssignmentStatus,
+    unitStockState: order.unitStockState,
+    unitCatalogValidated: order.unitCatalogValidated,
+    hasTrackedUnits: order.hasTrackedUnits,
+    unitAssignmentError: order.unitAssignmentError,
+    confirmedStockVersion: order.confirmedStockVersion,
+    stockVersion: order.stockVersion,
     hasPendingApprovalPayments,
     externalTrackingNumber: order.externalTrackingNumber || "",
     shippingCode: order.shippingCode || "",
@@ -305,6 +316,7 @@ export default function VentasPage() {
   const ITEMS_PER_PAGE = 10;
 
   // Estado para modal de cancelación
+  const [lifecycle, setLifecycle] = useState<{ orderId: string; action: SaleUnitLifecycleAction } | null>(null);
   const [cancellationModalOpen, setCancellationModalOpen] = useState(false);
   const [saleToCancel, setSaleToCancel] = useState<Sale | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -322,6 +334,7 @@ export default function VentasPage() {
   // Estado para modal de confirmación de impresión
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
   const [pendingPrintSales, setPendingPrintSales] = useState<Sale[]>([]);
+  const [pendingPrintScope, setPendingPrintScope] = useState("");
 
   const [importModalOpen, setImportModalOpen] = useState(false);
 
@@ -402,6 +415,22 @@ export default function VentasPage() {
   const BULK_ACTION_REPROGRAMAR = "__REPROGRAMAR__";
 
   const { auth, selectedStoreId } = useAuth();
+  const printScope = `${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}`;
+  const activePrintScope = useRef(printScope);
+  activePrintScope.current = printScope;
+  const printEpoch = useRef(0);
+  const printWindows = useRef(new Set<Window>());
+  useEffect(() => {
+    setPrintPreviewOpen(false);
+    setPendingPrintSales([]);
+    setIsPrinting(false);
+    return () => {
+      printEpoch.current += 1;
+      for (const win of printWindows.current) win.close();
+      printWindows.current.clear();
+    };
+  }, [printScope]);
+  const routeSaleLifecycle = useSaleLifecycleRouting();
   const router = useRouter();
 
   const { scopeKey } = useBusinessScope();
@@ -501,8 +530,11 @@ export default function VentasPage() {
     orderId: string,
     payload: Record<string, unknown>,
   ) => {
+    const sale = sales.find((entry) => entry.id === orderId);
+    const blocked = sale && assignmentBlockReason(sale, typeof payload.status === "string" ? payload.status : "");
+    if (blocked) throw new Error(blocked);
     await axiosAuth.patch(
-      `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", orderId, sale),
       { ...payload, ...getUserInfo() },
     );
   };
@@ -511,6 +543,11 @@ export default function VentasPage() {
     setIsCreatingGuide(true);
     try {
       for (const guideData of guidesData) {
+        for (const id of guideData.orderIds) {
+          const sale = sales.find((entry) => entry.id === id);
+          const blocked = sale && assignmentBlockReason(sale, "ASIGNADO_A_GUIA");
+          if (blocked) throw new Error(blocked);
+        }
         const guideResponse = await axiosAuth.post(
           `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides`,
           guideData,
@@ -541,6 +578,8 @@ export default function VentasPage() {
     newStatus: OrderStatus,
     cancellationReason?: CancellationReason,
   ) => {
+    if (await routeSaleLifecycle(sales.find((sale) => sale.id === saleId), newStatus, (action) => setLifecycle({ orderId: saleId, action }))) return;
+
     // Si el nuevo estado es ANULADO y no hay motivo, abrir modal
     if (newStatus === "ANULADO" && !cancellationReason) {
       const sale = sales.find((s) => s.id === saleId);
@@ -560,15 +599,12 @@ export default function VentasPage() {
         payload.cancellationReason = cancellationReason;
       }
 
-      await axiosAuth.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
-        payload,
-      );
+      await patchOrder(saleId, payload);
       toast.success(`Estado actualizado a ${newStatus}`);
       refetchOrders();
     } catch (error) {
       console.error("Error actualizando estado", error);
-      toast.error("No se pudo actualizar el estado");
+      toast.error(error instanceof Error ? error.message : "No se pudo actualizar el estado");
     }
   };
 
@@ -577,11 +613,16 @@ export default function VentasPage() {
     notes?: string,
   ) => {
     if (!saleToCancel) return;
+    if (await routeSaleLifecycle(sales.find((sale) => sale.id === saleToCancel.id) ?? saleToCancel, "ANULADO", (action) => {
+      setCancellationModalOpen(false);
+      setSaleToCancel(null);
+      setLifecycle({ orderId: saleToCancel.id, action });
+    })) return;
 
     setIsCancelling(true);
     try {
       await axiosAuth.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleToCancel.id}`,
+        saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", saleToCancel.id, saleToCancel),
         {
           status: "ANULADO",
           cancellationReason: reason,
@@ -710,20 +751,29 @@ Estado: ${sale.status}
       return;
     }
 
+    const blocked = selectedPendientes.map((sale) => assignmentBlockReason(sale, "PREPARADO")).find(Boolean);
+    if (blocked) { toast.error(blocked); return; }
     setPendingPrintSales(selectedPendientes);
+    setPendingPrintScope(printScope);
     setPrintPreviewOpen(true);
   };
 
-  const fetchPrintReceipt = useCallback(async (sale: { id: string }) => {
+  const fetchPrintReceipt = useCallback(async (sale: { id: string } & UnitAssignmentState) => {
+    const epoch = printEpoch.current;
     const res = await axiosAuth.get<ReceiptData>(
-      `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
+      saleReceiptUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", sale.id, sale),
     );
+    if (printScope !== activePrintScope.current || epoch !== printEpoch.current)
+      throw new Error("La sesión cambió. Vuelve a abrir la vista previa.");
+    if (res.data?.orderId !== sale.id) throw new Error("El comprobante no corresponde al pedido seleccionado.");
     return res.data;
-  }, []);
+  }, [printScope]);
 
   // Confirmar impresión y cambiar estados
   const handleConfirmPrint = async () => {
-    if (pendingPrintSales.length === 0) return;
+    if (pendingPrintSales.length === 0 || pendingPrintScope !== printScope) return;
+    const epoch = printEpoch.current;
+    const isCurrent = () => epoch === printEpoch.current && printScope === activePrintScope.current;
 
     setIsPrinting(true);
     let successCount = 0;
@@ -734,10 +784,13 @@ Estado: ${sale.status}
     setOrdersWithStockIssue(issues);
 
     for (const sale of pendingPrintSales) {
+      if (!isCurrent()) return;
       const newStatus = "PREPARADO";
       try {
+        const blocked = assignmentBlockReason(sale, newStatus);
+        if (blocked) throw new Error(blocked);
         await axiosAuth.patch(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}`,
+          saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", sale.id, sale),
           { status: newStatus, ...getUserInfo() },
         );
         successCount++;
@@ -746,6 +799,7 @@ Estado: ${sale.status}
         errorCount++;
       }
     }
+    if (!isCurrent()) return;
 
     if (successCount > 0) {
       toast.success(`${successCount} pedido(s) actualizados a PREPARADO`);
@@ -788,6 +842,9 @@ Estado: ${sale.status}
       toast.error("No se pudo abrir la ventana de impresión. Verifica que los popups no estén bloqueados.");
       return;
     }
+    printWindows.current.add(printWindow);
+    const epoch = printEpoch.current;
+    const isCurrent = () => epoch === printEpoch.current && printScope === activePrintScope.current;
 
     setIsPrinting(true);
     toast.info(`Preparando ${selectedSales.length} recibo(s) para imprimir...`);
@@ -796,23 +853,28 @@ Estado: ${sale.status}
       const receipts = await Promise.all(
         selectedSales.map(async (sale) => {
           const res = await axiosAuth.get<ReceiptData>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
+            saleReceiptUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", sale.id, sale),
           );
+          if (res.data?.orderId !== sale.id) throw new Error("El comprobante no corresponde al pedido seleccionado.");
           return res.data;
         }),
       );
 
       // Imprimir usando la utilidad compartida (formato compacto con QR)
-      await printReceipts(receipts, auth?.company, printWindow);
+      if (!isCurrent()) return;
+      await printReceipts(receipts, auth?.company, printWindow, isCurrent);
+      if (!isCurrent()) return;
 
       toast.success(`${selectedSales.length} recibo(s) enviados a imprimir`);
       setSelectedIdsForActiveTab(new Set());
     } catch (error) {
       printWindow.close();
+      if (!isCurrent()) return;
       console.error("Error en impresión masiva", error);
       toast.error("Error al preparar los recibos para imprimir");
     } finally {
-      setIsPrinting(false);
+      printWindows.current.delete(printWindow);
+      if (isCurrent()) setIsPrinting(false);
     }
   };
 
@@ -827,6 +889,12 @@ Estado: ${sale.status}
       return;
     }
 
+    for (const sale of sales.filter((entry) => selectedSaleIds.has(entry.id))) {
+      if (await routeSaleLifecycle(sale, newStatus, () => toast.error("Reactiva las ventas con IMEI/series individualmente para seleccionar y confirmar sus unidades."))) return;
+    }
+
+    const blocked = sales.filter((sale) => selectedSaleIds.has(sale.id)).map((sale) => assignmentBlockReason(sale, newStatus)).find(Boolean);
+    if (blocked) { toast.error(blocked); return; }
     setIsBulkLoading(true);
     const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
 
@@ -843,6 +911,9 @@ Estado: ${sale.status}
         uInfo.userId
           ? { userId: uInfo.userId, sellerName: uInfo.sellerName || "" }
           : undefined,
+        undefined,
+        undefined,
+        new Set(sales.filter(requiresAuthenticatedSaleMutation).map((sale) => sale.id)),
       );
 
       if (result.success.length > 0) {
@@ -890,6 +961,7 @@ Estado: ${sale.status}
           : undefined,
         "SCHEDULED",
         callbackAt,
+        new Set(sales.filter(requiresAuthenticatedSaleMutation).map((sale) => sale.id)),
       );
       if (result.success.length > 0)
         toast.success(`${result.success.length} pedido(s) reprogramados`);
@@ -912,7 +984,7 @@ Estado: ${sale.status}
   ) => {
     try {
       await axiosAuth.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
+        saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", saleId, sales.find((sale) => sale.id === saleId)),
         {
           callStatus: "SCHEDULED",
           callbackAt: callbackAt.toISOString(),
@@ -1017,7 +1089,7 @@ Estado: ${sale.status}
     setSavingOrderId(orderId);
     try {
       await axiosAuth.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+        saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", orderId, sales.find((sale) => sale.id === orderId)),
         {
           externalTrackingNumber: data.externalTrackingNumber,
           shippingCode: data.shippingCode,
@@ -1176,6 +1248,7 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell className="font-medium 2xl:sticky 2xl:left-[81px] w-[100px] min-w-[100px] 2xl:z-10 bg-background text-xs">
                     <div className="flex items-center gap-1">
+                      {hasUnitAssignment(sale) && <span className="text-xs text-amber-700">{unitAssignmentLabel(sale)}</span>}
                       {sale.hasStockIssue && (
                         <span title="Stock insuficiente - No se puede preparar">
                           <AlertTriangle className="h-4 w-4 text-amber-500" />
@@ -1294,7 +1367,7 @@ Estado: ${sale.status}
                       options={getAvailableStatuses(
                         sale.status,
                         sale.salesRegion,
-                      )}
+                      ).filter((status) => status === sale.status || !assignmentBlockReason(sale, status))}
                       extraAction={{
                         value: "__REPROGRAMAR__",
                         label: "Reprogramar",
@@ -2208,8 +2281,11 @@ Estado: ${sale.status}
           onPaymentUpdated={refetchOrders}
         />
 
+        {lifecycle && <SaleUnitLifecycleModal open {...lifecycle} onClose={() => setLifecycle(null)} onUpdated={refetchOrders} />}
         <BulkPrintPreviewDialog
-          open={printPreviewOpen}
+          key={printScope}
+          scopeKey={printScope}
+          open={printPreviewOpen && pendingPrintScope === printScope}
           orders={pendingPrintSales}
           company={auth?.company}
           fetchReceipt={fetchPrintReceipt}

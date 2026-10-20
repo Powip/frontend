@@ -1,5 +1,13 @@
 ﻿"use client";
 import axios from "@/lib/axiosAuth";
+import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
+import { useReceiptPrintScope } from "@/hooks/useReceiptPrintScope";
+import { printCustomerShippingLabel } from "@/utils/printCustomerShippingLabel";
+import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
+import { SaleUnitLifecycleButtons } from "@/components/registrar-venta/SaleUnitLifecycleActions";
+import { UnitAssignmentNotice } from "@/components/registrar-venta/SaleUnitSelection";
+import { type SaleUnitLifecycleAction } from "@/services/saleUnitLifecycleService";
+import { assignmentBlockReason, requiresAuthenticatedSaleMutation, saleMutationUrl, saleReceiptUrl } from "@/services/saleTrackingService";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -92,6 +100,12 @@ import { printOrderLabel, type OrderReceipt } from "@/utils/printOrderLabel";
 import { downloadNotaVentaPdf } from "@/utils/downloadNotaVentaPdf";
 import { GoogleMapsUrlField } from "@/components/shared/GoogleMapsUrlField";
 import { OrderEvidenceSection } from "@/components/orders/OrderEvidenceSection";
+
+type CustomerServiceReceipt = Omit<OrderReceipt, "items"> & {
+  items: (OrderReceipt["items"][number] & {
+    units?: { id: string; code: string; status: string }[];
+  })[];
+};
 
 interface LogEntry {
   id: number;
@@ -194,8 +208,17 @@ export default function CustomerServiceModal({
 }: Props) {
   const router = useRouter();
   const { auth, hasPermission } = useAuth();
+  const routeSaleLifecycle = useSaleLifecycleRouting();
   const [loading, setLoading] = useState(false);
-  const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
+  const receiptKey = `${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}:${orderId}`;
+  const [receiptRevision, setReceiptRevision] = useState(0);
+  const beginPrint = useReceiptPrintScope(`${receiptKey}:${receiptRevision}`, Boolean(open && orderId && auth?.company?.id && auth?.user?.id));
+  const activeReceiptKey = useRef(receiptKey);
+  activeReceiptKey.current = receiptKey;
+  const receiptReadSequence = useRef(0);
+  const [loadedReceipt, setReceipt] = useState<CustomerServiceReceipt | null>(null);
+  const [loadedReceiptKey, setLoadedReceiptKey] = useState("");
+  const receipt = loadedReceiptKey === receiptKey ? loadedReceipt : null;
   const [cancellationModalOpen, setCancellationModalOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -213,8 +236,14 @@ export default function CustomerServiceModal({
   const [savingNotes, setSavingNotes] = useState(false);
 
   // Print confirmation state
-  const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
+  const [printConfirmation, setPrintConfirmation] = useState<{
+    key: string; orderId: string; stockVersion?: number; status: string;
+  } | null>(null);
+  const printConfirmOpen = Boolean(open && receipt && printConfirmation?.key === receiptKey &&
+    printConfirmation.orderId === receipt.orderId && printConfirmation.stockVersion === receipt.stockVersion &&
+    printConfirmation.status === receipt.status);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  useEffect(() => { setPrintConfirmation(null); setIsUpdatingStatus(false); }, [open, receiptKey]);
 
   // Scheduling states
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>(
@@ -226,6 +255,7 @@ export default function CustomerServiceModal({
   // selector de estado, y como `order` de ReassignDeliveryModal).
   const [tab, setTab] = useState("resumen");
   const [orderHeader, setOrderHeader] = useState<OrderHeader | null>(null);
+  const [lifecycleAction, setLifecycleAction] = useState<SaleUnitLifecycleAction | null>(null);
   const [reassignModalOpen, setReassignModalOpen] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);
   const [syncingTracking, setSyncingTracking] = useState(false);
@@ -302,16 +332,26 @@ export default function CustomerServiceModal({
 
   const fetchReceipt = useCallback(async () => {
     if (!orderId) return;
+    const sequence = ++receiptReadSequence.current;
+    const isCurrent = () => sequence === receiptReadSequence.current && receiptKey === activeReceiptKey.current;
     try {
+      setReceipt(null);
+      setLoadedReceiptKey("");
+      setPrintConfirmation(null);
+      setReceiptRevision((revision) => revision + 1);
       setLoading(true);
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`,
-      );
-      setReceipt(res.data);
-
       const orderRes = await axios.get(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
       );
+      if (!isCurrent()) return;
+      if (orderRes.data?.id !== orderId) throw new Error("El pedido no corresponde a la consulta.");
+      const res = await axios.get(
+        saleReceiptUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", orderId, orderRes.data),
+      );
+      if (!isCurrent()) return;
+      if (res.data?.orderId !== orderId) throw new Error("El comprobante no corresponde al pedido solicitado.");
+      setReceipt(res.data);
+      setLoadedReceiptKey(receiptKey);
       setOrderHeader(orderRes.data);
       setNotes(orderRes.data.notes || "");
       // CC v2: cargar campos de datos incompletos + sub-estado
@@ -325,12 +365,38 @@ export default function CustomerServiceModal({
       setEvaStatus(orderRes.data.evaStatus ?? null);
       setEvaSyncedAt(orderRes.data.evaSyncedAt ?? null);
     } catch (err) {
+      if (!isCurrent()) return;
       console.error("Error fetching receipt", err);
       toast.error("Error al cargar el pedido");
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [orderId]);
+  }, [orderId, receiptKey]);
+
+  const patchOrder = async (data: Record<string, unknown>, targetId = orderId): Promise<boolean> => {
+    if (!orderHeader || orderHeader.id !== targetId) {
+      throw new Error("Vuelve a cargar el pedido antes de actualizarlo.");
+    }
+    const targetStatus = typeof data.status === "string" ? data.status : "";
+    const blocked = assignmentBlockReason(orderHeader, targetStatus);
+    if (blocked) {
+      toast.error(blocked);
+      return false;
+    }
+    const response = await axios.patch<OrderHeader>(
+      saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", targetId, orderHeader),
+      data,
+    );
+    if (targetStatus && requiresAuthenticatedSaleMutation(orderHeader) && (
+      response.data?.status !== targetStatus || assignmentBlockReason(response.data, targetStatus)
+    )) {
+      toast.warning("La operación está pendiente de confirmación de IMEI/series. Consulta la venta antes de cambiar nuevamente su estado.");
+      await fetchReceipt();
+      onOrderUpdated?.();
+      return false;
+    }
+    return true;
+  };
 
   const fetchShippingGuide = useCallback(async () => {
     if (!orderId) return;
@@ -380,6 +446,7 @@ export default function CustomerServiceModal({
       setShippingGuideData(null);
       fetchShippingGuide();
     }
+    return () => { receiptReadSequence.current += 1; };
   }, [open, orderId, fetchReceipt, fetchLogs, fetchShippingGuide, shippingGuideProp, initialTab]);
 
   const handleUpdateCallStatus = async (
@@ -399,23 +466,14 @@ export default function CustomerServiceModal({
           : ["LLAMADO" as OrderStatus];
         if (steps.length > 0) {
           for (const step of steps) {
-            await axios.patch(
-              `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-              { status: step, ...(step === "LLAMADO" && { callStatus }) },
-            );
+            if (!(await patchOrder({ status: step, ...(step === "LLAMADO" && { callStatus }) }))) return;
           }
         } else {
           // Ya está en LLAMADO o más adelante — solo confirmar la llamada.
-          await axios.patch(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-            { callStatus },
-          );
+          await patchOrder({ callStatus });
         }
       } else {
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-          { callStatus },
-        );
+        await patchOrder({ callStatus });
       }
 
       toast.success(
@@ -440,15 +498,12 @@ export default function CustomerServiceModal({
       // Ajustar a formato ISO para el backend
       const callbackAt = scheduledDate.toISOString();
 
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        {
-          callStatus: "SCHEDULED",
-          callbackAt,
-          userId: auth?.user?.id,
-          sellerName: auth?.user?.email,
-        },
-      );
+      await patchOrder({
+        callStatus: "SCHEDULED",
+        callbackAt,
+        userId: auth?.user?.id,
+        sellerName: auth?.user?.email,
+      });
 
       // Registrar log de programación
       await axios.post(`${process.env.NEXT_PUBLIC_API_VENTAS}/log-ventas`, {
@@ -479,10 +534,7 @@ export default function CustomerServiceModal({
   const handleSaveNotes = async () => {
     try {
       setSavingNotes(true);
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        { notes },
-      );
+      await patchOrder({ notes });
       toast.success("Notas guardadas correctamente");
     } catch (error) {
       console.error("Error saving notes", error);
@@ -547,15 +599,12 @@ export default function CustomerServiceModal({
 
     try {
       setSavingTracking(true);
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        {
-          externalTrackingNumber: receipt.externalTrackingNumber,
-          shippingCode: receipt.shippingCode,
-          shippingKey: receipt.shippingKey,
-          shippingOffice: receipt.shippingOffice,
-        },
-      );
+      await patchOrder({
+        externalTrackingNumber: receipt.externalTrackingNumber,
+        shippingCode: receipt.shippingCode,
+        shippingKey: receipt.shippingKey,
+        shippingOffice: receipt.shippingOffice,
+      });
       toast.success("Tracking actualizado");
       // Update original tracking to match new saved state
       setOriginalTracking({
@@ -605,252 +654,70 @@ export default function CustomerServiceModal({
 
   const handleDownloadPdf = async () => {
     if (!receipt) return;
-    await downloadNotaVentaPdf(receipt, orderHeader, auth?.company);
+    const operation = beginPrint();
+    try {
+      await downloadNotaVentaPdf(receipt, orderHeader, auth?.company, operation);
+    } finally { operation.release(); }
   };
 
   const handlePrint = async () => {
     if (!receipt) return;
-    await printOrderLabel(receipt, orderHeader, auth?.company);
+    const operation = beginPrint();
+    try {
+      await printOrderLabel(receipt, orderHeader, auth?.company, operation);
+      if (!operation.isCurrent?.()) return;
 
-    // Si el pedido todavía no está preparado, mostrar confirmación para
-    // pasarlo a PREPARADO. PAGADO cuenta igual que PENDIENTE acá — cobrar el
-    // 100% no es lo mismo que empacar, tampoco fue preparado por almacén
-    // todavía.
-    if (receipt.status === "PENDIENTE" || receipt.status === "PAGADO") {
-      setPrintConfirmOpen(true);
-    }
+      // El cobro completo todavía no equivale a la preparación del paquete.
+      if (receipt.status === "PENDIENTE" || receipt.status === "PAGADO") {
+        setPrintConfirmation({ key: receiptKey, orderId: receipt.orderId, stockVersion: receipt.stockVersion, status: receipt.status });
+      }
+    } finally { operation.release(); }
   };
 
   const handleConfirmPrintStatus = async () => {
+    if (!printConfirmOpen || activeReceiptKey.current !== receiptKey) return;
+    const operation = beginPrint();
     try {
       setIsUpdatingStatus(true);
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        { status: "PREPARADO" },
-      );
+      if (!(await patchOrder({ status: "PREPARADO" }))) return;
+      if (!operation.isCurrent?.()) return;
       toast.success("Pedido actualizado a PREPARADO");
       fetchReceipt();
       onOrderUpdated?.();
-      setPrintConfirmOpen(false);
+      setPrintConfirmation(null);
     } catch (error) {
+      if (!operation.isCurrent?.()) return;
       console.error("Error updating status to PREPARADO", error);
       toast.error("No se pudo actualizar el estado del pedido");
     } finally {
-      setIsUpdatingStatus(false);
+      if (operation.isCurrent?.()) setIsUpdatingStatus(false);
+      operation.release();
     }
   };
 
   const handlePrintShippingReceipt = async () => {
     if (!receipt || !shippingGuide) return;
-
-    // Datos de la company desde el auth context
-    const company = auth?.company;
-    const companyName = company?.name || "MI EMPRESA";
-    const companyCuit = company?.cuit || "";
-    const companyAddress = company?.billingAddress || "";
-    const companyPhone = company?.phone || "";
-    const companyLogo = company?.logoUrl;
-
-    const printWindow = window.open("", "_blank", "width=500,height=700");
-    if (!printWindow) {
-      toast.error("No se pudo abrir la ventana de impresión");
-      return;
-    }
-
-    // Construir dirección completa del consignado con formato courier
-    const courierName = shippingGuide.courierName || "COURIER";
-    const customerAddress = shippingGuide.shippingOffice
-      ? `${courierName} ${shippingGuide.shippingOffice}`
-      : receipt.customer.address || "-";
-
-    // Logo: usar imagen si existe, sino texto del nombre de la empresa
-    const logoElement = companyLogo
-      ? `<img src="${companyLogo}" alt="${companyName}" class="brand-logo">`
-      : `<div class="brand-name">${companyName}</div>`;
-
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Comprobante de Envío - ${receipt.orderNumber}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { 
-            font-family: Arial, sans-serif; 
-            padding: 20px;
-            max-width: 400px;
-            margin: 0 auto;
-          }
-          .container {
-            border: 2px solid #000;
-            padding: 20px;
-          }
-          .row {
-            display: flex;
-            margin-bottom: 15px;
-          }
-          .col-left {
-            width: 45%;
-            font-size: 10px;
-            line-height: 1.4;
-          }
-          .col-right {
-            width: 55%;
-            text-align: right;
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-          }
-          .section-title {
-            font-weight: bold;
-            font-size: 10px;
-            margin-bottom: 2px;
-          }
-          .brand-logo {
-            max-height: 40px;
-            max-width: 120px;
-            object-fit: contain;
-          }
-          .brand-name {
-            font-size: 20px;
-            font-weight: bold;
-            letter-spacing: 1px;
-          }
-          .label {
-            font-size: 9px;
-            color: #666;
-          }
-          .consignado-title {
-            font-size: 10px;
-            font-weight: bold;
-            margin-bottom: 4px;
-          }
-          .customer-name {
-            font-size: 12px;
-            font-weight: bold;
-            text-transform: uppercase;
-            margin-bottom: 6px;
-          }
-          .dni-row {
-            margin-bottom: 4px;
-            font-size: 10px;
-          }
-          .dni-label {
-            font-weight: bold;
-          }
-          .info-value {
-            font-size: 11px;
-          }
-          .location {
-            font-size: 11px;
-            margin-bottom: 4px;
-            text-transform: uppercase;
-          }
-          .address-line {
-            font-size: 10px;
-            text-transform: uppercase;
-          }
-          .courier-box {
-            margin-top: 15px;
-            padding-top: 12px;
-            border-top: 1px solid #ccc;
-          }
-          .courier-name {
-            font-size: 24px;
-            font-weight: bold;
-            letter-spacing: 1px;
-          }
-          .order-footer {
-            margin-top: 15px;
-            padding-top: 10px;
-            border-top: 1px dashed #999;
-            font-size: 10px;
-            text-align: center;
-            color: #666;
-          }
-          @media print {
-            body { padding: 10px; }
-            @page { margin: 5mm; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="row">
-            <!-- REMITENTE (lado izquierdo) -->
-            <div class="col-left">
-              <div class="section-title">REMITENTE</div>
-              <div>${companyName}</div>
-              ${companyCuit ? `<div>${companyCuit}</div>` : ""}
-              ${companyAddress ? `<div>${companyAddress}</div>` : ""}
-              ${companyPhone ? `<div>${companyPhone}</div>` : ""}
-            </div>
-            
-            <!-- MARCA/LOGO (lado derecho) -->
-            <div class="col-right">
-              ${logoElement}
-            </div>
-          </div>
-
-          <!-- CONSIGNADO -->
-          <div style="text-align: right; margin-top: 10px;">
-            <div class="consignado-title">CONSIGNADO</div>
-            <div class="customer-name">${receipt.customer.fullName}</div>
-            
-            <div class="dni-row">
-              <span class="dni-label">DNI</span> 
-              <span class="info-value">${receipt.customer.dni || "-"}</span>
-            </div>
-            
-            <div class="dni-row">
-              <span class="dni-label">TELEFONO</span> 
-              <span class="info-value">${receipt.customer.phoneNumber || "-"}</span>
-            </div>
-            
-            <div class="location">
-              ${receipt.customer.province || "-"} - ${receipt.customer.city || receipt.customer.province || "-"} - ${receipt.customer.district || "-"}
-            </div>
-            
-            <div class="address-line">
-              ${customerAddress}
-            </div>
-          </div>
-
-          <!-- COURIER -->
-          <div class="courier-box">
-            <div class="courier-name">${courierName.toUpperCase()}</div>
-          </div>
-
-        </div>
-      </body>
-      </html>
-    `;
-
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-
-    printWindow.onload = () => {
-      printWindow.focus();
-      printWindow.print();
-      printWindow.close();
-    };
+    const operation = beginPrint();
+    try {
+      await printCustomerShippingLabel(receipt, shippingGuide, auth?.company, operation);
+    } finally { operation.release(); }
   };
 
   const handleConfirmCancellation = async (
     reason: CancellationReason,
     reasonNotes?: string,
   ) => {
+    if (await routeSaleLifecycle(orderHeader, "ANULADO", (action) => {
+      setCancellationModalOpen(false);
+      setLifecycleAction(action);
+    })) return;
     setIsCancelling(true);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        {
-          status: "ANULADO",
-          cancellationReason: reason,
-          notes: reasonNotes,
-        },
-      );
+      if (!(await patchOrder({
+        status: "ANULADO",
+        cancellationReason: reason,
+        notes: reasonNotes,
+      }))) return;
       toast.success("Venta anulada");
       setCancellationModalOpen(false);
       onClose();
@@ -865,6 +732,7 @@ export default function CustomerServiceModal({
 
   const handleChangeStatus = async (newStatus: OrderStatus) => {
     if (!receipt || newStatus === receipt.status) return;
+    if (await routeSaleLifecycle(orderHeader, newStatus, setLifecycleAction)) return;
     if (newStatus === "ANULADO") {
       setCancellationModalOpen(true);
       return;
@@ -875,10 +743,7 @@ export default function CustomerServiceModal({
     }
     setChangingStatus(true);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        { status: newStatus },
-      );
+      if (!(await patchOrder({ status: newStatus }))) return;
       toast.success(`Estado actualizado a ${newStatus}`);
       fetchReceipt();
       onOrderUpdated?.();
@@ -893,10 +758,7 @@ export default function CustomerServiceModal({
 
   const handleReprogramDelivery = async (targetId: string, callbackAt: Date) => {
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${targetId}`,
-        { callStatus: "SCHEDULED", callbackAt: callbackAt.toISOString() },
-      );
+      await patchOrder({ callStatus: "SCHEDULED", callbackAt: callbackAt.toISOString() }, targetId);
       toast.success("Pedido reprogramado");
       setReassignModalOpen(false);
       fetchReceipt();
@@ -972,6 +834,8 @@ export default function CustomerServiceModal({
   // PREPARADO en ms-ventas (mismo patrón que usaba ShipmentDetailModal).
   const releaseFromGuide = async () => {
     if (!orderHeader) return;
+    const blocked = assignmentBlockReason(orderHeader, "PREPARADO");
+    if (blocked) throw new Error(blocked);
     const guideRes = await axios.get(
       `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${orderHeader.id}`,
     );
@@ -980,10 +844,9 @@ export default function CustomerServiceModal({
       `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guideId}/orders/remove`,
       { orderIds: [orderHeader.id] },
     );
-    await axios.patch(
-      `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderHeader.id}`,
-      { guideNumber: null, status: "PREPARADO" },
-    );
+    if (!(await patchOrder({ guideNumber: null, status: "PREPARADO" }))) {
+      throw new Error("El cambio de estado todavía no está confirmado.");
+    }
   };
 
   const handleReleaseFromGuide = async () => {
@@ -1133,6 +996,8 @@ export default function CustomerServiceModal({
                     </Select>
                   </div>
                 </DialogHeader>
+                {orderHeader && <UnitAssignmentNotice order={orderHeader} />}
+                {orderHeader && <SaleUnitLifecycleButtons order={orderHeader} onAction={setLifecycleAction} />}
 
                 <Tabs value={tab} onValueChange={setTab}>
                   <div className="overflow-x-auto -mx-1 px-1">
@@ -1179,6 +1044,11 @@ export default function CustomerServiceModal({
                               </span>
                             )}
                           </div>
+                          {item.units?.length ? (
+                            <p className="text-xs font-mono break-all">
+                              IMEI / series: {item.units.map((unit) => unit.code).join(", ")}
+                            </p>
+                          ) : null}
                           {item.attributes &&
                             Object.keys(item.attributes).length > 0 && (
                               <div className="text-xs text-muted-foreground mt-1">
@@ -1726,6 +1596,7 @@ export default function CustomerServiceModal({
                         subEstadoCc={subEstadoCc}
                         callAttempts={receipt.callAttempts ?? 0}
                         datosCompletos={datosCompletos}
+                        beforeCancellation={() => routeSaleLifecycle(orderHeader, "ANULADO", setLifecycleAction)}
                         aliclikDispatchStatus={aliclikDispatchStatus}
                         aliclikSyncedAt={aliclikSyncedAt}
                         evaStatus={evaStatus}
@@ -1807,7 +1678,7 @@ export default function CustomerServiceModal({
                             <Button
                               variant="destructive"
                               className="flex-1"
-                              onClick={() => setCancellationModalOpen(true)}
+                              onClick={() => { void handleChangeStatus("ANULADO"); }}
                             >
                               ANULAR VENTA
                             </Button>
@@ -1850,7 +1721,7 @@ export default function CustomerServiceModal({
                               <Button
                                 variant="outline"
                                 className="w-full border-red-300 text-red-600 hover:bg-red-50"
-                                onClick={() => setCancellationModalOpen(true)}
+                                onClick={() => { void handleChangeStatus("ANULADO"); }}
                               >
                                 Anular Pedido
                               </Button>
@@ -2083,7 +1954,7 @@ export default function CustomerServiceModal({
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
                             className="text-red-600"
-                            onClick={() => setCancellationModalOpen(true)}
+                            onClick={() => { void handleChangeStatus("ANULADO"); }}
                           >
                             Anular Venta
                           </DropdownMenuItem>
@@ -3094,7 +2965,7 @@ export default function CustomerServiceModal({
       </Dialog>
 
       {/* Modal de confirmación de impresión */}
-      <AlertDialog open={printConfirmOpen} onOpenChange={setPrintConfirmOpen}>
+      <AlertDialog open={printConfirmOpen} onOpenChange={(value) => { if (!value) setPrintConfirmation(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -3127,6 +2998,7 @@ export default function CustomerServiceModal({
         </AlertDialogContent>
       </AlertDialog>
 
+      {lifecycleAction && open && <SaleUnitLifecycleModal open orderId={orderId} action={lifecycleAction} onClose={() => setLifecycleAction(null)} onUpdated={() => { void fetchReceipt(); onOrderUpdated?.(); }} />}
       {/* Modal de Cancelación */}
       <CancellationModal
         open={cancellationModalOpen}

@@ -35,9 +35,10 @@ interface RenderProps {
   subEstadoCc: SubEstadoCc;
   callAttempts?: number;
   datosCompletos?: boolean;
+  beforeCancellation?: () => Promise<boolean>;
 }
 
-function renderPanel({ subEstadoCc, callAttempts = 0, datosCompletos = true }: RenderProps) {
+function renderPanel({ subEstadoCc, callAttempts = 0, datosCompletos = true, beforeCancellation }: RenderProps) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -52,6 +53,7 @@ function renderPanel({ subEstadoCc, callAttempts = 0, datosCompletos = true }: R
         callAttempts={callAttempts}
         datosCompletos={datosCompletos}
         onUpdated={onUpdated}
+        beforeCancellation={beforeCancellation}
       />
     </QueryClientProvider>,
   );
@@ -147,5 +149,46 @@ describe('CcGestionPanel — invalidación de queryKey ["orders"]', () => {
     // resuelve la promesa de confirmarDespacho.
     await waitFor(() => expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['orders'] }));
     expect(confirmarDespacho).toHaveBeenCalledWith('order-1');
+    expect(confirmarDespacho).toHaveBeenCalledTimes(1);
+    expect(updateSubEstadoCC).not.toHaveBeenCalled();
+    expect(toast.success).toHaveBeenCalledWith('Venta confirmada como Pendiente. Revisa su estado antes de preparar o enviar.');
+    expect(screen.queryByText(/selecci[oó]n de IMEI/i)).not.toBeInTheDocument();
+  });
+});
+
+
+describe('CcGestionPanel — retorno físico antes de anular', () => {
+  test.each(['Anular pedido', 'No contesta (3/3)'])('%s opens physical return and leaves the CC state unchanged', async (label) => {
+    const beforeCancellation = jest.fn().mockResolvedValue(true);
+    const { onUpdated, invalidateSpy } = renderPanel({ subEstadoCc: 'por_confirmar', callAttempts: 2, beforeCancellation });
+    await userEvent.click(screen.getByRole('button', { name: label }));
+    await waitFor(() => expect(beforeCancellation).toHaveBeenCalledTimes(1));
+    expect(updateSubEstadoCC).not.toHaveBeenCalled();
+    expect(onUpdated).not.toHaveBeenCalled();
+    expect(invalidateSpy).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+  test('NONE keeps the original CC cancellation after classification', async () => {
+    const beforeCancellation = jest.fn().mockResolvedValue(false);
+    jest.mocked(updateSubEstadoCC).mockResolvedValue({ autoCanceled: false });
+    renderPanel({ subEstadoCc: 'por_confirmar', beforeCancellation });
+    await userEvent.click(screen.getByRole('button', { name: 'Anular pedido' }));
+    await waitFor(() => expect(updateSubEstadoCC).toHaveBeenCalledWith('order-1', 'anulado_cc', 'Anulado por CC'));
+    expect(beforeCancellation).toHaveBeenCalledTimes(1);
+  });
+  test('a first unanswered call is still recorded without starting a return', async () => {
+    const beforeCancellation = jest.fn().mockResolvedValue(true);
+    jest.mocked(updateSubEstadoCC).mockResolvedValue({ autoCanceled: false });
+    renderPanel({ subEstadoCc: 'por_confirmar', callAttempts: 0, beforeCancellation });
+    await userEvent.click(screen.getByRole('button', { name: 'No contesta (1/3)' }));
+    await waitFor(() => expect(updateSubEstadoCC).toHaveBeenCalled());
+    expect(beforeCancellation).not.toHaveBeenCalled();
+  });
+  test('an unresolved cancellation preflight never falls through to CC mutation', async () => {
+    const beforeCancellation = jest.fn().mockRejectedValue(new Error('unavailable'));
+    renderPanel({ subEstadoCc: 'por_confirmar', beforeCancellation });
+    await userEvent.click(screen.getByRole('button', { name: 'Anular pedido' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(updateSubEstadoCC).not.toHaveBeenCalled();
   });
 });

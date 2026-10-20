@@ -1,5 +1,7 @@
 "use client";
 
+import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
+import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { DateRange } from "react-day-picker";
 import { useAuth } from "@/contexts/AuthContext";
@@ -95,6 +97,7 @@ const CC_EXPORT_TABS: Partial<Record<SubEstadoCc, string>> = {
 ------------------------------------------------------- */
 export default function AtencionClientePage() {
   const { auth } = useAuth();
+  const routeSaleLifecycle = useSaleLifecycleRouting();
   const { storeIds, scope, scopeKey, canFetch } = useBusinessScope();
   const invalidateBusinessData = useInvalidateBusinessData();
 
@@ -274,6 +277,7 @@ export default function AtencionClientePage() {
   const [paymentOrderId, setPaymentOrderId] = useState<string | null>(null);
   const [paymentOrderNumber, setPaymentOrderNumber] = useState<string>("");
 
+  const [lifecycleOrderId, setLifecycleOrderId] = useState<string | null>(null);
   const [reassignSellerModalOpen, setReassignSellerModalOpen] = useState(false);
   const [orderToReassign, setOrderToReassign] = useState<OrderHeader | null>(null);
   const [isReassigningLoading, setIsReassigningLoading] = useState(false);
@@ -413,6 +417,7 @@ export default function AtencionClientePage() {
 
   /* ── Recuperar venta anulada ────────────────────────── */
   async function handleRecuperar(order: OrderHeader) {
+    if (await routeSaleLifecycle(order, "PENDIENTE", () => setLifecycleOrderId(order.id))) return;
     try {
       await recuperarVentaCC(order.id);
       toast.success("Pedido recuperado exitosamente");
@@ -724,6 +729,7 @@ export default function AtencionClientePage() {
         </main>
 
         {/* ── Modals ─────────────────────────────────────────── */}
+        {lifecycleOrderId && <SaleUnitLifecycleModal open orderId={lifecycleOrderId} action="reactivate" onClose={() => setLifecycleOrderId(null)} onUpdated={refetchCc} />}
         <PaymentVerificationModal
           open={paymentModalOpen}
           onClose={() => { setPaymentModalOpen(false); setPaymentOrderId(null); }}

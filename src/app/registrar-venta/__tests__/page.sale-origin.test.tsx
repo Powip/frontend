@@ -187,6 +187,8 @@ describe("Registrar venta — tienda comercial y almacén independientes", () =>
     await waitFor(() => expect(http.post).toHaveBeenCalledWith(expect.stringMatching(/\/order-header\/manual$/),
       expect.objectContaining({ storeId: "store-b", inventoryId: "warehouse-a", currency: "PEN", items: [expect.objectContaining({ productVariantId: "variant-1", quantity: 1 })] })));
     expect(http.post.mock.calls[0][1]).not.toHaveProperty("companyId");
+    expect(http.post.mock.calls[0][1]).not.toHaveProperty("operationId");
+    expect(http.post.mock.calls[0][1].items[0]).not.toHaveProperty("unitIds");
     expect(mockSetNavigationStore).not.toHaveBeenCalled();
     expect(jest.mocked(searchInventoryItems).mock.calls[0][0]).toEqual(expect.objectContaining({ inventoryId: "warehouse-a", companyId: "company-1" }));
   }, 15000);
@@ -392,3 +394,110 @@ describe("Registrar venta — tienda comercial y almacén independientes", () =>
     expect(http.put).not.toHaveBeenCalled();
   });
 });
+
+describe("Registrar venta — selección por unidad", () => {
+  beforeEach(() => sessionStorage.clear());
+  afterEach(() => sessionStorage.clear());
+  it("cambia IMEI A por B sin cambiar variante/cantidad y envía PUT full con operationId", async () => {
+    const unitA = { id: "unit-a", code: "001234567890123", status: "RESERVED" };
+    const unitB = { id: "unit-b", code: "001234567890124", status: "AVAILABLE" };
+    responseOrder = { ...existingOrder, status: "PENDIENTE", unitAssignmentStatus: "CONFIRMED", confirmedStockVersion: 1,
+      items: [{ ...existingOrder.items[0], trackingMode: "IMEI", unitIds: [unitA.id], units: [unitA] }] } as any;
+    const defaultGet = http.get.getMockImplementation()!;
+    http.get.mockImplementation((url: string, options: unknown) => url.endsWith("/tracking/sale-units") ? Promise.resolve({ data: {
+      variantId: "variant-1", inventoryId: "warehouse-a", trackingMode: "IMEI", inventoryItemId: "item",
+      data: [unitA, unitB], meta: { total: 2, totalPages: 1 },
+    } }) : defaultGet(url, options));
+    mockSearchParams = new URLSearchParams({ orderId: existingOrder.id });
+    mountPage();
+    const a = await screen.findByRole("checkbox", { name: /001234567890123/ });
+    await userEvent.click(a);
+    expect(screen.getByRole("button", { name: /actualizar venta/i })).toBeDisabled();
+    await userEvent.click(screen.getByRole("checkbox", { name: /001234567890124/ }));
+    const submit = screen.getByRole("button", { name: /actualizar venta/i });
+    await waitFor(() => expect(submit).toBeEnabled());
+    await userEvent.click(submit);
+    await waitFor(() => expect(http.put).toHaveBeenCalled());
+    const payload = http.put.mock.calls[0][1];
+    expect(payload.operationId).toEqual(expect.any(String));
+    expect(payload.items).toEqual([expect.objectContaining({ productVariantId: "variant-1", quantity: 1, unitIds: ["unit-b"] })]);
+    expect(payload.items[0]).not.toHaveProperty("trackingMode");
+  }, 15000);
+
+  it("creación exige selección y conserva operación exacta después de timeout", async () => {
+    jest.mocked(searchInventoryItems).mockResolvedValue({ data: [{ ...catalogueProduct, trackingMode: "IMEI" }], meta: { page: 1, limit: 12, total: 1, totalPages: 1 } });
+    const defaultGet = http.get.getMockImplementation()!;
+    http.get.mockImplementation((url: string, options: unknown) => url.endsWith("/tracking/sale-units") ? Promise.resolve({ data: {
+      variantId: "variant-1", inventoryId: "warehouse-a", trackingMode: "IMEI", inventoryItemId: "item",
+      data: [{ id: "unit-a", code: "001234567890123", status: "AVAILABLE" }], meta: { total: 1, totalPages: 1 },
+    } }) : defaultGet(url, options));
+    http.post.mockRejectedValue(new Error("timeout"));
+    mountPage(); await waitContext();
+    const user = await fillRequired();
+    await user.selectOptions(field(/tienda de la venta/i).getByRole("combobox"), "store-b");
+    await user.selectOptions(field(/canal de venta/i).getByRole("combobox"), "legacy:WHATSAPP");
+    const submit = screen.getByRole("button", { name: /confirmar venta/i });
+    expect(submit).toBeDisabled();
+    await user.click(await screen.findByRole("checkbox", { name: /001234567890123/ }));
+    await waitFor(() => expect(submit).toBeEnabled());
+    await user.click(submit);
+    await screen.findByText("Venta pendiente de confirmar");
+    const payload = http.post.mock.calls[0][1];
+    expect(payload.items[0].unitIds).toEqual(["unit-a"]);
+    const stored = JSON.parse(sessionStorage.getItem("powip:tracked-sale:v1:company-1:seller-1:new")!);
+    expect(stored.payload).toEqual(payload);
+    expect(stored.operationId).toBe(payload.operationId);
+    expect(screen.queryByRole("button", { name: "Corregir datos rechazados" })).not.toBeInTheDocument();
+  }, 15000);
+});
+
+
+it("resolves historical UNKNOWN mode from warehouse before offering serialized selection", async () => {
+  sessionStorage.clear();
+  responseOrder = { ...existingOrder, status: "PENDIENTE", unitCatalogValidated: false, unitAssignmentStatus: "PENDING_SELECTION", items: [{ ...existingOrder.items[0], trackingMode: "UNKNOWN" }] } as any;
+  const defaultGet = http.get.getMockImplementation()!;
+  http.get.mockImplementation((url: string, options: unknown) => url.endsWith("/tracking/sale-units") ? Promise.resolve({ data: {
+    variantId: "variant-1", inventoryId: "warehouse-a", trackingMode: "IMEI", inventoryItemId: "item",
+    data: [{ id: "unit-a", code: "001234567890123", status: "AVAILABLE" }], meta: { total: 1, totalPages: 1 },
+  } }) : defaultGet(url, options));
+  mockSearchParams = new URLSearchParams({ orderId: existingOrder.id });
+  mountPage();
+  await screen.findByRole("checkbox", { name: /001234567890123/ });
+  expect(screen.getByRole("button", { name: /actualizar venta/i })).toBeDisabled();
+  await userEvent.click(screen.getByRole("checkbox", { name: /001234567890123/ }));
+  await waitFor(() => expect(screen.getByRole("button", { name: /actualizar venta/i })).toBeEnabled());
+});
+
+
+it("asigna IMEI a una reserva comercial sin aumentar las cantidades ni tocar los productos NONE", async () => {
+  sessionStorage.clear();
+  const unit = { id: "unit-held-selection", code: "001234567890126", status: "AVAILABLE" };
+  responseOrder = { ...existingOrder, status: "PENDIENTE", unitAssignmentStatus: "PENDING_SELECTION", unitCatalogValidated: true, unitStockState: "reserved", confirmedStockVersion: 1,
+    items: [{ ...existingOrder.items[0], trackingMode: "IMEI", unitIds: [], units: [] }, { ...existingOrder.items[0], productVariantId: "normal-variant", sku: "FUNDA", productName: "Funda", quantity: 3, trackingMode: "NONE" }] } as any;
+  const defaultGet = http.get.getMockImplementation()!;
+  http.get.mockImplementation((url: string, options: unknown) => url.endsWith("/tracking/sale-units") ? Promise.resolve({ data: {
+    variantId: "variant-1", inventoryId: "warehouse-a", trackingMode: "IMEI", inventoryItemId: "item",
+    data: [unit], meta: { total: 1, totalPages: 1 },
+  } }) : defaultGet(url, options));
+  mockSearchParams = new URLSearchParams({ orderId: existingOrder.id });
+  mountPage();
+  expect(await screen.findByText("Stock reservado · falta asignar IMEI/serie")).toBeInTheDocument();
+  const submit = screen.getByRole("button", { name: /actualizar venta/i });
+  expect(submit).toBeDisabled();
+  expect(screen.getByText("0 de 1 unidades seleccionadas")).toBeInTheDocument();
+  expect(screen.queryByText("Unidades confirmadas")).not.toBeInTheDocument();
+  await userEvent.click(await screen.findByRole("checkbox", { name: /001234567890126/ }));
+  await waitFor(() => expect(submit).toBeEnabled());
+  await userEvent.click(submit);
+  await waitFor(() => expect(http.put).toHaveBeenCalledTimes(1));
+  const [url, payload] = http.put.mock.calls[0];
+  expect(url).toMatch(/\/order-header\/manual\/order-existing\/full$/);
+  expect(payload.operationId).toEqual(expect.any(String));
+  expect(payload.items).toEqual([
+    expect.objectContaining({ productVariantId: "variant-1", quantity: 1, unitIds: [unit.id] }),
+    expect.objectContaining({ productVariantId: "normal-variant", quantity: 3 }),
+  ]);
+  expect(payload.items[1]).not.toHaveProperty("unitIds");
+  expect(payload).not.toHaveProperty("unitStockState");
+  expect(http.post).not.toHaveBeenCalled();
+}, 15000);

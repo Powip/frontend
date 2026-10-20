@@ -30,6 +30,8 @@ const config: Config = {
     '**/*.spec.(ts|tsx)',
   ],
   testPathIgnorePatterns: ['/node_modules/', '/.next/'],
+  // The standalone build contains another package.json, not source modules.
+  modulePathIgnorePatterns: ['<rootDir>/.next/'],
 };
 
 export default config;

@@ -66,6 +66,15 @@ jest.mock('@/services/userService', () => ({
   getUserProfile: jest.fn(),
 }));
 
+jest.mock('@/lib/axiosAuth', () => ({ default: {} }));
+jest.mock('@/utils/printOrderLabel', () => ({
+  printOrderLabelsBatch: jest.fn().mockResolvedValue(undefined),
+  generateBarcode: jest.fn().mockReturnValue(''),
+}));
+jest.mock('@/utils/printShippingGuide', () => ({
+  printShippingGuide: jest.fn().mockResolvedValue(undefined),
+}));
+
 // Mock de @/lib/api para que las URLs sean strings predecibles
 jest.mock('@/lib/api', () => ({
   API: {
@@ -181,6 +190,8 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserProfile } from '@/services/userService';
 import SendToShalomModal from '../SendToShalomModal';
+import { printOrderLabelsBatch } from '@/utils/printOrderLabel';
+import { printShippingGuide } from '@/utils/printShippingGuide';
 
 // ── Casts ─────────────────────────────────────────────────────────────────────
 
@@ -414,6 +425,212 @@ beforeEach(() => {
       print: jest.fn(),
     }),
     writable: true,
+  });
+});
+
+describe('SendToShalomModal — private serialized labels', () => {
+  const guide = {
+    id: 'guide-1', guideNumber: 'G-1', storeId: 'store-1',
+    orderIds: [MOCK_ORDER.id], status: 'CREADA' as const, courierName: 'Shalom',
+    created_at: '2026-10-17T12:00:00Z', updated_at: '2026-10-17T12:00:00Z',
+  };
+  async function successfulModal(unitAssignmentStatus = 'CONFIRMED', withGuide = false) {
+    const order = { ...MOCK_ORDER, unitAssignmentStatus, stockVersion: 2,
+      ...(withGuide ? { grandTotal: 500, totals: { grandTotal: 500, totalPaid: 10, pendingAmount: 490 },
+        payments: [{ id: 'payment-1', amount: 10, status: 'PAID' }],
+        items: [{ productName: 'Header product', quantity: 1 }],
+      } : {}),
+    };
+    (axios.get as jest.Mock).mockResolvedValue({ data: { success: true, data: [MOCK_AGENCY] } });
+    mockAxiosPost.mockResolvedValue({ data: {
+      success: true, summary: { total: 1, successful: 1, failed: 0 }, data: [], errors: [],
+    } });
+    const user = userEvent.setup();
+    const view = render(<SendToShalomModal {...BASE_PROPS} orders={[order]} guide={withGuide ? guide : undefined} />);
+    await fillValidForm(user);
+    await user.click(screen.getByRole('button', { name: /confirmar y enviar a shalom/i }));
+    await screen.findByRole('button', { name: /imprimir etiquetas/i });
+    (axios.get as jest.Mock).mockClear();
+    mockToast.success.mockClear();
+    return { user, view, order };
+  }
+
+  it.each(['CONFIRMED', 'UNKNOWN', 'PENDING_SELECTION'])('fetches %s labels only from the authenticated receipt route', async (state) => {
+    const { user } = await successfulModal(state);
+    const receipt = { orderId: MOCK_ORDER.id, companyId: 'company-1', stockVersion: 2 };
+    (axios.get as jest.Mock).mockResolvedValue({ data: receipt });
+    await user.click(screen.getByRole('button', { name: /imprimir etiquetas/i }));
+    await waitFor(() => expect(printOrderLabelsBatch).toHaveBeenCalledTimes(1));
+    expect(axios.get).toHaveBeenCalledWith(`http://ventas/order-header/manual/${MOCK_ORDER.id}/receipt`, {
+      headers: { Authorization: 'Bearer fake-token' }, signal: expect.any(AbortSignal),
+    });
+    expect(printOrderLabelsBatch).toHaveBeenCalledWith(
+      [expect.objectContaining({ receipt })], MOCK_AUTH.auth.company, expect.any(Function), expect.any(AbortSignal),
+    );
+  });
+
+  it('preserves the NONE receipt route', async () => {
+    const { user } = await successfulModal('NONE');
+    (axios.get as jest.Mock).mockResolvedValue({ data: { orderId: MOCK_ORDER.id } });
+    await user.click(screen.getByRole('button', { name: /imprimir etiquetas/i }));
+    await waitFor(() => expect(printOrderLabelsBatch).toHaveBeenCalledTimes(1));
+    expect(axios.get).toHaveBeenCalledWith(`http://ventas/order-header/${MOCK_ORDER.id}/receipt`, expect.any(Object));
+  });
+
+  it('does not fall back to a public receipt after authenticated rejection', async () => {
+    const { user } = await successfulModal();
+    (axios.get as jest.Mock).mockRejectedValue({ response: { status: 401 } });
+    await user.click(screen.getByRole('button', { name: /imprimir etiquetas/i }));
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith(expect.stringMatching(/No se pudieron cargar/)));
+    expect(axios.get).toHaveBeenCalledTimes(1);
+    expect(printOrderLabelsBatch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { orderId: 'another-order', stockVersion: 2 },
+    { orderId: MOCK_ORDER.id, companyId: 'another-company', stockVersion: 2 },
+    { orderId: MOCK_ORDER.id, stockVersion: 1 },
+  ])('does not print a receipt with mismatched identity or older version %p', async (receipt) => {
+    const { user } = await successfulModal();
+    (axios.get as jest.Mock).mockResolvedValue({ data: receipt });
+    await user.click(screen.getByRole('button', { name: /imprimir etiquetas/i }));
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalled());
+    expect(printOrderLabelsBatch).not.toHaveBeenCalled();
+  });
+
+  it.each(['company', 'user', 'token', 'version', 'close'])('ignores a late receipt after the %s changes', async (change) => {
+    const { user, view, order } = await successfulModal();
+    let resolveReceipt!: (result: unknown) => void;
+    (axios.get as jest.Mock).mockImplementation(() => new Promise(resolve => { resolveReceipt = resolve; }));
+    await user.click(screen.getByRole('button', { name: /imprimir etiquetas/i }));
+    await waitFor(() => expect(axios.get).toHaveBeenCalledTimes(1));
+    if (['company', 'user', 'token'].includes(change)) {
+      mockUseAuth.mockReturnValue({ auth: {
+        ...MOCK_AUTH.auth,
+        ...(change === 'company' ? { company: { ...MOCK_AUTH.auth.company, id: 'company-2' } } : {}),
+        ...(change === 'user' ? { user: { id: 'user-2' } } : {}),
+        ...(change === 'token' ? { accessToken: 'new-token' } : {}),
+      } } as unknown as ReturnType<typeof useAuth>);
+    }
+    view.rerender(<SendToShalomModal {...BASE_PROPS} open={change !== 'close'}
+      orders={[change === 'version' ? { ...order, stockVersion: 3 } : order]} />);
+    await act(async () => resolveReceipt({ data: { orderId: MOCK_ORDER.id, stockVersion: 2 } }));
+    expect(printOrderLabelsBatch).not.toHaveBeenCalled();
+    expect(mockToast.success).not.toHaveBeenCalled();
+  });
+
+  it('refuses to print an old NONE batch after the open modal changes user', async () => {
+    const { user, view, order } = await successfulModal('NONE');
+    mockUseAuth.mockReturnValue({ auth: { ...MOCK_AUTH.auth, user: { id: 'user-2' } } } as unknown as ReturnType<typeof useAuth>);
+    view.rerender(<SendToShalomModal {...BASE_PROPS} orders={[order]} />);
+    await user.click(screen.getByRole('button', { name: /imprimir etiquetas/i }));
+    expect(axios.get).not.toHaveBeenCalled();
+    expect(printOrderLabelsBatch).not.toHaveBeenCalled();
+    expect(mockToast.error).toHaveBeenCalledWith(expect.stringMatching(/sesión o empresa cambió/));
+  });
+
+  it('does not request private receipts without a current token', async () => {
+    const { user, view, order } = await successfulModal();
+    mockUseAuth.mockReturnValue({ auth: { ...MOCK_AUTH.auth, accessToken: null } } as unknown as ReturnType<typeof useAuth>);
+    view.rerender(<SendToShalomModal {...BASE_PROPS} orders={[order]} />);
+    await user.click(screen.getByRole('button', { name: /imprimir etiquetas/i }));
+    expect(axios.get).not.toHaveBeenCalled();
+    expect(printOrderLabelsBatch).not.toHaveBeenCalled();
+  });
+
+  const guideReceipt = () => ({
+    orderId: MOCK_ORDER.id, companyId: 'company-1', status: 'EN_ENVIO',
+    unitAssignmentStatus: 'CONFIRMED', unitCatalogValidated: true,
+    stockVersion: 2, confirmedStockVersion: 2,
+    items: [{ productName: 'Teléfono', quantity: 1, trackingMode: 'IMEI',
+      unitIds: ['00000000-0000-4000-8000-000000000001'],
+      units: [{ id: '00000000-0000-4000-8000-000000000001', code: '000000000000001', status: 'RESERVED' }],
+    }],
+    totals: { grandTotal: 999 }, payments: [],
+  });
+
+  it.each(['CONFIRMED', 'UNKNOWN'])('hydrates %s guide rows with authenticated unit snapshots while preserving finances and ordering', async (state) => {
+    const { user, view, order } = await successfulModal(state, true);
+    const normal = { ...order, id: 'normal-order', orderNumber: 'ORD-002', unitAssignmentStatus: 'NONE' };
+    view.rerender(<SendToShalomModal {...BASE_PROPS} guide={guide} orders={[normal, order]} />);
+    const receipt = guideReceipt();
+    (axios.get as jest.Mock).mockResolvedValue({ data: receipt });
+    const courierCallsBefore = mockAxiosPost.mock.calls.length;
+    await user.click(screen.getByRole('button', { name: /^imprimir guía$/i }));
+    await waitFor(() => expect(printShippingGuide).toHaveBeenCalledTimes(1));
+    expect(axios.get).toHaveBeenCalledTimes(1);
+    expect(axios.get).toHaveBeenCalledWith(`http://ventas/order-header/manual/${MOCK_ORDER.id}/receipt`, {
+      headers: { Authorization: 'Bearer fake-token' }, signal: expect.any(AbortSignal),
+    });
+    const [printedGuide, printedOrders, company, options] = jest.mocked(printShippingGuide).mock.calls[0];
+    expect(printedGuide).toBe(guide);
+    expect(printedOrders[0]).toBe(normal);
+    expect(printedOrders[1]).toMatchObject({ id: order.id, grandTotal: 500, payments: order.payments,
+      totals: order.totals, items: receipt.items, status: 'EN_ENVIO', unitAssignmentStatus: 'CONFIRMED',
+      unitCatalogValidated: true, stockVersion: 2, confirmedStockVersion: 2,
+    });
+    expect(company).toBe(MOCK_AUTH.auth.company);
+    expect(options).toEqual({ isCurrent: expect.any(Function), signal: expect.any(AbortSignal) });
+    expect(mockAxiosPost).toHaveBeenCalledTimes(courierCallsBefore);
+  });
+
+  it('keeps NONE guide rows unchanged without any receipt fetch', async () => {
+    const { user, order } = await successfulModal('NONE', true);
+    await user.click(screen.getByRole('button', { name: /^imprimir guía$/i }));
+    await waitFor(() => expect(printShippingGuide).toHaveBeenCalledTimes(1));
+    expect(axios.get).not.toHaveBeenCalled();
+    expect(jest.mocked(printShippingGuide).mock.calls[0][1][0]).toBe(order);
+  });
+
+  it('does not fall back to public receipts or headers after a private guide read fails', async () => {
+    const { user } = await successfulModal('CONFIRMED', true);
+    (axios.get as jest.Mock).mockRejectedValue({ response: { status: 401 } });
+    await user.click(screen.getByRole('button', { name: /^imprimir guía$/i }));
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith(expect.stringMatching(/imprimir la guía/)));
+    expect(axios.get).toHaveBeenCalledTimes(1);
+    expect(printShippingGuide).not.toHaveBeenCalled();
+  });
+
+  it.each(['missing token', 'different owner'])('blocks guide printing with %s before any receipt request', async (caseName) => {
+    const { user, view, order } = await successfulModal(caseName === 'different owner' ? 'NONE' : 'CONFIRMED', true);
+    mockUseAuth.mockReturnValue({ auth: { ...MOCK_AUTH.auth,
+      ...(caseName === 'missing token' ? { accessToken: null } : { user: { id: 'user-2' } }),
+    } } as unknown as ReturnType<typeof useAuth>);
+    view.rerender(<SendToShalomModal {...BASE_PROPS} orders={[order]} guide={guide} />);
+    await user.click(screen.getByRole('button', { name: /^imprimir guía$/i }));
+    expect(axios.get).not.toHaveBeenCalled();
+    expect(printShippingGuide).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { orderId: 'different-order' }, { companyId: 'different-company' }, { stockVersion: 1 }, { items: undefined },
+  ])('rejects a guide receipt with invalid scope, identity, version or items %p', async (override) => {
+    const { user } = await successfulModal('CONFIRMED', true);
+    (axios.get as jest.Mock).mockResolvedValue({ data: { ...guideReceipt(), ...override } });
+    await user.click(screen.getByRole('button', { name: /^imprimir guía$/i }));
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalled());
+    expect(printShippingGuide).not.toHaveBeenCalled();
+  });
+
+  it.each(['company', 'user', 'token', 'version', 'guide', 'close'])('discards a late guide receipt after %s changes', async (change) => {
+    const { user, view, order } = await successfulModal('CONFIRMED', true);
+    let resolveReceipt!: (value: unknown) => void;
+    (axios.get as jest.Mock).mockImplementation(() => new Promise(resolve => { resolveReceipt = resolve; }));
+    await user.click(screen.getByRole('button', { name: /^imprimir guía$/i }));
+    await waitFor(() => expect(axios.get).toHaveBeenCalledTimes(1));
+    const signal = (jest.mocked(axios.get).mock.calls[0][1] as { signal: AbortSignal }).signal;
+    if (['company', 'user', 'token'].includes(change)) mockUseAuth.mockReturnValue({ auth: {
+      ...MOCK_AUTH.auth,
+      ...(change === 'company' ? { company: { ...MOCK_AUTH.auth.company, id: 'company-2' } } : {}),
+      ...(change === 'user' ? { user: { id: 'user-2' } } : {}),
+      ...(change === 'token' ? { accessToken: 'new-token' } : {}),
+    } } as unknown as ReturnType<typeof useAuth>);
+    view.rerender(<SendToShalomModal {...BASE_PROPS} open={change !== 'close'}
+      guide={change === 'guide' ? { ...guide, id: 'guide-2' } : guide}
+      orders={[change === 'version' ? { ...order, stockVersion: 3 } : order]} />);
+    await act(async () => resolveReceipt({ data: guideReceipt() }));
+    expect(signal.aborted).toBe(true);
+    expect(printShippingGuide).not.toHaveBeenCalled();
   });
 });
 

@@ -44,7 +44,7 @@
  *   prueba.
  */
 
-import { render as rtlRender, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactElement } from 'react';
@@ -75,6 +75,7 @@ jest.mock('sonner', () => ({
     success: jest.fn(),
     error: jest.fn(),
     warning: jest.fn(),
+    info: jest.fn(),
   },
 }));
 
@@ -99,6 +100,7 @@ jest.mock('@/components/modals/PaymentVerificationModal', () => ({
   __esModule: true,
   default: () => null,
 }));
+jest.mock('@/utils/bulk-receipt-printer', () => ({ openPrintWindow: jest.fn(), printReceipts: jest.fn() }));
 
 // ── Imports bajo prueba (después de los mocks) ────────────────────────────────
 
@@ -107,6 +109,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import FinanzasPage from '../page';
 import type { OrderHeader, SubEstadoCc } from '@/interfaces/IOrder';
+import { openPrintWindow, printReceipts } from '@/utils/bulk-receipt-printer';
 
 const mockedAxios = axios as unknown as {
   get: jest.Mock;
@@ -656,5 +659,73 @@ describe('Finanzas — alcance del negocio', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudieron cargar');
     expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
     expect(screen.queryByText('Pagos Pendientes (1)')).not.toBeInTheDocument();
+  });
+});
+
+describe('Finanzas — lectura segura de comprobantes para lotes', () => {
+  const printWindow = { close: jest.fn() } as unknown as Window;
+  const tracked = { unitAssignmentStatus: 'CONFIRMED', unitCatalogValidated: true, hasTrackedUnits: true, stockVersion: 2, confirmedStockVersion: 2 } as const;
+  beforeEach(() => {
+    jest.mocked(openPrintWindow).mockReturnValue(printWindow);
+    jest.mocked(printReceipts).mockResolvedValue(undefined);
+  });
+  async function selectAndPrint(orders: OrderHeader[], readReceipt: (url: string) => Promise<unknown>) {
+    mockFetchOrdersEndpoints({ orders });
+    const baseRead = mockedAxios.get.getMockImplementation()!;
+    mockedAxios.get.mockImplementation((url: string) => url.endsWith('/receipt') ? readReceipt(url) : baseRead(url));
+    const view = render(<FinanzasPage />);
+    const tab = await screen.findByRole('tab', { name: `Entregados (${orders.length})` });
+    fireEvent.mouseDown(tab, { button: 0, ctrlKey: false });
+    const panel = screen.getByRole('tabpanel');
+    fireEvent.click(within(panel).getAllByRole('checkbox')[0]);
+    fireEvent.click(within(panel).getByRole('button', { name: /Imprimir seleccionados/ }));
+    return view;
+  }
+  const receiptResult = (url: string) => Promise.resolve({ data: { orderId: url.match(/order-header\/(?:manual\/)?([^/]+)\/receipt/)![1], orderNumber: 'ORD-001', customer: { fullName: 'Cliente' } } });
+  it('conserva NONE y consulta las series por JWT sin perder pedidos de un lote mixto', async () => {
+    await selectAndPrint([
+      makeOrderHeader({ id: 'normal-1', status: 'ENTREGADO', unitAssignmentStatus: 'NONE' }),
+      makeOrderHeader({ id: 'tracked-1', status: 'ENTREGADO', ...tracked }),
+    ], receiptResult);
+    await waitFor(() => expect(printReceipts).toHaveBeenCalledTimes(1));
+    expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/normal-1/receipt');
+    expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/manual/tracked-1/receipt');
+    expect(jest.mocked(printReceipts).mock.calls[0][0].map(receipt => receipt.orderId).sort()).toEqual(['normal-1', 'tracked-1']);
+    expect(mockedAxios.get).not.toHaveBeenCalledWith('http://ventas/order-header/tracked-1/receipt');
+  });
+  it('consulta UNKNOWN histórico mediante la ruta autenticada', async () => {
+    await selectAndPrint([makeOrderHeader({ status: 'ENTREGADO', unitAssignmentStatus: 'PENDING_SELECTION', unitCatalogValidated: false })], receiptResult);
+    await waitFor(() => expect(printReceipts).toHaveBeenCalledTimes(1));
+    expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/manual/order-1/receipt');
+  });
+  it('rechaza un comprobante de otra orden sin imprimirlo', async () => {
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+    await selectAndPrint([makeOrderHeader({ status: 'ENTREGADO', ...tracked })], async () => ({ data: { orderId: 'other-order' } }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Error al preparar los recibos para imprimir'));
+    expect(printReceipts).not.toHaveBeenCalled();
+    expect(printWindow.close).toHaveBeenCalled();
+    errors.mockRestore();
+  });
+  it('no cae a la lectura pública tras un rechazo de autenticación', async () => {
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+    await selectAndPrint([makeOrderHeader({ status: 'ENTREGADO', ...tracked })], async () => { throw { response: { status: 403 } }; });
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Error al preparar los recibos para imprimir'));
+    expect(printReceipts).not.toHaveBeenCalled();
+    expect(mockedAxios.get).not.toHaveBeenCalledWith('http://ventas/order-header/order-1/receipt');
+    errors.mockRestore();
+  });
+  it.each(['company', 'user'])('descarta respuestas pendientes si cambia %s', async (changed) => {
+    let resolveReceipt!: (value: unknown) => void;
+    const pending = new Promise(resolve => { resolveReceipt = resolve; });
+    const view = await selectAndPrint([makeOrderHeader({ status: 'ENTREGADO', ...tracked })], () => pending);
+    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/manual/order-1/receipt'));
+    mockUseAuth.mockReturnValue({ ...MOCK_AUTH, auth: { ...MOCK_AUTH.auth,
+      company: { ...MOCK_AUTH.auth.company, id: changed === 'company' ? 'company-2' : 'company-1' },
+      user: { ...MOCK_AUTH.auth.user, id: changed === 'user' ? 'user-2' : 'user-1' },
+    } } as unknown as ReturnType<typeof useAuth>);
+    view.rerender(<FinanzasPage />);
+    await act(async () => { resolveReceipt({ data: { orderId: 'order-1', customer: { fullName: 'Private' } } }); });
+    expect(printWindow.close).toHaveBeenCalled();
+    expect(printReceipts).not.toHaveBeenCalled();
   });
 });

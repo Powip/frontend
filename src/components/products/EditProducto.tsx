@@ -13,6 +13,7 @@ import FormGrid from "../ui/form-grid";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
+import type { TrackingMode } from "@/services/inventoryTrackingService";
 import { getProductById, updateProduct } from "@/services/productService";
 
 import axiosAuth from "@/lib/axiosAuth";
@@ -28,12 +29,19 @@ import { Attribute, SelectedAttribute } from "@/interfaces/IAttribute";
 import { Label } from "../ui/label";
 
 const EditProducto = () => {
+  const { auth } = useAuth();
+  const params = useParams();
+  return <EditProductoForCompany key={`${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}:${params?.id ?? ""}`} />;
+};
+
+const EditProductoForCompany = () => {
   const router = useRouter();
   const params = useParams();
   const id = params?.id as string;
   const { auth } = useAuth();
   const companyId = auth?.company?.id ?? "";
 
+  const [trackingMode, setTrackingMode] = useState<TrackingMode>("NONE");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [validatedProductId, setValidatedProductId] = useState<string | null>(null);
@@ -68,11 +76,13 @@ const EditProducto = () => {
 
   useEffect(() => {
     if (!id || !companyId) return;
+    let cancelled = false;
 
     const fetchData = async () => {
       setValidatedProductId(null); setLoadError(null);
       try {
         const prod = await getProductById(id);
+        if (cancelled) return;
         if (prod.companyId !== companyId) throw new Error("El producto no pertenece al negocio activo.");
 
         const [cats, provs, brs] = await Promise.all([
@@ -81,6 +91,7 @@ const EditProducto = () => {
           getBrandsBySupplier(prod.supplierId),
         ]);
 
+        if (cancelled) return;
         // 🟢 Buscar la categoría correspondiente al producto
         const categoryId = prod.subcategory?.category?.id || prod.category?.id || prod.categoryId || "";
         const selectedCat = cats.find((c) => c.id === categoryId);
@@ -96,6 +107,7 @@ const EditProducto = () => {
 
         // 🟢 Cargar el producto con los valores actuales
         setValidatedProductId(id);
+        setTrackingMode(prod.trackingMode ?? "NONE");
         setProduct({
           name: prod.name,
           description: prod.description || "",
@@ -111,14 +123,16 @@ const EditProducto = () => {
           images: prod.images || [],
         });
       } catch (error) {
+        if (cancelled) return;
         setLoadError(error instanceof Error ? error.message : "Error al cargar producto");
         toast.error("Error al cargar producto");
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     fetchData();
+    return () => { cancelled = true; };
   }, [id, companyId]);
   // The current category list does not embed its subcategories.
   useEffect(() => {
@@ -223,6 +237,7 @@ const EditProducto = () => {
 
         {/* === DATOS PRINCIPALES === */}
         <FormContainer className="mb-6">
+          <p className="text-sm">Control de unidades: {trackingMode === "NONE" ? "Por cantidad" : trackingMode}. Para asociar códigos al stock existente, usa «Asociar IMEI/series» en Almacén.</p>
           <FormGrid>
             <div>
               <Label>Producto*</Label>

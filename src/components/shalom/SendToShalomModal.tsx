@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -36,6 +36,7 @@ import { API } from "@/lib/api";
 import { getUserProfile } from "@/services/userService";
 import { printShippingGuide } from "@/utils/printShippingGuide";
 import { printOrderLabelsBatch, type OrderReceipt } from "@/utils/printOrderLabel";
+import { saleReceiptUrl, requiresAuthenticatedSaleMutation } from "@/services/saleTrackingService";
 import type { ShippingGuide } from "@/components/modals/GuideDetailsModal";
 import { buildWhatsAppUrl } from "@/utils/whatsapp/build-whatsapp-url";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
@@ -314,6 +315,36 @@ export default function SendToShalomModal({
   const [sending, setSending] = useState(false);
   const [totalQuoted, setTotalQuoted] = useState<number | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [printingLabels, setPrintingLabels] = useState(false);
+  const printGeneration = useRef(0);
+  const printAbort = useRef<AbortController | null>(null);
+  const printOwnerKey = JSON.stringify([companyId, auth?.company?.id, auth?.user?.id]);
+  const openedPrintOwner = useRef(printOwnerKey);
+  useEffect(() => {
+    if (open) openedPrintOwner.current = printOwnerKey;
+    // The orders belong to the session that opened this modal. A later login
+    // cannot authorize printing its old, quantity-only public receipts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+  const printOrderKey = JSON.stringify(orders.map((order) => [
+    order.id, order.companyId, order.status, order.stockVersion,
+    order.confirmedStockVersion, order.unitAssignmentStatus,
+    order.unitCatalogValidated, order.hasTrackedUnits,
+  ]).sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+  const printScopeKey = JSON.stringify([
+    open, companyId, auth?.company?.id, auth?.user?.id, auth?.accessToken, printOrderKey,
+    guideId, guide?.id, guide?.guideNumber, guide?.status,
+  ]);
+  const currentPrintScope = useRef(printScopeKey);
+  currentPrintScope.current = printScopeKey;
+  useEffect(() => {
+    setPrintingLabels(false);
+    return () => {
+      printGeneration.current += 1;
+      printAbort.current?.abort();
+      printAbort.current = null;
+    };
+  }, [printScopeKey]);
 
   const [shipmentsData, setShipmentsData] = useState<Record<string, ShipmentEntry>>({});
 
@@ -794,7 +825,7 @@ export default function SendToShalomModal({
           return !failedNames.includes(o.customer?.fullName);
         });
 
-  const handlePrintGuideDeSalida = () => {
+  const handlePrintGuideDeSalida = async () => {
     const successfulOrders = getSuccessfulOrders();
     if (successfulOrders.length === 0) {
       toast.warning("No hay pedidos exitosos para imprimir");
@@ -806,7 +837,58 @@ export default function SendToShalomModal({
       );
       return;
     }
-    printShippingGuide(guide, successfulOrders, auth?.company);
+    const scope = printScopeKey;
+    const token = auth?.accessToken;
+    if (!open || openedPrintOwner.current !== printOwnerKey || !companyId || companyId !== auth?.company?.id ||
+      !auth?.user?.id || (guideId && guide.id !== guideId) || successfulOrders.some((order) =>
+        (order.companyId && order.companyId !== companyId) ||
+        (requiresAuthenticatedSaleMutation(order) && !token))) {
+      toast.error("La sesión o empresa cambió. Vuelve a abrir los pedidos para imprimir.");
+      return;
+    }
+    printAbort.current?.abort();
+    const controller = new AbortController();
+    printAbort.current = controller;
+    const generation = ++printGeneration.current;
+    const isCurrent = () => !controller.signal.aborted &&
+      currentPrintScope.current === scope && printGeneration.current === generation;
+    setPrintingLabels(true);
+    try {
+      const printableOrders = successfulOrders.some(requiresAuthenticatedSaleMutation)
+        ? await Promise.all(successfulOrders.map(async (order) => {
+        // Quantity-only guide rows keep their existing totals, payments and rendering.
+        if (!requiresAuthenticatedSaleMutation(order)) return order;
+        const { data } = await axios.get<OrderReceipt>(saleReceiptUrl(API.ventas, order.id, order), {
+          signal: controller.signal,
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!data || data.orderId !== order.id ||
+          (data.companyId !== undefined && data.companyId !== companyId) ||
+          (Number.isSafeInteger(order.stockVersion) && Number.isSafeInteger(data.stockVersion) && data.stockVersion! < order.stockVersion) ||
+          typeof data.status !== "string" || !Array.isArray(data.items)) {
+          throw new Error("El comprobante no corresponde al pedido solicitado.");
+        }
+        return {
+          ...order,
+          status: data.status,
+          unitAssignmentStatus: data.unitAssignmentStatus,
+          unitCatalogValidated: data.unitCatalogValidated,
+          stockVersion: data.stockVersion,
+          confirmedStockVersion: data.confirmedStockVersion,
+          items: data.items,
+        };
+        }))
+        : successfulOrders;
+      if (!isCurrent()) return;
+      await printShippingGuide(guide, printableOrders, auth?.company, { isCurrent, signal: controller.signal });
+    } catch {
+      if (isCurrent()) toast.error("No se pudieron cargar los datos de los pedidos para imprimir la guía");
+    } finally {
+      if (isCurrent()) {
+        setPrintingLabels(false);
+        printAbort.current = null;
+      }
+    }
   };
 
   const handleShareTrackingWhatsApp = (order: any) => {
@@ -836,24 +918,61 @@ export default function SendToShalomModal({
       return;
     }
 
+    const scope = printScopeKey;
+    const token = auth?.accessToken;
+    if (!open || openedPrintOwner.current !== printOwnerKey || !companyId || companyId !== auth?.company?.id ||
+      !auth?.user?.id || successfulOrders.some((order) =>
+        (order.companyId && order.companyId !== companyId) ||
+        (requiresAuthenticatedSaleMutation(order) && !token))) {
+      toast.error("La sesión o empresa cambió. Vuelve a abrir los pedidos para imprimir.");
+      return;
+    }
+    printAbort.current?.abort();
+    const controller = new AbortController();
+    printAbort.current = controller;
+    const generation = ++printGeneration.current;
+    const isCurrent = () => !controller.signal.aborted &&
+      currentPrintScope.current === scope && printGeneration.current === generation;
+    setPrintingLabels(true);
+
     try {
       const receipts = await Promise.all(
         successfulOrders.map((order) =>
           axios.get<OrderReceipt>(
-            `${API.ventas}/order-header/${order.id}/receipt`,
+            saleReceiptUrl(API.ventas, order.id, order),
+            {
+              signal: controller.signal,
+              ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+            },
           ),
         ),
       );
+      if (!isCurrent()) return;
+      if (receipts.some(({ data }, index) => !data ||
+        data.orderId !== successfulOrders[index].id ||
+        (data.companyId !== undefined && data.companyId !== companyId) ||
+        (Number.isSafeInteger(successfulOrders[index].stockVersion) &&
+          Number.isSafeInteger(data.stockVersion) && data.stockVersion! < successfulOrders[index].stockVersion))) {
+        throw new Error("El comprobante no corresponde al pedido solicitado.");
+      }
       await printOrderLabelsBatch(
         successfulOrders.map((order, i) => ({
           receipt: receipts[i].data,
           orderHeader: order,
         })),
         auth?.company,
+        isCurrent,
+        controller.signal,
       );
+      if (!isCurrent()) return;
       toast.success(`${successfulOrders.length} etiqueta(s) enviadas a imprimir`);
     } catch {
-      toast.error("No se pudieron cargar los datos de los pedidos para imprimir");
+      if (isCurrent()) toast.error("No se pudieron cargar los datos de los pedidos para imprimir");
+    } finally {
+      if (isCurrent()) {
+        setPrintingLabels(false);
+        printAbort.current = null;
+      }
     }
   };
 
@@ -1015,6 +1134,7 @@ export default function SendToShalomModal({
                   <div className="flex flex-col sm:flex-row gap-3">
                     <Button
                       onClick={handlePrintLabels}
+                      disabled={printingLabels}
                       variant="outline"
                       className="gap-2 h-12 px-8 font-bold border-slate-300 dark:border-slate-600 dark:text-slate-200"
                     >
@@ -1028,6 +1148,7 @@ export default function SendToShalomModal({
                     </Button>
                     <Button
                       onClick={handlePrintGuideDeSalida}
+                      disabled={printingLabels}
                       variant="outline"
                       className="gap-2 h-12 px-8 font-bold border-slate-300 dark:border-slate-600 dark:text-slate-200"
                     >

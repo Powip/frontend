@@ -1,3 +1,5 @@
+import type { InventoryUnit, TrackingMode } from "@/services/inventoryTrackingService";
+import type { UnitAssignmentState } from "@/services/saleTrackingService";
 import type { Client } from "./ICliente";
 
 export interface IOrder {
@@ -27,6 +29,9 @@ export interface IOrder {
 }
 
 export interface CartItem {
+  trackingMode?: TrackingMode | "UNKNOWN";
+  unitIds?: string[];
+  units?: InventoryUnit[];
   id: string;
   inventoryItemId: string;
   variantId: string;
@@ -117,6 +122,9 @@ export interface OrderCustomer {
 }
 
 export interface OrderItem {
+  trackingMode?: TrackingMode | "UNKNOWN";
+  unitIds?: string[];
+  units?: InventoryUnit[];
   id: string;
   productVariantId: string;
   sku: string;
@@ -149,7 +157,7 @@ export interface OrderPayment {
 /* -----------------------------------------
    OrderHeader (principal)
 ----------------------------------------- */
-export interface OrderHeader {
+export interface OrderHeader extends UnitAssignmentState {
   id: string;
   receiptType: ReceiptType;
   orderType: OrderType;

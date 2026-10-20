@@ -2,7 +2,7 @@
 
 import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import Image from "next/image";
 import {
   Dialog,
@@ -48,6 +48,13 @@ import { toast } from "sonner";
 import { generateQR, generateBarcode } from "@/utils/printOrderLabel";
 import { ZONE_LABELS } from "@/constants/operationsDomain";
 import { printShippingGuide } from "@/utils/printShippingGuide";
+import { useReceiptPrintScope } from "@/hooks/useReceiptPrintScope";
+import {
+  escapePrintHtml,
+  renderPrintableUnitCodesHtml,
+  type PrintableReceiptTracking,
+  type PrintableReceiptItem,
+} from "@/utils/receiptUnitCodes";
 import PaymentVerificationModal from "./PaymentVerificationModal";
 import SendToShalomModal from "@/components/shalom/SendToShalomModal";
 import SendToAliclikGuideModal from "@/components/aliclik/SendToAliclikGuideModal";
@@ -69,6 +76,7 @@ import {
 
 export interface ShippingGuide {
   id: string;
+  companyId?: string;
   guideNumber: string;
   storeId: string;
   courierId?: string | null;
@@ -104,7 +112,8 @@ export interface ShippingGuide {
   updated_at: string;
 }
 
-export interface OrderDetail {
+export interface OrderDetail extends PrintableReceiptTracking {
+  companyId?: string;
   id: string;
   orderId?: string;
   orderNumber: string;
@@ -126,7 +135,7 @@ export interface OrderDetail {
     amount: number;
     status: string;
   }>;
-  items: Array<{
+  items: Array<PrintableReceiptItem & {
     productName: string;
     sku: string;
     quantity: number;
@@ -191,6 +200,8 @@ interface GuideDetailsModalProps {
   isCourierView?: boolean;
 }
 
+const EMPTY_ORDERS: OrderDetail[] = [];
+
 const STATUS_COLORS: Record<string, string> = {
   CREADA: "bg-gray-100 text-gray-800",
   APROBADA: "bg-teal-100 text-teal-800",
@@ -249,6 +260,13 @@ export default function GuideDetailsModal({
   const invalidateBusinessData = useInvalidateBusinessData();
   const { auth } = useAuth();
   const companyId = auth?.company?.id;
+  const userId = auth?.user?.id;
+  const token = auth?.accessToken;
+  const authenticated = Boolean(auth);
+  const readScope = JSON.stringify([companyId, userId, token, guideId, orderId, authenticated]);
+  const beginRead = useReceiptPrintScope(readScope, open);
+  const readSequence = useRef(0);
+  const [loadedScope, setLoadedScope] = useState<string | null>(null);
 
   // Shalom modal
   const [shalomModalOpen, setShalomModalOpen] = useState(false);
@@ -257,11 +275,17 @@ export default function GuideDetailsModal({
   // EVA modal
   const [evaModalOpen, setEvaModalOpen] = useState(false);
 
-  const [guide, setGuide] = useState<ShippingGuide | null>(null);
+  const [storedGuide, setGuide] = useState<ShippingGuide | null>(null);
   const [loading, setLoading] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [selectedCourier, setSelectedCourier] = useState("");
-  const [ordersDetails, setOrdersDetails] = useState<OrderDetail[]>([]);
+  const [storedOrders, setOrdersDetails] = useState<OrderDetail[]>([]);
+  const loaded = open && loadedScope === readScope;
+  const guide = loaded ? storedGuide : null;
+  const ordersDetails = loaded ? storedOrders : EMPTY_ORDERS;
+  const printScope = JSON.stringify([readScope, loadedScope, guide?.id, guide?.orderIds,
+    ordersDetails.map((order) => [order.id, order.stockVersion, order.confirmedStockVersion, order.unitAssignmentStatus])]);
+  const beginPrint = useReceiptPrintScope(printScope, loaded);
 
   // FEAT-26: costo de envío de los pedidos que ya están en EVA — el modal de
   // envío lo suma a los nuevos al actualizar quotedAmount de la guía.
@@ -299,8 +323,16 @@ export default function GuideDetailsModal({
   // Upload de foto de entrega
   const [uploadingOrderId, setUploadingOrderId] = useState<string | null>(null);
   const fetchGuide = useCallback(async () => {
+    const operation = beginRead();
+    const sequence = ++readSequence.current;
+    const current = () => operation.isCurrent?.() && sequence === readSequence.current;
+    if (!current()) { operation.release(); return; }
+    setLoadedScope(null);
     setLoading(true);
     try {
+      if (authenticated && (!companyId || !userId || !token)) {
+        throw new Error("La sesión no está disponible para leer comprobantes");
+      }
       let url = "";
       if (guideId) {
         url = `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guideId}`;
@@ -309,50 +341,66 @@ export default function GuideDetailsModal({
       } else {
         return;
       }
-
-      const res = await axios.get<ShippingGuide | null>(url);
-      setGuide(res.data);
-
-      if (res.data?.courierName) {
-        setSelectedCourier(normalizeCourier(res.data.courierName) || "");
-      } else if (defaultCourier) {
-        setSelectedCourier(normalizeCourier(defaultCourier) || "");
+      const config = {
+        signal: operation.signal,
+        ...(authenticated ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+      };
+      const res = await axios.get<ShippingGuide | null>(url, config);
+      if (!current()) return;
+      if (res.data && ((guideId && res.data.id !== guideId) ||
+        (orderId && !guideId && !res.data.orderIds.includes(orderId)) ||
+        (authenticated && res.data.companyId && res.data.companyId !== companyId))) {
+        throw new Error("La guía no corresponde a la consulta");
       }
-
-      // Fetch order details for all orders in the guide using /receipt endpoint
-      if (res.data?.orderIds?.length) {
-        const ordersPromises = res.data.orderIds.map((id) =>
-          axios.get<OrderDetail>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${id}/receipt`,
-          ),
+      const requestedIds = res.data?.orderIds ?? [];
+      if (new Set(requestedIds).size !== requestedIds.length) {
+        throw new Error("La guía contiene pedidos duplicados");
+      }
+      const orders = await Promise.all(requestedIds.map(async (id) => {
+        const route = authenticated ? `manual/${id}/receipt` : `${id}/receipt`;
+        const response = await axios.get<OrderDetail>(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${route}`, config,
         );
-        const ordersResponses = await Promise.all(ordersPromises);
-        const orders = ordersResponses.map((r) => ({
-          ...r.data,
-          id: r.data.id || r.data.orderId || "",
-        }));
-        setOrdersDetails(orders);
-
-        // Inicializar tracking fields por cada pedido
-        const trackingByOrder: Record<string, any> = {};
-        orders.forEach((order) => {
-          trackingByOrder[order.id] = {
-            externalTrackingNumber: order.externalTrackingNumber || "",
-            shippingKey: order.shippingKey || "",
-            trackingUrl: order.trackingUrl || "",
-            shippingOffice: order.shippingOffice || "",
-            shippingCode: order.shippingCode || "",
-          };
-        });
-        setOrderTrackingFields(trackingByOrder);
-      }
+        if (response.data.orderId !== id || (response.data.id && response.data.id !== id) ||
+          (authenticated && response.data.companyId && response.data.companyId !== companyId)) {
+          throw new Error("El comprobante no corresponde al pedido solicitado");
+        }
+        return {
+          ...response.data,
+          id,
+          // Public courier reads never become a source of private unit identities.
+          items: authenticated ? response.data.items : response.data.items.map(({ unitIds: _ids, units: _units, ...item }) => item),
+        };
+      }));
+      if (!current()) return;
+      setGuide(res.data);
+      setOrdersDetails(orders);
+      setLoadedScope(readScope);
+      setSelectedOrderIds(new Set());
+      setExpandedOrders(new Set());
+      setSelectedCourier(normalizeCourier(res.data?.courierName || defaultCourier) || "");
+      const trackingByOrder: Record<string, any> = {};
+      orders.forEach((order) => {
+        trackingByOrder[order.id] = {
+          externalTrackingNumber: order.externalTrackingNumber || "",
+          shippingKey: order.shippingKey || "",
+          trackingUrl: order.trackingUrl || "",
+          shippingOffice: order.shippingOffice || "",
+          shippingCode: order.shippingCode || "",
+        };
+      });
+      setOrderTrackingFields(trackingByOrder);
     } catch (error) {
+      if (!current()) return;
+      setGuide(null);
+      setOrdersDetails([]);
       console.error("Error fetching guide:", error);
       toast.error("No se pudo cargar la información de la guía");
     } finally {
-      setLoading(false);
+      if (current()) setLoading(false);
+      operation.release();
     }
-  }, [guideId, orderId, defaultCourier]);
+  }, [guideId, orderId, defaultCourier, companyId, userId, token, authenticated, readScope, beginRead]);
 
   useEffect(() => {
     if (open && (orderId || guideId)) {
@@ -563,6 +611,8 @@ export default function GuideDetailsModal({
   };
 
   const handleClose = () => {
+    ++readSequence.current;
+    setLoadedScope(null);
     setGuide(null);
     setSelectedCourier("");
     setOrdersDetails([]);
@@ -875,9 +925,16 @@ export default function GuideDetailsModal({
   // extraída a printShippingGuide() para poder invocarla también desde el
   // modal de éxito de "Enviar a Shalom" (SendToShalomModal.tsx) sin duplicar
   // la plantilla HTML/CSS.
-  const handlePrintGuide = () => {
+  const handlePrintGuide = async () => {
     if (!guide) return;
-    printShippingGuide(guide, ordersDetails, auth?.company);
+    const operation = beginPrint();
+    try {
+      await printShippingGuide(guide, ordersDetails, auth?.company, operation);
+    } catch {
+      if (operation.isCurrent?.()) toast.error("No se pudo imprimir la guía");
+    } finally {
+      operation.release();
+    }
   };
 
   // Imprimir etiquetas de envío (una ventana, múltiples páginas) — mismo QR
@@ -890,6 +947,8 @@ export default function GuideDetailsModal({
       return;
     }
 
+    const operation = beginPrint();
+    if (!operation.isCurrent?.()) { operation.release(); return; }
     // Abrir la ventana ANTES de cualquier `await`: la mayoría de navegadores
     // solo permite `window.open` como respuesta directa y síncrona al click
     // del usuario — si se abre después de esperar el QR (asíncrono), el
@@ -897,214 +956,244 @@ export default function GuideDetailsModal({
     // completa el contenido de esta misma ventana ya abierta más abajo.
     const printWindow = window.open("", "_blank");
     if (!printWindow) {
+      operation.release();
       toast.error(
         "No se pudo abrir la ventana de impresión — revisa el bloqueador de pop-ups del navegador",
       );
       return;
     }
-    printWindow.document.write(
-      "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Generando etiquetas…</title></head><body>Generando etiquetas…</body></html>",
-    );
+    const cancel = () => { printWindow.onload = null; printWindow.close(); };
+    operation.signal?.addEventListener("abort", cancel, { once: true });
+    try {
+      printWindow.document.write(
+        "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Generando etiquetas…</title></head><body>Generando etiquetas…</body></html>",
+      );
 
-    const company = auth?.company;
-    const companyName = company?.name || "MI EMPRESA";
-    const companyCuit = company?.cuit || "";
-    const companyAddress = company?.billingAddress || "";
-    const companyPhone = company?.phone || "";
-    const companyInitial = companyName.trim().charAt(0).toUpperCase() || "?";
-    const courierName = guide?.courierName || "COURIER";
+      const company = auth?.company;
+      const companyName = company?.name || "MI EMPRESA";
+      const companyCuit = company?.cuit || "";
+      const companyAddress = company?.billingAddress || "";
+      const companyPhone = company?.phone || "";
+      const companyInitial = companyName.trim().charAt(0).toUpperCase() || "?";
+      const courierName = guide?.courierName || "COURIER";
 
-    // Subtítulo del courier derivado de las zonas reales de la guía
-    // (deliveryZones) — no hay un campo de "tipo de entrega" por pedido, así
-    // que se omite si la guía no tiene zonas cargadas en vez de inventarlo.
-    const zones = guide?.deliveryZones ?? [];
-    const courierSubtitle = zones.includes("PROVINCIAS")
-      ? "Entrega a provincia"
-      : zones.length > 0
-        ? "Entrega en Lima"
-        : "";
-    const zonaLabel =
-      zones.length > 0 ? (ZONE_LABELS[zones[0]] ?? zones[0]) : "-";
+      // Subtítulo del courier derivado de las zonas reales de la guía
+      // (deliveryZones) — no hay un campo de "tipo de entrega" por pedido, así
+      // que se omite si la guía no tiene zonas cargadas en vez de inventarlo.
+      const zones = guide?.deliveryZones ?? [];
+      const courierSubtitle = zones.includes("PROVINCIAS")
+        ? "Entrega a provincia"
+        : zones.length > 0
+          ? "Entrega en Lima"
+          : "";
+      const zonaLabel =
+        zones.length > 0 ? (ZONE_LABELS[zones[0]] ?? zones[0]) : "-";
 
-    const labelsData = await Promise.all(
-      ordersDetails.map(async (order) => {
-        const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${order.orderNumber}`;
-        // Fuente en mayor resolución (200px) que el tamaño mostrado en la
-        // etiqueta (~92px): al imprimir, un QR generado más grande y luego
-        // achicado por CSS escanea mejor que uno nativo pequeño. El código
-        // de barras suma zona de silencio (margin) y más alto/ancho — sin
-        // esa zona en blanco alrededor, un lector puede no reconocerlo.
-        const [qrDataUrl, barcodeDataUrl] = await Promise.all([
-          generateQR(trackingUrl, 200),
-          Promise.resolve(
-            generateBarcode(order.orderNumber, {
-              width: 2.4,
-              height: 55,
-              fontSize: 13,
-              margin: 10,
-            }),
-          ),
-        ]);
-        return { order, qrDataUrl, barcodeDataUrl };
-      }),
-    );
+      const labelsData = await Promise.all(
+        ordersDetails.map(async (order) => {
+          const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${order.orderNumber}`;
+          // Fuente en mayor resolución (200px) que el tamaño mostrado en la
+          // etiqueta (~92px): al imprimir, un QR generado más grande y luego
+          // achicado por CSS escanea mejor que uno nativo pequeño. El código
+          // de barras suma zona de silencio (margin) y más alto/ancho — sin
+          // esa zona en blanco alrededor, un lector puede no reconocerlo.
+          const [qrDataUrl, barcodeDataUrl] = await Promise.all([
+            generateQR(trackingUrl, 200),
+            Promise.resolve(
+              generateBarcode(order.orderNumber, {
+                width: 2.4,
+                height: 55,
+                fontSize: 13,
+                margin: 10,
+              }),
+            ),
+          ]);
+          return { order, qrDataUrl, barcodeDataUrl };
+        }),
+      );
 
-    // Generar HTML de todas las etiquetas
-    const labelsHtml = labelsData
-      .map(({ order, qrDataUrl, barcodeDataUrl }, index) => {
-        const isLast = index === labelsData.length - 1;
-        const customerAddress = order.shippingOffice
-          ? `${courierName} ${order.shippingOffice}`
-          : order.customer.address || "-";
-        const itemsCount = order.items?.length ?? 0;
+      if (!operation.isCurrent?.()) { cancel(); return; }
 
-        return `
-          <div class="label-page" style="${isLast ? "" : "page-break-after: always;"}">
-            <div class="label-card">
-              <div class="lc-header">
-                <div class="lc-brand">
-                  <div class="lc-logo">${
-                    company?.logoUrl
-                      ? `<img src="${company.logoUrl}" alt="Logo">`
-                      : companyInitial
-                  }</div>
-                  <div>
-                    <div class="lc-company-name">${companyName}</div>
-                    <div class="lc-company-meta">${[
-                      companyCuit ? `RUC ${companyCuit}` : "",
-                      companyAddress,
-                      companyPhone,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}</div>
+      // Generar HTML de todas las etiquetas
+      const labelsHtml = labelsData
+        .map(({ order, qrDataUrl, barcodeDataUrl }, index) => {
+          const isLast = index === labelsData.length - 1;
+          const customerAddress = order.shippingOffice
+            ? `${courierName} ${order.shippingOffice}`
+            : order.customer.address || "-";
+          const itemsCount = order.items?.length ?? 0;
+          const unitDetails = order.items
+            .filter((item) => item.trackingMode === "SERIAL" || item.trackingMode === "IMEI")
+            .map((item) => `<div class="lc-row lc-unit-item"><b>${escapePrintHtml(item.productName)}</b>${renderPrintableUnitCodesHtml(order, item)}</div>`)
+            .join("");
+
+          return `
+            <div class="label-page" style="${isLast ? "" : "page-break-after: always;"}">
+              <div class="label-card">
+                <div class="lc-header">
+                  <div class="lc-brand">
+                    <div class="lc-logo">${
+                      company?.logoUrl
+                        ? `<img src="${escapePrintHtml(company.logoUrl)}" alt="Logo">`
+                        : escapePrintHtml(companyInitial)
+                    }</div>
+                    <div>
+                      <div class="lc-company-name">${escapePrintHtml(companyName)}</div>
+                      <div class="lc-company-meta">${escapePrintHtml([
+                        companyCuit ? `RUC ${companyCuit}` : "",
+                        companyAddress,
+                        companyPhone,
+                      ].filter(Boolean).join(" · "))}</div>
+                    </div>
+                  </div>
+                  <div class="lc-remite">REMITE</div>
+                </div>
+
+                <div class="lc-row lc-two-col">
+                  <div class="lc-col">
+                    <div class="lc-label">Courier</div>
+                    <div class="lc-value">${escapePrintHtml(courierName)}</div>
+                    ${courierSubtitle ? `<div class="lc-sub">${escapePrintHtml(courierSubtitle)}</div>` : ""}
+                  </div>
+                  <div class="lc-col lc-col-border">
+                    <div class="lc-label">Zona</div>
+                    <div class="lc-value">${escapePrintHtml(zonaLabel)}</div>
+                    ${order.customer.district ? `<div class="lc-sub">${escapePrintHtml(order.customer.district)}</div>` : ""}
                   </div>
                 </div>
-                <div class="lc-remite">REMITE</div>
-              </div>
 
-              <div class="lc-row lc-two-col">
-                <div class="lc-col">
-                  <div class="lc-label">Courier</div>
-                  <div class="lc-value">${courierName}</div>
-                  ${courierSubtitle ? `<div class="lc-sub">${courierSubtitle}</div>` : ""}
+                <div class="lc-row">
+                  <div class="lc-label">Destinatario</div>
+                  <div class="lc-dest-name">${escapePrintHtml(order.customer.fullName)}</div>
+                  <div class="lc-dest-fields">
+                    <div><span class="lc-label">DNI</span><span class="lc-label" style="margin-left:32px">Teléfono</span></div>
+                    <div class="lc-dest-values"><span>${escapePrintHtml(order.customer.dni || "—")}</span><span>${escapePrintHtml(order.customer.phoneNumber || "—")}</span></div>
+                  </div>
+                  <div class="lc-dest-location">${
+                    escapePrintHtml([order.customer.province, order.customer.city, order.customer.district]
+                      .filter(Boolean)
+                      .join(" · ") || "-")
+                  }</div>
+                  <div class="lc-dest-address">${escapePrintHtml(customerAddress)}</div>
                 </div>
-                <div class="lc-col lc-col-border">
-                  <div class="lc-label">Zona</div>
-                  <div class="lc-value">${zonaLabel}</div>
-                  ${order.customer.district ? `<div class="lc-sub">${order.customer.district}</div>` : ""}
+
+                <div class="lc-row lc-order">
+                  ${qrDataUrl ? `<img src="${escapePrintHtml(qrDataUrl)}" alt="QR" class="lc-qr">` : ""}
+                  <div class="lc-order-info">
+                    <div class="lc-label">Pedido</div>
+                    <div class="lc-order-number">${escapePrintHtml(order.orderNumber)}</div>
+                    ${guide?.guideNumber ? `<div class="lc-guide">Guía ${escapePrintHtml(guide.guideNumber)}</div>` : ""}
+                    <div class="lc-items">${itemsCount} ítem${itemsCount === 1 ? "" : "s"}</div>
+                  </div>
                 </div>
-              </div>
 
-              <div class="lc-row">
-                <div class="lc-label">Destinatario</div>
-                <div class="lc-dest-name">${order.customer.fullName}</div>
-                <div class="lc-dest-fields">
-                  <div><span class="lc-label">DNI</span><span class="lc-label" style="margin-left:32px">Teléfono</span></div>
-                  <div class="lc-dest-values"><span>${order.customer.dni || "—"}</span><span>${order.customer.phoneNumber || "—"}</span></div>
+                ${unitDetails}
+
+                ${barcodeDataUrl ? `<div class="lc-barcode"><img src="${escapePrintHtml(barcodeDataUrl)}" alt="Código de barras"></div>` : ""}
+
+                <div class="lc-footer">
+                  <span>◆ Generado por POWIP</span>
+                  <span>powip.lat/seguimiento</span>
                 </div>
-                <div class="lc-dest-location">${
-                  [order.customer.province, order.customer.city, order.customer.district]
-                    .filter(Boolean)
-                    .join(" · ") || "-"
-                }</div>
-                <div class="lc-dest-address">${customerAddress}</div>
-              </div>
-
-              <div class="lc-row lc-order">
-                ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" class="lc-qr">` : ""}
-                <div class="lc-order-info">
-                  <div class="lc-label">Pedido</div>
-                  <div class="lc-order-number">${order.orderNumber}</div>
-                  ${guide?.guideNumber ? `<div class="lc-guide">Guía ${guide.guideNumber}</div>` : ""}
-                  <div class="lc-items">${itemsCount} ítem${itemsCount === 1 ? "" : "s"}</div>
-                </div>
-              </div>
-
-              ${barcodeDataUrl ? `<div class="lc-barcode"><img src="${barcodeDataUrl}" alt="Código de barras"></div>` : ""}
-
-              <div class="lc-footer">
-                <span>◆ Generado por POWIP</span>
-                <span>powip.lat/seguimiento</span>
               </div>
             </div>
-          </div>
-        `;
-      })
-      .join("");
+          `;
+        })
+        .join("");
 
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Etiquetas de Envío — ${guide?.guideNumber || ""}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: Arial, sans-serif; padding: 20px; color: #000; font-weight: 600; }
-          .label-page { display: flex; justify-content: center; margin-bottom: 20px; }
-          .label-card {
-            width: 380px;
-            border: 3px solid #000;
-            border-radius: 22px;
-            padding: 20px;
-            background: #fff;
-          }
-          .lc-row { border-top: 1.5px solid #000; padding-top: 12px; margin-top: 12px; }
-          .lc-header { display: flex; align-items: flex-start; justify-content: space-between; }
-          .lc-brand { display: flex; align-items: center; gap: 12px; }
-          .lc-logo {
-            width: 40px; height: 40px; border: 2px solid #000; border-radius: 10px;
-            display: flex; align-items: center; justify-content: center;
-            font-weight: 800; font-size: 16px; flex-shrink: 0; overflow: hidden;
-          }
-          .lc-logo img { width: 100%; height: 100%; object-fit: contain; }
-          .lc-company-name { font-weight: 800; font-size: 15px; }
-          .lc-company-meta { font-size: 10px; font-weight: 700; color: #222; margin-top: 3px; max-width: 240px; }
-          .lc-remite { font-size: 10px; font-weight: 800; color: #333; letter-spacing: 0.04em; white-space: nowrap; }
-          .lc-two-col { display: flex; }
-          .lc-col { flex: 1; }
-          .lc-col-border { border-left: 1.5px solid #000; padding-left: 16px; margin-left: 16px; }
-          .lc-label { font-size: 10px; font-weight: 800; color: #333; text-transform: uppercase; letter-spacing: 0.04em; }
-          .lc-value { font-size: 19px; font-weight: 800; margin-top: 2px; }
-          .lc-sub { font-size: 11px; font-weight: 700; color: #222; margin-top: 2px; }
-          .lc-dest-name { font-size: 25px; font-weight: 800; margin-top: 4px; }
-          .lc-dest-fields { margin-top: 8px; }
-          .lc-dest-fields > div { display: flex; }
-          .lc-dest-fields > div > span:first-child { flex: 1; }
-          .lc-dest-values { font-size: 15px; font-weight: 800; margin-top: 2px; }
-          .lc-dest-location { font-size: 12px; font-weight: 700; margin-top: 8px; }
-          .lc-dest-address { font-size: 12px; font-weight: 700; margin-top: 2px; }
-          .lc-order { display: flex; align-items: center; gap: 16px; }
-          .lc-qr { width: 92px; height: 92px; flex-shrink: 0; }
-          .lc-order-info { flex: 1; min-width: 0; }
-          .lc-order-number { font-size: 22px; font-weight: 800; letter-spacing: 0.02em; }
-          .lc-guide { font-size: 12px; font-weight: 700; color: #222; margin-top: 2px; }
-          .lc-items { font-size: 12px; font-weight: 800; margin-top: 2px; }
-          .lc-barcode { border-top: 1.5px dashed #000; margin-top: 12px; padding-top: 10px; text-align: center; }
-          .lc-barcode img { max-width: 100%; height: 58px; }
-          .lc-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding-top: 10px; border-top: 1.5px solid #000; font-size: 10px; font-weight: 800; color: #222; }
-          @media print {
-            body { padding: 0; }
-            .label-page { margin-bottom: 0; }
-          }
-        </style>
-      </head>
-      <body>
-        ${labelsHtml}
-      </body>
-      </html>
-    `;
+      const printContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <title>Etiquetas de Envío — ${escapePrintHtml(guide?.guideNumber || "")}</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; padding: 20px; color: #000; font-weight: 600; }
+            .label-page { display: flex; justify-content: center; margin-bottom: 20px; }
+            .label-card {
+              width: 380px;
+              border: 3px solid #000;
+              border-radius: 22px;
+              padding: 20px;
+              background: #fff;
+            }
+            .lc-row { border-top: 1.5px solid #000; padding-top: 12px; margin-top: 12px; }
+            .lc-header { display: flex; align-items: flex-start; justify-content: space-between; }
+            .lc-brand { display: flex; align-items: center; gap: 12px; }
+            .lc-logo {
+              width: 40px; height: 40px; border: 2px solid #000; border-radius: 10px;
+              display: flex; align-items: center; justify-content: center;
+              font-weight: 800; font-size: 16px; flex-shrink: 0; overflow: hidden;
+            }
+            .lc-logo img { width: 100%; height: 100%; object-fit: contain; }
+            .lc-company-name { font-weight: 800; font-size: 15px; }
+            .lc-company-meta { font-size: 10px; font-weight: 700; color: #222; margin-top: 3px; max-width: 240px; }
+            .lc-remite { font-size: 10px; font-weight: 800; color: #333; letter-spacing: 0.04em; white-space: nowrap; }
+            .lc-two-col { display: flex; }
+            .lc-col { flex: 1; }
+            .lc-col-border { border-left: 1.5px solid #000; padding-left: 16px; margin-left: 16px; }
+            .lc-label { font-size: 10px; font-weight: 800; color: #333; text-transform: uppercase; letter-spacing: 0.04em; }
+            .lc-value { font-size: 19px; font-weight: 800; margin-top: 2px; }
+            .lc-sub { font-size: 11px; font-weight: 700; color: #222; margin-top: 2px; }
+            .lc-dest-name { font-size: 25px; font-weight: 800; margin-top: 4px; }
+            .lc-dest-fields { margin-top: 8px; }
+            .lc-dest-fields > div { display: flex; }
+            .lc-dest-fields > div > span:first-child { flex: 1; }
+            .lc-dest-values { font-size: 15px; font-weight: 800; margin-top: 2px; }
+            .lc-dest-location { font-size: 12px; font-weight: 700; margin-top: 8px; }
+            .lc-dest-address { font-size: 12px; font-weight: 700; margin-top: 2px; }
+            .lc-order { display: flex; align-items: center; gap: 16px; }
+            .lc-qr { width: 92px; height: 92px; flex-shrink: 0; }
+            .lc-order-info { flex: 1; min-width: 0; }
+            .lc-order-number { font-size: 22px; font-weight: 800; letter-spacing: 0.02em; }
+            .lc-guide { font-size: 12px; font-weight: 700; color: #222; margin-top: 2px; }
+            .lc-items { font-size: 12px; font-weight: 800; margin-top: 2px; }
+            .lc-barcode { border-top: 1.5px dashed #000; margin-top: 12px; padding-top: 10px; text-align: center; }
+            .lc-barcode img { max-width: 100%; height: 58px; }
+            .lc-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding-top: 10px; border-top: 1.5px solid #000; font-size: 10px; font-weight: 800; color: #222; }
+            @media print {
+              body { padding: 0; }
+              .label-page { margin-bottom: 0; }
+            }
+          </style>
+        </head>
+        <body>
+          ${labelsHtml}
+        </body>
+        </html>
+      `;
 
-    if (printWindow.closed) {
-      toast.error("Se cerró la ventana de impresión antes de terminar");
-      return;
+      if (!operation.isCurrent?.() || printWindow.closed) { cancel(); return; }
+      await new Promise<void>((resolve, reject) => {
+        const aborted = () => { cancel(); resolve(); };
+        const cleanup = () => operation.signal?.removeEventListener("abort", aborted);
+        operation.signal?.addEventListener("abort", aborted, { once: true });
+        const printWhenLoaded = () => {
+          cleanup();
+          if (!operation.isCurrent?.() || printWindow.closed) { cancel(); resolve(); return; }
+          try {
+            printWindow.focus();
+            printWindow.print();
+            printWindow.close();
+            toast.success(`${ordersDetails.length} etiqueta(s) enviada(s) a imprimir`);
+            resolve();
+          } catch (error) { reject(error); }
+        };
+        try {
+          printWindow.document.open();
+          printWindow.document.write(printContent);
+          printWindow.onload = printWhenLoaded;
+          printWindow.document.close();
+        } catch (error) { cleanup(); reject(error); }
+      });
+    } catch {
+      cancel();
+      if (operation.isCurrent?.()) toast.error("No se pudieron imprimir las etiquetas");
+    } finally {
+      operation.signal?.removeEventListener("abort", cancel);
+      operation.release();
     }
-    printWindow.document.open();
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
-    toast.success(`${ordersDetails.length} etiqueta(s) enviada(s) a imprimir`);
   };
 
   return (

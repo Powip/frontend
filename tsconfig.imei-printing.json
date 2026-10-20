@@ -1,0 +1,49 @@
+{
+  "extends": "./tsconfig.imei-sales.json",
+  "compilerOptions": {
+    "incremental": false
+  },
+  "include": [
+    "src/interfaces/IProduct.ts",
+    "src/services/inventoryTrackingService.ts",
+    "src/components/inventory/RegularizeProductModal.tsx",
+    "src/components/inventory/InventoryUnitsModal.tsx",
+    "src/app/registrar-compra/page.tsx",
+    "src/app/compras/page.tsx",
+    "src/app/inventario/page.tsx",
+    "src/app/productos/create-product/create-product.tsx",
+    "src/components/products/EditProducto.tsx",
+    "src/app/registrar-venta/page.tsx",
+    "src/components/registrar-venta/SaleUnitSelection.tsx",
+    "src/components/registrar-venta/SaleTrackingRecovery.tsx",
+    "src/services/saleTrackingService.ts",
+    "src/app/ventas/page.tsx",
+    "src/app/operaciones/pedidos/_components/PedidosContent.tsx",
+    "src/components/modals/orderReceiptModal.tsx",
+    "src/components/modals/orderReceiptView.tsx",
+    "src/app/atencion-cliente/page.tsx",
+    "src/components/modals/CustomerServiceModal.tsx",
+    "src/components/registrar-venta/SaleUnitLifecycleForm.tsx",
+    "src/components/registrar-venta/SaleUnitLifecycleModal.tsx",
+    "src/components/registrar-venta/SaleUnitLifecycleActions.tsx",
+    "src/services/saleUnitLifecycleService.ts",
+    "src/app/operaciones/_shared/GlobalScanner.tsx",
+    "src/components/inventory/InventoryUnitTraceModal.tsx",
+    "src/services/inventoryUnitTraceService.ts",
+    "src/utils/receiptUnitCodes.ts",
+    "src/utils/printOrderLabel.ts",
+    "src/utils/downloadNotaVentaPdf.ts",
+    "src/utils/bulk-receipt-printer.ts",
+    "src/components/modals/orderReceiptPdf.tsx",
+    "src/components/ventas/BulkPrintPreviewDialog.tsx",
+    "src/app/finanzas/page.tsx",
+    "src/components/shalom/SendToShalomModal.tsx",
+    "src/utils/printShippingGuide.ts",
+    "src/utils/printCustomerShippingLabel.ts",
+    "src/hooks/useReceiptPrintScope.ts",
+    "src/components/modals/GuideDetailsModal.tsx"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

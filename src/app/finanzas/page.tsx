@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Pencil,
   ArrowLeft,
@@ -57,6 +57,7 @@ import { openPrintWindow, printReceipts, ReceiptData } from "@/utils/bulk-receip
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
+import { saleReceiptUrl, type UnitAssignmentState } from "@/services/saleTrackingService";
 
 /* -----------------------------------------
    Types
@@ -90,7 +91,8 @@ const PAGOS_PENDIENTES_EXCLUDED_STATUSES: OrderStatus[] = [
 
 const CC_CONFIRMED_SUBESTADOS: SubEstadoCc[] = ["confirmado", "reprogramado"];
 
-export interface Sale {
+export interface Sale extends UnitAssignmentState {
+  items?: OrderHeader["items"];
   id: string;
   storeId: string;
   inventoryId?: string | null;
@@ -161,6 +163,12 @@ function mapOrderToSale(order: OrderHeader): Sale {
 
   return {
     id: order.id,
+    unitAssignmentStatus: order.unitAssignmentStatus,
+    unitCatalogValidated: order.unitCatalogValidated,
+    hasTrackedUnits: order.hasTrackedUnits,
+    stockVersion: order.stockVersion,
+    confirmedStockVersion: order.confirmedStockVersion,
+    items: order.items,
     storeId: order.storeId,
     inventoryId: order.inventoryId,
     stockStoreId: order.stockStoreId,
@@ -233,6 +241,20 @@ export default function FinanzasPage() {
     useState<Sale | null>(null);
 
   const { auth } = useAuth();
+  const printScope = `${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}`;
+  const activePrintScope = useRef(printScope);
+  activePrintScope.current = printScope;
+  const printEpoch = useRef(0);
+  const printWindows = useRef(new Set<Window>());
+  useEffect(() => {
+    setIsPrinting(false);
+    setSelectedSaleIds(new Set());
+    return () => {
+      printEpoch.current += 1;
+      for (const win of printWindows.current) win.close();
+      printWindows.current.clear();
+    };
+  }, [printScope]);
   const router = useRouter();
 
   const { storeIds, canFetch, scopeKey } = useBusinessScope();
@@ -510,6 +532,9 @@ Estado: ${sale.status}
       toast.error("No se pudo abrir la ventana de impresión. Verifica que los popups no estén bloqueados.");
       return;
     }
+    printWindows.current.add(printWindow);
+    const epoch = printEpoch.current;
+    const isCurrent = () => epoch === printEpoch.current && printScope === activePrintScope.current;
 
     setIsPrinting(true);
     toast.info(`Preparando ${selectedSales.length} recibo(s) para imprimir...`);
@@ -518,23 +543,28 @@ Estado: ${sale.status}
       const receipts = await Promise.all(
         selectedSales.map(async (sale) => {
           const res = await axiosAuth.get<ReceiptData>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
+            saleReceiptUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", sale.id, sale),
           );
+          if (res.data?.orderId !== sale.id) throw new Error("El comprobante no corresponde al pedido seleccionado.");
           return res.data;
         }),
       );
 
       // Imprimir usando la utilidad compartida (formato compacto con QR)
-      await printReceipts(receipts, auth?.company, printWindow);
+      if (!isCurrent()) return;
+      await printReceipts(receipts, auth?.company, printWindow, isCurrent);
+      if (!isCurrent()) return;
 
       toast.success(`${selectedSales.length} recibo(s) enviados a imprimir`);
       setSelectedSaleIds(new Set());
     } catch (error) {
       printWindow.close();
+      if (!isCurrent()) return;
       console.error("Error en impresión masiva", error);
       toast.error("Error al preparar los recibos para imprimir");
     } finally {
-      setIsPrinting(false);
+      printWindows.current.delete(printWindow);
+      if (isCurrent()) setIsPrinting(false);
     }
   };
 

@@ -1,4 +1,4 @@
-import { google } from "googleapis";
+import { auth, sheets as createSheets } from "googleapis/build/src/apis/sheets";
 
 export class GoogleSheetsSyncService {
   private oauth2Client: any;
@@ -24,7 +24,7 @@ export class GoogleSheetsSyncService {
       settings?.forEach((s: any) => (config[s.key] = s.value));
 
       if (config.google_oauth_client_id && config.google_oauth_client_secret && config.google_oauth_refresh_token) {
-        this.oauth2Client = new google.auth.OAuth2(
+        this.oauth2Client = new auth.OAuth2(
           config.google_oauth_client_id,
           config.google_oauth_client_secret
         );
@@ -82,7 +82,7 @@ export class GoogleSheetsSyncService {
       let rows: any[] = [];
 
       if (this.isAuthenticated) {
-        const sheets = google.sheets({ version: "v4", auth: this.oauth2Client });
+        const sheets = createSheets({ version: "v4", auth: this.oauth2Client });
         const response = await sheets.spreadsheets.values.get({
           spreadsheetId: sheetId,
           range: "Sheet1!A1:Z1000",
