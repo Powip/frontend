@@ -6,6 +6,8 @@ export type OnboardingStep =
   | "CONFIRMING"
   | "PAYMENT_PENDING"
   | "EXISTING_SUBSCRIPTION"
+  /** Migración a Flow programada (FEAT-25): Flow cobra por primera vez al vencer lo ya pagado. */
+  | "MIGRATION_SCHEDULED"
   | "DONE"
   | "ERROR";
 
@@ -75,6 +77,13 @@ export interface SubscriptionMe {
   endDate: string | null;
   plan: { id: string; name: string; price: number; durationInDays: number };
   addOns: { code: string; name: string; amount: number }[];
+  /** Migración a Flow ya hecha que espera su primer cobro mientras sigue el plan actual (FEAT-25). */
+  scheduledFlow?: {
+    id: string;
+    firstChargeDate: string;
+    plan: { id: string; name: string; price: number; durationInDays: number };
+    addOns: { code: string; name: string; amount: number }[];
+  } | null;
 }
 
 /** POST /subscription/subscriptions/flow/checkout */
@@ -99,6 +108,10 @@ export interface OnboardingState {
   subscription: SubscriptionMe | null;
   error: string | null;
   isLoading: boolean;
+  /** Pantalla "Pasate a Flow" (FEAT-25): el checkout manda migrate y el éxito puede ser programado. */
+  migrate?: boolean;
+  /** Primer cobro de la migración programada (yyyy-MM-dd). */
+  firstChargeDate?: string | null;
 }
 
 /** Lo que sobrevive a la redirección a Flow (localStorage). */
@@ -111,4 +124,6 @@ export interface StoredOnboardingState {
   cardToken: string;
   /** Older saved checkouts may only contain the card token. */
   subscriptionId?: string;
+  /** Checkout de la migración a Flow (FEAT-25). */
+  migrate?: true;
 }

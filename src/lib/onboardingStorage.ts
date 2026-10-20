@@ -31,6 +31,7 @@ export function validateStoredOnboardingState(value: unknown): StoredOnboardingS
     cardToken: record.cardToken,
     ...(typeof record.subscriptionId === "string" ? { subscriptionId: record.subscriptionId } : {}),
     addOnIds: [...new Set(record.addOnIds as string[])],
+    ...(record.migrate === true ? { migrate: true as const } : {}),
   };
 }
 

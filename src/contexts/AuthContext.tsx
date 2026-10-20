@@ -13,6 +13,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { decodeToken, isExpired } from "@/lib/jwt";
 import { fetchUserCompany, fetchCompanyById } from "@/services/companyService";
 import { fetchUserSubscription } from "@/services/fetchUserSubscription";
+import { fetchSubscriptionAccess } from "@/services/subscriptionAccess";
+import type { SubscriptionAccess } from "@/types/subscriptionAccess";
 import axios from "axios";
 import { GATEWAY } from "@/lib/gateway";
 import { isSuperadmin } from "@/config/permissions.config";
@@ -34,6 +36,9 @@ interface Subscription {
     id: string;
     name: string;
   };
+  gateway?: string | null;
+  /** Último día pagado (yyyy-MM-dd). */
+  endDate?: string | null;
 }
 
 interface Store {
@@ -78,6 +83,8 @@ interface AuthData {
   };
   company: Company | null;
   subscription: Subscription | null;
+  /** Acceso de la empresa según la migración a Flow (FEAT-25). null = sin dato: se deja entrar. */
+  access?: SubscriptionAccess | null;
   exp: number;
 }
 
@@ -95,7 +102,7 @@ interface AuthContextType {
   inventories: Inventory[];
   refreshInventories: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
-  /** Relee la suscripción (ej. al confirmarse el pago del onboarding). */
+  /** Relee la suscripción y el estado de acceso (ej. al confirmarse el pago del onboarding). */
   refreshSubscription: () => Promise<void>;
   /**
    * Pide a ms-auth un access token nuevo (cookie de refresh) y recarga empresa y
@@ -230,10 +237,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             );
           }
 
-          const subscription = await fetchUserSubscription(
-            decoded.id,
-            accessToken,
-          );
+          const [subscription, access] = await Promise.all([
+            fetchUserSubscription(decoded.id, accessToken),
+            fetchSubscriptionAccess(accessToken),
+          ]);
 
           const currentBearer = tokenStore.get();
           if (
@@ -246,6 +253,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             user,
             company,
             subscription,
+            access,
             exp: decoded.exp,
           });
 
@@ -382,7 +390,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       company = await fetchCompanyById(decoded.companyId, accessToken);
     }
 
-    const subscription = await fetchUserSubscription(decoded.id, accessToken);
+    const [subscription, access] = await Promise.all([
+      fetchUserSubscription(decoded.id, accessToken),
+      fetchSubscriptionAccess(accessToken),
+    ]);
 
     const defaultStore = company?.stores?.[0]?.id || null;
 
@@ -391,6 +402,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       user,
       company,
       subscription,
+      access,
       exp: decoded.exp,
     };
 
@@ -450,7 +462,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const refreshingSession = sessionVersion.current;
     if (currentUserId.current !== userId || tokenStore.get() !== accessToken) return;
 
-    const subscription = await fetchUserSubscription(userId, accessToken);
+    const [subscription, access] = await Promise.all([
+      fetchUserSubscription(userId, accessToken),
+      fetchSubscriptionAccess(accessToken),
+    ]);
     const prev = authRef.current;
       // A retained callback or late response must not modify another session.
       if (
@@ -460,7 +475,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         prev.user.id !== userId ||
         prev.accessToken !== accessToken
       ) return;
-      setSession({ ...prev, subscription });
+      setSession({ ...prev, subscription, access });
   }, [auth?.accessToken, auth?.user.id, setSession]);
 
   // ---- CHECK PERMISSION ----

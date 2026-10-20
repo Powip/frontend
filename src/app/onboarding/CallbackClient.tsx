@@ -2,12 +2,13 @@
 
 import { Loader2 } from "lucide-react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import AuthLayout from "@/components/auth/AuthLayout";
 import AuthPanel from "@/components/auth/AuthPanel";
 import { AuthErrorNotice } from "@/components/forms/AuthFeedback";
 import ExistingSubscriptionNotice from "@/components/onboarding/ExistingSubscriptionNotice";
+import MigrationScheduledSuccess from "@/components/onboarding/MigrationScheduledSuccess";
 import SubscriptionSuccess from "@/components/onboarding/SubscriptionSuccess";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOnboardingFlow } from "@/hooks/useOnboardingFlow";
@@ -19,6 +20,7 @@ type InitStatus = "loading" | "no-session" | "missing-checkout" | "ready";
 export default function CallbackClient() {
   const { auth, loading, login, refreshSession } = useAuth();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const userId = auth?.user.id ?? null;
   const queryToken = searchParams.get("token")?.trim() || null;
   const hasPlan =
@@ -65,6 +67,8 @@ export default function CallbackClient() {
         userId,
         cardToken: token,
         ...(matching?.subscriptionId ? { subscriptionId: matching.subscriptionId } : {}),
+        // Checkout de "Pasate a Flow" (FEAT-25): el éxito puede ser una migración programada.
+        ...(matching?.migrate ? { migrate: true as const } : {}),
       });
     }
     setIntent({ key, token });
@@ -138,6 +142,25 @@ export default function CallbackClient() {
     );
   }
 
+  // "Pasate a Flow" (FEAT-25): programada o cobrada en el momento, vuelve a Powip (ya tiene empresa).
+  if (
+    initStatus === "ready" &&
+    ((state.step === "MIGRATION_SCHEDULED" && state.firstChargeDate) || (state.step === "DONE" && state.migrate))
+  ) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 bg-[#f8f7fc]">
+        <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 p-8">
+          <MigrationScheduledSuccess
+            firstChargeDate={state.step === "MIGRATION_SCHEDULED" ? (state.firstChargeDate ?? null) : null}
+            onGoToDashboard={() => {
+              void refreshSession().finally(() => router.push("/"));
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   if (state.step === "DONE" && initStatus === "ready") {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 bg-[#f8f7fc]">
@@ -151,6 +174,7 @@ export default function CallbackClient() {
   const activeSubscription =
     state.subscription?.status === "ACTIVE" || state.subscription?.status === "PENDING_RENEWAL";
   const canRetry = Boolean(state.cardToken || activeSubscription);
+  const choosePlanHref = state.migrate ? "/pasate-a-flow" : "/onboarding";
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 bg-[#f8f7fc]">
@@ -166,7 +190,7 @@ export default function CallbackClient() {
             <p className="text-sm text-gray-500">
               Tu cuenta sigue creada. Puedes retomar la elección de tu plan.
             </p>
-            <Link href="/onboarding" className="text-[#4F3A96] underline text-sm font-medium">
+            <Link href={choosePlanHref} className="text-[#4F3A96] underline text-sm font-medium">
               Elegir mi plan
             </Link>
           </>
@@ -203,7 +227,7 @@ export default function CallbackClient() {
               </button>
             )}
             {!canRetry && (
-              <Link href="/onboarding" className="text-[#4F3A96] underline text-sm font-medium">
+              <Link href={choosePlanHref} className="text-[#4F3A96] underline text-sm font-medium">
                 Elegir mi plan
               </Link>
             )}

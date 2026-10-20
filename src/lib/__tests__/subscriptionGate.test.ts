@@ -46,3 +46,47 @@ describe("postLoginRoute", () => {
     expect(postLoginRoute(false, null)).toBe("/sin-plan");
   });
 });
+
+describe("bloqueo FEAT-25 (migración a Flow)", () => {
+  const conEmpresa = { ...base, hasCompany: true };
+  const bloqueadoDueno = { state: "BLOQUEADO" as const, owner: true };
+  const bloqueadoEmpleado = { state: "BLOQUEADO" as const, owner: false };
+
+  it("dueño bloqueado: todo lleva a /pasate-a-flow, salvo esa pantalla", () => {
+    expect(resolveSubscriptionRedirect({ ...conEmpresa, pathname: "/dashboard", access: bloqueadoDueno })).toBe("/pasate-a-flow");
+    expect(resolveSubscriptionRedirect({ ...conEmpresa, pathname: "/cuenta-suspendida", access: bloqueadoDueno })).toBe("/pasate-a-flow");
+    expect(resolveSubscriptionRedirect({ ...conEmpresa, pathname: "/pasate-a-flow", access: bloqueadoDueno })).toBeNull();
+  });
+
+  it("empleado bloqueado: todo lleva a /cuenta-suspendida, incluso la pantalla de pago", () => {
+    expect(resolveSubscriptionRedirect({ ...conEmpresa, pathname: "/ventas", access: bloqueadoEmpleado })).toBe("/cuenta-suspendida");
+    expect(resolveSubscriptionRedirect({ ...conEmpresa, pathname: "/pasate-a-flow", access: bloqueadoEmpleado })).toBe("/cuenta-suspendida");
+    expect(resolveSubscriptionRedirect({ ...conEmpresa, pathname: "/cuenta-suspendida", access: bloqueadoEmpleado })).toBeNull();
+  });
+
+  it("en aviso o al día no se bloquea nada", () => {
+    for (const state of ["AVISO", "OK"] as const) {
+      expect(resolveSubscriptionRedirect({ ...conEmpresa, pathname: "/dashboard", access: { state, owner: true } })).toBeNull();
+      expect(resolveSubscriptionRedirect({ ...conEmpresa, pathname: "/ventas", access: { state, owner: false } })).toBeNull();
+    }
+  });
+
+  it("sin dato de acceso (error o timeout) se deja entrar", () => {
+    expect(resolveSubscriptionRedirect({ ...conEmpresa, pathname: "/dashboard", access: null })).toBeNull();
+    expect(resolveSubscriptionRedirect({ ...conEmpresa, pathname: "/dashboard" })).toBeNull();
+  });
+
+  it("si ya no está bloqueada, /cuenta-suspendida vuelve al inicio", () => {
+    expect(resolveSubscriptionRedirect({ ...conEmpresa, pathname: "/cuenta-suspendida", access: { state: "OK", owner: false } })).toBe("/");
+    expect(resolveSubscriptionRedirect({ ...conEmpresa, pathname: "/cuenta-suspendida", access: null })).toBe("/");
+  });
+
+  it("al superadmin no se le aplica", () => {
+    expect(resolveSubscriptionRedirect({ ...conEmpresa, pathname: "/dashboard", isSuperadmin: true, access: bloqueadoEmpleado })).toBeNull();
+  });
+
+  it("sin empresa sigue mandando la regla de FEAT-11 aunque el acceso diga bloqueado", () => {
+    expect(resolveSubscriptionRedirect({ ...base, pathname: "/dashboard", access: bloqueadoDueno })).toBe("/sin-plan");
+    expect(resolveSubscriptionRedirect({ ...base, pathname: "/dashboard", subscriptionStatus: "ACTIVE", access: bloqueadoDueno })).toBe("/new-company");
+  });
+});

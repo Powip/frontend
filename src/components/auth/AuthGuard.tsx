@@ -56,7 +56,8 @@ export default function AuthGuard({ children }: AuthGuardProps) {
       : hasAnyPermission(auth?.user?.permissions, requiredPermissions));
 
   // Sin pago no se entra (FEAT-11): usuarios sin empresa van a elegir/pagar un
-  // plan o, si ya pagaron, a crear su empresa. Ver lib/subscriptionGate.ts.
+  // plan o, si ya pagaron, a crear su empresa. Con empresa, el bloqueo de la
+  // migración a Flow (FEAT-25). Ver lib/subscriptionGate.ts.
   const gateRedirect =
     !loading && auth && !isPublicRoute && !isPartnersRoute && pathname
       ? resolveSubscriptionRedirect({
@@ -64,6 +65,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
           isSuperadmin: isSuperadmin(auth.user?.email),
           hasCompany: !!auth.company || !!auth.user?.companyId,
           subscriptionStatus: auth.subscription?.status,
+          access: auth.access,
         })
       : null;
 

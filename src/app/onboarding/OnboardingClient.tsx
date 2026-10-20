@@ -19,9 +19,11 @@ import RegisterForm from "@/components/forms/RegisterForm";
 import EnterpriseContactModal from "@/components/modals/EnterpriseContactModal";
 import ExistingSubscriptionNotice from "@/components/onboarding/ExistingSubscriptionNotice";
 import FlowWidgetStep from "@/components/onboarding/FlowWidgetStep";
+import MigrationScheduledSuccess from "@/components/onboarding/MigrationScheduledSuccess";
 import PlanPicker from "@/components/onboarding/PlanPicker";
 import { useAuth } from "@/contexts/AuthContext";
 import { type RegisterData, useOnboardingFlow } from "@/hooks/useOnboardingFlow";
+import { firstChargePreview, formatLimaDate, limaToday } from "@/lib/flowMigration";
 import { basePlanName, counterpartPlan, isAnnualPlanName } from "@/lib/onboardingPlan";
 import { fetchAddOns, fetchPlans } from "@/services/onboardingService";
 import {
@@ -49,6 +51,17 @@ interface OnboardingClientProps {
   /** Usuario ya logueado (viene de /sin-plan): se saltea el registro. */
   initialAuth?: { userId: string };
   onGoToDashboard?: () => void;
+  /**
+   * "migration" = pantalla "Pasate a Flow" (FEAT-25): sin registro, checkout con migrate, primer
+   * cobro al vencer lo ya pagado y éxito programado. Por defecto, el onboarding de siempre.
+   */
+  mode?: "signup" | "migration";
+  /** Add-ons contratados hoy (por code): vienen marcados en el paso del plan. */
+  initialAddOnCodes?: string[];
+  /** Último día pagado del plan actual (yyyy-MM-dd), si sigue vigente. */
+  paidUntil?: string | null;
+  /** La empresa ya está bloqueada: el encabezado lo explica. */
+  blocked?: boolean;
 }
 
 const ADDON_MODAL_CONFIG: Record<
@@ -79,6 +92,13 @@ const STEPS = [
   { num: 1, name: "Cuenta" },
   { num: 2, name: "Plan" },
   { num: 3, name: "Pago" },
+  { num: 4, name: "¡Listo!" },
+];
+
+/** "Pasate a Flow" (FEAT-25): ya tienen cuenta, así que no hay paso de registro. */
+const MIGRATION_STEPS = [
+  { num: 2, name: "Plan" },
+  { num: 3, name: "Tarjeta" },
   { num: 4, name: "¡Listo!" },
 ];
 
@@ -213,11 +233,17 @@ function BrandPanel({ currentStep, planName, price, isAnnual, summary }: BrandPa
 // OnboardingProgress
 // ---------------------------------------------------------------------------
 
-function OnboardingProgress({ currentStep }: { currentStep: number }) {
+function OnboardingProgress({
+  currentStep,
+  steps = STEPS,
+}: {
+  currentStep: number;
+  steps?: { num: number; name: string }[];
+}) {
   return (
     <nav aria-label="Progreso de la suscripción">
       <ol className={styles.progress}>
-        {STEPS.map((step) => {
+        {steps.map((step) => {
           const isCompleted = step.num < currentStep;
           const isCurrent = step.num === currentStep;
           return (
@@ -484,6 +510,8 @@ interface Step3Props {
   onCheckAgain: () => Promise<void>;
   onRetry: () => void;
   onError: (msg: string) => void;
+  /** Migración a Flow (FEAT-25): cuándo se cobra, en lugar de "Acceso inmediato al activar". */
+  firstChargeNotice?: string | null;
 }
 
 function Step3({
@@ -502,6 +530,7 @@ function Step3({
   onCheckAgain,
   onRetry,
   onError,
+  firstChargeNotice,
 }: Step3Props) {
   const period = isAnnual ? "año" : "mes";
 
@@ -631,11 +660,22 @@ function Step3({
       >
         <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" style={{ color: "#008a7b" }} />
         <div className="text-sm" style={{ color: "#065f46" }}>
-          <p className="font-semibold">Qué incluye tu plan</p>
-          <p className="mt-1 text-xs leading-relaxed" style={{ color: "#047857" }}>
-            Acceso inmediato al activar — todas las herramientas del plan {planName} disponibles
-            desde el primer día.
-          </p>
+          {firstChargeNotice ? (
+            <>
+              <p className="font-semibold">Cuándo te cobramos</p>
+              <p className="mt-1 text-xs leading-relaxed" style={{ color: "#047857" }}>
+                {firstChargeNotice}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="font-semibold">Qué incluye tu plan</p>
+              <p className="mt-1 text-xs leading-relaxed" style={{ color: "#047857" }}>
+                Acceso inmediato al activar — todas las herramientas del plan {planName} disponibles
+                desde el primer día.
+              </p>
+            </>
+          )}
         </div>
       </div>
 
@@ -913,7 +953,12 @@ export default function OnboardingClient({
   price = 0,
   initialAuth,
   onGoToDashboard,
+  mode = "signup",
+  initialAddOnCodes,
+  paidUntil = null,
+  blocked = false,
 }: OnboardingClientProps) {
+  const isMigration = mode === "migration";
   const { auth, login, refreshSession } = useAuth();
   const router = useRouter();
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
@@ -940,7 +985,13 @@ export default function OnboardingClient({
     setError,
     resumeSession,
   } = useOnboardingFlow(
-    { planId, planName, price, initialUserId: initialAuth?.userId ?? auth?.user?.id ?? null },
+    {
+      planId,
+      planName,
+      price,
+      initialUserId: initialAuth?.userId ?? auth?.user?.id ?? null,
+      migrate: isMigration,
+    },
     login,
     // Al pagar, ms-subscription pasa al usuario a ADMINISTRADOR en ms-auth: hace
     // falta un token nuevo con ese rol (y la suscripción ACTIVE en el contexto).
@@ -971,7 +1022,7 @@ export default function OnboardingClient({
         ? 1
         : flowState.step === "ADDONS"
           ? 2
-          : flowState.step === "DONE"
+          : flowState.step === "DONE" || flowState.step === "MIGRATION_SCHEDULED"
             ? 4
             : 3;
 
@@ -1075,6 +1126,26 @@ export default function OnboardingClient({
     return () => controller.abort();
   }, [accessToken, planName, setPlan, plansRevision]);
 
+  // Migración (FEAT-25): sus add-ons de hoy vienen marcados, una sola vez y si no eligió otros.
+  const addOnHintAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!isMigration || addOnHintAppliedRef.current || addOns.length === 0 || !initialAddOnCodes?.length) return;
+    addOnHintAppliedRef.current = true;
+    if (latestFlow.current.step !== "ADDONS") return;
+    const ids = addOns.filter((a) => initialAddOnCodes.includes(a.code)).map((a) => a.id);
+    setSelectedAddons((prev) => (prev.length > 0 ? prev : ids));
+  }, [addOns, initialAddOnCodes, isMigration]);
+
+  const firstChargeNotice = isMigration
+    ? (() => {
+        const period = isAnnual ? "año" : "mes";
+        const date = firstChargePreview(paidUntil, limaToday());
+        return date
+          ? `Hoy no te cobramos nada. Tu primer cobro será el ${formatLimaDate(date)}: S/ ${summary.total}/${period}. Hasta entonces sigues con tu plan actual.`
+          : `Se cobra hoy al registrar la tarjeta: S/ ${summary.total}/${period}.`;
+      })()
+    : null;
+
   const handleCycleChange = (annual: boolean) => {
     setAnnualView(annual);
     if (!flowState.planName || isAnnualPlanName(flowState.planName) === annual) return;
@@ -1138,6 +1209,24 @@ export default function OnboardingClient({
     headingRef.current?.focus({ preventScroll: true });
   }, [screenKey]);
 
+  if (isMigration && flowState.step === "EXISTING_SUBSCRIPTION") {
+    // Con migrate solo da ALREADY_SUBSCRIBED quien ya tiene Flow vigente.
+    return (
+      <AuthLayout>
+        <div className={`${styles.stepCard} space-y-4 text-center`}>
+          <p className="text-lg font-semibold text-gray-900">Ya estás en Flow.</p>
+          <button
+            type="button"
+            onClick={handleGoToDashboard}
+            className="text-sm font-medium text-[#4F3A96] underline"
+          >
+            Ir a Powip
+          </button>
+        </div>
+      </AuthLayout>
+    );
+  }
+
   if (flowState.step === "EXISTING_SUBSCRIPTION" && flowState.subscription) {
     return (
       <AuthLayout>
@@ -1175,7 +1264,7 @@ export default function OnboardingClient({
     <div ref={pageRef} className={styles.page} data-onboarding-layout="subscription">
       <header className={styles.mobileHeader}>
         <Link
-          href="https://powip.lat"
+          href={isMigration ? "/" : "https://powip.lat"}
           className={styles.back}
           aria-label="Volver a la página principal"
         >
@@ -1200,14 +1289,19 @@ export default function OnboardingClient({
         <div className={styles.content}>
           <header className={styles.flowHeader}>
             <h1 ref={headingRef} tabIndex={-1} className={styles.heading}>
-              Configura tu cuenta
+              {isMigration ? "Pasate a Flow" : "Configura tu cuenta"}
             </h1>
+            {blocked && (
+              <p role="alert" className="text-sm font-medium text-red-700">
+                Tu acceso a Powip está suspendido. Registra tu tarjeta para volver a usarlo.
+              </p>
+            )}
             <p className={styles.stepCaption}>
               {currentStep === 3
                 ? summaryLabel(flowState.planName, summary, isAnnual)
                 : planLabel(displayPlanName, displayPrice, displayAnnual)}
             </p>
-            <OnboardingProgress currentStep={currentStep} />
+            <OnboardingProgress currentStep={currentStep} steps={isMigration ? MIGRATION_STEPS : STEPS} />
           </header>
           <div className={styles.stepCard}>
             {currentStep === 2 && (
@@ -1251,10 +1345,18 @@ export default function OnboardingClient({
                 onCheckAgain={checkPaymentAgain}
                 onRetry={retry}
                 onError={setError}
+                firstChargeNotice={firstChargeNotice}
               />
             )}
 
-            {(currentStep === 4 || flowState.step === "DONE") && (
+            {isMigration && currentStep === 4 && (
+              <MigrationScheduledSuccess
+                firstChargeDate={flowState.step === "MIGRATION_SCHEDULED" ? (flowState.firstChargeDate ?? null) : null}
+                onGoToDashboard={handleGoToDashboard}
+              />
+            )}
+
+            {!isMigration && (currentStep === 4 || flowState.step === "DONE") && (
               <StepSuccess
                 planName={flowState.planName}
                 price={flowState.price}

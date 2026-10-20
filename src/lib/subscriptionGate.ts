@@ -8,10 +8,18 @@
  *
  * - Sin empresa y sin plan vigente → solo /sin-plan (elegir plan) y /onboarding (pagar).
  * - Sin empresa y con plan vigente → solo /new-company.
+ *
+ * Migración a Flow (FEAT-25): con empresa, manda GET /subscriptions/access. En BLOQUEADO el dueño
+ * solo puede ir a pagar (/pasate-a-flow) y el personal ve /cuenta-suspendida. Sin dato de acceso
+ * (error o timeout) se deja entrar.
  */
+import type { SubscriptionAccess } from "@/types/subscriptionAccess";
+
 export const PAYWALL_ROUTE = "/sin-plan";
 export const CREATE_COMPANY_ROUTE = "/new-company";
 const ONBOARDING_ROUTE = "/onboarding";
+export const MIGRATION_ROUTE = "/pasate-a-flow";
+export const SUSPENDED_ROUTE = "/cuenta-suspendida";
 
 const PLAN_STATUSES = new Set(["ACTIVE", "PENDING_RENEWAL"]);
 
@@ -20,6 +28,7 @@ export interface GateInput {
   isSuperadmin: boolean;
   hasCompany: boolean;
   subscriptionStatus: string | null | undefined;
+  access?: Pick<SubscriptionAccess, "state" | "owner"> | null;
 }
 
 const startsWith = (pathname: string, route: string) => pathname === route || pathname.startsWith(`${route}/`);
@@ -34,8 +43,16 @@ export function resolveSubscriptionRedirect({
   isSuperadmin,
   hasCompany,
   subscriptionStatus,
+  access,
 }: GateInput): string | null {
-  if (isSuperadmin || hasCompany) return null;
+  if (isSuperadmin) return null;
+  if (hasCompany) {
+    if (access?.state === "BLOQUEADO") {
+      const target = access.owner ? MIGRATION_ROUTE : SUSPENDED_ROUTE;
+      return startsWith(pathname, target) ? null : target;
+    }
+    return startsWith(pathname, SUSPENDED_ROUTE) ? "/" : null;
+  }
 
   if (hasActivePlan(subscriptionStatus)) {
     return startsWith(pathname, CREATE_COMPANY_ROUTE) ? null : CREATE_COMPANY_ROUTE;
