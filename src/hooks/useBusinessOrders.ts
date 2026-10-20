@@ -5,19 +5,20 @@ import { useCallback, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessScope } from "@/contexts/BusinessScopeContext";
 import { getDashboardOrders } from "@/services/dashboardService";
-import type { OrderHeader } from "@/interfaces/IOrder";
+import type { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 
 const EMPTY_ORDERS: OrderHeader[] = [];
 
-export function useBusinessOrders(fromDate?: string, toDate?: string, options?: { includeCcLeads?: boolean; enabled?: boolean }) {
+export function useBusinessOrders(fromDate?: string, toDate?: string, options?: { includeCcLeads?: boolean; enabled?: boolean; statuses?: OrderStatus[] }) {
   const { auth } = useAuth();
   const { storeIds, canFetch } = useBusinessScope();
   const enabled = canFetch && options?.enabled !== false;
   const includeCcLeads = options?.includeCcLeads ?? false;
+  const statuses = options?.statuses;
   const query = useQuery({
-    queryKey: ["business-orders", auth?.company?.id, auth?.user?.id, storeIds, fromDate, toDate, includeCcLeads],
+    queryKey: ["business-orders", auth?.company?.id, auth?.user?.id, storeIds, fromDate, toDate, includeCcLeads, ...(statuses ? [statuses] : [])],
     enabled,
-    queryFn: ({ signal }) => getDashboardOrders<OrderHeader>(storeIds, fromDate, toDate, auth!.accessToken, { signal, includeCcLeads }),
+    queryFn: ({ signal }) => getDashboardOrders<OrderHeader>(storeIds, fromDate, toDate, auth!.accessToken, { signal, includeCcLeads, statuses }),
     retry: false,
     staleTime: 60_000,
   });

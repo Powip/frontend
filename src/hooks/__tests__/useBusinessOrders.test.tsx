@@ -83,3 +83,23 @@ it("preserves backend commercial admission of Shopify paid and CC-confirmed pend
   expect(commercial.result.current.orders[1]).toMatchObject({ status: "PENDIENTE", subEstadoCc: "confirmado", unitStockState: "reserved", confirmedStockVersion: 1 });
   expect(axiosAuth.get).toHaveBeenCalledTimes(2);
 });
+
+it("sends the statuses filter as a comma-separated status param", async () => {
+  jest.mocked(axiosAuth.get).mockResolvedValue({ data: [] });
+  const { wrapper } = setup();
+  const { result } = renderHook(() => useBusinessOrders(undefined, undefined, { statuses: ["PENDIENTE", "PAGADO"] }), { wrapper });
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  for (const [, config] of jest.mocked(axiosAuth.get).mock.calls) {
+    expect(config?.params).toEqual({ fromDate: undefined, toDate: undefined, status: "PENDIENTE,PAGADO" });
+  }
+});
+
+it("does not send status when no statuses are given", async () => {
+  jest.mocked(axiosAuth.get).mockResolvedValue({ data: [] });
+  const { wrapper } = setup();
+  const { result } = renderHook(() => useBusinessOrders(), { wrapper });
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  for (const [, config] of jest.mocked(axiosAuth.get).mock.calls) {
+    expect(config?.params).not.toHaveProperty("status");
+  }
+});
