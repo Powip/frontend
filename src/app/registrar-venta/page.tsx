@@ -1,5 +1,6 @@
 "use client";
 
+import SaleUnitLifecycleActions from "@/components/registrar-venta/SaleUnitLifecycleActions";
 import { AdvertisingAttributionSelect } from "@/components/advertising/v22/AttributionSelect";
 
 import { useQuery } from "@tanstack/react-query";
@@ -25,6 +26,10 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { toast } from "sonner";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import OrderReceiptModal from "@/components/modals/orderReceiptModal";
+import SaleUnitSelection from "@/components/registrar-venta/SaleUnitSelection";
+import { PendingSaleRecovery, SaleAssignmentStatus } from "@/components/registrar-venta/SaleTrackingRecovery";
+import { canCorrectTrackingRequest, getSaleUnits, isTracked, trackingError, type InventoryUnit } from "@/services/inventoryTrackingService";
+import { persistSaleOperation, readSaleOperation, saleOperationKey, validateSaleUnits, type PendingSaleOperation } from "@/services/saleTrackingService";
 import CartLines from "@/components/registrar-venta/CartLines";
 import ProductSearchMatrix from "@/components/registrar-venta/ProductSearchMatrix";
 import {
@@ -231,6 +236,9 @@ function RegistrarVentaContent() {
     totalPages: number;
   } | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [trackingLookupError, setTrackingLookupError] = useState("");
+  const [trackingLookupRetry, setTrackingLookupRetry] = useState(0);
+  const [pendingTrackedSale, setPendingTrackedSale] = useState<PendingSaleOperation | null>(null);
   const [productFrequencies, setProductFrequencies] = useState<Record<string, number>>({});
 
   /* ---------------- Detalles ---------------- */
@@ -324,6 +332,7 @@ function RegistrarVentaContent() {
 
   /* ---------------- Modal ---------------- */
   const [orderData, setOrderData] = useState<OrderHeader | null>(null);
+  const unitSelectionLocked = Boolean(orderData && ["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO", "ENTREGADO", "ANULADO"].includes(orderData.status));
   const activeProofPayments = (orderData?.payments ?? []).filter(
     (payment) => payment.status !== "LOST",
   );
@@ -351,6 +360,10 @@ function RegistrarVentaContent() {
 
   const companyId = auth?.company?.id;
   const userId = auth?.user.id;
+  const trackedSaleKey = saleOperationKey(companyId ?? "", userId ?? "", orderId);
+  useEffect(() => {
+    if (companyId && userId) setPendingTrackedSale(readSaleOperation(trackedSaleKey));
+  }, [companyId, userId, trackedSaleKey]);
   const hasSession = Boolean(auth?.accessToken);
   const saleContext = useQuery({
     queryKey: ["sale-context", auth?.user.id, companyId],
@@ -369,6 +382,20 @@ function RegistrarVentaContent() {
     inventories,
   });
   const selectedInventory = origin.catalogInventoryId;
+  const unknownVariantIds = Array.from(new Set(cart.filter((line) => line.trackingMode === "UNKNOWN").map((line) => line.variantId))).sort().join(",");
+  useEffect(() => {
+    const controller = new AbortController();
+    setTrackingLookupError("");
+    if (!unknownVariantIds || !companyId || !selectedInventory) return;
+    Promise.all(unknownVariantIds.split(",").map((variantId) => getSaleUnits({ variantId, inventoryId: selectedInventory, orderId: orderId ?? undefined, limit: 1 }, controller.signal)))
+      .then((results) => {
+        if (controller.signal.aborted) return;
+        const modes = new Map(results.map((result) => [result.variantId, result.trackingMode]));
+        setCart((lines) => lines.map((line) => line.trackingMode === "UNKNOWN" && modes.has(line.variantId) ? { ...line, trackingMode: modes.get(line.variantId) } : line));
+      })
+      .catch((error) => { if (!controller.signal.aborted) setTrackingLookupError(trackingError(error, "No se pudo verificar el seguimiento de los productos.")); });
+    return () => controller.abort();
+  }, [unknownVariantIds, companyId, selectedInventory, orderId, trackingLookupRetry]);
   const productDebounceInventory = useRef("");
   const warehouseOptions = inventories.map((inventory) => ({
     id: inventory.id,
@@ -483,6 +510,9 @@ function RegistrarVentaContent() {
         id: crypto.randomUUID(),
         inventoryItemId: item.productVariantId,
         variantId: item.productVariantId,
+        trackingMode: item.trackingMode ?? (orderData.unitCatalogValidated === false ? "UNKNOWN" : undefined),
+        unitIds: item.unitIds,
+        units: item.units,
         productName: item.productName,
         sku: item.sku,
         imageUrl: item.imageUrl,
@@ -699,6 +729,7 @@ function RegistrarVentaContent() {
   };
 
   const handlePvsConfirm = () => {
+    if (unitSelectionLocked && packsEngine.pvsOpen?.variants.some((variant) => isTracked(variant.trackingMode))) { toast.error("La selección de unidades ya no se puede cambiar en este estado."); return; }
     const ok = packsEngine.pvsConfirm();
     if (ok) toast.success("Pack aplicado");
     else
@@ -707,9 +738,19 @@ function RegistrarVentaContent() {
       );
   };
 
-  const handleChooseGift = (packId: string, gift: GiftOption) => {
-    packsEngine.chooseGift(packId, gift);
-    toast.success(`Regalo: ${gift.productName}`);
+  const handleChooseGift = async (packId: string, gift: GiftOption) => {
+    const session = tokenStore.snapshot();
+    try {
+      const variants = await getVariantsForProduct(gift.productName);
+      if (!editorActive.current || !tokenStore.isCurrent(session)) return;
+      const variant = variants.find((entry) => entry.variantId === gift.variantId);
+      if (!variant) throw new Error("El regalo no está disponible en el almacén seleccionado.");
+      if (unitSelectionLocked && isTracked(variant.trackingMode)) throw new Error("La selección de unidades ya no se puede cambiar en este estado.");
+      packsEngine.chooseGift(packId, { ...gift, trackingMode: variant.trackingMode });
+      toast.success(`Regalo: ${gift.productName}`);
+    } catch (error) {
+      if (editorActive.current && tokenStore.isCurrent(session)) toast.error(trackingError(error, "No se pudo consultar el regalo."));
+    }
   };
 
   const searchClient = useCallback(async () => {
@@ -963,6 +1004,13 @@ function RegistrarVentaContent() {
       return;
     }
 
+    if (pendingTrackedSale) return;
+    if (!pendingProofUpload) {
+      if (unknownVariantIds) { toast.error("Espera a que se verifique el seguimiento de los productos."); return; }
+      const selectionError = validateSaleUnits(cart);
+      if (selectionError) { toast.error(selectionError); return; }
+    }
+
     // Guard: prevent double-click submission
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
@@ -1169,7 +1217,17 @@ function RegistrarVentaContent() {
       try {
         if (!isCurrentEditor()) return;
         if (!orderId) {
-          const response = await axiosAuth.post(`${GATEWAY.ventas}/order-header/manual`, payload);
+          let createPayload: Record<string, unknown> = payload;
+          if (cart.some((item) => isTracked(item.trackingMode))) {
+            const operationId = crypto.randomUUID();
+            createPayload = { ...payload, operationId };
+            const operation: PendingSaleOperation = { operationId, method: "post", url: `${GATEWAY.ventas}/order-header/manual`, payload: createPayload };
+            persistSaleOperation(trackedSaleKey, operation);
+            setPendingTrackedSale(operation);
+          }
+          const response = await axiosAuth.post(`${GATEWAY.ventas}/order-header/manual`, createPayload);
+          persistSaleOperation(trackedSaleKey, null);
+          if (isCurrentEditor()) setPendingTrackedSale(null);
           if (!isCurrentEditor()) return;
 
           const createdOrderId = response.data.id;
@@ -1286,10 +1344,20 @@ function RegistrarVentaContent() {
               : {}),
           };
 
+          let fullPayload: Record<string, unknown> = updatePayload;
+          if (cart.some((item) => isTracked(item.trackingMode)) || orderData.items.some((item) => isTracked(item.trackingMode))) {
+            const operationId = crypto.randomUUID();
+            fullPayload = { ...updatePayload, operationId };
+            const operation: PendingSaleOperation = { operationId, orderId: orderData.id, method: "put", url: `${GATEWAY.ventas}/order-header/manual/${orderData.id}/full`, payload: fullPayload };
+            persistSaleOperation(trackedSaleKey, operation);
+            setPendingTrackedSale(operation);
+          }
           const response = await axiosAuth.put(
             `${GATEWAY.ventas}/order-header/manual/${orderData.id}/full`,
-            updatePayload,
+            fullPayload,
           );
+          persistSaleOperation(trackedSaleKey, null);
+          if (isCurrentEditor()) setPendingTrackedSale(null);
           if (!isCurrentEditor()) return;
 
           if (paymentProofFile) {
@@ -1329,6 +1397,12 @@ function RegistrarVentaContent() {
         }
       } catch (error) {
         if (!isCurrentEditor()) return;
+        const pending = readSaleOperation(trackedSaleKey);
+        if (pending && canCorrectTrackingRequest(error)) {
+          const rejected = { ...pending, definitiveRejection: true };
+          persistSaleOperation(trackedSaleKey, rejected);
+          setPendingTrackedSale(rejected);
+        }
         if (orderData) {
           // El form no se resetea en error: lo editado sigue cargado.
           const response = (error as {
@@ -1342,7 +1416,7 @@ function RegistrarVentaContent() {
               : `No se pudo actualizar la venta${detail ? `: ${detail}` : ""}. Tus cambios siguen en el formulario; podés reintentar.`,
           );
         } else {
-          toast.error("Error al registrar la venta");
+          toast.error(trackingError(error, "Error al registrar la venta. Si la operación quedó pendiente, consulta su resultado antes de volver a registrar."));
         }
       } finally {
         setIsSubmitting(false);
@@ -1354,6 +1428,7 @@ function RegistrarVentaContent() {
   };
 
   const addToCart = (product: InventoryItemForSale) => {
+    if (unitSelectionLocked && isTracked(product.trackingMode)) { toast.error("La selección de unidades ya no se puede cambiar en este estado."); return; }
     setProductFrequencies(bumpProductFrequency(companyId, product.productName));
     setCart((prev) => {
       // Permitir ventas bajo pedido (stock negativo)
@@ -1377,6 +1452,7 @@ function RegistrarVentaContent() {
           id: crypto.randomUUID(),
           inventoryItemId: product.inventoryItemId,
           variantId: product.variantId,
+          trackingMode: product.trackingMode,
           productName: product.productName,
           sku: product.sku,
           imageUrl: product.imageUrl,
@@ -1392,6 +1468,7 @@ function RegistrarVentaContent() {
   };
 
   const addVariantQty = (product: InventoryItemForSale, qty: number) => {
+    if (unitSelectionLocked && isTracked(product.trackingMode)) { toast.error("La selección de unidades ya no se puede cambiar en este estado."); return; }
     setCart((prev) => {
       const existing = prev.find(
         (p) =>
@@ -1409,6 +1486,7 @@ function RegistrarVentaContent() {
           id: crypto.randomUUID(),
           inventoryItemId: product.inventoryItemId,
           variantId: product.variantId,
+          trackingMode: product.trackingMode,
           productName: product.productName,
           sku: product.sku,
           imageUrl: product.imageUrl,
@@ -1424,10 +1502,12 @@ function RegistrarVentaContent() {
   };
 
   const removeFromCart = (cartItemId: string) => {
+    if (unitSelectionLocked && isTracked(cart.find((line) => line.id === cartItemId)?.trackingMode)) { toast.error("La selección de unidades ya no se puede cambiar en este estado."); return; }
     setCart((prev) => prev.filter((item) => item.id !== cartItemId));
   };
 
   const handleCartQtyChange = (cartItemId: string, delta: number) => {
+    if (unitSelectionLocked && isTracked(cart.find((line) => line.id === cartItemId)?.trackingMode)) { toast.error("La selección de unidades ya no se puede cambiar en este estado."); return; }
     setCart((prev) =>
       prev
         .map((p) => (p.id === cartItemId ? { ...p, quantity: p.quantity + delta } : p))
@@ -1579,6 +1659,9 @@ function RegistrarVentaContent() {
     hasValidClient &&
     hasValidDocumentForRegion &&
     hasValidCart &&
+    !validateSaleUnits(cart) &&
+    !unknownVariantIds &&
+    !pendingTrackedSale &&
     !!orderDetails.orderType &&
     hasValidSalesChannel &&
     !!orderDetails.closingChannel &&
@@ -1590,6 +1673,7 @@ function RegistrarVentaContent() {
     { ok: origin.hasStore, msg: "Selecciona la tienda de la venta" },
     { ok: origin.hasInventory, msg: "Selecciona el almacén de salida" },
     { ok: hasValidCart, msg: "Agrega al menos un producto al carrito" },
+    ...(cart.some((line) => isTracked(line.trackingMode)) ? [{ ok: !validateSaleUnits(cart), msg: validateSaleUnits(cart) || "IMEI/series seleccionados" }] : []),
     {
       ok: hasValidClient,
       msg: formEnabled && !hasValidClientDistrict
@@ -1617,6 +1701,15 @@ function RegistrarVentaContent() {
   return (
     <div className="flex h-screen w-full [--primary:#6D4FE0] [--primary-foreground:#ffffff] [--ring:#8067F0] dark:[--primary:#9B85FF] dark:[--ring:#8A72F5]">
       <main className="flex-1 overflow-auto bg-gradient-to-b from-muted/40 to-transparent">
+        {pendingTrackedSale && <PendingSaleRecovery operation={pendingTrackedSale} storageKey={trackedSaleKey} disabled={isSubmitting} onCorrect={() => setPendingTrackedSale(null)} onResolved={(saved) => {
+          setPendingTrackedSale(null);
+          toast.success("Venta recuperada. Revisa la confirmación de sus unidades.");
+          if (paymentProofFile) toast.info("Vuelve a adjuntar el comprobante de pago si aún no se guardó.");
+          if (orderId === saved.id) setOrderData(saved);
+          else router.replace(`/registrar-venta?orderId=${encodeURIComponent(saved.id)}`);
+        }} />}
+        <fieldset disabled={Boolean(pendingTrackedSale)} className={pendingTrackedSale ? "pointer-events-none opacity-60" : ""}>
+
         <div className="mx-auto max-w-[1400px] p-6 space-y-6 lg:p-8">
           {/* Header */}
           <div className="flex items-center gap-4">
@@ -2330,6 +2423,17 @@ function RegistrarVentaContent() {
                     onChangeGift={packsEngine.changeGift}
                     onGiftCancel={packsEngine.giftCancel}
                   />
+                  {orderData && <SaleUnitLifecycleActions key={orderData.id} order={orderData} onUpdated={() => { void loadOrder(); }} />}
+                  {orderData && <SaleAssignmentStatus order={orderData} onRefresh={(saved) => setCart((lines) => lines.map((line) => {
+                    const units = saved.items.flatMap((item) => item.units ?? []).filter((unit) => line.unitIds?.includes(unit.id));
+                    return units.length ? { ...line, units } : line;
+                  }))} />}
+                  {unknownVariantIds && <div className="mt-3 rounded border p-3" role="status">
+                    <p>{trackingLookupError || "Verificando el seguimiento de los productos…"}</p>
+                    {trackingLookupError && <Button type="button" variant="outline" onClick={() => setTrackingLookupRetry((value) => value + 1)}>Reintentar verificación</Button>}
+                  </div>}
+                  {unitSelectionLocked && cart.some((line) => isTracked(line.trackingMode)) && <p className="mt-3 text-sm text-muted-foreground">La selección de unidades ya no se puede cambiar en este estado. Los códigos se conservan para consulta.</p>}
+                  <SaleUnitSelection companyId={companyId ?? ""} inventoryId={selectedInventory ?? ""} orderId={orderId ?? undefined} cart={cart} disabled={isSubmitting || Boolean(pendingTrackedSale) || unitSelectionLocked} onChange={(lineId, units: InventoryUnit[]) => setCart((lines) => lines.map((line) => line.id === lineId ? { ...line, unitIds: units.map((unit) => unit.id), units } : line))} />
                 </CardContent>
               </Card>
 
@@ -2966,6 +3070,7 @@ function RegistrarVentaContent() {
             </div>
           </div>
         </div>
+        </fieldset>
       </main>
       <OrderReceiptModal
         open={receiptOpen}

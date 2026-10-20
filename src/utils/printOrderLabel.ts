@@ -3,8 +3,16 @@ import QRCode from "qrcode";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { OrderHeader } from "@/interfaces/IOrder";
+import {
+  renderPrintableUnitCodesHtml,
+  escapePrintHtml,
+  type PrintableReceiptItem,
+  type PrintableReceiptTracking,
+  type PrintDocumentOptions,
+} from "./receiptUnitCodes";
 
-export interface OrderReceipt {
+export interface OrderReceipt extends PrintableReceiptTracking {
+  companyId?: string;
   orderId: string;
   orderNumber: string;
   receiptType?: string;
@@ -28,7 +36,7 @@ export interface OrderReceipt {
     reference?: string;
     googleMapsUrl?: string | null;
   };
-  items: {
+  items: (PrintableReceiptItem & {
     productName: string;
     sku?: string;
     quantity: number;
@@ -40,7 +48,7 @@ export interface OrderReceipt {
     addedByUserId?: string | null;
     addedByUserName?: string | null;
     addedAt?: string | null;
-  }[];
+  })[];
   payments: {
     id: string;
     paymentMethod: string;
@@ -349,7 +357,8 @@ async function buildOrderLabelHtml(
   // "Almacén" = nombre de la tienda del pedido — no existe un concepto de
   // almacén/bodega separado en el sistema hoy, es el dato más cercano.
   const storeName = company?.stores?.find((s) => s.id === orderHeader?.storeId)?.name;
-  const rawStatus = orderHeader?.status ?? receipt.status;
+  const hasTrackedItems = receipt.items.some(item => item.trackingMode === "SERIAL" || item.trackingMode === "IMEI");
+  const rawStatus = hasTrackedItems ? receipt.status : orderHeader?.status ?? receipt.status;
   const statusInfo = PRINT_STATUS_LABEL[rawStatus] ?? { label: rawStatus };
   const deliveryLabel =
     PRINT_DELIVERY_TYPE_LABEL[orderHeader?.deliveryType ?? ""] ??
@@ -364,33 +373,33 @@ async function buildOrderLabelHtml(
     <div class="label-page" style="${pageBreakAfter ? "page-break-after: always;" : ""}">
       <div class="company-header">
         <div class="logo-box">
-          ${company?.logoUrl ? `<img src="${company.logoUrl}" alt="Logo">` : "LOGO"}
+          ${company?.logoUrl ? `<img src="${escapePrintHtml(company.logoUrl)}" alt="Logo">` : "LOGO"}
         </div>
         <div>
-          <div class="company-name">${company?.name ?? "-"}</div>
-          ${company?.cuit ? `<div class="company-meta">RUC ${company.cuit}</div>` : ""}
+          <div class="company-name">${escapePrintHtml(company?.name ?? "-")}</div>
+          ${company?.cuit ? `<div class="company-meta">RUC ${escapePrintHtml(company.cuit)}</div>` : ""}
         </div>
       </div>
 
       <div class="order-block">
-        ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" class="order-qr">` : ""}
+        ${qrDataUrl ? `<img src="${escapePrintHtml(qrDataUrl)}" alt="QR" class="order-qr">` : ""}
         <div>
-          <div class="order-number">${receipt.orderNumber}</div>
+          <div class="order-number">${escapePrintHtml(receipt.orderNumber)}</div>
           <div class="order-dates">
             <span>Creado: <b>${fmtShort(receipt.createdAt)}</b></span>
             ${orderHeader?.callbackAt ? `<span>Entrega: <b>${fmtShort(orderHeader.callbackAt)}</b></span>` : ""}
           </div>
-          <div class="status-badge">${statusInfo.label}</div>
+          <div class="status-badge">${escapePrintHtml(statusInfo.label)}</div>
         </div>
       </div>
 
-      ${barcodeDataUrl ? `<div class="barcode-wrap"><img src="${barcodeDataUrl}" alt="Código de barras"></div>` : ""}
+      ${barcodeDataUrl ? `<div class="barcode-wrap"><img src="${escapePrintHtml(barcodeDataUrl)}" alt="Código de barras"></div>` : ""}
 
       ${
         pendingAmount > 0
           ? `
       <div class="cod-banner">
-        <div class="cod-label">Por cobrar contra entrega<br/>Pago: ${paymentMethods}</div>
+        <div class="cod-label">Por cobrar contra entrega<br/>Pago: ${escapePrintHtml(paymentMethods)}</div>
         <div class="cod-amount">S/ ${pendingAmount.toFixed(2)}</div>
       </div>`
           : `
@@ -402,27 +411,27 @@ async function buildOrderLabelHtml(
 
       <div class="info-row">
         <div class="customer-info">
-          <div><b>Cliente:</b> ${receipt.customer.fullName}</div>
-          <div><b>Tel:</b> ${receipt.customer.phoneNumber || "-"} · <b>DNI:</b> ${receipt.customer.dni || "-"}</div>
-          <div><b>Dir:</b> ${receipt.customer.address || "-"}</div>
-          ${receipt.customer.reference ? `<div><b>Ref:</b> ${receipt.customer.reference}</div>` : ""}
+          <div><b>Cliente:</b> ${escapePrintHtml(receipt.customer.fullName)}</div>
+          <div><b>Tel:</b> ${escapePrintHtml(receipt.customer.phoneNumber || "-")} · <b>DNI:</b> ${escapePrintHtml(receipt.customer.dni || "-")}</div>
+          <div><b>Dir:</b> ${escapePrintHtml(receipt.customer.address || "-")}</div>
+          ${receipt.customer.reference ? `<div><b>Ref:</b> ${escapePrintHtml(receipt.customer.reference)}</div>` : ""}
         </div>
         <div class="location-info">
-          ${receipt.customer.district ? `<div class="district-pill">${receipt.customer.district}</div>` : ""}
-          <div>${receipt.customer.city || "-"}</div>
-          <div>Prov. ${receipt.customer.province || "-"}</div>
-          <div>Canal: ${receipt.salesChannel || "-"}</div>
+          ${receipt.customer.district ? `<div class="district-pill">${escapePrintHtml(receipt.customer.district)}</div>` : ""}
+          <div>${escapePrintHtml(receipt.customer.city || "-")}</div>
+          <div>Prov. ${escapePrintHtml(receipt.customer.province || "-")}</div>
+          <div>Canal: ${escapePrintHtml(receipt.salesChannel || "-")}</div>
         </div>
       </div>
 
       <div class="courier-row">
-        <span><b>Courier:</b> ${orderHeader?.courier || "-"}</span>
-        <span>${deliveryLabel}</span>
+        <span><b>Courier:</b> ${escapePrintHtml(orderHeader?.courier || "-")}</span>
+        <span>${escapePrintHtml(deliveryLabel)}</span>
       </div>
 
       <div class="picking-header">
         <div class="picking-title">Preparar / Picking</div>
-        ${storeName ? `<div class="picking-almacen">Almacén<br/><b>${storeName}</b></div>` : ""}
+        ${storeName ? `<div class="picking-almacen">Almacén<br/><b>${escapePrintHtml(storeName)}</b></div>` : ""}
       </div>
 
       ${receipt.items
@@ -434,19 +443,20 @@ async function buildOrderLabelHtml(
         <div class="pick-item">
           <div class="pick-checkbox"></div>
           <div class="pick-qty">
-            <div class="num">${item.quantity}</div>
+            <div class="num">${escapePrintHtml(item.quantity)}</div>
             <div class="unit">und</div>
           </div>
           <div class="pick-body">
-            <div class="pick-name">${item.productName}</div>
-            <div class="pick-meta">${attrs ? `${attrs} · ` : ""}${item.sku ? `SKU: ${item.sku}` : ""}</div>
+            <div class="pick-name">${escapePrintHtml(item.productName)}</div>
+            <div class="pick-meta">${attrs ? `${escapePrintHtml(attrs)} · ` : ""}${item.sku ? `SKU: ${escapePrintHtml(item.sku)}` : ""}</div>
+            ${renderPrintableUnitCodesHtml(receipt, item)}
           </div>
           <div class="pick-price">S/ ${Number(item.subtotal).toFixed(2)}</div>
         </div>`;
         })
         .join("")}
 
-      <div class="pick-summary">Total a preparar: ${receipt.items.length} ítem${receipt.items.length === 1 ? "" : "s"} · ${totalUnidades} unidad${totalUnidades === 1 ? "" : "es"}</div>
+      <div class="pick-summary">Total a preparar: ${receipt.items.length} ítem${receipt.items.length === 1 ? "" : "s"} · ${escapePrintHtml(totalUnidades)} unidad${totalUnidades === 1 ? "" : "es"}</div>
 
       <div class="totals">
         <div class="totals-line">
@@ -476,7 +486,7 @@ async function buildOrderLabelHtml(
               ? `
           <div class="tracking-item">
             <span class="tracking-label">Tracking:</span>
-            <span class="tracking-value">${receipt.externalTrackingNumber}</span>
+            <span class="tracking-value">${escapePrintHtml(receipt.externalTrackingNumber)}</span>
           </div>`
               : ""
           }
@@ -485,7 +495,7 @@ async function buildOrderLabelHtml(
               ? `
           <div class="tracking-item">
             <span class="tracking-label">Oficina:</span>
-            <span class="tracking-value">${receipt.shippingOffice}</span>
+            <span class="tracking-value">${escapePrintHtml(receipt.shippingOffice)}</span>
           </div>`
               : ""
           }
@@ -494,7 +504,7 @@ async function buildOrderLabelHtml(
               ? `
           <div class="tracking-item">
             <span class="tracking-label">Código:</span>
-            <span class="tracking-value">${receipt.shippingCode}</span>
+            <span class="tracking-value">${escapePrintHtml(receipt.shippingCode)}</span>
           </div>`
               : ""
           }
@@ -506,7 +516,7 @@ async function buildOrderLabelHtml(
             <span class="tracking-value">${
               keyLocked
                 ? '<span style="color:red; font-weight:bold;">CLAVE OCULTA (Pago Pendiente)</span>'
-                : receipt.shippingKey
+                : escapePrintHtml(receipt.shippingKey)
             }</span>
           </div>`
               : ""
@@ -520,13 +530,17 @@ async function buildOrderLabelHtml(
   `;
 }
 
-function openAndPrint(printWindow: Window, title: string, bodyHtml: string): Promise<void> {
+function openAndPrint(printWindow: Window, title: string, bodyHtml: string, isCurrent?: () => boolean, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted || (isCurrent && !isCurrent())) {
+    printWindow.close();
+    return Promise.resolve();
+  }
   const printContent = `
       <!DOCTYPE html>
       <html>
       <head>
         <meta charset="utf-8">
-        <title>${title}</title>
+        <title>${escapePrintHtml(title)}</title>
         <style>${LABEL_STYLES}</style>
       </head>
       <body>
@@ -539,14 +553,56 @@ function openAndPrint(printWindow: Window, title: string, bodyHtml: string): Pro
   printWindow.document.close();
 
   // Esperar a que cargue el contenido y el QR antes de imprimir
-  return new Promise<void>((resolve) => {
-    printWindow.onload = () => {
-      printWindow.focus();
-      printWindow.print();
+  return new Promise<void>((resolve, reject) => {
+    const cancel = () => {
+      printWindow.onload = null;
       printWindow.close();
       resolve();
     };
+    signal?.addEventListener("abort", cancel, { once: true });
+    printWindow.onload = () => {
+      signal?.removeEventListener("abort", cancel);
+      if (isCurrent && !isCurrent()) {
+        printWindow.close();
+        resolve();
+        return;
+      }
+      try {
+        printWindow.focus();
+        printWindow.print();
+        printWindow.close();
+        resolve();
+      } catch (error) {
+        reject(error);
+      }
+    };
   });
+}
+
+async function printBuiltLabelDocument(
+  title: string,
+  build: () => Promise<string>,
+  { isCurrent, signal }: PrintDocumentOptions = {},
+): Promise<void> {
+  if (signal?.aborted || (isCurrent && !isCurrent())) return;
+  const printWindow = window.open("", "_blank", "width=420,height=750");
+  if (!printWindow) {
+    toast.error("No se pudo abrir la ventana de impresión");
+    return;
+  }
+  const cancelBuild = () => printWindow.close();
+  signal?.addEventListener("abort", cancelBuild, { once: true });
+  try {
+    const bodyHtml = await build();
+    signal?.removeEventListener("abort", cancelBuild);
+    if (signal?.aborted) return;
+    await openAndPrint(printWindow, title, bodyHtml, isCurrent, signal);
+  } catch (error) {
+    printWindow.close();
+    throw error;
+  } finally {
+    signal?.removeEventListener("abort", cancelBuild);
+  }
 }
 
 /**
@@ -560,15 +616,13 @@ export async function printOrderLabel(
   receipt: OrderReceipt,
   orderHeader: OrderHeader | null,
   company?: PrintLabelCompany | null,
+  options?: PrintDocumentOptions,
 ): Promise<void> {
-  const printWindow = window.open("", "_blank", "width=420,height=750");
-  if (!printWindow) {
-    toast.error("No se pudo abrir la ventana de impresión");
-    return;
-  }
-
-  const bodyHtml = await buildOrderLabelHtml(receipt, orderHeader, company);
-  await openAndPrint(printWindow, `Etiqueta - ${receipt.orderNumber}`, bodyHtml);
+  await printBuiltLabelDocument(
+    `Etiqueta - ${receipt.orderNumber}`,
+    () => buildOrderLabelHtml(receipt, orderHeader, company),
+    options,
+  );
 }
 
 /**
@@ -581,22 +635,19 @@ export async function printOrderLabel(
 export async function printOrderLabelsBatch(
   items: { receipt: OrderReceipt; orderHeader: OrderHeader | null }[],
   company?: PrintLabelCompany | null,
+  isCurrent?: () => boolean,
+  signal?: AbortSignal,
 ): Promise<void> {
   if (items.length === 0) return;
-
-  const printWindow = window.open("", "_blank", "width=420,height=750");
-  if (!printWindow) {
-    toast.error("No se pudo abrir la ventana de impresión");
-    return;
-  }
-
-  const labelsHtml = (
-    await Promise.all(
-      items.map(({ receipt, orderHeader }, index) =>
-        buildOrderLabelHtml(receipt, orderHeader, company, index < items.length - 1),
-      ),
-    )
-  ).join("");
-
-  await openAndPrint(printWindow, "Etiquetas de despacho", labelsHtml);
+  await printBuiltLabelDocument(
+    "Etiquetas de despacho",
+    async () => (
+      await Promise.all(
+        items.map(({ receipt, orderHeader }, index) =>
+          buildOrderLabelHtml(receipt, orderHeader, company, index < items.length - 1),
+        ),
+      )
+    ).join(""),
+    { isCurrent, signal },
+  );
 }

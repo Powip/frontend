@@ -1,3 +1,4 @@
+import type { TrackingMode } from "@/services/inventoryTrackingService";
 /* -----------------------------------------
    Packs & Promos
 
@@ -72,6 +73,7 @@ export interface BundlePack {
 /** Opción de regalo: referencia una variante real de inventario (para poder
  *  incluirla en el pedido con un productVariantId válido al confirmar la venta) */
 export interface GiftOption {
+  trackingMode?: TrackingMode;
   variantId: string;
   inventoryItemId: string;
   sku: string;

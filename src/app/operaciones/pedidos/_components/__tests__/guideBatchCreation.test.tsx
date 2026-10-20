@@ -9,19 +9,21 @@ import type { PedidosActions, Sale } from "../types";
 const mockRefetch = jest.fn();
 const mockInvalidateBusinessData = jest.fn();
 let mockOrders: OrderHeader[] = [];
+let mockAuth: { company: { id: string }; user: { id: string } } | null = null;
+let mockActions: PedidosActions;
 let mockModalProps: {
   open: boolean;
   selectedOrders: { id: string }[];
   onConfirm: (guides: CreateGuideData[]) => Promise<boolean | void>;
 };
 
-jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: { post: jest.fn(), patch: jest.fn() } }));
-jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: { get: jest.fn(), post: jest.fn(), patch: jest.fn() } }));
+jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn() } }));
 jest.mock("@/hooks/useBusinessOrders", () => ({
   useBusinessOrders: () => ({ orders: mockOrders, loading: false, error: false, refetch: mockRefetch }),
 }));
 jest.mock("@/hooks/useInvalidateBusinessData", () => ({ useInvalidateBusinessData: () => mockInvalidateBusinessData }));
-jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: null }) }));
+jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: mockAuth }) }));
 jest.mock("@/contexts/OperationsRoleContext", () => ({
   useOperationsRole: () => ({ can: () => true }),
   OPS_PERMISSIONS: { DISPATCH: "DISPATCH" },
@@ -30,9 +32,10 @@ jest.mock("@/hooks/useUserAuditInfo", () => ({ useUserAuditInfo: () => () => ({ 
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }), useSearchParams: () => new URLSearchParams() }));
 jest.mock("../guideReviewReturn", () => ({ useGuideReviewReturn: () => ({ pending: null, clear: jest.fn() }) }));
 jest.mock("../PorDespacharTab", () => ({
-  PorDespacharTab: ({ sales, actions }: { sales: Sale[]; actions: PedidosActions }) => (
-    <button onClick={() => actions.onOpenCreateGuide(sales)}>Armar guías</button>
-  ),
+  PorDespacharTab: ({ sales, actions }: { sales: Sale[]; actions: PedidosActions }) => {
+    mockActions = actions;
+    return <button onClick={() => actions.onOpenCreateGuide(sales)}>Armar guías</button>;
+  },
 }));
 jest.mock("../EnCaminoTab", () => ({ EnCaminoTab: () => null }));
 jest.mock("../AtencionTab", () => ({ AtencionTab: () => null }));
@@ -52,13 +55,19 @@ jest.mock("@/components/modals/CreateGuideModal", () => ({
 jest.mock("@/components/modals/GuideDetailsModal", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/modals/AddToExistingGuideModal", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/modals/PaymentVerificationModal", () => ({ __esModule: true, default: () => null }));
-jest.mock("@/components/modals/CancellationModal", () => ({ __esModule: true, default: () => null }));
+jest.mock("@/components/modals/CancellationModal", () => ({ __esModule: true, default: ({ open, onConfirm }: { open: boolean; onConfirm: (reason: string, notes: string) => void }) => open ? <button onClick={() => onConfirm("OTHER", "Cliente canceló")}>Confirmar anulación normal</button> : null }));
 jest.mock("@/components/modals/CourierAssignmentModal", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/modals/ReassignSellerModal", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/ventas/RescheduleDialog", () => ({ RescheduleDialog: () => null }));
 
+jest.mock("@/components/registrar-venta/SaleUnitLifecycleModal", () => ({
+  __esModule: true,
+  default: ({ action, orderId }: { action: string; orderId: string }) => <div data-testid="lifecycle-flow">{action}:{orderId}</div>,
+}));
+
 import { PedidosContent } from "../PedidosContent";
 import NuevaGuiaDialog from "../../../guias/_components/NuevaGuiaDialog";
+import { openPrintWindow, printReceipts } from "@/utils/bulk-receipt-printer";
 
 const guides: CreateGuideData[] = [
   { storeId: "store-a", orderIds: ["order-1", "order-2"], deliveryZones: ["PROVINCIAS"], deliveryType: "COURIER", courierName: "Courier", courierId: "courier", orderCarrierCosts: { "order-1": 8, "order-2": 12 } },
@@ -67,6 +76,7 @@ const guides: CreateGuideData[] = [
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockAuth = null;
   mockRefetch.mockResolvedValue({});
   mockInvalidateBusinessData.mockResolvedValue([]);
   mockOrders = [1, 2, 3].map((n): OrderHeader => ({
@@ -212,5 +222,146 @@ describe.each(["Pedidos", "Nueva guía"])("%s — creación por grupos", (entry)
     expect(screen.getByTestId("guide-selection")).toHaveTextContent("order-1,order-2,order-3");
     expect(toast.error).toHaveBeenCalledWith("Courier no disponible");
     expect(axios.patch).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("Pedidos terminal unit lifecycle routing", () => {
+  it("opens reactivation selection for serialized orders without posting a generic status", async () => {
+    mockOrders[0] = { ...mockOrders[0], status: "ANULADO", unitAssignmentStatus: "CONFIRMED", unitCatalogValidated: true };
+    render(<PedidosContent />);
+    await act(async () => { await mockActions.onChangeStatus("order-1", "PENDIENTE"); });
+    expect(screen.getByTestId("lifecycle-flow")).toHaveTextContent("reactivate:order-1");
+    expect(axios.patch).not.toHaveBeenCalled();
+  });
+  it("preserves the existing normal reactivation without consulting unit context", async () => {
+    mockOrders[0] = { ...mockOrders[0], status: "ANULADO", unitAssignmentStatus: "NONE", unitCatalogValidated: true };
+    render(<PedidosContent />);
+    await act(async () => { await mockActions.onChangeStatus("order-1", "PENDIENTE"); });
+    expect(axios.patch).toHaveBeenCalledWith(expect.stringContaining("/order-header/order-1"), expect.objectContaining({ status: "PENDIENTE" }));
+    expect(axios.get).not.toHaveBeenCalled(); expect(screen.queryByTestId("lifecycle-flow")).not.toBeInTheDocument();
+  });
+  it("silently classifies historical NONE and continues its original reactivation", async () => {
+    mockOrders[0] = { ...mockOrders[0], status: "ANULADO", unitAssignmentStatus: "PENDING_SELECTION", unitCatalogValidated: false };
+    jest.mocked(axios.get).mockResolvedValue({ data: { orderId: "order-1", status: "ANULADO", items: [{ trackingMode: "NONE" }], canReactivate: false } });
+    render(<PedidosContent />);
+    await act(async () => { await mockActions.onChangeStatus("order-1", "PENDIENTE"); });
+    expect(axios.get).toHaveBeenCalledWith(expect.stringContaining("/unit-lifecycle/context"), expect.anything());
+    expect(axios.patch).toHaveBeenCalledWith(expect.stringContaining("/order-header/manual/order-1/status"), expect.objectContaining({ status: "PENDIENTE" }));
+    expect(screen.queryByTestId("lifecycle-flow")).not.toBeInTheDocument();
+  });
+  it("opens full return for a delivered serialized order and never falls through to cancellation", async () => {
+    mockOrders[0] = { ...mockOrders[0], status: "ENTREGADO", unitAssignmentStatus: "CONFIRMED", unitCatalogValidated: true };
+    render(<PedidosContent />);
+    await act(async () => { await mockActions.onChangeStatus("order-1", "ANULADO"); });
+    expect(screen.getByTestId("lifecycle-flow")).toHaveTextContent("return:order-1");
+    expect(axios.patch).not.toHaveBeenCalled();
+  });
+});
+
+
+test("serialized bulk reactivation directs to individual selection without making any status write", async () => {
+  mockOrders[0] = { ...mockOrders[0], status: "ANULADO", unitAssignmentStatus: "CONFIRMED", unitCatalogValidated: true };
+  render(<PedidosContent />);
+  await act(async () => { await mockActions.onBulkStatusChange(["order-1"], "PENDIENTE"); });
+  expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("individualmente"));
+  expect(axios.patch).not.toHaveBeenCalled();
+});
+test("normal bulk reactivation preserves its status mutation and does not fetch unit context", async () => {
+  mockOrders[0] = { ...mockOrders[0], status: "ANULADO", unitAssignmentStatus: "NONE", unitCatalogValidated: true };
+  render(<PedidosContent />);
+  await act(async () => { await mockActions.onBulkStatusChange(["order-1"], "PENDIENTE"); });
+  expect(axios.patch).toHaveBeenCalledWith(expect.stringContaining("/order-header/order-1"), expect.objectContaining({ status: "PENDIENTE" }));
+  expect(axios.get).not.toHaveBeenCalled();
+});
+
+
+test("Pedidos serialized merma directs to available inventory units without cancelling or writing stock", async () => {
+  mockOrders[0] = { ...mockOrders[0], status: "ENTREGADO", unitAssignmentStatus: "CONFIRMED", unitCatalogValidated: true };
+  render(<PedidosContent />);
+  await act(async () => { await mockActions.onMarkAsLoss(mockOrders[0] as unknown as Sale); });
+  expect(axios.patch).not.toHaveBeenCalled(); expect(axios.post).not.toHaveBeenCalled();
+  expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("confirma primero su devolución completa"), expect.objectContaining({ action: expect.objectContaining({ label: "Abrir inventario", onClick: expect.any(Function) }) }));
+});
+test("Pedidos normal merma retains the existing cancellation payload without unit movement fields", async () => {
+  mockOrders[0] = { ...mockOrders[0], status: "ENTREGADO", unitAssignmentStatus: "NONE", unitCatalogValidated: true };
+  render(<PedidosContent />);
+  await act(async () => { await mockActions.onMarkAsLoss(mockOrders[0] as unknown as Sale); });
+  expect(axios.patch).toHaveBeenCalledWith(expect.stringContaining("/order-header/order-1"), { status: "ANULADO", cancellationReason: "OTHER", notes: "Devolución del courier — mercadería registrada como merma", userId: "operator" });
+  expect(axios.post).not.toHaveBeenCalled();
+});
+
+describe("Pedidos — receipt batch identity and scope", () => {
+  const printWindow = { close: jest.fn() } as unknown as Window;
+  beforeEach(() => {
+    mockAuth = { company: { id: "company-1" }, user: { id: "user-1" } };
+    jest.mocked(openPrintWindow).mockReturnValue(printWindow);
+    jest.mocked(printReceipts).mockResolvedValue(undefined);
+  });
+  it("prints confirmed tracked and NONE receipts through their corresponding routes", async () => {
+    const selected = mockOrders.slice(0, 2).map((order, i) => ({ ...order, unitAssignmentStatus: i === 0 ? "CONFIRMED" : "NONE", unitCatalogValidated: true, stockVersion: 1, confirmedStockVersion: 1 }));
+    jest.mocked(axios.get).mockImplementation(async (url) => ({ data: { orderId: url.match(/order-header\/(?:manual\/)?([^/]+)\/receipt/)![1], orderNumber: "ORD", customer: { fullName: "Cliente" } } }));
+    render(<PedidosContent />);
+    await act(async () => { await mockActions.onBulkPrint(selected as unknown as Sale[]); });
+    expect(axios.get).toHaveBeenCalledWith(expect.stringContaining("/manual/order-1/receipt"));
+    expect(axios.get).toHaveBeenCalledWith(expect.stringMatching(/\/order-header\/order-2\/receipt$/));
+    expect(jest.mocked(printReceipts).mock.calls[0][0].map(receipt => receipt.orderId)).toEqual(["order-1", "order-2"]);
+  });
+  it("never prints a fulfilled response belonging to another order", async () => {
+    const errors = jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.mocked(axios.get).mockResolvedValue({ data: { orderId: "other-order" } });
+    render(<PedidosContent />);
+    await act(async () => { await mockActions.onBulkPrint([mockOrders[0]] as unknown as Sale[]); });
+    expect(printReceipts).not.toHaveBeenCalled();
+    expect(printWindow.close).toHaveBeenCalled();
+    errors.mockRestore();
+  });
+  it("discards an in-flight batch on a user change", async () => {
+    let resolveReceipt!: (value: any) => void;
+    jest.mocked(axios.get).mockReturnValue(new Promise(resolve => { resolveReceipt = resolve; }));
+    const view = render(<PedidosContent />);
+    let work: unknown;
+    act(() => { work = mockActions.onBulkPrint([mockOrders[0]] as unknown as Sale[]); });
+    mockAuth = { company: { id: "company-1" }, user: { id: "user-2" } };
+    view.rerender(<PedidosContent />);
+    await act(async () => { resolveReceipt({ data: { orderId: "order-1" } }); await work; });
+    expect(printReceipts).not.toHaveBeenCalled();
+    expect(printWindow.close).toHaveBeenCalled();
+    expect(axios.patch).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("Pedidos — anulación en envío conserva la reserva hasta retorno físico", () => {
+  test.each(["status", "cancel", "return"])("%s action opens physical return without writing status", async (entry) => {
+    mockOrders[0] = { ...mockOrders[0], status: "EN_ENVIO", unitAssignmentStatus: "CONFIRMED", unitCatalogValidated: true };
+    render(<PedidosContent />);
+    await act(async () => {
+      if (entry === "status") await mockActions.onChangeStatus("order-1", "ANULADO");
+      else if (entry === "cancel") mockActions.onCancel(mockOrders[0] as unknown as Sale);
+      else await mockActions.onReturnToStock(mockOrders[0] as unknown as Sale);
+    });
+    expect(await screen.findByTestId("lifecycle-flow")).toHaveTextContent("return:order-1");
+    expect(screen.queryByRole("button", { name: "Confirmar anulación normal" })).not.toBeInTheDocument();
+    expect(axios.patch).not.toHaveBeenCalled();
+    expect(axios.post).not.toHaveBeenCalled();
+  });
+  test("UNKNOWN consults context before opening a return from the direct cancel action", async () => {
+    mockOrders[0] = { ...mockOrders[0], status: "EN_ENVIO", unitAssignmentStatus: "PENDING_SELECTION", unitCatalogValidated: false };
+    jest.mocked(axios.get).mockResolvedValue({ data: { orderId: "order-1", status: "EN_ENVIO", items: [{ trackingMode: "SERIAL" }] } });
+    render(<PedidosContent />);
+    await act(async () => { mockActions.onCancel(mockOrders[0] as unknown as Sale); });
+    expect(await screen.findByTestId("lifecycle-flow")).toHaveTextContent("return:order-1");
+    expect(axios.get).toHaveBeenCalledWith(expect.stringContaining("/unit-lifecycle/context"), expect.anything());
+    expect(axios.patch).not.toHaveBeenCalled();
+  });
+  test("NONE keeps its cancellation modal and exact legacy payload", async () => {
+    mockOrders[0] = { ...mockOrders[0], status: "EN_ENVIO", unitAssignmentStatus: "NONE", unitCatalogValidated: true };
+    render(<PedidosContent />);
+    await act(async () => { mockActions.onCancel(mockOrders[0] as unknown as Sale); });
+    await act(async () => { fireEvent.click(await screen.findByRole("button", { name: "Confirmar anulación normal" })); });
+    expect(axios.patch).toHaveBeenCalledWith(expect.stringMatching(/\/order-header\/order-1$/), { status: "ANULADO", cancellationReason: "OTHER", notes: "Cliente canceló", userId: "operator" });
+    expect(axios.get).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("lifecycle-flow")).not.toBeInTheDocument();
   });
 });

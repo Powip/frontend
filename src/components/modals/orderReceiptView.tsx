@@ -76,8 +76,9 @@ export default function OrderReceiptView({ data }: Props) {
 
   // Expandir items: cada unidad como una fila separada
   const expandedItems = items.flatMap((item: any) =>
-    Array.from({ length: item.quantity }, () => ({
+    Array.from({ length: item.quantity }, (_, unitIndex) => ({
       ...item,
+      units: item.units?.[unitIndex] ? [item.units[unitIndex]] : [],
       originalQuantity: item.quantity, // Guardar cantidad original para calcular descuento prorrateado
       quantity: 1,
       subtotal: item.unitPrice,
@@ -281,6 +282,7 @@ export default function OrderReceiptView({ data }: Props) {
               <div key={i} className="border rounded-md p-3 flex justify-between items-start">
                 <div className="space-y-1">
                   <p className="text-black-600 font-medium">{item.productName}</p>
+                  {item.units?.length > 0 && <p className="text-xs font-mono">IMEI / series: {item.units.map((unit: { code: string }) => unit.code).join(", ")}</p>}
                   {item.attributes && (
                     <div className="text-xs text-muted-foreground space-y-0.5">
                       {Object.entries(item.attributes).map(([k, v]) => (

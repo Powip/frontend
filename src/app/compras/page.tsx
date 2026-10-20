@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { deleteTrackedPurchase, getTrackedPurchase, trackingError, type InventoryUnit, type TrackingMode } from "@/services/inventoryTrackingService";
 import axios from "@/lib/axiosAuth";
 import { useQuery } from "@tanstack/react-query";
 import { GATEWAY } from "@/lib/gateway";
@@ -57,6 +58,9 @@ import {
 const INVENTORY_API = process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics;
 
 interface PurchaseItem {
+    trackingMode?: TrackingMode;
+    codes?: string[];
+    units?: InventoryUnit[];
     id: string;
     variantId: string;
     supplierId: string;
@@ -69,6 +73,8 @@ interface PurchaseItem {
 }
 
 interface Purchase {
+    companyId?: string;
+    hasTrackedUnits?: boolean;
     id: string;
     purchaseNumber: string;
     totalAmount: number;
@@ -84,9 +90,19 @@ const ITEMS_PER_PAGE = 10;
 
 export default function ComprasPage() {
     const { auth } = useAuth();
+    return <ComprasContent key={`${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}`} />;
+}
+
+function ComprasContent() {
+    const { auth } = useAuth();
     const router = useRouter();
     const companyId = auth?.company?.id;
 
+    const active = useRef(true);
+    const detailsVersion = useRef(0);
+    const [detailsLoading, setDetailsLoading] = useState(false);
+    const [detailsError, setDetailsError] = useState("");
+    useEffect(() => { active.current = true; return () => { active.current = false; detailsVersion.current++; }; }, []);
     const [currentPage, setCurrentPage] = useState(1);
 
     // Modal states
@@ -114,14 +130,22 @@ export default function ComprasPage() {
     const isLoading = purchasesQuery.isLoading;
     const fetchPurchases = purchasesQuery.refetch;
 
-    const handleViewDetails = (purchase: Purchase) => {
-        setSelectedPurchase(purchase);
-        setDetailsOpen(true);
+    const handleViewDetails = async (purchase: Purchase) => {
+        const version = ++detailsVersion.current;
+        setDetailsOpen(true); setDetailsError("");
+        if (!purchase.hasTrackedUnits) { setSelectedPurchase(purchase); setDetailsLoading(false); return; }
+        setSelectedPurchase(null); setDetailsLoading(true);
+        try {
+            const detail = await getTrackedPurchase<Purchase>(purchase.id);
+            if (active.current && version === detailsVersion.current) setSelectedPurchase(detail);
+        } catch (error) {
+            if (active.current && version === detailsVersion.current) setDetailsError(trackingError(error, "No se pudo consultar la compra."));
+        } finally { if (active.current && version === detailsVersion.current) setDetailsLoading(false); }
     };
 
     const handleEdit = (purchase: Purchase) => {
         // Redirigir a la página de edición con el ID de la compra
-        router.push(`/registrar-compra?edit=${purchase.id}`);
+        router.push(`/registrar-compra?edit=${purchase.id}${purchase.hasTrackedUnits ? "&tracked=1" : ""}`);
     };
 
     const handleDelete = (purchase: Purchase) => {
@@ -134,19 +158,17 @@ export default function ComprasPage() {
 
         setIsDeleting(true);
         try {
-            await axios.delete(
-                `${INVENTORY_API}/purchase/${purchaseToDelete.id}`
-            );
-
+            if (purchaseToDelete.hasTrackedUnits) await deleteTrackedPurchase(purchaseToDelete.id);
+            else await axios.delete(`${INVENTORY_API}/purchase/${purchaseToDelete.id}`);
+            if (!active.current) return;
+            setDeleteOpen(false); setPurchaseToDelete(null);
             toast.success("Compra eliminada y stock revertido");
             fetchPurchases();
         } catch (error) {
             console.error("Error deleting purchase", error);
-            toast.error("Error al eliminar la compra");
+            if (active.current) toast.error(trackingError(error, "Error al eliminar la compra"));
         } finally {
-            setIsDeleting(false);
-            setDeleteOpen(false);
-            setPurchaseToDelete(null);
+            if (active.current) setIsDeleting(false);
         }
     };
 
@@ -328,6 +350,8 @@ export default function ComprasPage() {
                         </DialogDescription>
                     </DialogHeader>
 
+                    {detailsLoading ? <p role="status">Cargando compra y unidades…</p> : null}
+                    {detailsError ? <p role="alert" className="text-destructive">{detailsError}</p> : null}
                     {selectedPurchase && (
                         <div className="flex-1 overflow-auto bg-muted/10">
                             <div className="p-6 space-y-8">
@@ -409,6 +433,7 @@ export default function ComprasPage() {
                                                         <TableCell className="pl-6 py-4">
                                                             <div className="space-y-1">
                                                                 <p className="font-semibold text-base text-foreground/90">{item.productName}</p>
+                                                                {(item.codes?.length || item.units?.length) ? <div className="text-xs"><p>{item.trackingMode || "Códigos de unidad"}</p><ul className="font-mono break-all">{(item.codes ?? item.units?.map((unit) => unit.code) ?? []).map((code) => <li key={code}>{code}</li>)}</ul></div> : null}
                                                                 {item.attributes && Object.keys(item.attributes).length > 0 && (
                                                                     <div className="flex flex-wrap gap-2">
                                                                         {Object.entries(item.attributes).map(([k, v]) => (
@@ -453,7 +478,7 @@ export default function ComprasPage() {
                     <AlertDialogHeader>
                         <AlertDialogTitle>¿Estás seguro de eliminar esta compra?</AlertDialogTitle>
                         <AlertDialogDescription>
-                            Esta acción marcará la compra como cancelada y <span className="font-bold text-destructive">revertirá automáticamente el stock de los items al inventario</span>.
+                            {purchaseToDelete?.hasTrackedUnits ? <>Se cancelará esta entrada y se retirarán sus unidades del stock. Sólo se permite si todos sus IMEI o series siguen disponibles; se conservará su historial.</> : <>Esta acción marcará la compra como cancelada y <span className="font-bold text-destructive">revertirá automáticamente el stock de los items al inventario</span>.</>}
                             <br /><br />
                             Esta acción no se puede deshacer.
                         </AlertDialogDescription>

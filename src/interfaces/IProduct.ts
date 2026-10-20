@@ -1,4 +1,7 @@
+import type { TrackingMode } from "@/services/inventoryTrackingService";
+
 export interface IProduct {
+  trackingMode?: TrackingMode;
   id?: string;
   name: string;
   sku: string;
@@ -34,6 +37,7 @@ export interface IProduct {
 }
 
 export interface IProductRequest {
+  trackingMode?: TrackingMode;
   name: string;
   description: string;
   priceBase: number;
@@ -58,6 +62,7 @@ export interface IProductResponse extends IProductRequest {
 }
 
 export interface InventoryItemForSale {
+  trackingMode?: TrackingMode;
   inventoryItemId: string;
   variantId: string;
   productId?: string;

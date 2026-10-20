@@ -29,6 +29,15 @@ jest.mock("exceljs", () => ({ Workbook: jest.fn() }));
 jest.mock("@/components/header/HeaderConfig", () => ({ HeaderConfig: () => null }));
 jest.mock("../../productos/shopify-sync-wizard", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/inventory/MovementHistoryTable", () => ({ MovementHistoryTable: () => null }));
+jest.mock("@/components/inventory/InventoryUnitMovementModal", () => ({
+  __esModule: true, default: ({ action, source, onSaved }: any) => <div role="dialog" aria-label={`Movimiento ${action}`}><span>{source.inventoryItemId}:{source.inventoryId}</span><button onClick={onSaved}>Guardar movimiento de prueba</button></div>,
+}));
+jest.mock("@/components/inventory/InventoryUnitTraceModal", () => ({
+  __esModule: true, default: ({ companyId, initialCode }: {companyId: string; initialCode: string}) => <div role="dialog" aria-label="Historial del código">{companyId}:{initialCode || "global"}</div>,
+}));
+jest.mock("@/components/inventory/InventoryUnitsModal", () => ({
+  __esModule: true, default: ({ onViewHistory }: {onViewHistory: (code: string) => void}) => <button onClick={() => onViewHistory("001234567890123")}>Historial de prueba</button>,
+}));
 jest.mock("@/components/inventory/ReconciliationTab", () => ({ ReconciliationTab: () => null }));
 jest.mock("@/components/modals/AddStockModal", () => ({
   __esModule: true,
@@ -108,6 +117,51 @@ describe("Warehouse product actions with business inventory queries", () => {
       inventories: warehouses, isPending: false, isSuccess: true, error: null, refetch: jest.fn(),
     } as unknown as ReturnType<typeof useBusinessInventories>);
     jest.mocked(axiosAuth.delete).mockResolvedValue({ data: { deleted: true } });
+  });
+
+  it("opens company-wide exact search independently of the warehouse and visible tracking mode", async () => {
+    fetchItems.mockResolvedValue([item("normal", { trackingMode: "NONE" })]);
+    setup(); await screen.findByText("Producto normal");
+    fireEvent.click(screen.getByRole("button", { name: "Buscar IMEI/serie" }));
+    expect(screen.getByRole("dialog", { name: "Historial del código" })).toHaveTextContent("company-a:global");
+  });
+
+  it("opens trace from a unit using its full leading-zero code", async () => {
+    fetchItems.mockResolvedValue([item("serial", { trackingMode: "IMEI" })]);
+    setup(); await screen.findByText("Producto serial");
+    fireEvent.click(screen.getByRole("button", { name: "Ver unidades" }));
+    fireEvent.click(screen.getByRole("button", { name: "Historial de prueba" }));
+    expect(screen.getByRole("dialog", { name: "Historial del código" })).toHaveTextContent("company-a:001234567890123");
+  });
+
+  it("exposes unit lookup and disables aggregate adjustments and deletion for IMEI products", async () => {
+    fetchItems.mockResolvedValue([item("serial", { trackingMode: "IMEI" })]);
+    setup();
+    await screen.findByText("Producto serial");
+    expect(screen.getByRole("button", { name: "Ver unidades" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Transferir unidades" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Registrar merma" })).toBeEnabled();
+    expect(screen.getByTitle("Registra los IMEI o series desde Compras")).toBeDisabled();
+    expect(screen.getByTitle("Conserva las unidades identificadas y su historial")).toBeDisabled();
+  });
+
+  it("routes the actual source position to transfer and refreshes inventory after completion", async () => {
+    fetchItems.mockResolvedValue([item("serial", { trackingMode: "IMEI", inventoryId: "warehouse-b", inventoryName: "Almacén B" })]);
+    const client = setup();
+    await screen.findByText("Producto serial");
+    fireEvent.click(screen.getByRole("button", { name: "Transferir unidades" }));
+    expect(screen.getByRole("dialog", { name: "Movimiento transfer" })).toHaveTextContent("serial:warehouse-b");
+    fireEvent.click(screen.getByRole("button", { name: "Guardar movimiento de prueba" }));
+    await waitFor(() => expect(fetchItems).toHaveBeenCalledTimes(2));
+    expect(client.getQueryData([...inventoryKey, "business", ["store-a"], ["warehouse-a"]])).toBeDefined();
+  });
+
+  it("normal quantity products retain their original actions without unit movement buttons", async () => {
+    fetchItems.mockResolvedValue([item("normal", { trackingMode: "NONE" })]);
+    setup(); await screen.findByText("Producto normal");
+    expect(screen.getByTitle("Ajustar Stock")).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Transferir unidades" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Registrar merma" })).not.toBeInTheDocument();
   });
 
   it("reports a failed refetch after deletion instead of falsely reporting a refreshed warehouse", async () => {

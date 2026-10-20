@@ -1,10 +1,14 @@
 "use client";
 
+import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
+import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
+import { type SaleUnitLifecycleAction } from "@/services/saleUnitLifecycleService";
+import { assignmentBlockReason, requiresAuthenticatedSaleMutation, saleMutationUrl, saleReceiptUrl } from "@/services/saleTrackingService";
 import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
 import { useBusinessOrders } from "@/hooks/useBusinessOrders";
 import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "@/lib/axiosAuth";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -67,6 +71,7 @@ type RescheduleTarget = { saleIds: string[] } | null;
 
 export function PedidosContent() {
   const { auth } = useAuth();
+  const routeSaleLifecycle = useSaleLifecycleRouting();
   const { can } = useOperationsRole();
   const getUserInfo = useUserAuditInfo();
   const invalidateBusinessData = useInvalidateBusinessData();
@@ -85,6 +90,19 @@ export function PedidosContent() {
   const orders = useMemo(() => [...businessOrders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()), [businessOrders]);
   const [apiCouriers, setApiCouriers] = useState<string[]>([]);
   const [isBulkLoading, setIsBulkLoading] = useState(false);
+  const printScope = `${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}`;
+  const activePrintScope = useRef(printScope);
+  activePrintScope.current = printScope;
+  const printEpoch = useRef(0);
+  const printWindows = useRef(new Set<Window>());
+  useEffect(() => {
+    setIsBulkLoading(false);
+    return () => {
+      printEpoch.current += 1;
+      for (const win of printWindows.current) win.close();
+      printWindows.current.clear();
+    };
+  }, [printScope]);
   const [scannerOpen, setScannerOpen] = useState(false);
 
   // ---- Modales ----
@@ -160,11 +178,22 @@ export function PedidosContent() {
     return map;
   }, [salesByTab]);
 
+  const [lifecycle, setLifecycle] = useState<{ orderId: string; action: SaleUnitLifecycleAction } | null>(null);
+
+  const patchOrderWithAssignment = useCallback(async (url: string, payload: Record<string, unknown>) => {
+    const orderId = url.split("/").pop() ?? "";
+    const sale = salesById.get(orderId);
+    const blocked = sale && typeof payload.status === "string" ? assignmentBlockReason(sale, payload.status) : null;
+    if (blocked) throw new Error(blocked);
+    return axios.patch(saleMutationUrl(API_VENTAS || "", orderId, sale), payload);
+  }, [salesById]);
+
   /* ------------------------------ Handlers ------------------------------ */
 
   const handleChangeStatus = useCallback(
     async (saleId: string, newStatus: OrderStatus) => {
       const sale = salesById.get(saleId);
+      if (await routeSaleLifecycle(sale, newStatus, (action) => setLifecycle({ orderId: saleId, action }))) return;
       if (newStatus === "ANULADO") {
         if (sale) setCancelSale(sale);
         return;
@@ -183,7 +212,7 @@ export function PedidosContent() {
         // módulo viejo: "Contactado" tocaba status Y callStatus a la vez).
         const steps = sale ? getStatusChainSteps(sale.status, newStatus) : [newStatus];
         for (const step of steps) {
-          await axios.patch(`${API_VENTAS}/order-header/${saleId}`, {
+          await patchOrderWithAssignment(`${API_VENTAS}/order-header/${saleId}`, {
             status: step,
             ...(step === "LLAMADO" && { callStatus: "CONFIRMED" }),
             ...getUserInfo(),
@@ -192,10 +221,10 @@ export function PedidosContent() {
         toast.success(`Estado actualizado a ${getStatusLabel(newStatus)}`);
         fetchOrders();
       } catch (error: any) {
-        toast.error(error?.response?.data?.message || "No se pudo actualizar el estado");
+        toast.error(error?.response?.data?.message || error?.message || "No se pudo actualizar el estado");
       }
     },
-    [salesById, getUserInfo, fetchOrders],
+    [salesById, getUserInfo, fetchOrders, patchOrderWithAssignment, routeSaleLifecycle],
   );
 
   // "No Contesta" — no toca `status`, solo anota el intento de llamada
@@ -203,7 +232,7 @@ export function PedidosContent() {
   const handleMarkNoAnswer = useCallback(
     async (saleId: string) => {
       try {
-        await axios.patch(`${API_VENTAS}/order-header/${saleId}`, {
+        await patchOrderWithAssignment(`${API_VENTAS}/order-header/${saleId}`, {
           callStatus: "NO_ANSWER",
           ...getUserInfo(),
         });
@@ -213,7 +242,7 @@ export function PedidosContent() {
         toast.error(error?.response?.data?.message || "No se pudo actualizar el pedido");
       }
     },
-    [getUserInfo, fetchOrders],
+    [getUserInfo, fetchOrders, patchOrderWithAssignment, routeSaleLifecycle],
   );
 
   const handleBulkMarkNoAnswer = useCallback(
@@ -225,7 +254,7 @@ export function PedidosContent() {
       await Promise.all(
         ids.map(async (id) => {
           try {
-            await axios.patch(`${API_VENTAS}/order-header/${id}`, {
+            await patchOrderWithAssignment(`${API_VENTAS}/order-header/${id}`, {
               callStatus: "NO_ANSWER",
               ...uInfo,
             });
@@ -239,7 +268,7 @@ export function PedidosContent() {
       if (failed > 0) toast.error(`${failed} pedido(s) no pudieron actualizarse`);
       fetchOrders();
     },
-    [getUserInfo, fetchOrders],
+    [getUserInfo, fetchOrders, patchOrderWithAssignment, routeSaleLifecycle],
   );
 
   const handleBulkStatusChange = useCallback(
@@ -248,6 +277,9 @@ export function PedidosContent() {
       if (newStatus === "ANULADO") {
         toast.error("Para anular pedidos, use la opción individual con motivo de cancelación.");
         return;
+      }
+      for (const id of ids) {
+        if (await routeSaleLifecycle(salesById.get(id), newStatus, () => toast.error("Reactiva las ventas con IMEI/series individualmente para seleccionar y confirmar sus unidades."))) return;
       }
       if (newStatus === "EN_ENVIO") {
         const missing = ids.filter((id) => {
@@ -275,7 +307,7 @@ export function PedidosContent() {
             const steps = sale ? getStatusChainSteps(sale.status, newStatus) : [newStatus];
             try {
               for (const step of steps) {
-                await axios.patch(`${API_VENTAS}/order-header/${id}`, {
+                await patchOrderWithAssignment(`${API_VENTAS}/order-header/${id}`, {
                   status: step,
                   ...(step === "LLAMADO" && { callStatus: "CONFIRMED" }),
                   ...uInfo,
@@ -293,7 +325,7 @@ export function PedidosContent() {
       setIsBulkLoading(false);
       fetchOrders();
     },
-    [salesById, getUserInfo, fetchOrders],
+    [salesById, getUserInfo, fetchOrders, patchOrderWithAssignment, routeSaleLifecycle],
   );
 
   // Reprogramación de ENTREGA (no de llamada — eso vive solo dentro del
@@ -308,7 +340,7 @@ export function PedidosContent() {
       try {
         await Promise.all(
           saleIds.map((id) =>
-            axios.patch(`${API_VENTAS}/order-header/${id}`, {
+            patchOrderWithAssignment(`${API_VENTAS}/order-header/${id}`, {
               callbackAt: callbackAt.toISOString(),
               callStatus: "SCHEDULED",
               ...getUserInfo(),
@@ -321,15 +353,19 @@ export function PedidosContent() {
         toast.error("Error al reprogramar");
       }
     },
-    [rescheduleTarget, getUserInfo, fetchOrders],
+    [rescheduleTarget, getUserInfo, fetchOrders, patchOrderWithAssignment],
   );
 
   const handleConfirmCancellation = useCallback(
     async (reason: CancellationReason, notes?: string) => {
       if (!cancelSale) return;
+      if (await routeSaleLifecycle(salesById.get(cancelSale.id) ?? cancelSale, "ANULADO", (action) => {
+        setCancelSale(null);
+        setLifecycle({ orderId: cancelSale.id, action });
+      })) return;
       setIsCancelling(true);
       try {
-        await axios.patch(`${API_VENTAS}/order-header/${cancelSale.id}`, {
+        await patchOrderWithAssignment(`${API_VENTAS}/order-header/${cancelSale.id}`, {
           status: "ANULADO",
           cancellationReason: reason,
           notes,
@@ -344,7 +380,7 @@ export function PedidosContent() {
         setIsCancelling(false);
       }
     },
-    [cancelSale, getUserInfo, fetchOrders],
+    [cancelSale, salesById, getUserInfo, fetchOrders, patchOrderWithAssignment, routeSaleLifecycle],
   );
 
   const handleAssignCourierConfirm = useCallback(
@@ -356,7 +392,7 @@ export function PedidosContent() {
       let failed = 0;
       for (const sale of eligible) {
         try {
-          await axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
+          await patchOrderWithAssignment(`${API_VENTAS}/order-header/${sale.id}`, {
             status: "EN_ENVIO",
             courier,
             courierId: courierId || null,
@@ -373,7 +409,7 @@ export function PedidosContent() {
       setCourierAssignSales(null);
       fetchOrders();
     },
-    [courierAssignSales, getUserInfo, fetchOrders],
+    [courierAssignSales, getUserInfo, fetchOrders, patchOrderWithAssignment],
   );
 
   const handleCreateGuideConfirm = useCallback(
@@ -385,6 +421,11 @@ export function PedidosContent() {
       try {
         let totalOrders = 0;
         for (const guideData of guidesData) {
+          for (const id of guideData.orderIds) {
+            const sale = salesById.get(id);
+            const blocked = sale && assignmentBlockReason(sale, "ASIGNADO_A_GUIA");
+            if (blocked) throw new Error(blocked);
+          }
           const res = await axios.post(`${API_COURIER}/shipping-guides`, guideData);
           const guideNumber = res.data.guideNumber;
           createdGuides.push(guideNumber);
@@ -407,7 +448,7 @@ export function PedidosContent() {
             if (currentStatus) {
               const bridge = getStatusChainSteps(currentStatus, "LLAMADO");
               for (const step of bridge) {
-                await axios.patch(`${API_VENTAS}/order-header/${orderId}`, {
+                await patchOrderWithAssignment(`${API_VENTAS}/order-header/${orderId}`, {
                   status: step,
                   ...getUserInfo(),
                 });
@@ -416,7 +457,7 @@ export function PedidosContent() {
             // La guía queda CREADA hasta que se apruebe explícitamente con el
             // botón "Aprobar Guía" (GuideDetailsModal) — recién ahí el pedido
             // pasa a EN_ENVIO. Mismo criterio que Guías & Courier.
-            await axios.patch(`${API_VENTAS}/order-header/${orderId}`, {
+            await patchOrderWithAssignment(`${API_VENTAS}/order-header/${orderId}`, {
               guideNumber,
               status: "ASIGNADO_A_GUIA",
               courier: guideData.courierName,
@@ -461,7 +502,7 @@ export function PedidosContent() {
         setIsCreatingGuide(false);
       }
     },
-    [getUserInfo, fetchOrders, invalidateBusinessData, createGuideOrders, salesById],
+    [getUserInfo, fetchOrders, invalidateBusinessData, createGuideOrders, salesById, patchOrderWithAssignment],
   );
 
   const handleAddToGuideConfirm = useCallback(
@@ -475,6 +516,10 @@ export function PedidosContent() {
       if (selected.length === 0) return;
       setIsAddingToGuide(true);
       try {
+        for (const sale of selected) {
+          const blocked = assignmentBlockReason(sale, "ASIGNADO_A_GUIA");
+          if (blocked) throw new Error(blocked);
+        }
         await axios.post(`${API_COURIER}/shipping-guides/${guideId}/orders`, {
           orderIds: selected.map((s) => s.id),
         });
@@ -497,7 +542,7 @@ export function PedidosContent() {
           // PATCH.
           const bridge = getStatusChainSteps(sale.status, "LLAMADO");
           for (const step of bridge) {
-            await axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
+            await patchOrderWithAssignment(`${API_VENTAS}/order-header/${sale.id}`, {
               status: step,
               ...getUserInfo(),
             });
@@ -507,7 +552,7 @@ export function PedidosContent() {
           // despachada, el pedido pasa directo a EN_ENVIO con el courier en el
           // MISMO PATCH (invariante "courier antes de EN_ENVIO"). Si no, queda
           // en ASIGNADO_A_GUIA hasta que se apruebe la guía.
-          await axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
+          await patchOrderWithAssignment(`${API_VENTAS}/order-header/${sale.id}`, {
             guideNumber,
             status: guideAlreadyDispatched ? "EN_ENVIO" : "ASIGNADO_A_GUIA",
             ...(guideAlreadyDispatched
@@ -531,7 +576,7 @@ export function PedidosContent() {
         setIsAddingToGuide(false);
       }
     },
-    [addToGuideOrders, getUserInfo, fetchOrders],
+    [addToGuideOrders, getUserInfo, fetchOrders, patchOrderWithAssignment],
   );
 
   const handleReassignSellerConfirm = useCallback(
@@ -550,7 +595,7 @@ export function PedidosContent() {
         setIsReassigning(false);
       }
     },
-    [reassignSale, getUserInfo, fetchOrders],
+    [reassignSale, getUserInfo, fetchOrders, patchOrderWithAssignment],
   );
 
   const handleCopySelected = useCallback(async (selected: Sale[]) => {
@@ -580,17 +625,27 @@ export function PedidosContent() {
     // Abrir la ventana ANTES de cualquier await: si se abre después de
     // esperar las requests de abajo, el navegador la bloquea en silencio
     // (así se veía el bug: "queda cargando y da error" con varios pedidos).
+    const blocked = selected.map((sale) => assignmentBlockReason(sale, "PREPARADO")).find(Boolean);
+    if (blocked) { toast.error(blocked); return; }
     const printWindow = openPrintWindow();
     if (!printWindow) {
       toast.error("No se pudo abrir la ventana de impresión. Verifica que los popups no estén bloqueados.");
       return;
     }
+    printWindows.current.add(printWindow);
+    const epoch = printEpoch.current;
+    const isCurrent = () => epoch === printEpoch.current && printScope === activePrintScope.current;
 
     setIsBulkLoading(true);
     try {
       const results = await Promise.allSettled(
-        selected.map((sale) => axios.get<ReceiptData>(`${API_VENTAS}/order-header/${sale.id}/receipt`)),
+        selected.map(async (sale) => {
+          const result = await axios.get<ReceiptData>(saleReceiptUrl(API_VENTAS || "", sale.id, sale));
+          if (result.data?.orderId !== sale.id) throw new Error("El comprobante no corresponde al pedido seleccionado.");
+          return result;
+        }),
       );
+      if (!isCurrent()) return;
 
       const receipts: ReceiptData[] = [];
       const printedSales: Sale[] = [];
@@ -611,7 +666,8 @@ export function PedidosContent() {
         return;
       }
 
-      await printReceipts(receipts, auth?.company, printWindow);
+      await printReceipts(receipts, auth?.company, printWindow, isCurrent);
+      if (!isCurrent()) return;
 
       if (failed.length > 0) {
         toast.warning(`Se imprimieron ${receipts.length} etiqueta(s). No se pudo generar la de: ${failed.join(", ")}`);
@@ -632,7 +688,7 @@ export function PedidosContent() {
         const uInfo = getUserInfo();
         const patchResults = await Promise.allSettled(
           toPrepare.map((sale) =>
-            axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
+            patchOrderWithAssignment(`${API_VENTAS}/order-header/${sale.id}`, {
               status: "PREPARADO",
               ...uInfo,
             }),
@@ -646,12 +702,14 @@ export function PedidosContent() {
       }
     } catch (error) {
       printWindow.close();
+      if (!isCurrent()) return;
       console.error("Error al generar etiquetas en lote", error);
       toast.error("No se pudieron generar las etiquetas");
     } finally {
-      setIsBulkLoading(false);
+      printWindows.current.delete(printWindow);
+      if (isCurrent()) setIsBulkLoading(false);
     }
-  }, [auth?.company, getUserInfo, fetchOrders]);
+  }, [auth?.company, printScope, getUserInfo, fetchOrders, patchOrderWithAssignment]);
 
   const handleBulkWhatsApp = useCallback((selected: Sale[]) => {
     if (selected.length === 0) {
@@ -703,8 +761,9 @@ export function PedidosContent() {
   // anulación con motivo distinguible, honestamente sin tocar stock.
   const handleReturnToStock = useCallback(
     async (sale: Sale) => {
+      if (await routeSaleLifecycle(sale, "ANULADO", (action) => setLifecycle({ orderId: sale.id, action }))) return;
       try {
-        await axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
+        await patchOrderWithAssignment(`${API_VENTAS}/order-header/${sale.id}`, {
           status: "ANULADO",
           cancellationReason: "DELIVERY_ISSUE",
           notes: "Devolución del courier — mercadería reingresada a stock",
@@ -716,13 +775,17 @@ export function PedidosContent() {
         toast.error(error?.response?.data?.message || "No se pudo registrar el reingreso");
       }
     },
-    [getUserInfo, fetchOrders],
+    [getUserInfo, fetchOrders, patchOrderWithAssignment, routeSaleLifecycle],
   );
 
   const handleMarkAsLoss = useCallback(
     async (sale: Sale) => {
+      if (requiresAuthenticatedSaleMutation(sale)) {
+        toast.error("La merma de IMEI/series se registra desde Inventario y requiere unidades disponibles. Si fueron vendidas, confirma primero su devolución completa.", { action: { label: "Abrir inventario", onClick: () => router.push("/inventario") } });
+        return;
+      }
       try {
-        await axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
+        await patchOrderWithAssignment(`${API_VENTAS}/order-header/${sale.id}`, {
           status: "ANULADO",
           cancellationReason: "OTHER",
           notes: "Devolución del courier — mercadería registrada como merma",
@@ -734,7 +797,7 @@ export function PedidosContent() {
         toast.error(error?.response?.data?.message || "No se pudo registrar la merma");
       }
     },
-    [getUserInfo, fetchOrders],
+    [getUserInfo, fetchOrders, patchOrderWithAssignment, router],
   );
 
   const salesChannels = auth?.company?.sales_channels?.length
@@ -749,7 +812,7 @@ export function PedidosContent() {
     onOpenPayment: setPaymentSale,
     onOpenGuide: setGuideSale,
     onReassignSeller: setReassignSale,
-    onCancel: setCancelSale,
+    onCancel: (sale) => { void handleChangeStatus(sale.id, "ANULADO"); },
     onChangeStatus: handleChangeStatus,
     onMarkNoAnswer: handleMarkNoAnswer,
     onBulkMarkNoAnswer: handleBulkMarkNoAnswer,
@@ -860,6 +923,7 @@ export function PedidosContent() {
 
         {/* ------------------------------ Modales ------------------------------ */}
 
+        {lifecycle && <SaleUnitLifecycleModal open {...lifecycle} onClose={() => setLifecycle(null)} onUpdated={() => { void fetchOrders(); }} />}
         {paymentSale && (
           <PaymentVerificationModal
             open={!!paymentSale}

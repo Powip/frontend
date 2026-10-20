@@ -66,3 +66,20 @@ it("keeps the full CC lead contract separate from operational queues", async () 
   await waitFor(() => expect(result.current.loading).toBe(false));
   expect(jest.mocked(axiosAuth.get).mock.calls.every(([, config]) => config?.params.includeCcLeads === true)).toBe(true);
 });
+
+
+it("preserves backend commercial admission of Shopify paid and CC-confirmed pending sales while keeping lead reads separate", async () => {
+  mockStoreIds = ["web"];
+  const paidShopify = { id: "paid-shopify", externalSource: "SHOPIFY", status: "PENDIENTE", subEstadoCc: null, unitAssignmentStatus: "PENDING_SELECTION", unitCatalogValidated: true, unitStockState: "reserved", stockVersion: 1, confirmedStockVersion: 1 };
+  const confirmedCod = { ...paidShopify, id: "cod-confirmed", subEstadoCc: "confirmado", ccConfirmadoAt: "2026-10-18T10:00:00Z" };
+  const none = { id: "none", status: "PENDIENTE", unitAssignmentStatus: "NONE" };
+  const lead = { ...paidShopify, id: "cod-lead", subEstadoCc: "por_confirmar", unitStockState: null, confirmedStockVersion: null };
+  jest.mocked(axiosAuth.get).mockImplementation(async (_url, config) => ({ data: config?.params.includeCcLeads ? [paidShopify, confirmedCod, none, lead] : [paidShopify, confirmedCod, none] }));
+  const { wrapper } = setup();
+  const commercial = renderHook(() => useBusinessOrders(), { wrapper });
+  const cc = renderHook(() => useBusinessOrders(undefined, undefined, { includeCcLeads: true }), { wrapper });
+  await waitFor(() => expect(commercial.result.current.orders.map(order => order.id)).toEqual(["paid-shopify", "cod-confirmed", "none"]));
+  await waitFor(() => expect(cc.result.current.orders).toHaveLength(4));
+  expect(commercial.result.current.orders[1]).toMatchObject({ status: "PENDIENTE", subEstadoCc: "confirmado", unitStockState: "reserved", confirmedStockVersion: 1 });
+  expect(axiosAuth.get).toHaveBeenCalledTimes(2);
+});

@@ -4,7 +4,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
 import { useBusinessOrders } from "@/hooks/useBusinessOrders";
 
-import { useState, useCallback } from "react";
 import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import ScannerSheet from "@/app/centro-envios/components/ScannerSheet";
@@ -12,6 +11,7 @@ import { OrderHeader } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserAuditInfo } from "@/hooks/useUserAuditInfo";
 import { SHIPPING_STATUSES } from "@/utils/domain/operations-pedidos-tabs";
+import { assignmentBlockReason, requiresAuthenticatedSaleMutation, saleMutationUrl } from "@/services/saleTrackingService";
 
 /**
  * El botón "📷 Escanear" del ribbon vive en el layout, disponible desde
@@ -42,21 +42,34 @@ export function GlobalScanner({
     onOpenChange(next);
   };
 
-  const patchOrder = async (orderId: string, data: Record<string, unknown>) => {
-    await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`, {
-      ...data,
+  const patchOrder = async (order: OrderHeader, status: "EN_ENVIO" | "ENTREGADO") => {
+    if (!auth) throw new Error("Inicia sesión para actualizar el pedido.");
+    const blocked = assignmentBlockReason(order, status);
+    if (blocked) {
+      toast.error(blocked);
+      throw new Error(blocked);
+    }
+    const response = await axios.patch<OrderHeader>(saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", order.id, order), {
+      status,
       ...getUserInfo(),
     });
+    await loadOrders();
+    if (requiresAuthenticatedSaleMutation(order) && (
+      response.data?.status !== status || assignmentBlockReason(response.data, status)
+    )) {
+      const message = "La operación está pendiente de confirmación de IMEI/series. Consulta la venta antes de volver a escanear.";
+      toast.warning(message);
+      // ScannerSheet sólo registra éxito cuando esta promesa se resuelve.
+      throw new Error(message);
+    }
   };
 
   const handleDispatch = async (order: OrderHeader) => {
-    await patchOrder(order.id, { status: "EN_ENVIO" });
-    await loadOrders();
+    await patchOrder(order, "EN_ENVIO");
   };
 
   const handleConfirmDelivery = async (order: OrderHeader) => {
-    await patchOrder(order.id, { status: "ENTREGADO" });
-    await loadOrders();
+    await patchOrder(order, "ENTREGADO");
   };
 
   if (!auth) return null;

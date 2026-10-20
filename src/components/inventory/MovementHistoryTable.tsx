@@ -117,6 +117,10 @@ export function MovementHistoryTable({ companyId, scope = "business", inventorie
     if (!reason) return "-";
     if (REASON_MAP[reason]) return REASON_MAP[reason];
     
+    if (reason.startsWith("UNIT_TRANSFER_OUT - ")) return `Transferencia de IMEI/series · Salida (${reason.slice("UNIT_TRANSFER_OUT - ".length)})`;
+    if (reason.startsWith("UNIT_TRANSFER_IN - ")) return `Transferencia de IMEI/series · Ingreso (${reason.slice("UNIT_TRANSFER_IN - ".length)})`;
+    if (reason.startsWith("SHRINKAGE - ")) return `Merma (${reason.slice("SHRINKAGE - ".length)})`;
+
     // Handle dynamic reasons like PURCHASE - XXX
     if (reason.startsWith("PURCHASE - ")) return `Compra (${reason.replace("PURCHASE - ", "")})`;
     if (reason.startsWith("PURCHASE_EDIT_REVERT - ")) return `Reversión edición compra (${reason.replace("PURCHASE_EDIT_REVERT - ", "")})`;

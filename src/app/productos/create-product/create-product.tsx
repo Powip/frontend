@@ -6,6 +6,7 @@ import { useBusinessInventories } from "@/hooks/useBusinessInventories";
 import { toast } from "sonner";
 import Image from "next/image";
 import { Loader2, Plus, Image as ImageIcon, X as XIcon } from "lucide-react";
+import { isTracked, type TrackingMode } from "@/services/inventoryTrackingService";
 import { uploadImage } from "@/services/uploadService";
 
 import {
@@ -107,9 +108,12 @@ interface ProductCreateFormProps {
   editVariantId?: string | null;
 }
 
-export default function ProductCreateForm({
-  editVariantId,
-}: ProductCreateFormProps) {
+export default function ProductCreateForm(props: ProductCreateFormProps) {
+  const { auth } = useAuth();
+  return <ProductCreateFormForCompany key={`${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}:${props.editVariantId ?? "new"}`} {...props} />;
+}
+
+function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) {
   const { auth } = useAuth();
   const warehouseQuery = useBusinessInventories();
   const inventories = warehouseQuery.inventories;
@@ -153,6 +157,7 @@ export default function ProductCreateForm({
   );
 
   const [variants, setVariants] = useState<VariantForm[]>([]);
+  const [trackingMode, setTrackingMode] = useState<TrackingMode>("NONE");
   const [companySku, setCompanySku] = useState("");
   const [message, setMessage] = useState("");
 
@@ -192,6 +197,7 @@ export default function ProductCreateForm({
   // =========================
   useEffect(() => {
     if (!editVariantId || !companyId) return;
+    let cancelled = false;
 
     const loadProductForEdit = async () => {
       setIsLoadingProduct(true);
@@ -204,6 +210,7 @@ export default function ProductCreateForm({
           { ids: [editVariantId] },
         );
 
+        if (cancelled) return;
         if (variants.length === 0) {
           toast.error("No se encontró el producto");
           return;
@@ -213,6 +220,7 @@ export default function ProductCreateForm({
         const product = variant.product;
         if (product?.companyId !== companyId) throw new Error("El producto no pertenece al negocio activo.");
         setEditProductId(product.id);
+        setTrackingMode(product.trackingMode ?? "NONE");
 
         // Obtener detalles completos del producto CON relaciones (subcategory, etc.)
         const { data: productDetailsArray } = await axiosAuth.post(
@@ -220,6 +228,7 @@ export default function ProductCreateForm({
           { productIds: [product.id] },
         );
 
+        if (cancelled) return;
         if (!productDetailsArray || productDetailsArray.length === 0) {
           toast.error("No se encontraron detalles del producto");
           setIsLoadingProduct(false);
@@ -255,6 +264,7 @@ export default function ProductCreateForm({
           `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/subcategories/${subcategoryId}`,
         );
 
+        if (cancelled) return;
         // Cargar atributos default de la subcategoría
         const attrs: DefaultAttribute[] =
           subcategoryData.defaultAttributes || [];
@@ -329,14 +339,16 @@ export default function ProductCreateForm({
 
         editLoadComplete.current = true;
       } catch (error) {
+        if (cancelled) return;
         console.error("Error cargando producto para editar:", error);
         toast.error("Error al cargar el producto");
       } finally {
-        setIsLoadingProduct(false);
+        if (!cancelled) setIsLoadingProduct(false);
       }
     };
 
     loadProductForEdit();
+    return () => { cancelled = true; };
   }, [editVariantId, companyId]);
 
   // Auto-seleccionar inventario si solo hay uno
@@ -673,6 +685,7 @@ export default function ProductCreateForm({
     setCustomAttributes([]);
     setVariants([]);
     setCompanySku("");
+    setTrackingMode("NONE");
     setMessage("");
   };
 
@@ -759,12 +772,13 @@ export default function ProductCreateForm({
       attributeValues: v.attributes,
       priceBase: v.priceBase,
       priceVta: v.priceVta,
-      stock: v.stock,
+      stock: isTracked(trackingMode) ? 0 : v.stock,
       minStock: Number(v.minStock),
       images: [],
     }));
 
     const payload = {
+      ...(isTracked(trackingMode) ? { trackingMode } : {}),
       name: form.name,
       description: form.description,
       companySku: companySku.trim() || undefined,
@@ -875,6 +889,15 @@ export default function ProductCreateForm({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="product-tracking-mode">Control de unidades</Label>
+                <select id="product-tracking-mode" className="w-full rounded-md border p-2" value={trackingMode} disabled={isEditMode || isSubmitting} onChange={(event) => {
+                  const next = event.target.value as TrackingMode;
+                  setTrackingMode(next);
+                  if (isTracked(next)) setVariants((previous) => previous.map((variant) => ({ ...variant, stock: 0 })));
+                }}><option value="NONE">Por cantidad (sin código único)</option><option value="SERIAL">Número de serie por unidad</option><option value="IMEI">IMEI por unidad (15 dígitos)</option></select>
+                <p className="text-sm text-muted-foreground">{isEditMode ? "El modo no se cambia desde esta edición. Para asociar códigos al stock existente, abre Almacén y elige Asociar IMEI/series." : isTracked(trackingMode) ? "El producto se creará con stock 0. Registra después una compra con un código por unidad." : "El inventario se administra por cantidades."}</p>
+              </div>
               {/* Row: Inventario + Categoría */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -1199,8 +1222,9 @@ export default function ProductCreateForm({
                       {/* Datos de la variante */}
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                         <div className="space-y-1">
-                          <Label className="text-xs">Precio base</Label>
+                          <Label htmlFor={`variant-${index}-base-price`} className="text-xs">Precio base</Label>
                           <Input
+                            id={`variant-${index}-base-price`}
                             type="number"
                             value={variant.priceBase || ""}
                             onChange={(e) =>
@@ -1214,8 +1238,9 @@ export default function ProductCreateForm({
                         </div>
 
                         <div className="space-y-1">
-                          <Label className="text-xs">Precio venta</Label>
+                          <Label htmlFor={`variant-${index}-sale-price`} className="text-xs">Precio venta</Label>
                           <Input
+                            id={`variant-${index}-sale-price`}
                             type="number"
                             value={variant.priceVta || ""}
                             onChange={(e) =>
@@ -1229,11 +1254,12 @@ export default function ProductCreateForm({
                         </div>
 
                         <div className="space-y-1">
-                          <Label className="text-xs">Stock</Label>
+                          <Label htmlFor={`variant-${index}-stock`} className="text-xs">Stock</Label>
                           <Input
+                            id={`variant-${index}-stock`}
                             type="number"
-                            value={variant.stock || ""}
-                            disabled={isEditMode}
+                            value={isTracked(trackingMode) && !isEditMode ? 0 : variant.stock || ""}
+                            disabled={isEditMode || isTracked(trackingMode)}
                             onChange={(e) =>
                               updateVariantField(index, "stock", e.target.value)
                             }

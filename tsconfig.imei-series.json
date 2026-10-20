@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": [
+    "src/interfaces/IProduct.ts",
+    "src/services/inventoryTrackingService.ts",
+    "src/components/inventory/RegularizeProductModal.tsx",
+    "src/components/inventory/InventoryUnitsModal.tsx",
+    "src/app/registrar-compra/page.tsx",
+    "src/app/compras/page.tsx",
+    "src/app/inventario/page.tsx",
+    "src/app/productos/create-product/create-product.tsx",
+    "src/components/products/EditProducto.tsx"
+  ],
+  "exclude": ["node_modules"]
+}

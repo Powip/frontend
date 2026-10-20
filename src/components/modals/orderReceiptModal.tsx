@@ -1,6 +1,13 @@
 ﻿"use client";
-import axios from "axios";
-import { useEffect, useState } from "react";
+import SaleUnitLifecycleActions from "@/components/registrar-venta/SaleUnitLifecycleActions";
+import axios from "@/lib/axiosAuth";
+import Link from "next/link";
+import {
+  assignmentBlockReason,
+  saleMutationUrl,
+} from "@/services/saleTrackingService";
+import { SaleAssignmentStatus } from "@/components/registrar-venta/SaleTrackingRecovery";
+import { useEffect, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import OrderReceiptView from "./orderReceiptView";
@@ -8,6 +15,7 @@ import PaymentProofUploadModal from "./PaymentProofUploadModal";
 import { toast } from "sonner";
 import { Upload, Truck } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useReceiptPrintScope } from "@/hooks/useReceiptPrintScope";
 import { printOrderLabel } from "@/utils/printOrderLabel";
 import { downloadNotaVentaPdf } from "@/utils/downloadNotaVentaPdf";
 import { OrderHeader } from "@/interfaces/IOrder";
@@ -25,9 +33,20 @@ export default function OrderReceiptModal({
   onStatusChange,
 }: Props) {
   const { auth } = useAuth();
+  const receiptKey = `${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}:${orderId}`;
+  const activeReceiptKey = useRef(receiptKey);
+  activeReceiptKey.current = receiptKey;
+  const [receiptRevision, setReceiptRevision] = useState(0);
+  const beginPrint = useReceiptPrintScope(
+    `${receiptKey}:${receiptRevision}`,
+    Boolean(open && orderId && auth?.company?.id && auth?.user?.id),
+  );
   const [loading, setLoading] = useState(false);
-  const [receipt, setReceipt] = useState<any>(null);
-  const [orderHeader, setOrderHeader] = useState<OrderHeader | null>(null);
+  const [loadedReceipt, setReceipt] = useState<any>(null);
+  const [loadedHeader, setOrderHeader] = useState<OrderHeader | null>(null);
+  const [loadedKey, setLoadedKey] = useState("");
+  const receipt = loadedKey === receiptKey ? loadedReceipt : null;
+  const orderHeader = loadedKey === receiptKey ? loadedHeader : null;
   const [uploadOpen, setUploadOpen] = useState(false);
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(
     null,
@@ -39,65 +58,128 @@ export default function OrderReceiptModal({
       setOrderHeader(null);
       return;
     }
-    if (!orderId) {
+    if (!orderId || !auth?.company?.id || !auth?.user?.id) {
       setReceipt(null);
       setOrderHeader(null);
       return;
     }
 
+    const controller = new AbortController();
     const fetchReceipt = async () => {
       setReceipt(null);
       setLoading(true);
       try {
         const [receiptRes, orderRes] = await Promise.all([
           axios.get(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`,
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/manual/${orderId}/receipt`,
+            { signal: controller.signal },
           ),
-          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`),
+          axios.get(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/manual/${orderId}`,
+            { signal: controller.signal },
+          ),
         ]);
+        if (controller.signal.aborted) return;
+        if (
+          receiptRes.data?.orderId !== orderId ||
+          orderRes.data?.id !== orderId
+        )
+          throw new Error(
+            "El comprobante no corresponde al pedido solicitado.",
+          );
         setReceipt(receiptRes.data);
         setOrderHeader(orderRes.data);
+        setLoadedKey(receiptKey);
       } catch (err) {
-        console.error("Error fetching receipt", err);
+        if (!controller.signal.aborted)
+          console.error("Error fetching receipt", err);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
 
     fetchReceipt();
-  }, [open, orderId]);
+    return () => controller.abort();
+  }, [
+    open,
+    orderId,
+    receiptKey,
+    receiptRevision,
+    auth?.company?.id,
+    auth?.user?.id,
+  ]);
+
+  const reloadReceipt = (saved?: OrderHeader) => {
+    if (
+      !open ||
+      activeReceiptKey.current !== receiptKey ||
+      (saved && saved.id !== orderId)
+    )
+      return;
+    setReceipt(null);
+    setLoadedKey("");
+    setReceiptRevision((revision) => revision + 1);
+  };
 
   const handlePrint = async () => {
     if (!receipt) return;
-
-    // Si el estado es PENDIENTE, cambiarlo a PREPARADO (flujo unificado para LIMA y PROVINCIA)
-    if (receipt.status === "PENDIENTE" && orderId) {
-      const newStatus = "PREPARADO";
-      try {
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-          { status: newStatus },
-        );
-        toast.success(`Estado actualizado a ${newStatus}`);
-        onStatusChange?.();
-      } catch (error: any) {
-        const backendMessage = error?.response?.data?.message;
-        if (backendMessage) {
-          toast.error(backendMessage, { duration: 8000 });
-        } else {
-          toast.error("No se pudo actualizar el estado");
-        }
-        // No continuar con la impresión si falla el cambio de estado por stock
+    const operation = beginPrint();
+    try {
+      const blocked =
+        orderHeader && assignmentBlockReason(orderHeader, "PREPARADO");
+      if (blocked) {
+        toast.error(blocked);
         return;
       }
-    }
 
-    await printOrderLabel(receipt, orderHeader, auth?.company);
+      // Si el estado es PENDIENTE, cambiarlo a PREPARADO (flujo unificado para LIMA y PROVINCIA)
+      if (receipt.status === "PENDIENTE" && orderId) {
+        const newStatus = "PREPARADO";
+        try {
+          await axios.patch(
+            saleMutationUrl(
+              process.env.NEXT_PUBLIC_API_VENTAS || "",
+              orderId,
+              orderHeader,
+            ),
+            { status: newStatus },
+          );
+          if (!operation.isCurrent?.()) return;
+          toast.success(`Estado actualizado a ${newStatus}`);
+          onStatusChange?.();
+        } catch (error: any) {
+          if (!operation.isCurrent?.()) return;
+          const backendMessage = error?.response?.data?.message;
+          if (backendMessage) {
+            toast.error(backendMessage, { duration: 8000 });
+          } else {
+            toast.error("No se pudo actualizar el estado");
+          }
+          // No continuar con la impresión si falla el cambio de estado por stock
+          return;
+        }
+      }
+
+      if (operation.isCurrent?.())
+        await printOrderLabel(receipt, orderHeader, auth?.company, operation);
+    } finally {
+      operation.release();
+    }
   };
 
   const handleDownloadPdf = async () => {
     if (!receipt) return;
-    await downloadNotaVentaPdf(receipt, orderHeader, auth?.company);
+    const operation = beginPrint();
+    try {
+      await downloadNotaVentaPdf(
+        receipt,
+        orderHeader,
+        auth?.company,
+        operation,
+      );
+    } finally {
+      operation.release();
+    }
   };
 
   const handleWhatsapp = () => {
@@ -135,12 +217,32 @@ export default function OrderReceiptModal({
 
         {loading && <p>Cargando comprobante...</p>}
         {!loading && receipt && (
-          <OrderReceiptView data={receipt} />
+          <>
+            {orderHeader && (
+              <SaleAssignmentStatus
+                key={`${auth?.company?.id}:${orderHeader.id}`}
+                order={orderHeader}
+                onRefresh={reloadReceipt}
+              />
+            )}
+            <OrderReceiptView data={receipt} />
+          </>
         )}
 
+        {orderHeader && (
+          <SaleUnitLifecycleActions
+            key={`${receiptKey}:${orderHeader.id}`}
+            order={orderHeader}
+            onUpdated={(saved) => {
+              reloadReceipt(saved);
+              onStatusChange?.();
+            }}
+          />
+        )}
         <div className="flex flex-wrap justify-end gap-2 mt-4">
           <Button
             variant="outline"
+            disabled={!receipt}
             onClick={() => {
               const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${receipt.orderNumber}`;
               window.open(trackingUrl, "_blank");
@@ -148,13 +250,27 @@ export default function OrderReceiptModal({
           >
             <Truck className="h-4 w-4 mr-1" /> Rastreo
           </Button>
-          <Button variant="outline" onClick={handlePrint}>
+          {orderHeader?.unitAssignmentStatus &&
+            orderHeader.unitAssignmentStatus !== "NONE" && (
+              <Button variant="outline" asChild>
+                <Link href={`/registrar-venta?orderId=${orderHeader.id}`}>
+                  Revisar IMEI / series
+                </Link>
+              </Button>
+            )}
+          <Button variant="outline" onClick={handlePrint} disabled={!receipt}>
             Imprimir
           </Button>
-          <Button variant="outline" onClick={handleDownloadPdf}>
+          <Button
+            variant="outline"
+            onClick={handleDownloadPdf}
+            disabled={!receipt}
+          >
             Nota de venta
           </Button>
-          <Button onClick={handleWhatsapp}>Compartir</Button>
+          <Button onClick={handleWhatsapp} disabled={!receipt}>
+            Compartir
+          </Button>
         </div>
       </DialogContent>
 
@@ -162,17 +278,7 @@ export default function OrderReceiptModal({
         open={uploadOpen}
         paymentId={selectedPaymentId}
         onClose={() => setUploadOpen(false)}
-        onSuccess={() => {
-          // Recargar el recibo para ver el comprobante actualizado
-          if (orderId) {
-            axios
-              .get(
-                `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`,
-              )
-              .then((res) => setReceipt(res.data))
-              .catch((err) => console.error(err));
-          }
-        }}
+        onSuccess={() => reloadReceipt()}
       />
     </Dialog>
   );

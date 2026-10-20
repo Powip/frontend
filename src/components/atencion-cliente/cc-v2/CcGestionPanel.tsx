@@ -16,6 +16,7 @@ interface Props {
   callAttempts: number;
   datosCompletos: boolean;
   onUpdated: () => void;
+  beforeCancellation?: () => Promise<boolean>;
   aliclikDispatchStatus?: string | null;
   aliclikSyncedAt?: string | null;
   evaStatus?: string | null;
@@ -40,7 +41,7 @@ function TerminalBadge({ colorCls, label, sub }: { colorCls: string; label: stri
   );
 }
 
-export function CcGestionPanel({ orderId, subEstadoCc, callAttempts, datosCompletos, onUpdated, aliclikDispatchStatus, aliclikSyncedAt, evaStatus, evaSyncedAt }: Props) {
+export function CcGestionPanel({ orderId, subEstadoCc, callAttempts, datosCompletos, onUpdated, beforeCancellation, aliclikDispatchStatus, aliclikSyncedAt, evaStatus, evaSyncedAt }: Props) {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
@@ -54,6 +55,8 @@ export function CcGestionPanel({ orderId, subEstadoCc, callAttempts, datosComple
     async (nuevoEstado: SubEstadoCc, comentario?: string) => {
       setLoading(nuevoEstado);
       try {
+        const mayCancel = nuevoEstado === "anulado_cc" || (nuevoEstado === "no_contesta" && callAttempts >= 2);
+        if (mayCancel && await beforeCancellation?.()) return;
         const result = await updateSubEstadoCC(orderId, nuevoEstado, comentario);
         onUpdated();
         if (TERMINAL_STATES.includes(nuevoEstado) || result.autoCanceled) {
@@ -72,7 +75,7 @@ export function CcGestionPanel({ orderId, subEstadoCc, callAttempts, datosComple
         setChecks(CHECKLIST_ITEMS.map(() => false));
       }
     },
-    [orderId, onUpdated, queryClient],
+    [orderId, onUpdated, queryClient, callAttempts, beforeCancellation],
   );
 
   const cancelarConfirmacion = () => {
@@ -104,7 +107,7 @@ export function CcGestionPanel({ orderId, subEstadoCc, callAttempts, datosComple
       <TerminalBadge
         colorCls="bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400"
         label="✓ PEDIDO CONFIRMADO"
-        sub="El cliente confirmó la entrega del pedido"
+        sub="Venta confirmada. Consulta su estado en Comercial antes de preparar o enviar."
       />
     );
   }
@@ -247,13 +250,13 @@ export function CcGestionPanel({ orderId, subEstadoCc, callAttempts, datosComple
                   // Carritos: cambio simple de estado
                   await cambiar(estadoConfirmado, "Carrito recuperado — checklist verificado");
                 } else {
-                  // COD: transacción completa → mueve a PREPARADO
+                  // COD: confirma la venta; la reserva y los códigos tienen su propia confirmación.
                   setLoading(estadoConfirmado);
                   try {
                     await confirmarDespacho(orderId);
                     onUpdated();
                     queryClient.invalidateQueries({ queryKey: ["orders"] });
-                    toast.success("Pedido confirmado → pasó a Operaciones como Preparado");
+                    toast.success("Venta confirmada como Pendiente. Revisa su estado antes de preparar o enviar.");
                   } catch (err: any) {
                     const msg = err?.response?.data?.message ?? "Error al confirmar el despacho";
                     toast.error(msg);

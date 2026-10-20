@@ -1,6 +1,7 @@
 "use client";
 
 import { Download, Loader2, Printer } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,17 @@ import {
 import type { DownloadFileResult } from "@/types/download-file.types";
 import { downloadFile } from "@/utils/http/download-file";
 
-import { PdfViewer } from "./PdfViewer";
+const PdfViewer = dynamic(
+  () => import("./PdfViewer").then((module) => module.PdfViewer),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <span className="text-sm text-muted-foreground">Cargando PDF...</span>
+      </div>
+    ),
+  },
+);
 
 interface PdfPreviewDialogProps {
   open: boolean;

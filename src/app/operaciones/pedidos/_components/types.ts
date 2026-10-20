@@ -1,3 +1,4 @@
+import { type UnitAssignmentState } from "@/services/saleTrackingService";
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import type { OpsPermission } from "@/config/operationsPermissions";
 import { ORDER_STATUS_FLOW, getStatusLabel } from "@/utils/domain/orders-status-flow";
@@ -12,7 +13,7 @@ import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
    tocarlos, más los campos que necesita Necesita Atención que en el viejo
    vivían solo en el OrderHeader crudo.
 ------------------------------------------------------------------------ */
-export interface Sale {
+export interface Sale extends UnitAssignmentState {
   id: string;
   storeId?: string;
   storeName?: string;
@@ -68,6 +69,7 @@ export interface Sale {
 }
 
 export interface SaleItem {
+  trackingMode?: string;
   /** Identificador inequívoco del producto (filtro por producto). */
   productVariantId: string | null;
   productName: string;
@@ -127,6 +129,13 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     pendingPayment,
     notes: order.notes ?? "",
     hasStockIssue: order.hasStockIssue ?? false,
+    unitAssignmentStatus: order.unitAssignmentStatus,
+    unitStockState: order.unitStockState,
+    unitCatalogValidated: order.unitCatalogValidated,
+    hasTrackedUnits: order.hasTrackedUnits,
+    unitAssignmentError: order.unitAssignmentError,
+    confirmedStockVersion: order.confirmedStockVersion,
+    stockVersion: order.stockVersion,
     zone: order.customer?.zone ?? undefined,
     guideNumber: order.guideNumber ?? null,
     callStatus: order.callStatus,
@@ -151,6 +160,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     updatedAt: order.updated_at,
     items: (order.items ?? []).map((it) => ({
       productVariantId: it.productVariantId ?? null,
+      trackingMode: it.trackingMode,
       productName: it.productName,
       sku: it.sku,
       attributes: it.attributes ?? {},

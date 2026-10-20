@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, ArrowLeft, CheckCircle2, Info, Loader2, Printer } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+  Info,
+  Loader2,
+  Printer,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -26,6 +33,7 @@ export interface PrintPreviewOrder {
 }
 
 interface BulkPrintPreviewDialogProps {
+  scopeKey?: string;
   open: boolean;
   orders: PrintPreviewOrder[];
   company: PrintCompany | null | undefined;
@@ -39,7 +47,11 @@ type PreviewState =
   | { status: "error"; failedOrders: string[] }
   | { status: "ready"; html: string };
 
-export function BulkPrintPreviewDialog({
+export function BulkPrintPreviewDialog(props: BulkPrintPreviewDialogProps) {
+  return <BulkPrintPreviewContent key={props.scopeKey ?? ""} {...props} />;
+}
+
+function BulkPrintPreviewContent({
   open,
   orders,
   company,
@@ -67,7 +79,9 @@ export function BulkPrintPreviewDialog({
     setFrameLoaded(false);
 
     const { fetchReceipt: fetchOne, company: printCompany } = sourceRef.current;
-    const results = await Promise.allSettled(orders.map((order) => fetchOne(order)));
+    const results = await Promise.allSettled(
+      orders.map((order) => fetchOne(order)),
+    );
     if (isStale()) return;
 
     const failedOrders = orders
@@ -83,6 +97,10 @@ export function BulkPrintPreviewDialog({
       const receipts = results.map(
         (result) => (result as PromiseFulfilledResult<ReceiptData>).value,
       );
+      if (
+        receipts.some((receipt, index) => receipt?.orderId !== orders[index].id)
+      )
+        throw new Error("El comprobante no corresponde al pedido solicitado.");
       const html = await buildReceiptsDocument(receipts, printCompany);
       if (isStale()) return;
       setPreview({ status: "ready", html });
@@ -153,13 +171,17 @@ export function BulkPrintPreviewDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => !next && handleClose()}>
       <DialogContent
-        className={cn("flex max-h-[95vh] flex-col", confirmOpen ? "sm:max-w-lg" : "sm:max-w-2xl")}
+        className={cn(
+          "flex max-h-[95vh] flex-col",
+          confirmOpen ? "sm:max-w-lg" : "sm:max-w-2xl",
+        )}
       >
         {confirmOpen ? (
           <DialogHeader>
             <DialogTitle>¿Marcar como PREPARADO?</DialogTitle>
             <DialogDescription>
-              Confirma solo si las etiquetas se imprimieron o se guardaron como PDF.
+              Confirma solo si las etiquetas se imprimieron o se guardaron como
+              PDF.
             </DialogDescription>
           </DialogHeader>
         ) : (
@@ -174,10 +196,14 @@ export function BulkPrintPreviewDialog({
         )}
 
         {confirmOpen && (
-          <section aria-label="Confirmar cambio de estado" className="space-y-3">
+          <section
+            aria-label="Confirmar cambio de estado"
+            className="space-y-3"
+          >
             <div className="rounded-md border p-3">
               <p className="mb-2 text-sm font-medium">
-                {ordersLabel} {orders.length === 1 ? "cambiará" : "cambiarán"} a PREPARADO
+                {ordersLabel} {orders.length === 1 ? "cambiará" : "cambiarán"} a
+                PREPARADO
               </p>
               <ul
                 aria-label="Pedidos a actualizar"
@@ -195,7 +221,8 @@ export function BulkPrintPreviewDialog({
             </div>
             <p className="flex items-start gap-2 text-xs text-muted-foreground">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              Si vuelves o cierras sin confirmar, ningún pedido cambia de estado.
+              Si vuelves o cierras sin confirmar, ningún pedido cambia de
+              estado.
             </p>
           </section>
         )}
@@ -244,7 +271,11 @@ export function BulkPrintPreviewDialog({
 
         {confirmOpen ? (
           <DialogFooter className="flex-wrap gap-2">
-            <Button variant="outline" onClick={handleBackToPreview} disabled={confirming}>
+            <Button
+              variant="outline"
+              onClick={handleBackToPreview}
+              disabled={confirming}
+            >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Volver
             </Button>

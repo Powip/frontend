@@ -59,6 +59,11 @@ import { useBusinessInventories } from "@/hooks/useBusinessInventories";
 import { fetchBusinessInventoryItems, filterBusinessInventoryItems, type BusinessInventoryItem } from "@/services/businessInventoryItemsService";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 
+import RegularizeProductModal from "@/components/inventory/RegularizeProductModal";
+import InventoryUnitTraceModal from "@/components/inventory/InventoryUnitTraceModal";
+import InventoryUnitMovementModal from "@/components/inventory/InventoryUnitMovementModal";
+import InventoryUnitsModal from "@/components/inventory/InventoryUnitsModal";
+import { isTracked } from "@/services/inventoryTrackingService";
 import AddStockModal from "@/components/modals/AddStockModal";
 import DeleteInventoryItemModal from "@/components/modals/DeleteInventoryItemModal";
 import EditProductImageModal from "@/components/modals/EditProductImageModal";
@@ -106,6 +111,10 @@ export default function AlmacenPage() {
   const totals = filteredItems.reduce((sum, row) => ({ physical: sum.physical + row.physicalStock, available: sum.available + row.availableStock }), { physical: 0, available: 0 });
 
   const router = useRouter();
+
+  const [unitTrace, setUnitTrace] = useState<{ companyId: string; userId: string; code: string } | null>(null);
+  const [trackingItem, setTrackingItem] = useState<{ item: BusinessInventoryItem; companyId: string; action: "regularize" | "units" | "transfer" | "write-off" } | null>(null);
+  useEffect(() => { setTrackingItem(null); setUnitTrace(null); }, [companyId, auth?.user?.id]);
 
   const [addStockOpen, setAddStockOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -213,6 +222,15 @@ export default function AlmacenPage() {
 
   return (
     <div className="h-screen flex flex-col px-6">
+      {trackingItem?.companyId === companyId && trackingItem.action === "regularize" ? <RegularizeProductModal key={`${companyId}:${trackingItem.item.productId}`} companyId={companyId} productId={trackingItem.item.productId} productName={trackingItem.item.productName} onClose={() => setTrackingItem(null)} onSaved={handleStockRefresh} /> : null}
+      {trackingItem?.companyId === companyId && trackingItem.action === "units" ? <InventoryUnitsModal key={`${companyId}:${trackingItem.item.inventoryItemId}`} companyId={companyId} inventoryItemId={trackingItem.item.inventoryItemId} productName={trackingItem.item.productName} onViewHistory={(code) => setUnitTrace({ companyId, userId: auth.user.id, code })} onClose={() => setTrackingItem(null)} /> : null}
+      {trackingItem?.companyId === companyId && (trackingItem.action === "transfer" || trackingItem.action === "write-off") ? <InventoryUnitMovementModal key={`${companyId}:${auth.user?.id}:${trackingItem.item.inventoryItemId}:${trackingItem.action}`} companyId={companyId} source={trackingItem.item} action={trackingItem.action} onClose={() => setTrackingItem(null)} onSaved={() => {
+        handleStockRefresh();
+        void queryClient.invalidateQueries({ queryKey: ["admin-shrinkage-list", companyId] });
+        void queryClient.invalidateQueries({ queryKey: ["admin-shrinkage-summary", companyId] });
+        void queryClient.invalidateQueries({ queryKey: ["inventory-movement-history", companyId] });
+      }} /> : null}
+      {unitTrace?.companyId === companyId && unitTrace.userId === auth.user.id ? <InventoryUnitTraceModal companyId={companyId} initialCode={unitTrace.code} onClose={() => setUnitTrace(null)} /> : null}
       <HeaderConfig
         title="Almacén"
         description="Control de stock por tienda y almacén"
@@ -244,6 +262,7 @@ export default function AlmacenPage() {
             </TabsList>
 
             <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setUnitTrace({ companyId, userId: auth.user.id, code: "" })}>Buscar IMEI/serie</Button>
               <Link href="/compras">
                 <Button variant="outline" size="sm">
                   <ShoppingCart className="mr-2 h-4 w-4" />
@@ -530,11 +549,20 @@ export default function AlmacenPage() {
                               ${prod.priceVta}
                             </TableCell>
                             <TableCell className="text-right space-x-1">
+                              <Button size="sm" variant="outline" disabled={!prod.productId} onClick={() => setTrackingItem({ item: prod, companyId, action: isTracked(prod.trackingMode) ? "units" : "regularize" })}>
+                                {isTracked(prod.trackingMode) ? "Ver unidades" : "Asociar IMEI/series"}
+                              </Button>
+                              {isTracked(prod.trackingMode) ? <>
+                                <Button size="sm" variant="outline" onClick={() => setTrackingItem({ item: prod, companyId, action: "transfer" })}>Transferir unidades</Button>
+                                <Button size="sm" variant="outline" onClick={() => setTrackingItem({ item: prod, companyId, action: "write-off" })}>Registrar merma</Button>
+                              </> : null}
+                              {isTracked(prod.trackingMode) ? <Button size="sm" variant="ghost" disabled={!prod.productId} onClick={() => setTrackingItem({ item: prod, companyId, action: "regularize" })}>Revisar activación</Button> : null}
                               <Button
                                 size="icon"
                                 variant="ghost"
                                 className="h-8 w-8 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
-                                title="Ajustar Stock"
+                                title={isTracked(prod.trackingMode) ? "Registra los IMEI o series desde Compras" : "Ajustar Stock"}
+                                disabled={isTracked(prod.trackingMode)}
                                 onClick={() => {
                                   setSelectedItem(prod);
                                   setAddStockOpen(true);
@@ -557,7 +585,8 @@ export default function AlmacenPage() {
                                 size="icon"
                                 variant="ghost"
                                 className="h-8 w-8 text-destructive hover:text-destructive"
-                                title="Eliminar"
+                                title={isTracked(prod.trackingMode) ? "Conserva las unidades identificadas y su historial" : "Eliminar"}
+                                disabled={isTracked(prod.trackingMode)}
                                 onClick={() => {
                                   setSelectedItem(prod);
                                   setDeleteOpen(true);

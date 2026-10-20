@@ -1,3 +1,4 @@
+import { isTracked } from "@/services/inventoryTrackingService";
 import type { CartItem } from "@/interfaces/IOrder";
 
 type PricedCartItem = Pick<CartItem, "pvp" | "price" | "quantity">;
@@ -21,6 +22,7 @@ export function getOrderItemPricing(item: PricedCartItem) {
 export function buildOrderItem(item: CartItem) {
   return {
     productVariantId: item.variantId,
+    ...(isTracked(item.trackingMode) ? { unitIds: item.unitIds ?? [] } : {}),
     sku: item.sku,
     productName: item.productName,
     quantity: item.quantity,

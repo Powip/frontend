@@ -42,3 +42,11 @@ describe("quotation sale receipt", () => {
     expect(screen.queryByText("Adelanto por verificar:")).not.toBeInTheDocument();
   });
 });
+
+
+it("shows each selected serial exactly once when a line contains multiple units", () => {
+  const data = { ...receipt(120, "PAID"), items: [{ productName: "Phone", quantity: 2, unitPrice: 60, units: [{ id: "a", code: "001234567890123" }, { id: "b", code: "001234567890124" }] }] };
+  render(<OrderReceiptView data={data} />);
+  expect(screen.getAllByText("IMEI / series: 001234567890123")).toHaveLength(1);
+  expect(screen.getAllByText("IMEI / series: 001234567890124")).toHaveLength(1);
+});

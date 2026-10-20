@@ -1,5 +1,9 @@
+import { Fragment } from "react";
+import type { OrderReceipt } from "@/utils/printOrderLabel";
+import { getPrintableUnitCodes } from "@/utils/receiptUnitCodes";
+
 interface Props {
-  data: any;
+  data: OrderReceipt & { totals: OrderReceipt["totals"] & { subtotal?: number } };
 }
 
 export default function OrderReceiptPdf({ data }: Props) {
@@ -16,9 +20,8 @@ export default function OrderReceiptPdf({ data }: Props) {
         padding: "24px",
       }}
     >
-      <h2 style={{ fontSize: "18px", fontWeight: "bold" }}>
-        Comprobante de Venta
-      </h2>
+      <style>{`@media print { #receipt-pdf thead { display: table-header-group; } #receipt-pdf tr { break-inside: avoid; page-break-inside: avoid; } }`}</style>
+      <h2 style={{ fontSize: "18px", fontWeight: "bold" }}>Comprobante de Venta</h2>
 
       <p>Orden Nº {orderNumber}</p>
       <p>Fecha: {new Date(createdAt).toLocaleString()}</p>
@@ -32,10 +35,7 @@ export default function OrderReceiptPdf({ data }: Props) {
       <p>{customer.phoneNumber}</p>
       <p>{customer.address}</p>
 
-      <table
-        width="100%"
-        style={{ marginTop: "16px", borderCollapse: "collapse" }}
-      >
+      <table width="100%" style={{ marginTop: "16px", borderCollapse: "collapse" }}>
         <thead>
           <tr>
             <th align="left">Producto</th>
@@ -45,14 +45,44 @@ export default function OrderReceiptPdf({ data }: Props) {
           </tr>
         </thead>
         <tbody>
-          {items.map((item: any, i: number) => (
-            <tr key={i}>
-              <td>{item.productName}</td>
-              <td align="center">{item.quantity}</td>
-              <td align="right">${item.unitPrice}</td>
-              <td align="right">${item.subtotal}</td>
-            </tr>
-          ))}
+          {items.map((item, index) => {
+            const tracking = getPrintableUnitCodes(data, item);
+            return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: Receipt rows are a static print snapshot without row state.
+              <Fragment key={`${item.sku ?? item.productName}:${index}`}>
+                <tr>
+                  <td>{item.productName}</td>
+                  <td align="center">{item.quantity}</td>
+                  <td align="right">${item.unitPrice}</td>
+                  <td align="right">${item.subtotal}</td>
+                </tr>
+                {tracking?.codes.map((code) => (
+                  <tr key={code}>
+                    <td
+                      colSpan={4}
+                      style={{
+                        padding: "2px 0 4px",
+                        fontSize: "11px",
+                        fontFamily: "monospace",
+                        whiteSpace: "normal",
+                        overflowWrap: "anywhere",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {tracking.label}: {code}
+                    </td>
+                  </tr>
+                ))}
+                {tracking?.notice && (
+                  <tr>
+                    <td colSpan={4} style={{ fontSize: "11px", padding: "4px 0" }}>
+                      {tracking.notice}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
 
@@ -62,7 +92,7 @@ export default function OrderReceiptPdf({ data }: Props) {
         <tbody>
           <tr>
             <td>Subtotal</td>
-            <td align="right">${totals.subtotal}</td>
+            <td align="right">${totals.subtotal ?? totals.productsTotal}</td>
           </tr>
           <tr>
             <td>IVA</td>
