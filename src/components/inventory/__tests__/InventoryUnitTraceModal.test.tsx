@@ -82,7 +82,7 @@ test("global search waits for explicit exact input, preserves zeroes and shows c
   expect(snapshot).toHaveTextContent("Sucursal B");
   expect(screen.getByRole("link", { name: "purchase" })).toHaveAttribute(
     "href",
-    "/registrar-compra?edit=purchase&tracked=1",
+    "/compras",
   );
   expect(screen.getByRole("link", { name: "order" })).toHaveAttribute(
     "href",

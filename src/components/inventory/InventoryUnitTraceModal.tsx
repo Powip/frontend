@@ -244,7 +244,8 @@ function TraceContent({ companyId, initialCode }: { companyId: string; initialCo
                   Compra de origen:{" "}
                   <Link
                     className="underline"
-                    href={`/registrar-compra?edit=${encodeURIComponent(result.unit.purchase.id)}&tracked=1`}
+                    // FEAT-24 H0: las compras recibidas ya no se editan; se consultan en Compras.
+                    href="/compras"
                   >
                     {result.unit.purchase.id}
                   </Link>
