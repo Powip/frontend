@@ -39,7 +39,7 @@ export interface VentasOrders {
   refetch: () => Promise<unknown>;
   anuladas: WindowQueryState;
   todas: WindowQueryState & { count: number | null };
-  antiguos: QueryState & { count: number | null; countLoading: boolean };
+  antiguos: QueryState & { count: number | null; countLoading: boolean; ready: boolean };
   kpis: QueryState;
 }
 
@@ -182,6 +182,8 @@ export function useVentasOrders(opts: Options): VentasOrders {
   // Achicar dentro de lo bajado sigue listo; agrandar espera la ventana nueva.
   const anuladasReady = !anuladas.loading && !anuladas.error && coversWindow(anuladasApplied, anuladasInput);
   const todasReady = todasEnabled && !todas.loading && !todas.error && coversWindow(todasApplied, todasInput);
+  // Antiguos no tiene ventana: está lista cuando su consulta bajó completa
+  const antiguosReady = antiguosEnabled && !antiguos.loading && !antiguos.error;
 
   return {
     orders,
@@ -209,6 +211,7 @@ export function useVentasOrders(opts: Options): VentasOrders {
       retry: antiguos.retry,
       count: antiguosCount.count,
       countLoading: antiguosCount.loading,
+      ready: antiguosReady,
     },
     kpis: {
       loading: kpiPeriod === null || kpiWin.pending || kpis.loading,

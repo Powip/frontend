@@ -244,6 +244,28 @@ describe("useVentasOrders", () => {
       expect(result.current.anuladas.ready).toBe(false);
       expect(result.current.todas.ready).toBe(false);
     });
+
+    it("antiguos es false mientras no está habilitada", () => {
+      const { result } = renderHook(() => useVentasOrders(base));
+      expect(result.current.antiguos.ready).toBe(false);
+    });
+
+    it("antiguos es false mientras baja y true cuando llegan los datos", () => {
+      const enabled = { ...base, antiguosEnabled: true };
+      fixtures.antiguos = { loading: true };
+      const { result, rerender } = renderHook((p) => useVentasOrders(p), { initialProps: enabled });
+      expect(result.current.antiguos.ready).toBe(false);
+
+      delete fixtures.antiguos;
+      rerender(enabled);
+      expect(result.current.antiguos.ready).toBe(true);
+    });
+
+    it("antiguos es false si su consulta falla", () => {
+      fixtures.antiguos = { error: true };
+      const { result } = renderHook(() => useVentasOrders({ ...base, antiguosEnabled: true }));
+      expect(result.current.antiguos.ready).toBe(false);
+    });
   });
 
   it("tras la primera carga de anuladas, su loading ya no tapa la página", () => {

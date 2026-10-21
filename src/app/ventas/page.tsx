@@ -1765,9 +1765,9 @@ Estado: ${sale.status}
     () => splitVentasTabs(sales, { today, anuladasWindow, todasWindow }),
     [sales, today, anuladasWindow, todasWindow],
   );
-  const allPendientes = pendientesView === "antiguos" ? split.antiguos : split.pendientes;
-  // Anuladas y Todas quedan vacías hasta que su consulta cubre el período pedido: ni la tabla
-  // ni las acciones (exportar, imprimir, WhatsApp, copiar, masivas) usan una lista parcial
+  // Anuladas, Todas y Pendientes antiguos quedan vacías hasta que su consulta cubre lo pedido: ni la
+  // tabla ni las acciones (exportar, imprimir, WhatsApp, copiar, masivas) usan una lista parcial
+  const allPendientes = pendientesView === "recientes" ? split.pendientes : ventas.antiguos.ready ? split.antiguos : NO_SALES;
   const allAnulados = ventas.anuladas.ready ? split.anulados : NO_SALES;
   const allTodas = ventas.todas.ready ? split.todas : NO_SALES;
 
@@ -2101,6 +2101,7 @@ Estado: ${sale.status}
                       <Button
                         variant="outline"
                         className="w-full lg:w-auto"
+                        disabled={pendientesView === "antiguos" && !ventas.antiguos.ready}
                         onClick={() =>
                           handleExportExcel(
                             pendientes,

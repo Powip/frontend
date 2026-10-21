@@ -344,7 +344,7 @@ describe("VentasPage — Anuladas y Todas por período", () => {
   });
 });
 
-describe("VentasPage — Anuladas y Todas no muestran ni usan una lista a medio bajar", () => {
+describe("VentasPage — Anuladas, Todas y Pendientes antiguos no muestran ni usan una lista a medio bajar", () => {
   it("mientras Todas baja no lista los pedidos de otras consultas ni exporta; al llegar muestra la lista completa", () => {
     overrides.todas = { loading: true, orders: EMPTY };
     const { rerender } = render(<VentasPage />);
@@ -387,6 +387,32 @@ describe("VentasPage — Anuladas y Todas no muestran ni usan una lista a medio 
     expect(mockOrders).toHaveBeenCalledWith("2026-08-01", undefined, { statuses: ["ANULADO"] });
     expect(tab()).toHaveTextContent(/Ventas Anuladas\s*1$/);
     expect(within(panel).getByRole("button", { name: /Exportar Excel/ })).toBeEnabled();
+  });
+
+  it("mientras Pendientes antiguos baja no lista los antiguos que trajo Todas ni exporta; al llegar muestra la lista completa", () => {
+    // Todas ampliada a más de 30 días ya trajo uno de los antiguos
+    overrides.todas = { orders: [PREPARADO, RECIENTE, ANULADA, ANTIGUO_202] };
+    overrides.antiguos = { loading: true, orders: EMPTY };
+    const { rerender } = render(<VentasPage />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas las Ventas/ }));
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Pendientes/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Pendientes antiguos (2)" }));
+    const panel = () => screen.getByRole("tabpanel");
+    const exportar = () => within(panel()).getByRole("button", { name: /Exportar Excel/ });
+
+    expect(within(panel()).getByText("Cargando pendientes antiguos...")).toBeInTheDocument();
+    expect(ordersIn(panel())).toEqual([]); // no ORD-202, que trajo Todas
+    expect(exportar()).toBeDisabled();
+    fireEvent.click(exportar());
+    expect(mockExport).not.toHaveBeenCalled();
+
+    overrides.antiguos = {};
+    rerender(<VentasPage />);
+
+    expect(ordersIn(panel())).toEqual(["ORD-201", "ORD-202"]);
+    fireEvent.click(exportar());
+    expect(mockExport).toHaveBeenCalledTimes(1);
+    expect(mockExport.mock.calls[0][0].map((r) => r.orderNumber)).toEqual(["ORD-201", "ORD-202"]);
   });
 
   it("al cambiar el período de Todas o de Anuladas se vacía la selección de esa pestaña", () => {
