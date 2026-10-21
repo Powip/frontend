@@ -1,22 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { deleteTrackedPurchase, getTrackedPurchase, trackingError, type InventoryUnit, type TrackingMode } from "@/services/inventoryTrackingService";
+import { cancelPurchase, getTrackedPurchase, trackingError, type InventoryUnit, type TrackingMode } from "@/services/inventoryTrackingService";
+import CancelPurchaseDialog from "@/components/compras/CancelPurchaseDialog";
 import axios from "@/lib/axiosAuth";
 import { useQuery } from "@tanstack/react-query";
 import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
     Plus,
     Eye,
-    Trash2,
+    Ban,
     ShoppingCart,
     Package,
     Calendar,
     DollarSign,
-    Pencil,
     User,
 } from "lucide-react";
 
@@ -44,16 +43,6 @@ import { Pagination } from "@/components/ui/pagination";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 
 const INVENTORY_API = process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics;
 
@@ -84,6 +73,10 @@ interface Purchase {
     supplierName: string | null;
     createdAt: string;
     items: PurchaseItem[];
+    // FEAT-24 H0: motivo, autor y fecha de la anulación.
+    cancelReason?: string | null;
+    cancelledBy?: string | null;
+    deletedAt?: string | null;
 }
 
 const ITEMS_PER_PAGE = 10;
@@ -95,7 +88,6 @@ export default function ComprasPage() {
 
 function ComprasContent() {
     const { auth } = useAuth();
-    const router = useRouter();
     const companyId = auth?.company?.id;
 
     const active = useRef(true);
@@ -143,30 +135,21 @@ function ComprasContent() {
         } finally { if (active.current && version === detailsVersion.current) setDetailsLoading(false); }
     };
 
-    const handleEdit = (purchase: Purchase) => {
-        // Redirigir a la página de edición con el ID de la compra
-        router.push(`/registrar-compra?edit=${purchase.id}${purchase.hasTrackedUnits ? "&tracked=1" : ""}`);
-    };
-
     const handleDelete = (purchase: Purchase) => {
         setPurchaseToDelete(purchase);
         setDeleteOpen(true);
     };
 
-    const confirmDelete = async () => {
+    // FEAT-24 H0: anular (con o sin unidades) por la fachada autenticada, con motivo.
+    const confirmCancel = async (reason: string) => {
         if (!purchaseToDelete) return;
-
         setIsDeleting(true);
         try {
-            if (purchaseToDelete.hasTrackedUnits) await deleteTrackedPurchase(purchaseToDelete.id);
-            else await axios.delete(`${INVENTORY_API}/purchase/${purchaseToDelete.id}`);
+            await cancelPurchase(purchaseToDelete.id, reason);
             if (!active.current) return;
             setDeleteOpen(false); setPurchaseToDelete(null);
-            toast.success("Compra eliminada y stock revertido");
+            toast.success("Compra anulada");
             fetchPurchases();
-        } catch (error) {
-            console.error("Error deleting purchase", error);
-            if (active.current) toast.error(trackingError(error, "Error al eliminar la compra"));
         } finally {
             if (active.current) setIsDeleting(false);
         }
@@ -279,7 +262,7 @@ function ComprasContent() {
                                                 >
                                                     {purchase.status === "COMPLETED"
                                                         ? "Completada"
-                                                        : "Cancelada"}
+                                                        : "Anulada"}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="text-right">
@@ -295,20 +278,11 @@ function ComprasContent() {
                                                     <Button
                                                         variant="ghost"
                                                         size="icon"
-                                                        onClick={() => handleEdit(purchase)}
-                                                        title="Editar"
-                                                        disabled={purchase.status === "CANCELLED"}
-                                                    >
-                                                        <Pencil className="h-4 w-4" />
-                                                    </Button>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
                                                         onClick={() => handleDelete(purchase)}
-                                                        title="Eliminar"
+                                                        title="Anular"
                                                         disabled={purchase.status === "CANCELLED" || isDeleting}
                                                     >
-                                                        <Trash2 className="h-4 w-4 text-red-500" />
+                                                        <Ban className="h-4 w-4 text-red-500" />
                                                     </Button>
                                                 </div>
                                             </TableCell>
@@ -342,12 +316,19 @@ function ComprasContent() {
                             </div>
                             Detalles de Compra
                             <Badge variant={selectedPurchase?.status === "COMPLETED" ? "default" : "destructive"} className="ml-2 text-sm">
-                                {selectedPurchase?.status === "COMPLETED" ? "Completada" : "Cancelada"}
+                                {selectedPurchase?.status === "COMPLETED" ? "Completada" : "Anulada"}
                             </Badge>
                         </DialogTitle>
                         <DialogDescription className="text-base text-muted-foreground">
                             ID: <span className="font-mono text-xs select-all">{selectedPurchase?.id}</span>
                         </DialogDescription>
+                        {selectedPurchase?.status === "CANCELLED" ? (
+                            <p className="text-sm">
+                                {selectedPurchase.cancelReason
+                                    ? `Anulada${selectedPurchase.deletedAt ? ` el ${formatDate(selectedPurchase.deletedAt)}` : ""}${selectedPurchase.cancelledBy ? ` por ${selectedPurchase.cancelledBy}` : ""}: ${selectedPurchase.cancelReason}`
+                                    : "Sin motivo registrado"}
+                            </p>
+                        ) : null}
                     </DialogHeader>
 
                     {detailsLoading ? <p role="status">Cargando compra y unidades…</p> : null}
@@ -472,32 +453,12 @@ function ComprasContent() {
                 </DialogContent>
             </Dialog>
 
-            {/* Modal de Confirmación de Eliminación */}
-            <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>¿Estás seguro de eliminar esta compra?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            {purchaseToDelete?.hasTrackedUnits ? <>Se cancelará esta entrada y se retirarán sus unidades del stock. Sólo se permite si todos sus IMEI o series siguen disponibles; se conservará su historial.</> : <>Esta acción marcará la compra como cancelada y <span className="font-bold text-destructive">revertirá automáticamente el stock de los items al inventario</span>.</>}
-                            <br /><br />
-                            Esta acción no se puede deshacer.
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction
-                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                            onClick={(e) => {
-                                e.preventDefault();
-                                confirmDelete();
-                            }}
-                            disabled={isDeleting}
-                        >
-                            {isDeleting ? "Eliminando..." : "Sí, revertir stock y eliminar"}
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+            <CancelPurchaseDialog
+                open={deleteOpen}
+                purchaseNumber={purchaseToDelete?.purchaseNumber ?? ""}
+                onConfirm={confirmCancel}
+                onClose={() => { setDeleteOpen(false); setPurchaseToDelete(null); }}
+            />
         </div>
     );
 }

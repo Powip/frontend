@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ComprasPage from "../page";
 import axiosAuth from "@/lib/axiosAuth";
-import { deleteTrackedPurchase, getTrackedPurchase } from "@/services/inventoryTrackingService";
+import { cancelPurchase, getTrackedPurchase } from "@/services/inventoryTrackingService";
 import { toast } from "sonner";
 
 jest.mock("@/contexts/AuthContext", () => ({
@@ -17,7 +17,7 @@ jest.mock("@/lib/axiosAuth", () => ({
 jest.mock("@/services/inventoryTrackingService", () => ({
   ...jest.requireActual("@/services/inventoryTrackingService"),
   getTrackedPurchase: jest.fn(),
-  deleteTrackedPurchase: jest.fn(),
+  cancelPurchase: jest.fn(),
 }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
@@ -67,16 +67,51 @@ it("loads tracked details from the scoped proxy and displays the codes", async (
   await screen.findByText("001234567890123");
   expect(getTrackedPurchase).toHaveBeenCalledWith("p");
 });
-it("uses the tracked cancellation endpoint and keeps a rejected cancellation available to review", async () => {
-  jest
-    .mocked(deleteTrackedPurchase)
-    .mockRejectedValue({ response: { data: { message: "Una unidad ya está reservada" } } });
+it("anula por la fachada con motivo y deja el diálogo abierto si se rechaza (FEAT-24 H0)", async () => {
+  jest.mocked(cancelPurchase).mockRejectedValue({ response: { data: { message: "Una unidad ya está reservada" } } });
   setup();
   await screen.findByText("COM-1");
-  fireEvent.click(screen.getByTitle("Eliminar"));
-  fireEvent.click(screen.getByRole("button", { name: "Sí, revertir stock y eliminar" }));
-  await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Una unidad ya está reservada"));
-  expect(deleteTrackedPurchase).toHaveBeenCalledWith("p");
+  fireEvent.click(screen.getByTitle("Anular"));
+  fireEvent.change(screen.getByLabelText("Motivo de la anulación"), { target: { value: "Error de carga" } });
+  fireEvent.click(screen.getByRole("button", { name: "Anular compra" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Una unidad ya está reservada");
+  expect(cancelPurchase).toHaveBeenCalledWith("p", "Error de carga");
   expect(axiosAuth.delete).not.toHaveBeenCalled();
-  expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+});
+
+describe("FEAT-24 H0", () => {
+  it("no hay Editar y una compra sin unidades también se anula por la fachada", async () => {
+    jest.mocked(axiosAuth.get).mockResolvedValue({ data: { data: [{ ...purchase, hasTrackedUnits: false }], meta: { total: 1 } } });
+    jest.mocked(cancelPurchase).mockResolvedValue(undefined);
+    setup();
+    await screen.findByText("COM-1");
+    expect(screen.queryByTitle("Editar")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("Anular"));
+    fireEvent.change(screen.getByLabelText("Motivo de la anulación"), { target: { value: "Error de carga" } });
+    fireEvent.click(screen.getByRole("button", { name: "Anular compra" }));
+    await waitFor(() => expect(cancelPurchase).toHaveBeenCalledWith("p", "Error de carga"));
+    expect(toast.success).toHaveBeenCalledWith("Compra anulada");
+  });
+
+  it("muestra Anulada con motivo, autor y fecha, o Sin motivo registrado", async () => {
+    jest.mocked(axiosAuth.get).mockResolvedValue({
+      data: {
+        data: [
+          { ...purchase, id: "a", purchaseNumber: "COM-2", hasTrackedUnits: false, status: "CANCELLED", cancelReason: "Error de carga", cancelledBy: "ana@x.pe", deletedAt: "2026-10-21T17:47:00Z" },
+          { ...purchase, id: "b", purchaseNumber: "COM-3", hasTrackedUnits: false, status: "CANCELLED", cancelReason: null, cancelledBy: null, deletedAt: null },
+        ],
+        meta: { total: 2 },
+      },
+    });
+    setup();
+    await screen.findByText("COM-2");
+    expect(screen.getAllByText("Anulada")).toHaveLength(2);
+    expect(screen.queryByText("Cancelada")).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByTitle("Ver detalles")[0]);
+    expect(await screen.findByText(/Error de carga/)).toBeInTheDocument();
+    expect(screen.getByText(/ana@x\.pe/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cerrar Detalles" }));
+    fireEvent.click(screen.getAllByTitle("Ver detalles")[1]);
+    expect(await screen.findByText("Sin motivo registrado")).toBeInTheDocument();
+  });
 });

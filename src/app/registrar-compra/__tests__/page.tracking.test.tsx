@@ -4,7 +4,6 @@ import axiosAuth from "@/lib/axiosAuth";
 import {
   createTrackedPurchase,
   getTrackedPurchase,
-  updateTrackedPurchase,
 } from "@/services/inventoryTrackingService";
 
 const mockPush = jest.fn();
@@ -37,7 +36,6 @@ jest.mock("@/services/inventoryTrackingService", () => ({
   ...jest.requireActual("@/services/inventoryTrackingService"),
   createTrackedPurchase: jest.fn(),
   getTrackedPurchase: jest.fn(),
-  updateTrackedPurchase: jest.fn(),
 }));
 jest.mock("sonner", () => ({
   toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn(), info: jest.fn() },
@@ -202,50 +200,6 @@ it("preserves IMEI zeroes, locks uncertain requests and retries the same operati
   expect(apiPost).not.toHaveBeenCalled();
 });
 
-it("loads tracked edits through the proxy and preserves the same units while changing cost", async () => {
-  mockParams = new URLSearchParams("edit=p1&tracked=1");
-  jest
-    .mocked(getTrackedPurchase)
-    .mockResolvedValue({
-      id: "p1",
-      companyId: "company-a",
-      hasTrackedUnits: true,
-      purchaseNumber: "COM-1",
-      inventoryId: "warehouse-a",
-      items: [
-        {
-          id: "line1",
-          ...variant("IMEI"),
-          supplierId: "s1",
-          supplierName: "Proveedor A",
-          quantity: 1,
-          unitCost: 10,
-          codes: ["001234567890123"],
-          units: [{ id: "unit1", code: "001234567890123", status: "AVAILABLE" }],
-        },
-      ],
-    });
-  jest.mocked(updateTrackedPurchase).mockResolvedValue({});
-  render(<RegistrarCompraPage />);
-  await screen.findByLabelText("IMEI · un código por unidad");
-  expect(screen.getByLabelText("Cantidad de Celular")).toBeDisabled();
-  expect(screen.getByLabelText("IMEI · un código por unidad")).toHaveValue("001234567890123");
-  expect(screen.getByLabelText("IMEI · un código por unidad")).toBeDisabled();
-  expect(await screen.findByRole("button", { name: "Agregar otra unidad" })).toBeDisabled();
-  fireEvent.click(screen.getByRole("button", { name: /Guardar Cambios/ }));
-  await waitFor(() =>
-    expect(updateTrackedPurchase).toHaveBeenCalledWith(
-      "p1",
-      expect.objectContaining({
-        items: [
-          expect.objectContaining({ variantId: "v1", quantity: 1, codes: ["001234567890123"] }),
-        ],
-      }),
-    ),
-  );
-  expect(axiosAuth.put).not.toHaveBeenCalled();
-});
-
 it("recovers the exact operation and codes after a reload, without storing credentials", async () => {
   apiGet.mockImplementation(async (url) => ({
     data: String(url).includes("/suppliers/company/")
@@ -273,36 +227,32 @@ it("recovers the exact operation and codes after a reload, without storing crede
   expect(sessionStorage.getItem(key)).toBeNull();
 });
 
-it("ignores the previous company's late purchase details", async () => {
-  mockParams = new URLSearchParams("edit=p1&tracked=1");
-  let resolveOld!: (value: unknown) => void;
-  jest
-    .mocked(getTrackedPurchase)
-    .mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveOld = resolve;
-      }),
-    )
-    .mockResolvedValueOnce({
-      id: "p1",
-      companyId: "company-b",
-      hasTrackedUnits: true,
-      purchaseNumber: "COM-B",
-      inventoryId: "warehouse-a",
-      items: [],
-    });
-  const view = render(<RegistrarCompraPage />);
-  mockCompany = "company-b";
-  view.rerender(<RegistrarCompraPage />);
-  await screen.findByText(/COM-B/);
-  await act(async () =>
-    resolveOld({
-      id: "p1",
-      companyId: "company-a",
-      purchaseNumber: "COM-OLD",
-      inventoryId: "warehouse-a",
-      items: [],
-    }),
-  );
-  expect(screen.queryByText(/COM-OLD/)).not.toBeInTheDocument();
+describe("FEAT-24 H0", () => {
+  it("una compra recibida no se abre para editar", async () => {
+    mockParams = new URLSearchParams("edit=p1&tracked=1");
+    render(<RegistrarCompraPage />);
+    expect(await screen.findByText("Las compras recibidas no se editan. Anúlala y registra una nueva.")).toBeInTheDocument();
+    expect(getTrackedPurchase).not.toHaveBeenCalled();
+    expect(apiGet.mock.calls.some(([url]) => String(url).includes("/purchase/"))).toBe(false);
+  });
+
+  it("una línea de más de 10.000 unidades no se envía", async () => {
+    render(<RegistrarCompraPage />);
+    await addProduct();
+    fireEvent.change(screen.getByLabelText("Cantidad de Celular"), { target: { value: "10001" } });
+    fireEvent.click(screen.getByRole("button", { name: "Registrar Compra" }));
+    expect(await screen.findByText("La cantidad máxima por variante y almacén es 10,000 unidades.")).toBeInTheDocument();
+    expect(apiPost).not.toHaveBeenCalled();
+  });
+
+  it("una línea de más de 1.000 unidades pide confirmar", async () => {
+    render(<RegistrarCompraPage />);
+    await addProduct();
+    fireEvent.change(screen.getByLabelText("Cantidad de Celular"), { target: { value: "1500" } });
+    fireEvent.click(screen.getByRole("button", { name: "Registrar Compra" }));
+    expect(await screen.findByText("Estás cargando 1,500 unidades. ¿Confirmas la cantidad?")).toBeInTheDocument();
+    expect(apiPost).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Sí, confirmar" }));
+    await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(1));
+  });
 });

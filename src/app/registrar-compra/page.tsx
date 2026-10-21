@@ -1,5 +1,6 @@
 "use client";
 
+import { MAX_ITEM_UNITS, MAX_ITEM_UNITS_MESSAGE, largeQuantityConfirmText, needsQuantityConfirmation } from "@/lib/stockLimits";
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -7,7 +8,7 @@ import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
 import { useBusinessInventories } from "@/hooks/useBusinessInventories";
 import { toast } from "sonner";
-import { canCorrectTrackingRequest, createTrackedPurchase, getTrackedPurchase, isTracked, parseUnitCodes, purchaseLinePayload, trackingError, updateTrackedPurchase, validateUnitCodes, type InventoryUnit, type TrackingMode } from "@/services/inventoryTrackingService";
+import { canCorrectTrackingRequest, createTrackedPurchase, isTracked, parseUnitCodes, purchaseLinePayload, trackingError, validateUnitCodes, type InventoryUnit, type TrackingMode } from "@/services/inventoryTrackingService";
 import {
   ArrowLeft,
   ArrowRight,
@@ -18,7 +19,6 @@ import {
   Package,
   AlertTriangle,
   Loader2,
-  Save,
   Calendar,
   FileText,
   CreditCard,
@@ -101,32 +101,6 @@ interface CartItem {
   currentStock: number;
 }
 
-interface PurchaseData {
-  companyId: string;
-  hasTrackedUnits?: boolean;
-  id: string;
-  purchaseNumber: string;
-  inventoryId: string;
-  notes: string | null;
-  receiptType?: string;
-  paymentMethod?: string;
-  purchaseDate?: string;
-  items: {
-    trackingMode?: TrackingMode;
-    codes?: string[];
-    units?: InventoryUnit[];
-    id: string;
-    variantId: string;
-    supplierId: string;
-    supplierName: string;
-    sku: string;
-    productName: string;
-    quantity: number;
-    unitCost: number;
-    attributes?: Record<string, string>;
-  }[];
-}
-
 const RECEIPT_TYPES = [
   { value: "FACTURA", label: "Factura Electrónica" },
   { value: "BOLETA", label: "Boleta de Venta" },
@@ -149,8 +123,8 @@ export default function RegistrarCompraPage() {
 function RegistrarCompraForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  // FEAT-24 H0: una compra recibida no se edita; el enlace viejo ?edit= solo avisa.
   const editPurchaseId = searchParams.get("edit");
-  const trackedEditHint = searchParams.get("tracked") === "1";
 
   const { auth } = useAuth();
   const warehouseQuery = useBusinessInventories();
@@ -161,12 +135,8 @@ function RegistrarCompraForm() {
   // Step control
   const [currentStep, setCurrentStep] = useState<1 | 2>(1);
 
-  // Edit mode
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [editPurchaseData, setEditPurchaseData] = useState<PurchaseData | null>(
-    null,
-  );
-  const [isLoadingPurchase, setIsLoadingPurchase] = useState(false);
+  const [confirmLargeQuantity, setConfirmLargeQuantity] = useState(false);
+  const [quantityError, setQuantityError] = useState("");
 
   // Step 1 fields
   const [receiptType, setReceiptType] = useState("FACTURA");
@@ -211,7 +181,7 @@ function RegistrarCompraForm() {
     try { sessionStorage.removeItem(recoveryKey); } catch { /* Storage may be disabled in this browser. */ }
   };
   useEffect(() => {
-    if (!companyId || !auth?.user?.id || editPurchaseId) return;
+    if (!companyId || !auth?.user?.id) return;
     try {
       const raw = sessionStorage.getItem(recoveryKey);
       if (!raw) return;
@@ -228,8 +198,7 @@ function RegistrarCompraForm() {
       setCurrentStep(2);
       setSubmitError("Recuperé una solicitud pendiente. Reintenta la misma compra para confirmar su resultado sin duplicarla.");
     } catch { /* Invalid or unavailable storage must not alter the current form. */ }
-  }, [recoveryKey, companyId, auth?.user?.id, editPurchaseId]);
-  const trackedEdit = isEditMode && !!editPurchaseData?.hasTrackedUnits;
+  }, [recoveryKey, companyId, auth?.user?.id]);
   const formLocked = isSubmitting || !!pendingTracked;
   const codeError = validateUnitCodes(cart.map((item) => ({ trackingMode: item.trackingMode, quantity: item.quantity, codes: parseUnitCodes(item.codesText), label: item.productName })));
 
@@ -238,107 +207,12 @@ function RegistrarCompraForm() {
   const [newSupplierName, setNewSupplierName] = useState("");
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
 
-  const loadPurchaseForEdit = useCallback(async (purchaseId: string) => {
-    setIsLoadingPurchase(true);
-    setIsEditMode(true);
-    try {
-      let purchase = trackedEditHint
-        ? await getTrackedPurchase<PurchaseData>(purchaseId)
-        : (await axiosAuth.get<PurchaseData>(`${process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics}/purchase/${purchaseId}`)).data;
-      if (!active.current) return;
-      if (purchase.hasTrackedUnits && !trackedEditHint) purchase = await getTrackedPurchase<PurchaseData>(purchaseId);
-      if (!active.current) return;
-      if (purchase.companyId !== companyId) throw new Error("La compra no pertenece al negocio activo.");
-      setEditPurchaseData(purchase);
-      setSelectedInventoryId(purchase.inventoryId);
-      setNotes(purchase.notes || "");
-      setReceiptType(purchase.receiptType || "FACTURA");
-      setPaymentMethod(purchase.paymentMethod || "EFECTIVO");
-      setPurchaseDate(
-        purchase.purchaseDate
-          ? new Date(purchase.purchaseDate).toISOString().split("T")[0]
-          : new Date().toISOString().split("T")[0],
-      );
-
-      // Get supplier from first item
-      if (purchase.items.length > 0) {
-        setSelectedSupplierId(purchase.items[0].supplierId);
-      }
-
-      // Convert purchase items to cart items and fetch current stock
-      const cartItemsPromises = purchase.items.map(async (item) => {
-        let currentStock = 0;
-        let brandName = "";
-        try {
-          const stockRes = await axiosAuth.get(
-            `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/inventory-item/search`,
-            {
-              params: {
-                inventoryId: purchase.inventoryId,
-                q: item.sku,
-                page: 1,
-                limit: 1,
-              },
-            },
-          );
-          const variant = stockRes.data.data.find(
-            (v: ProductVariant) => v.variantId === item.variantId,
-          );
-          if (variant) {
-            currentStock = variant.physicalStock ?? variant.availableStock;
-            brandName = variant.brandName || "";
-          }
-        } catch (err) {
-          console.error(`Error fetching stock for ${item.sku}`, err);
-        }
-
-        return {
-          id: item.id,
-          inventoryItemId: "",
-          variantId: item.variantId,
-          productName: item.productName,
-          sku: item.sku,
-          attributes: item.attributes || {},
-          quantity: item.quantity,
-          unitCost: Number(item.unitCost),
-          supplierId: item.supplierId,
-          supplierName: item.supplierName,
-          brandName: brandName,
-          currentStock,
-          trackingMode: item.trackingMode ?? "NONE",
-          codesText: (item.codes ?? item.units?.map((unit) => unit.code) ?? []).join("\n"),
-          units: item.units,
-        };
-      });
-
-      const cartItems = await Promise.all(cartItemsPromises);
-      if (!active.current) return;
-      setCart(cartItems);
-      setCurrentStep(2); // Go to step 2 in edit mode
-      toast.success(`Compra ${purchase.purchaseNumber} cargada para edición`);
-    } catch (error) {
-      if (!active.current) return;
-      console.error("Error loading purchase", error);
-      toast.error(trackingError(error, "Error al cargar la compra"));
-      router.push("/compras");
-    } finally {
-      if (active.current) setIsLoadingPurchase(false);
-    }
-  }, [router, companyId, trackedEditHint]);
-
-  // Load purchase data if in edit mode
-  useEffect(() => {
-    if (editPurchaseId && companyId) {
-      loadPurchaseForEdit(editPurchaseId);
-    }
-  }, [editPurchaseId, companyId, loadPurchaseForEdit]);
-
   // Set default inventory
   useEffect(() => {
-    if (inventories.length === 1 && !selectedInventoryId && !editPurchaseId) {
+    if (inventories.length === 1 && !selectedInventoryId) {
       setSelectedInventoryId(inventories[0].id);
     }
-  }, [inventories, selectedInventoryId, editPurchaseId]);
+  }, [inventories, selectedInventoryId]);
 
   const fetchSuppliers = useCallback(async () => {
     if (!companyId) return;
@@ -438,7 +312,7 @@ function RegistrarCompraForm() {
   }, [currentStep, selectedInventoryId, searchProducts]);
 
   const addToCart = (product: ProductVariant) => {
-    if (trackedEdit || formLocked) return;
+    if (formLocked) return;
 
     const selectedSupplier = suppliers.find((s) => s.id === selectedSupplierId);
 
@@ -517,6 +391,22 @@ function RegistrarCompraForm() {
       return;
     }
 
+    // FEAT-24 H0: máximo por línea y confirmación de cargas grandes (el backend vuelve a validar).
+    if (!pendingTrackedRef.current) {
+      const largest = Math.max(0, ...cart.map((item) => Number(item.quantity) || 0));
+      if (largest > MAX_ITEM_UNITS) {
+        setQuantityError(MAX_ITEM_UNITS_MESSAGE);
+        toast.error(MAX_ITEM_UNITS_MESSAGE);
+        return;
+      }
+      setQuantityError("");
+      if (needsQuantityConfirmation(largest) && !confirmLargeQuantity) {
+        setConfirmLargeQuantity(true);
+        return;
+      }
+    }
+    setConfirmLargeQuantity(false);
+
     setIsSubmitting(true); setSubmitError(""); setCanCorrect(false);
     try {
       const selectedSupplier = suppliers.find(
@@ -537,30 +427,21 @@ function RegistrarCompraForm() {
         items: cart.map((item) => purchaseLinePayload({ ...item, codes: parseUnitCodes(item.codesText) })),
       };
 
-      const hasTracked = !!pendingTrackedRef.current || trackedEdit || cart.some((item) => isTracked(item.trackingMode));
+      const hasTracked = !!pendingTrackedRef.current || cart.some((item) => isTracked(item.trackingMode));
       if (hasTracked) {
         let request = pendingTrackedRef.current;
         if (!request) {
           const { companyId: _company, userEmail: _email, ...safePayload } = payload;
-          request = { ...safePayload, ...(!isEditMode ? { operationId: crypto.randomUUID() } : {}) };
+          request = { ...safePayload, operationId: crypto.randomUUID() };
           pendingTrackedRef.current = request;
           setPendingTracked(request);
-          if (!isEditMode) {
-            try { sessionStorage.setItem(recoveryKey, JSON.stringify({ request, cart })); } catch { /* In-memory retry remains available. */ }
-          }
+          try { sessionStorage.setItem(recoveryKey, JSON.stringify({ request, cart })); } catch { /* In-memory retry remains available. */ }
         }
-        if (isEditMode && editPurchaseData) await updateTrackedPurchase(editPurchaseData.id, request);
-        else await createTrackedPurchase(request);
-        if (!isEditMode) clearRecovery();
+        await createTrackedPurchase(request);
+        clearRecovery();
         if (!active.current) return;
         pendingTrackedRef.current = null; setPendingTracked(null);
-        toast.success(isEditMode ? "Compra actualizada; sus unidades se conservaron" : "Compra registrada con sus unidades");
-      } else if (isEditMode && editPurchaseData) {
-        await axiosAuth.put(
-          `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/purchase/${editPurchaseData.id}`,
-          payload,
-        );
-        toast.success("Compra actualizada correctamente");
+        toast.success("Compra registrada con sus unidades");
       } else {
         await axiosAuth.post(
           `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/purchase`,
@@ -574,7 +455,7 @@ function RegistrarCompraForm() {
       if (active.current) router.push("/compras");
     } catch (error) {
       if (!active.current) return;
-      const message = trackingError(error, isEditMode ? "Error al actualizar la compra" : "Error al registrar la compra");
+      const message = trackingError(error, "Error al registrar la compra");
       setSubmitError(message); setCanCorrect(canCorrectTrackingRequest(error));
       toast.error(message);
     } finally {
@@ -601,15 +482,6 @@ function RegistrarCompraForm() {
 
   if (!auth) return null;
 
-  if (isLoadingPurchase) {
-    return (
-      <div className="flex items-center justify-center h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <span className="ml-3 text-muted-foreground">Cargando compra...</span>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col lg:flex-row min-h-screen lg:h-screen w-full bg-background overflow-hidden">
       {/* Main content */}
@@ -628,9 +500,7 @@ function RegistrarCompraForm() {
           </Link>
           <div className="flex-1">
             <h1 className="text-xl md:text-2xl font-bold text-foreground">
-              {isEditMode
-                ? `Editar Compra - ${editPurchaseData?.purchaseNumber}`
-                : "Nueva Compra"}
+              Nueva Compra
             </h1>
             <p className="text-xs md:text-sm text-muted-foreground">
               {currentStep === 1
@@ -768,11 +638,10 @@ function RegistrarCompraForm() {
                     Almacén *
                   </Label>
                   {warehouseQuery.isPending ? <p>Cargando almacenes del negocio...</p> : warehouseQuery.isError ? <p role="alert">No se pudieron cargar los almacenes. <Button variant="outline" onClick={() => void warehouseQuery.refetch()}>Reintentar</Button></p> : null}
-                  {editPurchaseId ? <p className="text-xs text-muted-foreground">La compra conserva su almacén original.</p> : null}
                   <Select
                     value={selectedInventoryId}
                     onValueChange={setSelectedInventoryId}
-                    disabled={Boolean(editPurchaseId) || warehouseQuery.isPending || warehouseQuery.isError}
+                    disabled={warehouseQuery.isPending || warehouseQuery.isError}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar almacén" />
@@ -979,7 +848,7 @@ function RegistrarCompraForm() {
                               <Button
                                 size="sm"
                                 onClick={() => addToCart(product)}
-                                disabled={trackedEdit || cart.some(
+                                disabled={cart.some(
                                   (item) => item.variantId === product.variantId && !isTracked(item.trackingMode),
                                 )}
                               >
@@ -1028,11 +897,9 @@ function RegistrarCompraForm() {
               <CardHeader className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-4 md:p-6">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <ShoppingCart className="h-5 w-5" />
-                  {isEditMode
-                    ? `Productos de la compra (${cart.length})`
-                    : `Carrito de Compra (${cart.length} productos)`}
+                  {`Carrito de Compra (${cart.length} productos)`}
                 </CardTitle>
-                {cart.length > 0 && !trackedEdit && (
+                {cart.length > 0 && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -1082,9 +949,9 @@ function RegistrarCompraForm() {
                                 </p>
                                 {isTracked(item.trackingMode) ? <div className="mt-2 min-w-52 space-y-1">
                                   <Label htmlFor={`codes-${item.id}`}>{item.trackingMode} · un código por unidad</Label>
-                                  <Textarea id={`codes-${item.id}`} value={item.codesText} disabled={trackedEdit} rows={3} spellCheck={false} autoComplete="off" placeholder="Pega un código por línea" onChange={(event) => setCart((previous) => previous.map((entry) => entry.id === item.id ? { ...entry, codesText: event.target.value } : entry))} />
+                                  <Textarea id={`codes-${item.id}`} value={item.codesText} rows={3} spellCheck={false} autoComplete="off" placeholder="Pega un código por línea" onChange={(event) => setCart((previous) => previous.map((entry) => entry.id === item.id ? { ...entry, codesText: event.target.value } : entry))} />
                                   <p className="text-xs">{parseUnitCodes(item.codesText).length} de {item.quantity} códigos</p>
-                                  {!trackedEdit && <p className="text-xs text-muted-foreground">Para ingresar otro equipo del mismo modelo, pulsa «Agregar otra unidad» y añade su código en una línea nueva.</p>}
+                                  <p className="text-xs text-muted-foreground">Para ingresar otro equipo del mismo modelo, pulsa «Agregar otra unidad» y añade su código en una línea nueva.</p>
                                 </div> : null}
                                 {Object.keys(item.attributes || {}).length >
                                   0 && (
@@ -1112,7 +979,6 @@ function RegistrarCompraForm() {
                                 type="number"
                                 min={1}
                                 value={item.quantity}
-                                disabled={trackedEdit}
                                 aria-label={`Cantidad de ${item.productName}`}
                                 onChange={(e) =>
                                   updateCartItem(
@@ -1147,7 +1013,6 @@ function RegistrarCompraForm() {
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                disabled={trackedEdit}
                                 aria-label={`Quitar ${item.productName}`}
                                 onClick={() => removeFromCart(item.id)}
                               >
@@ -1169,12 +1034,19 @@ function RegistrarCompraForm() {
 
       {/* Summary Sidebar */}
       <aside className="w-full lg:w-80 border-t lg:border-l bg-muted/30 p-4 lg:p-6 flex flex-col shrink-0 overflow-y-auto">
-        {trackedEdit ? <p className="mb-3 text-sm">Puedes editar los datos y costos. Las variantes, cantidades y códigos de esta compra se conservan; su sustitución todavía no está disponible.</p> : null}
+        {editPurchaseId ? <p role="status" className="mb-3 text-sm">Las compras recibidas no se editan. Anúlala y registra una nueva.</p> : null}
+        {quantityError ? <p role="alert" className="mb-3 text-sm text-destructive">{quantityError}</p> : null}
+        {confirmLargeQuantity ? (
+          <div className="mb-3 rounded-md border border-amber-300 p-3 text-sm">
+            <p>{largeQuantityConfirmText(Math.max(0, ...cart.map((item) => Number(item.quantity) || 0)))}</p>
+            <Button size="sm" className="mt-2" onClick={() => void handleSubmit()} disabled={isSubmitting}>Sí, confirmar</Button>
+          </div>
+        ) : null}
         {codeError ? <p role="alert" className="mb-3 text-sm text-destructive">{codeError}</p> : null}
         {submitError ? <p role="alert" className="mb-3 text-sm text-destructive">{submitError}</p> : null}
         {pendingTracked && submitError ? <div className="mb-3 space-y-2 text-sm"><p>Conservé la solicitud y sus códigos. Reintentar evita registrar la misma compra dos veces.</p><Button onClick={() => void handleSubmit()} disabled={isSubmitting}>Reintentar misma solicitud</Button>{canCorrect ? <Button variant="outline" onClick={() => { clearRecovery(); pendingTrackedRef.current = null; setPendingTracked(null); setSubmitError(""); setCanCorrect(false); }}>Corregir datos</Button> : null}</div> : null}
         <h2 className="font-semibold text-lg mb-4">
-          {isEditMode ? "Resumen de Edición" : "Resumen de Compra"}
+          Resumen de Compra
         </h2>
 
         <div className="space-y-3 flex-1">
@@ -1213,12 +1085,7 @@ function RegistrarCompraForm() {
               {isSubmitting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  {isEditMode ? "Guardando..." : "Registrando..."}
-                </>
-              ) : isEditMode ? (
-                <>
-                  <Save className="h-4 w-4 mr-2" />
-                  Guardar Cambios
+                  Registrando...
                 </>
               ) : (
                 <>
