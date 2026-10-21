@@ -5,6 +5,8 @@ import axios from "@/lib/axiosAuth";
 import { useQuery } from "@tanstack/react-query";
 import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
+import { isValidRuc } from "@/lib/ruc";
+import { trackingError } from "@/services/inventoryTrackingService";
 import {
   Plus,
   Edit,
@@ -49,6 +51,9 @@ interface Supplier {
   email?: string;
   isActive: boolean;
   brands?: Brand[];
+  // FEAT-24 H0
+  ruc?: string | null;
+  purchaseCount?: number;
 }
 
 interface Brand {
@@ -84,7 +89,10 @@ export default function ProveedoresPage() {
     contactPerson: "",
     phone: "",
     email: "",
+    ruc: "",
   });
+  const rucValue = supplierForm.ruc.trim();
+  const rucError = rucValue && !isValidRuc(rucValue) ? "El RUC no es válido." : "";
 
   const [brandForm, setBrandForm] = useState({
     name: "",
@@ -124,10 +132,11 @@ export default function ProveedoresPage() {
         contactPerson: supplier.contactPerson || "",
         phone: supplier.phone || "",
         email: supplier.email || "",
+        ruc: supplier.ruc || "",
       });
     } else {
       setEditingSupplier(null);
-      setSupplierForm({ name: "", contactPerson: "", phone: "", email: "" });
+      setSupplierForm({ name: "", contactPerson: "", phone: "", email: "", ruc: "" });
     }
     setSupplierModalOpen(true);
   };
@@ -138,18 +147,25 @@ export default function ProveedoresPage() {
       return;
     }
 
+    if (rucError) {
+      toast.error(rucError);
+      return;
+    }
+
     setIsSavingSupplier(true);
+    // FEAT-24 H0: RUC opcional; vacío se guarda como null.
+    const body = { ...supplierForm, ruc: rucValue || null };
     try {
       if (editingSupplier) {
         await axios.patch(
           `${INVENTORY_API}/suppliers/${editingSupplier.id}`,
-          supplierForm
+          body
         );
         toast.success("Proveedor actualizado");
       } else {
         await axios.post(
           `${INVENTORY_API}/suppliers`,
-          { ...supplierForm, companyId }
+          { ...body, companyId }
         );
         toast.success("Proveedor creado");
       }
@@ -157,7 +173,7 @@ export default function ProveedoresPage() {
       fetchSuppliers();
     } catch (error) {
       console.error("Error saving supplier", error);
-      toast.error("Error al guardar proveedor");
+      toast.error(trackingError(error, "Error al guardar proveedor"));
     } finally {
       setIsSavingSupplier(false);
     }
@@ -280,10 +296,12 @@ export default function ProveedoresPage() {
                 <TableRow>
                   <TableHead className="w-12"></TableHead>
                   <TableHead>Nombre</TableHead>
+                  <TableHead>RUC</TableHead>
                   <TableHead>Contacto</TableHead>
                   <TableHead>Teléfono</TableHead>
                   <TableHead>Email</TableHead>
                   <TableHead className="text-center">Marcas</TableHead>
+                  <TableHead className="text-center">Compras</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -311,10 +329,12 @@ export default function ProveedoresPage() {
                         <TableCell className="font-medium">
                           {supplier.name}
                         </TableCell>
+                        <TableCell>{supplier.ruc || "—"}</TableCell>
                         <TableCell>{supplier.contactPerson || "—"}</TableCell>
                         <TableCell>{supplier.phone || "—"}</TableCell>
                         <TableCell>{supplier.email || "—"}</TableCell>
                         <TableCell className="text-center">{brandsCount}</TableCell>
+                        <TableCell className="text-center">{supplier.purchaseCount ?? 0}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex gap-1 justify-end">
                             <Button
@@ -338,7 +358,7 @@ export default function ProveedoresPage() {
                       {/* Marcas expandidas */}
                       {isExpanded && (
                         <TableRow>
-                          <TableCell colSpan={7} className="bg-muted/30">
+                          <TableCell colSpan={9} className="bg-muted/30">
                             <div className="pl-12 py-4 space-y-2">
                               <div className="flex items-center justify-between mb-3">
                                 <h4 className="font-semibold text-sm flex items-center gap-2">
@@ -438,6 +458,19 @@ export default function ProveedoresPage() {
                 }
                 placeholder="Nombre del contacto"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="supplier-ruc">RUC (opcional)</Label>
+              <Input
+                id="supplier-ruc"
+                inputMode="numeric"
+                maxLength={11}
+                value={supplierForm.ruc}
+                onChange={(e) => setSupplierForm({ ...supplierForm, ruc: e.target.value })}
+                placeholder="20123456789"
+              />
+              {rucError ? <p className="text-xs text-destructive">{rucError}</p> : null}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
