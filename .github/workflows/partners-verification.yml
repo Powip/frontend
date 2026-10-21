@@ -30,9 +30,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  verify:
+  regression:
+    name: Regression shard ${{ matrix.shard }}/4
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     env:
       NODE_OPTIONS: --max-old-space-size=4096
     steps:
@@ -48,4 +53,14 @@ jobs:
       - name: Global TypeScript verification
         run: npm run typecheck
       - name: Global regression suite (including Partners)
-        run: npm test -- --runInBand --silent
+        run: npm test -- --runInBand --silent --shard=${{ matrix.shard }}/4
+
+  verify:
+    if: ${{ always() }}
+    needs: regression
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every regression shard
+        env:
+          SHARD_RESULT: ${{ needs.regression.result }}
+        run: test "$SHARD_RESULT" = "success"

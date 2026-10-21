@@ -86,7 +86,7 @@ function dataFor(url: string, storeId?: string) {
 beforeEach(() => {
   jest.clearAllMocks();
   scope = {
-    scope: "business", setScope: jest.fn(), storeIds: ["store-a", "store-b"],
+    scope: "business", setScope: jest.fn(), currency: "PEN", setCurrency: jest.fn(), storeIds: ["store-a", "store-b"],
     scopeParams: { storeIds: "store-a,store-b" }, canFetch: true, canViewBusiness: true, scopeKey: "business:store-a,store-b",
   };
   auth = {
@@ -143,7 +143,7 @@ it("suma los activos de las tiendas y consulta los pagos con el mismo alcance", 
   render(<FinanceStats {...RANGE} />);
   await act(async () => {});
   const inventoryCard = screen.getByText("Valor Almacén").closest('[data-slot="card"]') as HTMLElement;
-  expect(within(inventoryCard).getByText("S/ 350.00")).toBeInTheDocument();
+  expect(within(inventoryCard).getByText("Unidad de costo 350.00")).toBeInTheDocument();
 
   fireEvent.click(screen.getByText("Pagos Aprobados"));
   await act(async () => {});
@@ -165,7 +165,7 @@ it("cuenta una vez el almacén compartido entre KUNCA y su tienda Shopify", asyn
   await act(async () => {});
 
   const inventoryCard = screen.getByText("Valor Almacén").closest('[data-slot="card"]') as HTMLElement;
-  expect(within(inventoryCard).getByText("S/ 200.00")).toBeInTheDocument();
+  expect(within(inventoryCard).getByText("Unidad de costo 200.00")).toBeInTheDocument();
   const inventoryRequests = mockGet.mock.calls.filter(([url]) => String(url).endsWith("/inventory-value"));
   expect(inventoryRequests.map(([, config]) => config?.params?.storeId)).toEqual(["store-a", "store-b"]);
 });

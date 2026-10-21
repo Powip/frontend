@@ -34,6 +34,7 @@ jest.mock("recharts", () => {
 const mockGet = jest.mocked(axiosAuth.get);
 const mockUseAuth = jest.mocked(useAuth);
 const orderBase = {
+  currency: "PEN",
   storeId: "store-web", created_at: "2026-10-10T12:00:00.000Z", updated_at: "2026-10-12T12:00:00.000Z",
   salesChannel: "SHOPIFY", sellerId: "agent-a", sellerName: "Ana", courier: "Courier A",
   notes: "", cancellationReason: null, logs: [],
