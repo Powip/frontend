@@ -372,7 +372,7 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
           Reconciliación de productos
         </h3>
         <p className="text-sm text-muted-foreground">
-          Revisá y resolvé posibles duplicados, productos provisionales y
+          Revisa y resuelve posibles duplicados, productos provisionales y
           líneas de venta sin resolver.
         </p>
       </div>

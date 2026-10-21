@@ -15,7 +15,7 @@ import {
 // controlado: el estado vive en `ReconciliationMergeDialog`.
 
 const SHOPIFY_NOTICE =
-  "Este producto se sincroniza periódicamente con Shopify. Si cambia el stock o el precio allá, se va a actualizar acá: ajustalo en Shopify. También podés cambiarlo de forma manual en Powip.";
+  "Este producto se sincroniza periódicamente con Shopify. Si cambia el stock o el precio allá, se va a actualizar acá: ajústalo en Shopify. También puedes cambiarlo de forma manual en Powip.";
 
 export interface ReconciliationMergeStockCostStepProps {
   sides: MergeStockSides;

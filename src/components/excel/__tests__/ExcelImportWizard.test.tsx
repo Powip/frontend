@@ -413,7 +413,7 @@ function renderWizard(onBack = jest.fn()) {
 }
 
 function getFileInput(): HTMLInputElement {
-  return screen.getByLabelText(/hacé clic para seleccionar/i) as HTMLInputElement;
+  return screen.getByLabelText(/haz clic para seleccionar/i) as HTMLInputElement;
 }
 
 function buildExcelFile(name = 'productos.xlsx'): File {

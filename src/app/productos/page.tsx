@@ -52,7 +52,7 @@ function ProductosContent() {
     <div className="flex flex-col items-center justify-center min-h-screen px-6">
       <HeaderConfig
         title="Crear Producto"
-        description="Elegí cómo querés cargar tus productos"
+        description="Elige cómo quieres cargar tus productos"
       />
 
       <Button variant="outline" onClick={() => setMode("list")}>Volver al catálogo</Button>
@@ -69,7 +69,7 @@ function ProductosContent() {
             <div className="text-center">
               <h3 className="text-lg font-semibold">Carga Manual</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Creá un producto con variantes paso a paso
+                Crea un producto con variantes paso a paso
               </p>
             </div>
           </CardContent>

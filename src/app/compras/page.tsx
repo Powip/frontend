@@ -16,6 +16,7 @@ import {
     Package,
     Calendar,
     DollarSign,
+    Pencil,
     User,
 } from "lucide-react";
 

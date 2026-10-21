@@ -494,11 +494,11 @@ export function ReconciliationMergeDialog({
 
   const subtitle =
     step === "select"
-      ? "Elegí cuál queda en Powip. Nada se aplica hasta que confirmes."
+      ? "Elige cuál queda en Powip. Nada se aplica hasta que confirmes."
       : step === "review"
         ? "Corroborá que son el mismo producto. Todavía no se aplicó nada."
         : isPair
-          ? "Elegí con qué stock y costo queda. Todavía no se aplicó nada."
+          ? "Elige con qué stock y costo queda. Todavía no se aplicó nada."
           : "Vista previa: así va a quedar. Todavía no se aplicó nada.";
 
   return (
@@ -520,7 +520,7 @@ export function ReconciliationMergeDialog({
             {detailsQuery.isError && (
               <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                 No se pudo cargar el detalle de los productos (imagen,
-                descripción, variantes hermanas). Podés igual elegir con la
+                descripción, variantes hermanas). Igual puedes elegir con la
                 información básica de cada candidata.
               </div>
             )}

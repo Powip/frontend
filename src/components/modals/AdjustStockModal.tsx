@@ -56,7 +56,7 @@ export default function AdjustStockModal({ open, item, onClose, onSuccess }: Pro
   };
 
   const submit = async () => {
-    if (!canSubmit || reason === "") return;
+    if (!canSubmit) return;
     setIsSubmitting(true);
     try {
       await adjustStock({

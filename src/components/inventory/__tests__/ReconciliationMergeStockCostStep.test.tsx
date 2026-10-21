@@ -81,7 +81,7 @@ describe('ReconciliationMergeStockCostStep', () => {
 
   it('aviso Shopify solo cuando corresponde, con el texto exacto', () => {
     const text =
-      'Este producto se sincroniza periódicamente con Shopify. Si cambia el stock o el precio allá, se va a actualizar acá: ajustalo en Shopify. También podés cambiarlo de forma manual en Powip.';
+      'Este producto se sincroniza periódicamente con Shopify. Si cambia el stock o el precio allá, se va a actualizar acá: ajústalo en Shopify. También puedes cambiarlo de forma manual en Powip.';
     const { rerender } = render(<Harness showShopifyNotice />);
     expect(screen.getByText(text)).toBeInTheDocument();
     rerender(<Harness showShopifyNotice={false} />);

@@ -20,7 +20,7 @@
  * 5. Buscador ("Buscar otra variante", vía `useReconciliationVariantSearch`
  *    real + `searchReconciliationVariants` mockeado, con fake timers para
  *    el debounce de 300ms):
- *    - Con menos de 2 caracteres no dispara la búsqueda (mensaje "Escribí
+ *    - Con menos de 2 caracteres no dispara la búsqueda (mensaje "Escribe
  *      al menos 2 caracteres para buscar").
  *    - Con resultados, seleccionar uno llama a `onLinkToVariant` con la
  *      variante elegida.
@@ -411,7 +411,7 @@ describe('ReconciliationProvisionalCard', () => {
 
       expect(mockSearchVariants).not.toHaveBeenCalled();
       expect(
-        screen.getByText('Escribí al menos 2 caracteres para buscar'),
+        screen.getByText('Escribe al menos 2 caracteres para buscar'),
       ).toBeInTheDocument();
     });
 
