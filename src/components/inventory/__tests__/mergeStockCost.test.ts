@@ -36,9 +36,18 @@ describe('mergeStockCost', () => {
 
   it('count inválido muestra error de formato', () => {
     expect(validateMergeStock('count', sides, '-1').error).toBe(
-      'Ingresá un número entero entre 0 y 1.000.000',
+      'Ingresa un número entero entre 0 y 10,000',
     );
     expect(validateMergeStock('count', sides, '2.5').finalQuantity).toBeNull();
+  });
+
+  it('un resultado mayor que 10.000 es error en cualquier modo (FEAT-24 H0)', () => {
+    const big = { winnerQuantity: 6_000, winnerReserved: 0, loserQuantity: 5_000, loserReserved: 0 };
+    const message = 'El resultado supera el máximo de 10,000 unidades por variante y almacén.';
+    expect(validateMergeStock('sum', big, '')).toEqual({ finalQuantity: 11_000, error: message });
+    expect(validateMergeStock('winner', { ...big, winnerQuantity: 10_001 }, '').error).toBe(message);
+    expect(validateMergeStock('count', big, '10000').error).toBeNull();
+    expect(validateMergeStock('count', big, '10001').error).toBe('Ingresa un número entero entre 0 y 10,000');
   });
 
   it('cantidad final menor que las reservas totales es error', () => {
@@ -52,11 +61,11 @@ describe('mergeStockCost', () => {
     expect(validateMergeStock('count', sides, '3').error).toBeNull();
   });
 
-  it('parseCountedQuantity acepta enteros 0..1.000.000', () => {
+  it('parseCountedQuantity acepta enteros 0..10.000 (FEAT-24 H0)', () => {
     expect(parseCountedQuantity('0')).toBe(0);
     expect(parseCountedQuantity(' 42 ')).toBe(42);
-    expect(parseCountedQuantity('1000000')).toBe(1_000_000);
-    expect(parseCountedQuantity('1000001')).toBeNull();
+    expect(parseCountedQuantity('10000')).toBe(10_000);
+    expect(parseCountedQuantity('10001')).toBeNull();
     expect(parseCountedQuantity('abc')).toBeNull();
   });
 
@@ -75,7 +84,7 @@ describe('mergeStockCost', () => {
     expect(resolveMergeCost('custom', 30, 20, '25,5')).toEqual({ value: 25.5, error: null });
     expect(resolveMergeCost('custom', 30, 20, '')).toEqual({ value: null, error: null });
     expect(resolveMergeCost('custom', 30, 20, 'x').error).toBe(
-      'Ingresá un costo válido (número ≥ 0, hasta 2 decimales)',
+      'Ingresa un costo válido (número ≥ 0, hasta 2 decimales)',
     );
   });
 
