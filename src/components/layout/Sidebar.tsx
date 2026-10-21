@@ -127,6 +127,8 @@ export function Sidebar({ className }: SidebarProps) {
     retry: false, staleTime: 0, gcTime: 0,
   });
   const commercialCaps = commercialAccess.data;
+  const canViewCommercialLeads = Boolean(commercialCaps?.enabled && commercialCaps.canView);
+  const canManageCommercialLeadTypes = Boolean(commercialCaps?.enabled && commercialCaps.canManageTypes);
   const advertisingAccess = useQuery({
     queryKey: ["ads-v22", auth?.user.id, auth?.company?.id, "settings"],
     queryFn: ({ signal }) =>
@@ -153,7 +155,7 @@ export function Sidebar({ className }: SidebarProps) {
         children: [
           { name: "Principal", href: "/dashboard", icon: LayoutDashboard },
           { name: "Ventas", href: "/metricas/ventas", icon: ShoppingCart },
-          ...(commercialCaps?.enabled && commercialCaps.canView ? [{name: "Leads", href: "/metricas/leads", icon: Users}] : []),
+          ...(canViewCommercialLeads ? [{name: "Leads", href: "/metricas/leads", icon: Users}] : []),
           { name: "Inventario", href: "/metricas/inventario", icon: Package },
           { name: "Operaciones", href: "/metricas/operaciones", icon: Truck },
           { name: "Seguimiento", href: "/metricas/seguimientos", icon: MapPin },
@@ -171,7 +173,7 @@ export function Sidebar({ className }: SidebarProps) {
         name: "Comercial",
         icon: ShoppingCart,
         children: [
-          ...(commercialCaps?.enabled && (commercialCaps.canView || commercialCaps.canManageTypes) ? [{name: "Leads", href: "/leads-comerciales", icon: Users}] : []),
+          ...((canViewCommercialLeads || canManageCommercialLeadTypes) ? [{name: "Leads", href: "/leads-comerciales", icon: Users}] : []),
           {
             name: "Ventas",
             href: "/ventas",
@@ -338,7 +340,7 @@ export function Sidebar({ className }: SidebarProps) {
         href: "/superadmin",
       },
     ],
-    [commercialCaps],
+    [canViewCommercialLeads, canManageCommercialLeadTypes],
   );
 
   // Auto-colapsar en móviles
