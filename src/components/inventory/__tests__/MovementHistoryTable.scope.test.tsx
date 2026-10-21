@@ -5,6 +5,8 @@ import { MovementHistoryTable } from "../MovementHistoryTable";
 import { fetchScopedInventoryMovements, type InventoryMovement } from "@/services/inventoryMovementService";
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { company: { id: "company-a" }, user: { id: "user-a" }, accessToken: "test-token" } }) }));
 jest.mock("@/services/inventoryMovementService", () => ({ ...jest.requireActual("@/services/inventoryMovementService"), fetchScopedInventoryMovements: jest.fn() }));
+jest.mock("@/services/orderNumbersService", () => ({ resolveOrderNumbers: jest.fn().mockResolvedValue({}) }));
+import { resolveOrderNumbers } from "@/services/orderNumbersService";
 const fetch = jest.mocked(fetchScopedInventoryMovements);
 const warehouses = [{ id: "warehouse-a", name: "Principal", storeId: "store-a" }];
 const rows = Array.from({ length: 17 }, (_, index) => ({ id: `movement-${index}`, type: "IN", quantity: 2, reason: null, companyId: "company-a", userEmail: null, userName: null, referenceId: null, created_at: "2026-10-12T19:00:00Z", inventoryItem: { id: `item-${index}`, sku: `SKU-${index}`, product: { name: `Producto ${index}` } } })) as InventoryMovement[];
@@ -29,4 +31,34 @@ it("shows error and retry without false empty history, then recovers", async () 
   expect(screen.queryByText(/0 registros/)).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Reintentar" })); await screen.findByText("Producto 0");
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+describe("FEAT-24 H0", () => {
+  const ORDER = "0f8fad5b-d9cb-469f-a165-70867728950e";
+  const one = (patch: Partial<InventoryMovement>) => [{ ...rows[0], ...patch }] as InventoryMovement[];
+
+  it("tiene columnas Físico y Reservado y pinta la reserva en Reservado", async () => {
+    fetch.mockResolvedValue(one({ type: "RESERVED", reason: "SALE_RESERVATION", quantity: 2 }));
+    setup(); await screen.findByText("Reserva de venta");
+    const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent);
+    expect(headers).toEqual(["Fecha y hora", "Producto / SKU", "Operación", "Físico", "Reservado", "Referencia", "Usuario"]);
+    const cells = screen.getByText("Reserva de venta").closest("tr")!.querySelectorAll("td");
+    expect(cells[3].textContent).toBe("—");
+    expect(cells[4].textContent).toBe("+2");
+  });
+
+  it("muestra el número del pedido en vez del UUID", async () => {
+    jest.mocked(resolveOrderNumbers).mockResolvedValue({ [ORDER]: "ORD-000123" });
+    fetch.mockResolvedValue(one({ type: "RESERVED", reason: "order.created:1", referenceId: ORDER }));
+    setup(); await screen.findByText("ORD-000123");
+    expect(screen.queryByText(ORDER)).not.toBeInTheDocument();
+  });
+
+  it("sin número disponible muestra Pedido, nunca el UUID", async () => {
+    jest.mocked(resolveOrderNumbers).mockResolvedValue({});
+    fetch.mockResolvedValue(one({ type: "RESERVED", reason: "order.created:1", referenceId: ORDER }));
+    setup(); await screen.findByText("Reserva por pedido");
+    expect(await screen.findByText("Pedido")).toBeInTheDocument();
+    expect(screen.queryByText(ORDER)).not.toBeInTheDocument();
+  });
 });
