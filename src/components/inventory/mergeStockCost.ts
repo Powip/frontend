@@ -26,17 +26,8 @@ export interface MergeCostResolution {
 export const MAX_COUNTED_QUANTITY = 1_000_000;
 export const MAX_PRICE_BASE = 99_999_999.99;
 
-export function formatMoney(value: number | null | undefined): string {
-  const numeric = Number(value);
-  if (value === null || value === undefined || Number.isNaN(numeric)) {
-    return "S/ 0.00";
-  }
-  return new Intl.NumberFormat("es-PE", {
-    style: "currency",
-    currency: "PEN",
-    minimumFractionDigits: 2,
-  }).format(numeric);
-}
+// FEAT-24 H0: el formateador vive en lib/money.ts y se reexporta para no cambiar los imports.
+export { formatMoney } from "@/lib/money";
 
 export function totalReserved(sides: MergeStockSides): number {
   return sides.winnerReserved + sides.loserReserved;
