@@ -12,6 +12,7 @@ jest.mock("@/hooks/useBusinessInventories", () => {
   return { useBusinessInventories: () => ({ inventories }) };
 });
 jest.mock("@/components/header/HeaderConfig", () => ({ HeaderConfig: () => null }));
+jest.mock("@/components/products/BrandSelect", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/lib/axiosAuth", () => ({
   __esModule: true,
   default: { get: jest.fn(), post: jest.fn(), patch: jest.fn() },

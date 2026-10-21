@@ -46,7 +46,7 @@ export interface IProductRequest {
   categoryId: string;
   subcategoryId: string;
   companyId: string;
-  supplierId: string;
+  supplierId?: string;
   brandId: string;
   availability: boolean;
   status: boolean;

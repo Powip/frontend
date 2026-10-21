@@ -29,13 +29,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import BrandSelect from "@/components/products/BrandSelect";
+import VariantStatusControl from "@/components/products/VariantStatusControl";
+import { MAX_ITEM_UNITS, MAX_ITEM_UNITS_MESSAGE, largeQuantityConfirmText, needsQuantityConfirmation } from "@/lib/stockLimits";
+import { formatVariantLabel } from "@/lib/variantAttributes";
 
 interface Category {
   id: string;
@@ -53,20 +50,8 @@ interface CreateProductBase {
   categoryId: string;
   subcategoryId: string;
   inventory_id: string;
-  supplierId: string;
   brandId: string;
   mainImageUrl?: string;
-}
-
-interface Supplier {
-  id: string;
-  name: string;
-}
-
-interface Brand {
-  id: string;
-  name: string;
-  supplier: { id: string };
 }
 
 interface DefaultAttribute {
@@ -91,6 +76,11 @@ interface VariantForm {
   stock: number;
   minStock: number;
   imageFile: File | null;
+  // FEAT-24 H0: estado de la variante guardada (FEAT-17: unificada = mergedInto).
+  isActive?: boolean;
+  mergedInto?: string | null;
+  mergedIntoSku?: string | null;
+  linkedSources?: string[];
 }
 
 // ---------- util: cartesian product ----------
@@ -130,7 +120,6 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
     categoryId: "",
     subcategoryId: "",
     inventory_id: "",
-    supplierId: "",
     brandId: "",
     mainImageUrl: "",
   });
@@ -140,9 +129,6 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [brands, setBrands] = useState<Brand[]>([]);
-  const [filteredBrands, setFilteredBrands] = useState<Brand[]>([]);
 
   const [defaultAttributes, setDefaultAttributes] = useState<
     DefaultAttribute[]
@@ -160,14 +146,7 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
   const [trackingMode, setTrackingMode] = useState<TrackingMode>("NONE");
   const [companySku, setCompanySku] = useState("");
   const [message, setMessage] = useState("");
-
-  // Quick create modals
-  const [supplierModalOpen, setSupplierModalOpen] = useState(false);
-  const [brandModalOpen, setBrandModalOpen] = useState(false);
-  const [quickSupplierName, setQuickSupplierName] = useState("");
-  const [quickBrandName, setQuickBrandName] = useState("");
-  const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
-  const [isCreatingBrand, setIsCreatingBrand] = useState(false);
+  const [confirmLargeStock, setConfirmLargeStock] = useState(false);
 
   // =========================
   // Cargar categorías
@@ -178,18 +157,6 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
       .get(`${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/categories`)
       .then((res) => setCategories(res.data))
       .catch((err) => console.error("Error al cargar categorías", err));
-
-    // Cargar proveedores
-    axiosAuth
-      .get(`${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/suppliers/company/${auth?.company?.id}`)
-      .then((res) => setSuppliers(res.data))
-      .catch((err) => console.error("Error al cargar proveedores", err));
-
-    // Cargar marcas
-    axiosAuth
-      .get(`${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/brands`)
-      .then((res) => setBrands(res.data))
-      .catch((err) => console.error("Error al cargar marcas", err));
   }, [auth?.company?.id]);
 
   // =========================
@@ -277,7 +244,6 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
           categoryId: categoryId || "",
           subcategoryId: subcategoryId || "",
           inventory_id: product.inventory_id || "",
-          supplierId: productDetails.supplier?.id || "",
           brandId: productDetails.brand?.id || "",
           mainImageUrl: product.imageUrl || "",
         });
@@ -299,6 +265,10 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
           stock: Number(v.stock) || 0,
           minStock: Number(v.minStock) || 0,
           imageFile: null,
+          isActive: v.isActive !== false,
+          mergedInto: v.mergedInto ?? null,
+          mergedIntoSku: v.mergedIntoSku ?? null,
+          linkedSources: v.linkedSources ?? [],
         }));
         setVariants(variantForms);
 
@@ -418,28 +388,6 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
       })
       .catch((err) => console.error("Error cargando atributos default", err));
   }, [form.subcategoryId, isEditMode]);
-
-  // Filtrar marcas cuando cambia el proveedor
-  useEffect(() => {
-    if (form.supplierId) {
-      const filtered = brands.filter(
-        (brand) => brand.supplier?.id === form.supplierId,
-      );
-      setFilteredBrands(filtered);
-      // Resetear marca si ya no pertenece al proveedor seleccionado
-      if (form.brandId) {
-        const brandBelongsToSupplier = filtered.some(
-          (b) => b.id === form.brandId,
-        );
-        if (!brandBelongsToSupplier) {
-          setForm((prev) => ({ ...prev, brandId: "" }));
-        }
-      }
-    } else {
-      setFilteredBrands([]);
-      setForm((prev) => ({ ...prev, brandId: "" }));
-    }
-  }, [form.supplierId, brands, form.brandId]);
 
   // =========================
   // Manejo inputs base
@@ -588,87 +536,6 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
     );
   };
 
-  // =========================
-  // Quick create Supplier/Brand
-  // =========================
-  const handleQuickCreateSupplier = async () => {
-    if (!quickSupplierName.trim()) {
-      toast.error("El nombre del proveedor es requerido");
-      return;
-    }
-
-    setIsCreatingSupplier(true);
-    try {
-      const res = await axiosAuth.post(
-        `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/suppliers`,
-        { name: quickSupplierName.trim(), companyId: auth?.company?.id },
-      );
-
-      toast.success("Proveedor creado exitosamente");
-
-      // Recargar proveedores
-      const suppliersRes = await axiosAuth.get(
-        `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/suppliers`,
-      );
-      setSuppliers(suppliersRes.data);
-
-      // Seleccionar el nuevo proveedor
-      setForm((prev) => ({ ...prev, supplierId: res.data.id }));
-
-      // Cerrar modal y limpiar
-      setSupplierModalOpen(false);
-      setQuickSupplierName("");
-    } catch (error) {
-      console.error("Error creating supplier", error);
-      toast.error("Error al crear proveedor");
-    } finally {
-      setIsCreatingSupplier(false);
-    }
-  };
-
-  const handleQuickCreateBrand = async () => {
-    if (!quickBrandName.trim()) {
-      toast.error("El nombre de la marca es requerido");
-      return;
-    }
-
-    if (!form.supplierId) {
-      toast.error("Primero selecciona un proveedor");
-      return;
-    }
-
-    setIsCreatingBrand(true);
-    try {
-      const res = await axiosAuth.post(
-        `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/brands`,
-        {
-          name: quickBrandName.trim(),
-          supplierId: form.supplierId,
-        },
-      );
-
-      toast.success("Marca creada exitosamente");
-
-      // Recargar marcas
-      const brandsRes = await axiosAuth.get(
-        `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/brands`,
-      );
-      setBrands(brandsRes.data);
-
-      // Seleccionar la nueva marca
-      setForm((prev) => ({ ...prev, brandId: res.data.id }));
-
-      // Cerrar modal y limpiar
-      setBrandModalOpen(false);
-      setQuickBrandName("");
-    } catch (error) {
-      console.error("Error creating brand", error);
-      toast.error("Error al crear marca");
-    } finally {
-      setIsCreatingBrand(false);
-    }
-  };
-
   const resetForm = () => {
     setForm({
       name: "",
@@ -676,7 +543,6 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
       description: "",
       subcategoryId: "",
       inventory_id: "",
-      supplierId: "",
       brandId: "",
     });
 
@@ -738,7 +604,19 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
         toast.error("El stock no puede ser negativo.");
         return;
       }
+      if (!isEditMode && Number(v.stock) > MAX_ITEM_UNITS) {
+        toast.error(MAX_ITEM_UNITS_MESSAGE);
+        return;
+      }
     }
+
+    // FEAT-24 H0: una carga grande pide confirmar antes de enviar.
+    const largestStock = isEditMode || isTracked(trackingMode) ? 0 : Math.max(0, ...variants.map((v) => Number(v.stock) || 0));
+    if (needsQuantityConfirmation(largestStock) && !confirmLargeStock) {
+      setConfirmLargeStock(true);
+      return;
+    }
+    setConfirmLargeStock(false);
 
     setIsSubmitting(true);
 
@@ -785,7 +663,6 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
       companyId: auth?.company?.id,
       subcategoryId: form.subcategoryId,
       inventory_id: form.inventory_id,
-      supplierId: form.supplierId || null,
       brandId: form.brandId || null,
       attributes: attributesPayload,
       variants: variantsPayload,
@@ -810,6 +687,7 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
         const productPayload = {
           name: form.name,
           description: form.description,
+          brandId: form.brandId || null,
         };
 
         await axiosAuth.patch(
@@ -818,7 +696,8 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
         );
 
         await Promise.all(
-          variants.map((v) => {
+          // FEAT-24 H0: una variante unificada no se edita (ms-products responde 409).
+          variants.filter((v) => !v.mergedInto).map((v) => {
             const variantPayload = {
               priceBase: Number(v.priceBase),
               priceVta: Number(v.priceVta),
@@ -995,6 +874,11 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                   </SelectContent>
                 </Select>
               </div>
+
+              <BrandSelect
+                value={form.brandId}
+                onChange={(brandId) => setForm((prev) => ({ ...prev, brandId }))}
+              />
 
               {/* Nombre */}
               <div className="space-y-2">
@@ -1201,22 +1085,35 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                         <p className="font-semibold text-sm">
                           Variante {index + 1}
                         </p>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-600 hover:text-red-700"
-                          onClick={() => handleRemoveVariant(index)}
-                        >
-                          Eliminar
-                        </Button>
+                        {variant.id ? (
+                          <VariantStatusControl
+                            variant={{
+                              id: variant.id,
+                              isActive: variant.isActive !== false,
+                              mergedInto: variant.mergedInto,
+                              mergedIntoSku: variant.mergedIntoSku,
+                              linkedSources: variant.linkedSources,
+                            }}
+                            onChanged={(isActive) =>
+                              setVariants((prev) => prev.map((v, i) => (i === index ? { ...v, isActive } : v)))
+                            }
+                          />
+                        ) : (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700"
+                            onClick={() => handleRemoveVariant(index)}
+                          >
+                            Eliminar
+                          </Button>
+                        )}
                       </div>
 
                       {/* Atributos de la variante */}
                       <p className="text-s text-muted-foreground">
-                        {Object.entries(variant.attributes)
-                          .map(([name, value]) => `${name}: ${value}`)
-                          .join(" | ")}
+                        {formatVariantLabel(variant.attributes, " | ")}
                       </p>
 
                       {/* Datos de la variante */}
@@ -1226,6 +1123,7 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                           <Input
                             id={`variant-${index}-base-price`}
                             type="number"
+                            disabled={Boolean(variant.mergedInto)}
                             value={variant.priceBase || ""}
                             onChange={(e) =>
                               updateVariantField(
@@ -1242,6 +1140,7 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                           <Input
                             id={`variant-${index}-sale-price`}
                             type="number"
+                            disabled={Boolean(variant.mergedInto)}
                             value={variant.priceVta || ""}
                             onChange={(e) =>
                               updateVariantField(
@@ -1277,6 +1176,7 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                           </Label>
                           <Input
                             type="number"
+                            disabled={Boolean(variant.mergedInto)}
                             value={variant.minStock || ""}
                             onChange={(e) =>
                               updateVariantField(
@@ -1312,6 +1212,15 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
         </div>
       )}
 
+      {confirmLargeStock ? (
+        <div className="mt-6 rounded-md border border-amber-300 p-3 text-sm">
+          <p>{largeQuantityConfirmText(Math.max(0, ...variants.map((v) => Number(v.stock) || 0)))}</p>
+          <Button type="submit" size="sm" className="mt-2" disabled={isSubmitting}>
+            Sí, confirmar
+          </Button>
+        </div>
+      ) : null}
+
       {/* Submit buttons */}
       <div className="flex items-center justify-end gap-3 mt-6">
         <Button
@@ -1340,102 +1249,6 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
         </Button>
       </div>
 
-      {/* Modal: Crear Proveedor Rápido */}
-      <Dialog open={supplierModalOpen} onOpenChange={setSupplierModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Crear Proveedor</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="quick-supplier-name">
-                Nombre del Proveedor *
-              </Label>
-              <Input
-                id="quick-supplier-name"
-                value={quickSupplierName}
-                onChange={(e) => setQuickSupplierName(e.target.value)}
-                placeholder="Ej: Nike, Adidas..."
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleQuickCreateSupplier();
-                  }
-                }}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setSupplierModalOpen(false);
-                setQuickSupplierName("");
-              }}
-              disabled={isCreatingSupplier}
-            >
-              Cancelar
-            </Button>
-            <Button
-              onClick={handleQuickCreateSupplier}
-              disabled={isCreatingSupplier}
-            >
-              {isCreatingSupplier ? "Creando..." : "Crear"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal: Crear Marca Rápida */}
-      <Dialog open={brandModalOpen} onOpenChange={setBrandModalOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Crear Marca</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Proveedor</Label>
-              <Input
-                value={
-                  suppliers.find((s) => s.id === form.supplierId)?.name || ""
-                }
-                disabled
-                className="bg-muted"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="quick-brand-name">Nombre de la Marca *</Label>
-              <Input
-                id="quick-brand-name"
-                value={quickBrandName}
-                onChange={(e) => setQuickBrandName(e.target.value)}
-                placeholder="Ej: Air Jordan, Ultraboost..."
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleQuickCreateBrand();
-                  }
-                }}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setBrandModalOpen(false);
-                setQuickBrandName("");
-              }}
-              disabled={isCreatingBrand}
-            >
-              Cancelar
-            </Button>
-            <Button onClick={handleQuickCreateBrand} disabled={isCreatingBrand}>
-              {isCreatingBrand ? "Creando..." : "Crear"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </form>
   );
 }

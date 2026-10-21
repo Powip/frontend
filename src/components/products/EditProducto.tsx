@@ -18,12 +18,11 @@ import { getProductById, updateProduct } from "@/services/productService";
 
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
-import { getBrandsBySupplier } from "@/services/brandService";
+import BrandSelect from "@/components/products/BrandSelect";
 import { uploadImage } from "@/services/uploadService";
 import { groupAttributesByType } from "../../utils/groupAttributes";
 
 import { Category, Subcategory } from "@/interfaces/ICategory";
-import { Provider, Brand } from "@/interfaces/IProvider";
 import { IProductRequest } from "@/interfaces/IProduct";
 import { Attribute, SelectedAttribute } from "@/interfaces/IAttribute";
 import { Label } from "../ui/label";
@@ -50,8 +49,6 @@ const EditProductoForCompany = () => {
   // Listas para selects
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
-  const [providers, setProviders] = useState<Provider[]>([]);
-  const [brands, setBrands] = useState<Brand[]>([]);
 
   /* Atributos dinámicos */
   const [attributesByType, setAttributesByType] = useState<
@@ -68,7 +65,6 @@ const EditProductoForCompany = () => {
     categoryId: "",
     subcategoryId: "",
     companyId,
-    supplierId: "",
     brandId: "",
     status: true,
     images: [] as string[],
@@ -85,11 +81,9 @@ const EditProductoForCompany = () => {
         if (cancelled) return;
         if (prod.companyId !== companyId) throw new Error("El producto no pertenece al negocio activo.");
 
-        const [cats, provs, brs] = await Promise.all([
-          axiosAuth.get<Category[]>(`${process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products}/categories`).then((response) => response.data),
-          axiosAuth.get<Provider[]>(`${process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics}/suppliers/company/${companyId}`).then((response) => response.data),
-          getBrandsBySupplier(prod.supplierId),
-        ]);
+        const cats = await axiosAuth
+          .get<Category[]>(`${process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products}/categories`)
+          .then((response) => response.data);
 
         if (cancelled) return;
         // 🟢 Buscar la categoría correspondiente al producto
@@ -102,8 +96,6 @@ const EditProductoForCompany = () => {
 
         setCategories(cats);
         setSubcategories(activeSubs);
-        setBrands(brs);
-        setProviders(provs);
 
         // 🟢 Cargar el producto con los valores actuales
         setValidatedProductId(id);
@@ -117,8 +109,7 @@ const EditProductoForCompany = () => {
           categoryId,
           subcategoryId: prod.subcategory?.id || prod.subcategoryId || "", // ✅ ahora coincide con una opción válida
           companyId,
-          supplierId: prod.supplierId,
-          brandId: prod.brandId,
+          brandId: prod.brandId ?? "",
           status: prod.status,
           images: prod.images || [],
         });
@@ -144,14 +135,6 @@ const EditProductoForCompany = () => {
       }).catch(() => { if (!controller.signal.aborted) toast.error("No se pudieron cargar las subcategorías"); });
     return () => controller.abort();
   }, [product.categoryId]);
-
-  // === Cargar marcas cuando cambia proveedor ===
-  useEffect(() => {
-    if (!product.supplierId) return;
-    getBrandsBySupplier(product.supplierId)
-      .then(setBrands)
-      .catch((err) => console.error("Error al cargar marcas", err));
-  }, [product.supplierId]);
 
   // === Cargar atributos dinámicos según la subcategoría ===
   useEffect(() => {
@@ -206,7 +189,6 @@ const EditProductoForCompany = () => {
       categoryId: product.categoryId,
       subcategoryId: product.subcategoryId,
       companyId: product.companyId,
-      supplierId: product.supplierId,
       brandId: product.brandId,
       availability: true,
       status: product.status,
@@ -287,35 +269,10 @@ const EditProductoForCompany = () => {
 
           <FormGrid>
             <div>
-              <Label>Proveedor*</Label>
-              <select
-                value={product.supplierId}
-                onChange={(e) => handleChange("supplierId", e.target.value)}
-                className="border rounded px-2 py-1 w-full"
-              >
-                <option value="">Seleccionar proveedor</option>
-                {providers.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <Label>Marca*</Label>
-              <select
+              <BrandSelect
                 value={product.brandId}
-                onChange={(e) => handleChange("brandId", e.target.value)}
-                className="border rounded px-2 py-1 w-full"
-              >
-                <option value="">Seleccionar marca</option>
-                {brands.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(brandId) => handleChange("brandId", brandId)}
+              />
             </div>
 
             {auth?.user?.role !== 'VENTAS' && (
