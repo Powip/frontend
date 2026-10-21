@@ -39,7 +39,7 @@ jest.mock("@/components/inventory/InventoryUnitsModal", () => ({
   __esModule: true, default: ({ onViewHistory }: {onViewHistory: (code: string) => void}) => <button onClick={() => onViewHistory("001234567890123")}>Historial de prueba</button>,
 }));
 jest.mock("@/components/inventory/ReconciliationTab", () => ({ ReconciliationTab: () => null }));
-jest.mock("@/components/modals/AddStockModal", () => ({
+jest.mock("@/components/modals/AdjustStockModal", () => ({
   __esModule: true,
   default: ({ open, onSuccess }: { open: boolean; onSuccess: () => void }) =>
     open ? <button onClick={onSuccess}>Confirmar ajuste de prueba</button> : null,
@@ -96,12 +96,6 @@ function setup() {
   return client;
 }
 
-async function confirmDeletion() {
-  fireEvent.click(screen.getAllByTitle("Eliminar")[0]);
-  fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
-  fireEvent.change(screen.getByLabelText("Escribe ELIMINAR para confirmar"), { target: { value: "ELIMINAR" } });
-  fireEvent.click(screen.getByRole("button", { name: "Eliminar Definitivamente" }));
-}
 
 describe("Warehouse product actions with business inventory queries", () => {
   beforeEach(() => {
@@ -141,8 +135,9 @@ describe("Warehouse product actions with business inventory queries", () => {
     expect(screen.getByRole("button", { name: "Ver unidades" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Transferir unidades" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Registrar merma" })).toBeEnabled();
-    expect(screen.getByTitle("Registra los IMEI o series desde Compras")).toBeDisabled();
-    expect(screen.getByTitle("Conserva las unidades identificadas y su historial")).toBeDisabled();
+    // FEAT-24 H0: sin ajuste por cantidad ni borrado para productos con IMEI/serie.
+    expect(screen.queryByTitle("Ajustar stock")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Eliminar")).not.toBeInTheDocument();
   });
 
   it("routes the actual source position to transfer and refreshes inventory after completion", async () => {
@@ -153,44 +148,15 @@ describe("Warehouse product actions with business inventory queries", () => {
     expect(screen.getByRole("dialog", { name: "Movimiento transfer" })).toHaveTextContent("serial:warehouse-b");
     fireEvent.click(screen.getByRole("button", { name: "Guardar movimiento de prueba" }));
     await waitFor(() => expect(fetchItems).toHaveBeenCalledTimes(2));
-    expect(client.getQueryData([...inventoryKey, "business", ["store-a"], ["warehouse-a"]])).toBeDefined();
+    expect(client.getQueryData([...inventoryKey, "business", ["store-a"], ["warehouse-a"], false])).toBeDefined();
   });
 
   it("normal quantity products retain their original actions without unit movement buttons", async () => {
     fetchItems.mockResolvedValue([item("normal", { trackingMode: "NONE" })]);
     setup(); await screen.findByText("Producto normal");
-    expect(screen.getByTitle("Ajustar Stock")).toBeEnabled();
+    expect(screen.getByTitle("Ajustar stock")).toBeEnabled();
     expect(screen.queryByRole("button", { name: "Transferir unidades" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Registrar merma" })).not.toBeInTheDocument();
-  });
-
-  it("reports a failed refetch after deletion instead of falsely reporting a refreshed warehouse", async () => {
-    fetchItems.mockResolvedValueOnce([item("a")]).mockRejectedValueOnce(new Error("Inventory unavailable"));
-    const errorLog = jest.spyOn(console, "error").mockImplementation(() => {});
-    setup();
-    await screen.findByText("Producto a");
-    await confirmDeletion();
-    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(
-      "Producto eliminado, pero no se pudo actualizar el almacén. Recarga la página.",
-    ));
-    expect(toast.success).not.toHaveBeenCalled();
-    expect(axiosAuth.delete).toHaveBeenCalledWith(expect.stringContaining("/inventory-item/a"));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    errorLog.mockRestore();
-  });
-
-  it("returns to the last valid page after removing its final row", async () => {
-    const initial = Array.from({ length: 11 }, (_, index) => item(String(index + 1)));
-    fetchItems.mockResolvedValueOnce(initial).mockResolvedValueOnce(initial.slice(0, 10));
-    setup();
-    await screen.findByText("Producto 1");
-    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
-    expect(screen.getByText("Producto 11")).toBeInTheDocument();
-    await confirmDeletion();
-    await waitFor(() => expect(screen.getByText("Producto 1")).toBeInTheDocument());
-    expect(screen.getByText("Mostrando 1 - 10 de 10 productos")).toBeInTheDocument();
-    expect(screen.queryByText("No hay productos en este alcance")).not.toBeInTheDocument();
-    expect(toast.success).toHaveBeenCalledWith("Producto eliminado del almacén");
   });
 
   it("opens the image editor and keeps every variant and warehouse cache updated when refresh fails", async () => {
@@ -200,7 +166,7 @@ describe("Warehouse product actions with business inventory queries", () => {
     fetchItems.mockResolvedValueOnce([selected, sibling, other]).mockRejectedValueOnce(new Error("Refresh unavailable"));
     const client = setup();
     await screen.findByText("Producto a");
-    const storeCacheKey = [...inventoryKey, "store", ["store-b"], ["warehouse-b"]];
+    const storeCacheKey = [...inventoryKey, "store", ["store-b"], ["warehouse-b"], false];
     client.setQueryData(storeCacheKey, [item("d", { productId: "shared-product", inventoryId: "warehouse-b" }), other]);
     const otherUserKey = ["business-inventory-items", "company-a", "other-user", "business"];
     client.setQueryData(otherUserKey, [selected]);
@@ -228,7 +194,7 @@ describe("Warehouse product actions with business inventory queries", () => {
     fetchItems.mockResolvedValueOnce([selected]).mockRejectedValueOnce(new Error("Refresh unavailable"));
     const client = setup();
     await screen.findByText("Producto a");
-    const storeCacheKey = [...inventoryKey, "store", ["store-b"], ["warehouse-b"]];
+    const storeCacheKey = [...inventoryKey, "store", ["store-b"], ["warehouse-b"], false];
     client.setQueryData(storeCacheKey, [storeRow]);
     let resolveOlderFetch!: (rows: BusinessInventoryItem[]) => void;
     let olderSignal: AbortSignal | undefined;
@@ -254,16 +220,45 @@ describe("Warehouse product actions with business inventory queries", () => {
   });
 
   it.each([
-    ["Ajustar Stock", "Confirmar ajuste de prueba"],
+    ["Ajustar stock", "Confirmar ajuste de prueba"],
     ["Importar Excel", "Confirmar importación de prueba"],
   ])("handles refresh failures from the non-awaited %s callback", async (openLabel, confirmLabel) => {
     fetchItems.mockResolvedValueOnce([item("a")]).mockRejectedValueOnce(new Error("Refresh unavailable"));
     setup();
     await screen.findByText("Producto a");
-    fireEvent.click(openLabel === "Ajustar Stock" ? screen.getByTitle(openLabel) : screen.getByRole("button", { name: openLabel }));
+    fireEvent.click(openLabel === "Ajustar stock" ? screen.getByTitle(openLabel) : screen.getByRole("button", { name: openLabel }));
     fireEvent.click(screen.getByRole("button", { name: confirmLabel }));
     await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(
       "Los cambios se guardaron, pero no se pudo actualizar el almacén. Recarga la página.",
     ));
+  });
+
+  describe("FEAT-24 H0", () => {
+    it("no hay papelera ni borrado en las filas", async () => {
+      fetchItems.mockResolvedValue([item("normal", { trackingMode: "NONE" })]);
+      setup(); await screen.findByText("Producto normal");
+      expect(screen.queryByTitle("Eliminar")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /eliminar/i })).not.toBeInTheDocument();
+    });
+
+    it("muestra el precio en soles y oculta Default Title", async () => {
+      fetchItems.mockResolvedValue([item("simple", { priceVta: 49.9, attributes: { Title: "Default Title" } }), item("polo", { attributes: { Color: "Rojo", Talla: "M" } })]);
+      setup(); await screen.findByText("Producto simple");
+      expect(screen.getByText("S/ 49.90")).toBeInTheDocument();
+      expect(screen.queryByText(/Default Title/)).not.toBeInTheDocument();
+      expect(screen.getByText("Color: Rojo · Talla: M")).toBeInTheDocument();
+    });
+
+    it("Mostrar inactivas pide includeInactive y marca las filas", async () => {
+      fetchItems.mockResolvedValue([item("activa")]);
+      setup(); await screen.findByText("Producto activa");
+      expect(fetchItems).toHaveBeenLastCalledWith(expect.objectContaining({ includeInactive: false }));
+      fetchItems.mockResolvedValue([item("activa"), item("vieja", { isActive: false, mergedInto: null }), item("unificada", { isActive: false, mergedInto: "v-madre" })]);
+      fireEvent.click(screen.getByLabelText("Mostrar inactivas"));
+      await screen.findByText("Producto vieja");
+      expect(fetchItems).toHaveBeenLastCalledWith(expect.objectContaining({ includeInactive: true }));
+      expect(screen.getByText("Inactiva")).toBeInTheDocument();
+      expect(screen.getByText("Unificada")).toBeInTheDocument();
+    });
   });
 });

@@ -1,4 +1,5 @@
 "use client";
+import { formatMoney } from "@/lib/money";
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { getProductById } from "@/services/productService";
@@ -130,7 +131,7 @@ export default function ProductViewModal({
               <strong>SKU:</strong> {product.sku}
             </p>
             <p>
-              <strong>Precio Venta:</strong> ${product.priceVta}
+              <strong>Precio venta:</strong> {formatMoney(product.priceVta)}
             </p>
             <p>
               <strong>Categoría:</strong> {product.category?.name}

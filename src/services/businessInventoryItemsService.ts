@@ -9,11 +9,14 @@ export interface BusinessInventoryItem extends InventoryItemForSale {
   inventoryName: string;
   storeId: string;
   storeName?: string;
+  /** FEAT-24 H0: solo llegan en false con includeInactive. */
+  isActive?: boolean;
+  mergedInto?: string | null;
 }
 
 /** Read every backend page before paginating the union. Never merge physical rows by SKU or variant. */
-export async function fetchBusinessInventoryItems({ inventories, companyId, accessToken, signal }: {
-  inventories: BusinessInventory[]; companyId: string; accessToken: string; signal?: AbortSignal;
+export async function fetchBusinessInventoryItems({ inventories, companyId, accessToken, signal, includeInactive = false }: {
+  inventories: BusinessInventory[]; companyId: string; accessToken: string; signal?: AbortSignal; includeInactive?: boolean;
 }): Promise<BusinessInventoryItem[]> {
   if (!companyId || !accessToken) throw new Error("La sesión no permite consultar el inventario.");
   const uniqueWarehouses = [...new Map(inventories.map((inv) => [inv.id, inv])).values()];
@@ -23,7 +26,7 @@ export async function fetchBusinessInventoryItems({ inventories, companyId, acce
     let totalPages = 1;
     do {
       const { data } = await axiosAuth.get(`${process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics}/inventory-item/search`, {
-        params: { inventoryId: inv.id, companyId, page, limit: 100 },
+        params: { inventoryId: inv.id, companyId, page, limit: 100, ...(includeInactive ? { includeInactive: true } : {}) },
         headers: { Authorization: `Bearer ${accessToken}` }, signal,
       });
       totalPages = Number(data?.meta?.totalPages);

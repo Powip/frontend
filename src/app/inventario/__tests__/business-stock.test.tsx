@@ -14,8 +14,7 @@ jest.mock("@/components/header/HeaderConfig", () => ({ HeaderConfig: () => null 
 jest.mock("@/components/inventory/MovementHistoryTable", () => ({ MovementHistoryTable: () => null }));
 jest.mock("@/components/inventory/ReconciliationTab", () => ({ ReconciliationTab: () => null }));
 jest.mock("@/components/modals/ImportExcelModal", () => ({ __esModule: true, default: () => null }));
-jest.mock("@/components/modals/DeleteInventoryItemModal", () => ({ __esModule: true, default: () => null }));
-jest.mock("@/components/modals/AddStockModal", () => ({ __esModule: true, default: ({ item, open }: { item?: { inventoryItemId: string }; open: boolean }) => open ? <div data-testid="adjust-target">{item?.inventoryItemId}</div> : null }));
+jest.mock("@/components/modals/AdjustStockModal", () => ({ __esModule: true, default: ({ item, open }: { item?: { inventoryItemId: string }; open: boolean }) => open ? <div data-testid="adjust-target">{item?.inventoryItemId}</div> : null }));
 jest.mock("@/app/productos/shopify-sync-wizard", () => ({ __esModule: true, default: () => null }));
 const fetch = jest.mocked(fetchBusinessInventoryItems);
 function setup() {
@@ -32,7 +31,7 @@ it("renders the business union with totals and real pagination despite the selec
   expect(screen.getAllByText("Tienda Web · Web")).toHaveLength(10);
   fireEvent.change(screen.getByPlaceholderText("Buscar por SKU, nombre o variante..."), { target: { value: "SKU-11" } });
   await waitFor(() => expect(screen.getByText("Producto 11")).toBeInTheDocument());
-  fireEvent.click(screen.getByTitle("Ajustar Stock"));
+  fireEvent.click(screen.getByTitle("Ajustar stock"));
   expect(screen.getByTestId("adjust-target")).toHaveTextContent("physical-item-11");
 });
 it("shows an authorization error and retry without displaying zero-stock totals", async () => {

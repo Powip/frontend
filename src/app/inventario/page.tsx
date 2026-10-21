@@ -27,7 +27,6 @@ import {
   Loader2,
   Search,
   Pencil,
-  Trash2,
   ShoppingCart,
   ShoppingBag,
   History,
@@ -64,8 +63,9 @@ import InventoryUnitTraceModal from "@/components/inventory/InventoryUnitTraceMo
 import InventoryUnitMovementModal from "@/components/inventory/InventoryUnitMovementModal";
 import InventoryUnitsModal from "@/components/inventory/InventoryUnitsModal";
 import { isTracked } from "@/services/inventoryTrackingService";
-import AddStockModal from "@/components/modals/AddStockModal";
-import DeleteInventoryItemModal from "@/components/modals/DeleteInventoryItemModal";
+import AdjustStockModal from "@/components/modals/AdjustStockModal";
+import { formatMoney } from "@/lib/money";
+import { formatVariantLabel } from "@/lib/variantAttributes";
 import EditProductImageModal from "@/components/modals/EditProductImageModal";
 import ImportExcelModal from "@/components/modals/ImportExcelModal";
 import { Pagination } from "@/components/ui/pagination";
@@ -88,10 +88,11 @@ export default function AlmacenPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [mode, setMode] = useState<"table" | "shopify">("table");
+  const [includeInactive, setIncludeInactive] = useState(false);
   const companyId = auth?.company?.id ?? "";
   const inventoryQuery = useQuery({
-    queryKey: ["business-inventory-items", companyId, auth?.user?.id, scope, storeIds, storeInventories.map((inv) => inv.id).sort()],
-    queryFn: ({ signal }) => fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth?.accessToken ?? "", signal }),
+    queryKey: ["business-inventory-items", companyId, auth?.user?.id, scope, storeIds, storeInventories.map((inv) => inv.id).sort(), includeInactive],
+    queryFn: ({ signal }) => fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth?.accessToken ?? "", signal, includeInactive }),
     enabled: canFetch && warehouses.isSuccess,
     retry: false,
   });
@@ -116,8 +117,7 @@ export default function AlmacenPage() {
   const [trackingItem, setTrackingItem] = useState<{ item: BusinessInventoryItem; companyId: string; action: "regularize" | "units" | "transfer" | "write-off" } | null>(null);
   useEffect(() => { setTrackingItem(null); setUnitTrace(null); }, [companyId, auth?.user?.id]);
 
-  const [addStockOpen, setAddStockOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [adjustOpen, setAdjustOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItemForSale | null>(
     null,
   );
@@ -141,7 +141,7 @@ export default function AlmacenPage() {
     setIsExporting(true);
 
     try {
-      const fresh = await fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth.accessToken });
+      const fresh = await fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth.accessToken, includeInactive });
       const items = filterBusinessInventoryItems(fresh, selectedInventoryId, searchQuery);
 
       if (items.length === 0) {
@@ -156,12 +156,13 @@ export default function AlmacenPage() {
         { header: "SKU Empresa", key: "companySku", width: 20 },
         { header: "SKU POWIP", key: "sku", width: 20 },
         { header: "Nombre", key: "name", width: 30 },
+        { header: "Variante", key: "variante", width: 30 },
         { header: "Tienda", key: "store", width: 25 },
         { header: "Almacén", key: "inventory", width: 25 },
-        { header: "Stock", key: "stock", width: 12 },
+        { header: "Físico", key: "stock", width: 12 },
         { header: "Reservado", key: "reservado", width: 12 },
         { header: "Disponible", key: "disponible", width: 12 },
-        { header: "Precio", key: "precio", width: 15 },
+        { header: "Precio venta", key: "precio", width: 15, style: { numFmt: '"S/" #,##0.00' } },
       ];
 
       worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
@@ -177,6 +178,7 @@ export default function AlmacenPage() {
           companySku: prod.companySku ?? "",
           sku: prod.sku,
           name: prod.productName,
+          variante: formatVariantLabel(prod.attributes),
           store: prod.storeName || prod.storeId,
           inventory: prod.inventoryName,
           stock: prod.physicalStock,
@@ -338,7 +340,15 @@ export default function AlmacenPage() {
                     />
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={includeInactive}
+                        onChange={(event) => setIncludeInactive(event.target.checked)}
+                      />
+                      Mostrar inactivas
+                    </label>
                     <Button
                       variant="outline"
                       size="sm"
@@ -422,7 +432,7 @@ export default function AlmacenPage() {
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent className="max-w-[220px] text-xs">
-                                Stock − Reservado. Lo que podés vender sin afectar pedidos en curso.
+                                Stock − Reservado. Lo que puedes vender sin afectar pedidos en curso.
                               </TooltipContent>
                             </Tooltip>
                           </TooltipProvider>
@@ -524,9 +534,12 @@ export default function AlmacenPage() {
                               <div className="text-xs text-muted-foreground">{prod.storeName || "Tienda"} · {prod.inventoryName}</div>
                             </TableCell>
                             <TableCell className="border-r text-sm">
-                              {Object.entries(prod.attributes || {})
-                                .map(([k, v]) => `${k}: ${v}`)
-                                .join(" / ")}
+                              {formatVariantLabel(prod.attributes)}
+                              {prod.isActive === false ? (
+                                <span className="ml-2 rounded border px-1.5 py-0.5 text-xs text-muted-foreground">
+                                  {prod.mergedInto ? "Unificada" : "Inactiva"}
+                                </span>
+                              ) : null}
                             </TableCell>
                             <TableCell className="border-r font-semibold text-center">
                               {prod.physicalStock}
@@ -546,7 +559,7 @@ export default function AlmacenPage() {
                               </span>
                             </TableCell>
                             <TableCell className="border-r text-sm">
-                              ${prod.priceVta}
+                              {formatMoney(prod.priceVta)}
                             </TableCell>
                             <TableCell className="text-right space-x-1">
                               <Button size="sm" variant="outline" disabled={!prod.productId} onClick={() => setTrackingItem({ item: prod, companyId, action: isTracked(prod.trackingMode) ? "units" : "regularize" })}>
@@ -557,19 +570,20 @@ export default function AlmacenPage() {
                                 <Button size="sm" variant="outline" onClick={() => setTrackingItem({ item: prod, companyId, action: "write-off" })}>Registrar merma</Button>
                               </> : null}
                               {isTracked(prod.trackingMode) ? <Button size="sm" variant="ghost" disabled={!prod.productId} onClick={() => setTrackingItem({ item: prod, companyId, action: "regularize" })}>Revisar activación</Button> : null}
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
-                                title={isTracked(prod.trackingMode) ? "Registra los IMEI o series desde Compras" : "Ajustar Stock"}
-                                disabled={isTracked(prod.trackingMode)}
-                                onClick={() => {
-                                  setSelectedItem(prod);
-                                  setAddStockOpen(true);
-                                }}
-                              >
-                                <PackagePlus className="h-4 w-4" />
-                              </Button>
+                              {isTracked(prod.trackingMode) ? null : (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+                                  title="Ajustar stock"
+                                  onClick={() => {
+                                    setSelectedItem(prod);
+                                    setAdjustOpen(true);
+                                  }}
+                                >
+                                  <PackagePlus className="h-4 w-4" />
+                                </Button>
+                              )}
                               <Button
                                 size="icon"
                                 variant="ghost"
@@ -580,19 +594,6 @@ export default function AlmacenPage() {
                                 }}
                               >
                                 <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 text-destructive hover:text-destructive"
-                                title={isTracked(prod.trackingMode) ? "Conserva las unidades identificadas y su historial" : "Eliminar"}
-                                disabled={isTracked(prod.trackingMode)}
-                                onClick={() => {
-                                  setSelectedItem(prod);
-                                  setDeleteOpen(true);
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
                               </Button>
                             </TableCell>
                           </TableRow>
@@ -647,20 +648,11 @@ export default function AlmacenPage() {
         onSuccess={handleStockRefresh}
       />
 
-      <AddStockModal
-        open={addStockOpen}
+      <AdjustStockModal
+        open={adjustOpen}
         item={selectedItem}
-        onClose={() => setAddStockOpen(false)}
+        onClose={() => setAdjustOpen(false)}
         onSuccess={handleStockRefresh}
-      />
-
-      <DeleteInventoryItemModal
-        open={deleteOpen}
-        inventoryItemId={selectedItem?.inventoryItemId || null}
-        productName={selectedItem?.productName || ""}
-        sku={selectedItem?.sku || ""}
-        onClose={() => setDeleteOpen(false)}
-        onSuccess={refreshItems}
       />
 
       {imageItem && (

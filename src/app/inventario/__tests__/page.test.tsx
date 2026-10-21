@@ -37,18 +37,23 @@ jest.mock('exceljs', () => {
     }
   }
 
+  const worksheets: MockWorksheet[] = [];
+
   class MockWorkbook {
     xlsx = {
       writeBuffer: jest.fn().mockResolvedValue(new ArrayBuffer(8)),
     };
 
     addWorksheet(_name: string) {
-      return new MockWorksheet();
+      const sheet = new MockWorksheet();
+      worksheets.push(sheet);
+      return sheet;
     }
   }
 
   return {
     Workbook: MockWorkbook,
+    __getWorksheets: () => worksheets,
     __getAddRowCalls: () => addRowCalls,
     __resetAddRowCalls: () => {
       addRowCalls.length = 0;
@@ -59,7 +64,7 @@ jest.mock('exceljs', () => {
 
 const fetch = jest.mocked(fetchBusinessInventoryItems);
 const mockToast = toast as jest.Mocked<typeof toast>;
-const mockExcelJS = ExcelJS as unknown as { __getAddRowCalls: () => Array<Record<string, unknown>>; __resetAddRowCalls: () => void };
+const mockExcelJS = ExcelJS as unknown as { __getAddRowCalls: () => Array<Record<string, unknown>>; __resetAddRowCalls: () => void; __getWorksheets: () => Array<{ columns: Array<{ header: string; key: string; style?: { numFmt?: string } }> }> };
 const makeItem = (id: string, name: string): BusinessInventoryItem => ({ inventoryItemId:id,productId:'product',variantId:`variant-${id}`,productName:name,sku:`SKU-${id}`,price:100,priceVta:100,availableStock:10,physicalStock:12,reservedStock:2, inventoryId:'inv-1', inventoryName:'Almacén Principal',storeId:'store-1',storeName:'Principal' });
 const DEFAULT_ITEMS = [makeItem('item-1','Producto Uno'),makeItem('item-2','Producto Dos')];
 function renderPage() { const client = new QueryClient({defaultOptions:{queries:{retry:false}}}); return render(<QueryClientProvider client={client}><AlmacenPage /></QueryClientProvider>); }
@@ -103,4 +108,13 @@ it('keeps Stock, Movement History and Reconciliation tabs available', async () =
 it('paginates the complete union without repeating fetches or exporting', async () => {
  fetch.mockResolvedValue(Array.from({length:12},(_,index)=>makeItem(`row-${index}`,`Producto Página ${index}`))); renderPage(); await screen.findByText('Producto Página 0');
  const user=userEvent.setup(); await user.click(screen.getByRole('button',{name:/siguiente/i})); expect(await screen.findByText('Producto Página 10')).toBeInTheDocument(); expect(screen.queryByText('Producto Página 0')).not.toBeInTheDocument(); expect(fetch).toHaveBeenCalledTimes(1); expect(mockExcelJS.__getAddRowCalls()).toHaveLength(0);
+});
+it('FEAT-24 H0: el Excel trae variante, físico y precio en soles', async () => {
+ fetch.mockResolvedValue([{ ...makeItem('item-1','Producto Uno'), attributes: { Color: 'Rojo', Title: 'Default Title' } }]);
+ renderPage(); await loaded(); const user=userEvent.setup(); await user.click(screen.getByRole('button',{name:/exportar en excel/i}));
+ await waitFor(()=>expect(mockToast.success).toHaveBeenCalled());
+ const sheet = mockExcelJS.__getWorksheets().at(-1)!;
+ expect(sheet.columns.map((column) => column.header)).toEqual(['SKU Empresa','SKU POWIP','Nombre','Variante','Tienda','Almacén','Físico','Reservado','Disponible','Precio venta']);
+ expect(sheet.columns.find((column) => column.header === 'Precio venta')?.style?.numFmt).toBe('"S/" #,##0.00');
+ expect(mockExcelJS.__getAddRowCalls().at(-1)).toMatchObject({ variante: 'Color: Rojo' });
 });
