@@ -37,6 +37,9 @@
 
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { GATEWAY } from '@/lib/gateway';
+let mockCanLegacyRecord = true;
+jest.mock('@/contexts/AuthContext', () => ({useAuth: () => ({auth:{company:{id:'company-1'},user:{id:'finance-user-1',permissions:['APPROVE_PAYMENTS','CREATE_SALE','EDIT_SALE']},accessToken:'synthetic'},hasPermission:() => mockCanLegacyRecord})}));
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
 
@@ -173,6 +176,7 @@ const mockUsePathname = usePathname as jest.Mock;
 // Default global: casi todos los tests existentes asumen /finanzas. Los tests
 // de ruta lo sobreescriben puntualmente con mockReturnValue.
 beforeEach(() => {
+  mockCanLegacyRecord = true;
   mockUsePathname.mockReturnValue('/finanzas');
 });
 
@@ -655,4 +659,192 @@ describe('PaymentVerificationModal — 403 al aprobar/rechazar (guard VIEW_FINAN
       expect(mockToast.error).toHaveBeenCalledWith('Error al aprobar el pago'),
     );
   });
+});
+
+describe("PaymentVerificationModal — conserva anticipos vinculados al convertir", () => {
+  const anchoredOrder = (version: number | null = 7) => {
+    const order = makeOrderData(null);
+    return {
+      ...order,
+      commercialStage: "SALE",
+      commercialLeadId: "lead-1",
+      currency: "USD",
+      payments: order.payments.map((payment) => ({
+        ...payment,
+        leadId: "lead-1",
+        leadPaymentVersion: version,
+      })),
+    };
+  };
+  beforeEach(() => {
+    jest.clearAllMocks();
+    window.confirm = jest.fn().mockReturnValue(true);
+    mockedAxiosAuth.get.mockResolvedValue({ data: anchoredOrder() });
+    mockedAxiosAuth.patch.mockResolvedValue({ data: {} });
+  });
+  it("aprueba la misma identidad con versión mediante la API de Leads", async () => {
+    renderModal();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /aprobar/i }),
+    );
+    expect(mockedAxiosAuth.patch).toHaveBeenCalledWith(
+      `${GATEWAY.ventas}/leads/lead-1/payments/payment-1/approve`,
+      { version: 7 },
+    );
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+  });
+  it("rechaza mediante la API de Leads sin reemplazar el pago", async () => {
+    renderModal();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /rechazar/i }),
+    );
+    expect(mockedAxiosAuth.patch).toHaveBeenCalledWith(
+      `${GATEWAY.ventas}/leads/lead-1/payments/payment-1/reject`,
+      { version: 7, notes: "Pago rechazado" },
+    );
+  });
+  it("corrige el monto con su versión financiera", async () => {
+    renderModal();
+    await userEvent.click(
+      await screen.findByRole("button", { name: /corregir monto/i }),
+    );
+    const amount = screen.getByDisplayValue("100");
+    await userEvent.clear(amount);
+    await userEvent.type(amount, "85");
+    await userEvent.click(screen.getByRole("button", { name: /guardar/i }));
+    expect(mockedAxiosAuth.patch).toHaveBeenCalledWith(
+      `${GATEWAY.ventas}/leads/lead-1/payments/payment-1/amount`,
+      { version: 7, amount: 85 },
+    );
+  });
+  it("adjunta comprobante al mismo anticipo con versión y permite cobrar el saldo por el pedido", async () => {
+    const { container } = renderModal();
+    await screen.findByText("Sin comprobante adjunto");
+    expect(screen.getByText("Comprobante (opcional)")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Lead/i })).toHaveAttribute(
+      "href",
+      "/leads-comerciales?leadId=lead-1",
+    );
+    const file = new File(["proof"], "p.pdf", { type: "application/pdf" });
+    await userEvent.upload(
+      container.querySelector('input[type="file"].hidden') as HTMLInputElement,
+      file,
+    );
+    const [url, data] = mockedAxiosAuth.patch.mock.calls[0];
+    expect(url).toBe(
+      `${GATEWAY.ventas}/leads/lead-1/payments/payment-1/upload-proof`,
+    );
+    expect((data as FormData).get("version")).toBe("7");
+    expect((data as FormData).get("file")).toBe(file);
+  });
+  it("falla cerrado si falta la versión, sin recurrir al endpoint anterior", async () => {
+    mockedAxiosAuth.get.mockResolvedValue({ data: anchoredOrder(null) });
+    const logging = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      renderModal();
+      await userEvent.click(
+        await screen.findByRole("button", { name: /aprobar/i }),
+      );
+      expect(mockedAxiosAuth.patch).not.toHaveBeenCalled();
+      expect(mockToast.error).toHaveBeenCalled();
+    } finally {
+      logging.mockRestore();
+    }
+  });
+  it("cobra sólo el saldo nuevo sin reenviar ni duplicar los anticipos de la venta", async () => {
+    const order = anchoredOrder();
+    order.payments[0].amount = 40;
+    order.payments[0].status = "PAID";
+    mockedAxiosAuth.get.mockResolvedValue({ data: order });
+    mockedAxiosAuth.post.mockResolvedValue({ data: {} });
+    renderModal();
+    await userEvent.type(await screen.findByLabelText("Monto *"), "60");
+    await userEvent.selectOptions(screen.getByRole("combobox"), "PLIN");
+    await userEvent.click(
+      screen.getByRole("button", { name: /registrar pago/i }),
+    );
+    expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1);
+    const [url, body] = mockedAxiosAuth.post.mock.calls[0];
+    expect(url).toBe(
+      "http://ventas/payments/orders/order-1/payments/with-proof",
+    );
+    expect((body as FormData).get("amount")).toBe("60");
+    expect((body as FormData).get("payments")).toBeNull();
+    expect(mockedAxiosAuth.patch).not.toHaveBeenCalled();
+  });
+  it("descarta el resultado de una aprobación después de desmontar el pedido visible", async () => {
+    let resolve!: (value: unknown) => void;
+    mockedAxiosAuth.patch.mockImplementation(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    const onPaymentUpdated = jest.fn();
+    const view = renderModal({ onPaymentUpdated });
+    await userEvent.click(
+      await screen.findByRole("button", { name: /aprobar/i }),
+    );
+    view.unmount();
+    await act(async () => {
+      resolve({ data: {} });
+    });
+    expect(onPaymentUpdated).not.toHaveBeenCalled();
+    expect(mockToast.success).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("PaymentVerificationModal — captura canónica sobre pedido Lead", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedAxiosAuth.get.mockImplementation((url: string) => Promise.resolve({data: url.endsWith("/payment-capabilities") ? {enabled:true,canView:true,canCapture:true,canReview:true} : url.includes("/leads/lead-1/payments") ? {data:[{id:"advance-1",leadPaymentVersion:2}]} : {...makeOrderData(null),commercialStage:"LEAD",commercialLeadId:"lead-1",currency:"PEN",payments:[]}}));
+    mockedAxiosAuth.post.mockResolvedValue({data:{id:"advance-1",leadPaymentVersion:1}});
+  });
+  async function fillAdvance(container: HTMLElement) {
+    await screen.findByText("Registrar Nuevo Pago");
+    await userEvent.type(screen.getByLabelText("Monto *"),"10");
+    await userEvent.selectOptions(screen.getByRole("combobox"),"PLIN");
+    await userEvent.upload(container.querySelector('input#proof') as HTMLInputElement,new File(["proof"],"p.pdf",{type:"application/pdf"}));
+  }
+  it("reintenta sólo el comprobante del anticipo guardado sin repetir la captura", async () => {
+    mockCanLegacyRecord = false; // MANAGE_LEADS is authorized by the server capability, independent of legacy sale permissions.
+    mockedAxiosAuth.patch.mockRejectedValueOnce(new Error("Respuesta interrumpida")).mockResolvedValue({data:{id:"advance-1",leadPaymentVersion:3}});
+    mockedAxiosAuth.post.mockResolvedValueOnce({data:{id:"advance-1",leadPaymentVersion:1}}).mockResolvedValue({data:{id:"advance-1",leadPaymentVersion:2}});
+    const rendered=renderModal();await fillAdvance(rendered.container);
+    await userEvent.click(screen.getByRole("button",{name:"Registrar Pago"}));
+    await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1));
+    expect(mockedAxiosAuth.post).toHaveBeenCalledWith(`${GATEWAY.ventas}/leads/lead-1/payments`,expect.objectContaining({amount:10,currency:"PEN",paymentMethod:"PLIN",captureId:expect.any(String)}));
+    await screen.findByRole("button",{name:"Reintentar comprobante"});
+    // Conversion while proof is pending must preserve the original capture on reopening.
+    mockedAxiosAuth.get.mockImplementation((url:string)=>Promise.resolve({data:url.endsWith("/payment-capabilities")?{enabled:true,canCapture:true,canView:false,canReview:false}:{...makeOrderData(null),commercialStage:"SALE",commercialLeadId:"lead-1",currency:"PEN",payments:[]}}));
+    rendered.rerender(<PaymentVerificationModal open={false} onClose={jest.fn()} orderId="order-1" orderNumber="ORD-001" />);
+    rendered.rerender(<PaymentVerificationModal open={true} onClose={jest.fn()} orderId="order-1" orderNumber="ORD-001" />);
+    const retry=await screen.findByRole("button",{name:"Reintentar comprobante"});
+    await waitFor(()=>expect(retry).toBeEnabled());await userEvent.click(retry);
+    await waitFor(()=>expect(mockedAxiosAuth.patch).toHaveBeenCalledTimes(2));
+    expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(2);
+    expect(mockedAxiosAuth.post.mock.calls[1]).toEqual(mockedAxiosAuth.post.mock.calls[0]);
+    expect(mockedAxiosAuth.get.mock.calls.some(([url])=>String(url).includes("/leads/lead-1/payments"))).toBe(false);
+    for(const [url]of mockedAxiosAuth.patch.mock.calls)expect(url).toBe(`${GATEWAY.ventas}/leads/lead-1/payments/advance-1/upload-proof`);
+    expect((mockedAxiosAuth.patch.mock.calls[1][1] as FormData).get("version")).toBe("2");
+  });
+  it("reusa captureId y payload cuando la captura tiene una respuesta incierta", async () => {
+    mockedAxiosAuth.post.mockRejectedValueOnce(new Error("Respuesta interrumpida")).mockResolvedValue({data:{id:"advance-1",leadPaymentVersion:1}});
+    mockedAxiosAuth.patch.mockResolvedValue({data:{id:"advance-1"}});
+    const {container}=renderModal();await fillAdvance(container);
+    await userEvent.click(screen.getByRole("button",{name:"Registrar Pago"}));
+    const retry=await screen.findByRole("button",{name:"Reintentar anticipo"});await waitFor(()=>expect(retry).toBeEnabled());
+    await userEvent.click(retry);
+    await waitFor(()=>expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(2));
+    expect(mockedAxiosAuth.post.mock.calls[1]).toEqual(mockedAxiosAuth.post.mock.calls[0]);
+    expect(mockedAxiosAuth.post.mock.calls.some(([url])=>String(url).includes("with-proof"))).toBe(false);
+  });
+});
+
+it("does not expose Lead capture when sale permission is present but the backend capability denies it",async()=>{
+ jest.clearAllMocks();mockCanLegacyRecord=true;
+ mockedAxiosAuth.get.mockImplementation((url:string)=>Promise.resolve({data:url.endsWith("/payment-capabilities")?{enabled:true,canView:true,canCapture:false,canReview:false}:{...makeOrderData(null),commercialStage:"LEAD",commercialLeadId:"lead-1",currency:"PEN",payments:[]}}));
+ renderModal();await screen.findByText("La captura de anticipos no está habilitada para esta cuenta.");
+ expect(screen.getByRole("button",{name:"Registrar Pago"})).toBeDisabled();expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
 });

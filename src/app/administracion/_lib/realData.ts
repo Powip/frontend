@@ -1,3 +1,4 @@
+import { isCommercialSale } from "@/utils/commercialOrderReporting";
 /**
  * Helpers para leer datos reales de ms-ventas (OrderHeader) en las pestañas
  * nuevas de Administración. Todo lo que vive acá es real — a diferencia de
@@ -33,7 +34,7 @@ export const CANALES_REALES: CanalReal[] = [
 
 /** Pedidos reconocidos como venta real — COD: ENTREGADO (§3 doc). */
 export function soloEntregados(orders: any[]): any[] {
-  return (orders ?? []).filter((o) => o.status === "ENTREGADO");
+  return (orders ?? []).filter((o) => isCommercialSale(o) && o.status === "ENTREGADO");
 }
 
 /** Suma de pagos con status PAID — mismo criterio que `operaciones/liquidaciones`. */
@@ -105,7 +106,7 @@ export function ventasPorProductoEnCanal(orders: any[], canal: string): VentaPro
 
 /** Pedidos en tránsito (courier ya salió, aún no ENTREGADO) — base real de "Saldos COD en tránsito". */
 export function enTransito(orders: any[]): any[] {
-  return (orders ?? []).filter((o) => o.status === "EN_ENVIO" || o.status === "ASIGNADO_A_GUIA");
+  return (orders ?? []).filter((o) => isCommercialSale(o) && (o.status === "EN_ENVIO" || o.status === "ASIGNADO_A_GUIA"));
 }
 
 /**

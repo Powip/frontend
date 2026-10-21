@@ -178,10 +178,10 @@ describe("Registrar venta — tienda comercial y almacén independientes", () =>
     expect(field(/tienda de la venta/i).getByRole("combobox")).toHaveValue("");
     const user = await fillRequired();
     await user.selectOptions(field(/tienda de la venta/i).getByRole("combobox"), "store-b");
-    expect(screen.getByRole("button", { name: /confirmar venta/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /registrar pedido/i })).toBeDisabled();
     await user.selectOptions(field(/canal de venta/i).getByRole("combobox"), "legacy:WHATSAPP");
     expect(screen.getByDisplayValue("Almacén compartido A")).toHaveAttribute("readonly");
-    const submit = screen.getByRole("button", { name: /confirmar venta/i });
+    const submit = screen.getByRole("button", { name: /registrar pedido/i });
     await waitFor(() => expect(submit).toBeEnabled());
     await user.click(submit);
     await waitFor(() => expect(http.post).toHaveBeenCalledWith(expect.stringMatching(/\/order-header\/manual$/),
@@ -200,7 +200,7 @@ describe("Registrar venta — tienda comercial y almacén independientes", () =>
     const user = userEvent.setup();
     await user.selectOptions(field(/tienda de la venta/i).getByRole("combobox"), "store-b");
     await fillRequired("channel-b");
-    const submit = screen.getByRole("button", { name: /confirmar venta/i });
+    const submit = screen.getByRole("button", { name: /registrar pedido/i });
     await waitFor(() => expect(submit).toBeEnabled());
     await user.click(submit);
     await waitFor(() => expect(http.post).toHaveBeenCalledWith(expect.stringMatching(/\/order-header\/manual$/), expect.objectContaining({ storeId: "store-b", inventoryId: "warehouse-a", salesChannelId: "channel-b", currency: "PEN" })));
@@ -212,14 +212,14 @@ describe("Registrar venta — tienda comercial y almacén independientes", () =>
     await waitContext();
     expect(screen.getByRole("link", { name: "Crear tienda comercial" })).toHaveAttribute("href", "/configuracion/tiendas");
     expect(screen.getByDisplayValue("Almacén compartido A")).toHaveAttribute("readonly");
-    expect(screen.getByRole("button", { name: /confirmar venta/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /registrar pedido/i })).toBeDisabled();
   });
 
   it("con varias tiendas no adopta navbar A; falta elegir tienda y bloquea una venta válida en lo demás", async () => {
     mountPage();
     await waitContext();
     const user = await fillRequired();
-    const submit = screen.getByRole("button", { name: /confirmar venta/i });
+    const submit = screen.getByRole("button", { name: /registrar pedido/i });
     expect(submit).toBeDisabled();
     await user.click(submit);
     expect(http.post).not.toHaveBeenCalled();
@@ -231,7 +231,7 @@ describe("Registrar venta — tienda comercial y almacén independientes", () =>
     mountPage();
     expect(await screen.findByText(/no se pudieron cargar las tiendas y los almacenes/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /reintentar/i })).toBeEnabled();
-    const submit = screen.getByRole("button", { name: /confirmar venta/i });
+    const submit = screen.getByRole("button", { name: /registrar pedido/i });
     expect(submit).toBeDisabled();
     await userEvent.click(submit);
     expect(http.post).not.toHaveBeenCalled();
@@ -436,7 +436,7 @@ describe("Registrar venta — selección por unidad", () => {
     const user = await fillRequired();
     await user.selectOptions(field(/tienda de la venta/i).getByRole("combobox"), "store-b");
     await user.selectOptions(field(/canal de venta/i).getByRole("combobox"), "legacy:WHATSAPP");
-    const submit = screen.getByRole("button", { name: /confirmar venta/i });
+    const submit = screen.getByRole("button", { name: /registrar pedido/i });
     expect(submit).toBeDisabled();
     await user.click(await screen.findByRole("checkbox", { name: /001234567890123/ }));
     await waitFor(() => expect(submit).toBeEnabled());

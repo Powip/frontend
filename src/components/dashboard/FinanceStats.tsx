@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDashboardScope } from "@/contexts/DashboardScopeContext";
+import { reportCurrencyLabel } from "./ReportCurrencySelector";
 import { DashboardCard } from "./DashboardCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { hasAdminAccess, isSuperadmin } from "@/config/permissions.config";
@@ -94,7 +95,8 @@ interface FinanceStatsProps {
 
 export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) => {
   const { auth } = useAuth();
-  const { scopeParams, storeIds, canFetch } = useDashboardScope();
+  const { scopeParams, storeIds, canFetch, currency } = useDashboardScope();
+  const currencyPrefix = reportCurrencyLabel(currency);
   const isAdmin = hasAdminAccess(auth?.user?.role) || isSuperadmin(auth?.user?.email);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -212,6 +214,22 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
     }
   }, [fromDate, toDate, fetchData]);
 
+  useEffect(() => {
+    const changed = (event: Event) => {
+      if (
+        auth?.company?.id &&
+        (event as CustomEvent<{ companyId: string }>).detail?.companyId ===
+          auth.company.id &&
+        fromDate &&
+        toDate
+      )
+        void fetchData(fromDate, toDate);
+    };
+    window.addEventListener("commercial-leads:changed", changed);
+    return () =>
+      window.removeEventListener("commercial-leads:changed", changed);
+  }, [auth?.company?.id, fromDate, toDate, fetchData]);
+
   const getMonthFromDate = (dateStr: string) => {
     if (!dateStr) return 0;
     return parseInt(dateStr.split("-")[1], 10);
@@ -262,13 +280,13 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Valor Almacén"
-          value={`S/ ${inventoryValue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
+          value={`Unidad de costo ${inventoryValue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
           subValue="Costo reposición est."
           loading={loading}
         />
         <StatCard
           title="Total Generado"
-          value={`S/ ${currentYearSales.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
+          value={`${currencyPrefix} ${currentYearSales.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
           subValue={`${growth >= 0 ? "+" : ""}${growth.toFixed(1)}% vs año ant.`}
           loading={loading}
         />
@@ -278,7 +296,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
         >
           <StatCard
             title="Cuentas por Cobrar"
-            value={`S/ ${receivables.pendingTotal.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
+            value={`${currencyPrefix} ${receivables.pendingTotal.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
             subValue={`${receivables.pendingOrders.length} pedidos pendientes`}
             loading={loading}
           />
@@ -289,7 +307,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
         >
           <StatCard
             title="Pagos Aprobados"
-            value={`S/ ${totalPaid.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
+            value={`${currencyPrefix} ${totalPaid.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
             subValue="Total recaudado"
             loading={loading}
           />
@@ -312,7 +330,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
         />
         <StatCard
           title="Ticket Promedio Pendiente"
-          value={`S/ ${receivables.avgTicket.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
+          value={`${currencyPrefix} ${receivables.avgTicket.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
           subValue="Por cobrar"
           loading={loading}
         />
@@ -358,7 +376,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
                   axisLine={false}
                   tickLine={false}
                   tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
-                  tickFormatter={(v) => `S/${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                  tickFormatter={(v) => `${currencyPrefix}${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
                 />
                 <Tooltip
                   content={({ active, payload, label }) => {
@@ -373,13 +391,13 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
                             <div className="flex justify-between gap-4">
                               <span className="text-blue-600 font-medium">Este Año:</span>
                               <span className="font-bold text-foreground">
-                                S/ {data.Actual.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                                {currencyPrefix} {data.Actual.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                               </span>
                             </div>
                             <div className="flex justify-between gap-4">
                               <span className="text-slate-400">Año Anterior:</span>
                               <span className="text-slate-500 italic">
-                                S/ {data.Anterior.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                                {currencyPrefix} {data.Anterior.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                               </span>
                             </div>
                             <div className="mt-2 pt-2 border-t border-border flex justify-between gap-4">
@@ -452,7 +470,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
                       </span>
                     </div>
                     <span className="font-bold text-foreground text-sm">
-                      S/ {b.currentYear.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                      {currencyPrefix} {b.currentYear.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                     </span>
                   </div>
                 );
@@ -490,12 +508,12 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
                   axisLine={false}
                   tickLine={false}
                   tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
-                  tickFormatter={(value) => `S/ ${value}`}
+                  tickFormatter={(value) => `${currencyPrefix} ${value}`}
                 />
                 <Tooltip
                   cursor={{ fill: "var(--foreground)", opacity: 0.05 }}
                   formatter={(value: any) => [
-                    `S/ ${value.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
+                    `${currencyPrefix} ${value.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
                     "Ingreso",
                   ]}
                   itemStyle={{ color: "var(--foreground)" }}
@@ -545,7 +563,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
-                tickFormatter={(v) => `S/ ${v.toLocaleString()}`}
+                tickFormatter={(v) => `${currencyPrefix} ${v.toLocaleString()}`}
               />
               <Tooltip
                 cursor={{ fill: "var(--foreground)", opacity: 0.05 }}
@@ -559,7 +577,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
                           <div className="flex justify-between gap-4">
                             <span className="text-muted-foreground">Monto Recaudado:</span>
                             <span className="font-bold text-green-600">
-                              S/ {data.shippingRevenue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                              {currencyPrefix} {data.shippingRevenue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                             </span>
                           </div>
                           <div className="flex justify-between gap-4">
@@ -621,7 +639,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
                     </div>
                     <div className="text-right">
                       <span className="font-bold text-foreground block text-sm">
-                        S/ {c.shippingRevenue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                        {currencyPrefix} {c.shippingRevenue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                       </span>
                       <span className="text-[10px] text-green-600 font-medium">
                         Efectividad: {c.percentage}%
@@ -654,7 +672,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
                 Total Pendiente
               </p>
               <p className="text-lg font-bold text-orange-500">
-                S/{" "}
+                {currencyPrefix}{" "}
                 {receivables.pendingTotal.toLocaleString("es-PE", {
                   minimumFractionDigits: 2,
                 })}
@@ -681,7 +699,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
                 Ticket Promedio
               </p>
               <p className="text-lg font-bold text-green-500">
-                S/{" "}
+                {currencyPrefix}{" "}
                 {receivables.avgTicket.toLocaleString("es-PE", {
                   minimumFractionDigits: 2,
                 })}
@@ -737,7 +755,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
                       </span>
                     </TableCell>
                     <TableCell className="text-right font-bold">
-                      S/{" "}
+                      {currencyPrefix}{" "}
                       {(
                         order.pendingPayment ||
                         order.grandTotal ||

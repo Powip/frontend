@@ -1,7 +1,7 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { useCallback, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessScope } from "@/contexts/BusinessScopeContext";
 import { getDashboardOrders } from "@/services/dashboardService";
@@ -9,15 +9,23 @@ import type { OrderHeader } from "@/interfaces/IOrder";
 
 const EMPTY_ORDERS: OrderHeader[] = [];
 
-export function useBusinessOrders(fromDate?: string, toDate?: string, options?: { includeCcLeads?: boolean; enabled?: boolean }) {
+export function useBusinessOrders(fromDate?: string, toDate?: string, options?: { includeCcLeads?: boolean; includeCommercialLeads?: boolean; enabled?: boolean }) {
   const { auth } = useAuth();
+  const queryClient = useQueryClient();
+  const companyId = auth?.company?.id;
+  useEffect(() => {
+    const changed = (event: Event) => { if (companyId && (event as CustomEvent<{companyId?: string}>).detail?.companyId === companyId) void queryClient.invalidateQueries({queryKey: ["business-orders", companyId]}); };
+    window.addEventListener("commercial-leads:changed", changed);
+    return () => window.removeEventListener("commercial-leads:changed", changed);
+  }, [companyId, queryClient]);
   const { storeIds, canFetch } = useBusinessScope();
   const enabled = canFetch && options?.enabled !== false;
   const includeCcLeads = options?.includeCcLeads ?? false;
+  const includeCommercialLeads = options?.includeCommercialLeads ?? false;
   const query = useQuery({
-    queryKey: ["business-orders", auth?.company?.id, auth?.user?.id, storeIds, fromDate, toDate, includeCcLeads],
+    queryKey: ["business-orders", auth?.company?.id, auth?.user?.id, storeIds, fromDate, toDate, includeCcLeads, includeCommercialLeads],
     enabled,
-    queryFn: ({ signal }) => getDashboardOrders<OrderHeader>(storeIds, fromDate, toDate, auth!.accessToken, { signal, includeCcLeads }),
+    queryFn: ({ signal }) => getDashboardOrders<OrderHeader>(storeIds, fromDate, toDate, auth!.accessToken, { signal, includeCcLeads, includeCommercialLeads }),
     retry: false,
     staleTime: 60_000,
   });

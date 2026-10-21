@@ -1,4 +1,6 @@
 "use client";
+import Link from "next/link";
+import { commercialLeadHref } from "@/utils/commercialOrders";
 
 import { useState, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -11,6 +13,9 @@ import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
 
 interface Props {
+  commercialStage?: "LEAD" | "SALE" | null;
+  commercialLeadId?: string | null;
+  commercialStockState?: "DEFERRED" | "QUEUED" | "PRESERVED" | "NOT_REQUIRED" | null;
   orderId: string;
   subEstadoCc: SubEstadoCc;
   callAttempts: number;
@@ -41,7 +46,7 @@ function TerminalBadge({ colorCls, label, sub }: { colorCls: string; label: stri
   );
 }
 
-export function CcGestionPanel({ orderId, subEstadoCc, callAttempts, datosCompletos, onUpdated, beforeCancellation, aliclikDispatchStatus, aliclikSyncedAt, evaStatus, evaSyncedAt }: Props) {
+export function CcGestionPanel({ commercialStage, commercialLeadId, commercialStockState, orderId, subEstadoCc, callAttempts, datosCompletos, onUpdated, beforeCancellation, aliclikDispatchStatus, aliclikSyncedAt, evaStatus, evaSyncedAt }: Props) {
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
@@ -100,6 +105,9 @@ export function CcGestionPanel({ orderId, subEstadoCc, callAttempts, datosComple
       setLimaDatetime("");
     }
   };
+
+  if (commercialStage === "LEAD") return <p className="rounded border p-4 text-sm">La compra sigue pendiente de confirmación del vendedor. <Link className="underline" href={commercialLeadId ? commercialLeadHref(commercialLeadId) : "/leads-comerciales"}>Gestionar y confirmar Lead</Link></p>;
+  if (commercialStockState === "DEFERRED") return <p className="rounded border p-4 text-sm">Compra confirmada. Prepara el pedido desde el Lead antes de programar su despacho.</p>;
 
   // ── Terminal states ──────────────────────────────────────
   if (subEstadoCc === "confirmado") {

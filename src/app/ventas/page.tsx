@@ -1,4 +1,6 @@
 "use client";
+import { isCommercialSaleOrder, canOperateCommercialOrder } from "@/utils/commercialOrders";
+import { formatSalesMoney, groupSaleBalances } from "@/utils/salesMoney";
 
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
 import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
@@ -154,6 +156,11 @@ const ALL_STATUSES: OrderStatus[] = [
 ];
 
 export interface Sale extends UnitAssignmentState {
+  currency?: string | null;
+  commercialStage?: "LEAD" | "SALE" | null;
+  commercialLeadId?: string | null;
+  commercialStockState?: "DEFERRED" | "QUEUED" | "PRESERVED" | "NOT_REQUIRED" | null;
+
   id: string;
   storeId: string;
   inventoryId?: string | null;
@@ -233,6 +240,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
 
   return {
     id: order.id,
+    currency: order.currency, commercialStage: order.commercialStage, commercialLeadId: order.commercialLeadId, commercialStockState: order.commercialStockState,
     storeId: order.storeId,
     inventoryId: order.inventoryId,
     stockStoreId: order.stockStoreId,
@@ -489,7 +497,7 @@ export default function VentasPage() {
     // una venta real, así que no debe listarse acá (se colaba en "Todas"
     // porque `sales` no filtraba por status).
     const sorted = [...ordersData]
-      .filter((o) => o.status !== "INCOMPLETE")
+      .filter((o) => o.status !== "INCOMPLETE" && isCommercialSaleOrder(o))
       .sort(
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
@@ -578,6 +586,8 @@ export default function VentasPage() {
     newStatus: OrderStatus,
     cancellationReason?: CancellationReason,
   ) => {
+    const selectedCommercial = sales.find((sale) => sale.id === saleId);
+    if (selectedCommercial && !canOperateCommercialOrder(selectedCommercial) && newStatus !== "ANULADO") { toast.error("Prepara la compra desde el Lead antes de operar el pedido."); return; }
     if (await routeSaleLifecycle(sales.find((sale) => sale.id === saleId), newStatus, (action) => setLifecycle({ orderId: saleId, action }))) return;
 
     // Si el nuevo estado es ANULADO y no hay motivo, abrir modal
@@ -683,9 +693,9 @@ Teléfono: ${sale.phoneNumber}
 Distrito: ${sale.district}
 Dirección: ${sale.address}${mapsLine ? `\n${mapsLine}` : ""}
 Fecha: ${sale.date}
-Total Venta: ${formatSoles(sale.total)}
-Adelanto: ${formatSoles(sale.advancePayment)}
-Por Cobrar: ${formatSoles(sale.pendingPayment)}
+Total Venta: ${formatSalesMoney(sale.total, sale.currency)}
+Adelanto: ${formatSalesMoney(sale.advancePayment, sale.currency)}
+Por Cobrar: ${formatSalesMoney(sale.pendingPayment, sale.currency)}
 Estado: ${sale.status}
 `.trim();
       })
@@ -707,6 +717,7 @@ Estado: ${sale.status}
     }
 
     const exportData: SaleExportData[] = salesList.map((s) => ({
+      commercialStage:s.commercialStage, commercialLeadId:s.commercialLeadId, currency:s.currency,
       orderNumber: s.orderNumber,
       storeId: s.storeId,
       storeName: auth?.company?.stores?.find((store) => store.id === s.storeId)?.name,
@@ -1330,13 +1341,13 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell className="text-xs text-right tabular-nums">
                     <div className="font-semibold">
-                      {formatSoles(sale.total)}
+                      {formatSalesMoney(sale.total, sale.currency)}
                     </div>
                     <div className="text-green-600">
-                      Adel: {formatSoles(sale.advancePayment)}
+                      Adel: {formatSalesMoney(sale.advancePayment, sale.currency)}
                     </div>
                     <div className="text-red-600">
-                      Debe: {formatSoles(sale.pendingPayment)}
+                      Debe: {formatSalesMoney(sale.pendingPayment, sale.currency)}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs">
@@ -1586,13 +1597,13 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell className="text-xs text-right tabular-nums">
                     <div className="font-semibold">
-                      {formatSoles(sale.total)}
+                      {formatSalesMoney(sale.total, sale.currency)}
                     </div>
                     <div className="text-green-600">
-                      Adel: {formatSoles(sale.advancePayment)}
+                      Adel: {formatSalesMoney(sale.advancePayment, sale.currency)}
                     </div>
                     <div className="text-red-600">
-                      Debe: {formatSoles(sale.pendingPayment)}
+                      Debe: {formatSalesMoney(sale.pendingPayment, sale.currency)}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs">
@@ -1762,6 +1773,7 @@ Estado: ${sale.status}
     const anuladosInRange = salesInRange.filter(
       (s) => s.status === ORDER_STATUS.ANULADO,
     );
+    const currencyBalances = groupSaleBalances(pendientesInRange);
     const porCobrar = pendientesInRange.reduce(
       (acc, s) => acc + s.pendingPayment,
       0,
@@ -1775,6 +1787,7 @@ Estado: ${sale.status}
       anuladas: anuladosInRange.length,
       porCobrar,
       adelantado,
+      currencyBalances,
     };
   }, [sales, kpiDateFrom, kpiDateTo]);
 
@@ -1878,7 +1891,7 @@ Estado: ${sale.status}
                   <div>
                     <p className="text-sm text-muted-foreground">Por cobrar</p>
                     <h3 className="mt-2 text-3xl font-bold tracking-tight">
-                      {formatSoles(kpis.porCobrar)}
+                      {kpis.currencyBalances.length ? kpis.currencyBalances.map((group) => <span key={group.currency ?? "UNKNOWN"} className="block">{formatSalesMoney(group.pending, group.currency)}</span>) : "0.00"}
                     </h3>
                   </div>
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
@@ -1894,7 +1907,7 @@ Estado: ${sale.status}
                   <div>
                     <p className="text-sm text-muted-foreground">Adelantado</p>
                     <h3 className="mt-2 text-3xl font-bold tracking-tight">
-                      {formatSoles(kpis.adelantado)}
+                      {kpis.currencyBalances.length ? kpis.currencyBalances.map((group) => <span key={group.currency ?? "UNKNOWN"} className="block">{formatSalesMoney(group.paid, group.currency)}</span>) : "0.00"}
                     </h3>
                   </div>
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400">

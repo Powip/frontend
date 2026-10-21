@@ -4,6 +4,7 @@ import { OrderHeader, SubEstadoCc, TipoGestionCC, KpisCC, CcKpisFinancierosRespo
 const BASE = process.env.NEXT_PUBLIC_API_VENTAS;
 
 export interface PedidosCcFilters {
+  dateBasis?: "CREATED" | "COMMERCIAL_EVENTS";
   tipoGestion?: TipoGestionCC;
   subEstado?: SubEstadoCc;
   agenteId?: string;
@@ -36,6 +37,7 @@ export async function getPedidosCC(
     return { data: result.data.slice((page - 1) * limit, page * limit), total: result.total, page, totalPages: Math.max(1, Math.ceil(result.total / limit)) };
   }
   const params = new URLSearchParams();
+  if (filters.dateBasis) params.set("dateBasis", filters.dateBasis);
   if (filters.tipoGestion)     params.set("tipoGestion", filters.tipoGestion);
   if (filters.subEstado)       params.set("subEstado", filters.subEstado);
   if (filters.unassigned)      params.set("unassigned", "true");

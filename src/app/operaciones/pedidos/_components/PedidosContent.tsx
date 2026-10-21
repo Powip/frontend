@@ -1,4 +1,5 @@
 "use client";
+import { canOperateCommercialOrder } from "@/utils/commercialOrders";
 
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
 import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
@@ -143,7 +144,7 @@ export function PedidosContent() {
   // realmente listos para despachar.
   const visibleOrders = useMemo(
     () =>
-      orders.filter((o) => !PRE_FULFILLMENT_STATUSES.includes(o.status)),
+      orders.filter((o) => canOperateCommercialOrder(o) && !PRE_FULFILLMENT_STATUSES.includes(o.status)),
     [orders],
   );
 

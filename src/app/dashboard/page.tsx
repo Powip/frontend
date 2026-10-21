@@ -10,6 +10,9 @@ import { TeamManagement } from "@/components/dashboard/TeamManagement";
 import { FinanceStats } from "@/components/dashboard/FinanceStats";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import { useDashboardScope } from "@/contexts/DashboardScopeContext";
+import Link from "next/link";
+import { ReportCurrencySelector } from "@/components/dashboard/ReportCurrencySelector";
+import { CommercialCashSummary } from "@/components/dashboard/CommercialCashSummary";
 
 export default function DashboardPage() {
   return <DashboardContent />;
@@ -45,7 +48,7 @@ function DashboardContent() {
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <PeriodSelector onPeriodChange={handlePeriodChange} />
+          <ReportCurrencySelector /><Link className="text-sm underline" href="/metricas/leads">Reporte de Leads</Link><PeriodSelector onPeriodChange={handlePeriodChange} />
         </div>
       </div>
 
@@ -87,7 +90,7 @@ function DashboardContent() {
           </div>
 
           <TabsContent value="general" className="flex-1 overflow-auto mt-0 scrollbar-none outline-none">
-            <Stats key={panelKey} fromDate={fromDate} toDate={toDate} />
+            <CommercialCashSummary key={`cash:${panelKey}`} params={{ ...scopeParams, fromDate, toDate, includeUnassignedStore: scope === "business" }} /><Stats key={panelKey} fromDate={fromDate} toDate={toDate} />
           </TabsContent>
 
           <TabsContent value="analysis" className="flex-1 overflow-hidden mt-0">

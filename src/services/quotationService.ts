@@ -12,6 +12,8 @@ import type {
   QuotationListResponse,
   QuotationPaymentInput,
   QuotationPaymentStatus,
+  ReconcileQuotationLeadPaymentInput,
+  ReconciledQuotationLeadPayment,
 } from "@/types/quotations";
 
 const BASE = `${GATEWAY.ventas}/quotations`;
@@ -49,8 +51,44 @@ export async function reviewQuotationPayment(
 ) {
   return (await axiosAuth.patch<Quotation>(`${BASE}/${id}/payments/${paymentId}`, { status })).data;
 }
-export async function convertQuotation(id: string, input: ConvertQuotationInput) {
-  return (await axiosAuth.post<Quotation>(`${BASE}/${id}/convert`, input)).data;
+export async function reconcileQuotationLeadPayment(
+  id: string,
+  paymentId: string,
+  input: ReconcileQuotationLeadPaymentInput,
+): Promise<ReconciledQuotationLeadPayment> {
+  return (await axiosAuth.post<ReconciledQuotationLeadPayment>(
+    `${BASE}/${encodeURIComponent(id)}/payments/${encodeURIComponent(paymentId)}/reconcile-lead`,
+    input,
+  )).data;
+}
+type QuotationConversionInput = ConvertQuotationInput & {
+  commandId?: string;
+  leadId?: string;
+  leadVersion?: number;
+};
+
+const conversionAttempts = new Map<string, { selection: string; commandId: string }>();
+
+export async function convertQuotation(id: string, input: QuotationConversionInput) {
+  const { commandId, leadVersion: _leadVersion, leadId: _leadId, ...selection } = input;
+  const selectionKey = JSON.stringify(
+    Object.fromEntries(Object.entries(selection).sort(([left], [right]) => left.localeCompare(right))),
+  );
+  const previous = conversionAttempts.get(id);
+  const attempt = previous?.selection === selectionKey && (commandId === undefined || commandId === previous.commandId)
+    ? previous
+    : { selection: selectionKey, commandId: commandId ?? crypto.randomUUID() };
+  conversionAttempts.set(id, attempt);
+
+  // Legacy also accepts commandId. Always send it rather than racing a flag read.
+  // Keep it after failures and concurrent requests; callers may reconstruct input
+  // on each click. A different selection starts a different conversion attempt.
+  const { data } = await axiosAuth.post<Quotation>(`${BASE}/${encodeURIComponent(id)}/convert`, {
+    ...input,
+    commandId: attempt.commandId,
+  });
+  if (conversionAttempts.get(id) === attempt) conversionAttempts.delete(id);
+  return data;
 }
 export async function getPublicQuotation(token: string) {
   return (await axios.get<PublicQuotation>(publicPath(token), { withCredentials: false })).data;

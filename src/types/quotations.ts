@@ -94,6 +94,7 @@ export interface CreateQuotationInput {
 }
 
 export interface ConvertQuotationInput extends QuotationAddress {
+  currency?: string;
   zone?: string;
   documentNumber?: string;
   clientType?: string;
@@ -127,6 +128,23 @@ export interface QuotationPaymentInput {
   amount: number;
   method: QuotationPaymentMethod;
   proofUrl?: string;
+}
+
+export interface ReconcileQuotationLeadPaymentInput {
+  /** Explicit financial reconciliation; historical JSON does not declare currency. */
+  currency: string;
+  /** Acknowledge the approved JSON evidence with the current Finance actor. */
+  confirmApproved?: boolean;
+}
+
+export interface ReconciledQuotationLeadPayment {
+  id: string;
+  leadId: string;
+  currency: string;
+  amount: number | string;
+  status: "PENDING" | "PAID" | "LOST";
+  leadPaymentVersion: number;
+  order?: { id: string } | null;
 }
 
 /** Public endpoint deliberately omits internal notes and staff/tenant identifiers. */

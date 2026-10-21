@@ -1,4 +1,5 @@
 "use client";
+import { canOperateCommercialOrder } from "@/utils/commercialOrders";
 
 import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
 import { useBusinessOrders } from "@/hooks/useBusinessOrders";
@@ -71,7 +72,8 @@ function guessFailureReason(order: OrderHeader): string {
 
 export default function OperacionesTableroPage() {
   const router = useRouter();
-  const { orders, loading, error, retry, refetch: load } = useBusinessOrders();
+  const { orders: allOrders, loading, error, retry, refetch: load } = useBusinessOrders();
+  const orders = useMemo(() => allOrders.filter(canOperateCommercialOrder), [allOrders]);
   const [scannerOpen, setScannerOpen] = useState(false);
 
   const shippingOrders = useMemo(

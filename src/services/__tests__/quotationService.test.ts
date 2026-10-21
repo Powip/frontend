@@ -2,13 +2,16 @@ import axios from "axios";
 import axiosAuth from "@/lib/axiosAuth";
 import {
   addPublicQuotationLine,
+  convertQuotation,
   getPublicQuotation,
   getQuotationCatalog,
   listQuotations,
   registerPublicQuotationPayment,
+  reconcileQuotationLeadPayment,
   uploadQuotationProof,
   uploadPublicQuotationProof,
 } from "../quotationService";
+import type { ConvertQuotationInput } from "@/types/quotations";
 
 jest.mock("axios", () => ({
   __esModule: true,
@@ -19,7 +22,41 @@ jest.mock("@/lib/axiosAuth", () => ({
   default: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() },
 }));
 
-beforeEach(() => jest.clearAllMocks());
+const originalRandomUUID = Object.getOwnPropertyDescriptor(crypto, "randomUUID");
+const randomUUID = jest.fn();
+beforeAll(() => {
+  Object.defineProperty(crypto, "randomUUID", { configurable: true, value: randomUUID });
+});
+afterAll(() => {
+  if (originalRandomUUID) Object.defineProperty(crypto, "randomUUID", originalRandomUUID);
+  else Reflect.deleteProperty(crypto, "randomUUID");
+});
+beforeEach(() => {
+  jest.clearAllMocks();
+  randomUUID.mockReset().mockReturnValue("0135c7ce-c3e7-47ac-a604-bf389071e031");
+});
+
+const conversionInput: ConvertQuotationInput = {
+  address: "Jr. Lima 123",
+  district: "Breña",
+  salesChannel: "WHATSAPP",
+  closingChannel: "LLAMADA",
+  deliveryType: "DOMICILIO",
+};
+
+it('reconciles the selected quotation advance explicitly with authenticated Finance and no inferred currency or approval',async()=>{
+  const payment={id:'payment-a',leadId:'lead-a',currency:'USD',status:'PENDING',amount:'30.00',leadPaymentVersion:1};
+  jest.mocked(axiosAuth.post).mockResolvedValue({data:payment});
+  await expect(reconcileQuotationLeadPayment('quote/a','snapshot/b',{currency:'USD'})).resolves.toEqual(payment);
+  expect(axiosAuth.post).toHaveBeenCalledWith(expect.stringMatching(/\/quotations\/quote%2Fa\/payments\/snapshot%2Fb\/reconcile-lead$/),{currency:'USD'});
+  expect(axios.post).not.toHaveBeenCalled();expect(randomUUID).not.toHaveBeenCalled();
+});
+
+it('passes an explicit acknowledgement of the approved snapshot without inventing a paid status',async()=>{
+  jest.mocked(axiosAuth.post).mockResolvedValue({data:{}});
+  await reconcileQuotationLeadPayment('quote-a','snapshot-a',{currency:'PEN',confirmApproved:true});
+  expect(axiosAuth.post).toHaveBeenCalledWith(expect.stringMatching(/\/reconcile-lead$/),{currency:'PEN',confirmApproved:true});
+});
 
 it("scopes seller lists and catalog requests to the selected store", async () => {
   jest.mocked(axiosAuth.get).mockResolvedValue({ data: [] });
@@ -98,4 +135,111 @@ it("uploads the proof on the quotation-scoped endpoint", async () => {
   );
   const form = jest.mocked(axiosAuth.post).mock.calls[0][1] as FormData;
   expect(form.get("file")).toBe(file);
+});
+
+it("adds a conversion command accepted by both legacy and seller confirmation without reading flags", async () => {
+  const response = { id: "convert-new", status: "CONVERTIDA", orderId: "order-a" };
+  jest.mocked(axiosAuth.post).mockResolvedValue({ data: response });
+
+  await expect(convertQuotation("convert-new", conversionInput)).resolves.toBe(response);
+
+  expect(axiosAuth.post).toHaveBeenCalledWith(expect.stringMatching(/\/convert-new\/convert$/), {
+    ...conversionInput,
+    commandId: "0135c7ce-c3e7-47ac-a604-bf389071e031",
+  });
+  expect(axiosAuth.get).not.toHaveBeenCalled();
+  expect(randomUUID).toHaveBeenCalledTimes(1);
+});
+
+it("reuses the command after timeout even when the caller reconstructs the same selection", async () => {
+  const timeout = new Error("Respuesta interrumpida");
+  jest.mocked(axiosAuth.post).mockRejectedValueOnce(timeout).mockResolvedValueOnce({ data: {} });
+
+  await expect(convertQuotation("convert-retry", conversionInput)).rejects.toBe(timeout);
+  await convertQuotation("convert-retry", {
+    deliveryType: conversionInput.deliveryType,
+    closingChannel: conversionInput.closingChannel,
+    salesChannel: conversionInput.salesChannel,
+    district: conversionInput.district,
+    address: conversionInput.address,
+  });
+
+  const bodies = jest.mocked(axiosAuth.post).mock.calls.map((call) => call[1]);
+  expect(bodies[0]).toEqual(bodies[1]);
+  expect(randomUUID).toHaveBeenCalledTimes(1);
+});
+
+it("shares a command for simultaneous requests of the same quotation and selection", async () => {
+  jest.mocked(axiosAuth.post).mockResolvedValue({ data: { status: "CONVERTIDA" } });
+
+  await Promise.all([
+    convertQuotation("convert-concurrent", { ...conversionInput }),
+    convertQuotation("convert-concurrent", { ...conversionInput }),
+  ]);
+
+  const bodies = jest.mocked(axiosAuth.post).mock.calls.map((call) => call[1]);
+  expect(bodies[0]).toEqual(bodies[1]);
+  expect(randomUUID).toHaveBeenCalledTimes(1);
+});
+
+it("starts another attempt when the commercial selection changes after a failure", async () => {
+  randomUUID.mockReturnValueOnce("0135c7ce-c3e7-47ac-a604-bf389071e031")
+    .mockReturnValueOnce("11b7960c-a8f7-4551-8e90-de2c82d4ec25");
+  jest.mocked(axiosAuth.post).mockRejectedValueOnce(new Error("Timeout")).mockResolvedValueOnce({ data: {} });
+
+  await expect(convertQuotation("convert-changed", conversionInput)).rejects.toThrow("Timeout");
+  await convertQuotation("convert-changed", { ...conversionInput, address: "Otra dirección" });
+
+  expect(jest.mocked(axiosAuth.post).mock.calls.map((call) => (call[1] as { commandId: string }).commandId)).toEqual([
+    "0135c7ce-c3e7-47ac-a604-bf389071e031", "11b7960c-a8f7-4551-8e90-de2c82d4ec25",
+  ]);
+});
+
+it("preserves an explicit caller command and the new lead version on a retry", async () => {
+  const input = { ...conversionInput, commandId: "11b7960c-a8f7-4551-8e90-de2c82d4ec25", leadId: "lead-a", leadVersion: 2 };
+  jest.mocked(axiosAuth.post).mockRejectedValueOnce({ response: { status: 409 } }).mockResolvedValueOnce({ data: {} });
+
+  await expect(convertQuotation("convert-version", input)).rejects.toEqual({ response: { status: 409 } });
+  await convertQuotation("convert-version", { ...input, leadVersion: 3 });
+
+  expect(axiosAuth.post).toHaveBeenLastCalledWith(expect.stringMatching(/\/convert-version\/convert$/), {
+    ...input, leadVersion: 3,
+  });
+  expect(randomUUID).not.toHaveBeenCalled();
+});
+
+it("keeps the generated command when a retry adds the associated lead and refreshes its version", async () => {
+  jest.mocked(axiosAuth.post).mockRejectedValueOnce(new Error("Timeout")).mockResolvedValueOnce({ data: {} });
+
+  await expect(convertQuotation("convert-auto-associated", conversionInput)).rejects.toThrow("Timeout");
+  await convertQuotation("convert-auto-associated", { ...conversionInput, leadId: "lead-a", leadVersion: 4 });
+
+  const bodies = jest.mocked(axiosAuth.post).mock.calls.map((call) => call[1]) as Array<Record<string, unknown>>;
+  expect(bodies[0].commandId).toBe(bodies[1].commandId);
+  expect(bodies[1]).toMatchObject({ leadId: "lead-a", leadVersion: 4 });
+  expect(randomUUID).toHaveBeenCalledTimes(1);
+});
+
+it("does not share conversion commands across different quotations", async () => {
+  randomUUID.mockReturnValueOnce("0135c7ce-c3e7-47ac-a604-bf389071e031")
+    .mockReturnValueOnce("11b7960c-a8f7-4551-8e90-de2c82d4ec25");
+  jest.mocked(axiosAuth.post).mockRejectedValueOnce(new Error("Timeout")).mockResolvedValueOnce({ data: {} });
+
+  await expect(convertQuotation("convert-quote-a", conversionInput)).rejects.toThrow("Timeout");
+  await convertQuotation("convert-quote-b", conversionInput);
+
+  expect(jest.mocked(axiosAuth.post).mock.calls.map((call) => (call[1] as { commandId: string }).commandId)).toEqual([
+    "0135c7ce-c3e7-47ac-a604-bf389071e031", "11b7960c-a8f7-4551-8e90-de2c82d4ec25",
+  ]);
+});
+
+it("ends the pending attempt on success while the server remains responsible for conversion replay", async () => {
+  randomUUID.mockReturnValueOnce("0135c7ce-c3e7-47ac-a604-bf389071e031")
+    .mockReturnValueOnce("11b7960c-a8f7-4551-8e90-de2c82d4ec25");
+  jest.mocked(axiosAuth.post).mockResolvedValue({ data: { status: "CONVERTIDA" } });
+
+  await convertQuotation("convert-success", conversionInput);
+  await convertQuotation("convert-success", conversionInput);
+
+  expect(randomUUID).toHaveBeenCalledTimes(2);
 });

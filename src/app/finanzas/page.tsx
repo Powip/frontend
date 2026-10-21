@@ -1,7 +1,10 @@
 "use client";
+import LeadPaymentsTab from "@/components/finanzas/LeadPaymentsTab";
+import { commercialLeadHref } from "@/utils/commercialOrders";
+import { formatSalesMoney } from "@/utils/salesMoney";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Pencil,
   ArrowLeft,
@@ -37,7 +40,7 @@ import {
 import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
 import {
   SalesTableFilters,
@@ -92,6 +95,11 @@ const PAGOS_PENDIENTES_EXCLUDED_STATUSES: OrderStatus[] = [
 const CC_CONFIRMED_SUBESTADOS: SubEstadoCc[] = ["confirmado", "reprogramado"];
 
 export interface Sale extends UnitAssignmentState {
+  currency?: string | null;
+  commercialStage?: "LEAD" | "SALE" | null;
+  commercialLeadId?: string | null;
+  commercialStockState?: "DEFERRED" | "QUEUED" | "PRESERVED" | "NOT_REQUIRED" | null;
+
   items?: OrderHeader["items"];
   id: string;
   storeId: string;
@@ -163,6 +171,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
 
   return {
     id: order.id,
+    currency: order.currency, commercialStage: order.commercialStage, commercialLeadId: order.commercialLeadId, commercialStockState: order.commercialStockState,
     unitAssignmentStatus: order.unitAssignmentStatus,
     unitCatalogValidated: order.unitCatalogValidated,
     hasTrackedUnits: order.hasTrackedUnits,
@@ -212,7 +221,9 @@ function mapOrderToSale(order: OrderHeader): Sale {
    Page
 ----------------------------------------- */
 
-export default function FinanzasPage() {
+export default function FinanzasPage() { return <Suspense fallback={<PowipPulseLoader label="Cargando Finanzas…" />}><FinanzasContent /></Suspense>; }
+
+function FinanzasContent() {
 
   // Filtros avanzados
   const [filtersPagosPendientes, setFiltersPagosPendientes] =
@@ -256,9 +267,12 @@ export default function FinanzasPage() {
     };
   }, [printScope]);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedLeadId = searchParams.get("leadId") ?? "";
+  const [leadPaymentsOpen, setLeadPaymentsOpen] = useState(searchParams.get("tab") === "anticiposLeads");
 
   const { storeIds, canFetch, scopeKey } = useBusinessScope();
-  const ordersQuery = useBusinessOrders();
+  const ordersQuery = useBusinessOrders(undefined, undefined, {includeCcLeads: true, includeCommercialLeads: true});
   const invalidateBusinessData = useInvalidateBusinessData();
   const guidesQuery = useBusinessGuides<ShippingGuideLite>();
   // Los leads COD confirmados/reprogramados siguen participando en revisión de pagos.
@@ -302,6 +316,12 @@ export default function FinanzasPage() {
     if (guidesQuery.error) toast.warning("No se pudo cargar info de couriers; el resto de Finanzas está disponible.");
   }, [guidesQuery.error]);
 
+  useEffect(() => {
+    const refresh = (event: Event) => { if (auth?.company?.id && (event as CustomEvent<{companyId?: string}>).detail?.companyId === auth.company.id) fetchOrders(); };
+    window.addEventListener("commercial-leads:changed", refresh);
+    return () => window.removeEventListener("commercial-leads:changed", refresh);
+  }, [auth?.company?.id, fetchOrders]);
+
   // Helper: info del usuario actual para trazabilidad
   const getUserInfo = useCallback(
     () => ({
@@ -319,6 +339,7 @@ export default function FinanzasPage() {
       newStatus: OrderStatus,
       cancellationReason?: CancellationReason,
     ) => {
+      if (sales.find((sale) => sale.id === saleId)?.commercialStage === "LEAD") { toast.error("Gestiona la compra desde el Lead; el pago no confirma la venta."); return; }
       // Si el nuevo estado es ANULADO y no hay motivo, abrir modal
       if (newStatus === "ANULADO" && !cancellationReason) {
         const sale = sales.find((s) => s.id === saleId);
@@ -354,7 +375,7 @@ export default function FinanzasPage() {
 
   const handleConfirmCancellation = useCallback(
     async (reason: CancellationReason, notes?: string) => {
-      if (!saleToCancel) return;
+      if (!saleToCancel || saleToCancel.commercialStage === "LEAD") return;
 
       setIsCancelling(true);
       try {
@@ -397,6 +418,7 @@ export default function FinanzasPage() {
     orderNumber?: string,
     clientName?: string,
     pendingAmount?: number,
+    currency?: string | null,
   ) => {
     const phone = phoneNumber.replace(/\D/g, "");
     const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
@@ -407,7 +429,7 @@ export default function FinanzasPage() {
       message += `Te contactamos por tu pedido ${orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}\n\n`;
     }
     if (pendingAmount && pendingAmount > 0) {
-      message += `Tienes un pago pendiente de S/${pendingAmount.toFixed(2)} por verificar.`;
+      message += `Tienes un pago pendiente de ${formatSalesMoney(pendingAmount,currency)} por verificar.`;
     }
 
     window.open(
@@ -443,6 +465,7 @@ export default function FinanzasPage() {
           sale.orderNumber,
           sale.clientName,
           sale.pendingPayment,
+          sale.currency,
         );
       }, index * 600);
     });
@@ -460,15 +483,15 @@ export default function FinanzasPage() {
       .map((sale) => {
         const mapsLine = formatGoogleMapsClipboardLine(sale.googleMapsUrl);
         return `
-Venta ${sale.orderNumber}
+${sale.commercialStage === "LEAD" ? "Lead" : "Venta"} ${sale.orderNumber}
 Cliente: ${sale.clientName}
 Teléfono: ${sale.phoneNumber}
 Distrito: ${sale.district}
 Dirección: ${sale.address}${mapsLine ? `\n${mapsLine}` : ""}
 Fecha: ${sale.date}
-Total Venta: $${sale.total.toFixed(2)}
-Adelanto: $${sale.advancePayment.toFixed(2)}
-Por Cobrar: $${sale.pendingPayment.toFixed(2)}
+Total: ${formatSalesMoney(sale.total,sale.currency)}
+Adelanto: ${formatSalesMoney(sale.advancePayment,sale.currency)}
+Por Cobrar: ${formatSalesMoney(sale.pendingPayment,sale.currency)}
 Estado: ${sale.status}
 `.trim();
       })
@@ -486,6 +509,7 @@ Estado: ${sale.status}
     }
 
     const exportData: SaleExportData[] = salesList.map((s) => ({
+      commercialStage:s.commercialStage, commercialLeadId:s.commercialLeadId, currency:s.currency,
       orderNumber: s.orderNumber,
       storeId: s.storeId,
       storeName: auth?.company?.stores?.find((store) => store.id === s.storeId)?.name,
@@ -519,6 +543,7 @@ Estado: ${sale.status}
   // Impresión masiva genérica
   const handleBulkPrintForStatus = async (salesList: Sale[]) => {
     const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
+    if (selectedSales.some((sale) => sale.commercialStage === "LEAD")) { toast.error("Los Leads no emiten comprobantes de venta. Consulta sus pagos desde la bandeja."); return; }
 
     if (selectedSales.length === 0) {
       toast.warning("No hay pedidos seleccionados para imprimir");
@@ -628,6 +653,7 @@ Estado: ${sale.status}
             </TableCell>
             <TableCell className="font-medium w-[100px] min-w-[100px]">
               {sale.orderNumber}
+              {sale.commercialStage === "LEAD" && <Link className="block text-xs underline" href={sale.commercialLeadId ? commercialLeadHref(sale.commercialLeadId) : "/leads-comerciales"}>Lead pendiente de compra</Link>}
             </TableCell>
             <TableCell className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-10 bg-background border-r">
               {sale.clientName}
@@ -662,6 +688,7 @@ Estado: ${sale.status}
             <TableCell className="w-[120px] min-w-[120px]">
               <select
                 value={sale.status}
+                disabled={sale.commercialStage === "LEAD"}
                 onChange={(e) =>
                   handleChangeStatus(sale.id, e.target.value as OrderStatus)
                 }
@@ -816,6 +843,7 @@ Estado: ${sale.status}
             </TableCell>
             <TableCell className="font-medium w-[100px] min-w-[100px]">
               {sale.orderNumber}
+              {sale.commercialStage === "LEAD" && <Link className="block text-xs underline" href={sale.commercialLeadId ? commercialLeadHref(sale.commercialLeadId) : "/leads-comerciales"}>Lead pendiente de compra</Link>}
             </TableCell>
             <TableCell className="w-[100px] min-w-[100px] text-xs text-muted-foreground truncate max-w-[100px]">
               {sale.externalId || "-"}
@@ -924,15 +952,15 @@ Estado: ${sale.status}
     const filtered = sales.filter(
       (s) =>
         s.hasPendingPayments &&
-        !PAGOS_PENDIENTES_EXCLUDED_STATUSES.includes(s.status) &&
-        (!s.subEstadoCc || CC_CONFIRMED_SUBESTADOS.includes(s.subEstadoCc)),
+        (s.commercialStage === "LEAD" ? s.status !== "ANULADO" : !PAGOS_PENDIENTES_EXCLUDED_STATUSES.includes(s.status)) &&
+        (s.commercialStage === "LEAD" || !s.subEstadoCc || CC_CONFIRMED_SUBESTADOS.includes(s.subEstadoCc)),
     );
     return applyFilters(filtered, filtersPagosPendientes);
   }, [sales, filtersPagosPendientes]);
 
   const entregados = useMemo(() => {
     const statusFiltered = sales.filter(
-      (s) => s.status === ORDER_STATUS.ENTREGADO,
+      (s) => s.commercialStage !== "LEAD" && s.status === ORDER_STATUS.ENTREGADO,
     );
     return applyFilters(statusFiltered, filtersEntregado);
   }, [sales, filtersEntregado]);
@@ -950,12 +978,14 @@ Estado: ${sale.status}
       <div className="flex h-screen w-full">
         <main className="flex-1 p-6 space-y-6 overflow-auto">
           <div className="flex flex-col items-center mb-6">
+            <Button variant="outline" onClick={() => setLeadPaymentsOpen((open) => !open)}>Anticipos de Leads</Button>
             <HeaderConfig
               title="Finanzas"
-              description="Gestión de pagos pendientes y ventas entregadas"
+              description="Pagos de ventas, anticipos de Leads y liquidaciones"
             />
           </div>
 
+          {leadPaymentsOpen && <LeadPaymentsTab requestedLeadId={requestedLeadId} onPaymentUpdated={fetchOrders} />}
           {/* Tabs para Finanzas */}
           {loading ? (
             <PowipPulseLoader label="Cargando finanzas..." />
@@ -1077,6 +1107,7 @@ Estado: ${sale.status}
                         <TableRow key={sale.id}>
                           <TableCell className="font-medium w-[100px] min-w-[100px]">
                             {sale.orderNumber}
+              {sale.commercialStage === "LEAD" && <Link className="block text-xs underline" href={sale.commercialLeadId ? commercialLeadHref(sale.commercialLeadId) : "/leads-comerciales"}>Lead pendiente de compra</Link>}
                           </TableCell>
                           <TableCell className="w-[100px] min-w-[100px] text-xs text-muted-foreground truncate max-w-[100px]">
                             {sale.externalId || "-"}
@@ -1108,7 +1139,7 @@ Estado: ${sale.status}
                             <Badge variant="outline">{sale.status}</Badge>
                           </TableCell>
                           <TableCell className="w-[100px] min-w-[100px]">
-                            S/{sale.total.toFixed(2)}
+                            {formatSalesMoney(sale.total, sale.currency)}
                           </TableCell>
                           <TableCell className="w-[140px] min-w-[140px]">
                             <Badge className="bg-amber-100 text-amber-800">
@@ -1116,7 +1147,7 @@ Estado: ${sale.status}
                             </Badge>
                           </TableCell>
                           <TableCell className="font-medium text-amber-600 w-[140px] min-w-[140px]">
-                            S/{sale.pendingPaymentsAmount.toFixed(2)}
+                            {formatSalesMoney(sale.pendingPaymentsAmount, sale.currency)}
                           </TableCell>
                           <TableCell className="w-[120px] min-w-[120px] text-xs">
                             {sale.sellerName || "—"}
@@ -1147,6 +1178,7 @@ Estado: ${sale.status}
                                     sale.orderNumber,
                                     sale.clientName,
                                     sale.pendingPaymentsAmount,
+                                    sale.currency,
                                   )
                                 }
                               >

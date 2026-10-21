@@ -29,6 +29,7 @@ import {
 } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDashboardScope } from "@/contexts/DashboardScopeContext";
+import { reportCurrencyLabel } from "./ReportCurrencySelector";
 import { getDashboardOrders } from "@/services/dashboardService";
 import { DashboardCard } from "./DashboardCard";
 import { hasAdminAccess, isSuperadmin } from "@/config/permissions.config";
@@ -240,7 +241,8 @@ const FunnelCOD: React.FC<{
   loading: boolean;
 }> = ({ fromDate, toDate, funnelData, loading }) => {
   const { auth } = useAuth();
-  const { storeIds, canFetch } = useDashboardScope();
+  const { storeIds, canFetch, currency } = useDashboardScope();
+  const currencyPrefix = reportCurrencyLabel(currency);
 
   const baseTotal = funnelData?.totalOrders || 0;
   const ingresados = funnelData?.funnelMetrics?.ingresados || 0;
@@ -260,7 +262,7 @@ const FunnelCOD: React.FC<{
     if (!canFetch || !auth?.accessToken) return;
     setDownloading(true);
     try {
-      const scopedOrders = await getDashboardOrders(storeIds, fromDate, toDate, auth.accessToken);
+      const scopedOrders = await getDashboardOrders(storeIds, fromDate, toDate, auth.accessToken, { currency });
       const orders = (hasAdminAccess(auth.user.role) || isSuperadmin(auth.user.email))
         ? scopedOrders
         : scopedOrders.filter((order) => order.sellerId === auth.user.id);
@@ -506,7 +508,7 @@ const FunnelCOD: React.FC<{
                     axisLine={false}
                     tickLine={false}
                     tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
-                    tickFormatter={(v) => `S/${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                    tickFormatter={(v) => `${currencyPrefix}${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
                   />
                   <YAxis
                     yAxisId="right"
@@ -528,7 +530,7 @@ const FunnelCOD: React.FC<{
                       color: "var(--foreground)",
                     }}
                     formatter={(value: number, name: string) => {
-                      if (name === "amount") return [`S/ ${value.toLocaleString("es-PE")}`, "Ventas"];
+                      if (name === "amount") return [`${currencyPrefix} ${value.toLocaleString("es-PE")}`, "Ventas"];
                       if (name === "orders") return [value, "Órdenes"];
                       if (name === "units") return [value, "Unidades"];
                       return [value, name];
@@ -645,12 +647,27 @@ interface StatsProps {
 
 export const Stats: React.FC<StatsProps> = ({ fromDate, toDate }) => {
   const { selectedStoreId, setSelectedStore, auth } = useAuth();
-  const { scope, setScope, scopeParams, canFetch: scopeReady } = useDashboardScope();
+  const { scope, setScope, scopeParams, canFetch: scopeReady, currency } = useDashboardScope();
+  const currencyPrefix = reportCurrencyLabel(currency);
   const accessToken = auth?.accessToken;
   const userId = auth?.user.id;
   const userRole = auth?.user.role;
   const isAdmin = hasAdminAccess(userRole) || isSuperadmin(auth?.user.email);
   const [retryCount, setRetryCount] = useState(0);
+  useEffect(() => {
+    const changed = (event: Event) => {
+      if (
+        auth?.company?.id &&
+        (event as CustomEvent<{ companyId: string }>).detail?.companyId ===
+          auth.company.id
+      )
+        setRetryCount((value) => value + 1);
+    };
+    window.addEventListener("commercial-leads:changed", changed);
+    return () =>
+      window.removeEventListener("commercial-leads:changed", changed);
+  }, [auth?.company?.id]);
+
   const requestKey = JSON.stringify([scopeParams, fromDate, toDate, userId, isAdmin]);
   const [result, setResult] = useState<{
     key: string;
@@ -738,7 +755,7 @@ export const Stats: React.FC<StatsProps> = ({ fromDate, toDate }) => {
             title="Ventas Totales"
             value={
               data
-                ? `S/ ${data.totalSales.toLocaleString("es-PE", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                ? `${currencyPrefix} ${data.totalSales.toLocaleString("es-PE", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
                 : "-"
             }
             description="Monto acumulado"
@@ -765,7 +782,7 @@ export const Stats: React.FC<StatsProps> = ({ fromDate, toDate }) => {
             title="Ticket Promedio"
             value={
               data
-                ? `S/ ${data.averageTicket.toLocaleString("es-PE", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                ? `${currencyPrefix} ${data.averageTicket.toLocaleString("es-PE", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
                 : "-"
             }
             description="Por orden"

@@ -1,8 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { getLeadPaymentCapabilities } from "@/services/leadPaymentsService";
+import type { LeadPaymentCapabilities } from "@/types/leadPayments";
+import { commercialLeadHref } from "@/utils/commercialOrders";
 import Link from "next/link";
-import { AlertTriangle, Copy, ExternalLink, Loader2, MessageCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  Copy,
+  ExternalLink,
+  Loader2,
+  MessageCircle,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,9 +28,14 @@ import {
   convertQuotation,
   registerQuotationPayment,
   reviewQuotationPayment,
+  reconcileQuotationLeadPayment,
   uploadQuotationProof,
 } from "@/services/quotationService";
-import type { ConvertQuotationInput, Quotation, QuotationPayment } from "@/types/quotations";
+import type {
+  ConvertQuotationInput,
+  Quotation,
+  QuotationPayment,
+} from "@/types/quotations";
 import {
   errorMessage,
   lineHasStockIssue,
@@ -33,7 +47,8 @@ import {
   statusLabels,
 } from "./quotationHelpers";
 
-const fieldClass = "flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm";
+const fieldClass =
+  "flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm";
 export const paymentLabels = {
   YAPE_QR: "Yape QR",
   MERCADO_PAGO: "Mercado Pago",
@@ -46,47 +61,55 @@ const paymentStatusLabels = {
 };
 
 export function activeQuotationPayment(quotation: Quotation) {
-  return [...(quotation.payments || [])]
-    .filter((payment) => payment.status !== "RECHAZADO")
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+  const latest = quotation.payments?.[quotation.payments.length - 1];
+  return latest?.status === "RECHAZADO" ? undefined : latest;
 }
 
 export function depositAmount(quotation: Quotation) {
-  return quotation.depositAmount ?? Number(activeQuotationPayment(quotation)?.amount || 0);
+  return (
+    quotation.depositAmount ??
+    Number(activeQuotationPayment(quotation)?.amount || 0)
+  );
 }
 
 function Summary({
   quotation,
   shipping = 0,
   conversion = false,
+  currency,
 }: {
   quotation: Quotation;
   shipping?: number;
   conversion?: boolean;
+  currency?: string;
 }) {
   const deposit = depositAmount(quotation);
+  const showMoney = (amount: number) =>
+    currency && currency !== "PEN"
+      ? `${currency} ${Number(amount || 0).toFixed(2)}`
+      : money(amount);
   return (
     <div className="space-y-3 rounded-xl border bg-muted/30 p-4 text-sm">
       <div className="flex justify-between">
         <span>Total productos</span>
-        <strong>{money(quotation.total)}</strong>
+        <strong>{showMoney(quotation.total)}</strong>
       </div>
       {(shipping > 0 || conversion) && (
         <div className="flex justify-between">
           <span>Envío</span>
-          <strong>{money(shipping)}</strong>
+          <strong>{showMoney(shipping)}</strong>
         </div>
       )}
       {deposit > 0 && (
         <div className="flex justify-between text-teal-700 dark:text-teal-300">
           <span>Adelanto registrado</span>
-          <strong>−{money(deposit)}</strong>
+          <strong>−{showMoney(deposit)}</strong>
         </div>
       )}
       <div className="flex justify-between border-t pt-3">
         <strong>{conversion ? "Total a cobrar" : "Saldo pendiente"}</strong>
         <strong className="text-lg text-teal-700 dark:text-teal-300">
-          {money(Math.max(0, Number(quotation.total) + shipping - deposit))}
+          {showMoney(Math.max(0, Number(quotation.total) + shipping - deposit))}
         </strong>
       </div>
     </div>
@@ -107,14 +130,20 @@ export function QuotationShareDialog({
         <DialogHeader>
           <DialogTitle>Link de cotización</DialogTitle>
           <DialogDescription>
-            {quotation.customerName} puede revisar su cotización, confirmar y enviar el comprobante
-            desde este link.
+            {quotation.customerName} puede revisar su cotización, confirmar y
+            enviar el comprobante desde este link.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
-          <Label htmlFor="quotation-public-url">Link para {quotation.customerName}</Label>
+          <Label htmlFor="quotation-public-url">
+            Link para {quotation.customerName}
+          </Label>
           <div className="flex gap-2">
-            <Input id="quotation-public-url" value={quotation.publicUrl} readOnly />
+            <Input
+              id="quotation-public-url"
+              value={quotation.publicUrl}
+              readOnly
+            />
             <Button
               type="button"
               variant="outline"
@@ -132,7 +161,8 @@ export function QuotationShareDialog({
             </Button>
           </div>
           <p className="text-xs text-muted-foreground">
-            El mismo link permite seguir el pedido después de convertirlo en venta.
+            El mismo link permite seguir el pedido después de convertirlo en
+            venta.
           </p>
         </div>
         <DialogFooter>
@@ -140,7 +170,11 @@ export function QuotationShareDialog({
             Cerrar
           </Button>
           <Button asChild className="bg-teal-600 hover:bg-teal-700">
-            <a href={quotationWhatsAppUrl(quotation)} target="_blank" rel="noopener noreferrer">
+            <a
+              href={quotationWhatsAppUrl(quotation)}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <MessageCircle className="mr-2 h-4 w-4" />
               Abrir en WhatsApp
             </a>
@@ -186,8 +220,14 @@ export function QuotationPaymentDialog({
     setSaving(true);
     setError("");
     try {
-      const proofUrl = file ? await uploadQuotationProof(quotation.id, file) : undefined;
-      await registerQuotationPayment(quotation.id, { amount: Number(amount), method, proofUrl });
+      const proofUrl = file
+        ? await uploadQuotationProof(quotation.id, file)
+        : undefined;
+      await registerQuotationPayment(quotation.id, {
+        amount: Number(amount),
+        method,
+        proofUrl,
+      });
       toast.success("Adelanto registrado. Pendiente de aprobación.");
       onSaved();
     } catch (failure) {
@@ -202,18 +242,20 @@ export function QuotationPaymentDialog({
         <DialogHeader>
           <DialogTitle>Registrar adelanto</DialogTitle>
           <DialogDescription>
-            {quotation.number} · {quotation.customerName}. El comprobante se revisará antes de
-            aprobar el pago.
+            {quotation.number} · {quotation.customerName}. El comprobante se
+            revisará antes de aprobar el pago.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} noValidate className="space-y-4">
           <Summary quotation={quotation} />
           {pending && (
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm dark:bg-amber-500/10">
-              <strong>Adelanto pendiente de aprobación: {money(pending.amount)}</strong>
+              <strong>
+                Adelanto pendiente de aprobación: {money(pending.amount)}
+              </strong>
               <p className="mt-1 text-xs">
-                Verifica el comprobante. El adelanto registrado se reflejará al convertir esta
-                cotización.
+                Verifica el comprobante. El adelanto registrado se reflejará al
+                convertir esta cotización.
               </p>
             </div>
           )}
@@ -235,7 +277,9 @@ export function QuotationPaymentDialog({
                 id="payment-method"
                 className={fieldClass}
                 value={method}
-                onChange={(event) => setMethod(event.target.value as QuotationPayment["method"])}
+                onChange={(event) =>
+                  setMethod(event.target.value as QuotationPayment["method"])
+                }
               >
                 {Object.entries(paymentLabels).map(([value, label]) => (
                   <option key={value} value={value}>
@@ -251,7 +295,8 @@ export function QuotationPaymentDialog({
               className="flex gap-2 rounded-xl bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/10"
             >
               <AlertTriangle className="h-5 w-5 shrink-0" />
-              El adelanto supera el total cotizado. Revisa el monto; el saldo quedará en S/0.00.
+              El adelanto supera el total cotizado. Revisa el monto; el saldo
+              quedará en S/0.00.
             </p>
           )}
           <div className="space-y-1.5">
@@ -262,7 +307,9 @@ export function QuotationPaymentDialog({
               accept="image/jpeg,image/png,application/pdf"
               onChange={(event) => setFile(event.target.files?.[0] || null)}
             />
-            <p className="text-xs text-muted-foreground">JPG, PNG o PDF · máximo 5 MB</p>
+            <p className="text-xs text-muted-foreground">
+              JPG, PNG o PDF · máximo 5 MB
+            </p>
           </div>
           {error && (
             <p role="alert" className="text-sm text-destructive">
@@ -270,10 +317,19 @@ export function QuotationPaymentDialog({
             </p>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" disabled={saving} onClick={onClose}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={saving}
+              onClick={onClose}
+            >
               Cancelar
             </Button>
-            <Button type="submit" disabled={saving} className="bg-teal-600 hover:bg-teal-700">
+            <Button
+              type="submit"
+              disabled={saving}
+              className="bg-teal-600 hover:bg-teal-700"
+            >
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {saving ? "Registrando…" : "Registrar adelanto"}
             </Button>
@@ -287,6 +343,7 @@ export function QuotationPaymentDialog({
 export function QuotationDetailDialog({
   quotation,
   canReviewPayments,
+  canConvert = true,
   onClose,
   onUpdated,
   onEdit,
@@ -296,6 +353,7 @@ export function QuotationDetailDialog({
 }: {
   quotation: Quotation;
   canReviewPayments: boolean;
+  canConvert?: boolean;
   onClose: () => void;
   onUpdated: () => void;
   onEdit: () => void;
@@ -304,12 +362,66 @@ export function QuotationDetailDialog({
   onPayment: () => void;
 }) {
   const [reviewing, setReviewing] = useState("");
+  const [paymentCaps, setPaymentCaps] =
+    useState<LeadPaymentCapabilities | null>(null);
+  const [reconcileCurrency, setReconcileCurrency] = useState("");
+  const [ackApproved, setAckApproved] = useState(false);
+  const [reconciledLeadId, setReconciledLeadId] = useState<string | null>(null);
+  const [capsError, setCapsError] = useState("");
+  useEffect(() => {
+    let active = true;
+    setPaymentCaps(null);
+    setCapsError("");
+    setReconcileCurrency("");
+    setAckApproved(false);
+    setReconciledLeadId(null);
+    getLeadPaymentCapabilities()
+      .then((caps) => {
+        if (active) setPaymentCaps(caps);
+      })
+      .catch(() => {
+        if (active)
+          setCapsError(
+            "No se pudo comprobar el permiso financiero. Actualiza antes de revisar pagos.",
+          );
+      });
+    return () => {
+      active = false;
+    };
+  }, [quotation.id]);
+  async function reconcile(payment: QuotationPayment) {
+    if (!paymentCaps?.canReview || !/^[A-Z]{3}$/.test(reconcileCurrency))
+      return;
+    setReviewing(payment.id);
+    try {
+      const canonical = await reconcileQuotationLeadPayment(
+        quotation.id,
+        payment.id,
+        { currency: reconcileCurrency, confirmApproved: ackApproved },
+      );
+      setReconciledLeadId(canonical.leadId);
+      toast.success(
+        "Anticipo vinculado al Lead con una sola identidad. Revísalo en su bandeja.",
+      );
+      onUpdated();
+    } catch (error) {
+      toast.error(errorMessage(error, "No se pudo conciliar el anticipo."));
+    } finally {
+      setReviewing("");
+    }
+  }
+
   const status = quotationStatus(quotation);
-  async function review(paymentId: string, nextStatus: "APROBADO" | "RECHAZADO") {
+  async function review(
+    paymentId: string,
+    nextStatus: "APROBADO" | "RECHAZADO",
+  ) {
     setReviewing(paymentId);
     try {
       await reviewQuotationPayment(quotation.id, paymentId, nextStatus);
-      toast.success(nextStatus === "APROBADO" ? "Pago aprobado." : "Pago rechazado.");
+      toast.success(
+        nextStatus === "APROBADO" ? "Pago aprobado." : "Pago rechazado.",
+      );
       onUpdated();
     } catch (failure) {
       toast.error(errorMessage(failure, "No se pudo actualizar el pago."));
@@ -323,7 +435,9 @@ export function QuotationDetailDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
             {quotation.number}
-            <span className={`rounded-full border px-2.5 py-1 text-xs ${statusClasses[status]}`}>
+            <span
+              className={`rounded-full border px-2.5 py-1 text-xs ${statusClasses[status]}`}
+            >
               {statusLabels[status]}
             </span>
           </DialogTitle>
@@ -353,7 +467,9 @@ export function QuotationDetailDialog({
             <div>
               <p className="text-muted-foreground">Cliente</p>
               <p className="mt-1 font-medium">
-                {quotation.customerConfirmed ? "Confirmó desde el link" : "Por confirmar"}
+                {quotation.customerConfirmed
+                  ? "Confirmó desde el link"
+                  : "Por confirmar"}
               </p>
             </div>
           </div>
@@ -376,11 +492,14 @@ export function QuotationDetailDialog({
                         {[line.variant, line.sku].filter(Boolean).join(" · ")}
                       </p>
                       {line.isManual && (
-                        <p className="text-xs text-amber-700">Manual · sin control de stock</p>
+                        <p className="text-xs text-amber-700">
+                          Manual · sin control de stock
+                        </p>
                       )}
                       {lineHasStockIssue(line) && (
                         <p className="text-xs text-red-700">
-                          Sin stock suficiente — quedan {line.stockAvailable ?? 0}
+                          Sin stock suficiente — quedan{" "}
+                          {line.stockAvailable ?? 0}
                         </p>
                       )}
                     </td>
@@ -404,6 +523,55 @@ export function QuotationDetailDialog({
           {quotation.payments?.length > 0 && (
             <div className="space-y-2">
               <h3 className="text-sm font-semibold">Historial de adelantos</h3>
+              {capsError && (
+                <p role="alert" className="text-sm text-destructive">
+                  {capsError}
+                </p>
+              )}
+              {paymentCaps?.enabled && (
+                <div className="space-y-2 rounded-lg border p-3 text-sm">
+                  <p>
+                    El anticipo vigente se vincula al Lead antes de convertir.
+                    Su aprobación y comprobante conservan la misma identidad.
+                  </p>
+                  {paymentCaps.canReview && (
+                    <>
+                      <Label htmlFor="quote-reconcile-currency">
+                        Moneda del anticipo
+                      </Label>
+                      <Input
+                        id="quote-reconcile-currency"
+                        maxLength={3}
+                        value={reconcileCurrency}
+                        placeholder="PEN, USD…"
+                        onChange={(e) =>
+                          setReconcileCurrency(e.target.value.toUpperCase())
+                        }
+                      />
+                      {activeQuotationPayment(quotation)?.status ===
+                        "APROBADO" && (
+                        <label className="flex gap-2">
+                          <input
+                            type="checkbox"
+                            checked={ackApproved}
+                            onChange={(e) => setAckApproved(e.target.checked)}
+                          />
+                          Confirmo la evidencia del pago aprobado registrada en
+                          la cotización
+                        </label>
+                      )}
+                    </>
+                  )}
+                  {reconciledLeadId && (
+                    <Link
+                      className="underline"
+                      href={commercialLeadHref(reconciledLeadId)}
+                    >
+                      Gestionar el anticipo en el Lead
+                    </Link>
+                  )}
+                </div>
+              )}
               {quotation.payments.map((payment) => (
                 <div
                   key={payment.id}
@@ -421,13 +589,35 @@ export function QuotationDetailDialog({
                   <div className="flex flex-wrap gap-2">
                     {payment.proofUrl && (
                       <Button size="sm" variant="outline" asChild>
-                        <a href={payment.proofUrl} target="_blank" rel="noopener noreferrer">
+                        <a
+                          href={payment.proofUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
                           Comprobante
                           <ExternalLink className="ml-1 h-3 w-3" />
                         </a>
                       </Button>
                     )}
-                    {canReviewPayments &&
+                    {paymentCaps?.enabled &&
+                      paymentCaps.canReview &&
+                      payment.id === activeQuotationPayment(quotation)?.id &&
+                      status !== "CONVERTIDA" && (
+                        <Button
+                          size="sm"
+                          disabled={
+                            !!reviewing ||
+                            !/^[A-Z]{3}$/.test(reconcileCurrency) ||
+                            (payment.status === "APROBADO" && !ackApproved)
+                          }
+                          onClick={() => void reconcile(payment)}
+                        >
+                          Vincular anticipo al Lead
+                        </Button>
+                      )}
+                    {paymentCaps &&
+                      !paymentCaps.enabled &&
+                      canReviewPayments &&
                       payment.status === "PENDIENTE" &&
                       status !== "CONVERTIDA" && (
                         <>
@@ -478,7 +668,7 @@ export function QuotationDetailDialog({
                   </Button>
                   <Button
                     className="bg-teal-600 hover:bg-teal-700"
-                    disabled={quotationHasStockIssue(quotation)}
+                    disabled={!canConvert || quotationHasStockIssue(quotation)}
                     onClick={onConvert}
                   >
                     Convertir a venta
@@ -504,6 +694,7 @@ export function QuotationConvertDialog({
 }) {
   const savedAddress = quotation.address;
   const [fields, setFields] = useState({
+    currency: "",
     address: savedAddress?.address || "",
     department: savedAddress?.department || "Lima",
     province: savedAddress?.province || "Lima",
@@ -512,25 +703,41 @@ export function QuotationConvertDialog({
     documentNumber: "",
     zone: "LIMA_CENTRO",
     clientType: "TRADICIONAL",
-    salesChannel: "WHATSAPP",
-    closingChannel: "WHATSAPP",
+    salesChannel: "",
+    closingChannel: "",
     deliveryType: "DOMICILIO",
     courier: "",
-    paymentMethod: "CONTRAENTREGA",
+    paymentMethod: "",
     shippingTotal: "0",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const update = (key: keyof typeof fields, value: string) =>
     setFields((previous) => ({ ...previous, [key]: value }));
-  const shipping = fields.deliveryType === "DOMICILIO" ? Number(fields.shippingTotal) || 0 : 0;
+  const shipping =
+    fields.deliveryType === "DOMICILIO" ? Number(fields.shippingTotal) || 0 : 0;
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!fields.address.trim() || !fields.district.trim())
       return setError("Completa dirección y distrito para despachar la venta.");
+    if (!/^[A-Z]{3}$/.test(fields.currency))
+      return setError(
+        "Selecciona la moneda del pedido y del anticipo conciliado.",
+      );
+    if (!fields.salesChannel || !fields.closingChannel)
+      return setError(
+        "Selecciona los canales de venta y cierre acordados con el cliente.",
+      );
+    if (!fields.paymentMethod)
+      return setError(
+        "Selecciona la condición de cobro acordada con el cliente.",
+      );
     if (fields.documentNumber && !/^\d{8}$/.test(fields.documentNumber))
       return setError("El DNI debe tener 8 dígitos.");
-    if (!Number.isFinite(Number(fields.shippingTotal)) || Number(fields.shippingTotal) < 0)
+    if (
+      !Number.isFinite(Number(fields.shippingTotal)) ||
+      Number(fields.shippingTotal) < 0
+    )
       return setError("Ingresa un costo de envío válido.");
     setSaving(true);
     setError("");
@@ -540,7 +747,10 @@ export function QuotationConvertDialog({
       district: fields.district.trim(),
       deliveryType: fields.deliveryType as "DOMICILIO" | "RETIRO_TIENDA",
       shippingTotal: shipping,
-      salesRegion: fields.department.trim().toLowerCase() === "lima" ? "LIMA" : "PROVINCIA",
+      salesRegion:
+        fields.department.trim().toLowerCase() === "lima"
+          ? "LIMA"
+          : "PROVINCIA",
       paymentMethod: fields.paymentMethod as
         | "CONTRAENTREGA"
         | "YAPE_QR"
@@ -557,7 +767,11 @@ export function QuotationConvertDialog({
       setSaving(false);
     }
   }
-  function textField(key: keyof typeof fields, label: string, required = false) {
+  function textField(
+    key: keyof typeof fields,
+    label: string,
+    required = false,
+  ) {
     return (
       <div className="space-y-1.5">
         <Label htmlFor={`convert-${key}`}>
@@ -568,12 +782,23 @@ export function QuotationConvertDialog({
           id={`convert-${key}`}
           value={fields[key]}
           maxLength={key === "documentNumber" ? 8 : undefined}
-          onChange={(event) => update(key, event.target.value)}
+          onChange={(event) =>
+            update(
+              key,
+              key === "currency"
+                ? event.target.value.toUpperCase()
+                : event.target.value,
+            )
+          }
         />
       </div>
     );
   }
-  function selectField(key: keyof typeof fields, label: string, options: [string, string][]) {
+  function selectField(
+    key: keyof typeof fields,
+    label: string,
+    options: [string, string][],
+  ) {
     return (
       <div className="space-y-1.5">
         <Label htmlFor={`convert-${key}`}>{label}</Label>
@@ -581,8 +806,18 @@ export function QuotationConvertDialog({
           id={`convert-${key}`}
           className={fieldClass}
           value={fields[key]}
-          onChange={(event) => update(key, event.target.value)}
+          onChange={(event) =>
+            update(
+              key,
+              key === "currency"
+                ? event.target.value.toUpperCase()
+                : event.target.value,
+            )
+          }
         >
+          {["salesChannel", "closingChannel", "paymentMethod"].includes(key) ? (
+            <option value="">Selecciona una opción</option>
+          ) : null}
           {options.map(([value, label]) => (
             <option key={value} value={value}>
               {label}
@@ -610,18 +845,23 @@ export function QuotationConvertDialog({
         <DialogHeader>
           <DialogTitle>Convertir cotización en venta</DialogTitle>
           <DialogDescription>
-            {quotation.number} · Completa los datos de entrega y pago para crear la orden en Ventas.
+            {quotation.number} · Completa los datos de entrega y pago para crear
+            la orden en Ventas.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={submit} noValidate className="space-y-5">
           <div className="rounded-xl border bg-muted/30 p-4 text-sm">
-            <strong>{quotation.customerName}</strong> · {quotation.customerPhone}
+            <strong>{quotation.customerName}</strong> ·{" "}
+            {quotation.customerPhone}
             <p className="mt-1 text-muted-foreground">
-              {quotation.lines.map((line) => `${line.quantity} × ${line.name}`).join(" · ")}
+              {quotation.lines
+                .map((line) => `${line.quantity} × ${line.name}`)
+                .join(" · ")}
             </p>
           </div>
           <div className="grid gap-6 sm:grid-cols-2">
             <div className="space-y-4">
+              {textField("currency", "Moneda (PEN, USD…)", true)}
               {textField("address", "Dirección de entrega", true)}
               <div className="grid grid-cols-2 gap-3">
                 {textField("department", "Departamento", true)}
@@ -631,9 +871,13 @@ export function QuotationConvertDialog({
               {selectField(
                 "zone",
                 "Zona",
-                ["LIMA_NORTE", "LIMA_SUR", "LIMA_ESTE", "LIMA_CENTRO", "PROVINCIAS"].map(
-                  (value) => [value, value.replaceAll("_", " ")],
-                ),
+                [
+                  "LIMA_NORTE",
+                  "LIMA_SUR",
+                  "LIMA_ESTE",
+                  "LIMA_CENTRO",
+                  "PROVINCIAS",
+                ].map((value) => [value, value.replaceAll("_", " ")]),
               )}
               {textField("reference", "Referencia (opcional)")}
               {textField("documentNumber", "DNI (opcional)")}
@@ -668,19 +912,32 @@ export function QuotationConvertDialog({
                 <>
                   {textField("courier", "Courier (opcional)")}
                   <div className="space-y-1.5">
-                    <Label htmlFor="convert-shipping">Costo de envío (S/)</Label>
+                    <Label htmlFor="convert-shipping">
+                      Costo de envío (
+                      {fields.currency === "PEN"
+                        ? "S/"
+                        : fields.currency || "moneda"}
+                      )
+                    </Label>
                     <Input
                       id="convert-shipping"
                       type="number"
                       min="0"
                       step="0.01"
                       value={fields.shippingTotal}
-                      onChange={(event) => update("shippingTotal", event.target.value)}
+                      onChange={(event) =>
+                        update("shippingTotal", event.target.value)
+                      }
                     />
                   </div>
                 </>
               )}
-              <Summary quotation={quotation} shipping={shipping} conversion />
+              <Summary
+                quotation={quotation}
+                shipping={shipping}
+                conversion
+                currency={fields.currency}
+              />
               {activeQuotationPayment(quotation)?.status === "PENDIENTE" && (
                 <p className="text-xs text-amber-700">
                   El adelanto pendiente conserva su estado y deberá verificarse.
@@ -689,12 +946,20 @@ export function QuotationConvertDialog({
             </div>
           </div>
           {error && (
-            <p role="alert" className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
+            <p
+              role="alert"
+              className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive"
+            >
               {error}
             </p>
           )}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onClose}
+              disabled={saving}
+            >
               Cancelar
             </Button>
             <Button

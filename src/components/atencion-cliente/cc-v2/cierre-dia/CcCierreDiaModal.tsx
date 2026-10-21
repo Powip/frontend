@@ -1,4 +1,5 @@
 "use client";
+import { CcCierreDiaMoneyNotice } from "./CcCierreDiaMoneyNotice";
 
 import { useEffect, useMemo, useState } from "react";
 import { es } from "date-fns/locale";
@@ -86,8 +87,11 @@ export function CcCierreDiaModal({
     storeId,
     date ?? "",
   );
-  const { data: closingData, isLoading: isLoadingClosing } =
-    useCierreDiaClosingDataDay(storeId, date ?? "");
+  const {
+    data: closingData,
+    isLoading: isLoadingClosing,
+    error: closingError,
+  } = useCierreDiaClosingDataDay(storeId, date ?? "");
   const saveMutation = useSaveCierreDia(storeId);
 
   // Mes que se está viendo en el calendario del popover — arranca en el mes
@@ -273,6 +277,10 @@ export function CcCierreDiaModal({
 
         {date && <CcCierreDiaAdvertisingScope from={date} to={date} />}
 
+        <CcCierreDiaMoneyNotice
+          error={closingError}
+          hasSaved={!!manualRecord}
+        />
         {isLoadingAuto ? (
           <div className="flex items-center gap-2 rounded-lg bg-muted/60 border px-3 py-2 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />

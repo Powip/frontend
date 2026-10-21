@@ -13,9 +13,9 @@ import { useAuth } from "./AuthContext";
 
 export type DashboardScope = "business" | "store";
 
-export type DashboardScopeParams =
+export type DashboardScopeParams = { currency?: string } & (
   | { storeIds: string; storeId?: never }
-  | { storeId: string; storeIds?: never };
+  | { storeId: string; storeIds?: never });
 
 interface DashboardScopeValue {
   scope: DashboardScope;
@@ -24,6 +24,8 @@ interface DashboardScopeValue {
   scopeParams: DashboardScopeParams;
   canFetch: boolean;
   canViewBusiness: boolean;
+  currency: string;
+  setCurrency: (currency: string) => void;
   scopeKey: string;
 }
 
@@ -43,6 +45,9 @@ export function DashboardScopeProvider({ children }: { children: ReactNode }) {
   const companyId = auth?.company?.id;
   const companyStores = auth?.company?.stores;
   const canViewBusiness = Boolean(auth?.accessToken && userId && companyId);
+  const [currencyChoice, setCurrencyChoice] = useState<{userId: string | undefined; companyId: string | undefined; currency: string} | null>(null);
+  const currency = currencyChoice && currencyChoice.userId === userId && currencyChoice?.companyId === companyId ? currencyChoice.currency : "PEN";
+  const setCurrency = useCallback((next: string) => { if (/^(?:[A-Z]{3}|UNKNOWN)$/.test(next)) setCurrencyChoice({userId,companyId,currency:next}); },[userId,companyId]);
   const [choice, setChoice] = useState<ScopeChoice | null>(null);
 
   useEffect(() => {
@@ -81,17 +86,17 @@ export function DashboardScopeProvider({ children }: { children: ReactNode }) {
   }, [companyStores, scope, selectedStoreId]);
 
   const scopeParams = useMemo<DashboardScopeParams>(
-    () => scope === "business"
+    () => ({ ...(scope === "business"
       ? { storeIds: storeIds.join(",") }
-      : { storeId: storeIds[0] || "" },
-    [scope, storeIds],
+      : { storeId: storeIds[0] || "" }), ...(currency !== "PEN" ? {currency} : {}) }),
+    [scope, storeIds, currency],
   );
   const canFetch = canViewBusiness && storeIds.length > 0;
   const scopeKey = JSON.stringify([companyId, userId, scope, storeIds]);
 
   const value = useMemo(
-    () => ({ scope, setScope, storeIds, scopeParams, canFetch, canViewBusiness, scopeKey }),
-    [scope, setScope, storeIds, scopeParams, canFetch, canViewBusiness, scopeKey],
+    () => ({ scope, setScope, storeIds, scopeParams, canFetch, canViewBusiness, scopeKey, currency, setCurrency }),
+    [scope, setScope, storeIds, scopeParams, canFetch, canViewBusiness, scopeKey, currency, setCurrency],
   );
 
   return (

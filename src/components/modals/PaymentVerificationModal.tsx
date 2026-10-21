@@ -1,4 +1,5 @@
 "use client";
+import {useAuth} from "@/contexts/AuthContext";
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { usePathname } from "next/navigation";
@@ -32,6 +33,18 @@ import {
 import axios from "axios";
 import axiosAuth from "@/lib/axiosAuth";
 import { toast } from "sonner";
+import {
+  getLeadPaymentCapabilities,
+  captureLeadPayment,
+  approveLeadPayment,
+  rejectLeadPayment,
+  changeLeadPaymentAmount,
+  uploadLeadPaymentProof,
+} from "@/services/leadPaymentsService";
+import { safePaymentProof } from "@/components/commercial-leads/paymentPresentation";
+import { notifyCommercialChange } from "@/utils/commercialOrders";
+import { leadCommandId } from "@/components/commercial-leads/lead-ui";
+import type { CaptureLeadPaymentInput, LeadPaymentCapabilities } from "@/types/leadPayments";
 
 interface Payment {
   id: string;
@@ -41,9 +54,15 @@ interface Payment {
   paymentProofUrl?: string | null;
   notes?: string | null;
   paymentDate: string;
+  leadId?: string | null;
+  leadPaymentVersion?: number | null;
 }
 
 interface OrderData {
+  companyId?: string;
+  commercialLeadId?: string | null;
+  commercialStage?: "LEAD" | "SALE" | null;
+  currency?: string | null;
   grandTotal: number;
   payments: Payment[];
 }
@@ -98,15 +117,18 @@ export default function PaymentVerificationModal({
   onPaymentUpdated,
   canApprove = false,
 }: PaymentVerificationModalProps) {
+  const {auth, hasPermission}=useAuth();
+  const canRecordOrderPayment = ["CREATE_SALE", "EDIT_SALE", "APPROVE_PAYMENTS"].some(hasPermission);
   const [orderData, setOrderData] = useState<OrderData | null>(null);
+  const [leadPaymentCaps, setLeadPaymentCaps] = useState<LeadPaymentCapabilities | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingProofForId, setUploadingProofForId] = useState<string | null>(
     null,
   );
-  const [processingPaymentId, setProcessingPaymentId] = useState<
-    string | null
-  >(null);
+  const [processingPaymentId, setProcessingPaymentId] = useState<string | null>(
+    null,
+  );
   const [editingAmountForId, setEditingAmountForId] = useState<string | null>(
     null,
   );
@@ -122,14 +144,38 @@ export default function PaymentVerificationModal({
   // que usan este modal siguen pudiendo crear pagos y subir comprobantes.
   const isAllowedRoute =
     pathname === "/finanzas" || pathname.startsWith("/finanzas/");
-  const finalCanApprove = canApprove && isAllowedRoute;
+  const finalCanApprove = canApprove && isAllowedRoute && hasPermission("APPROVE_PAYMENTS");
 
   // Form states
   const [amount, setAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const captureScope = `${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}:${orderId}`;
+  const activeCaptureScope = useRef(captureScope);
+  activeCaptureScope.current = captureScope;
+  const leadCapture = useRef<{scope:string;leadId:string;input:CaptureLeadPaymentInput;file:File|null} | null>(null);
+  const leadProofRetry = useRef<{scope:string;leadId:string;paymentId:string;file:File;input:CaptureLeadPaymentInput} | null>(null);
+  const [captureFrozen, setCaptureFrozen] = useState(false);
+  const needsLeadCapture = orderData?.commercialStage === "LEAD" || captureFrozen;
+  const canRecord = needsLeadCapture ? Boolean(leadPaymentCaps?.enabled && leadPaymentCaps.canCapture) : canRecordOrderPayment;
   const activeOrderIdRef = useRef<string | null>(null);
   const orderRequestRef = useRef(0);
+  const operationEpoch = useRef(0);
+  const operationLocks = useRef(new Set<string>());
+  useEffect(() => {
+    setLeadPaymentCaps(null);
+    if (!open || !needsLeadCapture) return;
+    let active = true;
+    void getLeadPaymentCapabilities().then((caps) => { if (active && activeCaptureScope.current === captureScope) setLeadPaymentCaps(caps); }).catch(() => { if (active) setLeadPaymentCaps(null); });
+    return () => { active = false; };
+  }, [open, needsLeadCapture, orderData?.commercialLeadId, captureScope]);
+  const currentOperation = (epoch: number) =>
+    operationEpoch.current === epoch && activeOrderIdRef.current === orderId;
+  const paymentChanged = () => {
+    notifyCommercialChange(orderData?.companyId);
+    void fetchOrderData();
+    onPaymentUpdated?.();
+  };
 
   const fetchOrderData = useCallback(async () => {
     if (!orderId || activeOrderIdRef.current !== orderId) return;
@@ -145,6 +191,10 @@ export default function PaymentVerificationModal({
       );
       if (!isCurrentRequest()) return;
       setOrderData({
+        companyId: res.data.companyId || res.data.customer?.companyId,
+        commercialLeadId: res.data.commercialLeadId,
+        commercialStage: res.data.commercialStage,
+        currency: res.data.currency,
         grandTotal: Number(res.data.grandTotal),
         payments: res.data.payments || [],
       });
@@ -158,22 +208,31 @@ export default function PaymentVerificationModal({
   }, [orderId]);
 
   useEffect(() => {
+    operationEpoch.current += 1;
     activeOrderIdRef.current = open ? orderId : null;
     if (open && orderId) {
       setOrderData(null);
       fetchOrderData();
-      setAmount("");
-      setPaymentMethod("");
-      setFile(null);
+      if (leadCapture.current?.scope !== captureScope) leadCapture.current = null;
+      if (leadProofRetry.current?.scope !== captureScope) leadProofRetry.current = null;
+      const previous = leadCapture.current || leadProofRetry.current;
+      setAmount(previous ? String(previous.input.amount) : "");
+      setPaymentMethod(previous?.input.paymentMethod || "");
+      setFile(previous?.file || null);
+      setCaptureFrozen(Boolean(previous));
       setEditingAmountForId(null);
       setEditAmountValue("");
       setSavingAmountForId(null);
+      setProcessingPaymentId(null);
+      setUploadingProofForId(null);
+      setIsSubmitting(false);
     }
     return () => {
       activeOrderIdRef.current = null;
       orderRequestRef.current += 1;
+      operationEpoch.current += 1;
     };
-  }, [open, orderId, fetchOrderData]);
+  }, [open, orderId, fetchOrderData, captureScope]);
 
   const totalPaid =
     orderData?.payments
@@ -186,6 +245,10 @@ export default function PaymentVerificationModal({
   const pendingAmount = (orderData?.grandTotal || 0) - totalPaid;
 
   const handleSubmitPayment = async () => {
+    if(!canRecord)return;
+    const epoch = operationEpoch.current;
+    const lockKey = `${epoch}:new`;
+    if (!currentOperation(epoch) || operationLocks.current.has(lockKey)) return;
     if (!amount || !paymentMethod) {
       toast.warning("Completa el monto y método de pago");
       return;
@@ -197,8 +260,45 @@ export default function PaymentVerificationModal({
       return;
     }
 
+    operationLocks.current.add(lockKey);
     setIsSubmitting(true);
     try {
+      if (needsLeadCapture) {
+        if (!orderData?.commercialLeadId || !orderData.currency || !/^[A-Z]{3}$/.test(orderData.currency)) throw new Error("Revisa la moneda y el Lead vinculado antes de registrar el anticipo.");
+        const isCurrentCapture = () => currentOperation(epoch) && activeCaptureScope.current === captureScope;
+        const proofRetry = leadProofRetry.current;
+        if (proofRetry) {
+          if (proofRetry.scope !== captureScope) return;
+          // Same capture replay is a scoped read of its current version, without granting ledger read or creating a second payment.
+          const payment = await captureLeadPayment(proofRetry.leadId, proofRetry.input);
+          if (!isCurrentCapture()) return;
+          if (payment.id !== proofRetry.paymentId) throw new Error("La captura ya no identifica el mismo anticipo. Revísalo desde el Lead.");
+          if (!payment?.leadPaymentVersion) throw new Error("Actualiza el anticipo antes de volver a adjuntar su comprobante.");
+          await uploadLeadPaymentProof(proofRetry.leadId, proofRetry.paymentId, payment.leadPaymentVersion, proofRetry.file);
+          if (!isCurrentCapture()) return;
+          leadProofRetry.current = null;
+        } else {
+          if (!leadCapture.current) leadCapture.current = {scope:captureScope,leadId:orderData.commercialLeadId,input:{captureId:leadCommandId(),amount:numericAmount,currency:orderData.currency,paymentMethod:paymentMethod as CaptureLeadPaymentInput["paymentMethod"]},file};
+          const operation = leadCapture.current;
+          if (operation.scope !== captureScope) return;
+          setCaptureFrozen(true);
+          const payment = await captureLeadPayment(operation.leadId, operation.input);
+          if (!isCurrentCapture()) return;
+          leadCapture.current = null;
+          if (operation.file) {
+            leadProofRetry.current = {scope:captureScope,leadId:operation.leadId,paymentId:payment.id,file:operation.file,input:operation.input};
+            if (!payment.leadPaymentVersion) throw new Error("El anticipo quedó guardado. Actualiza su versión antes de adjuntar el comprobante.");
+            await uploadLeadPaymentProof(operation.leadId,payment.id,payment.leadPaymentVersion,operation.file);
+            if (!isCurrentCapture()) return;
+            leadProofRetry.current = null;
+          }
+        }
+        setCaptureFrozen(false);
+        setAmount("");setPaymentMethod("");setFile(null);
+        toast.success("Anticipo registrado. La compra sigue pendiente de confirmación del vendedor.");
+        paymentChanged();
+        return;
+      }
       const formData = new FormData();
       formData.append("amount", numericAmount.toString());
       formData.append("paymentMethod", paymentMethod);
@@ -217,30 +317,53 @@ export default function PaymentVerificationModal({
         },
       );
 
+      if (!currentOperation(epoch)) return;
       toast.success("Pago registrado correctamente");
       setAmount("");
       setPaymentMethod("");
       setFile(null);
-      fetchOrderData();
-      onPaymentUpdated?.();
+      paymentChanged();
     } catch (error) {
+      if (!currentOperation(epoch)) return;
       console.error("Error registrando pago", error);
-      toast.error("Error al registrar el pago");
+      toast.error(leadProofRetry.current ? "El anticipo ya está guardado. Reintenta sólo el comprobante, sin crear otro pago." : leadCapture.current ? "No se pudo confirmar la respuesta. El reintento conserva el mismo anticipo y comando." : "Error al registrar el pago");
     } finally {
-      setIsSubmitting(false);
+      operationLocks.current.delete(lockKey);
+      if (currentOperation(epoch)) setIsSubmitting(false);
     }
   };
 
   const handleApprovePayment = async (paymentId: string) => {
+    const epoch = operationEpoch.current;
+    const lockKey = `${epoch}:${paymentId}`;
+    if (
+      !finalCanApprove ||
+      !currentOperation(epoch) ||
+      operationLocks.current.has(lockKey)
+    )
+      return;
+    operationLocks.current.add(lockKey);
     setProcessingPaymentId(paymentId);
     try {
-      await axiosAuth.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/approve`,
-      );
+      const payment = orderData?.payments.find((p) => p.id === paymentId);
+      if (payment?.leadId) {
+        if (!payment.leadPaymentVersion)
+          throw new Error(
+            "Actualiza el pago para consultar su versión vigente.",
+          );
+        await approveLeadPayment(payment.leadId, paymentId, {
+          version: payment.leadPaymentVersion,
+        });
+      } else {
+        await axiosAuth.patch(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/approve`,
+        );
+      }
+      if (!currentOperation(epoch)) return;
       toast.success("Pago aprobado");
-      fetchOrderData();
-      onPaymentUpdated?.();
+      paymentChanged();
     } catch (error) {
+      if (!currentOperation(epoch)) return;
       const status = axios.isAxiosError(error)
         ? error.response?.status
         : undefined;
@@ -251,11 +374,20 @@ export default function PaymentVerificationModal({
         toast.error("Error al aprobar el pago");
       }
     } finally {
-      setProcessingPaymentId(null);
+      operationLocks.current.delete(lockKey);
+      if (currentOperation(epoch)) setProcessingPaymentId(null);
     }
   };
 
   const handleRejectPayment = async (paymentId: string) => {
+    const epoch = operationEpoch.current;
+    const lockKey = `${epoch}:${paymentId}`;
+    if (
+      !finalCanApprove ||
+      !currentOperation(epoch) ||
+      operationLocks.current.has(lockKey)
+    )
+      return;
     if (
       !confirm(
         "¿Estás seguro de rechazar este pago? El pago quedará marcado como PERDIDO.",
@@ -263,16 +395,30 @@ export default function PaymentVerificationModal({
     ) {
       return;
     }
+    operationLocks.current.add(lockKey);
     setProcessingPaymentId(paymentId);
     try {
-      await axiosAuth.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/reject`,
-        { notes: "Pago rechazado" },
-      );
+      const payment = orderData?.payments.find((p) => p.id === paymentId);
+      if (payment?.leadId) {
+        if (!payment.leadPaymentVersion)
+          throw new Error(
+            "Actualiza el pago para consultar su versión vigente.",
+          );
+        await rejectLeadPayment(payment.leadId, paymentId, {
+          version: payment.leadPaymentVersion,
+          notes: "Pago rechazado",
+        });
+      } else {
+        await axiosAuth.patch(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/reject`,
+          { notes: "Pago rechazado" },
+        );
+      }
+      if (!currentOperation(epoch)) return;
       toast.success("Pago rechazado");
-      fetchOrderData();
-      onPaymentUpdated?.();
+      paymentChanged();
     } catch (error) {
+      if (!currentOperation(epoch)) return;
       const status = axios.isAxiosError(error)
         ? error.response?.status
         : undefined;
@@ -283,7 +429,8 @@ export default function PaymentVerificationModal({
         toast.error("Error al rechazar el pago");
       }
     } finally {
-      setProcessingPaymentId(null);
+      operationLocks.current.delete(lockKey);
+      if (currentOperation(epoch)) setProcessingPaymentId(null);
     }
   };
 
@@ -298,24 +445,47 @@ export default function PaymentVerificationModal({
   };
 
   const handleUpdatePaymentAmount = async (paymentId: string) => {
+    if(!canRecord)return;
+    const epoch = operationEpoch.current;
+    const lockKey = `${epoch}:${paymentId}`;
+    if (
+      !finalCanApprove ||
+      !currentOperation(epoch) ||
+      operationLocks.current.has(lockKey)
+    )
+      return;
     const numericAmount = parseFloat(editAmountValue);
     if (isNaN(numericAmount) || numericAmount <= 0) {
       toast.warning("El monto debe ser un número válido mayor a 0");
       return;
     }
 
+    operationLocks.current.add(lockKey);
     setSavingAmountForId(paymentId);
     try {
-      await axiosAuth.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}`,
-        { amount: numericAmount },
-      );
+      const payment = orderData?.payments.find((p) => p.id === paymentId);
+      if (payment?.leadId) {
+        if (!payment.leadPaymentVersion)
+          throw new Error(
+            "Actualiza el pago para consultar su versión vigente.",
+          );
+        await changeLeadPaymentAmount(payment.leadId, paymentId, {
+          version: payment.leadPaymentVersion,
+          amount: numericAmount,
+        });
+      } else {
+        await axiosAuth.patch(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}`,
+          { amount: numericAmount },
+        );
+      }
+      if (!currentOperation(epoch)) return;
       toast.success("Monto del pago actualizado");
       setEditingAmountForId(null);
       setEditAmountValue("");
-      fetchOrderData();
-      onPaymentUpdated?.();
+      paymentChanged();
     } catch (error) {
+      if (!currentOperation(epoch)) return;
       const status = axios.isAxiosError(error)
         ? error.response?.status
         : undefined;
@@ -329,7 +499,8 @@ export default function PaymentVerificationModal({
       }
       fetchOrderData();
     } finally {
-      setSavingAmountForId(null);
+      operationLocks.current.delete(lockKey);
+      if (currentOperation(epoch)) setSavingAmountForId(null);
     }
   };
 
@@ -337,29 +508,46 @@ export default function PaymentVerificationModal({
     paymentId: string,
     proofFile: File,
   ) => {
+    if(!canRecord)return;
+    const epoch = operationEpoch.current;
+    const lockKey = `${epoch}:${paymentId}`;
+    if (!currentOperation(epoch) || operationLocks.current.has(lockKey)) return;
+    operationLocks.current.add(lockKey);
     setUploadingProofForId(paymentId);
     try {
       const formData = new FormData();
       formData.append("file", proofFile);
 
-      await axiosAuth.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/upload-proof`,
-        formData,
-        {
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        },
-      );
+      const payment = orderData?.payments.find((p) => p.id === paymentId);
+      if (payment?.leadId) {
+        if (!payment.leadPaymentVersion)
+          throw new Error(
+            "Actualiza el pago para consultar su versión vigente.",
+          );
+        await uploadLeadPaymentProof(
+          payment.leadId,
+          paymentId,
+          payment.leadPaymentVersion,
+          proofFile,
+        );
+      } else {
+        await axiosAuth.patch(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/upload-proof`,
+          formData,
+          { headers: { "Content-Type": "multipart/form-data" } },
+        );
+      }
 
+      if (!currentOperation(epoch)) return;
       toast.success("Comprobante subido correctamente");
-      fetchOrderData();
-      onPaymentUpdated?.();
+      paymentChanged();
     } catch (error) {
+      if (!currentOperation(epoch)) return;
       console.error("Error subiendo comprobante", error);
       toast.error("Error al subir el comprobante");
     } finally {
-      setUploadingProofForId(null);
+      operationLocks.current.delete(lockKey);
+      if (currentOperation(epoch)) setUploadingProofForId(null);
     }
   };
 
@@ -389,7 +577,7 @@ export default function PaymentVerificationModal({
         size="sm"
         variant="outline"
         className="text-xs"
-        disabled={uploadingProofForId === payment.id}
+        disabled={!canRecord||uploadingProofForId === payment.id}
         onClick={() => fileInputRefs.current[payment.id]?.click()}
       >
         {uploadingProofForId === payment.id ? (
@@ -408,7 +596,12 @@ export default function PaymentVerificationModal({
   );
 
   const formatCurrency = (value: number) => {
-    return `S/ ${value.toFixed(2)}`;
+    const label =
+      orderData?.currency === "PEN" ||
+      (!orderData?.currency && !orderData?.commercialLeadId)
+        ? "S/"
+        : orderData?.currency || "Moneda no informada";
+    return `${label} ${value.toFixed(2)}`;
   };
 
   const handleClose = () => {
@@ -418,6 +611,14 @@ export default function PaymentVerificationModal({
   return (
     <Dialog open={open} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="sm:max-w-[550px] max-h-[85vh] flex flex-col">
+        {orderData?.commercialLeadId ? (
+          <a
+            className="text-sm underline"
+            href={`/leads-comerciales?leadId=${encodeURIComponent(orderData.commercialLeadId)}`}
+          >
+            Consultar el Lead y sus anticipos originales
+          </a>
+        ) : null}
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <DollarSign className="h-5 w-5 text-primary" />
@@ -483,7 +684,7 @@ export default function PaymentVerificationModal({
                                   setEditAmountValue(e.target.value)
                                 }
                                 className="h-8 w-28"
-                                disabled={savingAmountForId === payment.id}
+                                disabled={!canRecord||savingAmountForId === payment.id}
                               />
                               <span className="text-sm text-amber-900">
                                 {payment.paymentMethod}
@@ -492,7 +693,7 @@ export default function PaymentVerificationModal({
                                 size="sm"
                                 variant="outline"
                                 className="h-8 bg-green-50 hover:bg-green-100 text-green-600"
-                                disabled={savingAmountForId === payment.id}
+                                disabled={!canRecord||savingAmountForId === payment.id}
                                 onClick={() =>
                                   handleUpdatePaymentAmount(payment.id)
                                 }
@@ -507,7 +708,7 @@ export default function PaymentVerificationModal({
                                 size="sm"
                                 variant="ghost"
                                 className="h-8"
-                                disabled={savingAmountForId === payment.id}
+                                disabled={!canRecord||savingAmountForId === payment.id}
                                 onClick={handleCancelEditAmount}
                               >
                                 Cancelar
@@ -533,7 +734,10 @@ export default function PaymentVerificationModal({
                           )}
                           {payment.paymentProofUrl ? (
                             <a
-                              href={payment.paymentProofUrl}
+                              href={
+                                safePaymentProof(payment.paymentProofUrl) ||
+                                undefined
+                              }
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-xs text-blue-600 hover:underline flex items-center gap-1"
@@ -547,30 +751,31 @@ export default function PaymentVerificationModal({
                             </span>
                           )}
                         </div>
-                        {finalCanApprove && editingAmountForId !== payment.id && (
-                          <div className="flex gap-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="bg-green-50 hover:bg-green-100 text-green-600"
-                              disabled={processingPaymentId === payment.id}
-                              onClick={() => handleApprovePayment(payment.id)}
-                            >
-                              <Check className="h-4 w-4 mr-1" />
-                              Aprobar
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="bg-red-50 hover:bg-red-100 text-red-600"
-                              disabled={processingPaymentId === payment.id}
-                              onClick={() => handleRejectPayment(payment.id)}
-                            >
-                              <X className="h-4 w-4 mr-1" />
-                              Rechazar
-                            </Button>
-                          </div>
-                        )}
+                        {finalCanApprove &&
+                          editingAmountForId !== payment.id && (
+                            <div className="flex gap-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="bg-green-50 hover:bg-green-100 text-green-600"
+                                disabled={processingPaymentId === payment.id}
+                                onClick={() => handleApprovePayment(payment.id)}
+                              >
+                                <Check className="h-4 w-4 mr-1" />
+                                Aprobar
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="bg-red-50 hover:bg-red-100 text-red-600"
+                                disabled={processingPaymentId === payment.id}
+                                onClick={() => handleRejectPayment(payment.id)}
+                              >
+                                <X className="h-4 w-4 mr-1" />
+                                Rechazar
+                              </Button>
+                            </div>
+                          )}
                       </div>
 
                       {/* Botón para subir comprobante si no tiene */}
@@ -601,7 +806,10 @@ export default function PaymentVerificationModal({
                           </span>
                           {payment.paymentProofUrl ? (
                             <a
-                              href={payment.paymentProofUrl}
+                              href={
+                                safePaymentProof(payment.paymentProofUrl) ||
+                                undefined
+                              }
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-xs text-blue-600 hover:underline flex items-center gap-1"
@@ -633,7 +841,9 @@ export default function PaymentVerificationModal({
                 <h4 className="font-medium text-sm mb-3">
                   Registrar Nuevo Pago
                 </h4>
+                {orderData?.commercialStage === "LEAD" && leadPaymentCaps && !canRecord && <p role="status" className="mb-3 text-sm text-muted-foreground">La captura de anticipos no está habilitada para esta cuenta.</p>}
                 <div className="space-y-3">
+                  <div inert={captureFrozen}>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
                       <Label htmlFor="amount">Monto *</Label>
@@ -675,7 +885,10 @@ export default function PaymentVerificationModal({
                         accept={PROOF_FILE_ACCEPT}
                         onChange={(e) => {
                           const selectedFile = e.target.files?.[0];
-                          if (!selectedFile || !validateProofFile(selectedFile)) {
+                          if (
+                            !selectedFile ||
+                            !validateProofFile(selectedFile)
+                          ) {
                             setFile(null);
                             e.target.value = "";
                             return;
@@ -692,9 +905,11 @@ export default function PaymentVerificationModal({
                     </div>
                   </div>
 
+                  </div>
+                  {captureFrozen && <p role="status" className="text-xs">El reintento conserva el mismo anticipo. Si ya se guardó, sólo se adjunta su comprobante.</p>}
                   <Button
                     onClick={handleSubmitPayment}
-                    disabled={isSubmitting || !amount || !paymentMethod}
+                    disabled={!canRecord || isSubmitting || !amount || !paymentMethod}
                     className="w-full"
                   >
                     {isSubmitting ? (
@@ -702,7 +917,7 @@ export default function PaymentVerificationModal({
                     ) : (
                       <>
                         <Upload className="h-4 w-4 mr-2" />
-                        Registrar Pago
+                        {captureFrozen ? leadProofRetry.current ? "Reintentar comprobante" : "Reintentar anticipo" : "Registrar Pago"}
                       </>
                     )}
                   </Button>

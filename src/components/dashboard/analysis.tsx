@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDashboardScope } from "@/contexts/DashboardScopeContext";
+import { reportCurrencyLabel } from "./ReportCurrencySelector";
 import { getDashboardOrders } from "@/services/dashboardService";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -147,7 +148,8 @@ interface AnalysisProps {
 
 export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
   const { auth } = useAuth();
-  const { scopeParams, storeIds, canFetch } = useDashboardScope();
+  const { scopeParams, storeIds, canFetch, currency } = useDashboardScope();
+  const currencyPrefix = reportCurrencyLabel(currency);
   const isAdmin = hasAdminAccess(auth?.user?.role) || isSuperadmin(auth?.user?.email);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -210,6 +212,22 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
     }
   }, [fetchData, fromDate, toDate]);
 
+  useEffect(() => {
+    const changed = (event: Event) => {
+      if (
+        auth?.company?.id &&
+        (event as CustomEvent<{ companyId: string }>).detail?.companyId ===
+          auth.company.id &&
+        fromDate &&
+        toDate
+      )
+        void fetchData(fromDate, toDate);
+    };
+    window.addEventListener("commercial-leads:changed", changed);
+    return () =>
+      window.removeEventListener("commercial-leads:changed", changed);
+  }, [auth?.company?.id, fromDate, toDate, fetchData]);
+
   // Derived data for charts
   const getChannelChartData = () => {
     const source =
@@ -261,7 +279,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
   const handleExportFacturacion = async () => {
     if (!canFetch || !auth?.accessToken) return;
     try {
-      const allOrders = await getDashboardOrders(storeIds, fromDate, toDate, auth.accessToken);
+      const allOrders = await getDashboardOrders(storeIds, fromDate, toDate, auth.accessToken, { currency });
 
       // Parse dates for comparison
       const start = fromDate ? new Date(fromDate + "T00:00:00") : null;
@@ -298,11 +316,11 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
         ["Total Órdenes:", orders.length],
         [
           "Total Facturación:",
-          `S/ ${orders.reduce((s: number, o: any) => s + (o.grandTotal || 0), 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
+          `${currencyPrefix} ${orders.reduce((s: number, o: any) => s + (o.grandTotal || 0), 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
         ],
         [
           "Ticket Promedio:",
-          `S/ ${(orders.length > 0 ? orders.reduce((s: number, o: any) => s + (o.grandTotal || 0), 0) / orders.length : 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
+          `${currencyPrefix} ${(orders.length > 0 ? orders.reduce((s: number, o: any) => s + (o.grandTotal || 0), 0) / orders.length : 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
         ],
         [""],
         ["POR CANAL DE VENTA"],
@@ -411,7 +429,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
           />
           <StatCard
             title="Ventas Periodo"
-            value={`S/ ${channelData?.salesChannels.reduce((sum, c) => sum + c.totalAmount, 0).toLocaleString() || 0}`}
+            value={`${currencyPrefix} ${channelData?.salesChannels.reduce((sum, c) => sum + c.totalAmount, 0).toLocaleString() || 0}`}
             subValue="Periodo seleccionado"
             loading={loading}
           />
@@ -485,7 +503,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
                 <Tooltip
                   cursor={{ fill: "var(--foreground)", opacity: 0.05 }}
                   formatter={(value) => [
-                    `S/ ${Number(value).toLocaleString("es-PE")}`,
+                    `${currencyPrefix} ${Number(value).toLocaleString("es-PE")}`,
                     "Monto",
                   ]}
                   itemStyle={{ color: "var(--foreground)" }}
@@ -560,7 +578,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
                 </Pie>
                 <Tooltip
                   formatter={(value) => [
-                    `S/ ${Number(value).toLocaleString()}`,
+                    `${currencyPrefix} ${Number(value).toLocaleString()}`,
                     "Monto",
                   ]}
                   itemStyle={{ color: "var(--foreground)" }}
@@ -595,7 +613,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
                 Facturación Total
               </p>
               <p className="text-lg font-bold text-blue-500">
-                S/{" "}
+                {currencyPrefix}{" "}
                 {categoryTotals.totalBilling.toLocaleString("es-PE", {
                   minimumFractionDigits: 2,
                 })}
@@ -622,7 +640,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
                 Ticket Promedio
               </p>
               <p className="text-lg font-bold text-amber-500">
-                S/{" "}
+                {currencyPrefix}{" "}
                 {avgTicket.toLocaleString("es-PE", {
                   minimumFractionDigits: 2,
                 })}
@@ -663,7 +681,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
                       {cat.categoryName}
                     </TableCell>
                     <TableCell className="text-right">
-                      S/{" "}
+                      {currencyPrefix}{" "}
                       {cat.totalAmount.toLocaleString("es-PE", {
                         minimumFractionDigits: 2,
                       })}
@@ -730,7 +748,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
                       {item.categoryName || item.brandName}
                     </TableCell>
                     <TableCell className="text-right">
-                      S/{" "}
+                      {currencyPrefix}{" "}
                       {item.totalAmount.toLocaleString("es-PE", {
                         minimumFractionDigits: 2,
                       })}

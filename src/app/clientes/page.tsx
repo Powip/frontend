@@ -27,6 +27,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import ClienteModal from "@/components/modals/ClienteModal";
 import { Client } from "@/interfaces/ICliente";
+import { clientPurchaseAmounts } from "@/utils/clientPurchaseAmounts";
 import { toast } from "sonner";
 import { findByCompany, toggleClienteActivo } from "@/api/clientes/route";
 import { getBrands, getCategories } from "@/api/Productos";
@@ -172,7 +173,7 @@ export default function ClientesPage() {
       Distrito: c.district || "-",
       Provincia: c.province || "-",
       "Total Compras": c.totalPurchases || 0,
-      "Monto Total (S/)": Number(c.totalPurchaseAmount ?? 0).toFixed(2),
+      "Montos por moneda": clientPurchaseAmounts(c),
       "Última Compra": c.lastPurchaseDate
         ? new Date(c.lastPurchaseDate).toLocaleDateString("es-PE")
         : "-",
@@ -307,7 +308,7 @@ export default function ClientesPage() {
                       Nro Compras
                     </TableHead>
                     <TableHead className="border-r text-right w-24">
-                      Monto Total
+                      Montos por moneda
                     </TableHead>
                     <TableHead className="border-r w-28">
                       Última Compra
@@ -372,7 +373,7 @@ export default function ClientesPage() {
                           {c.totalPurchases ?? 0}
                         </TableCell>
                         <TableCell className="border-r text-right font-medium">
-                          S/ {Number(c.totalPurchaseAmount ?? 0).toFixed(2)}
+                          {clientPurchaseAmounts(c)}
                         </TableCell>
                         <TableCell className="border-r text-sm">
                           {c.lastPurchaseDate

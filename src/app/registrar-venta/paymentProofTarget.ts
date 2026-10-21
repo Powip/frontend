@@ -5,6 +5,8 @@ export interface ProofPayment {
 
 export interface SavedOrderProof {
   orderId: string;
+  commercialStage?: "LEAD" | "SALE" | null;
+  commercialLeadId?: string | null;
   paymentId?: string;
   previousPaymentIds: string[];
 }
