@@ -54,6 +54,20 @@ describe("FEAT-24 H0", () => {
     expect(screen.queryByText(ORDER)).not.toBeInTheDocument();
   });
 
+  it("sin nombre muestra el email de quien lo hizo, no Sistema", async () => {
+    fetch.mockResolvedValue(one({ type: "IN", reason: "ADJUSTMENT_IN - count - Conteo", userName: null, userEmail: "jefe@x.pe" }));
+    setup(); await screen.findByText("Producto 0");
+    const cells = screen.getByText("Producto 0").closest("tr")!.querySelectorAll("td");
+    expect(cells[6].textContent).toBe("jefe@x.pe");
+  });
+
+  it("sin nombre ni email muestra Sistema", async () => {
+    fetch.mockResolvedValue(one({ userName: null, userEmail: null }));
+    setup(); await screen.findByText("Producto 0");
+    const cells = screen.getByText("Producto 0").closest("tr")!.querySelectorAll("td");
+    expect(cells[6].textContent).toBe("Sistema");
+  });
+
   it("sin número disponible muestra Pedido, nunca el UUID", async () => {
     jest.mocked(resolveOrderNumbers).mockResolvedValue({});
     fetch.mockResolvedValue(one({ type: "RESERVED", reason: "order.created:1", referenceId: ORDER }));

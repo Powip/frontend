@@ -232,11 +232,13 @@ export function MovementHistoryTable({ companyId, scope = "business", inventorie
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="text-xs font-medium truncate max-w-[120px]">
-                          {movement.userName || "Sistema"}
+                          {movement.userName || movement.userEmail || "Sistema"}
                         </span>
-                        <span className="text-[9px] text-muted-foreground truncate max-w-[120px]">
-                          {movement.userEmail || ""}
-                        </span>
+                        {movement.userName && movement.userEmail ? (
+                          <span className="text-[9px] text-muted-foreground truncate max-w-[120px]">
+                            {movement.userEmail}
+                          </span>
+                        ) : null}
                       </div>
                     </TableCell>
                   </TableRow>
