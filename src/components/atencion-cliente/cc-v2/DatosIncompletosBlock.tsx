@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { AlertTriangle, Loader2, Check, Pencil } from "lucide-react";
 import { updateDatosClienteCC } from "@/services/atencionClienteService";
+import { isJunkDni } from "@/utils/junk-document.util";
 import { toast } from "sonner";
 
 interface CustomerData {
@@ -46,11 +47,15 @@ interface FieldDef {
 const DNI_FIELD: FieldDef = {
   key: "dniCliente",
   label: "DNI del cliente",
-  placeholder: "12345678",
+  placeholder: "Ingresa 8 dígitos",
   maxLength: 8,
   inputMode: "numeric",
   validate: (v) =>
-    /^\d{8}$/.test(v) ? null : `Debe tener exactamente 8 dígitos (${v.length}/8)`,
+    !/^\d{8}$/.test(v)
+      ? `Debe tener exactamente 8 dígitos (${v.length}/8)`
+      : isJunkDni(v)
+        ? "Ingresa un DNI válido"
+        : null,
   dtoKey: "dniCliente",
 };
 
@@ -100,18 +105,28 @@ function getInitialValues(
 }
 
 export function DatosIncompletosBlock({ orderId, dniCliente, customer, onDatosCompletos }: Props) {
-  const [forceEdit, setForceEdit] = useState(false);
-  const [values, setValues] = useState<Record<string, string>>(
-    getInitialValues(dniCliente, customer),
+  const initialValues = useMemo(
+    () => getInitialValues(dniCliente, {
+      province: customer?.province,
+      city: customer?.city,
+      district: customer?.district,
+      address: customer?.address,
+      phoneNumber: customer?.phoneNumber,
+    }),
+    [dniCliente, customer?.province, customer?.city, customer?.district, customer?.address, customer?.phoneNumber],
   );
+  const [forceEdit, setForceEdit] = useState(false);
+  const [values, setValues] = useState<Record<string, string>>(initialValues);
   const [saving, setSaving] = useState(false);
   const [isCorrected, setIsCorrected] = useState(false);
 
-  const dniEsJunk = useMemo(
-    () => isJunk(dniCliente) || (!!dniCliente && !/^\d{8}$/.test(dniCliente.trim())),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  useEffect(() => {
+    setValues(initialValues);
+    setForceEdit(false);
+    setIsCorrected(false);
+  }, [orderId, initialValues]);
+
+  const dniEsJunk = isJunkDni(dniCliente) || !/^\d{8}$/.test(dniCliente?.trim() ?? "");
 
   const dniActivo = dniEsJunk ? DNI_FIELD : null;
 
@@ -124,10 +139,10 @@ export function DatosIncompletosBlock({ orderId, dniCliente, customer, onDatosCo
 
   const hasProblemas = dniActivo !== null || locationConProblemas.length > 0;
 
-  // En modo forzado sin problemas reales: mostrar todos los campos de ubicación
-  const camposActivos: FieldDef[] = hasProblemas
-    ? [...(dniActivo ? [dniActivo] : []), ...locationConProblemas]
-    : [...(dniActivo ? [dniActivo] : []), ...(customer ? LOCATION_FIELDS : [])];
+  // La edición manual permite corregir también un DNI ya importado.
+  const camposActivos: FieldDef[] = forceEdit
+    ? [DNI_FIELD, ...(customer ? LOCATION_FIELDS : [])]
+    : [...(dniActivo ? [dniActivo] : []), ...locationConProblemas];
 
   if (isCorrected) {
     return (
@@ -162,7 +177,7 @@ export function DatosIncompletosBlock({ orderId, dniCliente, customer, onDatosCo
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           <Pencil className="h-3 w-3" />
-          Editar dirección
+          Editar DNI y dirección
         </button>
       </div>
     );
@@ -223,7 +238,7 @@ export function DatosIncompletosBlock({ orderId, dniCliente, customer, onDatosCo
       ) : (
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-            Editar datos de entrega
+            Editar DNI y datos de entrega
           </p>
           <button
             type="button"
@@ -252,7 +267,7 @@ export function DatosIncompletosBlock({ orderId, dniCliente, customer, onDatosCo
           return (
             <div key={campo.key}>
               <div className="flex items-center gap-2 mb-1">
-                <label className={labelClass}>
+                <label htmlFor={`cc-${orderId}-${campo.key}`} className={labelClass}>
                   {campo.label}
                 </label>
                 {originalEsBasura && (
@@ -263,6 +278,7 @@ export function DatosIncompletosBlock({ orderId, dniCliente, customer, onDatosCo
               </div>
               <div className="relative">
                 <input
+                  id={`cc-${orderId}-${campo.key}`}
                   type="text"
                   inputMode={campo.inputMode ?? "text"}
                   maxLength={campo.maxLength}

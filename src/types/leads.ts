@@ -197,6 +197,14 @@ export interface ConfirmCommercialLeadInput {
   expectedOrderUpdatedAt?: string;
 }
 
+export interface ConfirmCommercialOrderPurchaseInput {
+  /** Keep the same command and reviewed order snapshot when retrying. */
+  commandId: string;
+  leadId?: string;
+  version?: number;
+  expectedOrderUpdatedAt?: string;
+}
+
 export interface LeadConfirmationResponse {
   lead: Lead;
   order: OrderHeader;

@@ -62,6 +62,7 @@ interface OrderData {
   companyId?: string;
   commercialLeadId?: string | null;
   commercialStage?: "LEAD" | "SALE" | null;
+  canalOrigen?: string | null;
   currency?: string | null;
   grandTotal: number;
   payments: Payment[];
@@ -138,6 +139,10 @@ export default function PaymentVerificationModal({
   );
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const pathname = usePathname();
+  const isCcRoute = pathname === "/atencion-cliente" || pathname.startsWith("/atencion-cliente/");
+  const isShopifyCodOrder = orderData?.canalOrigen === "shopify_cod";
+  const isCcShopifyCodOrder = isCcRoute && isShopifyCodOrder;
+  const canRecordCcPayment = isCcShopifyCodOrder && hasPermission("MANAGE_CUSTOMER_SERVICE");
 
   // Aprobar/rechazar pagos solo puede pasar desde /finanzas (directiva de
   // negocio, ver FIX-aprobacion-pagos-solo-finanzas). El resto de pantallas
@@ -156,8 +161,8 @@ export default function PaymentVerificationModal({
   const leadCapture = useRef<{scope:string;leadId:string;input:CaptureLeadPaymentInput;file:File|null} | null>(null);
   const leadProofRetry = useRef<{scope:string;leadId:string;paymentId:string;file:File;input:CaptureLeadPaymentInput} | null>(null);
   const [captureFrozen, setCaptureFrozen] = useState(false);
-  const needsLeadCapture = orderData?.commercialStage === "LEAD" || captureFrozen;
-  const canRecord = needsLeadCapture ? Boolean(leadPaymentCaps?.enabled && leadPaymentCaps.canCapture) : canRecordOrderPayment;
+  const needsLeadCapture = (orderData?.commercialStage === "LEAD" && !isShopifyCodOrder) || captureFrozen;
+  const canRecord = needsLeadCapture ? Boolean(leadPaymentCaps?.enabled && leadPaymentCaps.canCapture) : canRecordOrderPayment || canRecordCcPayment;
   const activeOrderIdRef = useRef<string | null>(null);
   const orderRequestRef = useRef(0);
   const operationEpoch = useRef(0);
@@ -172,7 +177,7 @@ export default function PaymentVerificationModal({
   const currentOperation = (epoch: number) =>
     operationEpoch.current === epoch && activeOrderIdRef.current === orderId;
   const paymentChanged = () => {
-    notifyCommercialChange(orderData?.companyId);
+    notifyCommercialChange(orderData?.companyId, orderData?.commercialLeadId ?? undefined);
     void fetchOrderData();
     onPaymentUpdated?.();
   };
@@ -194,6 +199,7 @@ export default function PaymentVerificationModal({
         companyId: res.data.companyId || res.data.customer?.companyId,
         commercialLeadId: res.data.commercialLeadId,
         commercialStage: res.data.commercialStage,
+        canalOrigen: res.data.canalOrigen,
         currency: res.data.currency,
         grandTotal: Number(res.data.grandTotal),
         payments: res.data.payments || [],
@@ -611,7 +617,7 @@ export default function PaymentVerificationModal({
   return (
     <Dialog open={open} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="sm:max-w-[550px] max-h-[85vh] flex flex-col">
-        {orderData?.commercialLeadId ? (
+        {orderData?.commercialLeadId && !isCcShopifyCodOrder ? (
           <a
             className="text-sm underline"
             href={`/leads-comerciales?leadId=${encodeURIComponent(orderData.commercialLeadId)}`}

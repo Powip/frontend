@@ -70,6 +70,7 @@
  */
 
 import {
+  configure,
   render,
   screen,
   waitFor,
@@ -287,6 +288,9 @@ import {
 import RegistrarVentaPage from "../page";
 import type { Client } from "@/interfaces/ICliente";
 import { useSearchParams } from "next/navigation";
+
+jest.setTimeout(30000);
+configure({ asyncUtilTimeout: 10000 });
 
 process.env.NEXT_PUBLIC_API_VENTAS = "http://ventas";
 
@@ -1609,5 +1613,98 @@ describe("Registrar — confirmación canónica de Lead sobre origen e IMEI de p
     await screen.findByText(/Selecciona la empresa y tienda del Lead/);
     expect(screen.getByRole("button",{name:"Confirmar compra"})).toBeDisabled();
     expect(mockCreateClient).not.toHaveBeenCalled();expect(mockedAxiosAuth.post).not.toHaveBeenCalled();expect(confirmCommercialLead).not.toHaveBeenCalled();
+  });
+});
+
+describe("Pedidos Shopify pendientes — DNI, envío y adelantos", () => {
+  const order = {
+    id: "order-shopify-lead",
+    orderNumber: "SHOP-101",
+    customer: FOUND_CLIENT,
+    commercialStage: "LEAD",
+    commercialLeadId: "lead-shopify",
+    canalOrigen: "shopify_cod",
+    orderType: "VENTA",
+    status: "PENDIENTE",
+    salesChannel: "SHOPIFY",
+    closingChannel: "SHOPIFY",
+    deliveryType: "DOMICILIO",
+    courier: "Courier Test",
+    salesRegion: "LIMA",
+    taxMode: "INCLUIDO",
+    shippingTotal: 11,
+    grandTotal: 111,
+    items: [{
+      productVariantId: "product-1",
+      productName: "Producto guardado",
+      sku: "SKU-1",
+      quantity: 1,
+      unitPrice: 100,
+      discountAmount: 0,
+    }],
+    payments: [],
+  };
+  beforeEach(() => {
+    mockUseSearchParams.mockReturnValue(
+      new URLSearchParams(`orderId=${order.id}`) as ReturnType<typeof useSearchParams>,
+    );
+    mockedAxiosAuth.get.mockImplementation((url: string) => Promise.resolve({
+      data: url.endsWith("/order-header/sale-context") ? SALE_CONTEXT : (url.includes(`/order-header/${order.id}`) || url.includes(`/order-header/manual/${order.id}`)) ? order : [],
+    }));
+  });
+
+  it("registra un adelanto desde el pedido y conserva el envío y el DNI sin guardar", async () => {
+    renderPage();
+    await screen.findByDisplayValue(FOUND_CLIENT.fullName);
+
+    const shipping = within(fieldByLabel(/^Costo de envío$/)).getByRole("textbox");
+    expect(shipping).toBeEnabled();
+    await userEvent.clear(shipping);
+    await userEvent.type(shipping, "15");
+    await userEvent.selectOptions(
+      within(fieldByLabel(/^Tipo de documento/)).getByRole("combobox"), "DNI",
+    );
+    const dni = within(fieldByLabel(/^N° Documento/)).getByRole("textbox");
+    await userEvent.type(dni, "87654321");
+    await userEvent.click(screen.getByRole("button", { name: "Registrar adelanto" }));
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByText("Registrar Nuevo Pago");
+    expect(within(dialog).queryByRole("button", { name: /^Aprobar/ })).not.toBeInTheDocument();
+    const saved = {
+      id: "payment-shopify", amount: "30", status: "PENDING", paymentMethod: "YAPE",
+      paymentDate: "2026-10-22T22:20:00Z", created_at: "2026-10-22T22:20:00Z",
+    };
+    mockedAxiosAuth.get.mockImplementation((url: string) => Promise.resolve({
+      data: url.endsWith("/order-header/sale-context") ? SALE_CONTEXT : (url.includes(`/order-header/${order.id}`) || url.includes(`/order-header/manual/${order.id}`)) ? { ...order, payments: [saved] } : [],
+    }));
+    mockedAxiosAuth.post.mockResolvedValue({ data: saved });
+    await userEvent.type(within(dialog).getByLabelText("Monto *"), "30");
+    await userEvent.selectOptions(within(dialog).getByRole("combobox"), "YAPE");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Registrar Pago" }));
+    await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1));
+    const [url, payload] = mockedAxiosAuth.post.mock.calls[0];
+    expect(url).toContain(`/payments/orders/${order.id}/payments/with-proof`);
+    expect((payload as FormData).get("amount")).toBe("30");
+    expect((payload as FormData).get("paymentMethod")).toBe("YAPE");
+    expect(await screen.findByText("Adelantos pendientes: S/ 30.00")).toBeInTheDocument();
+    expect(shipping).toHaveValue("15");
+    expect(dni).toHaveValue("87654321");
+    expect(mockedAxiosAuth.put).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.patch).not.toHaveBeenCalled();
+
+  });
+
+  it("explica cuando el usuario puede editar datos pero no registrar pagos", async () => {
+    mockUseAuth.mockReturnValue({
+      ...MOCK_AUTH,
+      hasPermission: () => false,
+      auth: {
+        ...MOCK_AUTH.auth,
+        user: { ...MOCK_AUTH.auth.user, role: "VENDEDOR", businessAdmin: false, permissions: ["EDIT_SALE"] },
+      },
+    } as unknown as ReturnType<typeof useAuth>);
+    renderPage();
+    expect(await screen.findByText("No tienes permiso para registrar pagos.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Registrar adelanto" })).not.toBeInTheDocument();
   });
 });

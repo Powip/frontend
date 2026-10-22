@@ -26,6 +26,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { toast } from "sonner";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import OrderReceiptModal from "@/components/modals/orderReceiptModal";
+import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import SaleUnitSelection from "@/components/registrar-venta/SaleUnitSelection";
 import { PendingSaleRecovery, SaleAssignmentStatus } from "@/components/registrar-venta/SaleTrackingRecovery";
 import { canCorrectTrackingRequest, getSaleUnits, isTracked, trackingError, type InventoryUnit } from "@/services/inventoryTrackingService";
@@ -357,6 +358,9 @@ function RegistrarVentaContent() {
 
   const [receiptOrderId, setReceiptOrderId] = useState("");
   const [receiptOpen, setReceiptOpen] = useState(false);
+  const [leadPaymentOpen, setLeadPaymentOpen] = useState(false);
+  const paymentRefreshRequest = useRef(0);
+  const activePaymentsScope = useRef("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isSubmittingRef = useRef(false);
   const editorActive = useRef(true);
@@ -368,8 +372,9 @@ function RegistrarVentaContent() {
 
   /* ---------------- Modal ---------------- */
   const [orderData, setOrderData] = useState<OrderHeader | null>(null);
+  const [orderPayments, setOrderPayments] = useState<OrderHeader["payments"]>([]);
   const unitSelectionLocked = Boolean(orderData && ["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO", "ENTREGADO", "ANULADO"].includes(orderData.status));
-  const activeProofPayments = (orderData?.payments ?? []).filter(
+  const activeProofPayments = orderPayments.filter(
     (payment) => payment.status !== "LOST",
   );
   const pendingProofPayments = activeProofPayments.filter(
@@ -392,7 +397,9 @@ function RegistrarVentaContent() {
   /* ---------------- Meta Publi ID ---------------- */
   const [metaPubliId, setMetaPubliId] = useState("");
 
-  const { auth } = useAuth();
+  const { auth, hasPermission } = useAuth();
+  const usesLeadPayments = !!leadId || orderData?.commercialStage === "LEAD";
+  const canRecordOrderPayment = hasPermission("CREATE_SALE") || hasPermission("APPROVE_PAYMENTS");
 
   const companyId = auth?.company?.id;
   const userId = auth?.user.id;
@@ -661,12 +668,16 @@ function RegistrarVentaContent() {
       setTaxMode(orderData.taxMode as "AUTOMATICO" | "INCLUIDO");
     }
 
-    // --- Pagos ---
-    if (orderData.payments?.length) {
+    setOrderPayments(orderData.payments ?? []);
+  }, [orderData]);
+
+  // Refresh payment totals without replacing unsaved customer, cart or delivery fields.
+  useEffect(() => {
+    if (orderPayments.length) {
       // Orden determinístico por fecha de creación ascendente: el backend
       // updateFull §6.5 opera sobre el pago PENDING más antiguo, así que la
       // precarga del método debe seguir el mismo criterio.
-      const paymentsByDate = [...orderData.payments].sort(
+      const paymentsByDate = [...orderPayments].sort(
         (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
       );
 
@@ -697,9 +708,36 @@ function RegistrarVentaContent() {
     } else {
       setMontoYaAprobado(0);
       setPendingPaymentsCount(0);
+      setAdvancePayment(0);
+      setAdvancePaymentDisplay("");
+      setPaymentMethod("");
       setPrefilledPayment({ amount: 0, method: "" });
     }
-  }, [orderData]);
+  }, [orderPayments]);
+
+  useEffect(() => {
+    activePaymentsScope.current = `${actorScope}:${orderId ?? ""}`;
+    paymentRefreshRequest.current += 1;
+    setLeadPaymentOpen(false);
+    return () => {
+      activePaymentsScope.current = "";
+      paymentRefreshRequest.current += 1;
+    };
+  }, [orderId, actorScope]);
+
+  const refreshOrderPayments = async () => {
+    if (!orderId) return;
+    const scope = `${actorScope}:${orderId}`;
+    const request = ++paymentRefreshRequest.current;
+    try {
+      const response = await axiosAuth.get<OrderHeader>(`${GATEWAY.ventas}/order-header/${orderId}`);
+      if (activePaymentsScope.current === scope && request === paymentRefreshRequest.current)
+        setOrderPayments(response.data.payments ?? []);
+    } catch {
+      if (activePaymentsScope.current === scope && request === paymentRefreshRequest.current)
+        toast.error("El pago ya está registrado. No se pudo actualizar el resumen de pagos.");
+    }
+  };
 
   useEffect(() => {
     if (searchState === "found" && clientFound) {
@@ -1522,7 +1560,7 @@ function RegistrarVentaContent() {
                 {
                   orderId: orderData.id,
                   paymentId: proofPaymentId === "new" ? undefined : proofPaymentId,
-                  previousPaymentIds: (orderData.payments ?? []).map((payment) => payment.id),
+                  previousPaymentIds: orderPayments.map((payment) => payment.id),
                 },
                 paymentProofFile,
                 isCurrentEditor,
@@ -2714,7 +2752,21 @@ function RegistrarVentaContent() {
                 </CardHeader>
 
                 <CardContent className="space-y-4">
-                  {(leadId || orderData?.commercialStage === "LEAD") && <p className="rounded border p-3 text-sm">Los anticipos se gestionan desde el Lead. Guardar o confirmar no crea ni aprueba pagos nuevos.</p>}
+                  {usesLeadPayments && (
+                    <div className="rounded-lg border p-3 text-sm space-y-3">
+                      <p>Registra el adelanto y su comprobante por separado. El pago queda pendiente de aprobación en Finanzas y no confirma la compra.</p>
+                      {orderId && orderData?.commercialStage === "LEAD" ? (
+                        canRecordOrderPayment ? (
+                          <Button type="button" variant="outline" disabled={isSubmitting} onClick={() => setLeadPaymentOpen(true)}>
+                            Registrar adelanto
+                          </Button>
+                        ) : <p className="text-muted-foreground">No tienes permiso para registrar pagos.</p>
+                      ) : leadId ? (
+                        <Button asChild variant="outline"><Link href={commercialLeadHref(leadId)}>Registrar adelanto en el Lead</Link></Button>
+                      ) : null}
+                      {orderId && advancePayment > 0 && <p>Adelantos pendientes: {moneyPrefix} {advancePayment.toFixed(2)}</p>}
+                    </div>
+                  )}
                   <div inert={!!leadId || orderData?.commercialStage === "LEAD"}>
                   {/* Método de pago */}
                   <div className="space-y-1">
@@ -3344,6 +3396,16 @@ function RegistrarVentaContent() {
         </div>
         </fieldset>
       </main>
+      {orderId && orderData?.commercialStage === "LEAD" && (
+        <PaymentVerificationModal
+          open={leadPaymentOpen}
+          onClose={() => setLeadPaymentOpen(false)}
+          orderId={orderId}
+          orderNumber={orderData.orderNumber}
+          canApprove={false}
+          onPaymentUpdated={() => void refreshOrderPayments()}
+        />
+      )}
       <OrderReceiptModal
         open={receiptOpen}
         orderId={receiptOrderId}

@@ -18,6 +18,7 @@ import type { OrderHeader } from "@/interfaces/IOrder";
 jest.setTimeout(30000);
 configure({ asyncUtilTimeout: 10000 });
 
+let mockPermissions: string[] = [];
 let mockCompanyId = "company-a",
   mockStoreId = "store-a",
   mockQuery = "";
@@ -25,6 +26,7 @@ jest.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
     loading: false,
     selectedStoreId: mockStoreId,
+    hasPermission: (permission: string) => mockPermissions.includes(permission),
     auth: {
       user: {
         id: "actor",
@@ -151,6 +153,7 @@ async function renderDetail(onChanged = jest.fn()) {
 beforeEach(() => {
   jest.resetAllMocks();
   mockCompanyId = "company-a";
+  mockPermissions = [];
   mockStoreId = "store-a";
   mockQuery = "";
   jest.mocked(service.getCommercialLeadCapabilities).mockResolvedValue(caps);
@@ -883,3 +886,22 @@ it.each([
     ).toBeInTheDocument();
   },
 );
+
+
+it("offers linked order DNI editing with sale and client permissions", async () => {
+  mockPermissions = ["EDIT_SALE", "MANAGE_CLIENTS"];
+  jest.mocked(service.getCommercialLeadContext).mockResolvedValue({
+    leadId: "lead-a", order, sources: [], quotationId: null, liveCheckoutId: null,
+  });
+  await renderDetail();
+  expect(await screen.findByRole("link", { name: "Editar DNI y pedido" })).toHaveAttribute("href", "/registrar-venta?orderId=order-a");
+});
+
+it("hides linked order editing without sale editing permission", async () => {
+  mockPermissions = ["MANAGE_CLIENTS"];
+  jest.mocked(service.getCommercialLeadContext).mockResolvedValue({
+    leadId: "lead-a", order, sources: [], quotationId: null, liveCheckoutId: null,
+  });
+  await renderDetail();
+  expect(screen.queryByRole("link", { name: /Editar.*pedido/ })).not.toBeInTheDocument();
+});
