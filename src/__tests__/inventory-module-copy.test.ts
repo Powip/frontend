@@ -22,8 +22,9 @@ const FILES = [
   "components/modals/EditProductImageModal.tsx",
   "components/proveedores/DeleteProviderModal.tsx",
 ];
+// Sin distinguir mayúsculas: "Corregí" al inicio de la frase también cuenta.
 const VOSEO =
-  /(^|[^\p{L}])(podés|tenés|querés|sabés|elegí|creá|descargá|revisá|ingresá|seleccioná|usá|utilizá|agregá|hacé|confirmá|intentá|probá|cargá|completá|asegurate|fijate|verificá|escribí|subí|mirá|esperá|guardá|editá|eliminá|buscá|asociá|registrá|vinculá|unificá|resolvé|corregí|arrastrá|recargá|ajustalo|Podés|Tenés|Elegí|Creá|Descargá|Revisá|Ingresá|Seleccioná|Usá|Utilizá|Agregá|Hacé|Confirmá|Intentá|Probá|Cargá|Completá|Verificá|Escribí|Subí|Mirá|Esperá|Guardá|Editá|Eliminá|Buscá|Asociá|Registrá|Vinculá|Unificá|Asegurate|Fijate)(?![\p{L}])/u;
+  /(^|[^\p{L}])(podés|tenés|querés|sabés|elegí|creá|descargá|revisá|ingresá|seleccioná|usá|utilizá|agregá|hacé|confirmá|intentá|probá|cargá|completá|asegurate|aseguráte|fijate|verificá|escribí|subí|mirá|esperá|guardá|editá|eliminá|buscá|asociá|registrá|vinculá|unificá|resolvé|corregí|arrastrá|recargá|ajustalo|importá|corroborá)(?![\p{L}])/iu;
 const REGIONAL = /["'`>](Talle|Remera)(?![\p{L}])/u;
 
 function listFiles(directory: string): string[] {

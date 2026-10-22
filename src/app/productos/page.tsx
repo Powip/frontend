@@ -105,7 +105,7 @@ function ProductosContent() {
             <div className="text-center">
               <h3 className="text-lg font-semibold">Sincronizar Shopify</h3>
               <p className="text-sm text-muted-foreground mt-1">
-                Importá productos automáticamente desde Shopify
+                Importa productos automáticamente desde Shopify
               </p>
             </div>
           </CardContent>

@@ -496,7 +496,7 @@ export function ReconciliationMergeDialog({
     step === "select"
       ? "Elige cuál queda en Powip. Nada se aplica hasta que confirmes."
       : step === "review"
-        ? "Corroborá que son el mismo producto. Todavía no se aplicó nada."
+        ? "Corrobora que son el mismo producto. Todavía no se aplicó nada."
         : isPair
           ? "Elige con qué stock y costo queda. Todavía no se aplicó nada."
           : "Vista previa: así va a quedar. Todavía no se aplicó nada.";

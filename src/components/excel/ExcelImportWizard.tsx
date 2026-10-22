@@ -940,7 +940,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
             </CardTitle>
             <CardDescription>
               Revisa y corrige las categorías de los productos si es necesario.
-              Aseguráte de que todos tengan una subcategoría asignada.
+              Asegúrate de que todos tengan una subcategoría asignada.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -1145,7 +1145,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
               <div className="flex items-center gap-3">
                 {errorRows.length > 0 && (
                   <p className="text-xs text-red-500 font-medium">
-                    Corregí los errores para continuar
+                    Corrige los errores para continuar
                   </p>
                 )}
                 {confirmLargeQuantity && (
