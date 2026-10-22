@@ -39,7 +39,8 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GATEWAY } from '@/lib/gateway';
 let mockCanLegacyRecord = true;
-jest.mock('@/contexts/AuthContext', () => ({useAuth: () => ({auth:{company:{id:'company-1'},user:{id:'finance-user-1',permissions:['APPROVE_PAYMENTS','CREATE_SALE','EDIT_SALE']},accessToken:'synthetic'},hasPermission:() => mockCanLegacyRecord})}));
+let mockCcPermissions: string[] | null = null;
+jest.mock('@/contexts/AuthContext', () => ({useAuth: () => ({auth:{company:{id:'company-1'},user:{id:'finance-user-1',permissions:['APPROVE_PAYMENTS','CREATE_SALE','EDIT_SALE']},accessToken:'synthetic'},hasPermission:(permission:string) => mockCcPermissions ? mockCcPermissions.includes(permission) : mockCanLegacyRecord})}));
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
 
@@ -176,6 +177,7 @@ const mockUsePathname = usePathname as jest.Mock;
 // Default global: casi todos los tests existentes asumen /finanzas. Los tests
 // de ruta lo sobreescriben puntualmente con mockReturnValue.
 beforeEach(() => {
+  mockCcPermissions = null;
   mockCanLegacyRecord = true;
   mockUsePathname.mockReturnValue('/finanzas');
 });
@@ -847,4 +849,132 @@ it("does not expose Lead capture when sale permission is present but the backend
  mockedAxiosAuth.get.mockImplementation((url:string)=>Promise.resolve({data:url.endsWith("/payment-capabilities")?{enabled:true,canView:true,canCapture:false,canReview:false}:{...makeOrderData(null),commercialStage:"LEAD",commercialLeadId:"lead-1",currency:"PEN",payments:[]}}));
  renderModal();await screen.findByText("La captura de anticipos no está habilitada para esta cuenta.");
  expect(screen.getByRole("button",{name:"Registrar Pago"})).toBeDisabled();expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+});
+
+describe("PaymentVerificationModal — adelantos Shopify COD desde Gestión CC", () => {
+  const codOrder = (overrides: Record<string, unknown> = {}) => ({
+    ...makeOrderData(null),
+    companyId: "company-1",
+    commercialStage: "LEAD",
+    commercialLeadId: "lead-1",
+    canalOrigen: "shopify_cod",
+    currency: "PEN",
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUsePathname.mockReturnValue("/atencion-cliente");
+    mockCcPermissions = ["MANAGE_CUSTOMER_SERVICE"];
+    mockedAxiosAuth.get.mockResolvedValue({ data: codOrder() });
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "advance-1" } });
+    mockedAxiosAuth.patch.mockResolvedValue({ data: {} });
+  });
+
+  it("registra adelanto con comprobante en el mismo pedido pendiente sin salir de CC ni aprobarlo", async () => {
+    const onPaymentUpdated = jest.fn();
+    let resolve!: (value: unknown) => void;
+    mockedAxiosAuth.post.mockReturnValue(new Promise((done) => { resolve = done; }));
+    renderModal({ onPaymentUpdated });
+    const file = new File(["receipt"], "adelanto.pdf", { type: "application/pdf" });
+
+    await userEvent.type(await screen.findByLabelText("Monto *"), "35.50");
+    await userEvent.selectOptions(screen.getByRole("combobox"), "YAPE");
+    await userEvent.upload(screen.getByLabelText("Comprobante (opcional)"), file);
+    const submit = screen.getByRole("button", { name: "Registrar Pago" });
+    expect(submit).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /aprobar|rechazar/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /consultar el Lead/i })).not.toBeInTheDocument();
+
+    await userEvent.dblClick(submit);
+    expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1);
+    const [url, body] = mockedAxiosAuth.post.mock.calls[0];
+    expect(url).toBe("http://ventas/payments/orders/order-1/payments/with-proof");
+    expect((body as FormData).get("amount")).toBe("35.5");
+    expect((body as FormData).get("paymentMethod")).toBe("YAPE");
+    expect((body as FormData).get("file")).toBe(file);
+    expect((body as FormData).get("status")).toBeNull();
+    expect((body as FormData).get("commercialStage")).toBeNull();
+    expect(mockedAxiosAuth.patch).not.toHaveBeenCalled();
+    await act(async () => { resolve({ data: { id: "advance-1" } }); });
+    await waitFor(() => expect(onPaymentUpdated).toHaveBeenCalledTimes(1));
+  });
+
+  it.each(["LEAD", "SALE"])("adjunta comprobante al pago existente de un pedido COD %s con permiso de CC", async (commercialStage) => {
+    mockedAxiosAuth.get.mockResolvedValue({ data: codOrder({ commercialStage }) });
+    const { container } = renderModal();
+    await screen.findByText("Sin comprobante adjunto");
+    expect(screen.getByRole("button", { name: "Agregar comprobante" })).toBeEnabled();
+    const file = new File(["receipt"], "adelanto.jpg", { type: "image/jpeg" });
+    await userEvent.upload(
+      container.querySelector('input[type="file"].hidden') as HTMLInputElement,
+      file,
+    );
+    expect(mockedAxiosAuth.patch).toHaveBeenCalledTimes(1);
+    const [url, body] = mockedAxiosAuth.patch.mock.calls[0];
+    expect(url).toBe("http://ventas/payments/payments/payment-1/upload-proof");
+    expect((body as FormData).get("file")).toBe(file);
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+  });
+
+  it("conserva la versión y ruta canónica al adjuntar un comprobante a un anticipo ya anclado", async () => {
+    const order = codOrder({ commercialStage: "SALE" });
+    mockedAxiosAuth.get.mockResolvedValue({
+      data: {
+        ...order,
+        payments: order.payments.map((payment) => ({
+          ...payment,
+          leadId: "lead-1",
+          leadPaymentVersion: 4,
+        })),
+      },
+    });
+    const { container } = renderModal();
+    await screen.findByText("Sin comprobante adjunto");
+    const file = new File(["receipt"], "adelanto.jpg", { type: "image/jpeg" });
+    await userEvent.upload(
+      container.querySelector('input[type="file"].hidden') as HTMLInputElement,
+      file,
+    );
+    expect(mockedAxiosAuth.patch).toHaveBeenCalledTimes(1);
+    const [url, body] = mockedAxiosAuth.patch.mock.calls[0];
+    expect(url).toBe(`${GATEWAY.ventas}/leads/lead-1/payments/payment-1/upload-proof`);
+    expect((body as FormData).get("version")).toBe("4");
+    expect((body as FormData).get("file")).toBe(file);
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+  });
+
+  it.each([null, "manual", "shopify"])("no extiende el permiso de CC a otros pedidos (%s)", async (canalOrigen) => {
+    mockedAxiosAuth.get.mockResolvedValue({ data: codOrder({ canalOrigen }) });
+    renderModal();
+    await userEvent.type(await screen.findByLabelText("Monto *"), "30");
+    await userEvent.selectOptions(screen.getByRole("combobox"), "YAPE");
+    expect(screen.getByRole("button", { name: "Registrar Pago" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Agregar comprobante" })).toBeDisabled();
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.patch).not.toHaveBeenCalled();
+  });
+
+  it("mantiene la sesión de consulta sin permiso para registrar pagos ni adjuntar comprobantes", async () => {
+    mockCcPermissions = ["VIEW_CUSTOMER_SERVICE"];
+    renderModal();
+    await userEvent.type(await screen.findByLabelText("Monto *"), "30");
+    await userEvent.selectOptions(screen.getByRole("combobox"), "YAPE");
+    expect(screen.getByRole("button", { name: "Registrar Pago" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Agregar comprobante" })).toBeDisabled();
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.patch).not.toHaveBeenCalled();
+  });
+
+  it("no usa el permiso de CC como permiso de ventas o de Finanzas fuera de Gestión CC", async () => {
+    mockUsePathname.mockReturnValue("/finanzas");
+    renderModal();
+    await userEvent.type(await screen.findByLabelText("Monto *"), "30");
+    await userEvent.selectOptions(screen.getByRole("combobox"), "YAPE");
+    expect(screen.getByRole("button", { name: "Registrar Pago" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Agregar comprobante" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /aprobar|rechazar/i })).not.toBeInTheDocument();
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.patch).not.toHaveBeenCalled();
+  });
 });

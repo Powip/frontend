@@ -7,6 +7,7 @@ import {
   bootstrapCommercialLeadTypes,
   commercialLeadError,
   confirmCommercialLead,
+  confirmCommercialOrderPurchase,
   createCommercialLead,
   createCommercialLeadType,
   getCommercialLead,
@@ -376,5 +377,56 @@ it("does not bypass a rejected confirmation with an ordinary order creation", as
   await expect(confirmCommercialLead("lead-a", { commandId: captureId, version: 1 })).rejects.toBe(conflict);
 
   expect(axiosAuth.post).toHaveBeenCalledTimes(1);
+  expect(axiosAuth.patch).not.toHaveBeenCalled();
+});
+
+it("confirms the encoded existing order through the canonical command with its reviewed snapshot", async () => {
+  const input = {
+    commandId: captureId,
+    leadId: "lead-a",
+    version: 4,
+    expectedOrderUpdatedAt: "2026-10-22T22:23:53.000Z",
+  };
+  const result = { lead, order: { id: "order/a", commercialStage: "SALE" }, replayed: false };
+  jest.mocked(axiosAuth.post).mockResolvedValue({ data: result });
+
+  await expect(confirmCommercialOrderPurchase("order/a", input)).resolves.toBe(result);
+
+  expect(axiosAuth.post).toHaveBeenCalledWith(`${BASE}/from-order/order%2Fa/confirm-purchase`, input);
+  expect(axiosAuth.post).toHaveBeenCalledTimes(1);
+  expect(axiosAuth.get).not.toHaveBeenCalled();
+  expect(axiosAuth.patch).not.toHaveBeenCalled();
+});
+
+it("retries an existing order confirmation with the same command and reviewed snapshot", async () => {
+  const input = Object.freeze({
+    commandId: captureId,
+    leadId: "lead-a",
+    version: 4,
+    expectedOrderUpdatedAt: "2026-10-22T22:23:53.000Z",
+  });
+  const response = { lead, order: { id: "order-a" }, replayed: true };
+  const timeout = new Error("Respuesta interrumpida");
+  jest.mocked(axiosAuth.post).mockRejectedValueOnce(timeout).mockResolvedValueOnce({ data: response });
+
+  await expect(confirmCommercialOrderPurchase("order-a", input)).rejects.toBe(timeout);
+  await expect(confirmCommercialOrderPurchase("order-a", input)).resolves.toBe(response);
+
+  expect(axiosAuth.post).toHaveBeenCalledTimes(2);
+  expect(axiosAuth.post).toHaveBeenNthCalledWith(1, `${BASE}/from-order/order-a/confirm-purchase`, input);
+  expect(axiosAuth.post).toHaveBeenNthCalledWith(2, `${BASE}/from-order/order-a/confirm-purchase`, input);
+  expect(jest.mocked(axiosAuth.post).mock.calls[0][1]).toBe(input);
+  expect(jest.mocked(axiosAuth.post).mock.calls[1][1]).toBe(input);
+});
+
+it.each([403, 404, 409, 503])("preserves an existing order confirmation failure %s without an alternative mutation", async (status) => {
+  const failure = { response: { status, data: { message: "Confirmación rechazada" } } };
+  jest.mocked(axiosAuth.post).mockRejectedValue(failure);
+
+  await expect(confirmCommercialOrderPurchase("order-a", { commandId: captureId })).rejects.toBe(failure);
+
+  expect(axiosAuth.post).toHaveBeenCalledTimes(1);
+  expect(axiosAuth.post).toHaveBeenCalledWith(`${BASE}/from-order/order-a/confirm-purchase`, { commandId: captureId });
+  expect(axiosAuth.get).not.toHaveBeenCalled();
   expect(axiosAuth.patch).not.toHaveBeenCalled();
 });

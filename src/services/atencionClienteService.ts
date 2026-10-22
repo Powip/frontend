@@ -1,3 +1,4 @@
+import type { ConfirmCommercialOrderPurchaseInput, LeadConfirmationCapabilities, LeadConfirmationResponse } from "@/types/leads";
 import axiosAuth from "@/lib/axiosAuth";
 import { OrderHeader, SubEstadoCc, TipoGestionCC, KpisCC, CcKpisFinancierosResponse, CcKpisFunnelResponse, CcStorePerformanceItem, CcUpsellResponse, CcAgingResponse, CcIntentosResponse, CcUpsellRecordsResponse } from "@/interfaces/IOrder";
 
@@ -179,6 +180,24 @@ export async function confirmarDespacho(orderId: string): Promise<void> {
   await axiosAuth.post(
     `${BASE}/atencion-al-cliente/pedidos/${orderId}/confirmar-despacho`,
   );
+}
+
+export async function getCcOrderConfirmationCapabilities(
+  orderId: string,
+): Promise<LeadConfirmationCapabilities> {
+  return (await axiosAuth.get<LeadConfirmationCapabilities>(
+    `${BASE}/atencion-al-cliente/pedidos/${encodeURIComponent(orderId)}/confirmation-capabilities`,
+  )).data;
+}
+
+export async function confirmarVentaCc(
+  orderId: string,
+  command: ConfirmCommercialOrderPurchaseInput,
+): Promise<LeadConfirmationResponse> {
+  return (await axiosAuth.post<LeadConfirmationResponse>(
+    `${BASE}/atencion-al-cliente/pedidos/${encodeURIComponent(orderId)}/confirmar-venta`,
+    command,
+  )).data;
 }
 
 export async function recuperarVentaCC(orderId: string): Promise<void> {

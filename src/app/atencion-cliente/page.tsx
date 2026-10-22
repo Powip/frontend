@@ -99,7 +99,8 @@ const CC_EXPORT_TABS: Partial<Record<SubEstadoCc, string>> = {
    Page
 ------------------------------------------------------- */
 export default function AtencionClientePage() {
-  const { auth } = useAuth();
+  const { auth, hasPermission } = useAuth();
+  const canReadLegacyOrders = ["VIEW_SALES", "VIEW_FINANCES", "MANAGE_OPERATIONS"].some(hasPermission);
   const routeSaleLifecycle = useSaleLifecycleRouting();
   const { storeIds, scope, scopeKey, canFetch } = useBusinessScope();
   const invalidateBusinessData = useInvalidateBusinessData();
@@ -238,7 +239,7 @@ export default function AtencionClientePage() {
   );
 
   /* ── Legacy orders ───────────────────────────────────── */
-  const { orders: ordersData, loading: legacyLoading, error: legacyError, refetch: refetchOrders } = useBusinessOrders(undefined, undefined, { includeCcLeads: true, statuses: ATENCION_LEGACY_STATUSES });
+  const { orders: ordersData, loading: legacyLoading, error: legacyError, refetch: refetchOrders } = useBusinessOrders(undefined, undefined, { includeCcLeads: true, statuses: ATENCION_LEGACY_STATUSES, enabled: canReadLegacyOrders });
   const incompleteOrders = useMemo(() => ordersData.filter((order) => order.status === "INCOMPLETE"), [ordersData]);
   const incompleteLoading = legacyLoading;
   const refetchIncomplete = refetchOrders;
@@ -465,7 +466,7 @@ export default function AtencionClientePage() {
             <div className="px-6 pt-4">
               <TabsList>
                 <TabsTrigger value="cc">📞 Call Center v2</TabsTrigger>
-                <TabsTrigger value="preventa" className="text-violet-600">
+                {canReadLegacyOrders ? <><TabsTrigger value="preventa" className="text-violet-600">
                   Pre-Ventas
                   {pedidosPreVenta.length > 0 && (
                     <span className="ml-1 rounded-full bg-violet-600 text-white text-xs px-1.5 py-0.5">
@@ -484,7 +485,7 @@ export default function AtencionClientePage() {
                 <TabsTrigger value="promos" className="text-purple-600">
                   <Gift className="h-3.5 w-3.5 mr-1" />
                   Promos
-                </TabsTrigger>
+                </TabsTrigger></> : null}
               </TabsList>
             </div>
 
@@ -739,7 +740,7 @@ export default function AtencionClientePage() {
           orderId={paymentOrderId ?? ""}
           orderNumber={paymentOrderNumber}
           onPaymentUpdated={refetchCc}
-          canApprove={true}
+          canApprove={false}
         />
 
         {orderToReassign && (

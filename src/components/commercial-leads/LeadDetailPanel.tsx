@@ -67,7 +67,9 @@ export default function LeadDetailPanel({
   onChanged: () => void;
   onClose: () => void;
 }) {
-  const { auth } = useAuth();
+  const { auth, hasPermission } = useAuth();
+  const canEditOrder = hasPermission?.("EDIT_SALE") ?? auth?.user.permissions?.includes("EDIT_SALE") === true;
+  const canEditClient = hasPermission?.("MANAGE_CLIENTS") ?? auth?.user.permissions?.includes("MANAGE_CLIENTS") === true;
   const currentActorName =
     [auth?.user?.name, auth?.user?.surname].filter(Boolean).join(" ").trim() ||
     auth?.user?.email ||
@@ -452,6 +454,13 @@ export default function LeadDetailPanel({
                 </p>
               )}
               <div className="flex flex-wrap gap-2">
+                {open && order && canEditOrder ? (
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/registrar-venta?orderId=${encodeURIComponent(order.id)}`}>
+                      {canEditClient ? "Editar DNI y pedido" : "Editar pedido"}
+                    </Link>
+                  </Button>
+                ) : null}
                 {quotationId ? (
                   <Button asChild variant="outline" size="sm">
                     <Link

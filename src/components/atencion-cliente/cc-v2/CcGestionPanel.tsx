@@ -1,21 +1,22 @@
 "use client";
-import Link from "next/link";
-import { commercialLeadHref } from "@/utils/commercialOrders";
+import {useAuth} from "@/contexts/AuthContext";
 
 import { useState, useCallback } from "react";
+import { CcSaleConfirmationPanel } from "./CcSaleConfirmationPanel";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, Phone, PhoneOff, MapPin, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SubEstadoCc } from "@/interfaces/IOrder";
-import { updateSubEstadoCC, confirmarEntregaLima, confirmarDespacho } from "@/services/atencionClienteService";
+import {
+  updateSubEstadoCC,
+  confirmarEntregaLima,
+  confirmarDespacho,
+} from "@/services/atencionClienteService";
 import { toast } from "sonner";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
 
 interface Props {
-  commercialStage?: "LEAD" | "SALE" | null;
-  commercialLeadId?: string | null;
-  commercialStockState?: "DEFERRED" | "QUEUED" | "PRESERVED" | "NOT_REQUIRED" | null;
   orderId: string;
   subEstadoCc: SubEstadoCc;
   callAttempts: number;
@@ -26,6 +27,11 @@ interface Props {
   aliclikSyncedAt?: string | null;
   evaStatus?: string | null;
   evaSyncedAt?: string | null;
+  commercialStage?: "LEAD" | "SALE" | null;
+  commercialLeadId?: string | null;
+  canalOrigen?: string | null;
+  orderUpdatedAt?: string;
+  commercialStockState?: "DEFERRED" | "QUEUED" | "PRESERVED" | "NOT_REQUIRED" | null;
 }
 
 const CHECKLIST_ITEMS = [
@@ -35,9 +41,21 @@ const CHECKLIST_ITEMS = [
   "Precio total acordado con el cliente",
 ];
 
-const TERMINAL_STATES: SubEstadoCc[] = ["confirmado", "anulado_cc", "carrito_recuperado"];
+const TERMINAL_STATES: SubEstadoCc[] = [
+  "confirmado",
+  "anulado_cc",
+  "carrito_recuperado",
+];
 
-function TerminalBadge({ colorCls, label, sub }: { colorCls: string; label: string; sub: string }) {
+function TerminalBadge({
+  colorCls,
+  label,
+  sub,
+}: {
+  colorCls: string;
+  label: string;
+  sub: string;
+}) {
   return (
     <div className={`${colorCls} rounded-lg p-4 text-center`}>
       <p className="font-semibold text-sm">{label}</p>
@@ -46,7 +64,25 @@ function TerminalBadge({ colorCls, label, sub }: { colorCls: string; label: stri
   );
 }
 
-export function CcGestionPanel({ commercialStage, commercialLeadId, commercialStockState, orderId, subEstadoCc, callAttempts, datosCompletos, onUpdated, beforeCancellation, aliclikDispatchStatus, aliclikSyncedAt, evaStatus, evaSyncedAt }: Props) {
+export function CcGestionPanel({
+  orderId,
+  subEstadoCc,
+  callAttempts,
+  datosCompletos,
+  onUpdated,
+  beforeCancellation,
+  aliclikDispatchStatus,
+  aliclikSyncedAt,
+  evaStatus,
+  evaSyncedAt,
+  commercialStage,
+  commercialLeadId,
+  canalOrigen,
+  orderUpdatedAt,
+  commercialStockState,
+}: Props) {
+  const {auth, hasPermission}=useAuth();
+  const canManage=hasPermission("MANAGE_CUSTOMER_SERVICE");
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
@@ -58,11 +94,16 @@ export function CcGestionPanel({ commercialStage, commercialLeadId, commercialSt
 
   const cambiar = useCallback(
     async (nuevoEstado: SubEstadoCc, comentario?: string) => {
+      if(!canManage)return;
       setLoading(nuevoEstado);
       try {
         const mayCancel = nuevoEstado === "anulado_cc" || (nuevoEstado === "no_contesta" && callAttempts >= 2);
         if (mayCancel && await beforeCancellation?.()) return;
-        const result = await updateSubEstadoCC(orderId, nuevoEstado, comentario);
+        const result = await updateSubEstadoCC(
+          orderId,
+          nuevoEstado,
+          comentario,
+        );
         onUpdated();
         if (TERMINAL_STATES.includes(nuevoEstado) || result.autoCanceled) {
           queryClient.invalidateQueries({ queryKey: ["orders"] });
@@ -70,7 +111,9 @@ export function CcGestionPanel({ commercialStage, commercialLeadId, commercialSt
         if (result.autoCanceled) {
           toast.warning("No contesta, limite de intentos. Se envia a Anulados");
         } else {
-          toast.success(`Estado actualizado: ${nuevoEstado.replace(/_/g, " ")}`);
+          toast.success(
+            `Estado actualizado: ${nuevoEstado.replace(/_/g, " ")}`,
+          );
         }
       } catch {
         toast.error("Error al actualizar el estado");
@@ -80,7 +123,7 @@ export function CcGestionPanel({ commercialStage, commercialLeadId, commercialSt
         setChecks(CHECKLIST_ITEMS.map(() => false));
       }
     },
-    [orderId, onUpdated, queryClient, callAttempts, beforeCancellation],
+    [orderId, onUpdated, queryClient,canManage,callAttempts,beforeCancellation],
   );
 
   const cancelarConfirmacion = () => {
@@ -90,7 +133,7 @@ export function CcGestionPanel({ commercialStage, commercialLeadId, commercialSt
   };
 
   const handleConfirmarLima = async () => {
-    if (!limaDatetime) return;
+    if (!canManage||!limaDatetime) return;
     setLoading("confirmar_lima");
     try {
       await confirmarEntregaLima(orderId, new Date(limaDatetime).toISOString());
@@ -106,16 +149,16 @@ export function CcGestionPanel({ commercialStage, commercialLeadId, commercialSt
     }
   };
 
-  if (commercialStage === "LEAD") return <p className="rounded border p-4 text-sm">La compra sigue pendiente de confirmación del vendedor. <Link className="underline" href={commercialLeadId ? commercialLeadHref(commercialLeadId) : "/leads-comerciales"}>Gestionar y confirmar Lead</Link></p>;
-  if (commercialStockState === "DEFERRED") return <p className="rounded border p-4 text-sm">Compra confirmada. Prepara el pedido desde el Lead antes de programar su despacho.</p>;
+  if(!canManage)return <p className="rounded-lg border p-4 text-sm text-muted-foreground">Consulta del pedido. Tu rol no permite gestionar la atención al cliente.</p>;
 
-  // ── Terminal states ──────────────────────────────────────
-  if (subEstadoCc === "confirmado") {
+  const isLead = commercialStage === "LEAD";
+  // La confirmación comercial y el despacho se completan en este panel.
+  if (!isLead && subEstadoCc === "confirmado" && commercialStockState !== "DEFERRED") {
     return (
       <TerminalBadge
         colorCls="bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400"
         label="✓ PEDIDO CONFIRMADO"
-        sub="Venta confirmada. Consulta su estado en Comercial antes de preparar o enviar."
+        sub="El cliente confirmó la entrega del pedido"
       />
     );
   }
@@ -128,7 +171,7 @@ export function CcGestionPanel({ commercialStage, commercialLeadId, commercialSt
       />
     );
   }
-  if (subEstadoCc === "carrito_recuperado") {
+  if (!isLead && subEstadoCc === "carrito_recuperado") {
     return (
       <TerminalBadge
         colorCls="bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400"
@@ -143,21 +186,43 @@ export function CcGestionPanel({ commercialStage, commercialLeadId, commercialSt
   const esLima = subEstadoCc === "entrega_lima";
   // Flujo COD: usa /confirmar-despacho (transacción atómica)
   // Carrito / Lima: usa updateSubEstadoCC (cambio simple de estado)
-  const estadoConfirmado: SubEstadoCc = esCarrito ? "carrito_recuperado" : "confirmado";
+  const estadoConfirmado: SubEstadoCc = esCarrito
+    ? "carrito_recuperado"
+    : "confirmado";
 
-  const labelConfirmar =
-    esLima ? "Confirmar entrega Lima" :
-    esCarrito ? "Carrito recuperado ✓" :
-    "Confirmar despacho";
+  const labelConfirmar = esLima
+    ? "Confirmar entrega Lima"
+    : esCarrito
+      ? "Carrito recuperado ✓"
+      : "Confirmar despacho";
 
-  const showConfirmar = !TERMINAL_STATES.includes(subEstadoCc);
-  const showContactado = ["por_confirmar", "no_contesta"].includes(subEstadoCc);
+  const showConfirmar = !isLead && (
+    !TERMINAL_STATES.includes(subEstadoCc) ||
+    (subEstadoCc === "confirmado" && commercialStockState === "DEFERRED")
+  );
+  const canFollowUp = commercialStage !== "SALE";
+  const showContactado = canFollowUp && ["por_confirmar", "no_contesta"].includes(subEstadoCc);
   const showPrimerContacto = subEstadoCc === "carrito_sin_contactar";
-  const showNoContesta = !TERMINAL_STATES.includes(subEstadoCc);
-  const showAnularCc = !TERMINAL_STATES.includes(subEstadoCc) && !esCarrito;
+  const showNoContesta = canFollowUp && !TERMINAL_STATES.includes(subEstadoCc);
+  const showAnularCc = canFollowUp && !TERMINAL_STATES.includes(subEstadoCc) && !esCarrito;
 
   return (
     <div className="border border-border rounded-lg p-4 space-y-3">
+      {isLead ? (
+        <CcSaleConfirmationPanel
+          key={orderId}
+          orderId={orderId}
+          commercialLeadId={commercialLeadId}
+          canalOrigen={canalOrigen}
+          orderUpdatedAt={orderUpdatedAt}
+          datosCompletos={datosCompletos}
+          onUpdated={onUpdated}
+        />
+      ) : commercialStockState === "DEFERRED" ? (
+        <p className="text-sm text-muted-foreground">
+          Compra confirmada. Completa el despacho desde Gestión CC.
+        </p>
+      ) : null}
       {/* Header */}
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h3 className="font-semibold text-sm">Gestión CC</h3>
@@ -167,11 +232,15 @@ export function CcGestionPanel({ commercialStage, commercialLeadId, commercialSt
             aliclikSyncedAt={aliclikSyncedAt}
           />
           <EvaStatusBadge evaStatus={evaStatus} evaSyncedAt={evaSyncedAt} />
-          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-            isMaxIntentos ? "bg-red-100 text-red-700" :
-            callAttempts >= 2 ? "bg-amber-100 text-amber-700" :
-            "bg-gray-100 text-gray-500"
-          }`}>
+          <span
+            className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+              isMaxIntentos
+                ? "bg-red-100 text-red-700"
+                : callAttempts >= 2
+                  ? "bg-amber-100 text-amber-700"
+                  : "bg-gray-100 text-gray-500"
+            }`}
+          >
             Intentos: {callAttempts}/3
           </span>
         </div>
@@ -209,7 +278,9 @@ export function CcGestionPanel({ commercialStage, commercialLeadId, commercialSt
               onClick={handleConfirmarLima}
             >
               <MapPin className="h-3 w-3 mr-1" />
-              {loading === "confirmar_lima" ? "Confirmando..." : "Confirmar entrega"}
+              {loading === "confirmar_lima"
+                ? "Confirmando..."
+                : "Confirmar entrega"}
             </Button>
             <Button
               size="sm"
@@ -231,14 +302,23 @@ export function CcGestionPanel({ commercialStage, commercialLeadId, commercialSt
             Verificá estos 4 puntos antes de confirmar:
           </p>
           {CHECKLIST_ITEMS.map((item, i) => (
-            <label key={i} className="flex items-center gap-2 cursor-pointer select-none">
+            <label
+              key={i}
+              className="flex items-center gap-2 cursor-pointer select-none"
+            >
               <input
                 type="checkbox"
                 checked={checks[i]}
-                onChange={() => setChecks((prev) => prev.map((v, idx) => (idx === i ? !v : v)))}
+                onChange={() =>
+                  setChecks((prev) =>
+                    prev.map((v, idx) => (idx === i ? !v : v)),
+                  )
+                }
                 className="w-3.5 h-3.5 accent-green-600 cursor-pointer"
               />
-              <span className={`text-xs ${checks[i] ? "line-through text-gray-400 dark:text-slate-500" : "text-gray-700 dark:text-slate-300"}`}>
+              <span
+                className={`text-xs ${checks[i] ? "line-through text-gray-400 dark:text-slate-500" : "text-gray-700 dark:text-slate-300"}`}
+              >
                 {item}
               </span>
             </label>
@@ -256,17 +336,24 @@ export function CcGestionPanel({ commercialStage, commercialLeadId, commercialSt
               onClick={async () => {
                 if (esCarrito) {
                   // Carritos: cambio simple de estado
-                  await cambiar(estadoConfirmado, "Carrito recuperado — checklist verificado");
+                  await cambiar(
+                    estadoConfirmado,
+                    "Carrito recuperado — checklist verificado",
+                  );
                 } else {
-                  // COD: confirma la venta; la reserva y los códigos tienen su propia confirmación.
+                  // COD: transacción completa → mueve a PREPARADO
                   setLoading(estadoConfirmado);
                   try {
                     await confirmarDespacho(orderId);
                     onUpdated();
                     queryClient.invalidateQueries({ queryKey: ["orders"] });
-                    toast.success("Venta confirmada como Pendiente. Revisa su estado antes de preparar o enviar.");
+                    toast.success(
+                      "Despacho confirmado desde Gestión CC",
+                    );
                   } catch (err: any) {
-                    const msg = err?.response?.data?.message ?? "Error al confirmar el despacho";
+                    const msg =
+                      err?.response?.data?.message ??
+                      "Error al confirmar el despacho";
                     toast.error(msg);
                   } finally {
                     setLoading(null);
@@ -300,7 +387,11 @@ export function CcGestionPanel({ commercialStage, commercialLeadId, commercialSt
               size="sm"
               className="bg-green-600 hover:bg-green-700 text-xs h-7 disabled:opacity-40 disabled:cursor-not-allowed"
               disabled={!datosCompletos || !!loading}
-              title={!datosCompletos ? "Completá los datos requeridos antes de confirmar" : undefined}
+              title={
+                !datosCompletos
+                  ? "Completá los datos requeridos antes de confirmar"
+                  : undefined
+              }
               onClick={() => setConfirmando(true)}
             >
               <Phone className="h-3 w-3 mr-1" />
@@ -314,7 +405,9 @@ export function CcGestionPanel({ commercialStage, commercialLeadId, commercialSt
               variant="outline"
               className="border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 text-xs h-7"
               disabled={!!loading}
-              onClick={() => cambiar("contactado", "Contacto establecido con el cliente")}
+              onClick={() =>
+                cambiar("contactado", "Contacto establecido con el cliente")
+              }
             >
               {loading === "contactado" ? "..." : "Contactado"}
             </Button>
@@ -326,7 +419,9 @@ export function CcGestionPanel({ commercialStage, commercialLeadId, commercialSt
               variant="outline"
               className="border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 text-xs h-7"
               disabled={!!loading}
-              onClick={() => cambiar("carrito_contactado", "Primer contacto con el cliente")}
+              onClick={() =>
+                cambiar("carrito_contactado", "Primer contacto con el cliente")
+              }
             >
               {loading === "carrito_contactado" ? "..." : "Primer contacto"}
             </Button>
@@ -339,11 +434,16 @@ export function CcGestionPanel({ commercialStage, commercialLeadId, commercialSt
               className="border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 text-xs h-7"
               disabled={!!loading}
               onClick={() =>
-                cambiar("no_contesta", `Intento ${callAttempts + 1} — sin respuesta`)
+                cambiar(
+                  "no_contesta",
+                  `Intento ${callAttempts + 1} — sin respuesta`,
+                )
               }
             >
               <PhoneOff className="h-3 w-3 mr-1" />
-              {loading === "no_contesta" ? "..." : `No contesta (${callAttempts + 1}/3)`}
+              {loading === "no_contesta"
+                ? "..."
+                : `No contesta (${callAttempts + 1}/3)`}
             </Button>
           )}
 

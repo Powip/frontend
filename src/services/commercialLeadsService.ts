@@ -5,6 +5,7 @@ import type {
   AddLeadActivityInput,
   ChangeLeadClosureInput,
   ConfirmCommercialLeadInput,
+  ConfirmCommercialOrderPurchaseInput,
   CreateLeadInput,
   CreateLeadTypeInput,
   Lead,
@@ -116,6 +117,18 @@ export async function confirmCommercialLead(
   return (
     await axiosAuth.post<LeadConfirmationResponse>(
       `${leadPath(id)}/confirm-purchase`,
+      input,
+    )
+  ).data;
+}
+
+export async function confirmCommercialOrderPurchase(
+  orderId: string,
+  input: ConfirmCommercialOrderPurchaseInput,
+): Promise<LeadConfirmationResponse> {
+  return (
+    await axiosAuth.post<LeadConfirmationResponse>(
+      `${BASE}/from-order/${encodeURIComponent(orderId)}/confirm-purchase`,
       input,
     )
   ).data;

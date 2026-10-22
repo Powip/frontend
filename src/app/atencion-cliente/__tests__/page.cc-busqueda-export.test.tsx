@@ -126,6 +126,7 @@ jest.mock('@/contexts/AuthContext', () => ({
   useAuth: () => ({
     auth: { user: { id: 'u1', email: 'a@b.com', role: 'ADMIN' } },
     selectedStoreId: 'store-1',
+    hasPermission: () => true,
   }),
 }));
 
@@ -415,6 +416,6 @@ describe('Gestión COD — buscador', () => {
 describe('Atención al cliente — pedidos legacy', () => {
   it('pide al servidor solo INCOMPLETE y PREVENTA', async () => {
     render(<AtencionClientePage />);
-    expect(useBusinessOrders).toHaveBeenCalledWith(undefined, undefined, { includeCcLeads: true, statuses: ['INCOMPLETE', 'PREVENTA'] });
+    expect(useBusinessOrders).toHaveBeenCalledWith(undefined, undefined, { includeCcLeads: true, statuses: ['INCOMPLETE', 'PREVENTA'], enabled: true });
   });
 });

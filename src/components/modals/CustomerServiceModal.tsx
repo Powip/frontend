@@ -1,5 +1,8 @@
 ﻿"use client";
 import axios from "@/lib/axiosAuth";
+import { isCommercialLeadOrder } from "@/utils/commercialOrders";
+import { leadMoney } from "@/components/commercial-leads/lead-ui";
+import { CcSaleConfirmationPanel } from "@/components/atencion-cliente/cc-v2/CcSaleConfirmationPanel";
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
 import { useReceiptPrintScope } from "@/hooks/useReceiptPrintScope";
 import { printCustomerShippingLabel } from "@/utils/printCustomerShippingLabel";
@@ -11,7 +14,7 @@ import { assignmentBlockReason, requiresAuthenticatedSaleMutation, saleMutationU
 import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { toast } from "sonner";
@@ -208,6 +211,7 @@ export default function CustomerServiceModal({
 }: Props) {
   const router = useRouter();
   const { auth, hasPermission } = useAuth();
+  const canManageCc = hasPermission("MANAGE_CUSTOMER_SERVICE");
   const routeSaleLifecycle = useSaleLifecycleRouting();
   const [loading, setLoading] = useState(false);
   const receiptKey = `${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}:${orderId}`;
@@ -336,6 +340,7 @@ export default function CustomerServiceModal({
     const isCurrent = () => sequence === receiptReadSequence.current && receiptKey === activeReceiptKey.current;
     try {
       setReceipt(null);
+      setOrderHeader(null);
       setLoadedReceiptKey("");
       setPrintConfirmation(null);
       setReceiptRevision((revision) => revision + 1);
@@ -345,6 +350,11 @@ export default function CustomerServiceModal({
       );
       if (!isCurrent()) return;
       if (orderRes.data?.id !== orderId) throw new Error("El pedido no corresponde a la consulta.");
+      setOrderHeader(orderRes.data);
+      if (isCommercialLeadOrder(orderRes.data)) {
+        setLoadedReceiptKey(receiptKey);
+        return;
+      }
       const res = await axios.get(
         saleReceiptUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", orderId, orderRes.data),
       );
@@ -894,7 +904,7 @@ export default function CustomerServiceModal({
   const isScheduledDelivery =
     !!receipt?.externalSource && receipt?.callStatus === "SCHEDULED";
 
-  if (!receipt && !loading) return null;
+  if (!receipt && !loading && (loadedReceiptKey !== receiptKey || !isCommercialLeadOrder(orderHeader ?? {}))) return null;
 
   // Si no hay nada que mostrar en la columna de gestión (llamada/upsell/aliclik/script),
   // el historial de comentarios pasa a ocupar el ancho completo en vez de dejar un hueco vacío.
@@ -950,6 +960,141 @@ export default function CustomerServiceModal({
     </div>
   );
 
+  if (open && loadedReceiptKey === receiptKey && orderHeader && isCommercialLeadOrder(orderHeader))
+    return (
+      <>
+      <Dialog open onOpenChange={(value) => !value && onClose()}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              Pedido {orderHeader.orderNumber} · compra pendiente
+            </DialogTitle>
+            <DialogDescription>
+              Revisa el pedido y confirma la compra desde Gestión CC.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <p className="font-medium">{orderHeader.customer?.fullName}</p>
+            <p>{orderHeader.customer?.phoneNumber}</p>
+            <p>
+              {[orderHeader.customer?.address, orderHeader.customer?.district]
+                .filter(Boolean)
+                .join(" · ")}
+            </p>
+            <ul className="space-y-1">
+              {(orderHeader.items ?? []).map((item) => (
+                <li key={item.id} className="flex justify-between gap-3">
+                  <span>
+                    {item.quantity} × {item.productName}
+                  </span>
+                  <span>{leadMoney(item.subtotal, orderHeader.currency)}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="font-semibold">
+              Total: {leadMoney(orderHeader.grandTotal, orderHeader.currency)}
+            </p>
+            <p>Adelantos y pagos registrados: {orderHeader.payments?.length ?? 0}</p>
+            <Button
+              variant="outline"
+              onClick={() => setPaymentModalOpen(true)}
+            >
+              <DollarSign className="mr-1 h-4 w-4" />
+              Gestionar adelantos y comprobantes
+            </Button>
+          </div>
+          {!hideCallManagement && canManageCc ? (
+            <DatosIncompletosBlock
+              key={`datos-${orderId}`}
+              orderId={orderId}
+              dniCliente={orderHeader.dniCliente}
+              customer={orderHeader.customer}
+              onDatosCompletos={() => {
+                onOrderUpdated?.();
+                void fetchReceipt();
+              }}
+            />
+          ) : null}
+          {orderHeader.subEstadoCc || orderHeader.canalOrigen === "shopify_cod" ? (
+            <CcGestionPanel
+              key={`gestion-${orderId}`}
+              orderId={orderId}
+              commercialStage={orderHeader.commercialStage}
+              commercialLeadId={orderHeader.commercialLeadId}
+              canalOrigen={orderHeader.canalOrigen}
+              commercialStockState={orderHeader.commercialStockState}
+              orderUpdatedAt={orderHeader.updated_at}
+              subEstadoCc={orderHeader.subEstadoCc ?? "por_confirmar"}
+              callAttempts={orderHeader.callAttempts ?? 0}
+              datosCompletos={orderHeader.datosCompletos ?? true}
+              beforeCancellation={() => routeSaleLifecycle(orderHeader, "ANULADO", setLifecycleAction)}
+              onUpdated={() => {
+                void fetchReceipt();
+                void fetchLogs();
+                onOrderUpdated?.();
+              }}
+            />
+          ) : <CcSaleConfirmationPanel
+            key={`confirmar-${orderId}`}
+            orderId={orderId}
+            commercialLeadId={orderHeader.commercialLeadId}
+            orderUpdatedAt={orderHeader.updated_at}
+            datosCompletos={orderHeader.datosCompletos ?? true}
+            onUpdated={() => {
+              void fetchReceipt();
+              void fetchLogs();
+              onOrderUpdated?.();
+            }}
+          />}
+          {!hideCallManagement && orderHeader.subEstadoCc ? (
+            <CcScriptPanel
+              subEstadoCc={orderHeader.subEstadoCc}
+              clienteName={orderHeader.customer?.fullName ?? "Cliente"}
+              orderNumber={orderHeader.orderNumber}
+            />
+          ) : null}
+          <section className="space-y-3 rounded-lg border p-4 text-sm" aria-label="Historial de Gestión CC">
+            <h3 className="font-semibold">Historial de Gestión CC</h3>
+            {logsLoading ? <p>Cargando historial…</p> : displayLogs.length ? (
+              <ul className="space-y-2">
+                {displayLogs.map((log) => (
+                  <li key={log.id}>
+                    <p>{log.comentarios || log.operacion}</p>
+                    <p className="text-xs text-muted-foreground">{formatLogDate(log.timestamp)}</p>
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="text-muted-foreground">Sin gestiones registradas.</p>}
+            {canManageCc ? (
+              <div className="flex gap-2">
+                <Input
+                  aria-label="Comentario de Gestión CC"
+                  value={newComment}
+                  onChange={(event) => setNewComment(event.target.value)}
+                  placeholder="Escribe un comentario de la gestión"
+                />
+                <Button disabled={!newComment.trim() || isSendingComment} onClick={() => void handleSendComment()}>
+                  Guardar comentario
+                </Button>
+              </div>
+            ) : null}
+          </section>
+        </DialogContent>
+      </Dialog>
+      <PaymentVerificationModal
+        open={paymentModalOpen}
+        onClose={() => {
+          setPaymentModalOpen(false);
+          void fetchReceipt();
+        }}
+        orderId={orderId}
+        orderNumber={orderHeader.orderNumber}
+        onPaymentUpdated={() => onOrderUpdated?.()}
+        canApprove={false}
+      />
+      {lifecycleAction && open && <SaleUnitLifecycleModal open orderId={orderId} action={lifecycleAction} onClose={() => setLifecycleAction(null)} onUpdated={() => { void fetchReceipt(); onOrderUpdated?.(); }} />}
+      </>
+    );
   return (
     <>
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -1594,6 +1739,8 @@ export default function CustomerServiceModal({
                       <CcGestionPanel
                         commercialStage={orderHeader?.commercialStage}
                         commercialLeadId={orderHeader?.commercialLeadId}
+                        canalOrigen={orderHeader?.canalOrigen}
+                        orderUpdatedAt={orderHeader?.updated_at}
                         commercialStockState={orderHeader?.commercialStockState}
                         orderId={orderId}
                         subEstadoCc={subEstadoCc}
