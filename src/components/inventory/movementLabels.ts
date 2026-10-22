@@ -29,6 +29,7 @@ const EXACT: Record<string, string> = {
   RECONCILE_DISCARD: "Unificación · stock descartado",
   RECONCILE_RESERVE_FLOOR: "Unificación · se completa hasta lo reservado",
   UNIT_REGULARIZATION: "Activación de IMEI/series",
+  RECONCILE_NEGATIVE_RESET: "Corrección de negativo al unificar",
 };
 
 // El orden importa: los prefijos largos antes que los cortos.

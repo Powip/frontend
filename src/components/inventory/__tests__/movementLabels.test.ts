@@ -33,6 +33,7 @@ describe("describeMovement (FEAT-24 H0)", () => {
     ["OUT", "RECONCILE_DISCARD", "Unificación · stock descartado", -3, null],
     ["IN", "RECONCILE_RESERVE_FLOOR", "Unificación · se completa hasta lo reservado", 3, null],
     ["ADJUSTMENT", "UNIT_REGULARIZATION", "Activación de IMEI/series", null, null],
+    ["IN", "RECONCILE_NEGATIVE_RESET", "Corrección de negativo al unificar", 3, null],
     ["RESERVED", "order.created:2:UNASSIGNED", "Reserva por pedido · sin unidad asignada", null, 3],
     ["RELEASED", "order.updated:3:UNASSIGNED", "Pedido modificado · sin unidad asignada", null, -3],
     ["IN", "algo raro", "Otro movimiento", 3, null],
