@@ -5,6 +5,7 @@ import axios from "axios";
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
 import { useBusinessInventories } from "@/hooks/useBusinessInventories";
+import { MAX_ITEM_UNITS, MAX_ITEM_UNITS_MESSAGE, largeQuantityConfirmText, needsQuantityConfirmation } from "@/lib/stockLimits";
 import ExcelJS from "exceljs";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -218,6 +219,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
 
   /* ─── Step 3 state ─── */
   const [isSaving, setIsSaving] = useState(false);
+  const [confirmLargeQuantity, setConfirmLargeQuantity] = useState(false);
 
   /* ─── Computed ─── */
   const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
@@ -534,6 +536,8 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
         if (raw.priceBase < 0) error = "Precio Compra inválido";
         if (raw.priceVta < 0) error = "Precio Venta inválido";
         if (raw.quantity < 0) error = "Cantidad inválida";
+        else if (!Number.isInteger(raw.quantity)) error = "La cantidad debe ser un número entero.";
+        else if (raw.quantity > MAX_ITEM_UNITS) error = MAX_ITEM_UNITS_MESSAGE;
         if (raw.min_stock < 0) error = "Stock mínimo inválido";
 
         return {
@@ -545,6 +549,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
       });
 
       setParsedRows(rows);
+      setConfirmLargeQuantity(false);
       if (rows.length === 0) {
         toast.warning("No se encontraron filas de productos válidas");
       } else {
@@ -563,7 +568,9 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
   /* ════════════════════════
      STEP 3: Save to backend
      ════════════════════════ */
-  const handleSave = async () => {
+  const largestQuantity = Math.max(0, ...validRows.map((r) => r.quantity));
+
+  const handleSave = async (confirmed = false) => {
     if (validRows.length === 0) {
       toast.error("No hay productos válidos para guardar");
       return;
@@ -578,6 +585,11 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
       toast.error("Sesión inválida — recarga la página");
       return;
     }
+    if (needsQuantityConfirmation(largestQuantity) && !confirmed) {
+      setConfirmLargeQuantity(true);
+      return;
+    }
+    setConfirmLargeQuantity(false);
 
     const payload = {
       tenantId,
@@ -1136,9 +1148,15 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                     Corregí los errores para continuar
                   </p>
                 )}
+                {confirmLargeQuantity && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <p>{largeQuantityConfirmText(largestQuantity)}</p>
+                    <Button size="sm" variant="outline" onClick={() => void handleSave(true)} disabled={isSaving}>Sí, confirmar</Button>
+                  </div>
+                )}
                 <Button
                   size="lg"
-                  onClick={handleSave}
+                  onClick={() => void handleSave()}
                   disabled={
                     invalidCount > 0 || isSaving || !selectedInventoryId
                   }

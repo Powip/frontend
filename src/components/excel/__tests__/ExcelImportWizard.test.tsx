@@ -625,6 +625,59 @@ describe('ExcelImportWizard', () => {
     });
   });
 
+  // FEAT-24 H0 (F1): mismo máximo que ms-logistics y confirmación sobre 1,000.
+  describe('cantidades fuera de rango y grandes', () => {
+    const HEADERS = ['Nombre *', 'Categoría *', 'Subcategoría *', 'Precio Compra *', 'Precio Venta *', 'Cantidad *'];
+
+    async function uploadRows(rows: (string | number)[][]) {
+      mockExcelJS.__setParseFixture({ headers: HEADERS, rows });
+      const user = userEvent.setup();
+      await user.upload(getFileInput(), buildExcelFile());
+      await screen.findByRole('heading', { name: /vista previa y edición/i });
+      return user;
+    }
+
+    it('marca con error la fila que pasa de 10,000 unidades', async () => {
+      renderWizard();
+      await goToStep2();
+      await uploadRows([['Polo Infinito', 'Vestimenta', 'Camperas', 10, 20, 10001]]);
+
+      expect(screen.getByTitle('La cantidad máxima por variante y almacén es 10,000 unidades.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /importar 0 productos/i })).toBeDisabled();
+    });
+
+    it('marca con error la fila con cantidad decimal', async () => {
+      renderWizard();
+      await goToStep2();
+      await uploadRows([['Polo Medio', 'Vestimenta', 'Camperas', 10, 20, 2.5]]);
+
+      expect(screen.getByTitle('La cantidad debe ser un número entero.')).toBeInTheDocument();
+    });
+
+    it('pide confirmar antes de importar una fila con más de 1,000 unidades', async () => {
+      mockAxiosGetImplementation({
+        categories: [{ id: 'cat-1', name: 'Vestimenta' }],
+        subcategoriesByCategory: { 'cat-1': [{ id: 'sub-1', name: 'Camperas' }] },
+      });
+      mockAxiosPost.mockResolvedValue({ data: { created: 1, errors: 0, message: 'ok' } });
+      renderWizard();
+      await goToStep2();
+
+      const ROW: (string | number)[] = ['Polo Grande', 'Vestimenta', 'Camperas', 10, 20, 1500];
+      const user = await uploadRows([ROW]);
+      // Segunda subida: la primera deja la subcategoría sin resolver (ver cabecera).
+      await user.click(screen.getByRole('button', { name: /cambiar archivo/i }));
+      await uploadRows([ROW]);
+
+      await user.click(await screen.findByRole('button', { name: /importar 1 productos/i }));
+      expect(await screen.findByText('Estás cargando 1,500 unidades. ¿Confirmas la cantidad?')).toBeInTheDocument();
+      expect(mockAxiosPost).not.toHaveBeenCalled();
+
+      await user.click(screen.getByRole('button', { name: /sí, confirmar/i }));
+      await waitFor(() => expect(mockAxiosPost).toHaveBeenCalledTimes(1));
+    });
+  });
+
   describe('archivo sin columna obligatoria', () => {
     it('muestra un toast de error nombrando la columna faltante y no avanza ni parsea filas', async () => {
       renderWizard();
