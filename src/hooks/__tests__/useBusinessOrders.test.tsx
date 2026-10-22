@@ -83,3 +83,41 @@ it("preserves backend commercial admission of Shopify paid and CC-confirmed pend
   expect(commercial.result.current.orders[1]).toMatchObject({ status: "PENDIENTE", subEstadoCc: "confirmado", unitStockState: "reserved", confirmedStockVersion: 1 });
   expect(axiosAuth.get).toHaveBeenCalledTimes(2);
 });
+
+it("sends the statuses filter as a comma-separated status param", async () => {
+  jest.mocked(axiosAuth.get).mockResolvedValue({ data: [] });
+  const { wrapper } = setup();
+  const { result } = renderHook(() => useBusinessOrders(undefined, undefined, { statuses: ["PENDIENTE", "PAGADO"] }), { wrapper });
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  for (const [, config] of jest.mocked(axiosAuth.get).mock.calls) {
+    expect(config?.params).toEqual({ fromDate: undefined, toDate: undefined, status: "PENDIENTE,PAGADO" });
+  }
+});
+
+it("does not send status when no statuses are given", async () => {
+  jest.mocked(axiosAuth.get).mockResolvedValue({ data: [] });
+  const { wrapper } = setup();
+  const { result } = renderHook(() => useBusinessOrders(), { wrapper });
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  for (const [, config] of jest.mocked(axiosAuth.get).mock.calls) {
+    expect(config?.params).not.toHaveProperty("status");
+  }
+});
+
+it("keeps commercial leads out of status-filtered sales while retaining the explicit lead reporting read", async () => {
+  mockStoreIds = ["web"];
+  const sale = { id: "confirmed-sale", commercialStage: "SALE", status: "PENDIENTE" };
+  const lead = { id: "unconfirmed-lead", commercialStage: "LEAD", status: "PENDIENTE" };
+  jest.mocked(axiosAuth.get).mockResolvedValue({ data: [sale, lead] });
+  const { wrapper } = setup();
+  const { result } = renderHook(() => ({
+    sales: useBusinessOrders(undefined, undefined, { statuses: ["PENDIENTE"] }),
+    report: useBusinessOrders(undefined, undefined, { statuses: ["PENDIENTE"], includeCommercialLeads: true }),
+  }), { wrapper });
+  await waitFor(() => expect(result.current.sales.orders.map((order) => order.id)).toEqual(["confirmed-sale"]));
+  await waitFor(() => expect(result.current.report.orders.map((order) => order.id)).toEqual(["confirmed-sale", "unconfirmed-lead"]));
+  expect(axiosAuth.get).toHaveBeenCalledTimes(2);
+  for (const [, config] of jest.mocked(axiosAuth.get).mock.calls) {
+    expect(config?.params.status).toBe("PENDIENTE");
+  }
+});

@@ -5,16 +5,16 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessScope } from "@/contexts/BusinessScopeContext";
 import { getDashboardOrders } from "@/services/dashboardService";
-import type { OrderHeader } from "@/interfaces/IOrder";
+import type { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 
 const EMPTY_ORDERS: OrderHeader[] = [];
 
-export function useBusinessOrders(fromDate?: string, toDate?: string, options?: { includeCcLeads?: boolean; includeCommercialLeads?: boolean; enabled?: boolean }) {
+export function useBusinessOrders(fromDate?: string, toDate?: string, options?: { includeCcLeads?: boolean; includeCommercialLeads?: boolean; enabled?: boolean; statuses?: OrderStatus[] }) {
   const { auth } = useAuth();
   const queryClient = useQueryClient();
   const companyId = auth?.company?.id;
   useEffect(() => {
-    const changed = (event: Event) => { if (companyId && (event as CustomEvent<{companyId?: string}>).detail?.companyId === companyId) void queryClient.invalidateQueries({queryKey: ["business-orders", companyId]}); };
+    const changed = (event: Event) => { if (companyId && (event as CustomEvent<{companyId?: string}>).detail?.companyId === companyId) void queryClient.invalidateQueries({queryKey: ["business-orders", companyId]}, { cancelRefetch: false }); };
     window.addEventListener("commercial-leads:changed", changed);
     return () => window.removeEventListener("commercial-leads:changed", changed);
   }, [companyId, queryClient]);
@@ -22,10 +22,11 @@ export function useBusinessOrders(fromDate?: string, toDate?: string, options?: 
   const enabled = canFetch && options?.enabled !== false;
   const includeCcLeads = options?.includeCcLeads ?? false;
   const includeCommercialLeads = options?.includeCommercialLeads ?? false;
+  const statuses = options?.statuses;
   const query = useQuery({
-    queryKey: ["business-orders", auth?.company?.id, auth?.user?.id, storeIds, fromDate, toDate, includeCcLeads, includeCommercialLeads],
+    queryKey: ["business-orders", auth?.company?.id, auth?.user?.id, storeIds, fromDate, toDate, includeCcLeads, includeCommercialLeads, statuses],
     enabled,
-    queryFn: ({ signal }) => getDashboardOrders<OrderHeader>(storeIds, fromDate, toDate, auth!.accessToken, { signal, includeCcLeads, includeCommercialLeads }),
+    queryFn: ({ signal }) => getDashboardOrders<OrderHeader>(storeIds, fromDate, toDate, auth!.accessToken, { signal, includeCcLeads, includeCommercialLeads, statuses }),
     retry: false,
     staleTime: 60_000,
   });

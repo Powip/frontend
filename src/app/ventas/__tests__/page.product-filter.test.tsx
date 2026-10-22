@@ -31,6 +31,11 @@ jest.mock("@/services/atencionClienteService", () => ({
   reassignSeller: jest.fn(),
 }));
 jest.mock("@/hooks/useBusinessOrders", () => ({ useBusinessOrders: jest.fn() }));
+jest.mock("@/hooks/useBusinessOrdersCount", () => ({
+  useBusinessOrdersCount: () => ({ count: 0, loading: false, error: false, retry: jest.fn(), refetch: jest.fn() }),
+}));
+// Hoy fijo en 09-26: los pedidos del 09-01 al 09-25 entran en la ventana de 30 días.
+jest.mock("@/lib/peruDate", () => ({ ...jest.requireActual("@/lib/peruDate"), todayInPeru: () => "2026-09-26" }));
 jest.mock("@/utils/exportSalesExcel", () => ({
   ...jest.requireActual("@/utils/exportSalesExcel"),
   exportSalesToExcel: jest.fn(),
@@ -216,7 +221,7 @@ describe('Ventas — lectura de todas las tiendas y origen', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('No se pudieron cargar');
     expect(screen.queryByRole('tab', { name: /Todas las Ventas/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
-    expect(retry).toHaveBeenCalledTimes(1);
+    expect(retry).toHaveBeenCalled();
   });
 
   it('importar requiere una tienda destino válida y la muestra explícitamente', () => {
