@@ -274,7 +274,7 @@ export function Sidebar({ className }: SidebarProps) {
         name: "Configuración",
         icon: Settings,
         children: [
-          { name: "Usuarios", href: "/usuarios", icon: UserCog },
+          { name: "Usuarios y roles", href: "/usuarios", icon: UserCog },
           { name: "Configuración", href: "/configuracion", icon: Settings },
         ],
       },
