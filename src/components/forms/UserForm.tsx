@@ -11,16 +11,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { User, Role } from "@/interfaces/IUser";
+import { User } from "@/interfaces/IUser";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   createCompanyUser,
-  getRoles,
   CreateCompanyUserRequest,
   updateUser,
   UpdateUserRequest,
 } from "@/services/userService";
+
+import { useCompanyRoles } from "@/features/users/useCompanyRoles";
 
 import ubigeos from "@/utils/json/ubigeos.json";
 
@@ -32,13 +33,10 @@ interface UserFormProps {
 export default function UserForm({ user, onUserSaved }: UserFormProps) {
   const { auth } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [roles, setRoles] = useState<Role[]>([
-    { id: "1", name: "AGENTES", description: "Personal de agentes" },
-    { id: "2", name: "VENTAS", description: "Personal de ventas" },
-    { id: "3", name: "OPERACIONES", description: "Personal de operaciones" },
-    { id: "4", name: "COURIER", description: "Personal de entregas/courier" },
-    { id: "5", name: "CALLER", description: "Integraciones externas" },
-  ]);
+  const roleState = useCompanyRoles();
+  const roles = roleState.roles;
+  const isSelf = !!user && user.id === auth?.user.id;
+  const rolesReady = !roleState.loading && !roleState.error && roleState.access?.canRead === true;
 
   const [formData, setFormData] = useState({
     name: "",
@@ -60,30 +58,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
   const filteredProvinces =
     departments.find((d) => d.name === formData.department)?.provinces || [];
   const filteredDistricts =
-    filteredProvinces.find((p) => p.name === formData.province)?.districts ||
-    [];
-
-  // Load roles from API
-  useEffect(() => {
-    const loadRoles = async () => {
-      if (!auth?.accessToken) return;
-      try {
-        const rolesData = await getRoles(auth.accessToken);
-        // Filtrar solo roles permitidos para usuarios de compañía (no ADMINISTRADOR ni USUARIO)
-        const allowedRoles = rolesData.filter((r) =>
-          ["AGENTES", "VENTAS", "OPERACIONES", "COURIER", "CALLER"].includes(
-            r.name.toUpperCase(),
-          ),
-        );
-        if (allowedRoles.length > 0) {
-          setRoles(allowedRoles);
-        }
-      } catch (error) {
-        // Usar roles por defecto si falla la API
-      }
-    };
-    loadRoles();
-  }, [auth?.accessToken]);
+    filteredProvinces.find((p) => p.name === formData.province)?.districts || [];
 
   useEffect(() => {
     if (user) {
@@ -123,11 +98,25 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!auth?.company?.id) {
+    if (!auth?.company?.id || !auth.accessToken) {
       toast.error("No se encontró la compañía asociada");
       return;
     }
 
+    if (!rolesReady) {
+      toast.error(roleState.error || "Espera a que se carguen los perfiles del negocio.");
+      return;
+    }
+    if (isSelf && formData.roleName !== user?.role?.name) {
+      toast.error("No puedes cambiar tu propio rol.");
+      return;
+    }
+    const selectedRole = roles.find((role) => role.assignmentName === formData.roleName);
+    const unchangedRole = !!user && formData.roleName === user.role?.name;
+    if ((!selectedRole || !selectedRole.assignable) && !unchangedRole) {
+      toast.error("Selecciona un perfil disponible de este negocio.");
+      return;
+    }
     if (!formData.roleName) {
       toast.error("Selecciona un rol para el usuario");
       return;
@@ -151,7 +140,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
           province: formData.province,
           district: formData.district,
           phoneNumber: formData.phoneNumber,
-          roleName: formData.roleName,
+          ...(!unchangedRole && { roleName: formData.roleName }),
           // Solo enviar password si se ingresó uno nuevo
           ...(formData.password && { password: formData.password }),
         };
@@ -186,9 +175,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
         const data = error.response.data;
         // Errores de validación de Spring (MethodArgumentNotValidException)
         if (data.errors && Array.isArray(data.errors)) {
-          message = data.errors
-            .map((e: any) => e.defaultMessage || e.message)
-            .join(". ");
+          message = data.errors.map((e: any) => e.defaultMessage || e.message).join(". ");
         } else if (data.message) {
           message = data.message;
         } else if (typeof data === "string") {
@@ -223,9 +210,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
             id="surname"
             placeholder="Ej. Pérez"
             value={formData.surname}
-            onChange={(e) =>
-              setFormData({ ...formData, surname: e.target.value })
-            }
+            onChange={(e) => setFormData({ ...formData, surname: e.target.value })}
             required
           />
         </div>
@@ -239,9 +224,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
             type="email"
             placeholder="juan.perez@ejemplo.com"
             value={formData.email}
-            onChange={(e) =>
-              setFormData({ ...formData, email: e.target.value })
-            }
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
             required
           />
         </div>
@@ -251,9 +234,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
             id="phoneNumber"
             placeholder="912345678"
             value={formData.phoneNumber}
-            onChange={(e) =>
-              setFormData({ ...formData, phoneNumber: e.target.value })
-            }
+            onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
           />
         </div>
       </div>
@@ -265,9 +246,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
             id="identityDocument"
             placeholder="DNI / RUC"
             value={formData.identityDocument}
-            onChange={(e) =>
-              setFormData({ ...formData, identityDocument: e.target.value })
-            }
+            onChange={(e) => setFormData({ ...formData, identityDocument: e.target.value })}
             required
           />
         </div>
@@ -275,9 +254,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
           <Label htmlFor="password">
             Contraseña{" "}
             {user && (
-              <span className="text-muted-foreground text-xs">
-                (dejar vacío para mantener)
-              </span>
+              <span className="text-muted-foreground text-xs">(dejar vacío para mantener)</span>
             )}
           </Label>
           <Input
@@ -285,15 +262,12 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
             type="password"
             placeholder={user ? "••••••••" : "Mínimo 6 caracteres"}
             value={formData.password}
-            onChange={(e) =>
-              setFormData({ ...formData, password: e.target.value })
-            }
+            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
             required={!user}
           />
           {!user && (
             <p className="text-[10px] text-muted-foreground mt-1">
-              La contraseña debe tener al menos 6 caracteres, una letra
-              minúscula y un número.
+              La contraseña debe tener al menos 6 caracteres, una letra minúscula y un número.
             </p>
           )}
         </div>
@@ -301,23 +275,39 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
 
       <div className="space-y-2">
         <Label htmlFor="role">Rol</Label>
-        <Select
+        <select
+          id="role"
           value={formData.roleName}
-          onValueChange={(value) =>
-            setFormData({ ...formData, roleName: value })
-          }
+          disabled={!rolesReady || isSelf || loading}
+          onChange={(event) => setFormData({ ...formData, roleName: event.target.value })}
+          className="h-10 w-full rounded-md border bg-background px-3 text-sm"
         >
-          <SelectTrigger>
-            <SelectValue placeholder="Seleccionar rol" />
-          </SelectTrigger>
-          <SelectContent>
-            {roles.map((role) => (
-              <SelectItem key={role.id} value={role.name}>
+          <option value="">{roleState.loading ? "Cargando perfiles…" : "Seleccionar rol"}</option>
+          {user?.role &&
+          !roles.some((role) => role.assignmentName === user.role?.name && role.assignable) ? (
+            <option value={user.role.name} disabled>
+              {roles.find((role) => role.id === user.role?.id)?.name || user.role.name} (actual)
+            </option>
+          ) : null}
+          {roles
+            .filter((role) => role.assignable)
+            .map((role) => (
+              <option key={role.id} value={role.assignmentName}>
                 {role.name}
-              </SelectItem>
+              </option>
             ))}
-          </SelectContent>
-        </Select>
+        </select>
+        {isSelf ? (
+          <p className="text-xs text-muted-foreground">No puedes cambiar tu propio rol.</p>
+        ) : null}
+        {roleState.error || (!roleState.loading && !roleState.access?.canRead) ? (
+          <div role="alert" className="text-sm text-red-700">
+            <p>{roleState.error || "Tu cuenta no tiene permiso para consultar perfiles."}</p>
+            <Button type="button" variant="outline" onClick={() => void roleState.refresh()}>
+              Reintentar perfiles
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-3 gap-4">
@@ -375,9 +365,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
           <Label htmlFor="district">Distrito</Label>
           <Select
             value={formData.district}
-            onValueChange={(value) =>
-              setFormData({ ...formData, district: value })
-            }
+            onValueChange={(value) => setFormData({ ...formData, district: value })}
             disabled={!formData.province}
           >
             <SelectTrigger>
@@ -400,31 +388,20 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
           id="address"
           placeholder="Av. Las Magnolias 123, frente al parque"
           value={formData.address}
-          onChange={(e) =>
-            setFormData({ ...formData, address: e.target.value })
-          }
+          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
         />
       </div>
 
       <div className="flex justify-end gap-2 pt-4">
-        <Button
-          variant="outline"
-          type="button"
-          onClick={() => onUserSaved()}
-          disabled={loading}
-        >
+        <Button variant="outline" type="button" onClick={() => onUserSaved()} disabled={loading}>
           Cancelar
         </Button>
         <Button
           type="submit"
           className="bg-teal-600 hover:bg-teal-700"
-          disabled={loading}
+          disabled={loading || !rolesReady}
         >
-          {loading
-            ? "Guardando..."
-            : user
-              ? "Actualizar Usuario"
-              : "Crear Usuario"}
+          {loading ? "Guardando..." : user ? "Actualizar Usuario" : "Crear Usuario"}
         </Button>
       </div>
     </form>
