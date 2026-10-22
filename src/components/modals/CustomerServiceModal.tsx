@@ -1592,6 +1592,9 @@ export default function CustomerServiceModal({
                   {!hideCallManagement && (
                     subEstadoCc ? (
                       <CcGestionPanel
+                        commercialStage={orderHeader?.commercialStage}
+                        commercialLeadId={orderHeader?.commercialLeadId}
+                        commercialStockState={orderHeader?.commercialStockState}
                         orderId={orderId}
                         subEstadoCc={subEstadoCc}
                         callAttempts={receipt.callAttempts ?? 0}

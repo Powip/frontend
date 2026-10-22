@@ -1,4 +1,5 @@
 "use client";
+import { canShipCommercialOrder } from "@/utils/commercialOrders";
 
 import { OrderOriginLabel } from "@/app/operaciones/_shared/OrderOriginLabel";
 
@@ -81,7 +82,7 @@ export default function NuevaGuiaDialog({
   // handleCreateGuide/handleAddToExisting encadenan los pasos intermedios
   // hasta LLAMADO automáticamente para los que sí son elegibles.
   const eligible = useMemo(() => {
-    return orders.filter(
+    return orders.filter(canShipCommercialOrder).filter(
       (o) =>
         o.deliveryType === "DOMICILIO" &&
         !o.guideNumber &&

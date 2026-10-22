@@ -127,7 +127,11 @@ it("does not offer printing when the authenticated response belongs to another o
   jest.spyOn(console, "error").mockImplementation(() => {});
   jest
     .mocked(axios.get)
-    .mockResolvedValue({ data: { ...receipt, orderId: "foreign-order" } });
+    .mockImplementation(async (url: any) => ({
+      data: String(url).endsWith("/receipt")
+        ? { ...receipt, orderId: "foreign-order" }
+        : { id: "order-1", unitAssignmentStatus: "NONE" },
+    }));
   render(<OrderReceiptModal {...props} />);
   await waitFor(() => expect(axios.get).toHaveBeenCalledTimes(2));
   expect(screen.queryByText("NV-001")).not.toBeInTheDocument();

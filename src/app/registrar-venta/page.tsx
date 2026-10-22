@@ -84,6 +84,22 @@ import {
   type SavedOrderProof,
 } from "./paymentProofTarget";
 
+import {
+  confirmCommercialLead,
+  getCommercialLead,
+  getCommercialLeadCapabilities,
+  getCommercialLeadConfirmationCapabilities,
+  getCommercialLeadContext,
+  commercialLeadError,
+} from "@/services/commercialLeadsService";
+import { getLeadPayments } from "@/services/leadPaymentsService";
+import type { LeadPayment } from "@/types/leadPayments";
+import type { LeadDetail, ConfirmCommercialLeadInput } from "@/types/leads";
+import {
+  commercialLeadHref,
+  notifyCommercialChange,
+} from "@/utils/commercialOrders";
+
 type ClientSearchState = "idle" | "found" | "not_found" | "error";
 
 const TONE_CLASSES = {
@@ -189,6 +205,26 @@ function RegistrarVentaContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const orderId = searchParams.get("orderId");
+  const leadId = searchParams.get("leadId");
+  const [commercialLead, setCommercialLead] = useState<LeadDetail | null>(null);
+  const [leadLoading, setLeadLoading] = useState(false);
+  const [loadedLeadScope, setLoadedLeadScope] = useState("");
+  const [leadError, setLeadError] = useState("");
+  const [leadCurrency, setLeadCurrency] = useState("");
+  const [leadCollectionCondition, setLeadCollectionCondition] = useState<
+    "COD" | "PREPAID" | ""
+  >("");
+  const moneyPrefix = leadId ? leadCurrency || "Moneda" : "S/";
+  const [leadPaymentRows, setLeadPaymentRows] = useState<LeadPayment[]>([]);
+  const leadApproved = leadPaymentRows
+    .filter((p) => p.status === "PAID" && p.currency === leadCurrency)
+    .reduce((sum, p) => sum + Number(p.amount), 0);
+  const leadPending = leadPaymentRows
+    .filter((p) => p.status === "PENDING" && p.currency === leadCurrency)
+    .reduce((sum, p) => sum + Number(p.amount), 0);
+  const [leadAttemptFrozen, setLeadAttemptFrozen] = useState(false);
+  const leadRequestRef = useRef(0);
+  const leadAttemptRef = useRef<ConfirmCommercialLeadInput | null>(null);
   const isPromo = searchParams.get("isPromo") === "true";
   // A dónde volver tras actualizar (p. ej. Por Despachar al editar el tipo de
   // entrega para generar guía). Solo rutas internas: evita open redirects.
@@ -382,6 +418,8 @@ function RegistrarVentaContent() {
     inventories,
   });
   const selectedInventory = origin.catalogInventoryId;
+  const actorScope = `${userId ?? ""}:${companyId ?? ""}`;
+  const leadContextScope = saleContext.data ? stores.map((store) => store.id).sort().join(",") : null;
   const unknownVariantIds = Array.from(new Set(cart.filter((line) => line.trackingMode === "UNKNOWN").map((line) => line.variantId))).sort().join(",");
   useEffect(() => {
     const controller = new AbortController();
@@ -422,6 +460,98 @@ function RegistrarVentaContent() {
     editing: Boolean(orderId),
     fixedId: orderData?.salesChannelId,
   });
+
+  useEffect(() => {
+    const request = ++leadRequestRef.current;
+    setCommercialLead(null);
+    setLoadedLeadScope("");
+    setLeadError("");
+    setLeadCurrency("");
+    setLeadCollectionCondition("");
+    setLeadPaymentRows([]);
+    setLeadAttemptFrozen(false);
+    leadAttemptRef.current = null;
+    if (!leadId || !companyId || !hasSession || !saleContext.data) {
+      setLeadLoading(false);
+      return;
+    }
+    setLeadLoading(true);
+    if (orderId) {
+      setLeadError("Abre el Lead o su pedido por separado.");
+      setLeadLoading(false);
+      return;
+    }
+    (async () => {
+      try {
+        const [capabilities, confirmation] = await Promise.all([
+          getCommercialLeadCapabilities(),
+          getCommercialLeadConfirmationCapabilities(),
+        ]);
+        if (
+          !capabilities.enabled ||
+          !capabilities.canView ||
+          !confirmation.enabled ||
+          !confirmation.canConfirm
+        )
+          throw new Error(
+            "No tienes habilitada la confirmación de compras de Leads.",
+          );
+        const [lead, context] = await Promise.all([
+          getCommercialLead(leadId),
+          getCommercialLeadContext(leadId),
+        ]);
+        if (request !== leadRequestRef.current) return;
+        if (
+          lead.companyId !== companyId ||
+          (lead.storeId && !saleContext.data?.stores.some((store) => store.id === lead.storeId))
+        )
+          throw new Error(
+            "Selecciona la empresa y tienda del Lead antes de continuar.",
+          );
+        if (
+          lead.status === "CONVERTIDO" ||
+          lead.status === "PERDIDO" ||
+          lead.legacyOrderId ||
+          lead.convertedOrderId ||
+          context.order
+        )
+          throw new Error(
+            "Este Lead ya tiene un pedido o está cerrado. Revísalo desde la bandeja sin crear otro pedido.",
+          );
+        if (context.quotationId || context.liveCheckoutId)
+          throw new Error(
+            "Completa la cotización o el checkout de origen desde la bandeja para conservar su pago y reservas.",
+          );
+        const payments = await getLeadPayments(lead.id);
+        if (request !== leadRequestRef.current) return;
+        if (lead.storeId) origin.chooseStore(lead.storeId);
+        setCommercialLead(lead);
+        setLoadedLeadScope(actorScope);
+        setLeadCurrency(lead.currency ?? "");
+        setLeadPaymentRows(payments.data);
+        setClientFound(null);
+        setOriginalClient(null);
+        setSearchState("not_found");
+        setClientForm({
+          ...emptyClientForm,
+          fullName: lead.contactName ?? "",
+          phoneNumber: lead.contactPhone ?? "",
+        });
+        setCart([]);
+        setAdvancePayment(0);
+        setAdvancePaymentDisplay("");
+        setPaymentProofFile(null);
+      } catch (error) {
+        if (request === leadRequestRef.current)
+          setLeadError(commercialLeadError(error));
+      } finally {
+        if (request === leadRequestRef.current) setLeadLoading(false);
+      }
+    })();
+    return () => {
+      ++leadRequestRef.current;
+    };
+  }, [leadId, orderId, companyId, userId, hasSession, leadContextScope, actorScope]);
 
   /* ---------------- Couriers ---------------- */
   const { couriers, loading: isLoadingCouriers, error: couriersError, retry: retryCouriers } = useCompanyCouriers();
@@ -578,7 +708,7 @@ function RegistrarVentaContent() {
   }, [searchState, clientFound]);
 
   useEffect(() => {
-    if (searchState === "not_found") {
+    if (searchState === "not_found" && !leadId) {
       setClientForm({
         ...emptyClientForm,
         phoneNumber: clientForm.phoneNumber,
@@ -1023,13 +1153,15 @@ function RegistrarVentaContent() {
 
       if (pendingProofUpload) {
         if (!paymentProofFile) {
-          toast.warning("La venta ya está guardada. Selecciona el comprobante para reintentar la subida.");
+          toast.warning("El pedido ya está guardado. Selecciona el comprobante para reintentar la subida.");
           return;
         }
         try {
           if (!(await uploadSavedOrderProof(pendingProofUpload, paymentProofFile, isCurrentEditor))) return;
-          toast.success("Comprobante guardado correctamente. La venta ya estaba registrada.");
+          toast.success("Comprobante guardado correctamente. El pedido ya estaba registrado.");
           const savedOrderId = pendingProofUpload.orderId;
+          const savedLeadId = pendingProofUpload.commercialLeadId;
+          if (pendingProofUpload.commercialStage === "LEAD") { notifyCommercialChange(companyId, savedLeadId ?? undefined); resetForm(); router.push(savedLeadId ? commercialLeadHref(savedLeadId) : "/leads-comerciales"); return; }
           resetForm();
           if (orderId && returnTo) {
             const sep = returnTo.includes("?") ? "&" : "?";
@@ -1041,8 +1173,17 @@ function RegistrarVentaContent() {
         } catch (error) {
           if (!isCurrentEditor()) return;
           console.error("Error reintentando guardar el comprobante", error);
-          toast.error("La venta ya está guardada. No se pudo subir el comprobante; vuelve a reintentarlo.");
+          toast.error("El pedido ya está guardado. No se pudo subir el comprobante; vuelve a reintentarlo.");
         }
+        return;
+      }
+
+      if (leadId && (!commercialLead || commercialLead.id !== leadId || commercialLead.companyId !== companyId || loadedLeadScope !== actorScope || (commercialLead.storeId && commercialLead.storeId !== origin.storeId) || leadLoading || leadError || !/^[A-Z]{3}$/.test(leadCurrency) || !leadCollectionCondition)) {
+        toast.error("Revisa el Lead, su tienda, moneda y condición de cobro antes de confirmar.");
+        return;
+      }
+      if ((!!leadId && (advancePayment > 0 || paymentProofFile)) || (orderData?.commercialStage === "LEAD" && paymentProofFile)) {
+        toast.error("Gestiona los anticipos y comprobantes desde el Lead antes de confirmar.");
         return;
       }
 
@@ -1155,7 +1296,7 @@ function RegistrarVentaContent() {
         // --- Canales ---
         salesChannel: orderDetails.salesChannel,
         ...(orderDetails.salesChannelId ? { salesChannelId: orderDetails.salesChannelId } : {}),
-        currency: "PEN",
+        currency: leadId ? leadCurrency : "PEN",
         closingChannel: orderDetails.closingChannel,
         deliveryType: orderDetails.deliveryType,
         salesRegion: salesRegion,
@@ -1178,13 +1319,11 @@ function RegistrarVentaContent() {
         items: cart.map(buildOrderItem),
 
         // The selected condition exists even when no payment has been collected.
-        paymentCondition: ["CONTRA_ENTREGA", "CONTRAENTREGA"].includes(paymentMethod)
-          ? "COD"
-          : "PREPAID",
+        paymentCondition: leadId ? leadCollectionCondition : (["CONTRA_ENTREGA", "CONTRAENTREGA"].includes(paymentMethod) ? "COD" : "PREPAID"),
 
         // --- Pagos: solo se incluye si hay un adelanto real (> 0).
         //     Nunca se manda un pago fantasma { amount: 0 }. ---
-        ...(advancePayment > 0
+        ...(!leadId && advancePayment > 0
           ? {
               payments: [
                 {
@@ -1210,12 +1349,25 @@ function RegistrarVentaContent() {
       // Se ancla al mediodía local (no medianoche) para que la conversión a
       // UTC nunca corra la fecha elegida al día anterior/siguiente.
       const scheduledCallbackAt =
-        scheduleDelivery && scheduledDeliveryDate
+        !leadId && scheduleDelivery && scheduledDeliveryDate
           ? new Date(`${scheduledDeliveryDate}T12:00:00`).toISOString()
           : null;
 
       try {
         if (!isCurrentEditor()) return;
+        if (leadId && commercialLead) {
+          if (!leadAttemptRef.current) leadAttemptRef.current = {
+            commandId: crypto.randomUUID(), version: commercialLead.version,
+            order: JSON.parse(JSON.stringify(payload)),
+          };
+          setLeadAttemptFrozen(true);
+          const confirmation = await confirmCommercialLead(commercialLead.id, leadAttemptRef.current);
+          if (!isCurrentEditor()) return;
+          notifyCommercialChange(companyId, commercialLead.id);
+          toast.success(`Compra confirmada: ${confirmation.order.orderNumber}. Los anticipos conservan sus IDs.`);
+          router.push(commercialLeadHref(commercialLead.id));
+          return;
+        }
         if (!orderId) {
           let createPayload: Record<string, unknown> = payload;
           if (cart.some((item) => isTracked(item.trackingMode))) {
@@ -1231,12 +1383,14 @@ function RegistrarVentaContent() {
           if (!isCurrentEditor()) return;
 
           const createdOrderId = response.data.id;
+          const createdAsLead = response.data.commercialStage === "LEAD";
+          const recordedLabel = createdAsLead ? "Lead registrado" : "Venta registrada";
 
           let proofFailed = false;
           if (paymentProofFile && advancePayment > 0) {
             try {
               if (!(await uploadSavedOrderProof(
-                { orderId: createdOrderId, previousPaymentIds: [] },
+                { orderId: createdOrderId, previousPaymentIds: [], commercialStage: response.data.commercialStage, commercialLeadId: response.data.commercialLeadId },
                 paymentProofFile,
                 isCurrentEditor,
                 response.data.payments,
@@ -1246,7 +1400,7 @@ function RegistrarVentaContent() {
               console.error("Error guardando comprobante", error);
               proofFailed = true;
               toast.error(
-                "La venta se registró, pero el comprobante no se guardó. Conservamos el archivo para que puedas reintentar.",
+                "El pedido se registró, pero el comprobante no se guardó. Conservamos el archivo para que puedas reintentar.",
               );
             }
           }
@@ -1260,21 +1414,23 @@ function RegistrarVentaContent() {
               if (!isCurrentEditor()) return;
               if (!proofFailed) {
                 toast.success(
-                  `Venta registrada y reprogramada para el ${new Date(scheduledCallbackAt).toLocaleDateString("es-PE")}`,
+                  `${recordedLabel} y con seguimiento para el ${new Date(scheduledCallbackAt).toLocaleDateString("es-PE")}`,
                 );
               }
             } catch {
               if (!isCurrentEditor()) return;
-              toast.warning("Venta registrada, pero no se pudo programar la fecha de envío");
+              toast.warning(`${recordedLabel}, pero no se pudo programar la fecha`);
             }
           } else if (!proofFailed) {
             toast.success(
               advancePayment > 0
-                ? "Venta registrada. El adelanto quedó pendiente de aprobación en Finanzas."
-                : "Venta registrada",
+                ? `${recordedLabel}. El adelanto quedó pendiente de aprobación en Finanzas.`
+                : createdAsLead ? "Lead registrado. La compra queda pendiente de confirmación del vendedor." : recordedLabel,
             );
           }
           if (proofFailed) return;
+          notifyCommercialChange(companyId, response.data.commercialLeadId);
+          if (createdAsLead) { router.push(response.data.commercialLeadId ? commercialLeadHref(response.data.commercialLeadId) : "/leads-comerciales"); resetForm(); return; }
           setReceiptOrderId(createdOrderId);
           setReceiptOpen(true);
           resetForm();
@@ -1297,7 +1453,7 @@ function RegistrarVentaContent() {
           // Con 2+ pagos PENDING, §6.5 solo tocaría el más antiguo y dejaría los
           // demás intactos → total incorrecto y silencioso. En ese caso el campo
           // "Adelanto" está bloqueado y nunca se manda info de pago.
-          const paymentEditable = pendingPaymentsCount <= 1;
+          const paymentEditable = orderData.commercialStage !== "LEAD" && pendingPaymentsCount <= 1;
           const paymentChanged =
             paymentEditable &&
             (!prefilledPayment ||
@@ -1383,6 +1539,7 @@ function RegistrarVentaContent() {
           }
 
           const updatedId = orderData.id;
+          if (orderData.commercialStage === "LEAD") { notifyCommercialChange(companyId, orderData.commercialLeadId ?? undefined); toast.success("Datos del Lead actualizados. La compra sigue pendiente de confirmación."); router.push(orderData.commercialLeadId ? commercialLeadHref(orderData.commercialLeadId) : "/leads-comerciales"); return; }
           toast.success("Venta actualizada correctamente");
           resetForm();
           if (returnTo) {
@@ -1397,6 +1554,11 @@ function RegistrarVentaContent() {
         }
       } catch (error) {
         if (!isCurrentEditor()) return;
+        if (leadId) {
+          if ((error as {response?: {status?: number}})?.response?.status === 409) { setLeadError("El Lead cambió mientras confirmabas. Revisa su estado y anticipos desde la bandeja."); notifyCommercialChange(companyId, leadId); }
+          toast.error(commercialLeadError(error));
+          return;
+        }
         const pending = readSaleOperation(trackedSaleKey);
         if (pending && canCorrectTrackingRequest(error)) {
           const rejected = { ...pending, definitiveRejection: true };
@@ -1621,7 +1783,7 @@ function RegistrarVentaContent() {
 
   const grandTotal = subtotal + taxes + shippingTotal;
 
-  const pendingPayment = Math.max(grandTotal - montoYaAprobado - advancePayment, 0);
+  const pendingPayment = Math.max(grandTotal - (leadId ? leadApproved : montoYaAprobado) - advancePayment, 0);
 
   /* ---------------- Validaciones ---------------- */
 
@@ -1634,7 +1796,7 @@ function RegistrarVentaContent() {
       (Boolean(orderId) || orderDetails.enviaPor === "OTROS" ||
         couriers.some((courier) => courier.name === orderDetails.enviaPor)));
 
-  const hasValidPayments = !!paymentMethod;
+  const hasValidPayments = !!leadId || orderData?.commercialStage === "LEAD" || !!paymentMethod;
 
   // La misma validación habilita la venta y valida clientes nuevos o encontrados.
   const hasValidDocumentForRegion = Object.keys(clientDocumentErrors).length === 0;
@@ -1651,6 +1813,7 @@ function RegistrarVentaContent() {
   const hasValidClient = (!!clientFound || hasValidClientForNew) && hasValidClientDistrict;
 
   const canSubmit =
+    (!leadId || (!!commercialLead && commercialLead.id === leadId && loadedLeadScope === actorScope && !leadLoading && !leadError && (!commercialLead.storeId || commercialLead.storeId === origin.storeId) && /^[A-Z]{3}$/.test(leadCurrency) && !!leadCollectionCondition)) &&
     !!saleContext.data &&
     !saleContext.isError &&
     origin.hasStore &&
@@ -1719,7 +1882,7 @@ function RegistrarVentaContent() {
                 Volver
               </Button>
             </Link>
-            <HeaderConfig title="Registrar venta" description="Carga completa de una venta" />
+            <HeaderConfig title={leadId ? "Confirmar compra del Lead" : orderData?.commercialStage === "LEAD" ? "Editar pedido del Lead" : "Registrar pedido"} description={leadId ? "Confirma la compra acordada con el cliente" : "La venta requiere confirmación de compra del vendedor"} />
           </div>
 
           {returnTo && (
@@ -1752,16 +1915,119 @@ function RegistrarVentaContent() {
             </div>
           )}
 
+          {leadId && (
+            <div
+              role={leadError ? "alert" : "status"}
+              className="rounded-xl border p-4 text-sm space-y-2"
+            >
+              {leadLoading ? (
+                <p>Cargando Lead y anticipos…</p>
+              ) : leadError ? (
+                <p className="text-destructive">{leadError}</p>
+              ) : (
+                <>
+                  <p>
+                    <strong>{commercialLead?.contactName ?? "Lead"}</strong> ·{" "}
+                    {commercialLead?.type?.name ?? commercialLead?.typeCode}
+                  </p>
+                  {commercialLead?.contactEmail ? (
+                    <p>{commercialLead.contactEmail}</p>
+                  ) : null}
+                  {Object.keys(commercialLead?.customFields ?? {}).length >
+                  0 ? (
+                    <dl className="grid gap-1 sm:grid-cols-2">
+                      {Object.entries(commercialLead?.customFields ?? {}).map(
+                        ([key, value]) => (
+                          <div key={key}>
+                            <dt className="font-medium">
+                              {commercialLead?.type?.fields.find(
+                                (field) => field.key === key,
+                              )?.label ?? key}
+                            </dt>
+                            <dd className="break-words">
+                              {typeof value === "object"
+                                ? JSON.stringify(value)
+                                : String(value ?? "—")}
+                            </dd>
+                          </div>
+                        ),
+                      )}
+                    </dl>
+                  ) : null}
+                  <p>
+                    Anticipos aprobados: {leadCurrency || "Moneda pendiente"}{" "}
+                    {leadApproved.toFixed(2)} · Pendientes:{" "}
+                    {leadPending.toFixed(2)}. Se vincularán sin volver a
+                    cobrarlos.
+                  </p>
+                  <Label htmlFor="lead-collection-condition">
+                    Condición de cobro *
+                  </Label>
+                  <select
+                    id="lead-collection-condition"
+                    value={leadCollectionCondition}
+                    disabled={leadAttemptFrozen}
+                    onChange={(event) =>
+                      setLeadCollectionCondition(
+                        event.target.value as "COD" | "PREPAID",
+                      )
+                    }
+                    className="h-10 rounded border bg-background px-3"
+                  >
+                    <option value="">Selecciona cómo se cobrará</option>
+                    <option value="COD">Contra entrega</option>
+                    <option value="PREPAID">Pago previo</option>
+                  </select>
+                  <Label htmlFor="lead-order-currency">
+                    Moneda del pedido *
+                  </Label>
+                  <Input
+                    id="lead-order-currency"
+                    value={leadCurrency}
+                    maxLength={3}
+                    disabled={!!commercialLead?.currency || leadAttemptFrozen}
+                    onChange={(event) =>
+                      setLeadCurrency(event.target.value.toUpperCase())
+                    }
+                    placeholder="PEN, USD…"
+                    className="max-w-40"
+                  />
+                </>
+              )}
+              <Link className="underline" href={commercialLeadHref(leadId)}>
+                Volver al Lead y gestionar anticipos
+              </Link>
+              {leadAttemptFrozen && (
+                <p>
+                  El reintento conserva el mismo pedido y comando. Revisa el
+                  Lead antes de iniciar una confirmación distinta.
+                </p>
+              )}
+            </div>
+          )}
+          {orderData?.commercialStage === "LEAD" &&
+            orderData.commercialLeadId && (
+              <p role="status" className="rounded-xl border p-4 text-sm">
+                Este documento pertenece a un Lead. Guardar sus datos no
+                confirma la compra.{" "}
+                <Link
+                  className="underline"
+                  href={commercialLeadHref(orderData.commercialLeadId)}
+                >
+                  Volver al Lead para confirmar
+                </Link>
+              </p>
+            )}
           {pendingProofUpload && (
             <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
-              La venta ya está guardada. Falta guardar el comprobante de pago.
+              El pedido ya está guardado. Falta guardar el comprobante de pago.
               El archivo sigue seleccionado: pulsa «Reintentar comprobante» para
               terminar sin volver a registrar la venta.
             </div>
           )}
 
           <div className="grid gap-6 items-start lg:grid-cols-[1fr_400px]">
-            <div className="space-y-6 min-w-0" inert={!!pendingProofUpload}>
+            <div className="space-y-6 min-w-0" inert={!!pendingProofUpload || (!!leadId && (leadLoading || !!leadError || leadAttemptFrozen))}>
               {/* Cliente */}
               <Card>
                 <CardHeader>
@@ -2448,6 +2714,8 @@ function RegistrarVentaContent() {
                 </CardHeader>
 
                 <CardContent className="space-y-4">
+                  {(leadId || orderData?.commercialStage === "LEAD") && <p className="rounded border p-3 text-sm">Los anticipos se gestionan desde el Lead. Guardar o confirmar no crea ni aprueba pagos nuevos.</p>}
+                  <div inert={!!leadId || orderData?.commercialStage === "LEAD"}>
                   {/* Método de pago */}
                   <div className="space-y-1">
                     <Label>
@@ -2478,6 +2746,7 @@ function RegistrarVentaContent() {
                     </Select>
                   </div>
 
+                  </div>
                   {/* Costo de envío - solo si es envío a domicilio */}
                   {orderDetails.deliveryType === DeliveryType.DOMICILIO && (
                     <div className="space-y-1">
@@ -2508,6 +2777,7 @@ function RegistrarVentaContent() {
                     </div>
                   )}
 
+                  <div inert={!!leadId || orderData?.commercialStage === "LEAD"}>
                   {/* Adelanto de pago */}
                   <div className="space-y-1">
                     <Label>Adelanto de Pago</Label>
@@ -2553,7 +2823,7 @@ function RegistrarVentaContent() {
                           rel="noopener noreferrer"
                           className="block text-sm text-violet-600 underline dark:text-violet-300"
                         >
-                          Ver comprobante guardado · {payment.paymentMethod} · S/ {Number(payment.amount).toFixed(2)}
+                          Ver comprobante guardado · {payment.paymentMethod} · {moneyPrefix} {Number(payment.amount).toFixed(2)}
                           {payment.status === "PAID" ? " (aprobado)" : payment.status === "LOST" ? " (rechazado)" : " (pendiente)"}
                         </a>
                       ))}
@@ -2571,11 +2841,11 @@ function RegistrarVentaContent() {
                           <SelectContent>
                             {activeProofPayments.map((payment) => (
                               <SelectItem key={payment.id} value={payment.id}>
-                                {payment.paymentMethod} · S/ {Number(payment.amount).toFixed(2)} · {payment.status === "PAID" ? "Aprobado" : "Pendiente"}
+                                {payment.paymentMethod} · {moneyPrefix} {Number(payment.amount).toFixed(2)} · {payment.status === "PAID" ? "Aprobado" : "Pendiente"}
                               </SelectItem>
                             ))}
                             {pendingProofPayments.length === 0 && advancePayment > 0 && (
-                              <SelectItem value="new">Nuevo adelanto · S/ {advancePayment.toFixed(2)}</SelectItem>
+                              <SelectItem value="new">Nuevo adelanto · {moneyPrefix} {advancePayment.toFixed(2)}</SelectItem>
                             )}
                           </SelectContent>
                         </Select>
@@ -2666,6 +2936,7 @@ function RegistrarVentaContent() {
                     </div>
                   </div>
 
+                  </div>
                   {/* Modo de impuestos */}
                   <div className="space-y-1">
                     <Label>Modo de impuestos</Label>
@@ -2893,7 +3164,7 @@ function RegistrarVentaContent() {
                   </div>
 
                   {/* Programar envío para otra fecha */}
-                  <div className="space-y-2 rounded-lg border border-dashed p-3">
+                  {!leadId && (<div className="space-y-2 rounded-lg border border-dashed p-3">
                     <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
                       <Checkbox
                         checked={scheduleDelivery}
@@ -2925,6 +3196,7 @@ function RegistrarVentaContent() {
                     )}
                   </div>
 
+                  )}
                   <Disclosure label="Comentarios e ID de publicidad (opcional)">
                     <div className="space-y-1">
                       <Label>Comentarios</Label>
@@ -2956,45 +3228,45 @@ function RegistrarVentaContent() {
                 <CardContent className="pt-6 text-sm space-y-1">
                   <div className="flex justify-between py-0.5 text-muted-foreground">
                     <span>Importe productos</span>
-                    <span className="text-foreground">S/ {subtotalBruto.toFixed(2)}</span>
+                    <span className="text-foreground">{moneyPrefix} {subtotalBruto.toFixed(2)}</span>
                   </div>
                   {totalItemDiscounts > 0 && (
                     <div className="flex justify-between py-0.5 text-emerald-600 dark:text-emerald-400">
                       <span>Total descuentos</span>
-                      <span>- S/ {totalItemDiscounts.toFixed(2)}</span>
+                      <span>- {moneyPrefix} {totalItemDiscounts.toFixed(2)}</span>
                     </div>
                   )}
                   <div className="flex justify-between py-0.5 text-muted-foreground">
                     <span>Sub total</span>
-                    <span className="text-foreground">S/ {subtotal.toFixed(2)}</span>
+                    <span className="text-foreground">{moneyPrefix} {subtotal.toFixed(2)}</span>
                   </div>
                   {taxMode === "AUTOMATICO" && (
                     <div className="flex justify-between py-0.5 text-muted-foreground">
                       <span>IGV 18%</span>
-                      <span className="text-foreground">S/ {taxes.toFixed(2)}</span>
+                      <span className="text-foreground">{moneyPrefix} {taxes.toFixed(2)}</span>
                     </div>
                   )}
                   <div className="flex justify-between py-0.5 text-muted-foreground">
                     <span>Costo de envío</span>
-                    <span className="text-foreground">S/ {shippingTotal.toFixed(2)}</span>
+                    <span className="text-foreground">{moneyPrefix} {shippingTotal.toFixed(2)}</span>
                   </div>
                   {montoYaAprobado > 0 && (
                     <div className="flex justify-between py-0.5 text-emerald-600 dark:text-emerald-400">
                       <span>Ya pagado</span>
-                      <span>S/ {montoYaAprobado.toFixed(2)}</span>
+                      <span>{moneyPrefix} {montoYaAprobado.toFixed(2)}</span>
                     </div>
                   )}
                   {advancePayment > 0 && (
                     <div className="flex justify-between py-0.5 text-muted-foreground">
                       <span>Adelanto de pago</span>
-                      <span className="text-foreground">S/ {advancePayment.toFixed(2)}</span>
+                      <span className="text-foreground">{moneyPrefix} {advancePayment.toFixed(2)}</span>
                     </div>
                   )}
 
                   <div className="flex items-baseline justify-between border-t pt-3.5 mt-1.5">
                     <span className="text-sm font-bold">Total</span>
                     <span className="text-2xl font-extrabold tracking-tight">
-                      S/ {grandTotal.toFixed(2)}
+                      {moneyPrefix} {grandTotal.toFixed(2)}
                     </span>
                   </div>
 
@@ -3003,7 +3275,7 @@ function RegistrarVentaContent() {
                       Pendiente de pago
                     </span>
                     <span className="text-[15px] font-extrabold text-amber-600 dark:text-amber-400">
-                      S/ {pendingPayment.toFixed(2)}
+                      {moneyPrefix} {pendingPayment.toFixed(2)}
                     </span>
                   </div>
 
@@ -3062,7 +3334,7 @@ function RegistrarVentaContent() {
                     ) : orderId ? (
                       "Actualizar venta"
                     ) : (
-                      "Confirmar venta"
+                      leadId ? "Confirmar compra" : "Registrar pedido"
                     )}
                   </Button>
                 </CardContent>

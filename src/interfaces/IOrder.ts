@@ -159,6 +159,18 @@ export interface OrderPayment {
 ----------------------------------------- */
 export interface OrderHeader extends UnitAssignmentState {
   id: string;
+  currency?: string | null;
+  commercialStage?: "LEAD" | "SALE" | null;
+  commercialLeadId?: string | null;
+  commercialLead?: {
+    receivedAt?: string;
+    updatedAt?: string;
+    status: "NUEVO" | "CONTACTADO" | "SEGUIMIENTO" | "PERDIDO" | "CONVERTIDO";
+    confirmedAt: string | null;
+    confirmedBy: string | null;
+    confirmationBasis: "SELLER" | "WEB_PREPAID" | "LEGACY_VERIFIED" | null;
+  } | null;
+  commercialStockState?: "DEFERRED" | "QUEUED" | "PRESERVED" | "NOT_REQUIRED" | null;
   receiptType: ReceiptType;
   orderType: OrderType;
   orderNumber: string;
@@ -278,7 +290,10 @@ export interface CanalConfig {
   empresaId: string | null;
   canalNombre: string;
   canalLabel: string;
-  flujoEntrada: "directo_operaciones" | "call_center_cod" | "call_center_carrito";
+  flujoEntrada:
+    | "directo_operaciones"
+    | "call_center_cod"
+    | "call_center_carrito";
   requiereConfirmacionCc: boolean;
   activo: boolean;
   datosRequeridos: string[];

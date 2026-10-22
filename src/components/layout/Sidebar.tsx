@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { getCommercialLeadCapabilities } from "@/services/commercialLeadsService";
 import { adsGet, type AdsSettings } from "@/services/advertisingV22Service";
 import { useTheme } from "next-themes";
 import {
@@ -119,6 +120,15 @@ export function Sidebar({ className }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
   const { auth, logout, hasPermission } = useAuth();
+  const commercialAccess = useQuery({
+    queryKey: ["commercial-leads-capabilities", auth?.user.id, auth?.company?.id, auth?.user.role, auth?.user.permissions],
+    queryFn: getCommercialLeadCapabilities,
+    enabled: !!auth?.accessToken && !!auth?.company?.id,
+    retry: false, staleTime: 0, gcTime: 0,
+  });
+  const commercialCaps = commercialAccess.data;
+  const canViewCommercialLeads = Boolean(commercialCaps?.enabled && commercialCaps.canView);
+  const canManageCommercialLeadTypes = Boolean(commercialCaps?.enabled && commercialCaps.canManageTypes);
   const advertisingAccess = useQuery({
     queryKey: ["ads-v22", auth?.user.id, auth?.company?.id, "settings"],
     queryFn: ({ signal }) =>
@@ -145,6 +155,7 @@ export function Sidebar({ className }: SidebarProps) {
         children: [
           { name: "Principal", href: "/dashboard", icon: LayoutDashboard },
           { name: "Ventas", href: "/metricas/ventas", icon: ShoppingCart },
+          ...(canViewCommercialLeads ? [{name: "Leads", href: "/metricas/leads", icon: Users}] : []),
           { name: "Inventario", href: "/metricas/inventario", icon: Package },
           { name: "Operaciones", href: "/metricas/operaciones", icon: Truck },
           { name: "Seguimiento", href: "/metricas/seguimientos", icon: MapPin },
@@ -162,6 +173,7 @@ export function Sidebar({ className }: SidebarProps) {
         name: "Comercial",
         icon: ShoppingCart,
         children: [
+          ...((canViewCommercialLeads || canManageCommercialLeadTypes) ? [{name: "Leads", href: "/leads-comerciales", icon: Users}] : []),
           {
             name: "Ventas",
             href: "/ventas",
@@ -328,7 +340,7 @@ export function Sidebar({ className }: SidebarProps) {
         href: "/superadmin",
       },
     ],
-    [],
+    [canViewCommercialLeads, canManageCommercialLeadTypes],
   );
 
   // Auto-colapsar en móviles

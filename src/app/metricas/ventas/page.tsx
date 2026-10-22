@@ -1,4 +1,6 @@
 "use client";
+import { useDashboardScope } from "@/contexts/DashboardScopeContext";
+import { reportCurrencyLabel } from "@/components/dashboard/ReportCurrencySelector";
 
 import { useState, useMemo } from "react";
 import { useMetricOrders } from "@/hooks/useMetricOrders";
@@ -63,7 +65,15 @@ const CHANNEL_COLORS: Record<string, string> = {
 /* ─────────────────── Component ─────────────────── */
 
 export default function MetricasVentasPage() {
-  const { orders, loading: ordersLoading, error, retry } = useMetricOrders();
+  const {
+    orders: allOrders,
+    loading: ordersLoading,
+    error,
+    retry,
+  } = useMetricOrders();
+  const { currency = "PEN" } = useDashboardScope();
+  const orders = allOrders;
+  const currencyPrefix = reportCurrencyLabel(currency);
 
   // Date range
   const [fromDate, setFromDate] = useState<string>("");
@@ -119,23 +129,32 @@ export default function MetricasVentasPage() {
     // KPIs
     const ventasMes = periodOrders.reduce(
       (sum: number, o: any) => sum + Number(o.grandTotal || 0),
-      0
+      0,
     );
     const ventasMesAnterior = prevPeriodOrders.reduce(
       (sum: number, o: any) => sum + Number(o.grandTotal || 0),
-      0
+      0,
     );
     const totalOrdenes = periodOrders.length;
     const ticketPromedio = totalOrdenes > 0 ? ventasMes / totalOrdenes : 0;
     const prevOrdenes = prevPeriodOrders.length;
-    const ticketAnterior = prevOrdenes > 0 ? ventasMesAnterior / prevOrdenes : 0;
+    const ticketAnterior =
+      prevOrdenes > 0 ? ventasMesAnterior / prevOrdenes : 0;
 
-    const crecimientoMes = ventasMesAnterior === 0
-      ? (ventasMes > 0 ? 100 : 0)
-      : Math.round(((ventasMes - ventasMesAnterior) / ventasMesAnterior) * 100);
+    const crecimientoMes =
+      ventasMesAnterior === 0
+        ? ventasMes > 0
+          ? 100
+          : 0
+        : Math.round(
+            ((ventasMes - ventasMesAnterior) / ventasMesAnterior) * 100,
+          );
 
-    const anuladas = periodOrders.filter((o: any) => o.status === "ANULADO").length;
-    const tasaAnulacion = totalOrdenes > 0 ? Math.round((anuladas / totalOrdenes) * 100) : 0;
+    const anuladas = periodOrders.filter(
+      (o: any) => o.status === "ANULADO",
+    ).length;
+    const tasaAnulacion =
+      totalOrdenes > 0 ? Math.round((anuladas / totalOrdenes) * 100) : 0;
 
     const kpi: KpiData = {
       ventasMes,
@@ -167,11 +186,13 @@ export default function MetricasVentasPage() {
     });
 
     // Top products
-    const productStats: Record<string, { quantity: number; revenue: number }> = {};
+    const productStats: Record<string, { quantity: number; revenue: number }> =
+      {};
     periodOrders.forEach((o: any) => {
       (o.items || []).forEach((item: any) => {
         const name = item.productName || item.name || "Producto";
-        if (!productStats[name]) productStats[name] = { quantity: 0, revenue: 0 };
+        if (!productStats[name])
+          productStats[name] = { quantity: 0, revenue: 0 };
         productStats[name].quantity += Number(item.quantity || 1);
         productStats[name].revenue += Number(item.subtotal || item.price || 0);
       });
@@ -205,15 +226,17 @@ export default function MetricasVentasPage() {
     return keys;
   }, [weeklyData]);
 
-
   return (
     <div className="flex flex-col gap-6 p-6 bg-background min-h-screen">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black text-foreground tracking-tight">Ventas</h1>
+          <h1 className="text-2xl font-black text-foreground tracking-tight">
+            Ventas
+          </h1>
           <p className="text-xs text-muted-foreground font-semibold tracking-[0.15em] uppercase mt-1">
-            Registro y análisis de ventas por canal y producto
+            Registro y análisis de ventas por canal y producto · Importes
+            separados por moneda
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -222,237 +245,298 @@ export default function MetricasVentasPage() {
       </div>
 
       {error ? (
-        <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
-          <p className="text-sm text-destructive">No se pudieron cargar las métricas de ventas.</p>
-          <button type="button" onClick={retry} className="mt-2 text-sm font-semibold underline">
+        <div
+          role="alert"
+          className="rounded-xl border border-destructive/30 bg-destructive/5 p-4"
+        >
+          <p className="text-sm text-destructive">
+            No se pudieron cargar las métricas de ventas.
+          </p>
+          <button
+            type="button"
+            onClick={retry}
+            className="mt-2 text-sm font-semibold underline"
+          >
             Reintentar
           </button>
         </div>
       ) : (
-      <>
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Ventas del mes */}
-        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
-              Ventas del mes
-            </p>
-            {!loading && ventasPct !== 0 && (
-              <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  ventasPct > 0
-                    ? "bg-emerald-50 text-emerald-600"
-                    : "bg-red-50 text-red-500"
-                }`}
+        <>
+          {/* KPI Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Ventas del mes */}
+            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
+                  Ventas del mes
+                </p>
+                {!loading && ventasPct !== 0 && (
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      ventasPct > 0
+                        ? "bg-emerald-50 text-emerald-600"
+                        : "bg-red-50 text-red-500"
+                    }`}
+                  >
+                    {ventasPct > 0 ? "+" : ""}
+                    {ventasPct}%
+                  </span>
+                )}
+              </div>
+              <p className="text-2xl font-black text-foreground">
+                {loading
+                  ? "—"
+                  : `${currencyPrefix} ${kpi.ventasMes.toLocaleString("es-PE", { minimumFractionDigits: 0 })}`}
+              </p>
+              <p className="text-xs text-emerald-500 font-semibold mt-0.5">
+                {loading ? "Cargando pedidos…" : `${kpi.totalOrdenes} órdenes`}
+              </p>
+            </div>
+
+            {/* Ticket promedio */}
+            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
+                  Ticket promedio
+                </p>
+                {!loading && ticketPct !== 0 && (
+                  <span
+                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                      ticketPct > 0
+                        ? "bg-emerald-50 text-emerald-600"
+                        : "bg-red-50 text-red-500"
+                    }`}
+                  >
+                    {ticketPct > 0 ? "+" : ""}
+                    {ticketPct}%
+                  </span>
+                )}
+              </div>
+              <p className="text-2xl font-black text-foreground">
+                {loading
+                  ? "—"
+                  : `${currencyPrefix} ${Math.round(kpi.ticketPromedio).toLocaleString("es-PE")}`}
+              </p>
+              <p className="text-xs text-emerald-500 font-semibold mt-0.5">
+                Por orden
+              </p>
+            </div>
+
+            {/* Crecimiento Mensual */}
+            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
+                Crecimiento vs mes ant.
+              </p>
+              <p
+                className={`text-2xl font-black ${kpi.crecimientoMes >= 0 ? "text-emerald-500" : "text-red-500"}`}
               >
-                {ventasPct > 0 ? "+" : ""}
-                {ventasPct}%
-              </span>
-            )}
+                {loading
+                  ? "—"
+                  : `${kpi.crecimientoMes > 0 ? "+" : ""}${kpi.crecimientoMes}%`}
+              </p>
+              <p className="text-xs text-muted-foreground font-semibold mt-0.5">
+                {loading
+                  ? "Cargando comparación…"
+                  : `Ingresos vs ${kpi.ventasMesAnterior === 0 ? "0" : `${currencyPrefix} ${kpi.ventasMesAnterior.toLocaleString("es-PE", { minimumFractionDigits: 0 })}`}`}
+              </p>
+            </div>
+
+            {/* Tasa Anulación */}
+            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
+                Tasa de anulación
+              </p>
+              <p className="text-2xl font-black text-amber-500">
+                {loading ? "—" : `${kpi.tasaAnulacion}%`}
+              </p>
+              <p className="text-xs text-muted-foreground font-semibold mt-0.5">
+                Meta: &lt;10%
+              </p>
+            </div>
           </div>
-          <p className="text-2xl font-black text-foreground">
-            {loading ? "—" : `S/ ${kpi.ventasMes.toLocaleString("es-PE", { minimumFractionDigits: 0 })}`}
-          </p>
-          <p className="text-xs text-emerald-500 font-semibold mt-0.5">
-            {loading ? "Cargando pedidos…" : `${kpi.totalOrdenes} órdenes`}
-          </p>
-        </div>
 
-        {/* Ticket promedio */}
-        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
-              Ticket promedio
-            </p>
-            {!loading && ticketPct !== 0 && (
-              <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  ticketPct > 0
-                    ? "bg-emerald-50 text-emerald-600"
-                    : "bg-red-50 text-red-500"
-                }`}
-              >
-                {ticketPct > 0 ? "+" : ""}
-                {ticketPct}%
-              </span>
-            )}
+          {/* Charts */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Ventas por canal — tendencia semanal */}
+            <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+              <h3 className="text-sm font-semibold text-muted-foreground mb-4">
+                Ventas por canal — tendencia semanal
+              </h3>
+              {loading ? (
+                <div className="h-[280px] flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={280}>
+                  <LineChart
+                    data={weeklyData}
+                    margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      vertical={false}
+                      stroke="#f1f5f9"
+                    />
+                    <XAxis
+                      dataKey="week"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 600 }}
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 600 }}
+                      tickFormatter={(v) =>
+                        v >= 1000
+                          ? `${currencyPrefix}${(v / 1000).toFixed(0)}k`
+                          : `${currencyPrefix}${v}`
+                      }
+                    />
+                    <Tooltip
+                      formatter={(value: any, name: string) => [
+                        `${currencyPrefix} ${Number(value).toLocaleString("es-PE")}`,
+                        name.charAt(0).toUpperCase() + name.slice(1),
+                      ]}
+                      contentStyle={{
+                        background: "white",
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "12px",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                      }}
+                    />
+                    <Legend
+                      verticalAlign="top"
+                      height={30}
+                      formatter={(value: string) =>
+                        value.charAt(0).toUpperCase() + value.slice(1)
+                      }
+                      wrapperStyle={{ fontSize: "11px", fontWeight: 600 }}
+                    />
+                    {channels.map((ch) => (
+                      <Line
+                        key={ch}
+                        type="monotone"
+                        dataKey={ch}
+                        stroke={CHANNEL_COLORS[ch] || "#94a3b8"}
+                        strokeWidth={2.5}
+                        dot={{ r: 4, strokeWidth: 2, fill: "white" }}
+                        activeDot={{ r: 6 }}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+
+            {/* Top productos del mes */}
+            <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+              <h3 className="text-sm font-semibold text-muted-foreground mb-4">
+                Top productos del mes
+              </h3>
+              {loading ? (
+                <div className="h-[280px] flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+                </div>
+              ) : topProducts.length === 0 ? (
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">
+                  Sin datos para el periodo
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart
+                    data={topProducts}
+                    layout="vertical"
+                    margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
+                  >
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      horizontal={false}
+                      stroke="#f1f5f9"
+                    />
+                    <XAxis
+                      type="number"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 600 }}
+                    />
+                    <YAxis
+                      type="category"
+                      dataKey="name"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 11, fill: "#64748b", fontWeight: 600 }}
+                      width={120}
+                    />
+                    <Tooltip
+                      formatter={(value: any, name: string, props: any) => {
+                        if (name === "quantity") {
+                          return [`${value} unidades`, "Cantidad"];
+                        }
+                        return [value, name];
+                      }}
+                      content={({ active, payload }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div className="bg-card border border-border rounded-xl p-3 shadow-lg text-[11px] font-semibold">
+                              <p className="text-foreground mb-1">
+                                {data.name}
+                              </p>
+                              <div className="flex flex-col gap-1">
+                                <div className="flex items-center justify-between gap-4">
+                                  <span className="text-muted-foreground font-normal">
+                                    Unidades:
+                                  </span>
+                                  <span className="text-foreground">
+                                    {data.quantity}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between gap-4">
+                                  <span className="text-muted-foreground font-normal">
+                                    Monto:
+                                  </span>
+                                  <span className="text-foreground">
+                                    {currencyPrefix}{" "}
+                                    {Number(data.revenue).toLocaleString(
+                                      "es-PE",
+                                    )}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between gap-4">
+                                  <span className="text-muted-foreground font-normal">
+                                    Porcentaje:
+                                  </span>
+                                  <span className="text-emerald-500">
+                                    {kpi.ventasMes > 0
+                                      ? (
+                                          (data.revenue / kpi.ventasMes) *
+                                          100
+                                        ).toFixed(1)
+                                      : 0}
+                                    %
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Bar dataKey="quantity" radius={[0, 6, 6, 0]} barSize={28}>
+                      {topProducts.map((entry, idx) => (
+                        <Cell key={idx} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
           </div>
-          <p className="text-2xl font-black text-foreground">
-            {loading ? "—" : `S/ ${Math.round(kpi.ticketPromedio).toLocaleString("es-PE")}`}
-          </p>
-          <p className="text-xs text-emerald-500 font-semibold mt-0.5">Por orden</p>
-        </div>
-
-        {/* Crecimiento Mensual */}
-        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
-            Crecimiento vs mes ant.
-          </p>
-          <p className={`text-2xl font-black ${kpi.crecimientoMes >= 0 ? "text-emerald-500" : "text-red-500"}`}>
-            {loading ? "—" : `${kpi.crecimientoMes > 0 ? "+" : ""}${kpi.crecimientoMes}%`}
-          </p>
-          <p className="text-xs text-muted-foreground font-semibold mt-0.5">{loading ? "Cargando comparación…" : `Ingresos vs ${kpi.ventasMesAnterior === 0 ? "0" : `S/ ${kpi.ventasMesAnterior.toLocaleString("es-PE", { minimumFractionDigits: 0 })}`}`}</p>
-        </div>
-
-        {/* Tasa Anulación */}
-        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
-            Tasa de anulación
-          </p>
-          <p className="text-2xl font-black text-amber-500">{loading ? "—" : `${kpi.tasaAnulacion}%`}</p>
-          <p className="text-xs text-muted-foreground font-semibold mt-0.5">Meta: &lt;10%</p>
-        </div>
-      </div>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Ventas por canal — tendencia semanal */}
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
-            Ventas por canal — tendencia semanal
-          </h3>
-          {loading ? (
-            <div className="h-[280px] flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <LineChart data={weeklyData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis
-                  dataKey="week"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 600 }}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 600 }}
-                  tickFormatter={(v) =>
-                    v >= 1000 ? `S/${(v / 1000).toFixed(0)}k` : `S/${v}`
-                  }
-                />
-                <Tooltip
-                  formatter={(value: any, name: string) => [
-                    `S/ ${Number(value).toLocaleString("es-PE")}`,
-                    name.charAt(0).toUpperCase() + name.slice(1),
-                  ]}
-                  contentStyle={{
-                    background: "white",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "12px",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                  }}
-                />
-                <Legend
-                  verticalAlign="top"
-                  height={30}
-                  formatter={(value: string) =>
-                    value.charAt(0).toUpperCase() + value.slice(1)
-                  }
-                  wrapperStyle={{ fontSize: "11px", fontWeight: 600 }}
-                />
-                {channels.map((ch) => (
-                  <Line
-                    key={ch}
-                    type="monotone"
-                    dataKey={ch}
-                    stroke={CHANNEL_COLORS[ch] || "#94a3b8"}
-                    strokeWidth={2.5}
-                    dot={{ r: 4, strokeWidth: 2, fill: "white" }}
-                    activeDot={{ r: 6 }}
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-
-        {/* Top productos del mes */}
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-muted-foreground mb-4">Top productos del mes</h3>
-          {loading ? (
-            <div className="h-[280px] flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-            </div>
-          ) : topProducts.length === 0 ? (
-            <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">
-              Sin datos para el periodo
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart
-                data={topProducts}
-                layout="vertical"
-                margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
-                <XAxis
-                  type="number"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 600 }}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fontSize: 11, fill: "#64748b", fontWeight: 600 }}
-                  width={120}
-                />
-                <Tooltip
-                  formatter={(value: any, name: string, props: any) => {
-                    if (name === "quantity") {
-                      return [`${value} unidades`, "Cantidad"];
-                    }
-                    return [value, name];
-                  }}
-                  content={({ active, payload }) => {
-                    if (active && payload && payload.length) {
-                      const data = payload[0].payload;
-                      return (
-                        <div className="bg-card border border-border rounded-xl p-3 shadow-lg text-[11px] font-semibold">
-                          <p className="text-foreground mb-1">{data.name}</p>
-                          <div className="flex flex-col gap-1">
-                            <div className="flex items-center justify-between gap-4">
-                              <span className="text-muted-foreground font-normal">Unidades:</span>
-                              <span className="text-foreground">{data.quantity}</span>
-                            </div>
-                            <div className="flex items-center justify-between gap-4">
-                              <span className="text-muted-foreground font-normal">Monto:</span>
-                              <span className="text-foreground">S/ {Number(data.revenue).toLocaleString("es-PE")}</span>
-                            </div>
-                            <div className="flex items-center justify-between gap-4">
-                              <span className="text-muted-foreground font-normal">Porcentaje:</span>
-                              <span className="text-emerald-500">
-                                {kpi.ventasMes > 0 
-                                  ? ((data.revenue / kpi.ventasMes) * 100).toFixed(1) 
-                                  : 0}%
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Bar dataKey="quantity" radius={[0, 6, 6, 0]} barSize={28}>
-                  {topProducts.map((entry, idx) => (
-                    <Cell key={idx} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
-      </>
+        </>
       )}
     </div>
   );

@@ -93,6 +93,11 @@ jest.mock("@/lib/axiosAuth", () => ({
   },
 }));
 
+jest.mock("@/services/commercialLeadsService", () => ({
+  confirmCommercialLead: jest.fn(), getCommercialLead: jest.fn(), getCommercialLeadCapabilities: jest.fn(), getCommercialLeadConfirmationCapabilities: jest.fn(), getCommercialLeadContext: jest.fn(), commercialLeadError: (error: unknown) => error instanceof Error ? error.message : "Acción rechazada",
+}));
+jest.mock("@/services/leadPaymentsService", () => ({ getLeadPayments: jest.fn() }));
+
 jest.mock("sonner", () => ({
   toast: {
     success: jest.fn(),
@@ -296,6 +301,9 @@ const mockUseAuth = jest.mocked(useAuth);
 const mockFetchClientByPhone = fetchClientByPhone as jest.Mock;
 const mockCreateClient = createClient as jest.Mock;
 const mockUpdateClient = updateClient as jest.Mock;
+import { confirmCommercialLead, getCommercialLead, getCommercialLeadCapabilities, getCommercialLeadConfirmationCapabilities, getCommercialLeadContext } from "@/services/commercialLeadsService";
+import { getLeadPayments } from "@/services/leadPaymentsService";
+
 const mockUseSearchParams = jest.mocked(useSearchParams);
 
 // `crypto.randomUUID` no existe en el jsdom de jest-environment-jsdom 29 y
@@ -507,7 +515,7 @@ describe("RegistrarVentaPage — guardar precios manuales superiores al PVP", ()
     renderPage();
     await fillCommonRequiredFields();
     await userEvent.click(screen.getByRole("button", { name: "Fijar todos en 125" }));
-    await userEvent.click(screen.getByRole("button", { name: /confirmar venta/i }));
+    await userEvent.click(screen.getByRole("button", { name: /registrar pedido/i }));
 
     await waitFor(() =>
       expect(mockedAxiosAuth.post).toHaveBeenCalledWith(
@@ -736,7 +744,7 @@ describe("RegistrarVentaPage — creación de venta con adelanto (FIX aprobacion
       within(fieldByLabel(/método de pago/i)).getByRole("combobox"),
       method,
     );
-    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+    await userEvent.click(screen.getByRole("button", { name: "Registrar pedido" }));
     await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalled());
     const orderCall = mockedAxiosAuth.post.mock.calls.find(([url]) => /\/order-header(?:\/manual)?$/.test(String(url)));
     expect(orderCall).toBeDefined();
@@ -772,7 +780,7 @@ describe("RegistrarVentaPage — creación de venta con adelanto (FIX aprobacion
     fireEvent.change(fileInput, { target: { files: [proofFile] } });
 
     const confirmButton = screen.getByRole("button", {
-      name: /confirmar venta/i,
+      name: /registrar pedido/i,
     });
     expect(confirmButton).toBeEnabled();
     await userEvent.click(confirmButton);
@@ -822,7 +830,7 @@ describe("RegistrarVentaPage — creación de venta con adelanto (FIX aprobacion
     await fillCommonRequiredFields();
 
     const confirmButton = screen.getByRole("button", {
-      name: /confirmar venta/i,
+      name: /registrar pedido/i,
     });
     expect(confirmButton).toBeEnabled();
     await userEvent.click(confirmButton);
@@ -853,7 +861,7 @@ describe("RegistrarVentaPage — creación de venta con adelanto (FIX aprobacion
     await userEvent.type(advanceInput, "50");
 
     const confirmButton = screen.getByRole("button", {
-      name: /confirmar venta/i,
+      name: /registrar pedido/i,
     });
     expect(confirmButton).toBeEnabled();
     await userEvent.click(confirmButton);
@@ -890,7 +898,7 @@ describe("RegistrarVentaPage — hasClientChanges (fix orden de claves province/
     await fillCommonRequiredFields();
 
     const confirmButton = screen.getByRole("button", {
-      name: /confirmar venta/i,
+      name: /registrar pedido/i,
     });
     expect(confirmButton).toBeEnabled();
     await userEvent.click(confirmButton);
@@ -923,7 +931,7 @@ describe("RegistrarVentaPage — hasClientChanges (fix orden de claves province/
     await userEvent.type(addressInput, "Av. Nueva 456");
 
     const confirmButton = screen.getByRole("button", {
-      name: /confirmar venta/i,
+      name: /registrar pedido/i,
     });
     expect(confirmButton).toBeEnabled();
     await userEvent.click(confirmButton);
@@ -959,7 +967,7 @@ describe("RegistrarVentaPage — actualización parcial del cliente al confirmar
     fireEvent.change(screen.getByPlaceholderText("Dirección exacta"), {
       target: { value: "Av. Nueva 456" },
     });
-    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+    await userEvent.click(screen.getByRole("button", { name: "Registrar pedido" }));
 
     await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1));
     expect(mockUpdateClient).toHaveBeenCalledWith(FOUND_CLIENT.id, {
@@ -989,7 +997,7 @@ describe("RegistrarVentaPage — actualización parcial del cliente al confirmar
       target: { files: [proof] },
     });
 
-    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+    await userEvent.click(screen.getByRole("button", { name: "Registrar pedido" }));
     await waitFor(() => expect(mockToast.error).toHaveBeenCalled());
 
     expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
@@ -1000,9 +1008,9 @@ describe("RegistrarVentaPage — actualización parcial del cliente al confirmar
     expect(within(fieldByLabel(/método de pago/i)).getByRole("combobox")).toHaveValue("EFECTIVO");
     expect(screen.getByRole("button", { name: "Fijar Producto Test en 50" })).toBeInTheDocument();
     expect(screen.getByText(proof.name)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Confirmar venta" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Registrar pedido" })).toBeEnabled();
 
-    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+    await userEvent.click(screen.getByRole("button", { name: "Registrar pedido" }));
     await screen.findByTestId("receipt-open");
 
     expect(mockUpdateClient).toHaveBeenCalledTimes(2);
@@ -1043,7 +1051,7 @@ describe("RegistrarVentaPage — actualización parcial del cliente al confirmar
         documentType,
       );
     }
-    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+    await userEvent.click(screen.getByRole("button", { name: "Registrar pedido" }));
 
     await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1));
     expect(mockUpdateClient).toHaveBeenCalledWith(client.id, {
@@ -1066,7 +1074,7 @@ describe("RegistrarVentaPage — actualización parcial del cliente al confirmar
       within(fieldByLabel(/^tipo de documento/i)).getByRole("combobox"),
       "NONE",
     );
-    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+    await userEvent.click(screen.getByRole("button", { name: "Registrar pedido" }));
 
     await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1));
     expect(mockUpdateClient).toHaveBeenCalledWith(client.id, {
@@ -1112,7 +1120,7 @@ describe("RegistrarVentaPage — distrito obligatorio para clientes encontrados"
     await userEvent.click(within(screen.getByRole("dialog")).getByText(option, { exact: true }));
   }
 
-  function expectDistrictRequired(buttonName = "Confirmar venta") {
+  function expectDistrictRequired(buttonName = "Registrar pedido") {
     expect(screen.getByText("9 de 10 pasos completados")).toBeInTheDocument();
     expect(screen.queryByText("10 de 10 pasos completados")).not.toBeInTheDocument();
     expect(screen.getByText("Selecciona el distrito del cliente")).toBeInTheDocument();
@@ -1133,10 +1141,10 @@ describe("RegistrarVentaPage — distrito obligatorio para clientes encontrados"
       target: { value: "Av. Nueva 456" },
     });
     expectDistrictRequired();
-    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+    await userEvent.click(screen.getByRole("button", { name: "Registrar pedido" }));
 
     expect(mockUpdateClient).not.toHaveBeenCalled();
-    expect(mockCreateClient).not.toHaveBeenCalled();
+    expect(jest.mocked(createClient)).not.toHaveBeenCalled();
     expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
     expect(mockedAxiosAuth.put).not.toHaveBeenCalled();
   });
@@ -1166,8 +1174,8 @@ describe("RegistrarVentaPage — distrito obligatorio para clientes encontrados"
 
     expect(screen.getByText("10 de 10 pasos completados")).toBeInTheDocument();
     expect(screen.queryByText("Selecciona el distrito para continuar.")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Confirmar venta" })).toBeEnabled();
-    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+    expect(screen.getByRole("button", { name: "Registrar pedido" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "Registrar pedido" }));
 
     await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1));
     expect(mockUpdateClient).toHaveBeenCalledWith(FOUND_CLIENT.id, {
@@ -1187,13 +1195,13 @@ describe("RegistrarVentaPage — distrito obligatorio para clientes encontrados"
     renderPage();
     await fillCommonRequiredFields();
     expect(screen.getByText("10 de 10 pasos completados")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Confirmar venta" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Registrar pedido" })).toBeEnabled();
 
     await selectLocation(field, option);
 
     expectDistrictRequired();
     expect(locationControl("district")).toHaveTextContent("Distrito");
-    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+    await userEvent.click(screen.getByRole("button", { name: "Registrar pedido" }));
     expect(mockUpdateClient).not.toHaveBeenCalled();
     expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
 
@@ -1206,8 +1214,8 @@ describe("RegistrarVentaPage — distrito obligatorio para clientes encontrados"
     await selectLocation("district", district);
 
     expect(screen.getByText("10 de 10 pasos completados")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Confirmar venta" })).toBeEnabled();
-    await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+    expect(screen.getByRole("button", { name: "Registrar pedido" })).toBeEnabled();
+    await userEvent.click(screen.getByRole("button", { name: "Registrar pedido" }));
     await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1));
     expect(mockUpdateClient).toHaveBeenCalledWith(client.id, {
       companyId: client.companyId,
@@ -1359,7 +1367,7 @@ describe("RegistrarVentaPage — persistencia de comprobantes", () => {
     await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
     const retry = await screen.findByRole("button", { name: "Reintentar comprobante" });
     expect(retry.closest("[inert]")).toBeNull();
-    expect(screen.getByRole("alert")).toHaveTextContent("La venta ya está guardada");
+    expect(screen.getByRole("alert")).toHaveTextContent("El pedido ya está guardado");
     expect(screen.getByText(file.name)).toBeInTheDocument();
     expect(mockToast.success).not.toHaveBeenCalled();
 
@@ -1369,7 +1377,7 @@ describe("RegistrarVentaPage — persistencia de comprobantes", () => {
     expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
     expect((mockedAxiosAuth.patch.mock.calls[1][1] as FormData).get("file")).toBe(file);
     await waitFor(() => expect(mockToast.success).toHaveBeenCalledWith(
-      "Comprobante guardado correctamente. La venta ya estaba registrada.",
+      "Comprobante guardado correctamente. El pedido ya estaba registrado.",
     ));
   });
 
@@ -1382,7 +1390,7 @@ describe("RegistrarVentaPage — persistencia de comprobantes", () => {
     await fillCommonRequiredFields();
     await userEvent.type(within(fieldByLabel(/adelanto de pago/i)).getByRole("textbox"), "30");
     const file = attachProof(new File(["imagen"], "comprobante.jpg", { type: "image/jpeg" }));
-    await userEvent.click(screen.getByRole("button", { name: /confirmar venta/i }));
+    await userEvent.click(screen.getByRole("button", { name: /registrar pedido/i }));
     const retry = await screen.findByRole("button", { name: "Reintentar comprobante" });
     expect(retry.closest("[inert]")).toBeNull();
     expect(screen.getByText(file.name)).toBeInTheDocument();
@@ -1464,7 +1472,7 @@ describe("RegistrarVentaPage — documentos de identidad en provincia", () => {
     await fillCommonRequiredFields();
 
     expect(screen.getByText(documentChecklist)).toBeInTheDocument();
-    const confirmButton = screen.getByRole("button", { name: /confirmar venta/i });
+    const confirmButton = screen.getByRole("button", { name: /registrar pedido/i });
     expect(confirmButton).toBeEnabled();
     await userEvent.click(confirmButton);
 
@@ -1540,7 +1548,7 @@ describe("RegistrarVentaPage — documentos de identidad en provincia", () => {
     await screen.findByText(/no se pudo buscar el cliente.*completa los datos manualmente/i);
     mockToast.error.mockClear();
 
-    const confirmButton = screen.getByRole("button", { name: /confirmar venta/i });
+    const confirmButton = screen.getByRole("button", { name: /registrar pedido/i });
     expect(confirmButton).toBeEnabled();
     await userEvent.click(confirmButton);
 
@@ -1556,5 +1564,50 @@ describe("RegistrarVentaPage — documentos de identidad en provincia", () => {
       expect.objectContaining({ customerId: createdClient.id, salesRegion: "PROVINCIA" }),
     ));
     expect(mockToast.error).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("Registrar — confirmación canónica de Lead sobre origen e IMEI de producción", () => {
+  beforeEach(() => {
+    mockUseSearchParams.mockReturnValue(new URLSearchParams("leadId=lead-1") as ReturnType<typeof useSearchParams>);
+    jest.mocked(getCommercialLeadCapabilities).mockResolvedValue({enabled:true, phase:"foundation",canView:true,canManage:true,canManageTypes:false});
+    jest.mocked(getCommercialLeadConfirmationCapabilities).mockResolvedValue({enabled:true,canConfirm:true});
+    jest.mocked(getCommercialLead).mockResolvedValue({id:"lead-1",companyId:"company-1",storeId:"store-2",status:"NUEVO",version:7,currency:"PEN",contactName:"Cliente Lead",contactPhone:"999999999",customFields:{}} as never);
+    jest.mocked(getCommercialLeadContext).mockResolvedValue({leadId:"lead-1",sources:[],order:null,quotationId:null,liveCheckoutId:null});
+    jest.mocked(getLeadPayments).mockResolvedValue({data:[{id:"payment-existing",status:"PAID",amount:"20.00",currency:"PEN"}],total:1,page:1,limit:20} as never);
+    jest.mocked(confirmCommercialLead).mockResolvedValue({lead:{id:"lead-1"},order:{id:"order-lead",orderNumber:"ORD-LEAD"},replayed:false} as never);
+  });
+  async function fillLead() {
+    await screen.findByText(/Anticipos aprobados:/);
+    await fillCommonRequiredFields();
+    await userEvent.selectOptions(screen.getByLabelText("Condición de cobro *"),"COD");
+  }
+  it("confirma el Lead con la tienda y almacén seleccionados sin recrear sus anticipos", async () => {
+    renderPage();await fillLead();
+    await userEvent.click(screen.getByRole("button",{name:"Confirmar compra"}));
+    await waitFor(() => expect(confirmCommercialLead).toHaveBeenCalledTimes(1));
+    const command=jest.mocked(confirmCommercialLead).mock.calls[0][1];
+    expect(command).toEqual(expect.objectContaining({version:7,order:expect.objectContaining({storeId:"store-2",inventoryId:"warehouse-1",currency:"PEN",paymentCondition:"COD"})}));
+    expect(command.order).not.toHaveProperty("payments");
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.patch).not.toHaveBeenCalled();
+  });
+  it("reintenta una respuesta incierta con el mismo comando y pedido", async () => {
+    jest.mocked(confirmCommercialLead).mockRejectedValueOnce(new Error("Respuesta interrumpida"));
+    renderPage();await fillLead();
+    await userEvent.click(screen.getByRole("button",{name:"Confirmar compra"}));
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith("Respuesta interrumpida"));
+    await userEvent.click(screen.getByRole("button",{name:"Confirmar compra"}));
+    await waitFor(() => expect(confirmCommercialLead).toHaveBeenCalledTimes(2));
+    expect(jest.mocked(confirmCommercialLead).mock.calls[1]).toEqual(jest.mocked(confirmCommercialLead).mock.calls[0]);
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+  });
+  it("rechaza un Lead de otra empresa antes de crear cliente, pedido o pago", async () => {
+    jest.mocked(getCommercialLead).mockResolvedValue({id:"lead-1",companyId:"company-foreign",storeId:"store-2",status:"NUEVO"} as never);
+    renderPage();
+    await screen.findByText(/Selecciona la empresa y tienda del Lead/);
+    expect(screen.getByRole("button",{name:"Confirmar compra"})).toBeDisabled();
+    expect(mockCreateClient).not.toHaveBeenCalled();expect(mockedAxiosAuth.post).not.toHaveBeenCalled();expect(confirmCommercialLead).not.toHaveBeenCalled();
   });
 });

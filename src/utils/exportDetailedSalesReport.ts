@@ -1,6 +1,9 @@
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
-import { OrderResponseDto, OrderItemResponseDto } from "@/features/sales/dto/order.dto";
+import {
+  OrderResponseDto,
+  OrderItemResponseDto,
+} from "@/features/sales/dto/order.dto";
 
 /**
  * Detailed sale export row — 1 row per product/variant of an order
@@ -43,6 +46,9 @@ export interface DetailedSaleExportRow {
   longitude: number | null;
   possibleDuplicate: boolean;
   relatedOrders: string;
+  currency?: string | null;
+  commercialStage?: "LEAD" | "SALE" | null;
+  leadId?: string | null;
 }
 
 const SIZE_ATTRIBUTE_KEYS = ["talla", "talle", "size"];
@@ -233,7 +239,10 @@ export function detectPossibleDuplicates(
       if (!a.phone || a.phone !== b.phone) continue;
 
       const timeDiffMs = Math.abs(a.createdAtMs - b.createdAtMs);
-      if (Number.isNaN(timeDiffMs) || timeDiffMs >= DUPLICATE_DETECTION_WINDOW_MS) {
+      if (
+        Number.isNaN(timeDiffMs) ||
+        timeDiffMs >= DUPLICATE_DETECTION_WINDOW_MS
+      ) {
         continue;
       }
 
@@ -242,8 +251,16 @@ export function detectPossibleDuplicates(
       );
       if (!hasCommonProduct) continue;
 
-      appendRelatedOrder(relatedOrderNumbersByOrderId, a.order.id, b.order.orderNumber);
-      appendRelatedOrder(relatedOrderNumbersByOrderId, b.order.id, a.order.orderNumber);
+      appendRelatedOrder(
+        relatedOrderNumbersByOrderId,
+        a.order.id,
+        b.order.orderNumber,
+      );
+      appendRelatedOrder(
+        relatedOrderNumbersByOrderId,
+        b.order.id,
+        a.order.orderNumber,
+      );
     }
   }
 
@@ -274,7 +291,10 @@ function buildRowsForOrder(
   const relatedOrders = relatedOrderNumbers.join(", ");
 
   return items.map((item) => {
-    const { size, color } = extractSizeAndColor(item.attributes, item.productName);
+    const { size, color } = extractSizeAndColor(
+      item.attributes,
+      item.productName,
+    );
 
     return {
       orderNumber: order.orderNumber,
@@ -309,6 +329,13 @@ function buildRowsForOrder(
       longitude: order.customer?.longitude ?? null,
       possibleDuplicate,
       relatedOrders,
+      ...(order.currency !== undefined ? { currency: order.currency } : {}),
+      ...(order.commercialStage !== undefined
+        ? { commercialStage: order.commercialStage }
+        : {}),
+      ...(order.commercialLeadId !== undefined
+        ? { leadId: order.commercialLeadId }
+        : {}),
     };
   });
 }
@@ -339,6 +366,12 @@ export function exportDetailedSalesToExcel(
     return;
   }
 
+  const hasCommercialMetadata = rows.some(
+    (row) =>
+      row.currency !== undefined ||
+      row.commercialStage !== undefined ||
+      row.leadId !== undefined,
+  );
   const exportData = rows.map((r, index) => ({
     "N°": index + 1,
     Pedido: r.orderNumber,
@@ -373,6 +406,13 @@ export function exportDetailedSalesToExcel(
     Longitud: r.longitude ?? "-",
     "Posible Duplicado": r.possibleDuplicate ? "Sí" : "No",
     "Pedidos Relacionados": r.relatedOrders,
+    ...(hasCommercialMetadata
+      ? {
+          Moneda: r.currency ?? "Sin moneda registrada",
+          "Etapa comercial": r.commercialStage ?? "Histórico sin clasificar",
+          "Lead ID": r.leadId ?? "",
+        }
+      : {}),
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(exportData);

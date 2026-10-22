@@ -44,6 +44,7 @@ import {
 import { exportToExcel } from "@/lib/excel";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDashboardScope } from "@/contexts/DashboardScopeContext";
+import { reportCurrencyLabel } from "./ReportCurrencySelector";
 import { getDashboardOrders } from "@/services/dashboardService";
 import { Button } from "@/components/ui/button";
 import { DashboardCard } from "./DashboardCard";
@@ -140,7 +141,8 @@ interface GeographyProps {
 
 export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
   const { auth } = useAuth();
-  const { scopeParams, storeIds, canFetch } = useDashboardScope();
+  const { scopeParams, storeIds, canFetch, currency } = useDashboardScope();
+  const currencyPrefix = reportCurrencyLabel(currency);
   const isAdmin = hasAdminAccess(auth?.user?.role) || isSuperadmin(auth?.user?.email);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -277,7 +279,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
     setDetailsError(false);
     setIsBillingModalOpen(true);
     try {
-      const allOrders = await getDashboardOrders(storeIds, fromDate, toDate, auth.accessToken);
+      const allOrders = await getDashboardOrders(storeIds, fromDate, toDate, auth.accessToken, { currency });
 
       // Parse dates for comparison
       const start = fromDate ? new Date(fromDate + "T00:00:00") : null;
@@ -322,6 +324,22 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
       fetchData();
     }
   }, [fetchData, fromDate, toDate]);
+
+  useEffect(() => {
+    const changed = (event: Event) => {
+      if (
+        auth?.company?.id &&
+        (event as CustomEvent<{ companyId: string }>).detail?.companyId ===
+          auth.company.id &&
+        fromDate &&
+        toDate
+      )
+        void fetchData();
+    };
+    window.addEventListener("commercial-leads:changed", changed);
+    return () =>
+      window.removeEventListener("commercial-leads:changed", changed);
+  }, [auth?.company?.id, fromDate, toDate, fetchData]);
 
   const periodBilling = summaryData.deliveredAmount;
   const topLocation = locationData[0];
@@ -371,7 +389,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
           />
           <StatCard
             title="Facturación"
-            value={`S/ ${periodBilling.toLocaleString()}`}
+            value={`${currencyPrefix} ${periodBilling.toLocaleString()}`}
             subValue="Filtro aplicado"
             loading={loading}
             clickable
@@ -379,7 +397,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
           />
           <StatCard
             title="Ticket Promedio"
-            value={`S/ ${Math.round(paymentData.reduce((s, p) => s + p.totalAmount, 0) / (paymentData.reduce((s, p) => s + p.ordersCount, 0) || 1))}`}
+            value={`${currencyPrefix} ${Math.round(paymentData.reduce((s, p) => s + p.totalAmount, 0) / (paymentData.reduce((s, p) => s + p.ordersCount, 0) || 1))}`}
             subValue="Promedio general"
             loading={loading}
             clickable
@@ -445,7 +463,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
                 <Tooltip
                   cursor={{ fill: "var(--foreground)", opacity: 0.05 }}
                   formatter={(value) => [
-                    `S/ ${Number(value).toLocaleString("es-PE")}`,
+                    `${currencyPrefix} ${Number(value).toLocaleString("es-PE")}`,
                     "Monto",
                   ]}
                   itemStyle={{ color: "var(--foreground)" }}
@@ -582,7 +600,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
                       {item.ordersCount}
                     </TableCell>
                     <TableCell className="text-xs text-right font-bold">
-                      S/ {item.totalAmount.toLocaleString()}
+                      {currencyPrefix} {item.totalAmount.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-xs text-right text-primary font-medium">
                       {item.percentage}%
@@ -638,7 +656,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
                       {item.ordersCount}
                     </TableCell>
                     <TableCell className="text-xs text-right font-bold">
-                      S/ {item.totalAmount.toLocaleString()}
+                      {currencyPrefix} {item.totalAmount.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-xs text-right text-primary font-medium">
                       {item.percentage}%
@@ -717,7 +735,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
                         {order.paymentMethod}
                       </TableCell>
                       <TableCell className="text-xs text-right font-bold">
-                        S/ {order.grandTotal.toLocaleString()}
+                        {currencyPrefix} {order.grandTotal.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-xs">
                         {new Date(order.createdAt).toLocaleDateString()}
@@ -807,7 +825,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
                       </TableCell>
                       <TableCell className="text-xs">{order.cliente}</TableCell>
                       <TableCell className="text-xs text-right font-bold">
-                        S/ {order.monto.toLocaleString()}
+                        {currencyPrefix} {order.monto.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-xs text-gray-500">
                         {new Date(order.fecha).toLocaleDateString()}

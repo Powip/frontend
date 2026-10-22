@@ -37,6 +37,8 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/inventario": [],
   "/ventas": [],
   "/cotizaciones": [],
+  "/leads-comerciales": ["VIEW_LEADS", "MANAGE_LEADS", "MANAGE_LEAD_TYPES"],
+  "/metricas/leads": ["VIEW_LEADS", "MANAGE_LEADS"],
   "/registrar-venta": [],
   "/operaciones": [],
   "/centro-envios": [],

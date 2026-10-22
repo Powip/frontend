@@ -39,20 +39,20 @@ const mockGet = jest.mocked(axiosAuth.get);
 const mockUseAuth = jest.mocked(useAuth);
 const orders = [
   {
-    id: "delivered", storeId: "store-web", status: "ENTREGADO", grandTotal: "300",
+    id: "delivered", currency: "PEN", storeId: "store-web", status: "ENTREGADO", grandTotal: "300",
     created_at: "2026-10-10T12:00:00.000Z", updated_at: "2026-10-12T12:00:00.000Z",
     salesChannel: "SHOPIFY", guideNumber: "guide-1", notes: "", cancellationReason: null,
     items: [{ productName: "Producto Shopify", quantity: 3, subtotal: "300" }],
     logs: [{ timestamp: "2026-10-12T12:00:00.000Z", data: { status: "ENTREGADO" } }],
   },
   {
-    id: "cancelled", storeId: "store-web", status: "ANULADO", grandTotal: "100",
+    id: "cancelled", currency: "PEN", storeId: "store-web", status: "ANULADO", grandTotal: "100",
     created_at: "2026-10-11T12:00:00.000Z", updated_at: "2026-10-11T12:00:00.000Z",
     salesChannel: "WEB", guideNumber: null, notes: "Sin respuesta", cancellationReason: null,
     items: [{ productName: "Producto Web", quantity: 1, subtotal: "100" }], logs: [],
   },
   {
-    id: "previous-pending", storeId: "store-web", status: "PENDIENTE", grandTotal: "100",
+    id: "previous-pending", currency: "PEN", storeId: "store-web", status: "PENDIENTE", grandTotal: "100",
     created_at: "2026-09-15T12:00:00.000Z", updated_at: "2026-09-15T12:00:00.000Z",
     salesChannel: "WEB", guideNumber: null, notes: "", cancellationReason: null,
     items: [], logs: [],

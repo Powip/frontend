@@ -86,6 +86,7 @@ jest.mock('@/contexts/AuthContext', () => ({
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
   usePathname: () => '/finanzas',
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 jest.mock('@/components/modals/CustomerServiceModal', () => ({

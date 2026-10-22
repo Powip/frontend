@@ -5,6 +5,9 @@ import { saveAs } from "file-saver";
  * Interface for sale data to export
  */
 export interface SaleExportData {
+  commercialStage?: "LEAD" | "SALE" | null;
+  commercialLeadId?: string | null;
+  currency?: string | null;
   storeId?: string;
   storeName?: string;
   inventoryId?: string | null;
@@ -84,6 +87,7 @@ export function exportSalesToExcel(
   const exportData = sales.map((s, index) => ({
     "N°": index + 1,
     Orden: s.orderNumber,
+    ...(sales.some((row) => row.commercialStage || row.currency) ? {"Clasificación comercial": s.commercialStage === "LEAD" ? "Lead" : s.commercialStage === "SALE" ? "Venta confirmada" : "Histórico sin clasificar", "Lead ID": s.commercialLeadId || "-", Moneda: s.currency || "No informada"} : {}),
     ...(withOrigin && { Tienda: s.storeName || s.storeId || "-", "ID tienda": s.storeId || "-", "ID almacén": s.inventoryId || "-", "ID tienda de stock": s.stockStoreId || "-" }),
     Cliente: s.clientName,
     Teléfono: s.phoneNumber,
@@ -115,7 +119,7 @@ export function exportSalesToExcel(
   // Create worksheet
   const worksheet = XLSX.utils.json_to_sheet(exportData);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Ventas");
+  XLSX.utils.book_append_sheet(workbook, worksheet, filenamePrefix.startsWith("finanzas") ? "Pagos" : "Ventas");
 
   // Create Excel file
   const excelBuffer = XLSX.write(workbook, {

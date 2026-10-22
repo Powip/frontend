@@ -85,6 +85,9 @@ function mapOrderToLegacySale(order: OrderHeader) {
 
 const CC_PAGE_SIZE = 50;
 
+/** Estados legacy que Atención al cliente pide al servidor (Correcciones y Preventa). */
+const ATENCION_LEGACY_STATUSES: OrderStatus[] = ["INCOMPLETE", "PREVENTA"];
+
 /** Sub-pestañas de Gestión COD que permiten exportar la selección a Excel. */
 const CC_EXPORT_TABS: Partial<Record<SubEstadoCc, string>> = {
   contactado: "Contactado",
@@ -235,7 +238,7 @@ export default function AtencionClientePage() {
   );
 
   /* ── Legacy orders ───────────────────────────────────── */
-  const { orders: ordersData, loading: legacyLoading, error: legacyError, refetch: refetchOrders } = useBusinessOrders(undefined, undefined, { includeCcLeads: true });
+  const { orders: ordersData, loading: legacyLoading, error: legacyError, refetch: refetchOrders } = useBusinessOrders(undefined, undefined, { includeCcLeads: true, statuses: ATENCION_LEGACY_STATUSES });
   const incompleteOrders = useMemo(() => ordersData.filter((order) => order.status === "INCOMPLETE"), [ordersData]);
   const incompleteLoading = legacyLoading;
   const refetchIncomplete = refetchOrders;

@@ -191,6 +191,10 @@ test("conversion requires dispatch details and deducts pending deposit with ship
     target: { value: "Av. Lima 123" },
   });
   fireEvent.change(screen.getByLabelText("Distrito *"), { target: { value: "Breña" } });
+  fireEvent.change(screen.getByLabelText("Moneda (PEN, USD…) *"), { target: { value: "PEN" } });
+  fireEvent.change(screen.getByLabelText("Canal de venta"), { target: { value: "WHATSAPP" } });
+  fireEvent.change(screen.getByLabelText("Canal de cierre"), { target: { value: "WHATSAPP" } });
+  fireEvent.change(screen.getByLabelText("Tipo de pago"), { target: { value: "CONTRAENTREGA" } });
   fireEvent.change(screen.getByLabelText("Costo de envío (S/)"), { target: { value: "10" } });
   expect(screen.getByText("S/80.00")).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Confirmar y crear venta" }));
@@ -200,6 +204,10 @@ test("conversion requires dispatch details and deducts pending deposit with ship
       expect.objectContaining({
         address: "Av. Lima 123",
         district: "Breña",
+        currency: "PEN",
+        salesChannel: "WHATSAPP",
+        closingChannel: "WHATSAPP",
+        paymentMethod: "CONTRAENTREGA",
         shippingTotal: 10,
         deliveryType: "DOMICILIO",
       }),

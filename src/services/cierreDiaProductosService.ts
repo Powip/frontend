@@ -1,4 +1,8 @@
-import { getPedidosCC, getUpsellRecords, PedidosCcFilters } from "@/services/atencionClienteService";
+import {
+  getPedidosCC,
+  getUpsellRecords,
+  PedidosCcFilters,
+} from "@/services/atencionClienteService";
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import { CierreDiaFunnel, CierreDiaProductoRow } from "@/interfaces/ICierreDia";
 import { EMPTY_FUNNEL } from "@/utils/cierreDiaFunnel";
@@ -56,12 +60,21 @@ const NON_COD_SUBESTADOS = new Set<string>([
  * "confirmado", sin depender de `subEstadoCc`.
  */
 export function mapOrderToFunnelBucket(
-  order: Pick<OrderHeader, "status" | "subEstadoCc">,
+  order: Pick<OrderHeader, "status" | "subEstadoCc"> &
+    Partial<Pick<OrderHeader, "commercialStage">>,
 ): keyof CierreDiaFunnel {
-  if (order.status === "ANULADO" || order.subEstadoCc === "anulado_cc") return "anulado";
+  // Financial/operative labels do not confirm a new opportunity.
+  if (order.commercialStage === "LEAD") {
+    if (order.subEstadoCc === "no_contesta") return "noContesta";
+    if (order.subEstadoCc === "contactado") return "contactado";
+    return "porConfirmar";
+  }
+  if (order.status === "ANULADO" || order.subEstadoCc === "anulado_cc")
+    return "anulado";
   if (order.status === "ENTREGADO") return "entregado";
   if (DESPACHO_STATUSES.includes(order.status)) return "despachado";
   if (
+    order.commercialStage === "SALE" ||
     order.subEstadoCc === "confirmado" ||
     order.status === "PREPARADO" ||
     order.status === "LLAMADO"
@@ -74,10 +87,18 @@ export function mapOrderToFunnelBucket(
 }
 
 function esFacturable(bucket: keyof CierreDiaFunnel): boolean {
-  return bucket === "confirmado" || bucket === "despachado" || bucket === "entregado";
+  return (
+    bucket === "confirmado" || bucket === "despachado" || bucket === "entregado"
+  );
 }
 
 /** Convierte un ISO (UTC) a fecha local YYYY-MM-DD — mismo criterio que usan las vistas. */
+function toLimaDateStr(iso: string): string {
+  return new Date(new Date(iso).getTime() - 5 * 3600000)
+    .toISOString()
+    .slice(0, 10);
+}
+
 function toLocalDateStr(iso: string): string {
   const d = new Date(iso);
   const tz = d.getTimezoneOffset();
@@ -85,7 +106,10 @@ function toLocalDateStr(iso: string): string {
 }
 
 /** Límites ISO de un solo día local (para la vista Día). */
-export function isoDayBounds(date: string): { startDate: string; endDate: string } {
+export function isoDayBounds(date: string): {
+  startDate: string;
+  endDate: string;
+} {
   return {
     startDate: new Date(`${date}T00:00:00`).toISOString(),
     endDate: new Date(`${date}T23:59:59`).toISOString(),
@@ -93,14 +117,19 @@ export function isoDayBounds(date: string): { startDate: string; endDate: string
 }
 
 /** Límites ISO entre dos fechas YYYY-MM-DD (para Rango / Mes). */
-export function isoRangeBounds(startDate: string, endDate: string): { startDate: string; endDate: string } {
+export function isoRangeBounds(
+  startDate: string,
+  endDate: string,
+): { startDate: string; endDate: string } {
   return {
     startDate: new Date(`${startDate}T00:00:00`).toISOString(),
     endDate: new Date(`${endDate}T23:59:59`).toISOString(),
   };
 }
 
-async function fetchAllPedidosCC(filters: PedidosCcFilters): Promise<OrderHeader[]> {
+async function fetchAllPedidosCC(
+  filters: PedidosCcFilters,
+): Promise<OrderHeader[]> {
   const limit = 200;
   let page = 1;
   let all: OrderHeader[] = [];
@@ -115,7 +144,9 @@ async function fetchAllPedidosCC(filters: PedidosCcFilters): Promise<OrderHeader
 
 async function fetchVariantCost(variantId: string): Promise<number> {
   try {
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/${variantId}`);
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/${variantId}`,
+    );
     if (!res.ok) return 0;
     const data = await res.json();
     return Number(data?.priceBase ?? 0);
@@ -191,10 +222,52 @@ export async function getCierreDiaClosingData(
   // el rango y se descartan a mano los pedidos de Lima/Carrito abandonado
   // (subEstadoCc en NON_COD_SUBESTADOS), que no son parte de este embudo.
   const [allOrders, upsell] = await Promise.all([
-    fetchAllPedidosCC({ storeId, startDate, endDate }),
+    fetchAllPedidosCC({
+      storeId,
+      startDate,
+      endDate,
+      dateBasis: "COMMERCIAL_EVENTS",
+    }),
     getUpsellRecords(storeId, startDate, endDate).catch(() => null),
   ]);
-  const orders = allOrders.filter((o) => !o.subEstadoCc || !NON_COD_SUBESTADOS.has(o.subEstadoCc));
+  const orders = allOrders.filter(
+    (o) =>
+      (!o.subEstadoCc || !NON_COD_SUBESTADOS.has(o.subEstadoCc)) &&
+      (o.commercialStage !== "SALE" ||
+        o.commercialLead?.confirmationBasis === "SELLER"),
+  );
+
+  // The saved closing format has no currency field and labels amounts as PEN.
+  // Never fill that format with mixed/unknown currencies or reinterpret history.
+  const liveMoney = new Map<string, number>();
+  for (const order of orders) {
+    if (!esFacturable(mapOrderToFunnelBucket(order))) continue;
+    const firstDate = order.commercialLead?.confirmedAt;
+    if (
+      order.commercialStage === "SALE" &&
+      (!firstDate ||
+        new Date(firstDate) < new Date(startDate) ||
+        new Date(firstDate) > new Date(endDate))
+    )
+      continue;
+    const currency = order.currency ?? "UNKNOWN";
+    liveMoney.set(
+      currency,
+      (liveMoney.get(currency) ?? 0) + Number(order.grandTotal ?? 0),
+    );
+  }
+  if ([...liveMoney.keys()].some((currency) => currency !== "PEN")) {
+    const detail = [...liveMoney]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(
+        ([currency, total]) =>
+          `${currency === "UNKNOWN" ? "Sin moneda registrada" : currency}: ${total.toFixed(2)}`,
+      )
+      .join("; ");
+    throw new Error(
+      `El cálculo vivo de este cierre requiere importes en PEN. Hay ventas en otras monedas o sin moneda registrada (${detail}). Los cierres guardados se conservan como históricos; revisa cada moneda en los reportes de ventas antes de regularizar.`,
+    );
+  }
 
   const upsellBySku = new Map<string, number>();
   const upsellOrderNumbers = new Set<string>();
@@ -213,14 +286,36 @@ export async function getCierreDiaClosingData(
   for (const order of orders) {
     const bucket = mapOrderToFunnelBucket(order);
     const facturable = esFacturable(bucket);
-    if (facturable) confirmados.push(order);
+    const commercialLead = (
+      order as OrderHeader & {
+        commercialLead?: {
+          receivedAt?: string;
+          updatedAt?: string;
+          confirmedAt?: string | null;
+        };
+      }
+    ).commercialLead;
 
     // "Pedidos Ingresados" del día: cohorte fijo por fecha de creación, no
     // se mueve aunque el pedido cambie de estado más adelante (a diferencia
     // del bucket del embudo, ver comentario BUG CONFIRMADO debajo).
-    const createdDate = toLocalDateStr(order.created_at);
-    ingresadosByDay.set(createdDate, (ingresadosByDay.get(createdDate) ?? 0) + 1);
+    const receivedAt = order.commercialStage
+      ? (commercialLead?.receivedAt ?? order.created_at)
+      : order.created_at;
+    const createdDate = order.commercialStage
+      ? toLimaDateStr(receivedAt)
+      : toLocalDateStr(receivedAt);
+    if (
+      !order.commercialStage ||
+      (new Date(receivedAt) >= new Date(startDate) &&
+        new Date(receivedAt) <= new Date(endDate))
+    )
+      ingresadosByDay.set(
+        createdDate,
+        (ingresadosByDay.get(createdDate) ?? 0) + 1,
+      );
 
+    // Históricos sin clasificación conservan updated_at como aproximación.
     // BUG CONFIRMADO: se usaba order.created_at acá, pero el bucket
     // (confirmado/despachado/etc.) refleja el ESTADO ACTUAL del pedido, no
     // su estado el día de creación — un pedido creado el jueves y confirmado
@@ -229,9 +324,33 @@ export async function getCierreDiaClosingData(
     // transición de estado (BACKEND GAP), así que se usa updated_at como
     // mejor aproximación disponible: coincide con la fecha del último
     // cambio de estado en la mayoría de los casos.
-    const orderDate = toLocalDateStr(order.updated_at ?? order.created_at);
+    // New classified sales retain their first confirmation date. Missing evidence
+    // remains unknown instead of attributing a sale to its last edit or payment.
+    const canonicalDate = commercialLead?.confirmedAt;
+    if (order.commercialStage === "SALE" && facturable && !canonicalDate)
+      continue;
+    if (
+      order.commercialStage === "SALE" &&
+      facturable &&
+      (new Date(canonicalDate!) < new Date(startDate) ||
+        new Date(canonicalDate!) > new Date(endDate))
+    )
+      continue;
+    if (facturable) confirmados.push(order);
+    const orderDate = (order.commercialStage ? toLimaDateStr : toLocalDateStr)(
+      order.commercialStage === "SALE" && facturable
+        ? canonicalDate!
+        : order.commercialStage === "LEAD"
+          ? (commercialLead?.receivedAt ?? order.created_at)
+          : (order.updated_at ?? order.created_at),
+    );
     if (!byDayAcc.has(orderDate)) {
-      byDayAcc.set(orderDate, { buckets: { ...EMPTY_FUNNEL }, ingreso: 0, upsells: 0, variantUnits: new Map() });
+      byDayAcc.set(orderDate, {
+        buckets: { ...EMPTY_FUNNEL },
+        ingreso: 0,
+        upsells: 0,
+        variantUnits: new Map(),
+      });
     }
     const dayAcc = byDayAcc.get(orderDate)!;
     dayAcc.buckets[bucket] += 1; // conteo de PEDIDOS, no de unidades
@@ -264,7 +383,10 @@ export async function getCierreDiaClosingData(
       if (facturable) {
         acc.ingreso += Number(item.subtotal ?? 0);
         acc.unidadesFacturables += item.quantity;
-        dayAcc.variantUnits.set(key, (dayAcc.variantUnits.get(key) ?? 0) + item.quantity);
+        dayAcc.variantUnits.set(
+          key,
+          (dayAcc.variantUnits.get(key) ?? 0) + item.quantity,
+        );
       }
     }
   }
@@ -322,7 +444,9 @@ export async function getCierreDiaClosingData(
       pctMargen: 0,
     },
   );
-  totals.pctMargen = totals.ingreso ? (totals.margen / totals.ingreso) * 100 : 0;
+  totals.pctMargen = totals.ingreso
+    ? (totals.margen / totals.ingreso) * 100
+    : 0;
 
   // Unión de fechas de ambos mapas: un día puede tener pedidos ingresados
   // sin ningún cambio de estado ese mismo día (o viceversa), ya que cada uno
@@ -346,21 +470,31 @@ export async function getCierreDiaClosingData(
     })
     .sort((a, b) => a.date.localeCompare(b.date));
 
-  const conUpsell = confirmados.filter((o) => upsellOrderNumbers.has(o.orderNumber));
-  const sinUpsell = confirmados.filter((o) => !upsellOrderNumbers.has(o.orderNumber));
+  const conUpsell = confirmados.filter((o) =>
+    upsellOrderNumbers.has(o.orderNumber),
+  );
+  const sinUpsell = confirmados.filter(
+    (o) => !upsellOrderNumbers.has(o.orderNumber),
+  );
   const avgTicket = (list: OrderHeader[]) =>
-    list.length ? list.reduce((s, o) => s + Number(o.grandTotal ?? 0), 0) / list.length : 0;
+    list.length
+      ? list.reduce((s, o) => s + Number(o.grandTotal ?? 0), 0) / list.length
+      : 0;
   const ticketSinUpsell = avgTicket(sinUpsell);
   const ticketConUpsell = avgTicket(conUpsell);
 
   const upsellSummary: CierreDiaUpsellSummary = {
     pedidosConfirmados: confirmados.length,
     pedidosConUpsell: conUpsell.length,
-    pctConversion: confirmados.length ? (conUpsell.length / confirmados.length) * 100 : 0,
+    pctConversion: confirmados.length
+      ? (conUpsell.length / confirmados.length) * 100
+      : 0,
     ingresoExtra: ingresoExtraUpsell,
     ticketSinUpsell,
     ticketConUpsell,
-    pctIncremento: ticketSinUpsell ? ((ticketConUpsell - ticketSinUpsell) / ticketSinUpsell) * 100 : 0,
+    pctIncremento: ticketSinUpsell
+      ? ((ticketConUpsell - ticketSinUpsell) / ticketSinUpsell) * 100
+      : 0,
   };
 
   return { rows, totals, upsellSummary, byDay };

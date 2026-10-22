@@ -2,6 +2,7 @@
 import SaleUnitLifecycleActions from "@/components/registrar-venta/SaleUnitLifecycleActions";
 import axios from "@/lib/axiosAuth";
 import Link from "next/link";
+import { isCommercialLeadOrder, canOperateCommercialOrder, commercialLeadHref } from "@/utils/commercialOrders";
 import {
   assignmentBlockReason,
   saleMutationUrl,
@@ -69,16 +70,13 @@ export default function OrderReceiptModal({
       setReceipt(null);
       setLoading(true);
       try {
-        const [receiptRes, orderRes] = await Promise.all([
-          axios.get(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/manual/${orderId}/receipt`,
-            { signal: controller.signal },
-          ),
-          axios.get(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/manual/${orderId}`,
-            { signal: controller.signal },
-          ),
-        ]);
+        const orderRes = await axios.get<OrderHeader>(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/manual/${orderId}`, { signal: controller.signal });
+        if (controller.signal.aborted) return;
+        if (orderRes.data.id !== orderId) throw new Error("El pedido no corresponde al documento solicitado.");
+        setOrderHeader(orderRes.data);
+        setLoadedKey(receiptKey);
+        if (isCommercialLeadOrder(orderRes.data)) return;
+        const receiptRes = await axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/manual/${orderId}/receipt`, { signal: controller.signal });
         if (controller.signal.aborted) return;
         if (
           receiptRes.data?.orderId !== orderId ||
@@ -122,7 +120,7 @@ export default function OrderReceiptModal({
   };
 
   const handlePrint = async () => {
-    if (!receipt) return;
+    if (!receipt || !orderHeader || !canOperateCommercialOrder(orderHeader)) { toast.error("Gestiona y prepara la compra desde el Lead antes de imprimir."); return; }
     const operation = beginPrint();
     try {
       const blocked =

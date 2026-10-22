@@ -9,7 +9,9 @@ jest.mock("axios", () => ({
 
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: jest.requireMock("axios") }));
 jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: "company-1:business:store-1" }) }));
-jest.mock("@/hooks/useInvalidateBusinessData", () => ({ useInvalidateBusinessData: () => jest.fn() }));
+// Referencia estable: después de una acción, la vista recarga invalidando las consultas del negocio.
+const mockInvalidate = jest.fn();
+jest.mock("@/hooks/useInvalidateBusinessData", () => ({ useInvalidateBusinessData: () => mockInvalidate }));
 jest.mock("sonner", () => ({
   toast: {
     success: jest.fn(),
@@ -35,6 +37,14 @@ jest.mock("@/services/atencionClienteService", () => ({
 
 jest.mock("@/hooks/useBusinessOrders", () => ({
   useBusinessOrders: jest.fn(),
+}));
+jest.mock("@/hooks/useBusinessOrdersCount", () => ({
+  useBusinessOrdersCount: () => ({ count: 0, loading: false, error: false, retry: jest.fn(), refetch: jest.fn() }),
+}));
+// Hoy fijo en 09-26: los pedidos del 09-01 y 09-02 entran en la ventana de 30 días.
+jest.mock("@/lib/peruDate", () => ({
+  ...jest.requireActual("@/lib/peruDate"),
+  todayInPeru: () => "2026-09-26",
 }));
 
 jest.mock("@/utils/bulk-receipt-printer", () => ({
@@ -245,6 +255,7 @@ describe("VentasPage — imprimir seleccionados en Ventas pendientes", () => {
 
     fireEvent.click(printButton);
     expect(mockedAxios.patch).not.toHaveBeenCalled();
+    expect(mockInvalidate).not.toHaveBeenCalled();
 
     fireEvent.click(
       within(await confirmStep()).getByRole("button", {
@@ -262,7 +273,9 @@ describe("VentasPage — imprimir seleccionados en Ventas pendientes", () => {
       expect.objectContaining({ status: "PREPARADO", userId: "user-1" }),
     );
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(refetch).toHaveBeenCalled();
+    expect(mockInvalidate).toHaveBeenCalled();
+    // Una sola recarga: la invalidación ya refresca cada consulta activa de la vista
+    expect(refetch).not.toHaveBeenCalled();
   });
 });
 

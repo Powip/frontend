@@ -1,9 +1,21 @@
+import { useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getPedidosCC, getAllPedidosCC, PedidosCcFilters, PaginatedCcResult } from "@/services/atencionClienteService";
 
 export function useCcPedidos(filters: PedidosCcFilters) {
   const { auth } = useAuth();
+  const queryClient = useQueryClient();
+  const companyId = auth?.company?.id;
+  useEffect(() => {
+    const changed = (event: Event) => {
+      if (!companyId || (event as CustomEvent<{companyId?: string}>).detail?.companyId !== companyId) return;
+      void queryClient.invalidateQueries({ queryKey: ["cc-pedidos"] });
+      void queryClient.invalidateQueries({ queryKey: ["cc-kpis"] });
+    };
+    window.addEventListener("commercial-leads:changed", changed);
+    return () => window.removeEventListener("commercial-leads:changed", changed);
+  }, [companyId, queryClient]);
   const business = !!filters.storeIds;
   const { page = 1, limit = 50, ...allFilters } = filters;
   return useQuery<PaginatedCcResult>({
