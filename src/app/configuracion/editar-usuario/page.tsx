@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
@@ -56,7 +56,7 @@ export default function DatosPersonalesPage() {
 
     const fetchData = async () => {
       try {
-        const res = await axios.get(
+        const res = await axiosAuth.get(
           `${process.env.NEXT_PUBLIC_API_USERS}/auth/user/${userId}`
         );
         setUser(res.data);
@@ -82,7 +82,7 @@ export default function DatosPersonalesPage() {
     setSavingChanges(true);
 
     try {
-      await axios.put(
+      await axiosAuth.put(
         `${process.env.NEXT_PUBLIC_API_USERS}/auth/user/${userId}`,
         {
           name: user.name,
@@ -115,7 +115,7 @@ export default function DatosPersonalesPage() {
     setChangingPassword(true);
 
     try {
-      await axios.post(
+      await axiosAuth.post(
         `${process.env.NEXT_PUBLIC_API_USERS}/auth/update-password`,
         {
           userId,
