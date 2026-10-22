@@ -24,6 +24,11 @@ const EXACT: Record<string, string> = {
   ORDER_UPDATE_RELEASE: "Liberación por pedido modificado",
   EXTERNAL_SYNC_CREATE: "Alta desde Shopify",
   EXTERNAL_SYNC_ADJUST: "Sincronización con Shopify",
+  SHRINKAGE: "Merma",
+  SALE: "Venta",
+  RECONCILE_DISCARD: "Unificación · stock descartado",
+  RECONCILE_RESERVE_FLOOR: "Unificación · se completa hasta lo reservado",
+  UNIT_REGULARIZATION: "Activación de IMEI/series",
 };
 
 // El orden importa: los prefijos largos antes que los cortos.
@@ -67,7 +72,8 @@ export function describeMovement(movement: Pick<InventoryMovement, "type" | "qua
 
   const adjustment = reason.match(/^ADJUSTMENT_(IN|OUT) - ([a-z_]+)(?: - ([\s\S]*))?$/);
   const reconcile = reason.match(/^RECONCILE_(MERGE|LINK)_(IN|OUT) reserved=(\d+)/);
-  const orderEvent = reason.match(/^(order\.[a-z]+):\d+$/);
+  // ":UNASSIGNED": reserva de IMEI/series que todavía no tiene la unidad elegida.
+  const orderEvent = reason.match(/^(order\.[a-z]+):\d+(:UNASSIGNED)?$/);
   const prefixed = PREFIXED.find(([prefix]) => reason.startsWith(prefix));
 
   if (adjustment) {
@@ -79,7 +85,7 @@ export function describeMovement(movement: Pick<InventoryMovement, "type" | "qua
     label = `${reconcile[1] === "MERGE" ? "Unificación" : "Vinculación"} · ${reconcile[2] === "IN" ? "entra" : "sale"}`;
     deltas = { physicalDelta: sign * movement.quantity, reservedDelta: reserved > 0 ? sign * reserved : null };
   } else if (orderEvent && ORDER_EVENTS[orderEvent[1]]) {
-    label = ORDER_EVENTS[orderEvent[1]];
+    label = orderEvent[2] ? `${ORDER_EVENTS[orderEvent[1]]} · sin unidad asignada` : ORDER_EVENTS[orderEvent[1]];
   } else if (EXACT[reason]) {
     label = EXACT[reason];
   } else if (prefixed) {

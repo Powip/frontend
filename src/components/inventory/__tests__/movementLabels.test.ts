@@ -27,6 +27,14 @@ describe("describeMovement (FEAT-24 H0)", () => {
     ["OUT", "AUDIT_CORRECTION - valor anterior 99999", "Corrección de cantidad inválida", -3, null],
     ["OUT", "SHRINKAGE - Dañado", "Merma (Dañado)", -3, null],
     ["OUT", "UNIT_TRANSFER_OUT - Central", "Transferencia de IMEI/series · Salida (Central)", -3, null],
+    // F7: motivos que existen en ms-logistics y no tenían nombre.
+    ["OUT", "SHRINKAGE", "Merma", -3, null],
+    ["OUT", "SALE", "Venta", -3, null],
+    ["OUT", "RECONCILE_DISCARD", "Unificación · stock descartado", -3, null],
+    ["IN", "RECONCILE_RESERVE_FLOOR", "Unificación · se completa hasta lo reservado", 3, null],
+    ["ADJUSTMENT", "UNIT_REGULARIZATION", "Activación de IMEI/series", null, null],
+    ["RESERVED", "order.created:2:UNASSIGNED", "Reserva por pedido · sin unidad asignada", null, 3],
+    ["RELEASED", "order.updated:3:UNASSIGNED", "Pedido modificado · sin unidad asignada", null, -3],
     ["IN", "algo raro", "Otro movimiento", 3, null],
     ["IN", null, "Otro movimiento", 3, null],
   ])("%s %p → %s", (type, reason, label, physical, reserved) => {
@@ -53,6 +61,7 @@ describe("describeMovement (FEAT-24 H0)", () => {
     expect(describeMovement(m("IN", "PURCHASE - COM-0009", 1, null)).documentNumber).toBe("COM-0009");
     expect(describeMovement(m("COMMITTED", "SALE_CONFIRMED", 1, "ORD-000123")).documentNumber).toBe("ORD-000123");
     expect(describeMovement(m("RESERVED", "order.created:1", 1, UUID))).toMatchObject({ orderId: UUID, documentNumber: null });
+    expect(describeMovement(m("RESERVED", "order.created:2:UNASSIGNED", 1, UUID))).toMatchObject({ orderId: UUID });
   });
 
   it("muestra la hora de Perú", () => {
