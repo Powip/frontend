@@ -570,7 +570,7 @@ export default function AlmacenPage() {
                                 <Button size="sm" variant="outline" onClick={() => setTrackingItem({ item: prod, companyId, action: "write-off" })}>Registrar merma</Button>
                               </> : null}
                               {isTracked(prod.trackingMode) ? <Button size="sm" variant="ghost" disabled={!prod.productId} onClick={() => setTrackingItem({ item: prod, companyId, action: "regularize" })}>Revisar activación</Button> : null}
-                              {isTracked(prod.trackingMode) ? null : (
+                              {isTracked(prod.trackingMode) || prod.mergedInto ? null : (
                                 <Button
                                   size="icon"
                                   variant="ghost"

@@ -260,5 +260,12 @@ describe("Warehouse product actions with business inventory queries", () => {
       expect(screen.getByText("Inactiva")).toBeInTheDocument();
       expect(screen.getByText("Unificada")).toBeInTheDocument();
     });
+
+    // F4: el stock de una unificada vive en la madre; ms-products rechaza el ajuste.
+    it("una fila unificada no ofrece Ajustar stock", async () => {
+      fetchItems.mockResolvedValue([item("unificada", { trackingMode: "NONE", isActive: false, mergedInto: "v-madre" })]);
+      setup(); await screen.findByText("Producto unificada");
+      expect(screen.queryByTitle("Ajustar stock")).not.toBeInTheDocument();
+    });
   });
 });
