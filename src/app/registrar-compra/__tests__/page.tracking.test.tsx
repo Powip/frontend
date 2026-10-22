@@ -255,4 +255,21 @@ describe("FEAT-24 H0", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sí, confirmar" }));
     await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(1));
   });
+
+  it("no muestra Default Title al elegir ni en el carrito (F5)", async () => {
+    apiGet.mockImplementation(async (url) => ({
+      data: String(url).includes("/suppliers/company/")
+        ? [{ id: "s1", name: "Proveedor A", isActive: true }]
+        : { data: [{ ...variant(), attributes: { Title: "Default Title" } }], meta: { total: 1, totalPages: 1 } },
+    }));
+    render(<RegistrarCompraPage />);
+    const option = await screen.findByRole("option", { name: "Proveedor A" });
+    fireEvent.change(option.closest("select")!, { target: { value: "s1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Agregar Productos" }));
+    const product = await screen.findByText("Celular");
+    expect(screen.queryByText(/Default Title/)).not.toBeInTheDocument();
+    fireEvent.click(within(product.closest("tr")!).getByRole("button", { name: "Agregar" }));
+    await screen.findByLabelText("Cantidad de Celular");
+    expect(screen.queryByText(/Default Title/)).not.toBeInTheDocument();
+  });
 });

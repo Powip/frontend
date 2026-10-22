@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { cancelPurchase, getTrackedPurchase, trackingError, type InventoryUnit, type TrackingMode } from "@/services/inventoryTrackingService";
 import CancelPurchaseDialog from "@/components/compras/CancelPurchaseDialog";
+import { visibleVariantAttributes } from "@/lib/variantAttributes";
 import axios from "@/lib/axiosAuth";
 import { useQuery } from "@tanstack/react-query";
 import { GATEWAY } from "@/lib/gateway";
@@ -416,9 +417,9 @@ function ComprasContent() {
                                                             <div className="space-y-1">
                                                                 <p className="font-semibold text-base text-foreground/90">{item.productName}</p>
                                                                 {(item.codes?.length || item.units?.length) ? <div className="text-xs"><p>{item.trackingMode || "Códigos de unidad"}</p><ul className="font-mono break-all">{(item.codes ?? item.units?.map((unit) => unit.code) ?? []).map((code) => <li key={code}>{code}</li>)}</ul></div> : null}
-                                                                {item.attributes && Object.keys(item.attributes).length > 0 && (
+                                                                {visibleVariantAttributes(item.attributes).length > 0 && (
                                                                     <div className="flex flex-wrap gap-2">
-                                                                        {Object.entries(item.attributes).map(([k, v]) => (
+                                                                        {visibleVariantAttributes(item.attributes).map(([k, v]) => (
                                                                             <Badge key={k} variant="secondary" className="text-[10px] px-1.5 py-0 h-5 font-normal">
                                                                                 {k}: {v}
                                                                             </Badge>

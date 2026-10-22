@@ -1,6 +1,7 @@
 "use client";
 
 import { MAX_ITEM_UNITS, MAX_ITEM_UNITS_MESSAGE, largeQuantityConfirmText, needsQuantityConfirmation } from "@/lib/stockLimits";
+import { formatVariantLabel } from "@/lib/variantAttributes";
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -828,9 +829,7 @@ function RegistrarCompraForm() {
                             </TableCell>
                             <TableCell>{product.sku}</TableCell>
                             <TableCell>
-                              {Object.entries(product.attributes || {})
-                                .map(([k, v]) => `${k}: ${v}`)
-                                .join(" / ") || "—"}
+                              {formatVariantLabel(product.attributes, " / ") || "—"}
                             </TableCell>
                             <TableCell className="text-center">
                               {product.physicalStock < 0 ? (
@@ -953,12 +952,9 @@ function RegistrarCompraForm() {
                                   <p className="text-xs">{parseUnitCodes(item.codesText).length} de {item.quantity} códigos</p>
                                   <p className="text-xs text-muted-foreground">Para ingresar otro equipo del mismo modelo, pulsa «Agregar otra unidad» y añade su código en una línea nueva.</p>
                                 </div> : null}
-                                {Object.keys(item.attributes || {}).length >
-                                  0 && (
+                                {formatVariantLabel(item.attributes) && (
                                   <p className="text-xs text-muted-foreground">
-                                    {Object.entries(item.attributes)
-                                      .map(([k, v]) => `${k}: ${v}`)
-                                      .join(" / ")}
+                                    {formatVariantLabel(item.attributes, " / ")}
                                   </p>
                                 )}
                               </div>

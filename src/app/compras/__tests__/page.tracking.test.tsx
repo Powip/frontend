@@ -115,3 +115,15 @@ describe("FEAT-24 H0", () => {
     expect(await screen.findByText("Sin motivo registrado")).toBeInTheDocument();
   });
 });
+it("el detalle no muestra Default Title y conserva los atributos reales (FEAT-24 H0 F5)", async () => {
+  const line = { productName: "Polo", sku: "SKU", supplierName: "Proveedor", quantity: 1, unitCost: 10 };
+  jest.mocked(axiosAuth.get).mockResolvedValue({ data: { data: [{ ...purchase, hasTrackedUnits: false, items: [
+    { ...line, id: "simple", attributes: { Title: "Default Title" } },
+    { ...line, id: "rojo", attributes: { Color: "Rojo" } },
+  ] }], meta: { total: 1 } } });
+  setup();
+  await screen.findByText("COM-1");
+  fireEvent.click(screen.getByTitle("Ver detalles"));
+  await screen.findByText("Color: Rojo");
+  expect(screen.queryByText(/Default Title/)).not.toBeInTheDocument();
+});
