@@ -3,13 +3,6 @@
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -21,10 +14,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
-import { fetchMySubscription } from "@/services/onboardingService";
-import type { SubscriptionMe } from "@/types/onboarding";
 import axios from "axios";
-import { Check } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -47,7 +37,6 @@ export default function EmpresaPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [subscription, setSubscription] = useState<SubscriptionMe | null>(null)
   const router = useRouter();
   const { auth } = useAuth();
 
@@ -63,11 +52,8 @@ export default function EmpresaPage() {
         );
         setCompany(companyRes.data);
 
-        // --- Fetch Subscription ---
-        // /me (gateway, con la sesión): ms-subscription ya no responde por id sin token.
-        setSubscription(await fetchMySubscription(auth.accessToken));
       } catch (error) {
-        console.log("Error al cargar datos de empresa o suscripción:", error);
+        console.log("Error al cargar datos de la empresa:", error);
       } finally {
         setIsLoading(false);
       }
@@ -145,8 +131,8 @@ export default function EmpresaPage() {
     <div className="flex min-h-screen">
       <main className="flex-1 py-4 px-6">
         <HeaderConfig
-          title="Empresa + Suscripción"
-          description="Información de la empresa y gestión de planes"
+          title="Empresa"
+          description="Información y datos de facturación de la empresa"
         />
 
         <div className="grid gap-6">
@@ -290,102 +276,6 @@ export default function EmpresaPage() {
             </CardContent>
           </Card>
         </div>
-
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle>Suscripción activa</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-start justify-between rounded-lg border border-teal-200 bg-teal-50 p-4">
-              <div className="space-y-2">
-                <h3 className="flex items-center gap-2 text-lg font-semibold text-teal-900">
-                  <Check className="h-5 w-5" />
-                  Plan {subscription?.plan.name}
-                </h3>
-                <p className="text-sm text-teal-700">
-                  ${subscription?.plan.price} USD por mes
-                </p>
-                <p className="text-sm text-teal-600">
-                  Renovación:{" "}
-                  {subscription?.endDate
-                    ? new Date(subscription.endDate).toLocaleDateString(
-                        "es-AR",
-                        {
-                          day: "numeric",
-                          month: "long",
-                          year: "numeric",
-                        }
-                      )
-                    : "—"}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="outline">Mejorar plan</Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Cambiar suscripción</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <p className="text-sm text-gray-600">
-                        Selecciona un nuevo plan para tu empresa:
-                      </p>
-                      <div className="space-y-2">
-                        <Button
-                          variant="outline"
-                          className="w-full justify-start bg-transparent"
-                        >
-                          Plan Basic - $19.99
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="w-full justify-start bg-transparent"
-                        >
-                          Plan Medium - $49.99
-                        </Button>
-                        <Button className="w-full justify-start bg-teal-600 hover:bg-teal-700">
-                          Plan Premium - $99.99 (actual)
-                        </Button>
-                      </div>
-                      <Button className="w-full bg-teal-600 hover:bg-teal-700">
-                        Continuar
-                      </Button>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="destructive">Darse de baja</Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Cancelar suscripción</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <p className="text-sm text-gray-600">
-                        ¿Estás seguro de que deseas cancelar tu suscripción?
-                        Perderás acceso a todas las funciones Premium.
-                      </p>
-                      <div className="flex gap-2">
-                        <Button
-                          variant="outline"
-                          className="flex-1 bg-transparent"
-                        >
-                          Mantener suscripción
-                        </Button>
-                        <Button variant="destructive" className="flex-1">
-                          Cancelar suscripción
-                        </Button>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
 
         <div className="mt-6 flex justify-end">
           <Button
