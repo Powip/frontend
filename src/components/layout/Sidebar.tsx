@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getCommercialLeadCapabilities } from "@/services/commercialLeadsService";
 import { adsGet, type AdsSettings } from "@/services/advertisingV22Service";
+import { getLiveAvailability } from "@/lib/liveAvailability";
 import { useTheme } from "next-themes";
 import {
   Menu,
@@ -46,6 +47,7 @@ import {
   Handshake,
   LayoutList,
   Plug,
+  Radio,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -119,7 +121,16 @@ function NavItemBadge({
 export function Sidebar({ className }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
-  const { auth, logout, hasPermission } = useAuth();
+  const { auth, logout, hasPermission, selectedStoreId } = useAuth();
+  const liveAccess = useQuery({
+    queryKey: ["live-availability", auth?.user.id, auth?.company?.id, auth?.user.role, selectedStoreId],
+    queryFn: ({ signal }) => getLiveAvailability(selectedStoreId!, signal),
+    enabled: !!auth?.accessToken && !!auth.company?.id && !!selectedStoreId,
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+  });
+  const canAccessLive = liveAccess.isSuccess && liveAccess.data?.available === true;
   const commercialAccess = useQuery({
     queryKey: ["commercial-leads-capabilities", auth?.user.id, auth?.company?.id, auth?.user.role, auth?.user.permissions],
     queryFn: getCommercialLeadCapabilities,
@@ -195,6 +206,7 @@ export function Sidebar({ className }: SidebarProps) {
             icon: PackagePlus,
           },
           { name: "Clientes", href: "/clientes", icon: Users },
+          ...(canAccessLive ? [{ name: "POWIP Live", href: "/live", icon: Radio }] : []),
           // 🔴 KILL SWITCH (hotfix checkouts abandonados) — revertir: descomentar
           // {
           //   name: "Carritos Abandonados",
@@ -340,7 +352,7 @@ export function Sidebar({ className }: SidebarProps) {
         href: "/superadmin",
       },
     ],
-    [canViewCommercialLeads, canManageCommercialLeadTypes],
+    [canViewCommercialLeads, canManageCommercialLeadTypes, canAccessLive],
   );
 
   // Auto-colapsar en móviles
