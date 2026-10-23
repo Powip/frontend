@@ -406,7 +406,7 @@ describe("Ventas — detalle y acciones de pedidos que siguen en Atención", () 
     expect(mockedAxios.patch).not.toHaveBeenCalled();
   });
 
-  it("conserva el detalle abierto cuando cambia solo la etiqueta informativa de Atención", async () => {
+  it("conserva el detalle abierto cuando cambia solo la clasificación de Atención", async () => {
     const view = render(<VentasPage />);
     await openAllSales();
     fireEvent.click(await screen.findByRole("button", { name: "Ver detalle del pedido ORD-001" }));
@@ -425,9 +425,9 @@ describe("Ventas — detalle y acciones de pedidos que siguen en Atención", () 
     expect(screen.getByRole("tab", { name: /Todas las Ventas/ })).toHaveTextContent("4");
     const panel = await openAllSales();
     expect(await within(panel).findByText("ORD-152907")).toBeInTheDocument();
-    for (const [number, label] of [["ORD-152907", "Por coordinar"], ["ORD-152728", "Por confirmar"]]) {
+    for (const number of ["ORD-152907", "ORD-152728"]) {
       const row = within(panel).getByText(number).closest("tr")!;
-      expect(within(row).getByText(`En Atención · ${label}`)).toBeInTheDocument();
+      expect(within(row).queryByText(/^En Atención/)).not.toBeInTheDocument();
       expect(within(row).getByRole("checkbox")).toBeEnabled();
       expect(within(row).getByRole("button", { name: `Ver detalle del pedido ${number}` })).toBeEnabled();
       expect(within(row).getByRole("button", { name: "Anular PENDIENTE" })).toBeInTheDocument();
@@ -513,7 +513,7 @@ describe("Ventas — detalle y acciones de pedidos que siguen en Atención", () 
 
 
 describe("Ventas — impresión genérica pendiente de terminar", () => {
-  it.each(["sin confirmación física", "otra página", "solo etiqueta CC"] as const)("revalida la impresión retenida si cambia a %s", async (change) => {
+  it.each(["sin confirmación física", "otra página", "solo clasificación CC"] as const)("revalida la impresión retenida si cambia a %s", async (change) => {
     const orders: BusinessSalesOrder[] = Array.from({ length: 12 }, (_, index) => ({
       ...makeOrder(`race-${index}`, `ORD-RACE-${index}`, `2026-09-${String(index + 1).padStart(2, "0")}T10:00:00.000Z`),
       salesOperationalEligible: true,
@@ -546,13 +546,19 @@ describe("Ventas — impresión genérica pendiente de terminar", () => {
           ? { ...order, externalSource: "shopify", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0, salesOperationalEligible: false, subEstadoCc: "por_confirmar" }
           : order));
         view.rerender(<VentasPage />);
-        expect(screen.getByText("En Atención · Por confirmar")).toBeInTheDocument();
-      } else if (change === "solo etiqueta CC") {
+        const updatedRow = screen.getByText("ORD-RACE-11").closest("tr")!;
+        expect(within(updatedRow).queryByText(/^En Atención/)).not.toBeInTheDocument();
+        expect(within(updatedRow).getByRole("button", { name: "Anular PENDIENTE" })).toBeInTheDocument();
+        expect(within(updatedRow).getByRole("button", { name: "Ver detalle del pedido ORD-RACE-11" })).toBeEnabled();
+      } else if (change === "solo clasificación CC") {
         useFixtureOrders(orders.map((order) => order.id === "race-11"
           ? { ...order, stockVersion: 1, salesOperationalEligible: false, subEstadoCc: "entrega_lima" }
           : order));
         view.rerender(<VentasPage />);
-        expect(screen.getByText("En Atención · Por coordinar")).toBeInTheDocument();
+        const updatedRow = screen.getByText("ORD-RACE-11").closest("tr")!;
+        expect(within(updatedRow).queryByText(/^En Atención/)).not.toBeInTheDocument();
+        expect(within(updatedRow).getByRole("button", { name: "Anular PENDIENTE" })).toBeInTheDocument();
+        expect(within(updatedRow).getByRole("button", { name: "Ver detalle del pedido ORD-RACE-11" })).toBeEnabled();
       } else {
         fireEvent.click(screen.getByRole("button", { name: "2" }));
         await screen.findByText("ORD-RACE-0");

@@ -416,8 +416,11 @@ describe("VentasPage — Anuladas, Todas y Pendientes antiguos no muestran ni us
 
     overrides.todas = { orders: [{ ...order, externalSource: "shopify", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0, subEstadoCc: "por_confirmar", salesOperationalEligible: false } as BusinessSalesOrder] };
     rerender(<VentasPage />);
-    expect(screen.getByText("En Atención · Por confirmar")).toBeInTheDocument();
-    expect(within(screen.getByText("ORD-101").closest("tr")!).getByRole("checkbox", { hidden: true })).toBeEnabled();
+    const updatedRow = screen.getByText("ORD-101").closest("tr")!;
+    expect(within(updatedRow).queryByText(/^En Atención/)).not.toBeInTheDocument();
+    expect(within(updatedRow).getByRole("combobox", { hidden: true })).toHaveTextContent("PENDIENTE");
+    expect(within(updatedRow).getByText("Ver")).toBeEnabled();
+    expect(within(updatedRow).getByRole("checkbox", { hidden: true })).toBeEnabled();
     await act(async () => { await previousActions.onStatusChange("PREPARADO"); });
     expect(processBulkStatusChange).not.toHaveBeenCalled();
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Confirmar" }));
