@@ -871,7 +871,8 @@ describe("PaymentVerificationModal — adelantos Shopify COD desde Gestión CC",
     mockedAxiosAuth.patch.mockResolvedValue({ data: {} });
   });
 
-  it("registra adelanto con comprobante en el mismo pedido pendiente sin salir de CC ni aprobarlo", async () => {
+  it.each([{ permissions: ["MANAGE_CUSTOMER_SERVICE"] }, { permissions: ["CONFIRM_SALE", "CREATE_SALE", "MANAGE_LEADS", "VIEW_CUSTOMER_SERVICE"] }])("registra adelanto Shopify COD con permisos reales %j sin aprobarlo", async ({ permissions }) => {
+    mockCcPermissions = permissions;
     const onPaymentUpdated = jest.fn();
     let resolve!: (value: unknown) => void;
     mockedAxiosAuth.post.mockReturnValue(new Promise((done) => { resolve = done; }));
@@ -955,8 +956,8 @@ describe("PaymentVerificationModal — adelantos Shopify COD desde Gestión CC",
     expect(mockedAxiosAuth.patch).not.toHaveBeenCalled();
   });
 
-  it("mantiene la sesión de consulta sin permiso para registrar pagos ni adjuntar comprobantes", async () => {
-    mockCcPermissions = ["VIEW_CUSTOMER_SERVICE"];
+  it.each([{ permissions: ["VIEW_CUSTOMER_SERVICE"] }, { permissions: ["CONFIRM_SALE"] }])("no usa permisos %j como permiso para capturar dinero", async ({ permissions }) => {
+    mockCcPermissions = permissions;
     renderModal();
     await userEvent.type(await screen.findByLabelText("Monto *"), "30");
     await userEvent.selectOptions(screen.getByRole("combobox"), "YAPE");

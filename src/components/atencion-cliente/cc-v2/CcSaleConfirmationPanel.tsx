@@ -1,4 +1,5 @@
 "use client";
+import { canManageCustomerServiceOrder } from "@/utils/customerServiceOrderAccess";
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -42,7 +43,7 @@ export function CcSaleConfirmationPanel({
   const { auth, hasPermission } = useAuth();
   const companyId = auth?.company?.id;
   const userId = auth?.user?.id;
-  const canManage = hasPermission("MANAGE_CUSTOMER_SERVICE");
+  const canManage = canManageCustomerServiceOrder(hasPermission, canalOrigen);
   const isShopifyCod = canalOrigen === "shopify_cod";
   const queryClient = useQueryClient();
   const capabilities = useQuery({

@@ -1,4 +1,5 @@
 "use client";
+import { canManageCustomerServiceOrder } from "@/utils/customerServiceOrderAccess";
 import {useAuth} from "@/contexts/AuthContext";
 
 import { useState, useCallback } from "react";
@@ -82,7 +83,7 @@ export function CcGestionPanel({
   commercialStockState,
 }: Props) {
   const {auth, hasPermission}=useAuth();
-  const canManage=hasPermission("MANAGE_CUSTOMER_SERVICE");
+  const canManage=canManageCustomerServiceOrder(hasPermission, canalOrigen);
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
