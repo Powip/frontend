@@ -174,9 +174,8 @@ export default function PlanificacionTab() {
     for (const o of orders) {
       if (o.deliveryType !== "DOMICILIO") continue;
       if (o.status === "ENTREGADO" || o.status === "ANULADO") continue;
-      // PAGADO/PENDIENTE/INCOMPLETE/PREVENTA todavía no pasaron por
-      // preparación real de almacén — no son responsabilidad de Operaciones
-      // todavía, así que no deben planificarse acá (ver PRE_FULFILLMENT_STATUSES).
+      // La preparación se gestiona en Pedidos › Pendientes.
+      // La planificación de guías empieza cuando el paquete está preparado.
       if (PRE_FULFILLMENT_STATUSES.includes(o.status)) continue;
       if (getPedidosTab(o) !== "despachar") continue;
 

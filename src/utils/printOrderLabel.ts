@@ -3,6 +3,8 @@ import QRCode from "qrcode";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { OrderHeader } from "@/interfaces/IOrder";
+import { operationalStatus, receiptFinancialState } from "./orderState";
+import type { OrderStatus } from "@/interfaces/IOrder";
 import {
   renderPrintableUnitCodesHtml,
   escapePrintHtml,
@@ -333,32 +335,15 @@ async function buildOrderLabelHtml(
   const qrDataUrl = await generateQR(trackingUrlForQr);
   const barcodeDataUrl = generateBarcode(receipt.orderNumber);
 
-  // `receipt.totals.totalPaid` solo suma pagos APROBADOS (status PAID) — un
-  // adelanto recién registrado que todavía está PENDING de aprobación por
-  // finanzas queda en 0 ahí, y la etiqueta mostraba "Por cobrar contra
-  // entrega" el total completo, pidiéndole al courier cobrar de más. Se
-  // recalcula sumando `receipt.payments` sin filtrar por status (mismo
-  // criterio que ya usa la vista en pantalla del modal de éxito) — esto es
-  // solo para lo que se le cobra al cliente, no debe tocar el gate de la
-  // clave (ver `keyLocked` más abajo).
-  const totalPaid = receipt.payments.reduce(
-    (acc, p) => acc + Number(p.amount || 0),
-    0,
-  );
-  const pendingAmount = Math.max(receipt.totals.grandTotal - totalPaid, 0);
-  // La clave de recojo NO debe revelarse con el mismo criterio "cualquier
-  // pago, aprobado o no" de arriba — eso permitiría imprimir la clave real
-  // con solo un comprobante cargado y sin validar, exactamente lo que
-  // `isDebtFree` (CustomerServiceModal) y `getPendingPayment` (Rastreo
-  // Courier) evitan hoy. Se mantiene el criterio estricto de solo pagos
-  // APROBADOS para decidir si se oculta.
-  const keyLocked = (receipt.totals.pendingAmount ?? 0) > 0;
+  // Approval, collection labels and key visibility share the same financial projection.
+  const { totalPaid, pendingAmount, isPaid } = receiptFinancialState(receipt);
+  const keyLocked = !isPaid;
 
   // "Almacén" = nombre de la tienda del pedido — no existe un concepto de
   // almacén/bodega separado en el sistema hoy, es el dato más cercano.
   const storeName = company?.stores?.find((s) => s.id === orderHeader?.storeId)?.name;
   const hasTrackedItems = receipt.items.some(item => item.trackingMode === "SERIAL" || item.trackingMode === "IMEI");
-  const rawStatus = hasTrackedItems ? receipt.status : orderHeader?.status ?? receipt.status;
+  const rawStatus = operationalStatus((hasTrackedItems ? receipt.status : orderHeader?.status ?? receipt.status) as OrderStatus);
   const statusInfo = PRINT_STATUS_LABEL[rawStatus] ?? { label: rawStatus };
   const deliveryLabel =
     PRINT_DELIVERY_TYPE_LABEL[orderHeader?.deliveryType ?? ""] ??
@@ -396,11 +381,11 @@ async function buildOrderLabelHtml(
       ${barcodeDataUrl ? `<div class="barcode-wrap"><img src="${escapePrintHtml(barcodeDataUrl)}" alt="Código de barras"></div>` : ""}
 
       ${
-        pendingAmount > 0
+        !isPaid
           ? `
       <div class="cod-banner">
         <div class="cod-label">Por cobrar contra entrega<br/>Pago: ${escapePrintHtml(paymentMethods)}</div>
-        <div class="cod-amount">S/ ${pendingAmount.toFixed(2)}</div>
+        <div class="cod-amount">${Number.isFinite(pendingAmount) ? `S/ ${pendingAmount.toFixed(2)}` : "Pago por verificar"}</div>
       </div>`
           : `
       <div class="paid-banner">

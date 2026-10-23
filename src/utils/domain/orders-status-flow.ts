@@ -1,4 +1,5 @@
 import { OrderStatus } from "@/interfaces/IOrder";
+import { operationalStatus } from "@/utils/orderState";
 
 // Flujo unificado para LIMA y PROVINCIA (mismo flujo para ambas regiones).
 // PENDIENTE y PREPARADO ofrecen "En envío"/"Contactado" como atajo directo
@@ -16,13 +17,8 @@ export const ORDER_STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
   EN_ENVIO: ["ENTREGADO", "ANULADO"],
   ENTREGADO: ["ANULADO"],
   ANULADO: [],
-  // PAGADO no es una etapa de fulfillment: es "PENDIENTE + pagado al 100%"
-  // (el backend solo entra a PAGADO desde PENDIENTE al cobrarse el total y
-  // vuelve a PENDIENTE si se revierte el pago). Se mantiene espejado al
-  // backend, que solo permite el salto directo PAGADO→PREPARADO (+ANULADO).
-  // El armado de guía desde PAGADO NO depende de esta tabla: encadena
-  // PREPARADO→LLAMADO→ASIGNADO_A_GUIA vía getStatusChainSteps (que usa
-  // STATUS_PROGRESSION/FULFILLMENT_RANK, no ORDER_STATUS_FLOW).
+  // Compatibilidad con estados guardados antes de separar el pago.
+  // Las lecturas y selects normalizan PAGADO a PENDIENTE.
   PAGADO: ["PREPARADO", "ANULADO"],
 };
 
@@ -37,11 +33,11 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   EN_ENVIO: "En envío",
   ENTREGADO: "Entregado",
   ANULADO: "Anulado",
-  PAGADO: "Pagado",
+  PAGADO: "Pendiente",
 };
 
 export function getStatusLabel(status: OrderStatus): string {
-  return ORDER_STATUS_LABEL[status] ?? status;
+  return ORDER_STATUS_LABEL[operationalStatus(status)] ?? status;
 }
 
 // Progresión lineal usada solo para calcular los saltos intermedios de los
@@ -75,7 +71,7 @@ export function getStatusChainSteps(current: OrderStatus, target: OrderStatus): 
   // PAGADO es "PENDIENTE + pagado" — misma etapa operativa. El backend valida
   // la progresión desde PENDIENTE (PAGADO→PREPARADO es salto directo válido),
   // así que se normaliza acá para calcular la cadena.
-  const normalizedCurrent = current === "PAGADO" ? "PENDIENTE" : current;
+  const normalizedCurrent = operationalStatus(current);
 
   const currentRank = FULFILLMENT_RANK[normalizedCurrent];
   const targetRank = FULFILLMENT_RANK[target];
@@ -105,10 +101,11 @@ export function getAvailableStatuses(
   currentStatus: OrderStatus,
   _salesRegion?: "LIMA" | "PROVINCIA" // Se mantiene el parámetro por compatibilidad pero ya no se usa
 ): OrderStatus[] {
-  const validNextStatuses = ORDER_STATUS_FLOW[currentStatus] ?? [];
+  const current = operationalStatus(currentStatus);
+  const validNextStatuses = ORDER_STATUS_FLOW[current] ?? [];
 
   // Retorna el estado actual + los estados válidos siguientes
-  return [currentStatus, ...validNextStatuses].filter(
+  return [current, ...validNextStatuses].filter(
     (s) => s !== "INCOMPLETE",
   );
 }
@@ -132,7 +129,7 @@ const STATUS_PILL_CLASSES: Record<OrderStatus, string> = {
  */
 export function getStatusPillClasses(status: OrderStatus): string {
   return (
-    STATUS_PILL_CLASSES[status] ??
+    STATUS_PILL_CLASSES[operationalStatus(status)] ??
     "bg-muted text-muted-foreground border-border"
   );
 }
@@ -152,5 +149,5 @@ const STATUS_DOT_CLASSES: Record<OrderStatus, string> = {
 };
 
 export function getStatusDotClass(status: OrderStatus): string {
-  return STATUS_DOT_CLASSES[status] ?? "bg-muted-foreground";
+  return STATUS_DOT_CLASSES[operationalStatus(status)] ?? "bg-muted-foreground";
 }

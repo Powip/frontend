@@ -1,8 +1,10 @@
 ﻿"use client";
 import { canManageCustomerServiceOrder } from "@/utils/customerServiceOrderAccess";
 import axios from "@/lib/axiosAuth";
-import { canShipCommercialOrder, isCommercialLeadOrder, salesStatusBlockReason } from "@/utils/commercialOrders";
+import { canShipCommercialOrder, isCommercialLeadOrder, salesStatusBlockReason, salesPhysicalOperationBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
 import { formatSalesMoney } from "@/utils/salesMoney";
+import { deliveryPaymentBlockReason, operationalStatus, receiptFinancialState } from "@/utils/orderState";
+import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
 import { buildPendingOrderDetail } from "./customerServiceOrderDetail";
 import { CcSaleConfirmationPanel } from "@/components/atencion-cliente/cc-v2/CcSaleConfirmationPanel";
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
@@ -355,7 +357,7 @@ export default function CustomerServiceModal({
       );
       if (!isCurrent()) return;
       if (orderRes.data?.id !== orderId) throw new Error("El pedido no corresponde a la consulta.");
-      setOrderHeader(orderRes.data);
+      setOrderHeader({ ...orderRes.data, status: operationalStatus(orderRes.data.status) });
       setNotes(orderRes.data.notes || "");
       // CC v2: cargar campos de datos incompletos + sub-estado
       setDatosCompletos(orderRes.data.datosCompletos ?? true);
@@ -379,9 +381,9 @@ export default function CustomerServiceModal({
       );
       if (!isCurrent()) return;
       if (res.data?.orderId !== orderId) throw new Error("El comprobante no corresponde al pedido solicitado.");
-      setReceipt(res.data);
+      setReceipt({ ...res.data, status: operationalStatus(res.data.status), totals: { ...res.data.totals, pendingAmount: receiptFinancialState(res.data).pendingAmount } });
       setLoadedReceiptKey(receiptKey);
-      setOrderHeader(orderRes.data);
+      setOrderHeader({ ...orderRes.data, status: operationalStatus(orderRes.data.status) });
     } catch (err) {
       if (!isCurrent()) return;
       console.error("Error fetching receipt", err);
@@ -396,7 +398,7 @@ export default function CustomerServiceModal({
       throw new Error("Vuelve a cargar el pedido antes de actualizarlo.");
     }
     const targetStatus = typeof data.status === "string" ? data.status : "";
-    const blocked = salesStatusBlockReason(orderHeader, targetStatus) || assignmentBlockReason(orderHeader, targetStatus);
+    const blocked = salesStatusBlockReason(orderHeader, targetStatus) || assignmentBlockReason(orderHeader, targetStatus) || deliveryPaymentBlockReason(receipt ? receiptFinancialState(receipt).pendingAmount : Number.NaN, targetStatus);
     if (blocked) {
       toast.error(blocked);
       return false;
@@ -563,6 +565,8 @@ export default function CustomerServiceModal({
   };
 
   const [savingTracking, setSavingTracking] = useState(false);
+  const [newShippingKey, setNewShippingKey] = useState("");
+  useEffect(() => setNewShippingKey(""), [receiptKey, open]);
   // QR del link público de rastreo — fallback genérico para couriers sin
   // documento propio descargable por API (Aliclik/EVA hoy); Shalom usa
   // ShalomDocumentCard (PDF real) en vez de esto.
@@ -597,7 +601,8 @@ export default function CustomerServiceModal({
   // revela solo cuando el pedido queda libre de deuda, no con solo tener un
   // comprobante cargado — puede haber comprobante de un pago parcial y
   // seguir habiendo saldo pendiente.
-  const isDebtFree = (receipt?.totals.pendingAmount ?? 0) <= 0;
+  const financialState = receipt ? receiptFinancialState(receipt) : null;
+  const isDebtFree = financialState?.isPaid === true;
 
   const handleSaveTracking = async () => {
     if (!receipt || !orderId || !originalTracking) return;
@@ -620,7 +625,7 @@ export default function CustomerServiceModal({
       await patchOrder({
         externalTrackingNumber: receipt.externalTrackingNumber,
         shippingCode: receipt.shippingCode,
-        shippingKey: receipt.shippingKey,
+        ...(receipt.shippingKey || isDebtFree ? { shippingKey: receipt.shippingKey } : {}),
         shippingOffice: receipt.shippingOffice,
       });
       toast.success("Tracking actualizado");
@@ -1003,6 +1008,8 @@ export default function CustomerServiceModal({
                         {storeName ? ` · ${storeName}` : ""}
                       </div>
                     </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                    <FinancialStatusBadge pendingAmount={financialState?.pendingAmount ?? Number.NaN} />
                     <Select
                       value={receipt.status}
                       onValueChange={(v) => handleChangeStatus(v as OrderStatus)}
@@ -1021,9 +1028,11 @@ export default function CustomerServiceModal({
                         )}
                       </SelectContent>
                     </Select>
+                    </div>
                   </div>
                 </DialogHeader>
                 {!isPendingPurchase && orderHeader && <UnitAssignmentNotice order={orderHeader} />}
+                {orderHeader?.commercialStage === "SALE" && orderHeader.commercialStockState === "DEFERRED" && <p className="text-sm text-amber-700">{salesPhysicalOperationBlockReason(orderHeader)}{orderHeader.commercialLeadId && <a className="ml-1 font-semibold underline" href={commercialLeadHref(orderHeader.commercialLeadId)}>Preparar reserva de stock</a>}</p>}
                 {!isPendingPurchase && orderHeader && <SaleUnitLifecycleButtons order={orderHeader} onAction={setLifecycleAction} />}
 
                 <Tabs value={tab} onValueChange={setTab}>
@@ -1476,7 +1485,15 @@ export default function CustomerServiceModal({
                               tab Seguimiento, sin exponer el valor real en
                               ningún texto. */}
                           {!isDebtFree ? (
-                            receipt.shippingKey ? lockedKeyCard : null
+                            <>
+                              {receipt.shippingKey ? lockedKeyCard : null}
+                              <Input type="password" className="mt-3 h-8 text-xs" placeholder="Registrar nueva clave (oculta)" value={newShippingKey} onChange={(event) => setNewShippingKey(event.target.value)} onBlur={async () => {
+                                if (!newShippingKey.trim()) return;
+                                try {
+                                  if (await patchOrder({ shippingKey: newShippingKey })) { setNewShippingKey(""); void fetchReceipt(); onOrderUpdated?.(); }
+                                } catch { toast.error("No se pudo guardar la clave de recojo"); }
+                              }} />
+                            </>
                           ) : (
                             <div className="mt-3">
                               <span className="text-muted-foreground block text-[10px] uppercase mb-1">
@@ -2808,7 +2825,7 @@ export default function CustomerServiceModal({
                                 : "El pedido debe quedar libre de deuda antes de copiar la clave"
                             }
                             onClick={() => {
-                              if (!shippingGuide.shippingKey) return;
+                              if (!isDebtFree || !shippingGuide.shippingKey) return;
                               navigator.clipboard.writeText(shippingGuide.shippingKey);
                               toast.success("Código de recojo copiado");
                             }}

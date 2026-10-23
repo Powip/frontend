@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessScope } from "@/contexts/BusinessScopeContext";
 import { getDashboardOrders } from "@/services/dashboardService";
 import type { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
+import { operationalStatus } from "@/utils/orderState";
 
 const EMPTY_ORDERS: OrderHeader[] = [];
 
@@ -36,7 +37,7 @@ export function useBusinessOrders(fromDate?: string, toDate?: string, options?: 
   const orders = useMemo(() => {
     if (!enabled || !query.data) return EMPTY_ORDERS;
     const names = new Map(stores?.map((store) => [store.id, store.name]));
-    return query.data.map((order) => ({ ...order, storeName: names.get(order.storeId) ?? order.storeName, stockStoreName: order.stockStoreId ? names.get(order.stockStoreId) ?? order.stockStoreName : undefined }));
+    return query.data.map((order) => ({ ...order, status: operationalStatus(order.status), storeName: names.get(order.storeId) ?? order.storeName, stockStoreName: order.stockStoreId ? names.get(order.stockStoreId) ?? order.stockStoreName : undefined }));
   }, [enabled, query.data, stores]);
   return {
     orders,

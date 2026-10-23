@@ -1,6 +1,7 @@
 "use client";
 
 import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
+import { orderFinancialState, receiptFinancialState } from "@/utils/orderState";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import Image from "next/image";
@@ -383,7 +384,7 @@ export default function GuideDetailsModal({
       orders.forEach((order) => {
         trackingByOrder[order.id] = {
           externalTrackingNumber: order.externalTrackingNumber || "",
-          shippingKey: order.shippingKey || "",
+          shippingKey: (order.totals ? receiptFinancialState({ totals: order.totals, payments: order.payments }) : orderFinancialState(order)).isPaid ? order.shippingKey || "" : "",
           trackingUrl: order.trackingUrl || "",
           shippingOffice: order.shippingOffice || "",
           shippingCode: order.shippingCode || "",
@@ -412,9 +413,9 @@ export default function GuideDetailsModal({
   const handleSaveOrderTracking = async (orderId: string) => {
     const trackingData = orderTrackingFields[orderId];
     if (!trackingData) return;
-    // La clave sigue protegida por su propio `disabled` mientras no haya
-    // comprobante, así que acá no hace falta bloquear el guardado entero —
-    // tracking/URL/oficina/código ya no dependen del comprobante.
+    const currentOrder = ordersDetails.find((order) => order.id === orderId);
+    const canRevealKey = currentOrder ? (currentOrder.totals ? receiptFinancialState({ totals: currentOrder.totals, payments: currentOrder.payments }) : orderFinancialState(currentOrder)).isPaid : false;
+    // Guardar metadata no revela la clave al cliente ni depende del pago.
 
     setSavingOrderId(orderId);
     try {
@@ -422,7 +423,7 @@ export default function GuideDetailsModal({
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
         {
           externalTrackingNumber: trackingData.externalTrackingNumber || null,
-          shippingKey: trackingData.shippingKey || null,
+          ...(trackingData.shippingKey || canRevealKey ? { shippingKey: trackingData.shippingKey || null } : {}),
           trackingUrl: trackingData.trackingUrl || null,
           shippingOffice: trackingData.shippingOffice || null,
           shippingCode: trackingData.shippingCode || null,
@@ -1530,16 +1531,9 @@ export default function GuideDetailsModal({
                 <div className="divide-y max-h-[300px] overflow-y-auto">
                   {ordersDetails.map((order, idx) => {
                     const isExpanded = expandedOrders.has(order.id);
-                    const paid =
-                      order.payments
-                        ?.filter((p) => p.status === "PAID")
-                        .reduce((s, p) => s + Number(p.amount), 0) || 0;
-                    const pending = Math.max(
-                      Number(
-                        order.totals?.grandTotal ?? order.grandTotal ?? 0,
-                      ) - paid,
-                      0,
-                    );
+                    const financial = order.totals ? receiptFinancialState({ totals: order.totals, payments: order.payments }) : orderFinancialState(order);
+                    const { totalPaid: paid, pendingAmount: pending } = financial;
+                    const keyLocked = !financial.isPaid;
 
                     return (
                       <div key={`${order.id}-${idx}`} className="bg-background">
@@ -1588,9 +1582,9 @@ export default function GuideDetailsModal({
                                     0,
                                 ).toFixed(2)}
                               </p>
-                              {pending > 0 && (
+                              {keyLocked && (
                                 <p className="text-xs text-red-600">
-                                  Cobrar: S/{pending.toFixed(2)}
+                                  {Number.isFinite(pending) ? `Cobrar: S/${pending.toFixed(2)}` : "Pago por verificar"}
                                 </p>
                               )}
                               {Number(order.carrierShippingCost) > 0 && (
@@ -1803,7 +1797,7 @@ export default function GuideDetailsModal({
                               <p className="text-xs font-medium text-orange-700 mb-2 flex items-center gap-1">
                                 📦 Datos de Tracking
                               </p>
-                              {pending > 0 && (
+                              {keyLocked && (
                                 <div className="mb-2 flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
                                   <Lock className="h-3 w-3 mt-0.5 shrink-0" />
                                   <span>
@@ -1841,24 +1835,21 @@ export default function GuideDetailsModal({
                                   </label>
                                   <div className="relative">
                                     <input
+                                      type={keyLocked ? "password" : "text"}
                                       className={`w-full border rounded px-2 py-1 text-xs bg-background h-[34px] pr-8 disabled:cursor-not-allowed disabled:opacity-60 ${
-                                        pending > 0
+                                        keyLocked
                                           ? "border-red-300 focus:border-red-500 bg-red-50/30 font-mono"
                                           : "focus:border-orange-500"
                                       }`}
                                       placeholder={
-                                        pending > 0 ? "Bloqueada" : "Ej: ABC123"
+                                        keyLocked ? "Registrar nueva clave (oculta)" : "Ej: ABC123"
                                       }
                                       value={
-                                        pending > 0
-                                          ? ""
-                                          : orderTrackingFields[order.id]
-                                              ?.shippingKey || ""
+                                        orderTrackingFields[order.id]?.shippingKey || ""
                                       }
-                                      disabled={pending > 0}
                                       title={
-                                        pending > 0
-                                          ? "El pedido debe quedar libre de deuda antes de ingresar los datos de la guía"
+                                        keyLocked
+                                          ? "Puedes registrar la clave; se revelará al aprobar el pago completo"
                                           : undefined
                                       }
                                       onChange={(e) =>

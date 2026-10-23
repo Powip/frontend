@@ -5,6 +5,8 @@ import { ORDER_STATUS_FLOW, getStatusLabel } from "@/utils/domain/orders-status-
 import { formatProductsForExport, type SaleExportData } from "@/utils/exportSalesExcel";
 import { countProductUnits } from "@/components/ventas/SalesTableFilters";
 import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
+import { operationalStatus, orderFinancialState } from "@/utils/orderState";
+import type { SalesPhysicalOrderProjection } from "@/utils/commercialOrders";
 
 /* -----------------------------------------------------------------------
    Modelo de fila para las tablas de Pedidos.
@@ -13,7 +15,7 @@ import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
    tocarlos, más los campos que necesita Necesita Atención que en el viejo
    vivían solo en el OrderHeader crudo.
 ------------------------------------------------------------------------ */
-export interface Sale extends UnitAssignmentState {
+export interface Sale extends UnitAssignmentState, Omit<SalesPhysicalOrderProjection, "stockVersion"> {
   id: string;
   storeId?: string;
   storeName?: string;
@@ -83,21 +85,23 @@ export interface SaleItem {
 }
 
 export function paidAmount(order: OrderHeader): number {
-  return (order.payments ?? [])
-    .filter((p) => p.status === "PAID")
-    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  return orderFinancialState(order).totalPaid;
 }
 
 export function mapOrderToSale(order: OrderHeader): Sale {
   const total = Number(order.grandTotal || 0);
-  const advancePayment = paidAmount(order);
-  const pendingPayment = Math.max(total - advancePayment, 0);
+  const { totalPaid: advancePayment, pendingAmount: pendingPayment } = orderFinancialState(order);
   const hasPendingApprovalPayments = (order.payments ?? []).some(
     (p) => p.status === "PENDING",
   );
 
   return {
     id: order.id,
+    commercialStage: order.commercialStage,
+    commercialLeadId: order.commercialLeadId,
+    commercialStockState: order.commercialStockState,
+    shopifyCommercialGate: order.shopifyCommercialGate,
+    commercialCommittedAt: order.commercialCommittedAt,
     storeId: order.storeId,
     storeName: order.storeName,
     stockStoreName: order.stockStoreName,
@@ -115,7 +119,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     total,
     courier: order.courier ?? null,
     courierId: order.courierId ?? null,
-    status: order.status,
+    status: operationalStatus(order.status),
     paymentMethod:
       order.payments?.length > 0 ? order.payments[0].paymentMethod : "—",
     deliveryType: (order.deliveryType ?? "").replace("_", " "),

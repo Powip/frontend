@@ -2,6 +2,8 @@ import { OrderStatus } from "@/interfaces/IOrder";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { MapsLink } from "@/components/shared/MapsLink";
+import { operationalStatus, receiptFinancialState } from "@/utils/orderState";
+import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
 
 interface Props {
   data: any;
@@ -68,7 +70,7 @@ export default function OrderReceiptView({ data }: Props) {
   const { orderNumber, status, customer, items, totals, payments, salesChannel, closingChannel } =
     data;
 
-  const statusStyle = STATUS_STYLES[status as OrderStatus] ?? {
+  const statusStyle = STATUS_STYLES[operationalStatus(status as OrderStatus)] ?? {
     bg: "bg-gray-400",
     text: "text-white",
     label: status,
@@ -86,17 +88,7 @@ export default function OrderReceiptView({ data }: Props) {
   );
 
   const isQuotation = typeof totals.quotationPendingAdvance === "number";
-  const totalPaid = isQuotation ? Number(totals.totalPaid || 0) : Array.isArray(payments)
-    ? payments.reduce(
-        (acc: number, payment: any) => acc + Number(payment.amount || 0),
-        0
-      )
-    : 0;
-
-  const pendingAmount = isQuotation
-    ? Math.max(Number(totals.pendingAmount) || 0, 0)
-    : Math.max(totals.grandTotal - totalPaid, 0);
-  const fullyPaid = !isQuotation || totalPaid >= Number(totals.grandTotal);
+  const { totalPaid, pendingAmount, isPaid: fullyPaid } = receiptFinancialState(data);
 
   return (
     <div id="receipt-content" className="p-6 text-sm min-w-0">
@@ -116,7 +108,7 @@ export default function OrderReceiptView({ data }: Props) {
         const total = totals.grandTotal || 0;
 
         // Caso 1: Completamente pagado (aprobado)
-        if (totalPaidApproved >= total) {
+        if (fullyPaid) {
           return (
             <Alert className="mb-6 border-green-200 bg-green-50">
               <AlertTitle className="text-green-800">✅ Pago Completo</AlertTitle>
@@ -172,9 +164,9 @@ export default function OrderReceiptView({ data }: Props) {
           </AlertTitle>
           <AlertDescription className="text-amber-800 break-words">
             <p>
-              Tenga en cuenta que para realizar el despacho es{" "}
-              <strong>obligatorio</strong> que el cliente realice el pago en
-              su totalidad antes de la entrega.
+              El pedido puede prepararse y enviarse con saldo pendiente.
+              Es <strong>obligatorio</strong> aprobar el pago total antes de
+              entregar el paquete o revelar la clave de recojo.
             </p>
             <p>
               Por favor, contacte con el cliente para validar el pago y
@@ -197,9 +189,12 @@ export default function OrderReceiptView({ data }: Props) {
             Total: S/{Number(totals.grandTotal).toFixed(2)}
           </p>
           {pendingAmount > 0 ? (
+            <>
+            <FinancialStatusBadge pendingAmount={pendingAmount} />
             <Badge className="bg-red-100 text-red-700">
               Por cobrar S/ {pendingAmount.toFixed(2)}
             </Badge>
+            </>
           ) : (
             <Badge className={fullyPaid ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"}>{fullyPaid ? "Pagado" : "Pago por verificar"}</Badge>
           )}
@@ -371,7 +366,7 @@ export default function OrderReceiptView({ data }: Props) {
         ) : (
           <div className={`flex items-center justify-center rounded-lg border px-3 py-2.5 ${fullyPaid ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
             <span className={`font-bold ${fullyPaid ? "text-emerald-700" : "text-amber-800"}`}>
-              {fullyPaid ? "✓ Pagado en su totalidad" : "Pago completo reportado · por verificar"}
+              {fullyPaid ? "✓ Pagado en su totalidad" : "Pago por verificar"}
             </span>
           </div>
         )}

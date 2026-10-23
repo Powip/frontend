@@ -58,6 +58,24 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 describe("GuideDetailsModal: lectura e impresión con IMEI/series", () => {
+  it("keeps a one-cent debt key hidden while allowing new metadata to be saved without clearing the hidden key", async () => {
+    const data = { ...receipt(), shippingKey: "SECRET-EXISTING", payments: [{ status: "PAID", amount: 99.99 }], totals: { grandTotal: 100, totalPaid: 99.99, pendingAmount: 0.01 } };
+    jest.mocked(axios.patch).mockResolvedValue({ data: {} });
+    setup(data);
+    fireEvent.click(await screen.findByText("PED-001"));
+    const keyInput = await screen.findByPlaceholderText("Registrar nueva clave (oculta)");
+    expect(keyInput).toHaveAttribute("type", "password");
+    expect(keyInput).toHaveValue("");
+    expect(keyInput).toBeEnabled();
+    expect(screen.queryByDisplayValue("SECRET-EXISTING")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Guardar Tracking" }));
+    await waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1));
+    expect(jest.mocked(axios.patch).mock.calls[0][1]).not.toHaveProperty("shippingKey");
+    fireEvent.change(keyInput, { target: { value: "NEW-SECRET" } });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar Tracking" }));
+    await waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(2));
+    expect(jest.mocked(axios.patch).mock.calls[1][1]).toMatchObject({ shippingKey: "NEW-SECRET" });
+  });
   it("lee comprobantes autenticados exactos y pasa snapshots confirmados a la guía", async () => {
     setup();
     fireEvent.click(await screen.findByRole("button", { name: "Imprimir Guía" }));

@@ -15,6 +15,8 @@ const physicalStatuses = new Set(["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN
 
 /** Listing a CC order never grants or removes authority to prepare its stock. */
 export function salesPhysicalOperationBlockReason(order: SalesPhysicalOrderProjection): string | null {
+  if (order.commercialStage === "SALE" && order.commercialStockState === "DEFERRED")
+    return "Compra confirmada. Prepara la reserva de stock desde el Lead antes de preparar o despachar el pedido.";
   if (!canOperateCommercialOrder(order)) return "Confirma la compra antes de preparar o despachar el pedido.";
   // Service-only sales retain their existing status flow; the server validates their lines.
   if (order.commercialStage === "SALE" && order.commercialStockState === "NOT_REQUIRED") return null;

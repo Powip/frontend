@@ -1,6 +1,7 @@
 import type { OrderHeader } from "@/interfaces/IOrder";
 import type { OrderReceipt } from "@/utils/printOrderLabel";
 import { getOrderCollectionAmount } from "@/utils/orderCollectionAmount";
+import { operationalStatus } from "@/utils/orderState";
 
 const amount = (value: unknown): number => {
   const parsed = Number(value);
@@ -28,7 +29,7 @@ export function buildPendingOrderDetail(order: OrderHeader): OrderReceipt {
     orderId: order.id,
     orderNumber: order.orderNumber,
     receiptType: order.receiptType,
-    status: order.status,
+    status: operationalStatus(order.status),
     createdAt: order.created_at,
     salesChannel: order.salesChannel,
     closingChannel: order.closingChannel,

@@ -1,4 +1,6 @@
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
+import { operationalStatus } from "@/utils/orderState";
+import { isCommercialLeadOrder, salesPhysicalOperationBlockReason } from "@/utils/commercialOrders";
 
 /** Estados de pedido que participan del ciclo de envío (excluye retiro en tienda por diseño). */
 export const SHIPPING_STATUSES: OrderStatus[] = [
@@ -9,32 +11,19 @@ export const SHIPPING_STATUSES: OrderStatus[] = [
   "ENTREGADO",
 ];
 
-// Mapeo de las 5 pestañas de Pedidos del módulo Operaciones nuevo — las 4
-// del mockup (Por Despachar / En Camino / Necesita Atención / Historial) más
-// "Anulados", separada de Historial para no mezclar pedidos cancelados con
-// entregados. Hubo una versión con una 5ª pestaña "Confirmación" para la
-// cola de llamadas pre-despacho; se decidió volver a la estructura del
-// mockup y dejar la gestión de llamada solo dentro del modal de pedido
-// (tab "Llamada & Promo" de CustomerServiceModal) — no como pestaña propia.
-// Un PREPARADO entra a "Por Despachar" sin importar su `callStatus`.
-//
-// Este archivo es la única fuente de verdad de a qué pestaña pertenece cada
-// pedido, para que Pedidos, el Tablero (KPIs/bandeja) y cualquier export
-// cuenten exactamente lo mismo.
+// Las colas operativas separan preparación, despacho, tránsito y cierre.
+// El pago es una dimensión independiente y nunca decide la pestaña.
 
-export type PedidosTabKey = "despachar" | "camino" | "atencion" | "historial" | "anulados";
+export type PedidosTabKey = "pendientes" | "despachar" | "camino" | "atencion" | "historial" | "anulados";
 
-/**
- * Estados anteriores a la preparación real por almacén: siguen siendo
- * responsabilidad de Ventas/Atención al Cliente, no de Operaciones.
- * PAGADO ("PENDIENTE + cobrado al 100%") NO cuenta como preparado — cobrar
- * no es lo mismo que empacar, así que no debe listarse ni contarse en
- * ningún tablero/origen de este módulo hasta que almacén lo marque
- * PREPARADO explícitamente (imprimir etiqueta o cambio de estado manual).
- * Toda pantalla de Operaciones que reciba pedidos sin filtrar (Pedidos,
- * Planificación de guías) debe excluir estos estados antes de agrupar por
- * pestaña con `getPedidosTab`.
- */
+/** Confirmed purchases enter Operations before preparation, regardless of their payment balance. */
+export function isOperationsOrderVisible(order: OrderHeader): boolean {
+  if (["INCOMPLETE", "PREVENTA"].includes(order.status) || isCommercialLeadOrder(order)) return false;
+  if (order.commercialStage === "SALE" && order.commercialStockState === "DEFERRED") return true;
+  return !salesPhysicalOperationBlockReason(order);
+}
+
+/** Etapas que todavía no pueden entrar en planificación de guías ni en el escáner de despacho. */
 export const PRE_FULFILLMENT_STATUSES: OrderStatus[] = [
   "INCOMPLETE",
   "PREVENTA",
@@ -52,6 +41,7 @@ export interface PedidosTabDef {
 // El ícono de cada pestaña es una preocupación de presentación (lucide-react),
 // no de dominio — se define en PedidosContent.tsx, igual que en Guías & Courier.
 export const PEDIDOS_TABS: PedidosTabDef[] = [
+  { key: "pendientes", label: "Pendientes" },
   { key: "despachar", label: "Por Despachar" },
   { key: "camino", label: "En Camino" },
   { key: "atencion", label: "Necesita Atención", alerta: true },
@@ -96,26 +86,20 @@ export function isDeliveryRescheduledForToday(order: OrderHeader): boolean {
 export function getPedidosTab(order: OrderHeader): PedidosTabKey {
   if (order.status === "ANULADO") return "anulados";
   if (order.status === "ENTREGADO") return "historial";
+  if (operationalStatus(order.status) === "PENDIENTE" || (order.commercialStage === "SALE" && order.commercialStockState === "DEFERRED")) return "pendientes";
 
   if (order.status === "EN_ENVIO") {
     if (isFailedDelivery(order) || hasCourierSyncError(order)) return "atencion";
     return "camino";
   }
 
-  // PREPARADO, LLAMADO, ASIGNADO_A_GUIA — pipeline activo de despacho, van
-  // a "Por Despachar" igual que en el mockup. La gestión de llamada de
-  // confirmación se hace desde el modal de pedido, no filtra la pestaña.
-  // PRE_FULFILLMENT_STATUSES (PENDIENTE/PAGADO/INCOMPLETE/PREVENTA) no
-  // debería llegar hasta acá — son etapas previas a la preparación real
-  // (Ventas, no Operaciones) y cada caller (PedidosContent.tsx,
-  // PlanificacionTab.tsx) los filtra antes de agrupar por pestaña; el
-  // fallback sigue existiendo para no desaparecer silenciosamente un
-  // estado nuevo o no contemplado.
+  // PREPARADO, LLAMADO y ASIGNADO_A_GUIA están listos para despacho.
   return "despachar";
 }
 
 export function countByTab(orders: OrderHeader[]): Record<PedidosTabKey, number> {
   const counts: Record<PedidosTabKey, number> = {
+    pendientes: 0,
     despachar: 0,
     camino: 0,
     atencion: 0,
