@@ -211,22 +211,6 @@ export interface Sale extends UnitAssignmentState {
 const NO_SALES: Sale[] = [];
 const SalesOrderDetailModal = lazy(() => import("@/components/modals/CustomerServiceModal"));
 
-const isCustomerServiceRow = (sale: Pick<Sale, "salesOperationalEligible">) =>
-  sale.salesOperationalEligible === false;
-
-const CC_STATUS_LABELS: Record<SubEstadoCc, string> = {
-  por_confirmar: "Por confirmar",
-  contactado: "Contactado",
-  no_contesta: "No contesta",
-  anulado_cc: "Anulado CC",
-  confirmado: "Confirmado",
-  reprogramado: "Reprogramado",
-  entrega_lima: "Por coordinar",
-  carrito_sin_contactar: "Sin contactar",
-  carrito_contactado: "Contactado",
-  carrito_recuperado: "Recuperado",
-};
-
 function formatSoles(amount: number): string {
   return `S/ ${amount.toFixed(2)}`;
 }
@@ -1560,11 +1544,6 @@ Estado: ${sale.status}
                       }
                       onExtraAction={() => { if (mutationSale(sale.id)) setRescheduleDialogSaleId(sale.id); }}
                     />
-                    {isCustomerServiceRow(sale) && (
-                      <span className="mt-1 inline-flex rounded-md bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
-                        En Atención · {sale.subEstadoCc ? CC_STATUS_LABELS[sale.subEstadoCc] : "En gestión"}
-                      </span>
-                    )}
                     {salesPhysicalOperationBlockReason(sale) && <p className="mt-1 text-[10px] text-muted-foreground">{salesPhysicalOperationBlockReason(sale)}</p>}
                     <ReprogramadoChip sale={sale} />
                   </TableCell>
