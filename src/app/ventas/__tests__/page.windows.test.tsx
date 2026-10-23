@@ -79,6 +79,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessOrders } from "@/hooks/useBusinessOrders";
 import { useBusinessSalesPage } from "@/hooks/useBusinessSalesPage";
 import { getBusinessSalesExport } from "@/services/businessSalesService";
+import type { BusinessSalesOrder } from "@/services/businessSalesService";
 import { useMemo } from "react";
 import { applyFilters, buildProductFilterOptions } from "@/components/ventas/SalesTableFilters";
 import { isInPeruWindow } from "@/lib/peruDate";
@@ -400,6 +401,29 @@ describe("VentasPage — Anuladas y Todas por período", () => {
 });
 
 describe("VentasPage — Anuladas, Todas y Pendientes antiguos no muestran ni usan una lista a medio bajar", () => {
+  it("solicita CC sin ampliar la página y bloquea callbacks retenidos si un pedido vuelve a Atención", async () => {
+    const order: BusinessSalesOrder = { ...RECIENTE, salesOperationalEligible: true };
+    overrides.todas = { orders: [order] };
+    counts.todas = 4;
+    const { rerender } = render(<VentasPage />);
+    expect(jest.mocked(useBusinessSalesPage).mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({ includeCustomerService: true, tab: "pendientes", limit: 10 }));
+    expect(screen.getByRole("tab", { name: /Todas las Ventas/ })).toHaveTextContent("4");
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas las Ventas/ }));
+    fireEvent.click(within(screen.getByText("ORD-101").closest("tr")!).getByRole("checkbox"));
+    const previousActions = mockBulkActions.at(-1)!;
+    act(() => previousActions.onExtraAction("__REPROGRAMAR__"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    overrides.todas = { orders: [{ ...order, subEstadoCc: "entrega_lima", salesOperationalEligible: false } as BusinessSalesOrder] };
+    rerender(<VentasPage />);
+    expect(screen.getByText("En Atención · Por coordinar")).toBeInTheDocument();
+    expect(within(screen.getByText("ORD-101").closest("tr")!).getByRole("checkbox", { hidden: true })).toBeDisabled();
+    await act(async () => { await previousActions.onStatusChange("PREPARADO"); });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Confirmar" }));
+    expect(processBulkStatusChange).not.toHaveBeenCalled();
+    expect(jest.mocked(useBusinessSalesPage).mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({ includeCustomerService: true, tab: "todas", limit: 10 }));
+  });
+
   it.each(["loading", "error"] as const)("bloquea cambios y callbacks previos si antiguos seleccionados quedan en %s", async (state) => {
     const { rerender } = render(<VentasPage />);
     fireEvent.click(screen.getByRole("button", { name: "Pendientes antiguos (2)" }));

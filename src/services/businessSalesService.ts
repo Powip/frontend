@@ -11,12 +11,18 @@ export interface BusinessSalesQuery extends Partial<SalesFilters> {
   kpiDateFrom?: string;
   kpiDateTo?: string;
   includeSummary?: boolean;
+  includeCustomerService?: boolean;
   checkStock?: boolean;
   sort?: "created_desc" | "updated_asc";
 }
 
+export interface BusinessSalesOrder extends OrderHeader {
+  /** False for informational customer-service rows; absent preserves older responses. */
+  salesOperationalEligible?: boolean;
+}
+
 export interface BusinessSalesPage {
-  data: OrderHeader[];
+  data: BusinessSalesOrder[];
   total: number;
   page: number;
   totalPages: number;
@@ -64,8 +70,8 @@ export async function getBusinessSalesExport(
   storeIds: readonly string[],
   query: BusinessSalesQuery,
   signal?: AbortSignal,
-): Promise<OrderHeader[]> {
-  const orders = new Map<string, OrderHeader>();
+): Promise<BusinessSalesOrder[]> {
+  const orders = new Map<string, BusinessSalesOrder>();
   let page = 1;
   let totalPages = 1;
   do {
