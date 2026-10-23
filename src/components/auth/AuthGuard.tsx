@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useEffect, ReactNode } from "react";
 import { getRoutePermissions, hasAnyPermission, isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
 import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
+import { isPublicLiveRoute } from "@/lib/liveRoutes";
 import { resolveSubscriptionRedirect } from "@/lib/subscriptionGate";
 
 interface AuthGuardProps {
@@ -36,7 +37,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const isAdvertisingCallback =
     pathname === "/configuracion/integraciones/publicidad/callback";
   const isPublicRoute =
-    isAdvertisingCallback || PUBLIC_ROUTES.some(route => pathname?.startsWith(route)) ||
+    isPublicLiveRoute(pathname ?? "") || isAdvertisingCallback || PUBLIC_ROUTES.some(route => pathname?.startsWith(route)) ||
     pathname === "/partners/solicitud";
   // Only skip the Company/plan gate. Session, route permissions and the portal's
   // live /me authorization still apply; a similar prefix is not a Partners route.

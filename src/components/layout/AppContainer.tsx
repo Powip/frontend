@@ -8,6 +8,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import FlowMigrationBanner from "@/components/subscription/FlowMigrationBanner";
 import { useAuth } from "@/contexts/AuthContext";
 import { BusinessScopeProvider, useBusinessScope } from "@/contexts/BusinessScopeContext";
+import { isPublicLiveRoute } from "@/lib/liveRoutes";
 import { isBusinessScopeRoute, shouldResetBusinessView } from "@/lib/businessScopeRoutes";
 
 const publicAuthFlowRoutes = ["/onboarding", "/login", "/restablecer-contrasena"];
@@ -37,7 +38,8 @@ function ScopedAppContainer({ children }: { children: React.ReactNode }) {
     setPublicSession({ userId, revision: publicSessionRevision });
   }
 
-  const isPublicAuthFlow = pathname === advertisingCallbackRoute || publicAuthFlowRoutes.some(
+  const isPublicLive = isPublicLiveRoute(pathname);
+  const isPublicAuthFlow = isPublicLive || pathname === advertisingCallbackRoute || publicAuthFlowRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
   const viewKey = isPublicAuthFlow
@@ -59,7 +61,7 @@ function ScopedAppContainer({ children }: { children: React.ReactNode }) {
   ];
 
   const hideSidebar =
-    pathname === advertisingCallbackRoute ||
+    isPublicLive || pathname === advertisingCallbackRoute ||
     noSidebarRoutes.some((r) => pathname.startsWith(r)) ||
     (!auth && pathname === "/partners/solicitud");
 
