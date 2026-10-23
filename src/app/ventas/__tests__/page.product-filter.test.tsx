@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 
 /**
  * Ventas › "Todas las Ventas" — filtro por producto + exportación.
@@ -16,7 +16,7 @@ jest.mock("axios", () => ({
   post: jest.fn(),
 }));
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: jest.requireMock("axios") }));
-jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: "company-1:business:store-1" }) }));
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: "company-1:business:store-1", storeIds: ["store-1"] }) }));
 jest.mock("@/hooks/useInvalidateBusinessData", () => ({ useInvalidateBusinessData: () => jest.fn() }));
 jest.mock("sonner", () => ({
   toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn(), info: jest.fn() },
@@ -31,6 +31,8 @@ jest.mock("@/services/atencionClienteService", () => ({
   reassignSeller: jest.fn(),
 }));
 jest.mock("@/hooks/useBusinessOrders", () => ({ useBusinessOrders: jest.fn() }));
+jest.mock("@/hooks/useBusinessSalesPage", () => ({ useBusinessSalesPage: jest.fn() }));
+jest.mock("@/services/businessSalesService", () => ({ getBusinessSalesExport: jest.fn() }));
 jest.mock("@/hooks/useBusinessOrdersCount", () => ({
   useBusinessOrdersCount: () => ({ count: 0, loading: false, error: false, retry: jest.fn(), refetch: jest.fn() }),
 }));
@@ -50,6 +52,11 @@ jest.mock("@/components/modals/ReassignSellerModal", () => ({ __esModule: true, 
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+import { useBusinessSalesPage } from "@/hooks/useBusinessSalesPage";
+import { getBusinessSalesExport } from "@/services/businessSalesService";
+import { useMemo } from "react";
+import { applyFilters, buildProductFilterOptions } from "@/components/ventas/SalesTableFilters";
+import { isInPeruWindow } from "@/lib/peruDate";
 import { exportSalesToExcel } from "@/utils/exportSalesExcel";
 import type { OrderHeader, OrderItem } from "@/interfaces/IOrder";
 import VentasPage from "../page";
@@ -104,6 +111,20 @@ const ORDERS = Array.from({ length: 25 }, (_, i) => {
   return makeOrder(n, n, POLO_L_ORDERS.has(n) ? [POLO_L(n), POLO_M(1)] : [POLO_M(2)]);
 });
 
+
+function serverFilter(orders: OrderHeader[], query: { dateFrom?: string; dateTo?: string; product?: string; search?: string }) {
+  return applyFilters(orders.map(order => ({
+    ...order, date: new Date(order.created_at).toLocaleDateString("es-AR"), total: Number(order.grandTotal),
+    pendingPayment: Number(order.grandTotal), advancePayment: 0, clientName: order.customer.fullName,
+    phoneNumber: order.customer.phoneNumber, deliveryType: order.deliveryType,
+  })), { ...emptySalesFiltersForTest, ...query }).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+}
+const emptySalesFiltersForTest = {
+  dateFrom: "", dateTo: "", search: "", paymentMethod: "", hasPendingBalance: "" as const,
+  region: "" as const, deliveryType: "" as const, courier: "", zone: "", hasGuide: "" as const,
+  source: "" as const, status: "" as const, salesChannel: "", product: "",
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockUseAuth.mockReturnValue({
@@ -120,6 +141,23 @@ beforeEach(() => {
     retry: jest.fn(),
     refetch: jest.fn(),
   } as unknown as ReturnType<typeof useBusinessOrders>);
+  jest.mocked(useBusinessSalesPage).mockImplementation((_ids, query) => {
+    const legacy = mockUseOrdersByStore();
+    const querySignature = JSON.stringify(query);
+    const response = useMemo(() => {
+      const applied = JSON.parse(querySignature) as typeof query;
+      const filtered = serverFilter(legacy.orders, applied);
+      return {
+        data: filtered.slice((applied.page - 1) * applied.limit, applied.page * applied.limit),
+        total: filtered.length, page: applied.page, totalPages: Math.max(1, Math.ceil(filtered.length / applied.limit)),
+        counts: { pendientes: legacy.orders.length, anuladas: 0, todas: legacy.orders.length, pendientesAntiguos: 0 },
+        kpis: { pendientes: legacy.orders.length, anuladas: 0, amounts: [] },
+        metadata: { products: buildProductFilterOptions(legacy.orders) },
+      };
+    }, [legacy.orders, querySignature]);
+    return { data: response, isFetching: legacy.loading, isError: legacy.error, isDebouncing: false, refetch: legacy.error ? legacy.retry : legacy.refetch } as unknown as ReturnType<typeof useBusinessSalesPage>;
+  });
+  jest.mocked(getBusinessSalesExport).mockImplementation(async (_ids, query) => serverFilter(mockUseOrdersByStore().orders, query));
 });
 
 async function openTodasWithFilters() {
@@ -143,7 +181,7 @@ describe("VentasPage — filtro por producto", () => {
     fireEvent.change(within(panel).getByLabelText("Producto"), { target: { value: "var-polo-l" } });
 
     expect(visibleOrders(panel)).toEqual(["ORD-024", "ORD-012", "ORD-002", "ORD-001"]);
-    expect(screen.getByRole("tab", { name: /Todas las Ventas/ })).toHaveTextContent(/Todas las Ventas\s*4$/);
+    expect(screen.getByRole("tab", { name: /Todas las Ventas/ })).toHaveTextContent(/Todas las Ventas\s*25$/);
   });
 
   it("mantiene el producto elegido al pasar de página", async () => {
@@ -169,7 +207,7 @@ describe("VentasPage — filtro por producto", () => {
 
     fireEvent.click(within(panel).getByRole("button", { name: /Exportar Excel/ }));
 
-    expect(mockExport).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockExport).toHaveBeenCalledTimes(1));
     const [rows, prefix] = mockExport.mock.calls[0];
     expect(prefix).toBe("ventas_todas_las_ventas");
     expect(rows).toHaveLength(1);
@@ -184,11 +222,14 @@ describe("VentasPage — filtro por producto", () => {
   it("las unidades son las del producto filtrado en cada orden; sin filtro no se agregan", async () => {
     const panel = await openTodasWithFilters();
     fireEvent.click(within(panel).getByRole("button", { name: /Exportar Excel/ }));
+    await waitFor(() => expect(mockExport).toHaveBeenCalledTimes(1));
     expect(mockExport.mock.calls[0][0][0]).not.toHaveProperty("filteredProductUnits");
 
     fireEvent.change(within(panel).getByLabelText("Producto"), { target: { value: "var-polo-m" } });
+    await waitFor(() => expect(within(panel).getByRole("button", { name: /Exportar Excel/ })).toBeEnabled());
     fireEvent.click(within(panel).getByRole("button", { name: /Exportar Excel/ }));
 
+    await waitFor(() => expect(mockExport).toHaveBeenCalledTimes(2));
     const rows = mockExport.mock.calls[1][0];
     expect(rows).toHaveLength(25);
     const units = Object.fromEntries(rows.map((r) => [r.orderNumber, r.filteredProductUnits]));
@@ -208,6 +249,7 @@ describe('Ventas — lectura de todas las tiendas y origen', () => {
     mockUseOrdersByStore.mockReturnValue({ orders, loading: false, error: false, retry: jest.fn(), refetch: jest.fn() } as unknown as ReturnType<typeof useBusinessOrders>);
     const panel = await openTodasWithFilters();
     fireEvent.click(within(panel).getByRole('button', { name: /Exportar Excel/ }));
+    await waitFor(() => expect(mockExport).toHaveBeenCalledTimes(1));
     expect(mockExport.mock.calls[0][0]).toEqual(expect.arrayContaining([
       expect.objectContaining({ storeId: 'KUNCA', inventoryId: 'shared-warehouse', stockStoreId: 'KUNCA' }),
       expect.objectContaining({ storeId: 'WEB', inventoryId: 'shared-warehouse', stockStoreId: 'KUNCA' }),
@@ -218,9 +260,9 @@ describe('Ventas — lectura de todas las tiendas y origen', () => {
     const retry = jest.fn();
     mockUseOrdersByStore.mockReturnValue({ orders: [], loading: false, error: true, retry, refetch: jest.fn() } as unknown as ReturnType<typeof useBusinessOrders>);
     render(<VentasPage />);
-    expect(screen.getByRole('alert')).toHaveTextContent('No se pudieron cargar');
-    expect(screen.queryByRole('tab', { name: /Todas las Ventas/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Reintentar' }));
+    expect(within(screen.getByRole('tabpanel')).getByRole('alert')).toHaveTextContent('No se pudieron cargar');
+    expect(screen.getByRole('tab', { name: /Todas las Ventas/ })).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole('tabpanel')).getByRole('button', { name: 'Reintentar' }));
     expect(retry).toHaveBeenCalled();
   });
 

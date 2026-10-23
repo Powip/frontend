@@ -8,7 +8,7 @@ jest.mock("axios", () => ({
 }));
 
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: jest.requireMock("axios") }));
-jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: "company-1:business:store-1" }) }));
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: "company-1:business:store-1", storeIds: ["store-1"] }) }));
 // Referencia estable: después de una acción, la vista recarga invalidando las consultas del negocio.
 const mockInvalidate = jest.fn();
 jest.mock("@/hooks/useInvalidateBusinessData", () => ({ useInvalidateBusinessData: () => mockInvalidate }));
@@ -40,6 +40,28 @@ jest.mock("@/hooks/useBusinessOrders", () => ({
 }));
 jest.mock("@/hooks/useBusinessOrdersCount", () => ({
   useBusinessOrdersCount: () => ({ count: 0, loading: false, error: false, retry: jest.fn(), refetch: jest.fn() }),
+}));
+// El listado nuevo recibe una página del servidor. Los fixtures siguen siendo
+// compartidos con los casos de impresión y estados de esta suite.
+jest.mock("@/hooks/useBusinessSalesPage", () => ({
+  useBusinessSalesPage: (_storeIds: string[], query: import("@/services/businessSalesService").BusinessSalesQuery) => {
+    const React = jest.requireActual("react") as typeof import("react");
+    const fixture = jest.requireMock("@/hooks/useBusinessOrders").useBusinessOrders();
+    const data = React.useMemo(() => {
+      const commercial = fixture.orders.filter((order: OrderHeader) => order.status !== "INCOMPLETE");
+      const rows = commercial.filter((order: OrderHeader) =>
+        query.tab === "pendientes" ? order.status === "PENDIENTE" : query.tab === "anuladas" ? order.status === "ANULADO" : true,
+      ).sort((a: OrderHeader, b: OrderHeader) => b.created_at.localeCompare(a.created_at));
+      return {
+        data: rows.slice((query.page - 1) * query.limit, query.page * query.limit),
+        total: rows.length, page: query.page, totalPages: Math.max(1, Math.ceil(rows.length / query.limit)),
+        counts: { pendientes: commercial.filter((order: OrderHeader) => order.status === "PENDIENTE").length, anuladas: commercial.filter((order: OrderHeader) => order.status === "ANULADO").length, todas: commercial.length, pendientesAntiguos: 0 },
+        metadata: { couriers: [], statuses: [...new Set(commercial.map((order: OrderHeader) => order.status))], channels: [], products: [] },
+        kpis: { pendientes: commercial.filter((order: OrderHeader) => order.status === "PENDIENTE").length, anuladas: 0, amounts: [] },
+      };
+    }, [fixture.orders, JSON.stringify(query)]);
+    return { data, isFetching: false, isDebouncing: false, isError: false, refetch: fixture.refetch };
+  },
 }));
 // Hoy fijo en 09-26: los pedidos del 09-01 y 09-02 entran en la ventana de 30 días.
 jest.mock("@/lib/peruDate", () => ({

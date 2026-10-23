@@ -6,6 +6,7 @@ const BASE = process.env.NEXT_PUBLIC_API_VENTAS;
 
 export interface PedidosCcFilters {
   dateBasis?: "CREATED" | "COMMERCIAL_EVENTS";
+  search?: string;
   tipoGestion?: TipoGestionCC;
   subEstado?: SubEstadoCc;
   agenteId?: string;
@@ -26,25 +27,28 @@ export interface PaginatedCcResult {
   totalPages: number;
 }
 
+function ccStoreParams({ storeId, storeIds }: Pick<PedidosCcFilters, "storeId" | "storeIds">): Record<string, string> {
+  if (storeIds !== undefined) {
+    if (storeId !== undefined || !Array.isArray(storeIds) || !storeIds.length || storeIds.length > 200 || storeIds.some((id) => !id.trim()))
+      throw new Error("Selecciona tiendas del negocio sin combinar storeId y storeIds");
+    return { storeIds: [...new Set(storeIds)].sort().join(",") };
+  }
+  if (!storeId?.trim()) throw new Error("Selecciona tiendas del negocio");
+  return { storeId };
+}
+
 export async function getPedidosCC(
   filters: PedidosCcFilters,
   signal?: AbortSignal,
 ): Promise<PaginatedCcResult> {
-  if (filters.storeIds) {
-    const result = await getAllPedidosCC(filters, signal);
-    if (result.truncated) throw new Error("No se pudieron cargar todos los pedidos del negocio");
-    const page = filters.page ?? 1;
-    const limit = filters.limit ?? 50;
-    return { data: result.data.slice((page - 1) * limit, page * limit), total: result.total, page, totalPages: Math.max(1, Math.ceil(result.total / limit)) };
-  }
-  const params = new URLSearchParams();
+  const params = new URLSearchParams(ccStoreParams(filters));
   if (filters.dateBasis) params.set("dateBasis", filters.dateBasis);
+  if (filters.search?.trim()) params.set("search", filters.search.trim());
   if (filters.tipoGestion)     params.set("tipoGestion", filters.tipoGestion);
   if (filters.subEstado)       params.set("subEstado", filters.subEstado);
   if (filters.unassigned)      params.set("unassigned", "true");
   else if (filters.agenteId)   params.set("agenteId", filters.agenteId);
   if (filters.canalOrigen)     params.set("canalOrigen", filters.canalOrigen);
-  if (filters.storeId)         params.set("storeId", filters.storeId);
   if (filters.startDate)       params.set("startDate", filters.startDate);
   if (filters.endDate)         params.set("endDate", filters.endDate);
   if (filters.page)            params.set("page", String(filters.page));
@@ -58,7 +62,7 @@ export async function getPedidosCC(
 
 /** Tamaño pedido al backend; puede aplicar un tope menor, por eso el corte usa `total`. */
 const ALL_PEDIDOS_PAGE_SIZE = 200;
-/** Resguardo de requests secuenciales por búsqueda (≤ 4000 pedidos si se respeta el tamaño). */
+/** Resguardo de requests secuenciales para descargas explícitas (≤ 4000 pedidos). */
 const ALL_PEDIDOS_MAX_PAGES = 20;
 
 export interface AllPedidosCcResult {
@@ -71,9 +75,8 @@ export interface AllPedidosCcResult {
 
 /**
  * Trae todas las páginas de /atencion-al-cliente/pedidos para los filtros dados.
- * El endpoint no acepta búsqueda por texto, así que el buscador de Gestión COD
- * filtra en cliente sobre este conjunto completo (mismo patrón que
- * cierreDiaProductosService.fetchAllPedidosCC).
+ * Solo para operaciones que requieren una descarga explícita completa. La tabla
+ * y su buscador usan getPedidosCC con la paginación del servidor.
  *
  * No asume que el backend respete `limit`: sigue pidiendo páginas mientras lo
  * acumulado sea menor que el `total` real de la respuesta (totalPages solo se
@@ -84,12 +87,6 @@ export async function getAllPedidosCC(
   filters: Omit<PedidosCcFilters, "page" | "limit">,
   signal?: AbortSignal,
 ): Promise<AllPedidosCcResult> {
-  if (filters.storeIds) {
-    const results = await Promise.all([...new Set(filters.storeIds)].map((storeId) => getAllPedidosCC({ ...filters, storeIds: undefined, storeId }, signal)));
-    const data = Array.from(new Map(results.flatMap((result) => result.data).map((order) => [order.id, order])).values())
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime() || a.id.localeCompare(b.id));
-    return { data, total: results.reduce((sum, result) => sum + result.total, 0), truncated: results.some((result) => result.truncated) };
-  }
   const byId = new Map<string, OrderHeader>();
   let total: number | undefined;
   let totalPages = 1;
@@ -120,21 +117,9 @@ export async function getAllPedidosCC(
 }
 
 export async function getKpisCC(tipoGestion: TipoGestionCC, scope: string | string[], signal?: AbortSignal): Promise<KpisCC> {
-  const storeIds = typeof scope === "string" ? [scope] : [...new Set(scope)];
-  const results = await Promise.all(storeIds.map(async (storeId) => {
-    const res = await axiosAuth.get<KpisCC>(`${BASE}/atencion-al-cliente/kpis`, { params: { tipoGestion, storeId }, signal });
-    return res.data;
-  }));
-  if (results.length === 1) return results[0];
-  const merged: KpisCC = { efectividadHoy: 0, confirmadosMes: 0, gestionadosMes: 0, efectividadMes: 0, upsellHoy: 0, upsellMensual: 0 };
-  for (const result of results) for (const [key, value] of Object.entries(result)) {
-    if (key !== "efectividadHoy" && key !== "efectividadMes") merged[key] = (merged[key] ?? 0) + Number(value || 0);
-  }
-  merged.efectividadMes = merged.gestionadosMes > 0 ? Math.round(100 * merged.confirmadosMes / merged.gestionadosMes) : 0;
-  // Versiones anteriores del API no proporcionan bases diarias: evitar promediar porcentajes.
-  merged.efectividadHoy = results.every((result) => typeof result.confirmadosHoy === "number" && typeof result.gestionadosHoy === "number")
-    ? (merged.gestionadosHoy > 0 ? Math.round(100 * merged.confirmadosHoy / merged.gestionadosHoy) : 0) : Number.NaN;
-  return merged;
+  const params = ccStoreParams(typeof scope === "string" ? { storeId: scope } : { storeIds: scope });
+  const res = await axiosAuth.get<KpisCC>(`${BASE}/atencion-al-cliente/kpis`, { params: { tipoGestion, ...params }, signal });
+  return res.data;
 }
 
 export async function updateSubEstadoCC(

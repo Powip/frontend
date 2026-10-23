@@ -13,10 +13,10 @@
  *    (no solo la página visible), combinada con agente, canal y fecha.
  * 6. Estado vacío con "Limpiar búsqueda".
  * 7. WA Masivo y Copiar actúan sobre la selección efectiva con búsqueda activa.
- * 8. Aviso de resultados incompletos cuando el conjunto viene truncado.
+ * 8. Búsqueda paginada en servidor sin descargar el conjunto completo.
  * 9. Exportar solo aparece en Contactado / No contesta / Anulados.
  */
-import { render as rtlRender, screen, within, act } from '@testing-library/react';
+import { render as rtlRender, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { OrderHeader, SubEstadoCc } from '@/interfaces/IOrder';
 import { useBusinessOrders } from '@/hooks/useBusinessOrders';
@@ -33,6 +33,7 @@ jest.mock('@/hooks/useBusinessOrders', () => ({ useBusinessOrders: jest.fn(() =>
 /* ---------------- Backend en memoria ---------------- */
 type Filters = {
   subEstado?: SubEstadoCc;
+  search?: string;
   canalOrigen?: string;
   agenteId?: string;
   startDate?: string;
@@ -66,15 +67,17 @@ function applyFilters(f: Filters) {
     (!f.canalOrigen || o.canalOrigen === f.canalOrigen) &&
     (!f.agenteId || (o as any).agenteId === f.agenteId) &&
     (!f.startDate || o.created_at >= f.startDate) &&
-    (!f.endDate || o.created_at <= f.endDate),
+    (!f.endDate || o.created_at <= f.endDate) &&
+    (!f.search || matchesCcSearch(o, f.search)),
   );
 }
 
 const allHookCalls: { filters: Filters; enabled: boolean }[] = [];
-let truncateAll = false;
+const pageHookCalls: Filters[] = [];
 
 jest.mock('@/hooks/useCcPedidos', () => ({
   useCcPedidos: (f: Filters) => {
+    pageHookCalls.push(f);
     const rows = applyFilters(f);
     const limit = f.limit ?? 50;
     const page = f.page ?? 1;
@@ -94,15 +97,7 @@ jest.mock('@/hooks/useCcPedidos', () => ({
 jest.mock('@/hooks/useCcPedidosAll', () => ({
   useCcPedidosAll: (f: Filters, enabled: boolean) => {
     allHookCalls.push({ filters: f, enabled });
-    if (!enabled) return { data: undefined, isLoading: false, isError: false, refetch: jest.fn() };
-    const rows = applyFilters(f);
-    const data = truncateAll ? rows.slice(0, 10) : rows;
-    return {
-      data: { data, total: rows.length, truncated: data.length < rows.length },
-      isLoading: false,
-      isError: false,
-      refetch: jest.fn(),
-    };
+    throw new Error('La tabla no debe descargar todos los pedidos');
   },
 }));
 
@@ -163,6 +158,7 @@ jest.mock('@/components/ui/date-range-picker', () => ({
 import AtencionClientePage from '../page';
 import { exportCcPedidosToExcel } from '@/utils/exportCcPedidosExcel';
 import { toast } from 'sonner';
+import { matchesCcSearch } from '@/components/atencion-cliente/cc-v2/ccPedidoFields';
 
 const exportMock = jest.mocked(exportCcPedidosToExcel);
 
@@ -201,7 +197,7 @@ beforeEach(() => {
     makeOrder(102, { subEstadoCc: 'por_confirmar' }),
   );
   allHookCalls.length = 0;
-  truncateAll = false;
+  pageHookCalls.length = 0;
   exportMock.mockReset().mockResolvedValue(undefined);
   jest.mocked(toast.info).mockClear();
   Object.defineProperty(navigator, 'clipboard', {
@@ -290,7 +286,8 @@ describe('Gestión COD — buscador', () => {
     await typeSearch('maría');
     expect(screen.getByText('María López')).toBeInTheDocument();
     expect(screen.queryByText('ORD-001')).not.toBeInTheDocument();
-    expect(allHookCalls.at(-1)).toMatchObject({ enabled: true, filters: { subEstado: 'contactado' } });
+    expect(pageHookCalls.at(-1)).toMatchObject({ subEstado: 'contactado', search: 'maría', page: 1, limit: 50 });
+    expect(allHookCalls).toHaveLength(0);
   });
 
   it('busca por teléfono y por N° de orden', async () => {
@@ -317,17 +314,15 @@ describe('Gestión COD — buscador', () => {
 
     // la selección de filtros no borra la búsqueda
     expect(screen.getByRole('searchbox', { name: /buscar pedidos/i })).toHaveValue('cliente');
-    expect(allHookCalls.at(-1)).toMatchObject({
-      enabled: true,
-      filters: {
-        subEstado: 'contactado',
-        agenteId: 'ag1',
-        canalOrigen: 'releasit',
-        startDate: '2026-09-10T00:00:00.000Z',
-        endDate: '2026-09-20T23:59:59.000Z',
-      },
+    expect(pageHookCalls.at(-1)).toMatchObject({
+      subEstado: 'contactado',
+      search: 'cliente',
+      agenteId: 'ag1',
+      canalOrigen: 'releasit',
+      startDate: '2026-09-10T00:00:00.000Z',
+      endDate: '2026-09-20T23:59:59.000Z',
     });
-    const expected = applyFilters(allHookCalls.at(-1)!.filters).map((o) => o.orderNumber);
+    const expected = applyFilters(pageHookCalls.at(-1)!).map((o) => o.orderNumber);
     expect(expected.length).toBeGreaterThan(0);
     const shown = screen.getAllByText(/^ORD-\d+$/).map((el) => el.textContent);
     expect(shown.sort()).toEqual(expected.sort());
@@ -344,12 +339,17 @@ describe('Gestión COD — buscador', () => {
     expect(screen.getByText('ORD-001')).toBeInTheDocument();
   });
 
-  it('muestra aviso de resultados incompletos si el conjunto viene truncado', async () => {
-    truncateAll = true;
+  it('pagina los resultados del servidor sin descargar todos los pedidos', async () => {
     render(<AtencionClientePage />);
     await goToSubTab(/^Contactado\s*\d*$/);
     await typeSearch('cliente');
-    expect(screen.getByRole('status')).toHaveTextContent(/resultados incompletos: la búsqueda cubre 10 de 61/i);
+    expect(screen.getAllByRole('row')).toHaveLength(51);
+    expect(screen.queryByText('ORD-051')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: '2' }));
+    expect(screen.getByText('ORD-051')).toBeInTheDocument();
+    expect(pageHookCalls.at(-1)).toMatchObject({ search: 'cliente', page: 2, limit: 50 });
+    expect(allHookCalls).toHaveLength(0);
+    expect(screen.queryByText(/resultados incompletos/i)).not.toBeInTheDocument();
   });
 
   it('no muestra aviso si el conjunto está completo', async () => {
@@ -407,15 +407,19 @@ describe('Gestión COD — buscador', () => {
     await typeSearch('cliente 1');
     await toggleRow('ORD-001');
     expect(exportButton()).toHaveTextContent('(1)');
-    await act(async () => { await typeSearch('cliente 2'); });
+    await typeSearch('cliente 2');
     expect(exportButton()).toBeDisabled();
   });
 });
 
 /* ---------------- Carga de pedidos legacy ---------------- */
 describe('Atención al cliente — pedidos legacy', () => {
-  it('pide al servidor solo INCOMPLETE y PREVENTA', async () => {
+  it('no carga legacy al abrir CC y pide solo INCOMPLETE/PREVENTA al entrar en su pestaña', async () => {
     render(<AtencionClientePage />);
+    expect(useBusinessOrders).toHaveBeenLastCalledWith(undefined, undefined, { includeCcLeads: true, statuses: ['INCOMPLETE', 'PREVENTA'], enabled: false });
+    await userEvent.click(screen.getByRole('tab', { name: /Pre-Ventas/ }));
     expect(useBusinessOrders).toHaveBeenCalledWith(undefined, undefined, { includeCcLeads: true, statuses: ['INCOMPLETE', 'PREVENTA'], enabled: true });
+    await userEvent.click(screen.getByRole('tab', { name: /Call Center v2/ }));
+    expect(useBusinessOrders).toHaveBeenLastCalledWith(undefined, undefined, { includeCcLeads: true, statuses: ['INCOMPLETE', 'PREVENTA'], enabled: false });
   });
 });

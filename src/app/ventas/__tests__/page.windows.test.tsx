@@ -18,7 +18,7 @@ jest.mock("axios", () => ({
   post: jest.fn(),
 }));
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: jest.requireMock("axios") }));
-jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: "company-1:business:store-1" }) }));
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: "company-1:business:store-1", storeIds: ["store-1"] }) }));
 jest.mock("@/hooks/useInvalidateBusinessData", () => ({ useInvalidateBusinessData: () => jest.fn() }));
 jest.mock("sonner", () => ({
   toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn(), info: jest.fn() },
@@ -33,6 +33,8 @@ jest.mock("@/services/atencionClienteService", () => ({
   reassignSeller: jest.fn(),
 }));
 jest.mock("@/hooks/useBusinessOrders", () => ({ useBusinessOrders: jest.fn() }));
+jest.mock("@/hooks/useBusinessSalesPage", () => ({ useBusinessSalesPage: jest.fn() }));
+jest.mock("@/services/businessSalesService", () => ({ getBusinessSalesExport: jest.fn() }));
 jest.mock("@/hooks/useBusinessOrdersCount", () => ({ useBusinessOrdersCount: jest.fn() }));
 jest.mock("@/lib/peruDate", () => ({ ...jest.requireActual("@/lib/peruDate"), todayInPeru: () => "2026-09-26" }));
 jest.mock("@/utils/exportSalesExcel", () => ({
@@ -75,6 +77,11 @@ jest.mock("@/components/ventas/BulkStatusSelect", () => {
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+import { useBusinessSalesPage } from "@/hooks/useBusinessSalesPage";
+import { getBusinessSalesExport } from "@/services/businessSalesService";
+import { useMemo } from "react";
+import { applyFilters, buildProductFilterOptions } from "@/components/ventas/SalesTableFilters";
+import { isInPeruWindow } from "@/lib/peruDate";
 import { useBusinessOrdersCount } from "@/hooks/useBusinessOrdersCount";
 import type { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import { exportSalesToExcel } from "@/utils/exportSalesExcel";
@@ -177,6 +184,40 @@ beforeEach(() => {
       ...(label ? overrides[label] : {}),
     } as unknown as ReturnType<typeof useBusinessOrders>;
   });
+  jest.mocked(useBusinessSalesPage).mockImplementation((_ids, query) => {
+    const label: Label = query.tab === "pendientes" && query.sort === "updated_asc" ? "antiguos" : query.tab;
+    const override = overrides[label];
+    const source = override?.orders ?? DATA[label];
+    const kpiSource = overrides.kpis?.orders ?? DATA.kpis;
+    const businessTotal = counts.todas;
+    const antiguosTotal = counts.antiguos;
+    const result = useMemo(() => {
+      const orders = source.filter(order => isInPeruWindow(order.created_at, { fromDate: query.dateFrom ?? "", toDate: query.dateTo ?? "" }))
+        .sort((a, b) => query.sort === "updated_asc" ? Date.parse(a.updated_at) - Date.parse(b.updated_at) : Date.parse(b.created_at) - Date.parse(a.created_at));
+      const kpiRows = kpiSource.filter(order => isInPeruWindow(order.created_at, { fromDate: query.kpiDateFrom ?? "", toDate: query.kpiDateTo ?? "" }));
+      const balances = new Map<string, { currency: string | null; paid: number; pending: number }>();
+      for (const order of kpiRows.filter(row => PEND.includes(row.status))) {
+        const currency = order.currency ?? null;
+        const key = currency ?? "UNKNOWN";
+        const group = balances.get(key) ?? { currency, paid: 0, pending: 0 };
+        group.pending += Number(order.grandTotal);
+        balances.set(key, group);
+      }
+      return {
+        data: override?.loading || override?.error ? EMPTY : orders.slice((query.page - 1) * query.limit, query.page * query.limit),
+        total: orders.length, page: query.page, totalPages: Math.max(1, Math.ceil(orders.length / query.limit)),
+        counts: { pendientes: DATA.pendientes.length, anuladas: DATA.anuladas.length, todas: businessTotal, pendientesAntiguos: antiguosTotal },
+        kpis: { pendientes: kpiRows.filter(row => PEND.includes(row.status)).length, anuladas: kpiRows.filter(row => row.status === "ANULADO").length, amounts: [...balances.values()] },
+        metadata: { products: [] },
+      };
+    }, [source, kpiSource, query.page, query.limit, query.sort, query.dateFrom, query.dateTo, query.kpiDateFrom, query.kpiDateTo, override?.loading, override?.error, businessTotal, antiguosTotal]);
+    return { data: result, isFetching: !!override?.loading || !!overrides.kpis?.loading, isError: !!override?.error || !!overrides.kpis?.error, isDebouncing: false, refetch: overrides.kpis?.error ? retries.kpis : retries[label] } as unknown as ReturnType<typeof useBusinessSalesPage>;
+  });
+  jest.mocked(getBusinessSalesExport).mockImplementation(async (_ids, query) => {
+    const label: Label = query.tab === "pendientes" && query.sort === "updated_asc" ? "antiguos" : query.tab;
+    return [...(overrides[label]?.orders ?? DATA[label])].filter(order => isInPeruWindow(order.created_at, { fromDate: query.dateFrom ?? "", toDate: query.dateTo ?? "" }))
+      .sort((a, b) => query.sort === "updated_asc" ? Date.parse(a.updated_at) - Date.parse(b.updated_at) : Date.parse(b.created_at) - Date.parse(a.created_at));
+  });
   mockCount.mockImplementation((_from, _to, opts) => ({
     count: opts?.statuses === TODAS_STATUSES ? counts.todas : counts.antiguos,
     loading: false,
@@ -213,12 +254,12 @@ describe("VentasPage — Pendientes recientes y antiguos", () => {
 
   it("baja los antiguos recién al elegirlos, primero los que llevan más días sin movimiento", () => {
     render(<VentasPage />);
-    expect(mockOrders).toHaveBeenCalledWith(undefined, "2026-08-27", { statuses: PEND, enabled: false });
-    expect(mockOrders).not.toHaveBeenCalledWith(undefined, "2026-08-27", { statuses: PEND, enabled: true });
+    expect(jest.mocked(useBusinessSalesPage).mock.calls.every(([, query]) => query.sort !== "updated_asc")).toBe(true);
+    expect(jest.mocked(useBusinessSalesPage).mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({ dateFrom: "2026-08-28", limit: 10 }));
 
     fireEvent.click(screen.getByRole("button", { name: "Pendientes antiguos (2)" }));
 
-    expect(mockOrders).toHaveBeenCalledWith(undefined, "2026-08-27", { statuses: PEND, enabled: true });
+    expect(useBusinessSalesPage).toHaveBeenLastCalledWith(["store-1"], expect.objectContaining({ dateTo: "2026-08-27", sort: "updated_asc", limit: 10 }));
     const panel = screen.getByRole("tabpanel");
     expect(ordersIn(panel)).toEqual(["ORD-201", "ORD-202"]);
     expect(within(panel).getByText("56 días sin movimiento")).toBeInTheDocument();
@@ -244,13 +285,13 @@ describe("VentasPage — Pendientes recientes y antiguos", () => {
 
   it("al volver a Recientes deja de pedir los antiguos", () => {
     render(<VentasPage />);
-    const antiguosCalls = () => mockOrders.mock.calls.filter(([from, to]) => from === undefined && to === "2026-08-27");
+    const lastQuery = () => jest.mocked(useBusinessSalesPage).mock.calls.at(-1)?.[1];
 
     fireEvent.click(screen.getByRole("button", { name: "Pendientes antiguos (2)" }));
-    expect(antiguosCalls().at(-1)).toEqual([undefined, "2026-08-27", { statuses: PEND, enabled: true }]);
+    expect(lastQuery()).toEqual(expect.objectContaining({ dateTo: "2026-08-27", sort: "updated_asc" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Recientes" }));
-    expect(antiguosCalls().at(-1)).toEqual([undefined, "2026-08-27", { statuses: PEND, enabled: false }]);
+    expect(lastQuery()).toEqual(expect.objectContaining({ dateFrom: "2026-08-28", sort: "created_desc" }));
   });
 
   it("si el contador no está (carga o falla), el acceso sigue habilitado y sin número", () => {
@@ -290,13 +331,12 @@ describe("VentasPage — Pendientes recientes y antiguos", () => {
 describe("VentasPage — Anuladas y Todas por período", () => {
   it("Todas no se pide hasta entrar a la pestaña", () => {
     render(<VentasPage />);
-    expect(callsFor(TODAS_STATUSES).length).toBeGreaterThan(0);
-    expect(callsFor(TODAS_STATUSES).every(([, , o]) => o?.enabled === false)).toBe(true);
+    expect(jest.mocked(useBusinessSalesPage).mock.calls.every(([, query]) => query.tab !== "todas")).toBe(true);
+    expect(useBusinessSalesPage).toHaveBeenLastCalledWith(["store-1"], expect.objectContaining({ tab: "pendientes", page: 1, limit: 10 }));
 
     fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas las Ventas/ }));
 
-    const calls = callsFor(TODAS_STATUSES);
-    expect(calls[calls.length - 1]).toEqual(["2026-08-28", undefined, { statuses: TODAS_STATUSES, enabled: true }]);
+    expect(useBusinessSalesPage).toHaveBeenLastCalledWith(["store-1"], expect.objectContaining({ tab: "todas", dateFrom: "2026-08-28", limit: 10 }));
     expect(ordersIn(screen.getByRole("tabpanel"))).toEqual(["ORD-401", "ORD-101", "ORD-301"]);
   });
 
@@ -313,7 +353,7 @@ describe("VentasPage — Anuladas y Todas por período", () => {
     overrides.todas = {};
     rerender(<VentasPage />);
     expect(within(screen.getByRole("tabpanel")).queryByText("Cargando ventas...")).not.toBeInTheDocument();
-    expect(tab()).toHaveTextContent(/Todas las Ventas\s*3$/);
+    expect(tab()).toHaveTextContent(/Todas las Ventas\s*1011$/);
   });
 
   it("sin conteo, la pestaña Todas no muestra número", () => {
@@ -333,10 +373,10 @@ describe("VentasPage — Anuladas y Todas por período", () => {
     expect(within(panel).getByLabelText("Desde")).toHaveValue("2026-09-20");
     expect(ordersIn(panel)).toEqual(["ORD-401", "ORD-101"]); // ORD-301 (09-10) sale de la ventana
     await waitFor(
-      () => expect(mockOrders).toHaveBeenCalledWith("2026-09-20", undefined, { statuses: TODAS_STATUSES, enabled: true }),
+      () => expect(useBusinessSalesPage).toHaveBeenLastCalledWith(["store-1"], expect.objectContaining({ tab: "todas", dateFrom: "2026-09-20", limit: 10 })),
       { timeout: 2000 },
     );
-    expect(mockCount).toHaveBeenCalledWith("2026-09-20", undefined, { statuses: TODAS_STATUSES });
+    expect(jest.mocked(useBusinessSalesPage).mock.calls.at(-1)?.[1].dateFrom).toBe("2026-09-20");
   });
 
   it("Anuladas: el período va al servidor y si falla, el error queda en la pestaña con Reintentar", async () => {
@@ -349,7 +389,7 @@ describe("VentasPage — Anuladas y Todas por período", () => {
     fireEvent.click(within(panel).getByRole("button", { name: "15 días" }));
 
     await waitFor(
-      () => expect(mockOrders).toHaveBeenCalledWith("2026-09-12", undefined, { statuses: ["ANULADO"] }),
+      () => expect(useBusinessSalesPage).toHaveBeenLastCalledWith(["store-1"], expect.objectContaining({ tab: "anuladas", dateFrom: "2026-09-12", limit: 10 })),
       { timeout: 2000 },
     );
     expect(within(panel).getByRole("alert")).toHaveTextContent("No se pudieron cargar las ventas de este período.");
@@ -394,7 +434,7 @@ describe("VentasPage — Anuladas, Todas y Pendientes antiguos no muestran ni us
     expect(processBulkStatusChange).not.toHaveBeenCalled();
   });
 
-  it("mientras Todas baja no lista los pedidos de otras consultas ni exporta; al llegar muestra la lista completa", () => {
+  it("mientras Todas baja no lista los pedidos de otras consultas ni exporta; al llegar muestra la página completa", async () => {
     overrides.todas = { loading: true, orders: EMPTY };
     const { rerender } = render(<VentasPage />);
     fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas las Ventas/ }));
@@ -413,18 +453,19 @@ describe("VentasPage — Anuladas, Todas y Pendientes antiguos no muestran ni us
 
     expect(ordersIn(panel())).toEqual(["ORD-401", "ORD-101", "ORD-301"]);
     fireEvent.click(exportar());
-    expect(mockExport).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockExport).toHaveBeenCalledTimes(1));
     expect(mockExport.mock.calls[0][0].map((r) => r.orderNumber)).toEqual(["ORD-401", "ORD-101", "ORD-301"]);
   });
 
   it("al agrandar el período de Anuladas no muestra lo bajado antes como si fuera el período nuevo", async () => {
-    render(<VentasPage />);
+    const { rerender } = render(<VentasPage />);
     fireEvent.mouseDown(screen.getByRole("tab", { name: /Ventas Anuladas/ }));
     const panel = screen.getByRole("tabpanel");
     const tab = () => screen.getByRole("tab", { name: /Ventas Anuladas/ });
     expect(ordersIn(panel)).toEqual(["ORD-301"]);
     expect(tab()).toHaveTextContent(/Ventas Anuladas\s*1$/);
 
+    overrides.anuladas = { loading: true };
     fireEvent.change(within(panel).getByLabelText("Desde"), { target: { value: "2026-08-01" } });
 
     expect(within(panel).getByText("Cargando ventas...")).toBeInTheDocument();
@@ -432,13 +473,15 @@ describe("VentasPage — Anuladas, Todas y Pendientes antiguos no muestran ni us
     expect(tab()).toHaveTextContent(/^Ventas Anuladas$/);
     expect(within(panel).getByRole("button", { name: /Exportar Excel/ })).toBeDisabled();
 
+    overrides.anuladas = {};
+    rerender(<VentasPage />);
     await waitFor(() => expect(ordersIn(panel)).toEqual(["ORD-301"]), { timeout: 2000 });
-    expect(mockOrders).toHaveBeenCalledWith("2026-08-01", undefined, { statuses: ["ANULADO"] });
+    expect(useBusinessSalesPage).toHaveBeenLastCalledWith(["store-1"], expect.objectContaining({ tab: "anuladas", dateFrom: "2026-08-01", limit: 10 }));
     expect(tab()).toHaveTextContent(/Ventas Anuladas\s*1$/);
     expect(within(panel).getByRole("button", { name: /Exportar Excel/ })).toBeEnabled();
   });
 
-  it("mientras Pendientes antiguos baja no lista los antiguos que trajo Todas ni exporta; al llegar muestra la lista completa", () => {
+  it("mientras Pendientes antiguos baja no lista los antiguos que trajo Todas ni exporta; al llegar muestra la página completa", async () => {
     // Todas ampliada a más de 30 días ya trajo uno de los antiguos
     overrides.todas = { orders: [PREPARADO, RECIENTE, ANULADA, ANTIGUO_202] };
     overrides.antiguos = { loading: true, orders: EMPTY };
@@ -460,7 +503,7 @@ describe("VentasPage — Anuladas, Todas y Pendientes antiguos no muestran ni us
 
     expect(ordersIn(panel())).toEqual(["ORD-201", "ORD-202"]);
     fireEvent.click(exportar());
-    expect(mockExport).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockExport).toHaveBeenCalledTimes(1));
     expect(mockExport.mock.calls[0][0].map((r) => r.orderNumber)).toEqual(["ORD-201", "ORD-202"]);
   });
 
@@ -516,12 +559,12 @@ describe("VentasPage — KPIs por período", () => {
       expect(kpiValue(title)).not.toMatch(/^(0|S\/ 0\.00)$/);
     }
 
-    fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Reintentar" })[0]);
 
     expect(retries.kpis).toHaveBeenCalledTimes(1);
   });
 
-  it("un pedido que pasa a Anulado cuenta en los KPIs aunque su consulta todavía no lo traiga", async () => {
+  it("un pedido que pasa a Anulado recibe el KPI actualizado de la misma respuesta del servidor", async () => {
     overrides.kpis = { orders: [RECIENTE, ANULADA] };
     const { rerender } = render(<VentasPage />);
     fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas las Ventas/ }));
@@ -532,6 +575,7 @@ describe("VentasPage — KPIs por período", () => {
     const anulado = { ...PREPARADO, status: "ANULADO" as OrderStatus };
     overrides.todas = { orders: [anulado, RECIENTE, ANULADA] };
     overrides.anuladas = { orders: [anulado, ANULADA] };
+    overrides.kpis = { orders: [anulado, RECIENTE, ANULADA] };
     rerender(<VentasPage />);
 
     expect(kpiValue("Anuladas")).toBe("2");
@@ -544,7 +588,7 @@ describe("VentasPage — KPIs por período", () => {
 
     await waitFor(() => expect(kpiValue("Pendientes")).toBe("3"));
     expect(kpiValue("Anuladas")).toBe("1");
-    expect(mockOrders).toHaveBeenCalledWith("2026-07-31", "2026-09-01", { statuses: KPI, enabled: true });
+    expect(useBusinessSalesPage).toHaveBeenLastCalledWith(["store-1"], expect.objectContaining({ kpiDateFrom: "2026-08-01", kpiDateTo: "2026-08-31" }));
     expect(ordersIn(screen.getByRole("tabpanel"))).toEqual(["ORD-101"]);
   });
 });
