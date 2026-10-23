@@ -15,6 +15,7 @@ const refresh = jest.fn().mockResolvedValue(undefined);
 let mockProducts: AdsProduct[] = [];
 let mockTests: AdsTest[] = [];
 let mockProfit = true;
+let mockSpend = true;
 const metric = {
   ...emptySales(),
   delivered: 3,
@@ -70,6 +71,7 @@ const ad = {
   insights: { spend: "60" },
   budget: { objectId: "3", level: "adset", dailyBudget: "50.00" },
 } as AdsRow;
+let mockAds = [ad];
 jest.mock("axios");
 jest.mock("../Numbers", () => ({ useNumbers: () => ({ data: source, isError: false }) }));
 jest.mock("../context", () => ({
@@ -77,12 +79,12 @@ jest.mock("../context", () => ({
     identity: { token: "token", companyId: "company" },
     settings: {
       rules: { testMinSales: 3, testMultiplier: 2, winPct: 60 },
-      capabilities: { edit: true, spend: true, profit: mockProfit },
+      capabilities: { edit: true, spend: mockSpend, profit: mockProfit },
     },
   }),
   useRefreshAds: () => refresh,
   useAdsQuery: () => ({
-    data: { rows: [ad], products: mockProducts, tests: mockTests },
+    data: { rows: mockAds, products: mockProducts, tests: mockTests },
     isError: false,
   }),
 }));
@@ -102,6 +104,11 @@ describe("product-test decision receipt", () => {
     mockProducts = [];
     mockTests = [];
     mockProfit = true;
+    mockSpend = true;
+    ad.currency = "PEN";
+    ad.insights.spend = "60";
+    mockAds = [ad];
+    source.summary.days = [{ ...source.summary.days[0], currency: "PEN" }];
     window.history.replaceState({}, "", "/");
     source.sales.byAd = [{ ...metric, adId: "4", storeId: "store", channel: "web" }];
     process.env.NEXT_PUBLIC_API_INTEGRATIONS = "https://integrations.test";
@@ -109,6 +116,29 @@ describe("product-test decision receipt", () => {
       configurable: true,
       value: () => "7d7b6cb1-15cc-44ce-88f3-487066fd5a70",
     });
+  });
+  it("shows USD test spend and CPA in USD without a PEN profitability verdict", () => {
+    ad.currency = "USD";
+    source.summary.days[0].currency = "USD";
+    render(<TestRow test={test} />);
+    expect(screen.getByText("Gasto").textContent).toMatch(/USD.*60\.00/);
+    expect(screen.getByText("C. venta").textContent).toMatch(/USD.*20\.00/);
+    expect(screen.getByText(/Datos incompletos/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Pasar a escala" })).not.toBeInTheDocument();
+  });
+  it("suppresses a mixed-currency or unknown test total and retains spend permissions", () => {
+    mockAds = [ad, { ...ad, id: "5", currency: "USD" }];
+    const view = render(<TestRow test={{ ...test, adIds: ["4", "5"] }} />);
+    expect(screen.getByText("Gasto")).toHaveTextContent("Gasto —");
+    expect(screen.getByText("C. venta")).toHaveTextContent("C. venta —");
+    mockAds = [ad];
+    ad.insights.spend = null;
+    view.rerender(<TestRow test={test} />);
+    expect(screen.getByText("Gasto")).toHaveTextContent("Gasto —");
+    mockSpend = false;
+    view.rerender(<TestRow test={test} />);
+    expect(screen.queryByText("Gasto")).not.toBeInTheDocument();
+    expect(screen.queryByText("C. venta")).not.toBeInTheDocument();
   });
   it("confirms the real Meta budget increase before marking the test scaled with the same request ID", async () => {
     (axios.request as jest.Mock).mockResolvedValue({ data: { status: "succeeded" } });

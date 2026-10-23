@@ -35,10 +35,26 @@ export function profitUsage(cost: number | null, maximum: number | null) {
   if (cost === null || maximum === null) return null;
   return maximum <= 0 ? (cost > maximum ? Infinity : 1) : cost / maximum;
 }
-export const money = (value: number | null | undefined, currency = "PEN") =>
-  value == null
+export const money = (value: number | null | undefined, currency: string | null = "PEN") =>
+  value == null || !currency
     ? "—"
     : new Intl.NumberFormat("es-PE", { style: "currency", currency }).format(value);
+export function commonCurrency(rows: ReadonlyArray<{ currency: string }>): string | null {
+  const currency = rows[0]?.currency;
+  return currency && rows.every((row) => row.currency === currency) ? currency : null;
+}
+export function currencyTotal(
+  rows: ReadonlyArray<{ currency: string; amount: number | null | undefined }>,
+) {
+  const currency = commonCurrency(rows);
+  return {
+    currency,
+    amount:
+      currency && rows.every((row) => row.amount != null && Number.isFinite(row.amount))
+        ? rows.reduce((sum, row) => sum + row.amount!, 0)
+        : null,
+  };
+}
 export const decimal = (value: number | null | undefined, suffix = "") =>
   value == null
     ? "—"
@@ -554,16 +570,19 @@ export function rowResultTotal(row: AdsRow, channels: Iterable<string>): number 
     : counts.reduce<number>((sum, count) => sum + count!, 0);
 }
 export function daysForRow(row: AdsRow, summary: AdsSummary) {
-  return summary.days.filter((day) =>
-    row.level === "ad"
-      ? day.adId === row.id
-      : row.level === "adset"
-        ? day.adsetId === row.id
-        : row.level === "campaign"
-          ? day.campaignId === row.id
-          : row.level === "account"
-            ? day.accountId === row.id
-            : day.storeId === row.id,
+  return summary.days.filter(
+    (day) =>
+      day.currency === row.currency &&
+      (!row.accountId || row.level === "store" || day.accountId === row.accountId) &&
+      (row.level === "ad"
+        ? day.adId === row.id
+        : row.level === "adset"
+          ? day.adsetId === row.id
+          : row.level === "campaign"
+            ? day.campaignId === row.id
+            : row.level === "account"
+              ? day.accountId === row.id
+              : day.storeId === row.id),
   );
 }
 export function channelData(
@@ -769,7 +788,9 @@ export function createAdFinancialCalculator(summary: AdsSummary, sales: AdsSales
   );
   return (row: AdsRow): Financial => {
     const raw = (dayIndex.get(`${row.level}:${row.id}`) ?? []).filter(
-      (day) => !row.accountId || row.level === "store" || row.accountId === day.accountId,
+      (day) =>
+        day.currency === row.currency &&
+        (!row.accountId || row.level === "store" || row.accountId === day.accountId),
     );
     const ids = new Set(raw.map((day) => leafKey(day.accountId, day.adId)));
     if (row.level === "ad") ids.add(leafKey(row.accountId, row.id));

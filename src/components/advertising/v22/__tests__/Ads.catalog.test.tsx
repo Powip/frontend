@@ -9,6 +9,7 @@ import type { AdsRow, AdsSettings } from "@/services/advertisingV22Service";
 
 const mockSetPeriod = jest.fn();
 const mockSetStore = jest.fn();
+const mockAction = jest.fn();
 const mockAuth = {
   auth: { user: { id: "actor" }, accessToken: "token", company: { id: "company" } },
 };
@@ -32,6 +33,8 @@ const mockSettings = {
 let mockCount = 101;
 let mockPartial = false;
 let mockRowChanges: Partial<AdsRow> = {};
+let mockCurrencies: string[] = [];
+let mockSpends: string[] = [];
 const mockRows = () =>
   Array.from(
     { length: mockCount },
@@ -47,12 +50,12 @@ const mockRows = () =>
         status: "ACTIVE",
         effectiveStatus: "ACTIVE",
         daysActive: 5,
-        currency: "PEN",
+        currency: mockCurrencies[index] ?? "PEN",
         timeZone: "America/Lima",
         store: { id: "store", name: "Tienda" },
         creative: { format: "image" },
         insights: {
-          spend: "1",
+          spend: mockSpends[index] ?? "1",
           clicks: "2",
           coverage: {
             status: mockPartial ? "partial" : "complete",
@@ -94,14 +97,14 @@ const mockNumbers = () => ({
       adProducts: [],
       days: mockRows().map((row) => ({
         adId: row.id,
-        accountId: "account",
+        accountId: row.accountId,
         adsetId: "set",
         campaignId: "campaign",
         storeId: "store",
         date: "2026-10-01",
         channel: "messages",
-        currency: "PEN",
-        spend: "1",
+        currency: row.currency,
+        spend: row.insights.spend,
         results: mockPartial ? null : 1,
         impressions: "1000",
         linkClicks: "2",
@@ -152,7 +155,12 @@ jest.mock("../../AdvertisingStoreFilterContext", () => ({
 }));
 jest.mock("../Numbers", () => ({ useNumbers: () => mockSource }));
 jest.mock("../Thumbnail", () => ({ AdThumbnail: () => <span /> }));
-jest.mock("../Actions", () => ({ AdvertisingActionDialog: () => null }));
+jest.mock("../Actions", () => ({
+  AdvertisingActionDialog: (props: unknown) => {
+    mockAction(props);
+    return null;
+  },
+}));
 jest.mock("../AdDetail", () => ({
   AdvertisingAdDetail: ({ onClose }: { onClose: () => void }) => (
     <button onClick={onClose}>Cerrar detalle</button>
@@ -195,6 +203,10 @@ beforeEach(() => {
   mockCount = 101;
   mockPartial = false;
   mockRowChanges = {};
+  mockCurrencies = [];
+  mockSpends = [];
+  mockSettings.capabilities.spend = true;
+  mockSettings.capabilities.edit = false;
   window.history.replaceState({}, "", "/publicidad/anuncios");
   mockSource = mockNumbers();
   process.env.NEXT_PUBLIC_API_INTEGRATIONS = "https://integrations.test";
@@ -218,6 +230,117 @@ beforeEach(() => {
       throw new Error(`Unexpected test route ${url}`);
     },
   );
+});
+it("keeps USD spend and cost per result in the account currency, including the group total", async () => {
+  mockCount = 1;
+  mockCurrencies = ["USD"];
+  mockSource = mockNumbers();
+  const view = mount();
+  await screen.findByText("Mostrando 1–1 de 1");
+  const row = visibleRows()[0];
+  expect(within(row).getAllByText(/USD.*1\.00/).length).toBeGreaterThanOrEqual(2);
+  expect(within(row).queryByText(/S\/.*1\.00/)).not.toBeInTheDocument();
+  const today = screen.getByText(/^Hoy · comparación/).closest('[data-slot="card"]')!;
+  await waitFor(() =>
+    expect(within(today as HTMLElement).getByText(/USD.*0\.00/)).toBeInTheDocument(),
+  );
+  fireEvent.change(screen.getByRole("combobox", { name: "Ver por" }), {
+    target: { value: "account" },
+  });
+  await screen.findByText("Total · 1 grupos");
+  expect(screen.getByText("Total · 1 grupos").parentElement).toHaveTextContent(/USD.*1\.00/);
+  view.unmount();
+  view.client.clear();
+});
+
+it("does not add PEN and USD group spend or expose spend to a restricted role in UI and Excel", async () => {
+  mockCount = 2;
+  mockCurrencies = ["PEN", "USD"];
+  mockSource = mockNumbers();
+  const view = mount();
+  await screen.findByText("Mostrando 1–2 de 2");
+  fireEvent.change(screen.getByRole("combobox", { name: "Ver por" }), {
+    target: { value: "account" },
+  });
+  await screen.findByText("Total · 2 grupos");
+  const total = screen.getByText("Total · 2 grupos").parentElement!;
+  expect(within(total).getAllByRole("cell")[1]).toHaveTextContent("—");
+  expect(total).toHaveTextContent("Los importes de monedas distintas no se suman.");
+  expect(screen.getByText(/El gasto requiere una misma moneda confirmada/)).toBeInTheDocument();
+  expect(
+    (axios.get as jest.Mock).mock.calls.some(([url]) => url.endsWith("/meta/v22/hourly")),
+  ).toBe(false);
+  view.unmount();
+  view.client.clear();
+
+  mockSettings.capabilities.spend = false;
+  const restricted = mount();
+  await screen.findByText("Mostrando 1–2 de 2");
+  expect(screen.queryByRole("columnheader", { name: "Gasto" })).not.toBeInTheDocument();
+  expect(screen.queryByText(/USD/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "↓ Excel" }));
+  const rows = (exportAdsWorkbook as jest.Mock).mock.calls.at(-1)[1][0].rows;
+  expect(rows).toHaveLength(2);
+  for (const row of rows) {
+    expect(row).not.toHaveProperty("Gasto");
+    expect(row).not.toHaveProperty("Costo por resultado mensajes");
+  }
+  restricted.unmount();
+  restricted.client.clear();
+});
+
+it("keeps today's spend unknown when no account currency is confirmed", async () => {
+  mockCount = 1;
+  mockSource = mockNumbers();
+  mockSource.data.summary.days = [];
+  const view = mount();
+  await screen.findByText("Mostrando 1–1 de 1");
+  const today = screen.getByText(/^Hoy · comparación/).closest('[data-slot="card"]')!;
+  expect(within(today as HTMLElement).getByText("Gasto").parentElement).toHaveTextContent("Gasto—");
+  expect(within(today as HTMLElement).queryByText(/S\/|USD/)).not.toBeInTheDocument();
+  expect(
+    (axios.get as jest.Mock).mock.calls.some(([url]) => url.endsWith("/meta/v22/hourly")),
+  ).toBe(false);
+  view.unmount();
+  view.client.clear();
+});
+
+it("keeps two currency rows for the same store distinct after applying a channel filter", async () => {
+  mockCount = 2;
+  mockCurrencies = ["PEN", "USD"];
+  mockSpends = ["10", "20"];
+  mockRowChanges = { id: "store", level: "store" };
+  mockSettings.capabilities.edit = true;
+  mockSource = mockNumbers();
+  const errors = jest.spyOn(console, "error").mockImplementation(() => {});
+  const view = mount();
+  try {
+    await screen.findByText("Mostrando 1–2 de 2");
+    fireEvent.change(screen.getByRole("combobox", { name: "Ver por" }), {
+      target: { value: "store" },
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "Canal" }), {
+      target: { value: "messages" },
+    });
+    await screen.findByText("Total · 2 grupos");
+    const rows = within(screen.getByRole("table")).getAllByRole("row");
+    expect(rows.find((row) => row.textContent?.includes("Anuncio 001"))).toHaveTextContent(
+      /S\/.*10\.00/,
+    );
+    expect(rows.find((row) => row.textContent?.includes("Anuncio 002"))).toHaveTextContent(
+      /USD.*20\.00/,
+    );
+    expect(errors.mock.calls.flat().join(" ")).not.toMatch(/same key|unique.*key/i);
+    const penRow = rows.find((row) => row.textContent?.includes("Anuncio 001"))!;
+    fireEvent.click(within(penRow).getByRole("button", { name: /Pausar/ }));
+    expect(mockAction).toHaveBeenLastCalledWith(expect.objectContaining({
+      selection: expect.objectContaining({ rows: [expect.objectContaining({ currency: "PEN" })] }),
+    }));
+  } finally {
+    errors.mockRestore();
+    view.unmount();
+    view.client.clear();
+  }
 });
 it("deduplicates identical full catalogs, loads every server page, limits DOM to 50 and exports the full filtered population", async () => {
   mockCount = 1115;

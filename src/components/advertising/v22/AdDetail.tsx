@@ -232,12 +232,15 @@ export function AdvertisingAdDetail({
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 {settings!.capabilities.spend && (
-                  <MetricCard label="Gasto" value={money(value.spend)} />
+                  <MetricCard label="Gasto" value={money(value.spend, item.currency)} />
                 )}
                 <MetricCard label="Ventas" value={decimal(value.delivered)} />
                 {settings!.capabilities.spend && (
                   <>
-                    <MetricCard label="Costo por venta" value={money(value.costSale)} />
+                    <MetricCard
+                      label="Costo por venta"
+                      value={money(value.costSale, item.currency)}
+                    />
                     <MetricCard label="ROAS" value={decimal(value.roas, "×")} />
                   </>
                 )}
@@ -282,7 +285,7 @@ export function AdvertisingAdDetail({
                   {decimal(numeric(item.insights.ctrUnique), "%")} · saliente{" "}
                   {decimal(numeric(item.insights.ctrOutbound), "%")}
                   {settings!.capabilities.spend
-                    ? ` · CPM ${money(numeric(item.insights.cpm))}`
+                    ? ` · CPM ${money(numeric(item.insights.cpm), item.currency)}`
                     : ""}
                 </p>
               </Block>
@@ -386,7 +389,9 @@ export function AdvertisingAdDetail({
                           {index === 0 ? " · original" : " · variación"}
                         </td>
                         {settings!.capabilities.spend && (
-                          <td className="p-2">{money(numeric(variant.insights?.spend))}</td>
+                          <td className="p-2">
+                            {money(numeric(variant.insights?.spend), variant.currency)}
+                          </td>
                         )}
                         <td className="p-2">{decimal(numeric(variant.insights?.ctr), "%")}</td>
                         <td className="p-2">{metaStatusLabel(variant)}</td>

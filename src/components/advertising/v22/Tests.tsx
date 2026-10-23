@@ -22,6 +22,7 @@ import { useAdvertisingStoreFilter } from "../AdvertisingStoreFilterContext";
 import { useAdsQuery, useAdsV22, useRefreshAds } from "./context";
 import {
   adFinancial,
+  currencyTotal,
   financial,
   sumSales,
   dayKey,
@@ -259,10 +260,10 @@ export function TestRow({ test, product }: { test: AdsTest; product?: AdsProduct
   const financials = query.data
     ? rows.map((row) => adFinancial(row, query.data!.summary, query.data!.sales, product))
     : [];
-  const spend =
-    financials.length && financials.every((row) => row.spend !== null)
-      ? financials.reduce((sum, row) => sum + (row.spend ?? 0), 0)
-      : null;
+  const spendTotal = currencyTotal(
+    rows.map((row, index) => ({ currency: row.currency, amount: financials[index]?.spend })),
+  );
+  const spend = spendTotal.amount;
   const delivered = financials.reduce((sum, row) => sum + row.delivered, 0);
   const attributed =
     query.data?.sales.byAd.filter(
@@ -359,7 +360,7 @@ export function TestRow({ test, product }: { test: AdsTest; product?: AdsProduct
         <div className="flex flex-wrap gap-6 text-sm">
           {settings!.capabilities.spend && (
             <span>
-              Gasto <strong>{money(spend)}</strong>
+              Gasto <strong>{money(spend, spendTotal.currency)}</strong>
             </span>
           )}
           <span>
@@ -367,7 +368,7 @@ export function TestRow({ test, product }: { test: AdsTest; product?: AdsProduct
           </span>
           {settings!.capabilities.spend && (
             <span>
-              C. venta <strong>{money(costSale)}</strong>
+              C. venta <strong>{money(costSale, spendTotal.currency)}</strong>
             </span>
           )}
           {settings!.capabilities.profit && (
