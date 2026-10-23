@@ -45,39 +45,37 @@
 
 .content {
   display: flex;
-  height: calc(100dvh - 56px);
+  min-height: calc(100dvh - 56px);
   min-width: 0;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 0;
-  padding: 12px 16px;
+  justify-content: safe center;
+  gap: 16px;
+  padding: 32px 24px;
 }
 
 .card {
   width: 100%;
-  max-width: 660px;
-  height: min(650px, calc(100dvh - 80px));
+  max-width: 540px;
   flex-shrink: 0;
   border: 1px solid #ece8f3;
   border-radius: 24px;
   background: #fff;
-  padding: 24px 32px;
+  padding: 32px;
   box-shadow: 0 12px 48px rgb(47 30 85 / 4%);
 }
 
 .tabs {
   display: flex;
   flex-direction: column;
-  height: 100%;
   min-height: 0;
   gap: 0;
 }
 
 .tabContent {
-  flex: 1;
   min-width: 0;
   min-height: 0;
+  flex: none;
 }
 
 .tabContent[data-state="active"] {
@@ -92,19 +90,6 @@
 
 .sessionNotice {
   margin-bottom: 16px;
-}
-
-.loginBody {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  justify-content: safe center;
-}
-
-.registerBody {
-  min-height: 0;
-  flex: 1;
 }
 
 .tabList {
@@ -144,7 +129,7 @@
 }
 
 .formHeader {
-  margin: 16px 0 28px;
+  margin: 28px 0 24px;
   flex-shrink: 0;
 }
 
@@ -274,13 +259,8 @@
   }
 
   .content {
-    height: 100dvh;
-    gap: 8px;
-    padding: 12px clamp(28px, 4vw, 64px);
-  }
-
-  .card {
-    height: min(650px, calc(100dvh - 56px));
+    min-height: 100dvh;
+    padding: 32px clamp(28px, 4vw, 64px);
   }
 
   .backLink {
@@ -307,11 +287,11 @@
   }
 
   .card {
-    padding: 16px 24px;
+    padding: 24px;
   }
 
   .formHeader {
-    margin: 12px 0 24px;
+    margin: 24px 0;
   }
 
   .formTitle {
@@ -362,17 +342,17 @@
   }
 
   .content {
-    padding-right: 12px;
-    padding-left: 12px;
+    justify-content: flex-start;
+    padding: 24px 16px;
   }
 
   .card {
-    height: min(780px, calc(100dvh - 80px));
-    padding: 16px;
+    border-radius: 20px;
+    padding: 24px 20px;
   }
 
   .formHeader {
-    margin: 10px 0 12px;
+    margin: 24px 0;
   }
 
   .formTitle {
@@ -380,7 +360,7 @@
   }
 
   .formDescription {
-    display: none;
+    margin-top: 8px;
   }
 
   .tabList {
@@ -397,3 +377,4 @@
     display: none;
   }
 }
+
