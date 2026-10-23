@@ -49,7 +49,7 @@ export function AdvertisingDataStatus({
         <div className="space-y-1">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <p className="font-medium text-amber-900 dark:text-amber-200">
-              Falta actualizar datos de Meta
+              Hay importes de Meta pendientes de confirmar
             </p>
             <Link href={settingsHref} className="text-primary underline underline-offset-2">
               Ver cuentas de Meta

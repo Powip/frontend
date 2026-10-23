@@ -431,7 +431,7 @@ it("keeps observed ads visible under a channel filter while coverage and results
   expect(within(visibleRows()[0]).queryByText("Sin resultados")).not.toBeInTheDocument();
   expect(within(visibleRows()[0]).queryByText("Revisa y pausa.")).not.toBeInTheDocument();
   expect(screen.getByText(/faltan referencias de anuncio/)).toBeInTheDocument();
-  expect(screen.getByText("Falta actualizar datos de Meta")).toBeVisible();
+  expect(screen.getByText("Hay importes de Meta pendientes de confirmar")).toBeVisible();
   expect(screen.getByRole("status", { name: "Estado de datos" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "↓ Excel" }));
   const exported = (exportAdsWorkbook as jest.Mock).mock.calls[0][1][0].rows;

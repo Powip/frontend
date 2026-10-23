@@ -235,7 +235,7 @@ export function dataWarning(code: string) {
         META_DATA_NOT_SYNCED:
           "Conecta tus cuentas o sincroniza Meta para consultar el gasto. Los datos aún no importados se muestran con —.",
         META_DATA_PARTIAL:
-          "Los datos de Meta todavía no están confirmados para todo el período. Revisa la actualización antes de comparar el gasto.",
+          "Faltan datos del período o quedan diferencias entre los importes de Meta. Revisa su estado en Configuración.",
         CURRENT_DAY_PROVISIONAL:
           "Los datos de hoy son provisionales y pueden actualizarse. El gasto importado ya está disponible.",
         UNASSIGNED_SPEND:

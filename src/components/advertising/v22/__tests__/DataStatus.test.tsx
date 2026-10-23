@@ -26,7 +26,7 @@ it("groups simultaneous Meta, assignment and provisional notices without hiding 
   );
   const status = screen.getByRole("status", { name: "Estado de datos" });
   expect(screen.getAllByRole("status")).toHaveLength(1);
-  expect(within(status).getByText("Falta actualizar datos de Meta")).toBeVisible();
+  expect(within(status).getByText("Hay importes de Meta pendientes de confirmar")).toBeVisible();
   expect(
     within(status).getByText("Hay anuncios pendientes de vincular a tiendas o canales."),
   ).toBeVisible();
@@ -47,6 +47,11 @@ it("groups simultaneous Meta, assignment and provisional notices without hiding 
   expect(within(details).getAllByRole("listitem", { hidden: true })).toHaveLength(5);
   fireEvent.click(summary);
   expect(details).toHaveAttribute("open");
+  expect(
+    within(details).getByText(
+      "Faltan datos del período o quedan diferencias entre los importes de Meta. Revisa su estado en Configuración.",
+    ),
+  ).toBeVisible();
   expect(within(details).getByText(/Hay gasto de anuncios sin tienda asignada/)).toBeVisible();
   expect(
     within(details).getByText(/Hay tiendas del período sin canales configurados/),
@@ -55,7 +60,7 @@ it("groups simultaneous Meta, assignment and provisional notices without hiding 
 
 it("keeps unavailable spend visible even if the server omitted a Meta warning", () => {
   render(<AdvertisingDataStatus warnings={["UNASSIGNED_SPEND"]} spendAvailable={false} />);
-  expect(screen.getByText("Falta actualizar datos de Meta")).toBeVisible();
+  expect(screen.getByText("Hay importes de Meta pendientes de confirmar")).toBeVisible();
   expect(screen.getByText("Los valores sin confirmar se mantienen con —.")).toBeVisible();
 });
 
@@ -72,7 +77,9 @@ it("preserves currency exclusions and a visible fallback for unknown warnings", 
     ),
   ).toBeVisible();
   expect(screen.getByText("Hay información pendiente de confirmar.")).toBeVisible();
-  expect(screen.queryByText("Falta actualizar datos de Meta")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Hay importes de Meta pendientes de confirmar"),
+  ).not.toBeInTheDocument();
   fireEvent.click(screen.getByText("Ver detalles"));
   expect(screen.getAllByText(/Hay datos del período pendientes de confirmar/)).toHaveLength(1);
   expect(screen.queryByText(/UNKNOWN_A|UNKNOWN_B/)).not.toBeInTheDocument();
@@ -81,11 +88,11 @@ it("preserves currency exclusions and a visible fallback for unknown warnings", 
 it("does not claim missing store configuration when Meta only identified the channel", () => {
   render(<AdvertisingDataStatus warnings={["CHANNEL_FAMILY_FROM_META"]} spendAvailable />);
   expect(screen.getByText("El canal de algunos anuncios se identifica desde Meta.")).toBeVisible();
-  expect(screen.queryByText(/pendientes de vincular|Falta actualizar/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/pendientes de vincular|Hay importes de Meta/)).not.toBeInTheDocument();
   expect(screen.queryByRole("link")).not.toBeInTheDocument();
 });
 
-it("keeps provisional data as one informative note without a false update warning", () => {
+it("keeps provisional data as one informative note without a false unconfirmed amount warning", () => {
   render(
     <AdvertisingDataStatus
       warnings={["CURRENT_DAY_PROVISIONAL", "PROVISIONAL_META_DATA"]}
@@ -93,7 +100,9 @@ it("keeps provisional data as one informative note without a false update warnin
     />,
   );
   expect(screen.getAllByText("Los resultados recientes todavía pueden cambiar.")).toHaveLength(1);
-  expect(screen.queryByText("Falta actualizar datos de Meta")).not.toBeInTheDocument();
+  expect(
+    screen.queryByText("Hay importes de Meta pendientes de confirmar"),
+  ).not.toBeInTheDocument();
   expect(screen.queryByRole("link")).not.toBeInTheDocument();
 });
 
