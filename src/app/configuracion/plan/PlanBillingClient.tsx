@@ -91,7 +91,7 @@ export default function PlanBillingClient() {
     return (
       <main className="flex-1 p-8">
         <HeaderConfig title="Plan y facturación" description="Tu plan, add-ons y cobros" />
-        <p className="p-6 text-sm text-gray-600">Solo el administrador de la cuenta puede ver el plan.</p>
+        <p className="p-6 text-sm text-muted-foreground">Solo el administrador de la cuenta puede ver el plan.</p>
       </main>
     );
   }
@@ -134,7 +134,7 @@ export default function PlanBillingClient() {
       <main className="flex-1 p-8">
         <HeaderConfig title="Plan y facturación" description="Tu plan, add-ons y cobros" />
         <div className="space-y-3 p-6">
-          <p className="text-sm text-gray-600">No pudimos cargar tu plan.</p>
+          <p className="text-sm text-muted-foreground">No pudimos cargar tu plan.</p>
           <Button variant="outline" onClick={() => void load()}>
             Reintentar
           </Button>
@@ -146,7 +146,7 @@ export default function PlanBillingClient() {
     return (
       <main className="flex-1 p-8">
         <HeaderConfig title="Plan y facturación" description="Tu plan, add-ons y cobros" />
-        <p className="p-6 text-sm text-gray-500">Cargando...</p>
+        <p className="p-6 text-sm text-muted-foreground">Cargando...</p>
       </main>
     );
   }
@@ -187,8 +187,8 @@ export default function PlanBillingClient() {
       <HeaderConfig title="Plan y facturación" description="Tu plan, add-ons y cobros" />
 
       <div>
-        <h1 className="text-2xl font-semibold text-[#17292A]">Mi plan y add-ons</h1>
-        <p className="mt-1 max-w-3xl text-sm text-gray-600">
+        <h1 className="text-2xl font-semibold text-foreground">Mi plan y add-ons</h1>
+        <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
           Activa lo que tu negocio necesita. Los add-ons se suman a tu próximo cobro: al agregarlos hoy no se cobra
           nada.
         </p>
@@ -199,11 +199,11 @@ export default function PlanBillingClient() {
           <CardHeader>
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Tu plan</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tu plan</p>
                 <CardTitle className="mt-1 text-2xl">{billing.plan ? `Plan ${billing.plan.name}` : "Sin plan vigente"}</CardTitle>
               </div>
               {billing.plan && (
-                <span className="rounded-full bg-[#E3F6EE] px-3 py-1 text-xs font-semibold text-[#0E9F6E]">
+                <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
                   {billing.mode === "FLOW_CANCELING" ? "Termina pronto" : "Activo"}
                 </span>
               )}
@@ -213,11 +213,11 @@ export default function PlanBillingClient() {
             {billing.plan && (
               <p className="text-base">
                 <strong>{money(billing.plan.price)}</strong>{" "}
-                <span className="text-gray-500">/ {billing.plan.durationInDays >= 365 ? "año" : "mes"}</span>
+                <span className="text-muted-foreground">/ {billing.plan.durationInDays >= 365 ? "año" : "mes"}</span>
               </p>
             )}
             {planCap && (
-              <p className="text-gray-600">
+              <p className="text-muted-foreground">
                 Hasta {planCap.toLocaleString("en-US")} pedidos al mes. Todos los planes traen los mismos módulos: solo
                 cambia cuántos pedidos puedes registrar.
               </p>
@@ -241,10 +241,10 @@ export default function PlanBillingClient() {
             {billing.mode === "NO_FLOW" && (
               <p>{billing.paidUntil ? `Pagado hasta el ${day(billing.paidUntil)}.` : "Sin pago vigente."}</p>
             )}
-            {billing.mode === "EXEMPT" && <p className="text-gray-600">Tu cuenta no tiene cobros pendientes.</p>}
+            {billing.mode === "EXEMPT" && <p className="text-muted-foreground">Tu cuenta no tiene cobros pendientes.</p>}
 
             {billing.pendingPlan && (
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10 p-3">
                 <p>
                   El {day(billing.pendingPlan.startsOn)} pasas a {billing.pendingPlan.name} (
                   {money(billing.pendingPlan.price)}). Hasta ese día sigues con {billing.plan?.name}.
@@ -262,7 +262,7 @@ export default function PlanBillingClient() {
 
             {plansToShow.length > 0 && billing.mode !== "EXEMPT" && (
               <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Cambiar plan</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Cambiar plan</p>
                 <div className="grid gap-2 sm:grid-cols-3">
                   {plansToShow.map((p) => {
                     const current = p.id === billing.plan?.id;
@@ -272,13 +272,13 @@ export default function PlanBillingClient() {
                         <span className="block font-semibold">
                           {p.name} · {money(p.price).replace(".00", "")}
                         </span>
-                        <span className="block text-xs text-gray-500">
+                        <span className="block text-xs text-muted-foreground">
                           {cap ? `hasta ${cap.toLocaleString("en-US")} pedidos` : "pedidos a medida"}
                         </span>
-                        {current && <span className="mt-1 block text-xs font-semibold text-[#027778]">Plan actual</span>}
+                        {current && <span className="mt-1 block text-xs font-semibold text-teal-700 dark:text-teal-300">Plan actual</span>}
                       </>
                     );
-                    const cls = `rounded-xl border p-3 text-left text-sm ${current ? "border-[#027778] bg-[#E2F1F1]" : "bg-white hover:border-[#027778]"}`;
+                    const cls = `rounded-xl border p-3 text-left text-sm ${current ? "border-teal-600 dark:border-teal-400 bg-teal-50 dark:bg-teal-500/15" : "bg-card hover:border-teal-600 dark:hover:border-teal-400"}`;
                     if (operable) {
                       return (
                         <button
@@ -305,22 +305,22 @@ export default function PlanBillingClient() {
                   })}
                 </div>
                 {!operable && (
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-muted-foreground">
                     Para cambiar de plan primero tienes que pasarte a Flow; ahí eliges el plan y tus add-ons.
                   </p>
                 )}
               </div>
             )}
 
-            <div className="flex flex-wrap items-center gap-2 border-t pt-3 text-gray-600">
+            <div className="flex flex-wrap items-center gap-2 border-t pt-3 text-muted-foreground">
               <CreditCard className="h-4 w-4" aria-hidden />
               {operable || billing.mode === "EXEMPT" ? (
                 <span>{billing.mode === "EXEMPT" ? "Sin cobros" : "Pagas con Flow"}</span>
               ) : (
                 <>
-                  <span className="text-red-600">Sin tarjeta registrada</span>
+                  <span className="text-red-600 dark:text-red-400">Sin tarjeta registrada</span>
                   {billing.isOwner && (
-                    <Link href="/pasate-a-flow" className="font-medium text-[#027778] underline">
+                    <Link href="/pasate-a-flow" className="font-medium text-teal-700 dark:text-teal-300 underline">
                       Registrar tarjeta
                     </Link>
                   )}
@@ -340,7 +340,7 @@ export default function PlanBillingClient() {
                     <Link href="/pasate-a-flow">Pasarme a Flow</Link>
                   </Button>
                 ) : (
-                  <p className="text-gray-600">Lo tiene que hacer el dueño de la cuenta.</p>
+                  <p className="text-muted-foreground">Lo tiene que hacer el dueño de la cuenta.</p>
                 ))}
             </div>
           </CardContent>
@@ -348,7 +348,7 @@ export default function PlanBillingClient() {
 
         <Card>
           <CardHeader>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Tu mensualidad{chargeDate ? ` desde el ${day(chargeDate)}` : ""}
             </p>
           </CardHeader>
@@ -365,29 +365,29 @@ export default function PlanBillingClient() {
                     <span>{money(a.amount)}</span>
                   </div>
                 ))}
-                {keptAddOns.length === 0 && <p className="text-gray-500">Sin add-ons activos</p>}
+                {keptAddOns.length === 0 && <p className="text-muted-foreground">Sin add-ons activos</p>}
                 <div className="flex justify-between border-t pt-2 text-base font-semibold">
                   <span>Total al {billing.plan.durationInDays >= 365 ? "año" : "mes"}</span>
                   <span>{money(monthlyTotal)}</span>
                 </div>
               </div>
             ) : (
-              <p className="text-gray-500">Todavía no tienes un plan vigente.</p>
+              <p className="text-muted-foreground">Todavía no tienes un plan vigente.</p>
             )}
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               Los cobros en línea por tu POWIP Link tienen la tarifa de pasarela de 3.5% por pago y no van en esta
               cuenta.
             </p>
 
             {billing.payments.length > 0 && (
               <div className="space-y-2 pt-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Historial de pagos</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Historial de pagos</p>
                 <ul className="divide-y text-sm">
                   {billing.payments.map((p) => (
                     <li key={`${p.date}-${p.amount}-${p.status}`} className="flex justify-between py-2">
                       <span>{day(p.date)}</span>
                       <span>{money(p.amount)}</span>
-                      <span className={p.status === "PAID" ? "text-teal-700" : "text-red-600"}>
+                      <span className={p.status === "PAID" ? "text-teal-700 dark:text-teal-400" : "text-red-600 dark:text-red-400"}>
                         {p.status === "PAID" ? "Pagado" : "Rechazado"}
                       </span>
                     </li>
@@ -401,8 +401,8 @@ export default function PlanBillingClient() {
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-xl font-semibold text-[#17292A]">Add-ons</h2>
-          <p className="text-sm text-gray-600">
+          <h2 className="text-xl font-semibold text-foreground">Add-ons</h2>
+          <p className="text-sm text-muted-foreground">
             Se activan sobre cualquier plan y aparecen en el menú donde se usan. Puedes quitarlos cuando quieras.
           </p>
         </div>
@@ -413,29 +413,29 @@ export default function PlanBillingClient() {
             return (
               <div
                 key={card.key}
-                className={`flex flex-col gap-3 rounded-xl border bg-white p-4 ${status === "active" ? "border-[#027778]" : ""}`}
+                className={`flex flex-col gap-3 rounded-xl border bg-card p-4 ${status === "active" ? "border-teal-600 dark:border-teal-400" : ""}`}
               >
                 <div className="flex items-start gap-3">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#EEE9FD] text-[#4C2FB5]">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300">
                     <Icon className="h-5 w-5" aria-hidden />
                   </span>
                   <div className="min-w-0 flex-1">
                     <h3 className="font-semibold">{card.name}</h3>
-                    <p className="text-xs text-gray-500">{card.where}</p>
+                    <p className="text-xs text-muted-foreground">{card.where}</p>
                   </div>
                   <p className="text-right font-semibold">
                     {price == null ? "—" : money(price).replace(".00", "")}
-                    <span className="block text-xs font-normal text-gray-500">/ mes</span>
+                    <span className="block text-xs font-normal text-muted-foreground">/ mes</span>
                   </p>
                 </div>
-                <p className="flex-1 text-sm text-gray-700">
+                <p className="flex-1 text-sm text-foreground/80">
                   {available?.description && !card.bullets.length ? available.description : card.tag}
-                  {card.note && <span className="mt-1 block text-xs text-gray-900">{card.note}</span>}
+                  {card.note && <span className="mt-1 block text-xs text-foreground">{card.note}</span>}
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   {status === "active" && active && (
                     <>
-                      <span className="inline-flex items-center gap-1 rounded-full bg-[#E3F6EE] px-2.5 py-1 text-xs font-semibold text-[#0E9F6E]">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400">
                         <Check className="h-3 w-3" aria-hidden />
                         {active.endsOn ? `Hasta el ${day(active.endsOn)}` : "Activo"}
                       </span>
@@ -472,7 +472,7 @@ export default function PlanBillingClient() {
                       ) : billing.isOwner && billing.mode !== "EXEMPT" ? (
                         <Link
                           href="/pasate-a-flow"
-                          className="rounded-md border px-3 py-1.5 text-xs font-medium text-[#027778] hover:bg-[#E2F1F1]"
+                          className="rounded-md border px-3 py-1.5 text-xs font-medium text-teal-700 dark:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-500/15"
                         >
                           Activar al pasarte a Flow
                         </Link>
@@ -480,7 +480,7 @@ export default function PlanBillingClient() {
                     </>
                   )}
                   {status === "soon" && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
                       <Lock className="h-3 w-3" aria-hidden />
                       Próximamente
                     </span>
@@ -502,19 +502,19 @@ export default function PlanBillingClient() {
           {FUTURE_ADDONS.map((f) => {
             const Icon = f.icon;
             return (
-              <div key={f.key} aria-disabled="true" className="flex flex-col gap-3 rounded-xl border border-dashed bg-gray-50 p-4 opacity-70">
+              <div key={f.key} aria-disabled="true" className="flex flex-col gap-3 rounded-xl border border-dashed bg-muted/50 p-4 opacity-70">
                 <div className="flex items-start gap-3">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-gray-200 text-gray-500">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
                     <Icon className="h-5 w-5" aria-hidden />
                   </span>
                   <div className="min-w-0 flex-1">
                     <h3 className="font-semibold">{f.name}</h3>
-                    <p className="text-xs text-gray-500">{f.where}</p>
+                    <p className="text-xs text-muted-foreground">{f.where}</p>
                   </div>
                 </div>
-                <p className="flex-1 text-sm text-gray-600">{f.tag}</p>
+                <p className="flex-1 text-sm text-muted-foreground">{f.tag}</p>
                 <div>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-600">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-1 text-xs font-semibold text-muted-foreground">
                     <Lock className="h-3 w-3" aria-hidden />
                     Próximamente
                   </span>
@@ -527,27 +527,27 @@ export default function PlanBillingClient() {
 
       <section className="space-y-3">
         <div>
-          <h2 className="text-xl font-semibold text-[#17292A]">Incluido en todos los planes</h2>
-          <p className="text-sm text-gray-600">
+          <h2 className="text-xl font-semibold text-foreground">Incluido en todos los planes</h2>
+          <p className="text-sm text-muted-foreground">
             Todos los planes traen los mismos módulos. Basic, Medium y Scale solo cambian en cuántos pedidos al mes
             puedes registrar.
           </p>
         </div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Módulos de tu plan</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Módulos de tu plan</p>
         <FeatureGrid items={CORE_MODULES} />
-        <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+        <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Herramientas gratis para vender y cobrar
         </p>
         <FeatureGrid items={FREE_TOOLS} />
       </section>
 
-      <div className="flex items-start gap-3 rounded-xl bg-[#E2F1F1] p-4">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white text-[#027778]">
+      <div className="flex items-start gap-3 rounded-xl bg-teal-50 dark:bg-teal-500/15 p-4">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-card text-teal-700 dark:text-teal-300">
           <Link2 className="h-5 w-5" aria-hidden />
         </span>
         <div>
-          <h3 className="font-semibold text-[#17292A]">Cobra con Yape y Mercado Pago desde tu POWIP Link</h3>
-          <p className="text-sm text-gray-700">
+          <h3 className="font-semibold text-foreground">Cobra con Yape y Mercado Pago desde tu POWIP Link</h3>
+          <p className="text-sm text-foreground/80">
             Tarifa de pasarela: 3.5% por pago. El adelanto o el total se valida solo y queda conciliado con el pedido.
           </p>
         </div>
@@ -574,14 +574,14 @@ export default function PlanBillingClient() {
                 <ul className="space-y-2 text-sm">
                   {dialog.card.bullets.map((b) => (
                     <li key={b} className="flex gap-2">
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#0E9F6E]" aria-hidden />
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />
                       <span>{b}</span>
                     </li>
                   ))}
                 </ul>
               )}
               {dialog.card.roi && (
-                <div className="rounded-lg bg-[#EEE9FD] p-3 text-sm text-[#4C2FB5]">
+                <div className="rounded-lg bg-violet-100 p-3 text-sm text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
                   <p className="font-semibold">Se paga solo</p>
                   <p>{dialog.card.roi}</p>
                 </div>
@@ -612,7 +612,7 @@ export default function PlanBillingClient() {
                   <span>{money(p.price)}</span>
                 </Button>
               ))}
-              {dialog.loading && <p className="text-sm text-gray-500">Calculando...</p>}
+              {dialog.loading && <p className="text-sm text-muted-foreground">Calculando...</p>}
               {dialog.selected && !dialog.loading && (
                 <PlanChangeSummary
                   billing={billing}
@@ -723,11 +723,11 @@ function FeatureGrid({ items }: { items: FeatureItem[] }) {
   return (
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       {items.map(({ icon: Icon, title, text }) => (
-        <div key={title} className="flex gap-3 rounded-lg border bg-white p-3">
-          <Icon className="mt-0.5 h-5 w-5 shrink-0 text-[#027778]" aria-hidden />
+        <div key={title} className="flex gap-3 rounded-lg border bg-card p-3">
+          <Icon className="mt-0.5 h-5 w-5 shrink-0 text-teal-700 dark:text-teal-300" aria-hidden />
           <div>
             <p className="text-sm font-semibold">{title}</p>
-            <p className="text-xs text-gray-600">{text}</p>
+            <p className="text-xs text-muted-foreground">{text}</p>
           </div>
         </div>
       ))}
@@ -746,7 +746,7 @@ function PlanChangeSummary({
 }) {
   if (billing.mode === "FLOW_SCHEDULED") {
     return (
-      <p className="text-sm text-gray-700">
+      <p className="text-sm text-foreground/80">
         Se aplica a tu primer cobro del {day(billing.firstChargeDate)}. Hoy no se cobra nada.
       </p>
     );
@@ -754,14 +754,14 @@ function PlanChangeSummary({
   if (!preview) return null;
   if (preview.direction === "UP") {
     return (
-      <p className="text-sm text-gray-700">
+      <p className="text-sm text-foreground/80">
         Hoy se cobran <strong>{money(preview.balance)}</strong> por los días que quedan. Desde el{" "}
         {day(billing.nextChargeDate)}: {money(preview.nextChargeTotal)} al mes.
       </p>
     );
   }
   return (
-    <p className="text-sm text-gray-700">
+    <p className="text-sm text-foreground/80">
       Hoy no se cobra ni se devuelve nada. El {day(preview.startsOn ?? billing.nextChargeDate)} pasas a{" "}
       {selected.name} ({money(selected.price)}). Hasta ese día sigues con {billing.plan?.name}.
     </p>
