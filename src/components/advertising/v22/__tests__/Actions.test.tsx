@@ -67,4 +67,17 @@ describe("Meta actions require an explicit real mutation", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("La conexión con Meta venció");
     expect(close).not.toHaveBeenCalled();
   });
+  it("labels a USD budget with its account currency without sending a Meta action", () => {
+    render(
+      <AdvertisingActionDialog
+        selection={{ rows: [{ ...row, currency: "USD" }], action: "budget" }}
+        onClose={jest.fn()}
+      />,
+    );
+    expect(screen.getByText(/Actual:/)).toHaveTextContent(/USD.*50\.00/);
+    expect(screen.getByLabelText("Nuevo presupuesto diario").closest("label")).toHaveTextContent(
+      "Nuevo presupuesto diario USD",
+    );
+    expect(adsWrite).not.toHaveBeenCalled();
+  });
 });

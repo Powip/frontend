@@ -26,7 +26,35 @@ import {
   canScale,
   profitUsage,
   trafficLight,
+  currencyTotal,
+  money,
 } from "../model";
+
+it.each(["PEN", "USD"])("sums known amounts only within %s", (currency) => {
+  const total = currencyTotal([
+    { currency, amount: 0 },
+    { currency, amount: 12.5 },
+  ]);
+  expect(total).toEqual({ currency, amount: 12.5 });
+  expect(money(total.amount, total.currency)).toBe(money(12.5, currency));
+});
+it("does not create a monetary total from mixed currencies or unknown amounts", () => {
+  expect(
+    currencyTotal([
+      { currency: "PEN", amount: 10 },
+      { currency: "USD", amount: 20 },
+    ]),
+  ).toEqual({ currency: null, amount: null });
+  expect(
+    currencyTotal([
+      { currency: "USD", amount: 10 },
+      { currency: "USD", amount: null },
+    ]),
+  ).toEqual({ currency: "USD", amount: null });
+  expect(currencyTotal([])).toEqual({ currency: null, amount: null });
+  expect(currencyTotal([{ currency: "", amount: 10 }])).toEqual({ currency: null, amount: null });
+  expect(money(10, null)).toBe("—");
+});
 
 const rules: AdsRules = {
   noResultsDays: 3,

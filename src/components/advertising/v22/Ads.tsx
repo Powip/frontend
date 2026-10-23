@@ -46,6 +46,8 @@ import {
   metaPauseDescription,
   canScale,
   comparisonPeriod,
+  commonCurrency,
+  currencyTotal,
   creativeAverage,
   creativeMetrics,
   dayKey,
@@ -291,9 +293,9 @@ export function AdvertisingAds() {
     [items, view],
   );
   const pageItems = orderedItems.slice(pageStart, pageStart + 50);
-  const totalSpend = items.some((item) => item.value?.spend == null)
-    ? null
-    : items.reduce((sum, item) => sum + item.value!.spend!, 0);
+  const totalSpend = currencyTotal(
+    items.map((item) => ({ currency: item.row.currency, amount: item.value?.spend })),
+  );
   function drill(row: AdsRow) {
     if (row.level === "ad") {
       setSelected(row);
@@ -348,6 +350,9 @@ export function AdvertisingAds() {
   const flagged = allItems.filter(
     (item) => item.state === "Sin resultados" || item.state === "Pierdes plata",
   );
+  const flaggedSpend = currencyTotal(
+    flagged.map((item) => ({ currency: item.row.currency, amount: item.value?.spend })),
+  );
   const scale = allItems.filter((item) => item.scalable);
   const metrics = allItems
     .map((item) => item.value)
@@ -365,8 +370,12 @@ export function AdvertisingAds() {
   const actionRows = (row: AdsRow) =>
     row.level === "account" || row.level === "store"
       ? allItems
-          .filter((item) =>
-            row.level === "account" ? item.row.accountId === row.id : item.row.store?.id === row.id,
+          .filter(
+            (item) =>
+              item.row.currency === row.currency &&
+              (row.level === "account"
+                ? item.row.accountId === row.id
+                : item.row.store?.id === row.id),
           )
           .map((item) => item.row)
       : [row];
@@ -503,9 +512,7 @@ export function AdvertisingAds() {
             {flagged.filter((item) => item.state === "Sin resultados").length} anuncios sin
             resultados · {flagged.filter((item) => item.state === "Pierdes plata").length} pierden
             plata
-            {permissions.spend
-              ? ` · ${money(flagged.reduce((sum, item) => sum + (item.value?.spend ?? 0), 0))}`
-              : ""}
+            {permissions.spend ? ` · ${money(flaggedSpend.amount, flaggedSpend.currency)}` : ""}
           </p>
           <Button
             size="sm"
@@ -811,7 +818,7 @@ export function AdvertisingAds() {
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {pageItems.map(({ row, value, state: rowState }, index) => (
                 <button
-                  key={row.id}
+                  key={JSON.stringify([row.level, row.accountId, row.id, row.currency])}
                   className="overflow-hidden rounded-lg border bg-card text-left"
                   onClick={() => setSelected(row)}
                 >
@@ -916,7 +923,10 @@ export function AdvertisingAds() {
                     const metric = creativeMetrics(row);
                     const lowData = (metric.impressions ?? 0) < 1000;
                     return (
-                      <tr key={row.id} className="border-t align-top hover:bg-muted/20">
+                      <tr
+                        key={JSON.stringify([row.level, row.accountId, row.id, row.currency])}
+                        className="border-t align-top hover:bg-muted/20"
+                      >
                         <td className="min-w-64">
                           <button
                             className="flex items-center gap-3 text-left"
@@ -1037,6 +1047,7 @@ export function AdvertisingAds() {
                                               item === "web" ? "webPurchases" : "messages"
                                             ].costPerResult,
                                           ),
+                                          row.currency,
                                         )}{" "}
                                         c/u
                                       </span>
@@ -1120,7 +1131,11 @@ export function AdvertisingAds() {
                                       })
                                     }
                                   >
-                                    {scalable ? "🚀 +20%" : "S/"}
+                                    {scalable
+                                      ? "🚀 +20%"
+                                      : row.currency === "PEN"
+                                        ? "S/"
+                                        : row.currency}
                                   </Button>
                                 )}
                                 {row.level === "adset" && (
@@ -1143,10 +1158,13 @@ export function AdvertisingAds() {
                     <tr className="border-t bg-muted/60 font-semibold">
                       <td>Total · {items.length} grupos</td>
                       <td colSpan={view === "performance" ? 1 : 5}>
-                        {permissions.spend ? money(totalSpend) : ""}
+                        {permissions.spend ? money(totalSpend.amount, totalSpend.currency) : ""}
                       </td>
                       <td colSpan={12} className="text-xs font-normal text-muted-foreground">
                         Los resultados se conservan por canal. Frecuencia y alcance no se suman.
+                        {permissions.spend && items.length > 0 && !totalSpend.currency
+                          ? " Los importes de monedas distintas no se suman."
+                          : ""}
                       </td>
                     </tr>
                   )}
@@ -1249,11 +1267,12 @@ function TodayStrip() {
     }).format(new Date()),
   );
   const sales = useNumbers(yesterday, today, storeId, "today");
+  const currency = commonCurrency(sales.data?.summary.days ?? []);
   const accountIds = [
     ...new Set(sales.data?.summary.days.map((day) => day.accountId) ?? []),
   ].sort();
   const hourly = useAdsQuery(
-    ["hourly", today, storeId, accountIds],
+    ["hourly", today, storeId, accountIds, currency],
     async (id, signal) => {
       const batches = await Promise.all(
         accountIds.map((accountId) =>
@@ -1274,21 +1293,23 @@ function TodayStrip() {
           .filter((row) => storeId === "all" || (!!row.adId && selectedAds.has(row.adId))),
       };
     },
-    !!sales.data && settings!.capabilities.spend,
+    !!sales.data && !!currency && settings!.capabilities.spend,
   );
   const chart = Array.from({ length: 24 }, (_, index) => ({
     hour: index,
-    today:
-      hourly.data?.rows
-        .filter((row) => row.date === today && row.hour === index)
-        .reduce((sum, row) => sum + Number(row.spend), 0) ?? null,
-    yesterday:
-      hourly.data?.rows
-        .filter((row) => row.date === yesterday && row.hour === index)
-        .reduce((sum, row) => sum + Number(row.spend), 0) ?? null,
+    today: currency
+      ? (hourly.data?.rows
+          .filter((row) => row.date === today && row.hour === index)
+          .reduce((sum, row) => sum + Number(row.spend), 0) ?? null)
+      : null,
+    yesterday: currency
+      ? (hourly.data?.rows
+          .filter((row) => row.date === yesterday && row.hour === index)
+          .reduce((sum, row) => sum + Number(row.spend), 0) ?? null)
+      : null,
   }));
   const spent = (date: string) =>
-    hourly.data
+    currency && hourly.data
       ? hourly.data.rows
           .filter((row) => row.date === date && row.hour < hour)
           .reduce((sum, row) => sum + Number(row.spend), 0)
@@ -1310,7 +1331,7 @@ function TodayStrip() {
           {settings!.capabilities.spend && (
             <div>
               <p className="text-xs text-muted-foreground">Gasto</p>
-              <p className="text-lg font-semibold">{money(current)}</p>
+              <p className="text-lg font-semibold">{money(current, currency)}</p>
               <p className="text-xs">
                 {pct(current !== null && previous ? (current - previous) / previous : null)} vs.
                 ayer
@@ -1332,7 +1353,9 @@ function TodayStrip() {
           {settings!.capabilities.spend && (
             <div>
               <p className="text-xs text-muted-foreground">Costo por pedido</p>
-              <p className="text-lg font-semibold">{money(ratio(current, todayOrders))}</p>
+              <p className="text-lg font-semibold">
+                {money(ratio(current, todayOrders), currency)}
+              </p>
             </div>
           )}
         </div>
@@ -1353,6 +1376,9 @@ function TodayStrip() {
       <p className="text-xs text-muted-foreground">
         Las barras muestran 0–23 h. La comparación excluye la hora en curso para comparar el mismo
         tiempo transcurrido.
+        {settings!.capabilities.spend && !currency
+          ? " El gasto requiere una misma moneda confirmada para todas las cuentas."
+          : ""}
       </p>
     </Block>
   );

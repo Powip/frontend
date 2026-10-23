@@ -16,6 +16,8 @@ import {
   financialBasis,
   financial,
   financialCauses,
+  channelRow,
+  daysForRow,
 } from "../model";
 
 const rules = {
@@ -125,6 +127,49 @@ function fixture() {
   } as AdsSales;
   return { summary, sales };
 }
+it("keeps same-store PEN and USD groups separate when filtering a channel and measuring sales", () => {
+  const { summary, sales } = fixture();
+  summary.days[0] = { ...summary.days[0], results: 4 };
+  summary.days[1] = {
+    ...summary.days[1],
+    accountId: "usd-account",
+    currency: "USD",
+    spend: "200",
+    results: 6,
+  };
+  sales.byAd = [
+    {
+      ...metric({ orders: 4, delivered: 4, billedRevenue: "400" }),
+      adId: "a",
+      accountId: "account",
+      storeId: "store",
+      channel: "web",
+    },
+    {
+      ...metric({ orders: 6, delivered: 6, billedRevenue: "600" }),
+      adId: "b",
+      accountId: "usd-account",
+      storeId: "store",
+      channel: "web",
+    },
+  ];
+  sales.totals.attributedOrders = 10;
+  const pen = { ...row("store", "store"), insights: { ...row().insights, spend: "100" } };
+  const usd = { ...pen, currency: "USD", insights: { ...pen.insights, spend: "200" } };
+  expect(daysForRow(pen, summary)).toHaveLength(1);
+  expect(daysForRow(usd, summary)).toHaveLength(1);
+  expect(channelRow(pen, summary, "web").insights.spend).toBe("100");
+  expect(channelRow(usd, summary, "web").insights.spend).toBe("200");
+  const calculate = createAdFinancialCalculator(summary, sales);
+  expect(calculate(pen)).toMatchObject({ spend: 100, delivered: 4, revenue: 400 });
+  expect(calculate(usd)).toMatchObject({
+    spend: 200,
+    delivered: 6,
+    revenue: 600,
+    roas: null,
+    gain: null,
+  });
+});
 function productFixture() {
   const { summary, sales } = fixture();
   summary.adProducts = [

@@ -145,7 +145,8 @@ export function AdvertisingActionDialog({
               · afecta {budget?.affectedAds ?? "—"} anuncios
             </p>
             <label className="block space-y-1 text-sm">
-              Nuevo presupuesto diario S/
+              Nuevo presupuesto diario{" "}
+              {first?.currency === "PEN" || !first?.currency ? "S/" : first.currency}
               <Input
                 aria-label="Nuevo presupuesto diario"
                 type="number"

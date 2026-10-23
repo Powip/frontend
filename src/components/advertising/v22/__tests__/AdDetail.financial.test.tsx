@@ -5,6 +5,7 @@ import type { AdsProduct, AdsRow, AdsSales, AdsSummary } from "@/services/advert
 
 let mockProducts: AdsProduct[] = [];
 let mockEdit = false;
+let mockSpend = true;
 const mockRow = {
   id: "ad",
   accountId: "account",
@@ -35,7 +36,7 @@ jest.mock("../context", () => ({
     identity: { token: "token", companyId: "company" },
     settings: {
       rules: { highFrequency: 3.5 },
-      capabilities: { spend: true, profit: true, edit: mockEdit },
+      capabilities: { spend: mockSpend, profit: true, edit: mockEdit },
       tags: { hooks: [], creators: [] },
     },
   }),
@@ -53,9 +54,43 @@ jest.mock("../context", () => ({
 
 beforeEach(() => {
   mockEdit = false;
+  mockSpend = true;
   mockProducts = [];
   mockRow.status = "ACTIVE";
   mockRow.effectiveStatus = "ACTIVE";
+  mockRow.currency = "PEN";
+  mockRow.insights = { ...mockRow.insights, spend: "60", cpm: "2" };
+});
+it("formats USD detail and creative variations in USD, and keeps spend hidden without permission", () => {
+  mockRow.currency = "USD";
+  const props = {
+    row: mockRow,
+    summary: { adProducts: [], days: [], quality: { warnings: [] } } as unknown as AdsSummary,
+    sales: {
+      totals: emptySales(),
+      byAd: [],
+      byChannel: [],
+      byProduct: [],
+      deliveryHistory: [],
+    } as unknown as AdsSales,
+    from: "2026-10-01",
+    to: "2026-10-16",
+    average: { hook: null, hold: null, ctr: null, conversion: null },
+    onClose: jest.fn(),
+    onAction: jest.fn(),
+  };
+  const view = render(<AdvertisingAdDetail {...props} />);
+  expect(screen.getAllByText("Gasto")[0].parentElement).toHaveTextContent(/USD.*60\.00/);
+  expect(screen.getByText(/CPM/)).toHaveTextContent(/CPM USD.*2\.00/);
+  expect(screen.getByText("Anuncio real · original").parentElement).toHaveTextContent(
+    /USD.*60\.00/,
+  );
+  expect(screen.queryByText(/S\/.*60\.00/)).not.toBeInTheDocument();
+  mockSpend = false;
+  view.rerender(<AdvertisingAdDetail {...props} />);
+  expect(screen.queryByText("Gasto")).not.toBeInTheDocument();
+  expect(screen.queryByText(/USD/)).not.toBeInTheDocument();
+  expect(screen.getByText(/CTR enlace/)).not.toHaveTextContent("CPM");
 });
 it("uses historical product costs even without the current catalog and ignores later catalog cost changes", () => {
   const metric = {
