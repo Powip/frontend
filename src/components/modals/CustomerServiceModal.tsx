@@ -1,4 +1,5 @@
 ﻿"use client";
+import { canManageCustomerServiceOrder } from "@/utils/customerServiceOrderAccess";
 import axios from "@/lib/axiosAuth";
 import { isCommercialLeadOrder } from "@/utils/commercialOrders";
 import { formatSalesMoney } from "@/utils/salesMoney";
@@ -215,7 +216,6 @@ export default function CustomerServiceModal({
 }: Props) {
   const router = useRouter();
   const { auth, hasPermission } = useAuth();
-  const canManageCc = hasPermission("MANAGE_CUSTOMER_SERVICE");
   const routeSaleLifecycle = useSaleLifecycleRouting();
   const [loading, setLoading] = useState(false);
   const receiptKey = `${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}:${orderId}`;
@@ -263,6 +263,7 @@ export default function CustomerServiceModal({
   // selector de estado, y como `order` de ReassignDeliveryModal).
   const [tab, setTab] = useState("resumen");
   const [orderHeader, setOrderHeader] = useState<OrderHeader | null>(null);
+  const canManageCc = canManageCustomerServiceOrder(hasPermission, orderHeader?.canalOrigen);
   const [lifecycleAction, setLifecycleAction] = useState<SaleUnitLifecycleAction | null>(null);
   const [reassignModalOpen, setReassignModalOpen] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);

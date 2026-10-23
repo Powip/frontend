@@ -409,18 +409,17 @@ it("keeps the same layout and returns to the sale flow after confirming the purc
 });
 
 
-it("lets a verified business administrator manage Shopify from the original order detail", async () => {
-  jest.mocked(useAuth).mockReturnValue({
-    hasPermission: () => true,
+it("lets a Shopify sale confirmer manage the order using only its actual permission grants", async () => {
+  jest.mocked(useAuth).mockReturnValue(authSession({
     auth: {
       company: { id: "company-1", stores: [] },
       user: {
-        id: "admin-1", name: "Ana", businessAdmin: true,
+        id: "admin-1", name: "Ana", role: "ADMINISTRADOR",
         authorizationVerified: true, authorizationCompanyId: "company-1",
-        permissions: ["CONFIRM_SALE"],
+        permissions: ["CONFIRM_SALE", "EDIT_SALE"],
       },
     },
-  } as unknown as ReturnType<typeof useAuth>);
+  } as unknown as ReturnType<typeof useAuth>));
   currentOrder = order({ canalOrigen: "shopify_cod", subEstadoCc: null });
   const onEditOrder = jest.fn();
   renderModal({ onEditOrder });
