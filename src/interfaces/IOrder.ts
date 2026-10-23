@@ -171,6 +171,8 @@ export interface OrderHeader extends UnitAssignmentState {
     confirmationBasis: "SELLER" | "WEB_PREPAID" | "LEGACY_VERIFIED" | null;
   } | null;
   commercialStockState?: "DEFERRED" | "QUEUED" | "PRESERVED" | "NOT_REQUIRED" | null;
+  shopifyCommercialGate?: boolean | null;
+  commercialCommittedAt?: string | null;
   receiptType: ReceiptType;
   orderType: OrderType;
   orderNumber: string;

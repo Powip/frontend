@@ -134,6 +134,33 @@ describe('CustomerServiceModal: tracked status transitions', () => {
     expect(toast.success).toHaveBeenCalledWith('Estado actualizado a EN_ENVIO');
     expect(axios.get).toHaveBeenCalledWith('https://ventas.test/order-header/order-1/receipt');
   });
+  it('loads Angela legacy CC detail and permits preparation with its existing stock', async () => {
+    const angela = { ...base, status: 'PENDIENTE', commercialStage: null, subEstadoCc: 'entrega_lima', canalOrigen: null, stockVersion: 1, salesOperationalEligible: false };
+    setup(angela, { ...angela, status: 'PREPARADO' });
+    expect(await screen.findByRole('heading', { name: 'Productos' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Pagos' })).toBeEnabled();
+    expect(axios.get).toHaveBeenCalledWith('https://ventas.test/order-header/order-1/receipt');
+    await changeStatus('PREPARADO');
+    await waitFor(() => expect(axios.patch).toHaveBeenCalledWith('https://ventas.test/order-header/order-1', { status: 'PREPARADO' }));
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+  it('loads Elisa legacy Shopify CC detail and keeps printing readable without a preparation action', async () => {
+    setup({ ...base, status: 'PENDIENTE', commercialStage: null, externalSource: 'shopify', shopifyCommercialGate: true,
+      commercialCommittedAt: null, stockVersion: 0, subEstadoCc: 'por_confirmar', canalOrigen: 'shopify_cod', salesOperationalEligible: false }, {});
+    expect(await screen.findByRole('heading', { name: 'Productos' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Pagos' })).toBeEnabled();
+    expect(axios.get).toHaveBeenCalledWith('https://ventas.test/order-header/order-1/receipt');
+    expect(screen.queryByRole('option', { name: 'PREPARADO' })).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'ANULADO' })).toBeInTheDocument();
+    expect(screen.getByTitle('Imprimir')).toBeEnabled();
+    expect(screen.getByTitle('Descargar PDF')).toBeEnabled();
+    await act(async () => { fireEvent.click(screen.getByTitle('Imprimir')); });
+    expect(require('@/utils/printOrderLabel').printOrderLabel).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    await act(async () => { fireEvent.click(screen.getByTitle('Descargar PDF')); });
+    expect(require('@/utils/downloadNotaVentaPdf').downloadNotaVentaPdf).toHaveBeenCalledTimes(1);
+    expect(axios.patch).not.toHaveBeenCalled();
+  });
   it('blocks dispatch with a pending reserve without sending a patch', async () => {
     setup({ ...tracked, unitAssignmentStatus: 'PENDING' }, {});
     await changeStatus('EN_ENVIO');

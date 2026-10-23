@@ -3,6 +3,8 @@ import {
   canShipCommercialOrder,
   isCommercialSaleOrder,
   notifyCommercialChange,
+  salesPhysicalOperationBlockReason,
+  salesStatusBlockReason,
 } from "../commercialOrders";
 
 describe("persisted commercial eligibility", () => {
@@ -50,5 +52,70 @@ describe("persisted commercial eligibility", () => {
     notifyCommercialChange(undefined, "foreign");
     expect(received).toHaveBeenCalledTimes(1);
     window.removeEventListener("commercial-leads:changed", received);
+  });
+});
+
+
+describe("sales physical authority independent of CC display", () => {
+  const awaitingShopify = {
+    commercialStage: null,
+    externalSource: "shopify",
+    shopifyCommercialGate: true,
+    commercialCommittedAt: null,
+    stockVersion: 0,
+  };
+
+  it("permits Angela's manual order with stock even when the server displays it in CC", () => {
+    const order = { commercialStage: null, subEstadoCc: "entrega_lima", stockVersion: 1, salesOperationalEligible: false };
+    expect(salesPhysicalOperationBlockReason(order)).toBeNull();
+    expect(salesStatusBlockReason(order, "PREPARADO")).toBeNull();
+  });
+
+  it("requires confirmation before preparing Elisa's gated Shopify order", () => {
+    expect(salesPhysicalOperationBlockReason(awaitingShopify)).toBe("Confirma el pedido en Ver antes de prepararlo.");
+    expect(salesStatusBlockReason(awaitingShopify, "PREPARADO")).toBe("Confirma el pedido en Ver antes de prepararlo.");
+  });
+
+  it.each(["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO", "ENTREGADO"])("blocks unconfirmed Shopify from physical status %s", (status) => {
+    expect(salesStatusBlockReason(awaitingShopify, status)).toEqual(expect.any(String));
+  });
+
+  it.each(["ANULADO", "PENDIENTE", "PAGADO"])("preserves nonphysical status %s for an unconfirmed Shopify order", (status) => {
+    expect(salesStatusBlockReason(awaitingShopify, status)).toBeNull();
+  });
+
+  it.each([
+    { shopifyCommercialGate: false },
+    { commercialCommittedAt: "2026-10-23T18:00:00.000Z" },
+    { stockVersion: 1 },
+  ])("accepts existing Shopify commitment evidence %j", (commitment) => {
+    expect(salesPhysicalOperationBlockReason({ ...awaitingShopify, ...commitment })).toBeNull();
+  });
+
+  it("fails closed for legacy Shopify without explicit gate or commitment evidence", () => {
+    expect(salesPhysicalOperationBlockReason({ externalSource: "shopify" })).toEqual(expect.any(String));
+  });
+
+  it.each([
+    { commercialStage: "LEAD" as const, commercialStockState: "PRESERVED" as const },
+    { commercialStage: "SALE" as const, commercialStockState: "DEFERRED" as const },
+  ])("keeps Lead and deferred stock guards while allowing cancellation %j", (order) => {
+    expect(salesPhysicalOperationBlockReason(order)).toEqual(expect.any(String));
+    expect(salesStatusBlockReason(order, "PREPARADO")).toEqual(expect.any(String));
+    expect(salesStatusBlockReason(order, "ANULADO")).toBeNull();
+  });
+
+  it("does not treat legacy NOT_REQUIRED as permission to change physical statuses", () => {
+    const order = { commercialStage: null, commercialStockState: "NOT_REQUIRED" as const };
+    expect(salesPhysicalOperationBlockReason(order)).toEqual(expect.any(String));
+    expect(salesStatusBlockReason(order, "PREPARADO")).toEqual(expect.any(String));
+    expect(salesStatusBlockReason(order, "ANULADO")).toBeNull();
+  });
+
+  it("preserves service-only sale statuses while keeping physical guide eligibility separate", () => {
+    const order = { commercialStage: "SALE" as const, commercialStockState: "NOT_REQUIRED" as const };
+    expect(salesPhysicalOperationBlockReason(order)).toBeNull();
+    expect(salesStatusBlockReason(order, "PREPARADO")).toBeNull();
+    expect(canShipCommercialOrder(order)).toBe(false);
   });
 });
