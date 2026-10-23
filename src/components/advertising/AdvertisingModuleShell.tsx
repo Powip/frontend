@@ -6,7 +6,6 @@ import { es } from "date-fns/locale";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
-import Header from "@/components/header/Header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AdminPeriodProvider, useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -70,7 +69,6 @@ function AdvertisingShell({ children }: { children: ReactNode }) {
   const dateLabel = (date: string) => format(parseISO(date), "d MMM", { locale: es });
   return (
     <div className="flex h-full min-w-0 flex-col bg-background">
-      <Header />
       <div className="shrink-0 border-b bg-card px-4 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3 py-3">
           <h1 className="text-xl font-bold">Publicidad</h1>

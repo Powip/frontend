@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { AdvertisingModuleShell } from "../../AdvertisingModuleShell";
 
 let mockPath = "/publicidad";
@@ -14,7 +14,12 @@ jest.mock("next/navigation", () => ({
 }));
 jest.mock("@/components/header/Header", () => ({
   __esModule: true,
-  default: () => <div>Cabecera</div>,
+  default: () => (
+    <header>
+      <select aria-label="Tienda global" />
+      <button>Administrar Tiendas</button>
+    </header>
+  ),
 }));
 jest.mock("@/components/dashboard/PeriodSelector", () => ({
   PeriodSelector: () => <button>Calendario POWIP</button>,
@@ -24,7 +29,13 @@ jest.mock("@/contexts/AuthContext", () => ({
     auth: {
       user: { id: "actor" },
       accessToken: "token",
-      company: { id: "company", stores: [{ id: "store", name: "Tienda" }] },
+      company: {
+        id: "company",
+        stores: [
+          { id: "store", name: "Tienda" },
+          { id: "other", name: "Otra tienda" },
+        ],
+      },
     },
     selectedStoreId: "store",
     loading: false,
@@ -77,4 +88,26 @@ describe("Publicidad navigation and access", () => {
     );
     expect(screen.queryByText("Ganancia confidencial")).not.toBeInTheDocument();
   });
+  it.each(["/publicidad", "/publicidad/anuncios", "/publicidad/configuracion"])(
+    "keeps only the local store selector and advertising settings on %s",
+    (path) => {
+      mockPath = path;
+      render(
+        <AdvertisingModuleShell>
+          <p>Contenido</p>
+        </AdvertisingModuleShell>,
+      );
+      expect(screen.queryByRole("button", { name: "Administrar Tiendas" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("combobox", { name: "Tienda global" })).not.toBeInTheDocument();
+      expect(screen.getAllByRole("combobox")).toHaveLength(1);
+      fireEvent.change(screen.getByRole("combobox", { name: "Tienda" }), {
+        target: { value: "other" },
+      });
+      expect(new URLSearchParams(window.location.search).get("storeId")).toBe("other");
+      expect(screen.getByRole("link", { name: "Configuración" })).toHaveAttribute(
+        "href",
+        "/publicidad/configuracion?from=2026-10-01&to=2026-10-31&storeId=other",
+      );
+    },
+  );
 });

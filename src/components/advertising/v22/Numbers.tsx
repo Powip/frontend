@@ -52,7 +52,9 @@ import {
   trafficLight,
   type Financial,
 } from "./model";
-import { Block, Failure, MetricCard, SelectField, exportAdsWorkbook, dataWarning } from "./shared";
+import { Block, Failure, MetricCard, SelectField, exportAdsWorkbook } from "./shared";
+import { AdvertisingDataStatus } from "./DataStatus";
+import { advertisingSectionHref } from "../advertising-sections";
 
 export function useNumbers(from: string, to: string, storeId: string, suffix = "period") {
   return useAdsQuery(
@@ -188,15 +190,14 @@ export function AdvertisingNumbers() {
             : "◐ Estimado por canal"}
         </span>
       </div>
-      {summary.quality.warnings.map((warning) => (
-        <p
-          key={warning}
-          role="status"
-          className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
-        >
-          {dataWarning(warning)}
-        </p>
-      ))}
+      <AdvertisingDataStatus
+        warnings={summary.quality.warnings}
+        spendAvailable={summarySpendAvailable(summary)}
+        settingsHref={advertisingSectionHref("/publicidad/configuracion", fromDate, toDate, {
+          storeId,
+          section: "accounts",
+        })}
+      />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {permissions.spend && (
           <MetricCard
