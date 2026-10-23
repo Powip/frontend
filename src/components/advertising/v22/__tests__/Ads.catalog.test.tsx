@@ -35,6 +35,7 @@ let mockPartial = false;
 let mockRowChanges: Partial<AdsRow> = {};
 let mockCurrencies: string[] = [];
 let mockSpends: string[] = [];
+let mockPeriodToDate = "2026-10-16";
 const mockRows = () =>
   Array.from(
     { length: mockCount },
@@ -142,7 +143,7 @@ jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => mockAuth }));
 jest.mock("@/contexts/AdminPeriodContext", () => ({
   useAdminPeriod: () => ({
     fromDate: "2026-10-01",
-    toDate: "2026-10-16",
+    toDate: mockPeriodToDate,
     setPeriod: mockSetPeriod,
   }),
 }));
@@ -205,6 +206,7 @@ beforeEach(() => {
   mockRowChanges = {};
   mockCurrencies = [];
   mockSpends = [];
+  mockPeriodToDate = "2026-10-16";
   mockSettings.capabilities.spend = true;
   mockSettings.capabilities.edit = false;
   window.history.replaceState({}, "", "/publicidad/anuncios");
@@ -249,6 +251,20 @@ it("keeps USD spend and cost per result in the account currency, including the g
   });
   await screen.findByText("Total · 1 grupos");
   expect(screen.getByText("Total · 1 grupos").parentElement).toHaveTextContent(/USD.*1\.00/);
+  view.unmount();
+  view.client.clear();
+});
+it("preserves the selected date range when opening Meta settings from its status", async () => {
+  mockCount = 1;
+  mockPartial = true;
+  mockPeriodToDate = "2026-10-31";
+  mockSource = mockNumbers();
+  const view = mount();
+  await screen.findByText("Mostrando 1–1 de 1");
+  expect(screen.getByRole("link", { name: "Ver cuentas de Meta" })).toHaveAttribute(
+    "href",
+    "/publicidad/configuracion?from=2026-10-01&to=2026-10-31&storeId=all&section=accounts",
+  );
   view.unmount();
   view.client.clear();
 });
@@ -333,9 +349,13 @@ it("keeps two currency rows for the same store distinct after applying a channel
     expect(errors.mock.calls.flat().join(" ")).not.toMatch(/same key|unique.*key/i);
     const penRow = rows.find((row) => row.textContent?.includes("Anuncio 001"))!;
     fireEvent.click(within(penRow).getByRole("button", { name: /Pausar/ }));
-    expect(mockAction).toHaveBeenLastCalledWith(expect.objectContaining({
-      selection: expect.objectContaining({ rows: [expect.objectContaining({ currency: "PEN" })] }),
-    }));
+    expect(mockAction).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        selection: expect.objectContaining({
+          rows: [expect.objectContaining({ currency: "PEN" })],
+        }),
+      }),
+    );
   } finally {
     errors.mockRestore();
     view.unmount();
@@ -411,7 +431,8 @@ it("keeps observed ads visible under a channel filter while coverage and results
   expect(within(visibleRows()[0]).queryByText("Sin resultados")).not.toBeInTheDocument();
   expect(within(visibleRows()[0]).queryByText("Revisa y pausa.")).not.toBeInTheDocument();
   expect(screen.getByText(/faltan referencias de anuncio/)).toBeInTheDocument();
-  expect(screen.getByText(/La importación de Meta está incompleta/)).toBeInTheDocument();
+  expect(screen.getByText("Hay importes de Meta pendientes de confirmar")).toBeVisible();
+  expect(screen.getByRole("status", { name: "Estado de datos" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "↓ Excel" }));
   const exported = (exportAdsWorkbook as jest.Mock).mock.calls[0][1][0].rows;
   expect(exported).toHaveLength(1);
@@ -430,36 +451,41 @@ it("keeps observed ads visible under a channel filter while coverage and results
 it.each([
   ["CAMPAIGN_PAUSED", "La campaña está pausada."],
   ["ADSET_PAUSED", "El conjunto está pausado."],
-])("keeps positive and audited zero-spend inherited pauses visible: %s", async (effectiveStatus, reason) => {
-  mockCount = 1;
-  mockRowChanges = { effectiveStatus, status: "ACTIVE", pausedInPeriod: true };
-  mockSource = mockNumbers();
-  const view = mount();
-  await screen.findByText("Mostrando 1–1 de 1");
-  expect(within(visibleRows()[0]).getByText("Pausado")).toBeInTheDocument();
-  expect(within(visibleRows()[0]).getByText(reason)).toBeInTheDocument();
-  expect(within(visibleRows()[0]).queryByText("Revisa y pausa.")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Pausado 1" }));
-  fireEvent.click(screen.getByRole("button", { name: "↓ Excel" }));
-  expect((exportAdsWorkbook as jest.Mock).mock.calls[0][1][0].rows[0].Estado).toBe("Pausado");
-  view.unmount();
-  view.client.clear();
+])(
+  "keeps positive and audited zero-spend inherited pauses visible: %s",
+  async (effectiveStatus, reason) => {
+    mockCount = 1;
+    mockRowChanges = { effectiveStatus, status: "ACTIVE", pausedInPeriod: true };
+    mockSource = mockNumbers();
+    const view = mount();
+    await screen.findByText("Mostrando 1–1 de 1");
+    expect(within(visibleRows()[0]).getByText("Pausado")).toBeInTheDocument();
+    expect(within(visibleRows()[0]).getByText(reason)).toBeInTheDocument();
+    expect(within(visibleRows()[0]).queryByText("Revisa y pausa.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Pausado 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "↓ Excel" }));
+    expect((exportAdsWorkbook as jest.Mock).mock.calls[0][1][0].rows[0].Estado).toBe("Pausado");
+    view.unmount();
+    view.client.clear();
 
-  mockRowChanges = {
-    ...mockRowChanges,
-    insights: { ...mockRows()[0].insights, spend: "0" },
-  };
-  mockSource = mockNumbers();
-  const zero = mount();
-  await screen.findByText("Mostrando 1–1 de 1");
-  expect(within(visibleRows()[0]).getByText("Pausado")).toBeInTheDocument();
-  zero.unmount();
-  zero.client.clear();
+    mockRowChanges = {
+      ...mockRowChanges,
+      insights: { ...mockRows()[0].insights, spend: "0" },
+    };
+    mockSource = mockNumbers();
+    const zero = mount();
+    await screen.findByText("Mostrando 1–1 de 1");
+    expect(within(visibleRows()[0]).getByText("Pausado")).toBeInTheDocument();
+    zero.unmount();
+    zero.client.clear();
 
-  mockRowChanges = { ...mockRowChanges, pausedInPeriod: false };
-  const unaudited = mount();
-  await screen.findByText("No hay anuncios con gasto o pausas en este período para estos filtros.");
-  expect(screen.queryByText("Mostrando 1–1 de 1")).not.toBeInTheDocument();
-  unaudited.unmount();
-  unaudited.client.clear();
-});
+    mockRowChanges = { ...mockRowChanges, pausedInPeriod: false };
+    const unaudited = mount();
+    await screen.findByText(
+      "No hay anuncios con gasto o pausas en este período para estos filtros.",
+    );
+    expect(screen.queryByText("Mostrando 1–1 de 1")).not.toBeInTheDocument();
+    unaudited.unmount();
+    unaudited.client.clear();
+  },
+);

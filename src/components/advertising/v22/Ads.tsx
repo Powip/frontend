@@ -62,7 +62,9 @@ import {
   rowResultTotal,
   summarySpendAvailable,
 } from "./model";
-import { Block, Failure, MetricCard, SelectField, exportAdsWorkbook, dataWarning } from "./shared";
+import { Block, Failure, MetricCard, SelectField, exportAdsWorkbook } from "./shared";
+import { AdvertisingDataStatus } from "./DataStatus";
+import { advertisingSectionHref } from "../advertising-sections";
 import { useNumbers } from "./Numbers";
 import { AdvertisingActionDialog, type ActionSelection } from "./Actions";
 import { AdvertisingAdDetail } from "./AdDetail";
@@ -681,18 +683,17 @@ export function AdvertisingAds() {
               reparten de nuevo.
             </p>
           )}
-          {[
-            ...new Set([
-              ...data.data.summary.quality.warnings,
-              ...(!summarySpendAvailable(data.data.summary) &&
-              data.data.summary.quality.warnings.length === 0
-                ? ["META_DATA_PARTIAL"]
-                : []),
-            ]),
-          ].map((warning) => (
-            <p key={warning}>{dataWarning(warning)}</p>
-          ))}
         </div>
+      )}
+      {data.data && (
+        <AdvertisingDataStatus
+          warnings={data.data.summary.quality.warnings}
+          spendAvailable={summarySpendAvailable(data.data.summary)}
+          settingsHref={advertisingSectionHref("/publicidad/configuracion", fromDate, toDate, {
+            storeId: effectiveStoreId,
+            section: "accounts",
+          })}
+        />
       )}
       {needsCreativeAverage && averageCatalog.isError && (
         <Failure error={averageCatalog.error} retry={averageCatalog.refetch} />

@@ -235,7 +235,7 @@ export function dataWarning(code: string) {
         META_DATA_NOT_SYNCED:
           "Conecta tus cuentas o sincroniza Meta para consultar el gasto. Los datos aún no importados se muestran con —.",
         META_DATA_PARTIAL:
-          "La importación de Meta está incompleta. Sincroniza las cuentas para comparar el gasto de este período.",
+          "Faltan datos del período o quedan diferencias entre los importes de Meta. Revisa su estado en Configuración.",
         CURRENT_DAY_PROVISIONAL:
           "Los datos de hoy son provisionales y pueden actualizarse. El gasto importado ya está disponible.",
         UNASSIGNED_SPEND:
@@ -243,13 +243,13 @@ export function dataWarning(code: string) {
         PROVISIONAL_META_DATA:
           "Los resultados recientes de Meta aún pueden cambiar. Vuelve a sincronizar más tarde para confirmar las cifras.",
         CHANNEL_FAMILY_FROM_META:
-          "El anuncio permite identificar si el canal es Web o Mensajes. Configura los canales de la tienda para vincularlo con su destino.",
+          "El canal Web o Mensajes de algunos anuncios se identifica a partir de su destino en Meta.",
         STORE_CHANNELS_NOT_CONFIGURED:
-          "Esta tienda aún no tiene canales configurados. Añádelos a la tienda para identificar el destino de sus anuncios.",
+          "Hay tiendas del período sin canales configurados. Revisa sus canales para vincular los anuncios con su destino.",
         NON_PEN_SPEND_EXCLUDED:
           "El gasto de cuentas en otras monedas no se incluye en los totales en soles. Revisa cada cuenta para consultar esos importes.",
       } as Record<string, string>
     )[code] ??
-    "Algunos datos del período están pendientes de confirmar. Revisa las conexiones y asignaciones en Configuración antes de interpretar los resultados."
+    "Hay datos del período pendientes de confirmar. Revisa el detalle antes de interpretar los resultados."
   );
 }
