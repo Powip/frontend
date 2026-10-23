@@ -130,8 +130,8 @@ export default function OrderReceiptModal({
         return;
       }
 
-      // Si el estado es PENDIENTE, cambiarlo a PREPARADO (flujo unificado para LIMA y PROVINCIA)
-      if (receipt.status === "PENDIENTE" && orderId) {
+      // PAGADO confirma el cobro, pero el paquete aún debe pasar a PREPARADO al imprimir.
+      if ((receipt.status === "PENDIENTE" || receipt.status === "PAGADO") && orderId) {
         const newStatus = "PREPARADO";
         try {
           await axios.patch(
