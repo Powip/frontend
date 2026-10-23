@@ -1,7 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getPedidosCC, getAllPedidosCC, PedidosCcFilters, PaginatedCcResult } from "@/services/atencionClienteService";
+import { getPedidosCC, PedidosCcFilters, PaginatedCcResult } from "@/services/atencionClienteService";
 
 export function useCcPedidos(filters: PedidosCcFilters) {
   const { auth } = useAuth();
@@ -16,20 +16,21 @@ export function useCcPedidos(filters: PedidosCcFilters) {
     window.addEventListener("commercial-leads:changed", changed);
     return () => window.removeEventListener("commercial-leads:changed", changed);
   }, [companyId, queryClient]);
-  const business = !!filters.storeIds;
-  const { page = 1, limit = 50, ...allFilters } = filters;
-  return useQuery<PaginatedCcResult>({
-    queryKey: ["cc-pedidos", auth?.company?.id, auth?.user?.id, business ? allFilters : filters],
-    queryFn: async ({ signal }) => {
-      if (!business) return getPedidosCC(filters, signal);
-      const result = await getAllPedidosCC(allFilters, signal);
-      if (result.truncated) throw new Error("No se pudieron cargar todos los pedidos del negocio");
-      return { data: result.data, total: result.total, page: 1, totalPages: Math.max(1, Math.ceil(result.total / limit)) };
-    },
-    select: business ? (result) => ({ ...result, data: result.data.slice((page - 1) * limit, page * limit), page, totalPages: Math.max(1, Math.ceil(result.total / limit)) }) : undefined,
-    enabled: !!auth?.accessToken && (!!filters.storeId || !!filters.storeIds?.length),
+  const searchInput = (filters.search ?? "").trim().slice(0, 200);
+  const [search, setSearch] = useState(searchInput);
+  const isDebouncing = search !== searchInput;
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(searchInput), 350);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+  const requestFilters = { ...filters, search: search || undefined, page: filters.page ?? 1, limit: filters.limit ?? 50 };
+  const result = useQuery<PaginatedCcResult>({
+    queryKey: ["cc-pedidos", auth?.company?.id, auth?.user?.id, requestFilters],
+    queryFn: ({ signal }) => getPedidosCC(requestFilters, signal),
+    enabled: !!auth?.accessToken && (!!filters.storeId || !!filters.storeIds?.length) && !isDebouncing,
     retry: false,
     refetchInterval: 30_000,
     staleTime: 15_000,
   });
+  return { ...result, data: isDebouncing ? undefined : result.data, isLoading: result.isLoading || isDebouncing, isDebouncing };
 }
