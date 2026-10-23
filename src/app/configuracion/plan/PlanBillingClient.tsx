@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { Check, CreditCard, Link2, Lock } from "lucide-react";
 import { toast } from "sonner";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatLimaDate } from "@/lib/flowMigration";
+import {
+  ADDON_CARDS,
+  type AddOnCard,
+  CORE_MODULES,
+  FREE_TOOLS,
+  type FeatureItem,
+  FUTURE_ADDONS,
+  planOrderCap,
+} from "@/lib/planCommercial";
+import { fetchAddOns, fetchPlans } from "@/services/onboardingService";
+import type { BackendAddOn, BackendPlan } from "@/types/onboarding";
 import {
   addAddOn,
   billingErrorMessage,
@@ -36,7 +48,8 @@ type Dialogs =
   | { kind: "plan"; selected: BillingPlan | null; preview: PlanChangePreview | null; loading: boolean }
   | { kind: "add"; addOn: BillingAvailableAddOn }
   | { kind: "remove"; addOnId: string; name: string; amount: number }
-  | { kind: "cancel" };
+  | { kind: "cancel" }
+  | { kind: "info"; card: AddOnCard };
 
 /** "Plan y facturación" (FEAT-25 E2.2): plan, add-ons, próximo cobro y operaciones sobre Flow. */
 export default function PlanBillingClient() {
@@ -45,6 +58,7 @@ export default function PlanBillingClient() {
   const [loadError, setLoadError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [dialog, setDialog] = useState<Dialogs>({ kind: "none" });
+  const [catalog, setCatalog] = useState<{ plans: BackendPlan[]; addOns: BackendAddOn[] } | null>(null);
   const isAdmin = auth?.user?.role === "ADMINISTRADOR";
 
   const load = useCallback(async () => {
@@ -59,6 +73,18 @@ export default function PlanBillingClient() {
   useEffect(() => {
     if (isAdmin) void load();
   }, [isAdmin, load]);
+
+  // Catálogo público: para mostrar planes y add-ons aunque la cuenta todavía no esté en Flow.
+  useEffect(() => {
+    if (!isAdmin) return;
+    let active = true;
+    Promise.all([fetchPlans().catch(() => []), fetchAddOns().catch(() => [])]).then(([plans, addOns]) => {
+      if (active) setCatalog({ plans, addOns });
+    });
+    return () => {
+      active = false;
+    };
+  }, [isAdmin]);
 
   if (!auth) return null;
   if (!isAdmin) {
@@ -85,7 +111,10 @@ export default function PlanBillingClient() {
     }
   };
 
-  const openPlanDialog = () => setDialog({ kind: "plan", selected: null, preview: null, loading: false });
+  const openPlanDialog = async (plan?: BillingPlan) => {
+    setDialog({ kind: "plan", selected: null, preview: null, loading: false });
+    if (plan) await selectPlan(plan);
+  };
 
   const selectPlan = async (plan: BillingPlan) => {
     if (!billing) return;
@@ -125,160 +154,404 @@ export default function PlanBillingClient() {
   const operable = billing.mode === "FLOW_ACTIVE" || billing.mode === "FLOW_SCHEDULED";
   const nextTotal = billing.nextChargeTotal ?? 0;
   const chargeDate = billing.mode === "FLOW_SCHEDULED" ? billing.firstChargeDate : billing.nextChargeDate;
+  const needsFlow = billing.mode === "NO_FLOW" || billing.mode === "FLOW_CANCELING";
+  const keptAddOns = billing.addOns.filter((a) => !a.endsOn);
+  const monthlyTotal = billing.nextChargeTotal ?? (billing.plan?.price ?? 0) + keptAddOns.reduce((n, a) => n + a.amount, 0);
+
+  // Planes que se ofrecen: los de Flow si se puede operar; si no, el catálogo del mismo ciclo (solo para informar).
+  const duration = billing.plan?.durationInDays ?? 30;
+  const plansToShow: BillingPlan[] = operable
+    ? [...(billing.plan ? [billing.plan] : []), ...billing.availablePlans]
+    : (catalog?.plans ?? [])
+        .filter((p) => p.durationInDays === duration && planOrderCap(p.name) !== null)
+        .map((p) => ({ id: p.id, name: p.name, price: p.price, durationInDays: p.durationInDays }));
+  plansToShow.sort((a, b) => a.price - b.price);
+  const planCap = billing.plan ? planOrderCap(billing.plan.name) : null;
+
+  const addOnStatus = (card: AddOnCard) => {
+    const active = card.code ? billing.addOns.find((a) => a.code === card.code) : undefined;
+    const fromCatalog = card.code && !operable ? catalog?.addOns.find((a) => a.code === card.code && a.active !== false) : undefined;
+    const available: BillingAvailableAddOn | undefined = card.code
+      ? (billing.availableAddOns.find((a) => a.code === card.code) ??
+        (fromCatalog
+          ? { id: fromCatalog.id, code: fromCatalog.code, name: fromCatalog.name, description: fromCatalog.description ?? null, amount: fromCatalog.amount }
+          : undefined))
+      : undefined;
+    const price = active?.amount ?? available?.amount ?? card.price;
+    const status: "active" | "available" | "soon" = active ? "active" : available ? "available" : "soon";
+    return { active, available, price, status };
+  };
 
   return (
-    <main className="flex-1 space-y-6 p-8">
+    <main className="flex-1 space-y-8 p-8">
       <HeaderConfig title="Plan y facturación" description="Tu plan, add-ons y cobros" />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{billing.plan ? `Plan ${billing.plan.name}` : "Sin plan vigente"}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          {billing.plan && (
-            <p>
-              {money(billing.plan.price)} por {billing.plan.durationInDays >= 365 ? "año" : "mes"}
-            </p>
-          )}
-          {billing.mode === "FLOW_ACTIVE" && (
-            <>
+      <div>
+        <h1 className="text-2xl font-semibold text-[#17292A]">Mi plan y add-ons</h1>
+        <p className="mt-1 max-w-3xl text-sm text-gray-600">
+          Activa lo que tu negocio necesita. Los add-ons se suman a tu próximo cobro: al agregarlos hoy no se cobra
+          nada.
+        </p>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Tu plan</p>
+                <CardTitle className="mt-1 text-2xl">{billing.plan ? `Plan ${billing.plan.name}` : "Sin plan vigente"}</CardTitle>
+              </div>
+              {billing.plan && (
+                <span className="rounded-full bg-[#E3F6EE] px-3 py-1 text-xs font-semibold text-[#0E9F6E]">
+                  {billing.mode === "FLOW_CANCELING" ? "Termina pronto" : "Activo"}
+                </span>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            {billing.plan && (
+              <p className="text-base">
+                <strong>{money(billing.plan.price)}</strong>{" "}
+                <span className="text-gray-500">/ {billing.plan.durationInDays >= 365 ? "año" : "mes"}</span>
+              </p>
+            )}
+            {planCap && (
+              <p className="text-gray-600">
+                Hasta {planCap.toLocaleString("en-US")} pedidos al mes. Todos los planes traen los mismos módulos: solo
+                cambia cuántos pedidos puedes registrar.
+              </p>
+            )}
+            {billing.mode === "FLOW_ACTIVE" && (
               <p>
                 Próximo cobro: <strong>{day(billing.nextChargeDate)}</strong> · {money(billing.nextChargeTotal)}
               </p>
-              <p className="text-gray-600">Pagas con Flow.</p>
-            </>
-          )}
-          {billing.mode === "FLOW_SCHEDULED" && (
-            <p>
-              Tu primer cobro con Flow es el <strong>{day(billing.firstChargeDate)}</strong> · {money(billing.nextChargeTotal)}.
-              Hoy no se cobra nada.
-            </p>
-          )}
-          {billing.mode === "FLOW_CANCELING" && (
-            <p>
-              Tu suscripción termina el <strong>{day(billing.paidUntil)}</strong>. No se te cobra más.
-            </p>
-          )}
-          {billing.mode === "NO_FLOW" && (
-            <p>
-              {billing.paidUntil ? `Pagado hasta el ${day(billing.paidUntil)}. ` : ""}
-              Todavía no registraste tu tarjeta.
-            </p>
-          )}
-          {billing.mode === "EXEMPT" && <p className="text-gray-600">Tu cuenta no tiene cobros pendientes.</p>}
-
-          {billing.pendingPlan && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <p>
-                El {day(billing.pendingPlan.startsOn)} pasas a {billing.pendingPlan.name} (
-                {money(billing.pendingPlan.price)}). Hasta ese día sigues con {billing.plan?.name}.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={busy}
-                onClick={() => void run(undoPlanChange, "Cambio de plan deshecho")}
-              >
-                Deshacer
-              </Button>
-            </div>
-          )}
-
-          <div className="flex flex-wrap gap-2 pt-2">
-            {operable && billing.availablePlans.length > 0 && (
-              <Button variant="outline" onClick={openPlanDialog} disabled={busy}>
-                Cambiar plan
-              </Button>
             )}
-            {(billing.mode === "NO_FLOW" || billing.mode === "FLOW_CANCELING") &&
-              (billing.isOwner ? (
-                <Button asChild className="bg-teal-600 hover:bg-teal-700">
-                  <Link href="/pasate-a-flow">Pasarme a Flow</Link>
-                </Button>
-              ) : (
-                <p className="text-gray-600">Lo tiene que hacer el dueño de la cuenta.</p>
-              ))}
-          </div>
-        </CardContent>
-      </Card>
+            {billing.mode === "FLOW_SCHEDULED" && (
+              <p>
+                Tu primer cobro con Flow es el <strong>{day(billing.firstChargeDate)}</strong> · {money(billing.nextChargeTotal)}.
+                Hoy no se cobra nada.
+              </p>
+            )}
+            {billing.mode === "FLOW_CANCELING" && (
+              <p>
+                Tu suscripción termina el <strong>{day(billing.paidUntil)}</strong>. No se te cobra más.
+              </p>
+            )}
+            {billing.mode === "NO_FLOW" && (
+              <p>{billing.paidUntil ? `Pagado hasta el ${day(billing.paidUntil)}.` : "Sin pago vigente."}</p>
+            )}
+            {billing.mode === "EXEMPT" && <p className="text-gray-600">Tu cuenta no tiene cobros pendientes.</p>}
 
-      {billing.mode !== "NO_FLOW" && billing.mode !== "FLOW_CANCELING" && billing.mode !== "EXEMPT" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Add-ons</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            {billing.addOns.length === 0 && <p className="text-gray-600">No tienes add-ons contratados.</p>}
-            {billing.addOns.map((a) => (
-              <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg border p-3">
-                <div>
-                  <p className="font-medium">{a.name}</p>
-                  <p className="text-gray-600">
-                    {money(a.amount)}
-                    {a.endsOn ? ` · Lo tienes hasta el ${day(a.endsOn)}` : ""}
-                  </p>
+            {billing.pendingPlan && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p>
+                  El {day(billing.pendingPlan.startsOn)} pasas a {billing.pendingPlan.name} (
+                  {money(billing.pendingPlan.price)}). Hasta ese día sigues con {billing.plan?.name}.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void run(undoPlanChange, "Cambio de plan deshecho")}
+                >
+                  Deshacer
+                </Button>
+              </div>
+            )}
+
+            {plansToShow.length > 0 && billing.mode !== "EXEMPT" && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Cambiar plan</p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {plansToShow.map((p) => {
+                    const current = p.id === billing.plan?.id;
+                    const cap = planOrderCap(p.name);
+                    const body = (
+                      <>
+                        <span className="block font-semibold">
+                          {p.name} · {money(p.price).replace(".00", "")}
+                        </span>
+                        <span className="block text-xs text-gray-500">
+                          {cap ? `hasta ${cap.toLocaleString("en-US")} pedidos` : "pedidos a medida"}
+                        </span>
+                        {current && <span className="mt-1 block text-xs font-semibold text-[#027778]">Plan actual</span>}
+                      </>
+                    );
+                    const cls = `rounded-xl border p-3 text-left text-sm ${current ? "border-[#027778] bg-[#E2F1F1]" : "bg-white hover:border-[#027778]"}`;
+                    if (operable) {
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className={cls}
+                          disabled={busy || current}
+                          aria-pressed={current}
+                          onClick={() => void openPlanDialog(p)}
+                        >
+                          {body}
+                        </button>
+                      );
+                    }
+                    return billing.isOwner ? (
+                      <Link key={p.id} href="/pasate-a-flow" className={cls}>
+                        {body}
+                      </Link>
+                    ) : (
+                      <div key={p.id} className={cls}>
+                        {body}
+                      </div>
+                    );
+                  })}
                 </div>
-                {a.endsOn ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => void run(() => addAddOn(a.id), `${a.name} se mantiene`)}
-                  >
-                    Deshacer
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => setDialog({ kind: "remove", addOnId: a.id, name: a.name, amount: a.amount })}
-                  >
-                    Quitar
-                  </Button>
+                {!operable && (
+                  <p className="text-xs text-gray-500">
+                    Para cambiar de plan primero tienes que pasarte a Flow; ahí eliges el plan y tus add-ons.
+                  </p>
                 )}
               </div>
-            ))}
-            {billing.availableAddOns.length > 0 && (
+            )}
+
+            <div className="flex flex-wrap items-center gap-2 border-t pt-3 text-gray-600">
+              <CreditCard className="h-4 w-4" aria-hidden />
+              {operable || billing.mode === "EXEMPT" ? (
+                <span>{billing.mode === "EXEMPT" ? "Sin cobros" : "Pagas con Flow"}</span>
+              ) : (
+                <>
+                  <span className="text-red-600">Sin tarjeta registrada</span>
+                  {billing.isOwner && (
+                    <Link href="/pasate-a-flow" className="font-medium text-[#027778] underline">
+                      Registrar tarjeta
+                    </Link>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              {operable && billing.availablePlans.length > 0 && (
+                <Button variant="outline" onClick={() => void openPlanDialog()} disabled={busy}>
+                  Cambiar plan
+                </Button>
+              )}
+              {needsFlow &&
+                (billing.isOwner ? (
+                  <Button asChild className="bg-teal-600 hover:bg-teal-700">
+                    <Link href="/pasate-a-flow">Pasarme a Flow</Link>
+                  </Button>
+                ) : (
+                  <p className="text-gray-600">Lo tiene que hacer el dueño de la cuenta.</p>
+                ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Tu mensualidad{chargeDate ? ` desde el ${day(chargeDate)}` : ""}
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {billing.plan ? (
               <div className="space-y-2">
-                <p className="font-medium">Disponibles</p>
-                {billing.availableAddOns.map((a) => (
-                  <div key={a.id} className="flex items-center justify-between gap-2 rounded-lg border p-3">
-                    <div>
-                      <p className="font-medium">{a.name}</p>
-                      <p className="text-gray-600">{money(a.amount)}</p>
-                    </div>
-                    <Button size="sm" disabled={busy} onClick={() => setDialog({ kind: "add", addOn: a })}>
-                      Agregar
-                    </Button>
+                <div className="flex justify-between">
+                  <span>Plan {billing.plan.name}</span>
+                  <span>{money(billing.pendingPlan?.price ?? billing.plan.price)}</span>
+                </div>
+                {keptAddOns.map((a) => (
+                  <div key={a.id} className="flex justify-between">
+                    <span>{a.name}</span>
+                    <span>{money(a.amount)}</span>
                   </div>
                 ))}
+                {keptAddOns.length === 0 && <p className="text-gray-500">Sin add-ons activos</p>}
+                <div className="flex justify-between border-t pt-2 text-base font-semibold">
+                  <span>Total al {billing.plan.durationInDays >= 365 ? "año" : "mes"}</span>
+                  <span>{money(monthlyTotal)}</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-gray-500">Todavía no tienes un plan vigente.</p>
+            )}
+            <p className="text-xs text-gray-500">
+              Los cobros en línea por tu POWIP Link tienen la tarifa de pasarela de 3.5% por pago y no van en esta
+              cuenta.
+            </p>
+
+            {billing.payments.length > 0 && (
+              <div className="space-y-2 pt-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Historial de pagos</p>
+                <ul className="divide-y text-sm">
+                  {billing.payments.map((p) => (
+                    <li key={`${p.date}-${p.amount}-${p.status}`} className="flex justify-between py-2">
+                      <span>{day(p.date)}</span>
+                      <span>{money(p.amount)}</span>
+                      <span className={p.status === "PAID" ? "text-teal-700" : "text-red-600"}>
+                        {p.status === "PAID" ? "Pagado" : "Rechazado"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
           </CardContent>
         </Card>
-      )}
+      </div>
 
-      {billing.payments.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Últimos cobros</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="divide-y text-sm">
-              {billing.payments.map((p) => (
-                <li key={`${p.date}-${p.amount}-${p.status}`} className="flex justify-between py-2">
-                  <span>{day(p.date)}</span>
-                  <span>{money(p.amount)}</span>
-                  <span className={p.status === "PAID" ? "text-teal-700" : "text-red-600"}>
-                    {p.status === "PAID" ? "Pagado" : "Rechazado"}
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-xl font-semibold text-[#17292A]">Add-ons</h2>
+          <p className="text-sm text-gray-600">
+            Se activan sobre cualquier plan y aparecen en el menú donde se usan. Puedes quitarlos cuando quieras.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {ADDON_CARDS.map((card) => {
+            const { active, available, price, status } = addOnStatus(card);
+            const Icon = card.icon;
+            return (
+              <div
+                key={card.key}
+                className={`flex flex-col gap-3 rounded-xl border bg-white p-4 ${status === "active" ? "border-[#027778]" : ""}`}
+              >
+                <div className="flex items-start gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-[#EEE9FD] text-[#4C2FB5]">
+                    <Icon className="h-5 w-5" aria-hidden />
                   </span>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-semibold">{card.name}</h3>
+                    <p className="text-xs text-gray-500">{card.where}</p>
+                  </div>
+                  <p className="text-right font-semibold">
+                    {price == null ? "—" : money(price).replace(".00", "")}
+                    <span className="block text-xs font-normal text-gray-500">/ mes</span>
+                  </p>
+                </div>
+                <p className="flex-1 text-sm text-gray-700">
+                  {available?.description && !card.bullets.length ? available.description : card.tag}
+                  {card.note && <span className="mt-1 block text-xs text-gray-900">{card.note}</span>}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {status === "active" && active && (
+                    <>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[#E3F6EE] px-2.5 py-1 text-xs font-semibold text-[#0E9F6E]">
+                        <Check className="h-3 w-3" aria-hidden />
+                        {active.endsOn ? `Hasta el ${day(active.endsOn)}` : "Activo"}
+                      </span>
+                      {operable &&
+                        (active.endsOn ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() => void run(() => addAddOn(active.id), `${active.name} se mantiene`)}
+                          >
+                            Deshacer
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() =>
+                              setDialog({ kind: "remove", addOnId: active.id, name: active.name, amount: active.amount })
+                            }
+                          >
+                            Quitar
+                          </Button>
+                        ))}
+                    </>
+                  )}
+                  {status === "available" && available && (
+                    <>
+                      {operable ? (
+                        <Button size="sm" disabled={busy} onClick={() => setDialog({ kind: "add", addOn: available })}>
+                          Agregar
+                        </Button>
+                      ) : billing.isOwner && billing.mode !== "EXEMPT" ? (
+                        <Link
+                          href="/pasate-a-flow"
+                          className="rounded-md border px-3 py-1.5 text-xs font-medium text-[#027778] hover:bg-[#E2F1F1]"
+                        >
+                          Activar al pasarte a Flow
+                        </Link>
+                      ) : null}
+                    </>
+                  )}
+                  {status === "soon" && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-600">
+                      <Lock className="h-3 w-3" aria-hidden />
+                      Próximamente
+                    </span>
+                  )}
+                  {(card.bullets.length > 0 || card.roi) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="ml-auto"
+                      onClick={() => setDialog({ kind: "info", card })}
+                    >
+                      Ver qué incluye
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+          {FUTURE_ADDONS.map((f) => {
+            const Icon = f.icon;
+            return (
+              <div key={f.key} aria-disabled="true" className="flex flex-col gap-3 rounded-xl border border-dashed bg-gray-50 p-4 opacity-70">
+                <div className="flex items-start gap-3">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-gray-200 text-gray-500">
+                    <Icon className="h-5 w-5" aria-hidden />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-semibold">{f.name}</h3>
+                    <p className="text-xs text-gray-500">{f.where}</p>
+                  </div>
+                </div>
+                <p className="flex-1 text-sm text-gray-600">{f.tag}</p>
+                <div>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-600">
+                    <Lock className="h-3 w-3" aria-hidden />
+                    Próximamente
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-xl font-semibold text-[#17292A]">Incluido en todos los planes</h2>
+          <p className="text-sm text-gray-600">
+            Todos los planes traen los mismos módulos. Basic, Medium y Scale solo cambian en cuántos pedidos al mes
+            puedes registrar.
+          </p>
+        </div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Módulos de tu plan</p>
+        <FeatureGrid items={CORE_MODULES} />
+        <p className="pt-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+          Herramientas gratis para vender y cobrar
+        </p>
+        <FeatureGrid items={FREE_TOOLS} />
+      </section>
+
+      <div className="flex items-start gap-3 rounded-xl bg-[#E2F1F1] p-4">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-white text-[#027778]">
+          <Link2 className="h-5 w-5" aria-hidden />
+        </span>
+        <div>
+          <h3 className="font-semibold text-[#17292A]">Cobra con Yape y Mercado Pago desde tu POWIP Link</h3>
+          <p className="text-sm text-gray-700">
+            Tarifa de pasarela: 3.5% por pago. El adelanto o el total se valida solo y queda conciliado con el pedido.
+          </p>
+        </div>
+      </div>
 
       {billing.mode === "FLOW_ACTIVE" && (
         <div className="flex justify-end">
@@ -287,6 +560,36 @@ export default function PlanBillingClient() {
           </Button>
         </div>
       )}
+
+      {/* Qué incluye un add-on */}
+      <Dialog open={dialog.kind === "info"} onOpenChange={(open) => !open && setDialog({ kind: "none" })}>
+        <DialogContent className="max-w-lg">
+          {dialog.kind === "info" && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{dialog.card.name}</DialogTitle>
+                <DialogDescription>{dialog.card.tag}</DialogDescription>
+              </DialogHeader>
+              {dialog.card.bullets.length > 0 && (
+                <ul className="space-y-2 text-sm">
+                  {dialog.card.bullets.map((b) => (
+                    <li key={b} className="flex gap-2">
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#0E9F6E]" aria-hidden />
+                      <span>{b}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {dialog.card.roi && (
+                <div className="rounded-lg bg-[#EEE9FD] p-3 text-sm text-[#4C2FB5]">
+                  <p className="font-semibold">Se paga solo</p>
+                  <p>{dialog.card.roi}</p>
+                </div>
+              )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Cambiar plan */}
       <Dialog open={dialog.kind === "plan"} onOpenChange={(open) => !open && setDialog({ kind: "none" })}>
@@ -413,6 +716,22 @@ export default function PlanBillingClient() {
         </DialogContent>
       </Dialog>
     </main>
+  );
+}
+
+function FeatureGrid({ items }: { items: FeatureItem[] }) {
+  return (
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      {items.map(({ icon: Icon, title, text }) => (
+        <div key={title} className="flex gap-3 rounded-lg border bg-white p-3">
+          <Icon className="mt-0.5 h-5 w-5 shrink-0 text-[#027778]" aria-hidden />
+          <div>
+            <p className="text-sm font-semibold">{title}</p>
+            <p className="text-xs text-gray-600">{text}</p>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

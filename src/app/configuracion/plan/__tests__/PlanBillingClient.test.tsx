@@ -7,6 +7,17 @@ import PlanBillingClient from "../PlanBillingClient";
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: jest.fn() }));
 jest.mock("@/components/header/HeaderConfig", () => ({ HeaderConfig: () => null }));
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
+jest.mock("@/services/onboardingService", () => ({
+  fetchPlans: jest.fn().mockResolvedValue([
+    { id: "p-basic", name: "Basic", price: 99, durationInDays: 30 },
+    { id: "p-medium", name: "Medium", price: 189, durationInDays: 30 },
+    { id: "p-scale", name: "Scale", price: 269, durationInDays: 30 },
+    { id: "p-ent", name: "Enterprise", price: 500, durationInDays: 30 },
+  ]),
+  fetchAddOns: jest.fn().mockResolvedValue([
+    { id: "a-courier", code: "courier", name: "Integración Courier", description: "x", amount: 30, currency: "PEN", active: true },
+  ]),
+}));
 jest.mock("@/services/planBillingService", () => ({
   ...jest.requireActual("@/services/planBillingService"),
   fetchPlanBilling: jest.fn(),
@@ -56,7 +67,7 @@ describe("Plan y facturación", () => {
 
   it("Flow al día: plan, próximo cobro en soles y las acciones", async () => {
     render(<PlanBillingClient />);
-    expect(await screen.findByText("Plan Basic")).toBeInTheDocument();
+    expect((await screen.findAllByText("Plan Basic")).length).toBeGreaterThan(0);
     expect(screen.getByText(/Pagas con Flow/)).toBeInTheDocument();
     expect(screen.getAllByText(/S\/ 99\.00/).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Cambiar plan" })).toBeInTheDocument();
@@ -127,7 +138,7 @@ describe("Plan y facturación", () => {
     jest.mocked(service.addAddOn).mockResolvedValue(base);
     render(<PlanBillingClient />);
 
-    expect(await screen.findByText(/Lo tienes hasta el/)).toBeInTheDocument();
+    expect(await screen.findByText(/Hasta el/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Deshacer" }));
     await waitFor(() => expect(service.addAddOn).toHaveBeenCalledWith("a-sunat"));
   });
@@ -167,7 +178,7 @@ describe("Plan y facturación", () => {
   it("exenta: sin acciones de cobro", async () => {
     jest.mocked(service.fetchPlanBilling).mockResolvedValue({ ...base, mode: "EXEMPT" });
     render(<PlanBillingClient />);
-    expect(await screen.findByText("Plan Basic")).toBeInTheDocument();
+    expect((await screen.findAllByText("Plan Basic")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "Cambiar plan" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Darse de baja" })).not.toBeInTheDocument();
   });
@@ -184,5 +195,59 @@ describe("Plan y facturación", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Quitar add-on" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalled());
     expect(service.fetchPlanBilling).toHaveBeenCalledTimes(2);
+  });
+
+  describe("vista comercial (addons.html)", () => {
+    it("muestra los add-ons con su info comercial y WhatsApp y Meta Ads desactivados", async () => {
+      render(<PlanBillingClient />);
+      expect(await screen.findByText("Mi plan y add-ons")).toBeInTheDocument();
+      for (const name of ["Couriers", "Facturación SUNAT", "CRM chat", "POWIP Live", "POWIP Revendedores", "Punto de Venta"]) {
+        expect(screen.getByRole("heading", { name })).toBeInTheDocument();
+      }
+      const whatsapp = screen.getByRole("heading", { name: "WhatsApp" }).closest("[aria-disabled]");
+      const meta = screen.getByRole("heading", { name: "Meta Ads" }).closest("[aria-disabled]");
+      expect(whatsapp).toHaveAttribute("aria-disabled", "true");
+      expect(meta).toHaveAttribute("aria-disabled", "true");
+      expect(whatsapp?.querySelector("button")).toBeNull();
+    });
+
+    it("Ver qué incluye abre el detalle con las ventajas y el retorno", async () => {
+      render(<PlanBillingClient />);
+      await screen.findByText("Mi plan y add-ons");
+      fireEvent.click(screen.getAllByRole("button", { name: "Ver qué incluye" })[0]);
+      expect(await screen.findByText(/Todos los couriers integrados/)).toBeInTheDocument();
+      expect(screen.getByText("Se paga solo")).toBeInTheDocument();
+    });
+
+    it("muestra lo incluido en todos los planes y la nota de la pasarela", async () => {
+      render(<PlanBillingClient />);
+      expect(await screen.findByText("Incluido en todos los planes")).toBeInTheDocument();
+      expect(screen.getByText("Gestión de almacenes")).toBeInTheDocument();
+      expect(screen.getByText("POWIP Link")).toBeInTheDocument();
+      expect(screen.getByText(/Cobra con Yape y Mercado Pago/)).toBeInTheDocument();
+    });
+
+    it("sin Flow: los planes del catálogo llevan a /pasate-a-flow y el add-on se activa ahí", async () => {
+      jest.mocked(service.fetchPlanBilling).mockResolvedValue({
+        ...base, mode: "NO_FLOW", nextChargeDate: null, availablePlans: [], availableAddOns: [],
+      });
+      render(<PlanBillingClient />);
+      const medium = await screen.findByRole("link", { name: /Medium · S\/ 189/ });
+      expect(medium).toHaveAttribute("href", "/pasate-a-flow");
+      expect(screen.queryByRole("link", { name: /Enterprise/ })).not.toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Activar al pasarte a Flow" })).toHaveAttribute("href", "/pasate-a-flow");
+      expect(screen.getByRole("link", { name: "Registrar tarjeta" })).toHaveAttribute("href", "/pasate-a-flow");
+      expect(screen.getByRole("link", { name: "Pasarme a Flow" })).toHaveAttribute("href", "/pasate-a-flow");
+    });
+
+    it("Flow al día: elegir otro plan desde las tarjetas abre el cambio con el monto", async () => {
+      jest.mocked(service.previewPlanChange).mockResolvedValue({
+        direction: "UP", balance: 90, currency: "PEN", startsOn: null, nextChargeTotal: 189,
+      });
+      render(<PlanBillingClient />);
+      fireEvent.click(await screen.findByRole("button", { name: /Medium · S\/ 189/ }));
+      expect(await screen.findByText("S/ 90.00")).toBeInTheDocument();
+      expect(service.previewPlanChange).toHaveBeenCalledWith("p-medium");
+    });
   });
 });
