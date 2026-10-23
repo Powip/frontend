@@ -1,7 +1,8 @@
 ﻿"use client";
 import axios from "@/lib/axiosAuth";
 import { isCommercialLeadOrder } from "@/utils/commercialOrders";
-import { leadMoney } from "@/components/commercial-leads/lead-ui";
+import { formatSalesMoney } from "@/utils/salesMoney";
+import { buildPendingOrderDetail } from "./customerServiceOrderDetail";
 import { CcSaleConfirmationPanel } from "@/components/atencion-cliente/cc-v2/CcSaleConfirmationPanel";
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
 import { useReceiptPrintScope } from "@/hooks/useReceiptPrintScope";
@@ -14,7 +15,7 @@ import { assignmentBlockReason, requiresAuthenticatedSaleMutation, saleMutationU
 import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { toast } from "sonner";
@@ -181,6 +182,8 @@ interface Props {
   orderId: string;
   onClose: () => void;
   onOrderUpdated?: () => void;
+  /** Return to the editor when this detail is already open from the order form. */
+  onEditOrder?: () => void;
   /** Hide call management section for non-customer-service views */
   hideCallManagement?: boolean;
   /** Optional shipping guide data to display in the modal */
@@ -202,6 +205,7 @@ export default function CustomerServiceModal({
   orderId,
   onClose,
   onOrderUpdated,
+  onEditOrder,
   hideCallManagement = false,
   shippingGuide: shippingGuideProp,
   showTracking = false,
@@ -351,18 +355,6 @@ export default function CustomerServiceModal({
       if (!isCurrent()) return;
       if (orderRes.data?.id !== orderId) throw new Error("El pedido no corresponde a la consulta.");
       setOrderHeader(orderRes.data);
-      if (isCommercialLeadOrder(orderRes.data)) {
-        setLoadedReceiptKey(receiptKey);
-        return;
-      }
-      const res = await axios.get(
-        saleReceiptUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", orderId, orderRes.data),
-      );
-      if (!isCurrent()) return;
-      if (res.data?.orderId !== orderId) throw new Error("El comprobante no corresponde al pedido solicitado.");
-      setReceipt(res.data);
-      setLoadedReceiptKey(receiptKey);
-      setOrderHeader(orderRes.data);
       setNotes(orderRes.data.notes || "");
       // CC v2: cargar campos de datos incompletos + sub-estado
       setDatosCompletos(orderRes.data.datosCompletos ?? true);
@@ -374,6 +366,21 @@ export default function CustomerServiceModal({
       setAliclikSyncedAt(orderRes.data.aliclikSyncedAt ?? null);
       setEvaStatus(orderRes.data.evaStatus ?? null);
       setEvaSyncedAt(orderRes.data.evaSyncedAt ?? null);
+      if (isCommercialLeadOrder(orderRes.data)) {
+        // Pending purchases share the order layout without issuing a sales receipt.
+        setReceipt(buildPendingOrderDetail(orderRes.data));
+        setLoadedReceiptKey(receiptKey);
+        setTab((current) => current === "seguimiento" || current === "reasignacion" ? "resumen" : current);
+        return;
+      }
+      const res = await axios.get(
+        saleReceiptUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", orderId, orderRes.data),
+      );
+      if (!isCurrent()) return;
+      if (res.data?.orderId !== orderId) throw new Error("El comprobante no corresponde al pedido solicitado.");
+      setReceipt(res.data);
+      setLoadedReceiptKey(receiptKey);
+      setOrderHeader(orderRes.data);
     } catch (err) {
       if (!isCurrent()) return;
       console.error("Error fetching receipt", err);
@@ -643,7 +650,8 @@ export default function CustomerServiceModal({
     const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
 
     const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${receipt.orderNumber}`;
-    const message = `Hola ${receipt.customer.fullName}! Te contactamos por tu pedido ${receipt.orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
+    const greeting = `Hola ${receipt.customer.fullName}! Te contactamos por tu pedido ${receipt.orderNumber}.`;
+    const message = isCommercialLeadOrder(orderHeader ?? {}) ? greeting : `${greeting}\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
 
     window.open(
       `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
@@ -663,7 +671,7 @@ export default function CustomerServiceModal({
   };
 
   const handleDownloadPdf = async () => {
-    if (!receipt) return;
+    if (!receipt || isCommercialLeadOrder(orderHeader ?? {})) return;
     const operation = beginPrint();
     try {
       await downloadNotaVentaPdf(receipt, orderHeader, auth?.company, operation);
@@ -671,7 +679,7 @@ export default function CustomerServiceModal({
   };
 
   const handlePrint = async () => {
-    if (!receipt) return;
+    if (!receipt || isCommercialLeadOrder(orderHeader ?? {})) return;
     const operation = beginPrint();
     try {
       await printOrderLabel(receipt, orderHeader, auth?.company, operation);
@@ -741,7 +749,7 @@ export default function CustomerServiceModal({
   };
 
   const handleChangeStatus = async (newStatus: OrderStatus) => {
-    if (!receipt || newStatus === receipt.status) return;
+    if (!receipt || isCommercialLeadOrder(orderHeader ?? {}) || newStatus === receipt.status) return;
     if (await routeSaleLifecycle(orderHeader, newStatus, setLifecycleAction)) return;
     if (newStatus === "ANULADO") {
       setCancellationModalOpen(true);
@@ -900,6 +908,11 @@ export default function CustomerServiceModal({
     }
   };
 
+  const isPendingPurchase = isCommercialLeadOrder(orderHeader ?? {});
+  const ccSubEstado = subEstadoCc ?? (canalOrigen === "shopify_cod" ? "por_confirmar" : null);
+  const detailMoney = (value: number) => isPendingPurchase
+    ? formatSalesMoney(value, orderHeader?.currency)
+    : `S/${value.toFixed(2)}`;
   const isConfirmed = receipt?.status === "LLAMADO";
   const isScheduledDelivery =
     !!receipt?.externalSource && receipt?.callStatus === "SCHEDULED";
@@ -960,141 +973,6 @@ export default function CustomerServiceModal({
     </div>
   );
 
-  if (open && loadedReceiptKey === receiptKey && orderHeader && isCommercialLeadOrder(orderHeader))
-    return (
-      <>
-      <Dialog open onOpenChange={(value) => !value && onClose()}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              Pedido {orderHeader.orderNumber} · compra pendiente
-            </DialogTitle>
-            <DialogDescription>
-              Revisa el pedido y confirma la compra desde Gestión CC.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 text-sm">
-            <p className="font-medium">{orderHeader.customer?.fullName}</p>
-            <p>{orderHeader.customer?.phoneNumber}</p>
-            <p>
-              {[orderHeader.customer?.address, orderHeader.customer?.district]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
-            <ul className="space-y-1">
-              {(orderHeader.items ?? []).map((item) => (
-                <li key={item.id} className="flex justify-between gap-3">
-                  <span>
-                    {item.quantity} × {item.productName}
-                  </span>
-                  <span>{leadMoney(item.subtotal, orderHeader.currency)}</span>
-                </li>
-              ))}
-            </ul>
-            <p className="font-semibold">
-              Total: {leadMoney(orderHeader.grandTotal, orderHeader.currency)}
-            </p>
-            <p>Adelantos y pagos registrados: {orderHeader.payments?.length ?? 0}</p>
-            <Button
-              variant="outline"
-              onClick={() => setPaymentModalOpen(true)}
-            >
-              <DollarSign className="mr-1 h-4 w-4" />
-              Gestionar adelantos y comprobantes
-            </Button>
-          </div>
-          {!hideCallManagement && canManageCc ? (
-            <DatosIncompletosBlock
-              key={`datos-${orderId}`}
-              orderId={orderId}
-              dniCliente={orderHeader.dniCliente}
-              customer={orderHeader.customer}
-              onDatosCompletos={() => {
-                onOrderUpdated?.();
-                void fetchReceipt();
-              }}
-            />
-          ) : null}
-          {orderHeader.subEstadoCc || orderHeader.canalOrigen === "shopify_cod" ? (
-            <CcGestionPanel
-              key={`gestion-${orderId}`}
-              orderId={orderId}
-              commercialStage={orderHeader.commercialStage}
-              commercialLeadId={orderHeader.commercialLeadId}
-              canalOrigen={orderHeader.canalOrigen}
-              commercialStockState={orderHeader.commercialStockState}
-              orderUpdatedAt={orderHeader.updated_at}
-              subEstadoCc={orderHeader.subEstadoCc ?? "por_confirmar"}
-              callAttempts={orderHeader.callAttempts ?? 0}
-              datosCompletos={orderHeader.datosCompletos ?? true}
-              beforeCancellation={() => routeSaleLifecycle(orderHeader, "ANULADO", setLifecycleAction)}
-              onUpdated={() => {
-                void fetchReceipt();
-                void fetchLogs();
-                onOrderUpdated?.();
-              }}
-            />
-          ) : <CcSaleConfirmationPanel
-            key={`confirmar-${orderId}`}
-            orderId={orderId}
-            commercialLeadId={orderHeader.commercialLeadId}
-            orderUpdatedAt={orderHeader.updated_at}
-            datosCompletos={orderHeader.datosCompletos ?? true}
-            onUpdated={() => {
-              void fetchReceipt();
-              void fetchLogs();
-              onOrderUpdated?.();
-            }}
-          />}
-          {!hideCallManagement && orderHeader.subEstadoCc ? (
-            <CcScriptPanel
-              subEstadoCc={orderHeader.subEstadoCc}
-              clienteName={orderHeader.customer?.fullName ?? "Cliente"}
-              orderNumber={orderHeader.orderNumber}
-            />
-          ) : null}
-          <section className="space-y-3 rounded-lg border p-4 text-sm" aria-label="Historial de Gestión CC">
-            <h3 className="font-semibold">Historial de Gestión CC</h3>
-            {logsLoading ? <p>Cargando historial…</p> : displayLogs.length ? (
-              <ul className="space-y-2">
-                {displayLogs.map((log) => (
-                  <li key={log.id}>
-                    <p>{log.comentarios || log.operacion}</p>
-                    <p className="text-xs text-muted-foreground">{formatLogDate(log.timestamp)}</p>
-                  </li>
-                ))}
-              </ul>
-            ) : <p className="text-muted-foreground">Sin gestiones registradas.</p>}
-            {canManageCc ? (
-              <div className="flex gap-2">
-                <Input
-                  aria-label="Comentario de Gestión CC"
-                  value={newComment}
-                  onChange={(event) => setNewComment(event.target.value)}
-                  placeholder="Escribe un comentario de la gestión"
-                />
-                <Button disabled={!newComment.trim() || isSendingComment} onClick={() => void handleSendComment()}>
-                  Guardar comentario
-                </Button>
-              </div>
-            ) : null}
-          </section>
-        </DialogContent>
-      </Dialog>
-      <PaymentVerificationModal
-        open={paymentModalOpen}
-        onClose={() => {
-          setPaymentModalOpen(false);
-          void fetchReceipt();
-        }}
-        orderId={orderId}
-        orderNumber={orderHeader.orderNumber}
-        onPaymentUpdated={() => onOrderUpdated?.()}
-        canApprove={false}
-      />
-      {lifecycleAction && open && <SaleUnitLifecycleModal open orderId={orderId} action={lifecycleAction} onClose={() => setLifecycleAction(null)} onUpdated={() => { void fetchReceipt(); onOrderUpdated?.(); }} />}
-      </>
-    );
   return (
     <>
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -1106,7 +984,7 @@ export default function CustomerServiceModal({
             <div className="p-8 text-center">Cargando...</div>
           ) : (
             receipt && (
-              <div className="space-y-4">
+              <div className="min-w-0 space-y-4">
                 <DialogHeader>
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div>
@@ -1124,7 +1002,7 @@ export default function CustomerServiceModal({
                     <Select
                       value={receipt.status}
                       onValueChange={(v) => handleChangeStatus(v as OrderStatus)}
-                      disabled={changingStatus}
+                      disabled={changingStatus || isPendingPurchase}
                     >
                       <SelectTrigger className="w-[190px] h-9 text-sm font-semibold">
                         <SelectValue />
@@ -1141,8 +1019,8 @@ export default function CustomerServiceModal({
                     </Select>
                   </div>
                 </DialogHeader>
-                {orderHeader && <UnitAssignmentNotice order={orderHeader} />}
-                {orderHeader && <SaleUnitLifecycleButtons order={orderHeader} onAction={setLifecycleAction} />}
+                {!isPendingPurchase && orderHeader && <UnitAssignmentNotice order={orderHeader} />}
+                {!isPendingPurchase && orderHeader && <SaleUnitLifecycleButtons order={orderHeader} onAction={setLifecycleAction} />}
 
                 <Tabs value={tab} onValueChange={setTab}>
                   <div className="overflow-x-auto -mx-1 px-1">
@@ -1150,13 +1028,13 @@ export default function CustomerServiceModal({
                       <TabsTrigger value="resumen" className="whitespace-nowrap">
                         <Package className="h-4 w-4 mr-1.5" /> Resumen
                       </TabsTrigger>
-                      <TabsTrigger value="seguimiento" className="whitespace-nowrap">
+                      <TabsTrigger disabled={isPendingPurchase} value="seguimiento" className="whitespace-nowrap">
                         <Truck className="h-4 w-4 mr-1.5" /> Seguimiento
                       </TabsTrigger>
                       <TabsTrigger value="pagos" className="whitespace-nowrap">
                         <DollarSign className="h-4 w-4 mr-1.5" /> Pagos
                       </TabsTrigger>
-                      <TabsTrigger value="reasignacion" className="whitespace-nowrap">
+                      <TabsTrigger disabled={isPendingPurchase} value="reasignacion" className="whitespace-nowrap">
                         <Repeat className="h-4 w-4 mr-1.5" /> Reasignación
                       </TabsTrigger>
                     </TabsList>
@@ -1215,13 +1093,13 @@ export default function CustomerServiceModal({
                             </span>
                             <span>
                               Valor Und:{" "}
-                              <strong>S/{item.unitPrice.toFixed(2)}</strong>
+                              <strong>{detailMoney(item.unitPrice)}</strong>
                             </span>
                           </div>
                           <div className="flex justify-between text-sm font-medium mt-1 pt-1 border-t border-border">
                             <span>Sub Total:</span>
                             <span className="text-primary">
-                              S/{item.subtotal.toFixed(2)}
+                              {detailMoney(item.subtotal)}
                             </span>
                           </div>
                         </div>
@@ -1237,31 +1115,31 @@ export default function CustomerServiceModal({
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span>Productos:</span>
-                        <span>S/{receipt.totals.productsTotal.toFixed(2)}</span>
+                        <span>{detailMoney(receipt.totals.productsTotal)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>IGV 18%:</span>
-                        <span>S/{receipt.totals.taxTotal.toFixed(2)}</span>
+                        <span>{detailMoney(receipt.totals.taxTotal)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Envío:</span>
-                        <span>S/{receipt.totals.shippingTotal.toFixed(2)}</span>
+                        <span>{detailMoney(receipt.totals.shippingTotal)}</span>
                       </div>
                       <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
                         <span>Total:</span>
-                        <span>S/{receipt.totals.grandTotal.toFixed(2)}</span>
+                        <span>{detailMoney(receipt.totals.grandTotal)}</span>
                       </div>
                       <div className="flex justify-between text-muted-foreground">
                         <span>Descuentos:</span>
-                        <span>S/{receipt.totals.discountTotal.toFixed(2)}</span>
+                        <span>{detailMoney(receipt.totals.discountTotal)}</span>
                       </div>
                       <div className="flex justify-between text-green-600 font-medium">
                         <span>Adelanto:</span>
-                        <span>S/{receipt.totals.totalPaid.toFixed(2)}</span>
+                        <span>{detailMoney(receipt.totals.totalPaid)}</span>
                       </div>
                       <div className="flex justify-between text-red-600 font-bold text-base">
                         <span>Por Cobrar:</span>
-                        <span>S/{receipt.totals.pendingAmount.toFixed(2)}</span>
+                        <span>{detailMoney(receipt.totals.pendingAmount)}</span>
                       </div>
                     </div>
                   </div>
@@ -1270,12 +1148,12 @@ export default function CustomerServiceModal({
                 {/* ================================== */}
                 {/* SECCIÓN DERECHA */}
                 {/* ================================== */}
-                <div className="flex flex-col">
+                <div className="flex min-w-0 flex-col">
                   {/* Cliente — misma altura que Productos + Resumen de Pagos */}
                   <div className="border border-border rounded-lg p-5 flex-1 flex flex-col">
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                       <h3 className="font-semibold text-lg">Cliente</h3>
-                      <div className="flex gap-1">
+                      <div className="flex flex-wrap gap-1">
                         <Button
                           size="icon"
                           variant="outline"
@@ -1293,6 +1171,7 @@ export default function CustomerServiceModal({
                             const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${receipt.orderNumber}`;
                             window.open(trackingUrl, "_blank");
                           }}
+                          disabled={isPendingPurchase}
                           title="Rastreo"
                         >
                           <Truck className="h-4 w-4" />
@@ -1302,8 +1181,9 @@ export default function CustomerServiceModal({
                           variant="outline"
                           className="relative h-9 w-9 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900"
                           onClick={() => setPaymentModalOpen(true)}
+                          aria-label={isPendingPurchase ? "Gestionar adelantos y comprobantes" : undefined}
                           title={
-                            receipt.payments.some((p) => p.status === "PENDING")
+                            isPendingPurchase ? "Gestionar adelantos y comprobantes" : receipt.payments.some((p) => p.status === "PENDING")
                               ? "Pagos pendientes de aprobación"
                               : "Gestionar Pagos"
                           }
@@ -1323,6 +1203,7 @@ export default function CustomerServiceModal({
                           variant="outline"
                           className="h-9 w-9 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900"
                           onClick={handlePrint}
+                          disabled={isPendingPurchase}
                           title="Imprimir"
                         >
                           <Printer className="h-4 w-4" />
@@ -1332,6 +1213,7 @@ export default function CustomerServiceModal({
                           variant="outline"
                           className="h-9 w-9 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900"
                           onClick={handleDownloadPdf}
+                          disabled={isPendingPurchase}
                           title="Descargar PDF"
                         >
                           <Download className="h-4 w-4" />
@@ -1341,16 +1223,18 @@ export default function CustomerServiceModal({
                           size="icon"
                           variant="outline"
                           className="h-9 w-9"
-                          onClick={() =>
-                            router.push(`/registrar-venta?orderId=${orderId}`)
-                          }
+                          onClick={() => {
+                            if (onEditOrder) onEditOrder();
+                            else router.push(`/registrar-venta?orderId=${orderId}`);
+                          }}
+                          disabled={isPendingPurchase && !hasPermission("EDIT_SALE")}
                           title="Editar Pedido"
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
                       <div className="flex items-center gap-1">
                         <span className="text-muted-foreground">Nombre: </span>
                         <span className="font-medium">
@@ -1412,7 +1296,7 @@ export default function CustomerServiceModal({
                           {receipt.customer.clientType || "-"}
                         </span>
                       </div>
-                      <div className="col-span-2 flex items-center gap-1">
+                      <div className="col-span-full flex items-center gap-1">
                         <span className="text-muted-foreground">
                           Dirección:{" "}
                         </span>
@@ -1433,7 +1317,7 @@ export default function CustomerServiceModal({
                       </div>
                       <GoogleMapsUrlField
                         url={receipt.customer.googleMapsUrl}
-                        className="col-span-2"
+                        className="col-span-full"
                       />
                       <div className="flex items-center gap-1">
                         <span className="text-muted-foreground">
@@ -1516,8 +1400,8 @@ export default function CustomerServiceModal({
                       {/* Datos de tracking manual — para couriers sin
                           integración por API, el tracking/código/oficina/
                           clave se tipean a mano. */}
-                      {showTracking && receipt && (
-                        <div className="col-span-2 mt-4 pt-4 border-t border-dashed border-muted-foreground/30">
+                      {!isPendingPurchase && showTracking && receipt && (
+                        <div className="col-span-full mt-4 pt-4 border-t border-dashed border-muted-foreground/30">
                           <div className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-muted-foreground mb-3">
                             Datos de tracking
                           </div>
@@ -1621,7 +1505,7 @@ export default function CustomerServiceModal({
                           receipt.shippingCode ||
                           receipt.shippingKey ||
                           receipt.shippingOffice) && (
-                          <div className="col-span-2 mt-4 pt-4 border-t border-dashed border-muted-foreground/30">
+                          <div className="col-span-full mt-4 pt-4 border-t border-dashed border-muted-foreground/30">
                             <div className="grid grid-cols-2 gap-4">
                               <div>
                                 <span className="text-muted-foreground block text-xs underline mb-1">
@@ -1692,7 +1576,7 @@ export default function CustomerServiceModal({
                   <div className="space-y-3">
                   {/* Promo del día (solo vista de atención al cliente) y Evidencia de
                       despacho, arriba de la gestión — ocupan solo esta columna. */}
-                  {!hideCallManagement && (
+                  {!hideCallManagement && !isPendingPurchase && (
                     <div className="flex items-center justify-between gap-2 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
                       <p className="text-sm text-red-700 dark:text-red-400 truncate">
                         <span className="font-semibold">Promo del día</span>
@@ -1712,16 +1596,17 @@ export default function CustomerServiceModal({
                       </Button>
                     </div>
                   )}
-                  <OrderEvidenceSection
+                  {!isPendingPurchase && <OrderEvidenceSection
                     orderId={orderId}
                     canUpload={isOperaciones && hasPermission("MANAGE_OPERATIONS")}
                     accessToken={auth?.accessToken}
-                  />
+                  />}
                   {hasGestionColumn && (
                   <>
                   {/* CC v2: bloque datos incompletos (visible cuando el pedido tiene sub_estado_cc activo) */}
-                  {!hideCallManagement && subEstadoCc && (
+                  {!hideCallManagement && canManageCc && (ccSubEstado || isPendingPurchase) && (
                     <DatosIncompletosBlock
+                      key={`datos-${orderId}`}
                       orderId={orderId}
                       dniCliente={dniCliente}
                       customer={receipt?.customer ?? null}
@@ -1735,15 +1620,16 @@ export default function CustomerServiceModal({
 
                   {/* Gestión de Llamada / Entrega — según origen del pedido */}
                   {!hideCallManagement && (
-                    subEstadoCc ? (
+                    ccSubEstado ? (
                       <CcGestionPanel
+                        key={`gestion-${orderId}`}
                         commercialStage={orderHeader?.commercialStage}
                         commercialLeadId={orderHeader?.commercialLeadId}
                         canalOrigen={orderHeader?.canalOrigen}
                         orderUpdatedAt={orderHeader?.updated_at}
                         commercialStockState={orderHeader?.commercialStockState}
                         orderId={orderId}
-                        subEstadoCc={subEstadoCc}
+                        subEstadoCc={ccSubEstado}
                         callAttempts={receipt.callAttempts ?? 0}
                         datosCompletos={datosCompletos}
                         beforeCancellation={() => routeSaleLifecycle(orderHeader, "ANULADO", setLifecycleAction)}
@@ -1754,6 +1640,20 @@ export default function CustomerServiceModal({
                         onUpdated={() => {
                           fetchReceipt();
                           fetchLogs();
+                          onOrderUpdated?.();
+                        }}
+                      />
+                    ) : isPendingPurchase ? (
+                      <CcSaleConfirmationPanel
+                        key={`confirmar-${orderId}`}
+                        orderId={orderId}
+                        commercialLeadId={orderHeader?.commercialLeadId}
+                        canalOrigen={orderHeader?.canalOrigen}
+                        orderUpdatedAt={orderHeader?.updated_at}
+                        datosCompletos={datosCompletos}
+                        onUpdated={() => {
+                          void fetchReceipt();
+                          void fetchLogs();
                           onOrderUpdated?.();
                         }}
                       />
@@ -2094,7 +1994,7 @@ export default function CustomerServiceModal({
                   <div className="border border-border rounded-lg p-3">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="font-semibold">Historial / Comentarios</h3>
-                      <DropdownMenu>
+                      {!isPendingPurchase && <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="outline" size="sm">
                             Más acciones
@@ -2109,7 +2009,7 @@ export default function CustomerServiceModal({
                             Anular Venta
                           </DropdownMenuItem>
                         </DropdownMenuContent>
-                      </DropdownMenu>
+                      </DropdownMenu>}
                     </div>
 
                     {/* Historial — más reciente arriba; scrollea de a un comentario por vez.
@@ -2174,9 +2074,10 @@ export default function CustomerServiceModal({
                     </div>
 
                     {/* Input para nuevo comentario */}
-                    <div className="border-t pt-3">
+                    {(!isPendingPurchase || canManageCc) && <div className="border-t pt-3">
                       <div className="flex gap-2">
                         <Textarea
+                          aria-label="Comentario de Gestión CC"
                           value={newComment}
                           onChange={(e) => setNewComment(e.target.value)}
                           placeholder="Escribe un comentario..."
@@ -2190,6 +2091,7 @@ export default function CustomerServiceModal({
                           }}
                         />
                         <Button
+                          aria-label="Guardar comentario"
                           onClick={handleSendComment}
                           disabled={!newComment.trim() || isSendingComment}
                           size="sm"
@@ -2201,7 +2103,7 @@ export default function CustomerServiceModal({
                       <p className="text-xs text-muted-foreground mt-1">
                         Enter para enviar
                       </p>
-                    </div>
+                    </div>}
                   </div>
                   </div>
                   </TabsContent>
@@ -2973,22 +2875,22 @@ export default function CustomerServiceModal({
                   </TabsContent>
 
                   <TabsContent value="pagos" className="pt-3 space-y-4">
-                    <div className="grid grid-cols-3 gap-3.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                       <div className="rounded-2xl border border-border p-5 text-center">
                         <div className="text-xl sm:text-2xl font-extrabold">
-                          S/ {receipt.totals.grandTotal.toFixed(2)}
+                          {detailMoney(receipt.totals.grandTotal)}
                         </div>
                         <div className="text-sm text-muted-foreground mt-1">Total</div>
                       </div>
                       <div className="rounded-2xl border border-border p-5 text-center">
                         <div className="text-xl sm:text-2xl font-extrabold text-emerald-600">
-                          S/ {receipt.totals.totalPaid.toFixed(2)}
+                          {detailMoney(receipt.totals.totalPaid)}
                         </div>
                         <div className="text-sm text-muted-foreground mt-1">Pagado</div>
                       </div>
                       <div className="rounded-2xl border border-border p-5 text-center">
                         <div className="text-xl sm:text-2xl font-extrabold text-orange-600">
-                          S/ {receipt.totals.pendingAmount.toFixed(2)}
+                          {detailMoney(receipt.totals.pendingAmount)}
                         </div>
                         <div className="text-sm text-muted-foreground mt-1">Saldo</div>
                       </div>
@@ -3046,7 +2948,7 @@ export default function CustomerServiceModal({
                           </div>
                           <div className="text-right">
                             <div className="font-semibold">
-                              S/{Number(p.amount).toFixed(2)}
+                              {detailMoney(Number(p.amount))}
                             </div>
                             <div
                               className={
@@ -3174,14 +3076,17 @@ export default function CustomerServiceModal({
       {/* Modal de Pagos */}
       <PaymentVerificationModal
         open={paymentModalOpen}
-        onClose={() => setPaymentModalOpen(false)}
+        onClose={() => {
+          setPaymentModalOpen(false);
+          if (isPendingPurchase) void fetchReceipt();
+        }}
         orderId={orderId}
         orderNumber={receipt?.orderNumber || ""}
         onPaymentUpdated={() => {
           fetchReceipt();
           onOrderUpdated?.();
         }}
-        canApprove={true}
+        canApprove={!isPendingPurchase}
       />
 
       {/* Modal de agregar productos (Promo del día) */}

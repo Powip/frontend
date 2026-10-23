@@ -111,7 +111,7 @@ it("confirms the reviewed order through the commercial command and refreshes Ven
   const user = userEvent.setup();
 
   await user.click(await screen.findByRole("button", { name: "Confirmar venta" }));
-  const confirm = screen.getByRole("button", { name: "Confirmar y continuar en CC" });
+  const confirm = screen.getByRole("button", { name: "Confirmar y continuar aquí" });
   expect(confirm).toBeDisabled();
   expect(confirmCommercialOrderPurchase).not.toHaveBeenCalled();
 
@@ -210,7 +210,7 @@ it("cancels a review without creating a sale", async () => {
 
   await user.click(screen.getByRole("button", { name: "Volver" }));
 
-  expect(screen.queryByRole("button", { name: "Confirmar y continuar en CC" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Confirmar y continuar aquí" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Confirmar venta" })).toBeInTheDocument();
   expect(confirmCommercialOrderPurchase).not.toHaveBeenCalled();
 });
@@ -222,12 +222,12 @@ it("retries a failed response with the same command and order snapshot", async (
   const { onUpdated } = renderPanel();
   const user = await reviewAndAccept();
 
-  await user.click(screen.getByRole("button", { name: "Confirmar y continuar en CC" }));
+  await user.click(screen.getByRole("button", { name: "Confirmar y continuar aquí" }));
   await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Respuesta interrumpida"));
   expect(onUpdated).not.toHaveBeenCalled();
   expect(notifyCommercialChange).not.toHaveBeenCalled();
 
-  await user.click(screen.getByRole("button", { name: "Confirmar y continuar en CC" }));
+  await user.click(screen.getByRole("button", { name: "Confirmar y continuar aquí" }));
   await waitFor(() => expect(onUpdated).toHaveBeenCalledTimes(1));
 
   const calls = jest.mocked(confirmCommercialOrderPurchase).mock.calls;
@@ -243,7 +243,7 @@ it("blocks duplicate clicks while the command is pending", async () => {
   );
   const { onUpdated } = renderPanel();
   await reviewAndAccept();
-  const confirm = screen.getByRole("button", { name: "Confirmar y continuar en CC" });
+  const confirm = screen.getByRole("button", { name: "Confirmar y continuar aquí" });
 
   fireEvent.click(confirm);
   fireEvent.click(confirm);
@@ -260,7 +260,7 @@ it("invalidates the previous review when the order changes", async () => {
 
   rerenderPanel({ orderUpdatedAt: "2026-10-22T22:25:00.000Z" });
 
-  const outdated = screen.queryByRole("button", { name: "Confirmar y continuar en CC" });
+  const outdated = screen.queryByRole("button", { name: "Confirmar y continuar aquí" });
   if (outdated) {
     expect(outdated).toBeDisabled();
     fireEvent.click(outdated);
@@ -272,7 +272,7 @@ it("can confirm an existing order without inventing a lead identifier", async ()
   renderPanel({ commercialLeadId: null });
   const user = await reviewAndAccept();
 
-  await user.click(screen.getByRole("button", { name: "Confirmar y continuar en CC" }));
+  await user.click(screen.getByRole("button", { name: "Confirmar y continuar aquí" }));
 
   await waitFor(() => expect(confirmCommercialOrderPurchase).toHaveBeenCalledTimes(1));
   expect(jest.mocked(confirmCommercialOrderPurchase).mock.calls[0][1]).not.toHaveProperty("leadId");

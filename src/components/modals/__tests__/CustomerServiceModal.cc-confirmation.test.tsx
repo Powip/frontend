@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import CustomerServiceModal from "../CustomerServiceModal";
@@ -94,19 +94,19 @@ function order(overrides: Partial<OrderHeader> = {}): OrderHeader {
       district: "Miraflores",
       address: "Av. Flores 123",
     },
-    items: [{ id: "item-1", quantity: 1, productName: "Audífonos Bluetooth", subtotal: "79.90" }],
+    items: [{ id: "item-1", quantity: 1, productName: "Audífonos Bluetooth", unitPrice: "79.90", subtotal: "79.90" }],
     payments: [],
     ...overrides,
   } as OrderHeader;
 }
 
-function renderModal() {
+function renderModal(props: Partial<Parameters<typeof CustomerServiceModal>[0]> = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   clients.push(client);
   const onOrderUpdated = jest.fn();
   render(
     <QueryClientProvider client={client}>
-      <CustomerServiceModal open orderId="order-cc-1" onClose={jest.fn()} onOrderUpdated={onOrderUpdated} shippingGuide={null} />
+      <CustomerServiceModal open orderId="order-cc-1" onClose={jest.fn()} onOrderUpdated={onOrderUpdated} shippingGuide={null} {...props} />
     </QueryClientProvider>,
   );
   return { onOrderUpdated };
@@ -152,10 +152,10 @@ it("reviews and confirms the Lead from CC without requesting a sale receipt", as
 
   await user.click(await screen.findByRole("button", { name: "Confirmar venta" }));
   expect(screen.getByText("María Pérez")).toBeInTheDocument();
-  expect(screen.getByText("1 × Audífonos Bluetooth")).toBeInTheDocument();
-  expect(screen.getByText("Total: PEN 79.90")).toBeInTheDocument();
+  expect(screen.getByText("Audífonos Bluetooth")).toBeInTheDocument();
+  expect(screen.getAllByText("S/ 79.90").length).toBeGreaterThan(0);
   await user.click(screen.getByRole("checkbox", { name: "El cliente aceptó los productos y el total del pedido" }));
-  await user.click(screen.getByRole("button", { name: "Confirmar y continuar en CC" }));
+  await user.click(screen.getByRole("button", { name: "Confirmar y continuar aquí" }));
 
   await waitFor(() => expect(onOrderUpdated).toHaveBeenCalledTimes(1));
   expect(confirmCommercialOrderPurchase).toHaveBeenCalledWith("order-cc-1", {
@@ -180,7 +180,7 @@ it("saves the missing DNI and confirms only after reloading the updated order", 
   expect(updateDatosClienteCC).toHaveBeenCalledWith("order-cc-1", { dniCliente: "45678912" });
   await user.click(screen.getByRole("button", { name: "Confirmar venta" }));
   await user.click(screen.getByRole("checkbox", { name: "El cliente aceptó los productos y el total del pedido" }));
-  await user.click(screen.getByRole("button", { name: "Confirmar y continuar en CC" }));
+  await user.click(screen.getByRole("button", { name: "Confirmar y continuar aquí" }));
 
   await waitFor(() => expect(onOrderUpdated).toHaveBeenCalledTimes(2));
   expect(confirmCommercialOrderPurchase).toHaveBeenCalledWith("order-cc-1", {
@@ -200,7 +200,7 @@ it("shows a readonly Lead without CC editor or confirmation action", async () =>
   renderModal();
 
   expect(await screen.findByText("Tu rol no permite confirmar ventas.")).toBeInTheDocument();
-  expect(screen.getByText("1 × Audífonos Bluetooth")).toBeInTheDocument();
+  expect(screen.getByText("Audífonos Bluetooth")).toBeInTheDocument();
   expect(screen.queryByRole("textbox", { name: "DNI del cliente" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Confirmar venta" })).not.toBeInTheDocument();
   expect(updateDatosClienteCC).not.toHaveBeenCalled();
@@ -238,7 +238,7 @@ it("keeps Shopify COD contacts and purchase confirmation in CC for a CC operator
   expect(updateSubEstadoCC).toHaveBeenNthCalledWith(2, "order-cc-1", "no_contesta", expect.any(String));
   await user.click(await screen.findByRole("button", { name: "Confirmar venta" }));
   await user.click(screen.getByRole("checkbox", { name: "El cliente aceptó los productos y el total del pedido" }));
-  await user.click(screen.getByRole("button", { name: "Confirmar y continuar en CC" }));
+  await user.click(screen.getByRole("button", { name: "Confirmar y continuar aquí" }));
 
   await waitFor(() => expect(onOrderUpdated).toHaveBeenCalledTimes(3));
   expect(confirmarVentaCc).toHaveBeenCalledWith("order-cc-1", {
@@ -313,10 +313,15 @@ it("combines editing an imported DNI, keeping an advance with proof and confirmi
     paymentProps.onPaymentUpdated?.();
     paymentProps.onClose();
   });
-  expect(await screen.findByText("Adelantos y pagos registrados: 1")).toBeInTheDocument();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Gestionar adelantos y comprobantes" })).toBeEnabled());
+  await user.click(screen.getByRole("tab", { name: "Pagos" }));
+  expect(screen.getByText("TRANSFERENCIA")).toBeInTheDocument();
+  expect(screen.getByText("PENDING")).toBeInTheDocument();
+  expect(screen.getByText("S/ 20.00")).toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "Resumen" }));
   await user.click(screen.getByRole("button", { name: "Confirmar venta" }));
   await user.click(screen.getByRole("checkbox", { name: "El cliente aceptó los productos y el total del pedido" }));
-  await user.click(screen.getByRole("button", { name: "Confirmar y continuar en CC" }));
+  await user.click(screen.getByRole("button", { name: "Confirmar y continuar aquí" }));
 
   await waitFor(() => expect(confirmarVentaCc).toHaveBeenCalledWith("order-cc-1", {
     commandId: expect.any(String), leadId: "lead-cc-1", expectedOrderUpdatedAt: paymentTimestamp,
@@ -339,4 +344,94 @@ it("keeps the current unit return modal reachable before cancelling a historical
   await userEvent.click(await screen.findByRole("button", { name: "Anular pedido" }));
   expect(await screen.findByTestId("cc-unit-lifecycle")).toHaveTextContent("return · order-cc-1");
   expect(updateSubEstadoCC).not.toHaveBeenCalled();
+});
+
+it("keeps the original order layout and current CC buttons for a pending Shopify purchase", async () => {
+  currentOrder = order({ canalOrigen: "shopify_cod", subEstadoCc: "por_confirmar" });
+  renderModal();
+  const user = userEvent.setup();
+
+  expect(await screen.findByRole("heading", { name: "Productos" })).toBeInTheDocument();
+  const dialog = screen.getByRole("dialog");
+  expect(dialog).toHaveClass("sm:max-w-6xl", "w-[95vw]");
+  const products = screen.getByRole("heading", { name: "Productos" }).parentElement!;
+  const client = screen.getByRole("heading", { name: "Cliente" }).parentElement!.parentElement!;
+  expect(products.parentElement!.parentElement).toHaveClass("lg:grid-cols-2");
+  expect(products.parentElement!.parentElement).toContainElement(client);
+  expect(screen.getByRole("tab", { name: "Resumen" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("tab", { name: "Pagos" })).toBeEnabled();
+  expect(screen.getByRole("tab", { name: "Seguimiento" })).toBeDisabled();
+  expect(screen.getByRole("tab", { name: "Reasignación" })).toBeDisabled();
+  expect(await screen.findByRole("button", { name: "Confirmar venta" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Contactado" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "No contesta (1/3)" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Anular pedido" })).toBeEnabled();
+  expect(screen.queryByRole("button", { name: "Confirmar despacho" })).not.toBeInTheDocument();
+  expect(screen.getByTitle("Imprimir")).toBeDisabled();
+  expect(screen.getByTitle("Descargar PDF")).toBeDisabled();
+  expect(screen.getByTitle("Editar Pedido")).toBeDisabled();
+  const history = screen.getByRole("heading", { name: "Historial / Comentarios" }).parentElement!.parentElement!;
+  expect(history.parentElement).toHaveClass("lg:grid-cols-2");
+  expect(within(history).getByRole("textbox", { name: "Comentario de Gestión CC" })).toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "Pagos" }));
+  expect(screen.getByText("Sin pagos registrados")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Gestionar pagos" }));
+  expect(screen.getByTestId("cc-payment-modal")).toHaveTextContent("ORD-CC-001 · order-cc-1");
+});
+
+it("keeps the same layout and returns to the sale flow after confirming the purchase", async () => {
+  currentOrder = order({ canalOrigen: "shopify_cod", subEstadoCc: "por_confirmar" });
+  jest.mocked(confirmarVentaCc).mockImplementation(async () => {
+    currentOrder = { ...currentOrder, commercialStage: "SALE", subEstadoCc: "confirmado", updated_at: SAVED_UPDATED_AT };
+    return { lead: { id: "lead-cc-1" }, order: currentOrder, replayed: false } as LeadConfirmationResponse;
+  });
+  const get = jest.mocked(axiosAuth.get).getMockImplementation()!;
+  jest.mocked(axiosAuth.get).mockImplementation(async (url, config) => {
+    if (String(url).endsWith("/receipt")) return { data: {
+      orderId: currentOrder.id, orderNumber: currentOrder.orderNumber, status: "PENDIENTE",
+      customer: currentOrder.customer,
+      items: [{ productName: "Audífonos Bluetooth", quantity: 1, unitPrice: 79.9, subtotal: 79.9 }],
+      payments: [], totals: { productsTotal: 79.9, grandTotal: 79.9, taxTotal: 0, shippingTotal: 0, discountTotal: 0, totalPaid: 0, pendingAmount: 79.9 },
+    } };
+    return get(url, config);
+  });
+  renderModal();
+  const user = userEvent.setup();
+  await user.click(await screen.findByRole("button", { name: "Confirmar venta" }));
+  await user.click(screen.getByRole("checkbox", { name: "El cliente aceptó los productos y el total del pedido" }));
+  await user.click(screen.getByRole("button", { name: "Confirmar y continuar aquí" }));
+
+  expect(await screen.findByRole("button", { name: "Confirmar despacho" })).toBeEnabled();
+  expect(screen.getByRole("dialog")).toHaveClass("sm:max-w-6xl");
+  expect(screen.getByRole("tab", { name: "Seguimiento" })).toBeEnabled();
+  expect(screen.getByTitle("Imprimir")).toBeEnabled();
+  expect(axiosAuth.get).toHaveBeenCalledWith(expect.stringMatching(/\/receipt$/));
+});
+
+
+it("lets a verified business administrator manage Shopify from the original order detail", async () => {
+  jest.mocked(useAuth).mockReturnValue({
+    hasPermission: () => true,
+    auth: {
+      company: { id: "company-1", stores: [] },
+      user: {
+        id: "admin-1", name: "Ana", businessAdmin: true,
+        authorizationVerified: true, authorizationCompanyId: "company-1",
+        permissions: ["CONFIRM_SALE"],
+      },
+    },
+  } as unknown as ReturnType<typeof useAuth>);
+  currentOrder = order({ canalOrigen: "shopify_cod", subEstadoCc: null });
+  const onEditOrder = jest.fn();
+  renderModal({ onEditOrder });
+
+  expect(await screen.findByRole("button", { name: "Confirmar venta" })).toBeEnabled();
+  expect(screen.getByTitle("Editar Pedido")).toBeEnabled();
+  await userEvent.click(screen.getByTitle("Editar Pedido"));
+  expect(onEditOrder).toHaveBeenCalledTimes(1);
+  expect(screen.getAllByRole("heading", { name: "Gestión CC" })).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "Editar DNI y dirección" })).toBeEnabled();
+  expect(screen.queryByRole("link", { name: /Lead/i })).not.toBeInTheDocument();
+  expect(getCcOrderConfirmationCapabilities).toHaveBeenCalledWith("order-cc-1");
+  expect(getCommercialLeadConfirmationCapabilities).not.toHaveBeenCalled();
 });

@@ -136,7 +136,7 @@ test("a confirmed sale with deferred preparation completes dispatch from CC", as
     commercialStage: "SALE",
     commercialStockState: "DEFERRED",
   });
-  expect(screen.getByText(/Completa el despacho desde Gestión CC/)).toBeInTheDocument();
+  expect(screen.getByText(/Ya puedes confirmar el despacho aquí/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Confirmar despacho" }));
   await checkAllChecklistItems();
   await userEvent.click(screen.getByRole("button", { name: "Confirmar" }));
@@ -160,7 +160,7 @@ test("Shopify COD keeps calling and confirmation in CC without a Leads link", as
   expect(updateSubEstadoCC).toHaveBeenCalledWith("order-1", "contactado", expect.any(String));
   await userEvent.click(await screen.findByRole("button", { name: "Confirmar venta" }));
   await userEvent.click(screen.getByRole("checkbox", { name: "El cliente aceptó los productos y el total del pedido" }));
-  await userEvent.click(screen.getByRole("button", { name: "Confirmar y continuar en CC" }));
+  await userEvent.click(screen.getByRole("button", { name: "Confirmar y continuar aquí" }));
   await waitFor(() => expect(confirmarVentaCc).toHaveBeenCalledWith("order-1", expect.objectContaining({ leadId: "lead-1" })));
   expect(screen.queryByRole("link", { name: "Gestionar y confirmar Lead" })).not.toBeInTheDocument();
   expect(confirmarDespacho).not.toHaveBeenCalled();

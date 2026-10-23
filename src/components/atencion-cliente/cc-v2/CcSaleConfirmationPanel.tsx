@@ -26,6 +26,7 @@ interface Props {
   canalOrigen?: string | null;
   orderUpdatedAt?: string;
   datosCompletos: boolean;
+  embedded?: boolean;
   onUpdated: () => void;
 }
 
@@ -35,6 +36,7 @@ export function CcSaleConfirmationPanel({
   canalOrigen,
   orderUpdatedAt,
   datosCompletos,
+  embedded = false,
   onUpdated,
 }: Props) {
   const { auth, hasPermission } = useAuth();
@@ -138,7 +140,7 @@ export function CcSaleConfirmationPanel({
       setReview(null);
       void queryClient.invalidateQueries({ queryKey: ["orders"] });
       notifyCommercialChange(companyId, result.lead.id);
-      toast.success("Venta confirmada. Continúa la gestión del pedido en CC.");
+      toast.success("Compra confirmada. Continúa con el despacho aquí.");
       onUpdated();
     } catch (error) {
       if (mounted.current && currentScope.current === scope) {
@@ -155,16 +157,16 @@ export function CcSaleConfirmationPanel({
   if (confirmedScope === scope)
     return (
       <p className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800 dark:border-green-800 dark:bg-green-950/30 dark:text-green-300">
-        Venta confirmada. Continúa la gestión del pedido en CC.
+        Compra confirmada. Continúa con el despacho aquí.
       </p>
     );
 
   return (
     <section
-      className="space-y-3 rounded-lg border p-4 text-sm"
+      className={embedded ? "space-y-3 text-sm" : "space-y-3 rounded-lg border p-4 text-sm"}
       aria-label="Confirmación de venta en Gestión CC"
     >
-      <h3 className="font-semibold">Gestión CC</h3>
+      {!embedded && <h3 className="font-semibold">Gestión CC</h3>}
       <p>La compra sigue pendiente de confirmación del vendedor.</p>
       {!canManage || (capabilities.data?.enabled && !capabilities.data.canConfirm) ? (
         <p className="text-muted-foreground">Tu rol no permite confirmar ventas.</p>
@@ -219,7 +221,7 @@ export function CcSaleConfirmationPanel({
               disabled={!review.accepted || !datosCompletos || pending}
               onClick={() => void confirmSale()}
             >
-              {pending ? "Confirmando…" : "Confirmar y continuar en CC"}
+              {pending ? "Confirmando…" : "Confirmar y continuar aquí"}
             </Button>
             <Button variant="outline" size="sm" disabled={pending} onClick={() => setReview(null)}>
               Volver
