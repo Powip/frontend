@@ -1,6 +1,8 @@
 "use client";
-import { isCommercialSaleOrder, canShipCommercialOrder, salesPhysicalOperationBlockReason, salesStatusBlockReason } from "@/utils/commercialOrders";
+import { isCommercialSaleOrder, canShipCommercialOrder, salesPhysicalOperationBlockReason, salesStatusBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
 import { formatSalesMoney } from "@/utils/salesMoney";
+import { deliveryPaymentBlockReason, operationalStatus, orderFinancialState } from "@/utils/orderState";
+import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
 
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
 import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
@@ -74,7 +76,6 @@ import ImportSalesModal from "@/components/modals/ImportSalesModal";
 import { orderDetailButtonClassName } from "@/components/orders/OrderDetailModal";
 import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
-import { getOrderCollectionAmount } from "@/utils/orderCollectionAmount";
 import CreateGuideModal, {
   CreateGuideData,
 } from "@/components/modals/CreateGuideModal";
@@ -242,10 +243,7 @@ function ReprogramadoChip({ sale }: { sale: Pick<Sale, "callStatus" | "callbackA
 
 function mapOrderToSale(order: BusinessSalesOrder): Sale {
   const total = Number(order.grandTotal);
-  const advancePayment = order.payments
-    .filter((p) => p.status === "PAID")
-    .reduce((acc, p) => acc + Number(p.amount || 0), 0);
-  const pendingPayment = getOrderCollectionAmount(order);
+  const { totalPaid: advancePayment, pendingAmount: pendingPayment } = orderFinancialState(order);
   const hasPendingApprovalPayments = order.payments.some(
     (p) => p.status === "PENDING",
   );
@@ -269,7 +267,7 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     documentNumber: order.customer.documentNumber ?? null,
     date: new Date(order.created_at).toLocaleDateString("es-AR"),
     total,
-    status: order.status,
+    status: operationalStatus(order.status),
     paymentMethod:
       order.payments.length > 0 ? order.payments[0].paymentMethod : "—",
     deliveryType: order.deliveryType.replace("_", " "),
@@ -630,7 +628,7 @@ function VentasContent() {
     const sale = mutationSale(orderId);
     if (!sale) throw new Error("Vuelve a cargar el pedido antes de actualizarlo.");
     const targetStatus = typeof payload.status === "string" ? payload.status : "";
-    const blocked = salesStatusBlockReason(sale, targetStatus) || assignmentBlockReason(sale, targetStatus);
+    const blocked = salesStatusBlockReason(sale, targetStatus) || assignmentBlockReason(sale, targetStatus) || deliveryPaymentBlockReason(sale.pendingPayment, targetStatus);
     if (blocked) throw new Error(blocked);
     await axiosAuth.patch(
       saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", orderId, sale),
@@ -1505,6 +1503,7 @@ Estado: ${sale.status}
                     <div className="text-red-600">
                       Debe: {formatSalesMoney(sale.pendingPayment, sale.currency)}
                     </div>
+                    <FinancialStatusBadge pendingAmount={sale.pendingPayment} />
                   </TableCell>
                   <TableCell className="text-xs">
                     <span className="inline-flex items-center gap-1">
@@ -1544,7 +1543,7 @@ Estado: ${sale.status}
                       }
                       onExtraAction={() => { if (mutationSale(sale.id)) setRescheduleDialogSaleId(sale.id); }}
                     />
-                    {salesPhysicalOperationBlockReason(sale) && <p className="mt-1 text-[10px] text-muted-foreground">{salesPhysicalOperationBlockReason(sale)}</p>}
+                    {salesPhysicalOperationBlockReason(sale) && <p className="mt-1 text-[10px] text-muted-foreground">{salesPhysicalOperationBlockReason(sale)}{sale.commercialLeadId && sale.commercialStockState === "DEFERRED" && <Link className="ml-1 font-semibold text-violet-700 underline" href={commercialLeadHref(sale.commercialLeadId)}>Preparar reserva de stock</Link>}</p>}
                     <ReprogramadoChip sale={sale} />
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-[140px] w-[100px] min-w-[100px] 2xl:z-10 bg-background">
@@ -1776,6 +1775,7 @@ Estado: ${sale.status}
                     <div className="text-red-600">
                       Debe: {formatSalesMoney(sale.pendingPayment, sale.currency)}
                     </div>
+                    <FinancialStatusBadge pendingAmount={sale.pendingPayment} />
                   </TableCell>
                   <TableCell className="text-xs">
                     <span className="inline-flex items-center gap-1">
@@ -2472,7 +2472,7 @@ Estado: ${sale.status}
                 address: createGuideOrder.customer.address,
                 district: createGuideOrder.customer.district,
                 total: Number(createGuideOrder.grandTotal),
-                pendingPayment: getOrderCollectionAmount(createGuideOrder),
+                pendingPayment: orderFinancialState(createGuideOrder).pendingAmount,
                 zone: createGuideOrder.customer.zone,
               },
             ]}

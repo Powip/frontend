@@ -1,5 +1,4 @@
 "use client";
-import { canOperateCommercialOrder } from "@/utils/commercialOrders";
 
 import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
 import { useBusinessOrders } from "@/hooks/useBusinessOrders";
@@ -29,6 +28,7 @@ import {
   isFailedDelivery,
   hasCourierSyncError,
   SHIPPING_STATUSES,
+  isOperationsOrderVisible,
 } from "@/utils/domain/operations-pedidos-tabs";
 import { GUIDE_AGE_THRESHOLDS } from "@/constants/operationsDomain";
 import { GlobalScanner } from "./_shared/GlobalScanner";
@@ -73,7 +73,8 @@ function guessFailureReason(order: OrderHeader): string {
 export default function OperacionesTableroPage() {
   const router = useRouter();
   const { orders: allOrders, loading, error, retry, refetch: load } = useBusinessOrders();
-  const orders = useMemo(() => allOrders.filter(canOperateCommercialOrder), [allOrders]);
+  const orders = useMemo(() => allOrders.filter(isOperationsOrderVisible), [allOrders]);
+  const pendingCount = useMemo(() => orders.filter((order) => getPedidosTab(order) === "pendientes").length, [orders]);
   const [scannerOpen, setScannerOpen] = useState(false);
 
   const shippingOrders = useMemo(
@@ -193,6 +194,7 @@ export default function OperacionesTableroPage() {
     const workbook = XLSX.utils.book_new();
 
     const kpiSheet = XLSX.utils.json_to_sheet([
+      { KPI: "Pendientes por preparar", Valor: pendingCount, Detalle: "Incluye pedidos pagados y con saldo" },
       { KPI: "Por despachar", Valor: tabCounts.counts.despachar, Detalle: `${money(tabCounts.porDespacharPendiente)} por cobrar · ${tabCounts.porDespacharProvincia} a provincia` },
       { KPI: "En camino", Valor: tabCounts.counts.camino, Detalle: `${tabCounts.enCaminoMas15} con más de 15 días` },
       { KPI: "Necesita atención", Valor: tabCounts.counts.atencion, Detalle: `${money(tabCounts.atencionEnJuego)} en juego` },
@@ -259,7 +261,8 @@ export default function OperacionesTableroPage() {
       <GlobalScanner open={scannerOpen} onOpenChange={setScannerOpen} />
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <Kpi icon={<Package className="h-4 w-4" />} color="teal" label="Pendientes por preparar" value={pendingCount} sub="Pagados y con saldo" onClick={() => goPedidos("pendientes")} />
         <Kpi
           icon={<Package className="h-4 w-4" />}
           color="teal"

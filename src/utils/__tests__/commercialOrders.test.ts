@@ -57,6 +57,10 @@ describe("persisted commercial eligibility", () => {
 
 
 describe("sales physical authority independent of CC display", () => {
+  it("distinguishes a confirmed purchase awaiting stock from an unconfirmed Lead", () => {
+    expect(salesPhysicalOperationBlockReason({ commercialStage: "SALE", commercialStockState: "DEFERRED" })).toBe("Compra confirmada. Prepara la reserva de stock desde el Lead antes de preparar o despachar el pedido.");
+    expect(salesPhysicalOperationBlockReason({ commercialStage: "LEAD", commercialStockState: "DEFERRED" })).toBe("Confirma la compra antes de preparar o despachar el pedido.");
+  });
   const awaitingShopify = {
     commercialStage: null,
     externalSource: "shopify",

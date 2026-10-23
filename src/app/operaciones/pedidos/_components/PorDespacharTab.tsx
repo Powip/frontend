@@ -1,4 +1,5 @@
 "use client";
+import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
 
 import { OrderOriginLabel } from "../../_shared/OrderOriginLabel";
 
@@ -954,7 +955,7 @@ export function PorDespacharTab({
                     </span>
                   </TableCell>
                   <TableCell className="text-sm tabular-nums">
-                    {money(sale.total)}
+                    {money(sale.total)}<div className="mt-1"><FinancialStatusBadge pendingAmount={sale.pendingPayment} /></div>
                     {sale.pendingPayment > 0 && (
                       <div className="text-xs font-semibold text-red-600">
                         Saldo {money(sale.pendingPayment)}

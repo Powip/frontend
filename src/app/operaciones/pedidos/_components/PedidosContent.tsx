@@ -1,5 +1,5 @@
 "use client";
-import { canOperateCommercialOrder } from "@/utils/commercialOrders";
+import { salesStatusBlockReason } from "@/utils/commercialOrders";
 
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
 import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
@@ -26,7 +26,7 @@ import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import {
   PEDIDOS_TABS,
   PedidosTabKey,
-  PRE_FULFILLMENT_STATUSES,
+  isOperationsOrderVisible,
   countByTab,
   getPedidosTab,
 } from "@/utils/domain/operations-pedidos-tabs";
@@ -34,6 +34,7 @@ import { fetchCouriers } from "@/services/courierService";
 import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
 import { reassignSeller } from "@/services/atencionClienteService";
 import { getStatusChainSteps, getStatusLabel } from "@/utils/domain/orders-status-flow";
+import { deliveryPaymentBlockReason } from "@/utils/orderState";
 import { exportSalesToExcel } from "@/utils/exportSalesExcel";
 import { openPrintWindow, printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 
@@ -48,6 +49,7 @@ import ReassignSellerModal from "@/components/modals/ReassignSellerModal";
 import { RescheduleDialog } from "@/components/ventas/RescheduleDialog";
 
 import { PorDespacharTab } from "./PorDespacharTab";
+import { PendientesTab } from "./PendientesTab";
 import { buildGuideReviewReturnTo, useGuideReviewReturn } from "./guideReviewReturn";
 import { EnCaminoTab } from "./EnCaminoTab";
 import { AtencionTab } from "./AtencionTab";
@@ -61,6 +63,7 @@ const API_COURIER = process.env.NEXT_PUBLIC_API_COURIER;
 const TAB_KEYS: PedidosTabKey[] = PEDIDOS_TABS.map((t) => t.key);
 
 const TAB_ICON: Record<PedidosTabKey, React.ElementType> = {
+  pendientes: Package,
   despachar: Package,
   camino: Truck,
   atencion: AlertTriangle,
@@ -128,23 +131,11 @@ export function PedidosContent() {
       .catch(() => toast.error("No se pudieron cargar los couriers"));
   }, [auth?.company?.id]);
 
-  // Pedidos (a diferencia del Tablero) solo trabaja pedidos que ya entraron
-  // al pipeline de despacho — un PENDIENTE todavía no fue preparado por
-  // almacén, así que no debe listarse ni contar acá (sigue siendo un pedido
-  // de Ventas, no de Operaciones, hasta que se prepare). INCOMPLETE tampoco
-  // — es un carrito/checkout que nunca se terminó (con errores de sync, se
-  // gestiona aparte en Atención al Cliente › Pedidos con errores), no un
-  // pedido real. PREVENTA tampoco — es un carrito pre-venta, ni siquiera
-  // llegó a PENDIENTE. PAGADO TAMPOCO se lista acá: cobrar el 100% no es lo
-  // mismo que empacar — es "PENDIENTE + cobrado", sigue siendo un pedido de
-  // Ventas hasta que almacén lo marque PREPARADO explícitamente (imprimir
-  // etiqueta o cambio de estado manual desde el modal de pedido).
-  // Sin este filtro, PRE_FULFILLMENT_STATUSES caía por el fallback de
-  // getPedidosTab directo a "Por Despachar", mezclado con pedidos
-  // realmente listos para despachar.
+  // La cola de preparación incluye compras confirmadas con cualquier saldo.
+  // Los carritos y leads sin confirmar mantienen su barrera comercial.
   const visibleOrders = useMemo(
     () =>
-      orders.filter((o) => canOperateCommercialOrder(o) && !PRE_FULFILLMENT_STATUSES.includes(o.status)),
+      orders.filter(isOperationsOrderVisible),
     [orders],
   );
 
@@ -152,6 +143,7 @@ export function PedidosContent() {
 
   const salesByTab = useMemo(() => {
     const grouped: Record<PedidosTabKey, OrderHeader[]> = {
+      pendientes: [],
       despachar: [],
       camino: [],
       atencion: [],
@@ -184,7 +176,9 @@ export function PedidosContent() {
   const patchOrderWithAssignment = useCallback(async (url: string, payload: Record<string, unknown>) => {
     const orderId = url.split("/").pop() ?? "";
     const sale = salesById.get(orderId);
-    const blocked = sale && typeof payload.status === "string" ? assignmentBlockReason(sale, payload.status) : null;
+    const blocked = sale && typeof payload.status === "string"
+      ? salesStatusBlockReason(sale, payload.status) || assignmentBlockReason(sale, payload.status) || deliveryPaymentBlockReason(sale.pendingPayment, payload.status)
+      : null;
     if (blocked) throw new Error(blocked);
     return axios.patch(saleMutationUrl(API_VENTAS || "", orderId, sale), payload);
   }, [salesById]);
@@ -440,9 +434,8 @@ export function PedidosContent() {
             // ORDER_STATUS_FLOW solo permite ASIGNADO_A_GUIA desde LLAMADO —
             // si el pedido viene de PREPARADO se encadenan los pasos
             // intermedios hasta LLAMADO acá mismo, transparente para quien
-            // despacha. PAGADO ya no llega hasta acá (PRE_FULFILLMENT_STATUSES
-            // se filtra en `visibleOrders`, arriba): un pedido cobrado pero no
-            // preparado no es elegible para armar guía. getStatusChainSteps no
+            // despacha. Los pendientes se preparan desde su propia cola antes
+            // de ser elegibles para una guía. getStatusChainSteps no
             // retrocede ni repite estado: LLAMADO y ASIGNADO_A_GUIA devuelven
             // `[]` y no generan PATCH.
             const currentStatus = salesById.get(orderId)?.status;
@@ -537,7 +530,7 @@ export function PedidosContent() {
         for (const sale of selected) {
           // Puente genérico: lleva un pedido PREPARADO hasta LLAMADO sin
           // violar el flujo del backend, encadenando un PATCH por paso
-          // (PAGADO ya no llega hasta acá, ver `visibleOrders`).
+          // (los pedidos pendientes se preparan antes de generar una guía).
           // getStatusChainSteps no retrocede ni repite estado, así que un
           // pedido ya en LLAMADO o más adelante (ASIGNADO_A_GUIA) no genera
           // PATCH.
@@ -626,7 +619,7 @@ export function PedidosContent() {
     // Abrir la ventana ANTES de cualquier await: si se abre después de
     // esperar las requests de abajo, el navegador la bloquea en silencio
     // (así se veía el bug: "queda cargando y da error" con varios pedidos).
-    const blocked = selected.map((sale) => assignmentBlockReason(sale, "PREPARADO")).find(Boolean);
+    const blocked = selected.map((sale) => salesStatusBlockReason(sale, "PREPARADO") || assignmentBlockReason(sale, "PREPARADO")).find(Boolean);
     if (blocked) { toast.error(blocked); return; }
     const printWindow = openPrintWindow();
     if (!printWindow) {
@@ -678,10 +671,8 @@ export function PedidosContent() {
       // preparado para despacho — mismo criterio que "Imprimir" en
       // CustomerServiceModal (handlePrint/handleConfirmPrintStatus), pero
       // acá no hace falta el diálogo de confirmación: seleccionar e imprimir
-      // en lote ya es la confirmación explícita. En la práctica todo lo que
-      // llega hasta acá ya es PREPARADO o posterior (PAGADO quedó afuera de
-      // Operaciones, ver `visibleOrders`), así que esto no genera PATCH hoy
-      // — se deja como red de seguridad (getStatusChainSteps no retrocede).
+      // en lote ya es la confirmación explícita. La cola Pendientes avanza
+      // a PREPARADO; las etapas posteriores conservan su estado.
       const toPrepare = printedSales.filter(
         (sale) => getStatusChainSteps(sale.status, "PREPARADO").length > 0,
       );
@@ -697,7 +688,7 @@ export function PedidosContent() {
         );
         const patchFailed = patchResults.filter((r) => r.status === "rejected").length;
         if (patchFailed > 0) {
-          console.error(`${patchFailed} pedido(s) no se pudieron pasar a PREPARADO tras imprimir`);
+          toast.error(`${patchFailed} pedido(s) se imprimieron pero no pudieron pasar a PREPARADO. Revisa sus estados antes de despachar.`);
         }
         fetchOrders();
       }
@@ -887,6 +878,10 @@ export function PedidosContent() {
               );
             })}
           </TabsList>
+
+          <TabsContent value="pendientes">
+            <PendientesTab sales={salesByTab.pendientes} actions={actions} initialSearch={initialTab === "pendientes" ? initialQ : undefined} />
+          </TabsContent>
 
           <TabsContent value="despachar">
             <PorDespacharTab

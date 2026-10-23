@@ -2,7 +2,7 @@
 import SaleUnitLifecycleActions from "@/components/registrar-venta/SaleUnitLifecycleActions";
 import axios from "@/lib/axiosAuth";
 import Link from "next/link";
-import { isCommercialLeadOrder, canOperateCommercialOrder, commercialLeadHref } from "@/utils/commercialOrders";
+import { isCommercialLeadOrder, canOperateCommercialOrder, commercialLeadHref, salesPhysicalOperationBlockReason } from "@/utils/commercialOrders";
 import {
   assignmentBlockReason,
   saleMutationUrl,
@@ -20,6 +20,7 @@ import { useReceiptPrintScope } from "@/hooks/useReceiptPrintScope";
 import { printOrderLabel } from "@/utils/printOrderLabel";
 import { downloadNotaVentaPdf } from "@/utils/downloadNotaVentaPdf";
 import { OrderHeader } from "@/interfaces/IOrder";
+import { operationalStatus } from "@/utils/orderState";
 
 interface Props {
   open: boolean;
@@ -73,7 +74,7 @@ export default function OrderReceiptModal({
         const orderRes = await axios.get<OrderHeader>(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/manual/${orderId}`, { signal: controller.signal });
         if (controller.signal.aborted) return;
         if (orderRes.data.id !== orderId) throw new Error("El pedido no corresponde al documento solicitado.");
-        setOrderHeader(orderRes.data);
+        setOrderHeader({ ...orderRes.data, status: operationalStatus(orderRes.data.status) });
         setLoadedKey(receiptKey);
         if (isCommercialLeadOrder(orderRes.data)) return;
         const receiptRes = await axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/manual/${orderId}/receipt`, { signal: controller.signal });
@@ -85,8 +86,8 @@ export default function OrderReceiptModal({
           throw new Error(
             "El comprobante no corresponde al pedido solicitado.",
           );
-        setReceipt(receiptRes.data);
-        setOrderHeader(orderRes.data);
+        setReceipt({ ...receiptRes.data, status: operationalStatus(receiptRes.data.status) });
+        setOrderHeader({ ...orderRes.data, status: operationalStatus(orderRes.data.status) });
         setLoadedKey(receiptKey);
       } catch (err) {
         if (!controller.signal.aborted)
@@ -120,7 +121,7 @@ export default function OrderReceiptModal({
   };
 
   const handlePrint = async () => {
-    if (!receipt || !orderHeader || !canOperateCommercialOrder(orderHeader)) { toast.error("Gestiona y prepara la compra desde el Lead antes de imprimir."); return; }
+    if (!receipt || !orderHeader || !canOperateCommercialOrder(orderHeader)) { toast.error(orderHeader ? salesPhysicalOperationBlockReason(orderHeader) || "Gestiona y prepara la compra desde el Lead antes de imprimir." : "Vuelve a cargar el pedido antes de imprimir."); return; }
     const operation = beginPrint();
     try {
       const blocked =
@@ -238,6 +239,7 @@ export default function OrderReceiptModal({
           />
         )}
         <div className="flex flex-wrap justify-end gap-2 mt-4">
+          {orderHeader?.commercialLeadId && orderHeader.commercialStockState === "DEFERRED" && <Link className="text-sm font-semibold text-violet-700 underline" href={commercialLeadHref(orderHeader.commercialLeadId)}>Compra confirmada · Preparar reserva de stock</Link>}
           <Button
             variant="outline"
             disabled={!receipt}

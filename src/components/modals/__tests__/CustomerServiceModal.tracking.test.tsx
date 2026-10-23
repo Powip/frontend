@@ -73,10 +73,10 @@ const axios = require('axios');
 
 const base = { id: 'order-1', status: 'PREPARADO', payments: [], courier: 'Local', unitAssignmentStatus: 'NONE' };
 const tracked = { ...base, hasTrackedUnits: true, unitCatalogValidated: true, unitAssignmentStatus: 'CONFIRMED', stockVersion: 1, confirmedStockVersion: 1 };
-function setup(header: Record<string, unknown>, response: Record<string, unknown>) {
+function setup(header: Record<string, unknown>, response: Record<string, unknown>, pendingBalance = 0) {
   const receipt = { orderId: 'order-1', orderNumber: 'ORD-0001', status: header.status, createdAt: '2026-09-01T10:00:00.000Z',
     customer: { fullName: 'Cliente Prueba', phoneNumber: '999999999', address: 'Av. Brasil 500' }, items: header.hasTrackedUnits ? [{ productName: 'Teléfono', quantity: 1, unitPrice: 100, subtotal: 100, discountAmount: 0, units: [{ id: 'unit-1', code: '001234567890123', status: 'RESERVED' }] }] : [], payments: [],
-    totals: { productsTotal: 100, taxTotal: 0, shippingTotal: 0, discountTotal: 0, grandTotal: 100, totalPaid: 100, pendingAmount: 0 } };
+    totals: { productsTotal: 100, taxTotal: 0, shippingTotal: 0, discountTotal: 0, grandTotal: 100, totalPaid: 100 - pendingBalance, pendingAmount: pendingBalance } };
   const impl = (url: string) => {
     if (url.endsWith('/receipt')) return Promise.resolve({ data: receipt });
     if (url.endsWith('/evidence') || url.includes('/log-ventas/')) return Promise.resolve({ data: [] });
@@ -103,6 +103,21 @@ describe('CustomerServiceModal: tracked status transitions', () => {
     const select = await screen.findByRole('combobox', { name: 'Order status' });
     await act(async () => { fireEvent.change(select, { target: { value: status } }); });
   }
+  it('shows a legacy paid order as operationally pending with an independent paid badge', async () => {
+    setup({ ...base, status: 'PAGADO' }, {});
+    expect(await screen.findByRole('combobox', { name: 'Order status' })).toHaveValue('PENDIENTE');
+    expect(screen.getByText('Pagado')).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'PAGADO' })).not.toBeInTheDocument();
+  });
+  it('allows dispatch with debt but blocks delivery when one cent remains unapproved', async () => {
+    setup({ ...base, status: 'LLAMADO' }, { ...base, status: 'EN_ENVIO' }, 0.01);
+    await changeStatus('EN_ENVIO');
+    expect(axios.patch).toHaveBeenCalledWith('https://ventas.test/order-header/order-1', { status: 'EN_ENVIO' });
+    axios.patch.mockClear();
+    await changeStatus('ENTREGADO');
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('saldo pendiente')));
+    expect(axios.patch).not.toHaveBeenCalled();
+  });
   it('shows acknowledged quantity hold while blocking preparation without unit assignment', async () => {
     setup({ ...tracked, status: 'PENDIENTE', unitAssignmentStatus: 'PENDING_SELECTION', unitStockState: 'reserved' }, {});
     expect(await screen.findByText('Stock reservado · falta asignar IMEI/serie')).toBeInTheDocument();

@@ -128,12 +128,12 @@ describe('CustomerServiceModal — visibilidad de la clave', () => {
     jest.clearAllMocks();
   });
 
-  it('showTracking=false con saldo pendiente: no muestra la clave y muestra el bloqueo', async () => {
-    mockApi(40);
+  it.each([40, 0.01])('showTracking=false con saldo %s: no muestra la clave y muestra el bloqueo', async (balance) => {
+    mockApi(balance);
     renderModal(false);
 
     expect(await screen.findByText('Clave de recojo bloqueada')).toBeInTheDocument();
-    expect(screen.getByText('Pendiente de cobro · S/ 40.00')).toBeInTheDocument();
+    expect(screen.getByText(`Pendiente de cobro · S/ ${balance.toFixed(2)}`)).toBeInTheDocument();
     expect(screen.getByText('TRK-1')).toBeInTheDocument();
     expect(screen.queryByText(CLAVE)).not.toBeInTheDocument();
   });

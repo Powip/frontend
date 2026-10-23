@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Search, X, ChevronDown, ChevronUp, Filter } from "lucide-react";
 import { OrderStatus } from "@/interfaces/IOrder";
 import { getStatusLabel } from "@/utils/domain/orders-status-flow";
+import { operationalStatus } from "@/utils/orderState";
 import { shiftPeruDate, type DateWindow } from "@/lib/peruDate";
 
 export interface SalesFilters {
@@ -171,7 +172,7 @@ export const PAYMENT_METHODS = [
 export const PENDING_BALANCE_OPTIONS = [
   { value: "", label: "Todos" },
   { value: "yes", label: "Con saldo" },
-  { value: "no", label: "Sin saldo" },
+  { value: "no", label: "Pagado" },
 ];
 
 export const REGION_OPTIONS = [
@@ -433,7 +434,7 @@ export function SalesTableFilters({
                   }
                 >
                   <option value="">Todos</option>
-                  {availableStatuses.map((s) => (
+                  {[...new Set(availableStatuses.map(operationalStatus))].map((s) => (
                     <option key={s} value={s}>
                       {getStatusLabel(s)}
                     </option>
@@ -659,10 +660,10 @@ export function applyFilters<T extends {
     }
 
     // Pending balance filter
-    if (filters.hasPendingBalance === "yes" && item.pendingPayment <= 0) {
+    if (filters.hasPendingBalance === "yes" && (!Number.isFinite(item.pendingPayment) || item.pendingPayment <= 0)) {
       return false;
     }
-    if (filters.hasPendingBalance === "no" && item.pendingPayment > 0) {
+    if (filters.hasPendingBalance === "no" && (!Number.isFinite(item.pendingPayment) || item.pendingPayment > 0)) {
       return false;
     }
 
@@ -690,7 +691,7 @@ export function applyFilters<T extends {
     }
 
     // Status filter
-    if (filters.status && item.status !== filters.status) {
+    if (filters.status && (!item.status || operationalStatus(item.status) !== operationalStatus(filters.status))) {
       return false;
     }
 

@@ -18,9 +18,9 @@ function receipt(amount: number, status = "PENDING") {
 }
 
 describe("quotation sale receipt", () => {
-  it("shows the collection projection while calling a transferred pending advance unverified", () => {
+  it("keeps a pending advance outside the approved balance", () => {
     render(<OrderReceiptView data={receipt(30)} />);
-    expect(screen.getByText("Por cobrar S/ 90.00")).toBeInTheDocument();
+    expect(screen.getByText("Por cobrar S/ 120.00")).toBeInTheDocument();
     expect(screen.getByText("Adelanto por verificar:")).toBeInTheDocument();
     expect(screen.getByText(/Pagos Pendientes de Aprobación/)).toBeInTheDocument();
     expect(screen.queryByText("✓ Adelanto pagado:")).not.toBeInTheDocument();
@@ -28,8 +28,8 @@ describe("quotation sale receipt", () => {
 
   it("never labels a full pending report as paid", () => {
     render(<OrderReceiptView data={receipt(120)} />);
-    expect(screen.getByText("Pago por verificar")).toBeInTheDocument();
-    expect(screen.getByText("Pago completo reportado · por verificar")).toBeInTheDocument();
+    expect(screen.getByText("Por cobrar S/ 120.00")).toBeInTheDocument();
+    expect(screen.getByText(/Pagos Pendientes de Aprobación/)).toBeInTheDocument();
     expect(screen.queryByText("Pagado")).not.toBeInTheDocument();
     expect(screen.queryByText("✓ Pagado en su totalidad")).not.toBeInTheDocument();
   });

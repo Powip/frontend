@@ -134,7 +134,7 @@ describe("preparing an order when printing its receipt", () => {
       { status: "PREPARADO" },
     );
     expect(printOrderLabel).toHaveBeenCalledWith(
-      expect.objectContaining({ orderId: "order-1" }), header, auth.company, expect.any(Object),
+      expect.objectContaining({ orderId: "order-1", status: "PENDIENTE" }), { ...header, status: "PENDIENTE" }, auth.company, expect.any(Object),
     );
   });
 

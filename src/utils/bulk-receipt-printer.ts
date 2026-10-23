@@ -1,5 +1,7 @@
 import QRCode from "qrcode";
 import JsBarcode from "jsbarcode";
+import { operationalStatus, receiptFinancialState } from "./orderState";
+import type { OrderStatus } from "@/interfaces/IOrder";
 import { escapePrintHtml, renderPrintableUnitCodesHtml, type PrintableReceiptItem, type PrintableReceiptTracking } from "./receiptUnitCodes";
 
 /**
@@ -133,10 +135,10 @@ function generateReceiptHTML(
     pendingAmount: 0,
   };
   const items = receipt.items ?? [];
-  const totalPaid = totals.totalPaid || 0;
-  const pendingAmount = totals.pendingAmount || 0;
+  const { totalPaid, pendingAmount, isPaid } = receiptFinancialState({ totals: receipt.totals ?? { grandTotal: Number.NaN } });
+  const status = operationalStatus(receipt.status as OrderStatus);
   const statusInfo = receipt.status
-    ? (PRINT_STATUS_LABEL[receipt.status] ?? { label: receipt.status, bg: "#f1f5f9", color: "#334155" })
+    ? (PRINT_STATUS_LABEL[status] ?? { label: status, bg: "#f1f5f9", color: "#334155" })
     : null;
   const paymentMethods =
     Array.from(new Set((receipt.payments ?? []).map((p) => p.paymentMethod))).join(" / ") || "-";
@@ -176,11 +178,11 @@ function generateReceiptHTML(
       }
 
       ${
-        pendingAmount > 0
+        !isPaid
           ? `
       <div style="display: flex; justify-content: space-between; align-items: center; background: #111; color: #fff; padding: 8px 10px; border-radius: 6px; margin-bottom: 10px;">
         <div style="font-size: 10px; font-weight: bold; text-transform: uppercase; line-height: 1.4;">Por cobrar contra entrega<br/>Pago: ${escapePrintHtml(paymentMethods)}</div>
-        <div style="font-size: 20px; font-weight: bold; white-space: nowrap;">S/ ${pendingAmount.toFixed(2)}</div>
+        <div style="font-size: 20px; font-weight: bold; white-space: nowrap;">${Number.isFinite(pendingAmount) ? `S/ ${pendingAmount.toFixed(2)}` : "Pago por verificar"}</div>
       </div>`
           : `
       <div style="display: flex; justify-content: space-between; align-items: center; background: #dcfce7; color: #166534; padding: 8px 10px; border-radius: 6px; margin-bottom: 10px; font-size: 11px; font-weight: bold;">
