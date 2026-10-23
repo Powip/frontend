@@ -112,7 +112,7 @@ jest.mock("@/contexts/AuthContext", () => ({
 }));
 
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  useRouter: jest.fn(),
   usePathname: () => "/registrar-venta",
   useSearchParams: jest.fn(() => new URLSearchParams()),
 }));
@@ -219,6 +219,21 @@ jest.mock("@/components/modals/orderReceiptModal", () => ({
   default: ({ open }: { open: boolean }) => open ? <div data-testid="receipt-open" /> : null,
 }));
 
+jest.mock("@/components/modals/CustomerServiceModal", () => ({
+  __esModule: true,
+  default: ({ open, orderId, onClose, onEditOrder }: {
+    open: boolean;
+    orderId: string;
+    onClose: () => void;
+    onEditOrder?: () => void;
+  }) => open ? (
+    <section role="dialog" aria-label="Ficha del pedido" data-order-id={orderId}>
+      <button onClick={onEditOrder}>Editar pedido desde ficha</button>
+      <button onClick={onClose}>Cerrar ficha del pedido</button>
+    </section>
+  ) : null,
+}));
+
 jest.mock("@/components/registrar-venta/ProductSearchMatrix", () => ({
   __esModule: true,
   default: ({
@@ -287,7 +302,7 @@ import {
 } from "@/services/clients.service";
 import RegistrarVentaPage from "../page";
 import type { Client } from "@/interfaces/ICliente";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 jest.setTimeout(30000);
 configure({ asyncUtilTimeout: 10000 });
@@ -309,6 +324,9 @@ import { confirmCommercialLead, getCommercialLead, getCommercialLeadCapabilities
 import { getLeadPayments } from "@/services/leadPaymentsService";
 
 const mockUseSearchParams = jest.mocked(useSearchParams);
+const mockUseRouter = jest.mocked(useRouter);
+const mockRouterPush = jest.fn();
+const mockRouterReplace = jest.fn();
 
 // `crypto.randomUUID` no existe en el jsdom de jest-environment-jsdom 29 y
 // `addToCart` lo usa para el `id` del CartItem. Se parchea solo para este
@@ -393,6 +411,10 @@ const MOCK_AUTH = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockUseRouter.mockReturnValue({
+    push: mockRouterPush,
+    replace: mockRouterReplace,
+  } as unknown as ReturnType<typeof useRouter>);
   tokenStore.set("fake-token", "test-user-company");
   mockUseSearchParams.mockReturnValue(
     new URLSearchParams() as ReturnType<typeof useSearchParams>,
@@ -1619,6 +1641,8 @@ describe("Registrar — confirmación canónica de Lead sobre origen e IMEI de p
 describe("Pedidos Shopify pendientes — DNI, envío y adelantos", () => {
   const order = {
     id: "order-shopify-lead",
+    storeId: "store-1",
+    inventoryId: "warehouse-1",
     orderNumber: "SHOP-101",
     customer: FOUND_CLIENT,
     commercialStage: "LEAD",
@@ -1644,13 +1668,93 @@ describe("Pedidos Shopify pendientes — DNI, envío y adelantos", () => {
     }],
     payments: [],
   };
+  function responseData(url: string, savedOrder: Record<string, unknown> = order) {
+    if (url.endsWith("/order-header/sale-context")) return SALE_CONTEXT;
+    if (url.endsWith("/inventory-item/search")) {
+      return { data: [], meta: { page: 1, total: 0, totalPages: 1 } };
+    }
+    return url.includes(`/order-header/${order.id}`) || url.includes(`/order-header/manual/${order.id}`)
+      ? savedOrder
+      : [];
+  }
   beforeEach(() => {
     mockUseSearchParams.mockReturnValue(
       new URLSearchParams(`orderId=${order.id}`) as ReturnType<typeof useSearchParams>,
     );
     mockedAxiosAuth.get.mockImplementation((url: string) => Promise.resolve({
-      data: url.endsWith("/order-header/sale-context") ? SALE_CONTEXT : (url.includes(`/order-header/${order.id}`) || url.includes(`/order-header/manual/${order.id}`)) ? order : [],
+      data: responseData(url),
     }));
+  });
+
+  it("guarda los datos y reabre la misma ficha sin enviar a Leads ni generar comprobante", async () => {
+    mockedAxiosAuth.put.mockResolvedValue({ data: order });
+    renderPage();
+    const save = await screen.findByRole("button", { name: "Guardar datos del pedido" });
+    await waitFor(() => expect(save).toBeEnabled());
+    expect(screen.queryByRole("link", { name: /volver al lead/i })).not.toBeInTheDocument();
+    const shipping = within(fieldByLabel(/^Costo de envío$/)).getByRole("textbox");
+    await userEvent.clear(shipping);
+    await userEvent.type(shipping, "15");
+    await userEvent.click(save);
+
+    expect(await screen.findByRole("dialog", { name: "Ficha del pedido" })).toHaveAttribute("data-order-id", order.id);
+    expect(mockedAxiosAuth.put).toHaveBeenCalledWith(
+      expect.stringContaining(`/order-header/manual/${order.id}/full`),
+      expect.objectContaining({ shippingTotal: 15 }),
+    );
+    expect(mockedAxiosAuth.put.mock.calls[0][1]).not.toHaveProperty("paymentAmount");
+    expect(mockRouterPush).not.toHaveBeenCalled();
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("receipt-open")).not.toBeInTheDocument();
+    expect(confirmCommercialLead).not.toHaveBeenCalled();
+    expect(mockToast.success).toHaveBeenCalledWith("Datos del pedido actualizados correctamente");
+
+    mockedAxiosAuth.get.mockImplementation((url: string) => Promise.resolve({
+      data: responseData(url, { ...order, shippingTotal: 15 }),
+    }));
+    await userEvent.click(screen.getByRole("button", { name: "Editar pedido desde ficha" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Ficha del pedido" })).not.toBeInTheDocument());
+    expect(await within(fieldByLabel(/^Costo de envío$/)).findByDisplayValue("15")).toBeInTheDocument();
+    expect(mockRouterPush).not.toHaveBeenCalled();
+    expect(MOCK_AUTH.setSelectedStore).not.toHaveBeenCalled();
+  });
+
+  it("vuelve a la ficha del mismo pedido sin guardar y al cerrarla regresa a atención al cliente", async () => {
+    renderPage();
+    await screen.findByRole("button", { name: "Guardar datos del pedido" });
+    await userEvent.click(screen.getByRole("button", { name: "Volver" }));
+    expect(await screen.findByRole("dialog", { name: "Ficha del pedido" })).toHaveAttribute("data-order-id", order.id);
+    expect(mockedAxiosAuth.put).not.toHaveBeenCalled();
+    expect(mockRouterPush).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Cerrar ficha del pedido" }));
+    expect(mockRouterPush).toHaveBeenCalledWith("/atencion-cliente");
+  });
+
+  it.each([
+    ["/operaciones/pedidos", "/operaciones/pedidos"],
+    ["//example.com", "/atencion-cliente"],
+  ])("al cerrar la ficha valida el destino de regreso %s", async (returnTo, expected) => {
+    mockUseSearchParams.mockReturnValue(
+      new URLSearchParams({ orderId: order.id, returnTo }) as ReturnType<typeof useSearchParams>,
+    );
+    renderPage();
+    await screen.findByRole("button", { name: "Guardar datos del pedido" });
+    await userEvent.click(screen.getByRole("button", { name: "Volver" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Cerrar ficha del pedido" }));
+    expect(mockRouterPush).toHaveBeenCalledWith(expected);
+  });
+
+  it("conserva el regreso al Lead para pedidos ajenos a Shopify COD", async () => {
+    mockedAxiosAuth.get.mockImplementation((url: string) => Promise.resolve({
+      data: responseData(url, { ...order, canalOrigen: "WEB" }),
+    }));
+    mockedAxiosAuth.put.mockResolvedValue({ data: {} });
+    renderPage();
+    const save = await screen.findByRole("button", { name: "Actualizar venta" });
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+    await waitFor(() => expect(mockRouterPush).toHaveBeenCalledWith(`/leads-comerciales?leadId=${order.commercialLeadId}`));
+    expect(screen.queryByRole("dialog", { name: "Ficha del pedido" })).not.toBeInTheDocument();
   });
 
   it("registra un adelanto desde el pedido y conserva el envío y el DNI sin guardar", async () => {
@@ -1675,7 +1779,7 @@ describe("Pedidos Shopify pendientes — DNI, envío y adelantos", () => {
       paymentDate: "2026-10-22T22:20:00Z", created_at: "2026-10-22T22:20:00Z",
     };
     mockedAxiosAuth.get.mockImplementation((url: string) => Promise.resolve({
-      data: url.endsWith("/order-header/sale-context") ? SALE_CONTEXT : (url.includes(`/order-header/${order.id}`) || url.includes(`/order-header/manual/${order.id}`)) ? { ...order, payments: [saved] } : [],
+      data: responseData(url, { ...order, payments: [saved] }),
     }));
     mockedAxiosAuth.post.mockResolvedValue({ data: saved });
     await userEvent.type(within(dialog).getByLabelText("Monto *"), "30");

@@ -210,6 +210,7 @@ export function CcGestionPanel({
     <div className="border border-border rounded-lg p-4 space-y-3">
       {isLead ? (
         <CcSaleConfirmationPanel
+          embedded
           key={orderId}
           orderId={orderId}
           commercialLeadId={commercialLeadId}
@@ -220,7 +221,7 @@ export function CcGestionPanel({
         />
       ) : commercialStockState === "DEFERRED" ? (
         <p className="text-sm text-muted-foreground">
-          Compra confirmada. Completa el despacho desde Gestión CC.
+          Compra confirmada. Ya puedes confirmar el despacho aquí.
         </p>
       ) : null}
       {/* Header */}

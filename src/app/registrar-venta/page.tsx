@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -102,6 +103,11 @@ import {
 } from "@/utils/commercialOrders";
 
 type ClientSearchState = "idle" | "found" | "not_found" | "error";
+
+const CustomerServiceModal = dynamic(
+  () => import("@/components/modals/CustomerServiceModal"),
+  { ssr: false },
+);
 
 const TONE_CLASSES = {
   violet: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300",
@@ -358,6 +364,7 @@ function RegistrarVentaContent() {
 
   const [receiptOrderId, setReceiptOrderId] = useState("");
   const [receiptOpen, setReceiptOpen] = useState(false);
+  const [customerServiceOpen, setCustomerServiceOpen] = useState(false);
   const [leadPaymentOpen, setLeadPaymentOpen] = useState(false);
   const paymentRefreshRequest = useRef(0);
   const activePaymentsScope = useRef("");
@@ -399,6 +406,8 @@ function RegistrarVentaContent() {
 
   const { auth, hasPermission } = useAuth();
   const usesLeadPayments = !!leadId || orderData?.commercialStage === "LEAD";
+  const isEditingShopifyCodOrder =
+    !!orderId && orderData?.canalOrigen === "shopify_cod";
   const canRecordOrderPayment = hasPermission("CREATE_SALE") || hasPermission("APPROVE_PAYMENTS");
 
   const companyId = auth?.company?.id;
@@ -1199,6 +1208,11 @@ function RegistrarVentaContent() {
           toast.success("Comprobante guardado correctamente. El pedido ya estaba registrado.");
           const savedOrderId = pendingProofUpload.orderId;
           const savedLeadId = pendingProofUpload.commercialLeadId;
+          if (isEditingShopifyCodOrder) {
+            setPendingProofUpload(null);
+            setCustomerServiceOpen(true);
+            return;
+          }
           if (pendingProofUpload.commercialStage === "LEAD") { notifyCommercialChange(companyId, savedLeadId ?? undefined); resetForm(); router.push(savedLeadId ? commercialLeadHref(savedLeadId) : "/leads-comerciales"); return; }
           resetForm();
           if (orderId && returnTo) {
@@ -1577,6 +1591,15 @@ function RegistrarVentaContent() {
           }
 
           const updatedId = orderData.id;
+          if (isEditingShopifyCodOrder) {
+            if (orderData.commercialStage === "LEAD") {
+              notifyCommercialChange(companyId, orderData.commercialLeadId ?? undefined);
+            }
+            toast.success("Datos del pedido actualizados correctamente");
+            setPendingProofUpload(null);
+            setCustomerServiceOpen(true);
+            return;
+          }
           if (orderData.commercialStage === "LEAD") { notifyCommercialChange(companyId, orderData.commercialLeadId ?? undefined); toast.success("Datos del Lead actualizados. La compra sigue pendiente de confirmación."); router.push(orderData.commercialLeadId ? commercialLeadHref(orderData.commercialLeadId) : "/leads-comerciales"); return; }
           toast.success("Venta actualizada correctamente");
           resetForm();
@@ -1914,16 +1937,28 @@ function RegistrarVentaContent() {
         <div className="mx-auto max-w-[1400px] p-6 space-y-6 lg:p-8">
           {/* Header */}
           <div className="flex items-center gap-4">
-            <Link href={returnTo ?? "/ventas"}>
-              <Button variant="outline" size="sm" className="rounded-full">
+            {isEditingShopifyCodOrder ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-full"
+                onClick={() => setCustomerServiceOpen(true)}
+              >
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Volver
               </Button>
-            </Link>
-            <HeaderConfig title={leadId ? "Confirmar compra del Lead" : orderData?.commercialStage === "LEAD" ? "Editar pedido del Lead" : "Registrar pedido"} description={leadId ? "Confirma la compra acordada con el cliente" : "La venta requiere confirmación de compra del vendedor"} />
+            ) : (
+              <Link href={returnTo ?? "/ventas"}>
+                <Button variant="outline" size="sm" className="rounded-full">
+                  <ArrowLeft className="h-4 w-4 mr-1" />
+                  Volver
+                </Button>
+              </Link>
+            )}
+            <HeaderConfig title={leadId ? "Confirmar compra del Lead" : isEditingShopifyCodOrder ? "Editar pedido" : orderData?.commercialStage === "LEAD" ? "Editar pedido del Lead" : "Registrar pedido"} description={leadId ? "Confirma la compra acordada con el cliente" : isEditingShopifyCodOrder ? "Actualiza los datos y continúa en la ficha del pedido" : "La venta requiere confirmación de compra del vendedor"} />
           </div>
 
-          {returnTo && (
+          {returnTo && !isEditingShopifyCodOrder && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-400">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
@@ -2043,7 +2078,13 @@ function RegistrarVentaContent() {
               )}
             </div>
           )}
-          {orderData?.commercialStage === "LEAD" &&
+          {isEditingShopifyCodOrder && orderData?.commercialStage === "LEAD" && (
+            <p role="status" className="rounded-xl border p-4 text-sm">
+              Guarda los datos para continuar con la confirmación desde la ficha
+              del pedido.
+            </p>
+          )}
+          {!isEditingShopifyCodOrder && orderData?.commercialStage === "LEAD" &&
             orderData.commercialLeadId && (
               <p role="status" className="rounded-xl border p-4 text-sm">
                 Este documento pertenece a un Lead. Guardar sus datos no
@@ -3384,7 +3425,7 @@ function RegistrarVentaContent() {
                     ) : pendingProofUpload ? (
                       "Reintentar comprobante"
                     ) : orderId ? (
-                      "Actualizar venta"
+                      isEditingShopifyCodOrder ? "Guardar datos del pedido" : "Actualizar venta"
                     ) : (
                       leadId ? "Confirmar compra" : "Registrar pedido"
                     )}
@@ -3396,6 +3437,20 @@ function RegistrarVentaContent() {
         </div>
         </fieldset>
       </main>
+      {isEditingShopifyCodOrder && orderId && customerServiceOpen && (
+        <CustomerServiceModal
+          open={customerServiceOpen}
+          orderId={orderId}
+          onEditOrder={() => {
+            setCustomerServiceOpen(false);
+            void loadOrder();
+          }}
+          onClose={() => {
+            setCustomerServiceOpen(false);
+            router.push(returnTo ?? "/atencion-cliente");
+          }}
+        />
+      )}
       {orderId && orderData?.commercialStage === "LEAD" && (
         <PaymentVerificationModal
           open={leadPaymentOpen}
