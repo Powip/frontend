@@ -17,7 +17,7 @@ export interface BusinessSalesQuery extends Partial<SalesFilters> {
 }
 
 export interface BusinessSalesOrder extends OrderHeader {
-  /** False for informational customer-service rows; absent preserves older responses. */
+  /** Whether the row belongs to the operational list; this is not mutation authorization. */
   salesOperationalEligible?: boolean;
 }
 

@@ -1,5 +1,5 @@
 "use client";
-import { isCommercialSaleOrder, canOperateCommercialOrder } from "@/utils/commercialOrders";
+import { isCommercialSaleOrder, canShipCommercialOrder, salesPhysicalOperationBlockReason, salesStatusBlockReason } from "@/utils/commercialOrders";
 import { formatSalesMoney } from "@/utils/salesMoney";
 
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
@@ -153,6 +153,8 @@ const ALL_STATUSES: OrderStatus[] = [
 
 export interface Sale extends UnitAssignmentState {
   salesOperationalEligible?: boolean;
+  shopifyCommercialGate?: boolean | null;
+  commercialCommittedAt?: string | null;
   subEstadoCc?: SubEstadoCc | null;
   canalOrigen?: string | null;
   currency?: string | null;
@@ -209,8 +211,8 @@ export interface Sale extends UnitAssignmentState {
 const NO_SALES: Sale[] = [];
 const SalesOrderDetailModal = lazy(() => import("@/components/modals/CustomerServiceModal"));
 
-const isOperationalSale = (sale: Pick<Sale, "salesOperationalEligible">) =>
-  sale.salesOperationalEligible !== false;
+const isCustomerServiceRow = (sale: Pick<Sale, "salesOperationalEligible">) =>
+  sale.salesOperationalEligible === false;
 
 const CC_STATUS_LABELS: Record<SubEstadoCc, string> = {
   por_confirmar: "Por confirmar",
@@ -267,6 +269,8 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
   return {
     id: order.id,
     salesOperationalEligible: order.salesOperationalEligible,
+    shopifyCommercialGate: order.shopifyCommercialGate,
+    commercialCommittedAt: order.commercialCommittedAt,
     subEstadoCc: order.subEstadoCc,
     canalOrigen: order.canalOrigen,
     currency: order.currency, commercialStage: order.commercialStage, commercialLeadId: order.commercialLeadId, commercialStockState: order.commercialStockState,
@@ -328,6 +332,7 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
 
 function VentasContent() {
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
+  const [detailOrderScope, setDetailOrderScope] = useState("");
   const [salesState, setSales] = useState<Sale[]>([]);
   const [loadedSalesScope, setLoadedSalesScope] = useState("");
   const [isExporting, setIsExporting] = useState(false);
@@ -465,9 +470,7 @@ function VentasContent() {
 
   const BULK_ACTION_REPROGRAMAR = "__REPROGRAMAR__";
 
-  const { auth, selectedStoreId, hasPermission } = useAuth();
-  const canViewCustomerService = isSuperadmin(auth?.user?.email) ||
-    ["VIEW_CUSTOMER_SERVICE", "MANAGE_CUSTOMER_SERVICE"].some((permission) => hasPermission?.(permission));
+  const { auth, selectedStoreId } = useAuth();
   const printScope = `${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}`;
   const activePrintScope = useRef(printScope);
   activePrintScope.current = printScope;
@@ -503,6 +506,7 @@ function VentasContent() {
     kpiDateFrom, kpiDateTo,
   };
   const salesScope = JSON.stringify([scopeKey, salesQuery]);
+  const pageSessionScope = `${printScope}:${salesScope}`;
   const sales = loadedSalesScope === salesScope ? salesState : NO_SALES;
   const { data: salesPage, isFetching, isDebouncing, isError: salesError, refetch: refetchPage } = useBusinessSalesPage(storeIds, salesQuery);
   const ordersData = salesPage?.data;
@@ -520,26 +524,25 @@ function VentasContent() {
   const currentBulkSelection = useRef({ ready: bulkSelectionReady, scope: bulkSelectionScope });
   currentBulkSelection.current = { ready: bulkSelectionReady, scope: bulkSelectionScope };
   const canMutateBulkSelection = () => currentBulkSelection.current.ready && currentBulkSelection.current.scope === bulkSelectionScope;
-  // Read the latest page even when a callback was retained by an open dialog.
-  const currentOperationState = useRef({ ready: false, scope: salesScope, sales: new Map<string, Sale>(), eligibleIds: new Set<string>() });
-  currentOperationState.current = {
+  // A row may remain readable during a background refetch; writes need a fresh page.
+  const currentPageState = useRef({ ready: false, scope: pageSessionScope, sales: new Map<string, Sale>() });
+  currentPageState.current = {
     ready: queryReady && loadedSalesScope === salesScope,
-    scope: salesScope,
-    sales: new Map(sales.map((sale) => [sale.id, sale])),
-    eligibleIds: new Set(ordersData?.filter(isOperationalSale).map((order) => order.id)),
+    scope: pageSessionScope,
+    sales: new Map((ordersData ?? []).map((order) => [order.id, mapOrderToSale(order)])),
   };
-  const operationalSale = useCallback((id: string) => {
-    const current = currentOperationState.current;
-    if (!current.ready || current.scope !== salesScope) return undefined;
-    const sale = current.sales.get(id);
-    return sale && isOperationalSale(sale) && current.eligibleIds.has(id) ? sale : undefined;
-  }, [salesScope]);
-  const canOperateIds = (ids: readonly string[]) => ids.length > 0 && ids.every((id) => !!operationalSale(id));
-  const detailOrderIsOperational = !!detailOrderId && !!ordersData?.some((order) => order.id === detailOrderId && isOperationalSale(order));
-  // The detail modal can mutate orders; close it when this page no longer authorizes the row.
+  const visibleSale = useCallback((id: string) => {
+    const current = currentPageState.current;
+    return current.scope === pageSessionScope ? current.sales.get(id) : undefined;
+  }, [pageSessionScope]);
+  const mutationSale = useCallback((id: string) => currentPageState.current.ready ? visibleSale(id) : undefined, [visibleSale]);
+  const canMutateIds = (ids: readonly string[]) => ids.length > 0 && ids.every((id) => !!mutationSale(id));
+  const canReadIds = (ids: readonly string[]) => ids.length > 0 && ids.every((id) => !!visibleSale(id));
+  const canFulfillIds = (ids: readonly string[]) => canMutateIds(ids) && ids.every((id) => !salesPhysicalOperationBlockReason(mutationSale(id)!));
+  const detailOrderIsVisible = !!detailOrderId && detailOrderScope === pageSessionScope && !!visibleSale(detailOrderId);
   useEffect(() => {
-    if (detailOrderId && !detailOrderIsOperational) setDetailOrderId(null);
-  }, [detailOrderId, detailOrderIsOperational]);
+    if (detailOrderId && !detailOrderIsVisible) setDetailOrderId(null);
+  }, [detailOrderId, detailOrderIsVisible]);
   const todasLoading = ventas.todas.loading;
   const todasError = ventas.todas.error;
   const invalidateBusinessData = useInvalidateBusinessData();
@@ -570,14 +573,14 @@ function VentasContent() {
     if (selectedSales.length === 0) return [];
 
     // Si hay alguna anulada, no permitimos cambios masivos
-    if (selectedSales.some((s) => s.status === "ANULADO" || !isOperationalSale(s))) return [];
+    if (selectedSales.some((s) => s.status === "ANULADO")) return [];
 
     let intersection: OrderStatus[] = [];
 
     selectedSales.forEach((sale, index) => {
       const nextStatuses = (ORDER_STATUS_FLOW as any)[sale.status] || [];
       const filteredNext = nextStatuses.filter(
-        (s: OrderStatus) => s !== "ANULADO",
+        (s: OrderStatus) => s !== "ANULADO" && !salesStatusBlockReason(sale, s),
       );
 
       if (index === 0) {
@@ -602,7 +605,7 @@ function VentasContent() {
     const mappedSales = sorted.map(mapOrderToSale);
     setSales(mappedSales);
     setLoadedSalesScope(salesScope);
-    const visibleIds = new Set(mappedSales.filter(isOperationalSale).map((sale) => sale.id));
+    const visibleIds = new Set(mappedSales.map((sale) => sale.id));
     setSelectedPendientesIds((ids) => new Set([...ids].filter((id) => visibleIds.has(id))));
     setSelectedAnuladosIds((ids) => new Set([...ids].filter((id) => visibleIds.has(id))));
     setSelectedTodasIds((ids) => new Set([...ids].filter((id) => visibleIds.has(id))));
@@ -640,9 +643,10 @@ function VentasContent() {
     orderId: string,
     payload: Record<string, unknown>,
   ) => {
-    const sale = operationalSale(orderId);
-    if (!sale) throw new Error("Este pedido se gestiona desde Atención al cliente.");
-    const blocked = sale && assignmentBlockReason(sale, typeof payload.status === "string" ? payload.status : "");
+    const sale = mutationSale(orderId);
+    if (!sale) throw new Error("Vuelve a cargar el pedido antes de actualizarlo.");
+    const targetStatus = typeof payload.status === "string" ? payload.status : "";
+    const blocked = salesStatusBlockReason(sale, targetStatus) || assignmentBlockReason(sale, targetStatus);
     if (blocked) throw new Error(blocked);
     await axiosAuth.patch(
       saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", orderId, sale),
@@ -651,14 +655,21 @@ function VentasContent() {
   };
 
   const handleCreateGuide = async (guidesData: CreateGuideData[]) => {
-    if (!canOperateIds(guidesData.flatMap((guide) => guide.orderIds))) return false;
+    if (!canMutateIds(guidesData.flatMap((guide) => guide.orderIds))) return false;
+    for (const id of guidesData.flatMap((guide) => guide.orderIds)) {
+      const sale = mutationSale(id)!;
+      const blocked = salesStatusBlockReason(sale, "ASIGNADO_A_GUIA") || assignmentBlockReason(sale, "ASIGNADO_A_GUIA");
+      if (blocked || !canShipCommercialOrder(sale)) { toast.error(blocked || "Esta venta no requiere una guía física."); return false; }
+    }
     setIsCreatingGuide(true);
     try {
       for (const guideData of guidesData) {
         for (const id of guideData.orderIds) {
-          const sale = sales.find((entry) => entry.id === id);
-          const blocked = sale && assignmentBlockReason(sale, "ASIGNADO_A_GUIA");
+          const sale = mutationSale(id);
+          if (!sale) throw new Error("Vuelve a cargar el pedido antes de crear la guía.");
+          const blocked = salesStatusBlockReason(sale, "ASIGNADO_A_GUIA") || assignmentBlockReason(sale, "ASIGNADO_A_GUIA");
           if (blocked) throw new Error(blocked);
+          if (!canShipCommercialOrder(sale)) throw new Error("Esta venta no requiere una guía física.");
         }
         const guideResponse = await axiosAuth.post(
           `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides`,
@@ -690,11 +701,12 @@ function VentasContent() {
     newStatus: OrderStatus,
     cancellationReason?: CancellationReason,
   ) => {
-    const selectedCommercial = operationalSale(saleId);
+    const selectedCommercial = mutationSale(saleId);
     if (!selectedCommercial) return;
-    if (selectedCommercial && !canOperateCommercialOrder(selectedCommercial) && newStatus !== "ANULADO") { toast.error("Prepara la compra desde el Lead antes de operar el pedido."); return; }
+    const blocked = salesStatusBlockReason(selectedCommercial, newStatus);
+    if (blocked) { toast.error(blocked); return; }
     if (await routeSaleLifecycle(sales.find((sale) => sale.id === saleId), newStatus, (action) => setLifecycle({ orderId: saleId, action }))) return;
-    if (!operationalSale(saleId)) return;
+    if (!mutationSale(saleId)) return;
 
     // Si el nuevo estado es ANULADO y no hay motivo, abrir modal
     if (newStatus === "ANULADO" && !cancellationReason) {
@@ -720,7 +732,7 @@ function VentasContent() {
       refetchOrders();
     } catch (error) {
       console.error("Error actualizando estado", error);
-      toast.error(error instanceof Error ? error.message : "No se pudo actualizar el estado");
+      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message || (error instanceof Error ? error.message : "No se pudo actualizar el estado"));
     }
   };
 
@@ -728,13 +740,13 @@ function VentasContent() {
     reason: CancellationReason,
     notes?: string,
   ) => {
-    if (!saleToCancel || !operationalSale(saleToCancel.id)) return;
+    if (!saleToCancel || !mutationSale(saleToCancel.id)) return;
     if (await routeSaleLifecycle(sales.find((sale) => sale.id === saleToCancel.id) ?? saleToCancel, "ANULADO", (action) => {
       setCancellationModalOpen(false);
       setSaleToCancel(null);
       setLifecycle({ orderId: saleToCancel.id, action });
     })) return;
-    if (!operationalSale(saleToCancel.id)) return;
+    if (!mutationSale(saleToCancel.id)) return;
 
     setIsCancelling(true);
     try {
@@ -760,7 +772,7 @@ function VentasContent() {
   };
 
   const toggleSale = (id: string) => {
-    if (!operationalSale(id)) return;
+    if (!mutationSale(id)) return;
     const next = new Set(selectedSaleIds);
     if (next.has(id)) {
       next.delete(id);
@@ -771,7 +783,7 @@ function VentasContent() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!operationalSale(id)) return;
+    if (!mutationSale(id)) return;
     try {
       await axiosAuth.delete(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${id}`,
@@ -880,9 +892,9 @@ Estado: ${sale.status}
       toast.warning("No hay pedidos seleccionados para imprimir");
       return;
     }
-    if (!canOperateIds(Array.from(selectedSaleIds))) return;
+    if (!canMutateIds(Array.from(selectedSaleIds))) return;
 
-    const blocked = selectedPendientes.map((sale) => assignmentBlockReason(sale, "PREPARADO")).find(Boolean);
+    const blocked = selectedPendientes.map((sale) => salesStatusBlockReason(sale, "PREPARADO") || assignmentBlockReason(sale, "PREPARADO")).find(Boolean);
     if (blocked) { toast.error(blocked); return; }
     setPendingPrintSales(selectedPendientes);
     setPendingPrintScope(printScope);
@@ -890,20 +902,23 @@ Estado: ${sale.status}
   };
 
   const fetchPrintReceipt = useCallback(async (sale: { id: string } & UnitAssignmentState) => {
-    if (!operationalSale(sale.id)) throw new Error("Este pedido se gestiona desde Atención al cliente.");
+    const currentSale = mutationSale(sale.id);
+    if (!currentSale) throw new Error("Vuelve a cargar el pedido antes de imprimirlo.");
+    const blocked = salesPhysicalOperationBlockReason(currentSale);
+    if (blocked) throw new Error(blocked);
     const epoch = printEpoch.current;
     const res = await axiosAuth.get<ReceiptData>(
-      saleReceiptUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", sale.id, sale),
+      saleReceiptUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", sale.id, currentSale),
     );
     if (printScope !== activePrintScope.current || epoch !== printEpoch.current)
       throw new Error("La sesión cambió. Vuelve a abrir la vista previa.");
     if (res.data?.orderId !== sale.id) throw new Error("El comprobante no corresponde al pedido seleccionado.");
     return res.data;
-  }, [printScope, operationalSale]);
+  }, [printScope, mutationSale]);
 
   // Confirmar impresión y cambiar estados
   const handleConfirmPrint = async () => {
-    if (pendingPrintSales.length === 0 || pendingPrintScope !== printScope || !canOperateIds(pendingPrintSales.map((sale) => sale.id))) return;
+    if (pendingPrintSales.length === 0 || pendingPrintScope !== printScope || !canFulfillIds(pendingPrintSales.map((sale) => sale.id))) return;
     const epoch = printEpoch.current;
     const isCurrent = () => epoch === printEpoch.current && printScope === activePrintScope.current;
 
@@ -916,13 +931,14 @@ Estado: ${sale.status}
     setOrdersWithStockIssue(issues);
 
     for (const sale of pendingPrintSales) {
-      if (!isCurrent() || !operationalSale(sale.id)) { setIsPrinting(false); return; }
+      const currentSale = mutationSale(sale.id);
+      if (!isCurrent() || !currentSale) { setIsPrinting(false); return; }
       const newStatus = "PREPARADO";
       try {
-        const blocked = assignmentBlockReason(sale, newStatus);
+        const blocked = salesStatusBlockReason(currentSale, newStatus) || assignmentBlockReason(currentSale, newStatus);
         if (blocked) throw new Error(blocked);
         await axiosAuth.patch(
-          saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", sale.id, sale),
+          saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", sale.id, currentSale),
           { status: newStatus, ...getUserInfo() },
         );
         successCount++;
@@ -966,7 +982,7 @@ Estado: ${sale.status}
       toast.warning("No hay pedidos seleccionados para imprimir");
       return;
     }
-    if (!canOperateIds(selectedSales.map((sale) => sale.id))) return;
+    if (!canReadIds(selectedSales.map((sale) => sale.id))) return;
 
     // Abrir la ventana ANTES de cualquier await: si se abre después de
     // esperar las requests de abajo, el navegador la bloquea en silencio.
@@ -978,7 +994,7 @@ Estado: ${sale.status}
     printWindows.current.add(printWindow);
     const epoch = printEpoch.current;
     const isPrintSessionCurrent = () => epoch === printEpoch.current && printScope === activePrintScope.current;
-    const isCurrent = () => isPrintSessionCurrent() && canOperateIds(selectedSales.map((sale) => sale.id));
+    const isCurrent = () => isPrintSessionCurrent() && canReadIds(selectedSales.map((sale) => sale.id));
 
     setIsPrinting(true);
     toast.info(`Preparando ${selectedSales.length} recibo(s) para imprimir...`);
@@ -986,9 +1002,10 @@ Estado: ${sale.status}
     try {
       const receipts = await Promise.all(
         selectedSales.map(async (sale) => {
-          if (!operationalSale(sale.id)) throw new Error("Este pedido se gestiona desde Atención al cliente.");
+          const currentSale = visibleSale(sale.id);
+          if (!currentSale) throw new Error("Vuelve a cargar el pedido antes de imprimirlo.");
           const res = await axiosAuth.get<ReceiptData>(
-            saleReceiptUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", sale.id, sale),
+            saleReceiptUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", sale.id, currentSale),
           );
           if (res.data?.orderId !== sale.id) throw new Error("El comprobante no corresponde al pedido seleccionado.");
           return res.data;
@@ -996,7 +1013,7 @@ Estado: ${sale.status}
       );
 
       // Imprimir usando la utilidad compartida (formato compacto con QR)
-      if (!isCurrent() || !canOperateIds(selectedSales.map((sale) => sale.id))) { printWindow.close(); return; }
+      if (!isCurrent()) { printWindow.close(); return; }
       await printReceipts(receipts, auth?.company, printWindow, isCurrent);
       if (!isCurrent()) return;
 
@@ -1017,7 +1034,7 @@ Estado: ${sale.status}
     if (!canMutateBulkSelection()) return;
     const selectedIds = Array.from(selectedSaleIds);
     if (selectedIds.length === 0) return;
-    if (!canOperateIds(selectedIds)) return;
+    if (!canMutateIds(selectedIds)) return;
 
     if (newStatus === "ANULADO") {
       toast.error(
@@ -1026,12 +1043,17 @@ Estado: ${sale.status}
       return;
     }
 
-    for (const sale of sales.filter((entry) => selectedSaleIds.has(entry.id))) {
+    for (const id of selectedIds) {
+      const sale = mutationSale(id);
+      if (!sale) return;
+      const blocked = salesStatusBlockReason(sale, newStatus);
+      if (blocked) { toast.error(blocked); return; }
       if (await routeSaleLifecycle(sale, newStatus, () => toast.error("Reactiva las ventas con IMEI/series individualmente para seleccionar y confirmar sus unidades."))) return;
     }
-    if (!canMutateBulkSelection() || !canOperateIds(selectedIds)) return;
+    if (!canMutateBulkSelection() || !canMutateIds(selectedIds)) return;
 
-    const blocked = sales.filter((sale) => selectedSaleIds.has(sale.id)).map((sale) => assignmentBlockReason(sale, newStatus)).find(Boolean);
+    const selectedSales = selectedIds.map((id) => mutationSale(id)!);
+    const blocked = selectedSales.map((sale) => salesStatusBlockReason(sale, newStatus) || assignmentBlockReason(sale, newStatus)).find(Boolean);
     if (blocked) { toast.error(blocked); return; }
     setIsBulkLoading(true);
     const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
@@ -1051,7 +1073,7 @@ Estado: ${sale.status}
           : undefined,
         undefined,
         undefined,
-        new Set(sales.filter(requiresAuthenticatedSaleMutation).map((sale) => sale.id)),
+        new Set(selectedSales.filter(requiresAuthenticatedSaleMutation).map((sale) => sale.id)),
       );
 
       if (result.success.length > 0) {
@@ -1083,7 +1105,7 @@ Estado: ${sale.status}
     if (!canMutateBulkSelection()) return;
     const selectedIds = Array.from(selectedSaleIds);
     if (selectedIds.length === 0) return;
-    if (!canOperateIds(selectedIds)) return;
+    if (!canMutateIds(selectedIds)) return;
 
     const callbackAt = callbackAtDate.toISOString();
     setIsBulkLoading(true);
@@ -1122,7 +1144,7 @@ Estado: ${sale.status}
     saleId: string,
     callbackAt: Date,
   ) => {
-    if (!operationalSale(saleId)) return;
+    if (!mutationSale(saleId)) return;
     try {
       await axiosAuth.patch(
         saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", saleId, sales.find((sale) => sale.id === saleId)),
@@ -1139,7 +1161,7 @@ Estado: ${sale.status}
     }
   };
 
-  const bulkExtraActions: BulkExtraAction[] = canOperateIds(Array.from(selectedSaleIds)) ? [
+  const bulkExtraActions: BulkExtraAction[] = canMutateIds(Array.from(selectedSaleIds)) ? [
     {
       value: BULK_ACTION_REPROGRAMAR,
       label: "Reprogramar",
@@ -1148,7 +1170,7 @@ Estado: ${sale.status}
   ] : [];
 
   const handleBulkExtraAction = (actionValue: string) => {
-    if (!canMutateBulkSelection() || !canOperateIds(Array.from(selectedSaleIds))) return;
+    if (!canMutateBulkSelection() || !canMutateIds(Array.from(selectedSaleIds))) return;
     if (actionValue === BULK_ACTION_REPROGRAMAR) setBulkRescheduleOpen(true);
   };
 
@@ -1223,7 +1245,7 @@ Estado: ${sale.status}
 
   // Save tracking fields for an order - only if changed
   const handleSaveTracking = async (orderId: string) => {
-    if (!operationalSale(orderId)) return;
+    if (!mutationSale(orderId)) return;
     if (!hasTrackingChanges(orderId)) return;
 
     const data = trackingEdits[orderId];
@@ -1265,7 +1287,7 @@ Estado: ${sale.status}
   };
 
   const handleEnviarLima = async (saleId: string) => {
-    if (!operationalSale(saleId)) return;
+    if (!mutationSale(saleId)) return;
     setSendingLimaId(saleId);
     try {
       await enviarPedidoALima(saleId);
@@ -1279,7 +1301,7 @@ Estado: ${sale.status}
   };
 
   const handleReassignSeller = async (sellerId: string, sellerName: string) => {
-    if (!saleToReassign || !operationalSale(saleToReassign.id)) return;
+    if (!saleToReassign || !mutationSale(saleToReassign.id)) return;
     setIsReassigningLoading(true);
     try {
       await reassignSeller(
@@ -1319,16 +1341,16 @@ Estado: ${sale.status}
             <TableHead className="w-9 min-w-9 2xl:sticky 2xl:left-0 2xl:z-20 bg-muted" />
             <TableHead className="w-[45px] min-w-[45px] 2xl:sticky 2xl:left-9 2xl:z-20 bg-muted">
               <Checkbox
-                disabled={!queryReady || !data.some(isOperationalSale)}
+                disabled={!queryReady || data.length === 0}
                 checked={
-                  data.some(isOperationalSale) &&
-                  data.filter(isOperationalSale).every((s) => selectedSaleIds.has(s.id))
+                  data.length > 0 &&
+                  data.every((s) => selectedSaleIds.has(s.id))
                 }
                 onCheckedChange={(checked) => {
                   if (checked) {
-                    if (!canOperateIds(data.filter(isOperationalSale).map((sale) => sale.id))) return;
+                    if (!canMutateIds(data.map((sale) => sale.id))) return;
                     const next = new Set(selectedSaleIds);
-                    data.filter(isOperationalSale).forEach((s) => next.add(s.id));
+                    data.forEach((s) => next.add(s.id));
                     setSelectedIdsForActiveTab(next);
                   } else {
                     const next = new Set(selectedSaleIds);
@@ -1395,7 +1417,7 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:left-9 w-[45px] min-w-[45px] 2xl:z-10 bg-background">
                     <Checkbox
-                      disabled={!queryReady || !isOperationalSale(sale)}
+                      disabled={!queryReady}
                       checked={selectedSaleIds.has(sale.id)}
                       onCheckedChange={() => toggleSale(sale.id)}
                     />
@@ -1503,7 +1525,7 @@ Estado: ${sale.status}
                   <TableCell className="text-xs">
                     <span className="inline-flex items-center gap-1">
                       <span>{sale.sellerName || "—"}</span>
-                      {isOperationalSale(sale) && <button
+                      <button
                         title="Reasignar vendedor"
                         className="text-muted-foreground hover:text-foreground transition-colors"
                         onClick={() => {
@@ -1512,7 +1534,7 @@ Estado: ${sale.status}
                         }}
                       >
                         <UserPen className="h-3 w-3" />
-                      </button>}
+                      </button>
                     </span>
                   </TableCell>
                   <TableCell>
@@ -1523,12 +1545,12 @@ Estado: ${sale.status}
                   </TableCell>
                   {/* Columnas fijas derecha (Estado siempre visible para poder cambiarlo) */}
                   <TableCell className="2xl:sticky 2xl:right-[240px] w-[68px] min-w-[68px] 2xl:w-[150px] 2xl:min-w-[150px] 2xl:z-10 bg-background border-l">
-                    {isOperationalSale(sale) ? <StatusSelect
+                    <StatusSelect
                       status={sale.status}
                       options={getAvailableStatuses(
                         sale.status,
                         sale.salesRegion,
-                      ).filter((status) => status === sale.status || !assignmentBlockReason(sale, status))}
+                      ).filter((status) => status === sale.status || (!salesStatusBlockReason(sale, status) && !assignmentBlockReason(sale, status)))}
                       extraAction={{
                         value: "__REPROGRAMAR__",
                         label: "Reprogramar",
@@ -1536,34 +1558,30 @@ Estado: ${sale.status}
                       onStatusChange={(status) =>
                         handleChangeStatus(sale.id, status)
                       }
-                      onExtraAction={() => { if (operationalSale(sale.id)) setRescheduleDialogSaleId(sale.id); }}
-                    /> : (
-                      <span className="inline-flex rounded-md bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+                      onExtraAction={() => { if (mutationSale(sale.id)) setRescheduleDialogSaleId(sale.id); }}
+                    />
+                    {isCustomerServiceRow(sale) && (
+                      <span className="mt-1 inline-flex rounded-md bg-violet-50 px-2 py-1 text-[10px] font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
                         En Atención · {sale.subEstadoCc ? CC_STATUS_LABELS[sale.subEstadoCc] : "En gestión"}
                       </span>
                     )}
-                    {isOperationalSale(sale) && <ReprogramadoChip sale={sale} />}
+                    {salesPhysicalOperationBlockReason(sale) && <p className="mt-1 text-[10px] text-muted-foreground">{salesPhysicalOperationBlockReason(sale)}</p>}
+                    <ReprogramadoChip sale={sale} />
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-[140px] w-[100px] min-w-[100px] 2xl:z-10 bg-background">
-                    {isOperationalSale(sale) ? (
                       <Button
                         type="button"
                         variant="outline"
                         className={orderDetailButtonClassName}
                         aria-label={`Ver detalle del pedido ${sale.orderNumber}`}
-                        onClick={() => { if (operationalSale(sale.id)) setDetailOrderId(sale.id); }}
+                        onClick={() => { if (visibleSale(sale.id)) { setDetailOrderScope(pageSessionScope); setDetailOrderId(sale.id); } }}
                       >
                         <FileText className="h-3.5 w-3.5" aria-hidden="true" />
                         Ver
                       </Button>
-                    ) : canViewCustomerService ? (
-                      <Link href="/atencion-cliente" className="text-xs font-medium text-violet-700 underline underline-offset-2 dark:text-violet-300">
-                        Atención al cliente
-                      </Link>
-                    ) : <span className="text-xs text-muted-foreground">En Atención</span>}
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-0 w-[140px] min-w-[140px] 2xl:z-10 bg-background text-right">
-                    {isOperationalSale(sale) && <div className="flex gap-1 justify-end">
+                    <div className="flex gap-1 justify-end">
                       <Button
                         size="icon"
                         variant="outline"
@@ -1627,7 +1645,7 @@ Estado: ${sale.status}
                           )}
                         </Button>
                       )}
-                    </div>}
+                    </div>
                   </TableCell>
                 </TableRow>
                 {isExpanded && (
@@ -1635,7 +1653,7 @@ Estado: ${sale.status}
                     key={`${sale.id}-details`}
                     sale={sale}
                     colSpan={PENDIENTES_COLSPAN}
-                    showTracking={showTracking && isOperationalSale(sale)}
+                    showTracking={showTracking}
                     trackingEdits={trackingEdits}
                     savingOrderId={savingOrderId}
                     updateTrackingField={updateTrackingField}
@@ -1672,16 +1690,16 @@ Estado: ${sale.status}
             <TableHead className="w-9 min-w-9 2xl:sticky 2xl:left-0 2xl:z-20 bg-muted" />
             <TableHead className="w-[45px] min-w-[45px] 2xl:sticky 2xl:left-9 2xl:z-20 bg-muted">
               <Checkbox
-                disabled={!queryReady || !data.some(isOperationalSale)}
+                disabled={!queryReady || data.length === 0}
                 checked={
-                  data.some(isOperationalSale) &&
-                  data.filter(isOperationalSale).every((s) => selectedSaleIds.has(s.id))
+                  data.length > 0 &&
+                  data.every((s) => selectedSaleIds.has(s.id))
                 }
                 onCheckedChange={(checked) => {
                   if (checked) {
-                    if (!canOperateIds(data.filter(isOperationalSale).map((sale) => sale.id))) return;
+                    if (!canMutateIds(data.map((sale) => sale.id))) return;
                     const next = new Set(selectedSaleIds);
-                    data.filter(isOperationalSale).forEach((s) => next.add(s.id));
+                    data.forEach((s) => next.add(s.id));
                     setSelectedIdsForActiveTab(next);
                   } else {
                     const next = new Set(selectedSaleIds);
@@ -1745,7 +1763,7 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:left-9 w-[45px] min-w-[45px] 2xl:z-10 bg-background">
                     <Checkbox
-                      disabled={!queryReady || !isOperationalSale(sale)}
+                      disabled={!queryReady}
                       checked={selectedSaleIds.has(sale.id)}
                       onCheckedChange={() => toggleSale(sale.id)}
                     />
@@ -1783,7 +1801,7 @@ Estado: ${sale.status}
                   <TableCell className="text-xs">
                     <span className="inline-flex items-center gap-1">
                       <span>{sale.sellerName || "—"}</span>
-                      {isOperationalSale(sale) && <button
+                      <button
                         title="Reasignar vendedor"
                         className="text-muted-foreground hover:text-foreground transition-colors"
                         onClick={() => {
@@ -1792,7 +1810,7 @@ Estado: ${sale.status}
                         }}
                       >
                         <UserPen className="h-3 w-3" />
-                      </button>}
+                      </button>
                     </span>
                   </TableCell>
                   <TableCell>
@@ -1817,25 +1835,19 @@ Estado: ${sale.status}
                     />
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-[140px] w-[100px] min-w-[100px] 2xl:z-10 bg-background">
-                    {isOperationalSale(sale) ? (
                       <Button
                         type="button"
                         variant="outline"
                         className={orderDetailButtonClassName}
                         aria-label={`Ver detalle del pedido ${sale.orderNumber}`}
-                        onClick={() => { if (operationalSale(sale.id)) setDetailOrderId(sale.id); }}
+                        onClick={() => { if (visibleSale(sale.id)) { setDetailOrderScope(pageSessionScope); setDetailOrderId(sale.id); } }}
                       >
                         <FileText className="h-3.5 w-3.5" aria-hidden="true" />
                         Ver
                       </Button>
-                    ) : canViewCustomerService ? (
-                      <Link href="/atencion-cliente" className="text-xs font-medium text-violet-700 underline underline-offset-2 dark:text-violet-300">
-                        Atención al cliente
-                      </Link>
-                    ) : <span className="text-xs text-muted-foreground">En Atención</span>}
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-0 w-[140px] min-w-[140px] 2xl:z-10 bg-background text-right">
-                    {isOperationalSale(sale) && <div className="flex gap-1 justify-end">
+                    <div className="flex gap-1 justify-end">
                       <Button
                         size="icon"
                         variant="outline"
@@ -1867,7 +1879,7 @@ Estado: ${sale.status}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
-                    </div>}
+                    </div>
                   </TableCell>
                 </TableRow>
                 {isExpanded && (
@@ -1875,7 +1887,7 @@ Estado: ${sale.status}
                     key={`${sale.id}-details`}
                     sale={sale}
                     colSpan={ANULADOS_COLSPAN}
-                    showTracking={showTracking && isOperationalSale(sale)}
+                    showTracking={showTracking}
                     trackingEdits={trackingEdits}
                     savingOrderId={savingOrderId}
                     updateTrackingField={updateTrackingField}
@@ -2451,7 +2463,7 @@ Estado: ${sale.status}
           </Tabs>
         </main>
 
-        {detailOrderId && detailOrderIsOperational && (
+        {detailOrderId && detailOrderIsVisible && (
           <Suspense fallback={null}>
             <SalesOrderDetailModal
               open
@@ -2459,12 +2471,12 @@ Estado: ${sale.status}
               onClose={() => setDetailOrderId(null)}
               onOrderUpdated={refetchOrders}
               showTracking
-              onOpenCreateGuide={(order) => { if (operationalSale(order.id)) setCreateGuideOrder(order); }}
+              onOpenCreateGuide={(order) => { if (mutationSale(order.id)) setCreateGuideOrder(order); }}
             />
           </Suspense>
         )}
 
-        {createGuideOrder && operationalSale(createGuideOrder.id) && (
+        {createGuideOrder && mutationSale(createGuideOrder.id) && (
           <CreateGuideModal
             open={!!createGuideOrder}
             onClose={() => setCreateGuideOrder(null)}
@@ -2490,7 +2502,7 @@ Estado: ${sale.status}
         )}
 
         <CancellationModal
-          open={cancellationModalOpen && !!saleToCancel && !!operationalSale(saleToCancel.id)}
+          open={cancellationModalOpen && !!saleToCancel && !!mutationSale(saleToCancel.id)}
           onClose={() => {
             setCancellationModalOpen(false);
             setSaleToCancel(null);
@@ -2501,7 +2513,7 @@ Estado: ${sale.status}
         />
 
         <CommentsTimelineModal
-          open={commentsModalOpen && !!selectedSaleForComments && !!operationalSale(selectedSaleForComments.id)}
+          open={commentsModalOpen && !!selectedSaleForComments && !!mutationSale(selectedSaleForComments.id)}
           onClose={() => {
             setCommentsModalOpen(false);
             setSelectedSaleForComments(null);
@@ -2511,7 +2523,7 @@ Estado: ${sale.status}
         />
 
         <PaymentVerificationModal
-          open={paymentModalOpen && !!selectedSaleForPayment && !!operationalSale(selectedSaleForPayment.id)}
+          open={paymentModalOpen && !!selectedSaleForPayment && !!mutationSale(selectedSaleForPayment.id)}
           onClose={() => {
             setPaymentModalOpen(false);
             setSelectedSaleForPayment(null);
@@ -2521,11 +2533,11 @@ Estado: ${sale.status}
           onPaymentUpdated={refetchOrders}
         />
 
-        {lifecycle && operationalSale(lifecycle.orderId) && <SaleUnitLifecycleModal open {...lifecycle} onClose={() => setLifecycle(null)} onUpdated={refetchOrders} />}
+        {lifecycle && mutationSale(lifecycle.orderId) && <SaleUnitLifecycleModal open {...lifecycle} onClose={() => setLifecycle(null)} onUpdated={refetchOrders} />}
         <BulkPrintPreviewDialog
           key={printScope}
           scopeKey={printScope}
-          open={printPreviewOpen && pendingPrintScope === printScope && canOperateIds(pendingPrintSales.map((sale) => sale.id))}
+          open={printPreviewOpen && pendingPrintScope === printScope && canMutateIds(pendingPrintSales.map((sale) => sale.id))}
           orders={pendingPrintSales}
           company={auth?.company}
           fetchReceipt={fetchPrintReceipt}
@@ -2608,7 +2620,7 @@ Estado: ${sale.status}
         />}
 
         <RescheduleDialog
-          open={rescheduleDialogSaleId !== null && !!operationalSale(rescheduleDialogSaleId)}
+          open={rescheduleDialogSaleId !== null && !!mutationSale(rescheduleDialogSaleId)}
           onOpenChange={(open) => {
             if (!open) setRescheduleDialogSaleId(null);
           }}
@@ -2631,7 +2643,7 @@ Estado: ${sale.status}
 
         {saleToReassign && (
           <ReassignSellerModal
-            open={reassignSellerModalOpen && !!operationalSale(saleToReassign.id)}
+            open={reassignSellerModalOpen && !!mutationSale(saleToReassign.id)}
             onClose={() => {
               setReassignSellerModalOpen(false);
               setSaleToReassign(null);

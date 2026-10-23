@@ -401,7 +401,7 @@ describe("VentasPage — Anuladas y Todas por período", () => {
 });
 
 describe("VentasPage — Anuladas, Todas y Pendientes antiguos no muestran ni usan una lista a medio bajar", () => {
-  it("solicita CC sin ampliar la página y bloquea callbacks retenidos si un pedido vuelve a Atención", async () => {
+  it("solicita CC sin ampliar la página y bloquea callbacks físicos si Shopify pierde su confirmación", async () => {
     const order: BusinessSalesOrder = { ...RECIENTE, salesOperationalEligible: true };
     overrides.todas = { orders: [order] };
     counts.todas = 4;
@@ -414,13 +414,17 @@ describe("VentasPage — Anuladas, Todas y Pendientes antiguos no muestran ni us
     act(() => previousActions.onExtraAction("__REPROGRAMAR__"));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
-    overrides.todas = { orders: [{ ...order, subEstadoCc: "entrega_lima", salesOperationalEligible: false } as BusinessSalesOrder] };
+    overrides.todas = { orders: [{ ...order, externalSource: "shopify", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0, subEstadoCc: "por_confirmar", salesOperationalEligible: false } as BusinessSalesOrder] };
     rerender(<VentasPage />);
-    expect(screen.getByText("En Atención · Por coordinar")).toBeInTheDocument();
-    expect(within(screen.getByText("ORD-101").closest("tr")!).getByRole("checkbox", { hidden: true })).toBeDisabled();
+    expect(screen.getByText("En Atención · Por confirmar")).toBeInTheDocument();
+    expect(within(screen.getByText("ORD-101").closest("tr")!).getByRole("checkbox", { hidden: true })).toBeEnabled();
     await act(async () => { await previousActions.onStatusChange("PREPARADO"); });
-    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Confirmar" }));
     expect(processBulkStatusChange).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Confirmar" }));
+    await waitFor(() => expect(processBulkStatusChange).toHaveBeenCalledWith(
+      ["o-101"], undefined, expect.any(String), undefined, 10,
+      expect.objectContaining({ userId: "user-1" }), "SCHEDULED", expect.any(String), expect.any(Set),
+    ));
     expect(jest.mocked(useBusinessSalesPage).mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({ includeCustomerService: true, tab: "todas", limit: 10 }));
   });
 

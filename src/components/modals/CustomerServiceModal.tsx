@@ -1,7 +1,7 @@
 ﻿"use client";
 import { canManageCustomerServiceOrder } from "@/utils/customerServiceOrderAccess";
 import axios from "@/lib/axiosAuth";
-import { isCommercialLeadOrder } from "@/utils/commercialOrders";
+import { canShipCommercialOrder, isCommercialLeadOrder, salesStatusBlockReason } from "@/utils/commercialOrders";
 import { formatSalesMoney } from "@/utils/salesMoney";
 import { buildPendingOrderDetail } from "./customerServiceOrderDetail";
 import { CcSaleConfirmationPanel } from "@/components/atencion-cliente/cc-v2/CcSaleConfirmationPanel";
@@ -396,7 +396,7 @@ export default function CustomerServiceModal({
       throw new Error("Vuelve a cargar el pedido antes de actualizarlo.");
     }
     const targetStatus = typeof data.status === "string" ? data.status : "";
-    const blocked = assignmentBlockReason(orderHeader, targetStatus);
+    const blocked = salesStatusBlockReason(orderHeader, targetStatus) || assignmentBlockReason(orderHeader, targetStatus);
     if (blocked) {
       toast.error(blocked);
       return false;
@@ -687,7 +687,7 @@ export default function CustomerServiceModal({
       if (!operation.isCurrent?.()) return;
 
       // El cobro completo todavía no equivale a la preparación del paquete.
-      if (receipt.status === "PENDIENTE" || receipt.status === "PAGADO") {
+      if ((receipt.status === "PENDIENTE" || receipt.status === "PAGADO") && !salesStatusBlockReason(orderHeader ?? {}, "PREPARADO")) {
         setPrintConfirmation({ key: receiptKey, orderId: receipt.orderId, stockVersion: receipt.stockVersion, status: receipt.status });
       }
     } finally { operation.release(); }
@@ -751,6 +751,8 @@ export default function CustomerServiceModal({
 
   const handleChangeStatus = async (newStatus: OrderStatus) => {
     if (!receipt || isCommercialLeadOrder(orderHeader ?? {}) || newStatus === receipt.status) return;
+    const blocked = salesStatusBlockReason(orderHeader ?? {}, newStatus);
+    if (blocked) { toast.error(blocked); return; }
     if (await routeSaleLifecycle(orderHeader, newStatus, setLifecycleAction)) return;
     if (newStatus === "ANULADO") {
       setCancellationModalOpen(true);
@@ -853,8 +855,9 @@ export default function CustomerServiceModal({
   // PREPARADO en ms-ventas (mismo patrón que usaba ShipmentDetailModal).
   const releaseFromGuide = async () => {
     if (!orderHeader) return;
-    const blocked = assignmentBlockReason(orderHeader, "PREPARADO");
+    const blocked = salesStatusBlockReason(orderHeader, "PREPARADO") || assignmentBlockReason(orderHeader, "PREPARADO");
     if (blocked) throw new Error(blocked);
+    if (!canShipCommercialOrder(orderHeader)) throw new Error("Esta venta no requiere una guía física.");
     const guideRes = await axios.get(
       `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${orderHeader.id}`,
     );
@@ -1009,7 +1012,7 @@ export default function CustomerServiceModal({
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {getAvailableStatuses(receipt.status as OrderStatus).map(
+                        {getAvailableStatuses(receipt.status as OrderStatus).filter((status) => status === receipt.status || !salesStatusBlockReason(orderHeader ?? {}, status)).map(
                           (s) => (
                             <SelectItem key={s} value={s}>
                               {s}

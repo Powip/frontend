@@ -11,6 +11,7 @@ jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: jest.requireMoc
 jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: "company-1:business:store-1,store-2", storeIds: ["store-1", "store-2"] }) }));
 // Referencia estable: después de una acción, la vista recarga invalidando las consultas del negocio.
 const mockInvalidate = jest.fn();
+const mockRouterPush = jest.fn();
 jest.mock("@/hooks/useInvalidateBusinessData", () => ({ useInvalidateBusinessData: () => mockInvalidate }));
 jest.mock("sonner", () => ({
   toast: {
@@ -26,7 +27,7 @@ jest.mock("@/contexts/AuthContext", () => ({
 }));
 
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({ push: mockRouterPush, replace: jest.fn() }),
   usePathname: () => "/ventas",
 }));
 
@@ -106,7 +107,11 @@ jest.mock("@/components/registrar-venta/SaleUnitLifecycleModal", () => ({
   default: ({ action, orderId }: { action: string; orderId: string }) => <div data-testid="lifecycle-flow">{action}:{orderId}</div>,
 }));
 jest.mock("@/components/ventas/StatusSelect", () => ({
-  StatusSelect: ({ status, onStatusChange }: { status: string; onStatusChange: (status: string) => void }) => <button onClick={() => onStatusChange("ANULADO")}>Anular {status}</button>,
+  StatusSelect: ({ status, onStatusChange, onExtraAction, options }: { status: string; onStatusChange: (status: string) => void; onExtraAction?: () => void; options?: string[] }) => <div data-testid="status-select" data-available-statuses={options?.join(",")}><button onClick={() => onStatusChange("PREPARADO")}>Preparar {status}</button><button onClick={() => onStatusChange("ANULADO")}>Anular {status}</button>{onExtraAction && <button onClick={onExtraAction}>Reprogramar {status}</button>}</div>,
+}));
+jest.mock("@/components/ventas/RescheduleDialog", () => ({
+  RescheduleDialog: ({ open, onConfirm }: { open: boolean; onConfirm: (date: Date) => void }) => open
+    ? <button onClick={() => onConfirm(new Date("2026-10-24T17:00:00.000Z"))}>Confirmar reprogramación</button> : null,
 }));
 jest.mock("@/components/modals/ReassignSellerModal", () => ({
   __esModule: true,
@@ -373,8 +378,8 @@ describe("Ventas — anulación de pedido en envío", () => {
 
 function customerServiceOrders(): BusinessSalesOrder[] {
   const orders: BusinessSalesOrder[] = [
-    { ...makeOrder("angela", "ORD-152907", "2026-09-23T10:00:00.000Z"), subEstadoCc: "entrega_lima", canalOrigen: "manual", salesOperationalEligible: false },
-    { ...makeOrder("elisa", "ORD-152728", "2026-09-24T10:00:00.000Z"), storeId: "store-2", externalSource: "shopify", subEstadoCc: "por_confirmar", canalOrigen: "shopify_cod", stockVersion: 0, salesOperationalEligible: false },
+    { ...makeOrder("angela", "ORD-152907", "2026-09-23T10:00:00.000Z"), subEstadoCc: "entrega_lima", canalOrigen: null, stockVersion: 1, salesOperationalEligible: false },
+    { ...makeOrder("elisa", "ORD-152728", "2026-09-24T10:00:00.000Z"), storeId: "store-2", externalSource: "shopify", subEstadoCc: "por_confirmar", canalOrigen: "shopify_cod", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0, salesOperationalEligible: false },
   ];
   return orders.map((order) => ({ ...order, items: [{
     id: `item-${order.id}`, productVariantId: "variant-1", sku: "SKU-CC", productName: "Producto Blumie", attributes: {},
@@ -392,85 +397,114 @@ async function openAllSales() {
   return screen.getByRole("tabpanel");
 }
 
-describe("Ventas — pedidos que siguen en Atención", () => {
-  it("cierra una vista previa existente si los pedidos pasan a Atención antes de imprimir o preparar", async () => {
+describe("Ventas — detalle y acciones de pedidos que siguen en Atención", () => {
+  it("conserva la vista previa de lectura aunque el pedido pierda la confirmación física de Shopify", async () => {
     const { view } = await openPreviewForAllPendientes();
-    useFixtureOrders(ORDERS.map((order) => ({ ...order, subEstadoCc: "entrega_lima", salesOperationalEligible: false })));
+    useFixtureOrders(ORDERS.map((order) => ({ ...order, externalSource: "shopify", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0, salesOperationalEligible: true })));
     view.rerender(<VentasPage />);
-    expect(screen.queryByTitle("Vista previa de etiquetas")).not.toBeInTheDocument();
+    expect(screen.getByTitle("Vista previa de etiquetas")).toBeInTheDocument();
     expect(mockedAxios.patch).not.toHaveBeenCalled();
   });
 
-  it("cierra el detalle con acciones si una venta abierta pasa a ser informativa", async () => {
+  it("conserva el detalle abierto cuando cambia solo la etiqueta informativa de Atención", async () => {
     const view = render(<VentasPage />);
+    await openAllSales();
     fireEvent.click(await screen.findByRole("button", { name: "Ver detalle del pedido ORD-001" }));
     expect(await screen.findByTestId("order-detail")).toHaveTextContent("o-1");
     useFixtureOrders(ORDERS.map((order) => ({ ...order, subEstadoCc: "entrega_lima", salesOperationalEligible: false })));
     view.rerender(<VentasPage />);
-    expect(screen.queryByTestId("order-detail")).not.toBeInTheDocument();
+    expect(screen.getByTestId("order-detail")).toHaveTextContent("o-1");
     expect(mockedAxios.patch).not.toHaveBeenCalled();
   });
 
-  it("muestra Angela y Elisa en Todas, con montos/productos y sin acciones operativas; seleccionar todos imprime solo las ventas habilitadas", async () => {
+  it("muestra ambos pedidos completos y permite imprimir la selección con los pedidos de Atención sin cambiar estados", async () => {
     useFixtureOrders([...ORDERS, ...customerServiceOrders()]);
     render(<VentasPage />);
     await screen.findByText("ORD-001");
     expect(screen.queryByText("ORD-152907")).not.toBeInTheDocument();
-    expect(screen.queryByText("ORD-152728")).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Todas las Ventas/ })).toHaveTextContent("4");
     const panel = await openAllSales();
     expect(await within(panel).findByText("ORD-152907")).toBeInTheDocument();
-    expect(within(panel).getByText("ORD-152728")).toBeInTheDocument();
-    expect(within(panel).getByText("Incluye los pedidos que están en Atención al cliente.")).toBeInTheDocument();
     for (const [number, label] of [["ORD-152907", "Por coordinar"], ["ORD-152728", "Por confirmar"]]) {
       const row = within(panel).getByText(number).closest("tr")!;
       expect(within(row).getByText(`En Atención · ${label}`)).toBeInTheDocument();
-      expect(within(row).getByRole("checkbox")).toBeDisabled();
-      expect(within(row).getByRole("link", { name: "Atención al cliente" })).toHaveAttribute("href", "/atencion-cliente");
-      expect(within(row).queryByRole("button", { name: /Anular|Ver detalle|Editar|Gestión de Pagos|Enviar a CC Lima|Reasignar vendedor/ })).not.toBeInTheDocument();
-      expect(within(row).getByText("Moneda no informada 100.00")).toBeInTheDocument();
+      expect(within(row).getByRole("checkbox")).toBeEnabled();
+      expect(within(row).getByRole("button", { name: `Ver detalle del pedido ${number}` })).toBeEnabled();
+      expect(within(row).getByRole("button", { name: "Anular PENDIENTE" })).toBeInTheDocument();
       expect(within(row).getByRole("button", { name: "1 items" })).toBeInTheDocument();
-      fireEvent.click(within(row).getByRole("button", { name: "Ver más detalles" }));
-      const details = row.nextElementSibling as HTMLElement;
-      expect(within(details).queryByRole("textbox")).not.toBeInTheDocument();
     }
     fireEvent.click(within(panel).getAllByRole("checkbox")[0]);
-    expect(within(panel).getByRole("button", { name: /Imprimir seleccionados \(2\)/ })).toBeEnabled();
-    for (const number of ["ORD-152907", "ORD-152728"]) {
-      expect(within(within(panel).getByText(number).closest("tr")!).getByRole("checkbox")).not.toBeChecked();
-    }
-    fireEvent.click(within(panel).getByRole("button", { name: /Imprimir seleccionados \(2\)/ }));
-    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledTimes(2));
+    fireEvent.click(within(panel).getByRole("button", { name: /Imprimir seleccionados \(4\)/ }));
+    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledTimes(4));
     expect(mockedAxios.get.mock.calls.map(([url]) => url)).toEqual([
+      "http://ventas/order-header/elisa/receipt", "http://ventas/order-header/angela/receipt",
       "http://ventas/order-header/o-2/receipt", "http://ventas/order-header/o-1/receipt",
     ]);
+    expect(toast.error).not.toHaveBeenCalled();
     expect(mockedAxios.patch).not.toHaveBeenCalled();
-    expect(mockedAxios.post).not.toHaveBeenCalled();
   });
 
-  it("un usuario solo de Ventas ve el estado CC sin un acceso a Atención que su rol no permite", async () => {
+  it("un usuario sin permiso de Atención puede abrir Ver de Angela y Elisa sin redirección", async () => {
     const prior = mockUseAuth.getMockImplementation()!();
     mockUseAuth.mockReturnValue({ ...prior, hasPermission: () => false });
     useFixtureOrders(customerServiceOrders());
     render(<VentasPage />);
     const panel = await openAllSales();
     await within(panel).findByText("ORD-152907");
-    expect(within(panel).getByText("En Atención · Por coordinar")).toBeInTheDocument();
+    for (const [number, id] of [["ORD-152907", "angela"], ["ORD-152728", "elisa"]]) {
+      fireEvent.click(within(panel).getByRole("button", { name: `Ver detalle del pedido ${number}` }));
+      await waitFor(() => expect(screen.getByTestId("order-detail")).toHaveTextContent(id));
+    }
     expect(within(panel).queryByRole("link", { name: "Atención al cliente" })).not.toBeInTheDocument();
-    expect(within(panel).getAllByRole("checkbox").every((checkbox) => checkbox.hasAttribute("disabled"))).toBe(true);
-    expect(mockedAxios.get).not.toHaveBeenCalled();
+    expect(mockRouterPush).not.toHaveBeenCalled();
     expect(mockedAxios.patch).not.toHaveBeenCalled();
   });
 
-  it("respeta la bandera operativa del servidor para Shopify ya comprometido aunque conserve un subestado CC", async () => {
-    useFixtureOrders([{ ...customerServiceOrders()[1], salesOperationalEligible: true, stockVersion: 1 }]);
+  it("permite preparar Angela con stock aunque el servidor la identifique en Atención", async () => {
+    useFixtureOrders(customerServiceOrders());
+    render(<VentasPage />);
+    const panel = await openAllSales();
+    const row = (await within(panel).findByText("ORD-152907")).closest("tr")!;
+    expect(within(row).getByTestId("status-select").getAttribute("data-available-statuses")).toContain("PREPARADO");
+    fireEvent.click(within(row).getByRole("button", { name: "Preparar PENDIENTE" }));
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalledWith("http://ventas/order-header/angela", expect.objectContaining({ status: "PREPARADO", userId: "user-1" })));
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("explica por qué Elisa necesita confirmación antes de preparar y conserva la anulación", async () => {
+    useFixtureOrders(customerServiceOrders());
+    render(<VentasPage />);
+    const panel = await openAllSales();
+    const row = (await within(panel).findByText("ORD-152728")).closest("tr")!;
+    expect(within(row).getByTestId("status-select").getAttribute("data-available-statuses")).not.toContain("PREPARADO");
+    expect(within(row).getByText("Confirma el pedido en Ver antes de prepararlo.")).toBeInTheDocument();
+    // Even a retained select callback must be rejected by the physical status handler.
+    fireEvent.click(within(row).getByRole("button", { name: "Preparar PENDIENTE" }));
+    expect(toast.error).toHaveBeenCalledWith("Confirma el pedido en Ver antes de prepararlo.");
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
+    fireEvent.click(within(row).getByRole("button", { name: "Anular PENDIENTE" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirmar anulación normal" }));
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalledWith("http://ventas/order-header/elisa", expect.objectContaining({ status: "ANULADO" })));
+  });
+
+  it("permite reprogramar Elisa antes de confirmar su stock sin preparar el pedido", async () => {
+    useFixtureOrders(customerServiceOrders());
+    render(<VentasPage />);
+    const panel = await openAllSales();
+    const row = (await within(panel).findByText("ORD-152728")).closest("tr")!;
+    fireEvent.click(within(row).getByRole("button", { name: "Reprogramar PENDIENTE" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirmar reprogramación" }));
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalledWith("http://ventas/order-header/elisa", expect.objectContaining({ callStatus: "SCHEDULED", callbackAt: "2026-10-24T17:00:00.000Z", userId: "user-1" })));
+    expect(mockedAxios.patch.mock.calls.every(([, payload]) => !payload.status)).toBe(true);
+  });
+
+  it("mantiene impresión para Shopify ya comprometido aunque conserve el chip de Atención", async () => {
+    useFixtureOrders([{ ...customerServiceOrders()[1], stockVersion: 1 }]);
     render(<VentasPage />);
     const panel = await openAllSales();
     const row = (await within(panel).findByText("ORD-152728")).closest("tr")!;
     expect(within(row).getByRole("checkbox")).toBeEnabled();
-    expect(within(row).getByRole("button", { name: "Anular PENDIENTE" })).toBeInTheDocument();
     expect(within(row).getByRole("button", { name: "Ver detalle del pedido ORD-152728" })).toBeInTheDocument();
-    expect(within(row).queryByText(/En Atención/)).not.toBeInTheDocument();
     fireEvent.click(within(row).getByRole("checkbox"));
     fireEvent.click(within(panel).getByRole("button", { name: /Imprimir seleccionados \(1\)/ }));
     await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledWith("http://ventas/order-header/elisa/receipt"));
@@ -479,22 +513,22 @@ describe("Ventas — pedidos que siguen en Atención", () => {
 
 
 describe("Ventas — impresión genérica pendiente de terminar", () => {
-  it.each(["Atención", "otra página"] as const)("descarta recibos si cambia a %s mientras se genera la impresión", async (change) => {
+  it.each(["sin confirmación física", "otra página", "solo etiqueta CC"] as const)("revalida la impresión retenida si cambia a %s", async (change) => {
     const orders: BusinessSalesOrder[] = Array.from({ length: 12 }, (_, index) => ({
       ...makeOrder(`race-${index}`, `ORD-RACE-${index}`, `2026-09-${String(index + 1).padStart(2, "0")}T10:00:00.000Z`),
       salesOperationalEligible: true,
     }));
     useFixtureOrders(orders);
-    let release!: () => void;
-    const generating = new Promise<void>((resolve) => { release = resolve; });
+    let finishPrint!: () => void;
     const printNow = jest.fn();
     const printMock = jest.mocked(printReceipts);
     printMock.mockImplementationOnce(async (_receipts, _company, printWindow, isCurrent) => {
-      await generating;
-      // The real helper checks this callback again after building the document
-      // and in window.onload. Reproduce that delayed boundary here.
-      if (!isCurrent?.()) { printWindow?.close(); return; }
-      printNow();
+      // window.onload runs after the helper returns. Hold that boundary without
+      // leaving an unresolved React act scope in the synthetic print helper.
+      finishPrint = () => {
+        if (!isCurrent?.()) { printWindow?.close(); return; }
+        printNow();
+      };
     });
     const view = render(<VentasPage />);
     try {
@@ -507,24 +541,33 @@ describe("Ventas — impresión genérica pendiente de terminar", () => {
       const printWindow = jest.mocked(openPrintWindow).mock.results.at(-1)!.value as Window;
       expect(isCurrent()).toBe(true);
 
-      if (change === "Atención") {
+      if (change === "sin confirmación física") {
         useFixtureOrders(orders.map((order) => order.id === "race-11"
-          ? { ...order, salesOperationalEligible: false, subEstadoCc: "por_confirmar" }
+          ? { ...order, externalSource: "shopify", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0, salesOperationalEligible: false, subEstadoCc: "por_confirmar" }
           : order));
         view.rerender(<VentasPage />);
         expect(screen.getByText("En Atención · Por confirmar")).toBeInTheDocument();
+      } else if (change === "solo etiqueta CC") {
+        useFixtureOrders(orders.map((order) => order.id === "race-11"
+          ? { ...order, stockVersion: 1, salesOperationalEligible: false, subEstadoCc: "entrega_lima" }
+          : order));
+        view.rerender(<VentasPage />);
+        expect(screen.getByText("En Atención · Por coordinar")).toBeInTheDocument();
       } else {
         fireEvent.click(screen.getByRole("button", { name: "2" }));
         await screen.findByText("ORD-RACE-0");
       }
-      expect(isCurrent()).toBe(false);
-      await act(async () => { release(); });
-      await waitFor(() => expect(printWindow.close).toHaveBeenCalled());
-      expect(printNow).not.toHaveBeenCalled();
+      expect(isCurrent()).toBe(change !== "otra página");
+      await act(async () => { finishPrint(); });
+      if (change !== "otra página") {
+        expect(printNow).toHaveBeenCalledTimes(1);
+      } else {
+        await waitFor(() => expect(printWindow.close).toHaveBeenCalled());
+        expect(printNow).not.toHaveBeenCalled();
+      }
       expect(mockedAxios.patch).not.toHaveBeenCalled();
       expect(mockedAxios.post).not.toHaveBeenCalled();
     } finally {
-      release();
       printMock.mockReset().mockResolvedValue(undefined);
     }
   });
