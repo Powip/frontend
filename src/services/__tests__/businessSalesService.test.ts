@@ -10,7 +10,7 @@ import {
 
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: { get: jest.fn() } }));
 
-const query: BusinessSalesQuery = { tab: "todas", page: 7, limit: 10, search: "Angela", region: "LIMA" };
+const query: BusinessSalesQuery = { tab: "todas", page: 7, limit: 10, search: "Angela", region: "LIMA", includeCustomerService: true };
 const order = (id: string, grandTotal = "10") => ({ id, grandTotal }) as OrderHeader;
 const page = (data: OrderHeader[], pageNumber: number, totalPages = 3): BusinessSalesPage => ({
   data, page: pageNumber, total: 250, totalPages,
@@ -33,6 +33,7 @@ it("forwards the abort signal and bounds a page request without downloading expo
   expect(params.get("page")).toBe("1");
   expect(params.get("limit")).toBe("10");
   expect(params.get("search")).toBe("Angela");
+  expect(params.get("includeCustomerService")).toBe("true");
   expect(config).toEqual({ signal: controller.signal });
 });
 
@@ -63,6 +64,7 @@ it("downloads export pages of 100 sequentially only on explicit invocation and d
     expect(params.get("region")).toBe("LIMA");
     expect(params.get("storeIds")).toBe("store-a,store-b");
     expect(params.get("includeSummary")).toBe("false");
+    expect(params.get("includeCustomerService")).toBe("true");
     expect(config).toEqual({ signal: controller.signal });
   }
 });

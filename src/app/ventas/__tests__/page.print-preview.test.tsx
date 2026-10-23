@@ -8,7 +8,7 @@ jest.mock("axios", () => ({
 }));
 
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: jest.requireMock("axios") }));
-jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: "company-1:business:store-1", storeIds: ["store-1"] }) }));
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: "company-1:business:store-1,store-2", storeIds: ["store-1", "store-2"] }) }));
 // Referencia estable: después de una acción, la vista recarga invalidando las consultas del negocio.
 const mockInvalidate = jest.fn();
 jest.mock("@/hooks/useInvalidateBusinessData", () => ({ useInvalidateBusinessData: () => mockInvalidate }));
@@ -49,17 +49,18 @@ jest.mock("@/hooks/useBusinessSalesPage", () => ({
     const fixture = jest.requireMock("@/hooks/useBusinessOrders").useBusinessOrders();
     const data = React.useMemo(() => {
       const commercial = fixture.orders.filter((order: OrderHeader) => order.status !== "INCOMPLETE");
-      const rows = commercial.filter((order: OrderHeader) =>
+      const operational = commercial.filter((order: BusinessSalesOrder) => order.salesOperationalEligible !== false);
+      const rows = (query.tab === "todas" ? commercial : operational).filter((order: OrderHeader) =>
         query.tab === "pendientes" ? order.status === "PENDIENTE" : query.tab === "anuladas" ? order.status === "ANULADO" : true,
       ).sort((a: OrderHeader, b: OrderHeader) => b.created_at.localeCompare(a.created_at));
       return {
         data: rows.slice((query.page - 1) * query.limit, query.page * query.limit),
         total: rows.length, page: query.page, totalPages: Math.max(1, Math.ceil(rows.length / query.limit)),
-        counts: { pendientes: commercial.filter((order: OrderHeader) => order.status === "PENDIENTE").length, anuladas: commercial.filter((order: OrderHeader) => order.status === "ANULADO").length, todas: commercial.length, pendientesAntiguos: 0 },
+        counts: { pendientes: operational.filter((order: OrderHeader) => order.status === "PENDIENTE").length, anuladas: commercial.filter((order: OrderHeader) => order.status === "ANULADO").length, todas: commercial.length, pendientesAntiguos: 0 },
         metadata: { couriers: [], statuses: [...new Set(commercial.map((order: OrderHeader) => order.status))], channels: [], products: [] },
-        kpis: { pendientes: commercial.filter((order: OrderHeader) => order.status === "PENDIENTE").length, anuladas: 0, amounts: [] },
+        kpis: { pendientes: operational.filter((order: OrderHeader) => order.status === "PENDIENTE").length, anuladas: 0, amounts: [] },
       };
-    }, [fixture.orders, JSON.stringify(query)]);
+    }, [fixture.orders, query.tab, query.page, query.limit]);
     return { data, isFetching: false, isDebouncing: false, isError: false, refetch: fixture.refetch };
   },
 }));
@@ -72,11 +73,13 @@ jest.mock("@/lib/peruDate", () => ({
 jest.mock("@/utils/bulk-receipt-printer", () => ({
   ...jest.requireActual("@/utils/bulk-receipt-printer"),
   buildReceiptsDocument: jest.fn(async () => "<!DOCTYPE html><html><body>ETIQUETAS</body></html>"),
+  openPrintWindow: jest.fn(() => ({ close: jest.fn() })),
+  printReceipts: jest.fn(async () => {}),
 }));
 
 jest.mock("@/components/modals/CustomerServiceModal", () => ({
   __esModule: true,
-  default: () => null,
+  default: ({ open, orderId }: { open: boolean; orderId: string }) => open ? <div data-testid="order-detail">{orderId}</div> : null,
 }));
 jest.mock("@/components/modals/CommentsTimelineModal", () => ({
   __esModule: true,
@@ -112,9 +115,11 @@ jest.mock("@/components/modals/ReassignSellerModal", () => ({
 
 import axios from "axios";
 import { toast } from "sonner";
+import { openPrintWindow, printReceipts } from "@/utils/bulk-receipt-printer";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessOrders } from "@/hooks/useBusinessOrders";
 import type { OrderHeader } from "@/interfaces/IOrder";
+import type { BusinessSalesOrder } from "@/services/businessSalesService";
 import VentasPage from "../page";
 
 const mockedAxios = axios as unknown as { get: jest.Mock; patch: jest.Mock; post: jest.Mock };
@@ -362,5 +367,165 @@ describe("Ventas — anulación de pedido en envío", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Confirmar anulación normal" }));
     await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalledWith("http://ventas/order-header/o-1", expect.objectContaining({ status: "ANULADO", cancellationReason: "OTHER", notes: "Cliente canceló" })));
     expect(screen.queryByTestId("lifecycle-flow")).not.toBeInTheDocument();
+  });
+});
+
+
+function customerServiceOrders(): BusinessSalesOrder[] {
+  const orders: BusinessSalesOrder[] = [
+    { ...makeOrder("angela", "ORD-152907", "2026-09-23T10:00:00.000Z"), subEstadoCc: "entrega_lima", canalOrigen: "manual", salesOperationalEligible: false },
+    { ...makeOrder("elisa", "ORD-152728", "2026-09-24T10:00:00.000Z"), storeId: "store-2", externalSource: "shopify", subEstadoCc: "por_confirmar", canalOrigen: "shopify_cod", stockVersion: 0, salesOperationalEligible: false },
+  ];
+  return orders.map((order) => ({ ...order, items: [{
+    id: `item-${order.id}`, productVariantId: "variant-1", sku: "SKU-CC", productName: "Producto Blumie", attributes: {},
+    quantity: 1, unitPrice: "100.00", subtotal: "100.00", discountType: "NONE", discountAmount: "0.00",
+    created_at: order.created_at, updated_at: order.updated_at,
+  }] }));
+}
+
+function useFixtureOrders(orders: BusinessSalesOrder[]) {
+  mockUseOrdersByStore.mockReturnValue({ orders, loading: false, error: false, retry: jest.fn(), refetch } as unknown as ReturnType<typeof useBusinessOrders>);
+}
+
+async function openAllSales() {
+  fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas las Ventas/ }), { button: 0, ctrlKey: false });
+  return screen.getByRole("tabpanel");
+}
+
+describe("Ventas — pedidos que siguen en Atención", () => {
+  it("cierra una vista previa existente si los pedidos pasan a Atención antes de imprimir o preparar", async () => {
+    const { view } = await openPreviewForAllPendientes();
+    useFixtureOrders(ORDERS.map((order) => ({ ...order, subEstadoCc: "entrega_lima", salesOperationalEligible: false })));
+    view.rerender(<VentasPage />);
+    expect(screen.queryByTitle("Vista previa de etiquetas")).not.toBeInTheDocument();
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
+  });
+
+  it("cierra el detalle con acciones si una venta abierta pasa a ser informativa", async () => {
+    const view = render(<VentasPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Ver detalle del pedido ORD-001" }));
+    expect(await screen.findByTestId("order-detail")).toHaveTextContent("o-1");
+    useFixtureOrders(ORDERS.map((order) => ({ ...order, subEstadoCc: "entrega_lima", salesOperationalEligible: false })));
+    view.rerender(<VentasPage />);
+    expect(screen.queryByTestId("order-detail")).not.toBeInTheDocument();
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
+  });
+
+  it("muestra Angela y Elisa en Todas, con montos/productos y sin acciones operativas; seleccionar todos imprime solo las ventas habilitadas", async () => {
+    useFixtureOrders([...ORDERS, ...customerServiceOrders()]);
+    render(<VentasPage />);
+    await screen.findByText("ORD-001");
+    expect(screen.queryByText("ORD-152907")).not.toBeInTheDocument();
+    expect(screen.queryByText("ORD-152728")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Todas las Ventas/ })).toHaveTextContent("4");
+    const panel = await openAllSales();
+    expect(await within(panel).findByText("ORD-152907")).toBeInTheDocument();
+    expect(within(panel).getByText("ORD-152728")).toBeInTheDocument();
+    expect(within(panel).getByText("Incluye los pedidos que están en Atención al cliente.")).toBeInTheDocument();
+    for (const [number, label] of [["ORD-152907", "Por coordinar"], ["ORD-152728", "Por confirmar"]]) {
+      const row = within(panel).getByText(number).closest("tr")!;
+      expect(within(row).getByText(`En Atención · ${label}`)).toBeInTheDocument();
+      expect(within(row).getByRole("checkbox")).toBeDisabled();
+      expect(within(row).getByRole("link", { name: "Atención al cliente" })).toHaveAttribute("href", "/atencion-cliente");
+      expect(within(row).queryByRole("button", { name: /Anular|Ver detalle|Editar|Gestión de Pagos|Enviar a CC Lima|Reasignar vendedor/ })).not.toBeInTheDocument();
+      expect(within(row).getByText("Moneda no informada 100.00")).toBeInTheDocument();
+      expect(within(row).getByRole("button", { name: "1 items" })).toBeInTheDocument();
+      fireEvent.click(within(row).getByRole("button", { name: "Ver más detalles" }));
+      const details = row.nextElementSibling as HTMLElement;
+      expect(within(details).queryByRole("textbox")).not.toBeInTheDocument();
+    }
+    fireEvent.click(within(panel).getAllByRole("checkbox")[0]);
+    expect(within(panel).getByRole("button", { name: /Imprimir seleccionados \(2\)/ })).toBeEnabled();
+    for (const number of ["ORD-152907", "ORD-152728"]) {
+      expect(within(within(panel).getByText(number).closest("tr")!).getByRole("checkbox")).not.toBeChecked();
+    }
+    fireEvent.click(within(panel).getByRole("button", { name: /Imprimir seleccionados \(2\)/ }));
+    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledTimes(2));
+    expect(mockedAxios.get.mock.calls.map(([url]) => url)).toEqual([
+      "http://ventas/order-header/o-2/receipt", "http://ventas/order-header/o-1/receipt",
+    ]);
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
+    expect(mockedAxios.post).not.toHaveBeenCalled();
+  });
+
+  it("un usuario solo de Ventas ve el estado CC sin un acceso a Atención que su rol no permite", async () => {
+    const prior = mockUseAuth.getMockImplementation()!();
+    mockUseAuth.mockReturnValue({ ...prior, hasPermission: () => false });
+    useFixtureOrders(customerServiceOrders());
+    render(<VentasPage />);
+    const panel = await openAllSales();
+    await within(panel).findByText("ORD-152907");
+    expect(within(panel).getByText("En Atención · Por coordinar")).toBeInTheDocument();
+    expect(within(panel).queryByRole("link", { name: "Atención al cliente" })).not.toBeInTheDocument();
+    expect(within(panel).getAllByRole("checkbox").every((checkbox) => checkbox.hasAttribute("disabled"))).toBe(true);
+    expect(mockedAxios.get).not.toHaveBeenCalled();
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
+  });
+
+  it("respeta la bandera operativa del servidor para Shopify ya comprometido aunque conserve un subestado CC", async () => {
+    useFixtureOrders([{ ...customerServiceOrders()[1], salesOperationalEligible: true, stockVersion: 1 }]);
+    render(<VentasPage />);
+    const panel = await openAllSales();
+    const row = (await within(panel).findByText("ORD-152728")).closest("tr")!;
+    expect(within(row).getByRole("checkbox")).toBeEnabled();
+    expect(within(row).getByRole("button", { name: "Anular PENDIENTE" })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Ver detalle del pedido ORD-152728" })).toBeInTheDocument();
+    expect(within(row).queryByText(/En Atención/)).not.toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("checkbox"));
+    fireEvent.click(within(panel).getByRole("button", { name: /Imprimir seleccionados \(1\)/ }));
+    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledWith("http://ventas/order-header/elisa/receipt"));
+  });
+});
+
+
+describe("Ventas — impresión genérica pendiente de terminar", () => {
+  it.each(["Atención", "otra página"] as const)("descarta recibos si cambia a %s mientras se genera la impresión", async (change) => {
+    const orders: BusinessSalesOrder[] = Array.from({ length: 12 }, (_, index) => ({
+      ...makeOrder(`race-${index}`, `ORD-RACE-${index}`, `2026-09-${String(index + 1).padStart(2, "0")}T10:00:00.000Z`),
+      salesOperationalEligible: true,
+    }));
+    useFixtureOrders(orders);
+    let release!: () => void;
+    const generating = new Promise<void>((resolve) => { release = resolve; });
+    const printNow = jest.fn();
+    const printMock = jest.mocked(printReceipts);
+    printMock.mockImplementationOnce(async (_receipts, _company, printWindow, isCurrent) => {
+      await generating;
+      // The real helper checks this callback again after building the document
+      // and in window.onload. Reproduce that delayed boundary here.
+      if (!isCurrent?.()) { printWindow?.close(); return; }
+      printNow();
+    });
+    const view = render(<VentasPage />);
+    try {
+      const panel = await openAllSales();
+      const row = (await within(panel).findByText("ORD-RACE-11")).closest("tr")!;
+      fireEvent.click(within(row).getByRole("checkbox"));
+      fireEvent.click(within(panel).getByRole("button", { name: /Imprimir seleccionados \(1\)/ }));
+      await waitFor(() => expect(printMock).toHaveBeenCalledTimes(1));
+      const isCurrent = printMock.mock.calls[0][3]!;
+      const printWindow = jest.mocked(openPrintWindow).mock.results.at(-1)!.value as Window;
+      expect(isCurrent()).toBe(true);
+
+      if (change === "Atención") {
+        useFixtureOrders(orders.map((order) => order.id === "race-11"
+          ? { ...order, salesOperationalEligible: false, subEstadoCc: "por_confirmar" }
+          : order));
+        view.rerender(<VentasPage />);
+        expect(screen.getByText("En Atención · Por confirmar")).toBeInTheDocument();
+      } else {
+        fireEvent.click(screen.getByRole("button", { name: "2" }));
+        await screen.findByText("ORD-RACE-0");
+      }
+      expect(isCurrent()).toBe(false);
+      await act(async () => { release(); });
+      await waitFor(() => expect(printWindow.close).toHaveBeenCalled());
+      expect(printNow).not.toHaveBeenCalled();
+      expect(mockedAxios.patch).not.toHaveBeenCalled();
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+    } finally {
+      release();
+      printMock.mockReset().mockResolvedValue(undefined);
+    }
   });
 });
