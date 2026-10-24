@@ -50,7 +50,7 @@ function DashboardContent() {
       </div>
 
       <div className="flex-1 overflow-hidden flex flex-col">
-        <Tabs defaultValue="general" className="flex-1 flex flex-col min-h-0">
+        <Tabs defaultValue="general" className="flex-1 flex flex-col min-h-0 gap-0">
           <div className="px-8 border-b border-border bg-background">
             <TabsList className="bg-transparent p-0 gap-8 flex justify-start items-center h-12">
               <TabsTrigger
