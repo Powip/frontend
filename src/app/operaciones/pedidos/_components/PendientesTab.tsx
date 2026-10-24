@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
-import { commercialLeadHref, salesStatusBlockReason } from "@/utils/commercialOrders";
+import { canPrepareDeferredManualOrder, commercialLeadHref, salesPhysicalOperationBlockReason, salesStatusBlockReason } from "@/utils/commercialOrders";
 import { PackageCheck, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -46,11 +46,13 @@ export function PendientesTab({ sales, actions, initialSearch }: { sales: Sale[]
           {paged.length === 0 && <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Sin pedidos pendientes de preparar</TableCell></TableRow>}
           {paged.map((sale) => {
             const blocked = salesStatusBlockReason(sale, "PREPARADO") || assignmentBlockReason(sale, "PREPARADO");
+            const deferredManual = canPrepareDeferredManualOrder(sale);
+            const printBlocked = salesPhysicalOperationBlockReason(sale) || blocked;
             return <TableRow key={sale.id}>
               <TableCell className="font-medium">{sale.orderNumber}</TableCell>
               <TableCell><div>{sale.clientName}</div><div className="text-xs text-muted-foreground">{sale.phoneNumber}</div></TableCell>
               <TableCell><ProductThumbnails items={sale.items} /></TableCell>
-              <TableCell><StatusPill status={sale.status} />{blocked && <p className="mt-1 max-w-56 text-xs text-amber-700">{blocked}</p>}{sale.commercialLeadId && sale.commercialStockState === "DEFERRED" && <Link className="text-xs font-semibold text-violet-700 underline" href={commercialLeadHref(sale.commercialLeadId)}>Preparar reserva de stock</Link>}</TableCell>
+              <TableCell><StatusPill status={sale.status} />{(blocked || deferredManual) && <p className="mt-1 max-w-56 text-xs text-amber-700">{blocked || printBlocked}</p>}{sale.commercialLeadId && sale.commercialStockState === "DEFERRED" && !deferredManual && <Link className="text-xs font-semibold text-violet-700 underline" href={commercialLeadHref(sale.commercialLeadId)}>Preparar reserva de stock</Link>}</TableCell>
               <TableCell><FinancialStatusBadge pendingAmount={sale.pendingPayment} /></TableCell>
               <TableCell className="tabular-nums">{money(sale.pendingPayment)}</TableCell>
               <TableCell><div className="flex items-center justify-end gap-1">
@@ -58,7 +60,7 @@ export function PendientesTab({ sales, actions, initialSearch }: { sales: Sale[]
                 <PaymentButton hasPendingApproval={sale.hasPendingApprovalPayments} onClick={() => actions.onOpenPayment(sale)} />
                 <Button size="icon" variant="ghost" title="WhatsApp" onClick={() => actions.onWhatsApp(sale)}><WhatsAppIcon className="h-4 w-4" /></Button>
                 {canPrepare && <>
-                  <Button size="sm" variant="outline" title={blocked ?? "Imprimir etiqueta y preparar pedido"} disabled={!!blocked || actions.isBulkLoading || preparing !== null} onClick={() => actions.onBulkPrint([sale])}><Printer className="mr-1 h-3.5 w-3.5" />Imprimir</Button>
+                  <Button size="sm" variant="outline" title={printBlocked ?? "Imprimir etiqueta y preparar pedido"} disabled={!!printBlocked || actions.isBulkLoading || preparing !== null} onClick={() => actions.onBulkPrint([sale])}><Printer className="mr-1 h-3.5 w-3.5" />Imprimir</Button>
                   <Button size="sm" disabled={!!blocked || preparing !== null || actions.isBulkLoading} onClick={() => { void prepare(sale); }}><PackageCheck className="mr-1 h-3.5 w-3.5" />{preparing === sale.id ? "Preparando..." : "Preparar"}</Button>
                 </>}
               </div></TableCell>

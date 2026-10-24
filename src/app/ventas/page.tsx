@@ -1,5 +1,5 @@
 "use client";
-import { isCommercialSaleOrder, canShipCommercialOrder, salesPhysicalOperationBlockReason, salesStatusBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
+import { isCommercialSaleOrder, canPrepareDeferredManualOrder, canShipCommercialOrder, salesPhysicalOperationBlockReason, salesStatusBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
 import { formatSalesMoney } from "@/utils/salesMoney";
 import { deliveryPaymentBlockReason, operationalStatus, orderFinancialState } from "@/utils/orderState";
 import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
@@ -7,7 +7,7 @@ import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
 import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
 import { type SaleUnitLifecycleAction } from "@/services/saleUnitLifecycleService";
-import { assignmentBlockReason, hasUnitAssignment, unitAssignmentLabel, requiresAuthenticatedSaleMutation, saleMutationUrl, saleReceiptUrl, type UnitAssignmentState } from "@/services/saleTrackingService";
+import { assignmentBlockReason, hasUnitAssignment, unitAssignmentLabel, requiresAuthenticatedSaleStatusMutation, saleMutationUrl, saleReceiptUrl, type UnitAssignmentState } from "@/services/saleTrackingService";
 import Link from "next/link";
 import Image from "next/image";
 import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
@@ -715,6 +715,7 @@ function VentasContent() {
     } catch (error) {
       console.error("Error actualizando estado", error);
       toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message || (error instanceof Error ? error.message : "No se pudo actualizar el estado"));
+      if (canPrepareDeferredManualOrder(selectedCommercial)) refetchOrders();
     }
   };
 
@@ -876,7 +877,7 @@ Estado: ${sale.status}
     }
     if (!canMutateIds(Array.from(selectedSaleIds))) return;
 
-    const blocked = selectedPendientes.map((sale) => salesStatusBlockReason(sale, "PREPARADO") || assignmentBlockReason(sale, "PREPARADO")).find(Boolean);
+    const blocked = selectedPendientes.map((sale) => salesPhysicalOperationBlockReason(sale) || assignmentBlockReason(sale, "PREPARADO")).find(Boolean);
     if (blocked) { toast.error(blocked); return; }
     setPendingPrintSales(selectedPendientes);
     setPendingPrintScope(printScope);
@@ -1055,7 +1056,7 @@ Estado: ${sale.status}
           : undefined,
         undefined,
         undefined,
-        new Set(selectedSales.filter(requiresAuthenticatedSaleMutation).map((sale) => sale.id)),
+        new Set(selectedSales.filter(requiresAuthenticatedSaleStatusMutation).map((sale) => sale.id)),
       );
 
       if (result.success.length > 0) {
@@ -1105,7 +1106,7 @@ Estado: ${sale.status}
           : undefined,
         "SCHEDULED",
         callbackAt,
-        new Set(sales.filter(requiresAuthenticatedSaleMutation).map((sale) => sale.id)),
+        new Set(sales.filter(requiresAuthenticatedSaleStatusMutation).map((sale) => sale.id)),
       );
       if (result.success.length > 0)
         toast.success(`${result.success.length} pedido(s) reprogramados`);
@@ -1543,7 +1544,7 @@ Estado: ${sale.status}
                       }
                       onExtraAction={() => { if (mutationSale(sale.id)) setRescheduleDialogSaleId(sale.id); }}
                     />
-                    {salesPhysicalOperationBlockReason(sale) && <p className="mt-1 text-[10px] text-muted-foreground">{salesPhysicalOperationBlockReason(sale)}{sale.commercialLeadId && sale.commercialStockState === "DEFERRED" && <Link className="ml-1 font-semibold text-violet-700 underline" href={commercialLeadHref(sale.commercialLeadId)}>Preparar reserva de stock</Link>}</p>}
+                    {salesPhysicalOperationBlockReason(sale) && <p className="mt-1 text-[10px] text-muted-foreground">{salesPhysicalOperationBlockReason(sale)}{sale.commercialLeadId && sale.commercialStockState === "DEFERRED" && !canPrepareDeferredManualOrder(sale) && <Link className="ml-1 font-semibold text-violet-700 underline" href={commercialLeadHref(sale.commercialLeadId)}>Preparar reserva de stock</Link>}</p>}
                     <ReprogramadoChip sale={sale} />
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-[140px] w-[100px] min-w-[100px] 2xl:z-10 bg-background">

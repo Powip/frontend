@@ -1,5 +1,5 @@
 "use client";
-import { salesStatusBlockReason } from "@/utils/commercialOrders";
+import { canPrepareDeferredManualOrder, salesPhysicalOperationBlockReason, salesStatusBlockReason } from "@/utils/commercialOrders";
 
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
 import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
@@ -217,6 +217,7 @@ export function PedidosContent() {
         fetchOrders();
       } catch (error: any) {
         toast.error(error?.response?.data?.message || error?.message || "No se pudo actualizar el estado");
+        if (sale && canPrepareDeferredManualOrder(sale)) fetchOrders();
       }
     },
     [salesById, getUserInfo, fetchOrders, patchOrderWithAssignment, routeSaleLifecycle],
@@ -619,7 +620,7 @@ export function PedidosContent() {
     // Abrir la ventana ANTES de cualquier await: si se abre después de
     // esperar las requests de abajo, el navegador la bloquea en silencio
     // (así se veía el bug: "queda cargando y da error" con varios pedidos).
-    const blocked = selected.map((sale) => salesStatusBlockReason(sale, "PREPARADO") || assignmentBlockReason(sale, "PREPARADO")).find(Boolean);
+    const blocked = selected.map((sale) => salesPhysicalOperationBlockReason(sale) || assignmentBlockReason(sale, "PREPARADO")).find(Boolean);
     if (blocked) { toast.error(blocked); return; }
     const printWindow = openPrintWindow();
     if (!printWindow) {

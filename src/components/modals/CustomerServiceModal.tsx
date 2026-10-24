@@ -1,7 +1,7 @@
 ﻿"use client";
 import { canManageCustomerServiceOrder } from "@/utils/customerServiceOrderAccess";
 import axios from "@/lib/axiosAuth";
-import { canShipCommercialOrder, isCommercialLeadOrder, salesStatusBlockReason, salesPhysicalOperationBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
+import { canPrepareDeferredManualOrder, canShipCommercialOrder, isCommercialLeadOrder, salesStatusBlockReason, salesPhysicalOperationBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
 import { formatSalesMoney } from "@/utils/salesMoney";
 import { deliveryPaymentBlockReason, operationalStatus, receiptFinancialState } from "@/utils/orderState";
 import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
@@ -686,6 +686,10 @@ export default function CustomerServiceModal({
 
   const handlePrint = async () => {
     if (!receipt || isCommercialLeadOrder(orderHeader ?? {})) return;
+    if (orderHeader && canPrepareDeferredManualOrder(orderHeader)) {
+      toast.error(salesPhysicalOperationBlockReason(orderHeader));
+      return;
+    }
     const operation = beginPrint();
     try {
       await printOrderLabel(receipt, orderHeader, auth?.company, operation);
@@ -777,6 +781,10 @@ export default function CustomerServiceModal({
       toast.error(
         error?.response?.data?.message || "No se pudo actualizar el estado",
       );
+      if (orderHeader && canPrepareDeferredManualOrder(orderHeader)) {
+        void fetchReceipt();
+        onOrderUpdated?.();
+      }
     } finally {
       setChangingStatus(false);
     }
@@ -1032,7 +1040,7 @@ export default function CustomerServiceModal({
                   </div>
                 </DialogHeader>
                 {!isPendingPurchase && orderHeader && <UnitAssignmentNotice order={orderHeader} />}
-                {orderHeader?.commercialStage === "SALE" && orderHeader.commercialStockState === "DEFERRED" && <p className="text-sm text-amber-700">{salesPhysicalOperationBlockReason(orderHeader)}{orderHeader.commercialLeadId && <a className="ml-1 font-semibold underline" href={commercialLeadHref(orderHeader.commercialLeadId)}>Preparar reserva de stock</a>}</p>}
+                {orderHeader?.commercialStage === "SALE" && orderHeader.commercialStockState === "DEFERRED" && <p className="text-sm text-amber-700">{salesPhysicalOperationBlockReason(orderHeader)}{orderHeader.commercialLeadId && !canPrepareDeferredManualOrder(orderHeader) && <a className="ml-1 font-semibold underline" href={commercialLeadHref(orderHeader.commercialLeadId)}>Preparar reserva de stock</a>}</p>}
                 {!isPendingPurchase && orderHeader && <SaleUnitLifecycleButtons order={orderHeader} onAction={setLifecycleAction} />}
 
                 <Tabs value={tab} onValueChange={setTab}>

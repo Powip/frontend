@@ -65,9 +65,28 @@ it("preserves dispatch permissions", () => {
 });
 
 it("shows a confirmed purchase awaiting stock with its preparation link, without asking to confirm again", () => {
-  render(<PendientesTab sales={[sale("confirmed", 179, { commercialStage: "SALE", commercialStockState: "DEFERRED", commercialLeadId: "lead-1", stockVersion: 0 })]} actions={actions()} />);
+  render(<PendientesTab sales={[sale("confirmed", 179, { externalSource: "shopify", commercialStage: "SALE", commercialStockState: "DEFERRED", commercialLeadId: "lead-1", stockVersion: 0 })]} actions={actions()} />);
   expect(screen.getByText(/Compra confirmada. Prepara la reserva de stock/)).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Preparar reserva de stock" })).toHaveAttribute("href", "/leads-comerciales?leadId=lead-1");
+  expect(screen.getByRole("button", { name: "Preparar" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Imprimir" })).toBeDisabled();
+});
+
+it("prepares a manual deferred sale from the pending queue without sending it to Leads or printing it first", async () => {
+  const order = sale("manual", 179, { salesRegion: "PROVINCIA", commercialStage: "SALE", commercialStockState: "DEFERRED", commercialLeadId: "lead-1", externalSource: null, stockVersion: 0 });
+  const handlers = actions();
+  render(<PendientesTab sales={[order]} actions={handlers} />);
+  expect(screen.getByText(/Al marcar Preparado, se registrará la reserva/)).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Preparar reserva de stock" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Preparar" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Imprimir" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Preparar" }));
+  await waitFor(() => expect(handlers.onChangeStatus).toHaveBeenCalledWith("manual", "PREPARADO"));
+  expect(handlers.onBulkPrint).not.toHaveBeenCalled();
+});
+
+it("keeps manual deferred preparation blocked when tracked units still await acknowledgement", () => {
+  render(<PendientesTab sales={[sale("tracked-manual", 0, { commercialStage: "SALE", commercialStockState: "DEFERRED", externalSource: null, unitAssignmentStatus: "PENDING", hasTrackedUnits: true })]} actions={actions()} />);
   expect(screen.getByRole("button", { name: "Preparar" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Imprimir" })).toBeDisabled();
 });

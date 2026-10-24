@@ -5,6 +5,7 @@ export type CommercialOrderProjection = {
 };
 
 export type SalesPhysicalOrderProjection = CommercialOrderProjection & {
+  status?: string;
   externalSource?: string | null;
   shopifyCommercialGate?: boolean | null;
   commercialCommittedAt?: string | null;
@@ -13,8 +14,18 @@ export type SalesPhysicalOrderProjection = CommercialOrderProjection & {
 
 const physicalStatuses = new Set(["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO", "ENTREGADO"]);
 
+/** Existing manual sales can register their deferred reservation when warehouse prepares them. */
+export function canPrepareDeferredManualOrder(order: SalesPhysicalOrderProjection): boolean {
+  return order.commercialStage === "SALE" &&
+    order.commercialStockState === "DEFERRED" &&
+    order.externalSource == null &&
+    (order.status === "PENDIENTE" || order.status === "PAGADO");
+}
+
 /** Listing a CC order never grants or removes authority to prepare its stock. */
 export function salesPhysicalOperationBlockReason(order: SalesPhysicalOrderProjection): string | null {
+  if (canPrepareDeferredManualOrder(order))
+    return "Al marcar Preparado, se registrará la reserva de stock automáticamente.";
   if (order.commercialStage === "SALE" && order.commercialStockState === "DEFERRED")
     return "Compra confirmada. Prepara la reserva de stock desde el Lead antes de preparar o despachar el pedido.";
   if (!canOperateCommercialOrder(order)) return "Confirma la compra antes de preparar o despachar el pedido.";
@@ -29,6 +40,7 @@ export function salesPhysicalOperationBlockReason(order: SalesPhysicalOrderProje
 }
 
 export function salesStatusBlockReason(order: SalesPhysicalOrderProjection, targetStatus: string): string | null {
+  if (targetStatus === "PREPARADO" && canPrepareDeferredManualOrder(order)) return null;
   return physicalStatuses.has(targetStatus) ? salesPhysicalOperationBlockReason(order) : null;
 }
 
