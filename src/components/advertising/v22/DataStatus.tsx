@@ -7,6 +7,8 @@ const PROVISIONAL = new Set(["CURRENT_DAY_PROVISIONAL", "PROVISIONAL_META_DATA"]
 const KNOWN = new Set([
   "META_DATA_NOT_SYNCED",
   "META_DATA_PARTIAL",
+  "META_SPEND_MISMATCH",
+  "STORE_ASSIGNMENT_UNCERTAIN",
   "UNASSIGNED_SPEND",
   "CHANNEL_FAMILY_FROM_META",
   "STORE_CHANNELS_NOT_CONFIGURED",
@@ -28,9 +30,14 @@ export function AdvertisingDataStatus({
     codes.add("META_DATA_PARTIAL");
   if (codes.size === 0) return null;
 
-  const metaPending = codes.has("META_DATA_NOT_SYNCED") || codes.has("META_DATA_PARTIAL");
+  const metaPending =
+    codes.has("META_DATA_NOT_SYNCED") ||
+    codes.has("META_DATA_PARTIAL") ||
+    codes.has("META_SPEND_MISMATCH");
   const assignmentsPending =
-    codes.has("UNASSIGNED_SPEND") || codes.has("STORE_CHANNELS_NOT_CONFIGURED");
+    codes.has("UNASSIGNED_SPEND") ||
+    codes.has("STORE_CHANNELS_NOT_CONFIGURED") ||
+    codes.has("STORE_ASSIGNMENT_UNCERTAIN");
   const provisional = [...codes].some((code) => PROVISIONAL.has(code));
   const unknown = [...codes].some((code) => !KNOWN.has(code));
   const explanations = new Set(

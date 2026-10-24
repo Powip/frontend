@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import { AdvertisingModuleShell } from "../../AdvertisingModuleShell";
 
 let mockPath = "/publicidad";
@@ -56,7 +56,7 @@ describe("Publicidad navigation and access", () => {
     mockPath = "/publicidad";
     window.history.replaceState({}, "", "/publicidad?storeId=store&from=2026-10-01&to=2026-10-31");
   });
-  it("shows exactly the four work tabs and preserves the selected scope in links and URL", () => {
+  it("shows the four work tabs for the whole business despite a global store or an old store link", () => {
     render(
       <AdvertisingModuleShell>
         <p>Números</p>
@@ -68,11 +68,14 @@ describe("Publicidad navigation and access", () => {
     for (const name of ["Mis números", "Anuncios", "Pruebas", "Configuración"])
       expect(screen.getByRole("link", { name })).toBeInTheDocument();
     expect(screen.getByText("Números")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Tienda global" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Tienda" })).not.toBeInTheDocument();
+    expect(screen.getByText("Todo el negocio")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Anuncios" })).toHaveAttribute(
       "href",
-      "/publicidad/anuncios?from=2026-10-01&to=2026-10-31&storeId=store",
+      "/publicidad/anuncios?from=2026-10-01&to=2026-10-31&storeId=all",
     );
-    expect(new URLSearchParams(window.location.search).get("storeId")).toBe("store");
+    expect(new URLSearchParams(window.location.search).get("storeId")).toBe("all");
   });
   it("hides the period on tests and never renders protected children without view permission", async () => {
     mockPath = "/publicidad/pruebas";
@@ -89,7 +92,7 @@ describe("Publicidad navigation and access", () => {
     expect(screen.queryByText("Ganancia confidencial")).not.toBeInTheDocument();
   });
   it.each(["/publicidad", "/publicidad/anuncios", "/publicidad/configuracion"])(
-    "keeps only the local store selector and advertising settings on %s",
+    "keeps the whole business selected through navigation and history on %s",
     (path) => {
       mockPath = path;
       render(
@@ -99,14 +102,16 @@ describe("Publicidad navigation and access", () => {
       );
       expect(screen.queryByRole("button", { name: "Administrar Tiendas" })).not.toBeInTheDocument();
       expect(screen.queryByRole("combobox", { name: "Tienda global" })).not.toBeInTheDocument();
-      expect(screen.getAllByRole("combobox")).toHaveLength(1);
-      fireEvent.change(screen.getByRole("combobox", { name: "Tienda" }), {
-        target: { value: "other" },
+      expect(screen.queryAllByRole("combobox")).toHaveLength(0);
+      expect(screen.getByText("Todo el negocio")).toBeInTheDocument();
+      act(() => {
+        window.history.replaceState({}, "", `${path}?storeId=other&from=2026-10-01&to=2026-10-31`);
+        window.dispatchEvent(new PopStateEvent("popstate"));
       });
-      expect(new URLSearchParams(window.location.search).get("storeId")).toBe("other");
+      expect(new URLSearchParams(window.location.search).get("storeId")).toBe("all");
       expect(screen.getByRole("link", { name: "Configuración" })).toHaveAttribute(
         "href",
-        "/publicidad/configuracion?from=2026-10-01&to=2026-10-31&storeId=other",
+        "/publicidad/configuracion?from=2026-10-01&to=2026-10-31&storeId=all",
       );
     },
   );

@@ -9,10 +9,10 @@ import {
   subDays,
 } from "date-fns";
 import type {
-  AdsProduct,
   AdsDay,
-  AdsRules,
+  AdsProduct,
   AdsRow,
+  AdsRules,
   AdsSales,
   AdsSummary,
   SalesGroup,
@@ -167,11 +167,47 @@ export function sumSpend(rows: Array<{ spend: string | null }>): number | null {
   if (rows.some((row) => row.spend === null)) return null;
   return rows.reduce((sum, row) => sum + (numeric(row.spend) ?? 0), 0);
 }
-export function summarySpendAvailable(summary: AdsSummary) {
+export function summarySpendAvailable(summary: AdsSummary, storeId = "all", date?: string) {
+  if (summary.quality.spendScopes) {
+    const scope = summary.quality.spendScopes.find(
+      (scope) => scope.storeId === storeId && scope.currency === "PEN",
+    );
+    if (date) return scope?.days.find((day) => day.date === date)?.spendAvailable === true;
+    return scope?.spendAvailable === true;
+  }
   return (
     summary.quality.spendAvailable ??
     (!summary.quality.coverage || summary.quality.coverage === "complete")
   );
+}
+export function spendAvailabilityDetail(summary: AdsSummary, storeId = "all", date?: string) {
+  if (summarySpendAvailable(summary, storeId, date)) return undefined;
+  const scope = summary.quality.spendScopes?.find(
+    (scope) => scope.storeId === storeId && scope.currency === "PEN",
+  );
+  const reasons = date ? scope?.days.find((day) => day.date === date)?.reasons : scope?.reasons;
+  const codes = reasons ?? summary.quality.warnings;
+  if (codes.includes("STORE_ASSIGNMENT_UNCERTAIN")) return "Asignación histórica por revisar";
+  if (codes.includes("META_SPEND_MISMATCH")) return "Detalle de Meta por conciliar";
+  if (codes.includes("META_DATA_PARTIAL")) return "Actualizando datos de Meta";
+  return "Gasto de Meta pendiente de confirmar";
+}
+export function hourlySpendScope(summary: AdsSummary, storeId: string, date: string) {
+  const hasCoverageEvidence =
+    summary.quality.spendScopes !== undefined ||
+    summary.quality.spendAvailable !== undefined ||
+    summary.quality.coverage !== undefined;
+  const available = hasCoverageEvidence && summarySpendAvailable(summary, storeId, date);
+  const scope = summary.quality.spendScopes
+    ?.find((scope) => scope.storeId === storeId && scope.currency === "PEN")
+    ?.days.find((day) => day.date === date);
+  const accountIds =
+    scope?.accountIds ??
+    (storeId === "all" && summary.quality.accountDays
+      ? summary.quality.accountDays.filter((day) => day.date === date && day.currency === "PEN")
+      : spendRows(summary, storeId).filter((day) => day.date === date)
+    ).map((day) => day.accountId);
+  return { date, available, accountIds: [...new Set(accountIds)].sort() };
 }
 export type FinancialIssue =
   | "attribution"
@@ -353,7 +389,9 @@ export function cohortFinancial(
 }
 export function summarize(summary: AdsSummary, sales: AdsSales, storeId: string, channel = "all") {
   return cohortFinancial(
-    !summarySpendAvailable(summary) ? null : sumSpend(spendRows(summary, storeId, channel)),
+    !summarySpendAvailable(summary, storeId)
+      ? null
+      : sumSpend(spendRows(summary, storeId, channel)),
     paidRows(sales.byChannel, storeId, channel),
     sales,
   );
@@ -363,6 +401,7 @@ export function productFinancialRows(
   sales: AdsSales,
   products: AdsProduct[],
   storeId: string,
+  groupByStore = true,
 ) {
   const productIds = [
     ...new Set([
@@ -372,7 +411,7 @@ export function productFinancialRows(
         .filter((id): id is string => !!id && id !== "varios"),
     ]),
   ];
-  return productIds.flatMap((productId) => {
+  const storeRows = productIds.flatMap((productId) => {
     const assignments = summary.adProducts.filter((row) => row.productId === productId);
     const relevantStoreIds = [
       ...new Set(
@@ -392,7 +431,7 @@ export function productFinancialRows(
         const ids = new Set(ads.map((row) => row.adId));
         const productSales = sumSales(records);
         const value = financial(
-          !summarySpendAvailable(summary)
+          !ads.length || !summarySpendAvailable(summary, id)
             ? null
             : sumSpend(
                 summary.days.filter(
@@ -426,6 +465,53 @@ export function productFinancialRows(
         };
       });
   });
+  if (groupByStore) return storeRows;
+  return productIds.flatMap((productId) => {
+    const parts = storeRows.filter((row) => row.productId === productId);
+    if (!parts.length) return [];
+    const stores = new Set(parts.map((row) => row.storeId));
+    const assignments = summary.adProducts.filter(
+      (row) => row.productId === productId && !!row.storeId && stores.has(row.storeId),
+    );
+    const adKeys = new Set(assignments.map((row) => JSON.stringify([row.accountId, row.adId])));
+    const records = sales.byProduct.filter(
+      (row) => row.productId === productId && !!row.storeId && stores.has(row.storeId),
+    );
+    const productSales = sumSales(records);
+    const spend = parts.some((row) => row.spend === null)
+      ? null
+      : sumSpend(
+          summary.days.filter(
+            (row) =>
+              row.currency === "PEN" &&
+              !!row.storeId &&
+              stores.has(row.storeId) &&
+              adKeys.has(JSON.stringify([row.accountId, row.adId])),
+          ),
+        );
+    const value = cohortFinancial(spend, records, sales);
+    return [
+      {
+        productId,
+        storeId,
+        currency: "PEN" as const,
+        name: products.find((row) => row.id === productId)?.name ?? "Producto sin nombre",
+        ads: adKeys.size,
+        netUnitPrice: ratio(numeric(productSales.billedRevenue), productSales.billedUnits ?? null),
+        costWithShipping:
+          value.missingCosts ||
+          numeric(productSales.eligibleProductCost) === null ||
+          numeric(productSales.eligibleShippingCost) === null
+            ? null
+            : ratio(
+                numeric(productSales.eligibleProductCost)! +
+                  numeric(productSales.eligibleShippingCost)!,
+                productSales.eligibleBilledUnits ?? null,
+              ),
+        ...value,
+      },
+    ];
+  });
 }
 export function trafficLight(usage: number | null, threshold = 70) {
   return usage === null
@@ -449,7 +535,7 @@ export function monthlyModel(summary: AdsSummary, sales: AdsSales, storeId: stri
       future: date > through,
       week: dayKey(startOfWeek(parseISO(date), { weekStartsOn: 1 })),
       ...cohortFinancial(
-        !summarySpendAvailable(summary)
+        !summarySpendAvailable(summary, storeId, date)
           ? null
           : sumSpend(spendRows(summary, storeId).filter((row) => row.date === date)),
         groups,
@@ -479,7 +565,8 @@ export function monthlyModel(summary: AdsSummary, sales: AdsSales, storeId: stri
         ? null
         : total.spend + dailyAverage * remaining;
   const closedSalesDays = elapsed.filter((row) => row.date < today && row.inTransit === 0);
-  const profitableDays = closedSalesDays.filter((row) => row.gain !== null && row.gain >= 0).length;
+  const evaluatedDays = closedSalesDays.filter((row) => row.gain !== null);
+  const profitableDays = evaluatedDays.filter((row) => row.gain !== null && row.gain >= 0).length;
   const sorted = elapsed
     .filter((row) => row.projectedGain !== null)
     .sort((a, b) => (b.projectedGain ?? 0) - (a.projectedGain ?? 0));
@@ -547,6 +634,8 @@ export function monthlyModel(summary: AdsSummary, sales: AdsSales, storeId: stri
         : Math.max(0, (budget - total.spend) / remaining),
     profitableDays,
     closedDays: closedSalesDays.length,
+    evaluatedDays: evaluatedDays.length,
+    pendingDays: closedSalesDays.length - evaluatedDays.length,
     best: sorted[0]?.date,
     worst: sorted.at(-1)?.date,
   };
@@ -623,7 +712,11 @@ export function channelRow(row: AdsRow, summary: AdsSummary, channel: string): A
   const results = selected.some((day) => day.results === null)
     ? null
     : selected.reduce((sum, day) => sum + (day.results ?? 0), 0);
-  const spend = !summarySpendAvailable(summary) ? null : sumSpend(selected);
+  const spendConfirmed =
+    row.level === "store"
+      ? summarySpendAvailable(summary, row.id)
+      : (row.insights.coverage?.spendAvailable ?? summarySpendAvailable(summary));
+  const spend = spendConfirmed ? sumSpend(selected) : null;
   const partial = all.some((day) => day.channel !== channel);
   const type = channel === "web" ? "webPurchases" : "messages";
   return {
@@ -797,7 +890,9 @@ export function createAdFinancialCalculator(summary: AdsSummary, sales: AdsSales
     const ownSpendConfirmed =
       row.level === "store" ? undefined : row.insights.coverage?.spendAvailable;
     const spend =
-      (ownSpendConfirmed ?? summarySpendAvailable(summary)) ? numeric(row.insights.spend) : null;
+      (ownSpendConfirmed ?? summarySpendAvailable(summary, row.level === "store" ? row.id : "all"))
+        ? numeric(row.insights.spend)
+        : null;
     const issues = new Set<FinancialIssue>();
     if (spend === null) issues.add("spend");
     if (row.currency !== "PEN") issues.add("currency");
@@ -858,7 +953,13 @@ export function createAdFinancialCalculator(summary: AdsSummary, sales: AdsSales
       });
     }
     if (!raw.length || raw.some((day) => !day.storeId)) issues.add("store");
-    if (!summarySpendAvailable(summary)) issues.add("results");
+    const resultStores = [...new Set(raw.flatMap((day) => (day.storeId ? [day.storeId] : [])))];
+    if (
+      resultStores.length
+        ? resultStores.some((storeId) => !summarySpendAvailable(summary, storeId))
+        : !summarySpendAvailable(summary)
+    )
+      issues.add("results");
     if (raw.some((day) => day.channel === "other")) issues.add("channel");
     const leafSegments = new Map<string, AdsDay[]>();
     for (const day of raw)
