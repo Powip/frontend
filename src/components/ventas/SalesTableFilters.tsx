@@ -252,9 +252,9 @@ export function SalesTableFilters({
   const activeFiltersCount = countedFilters.length;
 
   return (
-    <div className="mb-4">
+    <div className="mb-4 min-w-0">
       {/* Toggle Button */}
-      <div className="flex flex-wrap items-center gap-2 mb-2">
+      <div className="flex min-w-0 flex-wrap items-end gap-3 mb-2">
         <Button
           variant="outline"
           size="sm"
@@ -288,64 +288,70 @@ export function SalesTableFilters({
         )}
 
         {dateWindow && (
-          <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-            <Label htmlFor={fromDateId} className="text-xs">
-              Desde
-            </Label>
-            <Input
-              id={fromDateId}
-              type="date"
-              value={dateWindow.value.fromDate}
-              onChange={(e) =>
-                dateWindow.onChange({
-                  fromDate: e.target.value || dateWindow.defaultFromDate,
-                  toDate: dateWindow.value.toDate,
-                })
-              }
-              className="h-8 text-sm w-auto"
-            />
-            <Label htmlFor={toDateId} className="text-xs">
-              Hasta
-            </Label>
-            <Input
-              id={toDateId}
-              type="date"
-              value={dateWindow.value.toDate}
-              onChange={(e) =>
-                dateWindow.onChange({
-                  fromDate: dateWindow.value.fromDate,
-                  toDate: e.target.value,
-                })
-              }
-              className="h-8 text-sm w-auto"
-            />
-            {[7, 15, 30].map((n) => (
-              <Button
-                key={n}
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8"
-                onClick={() =>
+          <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:ml-auto sm:w-auto sm:grid-cols-2 xl:grid-cols-[10rem_10rem_auto]">
+            <div className="min-w-0 space-y-1">
+              <Label htmlFor={fromDateId} className="text-xs">
+                Desde
+              </Label>
+              <Input
+                id={fromDateId}
+                type="date"
+                value={dateWindow.value.fromDate}
+                onChange={(e) =>
                   dateWindow.onChange({
-                    fromDate: shiftPeruDate(dateWindow.today, -(n - 1)),
-                    toDate: "",
+                    fromDate: e.target.value || dateWindow.defaultFromDate,
+                    toDate: dateWindow.value.toDate,
                   })
                 }
-              >
-                {n} días
-              </Button>
-            ))}
+                className="h-8 min-w-0 max-w-full text-sm"
+              />
+            </div>
+            <div className="min-w-0 space-y-1">
+              <Label htmlFor={toDateId} className="text-xs">
+                Hasta
+              </Label>
+              <Input
+                id={toDateId}
+                type="date"
+                value={dateWindow.value.toDate}
+                onChange={(e) =>
+                  dateWindow.onChange({
+                    fromDate: dateWindow.value.fromDate,
+                    toDate: e.target.value,
+                  })
+                }
+                className="h-8 min-w-0 max-w-full text-sm"
+              />
+            </div>
+            <div className="grid min-w-0 grid-cols-3 gap-2 sm:col-span-2 xl:col-span-1 xl:self-end">
+              {[7, 15, 30].map((n) => (
+                <Button
+                  key={n}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 min-w-0 px-2"
+                  onClick={() =>
+                    dateWindow.onChange({
+                      fromDate: shiftPeruDate(dateWindow.today, -(n - 1)),
+                      toDate: "",
+                    })
+                  }
+                >
+                  {n} días
+                </Button>
+              ))}
+            </div>
           </div>
         )}
       </div>
 
       {/* Collapsible Filters */}
       {isExpanded && (
-        <div className="p-4 border rounded-lg bg-muted/30 animate-in fade-in slide-in-from-top-2 duration-200">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="min-w-0 p-4 border rounded-lg bg-muted/30 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="grid min-w-0 grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-3">
             {/* Búsqueda */}
-            <div className="space-y-1 col-span-2">
+            <div className="min-w-0 space-y-1 sm:col-span-2">
               <Label className="text-xs">Buscar (cliente, teléfono, N° orden)</Label>
               <Input
                 placeholder="Buscar..."
@@ -353,19 +359,19 @@ export function SalesTableFilters({
                 onChange={(e) => updateFilter("search", e.target.value)}
                 icon={Search}
                 iconPosition="left"
-                className="h-8 text-sm"
+                className="h-8 min-w-0 max-w-full text-sm"
               />
             </div>
 
             {/* Fecha Desde */}
             {!dateWindow && (
-            <div className="space-y-1">
+            <div className="min-w-0 space-y-1">
               <Label className="text-xs">Fecha Desde</Label>
               <Input
                 type="date"
                 value={filters.dateFrom}
                 onChange={(e) => updateFilter("dateFrom", e.target.value)}
-                className="h-8 text-sm"
+                className="h-8 min-w-0 max-w-full text-sm"
               />
             </div>
 
@@ -373,26 +379,26 @@ export function SalesTableFilters({
 
             {/* Fecha Hasta */}
             {!dateWindow && (
-            <div className="space-y-1">
+            <div className="min-w-0 space-y-1">
               <Label className="text-xs">Fecha Hasta</Label>
               <Input
                 type="date"
                 value={filters.dateTo}
                 onChange={(e) => updateFilter("dateTo", e.target.value)}
-                className="h-8 text-sm"
+                className="h-8 min-w-0 max-w-full text-sm"
               />
             </div>
             )}
 
             {/* Producto */}
             {showProductFilter && (
-              <div className="space-y-1 col-span-2">
+              <div className="min-w-0 space-y-1 sm:col-span-2">
                 <Label htmlFor={productSelectId} className="text-xs">
                   Producto
                 </Label>
                 <select
                   id={productSelectId}
-                  className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                  className="w-full min-w-0 max-w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                   value={filters.product}
                   onChange={(e) => updateFilter("product", e.target.value)}
                 >
@@ -407,10 +413,10 @@ export function SalesTableFilters({
             )}
 
             {/* Método de pago */}
-            <div className="space-y-1">
+            <div className="min-w-0 space-y-1">
               <Label className="text-xs">Método de pago</Label>
               <select
-                className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                className="w-full min-w-0 max-w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                 value={filters.paymentMethod}
                 onChange={(e) => updateFilter("paymentMethod", e.target.value)}
               >
@@ -424,10 +430,10 @@ export function SalesTableFilters({
 
             {/* Estado */}
             {showStatusFilter && (
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 <Label className="text-xs">Estado</Label>
                 <select
-                  className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                  className="w-full min-w-0 max-w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                   value={filters.status}
                   onChange={(e) =>
                     updateFilter("status", e.target.value as OrderStatus | "")
@@ -445,10 +451,10 @@ export function SalesTableFilters({
 
             {/* Canal de venta */}
             {showChannelFilter && (
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 <Label className="text-xs">Canal de venta</Label>
                 <select
-                  className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                  className="w-full min-w-0 max-w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                   value={filters.salesChannel}
                   onChange={(e) => updateFilter("salesChannel", e.target.value)}
                 >
@@ -463,10 +469,10 @@ export function SalesTableFilters({
             )}
 
             {/* Saldo pendiente */}
-            <div className="space-y-1">
+            <div className="min-w-0 space-y-1">
               <Label className="text-xs">Saldo pendiente</Label>
               <select
-                className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                className="w-full min-w-0 max-w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                 value={filters.hasPendingBalance}
                 onChange={(e) =>
                   updateFilter("hasPendingBalance", e.target.value as "" | "yes" | "no")
@@ -482,10 +488,10 @@ export function SalesTableFilters({
 
             {/* Región */}
             {showRegionFilter && (
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 <Label className="text-xs">Región</Label>
                 <select
-                  className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                  className="w-full min-w-0 max-w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                   value={filters.region}
                   onChange={(e) =>
                     updateFilter("region", e.target.value as "" | "LIMA" | "PROVINCIA")
@@ -501,10 +507,10 @@ export function SalesTableFilters({
             )}
 
             {/* Tipo de envío */}
-            <div className="space-y-1">
+            <div className="min-w-0 space-y-1">
               <Label className="text-xs">Tipo de envío</Label>
               <select
-                className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                className="w-full min-w-0 max-w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                 value={filters.deliveryType}
                 onChange={(e) =>
                   updateFilter(
@@ -523,10 +529,10 @@ export function SalesTableFilters({
 
             {/* Courier */}
             {showCourierFilter && (
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 <Label className="text-xs">Courier</Label>
                 <select
-                  className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                  className="w-full min-w-0 max-w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                   value={filters.courier}
                   onChange={(e) => updateFilter("courier", e.target.value)}
                 >
@@ -542,10 +548,10 @@ export function SalesTableFilters({
 
             {/* Zona de reparto */}
             {showZoneFilter && (
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 <Label className="text-xs">Zona de reparto</Label>
                 <select
-                  className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                  className="w-full min-w-0 max-w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                   value={filters.zone}
                   onChange={(e) => updateFilter("zone", e.target.value)}
                 >
@@ -560,10 +566,10 @@ export function SalesTableFilters({
 
             {/* Guía de envío */}
             {showGuideFilter && (
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 <Label className="text-xs">Guía</Label>
                 <select
-                  className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                  className="w-full min-w-0 max-w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                   value={filters.hasGuide}
                   onChange={(e) =>
                     updateFilter("hasGuide", e.target.value as "" | "yes" | "no")
@@ -580,10 +586,10 @@ export function SalesTableFilters({
 
             {/* Origen (Manual / Shopify) */}
             {showSourceFilter && (
-              <div className="space-y-1">
+              <div className="min-w-0 space-y-1">
                 <Label className="text-xs">Origen</Label>
                 <select
-                  className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                  className="w-full min-w-0 max-w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                   value={filters.source}
                   onChange={(e) =>
                     updateFilter("source", e.target.value as "" | "shopify" | "google_sheets" | "manual")

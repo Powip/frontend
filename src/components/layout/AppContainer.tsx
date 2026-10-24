@@ -69,7 +69,7 @@ function ScopedAppContainer({ children }: { children: React.ReactNode }) {
     <AuthGuard>
       <div className="flex h-screen overflow-hidden">
         {!hideSidebar && <Sidebar />}
-        <main className="flex-1 bg-gray-light overflow-auto">
+        <main className="min-w-0 flex-1 bg-gray-light overflow-auto">
           {!hideSidebar && <FlowMigrationBanner />}
           {!hideSidebar && isBusinessScopeRoute(pathname) && <BusinessScopeBar />}
           <Fragment key={viewKey}>{children}</Fragment>

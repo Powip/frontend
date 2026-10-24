@@ -446,7 +446,7 @@ export function Sidebar({ className }: SidebarProps) {
   return (
     <div
       className={cn(
-        "flex flex-col px-3 pt-6 pb-6 h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300",
+        "flex shrink-0 flex-col px-3 pt-6 pb-6 h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300",
         isCollapsed ? "w-16 px-1" : "w-64 px-3",
         className,
       )}
