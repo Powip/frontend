@@ -1,6 +1,6 @@
 import { buildOrderItem } from "@/app/registrar-venta/orderItemPricing";
 import type { CartItem } from "@/interfaces/IOrder";
-import { hasConfirmedQuantityHold, unitAssignmentLabel, assignmentBlockReason, saleMutationUrl, saleReceiptUrl, persistSaleOperation, readSaleOperation, saleOperationKey, validateSaleUnits } from "../saleTrackingService";
+import { hasConfirmedQuantityHold, unitAssignmentLabel, assignmentBlockReason, requiresAuthenticatedSaleStatusMutation, saleMutationUrl, saleReceiptUrl, persistSaleOperation, readSaleOperation, saleOperationKey, validateSaleUnits } from "../saleTrackingService";
 import { GATEWAY } from "@/lib/gateway";
 
 const line: CartItem = { id: "line", inventoryItemId: "item", variantId: "variant", sku: "PHONE", productName: "Phone", quantity: 1, price: 100, discount: 0 };
@@ -49,6 +49,21 @@ test("tracked and unresolved status mutations use the authenticated route while 
 test("receipt codes are fetched through the scoped manual route for tracked sales", () => {
   expect(saleReceiptUrl("http://ventas", "normal", { unitAssignmentStatus: "NONE" })).toBe("http://ventas/order-header/normal/receipt");
   expect(saleReceiptUrl("http://ventas", "tracked", { unitAssignmentStatus: "CONFIRMED" })).toBe("http://ventas/order-header/manual/tracked/receipt");
+});
+
+test("deferred manual preparation uses the authenticated status route without changing receipt or unit safeguards", () => {
+  const manual = { status: "PENDIENTE", commercialStage: "SALE" as const, commercialStockState: "DEFERRED" as const, unitAssignmentStatus: "NONE" as const };
+  expect(requiresAuthenticatedSaleStatusMutation(manual)).toBe(true);
+  expect(saleMutationUrl("http://ventas", "manual", manual)).toBe("http://ventas/order-header/manual/manual/status");
+  expect(saleMutationUrl("http://ventas", "manual", { ...manual, status: "PAGADO", externalSource: null })).toBe("http://ventas/order-header/manual/manual/status");
+  expect(saleReceiptUrl("http://ventas", "manual", manual)).toBe("http://ventas/order-header/manual/receipt");
+  for (const externalSource of ["shopify", "live", "manual", ""]) {
+    expect(requiresAuthenticatedSaleStatusMutation({ ...manual, externalSource })).toBe(false);
+    expect(saleMutationUrl("http://ventas", "provider", { ...manual, externalSource })).toBe("http://ventas/order-header/provider");
+  }
+  expect(requiresAuthenticatedSaleStatusMutation({ ...manual, commercialStage: "LEAD" })).toBe(false);
+  expect(requiresAuthenticatedSaleStatusMutation({ ...manual, status: "PREPARADO" })).toBe(false);
+  expect(assignmentBlockReason({ ...manual, unitAssignmentStatus: "PENDING", hasTrackedUnits: true }, "PREPARADO")).toMatch(/pendiente/);
 });
 
 

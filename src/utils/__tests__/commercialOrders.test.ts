@@ -1,5 +1,6 @@
 import {
   canOperateCommercialOrder,
+  canPrepareDeferredManualOrder,
   canShipCommercialOrder,
   isCommercialSaleOrder,
   notifyCommercialChange,
@@ -121,5 +122,43 @@ describe("sales physical authority independent of CC display", () => {
     expect(salesPhysicalOperationBlockReason(order)).toBeNull();
     expect(salesStatusBlockReason(order, "PREPARADO")).toBeNull();
     expect(canShipCommercialOrder(order)).toBe(false);
+  });
+});
+
+describe("preparing an existing manual sale with deferred stock", () => {
+  const manual = { status: "PENDIENTE", commercialStage: "SALE" as const, commercialStockState: "DEFERRED" as const };
+
+  it.each(["PENDIENTE", "PAGADO"])("allows only preparation from %s, while printing and dispatch still require stock", (status) => {
+    const order = { ...manual, status, externalSource: null };
+    expect(canPrepareDeferredManualOrder(order)).toBe(true);
+    expect(salesStatusBlockReason(order, "PREPARADO")).toBeNull();
+    expect(salesPhysicalOperationBlockReason(order)).toMatch(/Al marcar Preparado, se registrará la reserva/);
+    expect(salesPhysicalOperationBlockReason(order)).not.toContain("Lead");
+    expect(canOperateCommercialOrder(order)).toBe(false);
+    expect(canShipCommercialOrder(order)).toBe(false);
+    for (const target of ["LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO", "ENTREGADO"]) {
+      expect(salesStatusBlockReason(order, target)).toEqual(expect.any(String));
+    }
+  });
+
+  it("includes an absent source without assuming any explicit provider is manual", () => {
+    expect(canPrepareDeferredManualOrder(manual)).toBe(true);
+    for (const externalSource of ["shopify", "live", "aliclik", "yavendio", "manual", ""]) {
+      const order = { ...manual, externalSource };
+      expect(canPrepareDeferredManualOrder(order)).toBe(false);
+      expect(salesStatusBlockReason(order, "PREPARADO")).toEqual(expect.any(String));
+    }
+  });
+
+  it.each([
+    { commercialStage: "LEAD" as const },
+    { commercialStage: null },
+    { status: "PREVENTA" },
+    { status: "PREPARADO" },
+    { status: "ANULADO" },
+    { status: undefined },
+    { commercialStockState: "QUEUED" as const },
+  ])("does not classify another stage or reservation as a manual preparation exception: %j", (patch) => {
+    expect(canPrepareDeferredManualOrder({ ...manual, ...patch })).toBe(false);
   });
 });

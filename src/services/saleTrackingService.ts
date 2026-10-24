@@ -1,6 +1,7 @@
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
 import { isTracked, type TrackingMode } from "./inventoryTrackingService";
+import { canPrepareDeferredManualOrder, type SalesPhysicalOrderProjection } from "@/utils/commercialOrders";
 
 export type UnitAssignmentStatus =
   | "NONE"
@@ -100,8 +101,11 @@ export function requiresAuthenticatedSaleMutation(order?: UnitAssignmentState | 
     order?.items?.some((item) => isTracked(item.trackingMode) || item.trackingMode === "UNKNOWN"),
   );
 }
-export function saleMutationUrl(apiBase: string, orderId: string, order?: UnitAssignmentState | null): string {
-  return requiresAuthenticatedSaleMutation(order)
+export function requiresAuthenticatedSaleStatusMutation(order?: (UnitAssignmentState & SalesPhysicalOrderProjection) | null): boolean {
+  return requiresAuthenticatedSaleMutation(order) || Boolean(order && canPrepareDeferredManualOrder(order));
+}
+export function saleMutationUrl(apiBase: string, orderId: string, order?: (UnitAssignmentState & SalesPhysicalOrderProjection) | null): string {
+  return requiresAuthenticatedSaleStatusMutation(order)
     ? `${apiBase}/order-header/manual/${orderId}/status`
     : `${apiBase}/order-header/${orderId}`;
 }

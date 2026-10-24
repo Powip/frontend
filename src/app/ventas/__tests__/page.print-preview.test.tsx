@@ -471,6 +471,45 @@ describe("Ventas — detalle y acciones de pedidos que siguen en Atención", () 
     expect(toast.error).not.toHaveBeenCalled();
   });
 
+  it("prepara una venta manual diferida desde Ventas con la ruta autenticada y sin exigir ir al Lead", async () => {
+    useFixtureOrders([{ ...ORDERS[0], commercialStage: "SALE", commercialStockState: "DEFERRED", commercialLeadId: "lead-manual", externalSource: null, unitAssignmentStatus: "NONE", stockVersion: 0, salesRegion: "PROVINCIA" }]);
+    render(<VentasPage />);
+    const row = (await screen.findByText("ORD-001")).closest("tr")!;
+    const statuses = within(row).getByTestId("status-select").getAttribute("data-available-statuses")!.split(",");
+    expect(statuses).toContain("PREPARADO");
+    expect(statuses).not.toContain("LLAMADO");
+    expect(statuses).not.toContain("EN_ENVIO");
+    expect(within(row).getByText(/Al marcar Preparado, se registrará la reserva/)).toBeInTheDocument();
+    expect(within(row).queryByRole("link", { name: "Preparar reserva de stock" })).not.toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: "Preparar PENDIENTE" }));
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalledWith("http://ventas/order-header/manual/o-1/status", expect.objectContaining({ status: "PREPARADO", userId: "user-1" })));
+    expect(mockedAxios.patch).toHaveBeenCalledTimes(1);
+  });
+
+  it("recarga una reserva manual encolada si preparar recibe el rechazo de inventario pendiente", async () => {
+    useFixtureOrders([{ ...ORDERS[0], commercialStage: "SALE", commercialStockState: "DEFERRED", externalSource: null, unitAssignmentStatus: "NONE", stockVersion: 0 }]);
+    mockedAxios.patch.mockRejectedValueOnce({ response: { status: 409, data: { message: "La reserva está pendiente de confirmación" } } });
+    const loggedError = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      render(<VentasPage />);
+      fireEvent.click(await screen.findByRole("button", { name: "Preparar PENDIENTE" }));
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith("La reserva está pendiente de confirmación"));
+      expect(mockInvalidate).toHaveBeenCalled();
+      expect(toast.success).not.toHaveBeenCalled();
+    } finally { loggedError.mockRestore(); }
+  });
+
+  it("exige preparar la reserva manual antes de imprimir su etiqueta", async () => {
+    useFixtureOrders([{ ...ORDERS[0], commercialStage: "SALE", commercialStockState: "DEFERRED", externalSource: null, unitAssignmentStatus: "NONE", stockVersion: 0 }]);
+    render(<VentasPage />);
+    const row = (await screen.findByText("ORD-001")).closest("tr")!;
+    fireEvent.click(within(row).getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /Imprimir seleccionados \(1\)/ }));
+    expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/Al marcar Preparado, se registrará la reserva/));
+    expect(mockedAxios.get).not.toHaveBeenCalled();
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
+  });
+
   it("explica por qué Elisa necesita confirmación antes de preparar y conserva la anulación", async () => {
     useFixtureOrders(customerServiceOrders());
     render(<VentasPage />);
