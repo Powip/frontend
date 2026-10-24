@@ -10,7 +10,6 @@ import { TeamManagement } from "@/components/dashboard/TeamManagement";
 import { FinanceStats } from "@/components/dashboard/FinanceStats";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import { useDashboardScope } from "@/contexts/DashboardScopeContext";
-import { ReportCurrencySelector } from "@/components/dashboard/ReportCurrencySelector";
 
 export default function DashboardPage() {
   return <DashboardContent />;
@@ -46,7 +45,6 @@ function DashboardContent() {
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <ReportCurrencySelector />
           <PeriodSelector onPeriodChange={handlePeriodChange} />
         </div>
       </div>
