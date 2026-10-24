@@ -1,9 +1,9 @@
 "use client";
-import { useMemo, useState } from "react";
 import { endOfMonth, format, parseISO, startOfMonth, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
 import {
   Bar,
   CartesianGrid,
@@ -19,42 +19,43 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
-import { fetchBusinessProducts } from "@/services/businessProductsService";
 import {
+  type AdsProduct,
+  type AdsSales,
+  type AdsSummary,
   adsGet,
   getAdsSales,
   getAllAdsCatalog,
-  type AdsSummary,
-  type AdsSales,
-  type AdsProduct,
 } from "@/services/advertisingV22Service";
+import { fetchBusinessProducts } from "@/services/businessProductsService";
 import { useAdvertisingStoreFilter } from "../AdvertisingStoreFilterContext";
+import { advertisingSectionHref } from "../advertising-sections";
 import { useAdsQuery, useAdsV22 } from "./context";
 import {
   comparisonPeriod,
   dateRange,
   dayKey,
   decimal,
+  type Financial,
   limaToday,
   money,
   monthlyModel,
   numeric,
   paidRows,
   pct,
-  ratio,
+  productFinancialRows,
   profitUsage,
+  ratio,
+  spendAvailabilityDetail,
   spendRows,
+  summarize,
+  summarySpendAvailable,
   sumSales,
   sumSpend,
-  summarize,
-  productFinancialRows,
-  summarySpendAvailable,
   trafficLight,
-  type Financial,
 } from "./model";
 import { Block, Failure, MetricCard, SelectField, exportAdsWorkbook } from "./shared";
 import { AdvertisingDataStatus } from "./DataStatus";
-import { advertisingSectionHref } from "../advertising-sections";
 
 export function useNumbers(from: string, to: string, storeId: string, suffix = "period") {
   return useAdsQuery(
@@ -74,6 +75,39 @@ export function useNumbers(from: string, to: string, storeId: string, suffix = "
 const dateLabel = (date: string) => format(parseISO(date), "d EEE", { locale: es });
 const difference = (current: number | null, previous: number | null) =>
   current === null || previous === null || previous === 0 ? null : (current - previous) / previous;
+
+function missingMetricDetail(
+  metric: Financial,
+  key: Exclude<keyof Financial, "evidence">,
+  summary: AdsSummary,
+  storeId: string,
+) {
+  if (metric[key] !== null) return undefined;
+  if (
+    [
+      "spend",
+      "costOrder",
+      "costConfirmed",
+      "costSale",
+      "costUnit",
+      "projectedCost",
+      "gain",
+      "gainUnit",
+      "roas",
+    ].includes(key) &&
+    !summarySpendAvailable(summary, storeId)
+  )
+    return spendAvailabilityDetail(summary, storeId);
+  if (key === "costOrder" && metric.orders === 0) return "Sin pedidos";
+  if (key === "costConfirmed" && metric.confirmed === 0) return "Sin confirmados";
+  if (["costSale", "ticket", "gainUnit", "maximum"].includes(key) && metric.delivered === 0)
+    return "Sin entregas";
+  if (key === "costUnit" && metric.deliveredUnits === 0) return "Sin unidades entregadas";
+  if (key === "roas" && metric.spend === 0) return "Sin gasto publicitario";
+  if (metric.missingCosts > 0) return "Faltan costos históricos";
+  if (key === "projectedCost") return "Sin histórico suficiente de entregas";
+  return "Datos insuficientes";
+}
 
 export function AdvertisingNumbers() {
   const { fromDate, toDate } = useAdminPeriod();
@@ -99,30 +133,43 @@ export function AdvertisingNumbers() {
   if (!query.data)
     return <Skeleton className="m-6 h-80" aria-label="Cargando números de publicidad" />;
   const { summary, sales } = query.data;
+  const selectedSpendScope = summary.quality.spendScopes?.find(
+    (scope) => scope.storeId === storeId && scope.currency === "PEN",
+  );
+  const warnings = selectedSpendScope
+    ? [
+        ...new Set([
+          ...summary.quality.warnings.filter(
+            (code) =>
+              ![
+                "META_DATA_NOT_SYNCED",
+                "META_DATA_PARTIAL",
+                "META_SPEND_MISMATCH",
+                "STORE_ASSIGNMENT_UNCERTAIN",
+                "CURRENT_DAY_PROVISIONAL",
+                "PROVISIONAL_META_DATA",
+              ].includes(code),
+          ),
+          ...selectedSpendScope.reasons,
+        ]),
+      ]
+    : summary.quality.warnings;
   const current = summarize(summary, sales, storeId);
   const prior = previous.data
     ? summarize(previous.data.summary, previous.data.sales, storeId)
     : null;
+  const scopeName =
+    storeId === "all"
+      ? "Todo el negocio"
+      : (stores.find((store) => store.id === storeId)?.name ?? "Total");
   const columns = [
-    ...stores.flatMap((store) =>
-      byChannel
-        ? [
-            {
-              id: `${store.id}:messages`,
-              storeId: store.id,
-              name: `${store.name} · Mensajes`,
-              channel: "messages",
-            },
-            {
-              id: `${store.id}:web`,
-              storeId: store.id,
-              name: `${store.name} · Web`,
-              channel: "web",
-            },
-          ]
-        : [{ id: store.id, storeId: store.id, name: store.name, channel: "all" }],
-    ),
-    { id: "all", storeId: "all", name: "Total", channel: "all" },
+    ...(byChannel
+      ? [
+          { id: "messages", storeId, name: "Mensajes", channel: "messages" },
+          { id: "web", storeId, name: "Web", channel: "web" },
+        ]
+      : []),
+    { id: "total", storeId, name: scopeName, channel: "all" },
   ];
   const metrics = columns.map((column) =>
     summarize(summary, sales, column.storeId, column.channel),
@@ -162,7 +209,18 @@ export function AdvertisingNumbers() {
   const visibleDefinitions = definitions.filter(
     (row) => !row.permission || permissions[row.permission],
   );
-  const productRows = productFinancialRows(summary, sales, products.data?.products ?? [], storeId);
+  const productRows = productFinancialRows(
+    summary,
+    sales,
+    products.data?.products ?? [],
+    storeId,
+    false,
+  );
+  const configurationLink = (section: string) =>
+    advertisingSectionHref("/publicidad/configuracion", fromDate, comparison.effectiveTo, {
+      storeId,
+      section,
+    });
   const exportComparison = async () => {
     try {
       await exportAdsWorkbook(`POWIP_Mis_numeros_${fromDate}_${comparison.effectiveTo}`, [
@@ -191,18 +249,16 @@ export function AdvertisingNumbers() {
         </span>
       </div>
       <AdvertisingDataStatus
-        warnings={summary.quality.warnings}
-        spendAvailable={summarySpendAvailable(summary)}
-        settingsHref={advertisingSectionHref("/publicidad/configuracion", fromDate, toDate, {
-          storeId,
-          section: "accounts",
-        })}
+        warnings={warnings}
+        spendAvailable={summarySpendAvailable(summary, storeId)}
+        settingsHref={configurationLink("accounts")}
       />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {permissions.spend && (
           <MetricCard
             label="Gasto en publicidad"
             value={money(current.spend)}
+            detail={spendAvailabilityDetail(summary, storeId)}
             variation={difference(current.spend, prior?.spend ?? null)}
           />
         )}
@@ -234,7 +290,7 @@ export function AdvertisingNumbers() {
         tools={
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" onClick={() => setByChannel((value) => !value)}>
-              {byChannel ? "Por tienda" : "Por tienda y canal"}
+              {byChannel ? "Ver total" : "Desglosar por canal"}
             </Button>
             <Button size="sm" variant="outline" onClick={() => void exportComparison()}>
               ↓ Excel
@@ -246,10 +302,13 @@ export function AdvertisingNumbers() {
           <table className="w-full text-sm">
             <thead>
               <tr>
-                <th className="sticky left-0 min-w-52 bg-card p-3 text-left">Métrica</th>
+                <th scope="col" className="sticky left-0 min-w-52 bg-card p-3 text-left">
+                  Métrica
+                </th>
                 {columns.map((column) => (
                   <th
                     key={column.id}
+                    scope="col"
                     className={`min-w-36 p-3 text-right ${column.storeId === storeId && storeId !== "all" ? "bg-primary/5 text-primary" : ""}`}
                   >
                     {column.name}
@@ -260,7 +319,9 @@ export function AdvertisingNumbers() {
             <tbody>
               {visibleDefinitions.map((def) => (
                 <tr key={def.key} className="border-t">
-                  <th className="sticky left-0 bg-card p-3 text-left font-normal">{def.label}</th>
+                  <th scope="row" className="sticky left-0 bg-card p-3 text-left font-normal">
+                    {def.label}
+                  </th>
                   {metrics.map((metric, index) => (
                     <td
                       key={columns[index].id}
@@ -269,13 +330,20 @@ export function AdvertisingNumbers() {
                       {def.type === "money"
                         ? money(metric[def.key])
                         : decimal(metric[def.key], def.type === "ratio" ? "×" : "")}
+                      {metric[def.key] === null && (
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {missingMetricDetail(metric, def.key, summary, columns[index].storeId)}
+                        </span>
+                      )}
                     </td>
                   ))}
                 </tr>
               ))}
               {permissions.profit && (
                 <tr className="border-t">
-                  <th className="sticky left-0 bg-card p-3 text-left font-normal">Semáforo</th>
+                  <th scope="row" className="sticky left-0 bg-card p-3 text-left font-normal">
+                    Semáforo
+                  </th>
                   {metrics.map((metric, index) => {
                     const status = trafficLight(
                       profitUsage(metric.costSale, metric.maximum),
@@ -290,7 +358,7 @@ export function AdvertisingNumbers() {
                 </tr>
               )}
               <tr className="border-t text-muted-foreground">
-                <th className="sticky left-0 bg-card p-3 text-left font-normal">
+                <th scope="row" className="sticky left-0 bg-card p-3 text-left font-normal">
                   Otros canales sin publicidad · pedidos
                 </th>
                 {columns.map((column) => (
@@ -307,16 +375,14 @@ export function AdvertisingNumbers() {
                   </td>
                 ))}
               </tr>
-              {permissions.spend && (
+              {permissions.spend && storeId === "all" && (
                 <tr className="border-t bg-amber-50 text-amber-900">
-                  <th className="sticky left-0 bg-amber-50 p-3 text-left font-normal">
-                    <Link href="/publicidad/configuracion?section=accounts">
-                      Gasto sin tienda →
-                    </Link>
+                  <th scope="row" className="sticky left-0 bg-amber-50 p-3 text-left font-normal">
+                    <Link href={configurationLink("accounts")}>Gasto sin tienda →</Link>
                   </th>
                   {columns.map((column) => (
                     <td key={column.id} className="p-3 text-right">
-                      {column.id === "all" ? money(numeric(summary.unassignedSpend)) : "—"}
+                      {column.id === "total" ? money(numeric(summary.unassignedSpend)) : "—"}
                     </td>
                   ))}
                 </tr>
@@ -326,10 +392,10 @@ export function AdvertisingNumbers() {
         </div>
         {current.missingCosts > 0 && permissions.profit && (
           <p className="text-sm text-amber-700">
-            {current.missingCosts} pedidos tienen productos sin costo: se excluyen del máximo y la
-            ganancia.{" "}
-            <Link className="underline" href="/productos">
-              Cargar costo →
+            {current.missingCosts} pedidos tienen costos históricos pendientes. La ganancia sólo
+            incluye la parte con costos registrados.{" "}
+            <Link className="underline" href={configurationLink("sales-costs")}>
+              Revisar costos de los pedidos →
             </Link>
           </p>
         )}
@@ -346,7 +412,6 @@ export function AdvertisingNumbers() {
                   name: "Productos",
                   rows: productRows.map((row) => ({
                     Producto: row.name,
-                    Tienda: stores.find((store) => store.id === row.storeId)?.name,
                     Anuncios: row.ads,
                     ...(permissions.spend
                       ? { Gasto: row.spend, "Costo por unidad": row.costUnit }
@@ -375,7 +440,6 @@ export function AdvertisingNumbers() {
               <tr>
                 {[
                   "Producto",
-                  "Tienda",
                   "N° anuncios",
                   ...(permissions.spend ? ["Gasto"] : []),
                   "Unid. entregadas",
@@ -398,11 +462,17 @@ export function AdvertisingNumbers() {
                   className={`border-t ${row.ads === 0 ? "text-muted-foreground" : ""}`}
                 >
                   <td className="p-3">{row.name}</td>
-                  <td className="p-3">
-                    {stores.find((store) => store.id === row.storeId)?.name ?? "—"}
-                  </td>
                   <td className="p-3">{row.ads}</td>
-                  {permissions.spend && <td className="p-3">{money(row.spend)}</td>}
+                  {permissions.spend && (
+                    <td className="p-3">
+                      {money(row.spend)}
+                      {row.ads === 0 && (
+                        <span className="block text-xs text-muted-foreground">
+                          Sin anuncios vinculados
+                        </span>
+                      )}
+                    </td>
+                  )}
                   <td className="p-3">{row.deliveredUnits}</td>
                   {permissions.spend && <td className="p-3">{money(row.costUnit)}</td>}
                   <td className="p-3">{money(row.netUnitPrice)}</td>
@@ -410,8 +480,11 @@ export function AdvertisingNumbers() {
                     <>
                       <td className="p-3">
                         {row.missingCosts ? (
-                          <Link href="/productos" className="text-amber-700 underline">
-                            — sin costo · Carga el costo
+                          <Link
+                            href={configurationLink("sales-costs")}
+                            className="text-amber-700 underline"
+                          >
+                            — sin costo histórico · Revisar pedidos
                           </Link>
                         ) : (
                           money(row.costWithShipping)
@@ -441,7 +514,7 @@ export function AdvertisingNumbers() {
           </p>
         )}
         <Link
-          href="/publicidad/configuracion?section=products"
+          href={configurationLink("products")}
           className="block rounded-md bg-amber-50 p-3 text-sm text-amber-900"
         >
           Anuncios sin producto o de catálogo · Configurar →
@@ -501,7 +574,7 @@ function SpendingTimeline({
               new Date(parseISO(date).getTime() - ((parseISO(date).getDay() + 6) % 7) * 86_400_000),
             );
     const item = groups.get(key) ?? { date: key, spend: 0, orders: 0, current: false };
-    const dailySpend = summarySpendAvailable(summary)
+    const dailySpend = summarySpendAvailable(summary, storeId, date)
       ? sumSpend(spendRows(summary, storeId).filter((row) => row.date === date))
       : null;
     item.spend = item.spend === null || dailySpend === null ? null : item.spend + dailySpend;
@@ -546,6 +619,7 @@ export function MonthlyNumbers() {
   const [month, setMonth] = useState(today.slice(0, 7));
   const [weekly, setWeekly] = useState(false);
   const [error, setError] = useState<unknown>(null);
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
   const from = `${month}-01`;
   const end = dayKey(endOfMonth(parseISO(from)));
   const to = end < today ? end : today;
@@ -585,6 +659,7 @@ export function MonthlyNumbers() {
       : {}),
   }));
   const share = async () => {
+    setShareNotice(null);
     const lines = [
       `POWIP · ${month}`,
       ...(permissions.spend
@@ -604,8 +679,17 @@ export function MonthlyNumbers() {
             `${dateLabel(row.date)}: ${permissions.spend ? `${money(row.spend)} · ` : ""}${row.orders} pedidos${permissions.spend ? ` · ${money(row.costSale)} por venta` : ""}`,
         ),
     ];
-    if (navigator.share) await navigator.share({ text: lines.join("\n") });
-    else await navigator.clipboard.writeText(lines.join("\n"));
+    if (navigator.share) {
+      try {
+        await navigator.share({ text: lines.join("\n") });
+      } catch (failure) {
+        if (failure instanceof Error && failure.name === "AbortError") return;
+        throw failure;
+      }
+    } else if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      setShareNotice("Resumen copiado. Puedes pegarlo en WhatsApp u otra aplicación.");
+    } else throw new Error("Este navegador no permite compartir ni copiar el resumen.");
   };
   const jump = (date: string) => {
     setPeriod(date, date);
@@ -736,11 +820,22 @@ export function MonthlyNumbers() {
               ↓ Excel
             </Button>
             <Button size="sm" variant="outline" onClick={() => void share().catch(setError)}>
-              Compartir WhatsApp
+              Compartir resumen
             </Button>
           </div>
         }
       >
+        {shareNotice && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {shareNotice}
+          </p>
+        )}
+        {permissions.spend && !summarySpendAvailable(query.data.summary, storeId) && (
+          <p role="status" className="text-sm text-amber-700">
+            {spendAvailabilityDetail(query.data.summary, storeId)} para {from} a {to}. Los días
+            disponibles se muestran por separado; el total del mes conserva los datos pendientes.
+          </p>
+        )}
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {permissions.spend && (
             <>
@@ -780,9 +875,11 @@ export function MonthlyNumbers() {
                 }
               />
               <MetricCard
-                label="Días que dieron plata"
-                value={`${model.profitableDays} de ${model.closedDays}`}
-                detail={`Mejor: ${model.best ? dateLabel(model.best) : "—"} · peor: ${model.worst ? dateLabel(model.worst) : "—"}`}
+                label="Días sin pérdida"
+                value={
+                  model.evaluatedDays ? `${model.profitableDays} de ${model.evaluatedDays}` : "—"
+                }
+                detail={`${model.pendingDays} días con datos pendientes · mejor: ${model.best ? dateLabel(model.best) : "—"} · peor: ${model.worst ? dateLabel(model.worst) : "—"}`}
               />
             </>
           )}
@@ -899,6 +996,7 @@ export function MonthlyNumbers() {
                         <tr key={row.date} className="border-t hover:bg-muted/50">
                           <th className="sticky left-0 bg-card text-left font-normal">
                             <button
+                              type="button"
                               className="text-primary underline-offset-2 hover:underline"
                               onClick={() => jump(row.date)}
                             >

@@ -36,6 +36,7 @@ let mockRowChanges: Partial<AdsRow> = {};
 let mockCurrencies: string[] = [];
 let mockSpends: string[] = [];
 let mockPeriodToDate = "2026-10-16";
+let mockStoreId = "all";
 const mockRows = () =>
   Array.from(
     { length: mockCount },
@@ -149,7 +150,7 @@ jest.mock("@/contexts/AdminPeriodContext", () => ({
 }));
 jest.mock("../../AdvertisingStoreFilterContext", () => ({
   useAdvertisingStoreFilter: () => ({
-    storeId: "all",
+    storeId: mockStoreId,
     stores: [{ id: "store", name: "Tienda" }],
     setStoreId: mockSetStore,
   }),
@@ -209,6 +210,7 @@ beforeEach(() => {
   mockPeriodToDate = "2026-10-16";
   mockSettings.capabilities.spend = true;
   mockSettings.capabilities.edit = false;
+  mockStoreId = "all";
   window.history.replaceState({}, "", "/publicidad/anuncios");
   mockSource = mockNumbers();
   process.env.NEXT_PUBLIC_API_INTEGRATIONS = "https://integrations.test";
@@ -232,6 +234,47 @@ beforeEach(() => {
       throw new Error(`Unexpected test route ${url}`);
     },
   );
+});
+it("clears the old store drilldown before querying a newly selected store", async () => {
+  mockCount = 1;
+  mockRowChanges = { id: "store", level: "store", name: "Tienda" };
+  const view = mount();
+  await screen.findByText("Mostrando 1–1 de 1");
+  fireEvent.click(screen.getByRole("button", { name: "Tienda Tienda" }));
+  await waitFor(() =>
+    expect(catalogCalls().some(([, options]) => options.params.storeId === "store")).toBe(true),
+  );
+  expect(screen.getByRole("button", { name: "› Tienda: Tienda" })).toBeInTheDocument();
+  const rerenderStore = (storeId: string) => {
+    mockStoreId = storeId;
+    view.rerender(
+      <QueryClientProvider client={view.client}>
+        <AdvertisingV22Provider>
+          <ReadyAds />
+        </AdvertisingV22Provider>
+      </QueryClientProvider>,
+    );
+  };
+  const before = catalogCalls().length;
+  rerenderStore("other-store");
+  await waitFor(() =>
+    expect(
+      catalogCalls().some(
+        ([, options]) =>
+          options.params.storeId === "other-store" && options.params.level === "account",
+      ),
+    ).toBe(true),
+  );
+  expect(
+    catalogCalls()
+      .slice(before)
+      .every(([, options]) => options.params.storeId !== "store"),
+  ).toBe(true);
+  expect(screen.queryByRole("button", { name: "› Tienda: Tienda" })).not.toBeInTheDocument();
+  rerenderStore("all");
+  expect(screen.queryByRole("button", { name: "› Tienda: Tienda" })).not.toBeInTheDocument();
+  view.unmount();
+  view.client.clear();
 });
 it("keeps USD spend and cost per result in the account currency, including the group total", async () => {
   mockCount = 1;

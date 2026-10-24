@@ -236,6 +236,10 @@ export function dataWarning(code: string) {
           "Conecta tus cuentas o sincroniza Meta para consultar el gasto. Los datos aún no importados se muestran con —.",
         META_DATA_PARTIAL:
           "Faltan datos del período o quedan diferencias entre los importes de Meta. Revisa su estado en Configuración.",
+        META_SPEND_MISMATCH:
+          "El gasto diario de Meta y el detalle de anuncios todavía no coinciden. Revisa las cuentas y fechas pendientes en Configuración.",
+        STORE_ASSIGNMENT_UNCERTAIN:
+          "Hay asignaciones históricas de anuncios pendientes de confirmar. Revisa su configuración para relacionar el gasto y las ventas.",
         CURRENT_DAY_PROVISIONAL:
           "Los datos de hoy son provisionales y pueden actualizarse. El gasto importado ya está disponible.",
         UNASSIGNED_SPEND:

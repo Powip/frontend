@@ -34,10 +34,12 @@ const Context = createContext<StoreFilter | null>(null);
 export function AdvertisingStoreFilterProvider({
   stores,
   initialStoreId,
+  businessScope = false,
   children,
 }: {
   stores: AdvertisingCommercialStore[];
   initialStoreId?: string | null;
+  businessScope?: boolean;
   children: ReactNode;
 }) {
   const [selected, setSelected] = useState(initialStoreId ?? "all");
@@ -45,26 +47,35 @@ export function AdvertisingStoreFilterProvider({
     () => stores.filter((store) => !store.is_legacy && store.is_active !== false),
     [stores],
   );
-  const storeId =
-    selected === "all" || selected === "none" || available.some((store) => store.id === selected)
+  const storeId = businessScope
+    ? "all"
+    : selected === "all" || selected === "none" || available.some((store) => store.id === selected)
       ? selected
       : "all";
   const defaultStoreId =
-    initialStoreId && available.some((store) => store.id === initialStoreId)
+    !businessScope && initialStoreId && available.some((store) => store.id === initialStoreId)
       ? initialStoreId
       : "all";
   useEffect(() => {
-    const value = new URLSearchParams(window.location.search).get("storeId");
-    setSelected(
-      value === "all" || value === "none" || available.some((store) => store.id === value)
-        ? (value ?? "all")
-        : value === null
-          ? defaultStoreId
-          : "all",
-    );
-  }, [available, defaultStoreId]);
+    const read = () => {
+      const value = businessScope
+        ? "all"
+        : new URLSearchParams(window.location.search).get("storeId");
+      setSelected(
+        value === "all" || value === "none" || available.some((store) => store.id === value)
+          ? (value ?? "all")
+          : value === null
+            ? defaultStoreId
+            : "all",
+      );
+    };
+    read();
+    window.addEventListener("popstate", read);
+    return () => window.removeEventListener("popstate", read);
+  }, [available, defaultStoreId, businessScope]);
   const setStoreId = useCallback(
     (value: string) => {
+      if (businessScope) value = "all";
       if (value !== "all" && value !== "none" && !available.some((store) => store.id === value))
         return;
       setSelected(value);
@@ -74,7 +85,7 @@ export function AdvertisingStoreFilterProvider({
       if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`)
         window.history.replaceState(window.history.state, "", next);
     },
-    [available],
+    [available, businessScope],
   );
   return (
     <Context.Provider value={{ storeId, defaultStoreId, setStoreId, stores: available }}>

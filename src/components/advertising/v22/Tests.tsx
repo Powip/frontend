@@ -45,6 +45,9 @@ export function AdvertisingTests() {
   const [pending, setPending] = useState(false);
   const [productId, setProductId] = useState("");
   const [adsetId, setAdsetId] = useState("");
+  const [testStoreId, setTestStoreId] = useState(() =>
+    stores.some((store) => store.id === storeId) ? storeId : "",
+  );
   const [start, setStart] = useState(limaToday());
   const tests = useAdsQuery(["tests", storeId], (id, signal) =>
     adsGet<{ tests: AdsTest[] }>(id, "/v22/tests", { storeId }, signal),
@@ -52,19 +55,35 @@ export function AdvertisingTests() {
   const products = useAdsQuery(["products-v22", storeId], (id, signal) =>
     adsGet<{ products: AdsProduct[] }>(id, "/v22/products", { storeId }, signal),
   );
-  const ads = useAdsQuery(["tests-catalog", storeId], (id, signal) =>
-    getAllAdsCatalog(
-      id,
-      { from: dayKey(subDays(parseISO(limaToday()), 29)), to: limaToday(), storeId, level: "ad" },
-      signal,
-    ),
+  const canOpenCreate = settings!.capabilities.edit && stores.length > 0;
+  const canCreate = settings!.capabilities.edit && stores.some((store) => store.id === testStoreId);
+  const testProducts = useAdsQuery(
+    ["test-create-products", testStoreId],
+    (id, signal) =>
+      adsGet<{ products: AdsProduct[] }>(id, "/v22/products", { storeId: testStoreId }, signal),
+    newTest && canCreate,
+  );
+  const ads = useAdsQuery(
+    ["tests-catalog", testStoreId],
+    (id, signal) =>
+      getAllAdsCatalog(
+        id,
+        {
+          from: dayKey(subDays(parseISO(limaToday()), 29)),
+          to: limaToday(),
+          storeId: testStoreId,
+          level: "ad",
+        },
+        signal,
+      ),
+    newTest && canCreate,
   );
   const allowed = settings!.capabilities.edit;
-  const canCreate = allowed && stores.some((store) => store.id === storeId);
   useEffect(() => {
     setNewTest(false);
     setProductId("");
     setAdsetId("");
+    setTestStoreId(stores.some((store) => store.id === storeId) ? storeId : "");
   }, [storeId]);
   const list = tests.data?.tests ?? [];
   const eligibleProducts = (products.data?.products ?? []).filter(
@@ -73,12 +92,20 @@ export function AdvertisingTests() {
       (numeric(product.unitCost) !== null ||
         product.variants.some((variant) => numeric(variant.unitCost) !== null)),
   );
+  const eligibleTestProducts = canCreate
+    ? (testProducts.data?.products ?? []).filter(
+        (product) =>
+          product.canTest ??
+          (numeric(product.unitCost) !== null ||
+            product.variants.some((variant) => numeric(variant.unitCost) !== null)),
+      )
+    : [];
   async function create() {
     if (!identity || !productId || !adsetId || pending || !canCreate) return;
-    const selected = eligibleProducts.find((row) => row.id === productId);
+    const selected = eligibleTestProducts.find((row) => row.id === productId);
     if (!selected) return;
     const selectedAds = (ads.data?.rows ?? []).filter(
-      (row) => row.adsetId === adsetId && row.store?.id === selected.storeId,
+      (row) => row.adsetId === adsetId && row.store?.id === testStoreId,
     );
     if (!selectedAds.length) {
       setError(new Error("El conjunto debe tener anuncios asignados a la tienda del producto."));
@@ -90,7 +117,7 @@ export function AdvertisingTests() {
       await adsWrite(identity, "post", "/v22/tests", {
         productId,
         accountId: selectedAds[0].accountId,
-        storeId: selected.storeId,
+        storeId: testStoreId,
         adsetId,
         adIds: selectedAds.map((row) => row.id),
         startAt: `${start}T00:00:00-05:00`,
@@ -118,13 +145,13 @@ export function AdvertisingTests() {
             Cada prueba se mide desde su inicio, independientemente del período de Anuncios.
           </p>
         </div>
-        <Button disabled={!canCreate} onClick={() => setNewTest(true)}>
+        <Button disabled={!canOpenCreate} onClick={() => setNewTest(true)}>
           Nueva prueba
         </Button>
       </div>
-      {allowed && !canCreate && (
+      {allowed && !canOpenCreate && (
         <p role="status" className="text-sm text-muted-foreground">
-          Selecciona una tienda comercial en el filtro superior para crear una prueba.
+          Configura una tienda comercial antes de crear una prueba.
         </p>
       )}
       <div className="grid gap-3 sm:grid-cols-4">
@@ -161,34 +188,48 @@ export function AdvertisingTests() {
           ))}
           {tests.data && list.length === 0 && (
             <p className="text-sm text-muted-foreground">
-              No hay pruebas en esta tienda. Elige un producto con costo cargado y su conjunto para
+              No hay pruebas en este ámbito. Elige un producto con costo cargado y su conjunto para
               comenzar.
             </p>
           )}
         </div>
       </Block>
-      <Dialog open={newTest && canCreate} onOpenChange={setNewTest}>
+      <Dialog open={newTest && canOpenCreate} onOpenChange={setNewTest}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Nueva prueba</DialogTitle>
             <DialogDescription>
-              Elige un producto con costo y los anuncios de su tienda. La medición empieza en la
-              fecha indicada.
+              Elige la tienda de esta prueba, un producto con costo y sus anuncios. La medición
+              empieza en la fecha indicada.
             </DialogDescription>
           </DialogHeader>
-          {products.isError || ads.isError ? (
-            <Failure error={products.error ?? ads.error} />
+          <SelectField
+            label="Tienda de la prueba"
+            value={testStoreId}
+            onChange={(value) => {
+              setTestStoreId(value);
+              setProductId("");
+              setAdsetId("");
+            }}
+            options={[
+              { value: "", label: "Elegir tienda" },
+              ...stores.map((store) => ({ value: store.id, label: store.name })),
+            ]}
+          />
+          {testProducts.isError || ads.isError ? (
+            <Failure error={testProducts.error ?? ads.error} />
           ) : (
             <div className="space-y-4">
               <SelectField
                 label="Producto con costo"
                 value={productId}
                 onChange={setProductId}
+                disabled={!canCreate}
                 options={[
                   { value: "", label: "Elegir producto" },
-                  ...eligibleProducts.map((product) => ({
+                  ...eligibleTestProducts.map((product) => ({
                     value: product.id,
-                    label: `${product.name} · ${stores.find((store) => store.id === product.storeId)?.name ?? ""}`,
+                    label: product.name,
                   })),
                 ]}
               />
@@ -196,19 +237,13 @@ export function AdvertisingTests() {
                 label="Conjunto de anuncios"
                 value={adsetId}
                 onChange={setAdsetId}
+                disabled={!canCreate}
                 options={[
                   { value: "", label: "Elegir conjunto" },
                   ...[
                     ...new Map(
                       (ads.data?.rows ?? [])
-                        .filter(
-                          (row) =>
-                            row.adsetId &&
-                            (!productId ||
-                              row.store?.id ===
-                                eligibleProducts.find((product) => product.id === productId)
-                                  ?.storeId),
-                        )
+                        .filter((row) => row.adsetId && row.store?.id === testStoreId)
                         .map((row) => [
                           row.adsetId!,
                           { value: row.adsetId!, label: `Conjunto de ${row.name}` },

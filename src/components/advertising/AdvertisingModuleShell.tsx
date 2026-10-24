@@ -22,7 +22,7 @@ import {
 } from "./advertising-sections";
 import { AdvertisingV22Provider, useAdsV22 } from "./v22/context";
 import { comparisonPeriod, limaToday } from "./v22/model";
-import { Failure, SelectField } from "./v22/shared";
+import { Failure } from "./v22/shared";
 
 function AdvertisingShell({ children }: { children: ReactNode }) {
   const { auth, loading: authLoading } = useAuth();
@@ -30,7 +30,7 @@ function AdvertisingShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { fromDate, toDate, setPeriod } = useAdminPeriod();
-  const { storeId, setStoreId, stores } = useAdvertisingStoreFilter();
+  const { storeId, setStoreId } = useAdvertisingStoreFilter();
   const initialized = useRef(false);
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -72,15 +72,7 @@ function AdvertisingShell({ children }: { children: ReactNode }) {
       <div className="shrink-0 border-b bg-card px-4 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3 py-3">
           <h1 className="text-xl font-bold">Publicidad</h1>
-          <SelectField
-            label="Tienda"
-            value={storeId}
-            onChange={setStoreId}
-            options={[
-              { value: "all", label: "Todas las tiendas" },
-              ...stores.map((store) => ({ value: store.id, label: store.name })),
-            ]}
-          />
+          <p className="text-sm text-muted-foreground">Todo el negocio</p>
         </div>
         <nav aria-label="Secciones de publicidad" className="flex gap-1 overflow-x-auto">
           {ADVERTISING_SECTIONS.map(({ label, href, icon: Icon }) => (
@@ -129,13 +121,13 @@ function AdvertisingShell({ children }: { children: ReactNode }) {
 }
 
 export function AdvertisingModuleShell({ children }: { children: ReactNode }) {
-  const { auth, selectedStoreId } = useAuth();
+  const { auth } = useAuth();
   const today = parseISO(limaToday());
   return (
     <AdvertisingStoreFilterProvider
       key={`${auth?.user.id ?? "none"}:${auth?.company?.id ?? "none"}`}
       stores={auth?.company?.stores ?? []}
-      initialStoreId={selectedStoreId}
+      businessScope
     >
       <AdminPeriodProvider
         initialRange={{

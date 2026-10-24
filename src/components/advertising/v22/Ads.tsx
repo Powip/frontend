@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type SetStateAction } from "react";
 import { addDays, parseISO, subDays } from "date-fns";
 import {
   Bar,
@@ -61,6 +61,8 @@ import {
   resultCount,
   rowResultTotal,
   summarySpendAvailable,
+  hourlySpendScope,
+  spendAvailabilityDetail,
 } from "./model";
 import { Block, Failure, MetricCard, SelectField, exportAdsWorkbook } from "./shared";
 import { AdvertisingDataStatus } from "./DataStatus";
@@ -109,7 +111,24 @@ export function AdvertisingAds() {
   const [channel, setChannel] = useState("all");
   const [state, setState] = useState("Todos");
   const [search, setSearch] = useState("");
-  const [path, setPath] = useState<Array<{ level: AdsLevel; id: string; name: string }>>([]);
+  type DrillPath = Array<{ level: AdsLevel; id: string; name: string }>;
+  const [navigation, setNavigation] = useState<{ storeId: string; path: DrillPath }>({
+    storeId,
+    path: [],
+  });
+  // A breadcrumb from another store must never override the current store filter.
+  const path = navigation.storeId === storeId ? navigation.path : [];
+  const setPath = (value: SetStateAction<DrillPath>) =>
+    setNavigation((previous) => ({
+      storeId,
+      path:
+        typeof value === "function"
+          ? value(previous.storeId === storeId ? previous.path : [])
+          : value,
+    }));
+  useEffect(() => {
+    setNavigation((current) => (current.storeId === storeId ? current : { storeId, path: [] }));
+  }, [storeId]);
   const [selected, setSelected] = useState<AdsRow | null>(null);
   const [action, setAction] = useState<ActionSelection | null>(null);
   const [error, setError] = useState<unknown>(null);
@@ -313,7 +332,8 @@ export function AdvertisingAds() {
   }
   function applyView(savedView: AdsSavedView) {
     const value = savedView.state;
-    if (LEVELS.some((item) => item.value === value.level)) setLevel(value.level as AdsLevel);
+    if (LEVELS.some((item) => item.value === value.level))
+      setLevel(value.level === "store" ? "account" : (value.level as AdsLevel));
     setView(value.view ?? "performance");
     setState(value.status ?? "Todos");
     setChannel(value.channel ?? "all");
@@ -567,7 +587,7 @@ export function AdvertisingAds() {
             if (value !== "ad") setView("performance");
             setPath([]);
           }}
-          options={LEVELS}
+          options={LEVELS.filter((item) => item.value !== "store")}
         />
         <SelectField
           label="Canal"
@@ -616,7 +636,7 @@ export function AdvertisingAds() {
             className="text-primary"
             onClick={() => {
               setPath([]);
-              setLevel("store");
+              setLevel("account");
             }}
           >
             Todas
@@ -1255,7 +1275,7 @@ export function AdvertisingAds() {
   );
 }
 
-function TodayStrip() {
+export function TodayStrip() {
   const { settings } = useAdsV22();
   const { storeId } = useAdvertisingStoreFilter();
   const today = limaToday();
@@ -1268,12 +1288,39 @@ function TodayStrip() {
     }).format(new Date()),
   );
   const sales = useNumbers(yesterday, today, storeId, "today");
-  const currency = commonCurrency(sales.data?.summary.days ?? []);
+  const summary = sales.data?.summary;
+  const currencyEvidence = summary ? [...summary.days, ...(summary.quality.accountDays ?? [])] : [];
+  const explicitScopes = summary?.quality.spendScopes?.filter((scope) => scope.storeId === storeId);
+  const currency = commonCurrency(
+    currencyEvidence.length ? currencyEvidence : (explicitScopes ?? []),
+  );
+  const scopes = [yesterday, today].map((date) => {
+    if (!summary || !currency) return { date, available: false, accountIds: [] as string[] };
+    if (currency === "PEN") return hourlySpendScope(summary, storeId, date);
+    const scope = explicitScopes?.find((scope) => scope.currency === currency);
+    const day = scope?.days.find((day) => day.date === date);
+    const hasCoverageEvidence =
+      summary.quality.spendAvailable !== undefined || summary.quality.coverage !== undefined;
+    const available = explicitScopes
+      ? day?.spendAvailable === true
+      : hasCoverageEvidence && summarySpendAvailable(summary, storeId, date);
+    const accountIds =
+      day?.accountIds ??
+      (storeId === "all" && summary.quality.accountDays
+        ? summary.quality.accountDays.filter(
+            (row) => row.currency === currency && row.date === date,
+          )
+        : summary.days.filter(
+            (row) => row.currency === currency && (storeId === "all" || row.storeId === storeId),
+          )
+      ).map((row) => row.accountId);
+    return { date, available, accountIds: [...new Set(accountIds)].sort() };
+  });
   const accountIds = [
-    ...new Set(sales.data?.summary.days.map((day) => day.accountId) ?? []),
+    ...new Set(scopes.filter((scope) => scope.available).flatMap((scope) => scope.accountIds)),
   ].sort();
   const hourly = useAdsQuery(
-    ["hourly", today, storeId, accountIds, currency],
+    ["hourly", today, storeId, scopes, currency],
     async (id, signal) => {
       const batches = await Promise.all(
         accountIds.map((accountId) =>
@@ -1287,34 +1334,39 @@ function TodayStrip() {
         throw new Error(
           "La comparación por hora requiere cuentas con la misma zona horaria de los pedidos (Perú).",
         );
-      const selectedAds = new Set(sales.data?.summary.days.map((day) => day.adId));
+      const selectedAds = new Set(summary?.days.map((day) => `${day.date}:${day.adId}`));
       return {
         rows: batches
           .flatMap((batch) => batch.rows)
-          .filter((row) => storeId === "all" || (!!row.adId && selectedAds.has(row.adId))),
+          .filter(
+            (row) =>
+              storeId === "all" || (!!row.adId && selectedAds.has(`${row.date}:${row.adId}`)),
+          ),
       };
     },
-    !!sales.data && !!currency && settings!.capabilities.spend,
+    !!sales.data && !!currency && settings!.capabilities.spend && accountIds.length > 0,
   );
+  const rowsForDate = (date: string) => {
+    const scope = scopes.find((scope) => scope.date === date);
+    if (!currency || !scope?.available) return null;
+    if (scope.accountIds.length === 0) return [];
+    return hourly.data?.rows.filter((row) => row.date === date) ?? null;
+  };
   const chart = Array.from({ length: 24 }, (_, index) => ({
     hour: index,
-    today: currency
-      ? (hourly.data?.rows
-          .filter((row) => row.date === today && row.hour === index)
-          .reduce((sum, row) => sum + Number(row.spend), 0) ?? null)
-      : null,
-    yesterday: currency
-      ? (hourly.data?.rows
-          .filter((row) => row.date === yesterday && row.hour === index)
-          .reduce((sum, row) => sum + Number(row.spend), 0) ?? null)
-      : null,
+    today:
+      rowsForDate(today)
+        ?.filter((row) => row.hour === index)
+        .reduce((sum, row) => sum + Number(row.spend), 0) ?? null,
+    yesterday:
+      rowsForDate(yesterday)
+        ?.filter((row) => row.hour === index)
+        .reduce((sum, row) => sum + Number(row.spend), 0) ?? null,
   }));
   const spent = (date: string) =>
-    currency && hourly.data
-      ? hourly.data.rows
-          .filter((row) => row.date === date && row.hour < hour)
-          .reduce((sum, row) => sum + Number(row.spend), 0)
-      : null;
+    rowsForDate(date)
+      ?.filter((row) => row.hour < hour)
+      .reduce((sum, row) => sum + Number(row.spend), 0) ?? null;
   const orders = (date: string) =>
     sales.data?.sales.hourly
       ?.filter((row) => row.date === date && row.hour < hour && row.channel !== "other")
@@ -1374,6 +1426,18 @@ function TodayStrip() {
         )}
       </div>
       {hourly.isError && <Failure error={hourly.error} retry={hourly.refetch} />}
+      {settings!.capabilities.spend && sales.data && scopes.some((scope) => !scope.available) && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {scopes
+            .filter((scope) => !scope.available)
+            .map(
+              (scope) =>
+                `${scope.date}: ${spendAvailabilityDetail(sales.data!.summary, storeId, scope.date)}`,
+            )
+            .join(" · ")}
+          . El desglose horario conserva pendientes los importes sin cobertura confirmada.
+        </p>
+      )}
       <p className="text-xs text-muted-foreground">
         Las barras muestran 0–23 h. La comparación excluye la hora en curso para comparar el mismo
         tiempo transcurrido.

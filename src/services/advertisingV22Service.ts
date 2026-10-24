@@ -63,8 +63,8 @@ export interface AdsDay {
   date: string;
   accountId: string;
   adId: string;
-  adsetId: string;
-  campaignId: string;
+  adsetId: string | null;
+  campaignId: string | null;
   storeId: string | null;
   channel: "messages" | "web" | "other";
   currency: string;
@@ -73,6 +73,21 @@ export interface AdsDay {
   impressions: string | null;
   linkClicks: string | null;
   provisional: boolean;
+}
+export interface AdsSpendScopeDay {
+  date: string;
+  spendAvailable: boolean;
+  coverage: "complete" | "partial" | "pending";
+  reasons: string[];
+  accountIds: string[];
+}
+export interface AdsSpendScope {
+  storeId: string;
+  currency: string;
+  spendAvailable: boolean;
+  coverage: "complete" | "partial" | "pending";
+  reasons: string[];
+  days: AdsSpendScopeDay[];
 }
 export interface AdsSummary {
   source: string;
@@ -91,6 +106,17 @@ export interface AdsSummary {
     warnings: string[];
     coverage?: "complete" | "partial" | "pending";
     spendAvailable?: boolean;
+    spendScopes?: AdsSpendScope[];
+    accountDays?: Array<{
+      accountId: string;
+      currency: string;
+      date: string;
+      spendAvailable: boolean;
+      coverage: "complete" | "partial" | "pending";
+      reconciliation: "matched" | "mismatch" | "pending";
+      provisional: boolean;
+      reasons: string[];
+    }>;
   };
 }
 export interface SalesMetric {
