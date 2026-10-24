@@ -212,6 +212,11 @@ export interface Sale extends UnitAssignmentState {
 const NO_SALES: Sale[] = [];
 const SalesOrderDetailModal = lazy(() => import("@/components/modals/CustomerServiceModal"));
 
+/** The server owns confirmation eligibility; never expose a rejected row to stale actions. */
+function isVisibleSalesOrder(order: BusinessSalesOrder): boolean {
+  return order.status !== "INCOMPLETE" && isCommercialSaleOrder(order) && order.salesOperationalEligible !== false;
+}
+
 function formatSoles(amount: number): string {
   return `S/ ${amount.toFixed(2)}`;
 }
@@ -483,7 +488,6 @@ function VentasContent() {
     tab: activeTab as BusinessSalesTab,
     page: activeTab === "pendientes" ? pagePendientes : activeTab === "anuladas" ? pageAnulados : pageAll,
     limit: ITEMS_PER_PAGE,
-    includeCustomerService: true,
     sort: activeTab === "pendientes" && pendientesView === "antiguos" ? "updated_asc" : "created_desc",
     kpiDateFrom, kpiDateTo,
   };
@@ -511,7 +515,7 @@ function VentasContent() {
   currentPageState.current = {
     ready: queryReady && loadedSalesScope === salesScope,
     scope: pageSessionScope,
-    sales: new Map((ordersData ?? []).map((order) => [order.id, mapOrderToSale(order)])),
+    sales: new Map((ordersData ?? []).filter(isVisibleSalesOrder).map((order) => [order.id, mapOrderToSale(order)])),
   };
   const visibleSale = useCallback((id: string) => {
     const current = currentPageState.current;
@@ -583,7 +587,7 @@ function VentasContent() {
     // sync, se repara en Atención al Cliente › Pedidos con errores) — no es
     // una venta real, así que no debe listarse acá (se colaba en "Todas"
     // porque `sales` no filtraba por status).
-    const sorted = ordersData.filter((o) => o.status !== "INCOMPLETE" && isCommercialSaleOrder(o));
+    const sorted = ordersData.filter(isVisibleSalesOrder);
     const mappedSales = sorted.map(mapOrderToSale);
     setSales(mappedSales);
     setLoadedSalesScope(salesScope);
@@ -818,7 +822,7 @@ Estado: ${sale.status}
     const controller = new AbortController();
     exportController.current = controller;
     try {
-    const salesList = (await getBusinessSalesExport(storeIds, salesQuery, controller.signal)).map(mapOrderToSale);
+    const salesList = (await getBusinessSalesExport(storeIds, salesQuery, controller.signal)).filter(isVisibleSalesOrder).map(mapOrderToSale);
     if (salesList.length === 0) {
       toast.warning("No hay datos para exportar");
       return;
@@ -2118,7 +2122,7 @@ Estado: ${sale.status}
                 <CardHeader className="flex min-w-0 flex-col gap-4">
                   <div>
                     <CardTitle>Ventas Pendientes</CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">Los pedidos en Atención también se consultan en Todas las Ventas.</p>
+                    <p className="mt-1 text-sm text-muted-foreground">Los leads de Atención aparecen en Ventas cuando se confirma la compra.</p>
                   </div>
                   <div className="flex min-w-0 w-full flex-wrap items-center gap-2 [&>button]:h-auto [&>button]:min-h-9 [&>button]:whitespace-normal">
                     <BulkStatusSelect

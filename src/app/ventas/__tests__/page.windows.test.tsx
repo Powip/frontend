@@ -18,7 +18,8 @@ jest.mock("axios", () => ({
   post: jest.fn(),
 }));
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: jest.requireMock("axios") }));
-jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: "company-1:business:store-1", storeIds: ["store-1"] }) }));
+let mockBusinessStoreIds = ["store-1"];
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: `company-1:business:${mockBusinessStoreIds.join(",")}`, storeIds: mockBusinessStoreIds }) }));
 jest.mock("@/hooks/useInvalidateBusinessData", () => ({ useInvalidateBusinessData: () => jest.fn() }));
 jest.mock("sonner", () => ({
   toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn(), info: jest.fn() },
@@ -162,6 +163,7 @@ let counts: { todas: number | null; antiguos: number | null };
 beforeEach(() => {
   jest.clearAllMocks();
   mockBulkActions.length = 0;
+  mockBusinessStoreIds = ["store-1"];
   mockKpiPeriod = ["2026-09-01", "2026-09-30"];
   overrides = {};
   retries = { pendientes: jest.fn(), antiguos: jest.fn(), anuladas: jest.fn(), todas: jest.fn(), kpis: jest.fn() };
@@ -401,12 +403,33 @@ describe("VentasPage — Anuladas y Todas por período", () => {
 });
 
 describe("VentasPage — Anuladas, Todas y Pendientes antiguos no muestran ni usan una lista a medio bajar", () => {
-  it("solicita CC sin ampliar la página y bloquea callbacks físicos si Shopify pierde su confirmación", async () => {
+  it("consulta y exporta solo ventas sin ampliar Atención, manteniendo todas las tiendas del negocio", async () => {
+    mockBusinessStoreIds = ["store-1", "store-web"];
+    render(<VentasPage />);
+    const currentQuery = () => jest.mocked(useBusinessSalesPage).mock.calls.at(-1)!;
+    expect(currentQuery()[0]).toEqual(["store-1", "store-web"]);
+    expect(currentQuery()[1]).toEqual(expect.objectContaining({ tab: "pendientes", limit: 10 }));
+    expect(currentQuery()[1]).not.toHaveProperty("includeCustomerService");
+    expect(screen.getByText("Los leads de Atención aparecen en Ventas cuando se confirma la compra.")).toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas las Ventas/ }));
+    expect(currentQuery()[0]).toEqual(["store-1", "store-web"]);
+    expect(currentQuery()[1]).toEqual(expect.objectContaining({ tab: "todas", page: 1, limit: 10 }));
+    expect(currentQuery()[1]).not.toHaveProperty("includeCustomerService");
+    fireEvent.click(within(screen.getByRole("tabpanel")).getByRole("button", { name: /Exportar Excel/ }));
+    await waitFor(() => expect(getBusinessSalesExport).toHaveBeenCalledTimes(1));
+    expect(jest.mocked(getBusinessSalesExport).mock.calls[0][0]).toEqual(["store-1", "store-web"]);
+    expect(jest.mocked(getBusinessSalesExport).mock.calls[0][1]).not.toHaveProperty("includeCustomerService");
+  });
+
+  it.each([
+    { commercialStage: "LEAD" as const },
+    { salesOperationalEligible: false },
+  ])("retira una venta que pierde confirmación y bloquea callbacks previos: %j", async (unconfirmed) => {
     const order: BusinessSalesOrder = { ...RECIENTE, salesOperationalEligible: true };
     overrides.todas = { orders: [order] };
     counts.todas = 4;
     const { rerender } = render(<VentasPage />);
-    expect(jest.mocked(useBusinessSalesPage).mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({ includeCustomerService: true, tab: "pendientes", limit: 10 }));
     expect(screen.getByRole("tab", { name: /Todas las Ventas/ })).toHaveTextContent("4");
     fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas las Ventas/ }));
     fireEvent.click(within(screen.getByText("ORD-101").closest("tr")!).getByRole("checkbox"));
@@ -414,21 +437,32 @@ describe("VentasPage — Anuladas, Todas y Pendientes antiguos no muestran ni us
     act(() => previousActions.onExtraAction("__REPROGRAMAR__"));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
-    overrides.todas = { orders: [{ ...order, externalSource: "shopify", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0, subEstadoCc: "por_confirmar", salesOperationalEligible: false } as BusinessSalesOrder] };
+    overrides.todas = { orders: [{ ...order, externalSource: "shopify", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0, subEstadoCc: "por_confirmar", ...unconfirmed } as BusinessSalesOrder] };
     rerender(<VentasPage />);
-    const updatedRow = screen.getByText("ORD-101").closest("tr")!;
-    expect(within(updatedRow).queryByText(/^En Atención/)).not.toBeInTheDocument();
-    expect(within(updatedRow).getByRole("combobox", { hidden: true })).toHaveTextContent("PENDIENTE");
-    expect(within(updatedRow).getByText("Ver")).toBeEnabled();
-    expect(within(updatedRow).getByRole("checkbox", { hidden: true })).toBeEnabled();
+    expect(screen.queryByText("ORD-101")).not.toBeInTheDocument();
     await act(async () => { await previousActions.onStatusChange("PREPARADO"); });
     expect(processBulkStatusChange).not.toHaveBeenCalled();
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Confirmar" }));
-    await waitFor(() => expect(processBulkStatusChange).toHaveBeenCalledWith(
-      ["o-101"], undefined, expect.any(String), undefined, 10,
-      expect.objectContaining({ userId: "user-1" }), "SCHEDULED", expect.any(String), expect.any(Set),
-    ));
-    expect(jest.mocked(useBusinessSalesPage).mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({ includeCustomerService: true, tab: "todas", limit: 10 }));
+    expect(processBulkStatusChange).not.toHaveBeenCalled();
+    expect(within(screen.getByRole("tabpanel")).getByRole("button", { name: /Imprimir seleccionados \(0\)/ })).toBeDisabled();
+  });
+
+  it("excluye leads e incompletas de filas, selección y exportación aunque una respuesta antigua los incluya", async () => {
+    overrides.todas = { orders: [
+      { ...RECIENTE, commercialStage: "SALE", commercialStockState: "DEFERRED", subEstadoCc: "por_confirmar", salesOperationalEligible: true },
+      { ...makeOrder(701, "PENDIENTE", "2026-09-21T15:00:00.000Z"), commercialStage: "LEAD" },
+      { ...makeOrder(702, "PENDIENTE", "2026-09-21T15:00:00.000Z"), salesOperationalEligible: false },
+      makeOrder(703, "INCOMPLETE", "2026-09-21T15:00:00.000Z"),
+    ] as BusinessSalesOrder[] };
+    render(<VentasPage />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas las Ventas/ }));
+    const panel = screen.getByRole("tabpanel");
+    expect(ordersIn(panel)).toEqual(["ORD-101"]);
+    fireEvent.click(within(panel).getAllByRole("checkbox")[0]);
+    expect(within(panel).getByRole("button", { name: /Imprimir seleccionados \(1\)/ })).toBeEnabled();
+    fireEvent.click(within(panel).getByRole("button", { name: /Exportar Excel/ }));
+    await waitFor(() => expect(mockExport).toHaveBeenCalledTimes(1));
+    expect(mockExport.mock.calls[0][0].map((row) => row.orderNumber)).toEqual(["ORD-101"]);
   });
 
   it.each(["loading", "error"] as const)("bloquea cambios y callbacks previos si antiguos seleccionados quedan en %s", async (state) => {
