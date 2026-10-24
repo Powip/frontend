@@ -11,13 +11,12 @@ export interface BusinessSalesQuery extends Partial<SalesFilters> {
   kpiDateFrom?: string;
   kpiDateTo?: string;
   includeSummary?: boolean;
-  includeCustomerService?: boolean;
   checkStock?: boolean;
   sort?: "created_desc" | "updated_asc";
 }
 
 export interface BusinessSalesOrder extends OrderHeader {
-  /** Whether the row belongs to the operational list; this is not mutation authorization. */
+  /** Server confirmation eligibility for Sales; physical mutations still validate stock separately. */
   salesOperationalEligible?: boolean;
 }
 

@@ -49,9 +49,9 @@ jest.mock("@/hooks/useBusinessSalesPage", () => ({
     const React = jest.requireActual("react") as typeof import("react");
     const fixture = jest.requireMock("@/hooks/useBusinessOrders").useBusinessOrders();
     const data = React.useMemo(() => {
-      const commercial = fixture.orders.filter((order: OrderHeader) => order.status !== "INCOMPLETE");
-      const operational = commercial.filter((order: BusinessSalesOrder) => order.salesOperationalEligible !== false);
-      const rows = (query.tab === "todas" ? commercial : operational).filter((order: OrderHeader) =>
+      const commercial = fixture.orders.filter((order: BusinessSalesOrder) => order.status !== "INCOMPLETE" && order.commercialStage !== "LEAD" && order.salesOperationalEligible !== false);
+      const operational = commercial;
+      const rows = commercial.filter((order: OrderHeader) =>
         query.tab === "pendientes" ? order.status === "PENDIENTE" : query.tab === "anuladas" ? order.status === "ANULADO" : true,
       ).sort((a: OrderHeader, b: OrderHeader) => b.created_at.localeCompare(a.created_at));
       return {
@@ -377,8 +377,9 @@ describe("Ventas — anulación de pedido en envío", () => {
 
 
 function customerServiceOrders(): BusinessSalesOrder[] {
+  // Synthetic confirmation evidence: these fixtures do not assert the current state of production orders.
   const orders: BusinessSalesOrder[] = [
-    { ...makeOrder("angela", "ORD-152907", "2026-09-23T10:00:00.000Z"), subEstadoCc: "entrega_lima", canalOrigen: null, stockVersion: 1, salesOperationalEligible: false },
+    { ...makeOrder("angela", "ORD-152907", "2026-09-23T10:00:00.000Z"), ccConfirmadoAt: "2026-09-23T11:00:00.000Z", subEstadoCc: "entrega_lima", canalOrigen: null, stockVersion: 1, salesOperationalEligible: true },
     { ...makeOrder("elisa", "ORD-152728", "2026-09-24T10:00:00.000Z"), storeId: "store-2", externalSource: "shopify", subEstadoCc: "por_confirmar", canalOrigen: "shopify_cod", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0, salesOperationalEligible: false },
   ];
   return orders.map((order) => ({ ...order, items: [{
@@ -397,10 +398,10 @@ async function openAllSales() {
   return screen.getByRole("tabpanel");
 }
 
-describe("Ventas — detalle y acciones de pedidos que siguen en Atención", () => {
+describe("Ventas — detalle y acciones solo de ventas confirmadas", () => {
   it("conserva la vista previa de lectura aunque el pedido pierda la confirmación física de Shopify", async () => {
     const { view } = await openPreviewForAllPendientes();
-    useFixtureOrders(ORDERS.map((order) => ({ ...order, externalSource: "shopify", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0, salesOperationalEligible: true })));
+    useFixtureOrders(ORDERS.map((order) => ({ ...order, ccConfirmadoAt: "2026-09-23T11:00:00.000Z", externalSource: "shopify", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0, salesOperationalEligible: true })));
     view.rerender(<VentasPage />);
     expect(screen.getByTitle("Vista previa de etiquetas")).toBeInTheDocument();
     expect(mockedAxios.patch).not.toHaveBeenCalled();
@@ -411,21 +412,22 @@ describe("Ventas — detalle y acciones de pedidos que siguen en Atención", () 
     await openAllSales();
     fireEvent.click(await screen.findByRole("button", { name: "Ver detalle del pedido ORD-001" }));
     expect(await screen.findByTestId("order-detail")).toHaveTextContent("o-1");
-    useFixtureOrders(ORDERS.map((order) => ({ ...order, subEstadoCc: "entrega_lima", salesOperationalEligible: false })));
+    useFixtureOrders(ORDERS.map((order) => ({ ...order, ccConfirmadoAt: "2026-09-23T11:00:00.000Z", subEstadoCc: "entrega_lima", salesOperationalEligible: true })));
     view.rerender(<VentasPage />);
     expect(screen.getByTestId("order-detail")).toHaveTextContent("o-1");
     expect(mockedAxios.patch).not.toHaveBeenCalled();
   });
 
-  it("muestra ambos pedidos completos y permite imprimir la selección con los pedidos de Atención sin cambiar estados", async () => {
+  it("muestra e imprime ventas confirmadas aunque conserven datos de Atención y excluye leads", async () => {
     useFixtureOrders([...ORDERS, ...customerServiceOrders()]);
     render(<VentasPage />);
     await screen.findByText("ORD-001");
-    expect(screen.queryByText("ORD-152907")).not.toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Todas las Ventas/ })).toHaveTextContent("4");
+    expect(screen.getByText("ORD-152907")).toBeInTheDocument();
+    expect(screen.queryByText("ORD-152728")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Todas las Ventas/ })).toHaveTextContent("3");
     const panel = await openAllSales();
     expect(await within(panel).findByText("ORD-152907")).toBeInTheDocument();
-    for (const number of ["ORD-152907", "ORD-152728"]) {
+    for (const number of ["ORD-152907"]) {
       const row = within(panel).getByText(number).closest("tr")!;
       expect(within(row).queryByText(/^En Atención/)).not.toBeInTheDocument();
       expect(within(row).getByRole("checkbox")).toBeEnabled();
@@ -434,24 +436,25 @@ describe("Ventas — detalle y acciones de pedidos que siguen en Atención", () 
       expect(within(row).getByRole("button", { name: "1 items" })).toBeInTheDocument();
     }
     fireEvent.click(within(panel).getAllByRole("checkbox")[0]);
-    fireEvent.click(within(panel).getByRole("button", { name: /Imprimir seleccionados \(4\)/ }));
-    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledTimes(4));
+    fireEvent.click(within(panel).getByRole("button", { name: /Imprimir seleccionados \(3\)/ }));
+    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledTimes(3));
     expect(mockedAxios.get.mock.calls.map(([url]) => url)).toEqual([
-      "http://ventas/order-header/elisa/receipt", "http://ventas/order-header/angela/receipt",
+      "http://ventas/order-header/angela/receipt",
       "http://ventas/order-header/o-2/receipt", "http://ventas/order-header/o-1/receipt",
     ]);
     expect(toast.error).not.toHaveBeenCalled();
     expect(mockedAxios.patch).not.toHaveBeenCalled();
   });
 
-  it("un usuario sin permiso de Atención puede abrir Ver de Angela y Elisa sin redirección", async () => {
+  it("un usuario sin permiso de Atención puede abrir una venta confirmada sin redirección", async () => {
     const prior = mockUseAuth.getMockImplementation()!();
     mockUseAuth.mockReturnValue({ ...prior, hasPermission: () => false });
     useFixtureOrders(customerServiceOrders());
     render(<VentasPage />);
     const panel = await openAllSales();
     await within(panel).findByText("ORD-152907");
-    for (const [number, id] of [["ORD-152907", "angela"], ["ORD-152728", "elisa"]]) {
+    expect(within(panel).queryByText("ORD-152728")).not.toBeInTheDocument();
+    for (const [number, id] of [["ORD-152907", "angela"]]) {
       fireEvent.click(within(panel).getByRole("button", { name: `Ver detalle del pedido ${number}` }));
       await waitFor(() => expect(screen.getByTestId("order-detail")).toHaveTextContent(id));
     }
@@ -460,7 +463,7 @@ describe("Ventas — detalle y acciones de pedidos que siguen en Atención", () 
     expect(mockedAxios.patch).not.toHaveBeenCalled();
   });
 
-  it("permite preparar Angela con stock aunque el servidor la identifique en Atención", async () => {
+  it("permite preparar una venta histórica confirmada aunque conserve datos de Atención", async () => {
     useFixtureOrders(customerServiceOrders());
     render(<VentasPage />);
     const panel = await openAllSales();
@@ -510,24 +513,18 @@ describe("Ventas — detalle y acciones de pedidos que siguen en Atención", () 
     expect(mockedAxios.patch).not.toHaveBeenCalled();
   });
 
-  it("explica por qué Elisa necesita confirmación antes de preparar y conserva la anulación", async () => {
+  it("no expone preparación, anulación ni detalle de un Shopify sin confirmación", async () => {
     useFixtureOrders(customerServiceOrders());
     render(<VentasPage />);
     const panel = await openAllSales();
-    const row = (await within(panel).findByText("ORD-152728")).closest("tr")!;
-    expect(within(row).getByTestId("status-select").getAttribute("data-available-statuses")).not.toContain("PREPARADO");
-    expect(within(row).getByText("Confirma el pedido en Ver antes de prepararlo.")).toBeInTheDocument();
-    // Even a retained select callback must be rejected by the physical status handler.
-    fireEvent.click(within(row).getByRole("button", { name: "Preparar PENDIENTE" }));
-    expect(toast.error).toHaveBeenCalledWith("Confirma el pedido en Ver antes de prepararlo.");
+    expect(within(panel).queryByText("ORD-152728")).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Ver detalle del pedido ORD-152728" })).not.toBeInTheDocument();
     expect(mockedAxios.patch).not.toHaveBeenCalled();
-    fireEvent.click(within(row).getByRole("button", { name: "Anular PENDIENTE" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Confirmar anulación normal" }));
-    await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalledWith("http://ventas/order-header/elisa", expect.objectContaining({ status: "ANULADO" })));
+    expect(mockedAxios.get).not.toHaveBeenCalled();
   });
 
-  it("permite reprogramar Elisa antes de confirmar su stock sin preparar el pedido", async () => {
-    useFixtureOrders(customerServiceOrders());
+  it("permite reprogramar una compra confirmada con reserva diferida sin preparar el pedido", async () => {
+    useFixtureOrders([{ ...customerServiceOrders()[1], commercialStage: "SALE", commercialStockState: "DEFERRED", salesOperationalEligible: true }]);
     render(<VentasPage />);
     const panel = await openAllSales();
     const row = (await within(panel).findByText("ORD-152728")).closest("tr")!;
@@ -538,7 +535,7 @@ describe("Ventas — detalle y acciones de pedidos que siguen en Atención", () 
   });
 
   it("mantiene impresión para Shopify ya comprometido aunque conserve el chip de Atención", async () => {
-    useFixtureOrders([{ ...customerServiceOrders()[1], stockVersion: 1 }]);
+    useFixtureOrders([{ ...customerServiceOrders()[1], commercialCommittedAt: "2026-09-24T11:00:00.000Z", stockVersion: 1, salesOperationalEligible: true }]);
     render(<VentasPage />);
     const panel = await openAllSales();
     const row = (await within(panel).findByText("ORD-152728")).closest("tr")!;
@@ -585,13 +582,11 @@ describe("Ventas — impresión genérica pendiente de terminar", () => {
           ? { ...order, externalSource: "shopify", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0, salesOperationalEligible: false, subEstadoCc: "por_confirmar" }
           : order));
         view.rerender(<VentasPage />);
-        const updatedRow = screen.getByText("ORD-RACE-11").closest("tr")!;
-        expect(within(updatedRow).queryByText(/^En Atención/)).not.toBeInTheDocument();
-        expect(within(updatedRow).getByRole("button", { name: "Anular PENDIENTE" })).toBeInTheDocument();
-        expect(within(updatedRow).getByRole("button", { name: "Ver detalle del pedido ORD-RACE-11" })).toBeEnabled();
+        expect(screen.queryByText("ORD-RACE-11")).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Ver detalle del pedido ORD-RACE-11" })).not.toBeInTheDocument();
       } else if (change === "solo clasificación CC") {
         useFixtureOrders(orders.map((order) => order.id === "race-11"
-          ? { ...order, stockVersion: 1, salesOperationalEligible: false, subEstadoCc: "entrega_lima" }
+          ? { ...order, ccConfirmadoAt: "2026-09-23T11:00:00.000Z", stockVersion: 1, salesOperationalEligible: true, subEstadoCc: "entrega_lima" }
           : order));
         view.rerender(<VentasPage />);
         const updatedRow = screen.getByText("ORD-RACE-11").closest("tr")!;
@@ -602,9 +597,9 @@ describe("Ventas — impresión genérica pendiente de terminar", () => {
         fireEvent.click(screen.getByRole("button", { name: "2" }));
         await screen.findByText("ORD-RACE-0");
       }
-      expect(isCurrent()).toBe(change !== "otra página");
+      expect(isCurrent()).toBe(change === "solo clasificación CC");
       await act(async () => { finishPrint(); });
-      if (change !== "otra página") {
+      if (change === "solo clasificación CC") {
         expect(printNow).toHaveBeenCalledTimes(1);
       } else {
         await waitFor(() => expect(printWindow.close).toHaveBeenCalled());
