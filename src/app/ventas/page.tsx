@@ -1963,15 +1963,15 @@ Estado: ${sale.status}
   if (!auth) return null;
 
   return (
-      <div className="flex h-screen w-full bg-slate-100 dark:bg-background">
-        <main className="flex-1 p-6 space-y-6 overflow-auto">
+      <div className="flex h-screen min-w-0 w-full bg-slate-100 dark:bg-background">
+        <main className="min-w-0 flex-1 p-3 sm:p-6 space-y-6 overflow-auto">
           <HeaderConfig
             title="Ventas"
             description="Gestión de ventas pendientes y anuladas — todo en un solo panel."
           >
             <Button
               variant="outline"
-              className="w-full lg:w-auto"
+              className="h-auto min-h-9 w-full max-w-full whitespace-normal text-center lg:w-auto"
               disabled={!importStore}
               onClick={() => { if (importStore) setImportModalOpen(true); }}
             >
@@ -2083,10 +2083,10 @@ Estado: ${sale.status}
           {/* Tabs para Ventas */}
           <Tabs
             value={activeTab}
-            className="w-full"
+            className="min-w-0 w-full"
             onValueChange={setActiveTab}
           >
-            <TabsList className="mb-4">
+            <TabsList className="mb-4 h-auto max-w-full flex-wrap justify-start">
               <TabsTrigger value="pendientes">
                 Ventas Pendientes
                 <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
@@ -2114,12 +2114,12 @@ Estado: ${sale.status}
             {/* Tab Pendientes */}
             <TabsContent value="pendientes">
               <Card>
-                <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <CardHeader className="flex min-w-0 flex-col gap-4">
                   <div>
                     <CardTitle>Ventas Pendientes</CardTitle>
                     <p className="mt-1 text-sm text-muted-foreground">Los pedidos en Atención también se consultan en Todas las Ventas.</p>
                   </div>
-                  <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                  <div className="flex min-w-0 w-full flex-wrap items-center gap-2 [&>button]:h-auto [&>button]:min-h-9 [&>button]:whitespace-normal">
                     <BulkStatusSelect
                       disabled={!queryReady}
                       selectedCount={selectedSaleIds.size}
@@ -2131,7 +2131,7 @@ Estado: ${sale.status}
                     />
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto"
+                      className="w-full sm:w-auto"
                       disabled={selectedPendientesCount === 0 || isPrinting}
                       onClick={handleBulkPrint}
                     >
@@ -2142,7 +2142,7 @@ Estado: ${sale.status}
                     </Button>
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto text-green-600 border-green-200 hover:bg-green-50"
+                      className="w-full sm:w-auto text-green-600 border-green-200 hover:bg-green-50"
                       disabled={selectedPendientesCount === 0}
                       onClick={() => handleBulkWhatsApp(pendientes)}
                     >
@@ -2151,7 +2151,7 @@ Estado: ${sale.status}
                     </Button>
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto"
+                      className="w-full sm:w-auto"
                       disabled={selectedPendientesCount === 0}
                       onClick={() => handleCopySelected(pendientes)}
                     >
@@ -2161,7 +2161,7 @@ Estado: ${sale.status}
                     {canExport && (
                       <Button
                         variant="outline"
-                        className="w-full lg:w-auto"
+                        className="w-full sm:w-auto"
                         disabled={!queryReady || isExporting}
                         onClick={() =>
                           handleExportExcel(
@@ -2229,9 +2229,9 @@ Estado: ${sale.status}
             {/* Tab Anuladas */}
             <TabsContent value="anuladas">
               <Card>
-                <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <CardHeader className="flex min-w-0 flex-col gap-4">
                   <CardTitle>Ventas Anuladas</CardTitle>
-                  <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                  <div className="flex min-w-0 w-full flex-wrap items-center gap-2 [&>button]:h-auto [&>button]:min-h-9 [&>button]:whitespace-normal">
                     <BulkStatusSelect
                       disabled={!ventas.anuladas.ready}
                       selectedCount={selectedSaleIds.size}
@@ -2243,7 +2243,7 @@ Estado: ${sale.status}
                     />
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto"
+                      className="w-full sm:w-auto"
                       disabled={
                         anulados.filter((s) => selectedSaleIds.has(s.id))
                           .length === 0 || isPrinting
@@ -2258,7 +2258,7 @@ Estado: ${sale.status}
                     </Button>
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto text-green-600 border-green-200 hover:bg-green-50"
+                      className="w-full sm:w-auto text-green-600 border-green-200 hover:bg-green-50"
                       disabled={
                         anulados.filter((s) => selectedSaleIds.has(s.id))
                           .length === 0
@@ -2271,7 +2271,7 @@ Estado: ${sale.status}
                     </Button>
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto"
+                      className="w-full sm:w-auto"
                       disabled={
                         anulados.filter((s) => selectedSaleIds.has(s.id))
                           .length === 0
@@ -2285,7 +2285,7 @@ Estado: ${sale.status}
                     {canExport && (
                       <Button
                         variant="outline"
-                        className="w-full lg:w-auto"
+                        className="w-full sm:w-auto"
                         disabled={!queryReady || isExporting}
                         onClick={() =>
                           handleExportExcel(
@@ -2325,12 +2325,12 @@ Estado: ${sale.status}
             {/* Tab Todas las Ventas */}
             <TabsContent value="todas">
               <Card>
-                <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <CardHeader className="flex min-w-0 flex-col gap-4">
                   <div>
                     <CardTitle>Todas las Ventas</CardTitle>
                     <p className="mt-1 text-sm text-muted-foreground">Incluye los pedidos que están en Atención al cliente.</p>
                   </div>
-                  <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                  <div className="flex min-w-0 w-full flex-wrap items-center gap-2 [&>button]:h-auto [&>button]:min-h-9 [&>button]:whitespace-normal">
                     <BulkStatusSelect
                       disabled={!ventas.todas.ready}
                       selectedCount={selectedSaleIds.size}
@@ -2342,7 +2342,7 @@ Estado: ${sale.status}
                     />
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto"
+                      className="w-full sm:w-auto"
                       disabled={
                         todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
                           .length === 0 || isPrinting
@@ -2361,7 +2361,7 @@ Estado: ${sale.status}
                     </Button>
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto text-green-600 border-green-200 hover:bg-green-50"
+                      className="w-full sm:w-auto text-green-600 border-green-200 hover:bg-green-50"
                       disabled={
                         todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
                           .length === 0
@@ -2378,7 +2378,7 @@ Estado: ${sale.status}
                     </Button>
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto"
+                      className="w-full sm:w-auto"
                       disabled={
                         todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
                           .length === 0
@@ -2396,7 +2396,7 @@ Estado: ${sale.status}
                     {canExport && (
                       <Button
                         variant="outline"
-                        className="w-full lg:w-auto"
+                        className="w-full sm:w-auto"
                         disabled={!queryReady || isExporting}
                         onClick={() =>
                           handleExportExcel(
