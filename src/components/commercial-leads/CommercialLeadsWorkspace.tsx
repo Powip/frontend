@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   ArrowRight,
-  FileText,
   Plus,
   RefreshCw,
   Settings2,
@@ -311,14 +310,6 @@ function ScopedWorkspace({ companyId, selectedStoreId, stores }: Props) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {capabilities.canView ? (
-            <Button asChild variant="outline">
-              <Link href="/metricas/leads">
-                <FileText aria-hidden="true" />
-                Ver métricas
-              </Link>
-            </Button>
-          ) : null}
           {capabilities.canManageTypes ? (
             <Button variant="outline" onClick={() => setCatalog(true)}>
               <Settings2 aria-hidden="true" />
