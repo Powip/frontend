@@ -36,7 +36,6 @@ export function AdvertisingDataStatus({
     codes.has("META_SPEND_MISMATCH");
   const assignmentsPending =
     codes.has("UNASSIGNED_SPEND") ||
-    codes.has("STORE_CHANNELS_NOT_CONFIGURED") ||
     codes.has("STORE_ASSIGNMENT_UNCERTAIN");
   const provisional = [...codes].some((code) => PROVISIONAL.has(code));
   const unknown = [...codes].some((code) => !KNOWN.has(code));
@@ -67,18 +66,35 @@ export function AdvertisingDataStatus({
           </p>
         </div>
       )}
-      {assignmentsPending ? (
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <p>Hay anuncios pendientes de vincular a tiendas o canales.</p>
+      {assignmentsPending && (
+        <div className="space-y-1">
+          {codes.has("UNASSIGNED_SPEND") && <p>Hay gasto de anuncios sin negocio asignado.</p>}
+          {codes.has("STORE_ASSIGNMENT_UNCERTAIN") && (
+            <p>Hay asignaciones históricas de anuncios pendientes de confirmar.</p>
+          )}
           <Link href={settingsHref} className="text-primary underline underline-offset-2">
-            Revisar tiendas y canales
+            Revisar asignaciones de negocios
           </Link>
         </div>
-      ) : codes.has("CHANNEL_FAMILY_FROM_META") ? (
+      )}
+      {codes.has("STORE_CHANNELS_NOT_CONFIGURED") && (
+        <div className="space-y-1">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <p>Hay negocios sin canales de venta configurados.</p>
+            <Link href="/configuracion/tiendas?tab=canales" className="text-primary underline underline-offset-2">
+              Configurar canales de venta
+            </Link>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Falta configurar los destinos de venta; el desglose por canal puede estar incompleto.
+          </p>
+        </div>
+      )}
+      {codes.has("CHANNEL_FAMILY_FROM_META") && (
         <p className="text-muted-foreground">
           El canal de algunos anuncios se identifica desde Meta.
         </p>
-      ) : null}
+      )}
       {codes.has("NON_PEN_SPEND_EXCLUDED") && (
         <p>Los totales en soles no suman otras monedas. Consulta sus importes por cuenta.</p>
       )}

@@ -249,7 +249,7 @@ export function dataWarning(code: string) {
         CHANNEL_FAMILY_FROM_META:
           "El canal Web o Mensajes de algunos anuncios se identifica a partir de su destino en Meta.",
         STORE_CHANNELS_NOT_CONFIGURED:
-          "Hay tiendas del período sin canales configurados. Revisa sus canales para vincular los anuncios con su destino.",
+          "Hay negocios del período sin canales de venta configurados. Configúralos en Tiendas para identificar sus destinos y revisar el desglose por canal.",
         NON_PEN_SPEND_EXCLUDED:
           "El gasto de cuentas en otras monedas no se incluye en los totales en soles. Revisa cada cuenta para consultar esos importes.",
       } as Record<string, string>
