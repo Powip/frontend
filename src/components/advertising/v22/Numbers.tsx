@@ -357,24 +357,6 @@ export function AdvertisingNumbers() {
                   })}
                 </tr>
               )}
-              <tr className="border-t text-muted-foreground">
-                <th scope="row" className="sticky left-0 bg-card p-3 text-left font-normal">
-                  Otros canales sin publicidad · pedidos
-                </th>
-                {columns.map((column) => (
-                  <td key={column.id} className="p-3 text-right">
-                    {
-                      sumSales(
-                        sales.byChannel.filter(
-                          (row) =>
-                            row.channel === "other" &&
-                            (column.storeId === "all" || row.storeId === column.storeId),
-                        ),
-                      ).orders
-                    }
-                  </td>
-                ))}
-              </tr>
               {permissions.spend && storeId === "all" && (
                 <tr className="border-t bg-amber-50 text-amber-900">
                   <th scope="row" className="sticky left-0 bg-amber-50 p-3 text-left font-normal">
@@ -390,6 +372,9 @@ export function AdvertisingNumbers() {
             </tbody>
           </table>
         </div>
+        <Link href="/ventas" className="block text-sm text-primary underline-offset-2 hover:underline">
+          Revisar otros canales en Ventas
+        </Link>
         {current.missingCosts > 0 && permissions.profit && (
           <p className="text-sm text-amber-700">
             {current.missingCosts} pedidos tienen costos históricos pendientes. La ganancia sólo
