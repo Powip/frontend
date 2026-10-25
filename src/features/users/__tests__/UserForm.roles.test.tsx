@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { toast } from "sonner";
 import UserForm from "@/components/forms/UserForm";
 import type { User } from "@/interfaces/IUser";
 import { createCompanyUser, updateUser } from "@/services/userService";
@@ -51,6 +52,7 @@ beforeEach(() => {
     refresh: jest.fn(),
   });
   jest.mocked(updateUser).mockResolvedValue({});
+  jest.mocked(createCompanyUser).mockResolvedValue({});
 });
 test("selects custom display name and sends its server assignmentName", async () => {
   const saved = jest.fn();
@@ -67,6 +69,34 @@ test("selects custom display name and sends its server assignmentName", async ()
       "token",
     ),
   );
+  expect(saved).toHaveBeenCalled();
+  expect(screen.queryByLabelText(/Contraseña/)).not.toBeInTheDocument();
+  expect(jest.mocked(updateUser).mock.calls[0][1]).not.toHaveProperty("password");
+});
+
+test("creation requires a password and sends it only when creating the user", async () => {
+  const saved = jest.fn();
+  render(<UserForm user={null} onUserSaved={saved} />);
+  const password = screen.getByLabelText("Contraseña");
+  expect(password).toBeRequired();
+  expect(password).toHaveAttribute("autocomplete", "new-password");
+  fireEvent.change(screen.getByRole("combobox", { name: "Rol" }), {
+    target: { value: "CUSTOM_UUID" },
+  });
+  submit("Crear Usuario");
+  expect(createCompanyUser).not.toHaveBeenCalled();
+  expect(toast.error).toHaveBeenCalledWith("La contraseña es obligatoria para nuevos usuarios");
+
+  fireEvent.change(password, { target: { value: "newpassword123" } });
+  submit("Crear Usuario");
+  await waitFor(() =>
+    expect(createCompanyUser).toHaveBeenCalledWith(
+      "company",
+      expect.objectContaining({ password: "newpassword123", roleName: "CUSTOM_UUID" }),
+      "token",
+    ),
+  );
+  expect(updateUser).not.toHaveBeenCalled();
   expect(saved).toHaveBeenCalled();
 });
 test("role load failure exposes retry, no invented roles, and blocks saving", () => {

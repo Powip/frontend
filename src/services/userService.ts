@@ -89,7 +89,6 @@ export interface UpdateUserRequest {
   district?: string;
   phoneNumber?: string;
   roleName?: string;
-  password?: string; // Opcional - solo si el admin quiere cambiar la contraseña
 }
 
 // Actualizar usuario existente
@@ -98,9 +97,20 @@ export const updateUser = async (
   request: UpdateUserRequest,
   accessToken: string,
 ) => {
+  // Keep credentials out of profile updates, including values added by old callers.
+  const payload: UpdateUserRequest = {
+    name: request.name,
+    surname: request.surname,
+    address: request.address,
+    city: request.city,
+    province: request.province,
+    district: request.district,
+    phoneNumber: request.phoneNumber,
+    roleName: request.roleName,
+  };
   const response = await axios.put(
     `${API_AUTH}/api/v1/auth/user/${userId}`,
-    request,
+    payload,
     {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -109,6 +119,37 @@ export const updateUser = async (
     },
   );
   return response.data;
+};
+
+export interface UpdateUserStatusRequest {
+  status: boolean;
+  expectedStatus: boolean;
+}
+
+export interface UserStatusResponse {
+  userId: string;
+  status: boolean;
+}
+
+export const updateUserStatus = async (
+  userId: string,
+  request: UpdateUserStatusRequest,
+  accessToken: string,
+): Promise<UserStatusResponse> => {
+  const { data } = await axios.patch<UserStatusResponse>(
+    `${API_AUTH}/api/v1/auth/user/${encodeURIComponent(userId)}/status`,
+    { status: request.status, expectedStatus: request.expectedStatus },
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    },
+  );
+  if (data?.userId !== userId || data.status !== request.status) {
+    throw new Error("El servidor no confirmó el estado del usuario. Actualiza la página.");
+  }
+  return { userId: data.userId, status: data.status };
 };
 
 export const createPlatformUser = async (

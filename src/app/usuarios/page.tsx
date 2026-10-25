@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
+import axios from "axios";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,14 +15,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Edit, Trash2, ShieldCheck, User as UserIcon } from "lucide-react";
+import { Plus, Search, Edit, UserCheck, UserX, Loader2, ShieldCheck, User as UserIcon } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import UserModal from "@/components/modals/UserModal";
 import { User } from "@/interfaces/IUser";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pagination } from "@/components/ui/pagination";
-import { getUsersByCompany } from "@/services/userService";
+import { getUsersByCompany, updateUserStatus } from "@/services/userService";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import RolesPanel from "@/features/users/RolesPanel";
 import { useCompanyRoles } from "@/features/users/useCompanyRoles";
@@ -38,14 +39,16 @@ export default function UsuariosPage() {
   const [openModal, setOpenModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [statusUpdatingIds, setStatusUpdatingIds] = useState<Set<string>>(() => new Set());
+  const pendingStatusIds = useRef(new Set<string>());
 
-  const fetchUsers = useCallback(async () => {
+  const fetchUsers = useCallback(async (showLoading = true) => {
     if (!auth?.company?.id || !auth?.accessToken) {
       setLoading(false);
       return;
     }
 
-    setLoading(true);
+    if (showLoading) setLoading(true);
     try {
       const usersData = await getUsersByCompany(auth.company.id, auth.accessToken);
       setUsers(usersData);
@@ -53,7 +56,7 @@ export default function UsuariosPage() {
       console.error("Error al cargar usuarios:", error);
       toast.error("Error al cargar usuarios");
     } finally {
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [auth?.company?.id, auth?.accessToken]);
 
@@ -97,9 +100,49 @@ export default function UsuariosPage() {
     toast.success("Usuario guardado correctamente");
   };
 
-  const handleToggleStatus = (user: User) => {
-    setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, status: !u.status } : u)));
-    toast.success(`Usuario ${user.status ? "desactivado" : "activado"} correctamente`);
+  const statusProtection = (user: User) => {
+    if (user.id === auth?.user.id) return "No puedes cambiar tu propio estado.";
+    if (user.role?.name.trim().toUpperCase() === "ADMINISTRADOR")
+      return "No se puede cambiar el estado de un administrador.";
+    return undefined;
+  };
+
+  const handleToggleStatus = async (user: User) => {
+    if (!auth?.accessToken || statusProtection(user) || pendingStatusIds.current.has(user.id))
+      return;
+
+    pendingStatusIds.current.add(user.id);
+    setStatusUpdatingIds(new Set(pendingStatusIds.current));
+    try {
+      const result = await updateUserStatus(
+        user.id,
+        { status: !user.status, expectedStatus: user.status },
+        auth.accessToken,
+      );
+      setUsers((prev) =>
+        prev.map((entry) => (entry.id === result.userId ? { ...entry, status: result.status } : entry)),
+      );
+      toast.success(`Usuario ${result.status ? "activado" : "desactivado"} correctamente`);
+      await fetchUsers(false);
+    } catch (error: unknown) {
+      const response = axios.isAxiosError<{ message?: unknown }>(error) ? error.response : undefined;
+      const message = response?.data?.message;
+      toast.error(
+        typeof message === "string"
+          ? message
+          : response?.status === 409
+            ? "El estado del usuario cambió. Revisa el estado actualizado e inténtalo de nuevo."
+            : response?.status === 403
+              ? "Tu cuenta no tiene permiso para cambiar el estado de este usuario."
+              : error instanceof Error
+                ? error.message
+                : "No se pudo cambiar el estado del usuario.",
+      );
+      if (response?.status === 409) await fetchUsers(false);
+    } finally {
+      pendingStatusIds.current.delete(user.id);
+      setStatusUpdatingIds(new Set(pendingStatusIds.current));
+    }
   };
 
   const getRoleBadge = (roleName?: string) => {
@@ -274,6 +317,7 @@ export default function UsuariosPage() {
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8"
+                                  aria-label={`Editar ${u.name} ${u.surname}`}
                                   onClick={() => {
                                     setSelectedUser(u);
                                     setOpenModal(true);
@@ -285,11 +329,21 @@ export default function UsuariosPage() {
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8 hover:text-red-600"
+                                  aria-label={`${u.status ? "Desactivar" : "Activar"} ${u.name} ${u.surname}`}
+                                  aria-busy={statusUpdatingIds.has(u.id)}
+                                  disabled={statusUpdatingIds.has(u.id) || !!statusProtection(u)}
+                                  title={statusProtection(u)}
                                   onClick={() => {
-                                    handleToggleStatus(u);
+                                    void handleToggleStatus(u);
                                   }}
                                 >
-                                  <Trash2 className="h-4 w-4" />
+                                  {statusUpdatingIds.has(u.id) ? (
+                                    <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+                                  ) : u.status ? (
+                                    <UserX aria-hidden="true" className="h-4 w-4" />
+                                  ) : (
+                                    <UserCheck aria-hidden="true" className="h-4 w-4" />
+                                  )}
                                 </Button>
                               </div>
                             </TableCell>
