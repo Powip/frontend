@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,9 +28,8 @@ import { AdvertisingLivePanel } from "../AdvertisingLivePanel";
 import { AdvertisingStoreAssignmentsPanel } from "../AdvertisingStoreAssignmentsPanel";
 import { useAdvertisingStoreFilter } from "../AdvertisingStoreFilterContext";
 import { useAdsQuery, useAdsV22, useRefreshAds } from "./context";
-import { dayKey, limaToday, money, numeric } from "./model";
+import { limaToday, money, numeric } from "./model";
 import { Block, Failure, SelectField, exportAdsWorkbook } from "./shared";
-import { subDays, parseISO } from "date-fns";
 import { ProfitConnections } from "./ProfitConnections";
 
 const SECTIONS = [
@@ -58,6 +57,7 @@ export function AdvertisingSettings() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
+  const [productReview, setProductReview] = useState({ scope: "", search: "", page: 1 });
   const [adsetConfirmation, setAdsetConfirmation] = useState<{
     row: AdsRow;
     productId: string;
@@ -69,14 +69,14 @@ export function AdvertisingSettings() {
   }, []);
   useEffect(() => setDraft(structuredClone(settings!)), [settings]);
   const catalog = useAdsQuery(
-    ["config-ads"],
+    ["config-ads", fromDate, salesTo, storeId],
     (id, signal) =>
       getAllAdsCatalog(
         id,
-        { from: dayKey(subDays(parseISO(limaToday()), 29)), to: limaToday(), level: "ad" },
+        { from: fromDate, to: salesTo, level: "ad", storeId },
         signal,
       ),
-    section === "products" || section === "tags" || section === "accounts",
+    (section === "products" || section === "tags" || section === "accounts") && fromDate <= salesTo,
   );
   const products = useAdsQuery(
     ["products-v22", storeId],
@@ -145,11 +145,22 @@ export function AdvertisingSettings() {
     section === "sales-costs" && fromDate <= salesTo,
   );
   const canAssign = settings!.capabilities.edit;
-  const suggestions = (catalog.data?.rows ?? [])
+  const suggestions = useMemo(() => (catalog.data?.rows ?? [])
     .filter((row) => storeId === "all" || row.store?.id === storeId)
     .filter((row) => !assignments.data?.assignments.find((item) => item.adId === row.id)?.productId)
     .map((row) => ({ row, suggestion: suggestAdProduct(row, products.data?.products ?? []) }))
-    .filter((item) => item.suggestion !== null);
+    .filter((item) => item.suggestion !== null),
+  [catalog.data?.rows, assignments.data?.assignments, products.data?.products, storeId]);
+  const productScope = JSON.stringify([fromDate, salesTo, storeId]);
+  const productView = productReview.scope === productScope
+    ? productReview
+    : { scope: productScope, search: "", page: 1 };
+  const productRows = (catalog.data?.rows ?? [])
+    .filter((row) => storeId === "all" || row.store?.id === storeId)
+    .filter((row) => !productView.search || `${row.name} ${row.id}`.toLocaleLowerCase("es").includes(productView.search.trim().toLocaleLowerCase("es")));
+  const productPageCount = Math.max(1, Math.ceil(productRows.length / 10));
+  const productPage = Math.min(productView.page, productPageCount);
+  const productPageStart = (productPage - 1) * 10;
   async function save() {
     if (!identity || !canConfigure || pending) return;
     setPending(true);
@@ -266,6 +277,7 @@ export function AdvertisingSettings() {
                 La empresa en POWIP es independiente del Business Manager de Meta. Asigna la tienda
                 de cada conjunto cuando una cuenta anuncia para varias tiendas.
               </p>
+              <p className="text-xs text-muted-foreground">Las conexiones y asignaciones se administran para toda la empresa.</p>
               <AdvertisingLivePanel
                 companyId={identity?.companyId}
                 actorId={actorId}
@@ -321,15 +333,24 @@ export function AdvertisingSettings() {
                   void assignments.refetch();
                 }}
               />
+            ) : fromDate > salesTo ? (
+              <p className="text-sm">Elige un período que ya haya comenzado para revisar anuncios.</p>
+            ) : !catalog.data || !products.data || !assignments.data ? (
+              <p role="status" className="text-sm">Cargando anuncios y productos…</p>
             ) : (
               <>
                 <p className="text-xs text-muted-foreground">
                   El producto se asigna por anuncio. Las ventas se calculan por tienda y el stock
                   disponible corresponde a la empresa.
                 </p>
+                <Input
+                  aria-label="Buscar anuncio para vincular producto"
+                  placeholder="Buscar por nombre o ID de anuncio"
+                  value={productView.search}
+                  onChange={(event) => setProductReview({ scope: productScope, search: event.target.value, page: 1 })}
+                />
                 <div className="space-y-3">
-                  {catalog.data?.rows
-                    .filter((row) => storeId === "all" || row.store?.id === storeId)
+                  {productRows.slice(productPageStart, productPageStart + 10)
                     .map((row) => {
                       const current = assignments.data?.assignments.find(
                         (item) => item.adId === row.id,
@@ -346,6 +367,10 @@ export function AdvertisingSettings() {
                             <p className="text-sm font-medium">{row.name}</p>
                             <p className="text-xs text-muted-foreground">
                               {row.store?.name ?? "Sin tienda asignada"}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Anuncio {row.id} · Cuenta {catalog.data?.accounts.find((account) => account.id === row.accountId)?.name ?? row.accountId}
+                              {row.adsetId ? ` · Conjunto ${row.adsetId}` : ""}
                             </p>
                           </div>
                           <SelectField
@@ -410,7 +435,17 @@ export function AdvertisingSettings() {
                       );
                     })}
                 </div>
-                {!catalog.data && <p className="text-sm">Cargando anuncios…</p>}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p role="status" className="text-xs text-muted-foreground">
+                    {productRows.length
+                      ? `Mostrando ${productPageStart + 1}–${Math.min(productPageStart + 10, productRows.length)} de ${productRows.length} anuncios`
+                      : "Sin anuncios para esta búsqueda y período."}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" disabled={productPage <= 1} onClick={() => setProductReview({ ...productView, page: productPage - 1 })}>Anterior</Button>
+                    <Button size="sm" variant="outline" disabled={productPage >= productPageCount} onClick={() => setProductReview({ ...productView, page: productPage + 1 })}>Siguiente</Button>
+                  </div>
+                </div>
               </>
             )}
           </Block>

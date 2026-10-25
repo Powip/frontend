@@ -100,13 +100,21 @@ export function ProfitConnections({
         )}
       </div>
       {canReview && reviewOpen && identity && actorId && (
-        <OrdersPanel
-          token={identity.token}
-          companyId={identity.companyId}
-          actorId={actorId}
-          from={from}
-          to={to}
-        />
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Esta revisión ampliada incluye todos los canales y pedidos aún incompletos. Sus pendientes
+            consideran cinco rubros: producto, envío, comisión de canal, comisión de pago y otros costos.
+            El resumen de arriba cuenta costos de producto y envío pendientes sólo en pedidos
+            facturados de Web y Mensajes; por eso las cantidades pueden ser distintas.
+          </p>
+          <OrdersPanel
+            token={identity.token}
+            companyId={identity.companyId}
+            actorId={actorId}
+            from={from}
+            to={to}
+          />
+        </div>
       )}
     </Block>
   );

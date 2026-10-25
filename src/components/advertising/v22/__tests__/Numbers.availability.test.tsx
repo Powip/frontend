@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
-import type { AdsSales, AdsSummary } from "@/services/advertisingV22Service";
+import { adsGet, getAdsSales, type AdsSales, type AdsSummary } from "@/services/advertisingV22Service";
 import { useAdvertisingStoreFilter } from "../../AdvertisingStoreFilterContext";
 import { useAdsQuery, useAdsV22 } from "../context";
 import { emptySales } from "../model";
@@ -10,6 +10,11 @@ import { exportAdsWorkbook } from "../shared";
 
 jest.mock("../context", () => ({ useAdsQuery: jest.fn(), useAdsV22: jest.fn() }));
 jest.mock("../../AdvertisingStoreFilterContext", () => ({ useAdvertisingStoreFilter: jest.fn() }));
+jest.mock("@/services/advertisingV22Service", () => ({
+  ...jest.requireActual("@/services/advertisingV22Service"),
+  adsGet: jest.fn(),
+  getAdsSales: jest.fn(),
+}));
 jest.mock("../shared", () => ({
   ...jest.requireActual("../shared"),
   exportAdsWorkbook: jest.fn().mockResolvedValue(undefined),
@@ -36,6 +41,21 @@ jest.mock("recharts", () => {
     XAxis: () => null,
     YAxis: () => null,
   };
+});
+
+it("requests the selected business for the period, comparison and product context", async () => {
+  render(<AdvertisingNumbers />);
+  const requests = jest.mocked(useAdsQuery).mock.calls;
+  const numbers = requests.filter(([key]) => key[0] === "numbers" && ["period", "comparison"].includes(String(key[1])));
+  expect(numbers.map(([key]) => key.at(-1))).toEqual(["store", "store"]);
+  expect(requests.some(([key]) => key[0] === "products-v22" && key[1] === "store")).toBe(true);
+  jest.mocked(adsGet).mockResolvedValue(source);
+  jest.mocked(getAdsSales).mockResolvedValue(orders);
+  const identity = { token: "token", companyId: "company" };
+  const signal = new AbortController().signal;
+  await numbers[0][1](identity, signal);
+  expect(jest.mocked(getAdsSales).mock.calls.every((call) => call[3] === "store")).toBe(true);
+  expect(jest.mocked(adsGet).mock.calls.filter((call) => call[1] === "/v22/summary").every((call) => call[2]?.storeId === "store")).toBe(true);
 });
 
 let source: AdsSummary;

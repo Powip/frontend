@@ -114,10 +114,10 @@ export function AdvertisingNumbers() {
   const { storeId, stores } = useAdvertisingStoreFilter();
   const { settings } = useAdsV22();
   const comparison = comparisonPeriod(fromDate, toDate);
-  const query = useNumbers(fromDate, comparison.effectiveTo, "all");
-  const previous = useNumbers(comparison.from, comparison.to, "all", "comparison");
-  const products = useAdsQuery(["products-v22", "all"], (identity, signal) =>
-    adsGet<{ products: AdsProduct[] }>(identity, "/v22/products", { storeId: "all" }, signal),
+  const query = useNumbers(fromDate, comparison.effectiveTo, storeId);
+  const previous = useNumbers(comparison.from, comparison.to, storeId, "comparison");
+  const products = useAdsQuery(["products-v22", storeId], (identity, signal) =>
+    adsGet<{ products: AdsProduct[] }>(identity, "/v22/products", { storeId }, signal),
   );
   const [byChannel, setByChannel] = useState(false);
   const [exportError, setExportError] = useState<unknown>(null);

@@ -35,11 +35,13 @@ export function AdvertisingStoreFilterProvider({
   stores,
   initialStoreId,
   businessScope = false,
+  allowUnassigned = true,
   children,
 }: {
   stores: AdvertisingCommercialStore[];
   initialStoreId?: string | null;
   businessScope?: boolean;
+  allowUnassigned?: boolean;
   children: ReactNode;
 }) {
   const [selected, setSelected] = useState(initialStoreId ?? "all");
@@ -49,7 +51,7 @@ export function AdvertisingStoreFilterProvider({
   );
   const storeId = businessScope
     ? "all"
-    : selected === "all" || selected === "none" || available.some((store) => store.id === selected)
+    : selected === "all" || (allowUnassigned && selected === "none") || available.some((store) => store.id === selected)
       ? selected
       : "all";
   const defaultStoreId =
@@ -62,7 +64,7 @@ export function AdvertisingStoreFilterProvider({
         ? "all"
         : new URLSearchParams(window.location.search).get("storeId");
       setSelected(
-        value === "all" || value === "none" || available.some((store) => store.id === value)
+        value === "all" || (allowUnassigned && value === "none") || available.some((store) => store.id === value)
           ? (value ?? "all")
           : value === null
             ? defaultStoreId
@@ -72,11 +74,11 @@ export function AdvertisingStoreFilterProvider({
     read();
     window.addEventListener("popstate", read);
     return () => window.removeEventListener("popstate", read);
-  }, [available, defaultStoreId, businessScope]);
+  }, [available, defaultStoreId, businessScope, allowUnassigned]);
   const setStoreId = useCallback(
     (value: string) => {
       if (businessScope) value = "all";
-      if (value !== "all" && value !== "none" && !available.some((store) => store.id === value))
+      if (value !== "all" && !(allowUnassigned && value === "none") && !available.some((store) => store.id === value))
         return;
       setSelected(value);
       const url = new URL(window.location.href);
@@ -85,7 +87,7 @@ export function AdvertisingStoreFilterProvider({
       if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`)
         window.history.replaceState(window.history.state, "", next);
     },
-    [available, businessScope],
+    [available, businessScope, allowUnassigned],
   );
   return (
     <Context.Provider value={{ storeId, defaultStoreId, setStoreId, stores: available }}>
