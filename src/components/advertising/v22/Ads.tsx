@@ -376,6 +376,19 @@ export function AdvertisingAds() {
     flagged.map((item) => ({ currency: item.row.currency, amount: item.value?.spend })),
   );
   const scale = allItems.filter((item) => item.scalable);
+  const stateCount = (item: string): number | "—" => {
+    if (!fullAds.data || fullAds.isError) return "—";
+    if (item === "Todos") return allItems.length;
+    if (!allItems.length) return 0;
+    if (item === "Pausado") return allItems.filter(({ row }) => isMetaPaused(row)).length;
+    if (item === "Escalando") return allItems.filter(({ row }) => !!row.budget?.increasedAt).length;
+    if (!data.data || data.isError) return "—";
+    if (item === "Para escalar")
+      return !scaleData.data || scaleData.isError || !productData.data || productData.isError
+        ? "—"
+        : scale.length;
+    return allItems.filter((row) => row.state === item).length;
+  };
   const metrics = allItems
     .map((item) => item.value)
     .filter((value): value is NonNullable<typeof value> => !!value);
@@ -678,11 +691,7 @@ export function AdvertisingAds() {
             onClick={() => setState(item)}
           >
             {item}{" "}
-            {item === "Todos"
-              ? allItems.length
-              : item === "Para escalar"
-                ? scale.length
-                : allItems.filter((row) => row.state === item).length}
+            {stateCount(item)}
           </Button>
         ))}
       </div>
@@ -717,6 +726,9 @@ export function AdvertisingAds() {
       )}
       {needsCreativeAverage && averageCatalog.isError && (
         <Failure error={averageCatalog.error} retry={averageCatalog.refetch} />
+      )}
+      {fullAds.isError && !catalog.isError && !data.isError && (
+        <Failure error={fullAds.error} retry={fullAds.refetch} />
       )}
       {catalog.isError || data.isError ? (
         <Failure

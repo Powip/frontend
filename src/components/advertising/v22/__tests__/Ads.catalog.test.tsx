@@ -37,6 +37,11 @@ let mockCurrencies: string[] = [];
 let mockSpends: string[] = [];
 let mockPeriodToDate = "2026-10-16";
 let mockStoreId = "all";
+let mockCatalogPending = false;
+let mockAdCatalogError = false;
+let mockNumbersPending = false;
+let mockNumbersError = false;
+let mockScalePending = false;
 const mockRows = () =>
   Array.from(
     { length: mockCount },
@@ -155,7 +160,17 @@ jest.mock("../../AdvertisingStoreFilterContext", () => ({
     setStoreId: mockSetStore,
   }),
 }));
-jest.mock("../Numbers", () => ({ useNumbers: () => mockSource }));
+jest.mock("../Numbers", () => ({
+  useNumbers: (_from: string, _to: string, _storeId: string, key: string) =>
+    mockNumbersPending || mockNumbersError || (key === "scale-check" && mockScalePending)
+      ? {
+          ...mockSource,
+          data: undefined,
+          isError: mockNumbersError,
+          error: mockNumbersError ? new Error("No se pudo leer ventas") : undefined,
+        }
+      : mockSource,
+}));
 jest.mock("../Thumbnail", () => ({ AdThumbnail: () => <span /> }));
 jest.mock("../Actions", () => ({
   AdvertisingActionDialog: (props: unknown) => {
@@ -211,16 +226,24 @@ beforeEach(() => {
   mockSettings.capabilities.spend = true;
   mockSettings.capabilities.edit = false;
   mockStoreId = "all";
+  mockCatalogPending = false;
+  mockAdCatalogError = false;
+  mockNumbersPending = false;
+  mockNumbersError = false;
+  mockScalePending = false;
   window.history.replaceState({}, "", "/publicidad/anuncios");
   mockSource = mockNumbers();
   process.env.NEXT_PUBLIC_API_INTEGRATIONS = "https://integrations.test";
   (axios.get as jest.Mock).mockImplementation(
-    async (url: string, options: { params?: { page?: number; from?: string } }) => {
+    async (url: string, options: { params?: { page?: number; from?: string; level?: string } }) => {
       if (url.endsWith("/v22/settings")) return { data: mockSettings };
       if (url.endsWith("/v22/products")) return { data: { products: [] } };
       if (url.endsWith("/v22/views")) return { data: { views: [] } };
       if (url.endsWith("/meta/v22/hourly")) return { data: { rows: [], timeZone: "America/Lima" } };
       if (url.endsWith("/meta/v22/catalog")) {
+        if (mockCatalogPending) return new Promise(() => {});
+        if (mockAdCatalogError && options.params?.level === "ad")
+          throw new Error("No se pudo leer el catálogo completo");
         const page = options.params?.page ?? 1;
         return {
           data: {
@@ -234,6 +257,81 @@ beforeEach(() => {
       throw new Error(`Unexpected test route ${url}`);
     },
   );
+});
+it("keeps catalog counters unknown while the full catalog is pending", async () => {
+  mockCatalogPending = true;
+  const view = mount();
+  await waitFor(() => expect(catalogCalls().length).toBeGreaterThan(0));
+  expect(screen.getByRole("button", { name: "Todos —" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Pausado —" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Rentable —" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Todos 0" })).not.toBeInTheDocument();
+  view.unmount();
+  view.client.clear();
+});
+
+it("exposes a failed full-ad catalog and retries it while an account catalog succeeds", async () => {
+  mockCount = 1;
+  mockAdCatalogError = true;
+  const view = mount();
+  await screen.findByText("No se pudo leer el catálogo completo");
+  fireEvent.change(screen.getByRole("combobox", { name: "Ver por" }), {
+    target: { value: "account" },
+  });
+  await waitFor(() =>
+    expect(catalogCalls().some(([, options]) => options.params.level === "account")).toBe(true),
+  );
+  await screen.findByText("Total · 1 grupos");
+  expect(within(screen.getByRole("table")).getByText("Anuncio 001")).toBeInTheDocument();
+  expect(screen.getByText("No se pudo leer el catálogo completo")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Todos —" })).toBeInTheDocument();
+  const before = catalogCalls().filter(([, options]) => options.params.level === "ad").length;
+  const accountRequests = catalogCalls().filter(([, options]) => options.params.level === "account").length;
+  mockAdCatalogError = false;
+  fireEvent.click(screen.getByRole("button", { name: "Volver a intentar" }));
+  await screen.findByRole("button", { name: "Todos 1" });
+  expect(catalogCalls().filter(([, options]) => options.params.level === "ad").length).toBeGreaterThan(before);
+  expect(catalogCalls().filter(([, options]) => options.params.level === "account")).toHaveLength(accountRequests);
+  expect(within(screen.getByRole("table")).getByText("Anuncio 001")).toBeInTheDocument();
+  expect(screen.queryByText("No se pudo leer el catálogo completo")).not.toBeInTheDocument();
+  view.unmount();
+  view.client.clear();
+});
+
+it("confirms zero counters after an empty catalog succeeds even while sales are pending", async () => {
+  mockCount = 0;
+  mockNumbersPending = true;
+  const view = mount();
+  await screen.findByRole("button", { name: "Todos 0" });
+  expect(screen.getByRole("button", { name: "Rentable 0" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Para escalar 0" })).toBeInTheDocument();
+  view.unmount();
+  view.client.clear();
+});
+
+it.each(["pending", "error"])("keeps financial counters unknown when sales are %s", async (state) => {
+  mockCount = 1;
+  mockRowChanges = { effectiveStatus: "PAUSED" };
+  mockNumbersPending = state === "pending";
+  mockNumbersError = state === "error";
+  const view = mount();
+  await screen.findByRole("button", { name: "Todos 1" });
+  expect(screen.getByRole("button", { name: "Pausado 1" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Rentable —" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Para escalar —" })).toBeInTheDocument();
+  view.unmount();
+  view.client.clear();
+});
+
+it("waits for the scaling reference while keeping successful catalog and financial counts", async () => {
+  mockCount = 1;
+  mockScalePending = true;
+  const view = mount();
+  await screen.findByRole("button", { name: "Todos 1" });
+  expect(screen.getByRole("button", { name: "Rentable 0" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Para escalar —" })).toBeInTheDocument();
+  view.unmount();
+  view.client.clear();
 });
 it("clears the old store drilldown before querying a newly selected store", async () => {
   mockCount = 1;
