@@ -141,8 +141,6 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
           district: formData.district,
           phoneNumber: formData.phoneNumber,
           ...(!unchangedRole && { roleName: formData.roleName }),
-          // Solo enviar password si se ingresó uno nuevo
-          ...(formData.password && { password: formData.password }),
         };
 
         await updateUser(user.id, updateRequest, auth.accessToken!);
@@ -250,27 +248,24 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
             required
           />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="password">
-            Contraseña{" "}
-            {user && (
-              <span className="text-muted-foreground text-xs">(dejar vacío para mantener)</span>
-            )}
-          </Label>
-          <Input
-            id="password"
-            type="password"
-            placeholder={user ? "••••••••" : "Mínimo 6 caracteres"}
-            value={formData.password}
-            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-            required={!user}
-          />
-          {!user && (
+        {!user ? (
+          <div className="space-y-2">
+            <Label htmlFor="password">Contraseña</Label>
+            <Input
+              id="password"
+              name="password"
+              type="password"
+              autoComplete="new-password"
+              placeholder="Mínimo 6 caracteres"
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              required
+            />
             <p className="text-[10px] text-muted-foreground mt-1">
               La contraseña debe tener al menos 6 caracteres, una letra minúscula y un número.
             </p>
-          )}
-        </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="space-y-2">
