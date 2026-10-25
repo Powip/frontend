@@ -213,6 +213,43 @@ it("shows one business total rather than separate store columns", () => {
   expect(within(comparison).getByText("Gasto sin tienda →")).toBeInTheDocument();
 });
 
+it("keeps the 76 advertising orders separate from 9 other-channel records and links to Sales", async () => {
+  const metric = { ...orders.totals, orders: 76, billedRevenue: "4327.94" };
+  orders.totals = metric;
+  orders.byChannel = [
+    { ...metric, storeId: "store", channel: "messages", orders: 62, billedRevenue: "3925.19" },
+    { ...metric, storeId: "store", channel: "web", orders: 14, billedRevenue: "402.75" },
+    // The source group includes 7 INCOMPLETE records and 2 visible Sales orders,
+    // but does not expose the status split to the frontend.
+    { ...emptySales(), storeId: "store", channel: "other", orders: 9 },
+  ];
+  jest.mocked(useAdvertisingStoreFilter).mockReturnValue({
+    storeId: "all",
+    defaultStoreId: "all",
+    setStoreId: jest.fn(),
+    stores: source.stores,
+  });
+  const user = userEvent.setup();
+  render(<AdvertisingNumbers />);
+  const comparison = screen.getByRole("columnheader", { name: "Métrica" }).closest("table")!;
+  const ordersRow = within(comparison).getByRole("rowheader", { name: "Pedidos" }).closest("tr")!;
+  expect(within(ordersRow).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["76"]);
+  const billedCard = screen.getByText("Facturado (entregado)").parentElement!;
+  expect(billedCard).toHaveTextContent(/4,327\.94/);
+  expect(screen.queryByText("Otros canales sin publicidad · pedidos")).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Revisar otros canales en Ventas" })).toHaveAttribute(
+    "href",
+    "/ventas",
+  );
+  await user.click(screen.getByRole("button", { name: "Desglosar por canal" }));
+  expect(within(ordersRow).getAllByRole("cell").map((cell) => cell.textContent)).toEqual([
+    "62",
+    "14",
+    "76",
+  ]);
+  expect(within(comparison).queryByText("9")).not.toBeInTheDocument();
+});
+
 it("exports the complete business and offers channel detail without splitting stores", async () => {
   source.stores.push({ id: "other", name: "Otra tienda" });
   orders.byChannel.push({
