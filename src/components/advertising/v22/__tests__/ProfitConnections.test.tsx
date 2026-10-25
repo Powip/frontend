@@ -66,6 +66,9 @@ it("opens existing audited review only on request and preserves selected dates a
   expect(screen.getByTestId("orders-review")).toHaveTextContent(
     "2026-10-01 / 2026-10-16 / company-a / actor-a",
   );
+  expect(screen.getByText(/Esta revisión ampliada incluye todos los canales y pedidos aún incompletos/)).toHaveTextContent(
+    /cinco rubros.*producto y envío pendientes sólo en pedidos facturados de Web y Mensajes/,
+  );
 });
 
 it("does not expose financial reviews or pending-cost counts to a role without profit access", () => {

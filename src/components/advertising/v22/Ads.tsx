@@ -136,6 +136,12 @@ export function AdvertisingAds() {
   const [viewName, setViewName] = useState("");
   const [saving, setSaving] = useState(false);
   const [undo, setUndo] = useState<{ rows: AdsRow[]; until: number } | null>(null);
+  useEffect(() => {
+    setSelected(null);
+    setAction(null);
+    setUndo(null);
+    setSaveOpen(false);
+  }, [storeId]);
   const permissions = settings!.capabilities;
   const pathValue = (selectedLevel: AdsLevel) =>
     path.find((item) => item.level === selectedLevel)?.id;
@@ -164,15 +170,15 @@ export function AdvertisingAds() {
     from: dayKey(subDays(parseISO(today), 29)),
     to: today,
     level: "ad" as const,
-    storeId: "all",
+    storeId,
   };
   const averageCatalog = useAdsQuery(
     ["catalog", averageFilters],
     (id, signal) => getAllAdsCatalog(id, averageFilters, signal),
     needsCreativeAverage,
   );
-  const data = useNumbers(fromDate, to, "all", "ads");
-  const scaleData = useNumbers(dayKey(subDays(parseISO(today), 6)), today, "all", "scale-check");
+  const data = useNumbers(fromDate, to, storeId, "ads");
+  const scaleData = useNumbers(dayKey(subDays(parseISO(today), 6)), today, storeId, "scale-check");
   const productData = useAdsQuery(["products-v22", storeId], (id, signal) =>
     adsGet<{ products: AdsProduct[] }>(id, "/v22/products", { storeId }, signal),
   );

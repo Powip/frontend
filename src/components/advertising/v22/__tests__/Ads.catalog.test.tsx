@@ -1,11 +1,12 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import axios from "axios";
 import { AdvertisingAds } from "../Ads";
 import { AdvertisingV22Provider, useAdsV22 } from "../context";
 import { emptySales } from "../model";
 import { exportAdsWorkbook } from "../shared";
-import type { AdsRow, AdsSettings } from "@/services/advertisingV22Service";
+import type { AdsRow, AdsSavedView, AdsSettings } from "@/services/advertisingV22Service";
+import type { ActionSelection } from "../Actions";
 
 const mockSetPeriod = jest.fn();
 const mockSetStore = jest.fn();
@@ -42,6 +43,8 @@ let mockAdCatalogError = false;
 let mockNumbersPending = false;
 let mockNumbersError = false;
 let mockScalePending = false;
+let mockViews: AdsSavedView[] = [];
+const mockNumberRequests: Array<{ storeId: string; key: string }> = [];
 const mockRows = () =>
   Array.from(
     { length: mockCount },
@@ -161,15 +164,17 @@ jest.mock("../../AdvertisingStoreFilterContext", () => ({
   }),
 }));
 jest.mock("../Numbers", () => ({
-  useNumbers: (_from: string, _to: string, _storeId: string, key: string) =>
-    mockNumbersPending || mockNumbersError || (key === "scale-check" && mockScalePending)
+  useNumbers: (_from: string, _to: string, storeId: string, key: string) => {
+    mockNumberRequests.push({ storeId, key });
+    return mockNumbersPending || mockNumbersError || (key === "scale-check" && mockScalePending)
       ? {
           ...mockSource,
           data: undefined,
           isError: mockNumbersError,
           error: mockNumbersError ? new Error("No se pudo leer ventas") : undefined,
         }
-      : mockSource,
+      : mockSource;
+  },
 }));
 jest.mock("../Thumbnail", () => ({ AdThumbnail: () => <span /> }));
 jest.mock("../Actions", () => ({
@@ -179,8 +184,8 @@ jest.mock("../Actions", () => ({
   },
 }));
 jest.mock("../AdDetail", () => ({
-  AdvertisingAdDetail: ({ onClose }: { onClose: () => void }) => (
-    <button onClick={onClose}>Cerrar detalle</button>
+  AdvertisingAdDetail: ({ onClose, onAction, row }: { onClose: () => void; onAction: (value: ActionSelection) => void; row: AdsRow }) => (
+    <><button onClick={onClose}>Cerrar detalle</button><button onClick={() => onAction({ rows: [row], action: "pause" })}>Pausar desde detalle</button></>
   ),
 }));
 jest.mock("../shared", () => ({
@@ -231,6 +236,8 @@ beforeEach(() => {
   mockNumbersPending = false;
   mockNumbersError = false;
   mockScalePending = false;
+  mockViews = [];
+  mockNumberRequests.length = 0;
   window.history.replaceState({}, "", "/publicidad/anuncios");
   mockSource = mockNumbers();
   process.env.NEXT_PUBLIC_API_INTEGRATIONS = "https://integrations.test";
@@ -238,7 +245,7 @@ beforeEach(() => {
     async (url: string, options: { params?: { page?: number; from?: string; level?: string } }) => {
       if (url.endsWith("/v22/settings")) return { data: mockSettings };
       if (url.endsWith("/v22/products")) return { data: { products: [] } };
-      if (url.endsWith("/v22/views")) return { data: { views: [] } };
+      if (url.endsWith("/v22/views")) return { data: { views: mockViews } };
       if (url.endsWith("/meta/v22/hourly")) return { data: { rows: [], timeZone: "America/Lima" } };
       if (url.endsWith("/meta/v22/catalog")) {
         if (mockCatalogPending) return new Promise(() => {});
@@ -258,6 +265,66 @@ beforeEach(() => {
     },
   );
 });
+it("queries catalog, financial inputs and creative references for the selected business", async () => {
+  mockCount = 1;
+  mockStoreId = "store";
+  const view = mount();
+  await screen.findByText("Mostrando 1–1 de 1");
+  for (const key of ["ads", "scale-check", "today"])
+    expect(mockNumberRequests.filter((request) => request.key === key).every((request) => request.storeId === "store")).toBe(true);
+  expect(mockNumberRequests.some((request) => request.key === "ads")).toBe(true);
+  fireEvent.change(screen.getByRole("combobox", { name: "Vista" }), { target: { value: "creatives" } });
+  await waitFor(() => expect(catalogCalls().length).toBeGreaterThan(1));
+  expect(catalogCalls().every(([, options]) => options.params.storeId === "store")).toBe(true);
+  view.unmount();
+  view.client.clear();
+});
+it("applies a saved view's filters and keeps them when its business changes", async () => {
+  mockCount = 1;
+  mockViews = [{ id: "saved", name: "Campañas web", icon: "", state: {
+    level: "campaign", view: "performance", channel: "web", status: "Pausado",
+    from: "2026-10-01", to: "2026-10-16", storeId: "store",
+  } }];
+  const view = mount();
+  fireEvent.click(await screen.findByRole("button", { name: "Campañas web" }));
+  expect(mockSetStore).toHaveBeenLastCalledWith("store");
+  expect(mockSetPeriod).toHaveBeenLastCalledWith("2026-10-01", "2026-10-16");
+  mockStoreId = "store";
+  view.rerender(<QueryClientProvider client={view.client}><AdvertisingV22Provider><ReadyAds /></AdvertisingV22Provider></QueryClientProvider>);
+  expect(screen.getByRole("combobox", { name: "Ver por" })).toHaveValue("campaign");
+  expect(screen.getByRole("combobox", { name: "Canal" })).toHaveValue("web");
+  expect(screen.getByRole("combobox", { name: "Vista" })).toHaveValue("performance");
+  await waitFor(() => expect(catalogCalls().some(([, options]) => options.params.storeId === "store" && options.params.level === "campaign")).toBe(true));
+  view.unmount();
+  view.client.clear();
+});
+
+it("clears the old business's detail, pending action, undo and saved-view dialog on selection changes", async () => {
+  mockCount = 1;
+  const view = mount();
+  fireEvent.click(await screen.findByRole("button", { name: /^Anuncio 001/ }));
+  expect(screen.getByRole("button", { name: "Cerrar detalle" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Pausar desde detalle" }));
+  const actionProps = mockAction.mock.calls[mockAction.mock.calls.length - 1][0] as {
+    selection: ActionSelection | null;
+    onPaused: (rows: AdsRow[]) => void;
+  };
+  expect(actionProps.selection?.rows[0].id).toBe("1");
+  act(() => actionProps.onPaused(mockRows()));
+  expect(screen.getByRole("button", { name: "Deshacer" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "+ Guardar vista actual" }));
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+  mockStoreId = "store";
+  view.rerender(<QueryClientProvider client={view.client}><AdvertisingV22Provider><ReadyAds /></AdvertisingV22Provider></QueryClientProvider>);
+  expect(screen.queryByRole("button", { name: "Cerrar detalle" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Deshacer" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(mockAction.mock.calls[mockAction.mock.calls.length - 1][0].selection).toBeNull();
+  expect(axios.post).not.toHaveBeenCalled();
+  view.unmount();
+  view.client.clear();
+});
+
 it("keeps catalog counters unknown while the full catalog is pending", async () => {
   mockCatalogPending = true;
   const view = mount();

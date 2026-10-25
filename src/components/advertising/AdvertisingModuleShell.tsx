@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { endOfMonth, format, parseISO, startOfMonth } from "date-fns";
 import { es } from "date-fns/locale";
 import Link from "next/link";
@@ -30,7 +30,7 @@ function AdvertisingShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { fromDate, toDate, setPeriod } = useAdminPeriod();
-  const { storeId, setStoreId } = useAdvertisingStoreFilter();
+  const { storeId, setStoreId, stores } = useAdvertisingStoreFilter();
   const initialized = useRef(false);
   const [ready, setReady] = useState(false);
   useEffect(() => {
@@ -63,16 +63,28 @@ function AdvertisingShell({ children }: { children: ReactNode }) {
     if (!authLoading && !auth) router.replace("/login");
   }, [authLoading, auth, router]);
   if (authLoading || !auth) return null;
-  const hidePeriod =
-    pathname.startsWith("/publicidad/pruebas") || pathname.startsWith("/publicidad/configuracion");
+  const hidePeriod = pathname.startsWith("/publicidad/pruebas");
   const comparison = comparisonPeriod(fromDate, toDate);
   const dateLabel = (date: string) => format(parseISO(date), "d MMM", { locale: es });
   return (
     <div className="flex h-full min-w-0 flex-col bg-background">
       <div className="shrink-0 border-b bg-card px-4 sm:px-6 lg:px-8">
         <div className="flex flex-wrap items-center justify-between gap-3 py-3">
-          <h1 className="text-xl font-bold">Publicidad</h1>
-          <p className="text-sm text-muted-foreground">Todo el negocio</p>
+          <div>
+            <h1 className="text-xl font-bold">Publicidad</h1>
+            {auth.company?.name && <p className="text-xs text-muted-foreground">{auth.company.name}</p>}
+          </div>
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Negocio
+            <select
+              className="h-9 min-w-48 rounded-md border bg-background px-2 text-sm text-foreground"
+              value={storeId}
+              onChange={(event) => setStoreId(event.target.value)}
+            >
+              <option value="all">Todo el negocio</option>
+              {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+            </select>
+          </label>
         </div>
         <nav aria-label="Secciones de publicidad" className="flex gap-1 overflow-x-auto">
           {ADVERTISING_SECTIONS.map(({ label, href, icon: Icon }) => (
@@ -109,7 +121,7 @@ function AdvertisingShell({ children }: { children: ReactNode }) {
             <Failure error={error} retry={reload} />
           </div>
         ) : settings?.capabilities.view ? (
-          children
+          <Fragment key={pathname.startsWith("/publicidad/anuncios") ? "ads" : storeId}>{children}</Fragment>
         ) : (
           <p role="alert" className="p-6 text-sm">
             Tu rol no tiene acceso a Publicidad.
@@ -127,7 +139,7 @@ export function AdvertisingModuleShell({ children }: { children: ReactNode }) {
     <AdvertisingStoreFilterProvider
       key={`${auth?.user.id ?? "none"}:${auth?.company?.id ?? "none"}`}
       stores={auth?.company?.stores ?? []}
-      businessScope
+      allowUnassigned={false}
     >
       <AdminPeriodProvider
         initialRange={{
