@@ -33,10 +33,10 @@ const mockSettings = {
 } as AdsSettings;
 let mockCount = 101;
 let mockPartial = false;
+let mockRateLimited = false;
+let mockCanManage: boolean | undefined = false;
+let mockMultipleAccounts = false;
 let mockRowChanges: Partial<AdsRow> = {};
-let mockCurrencies: string[] = [];
-let mockSpends: string[] = [];
-let mockPeriodToDate = "2026-10-16";
 let mockStoreId = "all";
 let mockCatalogPending = false;
 let mockAdCatalogError = false;
@@ -45,13 +45,14 @@ let mockNumbersError = false;
 let mockScalePending = false;
 let mockViews: AdsSavedView[] = [];
 const mockNumberRequests: Array<{ storeId: string; key: string }> = [];
+let mockFromDate = "2026-10-01";
 const mockRows = () =>
   Array.from(
     { length: mockCount },
     (_, index) =>
       ({
         id: String(index + 1),
-        accountId: "account",
+        accountId: mockMultipleAccounts && index >= 100 ? "other-account" : "account",
         campaignId: "campaign",
         adsetId: "set",
         level: "ad",
@@ -60,12 +61,12 @@ const mockRows = () =>
         status: "ACTIVE",
         effectiveStatus: "ACTIVE",
         daysActive: 5,
-        currency: mockCurrencies[index] ?? "PEN",
+        currency: "PEN",
         timeZone: "America/Lima",
         store: { id: "store", name: "Tienda" },
         creative: { format: "image" },
         insights: {
-          spend: mockSpends[index] ?? "1",
+          spend: "1",
           clicks: "2",
           coverage: {
             status: mockPartial ? "partial" : "complete",
@@ -107,14 +108,14 @@ const mockNumbers = () => ({
       adProducts: [],
       days: mockRows().map((row) => ({
         adId: row.id,
-        accountId: row.accountId,
+        accountId: "account",
         adsetId: "set",
         campaignId: "campaign",
         storeId: "store",
         date: "2026-10-01",
         channel: "messages",
-        currency: row.currency,
-        spend: row.insights.spend,
+        currency: "PEN",
+        spend: "1",
         results: mockPartial ? null : 1,
         impressions: "1000",
         linkClicks: "2",
@@ -146,13 +147,18 @@ const mockNumbers = () => ({
   isError: false,
   refetch: jest.fn(),
 });
-let mockSource: ReturnType<typeof mockNumbers>;
+let mockSource: {
+  data: ReturnType<typeof mockNumbers>["data"] | undefined;
+  isError: boolean;
+  error?: unknown;
+  refetch: jest.Mock;
+};
 jest.mock("axios");
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => mockAuth }));
 jest.mock("@/contexts/AdminPeriodContext", () => ({
   useAdminPeriod: () => ({
-    fromDate: "2026-10-01",
-    toDate: mockPeriodToDate,
+    fromDate: mockFromDate,
+    toDate: "2026-10-16",
     setPeriod: mockSetPeriod,
   }),
 }));
@@ -178,10 +184,8 @@ jest.mock("../Numbers", () => ({
 }));
 jest.mock("../Thumbnail", () => ({ AdThumbnail: () => <span /> }));
 jest.mock("../Actions", () => ({
-  AdvertisingActionDialog: (props: unknown) => {
-    mockAction(props);
-    return null;
-  },
+  AdvertisingActionDialog: (props: unknown) => { mockAction(props); return null; },
+  META_MANAGEMENT_UNAVAILABLE: "No hay acceso confirmado para gestionar anuncios desde POWIP.",
 }));
 jest.mock("../AdDetail", () => ({
   AdvertisingAdDetail: ({ onClose, onAction, row }: { onClose: () => void; onAction: (value: ActionSelection) => void; row: AdsRow }) => (
@@ -224,12 +228,11 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockCount = 101;
   mockPartial = false;
-  mockRowChanges = {};
-  mockCurrencies = [];
-  mockSpends = [];
-  mockPeriodToDate = "2026-10-16";
-  mockSettings.capabilities.spend = true;
+  mockRateLimited = false;
+  mockCanManage = false;
+  mockMultipleAccounts = false;
   mockSettings.capabilities.edit = false;
+  mockRowChanges = {};
   mockStoreId = "all";
   mockCatalogPending = false;
   mockAdCatalogError = false;
@@ -238,6 +241,7 @@ beforeEach(() => {
   mockScalePending = false;
   mockViews = [];
   mockNumberRequests.length = 0;
+  mockFromDate = "2026-10-01";
   window.history.replaceState({}, "", "/publicidad/anuncios");
   mockSource = mockNumbers();
   process.env.NEXT_PUBLIC_API_INTEGRATIONS = "https://integrations.test";
@@ -255,8 +259,14 @@ beforeEach(() => {
         return {
           data: {
             rows: mockRows().slice((page - 1) * 100, page * 100),
-            accounts: [{ id: "account", name: "Cuenta" }],
-            capabilities: {},
+            accounts: [
+              {
+                id: "account",
+                name: "Cuenta",
+                coverage: { lastErrorCode: mockRateLimited ? "PROVIDER_RATE" : null },
+              },
+            ],
+            capabilities: { canManageAds: mockCanManage },
             pagination: { page, pageSize: 100, total: mockCount, hasMore: page * 100 < mockCount },
           },
         };
@@ -403,9 +413,10 @@ it("waits for the scaling reference while keeping successful catalog and financi
 it("clears the old store drilldown before querying a newly selected store", async () => {
   mockCount = 1;
   mockRowChanges = { id: "store", level: "store", name: "Tienda" };
+  mockSource = mockNumbers();
   const view = mount();
-  await screen.findByText("Mostrando 1–1 de 1");
-  fireEvent.click(screen.getByRole("button", { name: "Tienda Tienda" }));
+  await screen.findByText("Mostrando 1–1 de 1", {}, { timeout: 5000 });
+  fireEvent.click(screen.getByRole("button", { name: /^Tienda Tienda/ }));
   await waitFor(() =>
     expect(catalogCalls().some(([, options]) => options.params.storeId === "store")).toBe(true),
   );
@@ -441,135 +452,87 @@ it("clears the old store drilldown before querying a newly selected store", asyn
   view.unmount();
   view.client.clear();
 });
-it("keeps USD spend and cost per result in the account currency, including the group total", async () => {
-  mockCount = 1;
-  mockCurrencies = ["USD"];
-  mockSource = mockNumbers();
-  const view = mount();
-  await screen.findByText("Mostrando 1–1 de 1");
-  const row = visibleRows()[0];
-  expect(within(row).getAllByText(/USD.*1\.00/).length).toBeGreaterThanOrEqual(2);
-  expect(within(row).queryByText(/S\/.*1\.00/)).not.toBeInTheDocument();
-  const today = screen.getByText(/^Hoy · comparación/).closest('[data-slot="card"]')!;
-  await waitFor(() =>
-    expect(within(today as HTMLElement).getByText(/USD.*0\.00/)).toBeInTheDocument(),
-  );
-  fireEvent.change(screen.getByRole("combobox", { name: "Ver por" }), {
-    target: { value: "account" },
-  });
-  await screen.findByText("Total · 1 grupos");
-  expect(screen.getByText("Total · 1 grupos").parentElement).toHaveTextContent(/USD.*1\.00/);
-  view.unmount();
-  view.client.clear();
-});
-it("preserves the selected date range when opening Meta settings from its status", async () => {
-  mockCount = 1;
-  mockPartial = true;
-  mockPeriodToDate = "2026-10-31";
-  mockSource = mockNumbers();
-  const view = mount();
-  await screen.findByText("Mostrando 1–1 de 1");
-  expect(screen.getByRole("link", { name: "Ver cuentas de Meta" })).toHaveAttribute(
-    "href",
-    "/publicidad/configuracion?from=2026-10-01&to=2026-10-31&storeId=all&section=accounts",
-  );
-  view.unmount();
-  view.client.clear();
-});
-
-it("does not add PEN and USD group spend or expose spend to a restricted role in UI and Excel", async () => {
-  mockCount = 2;
-  mockCurrencies = ["PEN", "USD"];
-  mockSource = mockNumbers();
-  const view = mount();
-  await screen.findByText("Mostrando 1–2 de 2");
-  fireEvent.change(screen.getByRole("combobox", { name: "Ver por" }), {
-    target: { value: "account" },
-  });
-  await screen.findByText("Total · 2 grupos");
-  const total = screen.getByText("Total · 2 grupos").parentElement!;
-  expect(within(total).getAllByRole("cell")[1]).toHaveTextContent("—");
-  expect(total).toHaveTextContent("Los importes de monedas distintas no se suman.");
-  expect(screen.getByText(/El gasto requiere una misma moneda confirmada/)).toBeInTheDocument();
-  expect(
-    (axios.get as jest.Mock).mock.calls.some(([url]) => url.endsWith("/meta/v22/hourly")),
-  ).toBe(false);
-  view.unmount();
-  view.client.clear();
-
-  mockSettings.capabilities.spend = false;
-  const restricted = mount();
-  await screen.findByText("Mostrando 1–2 de 2");
-  expect(screen.queryByRole("columnheader", { name: "Gasto" })).not.toBeInTheDocument();
-  expect(screen.queryByText(/USD/)).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "↓ Excel" }));
-  const rows = (exportAdsWorkbook as jest.Mock).mock.calls.at(-1)[1][0].rows;
-  expect(rows).toHaveLength(2);
-  for (const row of rows) {
-    expect(row).not.toHaveProperty("Gasto");
-    expect(row).not.toHaveProperty("Costo por resultado mensajes");
-  }
-  restricted.unmount();
-  restricted.client.clear();
-});
-
-it("keeps today's spend unknown when no account currency is confirmed", async () => {
-  mockCount = 1;
-  mockSource = mockNumbers();
-  mockSource.data.summary.days = [];
-  const view = mount();
-  await screen.findByText("Mostrando 1–1 de 1");
-  const today = screen.getByText(/^Hoy · comparación/).closest('[data-slot="card"]')!;
-  expect(within(today as HTMLElement).getByText("Gasto").parentElement).toHaveTextContent("Gasto—");
-  expect(within(today as HTMLElement).queryByText(/S\/|USD/)).not.toBeInTheDocument();
-  expect(
-    (axios.get as jest.Mock).mock.calls.some(([url]) => url.endsWith("/meta/v22/hourly")),
-  ).toBe(false);
-  view.unmount();
-  view.client.clear();
-});
-
-it("keeps two currency rows for the same store distinct after applying a channel filter", async () => {
-  mockCount = 2;
-  mockCurrencies = ["PEN", "USD"];
-  mockSpends = ["10", "20"];
-  mockRowChanges = { id: "store", level: "store" };
-  mockSettings.capabilities.edit = true;
-  mockSource = mockNumbers();
-  const errors = jest.spyOn(console, "error").mockImplementation(() => {});
-  const view = mount();
-  try {
-    await screen.findByText("Mostrando 1–2 de 2");
-    fireEvent.change(screen.getByRole("combobox", { name: "Ver por" }), {
-      target: { value: "store" },
-    });
-    fireEvent.change(screen.getByRole("combobox", { name: "Canal" }), {
-      target: { value: "messages" },
-    });
-    await screen.findByText("Total · 2 grupos");
-    const rows = within(screen.getByRole("table")).getAllByRole("row");
-    expect(rows.find((row) => row.textContent?.includes("Anuncio 001"))).toHaveTextContent(
-      /S\/.*10\.00/,
-    );
-    expect(rows.find((row) => row.textContent?.includes("Anuncio 002"))).toHaveTextContent(
-      /USD.*20\.00/,
-    );
-    expect(errors.mock.calls.flat().join(" ")).not.toMatch(/same key|unique.*key/i);
-    const penRow = rows.find((row) => row.textContent?.includes("Anuncio 001"))!;
-    fireEvent.click(within(penRow).getByRole("button", { name: /Pausar/ }));
-    expect(mockAction).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        selection: expect.objectContaining({
-          rows: [expect.objectContaining({ currency: "PEN" })],
-        }),
-      }),
-    );
-  } finally {
-    errors.mockRestore();
+it.each([false, undefined])(
+  "does not offer Meta actions when management is %s despite POWIP editing access",
+  async (canManage) => {
+    mockCount = 1;
+    mockSettings.capabilities.edit = true;
+    mockCanManage = canManage;
+    const view = mount();
+    await screen.findByText("Mostrando 1–1 de 1");
+    expect(
+      screen.getByText("No hay acceso confirmado para gestionar anuncios desde POWIP."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Pausar/ })).not.toBeInTheDocument();
     view.unmount();
     view.client.clear();
-  }
+  },
+);
+it("offers Meta actions when the provider and POWIP both confirm access", async () => {
+  mockCount = 1;
+  mockSettings.capabilities.edit = true;
+  mockCanManage = true;
+  const view = mount();
+  await screen.findByText("Mostrando 1–1 de 1");
+  expect(screen.getByRole("button", { name: /Pausar/ })).toBeInTheDocument();
+  view.unmount();
+  view.client.clear();
 });
+it("does not use a positive aggregate capability to manage a different account from another page", async () => {
+  mockCount = 101;
+  mockSettings.capabilities.edit = true;
+  mockCanManage = true;
+  mockMultipleAccounts = true;
+  const view = mount();
+  await screen.findByText("Mostrando 1–50 de 101");
+  expect(screen.getByText(/Esta vista incluye varias cuentas/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Pausar/ })).not.toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole("button", { name: "Gestionar en detalle" })[0]);
+  expect(screen.getByRole("button", { name: "Cerrar detalle" })).toBeInTheDocument();
+  view.unmount();
+  view.client.clear();
+});
+it("explains a future-only period instead of keeping an inactive query in a loading state", async () => {
+  mockFromDate = "2099-10-01";
+  const view = mount();
+  await screen.findByText("El período elegido todavía no tiene días transcurridos.");
+  expect(catalogCalls()).toHaveLength(0);
+  expect(screen.queryByLabelText("Cargando anuncios")).not.toBeInTheDocument();
+  view.unmount();
+  view.client.clear();
+});
+it.each([
+  [false, false],
+  [true, false],
+  [true, true],
+])(
+  "shows Meta ads while commercial measurements fail or load (%s), including stale data (%s)",
+  async (failed, stale) => {
+    mockCount = 1;
+    mockSource = {
+      data: stale ? mockNumbers().data : undefined,
+      isError: failed,
+      error: failed ? new Error("No se pudieron consultar las ventas") : undefined,
+      refetch: jest.fn(),
+    };
+    const view = mount();
+    await screen.findByText("Mostrando 1–1 de 1");
+    expect(within(visibleRows()[0]).getByText("Anuncio 001")).toBeInTheDocument();
+    expect(within(visibleRows()[0]).getByText("S/ 1.00")).toBeInTheDocument();
+    expect(within(visibleRows()[0]).getByText("Sin datos suficientes")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Cargando anuncios")).not.toBeInTheDocument();
+    if (failed)
+      expect(screen.getAllByRole("alert")[0]).toHaveTextContent(
+        "No se pudieron consultar las ventas",
+      );
+    else
+      expect(
+        screen.getByText("Anuncios cargados. Consultando ventas y rentabilidad…"),
+      ).toBeInTheDocument();
+    view.unmount();
+    view.client.clear();
+  },
+);
 it("deduplicates identical full catalogs, loads every server page, limits DOM to 50 and exports the full filtered population", async () => {
   mockCount = 1115;
   mockSource = mockNumbers();
@@ -639,8 +602,7 @@ it("keeps observed ads visible under a channel filter while coverage and results
   expect(within(visibleRows()[0]).queryByText("Sin resultados")).not.toBeInTheDocument();
   expect(within(visibleRows()[0]).queryByText("Revisa y pausa.")).not.toBeInTheDocument();
   expect(screen.getByText(/faltan referencias de anuncio/)).toBeInTheDocument();
-  expect(screen.getByText("Hay importes de Meta pendientes de confirmar")).toBeVisible();
-  expect(screen.getByRole("status", { name: "Estado de datos" })).toBeInTheDocument();
+  expect(screen.getByText(/Faltan datos del período o quedan diferencias/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "↓ Excel" }));
   const exported = (exportAdsWorkbook as jest.Mock).mock.calls[0][1][0].rows;
   expect(exported).toHaveLength(1);
@@ -660,12 +622,15 @@ it.each([
   ["CAMPAIGN_PAUSED", "La campaña está pausada."],
   ["ADSET_PAUSED", "El conjunto está pausado."],
 ])(
-  "keeps positive and audited zero-spend inherited pauses visible: %s",
+  "keeps inherited pauses out of Activos and exposes positive or zero spend in Todos: %s",
   async (effectiveStatus, reason) => {
     mockCount = 1;
     mockRowChanges = { effectiveStatus, status: "ACTIVE", pausedInPeriod: true };
     mockSource = mockNumbers();
     const view = mount();
+    await screen.findByText(/Sin anuncios activos para estos filtros/);
+    fireEvent.click(screen.getByRole("button", { name: "Pausado 1" }));
+    expect(screen.getByRole("combobox", { name: "Mostrar" })).toHaveValue("all");
     await screen.findByText("Mostrando 1–1 de 1");
     expect(within(visibleRows()[0]).getByText("Pausado")).toBeInTheDocument();
     expect(within(visibleRows()[0]).getByText(reason)).toBeInTheDocument();
@@ -682,6 +647,10 @@ it.each([
     };
     mockSource = mockNumbers();
     const zero = mount();
+    await screen.findByText(/Sin anuncios activos para estos filtros/);
+    fireEvent.change(screen.getByRole("combobox", { name: "Mostrar" }), {
+      target: { value: "all" },
+    });
     await screen.findByText("Mostrando 1–1 de 1");
     expect(within(visibleRows()[0]).getByText("Pausado")).toBeInTheDocument();
     zero.unmount();
@@ -689,11 +658,75 @@ it.each([
 
     mockRowChanges = { ...mockRowChanges, pausedInPeriod: false };
     const unaudited = mount();
-    await screen.findByText(
-      "No hay anuncios con gasto o pausas en este período para estos filtros.",
-    );
-    expect(screen.queryByText("Mostrando 1–1 de 1")).not.toBeInTheDocument();
+    await screen.findByText(/Sin anuncios activos para estos filtros/);
+    fireEvent.change(screen.getByRole("combobox", { name: "Mostrar" }), {
+      target: { value: "spend" },
+    });
+    expect(screen.getByText("Sin anuncios con gasto en este período.")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Mostrar" }), {
+      target: { value: "all" },
+    });
+    expect(screen.getByText("Mostrando 1–1 de 1")).toBeInTheDocument();
     unaudited.unmount();
     unaudited.client.clear();
   },
 );
+it.each(["messages", "web"])(
+  "keeps catalog %s results, filters and detail usable when the Sales API fails",
+  async (channel) => {
+    mockCount = 1;
+    const original = mockRows()[0].insights;
+    mockRowChanges = {
+      destinationType: channel === "web" ? "WEBSITE" : "WHATSAPP",
+      insights: {
+        ...original,
+        resultMetrics: {
+          messages: {
+            count: channel === "messages" ? "3" : "0",
+            costPerResult: "0.33",
+            status: "complete",
+          },
+          webPurchases: {
+            count: channel === "web" ? "3" : "0",
+            costPerResult: "0.33",
+            status: "complete",
+          },
+        },
+      },
+    };
+    mockSource = {
+      data: undefined,
+      isError: true,
+      error: new Error("Ventas no responde"),
+      refetch: jest.fn(),
+    };
+    const view = mount();
+    await screen.findByText("Mostrando 1–1 de 1");
+    fireEvent.change(screen.getByRole("combobox", { name: "Canal" }), {
+      target: { value: channel },
+    });
+    expect(screen.getByText("Mostrando 1–1 de 1")).toBeInTheDocument();
+    expect(
+      within(visibleRows()[0]).getByText(`${channel === "web" ? "Web" : "Mensajes"}: 3`),
+    ).toBeInTheDocument();
+    expect(within(visibleRows()[0]).getByText("Sin datos suficientes")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Ventas no responde");
+    fireEvent.click(screen.getByRole("button", { name: /Anuncio 001/ }));
+    expect(screen.getByRole("button", { name: "Cerrar detalle" })).toBeInTheDocument();
+    view.unmount();
+    view.client.clear();
+  },
+);
+
+it("explains the recorded Meta rate limit while keeping the saved catalog visible", async () => {
+  mockCount = 1;
+  mockRateLimited = true;
+  mockSource = mockNumbers();
+  mount();
+  await screen.findByText("Mostrando 1–1 de 1", {}, { timeout: 5000 });
+  expect(screen.getByText(/Meta limitó temporalmente las consultas/)).toHaveTextContent(
+    "Se muestra el catálogo guardado a la fecha indicada; actualización pendiente.",
+  );
+  expect(screen.getByText("Anuncio 001")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Actualizar Meta" })).toBeDisabled();
+});

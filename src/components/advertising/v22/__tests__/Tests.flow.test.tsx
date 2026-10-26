@@ -15,11 +15,18 @@ const refresh = jest.fn().mockResolvedValue(undefined);
 let mockProducts: AdsProduct[] = [];
 let mockTests: AdsTest[] = [];
 let mockProfit = true;
-let mockSpend = true;
+let mockAccountId = "all";
+let mockCanManage: boolean | undefined = true;
+let mockCatalogRows: AdsRow[];
 let mockProductErrorStoreId: string | null = null;
+let mockMeasurementsLoading = false;
+let mockMeasurementError = false;
 const mockQueries: Array<{
   key: unknown[];
-  request: (identity: { companyId: string; token: string }, signal: AbortSignal) => Promise<unknown>;
+  request: (
+    identity: { companyId: string; token: string },
+    signal: AbortSignal,
+  ) => Promise<unknown>;
   enabled: boolean;
 }> = [];
 const metric = {
@@ -77,22 +84,42 @@ const ad = {
   insights: { spend: "60" },
   budget: { objectId: "3", level: "adset", dailyBudget: "50.00" },
 } as AdsRow;
-let mockAds = [ad];
 jest.mock("axios");
-jest.mock("../Numbers", () => ({ useNumbers: () => ({ data: source, isError: false }) }));
+jest.mock("../../AdvertisingAccountFilterContext", () => ({
+  useAdvertisingAccountFilter: () => ({ accountId: mockAccountId }),
+}));
+jest.mock("../Numbers", () => ({
+  useNumbers: () => ({
+    data: mockMeasurementsLoading ? undefined : source,
+    isError: mockMeasurementError,
+    error: new Error("Ventas temporalmente no disponibles"),
+  }),
+}));
 jest.mock("../context", () => ({
   useAdsV22: () => ({
     identity: { token: "token", companyId: "company" },
     settings: {
       rules: { testMinSales: 3, testMultiplier: 2, winPct: 60 },
-      capabilities: { edit: true, spend: mockSpend, profit: mockProfit },
+      capabilities: { edit: true, spend: true, profit: mockProfit },
     },
   }),
   useRefreshAds: () => refresh,
-  useAdsQuery: (key: unknown[], request: (identity: { companyId: string; token: string }, signal: AbortSignal) => Promise<unknown>, enabled = true) => {
+  useAdsQuery: (
+    key: unknown[],
+    request: (
+      identity: { companyId: string; token: string },
+      signal: AbortSignal,
+    ) => Promise<unknown>,
+    enabled = true,
+  ) => {
     mockQueries.push({ key, request, enabled });
     return {
-      data: { rows: mockAds, products: mockProducts, tests: mockTests },
+      data: {
+        rows: mockCatalogRows,
+        products: mockProducts,
+        tests: mockTests,
+        capabilities: { canManageAds: mockCanManage },
+      },
       isError: key[0] === "test-create-products" && key[1] === mockProductErrorStoreId,
       error: new Error("No se pudieron consultar los productos"),
     };
@@ -114,14 +141,16 @@ describe("product-test decision receipt", () => {
     mockProducts = [];
     mockTests = [];
     mockProfit = true;
-    mockSpend = true;
-    ad.currency = "PEN";
-    ad.insights.spend = "60";
-    mockAds = [ad];
-    source.summary.days = [{ ...source.summary.days[0], currency: "PEN" }];
+    mockAccountId = "all";
+    mockCanManage = true;
+    mockCatalogRows = [ad];
     mockProductErrorStoreId = null;
+    mockMeasurementsLoading = false;
+    mockMeasurementError = false;
     mockQueries.length = 0;
     window.history.replaceState({}, "", "/");
+    source.summary.quality = { warnings: [], coverage: "complete" };
+    source.summary.days[0].currency = "PEN";
     source.sales.byAd = [{ ...metric, adId: "4", storeId: "store", channel: "web" }];
     process.env.NEXT_PUBLIC_API_INTEGRATIONS = "https://integrations.test";
     Object.defineProperty(global.crypto, "randomUUID", {
@@ -129,28 +158,53 @@ describe("product-test decision receipt", () => {
       value: () => "7d7b6cb1-15cc-44ce-88f3-487066fd5a70",
     });
   });
-  it("shows USD test spend and CPA in USD without a PEN profitability verdict", () => {
-    ad.currency = "USD";
-    source.summary.days[0].currency = "USD";
+  it.each(["partial", "foreign"])(
+    "keeps the spent-in-tests KPI unknown for %s data even when observed daily spend is numeric",
+    (cause) => {
+      mockTests = [test];
+      if (cause === "partial")
+        source.summary.quality = {
+          warnings: ["META_DATA_PARTIAL"],
+          coverage: "partial",
+          spendAvailable: false,
+        };
+      else source.summary.days[0].currency = "USD";
+      render(<AdvertisingTests />);
+      const total = screen.getByText("Gastado en pruebas").parentElement!;
+      expect(total).toHaveTextContent("—");
+      expect(total).not.toHaveTextContent(/S\/\s*60/);
+    },
+  );
+  it("shows measurement progress without inventing zero sales or a verdict", () => {
+    mockMeasurementsLoading = true;
     render(<TestRow test={test} />);
-    expect(screen.getByText("Gasto").textContent).toMatch(/USD.*60\.00/);
-    expect(screen.getByText("C. venta").textContent).toMatch(/USD.*20\.00/);
-    expect(screen.getByText(/Datos incompletos/)).toBeInTheDocument();
+    expect(screen.getByText(/Cargando medición…/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Cargando medición de la prueba")).toBeInTheDocument();
+    expect(screen.queryByText(/Sin costo suficiente/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Pasar a escala" })).not.toBeInTheDocument();
   });
-  it("suppresses a mixed-currency or unknown test total and retains spend permissions", () => {
-    mockAds = [ad, { ...ad, id: "5", currency: "USD" }];
-    const view = render(<TestRow test={{ ...test, adIds: ["4", "5"] }} />);
-    expect(screen.getByText("Gasto")).toHaveTextContent("Gasto —");
-    expect(screen.getByText("C. venta")).toHaveTextContent("C. venta —");
-    mockAds = [ad];
-    ad.insights.spend = null;
-    view.rerender(<TestRow test={test} />);
-    expect(screen.getByText("Gasto")).toHaveTextContent("Gasto —");
-    mockSpend = false;
-    view.rerender(<TestRow test={test} />);
-    expect(screen.queryByText("Gasto")).not.toBeInTheDocument();
-    expect(screen.queryByText("C. venta")).not.toBeInTheDocument();
+  it("does not recommend a verdict from stale measurements after a commercial-data error", () => {
+    mockMeasurementError = true;
+    render(<TestRow test={test} />);
+    expect(screen.getByText(/Medición no disponible/)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Ventas temporalmente no disponibles");
+    expect(screen.queryByRole("button", { name: "Pasar a escala" })).not.toBeInTheDocument();
+  });
+  it("only measures the visible test page and scopes catalogs to their set with reusable keys", () => {
+    mockTests = Array.from({ length: 12 }, (_, index) => ({ ...test, id: `test-${index}` }));
+    render(<AdvertisingTests />);
+    expect(screen.getByText("Mostrando 1–10 de 12 pruebas")).toBeInTheDocument();
+    const queries = mockQueries.filter((query) => query.key[0] === "test-catalog");
+    expect(queries).toHaveLength(10);
+    expect(
+      queries.every((query) => JSON.stringify(query.key) === JSON.stringify(queries[0].key)),
+    ).toBe(true);
+    expect(queries[0].key[1]).toEqual(
+      expect.objectContaining({ accountId: "account", storeId: "store", adsetId: "3" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Siguiente" }));
+    expect(screen.getByText("Mostrando 11–12 de 12 pruebas")).toBeInTheDocument();
+    expect(screen.getAllByText(/Desde 2026-10-01/)).toHaveLength(2);
   });
   it("confirms the real Meta budget increase before marking the test scaled with the same request ID", async () => {
     (axios.request as jest.Mock).mockResolvedValue({ data: { status: "succeeded" } });
@@ -198,6 +252,32 @@ describe("product-test decision receipt", () => {
     expect(axios.request).toHaveBeenCalledTimes(1);
     expect(refresh).not.toHaveBeenCalled();
   });
+  it.each([false, undefined])(
+    "does not offer remote test decisions when Meta management is %s",
+    (canManageAds) => {
+      mockCanManage = canManageAds;
+      render(<TestRow test={test} />);
+      expect(screen.queryByRole("button", { name: "Pasar a escala" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Descartar y pausar" })).not.toBeInTheDocument();
+      expect(screen.getByRole("status")).toHaveTextContent("No hay acceso confirmado");
+      expect(axios.request).not.toHaveBeenCalled();
+    },
+  );
+  it("does not treat access to another catalog account as access to the test account", () => {
+    mockCatalogRows = [ad, { ...ad, id: "other", accountId: "other-account" }];
+    render(<TestRow test={test} />);
+    expect(screen.queryByRole("button", { name: "Pasar a escala" })).not.toBeInTheDocument();
+    expect(axios.request).not.toHaveBeenCalled();
+  });
+  it("does not submit an open decision after management access becomes unavailable", () => {
+    const view = render(<TestRow test={test} />);
+    fireEvent.click(screen.getByRole("button", { name: "Pasar a escala" }));
+    mockCanManage = false;
+    view.rerender(<TestRow test={test} />);
+    expect(screen.getByRole("button", { name: "Confirmar" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+    expect(axios.request).not.toHaveBeenCalled();
+  });
   it("does not classify an ad without its own product costs as a winner using another product's store margin", () => {
     source.sales.byAd = [
       {
@@ -217,56 +297,213 @@ describe("product-test decision receipt", () => {
     expect(screen.queryByRole("button", { name: "Pasar a escala" })).not.toBeInTheDocument();
     expect(axios.request).not.toHaveBeenCalled();
   });
+  it("scopes test-creation catalogs to the global account and closes stale selections when it changes", async () => {
+    mockAccountId = "account";
+    mockProducts = [
+      {
+        id: "product",
+        name: "Producto apto",
+        storeId: "store",
+        unitCost: "10",
+        canTest: true,
+        variants: [],
+      } as unknown as AdsProduct,
+    ];
+    const content = () => (
+      <AdvertisingStoreFilterProvider
+        stores={[{ id: "store", name: "Tienda" }]}
+        initialStoreId="store"
+      >
+        <AdvertisingTests />
+      </AdvertisingStoreFilterProvider>
+    );
+    const view = render(content());
+    fireEvent.click(screen.getByRole("button", { name: "Nueva prueba" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Producto con costo" }), {
+      target: { value: "product" },
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "Conjunto de anuncios" }), {
+      target: { value: "3" },
+    });
+    const request = mockQueries
+      .filter((query) => query.key[0] === "tests-catalog" && query.enabled)
+      .at(-1)!;
+    expect(request.key).toEqual(["tests-catalog", "store", "account"]);
+    (axios.get as jest.Mock).mockResolvedValue({
+      data: {
+        rows: [ad],
+        accounts: [],
+        capabilities: { canManageAds: false },
+        pagination: { page: 1, pageSize: 100, total: 1, hasMore: false },
+      },
+    });
+    await request.request({ companyId: "company", token: "token" }, new AbortController().signal);
+    expect(axios.get).toHaveBeenCalledWith(
+      expect.stringContaining("/meta/v22/catalog"),
+      expect.objectContaining({
+        params: expect.objectContaining({ accountId: "account", storeId: "store" }),
+      }),
+    );
+    mockAccountId = "other-account";
+    view.rerender(content());
+    expect(screen.queryByRole("combobox", { name: "Producto con costo" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Nueva prueba" }));
+    expect(screen.getByRole("combobox", { name: "Producto con costo" })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: "Conjunto de anuncios" })).toHaveValue("");
+    expect(axios.request).not.toHaveBeenCalled();
+  });
+  it("rejects stale or mixed-account test ads before posting a create request", async () => {
+    mockAccountId = "account";
+    mockProducts = [
+      {
+        id: "product",
+        name: "Producto apto",
+        storeId: "store",
+        unitCost: "10",
+        canTest: true,
+        variants: [],
+      } as unknown as AdsProduct,
+    ];
+    mockCatalogRows = [ad, { ...ad, id: "foreign", accountId: "other-account" }];
+    render(
+      <AdvertisingStoreFilterProvider
+        stores={[{ id: "store", name: "Tienda" }]}
+        initialStoreId="store"
+      >
+        <AdvertisingTests />
+      </AdvertisingStoreFilterProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Nueva prueba" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Producto con costo" }), {
+      target: { value: "product" },
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "Conjunto de anuncios" }), {
+      target: { value: "3" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Crear prueba" }));
+    expect((await screen.findAllByRole("alert"))[0]).toHaveTextContent(
+      "no pertenecen a la cuenta seleccionada",
+    );
+    expect(axios.request).not.toHaveBeenCalled();
+  });
   it("requires at least one commercial store before opening test creation", () => {
     render(<AdvertisingTests />);
     expect(screen.getByRole("button", { name: "Nueva prueba" })).toBeDisabled();
     expect(screen.getByRole("status")).toHaveTextContent("Configura una tienda comercial");
   });
   it("keeps the business list unfiltered and requires an explicit local store to create a test", async () => {
-    mockProducts = [{ id: "product", name: "Producto compartido", storeId: "warehouse", canTest: true, unitCost: "10", variants: [] } as unknown as AdsProduct];
+    mockProducts = [
+      {
+        id: "product",
+        name: "Producto compartido",
+        storeId: "warehouse",
+        canTest: true,
+        unitCost: "10",
+        variants: [],
+      } as unknown as AdsProduct,
+    ];
     (axios.request as jest.Mock).mockResolvedValue({ data: { id: "created-test" } });
     (axios.get as jest.Mock).mockResolvedValue({ data: { products: mockProducts } });
     render(
       <AdvertisingStoreFilterProvider
-        stores={[{ id: "store", name: "Tienda comercial" }, { id: "other-store", name: "Otra tienda" }]}
+        stores={[
+          { id: "store", name: "Tienda comercial" },
+          { id: "other-store", name: "Otra tienda" },
+        ]}
         initialStoreId="all"
-      ><AdvertisingTests /></AdvertisingStoreFilterProvider>,
+      >
+        <AdvertisingTests />
+      </AdvertisingStoreFilterProvider>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Nueva prueba" }));
     expect(screen.getByRole("combobox", { name: "Tienda de la prueba" })).toHaveValue("");
     expect(screen.getByRole("combobox", { name: "Producto con costo" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Crear prueba" })).toBeDisabled();
-    expect(mockQueries.filter((query) => query.key[0] === "test-create-products").every((query) => !query.enabled)).toBe(true);
-    fireEvent.change(screen.getByRole("combobox", { name: "Tienda de la prueba" }), { target: { value: "store" } });
+    expect(
+      mockQueries
+        .filter((query) => query.key[0] === "test-create-products")
+        .every((query) => !query.enabled),
+    ).toBe(true);
+    fireEvent.change(screen.getByRole("combobox", { name: "Tienda de la prueba" }), {
+      target: { value: "store" },
+    });
     expect(window.location.search).toBe("");
-    const productQuery = mockQueries.filter((query) => query.key[0] === "test-create-products" && query.enabled).at(-1)!;
-    await productQuery.request({ companyId: "company", token: "token" }, new AbortController().signal);
+    const productQuery = mockQueries
+      .filter((query) => query.key[0] === "test-create-products" && query.enabled)
+      .at(-1)!;
+    await productQuery.request(
+      { companyId: "company", token: "token" },
+      new AbortController().signal,
+    );
     expect(axios.get).toHaveBeenCalledWith(
       "https://integrations.test/advertising/companies/company/v22/products",
       expect.objectContaining({ params: { storeId: "store" } }),
     );
-    expect(mockQueries.filter((query) => query.key[0] === "tests").every((query) => query.key[1] === "all")).toBe(true);
-    expect(mockQueries.filter((query) => query.key[0] === "tests-catalog" && query.enabled).every((query) => query.key[1] === "store")).toBe(true);
-    fireEvent.change(screen.getByRole("combobox", { name: "Producto con costo" }), { target: { value: "product" } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Conjunto de anuncios" }), { target: { value: "3" } });
+    expect(
+      mockQueries
+        .filter((query) => query.key[0] === "tests")
+        .every((query) => query.key[1] === "all"),
+    ).toBe(true);
+    expect(
+      mockQueries
+        .filter((query) => query.key[0] === "tests-catalog" && query.enabled)
+        .every((query) => query.key[1] === "store"),
+    ).toBe(true);
+    fireEvent.change(screen.getByRole("combobox", { name: "Producto con costo" }), {
+      target: { value: "product" },
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "Conjunto de anuncios" }), {
+      target: { value: "3" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Crear prueba" }));
-    await waitFor(() => expect(axios.request).toHaveBeenCalledWith(expect.objectContaining({
-      method: "post",
-      data: expect.objectContaining({ storeId: "store", productId: "product", accountId: "account", adIds: ["4"] }),
-    })));
+    await waitFor(() =>
+      expect(axios.request).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: "post",
+          data: expect.objectContaining({
+            storeId: "store",
+            productId: "product",
+            accountId: "account",
+            adIds: ["4"],
+          }),
+        }),
+      ),
+    );
   });
   it("clears a local test selection on store changes without changing the business filter", () => {
-    mockProducts = [{ id: "product", name: "Producto", storeId: "warehouse", canTest: true, variants: [] } as unknown as AdsProduct];
+    mockProducts = [
+      {
+        id: "product",
+        name: "Producto",
+        storeId: "warehouse",
+        canTest: true,
+        variants: [],
+      } as unknown as AdsProduct,
+    ];
     render(
-      <AdvertisingStoreFilterProvider stores={[{ id: "store", name: "Primera" }, { id: "other-store", name: "Segunda" }]} initialStoreId="all">
+      <AdvertisingStoreFilterProvider
+        stores={[
+          { id: "store", name: "Primera" },
+          { id: "other-store", name: "Segunda" },
+        ]}
+        initialStoreId="all"
+      >
         <AdvertisingTests />
       </AdvertisingStoreFilterProvider>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Nueva prueba" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Tienda de la prueba" }), { target: { value: "store" } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Producto con costo" }), { target: { value: "product" } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Conjunto de anuncios" }), { target: { value: "3" } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Tienda de la prueba" }), { target: { value: "other-store" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Tienda de la prueba" }), {
+      target: { value: "store" },
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "Producto con costo" }), {
+      target: { value: "product" },
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "Conjunto de anuncios" }), {
+      target: { value: "3" },
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "Tienda de la prueba" }), {
+      target: { value: "other-store" },
+    });
     expect(screen.getByRole("combobox", { name: "Producto con costo" })).toHaveValue("");
     expect(screen.getByRole("combobox", { name: "Conjunto de anuncios" })).toHaveValue("");
     expect(screen.getByRole("button", { name: "Crear prueba" })).toBeDisabled();
@@ -276,14 +513,24 @@ describe("product-test decision receipt", () => {
   it("keeps the local store choice available after a product query fails", () => {
     mockProductErrorStoreId = "store";
     render(
-      <AdvertisingStoreFilterProvider stores={[{ id: "store", name: "Primera" }, { id: "other-store", name: "Segunda" }]} initialStoreId="all">
+      <AdvertisingStoreFilterProvider
+        stores={[
+          { id: "store", name: "Primera" },
+          { id: "other-store", name: "Segunda" },
+        ]}
+        initialStoreId="all"
+      >
         <AdvertisingTests />
       </AdvertisingStoreFilterProvider>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Nueva prueba" }));
-    fireEvent.change(screen.getByRole("combobox", { name: "Tienda de la prueba" }), { target: { value: "store" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Tienda de la prueba" }), {
+      target: { value: "store" },
+    });
     expect(screen.getByRole("alert")).toHaveTextContent("No se pudieron consultar los productos");
-    fireEvent.change(screen.getByRole("combobox", { name: "Tienda de la prueba" }), { target: { value: "other-store" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Tienda de la prueba" }), {
+      target: { value: "other-store" },
+    });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Producto con costo" })).toBeInTheDocument();
     expect(axios.request).not.toHaveBeenCalled();
@@ -292,6 +539,7 @@ describe("product-test decision receipt", () => {
     "allows a %s with edit and hidden profit to create a backend-eligible product test",
     async () => {
       mockProfit = false;
+      mockCanManage = false;
       mockProducts = [
         {
           id: "product",

@@ -29,6 +29,8 @@ import {
 } from "@/services/advertisingV22Service";
 import { fetchBusinessProducts } from "@/services/businessProductsService";
 import { useAdvertisingStoreFilter } from "../AdvertisingStoreFilterContext";
+import { useAdvertisingAccountFilter } from "../AdvertisingAccountFilterContext";
+import { getNumbersV23, type SalesRowV23 } from "@/services/advertisingV23Service";
 import { advertisingSectionHref } from "../advertising-sections";
 import { useAdsQuery, useAdsV22 } from "./context";
 import {
@@ -57,19 +59,39 @@ import {
 import { Block, Failure, MetricCard, SelectField, exportAdsWorkbook } from "./shared";
 import { AdvertisingDataStatus } from "./DataStatus";
 
-export function useNumbers(from: string, to: string, storeId: string, suffix = "period") {
+export function useNumbers(
+  from: string,
+  to: string,
+  storeId: string,
+  _suffix = "period",
+  accountId = "all",
+  enabled = true,
+) {
   return useAdsQuery(
-    ["numbers", suffix, from, to, storeId],
+    ["numbers", from, to, storeId, accountId],
     async (identity, signal) => {
-      const [summary, sales] = await Promise.all([
-        adsGet<AdsSummary>(identity, "/v22/summary", { from, to, storeId }, signal),
-        getAdsSales(identity, from, to, storeId, signal),
-      ]);
+      const { summary, sales: current } = await getNumbersV23(identity, from, to, signal);
+      // The ad calculator needs the whole residual pool before filtering an account.
+      // Retain the precise sales channel alongside the old family field.
+      const adapt = (row: SalesRowV23) => ({
+        ...row,
+        realChannel: row.channel,
+        channel: row.channelFamily ?? "other",
+      });
+      const sales = {
+        ...current,
+        totals: current.totals,
+        byStore: current.byStore.map(adapt),
+        byChannel: current.byChannel.map(adapt),
+        byProduct: current.byProduct.map(adapt),
+        byAd: current.byAd.map(adapt),
+        daily: current.daily.map(adapt),
+      } as unknown as AdsSales;
       if (summary.from !== from || summary.to !== to || sales.from !== from || sales.to !== to)
         throw new Error("Los datos recibidos corresponden a otro período.");
       return { summary, sales };
     },
-    from <= to,
+    enabled && from <= to,
   );
 }
 const dateLabel = (date: string) => format(parseISO(date), "d EEE", { locale: es });
@@ -1039,12 +1061,23 @@ export function MonthlyNumbers() {
   );
 }
 
-function DailyPace() {
+export function DailyPace() {
   const { storeId } = useAdvertisingStoreFilter();
+  const { accountId } = useAdvertisingAccountFilter();
   const today = limaToday();
-  const query = useNumbers(today, today, storeId, "pace-today");
-  const catalog = useAdsQuery(["pace-budgets", today, storeId], (identity, signal) =>
-    getAllAdsCatalog(identity, { from: today, to: today, level: "ad", storeId }, signal),
+  const query = useNumbers(today, today, storeId, "pace-today", accountId);
+  const catalog = useAdsQuery(["pace-budgets", today, storeId, accountId], (identity, signal) =>
+    getAllAdsCatalog(
+      identity,
+      {
+        from: today,
+        to: today,
+        level: "ad",
+        storeId,
+        ...(accountId !== "all" ? { accountId } : {}),
+      },
+      signal,
+    ),
   );
   const active =
     catalog.data?.rows.filter(
@@ -1059,7 +1092,18 @@ function DailyPace() {
     !catalog.data || active.some((row) => !row.budget?.dailyBudget)
       ? null
       : budgets.reduce((sum, row) => sum + (numeric(row.dailyBudget) ?? 0), 0);
-  const spent = query.data ? summarize(query.data.summary, query.data.sales, storeId).spend : null;
+  const spent = query.data
+    ? summarize(
+        {
+          ...query.data.summary,
+          days: query.data.summary.days.filter(
+            (day) => accountId === "all" || day.accountId === accountId,
+          ),
+        },
+        query.data.sales,
+        storeId,
+      ).spend
+    : null;
   return (
     <MetricCard
       label="Ritmo de hoy"

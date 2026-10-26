@@ -16,8 +16,6 @@ import {
   financialBasis,
   financial,
   financialCauses,
-  channelRow,
-  daysForRow,
 } from "../model";
 
 const rules = {
@@ -127,49 +125,6 @@ function fixture() {
   } as AdsSales;
   return { summary, sales };
 }
-it("keeps same-store PEN and USD groups separate when filtering a channel and measuring sales", () => {
-  const { summary, sales } = fixture();
-  summary.days[0] = { ...summary.days[0], results: 4 };
-  summary.days[1] = {
-    ...summary.days[1],
-    accountId: "usd-account",
-    currency: "USD",
-    spend: "200",
-    results: 6,
-  };
-  sales.byAd = [
-    {
-      ...metric({ orders: 4, delivered: 4, billedRevenue: "400" }),
-      adId: "a",
-      accountId: "account",
-      storeId: "store",
-      channel: "web",
-    },
-    {
-      ...metric({ orders: 6, delivered: 6, billedRevenue: "600" }),
-      adId: "b",
-      accountId: "usd-account",
-      storeId: "store",
-      channel: "web",
-    },
-  ];
-  sales.totals.attributedOrders = 10;
-  const pen = { ...row("store", "store"), insights: { ...row().insights, spend: "100" } };
-  const usd = { ...pen, currency: "USD", insights: { ...pen.insights, spend: "200" } };
-  expect(daysForRow(pen, summary)).toHaveLength(1);
-  expect(daysForRow(usd, summary)).toHaveLength(1);
-  expect(channelRow(pen, summary, "web").insights.spend).toBe("100");
-  expect(channelRow(usd, summary, "web").insights.spend).toBe("200");
-  const calculate = createAdFinancialCalculator(summary, sales);
-  expect(calculate(pen)).toMatchObject({ spend: 100, delivered: 4, revenue: 400 });
-  expect(calculate(usd)).toMatchObject({
-    spend: 200,
-    delivered: 6,
-    revenue: 600,
-    roas: null,
-    gain: null,
-  });
-});
 function productFixture() {
   const { summary, sales } = fixture();
   summary.adProducts = [
@@ -261,6 +216,33 @@ it("uses the channel pool when no product pool is linked and conserves that pool
   expect(calculate(row("a"))).toMatchObject({ revenue: 500, gain: 150, roas: 5, delivered: 5 });
   expect(calculate(row("a")).revenue! + calculate(row("b")).revenue!).toBe(1000);
 });
+it("estimates the unmeasured product residual despite a legacy executive flag, conserving revenue and contribution", () => {
+  const { summary, sales } = productFixture();
+  // A legacy executive payload does not override v2.3's explicitly estimated pools.
+  sales.executive = {
+    basis: "created",
+    currency: "PEN",
+    standard: { totals: { attributedOrders: 0 }, byAccount: [], byChannel: [], daily: [] },
+    shopifyCod: null,
+  } as NonNullable<AdsSales["executive"]>;
+  const calculate = createAdFinancialCalculator(summary, sales);
+  const a = calculate(row("a")), b = calculate(row("b"));
+  const campaign = calculate({ ...row("campaign", "campaign"), insights: { ...row().insights, spend: "200" } });
+  expect(a).toMatchObject({ revenue: 600, gain: 250, roas: 6, delivered: 5 });
+  expect(b).toMatchObject({ revenue: 400, gain: 50, roas: 4, delivered: 5 });
+  expect(a.revenue! + b.revenue!).toBe(1000);
+  expect(a.delivered + b.delivered).toBe(10);
+  expect(a.gain! + b.gain!).toBe(campaign.gain);
+  expect(campaign).toMatchObject({ revenue: 1000, gain: 300, roas: 5, delivered: 10 });
+  for (const value of [a, b, campaign]) {
+    expect(financialBasis(value)).toBe("Estimado por canal");
+    expect(value.evidence).toMatchObject({ basis: "estimated", partial: false, issues: [] });
+  }
+  summary.days[1].results = null;
+  const unknown = createAdFinancialCalculator(summary, sales)(row("a"));
+  expect(unknown).toMatchObject({ revenue: null, gain: null, roas: null });
+  expect(unknown.evidence?.issues).toContain("results");
+});
 it("keeps ROAS independent of missing historical costs and never uses catalog cost as a past cost", () => {
   const { summary, sales } = productFixture();
   sales.byProduct[0] = {
@@ -303,35 +285,51 @@ it("excludes unknown-cost sales from contribution rather than extrapolating the 
   expect(canScale(row(), value, rules, "2026-10-17")).toBe(false);
   expect(adStatus(row(), value, rules, "2026-10-17", 5)).toBe("Sin datos suficientes");
 });
-it("keeps an ad without identified sales unknown when any attribution exists, instead of reporting a loss", () => {
+it("keeps verified sales on their ad and estimates only the remaining channel revenue once", () => {
   const { summary, sales } = fixture();
-  sales.totals.attributedOrders = 1;
-  sales.byChannel[0].attributedOrders = 1;
-  sales.byAd = [
-    {
-      ...metric({ orders: 1, delivered: 1, attributedOrders: 1 }),
-      adId: "b",
-      accountId: "account",
-      storeId: "store",
-      channel: "web",
-    },
-  ];
-  const value = adFinancial(row(), summary, sales);
-  expect(value).toMatchObject({ revenue: null, roas: null, gain: null, delivered: 0 });
-  expect(financialBasis(value)).toBe("Medido parcial");
-  expect(adStatus(row(), value, rules, "2026-10-17", 0)).toBe("Sin datos suficientes");
+  sales.totals.attributedOrders = 2;
+  sales.byChannel[0].attributedOrders = 2;
+  sales.byAd = [{
+    ...metric({ orders: 2, confirmed: 2, delivered: 2, units: 2, deliveredUnits: 2,
+      billedUnits: 2, eligibleBilledUnits: 2, eligibleDelivered: 2, eligibleDeliveredUnits: 2,
+      attributedOrders: 2, billedRevenue: "200", eligibleRevenue: "200", productCost: "80", shippingCost: "20",
+      eligibleProductCost: "80", eligibleShippingCost: "20" }),
+    adId: "b", accountId: "account", storeId: "store", channel: "web",
+  }];
+  const calculate = createAdFinancialCalculator(summary, sales);
+  const a = calculate(row("a")), b = calculate(row("b"));
+  expect(a).toMatchObject({ revenue: 800, roas: 8, gain: 300, delivered: 8 });
+  expect(a.evidence?.basis).toBe("estimated");
+  expect(b).toMatchObject({ revenue: 200, roas: 2, gain: 0, delivered: 2 });
+  expect(b.evidence?.basis).toBe("measured");
+  expect(a.revenue! + b.revenue!).toBe(1000);
+  expect(a.delivered + b.delivered).toBe(10);
+  // Unknown Meta results cannot erase a sale with a verified account and ad.
+  summary.days[1].results = null;
+  const unchanged = createAdFinancialCalculator(summary, sales);
+  expect(unchanged(row("b")).revenue).toBe(200);
+  expect(unchanged(row("b")).evidence?.basis).toBe("measured");
+  expect(unchanged(row("a")).revenue).toBe(800);
 });
-it("preserves the global no-double-counting guard across a channel filter with no identified orders", () => {
+it("keeps another channel's identified sales outside the filtered web residual", () => {
   const { summary, sales } = fixture();
-  sales.totals.attributedOrders = 1;
-  sales.byChannel.push({
-    ...metric({ attributedOrders: 1 }),
-    storeId: "store",
-    channel: "messages",
-  });
+  sales.totals.attributedOrders = 2;
+  const messages = { ...metric({ orders: 2, confirmed: 2, delivered: 2, units: 2, deliveredUnits: 2,
+    billedUnits: 2, eligibleBilledUnits: 2, eligibleDelivered: 2, eligibleDeliveredUnits: 2,
+    attributedOrders: 2, billedRevenue: "200", eligibleRevenue: "200", productCost: "80", shippingCost: "20",
+    eligibleProductCost: "80", eligibleShippingCost: "20" }), storeId: "store", channel: "messages" as const };
+  sales.byChannel.push(messages);
+  sales.byAd.push({ ...messages, adId: "messages-ad", accountId: "account" });
+  summary.days.push({ ...summary.days[0], adId: "messages-ad", channel: "messages", results: 2, spend: "50" });
   const scoped = channelData(summary, sales, "web");
-  expect(adFinancial(row(), scoped.summary, scoped.sales).evidence?.basis).toBe("measured");
-  expect(adFinancial(row(), scoped.summary, scoped.sales).revenue).toBeNull();
+  const calculate = createAdFinancialCalculator(scoped.summary, scoped.sales);
+  const a = calculate(row("a")), b = calculate(row("b"));
+  expect(a.evidence?.basis).toBe("estimated");
+  expect(a.revenue).toBe(500);
+  expect(b.revenue).toBe(500);
+  expect(a.revenue! + b.revenue!).toBe(1000);
+  expect(a.delivered + b.delivered).toBe(10);
+  expect(scoped.sales.byAd).toHaveLength(0);
 });
 it.each(["result", "coverage", "store"])(
   "does not estimate through unknown %s evidence",
@@ -369,26 +367,32 @@ it("keeps identical Meta IDs in different accounts separate", () => {
   expect(adFinancial(row(), summary, sales).revenue).toBe(200);
 });
 
-it("does not assign a legacy sale without account identity to two accounts sharing an ad ID", () => {
+it("does not treat an ambiguous legacy ad ID as measured in either account, and conserves its estimated residual", () => {
   const { summary, sales } = fixture();
   summary.days[1] = { ...summary.days[1], accountId: "another", adId: "a" };
-  sales.totals.attributedOrders = 10;
-  sales.byChannel[0].attributedOrders = 10;
-  sales.byAd = [
-    {
-      ...metric({ attributedOrders: 10 }),
-      adId: "a",
-      accountId: null,
-      storeId: "store",
-      channel: "web",
-    },
-  ];
+  sales.byAd = [{ ...metric({ attributedOrders: 0 }), adId: "a", accountId: null, storeId: "store", channel: "web" }];
   const calculate = createAdFinancialCalculator(summary, sales);
-  expect(calculate(row())).toMatchObject({ revenue: null, gain: null });
-  expect(calculate({ ...row(), accountId: "another" })).toMatchObject({
-    revenue: null,
-    gain: null,
-  });
+  const a = calculate(row()), b = calculate({ ...row(), accountId: "another" });
+  expect(a).toMatchObject({ revenue: 500, gain: 150, delivered: 5 });
+  expect(b).toMatchObject({ revenue: 500, gain: 150, delivered: 5 });
+  expect(a.evidence?.basis).toBe("estimated");
+  expect(b.evidence?.basis).toBe("estimated");
+  expect(a.revenue! + b.revenue!).toBe(1000);
+  // Adding a verified (account, ad) pair owns only that pair; its revenue leaves the residual.
+  sales.byAd.push({ ...metric({ orders: 2, confirmed: 2, delivered: 2, units: 2, deliveredUnits: 2,
+    billedUnits: 2, eligibleBilledUnits: 2, eligibleDelivered: 2, eligibleDeliveredUnits: 2,
+    attributedOrders: 2, billedRevenue: "200", eligibleRevenue: "200", productCost: "80", shippingCost: "20",
+    eligibleProductCost: "80", eligibleShippingCost: "20" }),
+    adId: "a", accountId: "account", storeId: "store", channel: "web" });
+  sales.totals.attributedOrders = sales.byChannel[0].attributedOrders = 2;
+  const verified = createAdFinancialCalculator(summary, sales);
+  const own = verified(row()), other = verified({ ...row(), accountId: "another" });
+  expect(own).toMatchObject({ revenue: 200, delivered: 2 });
+  expect(own.evidence?.basis).toBe("measured");
+  expect(other).toMatchObject({ revenue: 800, delivered: 8 });
+  expect(other.evidence?.basis).toBe("estimated");
+  expect(own.revenue! + other.revenue!).toBe(1000);
+  expect(own.delivered + other.delivered).toBe(10);
 });
 it("does not report measured profitability from a catalog amount when spend reconciliation is incomplete", () => {
   const { summary, sales } = fixture();

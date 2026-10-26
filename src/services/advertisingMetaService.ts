@@ -77,6 +77,7 @@ export interface MetaModuleCapabilities {
   canRead: boolean;
   canSync: boolean;
   canManageAds: boolean;
+  canGenerateAdText?: boolean;
   reason: string | null;
 }
 export interface MetaCatalogAccount {

@@ -17,7 +17,11 @@ import { Failure } from "./shared";
 export interface ActionSelection {
   rows: AdsRow[];
   action: "pause" | "activate" | "budget" | "scale" | "duplicate";
+  canManageAds?: boolean;
 }
+
+export const META_MANAGEMENT_UNAVAILABLE =
+  "No hay acceso confirmado para gestionar anuncios desde POWIP. Revisa la conexión y sus permisos en Configuración o vuelve a cargar los datos.";
 export function AdvertisingActionDialog({
   selection,
   onClose,
@@ -47,8 +51,18 @@ export function AdvertisingActionDialog({
     selection?.action === "budget" ||
     selection?.action === "scale" ||
     selection?.action === "duplicate";
+  const mixedCurrencies =
+    budgetAction && new Set(selection?.rows.map((row) => row.currency)).size > 1;
   async function apply() {
-    if (!identity || !selection || pending || !settings?.capabilities.edit) return;
+    if (
+      !identity ||
+      !selection ||
+      pending ||
+      !settings?.capabilities.edit ||
+      mixedCurrencies ||
+      selection.canManageAds !== true
+    )
+      return;
     setPending(true);
     setError(null);
     let applied = 0;
@@ -145,8 +159,7 @@ export function AdvertisingActionDialog({
               · afecta {budget?.affectedAds ?? "—"} anuncios
             </p>
             <label className="block space-y-1 text-sm">
-              Nuevo presupuesto diario{" "}
-              {first?.currency === "PEN" || !first?.currency ? "S/" : first.currency}
+              Nuevo presupuesto diario · {first?.currency ?? "Moneda por confirmar"}
               <Input
                 aria-label="Nuevo presupuesto diario"
                 type="number"
@@ -210,6 +223,16 @@ export function AdvertisingActionDialog({
           </div>
         )}
         {error != null && <Failure error={error} />}
+        {mixedCurrencies && (
+          <p role="alert" className="text-sm text-amber-700">
+            Selecciona anuncios de una sola moneda para cambiar presupuestos o duplicar conjuntos.
+          </p>
+        )}
+        {selection && selection.canManageAds !== true && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {META_MANAGEMENT_UNAVAILABLE}
+          </p>
+        )}
         <div className="flex justify-end gap-2">
           <Button variant="outline" disabled={pending} onClick={onClose}>
             Volver
@@ -218,6 +241,8 @@ export function AdvertisingActionDialog({
             disabled={
               pending ||
               !settings?.capabilities.edit ||
+              selection?.canManageAds !== true ||
+              mixedCurrencies ||
               (budgetAction && (!budget || proposed === null || proposed <= 0))
             }
             onClick={() => void apply()}

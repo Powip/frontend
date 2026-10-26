@@ -44,6 +44,7 @@ jest.mock("@/contexts/AuthContext", () => ({
   }),
 }));
 jest.mock("../context", () => ({
+  useAdsQuery: () => ({ data: { accounts: [{ id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", name: "Cuenta local" }] } }),
   AdvertisingV22Provider: ({ children }: { children: React.ReactNode }) => children,
   useAdsV22: () => ({
     settings: { capabilities: { view: mockCanView } },
@@ -104,7 +105,7 @@ describe("Publicidad navigation and access", () => {
       );
       expect(screen.queryByRole("button", { name: "Administrar Tiendas" })).not.toBeInTheDocument();
       expect(screen.queryByRole("combobox", { name: "Tienda global" })).not.toBeInTheDocument();
-      expect(screen.getAllByRole("combobox")).toHaveLength(1);
+      expect(screen.getAllByRole("combobox")).toHaveLength(2);
       expect(screen.getByRole("combobox", { name: "Negocio" })).toHaveValue("all");
       fireEvent.change(screen.getByRole("combobox", { name: "Negocio" }), { target: { value: "store" } });
       expect(screen.getByRole("link", { name: "Anuncios" })).toHaveAttribute(
@@ -152,6 +153,28 @@ describe("Publicidad navigation and access", () => {
     render(<AdvertisingModuleShell><p>Números</p></AdvertisingModuleShell>);
     expect(screen.getByRole("combobox", { name: "Negocio" })).toHaveValue("all");
     expect(new URLSearchParams(window.location.search).get("storeId")).toBe("all");
+  });
+  it("keeps the global account and business filters in all four tab links", () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/publicidad?storeId=store&from=2026-10-01&to=2026-10-31&adAccountId=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    );
+    render(
+      <AdvertisingModuleShell>
+        <p>Números</p>
+      </AdvertisingModuleShell>,
+    );
+    expect(screen.getByRole("combobox", { name: "Cuenta publicitaria" })).toHaveValue(
+      "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    );
+    for (const name of ["Mis números", "Anuncios", "Pruebas", "Configuración"]) {
+      const href = screen.getByRole("link", { name }).getAttribute("href")!;
+      const params = new URL(href, window.location.origin).searchParams;
+      expect(params.get("adAccountId")).toBe("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
+      expect(params.get("storeId")).toBe("store");
+      expect(params.get("from")).toBe("2026-10-01");
+    }
   });
 });
 

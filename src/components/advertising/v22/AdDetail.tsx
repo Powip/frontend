@@ -21,6 +21,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   adsGet,
@@ -48,9 +49,12 @@ import {
   numeric,
   pct,
   ratio,
+  resultCount,
+  daysForRow,
 } from "./model";
+import { catalogChannels } from "./ads-list-model";
 import { Block, Failure, MetricCard, SelectField } from "./shared";
-import type { ActionSelection } from "./Actions";
+import { META_MANAGEMENT_UNAVAILABLE, type ActionSelection } from "./Actions";
 
 export function AdvertisingAdDetail({
   row,
@@ -65,8 +69,8 @@ export function AdvertisingAdDetail({
   row: AdsRow;
   from: string;
   to: string;
-  summary: AdsSummary;
-  sales: AdsSales;
+  summary?: AdsSummary;
+  sales?: AdsSales;
   average: ReturnType<typeof creativeAverage>;
   onClose: () => void;
   onAction: (selection: ActionSelection) => void;
@@ -101,19 +105,49 @@ export function AdvertisingAdDetail({
     ),
   );
   const detail = query.data;
+  const canManageAds =
+    settings?.capabilities.edit === true && detail?.capabilities?.canManageAds === true;
   const item = detail?.row ?? row;
   const creative = detail?.creative ?? item.creative;
-  const assignment = summary.adProducts.find(
+  const assignment = summary?.adProducts.find(
     (ad) => ad.adId === row.id && ad.accountId === row.accountId,
   );
   const product = productQuery.data?.products.find((entry) => entry.id === assignment?.productId);
-  const value = adFinancial(item, summary, sales, product);
+  const value = summary && sales ? adFinancial(item, summary, sales, product) : null;
   const metric = creativeMetrics(item);
-  const diagnostic = diagnosis(item, average, undefined, settings!.rules.highFrequency);
+  const assignedDays = summary ? daysForRow(item, summary) : [];
+  const assignedChannels = new Set(
+    assignedDays
+      .map((day) => day.channel)
+      .filter((channel) => channel === "messages" || channel === "web"),
+  );
+  const resultChannels = assignedChannels.size ? assignedChannels : catalogChannels(item);
+  const estimatedSalesUnknown =
+    !value ||
+    (value.evidence?.basis === "estimated" &&
+      value.evidence.issues.some((issue) => ["store", "channel", "results"].includes(issue)));
+  const creativeDiagnostic = diagnosis(item, average, undefined, settings!.rules.highFrequency);
+  const diagnostic =
+    (!value || value.evidence?.partial) &&
+    creativeDiagnostic.label === "Funciona: haz variaciones del gancho"
+      ? {
+          ...creativeDiagnostic,
+          label:
+            "Datos incompletos: confirma las ventas y la rentabilidad antes de evaluar el desempeño.",
+        }
+      : creativeDiagnostic;
+  const family = [
+    ...new Map(
+      [item, ...(detail?.variations ?? [])].map((variant) => [
+        `${variant.accountId}:${variant.id}`,
+        variant as AdsRow & { variationType?: string; parentAdId?: string | null },
+      ]),
+    ).values(),
+  ];
   const account = detail?.account;
   const metaUrl = `https://www.facebook.com/adsmanager/manage/ads?act=${encodeURIComponent(account?.externalId ?? row.accountId)}&selected_ad_ids=${encodeURIComponent(row.id)}`;
   async function tag(type: "hookId" | "creatorId", value: string) {
-    if (!identity || !settings?.capabilities.edit) return;
+    if (!identity || !settings?.capabilities.edit || !summary) return;
     try {
       await adsWrite(identity, "put", `/v22/ad-products/${row.id}`, {
         accountId: row.accountId,
@@ -220,34 +254,66 @@ export function AdvertisingAdDetail({
                 <p className="text-sm">{diagnostic.label}</p>
               </Block>
               <div className="space-y-1 text-sm text-muted-foreground" role="status">
-                <p>
-                  {financialBasis(value)}
-                  {value.evidence?.basis === "measured"
-                    ? ` · ${pct(value.evidence.attributionCoverage)} de pedidos identificados`
-                    : ""}
-                </p>
-                {financialCauses(value, settings!.capabilities.profit).map((cause) => (
-                  <p key={cause}>{cause}</p>
-                ))}
+                {value ? (
+                  <>
+                    <p>
+                      {financialBasis(value)}
+                      {value.evidence?.basis === "measured"
+                        ? ` · ${pct(value.evidence.attributionCoverage)} de pedidos identificados`
+                        : ""}
+                    </p>
+                    {financialCauses(value, settings!.capabilities.profit).map((cause) => (
+                      <p key={cause}>{cause}</p>
+                    ))}
+                  </>
+                ) : (
+                  <p>
+                    Las ventas y la rentabilidad aún no se han podido consultar. El creativo y los
+                    resultados de Meta siguen disponibles.
+                  </p>
+                )}
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 {settings!.capabilities.spend && (
-                  <MetricCard label="Gasto" value={money(value.spend, item.currency)} />
+                  <MetricCard
+                    label="Gasto"
+                    value={money(
+                      value
+                        ? value.spend
+                        : item.insights.coverage?.spendAvailable === false
+                          ? null
+                          : numeric(item.insights.spend),
+                    )}
+                  />
                 )}
-                <MetricCard label="Ventas" value={decimal(value.delivered)} />
+                {[...resultChannels]
+                  .filter((channel) => channel === "messages" || channel === "web")
+                  .map((channel) => (
+                    <MetricCard
+                      key={channel}
+                      label={`Resultados · ${channel === "web" ? "Web" : "Mensajes"}`}
+                      value={decimal(resultCount(item, channel))}
+                      detail={
+                        settings!.capabilities.spend
+                          ? `Costo por resultado ${money(numeric(item.insights.resultMetrics?.[channel === "web" ? "webPurchases" : "messages"].costPerResult))}`
+                          : undefined
+                      }
+                    />
+                  ))}
+                <MetricCard
+                  label="Ventas"
+                  value={decimal(estimatedSalesUnknown ? null : value?.delivered)}
+                />
                 {settings!.capabilities.spend && (
                   <>
-                    <MetricCard
-                      label="Costo por venta"
-                      value={money(value.costSale, item.currency)}
-                    />
-                    <MetricCard label="ROAS" value={decimal(value.roas, "×")} />
+                    <MetricCard label="Costo por venta" value={money(value?.costSale)} />
+                    <MetricCard label="ROAS" value={decimal(value?.roas, "×")} />
                   </>
                 )}
                 {settings!.capabilities.profit && (
                   <>
-                    <MetricCard label="Máximo" value={money(value.maximum)} />
-                    <MetricCard label="Ganancia" value={money(value.gain)} />
+                    <MetricCard label="Máximo" value={money(value?.maximum)} />
+                    <MetricCard label="Ganancia" value={money(value?.gain)} />
                   </>
                 )}
                 <MetricCard
@@ -285,7 +351,7 @@ export function AdvertisingAdDetail({
                   {decimal(numeric(item.insights.ctrUnique), "%")} · saliente{" "}
                   {decimal(numeric(item.insights.ctrOutbound), "%")}
                   {settings!.capabilities.spend
-                    ? ` · CPM ${money(numeric(item.insights.cpm), item.currency)}`
+                    ? ` · CPM ${money(numeric(item.insights.cpm))}`
                     : ""}
                 </p>
               </Block>
@@ -345,7 +411,7 @@ export function AdvertisingAdDetail({
                 <div className="flex flex-wrap gap-3">
                   <SelectField
                     label="Tipo de gancho"
-                    disabled={!settings!.capabilities.edit}
+                    disabled={!settings!.capabilities.edit || !summary}
                     value={assignment?.hookId ?? ""}
                     onChange={(value) => void tag("hookId", value)}
                     options={[
@@ -355,7 +421,7 @@ export function AdvertisingAdDetail({
                   />
                   <SelectField
                     label="Creador"
-                    disabled={!settings!.capabilities.edit}
+                    disabled={!settings!.capabilities.edit || !summary}
                     value={assignment?.creatorId ?? ""}
                     onChange={(value) => void tag("creatorId", value)}
                     options={[
@@ -382,16 +448,17 @@ export function AdvertisingAdDetail({
                     </tr>
                   </thead>
                   <tbody>
-                    {[item, ...(detail.variations ?? [])].map((variant, index) => (
-                      <tr key={variant.id} className="border-t">
+                    {family.map((variant) => (
+                      <tr key={`${variant.accountId}:${variant.id}`} className="border-t">
                         <td className="p-2">
                           {variant.name}
-                          {index === 0 ? " · original" : " · variación"}
+                          {variant.variationType === "original" ||
+                          (!variant.variationType && !variant.parentAdId && variant.id === item.id)
+                            ? " · original"
+                            : " · variación"}
                         </td>
                         {settings!.capabilities.spend && (
-                          <td className="p-2">
-                            {money(numeric(variant.insights?.spend), variant.currency)}
-                          </td>
+                          <td className="p-2">{money(numeric(variant.insights?.spend))}</td>
                         )}
                         <td className="p-2">{decimal(numeric(variant.insights?.ctr), "%")}</td>
                         <td className="p-2">{metaStatusLabel(variant)}</td>
@@ -415,7 +482,7 @@ export function AdvertisingAdDetail({
               </Block>
               {error != null && <Failure error={error} />}
               <div className="flex flex-wrap gap-2">
-                {settings!.capabilities.edit && (
+                {canManageAds && (
                   <>
                     <Button size="sm" onClick={() => setVariation(true)}>
                       ✨ Crear variación
@@ -423,7 +490,7 @@ export function AdvertisingAdDetail({
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => onAction({ rows: [item], action: "budget" })}
+                      onClick={() => onAction({ rows: [item], action: "budget", canManageAds })}
                     >
                       Presupuesto
                     </Button>
@@ -434,6 +501,7 @@ export function AdvertisingAdDetail({
                         onAction({
                           rows: [item],
                           action: item.effectiveStatus === "PAUSED" ? "activate" : "pause",
+                          canManageAds,
                         })
                       }
                     >
@@ -450,13 +518,20 @@ export function AdvertisingAdDetail({
                   Ver en Meta ↗
                 </a>
               </div>
+              {settings!.capabilities.edit && !canManageAds && (
+                <p role="status" className="text-sm text-muted-foreground">
+                  {META_MANAGEMENT_UNAVAILABLE}
+                </p>
+              )}
             </div>
           )}
         </DialogContent>
       </Dialog>
-      {variation && (
+      {variation && canManageAds && (
         <VariationDialog
           row={item}
+          canManageAds={canManageAds}
+          canGenerateAdText={detail?.capabilities?.canGenerateAdText === true}
           diagnosisText={diagnostic.label}
           suggested={diagnostic.suggested}
           product={productQuery.data?.products.find(
@@ -472,6 +547,8 @@ export function AdvertisingAdDetail({
 
 function VariationDialog({
   row,
+  canManageAds,
+  canGenerateAdText,
   diagnosisText,
   suggested,
   product,
@@ -479,6 +556,8 @@ function VariationDialog({
   onClose,
 }: {
   row: AdsRow;
+  canManageAds: boolean;
+  canGenerateAdText: boolean;
   diagnosisText: string;
   suggested: string;
   product?: AdsProduct;
@@ -502,7 +581,7 @@ function VariationDialog({
   const uploadedMedia = useRef<{ file: File; id: string } | null>(null);
   const brief = `Creativo: ${row.name}\nFormato: ${row.creative?.format ?? "—"}\nCTR enlace: ${decimal(numeric(row.insights.ctr), "%")}\nHook: ${pct(creativeMetrics(row).hook)}\nHold: ${pct(creativeMetrics(row).hold)}\nDiagnóstico: ${diagnosisText}\nPedir: una variación que conserve lo que funciona y corrija este diagnóstico. Entregar para revisión antes de activar.`;
   async function generate() {
-    if (!identity || pending) return;
+    if (!identity || pending || !settings!.capabilities.edit || !canGenerateAdText) return;
     setPending(true);
     setError(null);
     try {
@@ -529,7 +608,14 @@ function VariationDialog({
     }
   }
   async function create() {
-    if (!identity || pending || !settings!.capabilities.edit) return;
+    if (
+      !identity ||
+      pending ||
+      !settings!.capabilities.edit ||
+      !canManageAds ||
+      (tab === "text" && !selectedText.trim())
+    )
+      return;
     setPending(true);
     setError(null);
     try {
@@ -629,6 +715,7 @@ function VariationDialog({
               variant="outline"
               disabled={
                 pending ||
+                !canGenerateAdText ||
                 !productName.trim() ||
                 !/^\d+(?:\.\d{1,2})?$/.test(netPrice) ||
                 !hookName.trim()
@@ -637,6 +724,12 @@ function VariationDialog({
             >
               Generar 3 textos
             </Button>
+            {!canGenerateAdText && (
+              <p role="status" className="text-xs text-muted-foreground">
+                La generación con IA no está disponible. Solicita a administración que habilite el
+                generador de textos. Puedes escribir tu propio texto para crear la variación.
+              </p>
+            )}
             {texts.map((text, index) => (
               <label key={index} className="flex items-start gap-2 rounded-md border p-3 text-sm">
                 <input
@@ -648,6 +741,14 @@ function VariationDialog({
                 {text}
               </label>
             ))}
+            <label htmlFor="variation-ad-text" className="block space-y-1 text-xs">
+              Texto de la variación
+              <Textarea
+                id="variation-ad-text"
+                value={selectedText}
+                onChange={(event) => setSelectedText(event.target.value)}
+              />
+            </label>
             {texts.length === 0 && (
               <p className="text-xs text-muted-foreground">
                 Se usa la imagen o video original. El generador utiliza el producto, precio, gancho
@@ -716,7 +817,12 @@ function VariationDialog({
         )}
         {tab !== "brief" && (
           <Button
-            disabled={pending || (tab === "text" ? !selectedText : !file) || !!notice}
+            disabled={
+              pending ||
+              !canManageAds ||
+              (tab === "text" ? !selectedText.trim() : !file) ||
+              !!notice
+            }
             onClick={() => void create()}
           >
             {pending ? "Creando en Meta…" : "Crear variación pausada"}

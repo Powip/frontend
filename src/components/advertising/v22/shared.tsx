@@ -4,7 +4,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAdsV22 } from "./context";
-import { money, decimal, pct } from "./model";
+import { decimal, money, pct } from "./model";
 
 export function adsError(error: unknown) {
   if (axios.isAxiosError(error)) {

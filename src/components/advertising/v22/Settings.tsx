@@ -30,6 +30,8 @@ import { useAdvertisingStoreFilter } from "../AdvertisingStoreFilterContext";
 import { useAdsQuery, useAdsV22, useRefreshAds } from "./context";
 import { limaToday, money, numeric } from "./model";
 import { Block, Failure, SelectField, exportAdsWorkbook } from "./shared";
+import { V23AdsetAssignments, V23ShopifyCodSettings } from "./V23Settings";
+import { useAdvertisingAccountFilter } from "../AdvertisingAccountFilterContext";
 import { ProfitConnections } from "./ProfitConnections";
 
 const SECTIONS = [
@@ -43,15 +45,37 @@ const SECTIONS = [
   { id: "tags", label: "Etiquetas de creativos" },
   { id: "history", label: "Historial de cambios" },
   { id: "legacy", label: "Ventas antiguas sin tienda" },
+  { id: "assignments", label: "Canal y vendedora de cada conjunto" },
+  { id: "shopify-cod", label: "Shopify COD" },
 ];
 const UTM =
   "utm_source=facebook&utm_medium=paid&utm_campaign={{campaign.id}}&utm_term={{adset.id}}&utm_content={{ad.id}}";
+interface WhatsappAutomationStatus {
+  preferences: { enabled: boolean; time: string; destinationsCount: number };
+  scheduler: { enabled: boolean };
+  readiness: { ready: boolean; scope: "local" };
+  automation: {
+    state: "disabled" | "blocked" | "scheduled";
+    reasons: Array<{ code: string; message: string }>;
+  };
+  deliveries: Array<{
+    id: string;
+    date: string;
+    kind: "daily" | "test" | "alert";
+    status: "pending" | "sent" | "failed" | "unknown";
+    destination: string;
+    errorCode: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+}
 export function AdvertisingSettings() {
   const { identity, actorId, settings, reload } = useAdsV22();
   const refresh = useRefreshAds();
   const { fromDate, toDate } = useAdminPeriod();
   const salesTo = toDate > limaToday() ? limaToday() : toDate;
   const { storeId, stores } = useAdvertisingStoreFilter();
+  const { accountId } = useAdvertisingAccountFilter();
   const [section, setSection] = useState("accounts");
   const [draft, setDraft] = useState<AdsSettings>(() => structuredClone(settings!));
   const [pending, setPending] = useState(false);
@@ -69,11 +93,11 @@ export function AdvertisingSettings() {
   }, []);
   useEffect(() => setDraft(structuredClone(settings!)), [settings]);
   const catalog = useAdsQuery(
-    ["config-ads", fromDate, salesTo, storeId],
+    ["config-ads", fromDate, salesTo, storeId, accountId],
     (id, signal) =>
       getAllAdsCatalog(
         id,
-        { from: fromDate, to: salesTo, level: "ad", storeId },
+        { from: fromDate, to: salesTo, level: "ad", storeId, ...(accountId !== "all" ? { accountId } : {}) },
         signal,
       ),
     (section === "products" || section === "tags" || section === "accounts") && fromDate <= salesTo,
@@ -129,6 +153,11 @@ export function AdvertisingSettings() {
     section === "history",
   );
   const canConfigure = settings!.capabilities.configure === true;
+  const waStatus = useAdsQuery(
+    ["wa-status", settings!.version],
+    (id, signal) => adsGet<WhatsappAutomationStatus>(id, "/v22/whatsapp/status", undefined, signal),
+    section === "whatsapp" && canConfigure,
+  );
   const waPreview = useAdsQuery(
     ["wa-preview", settings!.version],
     (id, signal) => adsGet<{ text: string }>(id, "/v22/whatsapp/preview", undefined, signal),
@@ -169,7 +198,10 @@ export function AdvertisingSettings() {
     try {
       await saveAdsSettings(identity, draft);
       await reload();
-      setNotice("Configuración guardada.");
+      if (section === "whatsapp") {
+        await waStatus.refetch();
+        setNotice("Preferencias de WhatsApp guardadas. Revisa el estado de la automatización.");
+      } else setNotice("Configuración guardada.");
     } catch (failure) {
       setError(failure);
     } finally {
@@ -308,6 +340,8 @@ export function AdvertisingSettings() {
             />
           </div>
         )}
+        {section === "assignments" && <V23AdsetAssignments />}
+        {section === "shopify-cod" && <V23ShopifyCodSettings />}
         {section === "products" && (
           <Block
             title="Producto de cada anuncio"
@@ -628,6 +662,84 @@ export function AdvertisingSettings() {
         )}
         {section === "whatsapp" && (
           <Block title="Resumen diario por WhatsApp">
+            {canConfigure ? (
+              waStatus.isError ? (
+                <Failure error={waStatus.error} retry={waStatus.refetch} />
+              ) : waStatus.data ? (
+                <div className="space-y-3 rounded-md border p-3">
+                  <h3 className="font-medium">Estado de la automatización</h3>
+                  <p className="text-sm font-medium">
+                    {waStatus.data.automation.state === "scheduled"
+                      ? "Programación disponible"
+                      : waStatus.data.automation.state === "blocked"
+                        ? "Automatización pendiente de configuración"
+                        : "Automatización deshabilitada"}
+                  </p>
+                  <p className="text-sm">
+                    {waStatus.data.preferences.enabled
+                      ? "Solicitud de resumen diario guardada."
+                      : "Resumen diario desactivado en la preferencia guardada."}{" "}
+                    Horario guardado: {waStatus.data.preferences.time} (Perú).{" "}
+                    Destinos: {waStatus.data.preferences.destinationsCount}.
+                  </p>
+                  {waStatus.data.automation.reasons.length > 0 && (
+                    <ul className="list-disc space-y-1 pl-5 text-sm text-amber-800 dark:text-amber-300">
+                      {waStatus.data.automation.reasons.map((reason) => (
+                        <li key={reason.code}>{reason.message}</li>
+                      ))}
+                    </ul>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Este estado verifica la configuración local. Cada envío depende de la
+                    ejecución programada, los datos disponibles y la respuesta de WhatsApp.
+                  </p>
+                  <h3 className="font-medium">Historial de envíos</h3>
+                  {waStatus.data.deliveries.length ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead>
+                          <tr>
+                            {["Fecha (Perú)", "Tipo", "Destino", "Estado", "Detalle"].map((label) => (
+                              <th key={label} scope="col" className="p-2">{label}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {waStatus.data.deliveries.map((delivery) => (
+                            <tr key={delivery.id} className="border-t">
+                              <td className="p-2">
+                                {new Date(delivery.createdAt).toLocaleString("es-PE", {
+                                  timeZone: "America/Lima",
+                                })}
+                              </td>
+                              <td className="p-2">
+                                {{ daily: "Resumen diario", test: "Prueba", alert: "Alerta" }[delivery.kind]}
+                              </td>
+                              <td className="p-2">{delivery.destination}</td>
+                              <td className="p-2">
+                                {{ sent: "Enviado al proveedor", pending: "Pendiente", unknown: "Sin confirmación", failed: "Fallido" }[delivery.status]}
+                              </td>
+                              <td className="p-2">
+                                {delivery.status === "sent"
+                                  ? "El proveedor aceptó el envío; la recepción no está confirmada."
+                                  : delivery.status === "unknown"
+                                    ? "No se confirmó el resultado. Revisa el proveedor antes de repetir."
+                                    : delivery.status === "pending"
+                                      ? "El envío fue registrado y aún no tiene resultado."
+                                      : "El envío falló. Revisa la configuración y el proveedor."}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : <p className="text-sm text-muted-foreground">No hay envíos registrados para esta empresa.</p>}
+                  <Button variant="outline" size="sm" disabled={waStatus.isFetching} onClick={() => void waStatus.refetch()}>
+                    Actualizar estado e historial
+                  </Button>
+                </div>
+              ) : <p className="text-sm">Consultando estado de WhatsApp…</p>
+            ) : <p className="text-sm text-muted-foreground">Se requiere permiso de configuración para consultar el estado y los destinos de los envíos.</p>}
             <fieldset disabled={!canConfigure || pending} className="space-y-4">
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -640,7 +752,7 @@ export function AdvertisingSettings() {
                     }))
                   }
                 />{" "}
-                Activado
+                Solicitar resumen diario
               </label>
               <label className="block max-w-40 space-y-1 text-sm">
                 Hora de Perú
@@ -724,8 +836,8 @@ export function AdvertisingSettings() {
               </pre>
             )}
             <p className="text-xs text-muted-foreground">
-              Se envía desde POWIP con una plantilla Utility aprobada. La prueba confirma el
-              resultado del proveedor.
+              Guardar conserva tu preferencia. El envío requiere el número POWIP y una plantilla
+              Utility aprobada. La aceptación del proveedor no confirma la recepción del destinatario.
             </p>
             <div className="flex gap-2">
               <Button disabled={!canConfigure || pending} onClick={() => void save()}>
@@ -752,7 +864,10 @@ export function AdvertisingSettings() {
                       setNotice("El proveedor confirmó el envío de prueba.");
                     })
                     .catch(setError)
-                    .finally(() => setPending(false));
+                    .finally(() => {
+                      setPending(false);
+                      void waStatus.refetch();
+                    });
                 }}
               >
                 Enviarme una prueba
@@ -968,14 +1083,14 @@ export function AdvertisingSettings() {
               </p>
             )}
             <p className="text-sm">
-              Las ventas antiguas deben asignarse a su tienda antes de compararlas con la
-              publicidad.
+              Las ventas sin tienda permanecen sin asignar y requieren revisión individual
+              antes de compararlas con la publicidad.
             </p>
             <Link
-              href="/ventas?assignStore=true"
+              href="/ventas"
               className="text-sm font-medium text-primary underline"
             >
-              Ventas · Asignar ventas a tienda →
+              Revisar ventas
             </Link>
           </Block>
         )}

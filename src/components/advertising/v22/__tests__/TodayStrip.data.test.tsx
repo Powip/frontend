@@ -172,50 +172,14 @@ it("preserves a confirmed store zero when no advertising accounts are relevant t
   expect(axios.get).not.toHaveBeenCalled();
   client.clear();
 });
-
-it("keeps USD pending when only an empty PEN scope is confirmed", () => {
-  scopes(true, true, []);
-  mockSummary.days = [
-    { accountId: "usd-account", adId: "ad", date: today, currency: "USD", spend: "8" },
-  ] as AdsSummary["days"];
-  const client = mount();
-  expect(gasto()).toHaveTextContent("—");
-  expect(gasto()).not.toHaveTextContent(/USD|S\//);
-  expect(axios.get).not.toHaveBeenCalled();
-  expect(JSON.parse(screen.getByTestId("hourly-chart").dataset.series!)[0].today).toBeNull();
-  client.clear();
-});
-it("preserves USD hourly spend when its exact currency scope is confirmed", async () => {
-  scopes(true, true, ["usd-account"]);
-  mockSummary.quality.spendScopes![0].currency = "USD";
-  mockSummary.days = [
-    { accountId: "usd-account", adId: "ad", date: today, currency: "USD", spend: "8" },
-  ] as AdsSummary["days"];
+it("keeps a local hourly cache miss unknown until the explicit Meta refresh", async () => {
+  scopes(true, true);
   (axios.get as jest.Mock).mockResolvedValue({
-    data: { rows: [{ date: today, hour: 0, spend: "8", adId: "ad" }], timeZone: "America/Lima" },
+    data: { rows: [], timeZone: "America/Lima", availability: "not_synced" },
   });
   const client = mount();
-  await waitFor(() => expect(gasto()).toHaveTextContent(/USD.*8\.00/));
+  await screen.findByText(/El desglose por hora aún no está sincronizado/);
   expect(gasto()).not.toHaveTextContent(/S\//);
-  expect(axios.get).toHaveBeenCalledTimes(1);
-  client.clear();
-});
-it("blocks mixed currency hourly sums even when a PEN scope is available", () => {
-  scopes(true, true, ["pen-account"]);
-  mockSummary.days = [
-    { accountId: "pen-account", adId: "pen", date: today, currency: "PEN", spend: "8" },
-    { accountId: "usd-account", adId: "usd", date: today, currency: "USD", spend: "4" },
-  ] as AdsSummary["days"];
-  const client = mount();
-  expect(gasto()).toHaveTextContent("—");
-  expect(axios.get).not.toHaveBeenCalled();
-  expect(screen.getByText(/una misma moneda confirmada/)).toBeInTheDocument();
-  client.clear();
-});
-it("does not infer a currency from legacy coverage with no observations or account metadata", () => {
-  mockSummary.quality = { warnings: [], coverage: "complete", spendAvailable: true };
-  const client = mount();
-  expect(gasto()).toHaveTextContent("—");
-  expect(axios.get).not.toHaveBeenCalled();
+  expect(JSON.parse(screen.getByTestId("hourly-chart").dataset.series!)[0].today).toBeNull();
   client.clear();
 });

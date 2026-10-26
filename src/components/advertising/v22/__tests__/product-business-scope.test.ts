@@ -7,6 +7,7 @@ const metric = (storeId: string, revenue: string, delivered: number, costs: stri
   productId: "product",
   channel: "web",
   orders: delivered,
+  attributedOrders: delivered,
   delivered,
   units: delivered,
   deliveredUnits: delivered,

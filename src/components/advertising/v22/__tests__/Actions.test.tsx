@@ -32,7 +32,10 @@ describe("Meta actions require an explicit real mutation", () => {
     (adsWrite as jest.Mock).mockResolvedValue({ status: "succeeded" });
     const close = jest.fn();
     render(
-      <AdvertisingActionDialog selection={{ rows: [row], action: "scale" }} onClose={close} />,
+      <AdvertisingActionDialog
+        selection={{ rows: [row], action: "scale", canManageAds: true }}
+        onClose={close}
+      />,
     );
     expect(adsWrite).not.toHaveBeenCalled();
     expect(screen.getByLabelText("Nuevo presupuesto diario")).toHaveValue(60);
@@ -54,7 +57,10 @@ describe("Meta actions require an explicit real mutation", () => {
     (adsWrite as jest.Mock).mockRejectedValue(new Error("La conexión con Meta venció"));
     const close = jest.fn();
     render(
-      <AdvertisingActionDialog selection={{ rows: [row], action: "budget" }} onClose={close} />,
+      <AdvertisingActionDialog
+        selection={{ rows: [row], action: "budget", canManageAds: true }}
+        onClose={close}
+      />,
     );
     fireEvent.change(screen.getByLabelText("Nuevo presupuesto diario"), {
       target: { value: "-10" },
@@ -67,17 +73,58 @@ describe("Meta actions require an explicit real mutation", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("La conexión con Meta venció");
     expect(close).not.toHaveBeenCalled();
   });
-  it("labels a USD budget with its account currency without sending a Meta action", () => {
+  it.each([false, undefined])("does not submit when Meta management is %s", (canManageAds) => {
     render(
       <AdvertisingActionDialog
-        selection={{ rows: [{ ...row, currency: "USD" }], action: "budget" }}
+        selection={{ rows: [row], action: "pause", canManageAds }}
         onClose={jest.fn()}
       />,
     );
-    expect(screen.getByText(/Actual:/)).toHaveTextContent(/USD.*50\.00/);
-    expect(screen.getByLabelText("Nuevo presupuesto diario").closest("label")).toHaveTextContent(
-      "Nuevo presupuesto diario USD",
+    expect(screen.getByRole("status")).toHaveTextContent("No hay acceso confirmado");
+    expect(screen.getByRole("button", { name: "Confirmar en Meta" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar en Meta" }));
+    expect(adsWrite).not.toHaveBeenCalled();
+  });
+  it("identifies USD budgets without labelling their input as soles", async () => {
+    (adsWrite as jest.Mock).mockResolvedValue({ status: "succeeded" });
+    render(
+      <AdvertisingActionDialog
+        selection={{ rows: [{ ...row, currency: "USD" }], action: "budget", canManageAds: true }}
+        onClose={jest.fn()}
+      />,
     );
+    expect(screen.getByText("Nuevo presupuesto diario · USD")).toBeInTheDocument();
+    expect(screen.queryByText("Nuevo presupuesto diario S/")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Nuevo presupuesto diario"), {
+      target: { value: "75" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar en Meta" }));
+    await waitFor(() =>
+      expect(adsWrite).toHaveBeenCalledWith(
+        expect.anything(),
+        "post",
+        "/meta/v22/actions",
+        expect.objectContaining({ budget: "75.00" }),
+      ),
+    );
+  });
+  it("does not apply a single budget to a PEN and USD selection", () => {
+    render(
+      <AdvertisingActionDialog
+        selection={{
+          rows: [
+            { ...row, currency: "PEN" },
+            { ...row, id: "usd", currency: "USD" },
+          ],
+          action: "budget",
+          canManageAds: true,
+        }}
+        onClose={jest.fn()}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("una sola moneda");
+    expect(screen.getByRole("button", { name: "Confirmar en Meta" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar en Meta" }));
     expect(adsWrite).not.toHaveBeenCalled();
   });
 });
