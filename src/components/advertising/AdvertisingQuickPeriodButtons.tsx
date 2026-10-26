@@ -27,7 +27,7 @@ export function AdvertisingQuickPeriodButtons() {
   const { fromDate, toDate, setPeriod } = useAdminPeriod();
   return (
     <fieldset
-      className="inline-flex flex-wrap gap-1 rounded-lg bg-muted p-1"
+      className="inline-flex min-w-0 shrink-0 flex-wrap gap-0.5 rounded-lg bg-muted p-0.5"
       aria-label="Periodos de publicidad"
     >
       {PERIODS.map(({ value, label }) => {
@@ -38,7 +38,7 @@ export function AdvertisingQuickPeriodButtons() {
             key={value}
             size="sm"
             variant={selected ? "secondary" : "ghost"}
-            className="h-8 px-3 text-xs"
+            className="h-8 px-2 text-xs"
             aria-pressed={selected}
             onClick={() => setPeriod(range.from, range.to)}
           >

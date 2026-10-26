@@ -74,12 +74,12 @@ function AdvertisingShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full min-w-0 flex-col bg-background">
       <div className="shrink-0 border-b bg-card px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-wrap items-center justify-between gap-3 py-3">
-          <div>
-            <h1 className="text-xl font-bold">Publicidad</h1>
-            {auth.company?.name && <p className="text-xs text-muted-foreground">{auth.company.name}</p>}
+        <div className="flex min-w-0 flex-col gap-2 py-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-baseline gap-2 sm:block sm:flex-1">
+            <h1 className="shrink-0 text-lg font-bold leading-tight sm:text-xl">Publicidad</h1>
+            {auth.company?.name && <p className="min-w-0 truncate text-xs text-muted-foreground">{auth.company.name}</p>}
           </div>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:w-auto sm:max-w-xl sm:flex-1 [&>label]:min-w-0 [&>label]:w-full [&_select]:min-w-0 [&_select]:w-full [&_select]:max-w-full [&_select]:truncate">
             <SelectField
               label="Cuenta publicitaria"
               value={accountId}
@@ -122,9 +122,13 @@ function AdvertisingShell({ children }: { children: ReactNode }) {
           ))}
         </nav>
         {!hidePeriod && (
-          <div className="space-y-2 border-t py-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <PeriodSelector value={{ from: fromDate, to: toDate }} onPeriodChange={setPeriod} />
+          <div className="space-y-1.5 border-t py-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <PeriodSelector
+                className="min-w-0 flex-[1_1_14rem] [&>button]:h-9 [&>button]:min-w-0 [&>button]:w-full [&>button]:px-2 [&>button]:text-xs sm:flex-none sm:[&>button]:w-64"
+                value={{ from: fromDate, to: toDate }}
+                onPeriodChange={setPeriod}
+              />
               <AdvertisingQuickPeriodButtons />
             </div>
             <p className="text-xs text-muted-foreground">
