@@ -1,5 +1,5 @@
 import type { AdsRow } from "@/services/advertisingV22Service";
-import { isActiveAd, lastSpendLabel, sortAdItems } from "../ads-list-model";
+import { catalogChannels, isActiveAd, lastSpendLabel, sortAdItems } from "../ads-list-model";
 const ad = (id: string, status = "ACTIVE", date?: string, spend = "10") => ({
   row: {
     id,
@@ -52,7 +52,6 @@ it("orders urgent statuses before profitable rows and uses spend within a status
   ).toEqual(["high", "low", "profitable"]);
 });
 it("uses catalog destinations and actual Meta results without borrowing a sales channel", () => {
-  const { catalogChannels } = require("../ads-list-model");
   const row = ad("local").row;
   expect([...catalogChannels({ ...row, destinationType: "WHATSAPP" })]).toEqual(["messages"]);
   expect([...catalogChannels({ ...row, destinationType: "WEBSITE" })]).toEqual(["web"]);
