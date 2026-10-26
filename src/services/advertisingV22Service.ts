@@ -1,12 +1,12 @@
 import axios from "axios";
-import { advertisingApiBase, AdvertisingApiError } from "./advertisingService";
-import { advertisingOrdersApiBase } from "./advertisingOrdersService";
 import type {
-  MetaCatalogResponse,
-  MetaCatalogRow,
   MetaAdDetailResponse,
   MetaCatalogFilters,
+  MetaCatalogResponse,
+  MetaCatalogRow,
 } from "./advertisingMetaService";
+import { advertisingOrdersApiBase } from "./advertisingOrdersService";
+import { AdvertisingApiError, advertisingApiBase } from "./advertisingService";
 
 export interface AdsPermissions {
   view: boolean;
@@ -97,6 +97,19 @@ export interface AdsSummary {
   timeZone: string;
   currency: string;
   stores: Array<{ id: string; name: string }>;
+  accounts?: Array<{
+    id: string;
+    name: string;
+    externalId: string;
+    currency: string;
+    timeZone?: string;
+    platform?: string;
+    provider?: string;
+    enabled?: boolean;
+    lastSuccessfulAt?: string | null;
+    lastSyncedAt?: string | null;
+    status?: string | null;
+  }>;
   channels: Array<{ id: string; storeId: string; type: string; label: string }>;
   days: AdsDay[];
   unassignedSpend: string | null;
@@ -128,6 +141,8 @@ export interface SalesMetric {
   deliveredUnits: number;
   cancelled: number;
   billedRevenue: string;
+  orderRevenue?: string | null;
+  deliveredRevenue?: string | null;
   productCost: string | null;
   shippingCost: string | null;
   eligibleRevenue: string;
@@ -168,6 +183,59 @@ export interface AdsSales {
   deliveryHistory: Array<{ storeId: string; deliveryRate: number | null }>;
   productVelocity: Array<{ storeId: string; productId: string; unitsPerDay: number }>;
   quality: { warnings?: string[]; legacyStoreCount?: number; [key: string]: unknown };
+  executive?: AdsExecutive | null;
+  executiveAvailability?: { available: boolean; warnings: string[] };
+}
+export interface AdsExecutiveMetric {
+  orders: number;
+  leads?: number;
+  confirmed: number;
+  delivered: number;
+  cancelled: number;
+  units: number;
+  deliveredUnits: number;
+  orderRevenue: string | null;
+  deliveredRevenue: string | null;
+  attributedOrders: number;
+  attributedConfirmed: number;
+  attributedDelivered: number;
+  attributedDeliveredUnits?: number;
+  comparableAttributedOrders?: number;
+  comparableAttributedConfirmed?: number;
+  comparableAttributedDelivered?: number;
+  comparableAttributedDeliveredUnits?: number;
+  unknownCurrencyOrders?: number;
+  excludedCurrencyOrders?: number;
+  attributedOrderRevenue: string | null;
+  attributedDeliveredRevenue: string | null;
+  unattributedOrders: number;
+  confirmationRate: number | null;
+  deliveryRate: number | null;
+  deliveredTicketPerOrder: string | number | null;
+  deliveredTicketPerUnit: string | number | null;
+}
+export type AdsExecutiveGroup = AdsExecutiveMetric & {
+  accountId?: string | null;
+  storeId?: string;
+  date?: string;
+  channel?: string;
+  channelFamily?: string;
+};
+export interface AdsExecutiveFlow {
+  totals: AdsExecutiveMetric;
+  byAccount: AdsExecutiveGroup[];
+  byChannel: AdsExecutiveGroup[];
+  daily: AdsExecutiveGroup[];
+}
+export interface AdsExecutive {
+  basis: "created";
+  currency: string;
+  standard: AdsExecutiveFlow;
+  shopifyCod:
+    | (AdsExecutiveFlow & { enabled: boolean; configurationKnown: boolean; storeIds: string[] })
+    | null;
+  quality: Record<string, unknown>;
+  definitions: Record<string, unknown>;
 }
 export interface AdsSavedView {
   id: string;
@@ -361,13 +429,20 @@ export async function getAdsSales(
   to: string,
   storeId: string,
   signal?: AbortSignal,
+  accountId = "all",
 ): Promise<AdsSales> {
   return (
     await axios.get<AdsSales>(
       `${advertisingOrdersApiBase()}/advertising/companies/${encodeURIComponent(identity.companyId)}/v22`,
       {
         ...adsOptions(identity.token, signal),
-        params: { from, to, storeId, timeZone: "America/Lima" },
+        params: {
+          from,
+          to,
+          storeId,
+          timeZone: "America/Lima",
+          ...(accountId !== "all" ? { accountId } : {}),
+        },
       },
     )
   ).data;
@@ -391,6 +466,31 @@ export async function getAllAdsCatalog(
   );
   const rows = [...result.rows];
   let page = 1;
+  // Each page enriches its own rows. Fetch a bounded group together so large
+  // accounts do not pay that latency once per page before the list can appear.
+  const knownPages = Math.ceil(result.pagination.total / 100);
+  if (knownPages > 100)
+    throw new Error("El catálogo es demasiado grande. Acota el período o la cuenta.");
+  let canManageAds = result.capabilities?.canManageAds === true;
+  while (result.pagination.hasMore && page < knownPages) {
+    const end = Math.min(page + 4, knownPages);
+    const pages = await Promise.all(
+      Array.from({ length: end - page }, (_, index) =>
+        getAdsCatalog(
+          identity,
+          { ...filters, page: page + index + 1, pageSize: 100 } as MetaCatalogFilters,
+          signal,
+        ),
+      ),
+    );
+    for (const batch of pages) {
+      rows.push(...batch.rows);
+      canManageAds = canManageAds && batch.capabilities?.canManageAds === true;
+    }
+    page = end;
+    result = pages[pages.length - 1];
+  }
+  // Follow hasMore as well: the catalog may grow while pages are being read.
   while (result.pagination.hasMore) {
     if (++page > 100)
       throw new Error("El catálogo es demasiado grande. Acota el período o la cuenta.");
@@ -400,10 +500,12 @@ export async function getAllAdsCatalog(
       signal,
     );
     rows.push(...result.rows);
+    canManageAds = canManageAds && result.capabilities?.canManageAds === true;
   }
   return {
     ...result,
     rows,
+    capabilities: { ...result.capabilities, canManageAds },
     pagination: { page: 1, pageSize: rows.length, total: rows.length, hasMore: false },
   };
 }

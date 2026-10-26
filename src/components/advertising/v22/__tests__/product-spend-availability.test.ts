@@ -4,6 +4,7 @@ import { emptySales, hourlySpendScope, productFinancialRows } from "../model";
 const metric = {
   ...emptySales(),
   orders: 1,
+  attributedOrders: 1,
   delivered: 1,
   deliveredUnits: 1,
   billedUnits: 1,
@@ -103,4 +104,17 @@ it("does not interpret absent availability metadata as confirmed hourly coverage
   const source = summary(false);
   source.quality = { warnings: [] };
   expect(hourlySpendScope(source, "all", "2026-10-22").available).toBe(false);
+});
+
+it("does not assign product acquisition costs or gain to unverified sales", () => {
+  const unlinkedSales = {
+    ...sales,
+    byProduct: sales.byProduct.map((row) => ({ ...row, attributedOrders: 0 })),
+  };
+  expect(productFinancialRows(summary(true), unlinkedSales, products, "store")[0]).toMatchObject({
+    spend: 20,
+    costUnit: null,
+    gain: null,
+    gainUnit: null,
+  });
 });

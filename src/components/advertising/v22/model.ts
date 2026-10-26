@@ -35,26 +35,10 @@ export function profitUsage(cost: number | null, maximum: number | null) {
   if (cost === null || maximum === null) return null;
   return maximum <= 0 ? (cost > maximum ? Infinity : 1) : cost / maximum;
 }
-export const money = (value: number | null | undefined, currency: string | null = "PEN") =>
-  value == null || !currency
+export const money = (value: number | null | undefined, currency = "PEN") =>
+  value == null
     ? "—"
     : new Intl.NumberFormat("es-PE", { style: "currency", currency }).format(value);
-export function commonCurrency(rows: ReadonlyArray<{ currency: string }>): string | null {
-  const currency = rows[0]?.currency;
-  return currency && rows.every((row) => row.currency === currency) ? currency : null;
-}
-export function currencyTotal(
-  rows: ReadonlyArray<{ currency: string; amount: number | null | undefined }>,
-) {
-  const currency = commonCurrency(rows);
-  return {
-    currency,
-    amount:
-      currency && rows.every((row) => row.amount != null && Number.isFinite(row.amount))
-        ? rows.reduce((sum, row) => sum + row.amount!, 0)
-        : null,
-  };
-}
 export const decimal = (value: number | null | undefined, suffix = "") =>
   value == null
     ? "—"
@@ -129,6 +113,8 @@ export function sumSales(rows: SalesMetric[]): SalesMetric {
   ] as const;
   const amounts = [
     "billedRevenue",
+    "orderRevenue",
+    "deliveredRevenue",
     "productCost",
     "shippingCost",
     "eligibleRevenue",
@@ -140,6 +126,11 @@ export function sumSales(rows: SalesMetric[]): SalesMetric {
   ] as const;
   for (const key of counts) result[key] = rows.reduce((sum, row) => sum + (row[key] ?? 0), 0);
   for (const key of amounts) {
+    if (
+      ["orderRevenue", "deliveredRevenue"].includes(key) &&
+      rows.every((row) => row[key] === undefined)
+    )
+      continue;
     const values = rows.map((row) => numeric(row[key]));
     result[key] = values.some((value) => value === null)
       ? (null as never)
@@ -259,7 +250,9 @@ export function financial(
   sales: SalesMetric,
   deliveryRate: number | null,
 ): Financial {
-  const revenue = numeric(sales.billedRevenue);
+  const revenue = numeric(
+    sales.deliveredRevenue === undefined ? sales.billedRevenue : sales.deliveredRevenue,
+  );
   const eligibleRevenue = numeric(sales.eligibleRevenue);
   const productCost = numeric(sales.eligibleProductCost);
   const shippingCost = numeric(sales.eligibleShippingCost);
@@ -330,7 +323,7 @@ export function financial(
     roas: ratio(revenue, spend),
     projectedRoas: ratio(projectedRevenue, spend),
     ticket,
-    gainUnit: ratio(gain, sales.deliveredUnits),
+    gainUnit: ratio(gain, sales.billedUnits ?? sales.deliveredUnits),
     missingCosts: sales.missingCostOrders,
     attributed: sales.attributedOrders,
     projectedUnits,
@@ -462,6 +455,19 @@ export function productFinancialRows(
                   productSales.eligibleBilledUnits ?? null,
                 ),
           ...value,
+          costUnit: productSales.attributedOrders === productSales.orders ? value.costUnit : null,
+          costSale: productSales.attributedOrders === productSales.orders ? value.costSale : null,
+          roas: productSales.attributedOrders === productSales.orders ? value.roas : null,
+          gain:
+            productSales.missingCostOrders === 0 &&
+            productSales.attributedOrders === productSales.orders
+              ? value.gain
+              : null,
+          gainUnit:
+            productSales.missingCostOrders === 0 &&
+            productSales.attributedOrders === productSales.orders
+              ? value.gainUnit
+              : null,
         };
       });
   });
@@ -509,6 +515,19 @@ export function productFinancialRows(
                 productSales.eligibleBilledUnits ?? null,
               ),
         ...value,
+        costUnit: productSales.attributedOrders === productSales.orders ? value.costUnit : null,
+        costSale: productSales.attributedOrders === productSales.orders ? value.costSale : null,
+        roas: productSales.attributedOrders === productSales.orders ? value.roas : null,
+        gain:
+          productSales.missingCostOrders === 0 &&
+          productSales.attributedOrders === productSales.orders
+            ? value.gain
+            : null,
+        gainUnit:
+          productSales.missingCostOrders === 0 &&
+          productSales.attributedOrders === productSales.orders
+            ? value.gainUnit
+            : null,
       },
     ];
   });
@@ -659,19 +678,16 @@ export function rowResultTotal(row: AdsRow, channels: Iterable<string>): number 
     : counts.reduce<number>((sum, count) => sum + count!, 0);
 }
 export function daysForRow(row: AdsRow, summary: AdsSummary) {
-  return summary.days.filter(
-    (day) =>
-      day.currency === row.currency &&
-      (!row.accountId || row.level === "store" || day.accountId === row.accountId) &&
-      (row.level === "ad"
-        ? day.adId === row.id
-        : row.level === "adset"
-          ? day.adsetId === row.id
-          : row.level === "campaign"
-            ? day.campaignId === row.id
-            : row.level === "account"
-              ? day.accountId === row.id
-              : day.storeId === row.id),
+  return summary.days.filter((day) =>
+    row.level === "ad"
+      ? day.adId === row.id
+      : row.level === "adset"
+        ? day.adsetId === row.id
+        : row.level === "campaign"
+          ? day.campaignId === row.id
+          : row.level === "account"
+            ? day.accountId === row.id
+            : day.storeId === row.id,
   );
 }
 export function channelData(
@@ -752,6 +768,35 @@ export function channelRow(row: AdsRow, summary: AdsSummary, channel: string): A
 const leafKey = (accountId: string, adId: string) => JSON.stringify([accountId, adId]);
 const segmentKey = (storeId: string | null | undefined, channel: string | undefined) =>
   JSON.stringify([storeId ?? null, channel ?? "other"]);
+// The public channel selector groups messages/web, while financial estimates
+// need the actual destination (WhatsApp, Instagram, Messenger, web or COD).
+const segmentChannel = (row: { channel?: string }) => {
+  const detail = row as typeof row & { channelExact?: string | null; realChannel?: string | null };
+  const raw = detail.channelExact ?? detail.realChannel;
+  if (!raw) return row.channel;
+  const normalized = raw.toLowerCase();
+  return (
+    (
+      {
+        whatsapp: "wa",
+        wa: "wa",
+        instagram: "ig",
+        ig: "ig",
+        facebook: "messenger",
+        messenger: "messenger",
+        ms: "messenger",
+        shopify_cod: "shopify_cod",
+        cod: "shopify_cod",
+        shopify: "web",
+        tienda_online: "web",
+        ecommerce: "web",
+        web: "web",
+      } as Record<string, string>
+    )[normalized] ?? normalized
+  );
+};
+const metricSegment = (row: { storeId?: string | null; channel?: string }) =>
+  segmentKey(row.storeId, segmentChannel(row));
 const addIndex = <T>(index: Map<string, T[]>, key: string, value: T) => {
   const rows = index.get(key);
   if (rows) rows.push(value);
@@ -798,7 +843,7 @@ export function financialCauses(value: Financial, includeCosts = true) {
     attribution:
       "Este anuncio aún no tiene ventas identificadas; no se interpreta como cero ventas.",
     store: "Asigna la tienda para conectar las ventas de POWIP.",
-    channel: "Falta identificar si las ventas corresponden a Web o Mensajes.",
+    channel: "Falta identificar el canal exacto de las ventas de esta tienda y período.",
     results: "Faltan resultados de Meta del mismo período para repartir las ventas.",
     product: "Vincula el producto del anuncio para usar sus ingresos y costos.",
     spend: "Falta confirmar el gasto de Meta para calcular ROAS y ganancia.",
@@ -835,19 +880,14 @@ export function createAdFinancialCalculator(summary: AdsSummary, sales: AdsSales
     ] as const) {
       if (id) addIndex(dayIndex, `${level}:${id}`, day);
     }
-    addIndex(segmentDays, segmentKey(day.storeId, day.channel), day);
+    addIndex(segmentDays, metricSegment(day), day);
   }
   const channelSales = new Map<string, SalesGroup[]>();
   const productSales = new Map<string, SalesGroup[]>();
-  for (const group of sales.byChannel)
-    addIndex(channelSales, segmentKey(group.storeId, group.channel), group);
+  for (const group of sales.byChannel) addIndex(channelSales, metricSegment(group), group);
   for (const group of sales.byProduct ?? []) {
     if (group.productId && group.channel && group.channel !== "other")
-      addIndex(
-        productSales,
-        `${segmentKey(group.storeId, group.channel)}:${group.productId}`,
-        group,
-      );
+      addIndex(productSales, `${metricSegment(group)}:${group.productId}`, group);
   }
   const pools = new Map([...channelSales].map(([key, rows]) => [key, sumSales(rows)]));
   const products = new Map([...productSales].map(([key, rows]) => [key, sumSales(rows)]));
@@ -858,15 +898,54 @@ export function createAdFinancialCalculator(summary: AdsSummary, sales: AdsSales
     if (group.accountId) addIndex(salesByLeaf, leafKey(group.accountId, group.adId), group);
     else addIndex(legacySalesByAd, group.adId, group);
   }
-  const attribution =
-    (sales as AdsSales & { globalAttributedOrders?: number }).globalAttributedOrders ??
-    sales.totals.attributedOrders;
+  const measuredRowsFor = (id: string) => {
+    const [accountId, adId] = JSON.parse(id) as [string, string];
+    const accounts = accountsByAd.get(adId);
+    return [
+      ...(salesByLeaf.get(id) ?? []),
+      ...(accounts?.size === 1 && accounts.has(accountId) ? (legacySalesByAd.get(adId) ?? []) : []),
+    ];
+  };
+  const measuredIds = new Set(
+    [...new Set(summary.days.map((day) => leafKey(day.accountId, day.adId)))].filter((id) =>
+      measuredRowsFor(id).some((group) => group.orders > 0 || group.attributedOrders > 0),
+    ),
+  );
+  const measuredBySegment = new Map<string, SalesGroup[]>();
+  const measuredByProduct = new Map<string, SalesGroup[]>();
+  for (const id of measuredIds)
+    for (const group of measuredRowsFor(id)) {
+      addIndex(measuredBySegment, metricSegment(group), group);
+      const productId = group.productId ?? assignment.get(id);
+      if (productId && productId !== "varios")
+        addIndex(measuredByProduct, `${metricSegment(group)}:${productId}`, group);
+    }
+  // Only unattributed sales remain available for result-share estimates. Identified
+  // sales and their historical costs must never be distributed a second time.
+  const residual = (pool: SalesMetric, measured: SalesMetric[]) => {
+    const used = sumSales(measured);
+    const result = { ...pool };
+    for (const key of Object.keys(pool) as Array<keyof SalesMetric>) {
+      const total = numeric(pool[key]);
+      const taken = numeric(used[key]);
+      if (total !== null && taken !== null)
+        (result as unknown as Record<string, unknown>)[key] =
+          typeof pool[key] === "string"
+            ? String(Math.max(0, total - taken))
+            : Math.max(0, total - taken);
+    }
+    return result;
+  };
+  for (const [key, pool] of pools) pools.set(key, residual(pool, measuredBySegment.get(key) ?? []));
+  for (const [key, pool] of products)
+    products.set(key, residual(pool, measuredByProduct.get(key) ?? []));
   const resultPools = new Map(
     [...segmentDays].map(([key, days]) => {
       const productResults = new Map<string, number>();
       let total = 0;
       let complete = true;
       for (const day of days) {
+        if (measuredIds.has(leafKey(day.accountId, day.adId))) continue;
         if (day.results === null || !Number.isFinite(day.results)) complete = false;
         else {
           total += day.results;
@@ -881,9 +960,7 @@ export function createAdFinancialCalculator(summary: AdsSummary, sales: AdsSales
   );
   return (row: AdsRow): Financial => {
     const raw = (dayIndex.get(`${row.level}:${row.id}`) ?? []).filter(
-      (day) =>
-        day.currency === row.currency &&
-        (!row.accountId || row.level === "store" || row.accountId === day.accountId),
+      (day) => !row.accountId || row.level === "store" || row.accountId === day.accountId,
     );
     const ids = new Set(raw.map((day) => leafKey(day.accountId, day.adId)));
     if (row.level === "ad") ids.add(leafKey(row.accountId, row.id));
@@ -896,29 +973,25 @@ export function createAdFinancialCalculator(summary: AdsSummary, sales: AdsSales
     const issues = new Set<FinancialIssue>();
     if (spend === null) issues.add("spend");
     if (row.currency !== "PEN") issues.add("currency");
-    const scopeSegments = new Set(raw.map((day) => segmentKey(day.storeId, day.channel)));
+    const scopeSegments = new Set(raw.map((day) => metricSegment(day)));
     const scopeRows = sales.byChannel.filter(
       (group) =>
         group.channel !== "other" &&
         (scopeSegments.size
-          ? scopeSegments.has(segmentKey(group.storeId, group.channel))
+          ? scopeSegments.has(metricSegment(group))
           : !row.store?.id || row.store.id === group.storeId),
     );
     const scope = sumSales(scopeRows);
     const coverage = ratio(scope.attributedOrders, scope.orders);
-    if (attribution > 0) {
-      const ownRows = [
-        ...new Set(
-          [...ids].flatMap((id) => {
-            const [accountId, adId] = JSON.parse(id) as [string, string];
-            const accounts = accountsByAd.get(adId);
-            const legacy = legacySalesByAd.get(adId) ?? [];
-            const uniqueAccount = accounts?.size === 1 && accounts.has(accountId);
-            if (legacy.length > 0 && !uniqueAccount) issues.add("attribution");
-            return [...(salesByLeaf.get(id) ?? []), ...(uniqueAccount ? legacy : [])];
-          }),
-        ),
-      ].filter((group) => row.level !== "store" || group.storeId === row.id);
+    const ownRows = [...new Set([...ids].flatMap((id) => measuredRowsFor(id)))].filter(
+      (group) => row.level !== "store" || group.storeId === row.id,
+    );
+    const allMeasured = ids.size > 0 && [...ids].every((id) => measuredIds.has(id));
+    if (
+      allMeasured ||
+      (row.level === "ad" &&
+        ownRows.some((group) => group.orders > 0 || group.attributedOrders > 0))
+    ) {
       const own = sumSales(ownRows);
       const costs = costEvidence(own);
       const value = cohortFinancial(spend, ownRows, sales);
@@ -962,29 +1035,39 @@ export function createAdFinancialCalculator(summary: AdsSummary, sales: AdsSales
       issues.add("results");
     if (raw.some((day) => day.channel === "other")) issues.add("channel");
     const leafSegments = new Map<string, AdsDay[]>();
-    for (const day of raw)
+    for (const day of raw.filter((day) => !measuredIds.has(leafKey(day.accountId, day.adId))))
       addIndex(
         leafSegments,
-        JSON.stringify([day.accountId, day.adId, day.storeId, day.channel]),
+        JSON.stringify([day.accountId, day.adId, day.storeId, segmentChannel(day)]),
         day,
       );
-    let delivered = 0,
-      deliveredUnits = 0,
-      revenue = 0,
-      contribution = 0,
-      eligibleSales = 0;
-    let coveredUnits = 0,
-      billedUnits = 0,
-      missingCosts = 0;
+    const measured = sumSales(ownRows);
+    const measuredCosts = costEvidence(measured);
+    let delivered = measured.delivered,
+      deliveredUnits = measured.deliveredUnits,
+      revenue = numeric(measured.deliveredRevenue ?? measured.billedRevenue) ?? 0,
+      contribution = measuredCosts.contribution ?? 0,
+      eligibleSales = measured.delivered * measuredCosts.coverage;
+    let coveredUnits = measuredCosts.eligible,
+      billedUnits = measuredCosts.units,
+      missingCosts = measured.missingCostOrders;
     let revenueKnown = !issues.has("store") && !issues.has("channel") && !issues.has("results");
     let contributionKnown = revenueKnown;
-    let hasKnownCost = false;
+    let hasKnownCost = ownRows.length > 0 && measuredCosts.contribution !== null;
+    if (ownRows.length > 0 && measuredCosts.contribution === null) issues.add("historical-cost");
     for (const days of leafSegments.values()) {
       const first = days[0];
       if (!first.storeId || first.channel === "other") continue;
-      const key = segmentKey(first.storeId, first.channel);
+      const key = metricSegment(first);
       const results = resultPools.get(key)!;
-      const cohort = pools.get(key) ?? emptySales();
+      const cohort = pools.get(key);
+      // A missing exact-channel cohort cannot prove zero sales. Explicit zero
+      // cohorts remain measurable, while ambiguous destinations stay unknown.
+      if (!cohort) {
+        issues.add("channel");
+        revenueKnown = contributionKnown = false;
+        continue;
+      }
       if (!results.complete || days.some((day) => day.results === null)) {
         issues.add("results");
         revenueKnown = contributionKnown = false;
@@ -1011,7 +1094,7 @@ export function createAdFinancialCalculator(summary: AdsSummary, sales: AdsSales
         revenueKnown = contributionKnown = false;
         continue;
       }
-      const net = numeric(pool.billedRevenue);
+      const net = numeric(pool.deliveredRevenue ?? pool.billedRevenue);
       if (net === null) {
         issues.add("product");
         revenueKnown = false;
@@ -1045,6 +1128,10 @@ export function createAdFinancialCalculator(summary: AdsSummary, sales: AdsSales
           : 1;
     return comparableCurrency(row, {
       ...baseline,
+      orders: measured.orders,
+      confirmed: measured.confirmed,
+      units: measured.units,
+      attributed: measured.attributedOrders,
       delivered,
       deliveredUnits,
       missingCosts,
@@ -1242,15 +1329,18 @@ export function adStatus(
   const age = adAge(row, today);
   if (isMetaPaused(row)) return "Pausado";
   if (age !== null && age < rules.noResultsDays) return "Aprendizaje";
-  if (values.evidence?.partial) return "Sin datos suficientes";
   if (
     age !== null &&
     age >= rules.noResultsDays &&
     (values.spend ?? 0) >= Number(rules.minSpend) &&
     results === 0 &&
-    values.delivered === 0
+    values.delivered === 0 &&
+    !values.evidence?.issues.some((issue) =>
+      ["spend", "results", "channel", "store", "currency"].includes(issue),
+    )
   )
     return "Sin resultados";
+  if (values.evidence?.partial) return "Sin datos suficientes";
   if (values.costSale === null || values.maximum === null) return "Sin datos suficientes";
   if (values.costSale > values.maximum) return "Pierdes plata";
   return trafficLight(profitUsage(values.costSale, values.maximum), rules.nearLimitPct).label;

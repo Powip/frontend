@@ -1,60 +1,34 @@
 import type {
-  AdsRules,
+  AdsProduct,
   AdsRow,
+  AdsRules,
   AdsSales,
   AdsSummary,
-  AdsProduct,
   SalesMetric,
 } from "@/services/advertisingV22Service";
 import {
-  adFinancial,
   adAge,
+  adFinancial,
+  adStatus,
+  canScale,
+  channelData,
+  channelRow,
   comparisonPeriod,
   creativeAverage,
   diagnosis,
   emptySales,
   financial,
+  isMetaPaused,
   monthlyModel,
   productFinancialRows,
-  sumSales,
-  summarize,
-  channelData,
-  channelRow,
-  adStatus,
-  isMetaPaused,
-  rowResultTotal,
-  canScale,
   profitUsage,
+  rowResultTotal,
+  spendAvailabilityDetail,
+  summarize,
+  summarySpendAvailable,
+  sumSales,
   trafficLight,
-  currencyTotal,
-  money,
 } from "../model";
-
-it.each(["PEN", "USD"])("sums known amounts only within %s", (currency) => {
-  const total = currencyTotal([
-    { currency, amount: 0 },
-    { currency, amount: 12.5 },
-  ]);
-  expect(total).toEqual({ currency, amount: 12.5 });
-  expect(money(total.amount, total.currency)).toBe(money(12.5, currency));
-});
-it("does not create a monetary total from mixed currencies or unknown amounts", () => {
-  expect(
-    currencyTotal([
-      { currency: "PEN", amount: 10 },
-      { currency: "USD", amount: 20 },
-    ]),
-  ).toEqual({ currency: null, amount: null });
-  expect(
-    currencyTotal([
-      { currency: "USD", amount: 10 },
-      { currency: "USD", amount: null },
-    ]),
-  ).toEqual({ currency: "USD", amount: null });
-  expect(currencyTotal([])).toEqual({ currency: null, amount: null });
-  expect(currencyTotal([{ currency: "", amount: 10 }])).toEqual({ currency: null, amount: null });
-  expect(money(10, null)).toBe("—");
-});
 
 const rules: AdsRules = {
   noResultsDays: 3,
@@ -264,6 +238,101 @@ describe("Publicidad v2.2 financial contract", () => {
       expect(week.cumulativeGain).toBeNull();
     }
   });
+  it("isolates a pending account to its store while keeping the company total unknown", () => {
+    const source = summary();
+    source.days.push({
+      ...source.days[0],
+      accountId: "other-account",
+      storeId: "other",
+      spend: "50",
+    });
+    source.quality.spendAvailable = false;
+    source.quality.spendScopes = [
+      {
+        storeId: "all",
+        currency: "PEN",
+        spendAvailable: false,
+        coverage: "partial",
+        reasons: ["META_SPEND_MISMATCH"],
+        days: [],
+      },
+      {
+        storeId: "store",
+        currency: "PEN",
+        spendAvailable: true,
+        coverage: "complete",
+        reasons: [],
+        days: [],
+      },
+      {
+        storeId: "other",
+        currency: "PEN",
+        spendAvailable: false,
+        coverage: "partial",
+        reasons: ["META_SPEND_MISMATCH"],
+        days: [],
+      },
+    ];
+    expect(summarize(source, sales(), "store").spend).toBe(300);
+    expect(summarize(source, sales(), "other").spend).toBeNull();
+    expect(summarize(source, sales(), "all").spend).toBeNull();
+    expect(summarySpendAvailable(source, "unknown-store")).toBe(false);
+    expect(spendAvailabilityDetail(source, "store")).toBeUndefined();
+    expect(spendAvailabilityDetail(source, "other")).toBe("Detalle de Meta por conciliar");
+  });
+  it("keeps known days visible and excludes unknown profit from the monthly evaluated days", () => {
+    const source = summary();
+    const days = Array.from({ length: 16 }, (_, index) => ({
+      date: `2026-10-${String(index + 1).padStart(2, "0")}`,
+      spendAvailable: index !== 1,
+      coverage: index === 1 ? ("pending" as const) : ("complete" as const),
+      reasons: index === 1 ? ["META_SPEND_MISMATCH"] : [],
+      accountIds: ["account"],
+    }));
+    source.quality.spendAvailable = false;
+    source.quality.spendScopes = [
+      {
+        storeId: "store",
+        currency: "PEN",
+        spendAvailable: false,
+        coverage: "partial",
+        reasons: ["META_SPEND_MISMATCH"],
+        days,
+      },
+    ];
+    const month = monthlyModel(source, sales(), "store", "2026-10");
+    expect(month.total.spend).toBeNull();
+    expect(month.days[0].spend).toBe(100);
+    expect(month.days[1].spend).toBeNull();
+    expect(month.days[2].spend).toBe(0);
+    expect(month.days[1].cumulativeSpend).toBeNull();
+    expect(month.weeks[0].spend).toBeNull();
+    expect(month.weeks[1].spend).toBe(0);
+    expect(month.closedDays).toBe(14);
+    expect(month.evaluatedDays).toBe(13);
+    expect(month.pendingDays).toBe(1);
+    expect(month.profitableDays).toBe(13);
+    expect(summarySpendAvailable(source, "store", "2026-10-17")).toBe(false);
+  });
+  it("does not turn a missing day scope into a confirmed zero", () => {
+    const source = summary();
+    source.days = [];
+    source.quality.spendScopes = [
+      {
+        storeId: "store",
+        currency: "PEN",
+        spendAvailable: false,
+        coverage: "pending",
+        reasons: ["STORE_ASSIGNMENT_UNCERTAIN"],
+        days: [],
+      },
+    ];
+    const month = monthlyModel(source, sales(), "store", "2026-10");
+    expect(month.days[0].spend).toBeNull();
+    expect(month.evaluatedDays).toBe(0);
+    expect(month.pendingDays).toBe(14);
+    expect(spendAvailabilityDetail(source, "store")).toBe("Asignación histórica por revisar");
+  });
   it("uses company product names across commercial stores and warehouse stock owners", () => {
     const orders = sales();
     orders.byProduct = [
@@ -466,6 +535,43 @@ describe("Publicidad v2.2 financial contract", () => {
     expect(value.gain).toBe(-300);
     expect(value.roas).toBe(0);
   });
+  it("does not report zero revenue when an exact sales channel cannot be identified", () => {
+    const data = summary();
+    data.days = data.days.map((day) => ({ ...day, channel: "messages" }));
+    const source = sales();
+    source.byChannel = [
+      {
+        ...source.byChannel[0],
+        channel: "messages",
+        realChannel: "WHATSAPP",
+      } as (typeof source.byChannel)[number],
+    ];
+    const value = adFinancial(row(), data, source);
+    expect(value.revenue).toBeNull();
+    expect(value.gain).toBeNull();
+    expect(value.roas).toBeNull();
+    expect(value.maximum).toBeNull();
+    expect(value.evidence?.issues).toContain("channel");
+  });
+  it("retains a confirmed zero-sales cohort for a known exact channel", () => {
+    const data = summary();
+    data.days = data.days.map((day) => ({ ...day, channel: "messages", channelExact: "wa" }));
+    const source = sales();
+    source.byChannel = [
+      {
+        ...metrics(),
+        storeId: "store",
+        channel: "messages",
+        realChannel: "WHATSAPP",
+      } as (typeof source.byChannel)[number],
+    ];
+    const value = adFinancial(row(), data, source);
+    expect(value.revenue).toBe(0);
+    expect(value.gain).toBe(-300);
+    expect(value.roas).toBe(0);
+    expect(value.costSale).toBeNull();
+    expect(value.evidence?.issues).not.toContain("channel");
+  });
   it("uses delivered sales of the same channel and period for ad estimates", () => {
     const value = adFinancial(row(), summary(), sales());
     expect(value.delivered).toBe(6);
@@ -628,4 +734,98 @@ describe("Publicidad v2.2 financial contract", () => {
     two.insights.video3s = "600";
     expect(creativeAverage([one, two]).hook).toBeCloseTo(0.2);
   });
+});
+
+it("allows explicit v2.3 estimates even when an executive sales contract is available", () => {
+  const source = sales();
+  source.executiveAvailability = { available: true, warnings: [] };
+  const value = adFinancial(row(), summary(), source);
+  expect(value.delivered).toBe(6);
+  expect(value.evidence?.basis).toBe("estimated");
+  expect(value.roas).toBe(2);
+});
+it("distributes only the unmeasured residual and adds mixed group totals once", () => {
+  const data = summary();
+  data.days = [...data.days, ...data.days.map((day) => ({ ...day, adId: "unmeasured" }))];
+  const source = sales();
+  source.totals.attributedOrders = 2;
+  source.byAd = [
+    {
+      ...metrics({
+        orders: 2,
+        attributedOrders: 2,
+        delivered: 2,
+        deliveredUnits: 2,
+        eligibleDelivered: 2,
+        eligibleDeliveredUnits: 2,
+        billedRevenue: "200",
+        eligibleRevenue: "200",
+        eligibleProductCost: "40",
+        eligibleShippingCost: "20",
+      }),
+      adId: "ad",
+      accountId: "account",
+      storeId: "store",
+      channel: "web",
+    },
+  ];
+  const measured = adFinancial(row(), data, source);
+  const estimated = adFinancial(row({ id: "unmeasured" }), data, source);
+  const group = adFinancial(
+    row({ id: "campaign", level: "campaign", insights: { ...row().insights, spend: "600" } }),
+    data,
+    source,
+  );
+  expect(measured.delivered).toBe(2);
+  expect(measured.evidence?.basis).toBe("measured");
+  expect(estimated.delivered).toBe(4);
+  expect(estimated.revenue).toBe(400);
+  expect(estimated.evidence?.basis).toBe("estimated");
+  expect(group.delivered).toBe(6);
+  expect(group.revenue).toBe(600);
+  expect(group.costSale).toBe(100);
+});
+it("keeps WhatsApp and Instagram estimate pools distinct even though both use the Mensajes filter", () => {
+  const data = summary();
+  data.days = [
+    { ...data.days[0], channel: "messages", adId: "wa-ad", results: 10, channelExact: "wa" },
+    { ...data.days[0], channel: "messages", adId: "ig-ad", results: 10, channelExact: "ig" },
+  ] as typeof data.days;
+  const source = sales();
+  source.byChannel = [
+    {
+      ...metrics({
+        delivered: 1,
+        deliveredUnits: 1,
+        eligibleDeliveredUnits: 1,
+        billedRevenue: "100",
+        eligibleRevenue: "100",
+        eligibleProductCost: "20",
+        eligibleShippingCost: "10",
+      }),
+      storeId: "store",
+      channel: "messages",
+      realChannel: "WHATSAPP",
+    },
+    {
+      ...metrics({
+        delivered: 5,
+        deliveredUnits: 5,
+        eligibleDeliveredUnits: 5,
+        billedRevenue: "500",
+        eligibleRevenue: "500",
+        eligibleProductCost: "100",
+        eligibleShippingCost: "50",
+      }),
+      storeId: "store",
+      channel: "messages",
+      realChannel: "INSTAGRAM",
+    },
+  ] as typeof source.byChannel;
+  const wa = adFinancial(row({ id: "wa-ad" }), data, source);
+  const ig = adFinancial(row({ id: "ig-ad" }), data, source);
+  expect(wa.delivered).toBe(1);
+  expect(ig.delivered).toBe(5);
+  expect(wa.revenue).toBe(100);
+  expect(ig.revenue).toBe(500);
 });

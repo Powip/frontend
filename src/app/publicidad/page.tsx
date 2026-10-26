@@ -1,4 +1,4 @@
-import { AdvertisingNumbers } from "@/components/advertising/v22/Numbers";
+import { AdvertisingNumbersV23 } from "@/components/advertising/v22/NumbersV23";
 export default function Page() {
-  return <AdvertisingNumbers />;
+  return <AdvertisingNumbersV23 />;
 }

@@ -19,12 +19,13 @@ import {
   type AdsTest,
 } from "@/services/advertisingV22Service";
 import { useAdvertisingStoreFilter } from "../AdvertisingStoreFilterContext";
+import { useAdvertisingAccountFilter } from "../AdvertisingAccountFilterContext";
 import { useAdsQuery, useAdsV22, useRefreshAds } from "./context";
 import {
   adFinancial,
-  currencyTotal,
   financial,
   sumSales,
+  summarySpendAvailable,
   dayKey,
   decimal,
   limaToday,
@@ -35,10 +36,12 @@ import {
 import { Block, Failure, MetricCard, SelectField } from "./shared";
 import { useNumbers } from "./Numbers";
 import { parseISO, subDays } from "date-fns";
+import { META_MANAGEMENT_UNAVAILABLE } from "./Actions";
 
 export function AdvertisingTests() {
   const { identity, settings } = useAdsV22();
   const { storeId, stores } = useAdvertisingStoreFilter();
+  const { accountId } = useAdvertisingAccountFilter();
   const refresh = useRefreshAds();
   const [newTest, setNewTest] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -49,6 +52,8 @@ export function AdvertisingTests() {
     stores.some((store) => store.id === storeId) ? storeId : "",
   );
   const [start, setStart] = useState(limaToday());
+  const pagingScope = `${storeId}:${accountId}`;
+  const [paging, setPaging] = useState({ storeId: pagingScope, page: 1 });
   const tests = useAdsQuery(["tests", storeId], (id, signal) =>
     adsGet<{ tests: AdsTest[] }>(id, "/v22/tests", { storeId }, signal),
   );
@@ -64,7 +69,7 @@ export function AdvertisingTests() {
     newTest && canCreate,
   );
   const ads = useAdsQuery(
-    ["tests-catalog", testStoreId],
+    ["tests-catalog", testStoreId, accountId],
     (id, signal) =>
       getAllAdsCatalog(
         id,
@@ -72,6 +77,7 @@ export function AdvertisingTests() {
           from: dayKey(subDays(parseISO(limaToday()), 29)),
           to: limaToday(),
           storeId: testStoreId,
+          accountId: accountId === "all" ? undefined : accountId,
           level: "ad",
         },
         signal,
@@ -84,8 +90,45 @@ export function AdvertisingTests() {
     setProductId("");
     setAdsetId("");
     setTestStoreId(stores.some((store) => store.id === storeId) ? storeId : "");
-  }, [storeId]);
-  const list = tests.data?.tests ?? [];
+  }, [storeId, accountId]);
+  const list = (tests.data?.tests ?? []).filter(
+    (test) => accountId === "all" || test.accountId === accountId,
+  );
+  const earliestStart = list.map((test) => test.startAt.slice(0, 10)).sort()[0] ?? limaToday();
+  const measurement = useNumbers(earliestStart, limaToday(), storeId, "tests-summary");
+  const testedProducts = new Set(
+    measurement.data?.summary.adProducts.map((assignment) => assignment.productId) ?? [],
+  );
+  const testDays = measurement.data?.summary.days.filter((day) =>
+    list.some(
+      (test) =>
+        test.accountId === day.accountId &&
+        test.adIds.includes(day.adId) &&
+        day.date >= test.startAt.slice(0, 10),
+    ),
+  );
+  const spentInTests =
+    measurement.data &&
+    !measurement.isError &&
+    summarySpendAvailable(measurement.data.summary, storeId) &&
+    testDays &&
+    testDays.every((day) => day.currency === "PEN" && numeric(day.spend) !== null)
+      ? testDays.reduce((sum, day) => sum + (numeric(day.spend) ?? 0), 0)
+      : null;
+  const suggestions = (products.data?.products ?? [])
+    .filter(
+      (product) =>
+        !testedProducts.has(product.id) &&
+        !list.some((test) => test.productId === product.id) &&
+        (product.canTest ??
+          (numeric(product.unitCost) !== null ||
+            product.variants.some((variant) => numeric(variant.unitCost) !== null))),
+    )
+    .slice(0, 3);
+  const pageCount = Math.max(1, Math.ceil(list.length / 10));
+  const currentPage = paging.storeId === pagingScope ? Math.min(paging.page, pageCount) : 1;
+  const pageStart = (currentPage - 1) * 10;
+  const visibleTests = list.slice(pageStart, pageStart + 10);
   const eligibleProducts = (products.data?.products ?? []).filter(
     (product) =>
       product.canTest ??
@@ -109,6 +152,17 @@ export function AdvertisingTests() {
     );
     if (!selectedAds.length) {
       setError(new Error("El conjunto debe tener anuncios asignados a la tienda del producto."));
+      return;
+    }
+    if (
+      new Set(selectedAds.map((row) => row.accountId)).size !== 1 ||
+      (accountId !== "all" && !selectedAds.every((row) => row.accountId === accountId))
+    ) {
+      setError(
+        new Error(
+          "Los anuncios del conjunto no pertenecen a la cuenta seleccionada. Actualiza la selección antes de crear la prueba.",
+        ),
+      );
       return;
     }
     setPending(true);
@@ -173,13 +227,18 @@ export function AdvertisingTests() {
             "%",
           )}
         />
-        <MetricCard label="Productos con costo" value={eligibleProducts.length} />
+        <MetricCard
+          label="Gastado en pruebas"
+          value={tests.data && list.length === 0 ? money(0) : money(spentInTests)}
+          detail="Desde el inicio de cada prueba; cada anuncio y día se cuenta una vez."
+        />
       </div>
       {error != null && <Failure error={error} />}
+      {products.isError && <Failure error={products.error} retry={products.refetch} />}
       {!tests.data && <Skeleton className="h-64" />}
       <Block title="Pruebas y veredictos">
         <div className="space-y-4">
-          {list.map((test) => (
+          {visibleTests.map((test) => (
             <TestRow
               key={test.id}
               test={test}
@@ -187,13 +246,106 @@ export function AdvertisingTests() {
             />
           ))}
           {tests.data && list.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              No hay pruebas en este ámbito. Elige un producto con costo cargado y su conjunto para
-              comenzar.
-            </p>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Todavía no hay pruebas en esta tienda. Una prueba mide un producto nuevo desde su
+                primer anuncio hasta decidir: escalar o descartar.
+              </p>
+              {measurement.data && !measurement.isError && suggestions.length > 0 && (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {suggestions.map((product) => {
+                    const storeMetric = (measurement.data!.sales.byStore ?? []).find(
+                      (row) => row.storeId === product.storeId,
+                    );
+                    const unitsPerOrder = storeMetric
+                      ? ratio(storeMetric.units, storeMetric.orders)
+                      : null;
+                    const shippingPerOrder = storeMetric
+                      ? ratio(numeric(storeMetric.shippingCost), storeMetric.delivered)
+                      : null;
+                    const price = numeric(product.netPrice),
+                      cost = numeric(product.unitCost);
+                    const maximum =
+                      price !== null &&
+                      cost !== null &&
+                      unitsPerOrder !== null &&
+                      shippingPerOrder !== null
+                        ? (price - cost) * unitsPerOrder - shippingPerOrder
+                        : null;
+                    return (
+                      <div key={product.id} className="space-y-2 rounded-lg border p-3">
+                        <p className="font-medium">{product.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {stores.find((store) => store.id === product.storeId)?.name} · Con costo,
+                          sin anuncios
+                        </p>
+                        {settings!.capabilities.profit && (
+                          <p
+                            className="text-xs"
+                            title={
+                              maximum === null
+                                ? "Faltan unidades por pedido o envío histórico de la tienda para calcular el máximo."
+                                : "Referencia estimada con el precio y costo actuales y los promedios de la tienda."
+                            }
+                          >
+                            Máximo por venta: {money(maximum)}
+                            {maximum !== null ? " · Estimado" : ""}
+                          </p>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={!canOpenCreate}
+                          onClick={() => {
+                            setTestStoreId(product.storeId);
+                            setProductId(product.id);
+                            setAdsetId("");
+                            setNewTest(true);
+                          }}
+                        >
+                          Probar
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </Block>
+      {list.length > 10 && (
+        <nav
+          aria-label="Páginas de pruebas"
+          className="flex flex-wrap items-center justify-between gap-3 text-sm"
+        >
+          <p>
+            Mostrando {pageStart + 1}–{Math.min(pageStart + 10, list.length)} de {list.length}{" "}
+            pruebas
+          </p>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === 1}
+              onClick={() => setPaging({ storeId: pagingScope, page: currentPage - 1 })}
+            >
+              Anterior
+            </Button>
+            <span>
+              Página {currentPage} de {pageCount}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === pageCount}
+              onClick={() => setPaging({ storeId: pagingScope, page: currentPage + 1 })}
+            >
+              Siguiente
+            </Button>
+          </div>
+        </nav>
+      )}
       <Dialog open={newTest && canOpenCreate} onOpenChange={setNewTest}>
         <DialogContent>
           <DialogHeader>
@@ -243,7 +395,12 @@ export function AdvertisingTests() {
                   ...[
                     ...new Map(
                       (ads.data?.rows ?? [])
-                        .filter((row) => row.adsetId && row.store?.id === testStoreId)
+                        .filter(
+                          (row) =>
+                            row.adsetId &&
+                            row.store?.id === testStoreId &&
+                            (accountId === "all" || row.accountId === accountId),
+                        )
                         .map((row) => [
                           row.adsetId!,
                           { value: row.adsetId!, label: `Conjunto de ${row.name}` },
@@ -281,9 +438,17 @@ export function TestRow({ test, product }: { test: AdsTest; product?: AdsProduct
   const refresh = useRefreshAds();
   const start = test.startAt.slice(0, 10);
   const today = limaToday();
-  const query = useNumbers(start, today, test.storeId, `test:${test.id}`);
-  const catalog = useAdsQuery(["test", test.id, start], (id, signal) =>
-    getAllAdsCatalog(id, { from: start, to: today, level: "ad", storeId: test.storeId }, signal),
+  const query = useNumbers(start, today, test.storeId, `test:${test.id}`, test.accountId);
+  const catalogFilters = {
+    from: start,
+    to: today,
+    level: "ad" as const,
+    storeId: test.storeId,
+    accountId: test.accountId,
+    adsetId: test.adsetId ?? undefined,
+  };
+  const catalog = useAdsQuery(["test-catalog", catalogFilters], (id, signal) =>
+    getAllAdsCatalog(id, catalogFilters, signal),
   );
   const [modal, setModal] = useState<"scale" | "discard" | null>(null);
   const [method, setMethod] = useState("budget");
@@ -291,14 +456,22 @@ export function TestRow({ test, product }: { test: AdsTest; product?: AdsProduct
   const [pending, setPending] = useState(false);
   const requestIds = useRef(new Map<string, string>());
   const [error, setError] = useState<unknown>(null);
-  const rows = catalog.data?.rows.filter((row) => test.adIds.includes(row.id)) ?? [];
+  const canManageAds =
+    settings!.capabilities.edit &&
+    catalog.data?.capabilities?.canManageAds === true &&
+    catalog.data.rows.length > 0 &&
+    catalog.data.rows.every((row) => row.accountId === test.accountId);
+  const rows =
+    catalog.data?.rows.filter(
+      (row) => row.accountId === test.accountId && test.adIds.includes(row.id),
+    ) ?? [];
   const financials = query.data
     ? rows.map((row) => adFinancial(row, query.data!.summary, query.data!.sales, product))
     : [];
-  const spendTotal = currencyTotal(
-    rows.map((row, index) => ({ currency: row.currency, amount: financials[index]?.spend })),
-  );
-  const spend = spendTotal.amount;
+  const spend =
+    financials.length && financials.every((row) => row.spend !== null)
+      ? financials.reduce((sum, row) => sum + (row.spend ?? 0), 0)
+      : null;
   const delivered = financials.reduce((sum, row) => sum + row.delivered, 0);
   const attributed =
     query.data?.sales.byAd.filter(
@@ -310,7 +483,7 @@ export function TestRow({ test, product }: { test: AdsTest; product?: AdsProduct
     ) ?? [];
   const ownProduct = attributed.length
     ? attributed
-    : (query.data?.sales.byProduct.filter(
+    : ((query.data?.sales.byProduct ?? []).filter(
         (row) => row.storeId === test.storeId && row.productId === test.productId,
       ) ?? []);
   const maximum =
@@ -319,19 +492,25 @@ export function TestRow({ test, product }: { test: AdsTest; product?: AdsProduct
       : null;
   const costSale = ratio(spend, delivered);
   const rules = settings!.rules;
-  const verdict = financials.some((value) => value.evidence?.partial)
-    ? "Datos incompletos"
-    : maximum === null || spend === null
-      ? "Sin costo suficiente"
-      : spend >= maximum * rules.testMultiplier && delivered === 0
-        ? "Descartar"
-        : delivered >= rules.testMinSales &&
-            costSale !== null &&
-            costSale < (maximum * rules.winPct) / 100
-          ? "Ganador"
-          : "Sigue probando";
+  const loading = !query.data || !catalog.data;
+  const measurementFailed = query.isError || catalog.isError;
+  const verdict = measurementFailed
+    ? "Medición no disponible"
+    : loading
+      ? "Cargando medición…"
+      : financials.some((value) => value.evidence?.partial)
+        ? "Datos incompletos"
+        : maximum === null || spend === null
+          ? "Sin costo suficiente"
+          : spend >= maximum * rules.testMultiplier && delivered === 0
+            ? "Descartar"
+            : delivered >= rules.testMinSales &&
+                costSale !== null &&
+                costSale < (maximum * rules.winPct) / 100
+              ? "Ganador"
+              : "Sigue probando";
   async function decide() {
-    if (!identity || !modal || pending) return;
+    if (!identity || !modal || pending || !canManageAds || !settings!.capabilities.profit) return;
     setPending(true);
     setError(null);
     try {
@@ -377,7 +556,7 @@ export function TestRow({ test, product }: { test: AdsTest; product?: AdsProduct
           </p>
         </div>
         {test.status === "active" &&
-          settings!.capabilities.edit &&
+          canManageAds &&
           settings!.capabilities.profit &&
           (verdict === "Ganador" || verdict === "Descartar") && (
             <Button
@@ -389,13 +568,26 @@ export function TestRow({ test, product }: { test: AdsTest; product?: AdsProduct
             </Button>
           )}
       </div>
+      {!loading && test.status === "active" && settings!.capabilities.edit && !canManageAds && (
+        <p role="status" className="text-xs text-muted-foreground">
+          {META_MANAGEMENT_UNAVAILABLE}
+        </p>
+      )}
       {query.isError || catalog.isError ? (
-        <Failure error={query.error ?? catalog.error} />
+        <Failure
+          error={query.error ?? catalog.error}
+          retry={() => {
+            void query.refetch();
+            void catalog.refetch();
+          }}
+        />
+      ) : loading ? (
+        <Skeleton className="h-10" aria-label="Cargando medición de la prueba" />
       ) : (
         <div className="flex flex-wrap gap-6 text-sm">
           {settings!.capabilities.spend && (
             <span>
-              Gasto <strong>{money(spend, spendTotal.currency)}</strong>
+              Gasto <strong>{money(spend)}</strong>
             </span>
           )}
           <span>
@@ -403,7 +595,7 @@ export function TestRow({ test, product }: { test: AdsTest; product?: AdsProduct
           </span>
           {settings!.capabilities.spend && (
             <span>
-              C. venta <strong>{money(costSale, spendTotal.currency)}</strong>
+              C. venta <strong>{money(costSale)}</strong>
             </span>
           )}
           {settings!.capabilities.profit && (
@@ -418,7 +610,7 @@ export function TestRow({ test, product }: { test: AdsTest; product?: AdsProduct
         {rows.map((row) => (
           <a
             key={row.id}
-            href={`/publicidad/anuncios?storeId=${test.storeId}&from=${start}&to=${today}&adId=${row.id}`}
+            href={`/publicidad/anuncios?storeId=${test.storeId}&adAccountId=${test.accountId}&from=${start}&to=${today}&adId=${row.id}`}
             className="text-xs text-primary underline"
           >
             {row.name}
@@ -478,7 +670,9 @@ export function TestRow({ test, product }: { test: AdsTest; product?: AdsProduct
           )}
           {error != null && <Failure error={error} />}
           <Button
-            disabled={pending || (modal === "scale" && method === "duplicate" && !campaign)}
+            disabled={
+              pending || !canManageAds || (modal === "scale" && method === "duplicate" && !campaign)
+            }
             onClick={() => void decide()}
           >
             {pending ? "Aplicando en Meta…" : "Confirmar"}

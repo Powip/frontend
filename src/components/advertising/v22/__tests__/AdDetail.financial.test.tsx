@@ -5,7 +5,8 @@ import type { AdsProduct, AdsRow, AdsSales, AdsSummary } from "@/services/advert
 
 let mockProducts: AdsProduct[] = [];
 let mockEdit = false;
-let mockSpend = true;
+let mockCanManage: boolean | undefined = true;
+let mockVariations: Array<AdsRow & { variationType?: string; parentAdId?: string }> = [];
 const mockRow = {
   id: "ad",
   accountId: "account",
@@ -36,7 +37,7 @@ jest.mock("../context", () => ({
     identity: { token: "token", companyId: "company" },
     settings: {
       rules: { highFrequency: 3.5 },
-      capabilities: { spend: mockSpend, profit: true, edit: mockEdit },
+      capabilities: { spend: true, profit: true, edit: mockEdit },
       tags: { hooks: [], creators: [] },
     },
   }),
@@ -46,7 +47,13 @@ jest.mock("../context", () => ({
       key[0] === "products-v22"
         ? { products: mockProducts }
         : key[0] === "ad-detail"
-          ? { row: mockRow, daily: [], variations: [], changes: [] }
+          ? {
+              row: mockRow,
+              daily: [],
+              variations: mockVariations,
+              changes: [],
+              capabilities: { canManageAds: mockCanManage },
+            }
           : {},
     isError: false,
   }),
@@ -54,43 +61,11 @@ jest.mock("../context", () => ({
 
 beforeEach(() => {
   mockEdit = false;
-  mockSpend = true;
+  mockCanManage = true;
   mockProducts = [];
+  mockVariations = [];
   mockRow.status = "ACTIVE";
   mockRow.effectiveStatus = "ACTIVE";
-  mockRow.currency = "PEN";
-  mockRow.insights = { ...mockRow.insights, spend: "60", cpm: "2" };
-});
-it("formats USD detail and creative variations in USD, and keeps spend hidden without permission", () => {
-  mockRow.currency = "USD";
-  const props = {
-    row: mockRow,
-    summary: { adProducts: [], days: [], quality: { warnings: [] } } as unknown as AdsSummary,
-    sales: {
-      totals: emptySales(),
-      byAd: [],
-      byChannel: [],
-      byProduct: [],
-      deliveryHistory: [],
-    } as unknown as AdsSales,
-    from: "2026-10-01",
-    to: "2026-10-16",
-    average: { hook: null, hold: null, ctr: null, conversion: null },
-    onClose: jest.fn(),
-    onAction: jest.fn(),
-  };
-  const view = render(<AdvertisingAdDetail {...props} />);
-  expect(screen.getAllByText("Gasto")[0].parentElement).toHaveTextContent(/USD.*60\.00/);
-  expect(screen.getByText(/CPM/)).toHaveTextContent(/CPM USD.*2\.00/);
-  expect(screen.getByText("Anuncio real · original").parentElement).toHaveTextContent(
-    /USD.*60\.00/,
-  );
-  expect(screen.queryByText(/S\/.*60\.00/)).not.toBeInTheDocument();
-  mockSpend = false;
-  view.rerender(<AdvertisingAdDetail {...props} />);
-  expect(screen.queryByText("Gasto")).not.toBeInTheDocument();
-  expect(screen.queryByText(/USD/)).not.toBeInTheDocument();
-  expect(screen.getByText(/CTR enlace/)).not.toHaveTextContent("CPM");
 });
 it("uses historical product costs even without the current catalog and ignores later catalog cost changes", () => {
   const metric = {
@@ -190,6 +165,136 @@ it.each([
     expect(screen.queryByText(new RegExp(effectiveStatus))).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Activar" })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Pausar" }));
-    expect(onAction).toHaveBeenCalledWith({ rows: [mockRow], action: "pause" });
+    expect(onAction).toHaveBeenCalledWith({ rows: [mockRow], action: "pause", canManageAds: true });
   },
 );
+
+it.each([false, undefined])(
+  "keeps local editing separate from unavailable Meta management (%s)",
+  (canManageAds) => {
+    mockEdit = true;
+    mockCanManage = canManageAds;
+    render(
+      <AdvertisingAdDetail
+        row={mockRow}
+        summary={{ adProducts: [], days: [], quality: { warnings: [] } } as unknown as AdsSummary}
+        sales={
+          {
+            totals: emptySales(),
+            byAd: [],
+            byChannel: [],
+            byProduct: [],
+            deliveryHistory: [],
+          } as unknown as AdsSales
+        }
+        from="2026-10-01"
+        to="2026-10-16"
+        average={{ hook: null, hold: null, ctr: null, conversion: null }}
+        onClose={jest.fn()}
+        onAction={jest.fn()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Pausar" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Presupuesto" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Crear variación/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/No hay acceso confirmado/)).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Tipo de gancho" })).toBeEnabled();
+  },
+);
+it("opens the known Meta creative without commercial data and leaves every sale-derived metric unknown", () => {
+  mockEdit = true;
+  const view = render(
+    <AdvertisingAdDetail
+      row={mockRow}
+      from="2026-10-01"
+      to="2026-10-16"
+      average={{ hook: null, hold: null, ctr: null, conversion: null }}
+      onClose={jest.fn()}
+      onAction={jest.fn()}
+    />,
+  );
+  expect(screen.getByRole("heading", { name: "Vista previa real de Meta" })).toBeInTheDocument();
+  expect(
+    screen.getByText(/Las ventas y la rentabilidad aún no se han podido consultar/),
+  ).toBeInTheDocument();
+  expect(screen.getByText("Gasto", { selector: "p" }).parentElement).toHaveTextContent(
+    /S\/\s*60\.00/,
+  );
+  for (const label of ["Ventas", "Costo por venta", "ROAS", "Máximo", "Ganancia"]) {
+    expect(screen.getByText(label, { exact: true }).parentElement).toHaveTextContent("—");
+    expect(screen.getByText(label, { exact: true }).parentElement).not.toHaveTextContent(
+      /S\/\s*0\.00/,
+    );
+  }
+  expect(screen.getByRole("combobox", { name: "Tipo de gancho" })).toBeDisabled();
+  view.unmount();
+});
+
+it("keeps missing estimated sales unknown and does not declare the ad works", () => {
+  const summary = {
+    adProducts: [],
+    days: [
+      {
+        date: "2026-10-16",
+        adId: "ad",
+        accountId: "account",
+        storeId: "store",
+        channel: "web",
+        currency: "PEN",
+        spend: "60",
+        results: null,
+      },
+    ],
+    quality: { warnings: [] },
+  } as unknown as AdsSummary;
+  const sales = {
+    totals: emptySales(),
+    byAd: [],
+    byChannel: [{ ...emptySales(), storeId: "store", channel: "web" }],
+    byProduct: [],
+    deliveryHistory: [],
+  } as unknown as AdsSales;
+  render(
+    <AdvertisingAdDetail
+      row={mockRow}
+      summary={summary}
+      sales={sales}
+      from="2026-10-01"
+      to="2026-10-25"
+      average={{ hook: null, hold: null, ctr: null, conversion: null }}
+      onClose={jest.fn()}
+      onAction={jest.fn()}
+    />,
+  );
+  expect(screen.getByText("Ventas", { exact: true }).parentElement).toHaveTextContent("—");
+  expect(screen.getByText("Ventas", { exact: true }).parentElement).not.toHaveTextContent("0");
+  expect(screen.getByText(/Faltan resultados de Meta/)).toBeInTheDocument();
+  expect(screen.getAllByText(/Datos incompletos: confirma las ventas/).length).toBeGreaterThan(0);
+  expect(screen.queryByText(/Funciona:/)).not.toBeInTheDocument();
+});
+
+it("shows a known original only once when the API includes it in the creative family", () => {
+  mockVariations = [
+    { ...mockRow, variationType: "original" },
+    {
+      ...mockRow,
+      id: "variation",
+      name: "Nuevo creativo",
+      parentAdId: mockRow.id,
+      variationType: "media",
+    },
+  ];
+  render(
+    <AdvertisingAdDetail
+      row={mockRow}
+      from="2026-10-01"
+      to="2026-10-25"
+      average={{ hook: null, hold: null, ctr: null, conversion: null }}
+      onClose={jest.fn()}
+      onAction={jest.fn()}
+    />,
+  );
+  expect(screen.getAllByText("Anuncio real · original")).toHaveLength(1);
+  expect(screen.getByText("Nuevo creativo · variación")).toBeInTheDocument();
+  expect(screen.queryByText("Anuncio real · variación")).not.toBeInTheDocument();
+});

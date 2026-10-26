@@ -32,6 +32,14 @@ import {
   type AdsSavedView,
 } from "@/services/advertisingV22Service";
 import { useAdvertisingStoreFilter } from "../AdvertisingStoreFilterContext";
+import { useAdvertisingAccountFilter } from "../AdvertisingAccountFilterContext";
+import {
+  isActiveAd,
+  lastSpendAt,
+  lastSpendLabel,
+  sortAdItems,
+  catalogChannels,
+} from "./ads-list-model";
 import { useAdsQuery, useAdsV22, useRefreshAds } from "./context";
 import {
   adAge,
@@ -46,8 +54,6 @@ import {
   metaPauseDescription,
   canScale,
   comparisonPeriod,
-  commonCurrency,
-  currencyTotal,
   creativeAverage,
   creativeMetrics,
   dayKey,
@@ -64,11 +70,13 @@ import {
   hourlySpendScope,
   spendAvailabilityDetail,
 } from "./model";
-import { Block, Failure, MetricCard, SelectField, exportAdsWorkbook } from "./shared";
-import { AdvertisingDataStatus } from "./DataStatus";
-import { advertisingSectionHref } from "../advertising-sections";
+import { Block, Failure, MetricCard, SelectField, exportAdsWorkbook, dataWarning } from "./shared";
 import { useNumbers } from "./Numbers";
-import { AdvertisingActionDialog, type ActionSelection } from "./Actions";
+import {
+  AdvertisingActionDialog,
+  META_MANAGEMENT_UNAVAILABLE,
+  type ActionSelection,
+} from "./Actions";
 import { AdvertisingAdDetail } from "./AdDetail";
 import { AdThumbnail } from "./Thumbnail";
 
@@ -102,35 +110,48 @@ const STATUS_ORDER = [
 export function AdvertisingAds() {
   const { fromDate, toDate, setPeriod } = useAdminPeriod();
   const { storeId, setStoreId, stores } = useAdvertisingStoreFilter();
+  const { accountId, setAccountId } = useAdvertisingAccountFilter();
   const { identity, settings } = useAdsV22();
   const refresh = useRefreshAds();
   const today = limaToday();
   const to = toDate < today ? toDate : today;
   const [level, setLevel] = useState<AdsLevel>("ad");
+  const recentlyIncreased = (row: AdsRow) => {
+    const date = row.budget?.increasedAt?.slice(0, 10);
+    const elapsed = date ? (Date.parse(today) - Date.parse(date)) / 86_400_000 : null;
+    return elapsed !== null && elapsed >= 0 && elapsed <= 7;
+  };
   const [view, setView] = useState("performance");
   const [channel, setChannel] = useState("all");
   const [state, setState] = useState("Todos");
+  const [population, setPopulation] = useState("active");
+  const [sort, setSort] = useState("recent");
+  const [syncing, setSyncing] = useState(false);
   const [search, setSearch] = useState("");
+  const navigationScope = `${storeId}:${accountId}`;
   type DrillPath = Array<{ level: AdsLevel; id: string; name: string }>;
   const [navigation, setNavigation] = useState<{ storeId: string; path: DrillPath }>({
-    storeId,
+    storeId: navigationScope,
     path: [],
   });
   // A breadcrumb from another store must never override the current store filter.
-  const path = navigation.storeId === storeId ? navigation.path : [];
+  const path = navigation.storeId === navigationScope ? navigation.path : [];
   const setPath = (value: SetStateAction<DrillPath>) =>
     setNavigation((previous) => ({
-      storeId,
+      storeId: navigationScope,
       path:
         typeof value === "function"
-          ? value(previous.storeId === storeId ? previous.path : [])
+          ? value(previous.storeId === navigationScope ? previous.path : [])
           : value,
     }));
   useEffect(() => {
-    setNavigation((current) => (current.storeId === storeId ? current : { storeId, path: [] }));
-  }, [storeId]);
+    setNavigation((current) =>
+      current.storeId === navigationScope ? current : { storeId: navigationScope, path: [] },
+    );
+  }, [navigationScope]);
   const [selected, setSelected] = useState<AdsRow | null>(null);
-  const [action, setAction] = useState<ActionSelection | null>(null);
+  useEffect(() => setSelected(null), [storeId, accountId]);
+  const [action, setActionSelection] = useState<ActionSelection | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const [viewName, setViewName] = useState("");
@@ -151,7 +172,7 @@ export function AdvertisingAds() {
     to,
     level,
     storeId: effectiveStoreId,
-    accountId: pathValue("account"),
+    accountId: accountId !== "all" ? accountId : pathValue("account"),
     campaignId: pathValue("campaign"),
     adsetId: pathValue("adset"),
   };
@@ -160,9 +181,50 @@ export function AdvertisingAds() {
     (id, signal) => getAllAdsCatalog(id, filters, signal),
     fromDate <= to,
   );
+  const catalogAccountIds = new Set(
+    catalog.data?.rows.map((row) => row.accountId).filter(Boolean) ?? [],
+  );
+  const canManageAds =
+    permissions.edit &&
+    catalogAccountIds.size === 1 &&
+    catalog.data?.capabilities?.canManageAds === true;
+  function setAction(selection: ActionSelection | null) {
+    setActionSelection(
+      selection
+        ? {
+            ...selection,
+            canManageAds:
+              selection.canManageAds ??
+              (canManageAds &&
+                selection.rows.length > 0 &&
+                selection.rows.every((row) => catalogAccountIds.has(row.accountId))),
+          }
+        : null,
+    );
+  }
   const fullAds = useAdsQuery(
-    ["catalog", { from: fromDate, to, level: "ad", storeId }],
-    (id, signal) => getAllAdsCatalog(id, { from: fromDate, to, level: "ad", storeId }, signal),
+    [
+      "catalog",
+      {
+        from: fromDate,
+        to,
+        level: "ad",
+        storeId,
+        accountId: accountId !== "all" ? accountId : undefined,
+      },
+    ],
+    (id, signal) =>
+      getAllAdsCatalog(
+        id,
+        {
+          from: fromDate,
+          to,
+          level: "ad",
+          storeId,
+          accountId: accountId !== "all" ? accountId : undefined,
+        },
+        signal,
+      ),
     fromDate <= to,
   );
   const needsCreativeAverage = view !== "performance" || selected !== null;
@@ -177,6 +239,7 @@ export function AdvertisingAds() {
     (id, signal) => getAllAdsCatalog(id, averageFilters, signal),
     needsCreativeAverage,
   );
+  // useNumbers retains the full residual pool; the selected store scopes its query key.
   const data = useNumbers(fromDate, to, storeId, "ads");
   const scaleData = useNumbers(dayKey(subDays(parseISO(today), 6)), today, storeId, "scale-check");
   const productData = useAdsQuery(["products-v22", storeId], (id, signal) =>
@@ -191,8 +254,10 @@ export function AdvertisingAds() {
   );
   const scoped = useMemo(
     () =>
-      data.data ? channelData(data.data.summary, data.data.sales, channel, effectiveStoreId) : null,
-    [data.data, channel, effectiveStoreId],
+      data.data && !data.isError
+        ? channelData(data.data.summary, data.data.sales, channel, effectiveStoreId)
+        : null,
+    [data.data, data.isError, channel, effectiveStoreId],
   );
   useEffect(() => {
     if (!fullAds.data) return;
@@ -231,13 +296,16 @@ export function AdvertisingAds() {
         stable = first !== null && last !== null ? last <= first * 1.05 : null;
       }
       return {
-        ...(data.data ? channelRow(row, data.data.summary, channel) : row),
+        ...(!data.isError && data.data && daysForRow(row, data.data.summary).length
+          ? channelRow(row, data.data.summary, channel)
+          : row),
         stockDays,
+        lastSpendAt: lastSpendAt(row, data.data?.summary),
         recentCostStable: stable ?? row.recentCostStable,
         product,
       };
     },
-    [data.data, productData.data, scaleData.data, today, channel],
+    [data.data, data.isError, productData.data, scaleData.data, today, channel],
   );
   const financialCalculator = useMemo(
     () => (scoped ? createAdFinancialCalculator(scoped.summary, scoped.sales) : null),
@@ -247,59 +315,84 @@ export function AdvertisingAds() {
     (rows: AdsRow[]) =>
       rows.map(enrich).map((row) => {
         const value = financialCalculator?.(row) ?? null;
-        const channels = new Set<string>(
-          data.data ? daysForRow(row, data.data.summary).map((day) => day.channel) : [],
+        const localDays = !data.isError && data.data ? daysForRow(row, data.data.summary) : [];
+        const resolvedChannels = new Set(
+          localDays
+            .map((day) => day.channel)
+            .filter((channel) => channel === "messages" || channel === "web"),
         );
+        const channels = resolvedChannels.size ? resolvedChannels : catalogChannels(row);
         return {
           row,
           value,
           channels,
           state: value
             ? adStatus(row, value, settings!.rules, today, rowResultTotal(row, channels))
-            : "Sin datos suficientes",
+            : isMetaPaused(row)
+              ? "Pausado"
+              : "Sin datos suficientes",
           scalable: value ? canScale(row, value, settings!.rules, today) : false,
+          scaleCandidate: value
+            ? canScale(
+                { ...row, stockDays: Number.MAX_SAFE_INTEGER },
+                value,
+                settings!.rules,
+                today,
+              )
+            : false,
         };
       }),
-    [enrich, financialCalculator, data.data, settings!.rules, today],
+    [enrich, financialCalculator, data.data, data.isError, settings!.rules, today],
   );
   const allItems = useMemo(() => analyze(fullAds.data?.rows ?? []), [analyze, fullAds.data]);
   const baseItems = useMemo(
     () => (catalog.data === fullAds.data ? allItems : analyze(catalog.data?.rows ?? [])),
     [catalog.data, fullAds.data, allItems, analyze],
   );
-  const items = useMemo(
+  const populationItems = useMemo(
     () =>
       baseItems
-        .filter(
-          (item) =>
-            item.row.insights.spend === null ||
-            (numeric(item.row.insights.spend) ?? 0) > 0 ||
-            (isMetaPaused(item.row) && item.row.pausedInPeriod === true),
-        )
         .filter((item) => channel === "all" || item.channels.has(channel))
-        .filter((item) =>
-          state === "Todos" || state === "Para escalar"
-            ? state !== "Para escalar" || item.scalable
-            : state === "Escalando"
-              ? !!item.row.budget?.increasedAt
-              : item.state === state,
-        )
         .filter(
           (item) =>
             !search ||
             item.row.name.toLocaleLowerCase("es").includes(search.toLocaleLowerCase("es")),
-        )
-        .sort(
-          (a, b) =>
-            STATUS_ORDER.indexOf(a.state) - STATUS_ORDER.indexOf(b.state) ||
-            (numeric(b.row.insights.spend) ?? 0) - (numeric(a.row.insights.spend) ?? 0),
         ),
-    [baseItems, channel, state, search],
+    [baseItems, channel, search],
+  );
+  const populationCounts = {
+    active: populationItems.filter((item) => isActiveAd(item.row)).length,
+    spend: populationItems.filter((item) => (numeric(item.row.insights.spend) ?? 0) > 0).length,
+    all: populationItems.length,
+  };
+  const items = useMemo(
+    () =>
+      sortAdItems(
+        populationItems.filter(
+          (item) =>
+            (population === "all" ||
+              (population === "active"
+                ? isActiveAd(item.row)
+                : (numeric(item.row.insights.spend) ?? 0) > 0)) &&
+            (state === "Todos" ||
+              (state === "Para escalar"
+                ? item.scalable
+                : state === "Escalando"
+                  ? recentlyIncreased(item.row)
+                  : item.state === state)),
+        ),
+        sort,
+        STATUS_ORDER,
+      ),
+    [populationItems, population, state, sort],
   );
   const pageScope = JSON.stringify([
     fromDate,
     to,
     storeId,
+    accountId,
+    population,
+    sort,
     level,
     view,
     channel,
@@ -320,9 +413,9 @@ export function AdvertisingAds() {
     [items, view],
   );
   const pageItems = orderedItems.slice(pageStart, pageStart + 50);
-  const totalSpend = currencyTotal(
-    items.map((item) => ({ currency: item.row.currency, amount: item.value?.spend })),
-  );
+  const totalSpend = items.some((item) => item.value?.spend == null)
+    ? null
+    : items.reduce((sum, item) => sum + item.value!.spend!, 0);
   function drill(row: AdsRow) {
     if (row.level === "ad") {
       setSelected(row);
@@ -338,13 +431,15 @@ export function AdvertisingAds() {
   }
   function applyView(savedView: AdsSavedView) {
     const value = savedView.state;
-    if (LEVELS.some((item) => item.value === value.level))
-      setLevel(value.level === "store" ? "account" : (value.level as AdsLevel));
+    if (LEVELS.some((item) => item.value === value.level)) setLevel(value.level as AdsLevel);
     setView(value.view ?? "performance");
     setState(value.status ?? "Todos");
     setChannel(value.channel ?? "all");
     if (value.from && value.to) setPeriod(value.from, value.to);
     if (value.storeId) setStoreId(value.storeId);
+    if (value.adAccountId) setAccountId(value.adAccountId);
+    setPopulation(value.population ?? "active");
+    setSort(value.sort ?? "recent");
     setPath([]);
   }
   async function saveView() {
@@ -364,6 +459,9 @@ export function AdvertisingAds() {
           status: state,
           channel,
           storeId,
+          adAccountId: accountId,
+          population,
+          sort,
         },
       });
       await refresh();
@@ -375,11 +473,58 @@ export function AdvertisingAds() {
       setSaving(false);
     }
   }
+  const lastSync =
+    (catalog.data as typeof catalog.data & { lastSyncedAt?: string | null })?.lastSyncedAt ??
+    catalog.data?.accounts
+      .map(
+        (account) =>
+          (
+            account as typeof account & {
+              lastSyncedAt?: string | null;
+              lastSuccessfulAt?: string | null;
+            }
+          ).lastSyncedAt ??
+          (account as typeof account & { lastSuccessfulAt?: string | null }).lastSuccessfulAt ??
+          account.coverage?.lastSuccessfulAt,
+      )
+      .filter((date): date is string => !!date)
+      .sort()[0] ??
+    null;
+  const metaRateLimited = catalog.data?.accounts.some(
+    (account) => account.coverage?.lastErrorCode === "PROVIDER_RATE",
+  );
+  const syncAge = lastSync
+    ? Math.max(0, Math.floor((Date.now() - Date.parse(lastSync)) / 60_000))
+    : null;
+  const syncedLabel = lastSync
+    ? new Intl.DateTimeFormat("es-PE", {
+        timeZone: "America/Lima",
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(lastSync))
+    : null;
+  async function syncNow() {
+    if (!identity || syncing) return;
+    setSyncing(true);
+    setError(null);
+    try {
+      await adsWrite(identity, "post", "/meta/v22/module-sync", {
+        from: dayKey(subDays(parseISO(today), 1)),
+        to: today,
+        ...(accountId !== "all" ? { accountId } : {}),
+      });
+      await refresh();
+    } catch (failure) {
+      setError(failure);
+    } finally {
+      setSyncing(false);
+    }
+  }
+  const unassigned = allItems.filter((item) => !item.row.store?.id);
   const flagged = allItems.filter(
     (item) => item.state === "Sin resultados" || item.state === "Pierdes plata",
-  );
-  const flaggedSpend = currencyTotal(
-    flagged.map((item) => ({ currency: item.row.currency, amount: item.value?.spend })),
   );
   const scale = allItems.filter((item) => item.scalable);
   const stateCount = (item: string): number | "—" => {
@@ -411,12 +556,8 @@ export function AdvertisingAds() {
   const actionRows = (row: AdsRow) =>
     row.level === "account" || row.level === "store"
       ? allItems
-          .filter(
-            (item) =>
-              item.row.currency === row.currency &&
-              (row.level === "account"
-                ? item.row.accountId === row.id
-                : item.row.store?.id === row.id),
+          .filter((item) =>
+            row.level === "account" ? item.row.accountId === row.id : item.row.store?.id === row.id,
           )
           .map((item) => item.row)
       : [row];
@@ -470,9 +611,54 @@ export function AdvertisingAds() {
         ...(permissions.profit ? { Ganancia: value?.gain } : {}),
       };
     });
+  if (fromDate > to)
+    return <p className="p-6 text-sm">El período elegido todavía no tiene días transcurridos.</p>;
   return (
     <main className="space-y-5 p-4 sm:p-6 lg:p-8">
       <TodayStrip />
+      <div
+        className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground"
+        role="status"
+      >
+        <p>
+          {syncedLabel
+            ? `Datos de Meta al ${syncedLabel} · ${syncAge !== null && syncAge < 60 ? `hace ${syncAge} min` : `hace ${Math.floor((syncAge ?? 0) / 60)} h`}`
+            : "Aún no hay una sincronización correcta registrada"}{" "}
+          · se actualizan cada hora (hoy y ayer).
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={syncing || !identity || catalog.data?.capabilities?.canSync !== true}
+          onClick={() => void syncNow()}
+        >
+          {syncing ? "Actualizando…" : "Actualizar Meta"}
+        </Button>
+      </div>
+      {metaRateLimited && (
+        <p
+          role="status"
+          className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+        >
+          Meta limitó temporalmente las consultas. Se muestra el catálogo guardado a la fecha
+          indicada; actualización pendiente.
+        </p>
+      )}
+      {unassigned.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          {unassigned.length} anuncios sin tienda
+          {permissions.spend
+            ? ` · ${money(unassigned.reduce((sum, item) => sum + (numeric(item.row.insights.spend) ?? 0), 0))} de gasto`
+            : ""}{" "}
+          ·{" "}
+          <a
+            className="underline"
+            href={`/publicidad/configuracion?section=accounts&storeId=${storeId}&adAccountId=${accountId}`}
+          >
+            Asignar →
+          </a>
+        </div>
+      )}
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
@@ -520,7 +706,7 @@ export function AdvertisingAds() {
         </Button>
         <a
           className="inline-flex items-center rounded-md border px-3 text-xs"
-          href={`/publicidad/pruebas?storeId=${storeId}`}
+          href={`/publicidad/pruebas?storeId=${storeId}&adAccountId=${accountId}`}
         >
           🧪 Pruebas
         </a>
@@ -547,17 +733,20 @@ export function AdvertisingAds() {
           + Guardar vista actual
         </Button>
       </div>
-      {flagged.length > 0 && permissions.edit && (
+      {flagged.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
           <p>
             {flagged.filter((item) => item.state === "Sin resultados").length} anuncios sin
             resultados · {flagged.filter((item) => item.state === "Pierdes plata").length} pierden
             plata
-            {permissions.spend ? ` · ${money(flaggedSpend.amount, flaggedSpend.currency)}` : ""}
+            {permissions.spend
+              ? ` · ${money(flagged.reduce((sum, item) => sum + (item.value?.spend ?? 0), 0))}`
+              : ""}
           </p>
           <Button
             size="sm"
             variant="destructive"
+            disabled={!canManageAds}
             onClick={() => setAction({ rows: flagged.map((item) => item.row), action: "pause" })}
           >
             Revisar y pausar
@@ -589,13 +778,20 @@ export function AdvertisingAds() {
             size="sm"
             variant="outline"
             onClick={() => {
-              setAction({ rows: undo.rows, action: "activate" });
+              setAction({ rows: undo.rows, action: "activate", canManageAds: true });
               setUndo(null);
             }}
           >
             Deshacer
           </Button>
         </div>
+      )}
+      {permissions.edit && catalog.data && !canManageAds && (
+        <p role="status" className="rounded-md border p-3 text-sm text-muted-foreground">
+          {catalogAccountIds.size > 1
+            ? "Esta vista incluye varias cuentas. Abre el detalle de un anuncio o filtra una cuenta para confirmar sus permisos de gestión."
+            : META_MANAGEMENT_UNAVAILABLE}
+        </p>
       )}
       <div className="flex flex-wrap items-end gap-3">
         <SelectField
@@ -606,7 +802,7 @@ export function AdvertisingAds() {
             if (value !== "ad") setView("performance");
             setPath([]);
           }}
-          options={LEVELS.filter((item) => item.value !== "store")}
+          options={LEVELS}
         />
         <SelectField
           label="Canal"
@@ -641,7 +837,7 @@ export function AdvertisingAds() {
           variant="outline"
           disabled={!catalog.data}
           onClick={() =>
-            void exportAdsWorkbook(`POWIP_Anuncios_${fromDate}_${to}`, [
+            void exportAdsWorkbook(`POWIP_Publicidad_Anuncios_${fromDate}_${to}`, [
               { name: "Anuncios", rows: exportRows() },
             ]).catch(setError)
           }
@@ -683,6 +879,28 @@ export function AdvertisingAds() {
           </button>
         </div>
       )}
+      <div className="flex flex-wrap items-end gap-3">
+        <SelectField
+          label="Mostrar"
+          value={population}
+          onChange={setPopulation}
+          options={[
+            { value: "active", label: `Activos (${populationCounts.active})` },
+            { value: "spend", label: `Con gasto en el período (${populationCounts.spend})` },
+            { value: "all", label: `Todos (${populationCounts.all})` },
+          ]}
+        />
+        <SelectField
+          label="Ordenar"
+          value={sort}
+          onChange={setSort}
+          options={[
+            { value: "recent", label: "Último activo" },
+            { value: "spend", label: "Mayor gasto" },
+            { value: "attention", label: "Qué atender primero" },
+          ]}
+        />
+      </div>
       <div className="flex gap-1 overflow-x-auto">
         {STATES.filter(
           (item) =>
@@ -694,7 +912,10 @@ export function AdvertisingAds() {
             size="sm"
             variant={state === item ? "secondary" : "ghost"}
             className="shrink-0"
-            onClick={() => setState(item)}
+            onClick={() => {
+              setState(item);
+              if (item === "Pausado") setPopulation("all");
+            }}
           >
             {item}{" "}
             {stateCount(item)}
@@ -714,21 +935,22 @@ export function AdvertisingAds() {
                 ? "Medido parcial"
                 : "Medido por anuncio"}{" "}
               · {pct(ratio(data.data.sales.totals.attributedOrders, data.data.sales.totals.orders))}{" "}
-              de pedidos con anuncio identificado. Las ventas sin referencia de anuncio no se
-              reparten de nuevo.
+              de pedidos con anuncio identificado. Las ventas sin referencia se estiman por canal,
+              descontando primero las ventas ya identificadas.
             </p>
           )}
+          {[
+            ...new Set([
+              ...data.data.summary.quality.warnings,
+              ...(!summarySpendAvailable(data.data.summary) &&
+              data.data.summary.quality.warnings.length === 0
+                ? ["META_DATA_PARTIAL"]
+                : []),
+            ]),
+          ].map((warning) => (
+            <p key={warning}>{dataWarning(warning)}</p>
+          ))}
         </div>
-      )}
-      {data.data && (
-        <AdvertisingDataStatus
-          warnings={data.data.summary.quality.warnings}
-          spendAvailable={summarySpendAvailable(data.data.summary)}
-          settingsHref={advertisingSectionHref("/publicidad/configuracion", fromDate, toDate, {
-            storeId: effectiveStoreId,
-            section: "accounts",
-          })}
-        />
       )}
       {needsCreativeAverage && averageCatalog.isError && (
         <Failure error={averageCatalog.error} retry={averageCatalog.refetch} />
@@ -736,16 +958,24 @@ export function AdvertisingAds() {
       {fullAds.isError && !catalog.isError && !data.isError && (
         <Failure error={fullAds.error} retry={fullAds.refetch} />
       )}
-      {catalog.isError || data.isError ? (
-        <Failure
-          error={catalog.error ?? data.error}
-          retry={() => {
-            void catalog.refetch();
-            void data.refetch();
-          }}
-        />
-      ) : !catalog.data || !data.data ? (
-        <Skeleton className="h-96" aria-label="Cargando anuncios" />
+      {data.isError && <Failure error={data.error} retry={data.refetch} />}
+      {catalog.data && !data.data && !data.isError && (
+        <p role="status" className="text-sm text-muted-foreground">
+          Anuncios cargados. Consultando ventas y rentabilidad…
+        </p>
+      )}
+      {catalog.isError ? (
+        <Failure error={catalog.error} retry={catalog.refetch} />
+      ) : !catalog.data ? (
+        <div className="rounded-lg border" aria-label="Cargando anuncios" role="status">
+          {Array.from({ length: 7 }, (_, index) => (
+            <div key={index} className="flex gap-4 border-b p-4">
+              <Skeleton className="h-12 w-12" />
+              <Skeleton className="h-12 flex-1" />
+              <Skeleton className="h-12 w-24" />
+            </div>
+          ))}
+        </div>
       ) : (
         <>
           {view === "creatives" && (
@@ -794,7 +1024,7 @@ export function AdvertisingAds() {
                     {[
                       ...new Set(
                         allItems.map((item) => {
-                          const tags = data.data!.summary.adProducts.find(
+                          const tags = data.data?.summary.adProducts.find(
                             (ad) => ad.adId === item.row.id,
                           );
                           return type === "format"
@@ -808,7 +1038,7 @@ export function AdvertisingAds() {
                       ),
                     ].map((label) => {
                       const grouped = allItems.filter((item) => {
-                        const tags = data.data!.summary.adProducts.find(
+                        const tags = data.data?.summary.adProducts.find(
                           (ad) => ad.adId === item.row.id,
                         );
                         const name =
@@ -857,7 +1087,7 @@ export function AdvertisingAds() {
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {pageItems.map(({ row, value, state: rowState }, index) => (
                 <button
-                  key={JSON.stringify([row.level, row.accountId, row.id, row.currency])}
+                  key={row.id}
                   className="overflow-hidden rounded-lg border bg-card text-left"
                   onClick={() => setSelected(row)}
                 >
@@ -884,7 +1114,7 @@ export function AdvertisingAds() {
                           <span>
                             Gasto
                             <br />
-                            {money(value?.spend, row.currency)}
+                            {money(value ? value.spend : numeric(row.insights.spend), row.currency)}
                           </span>
                           <span>
                             C. venta
@@ -939,14 +1169,14 @@ export function AdvertisingAds() {
                           ]),
                       ...(permissions.spend
                         ? [
-                            scoped!.sales.totals.attributedOrders > 0
+                            (scoped?.sales.totals.attributedOrders ?? 0) > 0
                               ? "Costo por venta"
                               : "C. venta est.",
                             "ROAS",
                           ]
                         : []),
                       ...(permissions.profit ? ["Ganancia"] : []),
-                      ...(scoped!.sales.totals.attributedOrders > 0
+                      ...((scoped?.sales.totals.attributedOrders ?? 0) > 0
                         ? ["Pedidos POWIP", "Entregados"]
                         : []),
                       "Acciones",
@@ -958,252 +1188,315 @@ export function AdvertisingAds() {
                   </tr>
                 </thead>
                 <tbody>
-                  {pageItems.map(({ row, value, state: rowState, scalable, channels }) => {
-                    const metric = creativeMetrics(row);
-                    const lowData = (metric.impressions ?? 0) < 1000;
-                    return (
-                      <tr
-                        key={JSON.stringify([row.level, row.accountId, row.id, row.currency])}
-                        className="border-t align-top hover:bg-muted/20"
-                      >
-                        <td className="min-w-64">
-                          <button
-                            className="flex items-center gap-3 text-left"
-                            onClick={() => drill(row)}
-                          >
-                            {row.level === "ad" && (
-                              <AdThumbnail
-                                adId={row.id}
-                                accountId={row.accountId}
-                                source={row.creative?.thumbnailUrl}
-                                name={row.name}
-                              />
-                            )}
-                            <span>
-                              <span className="block font-medium text-primary">{row.name}</span>
-                              <span className="block text-xs text-muted-foreground">
-                                {row.store?.name ?? "Sin tienda"}
-                                {row.product ? ` · ${row.product.name}` : ""}
-                                {row.level === "ad" && adAge(row, today) !== null
-                                  ? ` · ${adAge(row, today)} días`
-                                  : ""}
-                                {row.parentAdId ? " · variación" : ""}
-                              </span>
-                            </span>
-                          </button>
-                        </td>
-                        <td className="min-w-44 text-xs">
-                          {view === "creatives" ? (
-                            diagnosis(row, average, undefined, settings!.rules.highFrequency).label
-                          ) : (
-                            <>
-                              <span
-                                className={`font-medium ${permissions.profit && rowState === "Pierdes plata" ? "text-red-600" : permissions.profit && rowState === "Rentable" ? "text-emerald-600" : ""}`}
-                              >
-                                {permissions.profit ||
-                                !["Rentable", "Pierdes plata", "Cerca del límite"].includes(
-                                  rowState,
-                                )
-                                  ? rowState
-                                  : "Activo"}
-                              </span>
-                              <p className="mt-1 text-muted-foreground">
-                                {rowState === "Pausado"
-                                  ? metaPauseDescription(row)
-                                  : rowState === "Aprendizaje"
-                                    ? "Espera antes de decidir."
-                                    : rowState === "Sin resultados"
-                                      ? "Revisa y pausa."
-                                      : scalable
-                                        ? "Puedes subir 20%."
-                                        : row.stockDays === null && row.level === "ad"
-                                          ? "Verifica stock antes de escalar."
-                                          : ""}
-                              </p>
-                              {value?.evidence && (
-                                <div className="mt-1 space-y-1 text-muted-foreground">
-                                  <p>
-                                    {financialBasis(value)}
-                                    {value.evidence.basis === "measured"
-                                      ? ` · ${pct(value.evidence.attributionCoverage)} de pedidos identificados`
-                                      : ""}
-                                  </p>
-                                  {financialCauses(value, permissions.profit).map((cause) => (
-                                    <p key={cause}>{cause}</p>
-                                  ))}
-                                </div>
+                  {pageItems.map(
+                    ({ row, value, state: rowState, scalable, scaleCandidate, channels }) => {
+                      const metric = creativeMetrics(row);
+                      const lowData = (metric.impressions ?? 0) < 1000;
+                      return (
+                        <tr key={row.id} className="border-t align-top hover:bg-muted/20">
+                          <td className="min-w-64">
+                            <button
+                              className="flex items-center gap-3 text-left"
+                              onClick={() => drill(row)}
+                            >
+                              {row.level === "ad" && (
+                                <AdThumbnail
+                                  adId={row.id}
+                                  accountId={row.accountId}
+                                  source={row.creative?.thumbnailUrl}
+                                  name={row.name}
+                                />
                               )}
-                            </>
-                          )}
-                        </td>
-                        {view === "creatives" ? (
-                          <>
-                            <td>{row.creative?.format ?? "—"}</td>
-                            {[metric.hook, metric.hold].map((value, index) => (
-                              <td key={index} className={lowData ? "text-muted-foreground" : ""}>
-                                {row.creative?.format === "video" ? pct(value) : "—"}
-                                {lowData && row.creative?.format === "video" && (
-                                  <span className="block text-xs">poca data</span>
+                              <span>
+                                <span className="block font-medium text-primary">{row.name}</span>
+                                <span className="block text-xs text-muted-foreground">
+                                  {row.store?.name ?? "Sin tienda"}
+                                  {row.product ? ` · ${row.product.name}` : ""}
+                                  {row.level === "ad" && adAge(row, today) !== null
+                                    ? ` · ${adAge(row, today)} días`
+                                    : ""}
+                                  {row.parentAdId ? " · variación" : ""}
+                                </span>
+                                <span
+                                  className="block text-xs text-muted-foreground"
+                                  title="Última hora o fecha con gasto positivo registrado en POWIP"
+                                >
+                                  Último gasto: {lastSpendLabel(row, data.data?.summary, today)}
+                                </span>
+                              </span>
+                            </button>
+                          </td>
+                          <td className="min-w-44 text-xs">
+                            {view === "creatives" ? (
+                              diagnosis(row, average, undefined, settings!.rules.highFrequency)
+                                .label
+                            ) : (
+                              <>
+                                <span
+                                  className={`font-medium ${permissions.profit && rowState === "Pierdes plata" ? "text-red-600" : permissions.profit && rowState === "Rentable" ? "text-emerald-600" : ""}`}
+                                >
+                                  {permissions.profit ||
+                                  !["Rentable", "Pierdes plata", "Cerca del límite"].includes(
+                                    rowState,
+                                  )
+                                    ? rowState
+                                    : "Activo"}
+                                </span>
+                                {recentlyIncreased(row) && (
+                                  <span
+                                    className="ml-2 text-blue-600"
+                                    title="El presupuesto de su conjunto o campaña aumentó en los últimos siete días."
+                                  >
+                                    · Escalando
+                                  </span>
+                                )}
+                                {((numeric(row.insights.frequency) ?? 0) >=
+                                  settings!.rules.highFrequency ||
+                                  (row.ctrDecline ?? 0) >= 0.25) && (
+                                  <span
+                                    className="ml-2 text-amber-600"
+                                    title="Frecuencia alta o caída de CTR de al menos 25%."
+                                  >
+                                    · Cansado
+                                  </span>
+                                )}
+                                <p
+                                  className="mt-1 line-clamp-2 max-w-64 text-muted-foreground"
+                                  title={[
+                                    rowState === "Pausado"
+                                      ? metaPauseDescription(row)
+                                      : rowState === "Aprendizaje"
+                                        ? `Tiene ${adAge(row, today) ?? "pocos"} días. Espera antes de decidir.`
+                                        : rowState === "Sin resultados"
+                                          ? "Revisa y pausa."
+                                          : scalable
+                                            ? "Puedes subir 20%."
+                                            : scaleCandidate
+                                              ? row.stockDays == null
+                                                ? "Verifica stock antes de escalar."
+                                                : `Solo ${decimal(row.stockDays)} días de stock: repón antes de escalar.`
+                                              : rowState === "Pierdes plata"
+                                                ? "Baja presupuesto o pausa."
+                                                : rowState === "Cerca del límite"
+                                                  ? "No le subas presupuesto."
+                                                  : "Todavía no hay ventas suficientes para decidir.",
+                                    ...(value
+                                      ? [
+                                          financialBasis(value),
+                                          ...financialCauses(value, permissions.profit),
+                                        ]
+                                      : []),
+                                  ].join(" ")}
+                                >
+                                  {rowState === "Pausado"
+                                    ? metaPauseDescription(row)
+                                    : rowState === "Aprendizaje"
+                                      ? "Espera antes de decidir."
+                                      : rowState === "Sin resultados"
+                                        ? "Revisa y pausa."
+                                        : scalable
+                                          ? "Puedes subir 20%."
+                                          : scaleCandidate
+                                            ? row.stockDays == null
+                                              ? "Verifica stock antes de escalar."
+                                              : `Solo ${decimal(row.stockDays)} días de stock: repón antes de escalar.`
+                                            : rowState === "Pierdes plata"
+                                              ? "Baja presupuesto o pausa."
+                                              : rowState === "Cerca del límite"
+                                                ? "No le subas presupuesto."
+                                                : value
+                                                  ? financialBasis(value)
+                                                  : "Consulta las ventas para medir."}
+                                </p>
+                              </>
+                            )}
+                          </td>
+                          {view === "creatives" ? (
+                            <>
+                              <td>{row.creative?.format ?? "—"}</td>
+                              {[metric.hook, metric.hold].map((value, index) => (
+                                <td key={index} className={lowData ? "text-muted-foreground" : ""}>
+                                  {row.creative?.format === "video" ? pct(value) : "—"}
+                                  {lowData && row.creative?.format === "video" && (
+                                    <span className="block text-xs">poca data</span>
+                                  )}
+                                </td>
+                              ))}
+                              <td>
+                                {decimal(metric.ctr, "%")}
+                                {lowData && (
+                                  <span className="block text-xs text-muted-foreground">
+                                    poca data
+                                  </span>
                                 )}
                               </td>
-                            ))}
-                            <td>
-                              {decimal(metric.ctr, "%")}
-                              {lowData && (
-                                <span className="block text-xs text-muted-foreground">
-                                  poca data
-                                </span>
-                              )}
-                            </td>
-                            <td>
-                              {pct(metric.conversion)}
-                              {(metric.clicks ?? 0) < 30 && (
-                                <span className="block text-xs text-muted-foreground">
-                                  poca data
-                                </span>
-                              )}
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            {permissions.spend && (
-                              <td className="whitespace-nowrap tabular-nums">
-                                {money(value?.spend, row.currency)}
+                              <td>
+                                {pct(metric.conversion)}
+                                {(metric.clicks ?? 0) < 30 && (
+                                  <span className="block text-xs text-muted-foreground">
+                                    poca data
+                                  </span>
+                                )}
                               </td>
-                            )}
-                            <td className="min-w-40 text-xs">
-                              {[...channels]
-                                .filter((item) => item !== "other")
-                                .map((item) => (
-                                  <p key={item}>
-                                    {item === "web" ? "Web" : "Mensajes"}:{" "}
-                                    {decimal(resultCount(row, item))}
-                                    {permissions.spend && (
-                                      <span className="block text-muted-foreground">
-                                        {money(
-                                          numeric(
-                                            row.insights.resultMetrics?.[
-                                              item === "web" ? "webPurchases" : "messages"
-                                            ].costPerResult,
-                                          ),
-                                          row.currency,
-                                        )}{" "}
-                                        c/u
-                                      </span>
-                                    )}
+                            </>
+                          ) : (
+                            <>
+                              {permissions.spend && (
+                                <td className="whitespace-nowrap tabular-nums">
+                                  {money(
+                                    value ? value.spend : numeric(row.insights.spend),
+                                    row.currency,
+                                  )}
+                                </td>
+                              )}
+                              <td className="min-w-40 text-xs">
+                                {[...channels].every(
+                                  (item) => item !== "messages" && item !== "web",
+                                ) && (
+                                  <p title="El catálogo local todavía no confirma el destino ni el tipo de resultado de este anuncio.">
+                                    —
                                   </p>
-                                ))}
-                            </td>
-                            <td>{decimal(numeric(row.insights.ctr), "%")}</td>
+                                )}
+                                {[...channels]
+                                  .filter((item) => item !== "other")
+                                  .map((item) => (
+                                    <p key={item}>
+                                      {item === "web" ? "Web" : "Mensajes"}:{" "}
+                                      {decimal(resultCount(row, item))}
+                                      {permissions.spend && (
+                                        <span className="block text-muted-foreground">
+                                          {money(
+                                            numeric(
+                                              row.insights.resultMetrics?.[
+                                                item === "web" ? "webPurchases" : "messages"
+                                              ].costPerResult,
+                                            ),
+                                          )}{" "}
+                                          c/u
+                                        </span>
+                                      )}
+                                    </p>
+                                  ))}
+                              </td>
+                              <td>{decimal(numeric(row.insights.ctr), "%")}</td>
+                              <td
+                                className={
+                                  (numeric(row.insights.frequency) ?? 0) >=
+                                  settings!.rules.highFrequency
+                                    ? "text-red-600"
+                                    : ""
+                                }
+                                title={
+                                  row.insights.frequency == null && row.level === "store"
+                                    ? "Meta no calcula frecuencia conjunta entre cuentas. No se promedia."
+                                    : "Dato directo de Meta para este nivel y rango"
+                                }
+                              >
+                                {decimal(numeric(row.insights.frequency))}
+                              </td>
+                            </>
+                          )}
+                          {permissions.spend && (
+                            <>
+                              <td>{money(value?.costSale, row.currency)}</td>
+                              <td>{decimal(value?.roas, "×")}</td>
+                            </>
+                          )}
+                          {permissions.profit && (
                             <td
                               className={
-                                (numeric(row.insights.frequency) ?? 0) >=
-                                settings!.rules.highFrequency
-                                  ? "text-red-600"
-                                  : ""
-                              }
-                              title={
-                                row.insights.frequency == null && row.level === "store"
-                                  ? "Meta no calcula frecuencia conjunta entre cuentas. No se promedia."
-                                  : "Dato directo de Meta para este nivel y rango"
+                                value?.gain == null
+                                  ? "text-muted-foreground"
+                                  : value.gain < 0
+                                    ? "text-red-600"
+                                    : "text-emerald-600"
                               }
                             >
-                              {decimal(numeric(row.insights.frequency))}
+                              {money(value?.gain)}
                             </td>
-                          </>
-                        )}
-                        {permissions.spend && (
-                          <>
-                            <td>{money(value?.costSale, row.currency)}</td>
-                            <td>{decimal(value?.roas, "×")}</td>
-                          </>
-                        )}
-                        {permissions.profit && (
-                          <td
-                            className={
-                              value?.gain == null
-                                ? "text-muted-foreground"
-                                : value.gain < 0
-                                  ? "text-red-600"
-                                  : "text-emerald-600"
-                            }
-                          >
-                            {money(value?.gain)}
-                          </td>
-                        )}
-                        {scoped!.sales.totals.attributedOrders > 0 && (
-                          <>
-                            <td>{decimal(value?.orders)}</td>
-                            <td>{decimal(value?.delivered)}</td>
-                          </>
-                        )}
-                        <td>
-                          <div className="flex min-w-28 flex-wrap gap-1">
-                            {row.level === "ad" && view === "creatives" && permissions.edit && (
-                              <Button size="sm" variant="outline" onClick={() => setSelected(row)}>
-                                Variación
-                              </Button>
-                            )}
-                            {permissions.edit && (
-                              <>
+                          )}
+                          {(scoped?.sales.totals.attributedOrders ?? 0) > 0 && (
+                            <>
+                              <td>{decimal(value?.orders)}</td>
+                              <td>{decimal(value?.delivered)}</td>
+                            </>
+                          )}
+                          <td>
+                            <div className="flex min-w-28 flex-wrap gap-1">
+                              {permissions.edit && !canManageAds && row.level === "ad" && (
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  onClick={() =>
-                                    setAction({
-                                      rows: actionRows(row),
-                                      action:
-                                        row.effectiveStatus === "PAUSED" ? "activate" : "pause",
-                                    })
-                                  }
+                                  onClick={() => setSelected(row)}
                                 >
-                                  {row.effectiveStatus === "PAUSED" ? "▶ Activar" : "⏸ Pausar"}
+                                  Gestionar en detalle
                                 </Button>
-                                {row.budget && (
+                              )}
+                              {row.level === "ad" && view === "creatives" && canManageAds && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setSelected(row)}
+                                >
+                                  Variación
+                                </Button>
+                              )}
+                              {canManageAds && (
+                                <>
                                   <Button
                                     size="sm"
                                     variant="outline"
                                     onClick={() =>
                                       setAction({
-                                        rows: [row],
-                                        action: scalable ? "scale" : "budget",
+                                        rows: actionRows(row),
+                                        action:
+                                          row.effectiveStatus === "PAUSED" ? "activate" : "pause",
                                       })
                                     }
                                   >
-                                    {scalable
-                                      ? "🚀 +20%"
-                                      : row.currency === "PEN"
-                                        ? "S/"
-                                        : row.currency}
+                                    {row.effectiveStatus === "PAUSED" ? "▶ Activar" : "⏸ Pausar"}
                                   </Button>
-                                )}
-                                {row.level === "adset" && (
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => setAction({ rows: [row], action: "duplicate" })}
-                                  >
-                                    Duplicar
-                                  </Button>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                                  {row.budget && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() =>
+                                        setAction({
+                                          rows: [row],
+                                          action: scalable ? "scale" : "budget",
+                                        })
+                                      }
+                                    >
+                                      {scalable ? "🚀 +20%" : "S/"}
+                                    </Button>
+                                  )}
+                                  {row.level === "adset" && (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() =>
+                                        setAction({ rows: [row], action: "duplicate" })
+                                      }
+                                    >
+                                      Duplicar
+                                    </Button>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    },
+                  )}
                   {level !== "ad" && (
                     <tr className="border-t bg-muted/60 font-semibold">
                       <td>Total · {items.length} grupos</td>
                       <td colSpan={view === "performance" ? 1 : 5}>
-                        {permissions.spend ? money(totalSpend.amount, totalSpend.currency) : ""}
+                        {permissions.spend ? money(totalSpend) : ""}
                       </td>
                       <td colSpan={12} className="text-xs font-normal text-muted-foreground">
                         Los resultados se conservan por canal. Frecuencia y alcance no se suman.
-                        {permissions.spend && items.length > 0 && !totalSpend.currency
-                          ? " Los importes de monedas distintas no se suman."
-                          : ""}
                       </td>
                     </tr>
                   )}
@@ -1211,14 +1504,20 @@ export function AdvertisingAds() {
               </table>
               {items.length === 0 && (
                 <p className="p-8 text-center text-sm text-muted-foreground">
-                  No hay anuncios con gasto o pausas en este período para estos filtros.
+                  {!catalog.data.accounts.length
+                    ? "Falta conectar una cuenta publicitaria."
+                    : population === "active"
+                      ? "Sin anuncios activos para estos filtros. Revisa Con gasto en el período o Todos."
+                      : population === "spend"
+                        ? "Sin anuncios con gasto en este período."
+                        : "No hay anuncios para estos filtros."}
                 </p>
               )}
             </div>
           )}
         </>
       )}
-      {catalog.data && data.data && items.length > 0 && (
+      {catalog.data && items.length > 0 && (
         <nav
           aria-label="Páginas de anuncios"
           className="flex flex-wrap items-center justify-between gap-3 text-sm"
@@ -1257,13 +1556,13 @@ export function AdvertisingAds() {
         onClose={() => setAction(null)}
         onPaused={(rows) => setUndo({ rows, until: Date.now() + 6000 })}
       />
-      {selected && data.data && (
+      {selected && (
         <AdvertisingAdDetail
           row={selected}
           from={fromDate}
           to={to}
-          summary={scoped!.summary}
-          sales={scoped!.sales}
+          summary={scoped?.summary}
+          sales={scoped?.sales}
           average={average}
           onClose={() => setSelected(null)}
           onAction={setAction}
@@ -1296,6 +1595,7 @@ export function AdvertisingAds() {
 export function TodayStrip() {
   const { settings } = useAdsV22();
   const { storeId } = useAdvertisingStoreFilter();
+  const { accountId } = useAdvertisingAccountFilter();
   const today = limaToday();
   const yesterday = dayKey(subDays(parseISO(today), 1));
   const hour = Number(
@@ -1305,46 +1605,30 @@ export function TodayStrip() {
       hourCycle: "h23",
     }).format(new Date()),
   );
-  const sales = useNumbers(yesterday, today, storeId, "today");
-  const summary = sales.data?.summary;
-  const currencyEvidence = summary ? [...summary.days, ...(summary.quality.accountDays ?? [])] : [];
-  const explicitScopes = summary?.quality.spendScopes?.filter((scope) => scope.storeId === storeId);
-  const currency = commonCurrency(
-    currencyEvidence.length ? currencyEvidence : (explicitScopes ?? []),
+  const sales = useNumbers(
+    yesterday,
+    today,
+    storeId,
+    "today",
+    accountId !== "all" ? accountId : undefined,
   );
-  const scopes = [yesterday, today].map((date) => {
-    if (!summary || !currency) return { date, available: false, accountIds: [] as string[] };
-    if (currency === "PEN") return hourlySpendScope(summary, storeId, date);
-    const scope = explicitScopes?.find((scope) => scope.currency === currency);
-    const day = scope?.days.find((day) => day.date === date);
-    const hasCoverageEvidence =
-      summary.quality.spendAvailable !== undefined || summary.quality.coverage !== undefined;
-    const available = explicitScopes
-      ? day?.spendAvailable === true
-      : hasCoverageEvidence && summarySpendAvailable(summary, storeId, date);
-    const accountIds =
-      day?.accountIds ??
-      (storeId === "all" && summary.quality.accountDays
-        ? summary.quality.accountDays.filter(
-            (row) => row.currency === currency && row.date === date,
-          )
-        : summary.days.filter(
-            (row) => row.currency === currency && (storeId === "all" || row.storeId === storeId),
-          )
-      ).map((row) => row.accountId);
-    return { date, available, accountIds: [...new Set(accountIds)].sort() };
-  });
+  const scopes = [yesterday, today].map((date) =>
+    sales.data
+      ? hourlySpendScope(sales.data.summary, storeId, date)
+      : { date, available: false, accountIds: [] as string[] },
+  );
   const accountIds = [
     ...new Set(scopes.filter((scope) => scope.available).flatMap((scope) => scope.accountIds)),
   ].sort();
   const hourly = useAdsQuery(
-    ["hourly", today, storeId, scopes, currency],
+    ["hourly", today, storeId, scopes],
     async (id, signal) => {
       const batches = await Promise.all(
         accountIds.map((accountId) =>
           adsGet<{
             rows: Array<{ date: string; hour: number; spend: string; adId?: string }>;
             timeZone: string;
+            availability?: "available" | "not_synced";
           }>(id, "/meta/v22/hourly", { from: yesterday, to: today, accountId }, signal),
         ),
       );
@@ -1352,8 +1636,9 @@ export function TodayStrip() {
         throw new Error(
           "La comparación por hora requiere cuentas con la misma zona horaria de los pedidos (Perú).",
         );
-      const selectedAds = new Set(summary?.days.map((day) => `${day.date}:${day.adId}`));
+      const selectedAds = new Set(sales.data?.summary.days.map((day) => `${day.date}:${day.adId}`));
       return {
+        available: batches.every((batch) => batch.availability !== "not_synced"),
         rows: batches
           .flatMap((batch) => batch.rows)
           .filter(
@@ -1362,13 +1647,13 @@ export function TodayStrip() {
           ),
       };
     },
-    !!sales.data && !!currency && settings!.capabilities.spend && accountIds.length > 0,
+    !!sales.data && settings!.capabilities.spend && accountIds.length > 0,
   );
   const rowsForDate = (date: string) => {
     const scope = scopes.find((scope) => scope.date === date);
-    if (!currency || !scope?.available) return null;
+    if (!scope?.available) return null;
     if (scope.accountIds.length === 0) return [];
-    return hourly.data?.rows.filter((row) => row.date === date) ?? null;
+    return hourly.data?.available ? hourly.data.rows.filter((row) => row.date === date) : null;
   };
   const chart = Array.from({ length: 24 }, (_, index) => ({
     hour: index,
@@ -1402,7 +1687,7 @@ export function TodayStrip() {
           {settings!.capabilities.spend && (
             <div>
               <p className="text-xs text-muted-foreground">Gasto</p>
-              <p className="text-lg font-semibold">{money(current, currency)}</p>
+              <p className="text-lg font-semibold">{money(current)}</p>
               <p className="text-xs">
                 {pct(current !== null && previous ? (current - previous) / previous : null)} vs.
                 ayer
@@ -1423,10 +1708,8 @@ export function TodayStrip() {
           </div>
           {settings!.capabilities.spend && (
             <div>
-              <p className="text-xs text-muted-foreground">Costo por pedido</p>
-              <p className="text-lg font-semibold">
-                {money(ratio(current, todayOrders), currency)}
-              </p>
+              <p className="text-xs text-muted-foreground">CPV · costo por venta</p>
+              <p className="text-lg font-semibold">{money(ratio(current, todayOrders))}</p>
             </div>
           )}
         </div>
@@ -1444,6 +1727,11 @@ export function TodayStrip() {
         )}
       </div>
       {hourly.isError && <Failure error={hourly.error} retry={hourly.refetch} />}
+      {hourly.data?.available === false && (
+        <p role="status" className="text-xs text-muted-foreground">
+          El desglose por hora aún no está sincronizado. Actualiza Meta para consultar hoy y ayer.
+        </p>
+      )}
       {settings!.capabilities.spend && sales.data && scopes.some((scope) => !scope.available) && (
         <p role="status" className="text-xs text-muted-foreground">
           {scopes
@@ -1459,9 +1747,6 @@ export function TodayStrip() {
       <p className="text-xs text-muted-foreground">
         Las barras muestran 0–23 h. La comparación excluye la hora en curso para comparar el mismo
         tiempo transcurrido.
-        {settings!.capabilities.spend && !currency
-          ? " El gasto requiere una misma moneda confirmada para todas las cuentas."
-          : ""}
       </p>
     </Block>
   );
