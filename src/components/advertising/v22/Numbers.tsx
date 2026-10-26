@@ -30,7 +30,8 @@ import {
 import { fetchBusinessProducts } from "@/services/businessProductsService";
 import { useAdvertisingStoreFilter } from "../AdvertisingStoreFilterContext";
 import { useAdvertisingAccountFilter } from "../AdvertisingAccountFilterContext";
-import { getNumbersV23, type SalesRowV23 } from "@/services/advertisingV23Service";
+import { type SalesRowV23 } from "@/services/advertisingV23Service";
+import { useRawNumbersV23 } from "./useRawNumbersV23";
 import { advertisingSectionHref } from "../advertising-sections";
 import { useAdsQuery, useAdsV22 } from "./context";
 import {
@@ -62,37 +63,32 @@ import { AdvertisingDataStatus } from "./DataStatus";
 export function useNumbers(
   from: string,
   to: string,
-  storeId: string,
+  _storeId: string,
   _suffix = "period",
-  accountId = "all",
+  _accountId = "all",
   enabled = true,
 ) {
-  return useAdsQuery(
-    ["numbers", from, to, storeId, accountId],
-    async (identity, signal) => {
-      const { summary, sales: current } = await getNumbersV23(identity, from, to, signal);
-      // The ad calculator needs the whole residual pool before filtering an account.
-      // Retain the precise sales channel alongside the old family field.
-      const adapt = (row: SalesRowV23) => ({
-        ...row,
-        realChannel: row.channel,
-        channel: row.channelFamily ?? "other",
-      });
-      const sales = {
-        ...current,
-        totals: current.totals,
-        byStore: current.byStore.map(adapt),
-        byChannel: current.byChannel.map(adapt),
-        byProduct: current.byProduct.map(adapt),
-        byAd: current.byAd.map(adapt),
-        daily: current.daily.map(adapt),
-      } as unknown as AdsSales;
-      if (summary.from !== from || summary.to !== to || sales.from !== from || sales.to !== to)
-        throw new Error("Los datos recibidos corresponden a otro período.");
-      return { summary, sales };
-    },
-    enabled && from <= to,
-  );
+  const query = useRawNumbersV23(from, to, enabled);
+  const data = useMemo(() => {
+    if (!query.data) return undefined;
+    const { summary, sales: current } = query.data;
+    // Keep the raw response in the shared cache; only this consumer uses legacy families.
+    const adapt = (row: SalesRowV23) => ({
+      ...row,
+      realChannel: row.channel,
+      channel: row.channelFamily ?? "other",
+    });
+    const sales = {
+      ...current,
+      byStore: current.byStore.map(adapt),
+      byChannel: current.byChannel.map(adapt),
+      byProduct: current.byProduct.map(adapt),
+      byAd: current.byAd.map(adapt),
+      daily: current.daily.map(adapt),
+    } as unknown as AdsSales;
+    return { summary, sales };
+  }, [query.data]);
+  return { ...query, data };
 }
 const dateLabel = (date: string) => format(parseISO(date), "d EEE", { locale: es });
 const difference = (current: number | null, previous: number | null) =>

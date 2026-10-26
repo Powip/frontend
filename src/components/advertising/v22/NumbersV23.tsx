@@ -18,7 +18,6 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { adsGet, type AdsProduct } from "@/services/advertisingV22Service";
 import {
-  getNumbersV23,
   type AdsSalesV23,
   type AdsSummaryV23,
   type SalesRowV23,
@@ -51,13 +50,11 @@ import {
 import { MonthlyNumbersV23 } from "./MonthlyV23";
 import { ProductsV23 } from "./ProductsV23";
 import { DailyPace } from "./Numbers";
+import { useRawNumbersV23 } from "./useRawNumbersV23";
+import { AdvertisingDataNotice } from "./DataNotice";
 
 export function useNumbersV23(from: string, to: string, enabled = true) {
-  return useAdsQuery(
-    ["numbers-v23", from, to],
-    (identity, signal) => getNumbersV23(identity, from, to, signal),
-    enabled && from <= to,
-  );
+  return useRawNumbersV23(from, to, enabled);
 }
 const labelDate = (date: string) => format(parseISO(date), "d 'de' MMMM", { locale: es });
 const valueCell = "whitespace-nowrap px-3 py-3 text-right tabular-nums";
@@ -296,16 +293,7 @@ export function AdvertisingNumbersV23() {
         </div>
       </div>
       {exportError != null && <Failure error={exportError} />}
-      {warnings.length > 0 && (
-        <div
-          role="status"
-          className="rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-100"
-        >
-          {[...new Set(warnings)].map((w) => (
-            <p key={w}>{w}</p>
-          ))}
-        </div>
-      )}
+      <AdvertisingDataNotice messages={warnings} />
       <p className="text-xs text-muted-foreground" data-testid="attribution-v23">
         {metric.attributedOrders > 0
           ? `✓ Medido por anuncio · ${pct(ratio(metric.attributedOrders, metric.orders))} de pedidos. `

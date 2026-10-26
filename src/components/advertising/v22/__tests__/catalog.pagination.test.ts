@@ -16,6 +16,29 @@ beforeEach(() => {
   process.env.NEXT_PUBLIC_API_INTEGRATIONS = "https://integrations.test";
 });
 
+it("loads a 1,484-ad catalog in three bounded requests instead of fifteen", async () => {
+  (axios.get as jest.Mock).mockImplementation(async (_url, options) => {
+    const page = options.params.page;
+    expect(options.params.pageSize).toBe(500);
+    return { data: {
+      rows: [{ id: String(page) }], accounts: [], capabilities: { canManageAds: true },
+      pagination: { page, pageSize: 500, total: 1484, hasMore: page < 3 },
+    } };
+  });
+  const catalog = await getAllAdsCatalog(identity, filters);
+  expect(axios.get).toHaveBeenCalledTimes(3);
+  expect(catalog.rows.map((row) => row.id)).toEqual(["1", "2", "3"]);
+});
+
+it("retains the 10,000-row safety bound when using larger pages", async () => {
+  (axios.get as jest.Mock).mockResolvedValue({ data: {
+    rows: [], accounts: [], capabilities: { canManageAds: true },
+    pagination: { page: 1, pageSize: 500, total: 10001, hasMore: true },
+  } });
+  await expect(getAllAdsCatalog(identity, filters)).rejects.toThrow("Acota el período o la cuenta");
+  expect(axios.get).toHaveBeenCalledTimes(1);
+});
+
 it("loads at most four remaining catalog pages together and preserves server order", async () => {
   const pending = new Map<number, (value: unknown) => void>();
   const signal = new AbortController().signal;

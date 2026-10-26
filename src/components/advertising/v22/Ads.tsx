@@ -1,5 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState, type SetStateAction } from "react";
+import Link from "next/link";
+import { ChevronDown, Clock3, Search } from "lucide-react";
 import { addDays, parseISO, subDays } from "date-fns";
 import {
   Bar,
@@ -79,6 +81,8 @@ import {
 } from "./Actions";
 import { AdvertisingAdDetail } from "./AdDetail";
 import { AdThumbnail } from "./Thumbnail";
+import { AdvertisingDataNotice } from "./DataNotice";
+import { advertisingSectionHref } from "../advertising-sections";
 
 const LEVELS: Array<{ value: AdsLevel; label: string }> = [
   { value: "store", label: "Tienda" },
@@ -244,14 +248,16 @@ export function AdvertisingAds() {
     (id, signal) => getAllAdsCatalog(id, averageFilters, signal),
     needsCreativeAverage,
   );
-  // useNumbers retains the full residual pool; the selected store scopes its query key.
+  // Share the complete residual pool; financial calculators apply the selected store.
   const data = useNumbers(fromDate, to, storeId, "ads");
-  const scaleData = useNumbers(dayKey(subDays(parseISO(today), 6)), today, storeId, "scale-check");
+  const scaleData = useNumbers(dayKey(subDays(parseISO(today), 6)), today, storeId, "scale-check", "all", !!catalog.data);
   const productData = useAdsQuery(["products-v22", storeId], (id, signal) =>
     adsGet<{ products: AdsProduct[] }>(id, "/v22/products", { storeId }, signal),
+    !!catalog.data,
   );
   const saved = useAdsQuery(["saved-views"], (id, signal) =>
     adsGet<{ views: AdsSavedView[] }>(id, "/v22/views", undefined, signal),
+    !!catalog.data,
   );
   const average = useMemo(
     () => creativeAverage(needsCreativeAverage ? (averageCatalog.data?.rows ?? []) : []),
@@ -619,17 +625,28 @@ export function AdvertisingAds() {
   if (fromDate > to)
     return <p className="p-6 text-sm">El período elegido todavía no tiene días transcurridos.</p>;
   return (
-    <main className="space-y-5 p-4 sm:p-6 lg:p-8">
-      <TodayStrip />
+    <main className="space-y-4 p-4 sm:p-6 lg:p-8">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold tracking-tight">Anuncios</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Busca un anuncio o filtra su rendimiento. Abre el detalle para revisarlo.
+          </p>
+        </div>
+        {catalog.isFetching && catalog.data && (
+          <p role="status" className="text-xs text-muted-foreground">Actualizando catálogo…</p>
+        )}
+      </div>
       <div
-        className="flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground"
+        className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-card px-4 py-3 text-xs text-muted-foreground"
         role="status"
       >
-        <p>
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className={`size-2 rounded-full ${metaRateLimited || (catalog.data && !syncedLabel) ? "bg-amber-500" : catalog.data ? "bg-primary" : "bg-muted-foreground/40"}`} aria-hidden="true" />
           {syncedLabel
             ? `Datos de Meta al ${syncedLabel} · ${syncAge !== null && syncAge < 60 ? `hace ${syncAge} min` : `hace ${Math.floor((syncAge ?? 0) / 60)} h`}`
-            : "Aún no hay una sincronización correcta registrada"}{" "}
-          · se actualizan cada hora (hoy y ayer).
+            : catalog.data ? "Aún no hay una sincronización correcta registrada" : "Consultando catálogo guardado…"}
+          {metaRateLimited && <span className="font-medium text-amber-800 dark:text-amber-300">· actualización limitada por Meta</span>}
         </p>
         <Button
           size="sm"
@@ -640,30 +657,6 @@ export function AdvertisingAds() {
           {syncing ? "Actualizando…" : "Actualizar Meta"}
         </Button>
       </div>
-      {metaRateLimited && (
-        <p
-          role="status"
-          className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
-        >
-          Meta limitó temporalmente las consultas. Se muestra el catálogo guardado a la fecha
-          indicada; actualización pendiente.
-        </p>
-      )}
-      {unassigned.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-          {unassigned.length} anuncios sin tienda
-          {permissions.spend
-            ? ` · ${money(unassigned.reduce((sum, item) => sum + (numeric(item.row.insights.spend) ?? 0), 0))} de gasto`
-            : ""}{" "}
-          ·{" "}
-          <a
-            className="underline"
-            href={`/publicidad/configuracion?section=accounts&storeId=${storeId}&adAccountId=${accountId}`}
-          >
-            Asignar →
-          </a>
-        </div>
-      )}
       <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
@@ -709,12 +702,15 @@ export function AdvertisingAds() {
         >
           🎬 Creativos del mes
         </Button>
-        <a
+        <Link
           className="inline-flex items-center rounded-md border px-3 text-xs"
-          href={`/publicidad/pruebas?storeId=${storeId}&adAccountId=${accountId}`}
+          href={advertisingSectionHref("/publicidad/pruebas", fromDate, toDate, {
+            storeId,
+            ...(accountId !== "all" ? { adAccountId: accountId } : {}),
+          })}
         >
           🧪 Pruebas
-        </a>
+        </Link>
         {saved.data?.views.map((item) => (
           <div key={item.id} className="inline-flex rounded-md border">
             <Button size="sm" variant="ghost" onClick={() => applyView(item)}>
@@ -798,7 +794,17 @@ export function AdvertisingAds() {
             : META_MANAGEMENT_UNAVAILABLE}
         </p>
       )}
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-card p-4">
+        <div className="relative min-w-48 flex-1 sm:min-w-64">
+          <Search className="pointer-events-none absolute left-3 top-2.5 size-4 text-muted-foreground" aria-hidden="true" />
+          <Input
+            className="pl-9"
+            aria-label="Buscar anuncios"
+            placeholder="Buscar por nombre"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </div>
         <SelectField
           label="Ver por"
           value={level}
@@ -829,13 +835,6 @@ export function AdvertisingAds() {
             { value: "creatives", label: "Creativos" },
             { value: "gallery", label: "Galería" },
           ]}
-        />
-        <Input
-          className="max-w-xs"
-          aria-label="Buscar anuncios"
-          placeholder="Buscar por nombre"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
         />
         <Button
           size="sm"
@@ -884,7 +883,8 @@ export function AdvertisingAds() {
           </button>
         </div>
       )}
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
         <SelectField
           label="Mostrar"
           value={population}
@@ -905,6 +905,8 @@ export function AdvertisingAds() {
             { value: "attention", label: "Qué atender primero" },
           ]}
         />
+        </div>
+        {catalog.data && <p className="pb-2 text-xs text-muted-foreground tabular-nums">{items.length} {items.length === 1 ? "resultado" : "resultados"}</p>}
       </div>
       <div className="flex gap-1 overflow-x-auto">
         {STATES.filter(
@@ -927,8 +929,22 @@ export function AdvertisingAds() {
           </Button>
         ))}
       </div>
+      {(data.data || metaRateLimited || unassigned.length > 0) && (
+        <AdvertisingDataNotice
+          title={metaRateLimited ? "Mostrando el catálogo guardado" : "Hay datos por completar"}
+          action={<Link className="font-medium text-primary underline underline-offset-4" href={advertisingSectionHref("/publicidad/configuracion", fromDate, toDate, { storeId, ...(accountId !== "all" ? { adAccountId: accountId } : {}), section: "accounts" })}>Revisar</Link>}
+          messages={[
+            ...(metaRateLimited ? ["Meta limitó temporalmente las consultas. Puedes seguir revisando los anuncios; su actualización está pendiente."] : []),
+            ...(unassigned.length ? [`${unassigned.length} anuncios sin tienda${permissions.spend ? ` · ${money(unassigned.reduce((sum, item) => sum + (numeric(item.row.insights.spend) ?? 0), 0))} de gasto` : ""}. Asigna su negocio en Configuración.`] : []),
+            ...(data.data ? [...new Set([
+              ...data.data.summary.quality.warnings,
+              ...(!summarySpendAvailable(data.data.summary) && data.data.summary.quality.warnings.length === 0 ? ["META_DATA_PARTIAL"] : []),
+            ])].map(dataWarning) : []),
+          ]}
+        />
+      )}
       {data.data && (
-        <div className="space-y-1 text-xs text-muted-foreground" role="status">
+        <div className="text-xs text-muted-foreground">
           {data.data.sales.totals.attributedOrders === 0 && (
             <p>
               Costos y ROAS estimados con ventas POWIP; faltan referencias de anuncio para medirlos.
@@ -944,17 +960,6 @@ export function AdvertisingAds() {
               descontando primero las ventas ya identificadas.
             </p>
           )}
-          {[
-            ...new Set([
-              ...data.data.summary.quality.warnings,
-              ...(!summarySpendAvailable(data.data.summary) &&
-              data.data.summary.quality.warnings.length === 0
-                ? ["META_DATA_PARTIAL"]
-                : []),
-            ]),
-          ].map((warning) => (
-            <p key={warning}>{dataWarning(warning)}</p>
-          ))}
         </div>
       )}
       {needsCreativeAverage && averageCatalog.isError && (
@@ -1157,7 +1162,7 @@ export function AdvertisingAds() {
               ))}
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border">
+            <div className="overflow-x-auto rounded-xl border bg-card" aria-label="Resultados de anuncios" aria-busy={catalog.isFetching}>
               <table className="w-full text-sm [&_td]:p-3 [&_th]:p-3">
                 <thead className="bg-muted/60">
                   <tr>
@@ -1185,8 +1190,8 @@ export function AdvertisingAds() {
                         ? ["Pedidos POWIP", "Entregados"]
                         : []),
                       "Acciones",
-                    ].map((label) => (
-                      <th key={label} className="whitespace-nowrap text-left text-xs">
+                    ].map((label, index) => (
+                      <th key={label} scope="col" className={`whitespace-nowrap text-left text-xs ${index === 0 ? "bg-muted sm:sticky sm:left-0 sm:z-20 sm:shadow-[1px_0_0_var(--border)]" : ""}`}>
                         {label}
                       </th>
                     ))}
@@ -1198,8 +1203,8 @@ export function AdvertisingAds() {
                       const metric = creativeMetrics(row);
                       const lowData = (metric.impressions ?? 0) < 1000;
                       return (
-                        <tr key={row.id} className="border-t align-top hover:bg-muted/20">
-                          <td className="min-w-64">
+                        <tr key={row.id} className="group/row border-t align-top hover:bg-muted/20">
+                          <td className="min-w-48 max-w-80 bg-card group-hover/row:bg-muted sm:sticky sm:left-0 sm:z-10 sm:min-w-64 sm:shadow-[1px_0_0_var(--border)]">
                             <button
                               className="flex items-center gap-3 text-left"
                               onClick={() => drill(row)}
@@ -1555,6 +1560,7 @@ export function AdvertisingAds() {
           </div>
         </nav>
       )}
+      <AdsTodayDisclosure />
       {error != null && <Failure error={error} />}
       <AdvertisingActionDialog
         selection={action}
@@ -1594,6 +1600,24 @@ export function AdvertisingAds() {
         </DialogContent>
       </Dialog>
     </main>
+  );
+}
+
+function AdsTodayDisclosure() {
+  const [open, setOpen] = useState(false);
+  return (
+    <details
+      className="group rounded-xl border bg-card"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl px-4 py-3 text-sm font-medium outline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary">
+        <Clock3 className="size-4 text-muted-foreground" aria-hidden="true" />
+        Comparar hoy con ayer
+        <span className="ml-auto text-xs font-normal text-muted-foreground">Por hora</span>
+        <ChevronDown className="size-4 group-open:rotate-180" aria-hidden="true" />
+      </summary>
+      {open && <div className="border-t p-3"><TodayStrip /></div>}
+    </details>
   );
 }
 
