@@ -953,7 +953,9 @@ Estado: ${sale.status}
       (s) =>
         s.hasPendingPayments &&
         (s.commercialStage === "LEAD" ? s.status !== "ANULADO" : !PAGOS_PENDIENTES_EXCLUDED_STATUSES.includes(s.status)) &&
-        (s.commercialStage === "LEAD" || !s.subEstadoCc || CC_CONFIRMED_SUBESTADOS.includes(s.subEstadoCc)),
+        // Una venta confirmada por el vendedor (SALE) conserva su subestado de CC hasta que CC
+        // confirma el despacho; su pago ya es de una venta real y /ventas lo muestra.
+        (s.commercialStage === "LEAD" || s.commercialStage === "SALE" || !s.subEstadoCc || CC_CONFIRMED_SUBESTADOS.includes(s.subEstadoCc)),
     );
     return applyFilters(filtered, filtersPagosPendientes);
   }, [sales, filtersPagosPendientes]);
