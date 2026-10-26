@@ -16,7 +16,8 @@
  *    tiene gestión de Call Center (`subEstadoCc` seteado), ese subestado debe
  *    estar en CC_CONFIRMED_SUBESTADOS ("confirmado" o "reprogramado");
  *    "carrito_recuperado" ya NO pasa. Pedidos sin `subEstadoCc` (sin gestión
- *    CC) pasan igual.
+ *    CC) pasan igual, y también las ventas confirmadas por el vendedor
+ *    (`commercialStage` SALE) aunque su subestado siga en "por_confirmar".
  * 5. `fetchOrders` usa `Promise.allSettled`, no `Promise.all`. Las guías
  *    (`/shipping-guides/store/:id`) son solo enriquecimiento:
  *      - Si falla `order-header/store/:id` o `.../leads-cod` (fuentes de verdad
@@ -515,6 +516,47 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
     expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
     expect(screen.getByText('Control Cuenta')).toBeInTheDocument();
     expect(screen.queryByText('CC Por Confirmar')).not.toBeInTheDocument();
+  });
+
+  it('incluye una venta confirmada por el vendedor (commercialStage SALE) aunque su subEstadoCc siga en "por_confirmar"', async () => {
+    // La confirmación del vendedor marca la venta como SALE pero no toca el subestado de CC:
+    // sigue "por_confirmar" hasta que CC confirme el despacho. Su pago por aprobar ya es de
+    // una venta real (ORD-153293, Cleo Joyas, 2026-10-25) y /ventas lo muestra con el punto rojo.
+    const sale = makeOrderHeader({
+      id: 'order-sale-por-confirmar',
+      orderNumber: 'ORD-SALEPORCONF',
+      status: 'PENDIENTE',
+      commercialStage: 'SALE',
+      subEstadoCc: CC_NOT_CONFIRMED,
+      customer: { ...makeOrderHeader().customer, fullName: 'Venta Confirmada Vendedor' },
+    });
+
+    mockFetchOrdersEndpoints({ orders: [sale] });
+
+    render(<FinanzasPage />);
+
+    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(screen.getByText('Venta Confirmada Vendedor')).toBeInTheDocument();
+  });
+
+  it('mantiene fuera una venta SALE INCOMPLETE con pago PENDING (la denylist de status sigue aplicando)', async () => {
+    const control = makeControlOrder();
+    const incompleteSale = makeOrderHeader({
+      id: 'order-sale-incomplete',
+      orderNumber: 'ORD-SALEINCOMP',
+      status: 'INCOMPLETE',
+      commercialStage: 'SALE',
+      subEstadoCc: CC_NOT_CONFIRMED,
+      customer: { ...makeOrderHeader().customer, fullName: 'Venta Incompleta' },
+    });
+
+    mockFetchOrdersEndpoints({ orders: [control, incompleteSale] });
+
+    render(<FinanzasPage />);
+
+    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(screen.getByText('Control Cuenta')).toBeInTheDocument();
+    expect(screen.queryByText('Venta Incompleta')).not.toBeInTheDocument();
   });
 
   it('excluye un pedido PREPARADO con subEstadoCc "anulado_cc" (terminal negativo, no es venta real)', async () => {
