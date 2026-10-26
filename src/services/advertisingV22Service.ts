@@ -459,17 +459,23 @@ export async function getAllAdsCatalog(
   filters: Omit<MetaCatalogFilters, "page" | "pageSize" | "level"> & { level: AdsLevel },
   signal?: AbortSignal,
 ): Promise<AdsCatalog> {
+  const requestedPageSize = 500;
+  const maximumRows = 10_000;
   let result = await getAdsCatalog(
     identity,
-    { ...filters, page: 1, pageSize: 100 } as MetaCatalogFilters,
+    { ...filters, page: 1, pageSize: requestedPageSize } as MetaCatalogFilters,
     signal,
   );
   const rows = [...result.rows];
   let page = 1;
   // Each page enriches its own rows. Fetch a bounded group together so large
   // accounts do not pay that latency once per page before the list can appear.
-  const knownPages = Math.ceil(result.pagination.total / 100);
-  if (knownPages > 100)
+  const pageSize = result.pagination.pageSize;
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > requestedPageSize)
+    throw new Error("El catálogo devolvió una paginación inválida.");
+  const maximumPages = Math.ceil(maximumRows / pageSize);
+  const knownPages = Math.ceil(result.pagination.total / pageSize);
+  if (result.pagination.total > maximumRows || knownPages > maximumPages)
     throw new Error("El catálogo es demasiado grande. Acota el período o la cuenta.");
   let canManageAds = result.capabilities?.canManageAds === true;
   while (result.pagination.hasMore && page < knownPages) {
@@ -478,13 +484,15 @@ export async function getAllAdsCatalog(
       Array.from({ length: end - page }, (_, index) =>
         getAdsCatalog(
           identity,
-          { ...filters, page: page + index + 1, pageSize: 100 } as MetaCatalogFilters,
+          { ...filters, page: page + index + 1, pageSize } as MetaCatalogFilters,
           signal,
         ),
       ),
     );
     for (const batch of pages) {
       rows.push(...batch.rows);
+      if (rows.length > maximumRows)
+        throw new Error("El catálogo es demasiado grande. Acota el período o la cuenta.");
       canManageAds = canManageAds && batch.capabilities?.canManageAds === true;
     }
     page = end;
@@ -492,14 +500,16 @@ export async function getAllAdsCatalog(
   }
   // Follow hasMore as well: the catalog may grow while pages are being read.
   while (result.pagination.hasMore) {
-    if (++page > 100)
+    if (++page > maximumPages)
       throw new Error("El catálogo es demasiado grande. Acota el período o la cuenta.");
     result = await getAdsCatalog(
       identity,
-      { ...filters, page, pageSize: 100 } as MetaCatalogFilters,
+      { ...filters, page, pageSize } as MetaCatalogFilters,
       signal,
     );
     rows.push(...result.rows);
+    if (rows.length > maximumRows)
+      throw new Error("El catálogo es demasiado grande. Acota el período o la cuenta.");
     canManageAds = canManageAds && result.capabilities?.canManageAds === true;
   }
   return {

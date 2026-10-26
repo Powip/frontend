@@ -88,7 +88,7 @@ export function AdvertisingAdDetail({
       signal,
     ),
   );
-  const preview = useAdsQuery(["ad-preview", row.id, placement], (id, signal) =>
+  const preview = useAdsQuery(["ad-preview", row.id, row.accountId, placement], (id, signal) =>
     adsGet<{ html: string }>(
       id,
       `/meta/v22/ads/${encodeURIComponent(row.id)}/preview`,

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { FlaskConical, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,6 +18,7 @@ import {
   getAllAdsCatalog,
   type AdsProduct,
   type AdsTest,
+  type AdProduct,
 } from "@/services/advertisingV22Service";
 import { useAdvertisingStoreFilter } from "../AdvertisingStoreFilterContext";
 import { useAdvertisingAccountFilter } from "../AdvertisingAccountFilterContext";
@@ -95,9 +97,21 @@ export function AdvertisingTests() {
     (test) => accountId === "all" || test.accountId === accountId,
   );
   const earliestStart = list.map((test) => test.startAt.slice(0, 10)).sort()[0] ?? limaToday();
-  const measurement = useNumbers(earliestStart, limaToday(), storeId, "tests-summary");
+  const testsReady = !!tests.data && !tests.isError;
+  const measurement = useNumbers(
+    earliestStart, limaToday(), storeId, "tests-summary", accountId,
+    testsReady && list.length > 0,
+  );
+  const adAssignments = useAdsQuery(
+    ["ad-products"],
+    (id, signal) => adsGet<{ assignments: AdProduct[] }>(id, "/v22/ad-products", undefined, signal),
+    testsReady && list.length === 0,
+  );
+  const suggestionsReady = testsReady && list.length === 0 &&
+    !!adAssignments.data && !adAssignments.isError;
   const testedProducts = new Set(
-    measurement.data?.summary.adProducts.map((assignment) => assignment.productId) ?? [],
+    (adAssignments.data?.assignments ?? measurement.data?.summary.adProducts ?? [])
+      .map((assignment) => assignment.productId),
   );
   const testDays = measurement.data?.summary.days.filter((day) =>
     list.some(
@@ -191,11 +205,11 @@ export function AdvertisingTests() {
       </div>
     );
   return (
-    <main className="space-y-6 p-4 sm:p-6 lg:p-8">
+    <main className="space-y-5 p-4 sm:p-6 lg:p-8">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Pruebas de productos</h2>
-          <p className="text-xs text-muted-foreground">
+          <h2 className="text-lg font-semibold tracking-tight">Pruebas de productos</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
             Cada prueba se mide desde su inicio, independientemente del período de Anuncios.
           </p>
         </div>
@@ -208,7 +222,11 @@ export function AdvertisingTests() {
           Configura una tienda comercial antes de crear una prueba.
         </p>
       )}
-      <div className="grid gap-3 sm:grid-cols-4">
+      {!tests.data ? (
+        <div role="status" aria-label="Cargando pruebas" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-28 rounded-xl" />)}
+        </div>
+      ) : <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label="Pruebas activas"
           value={list.filter((test) => test.status === "active").length}
@@ -232,10 +250,11 @@ export function AdvertisingTests() {
           value={tests.data && list.length === 0 ? money(0) : money(spentInTests)}
           detail="Desde el inicio de cada prueba; cada anuncio y día se cuenta una vez."
         />
-      </div>
+      </div>}
       {error != null && <Failure error={error} />}
       {products.isError && <Failure error={products.error} retry={products.refetch} />}
-      {!tests.data && <Skeleton className="h-64" />}
+      {adAssignments.isError && <Failure error={adAssignments.error} retry={adAssignments.refetch} />}
+      {!tests.data && <Skeleton className="h-48 rounded-xl" />}
       <Block title="Pruebas y veredictos">
         <div className="space-y-4">
           {visibleTests.map((test) => (
@@ -246,15 +265,22 @@ export function AdvertisingTests() {
             />
           ))}
           {tests.data && list.length === 0 && (
-            <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Todavía no hay pruebas en esta tienda. Una prueba mide un producto nuevo desde su
-                primer anuncio hasta decidir: escalar o descartar.
-              </p>
-              {measurement.data && !measurement.isError && suggestions.length > 0 && (
+            <div className="space-y-5">
+              <div className="flex items-start gap-4 rounded-xl border border-dashed bg-muted/20 p-5">
+                <div className="rounded-xl border bg-card p-3 text-primary"><FlaskConical className="size-5" aria-hidden="true" /></div>
+                <div>
+                  <h3 className="font-semibold">Tu primera prueba empieza con un producto</h3>
+                  <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+                    Todavía no hay pruebas en esta tienda. Elige un producto y sus anuncios para seguir su rendimiento y decidir si escalar o descartar.
+                  </p>
+                  <p className="mt-2 text-xs text-muted-foreground">Cada prueba conserva sus resultados desde la fecha en que empieza.</p>
+                </div>
+              </div>
+              {(!suggestionsReady || !products.data) && !products.isError && !adAssignments.isError && <p role="status" className="text-xs text-muted-foreground">Buscando productos listos para probar…</p>}
+              {suggestionsReady && suggestions.length > 0 && (
                 <div className="grid gap-3 sm:grid-cols-3">
                   {suggestions.map((product) => {
-                    const storeMetric = (measurement.data!.sales.byStore ?? []).find(
+                    const storeMetric = (measurement.data?.sales.byStore ?? []).find(
                       (row) => row.storeId === product.storeId,
                     );
                     const unitsPerOrder = storeMetric
@@ -273,8 +299,9 @@ export function AdvertisingTests() {
                         ? (price - cost) * unitsPerOrder - shippingPerOrder
                         : null;
                     return (
-                      <div key={product.id} className="space-y-2 rounded-lg border p-3">
-                        <p className="font-medium">{product.name}</p>
+                      <div key={product.id} className="flex flex-col gap-3 rounded-xl border bg-card p-4 transition-colors hover:border-primary/40">
+                        <p className="w-fit rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">Listo para preparar</p>
+                        <p className="flex-1 font-medium leading-snug">{product.name}</p>
                         <p className="text-xs text-muted-foreground">
                           {stores.find((store) => store.id === product.storeId)?.name} · Con costo,
                           sin anuncios
@@ -295,6 +322,7 @@ export function AdvertisingTests() {
                         <Button
                           size="sm"
                           variant="outline"
+                          className="mt-1 justify-between"
                           disabled={!canOpenCreate}
                           onClick={() => {
                             setTestStoreId(product.storeId);
@@ -304,11 +332,15 @@ export function AdvertisingTests() {
                           }}
                         >
                           Probar
+                          <ArrowRight className="size-3.5" aria-hidden="true" />
                         </Button>
                       </div>
                     );
                   })}
                 </div>
+              )}
+              {suggestionsReady && products.data && suggestions.length === 0 && (
+                <p className="text-sm text-muted-foreground">Revisa tus productos y sus asignaciones para preparar una nueva prueba.</p>
               )}
             </div>
           )}

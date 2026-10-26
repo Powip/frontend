@@ -725,8 +725,24 @@ it("explains the recorded Meta rate limit while keeping the saved catalog visibl
   mount();
   await screen.findByText("Mostrando 1–1 de 1", {}, { timeout: 5000 });
   expect(screen.getByText(/Meta limitó temporalmente las consultas/)).toHaveTextContent(
-    "Se muestra el catálogo guardado a la fecha indicada; actualización pendiente.",
+    "Puedes seguir revisando los anuncios; su actualización está pendiente.",
   );
   expect(screen.getByText("Anuncio 001")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Actualizar Meta" })).toBeDisabled();
+});
+
+it("loads hourly comparison only after opening it, without delaying the catalog", async () => {
+  mockCount = 1;
+  const view = mount();
+  await screen.findByText("Mostrando 1–1 de 1");
+  const hourlyCalls = () => (axios.get as jest.Mock).mock.calls.filter(([url]) => url.endsWith("/meta/v22/hourly"));
+  expect(hourlyCalls()).toHaveLength(0);
+  expect(mockNumberRequests.some((request) => request.key === "today")).toBe(false);
+  const disclosure = screen.getByText("Comparar hoy con ayer").closest("details")!;
+  disclosure.open = true;
+  fireEvent(disclosure, new Event("toggle"));
+  await waitFor(() => expect(mockNumberRequests.some((request) => request.key === "today")).toBe(true));
+  expect(screen.getByText("Anuncio 001")).toBeInTheDocument();
+  view.unmount();
+  view.client.clear();
 });

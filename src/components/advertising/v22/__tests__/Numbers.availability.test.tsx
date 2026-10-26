@@ -45,12 +45,12 @@ jest.mock("recharts", () => {
   };
 });
 
-it("keeps the selected business query scope while loading the complete v23 pool and product context", async () => {
+it("shares the complete raw v23 query independently of the business while scoping product context", async () => {
   render(<AdvertisingNumbers />);
   const requests = jest.mocked(useAdsQuery).mock.calls;
-  const numbers = requests.filter(([key]) => key[0] === "numbers");
+  const numbers = requests.filter(([key]) => key[0] === "numbers-v23");
   expect(numbers.length).toBeGreaterThanOrEqual(2);
-  expect(numbers.every(([key]) => key[3] === "store")).toBe(true);
+  expect(numbers.every(([key]) => key.length === 3)).toBe(true);
   expect(requests.some(([key]) => key[0] === "products-v22" && key[1] === "store")).toBe(true);
   const adapt = (row: typeof orders.byChannel[number]) => ({ ...row, channelFamily: row.channel, channel: row.channel === "messages" ? "WHATSAPP" : "WEB" });
   const raw = { ...orders, byStore: orders.byStore.map(adapt), byChannel: orders.byChannel.map(adapt), byProduct: orders.byProduct.map(adapt), byAd: orders.byAd.map(adapt), daily: orders.daily.map(adapt) };
@@ -59,10 +59,10 @@ it("keeps the selected business query scope while loading the complete v23 pool 
   const signal = new AbortController().signal;
   const result = await numbers[0][1](identity, signal) as { sales: AdsSales };
   expect(getNumbersV23).toHaveBeenCalledWith(identity, "2026-10-01", "2026-10-02", signal);
-  expect(result.sales.byChannel[0].channel).toBe("web");
-  expect((result.sales.byChannel[0] as unknown as { realChannel: string }).realChannel).toBe("WEB");
+  expect(result.sales.byChannel[0].channel).toBe("WEB");
 });
 
+const rawRow = (row: AdsSales["byChannel"][number]) => ({ ...row, channelFamily: row.channel, channel: row.channel === "messages" ? "WHATSAPP" : "WEB" });
 let source: AdsSummary;
 let orders: AdsSales;
 beforeEach(() => {
@@ -166,8 +166,8 @@ beforeEach(() => {
     (key) =>
       ({
         data:
-          key[0] === "numbers"
-            ? { summary: source, sales: orders }
+          key[0] === "numbers-v23"
+            ? { summary: source, sales: { ...orders, byStore: orders.byStore.map(rawRow), byChannel: orders.byChannel.map(rawRow), byProduct: orders.byProduct.map(rawRow), byAd: orders.byAd.map(rawRow), daily: orders.daily.map(rawRow) } }
             : key[0] === "pace-budgets"
               ? { rows: [] }
               : { products: [] },

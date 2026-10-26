@@ -21,6 +21,8 @@ let mockCatalogRows: AdsRow[];
 let mockProductErrorStoreId: string | null = null;
 let mockMeasurementsLoading = false;
 let mockMeasurementError = false;
+let mockTestsLoading = false;
+const mockNumbersCalls: unknown[][] = [];
 const mockQueries: Array<{
   key: unknown[];
   request: (
@@ -89,11 +91,13 @@ jest.mock("../../AdvertisingAccountFilterContext", () => ({
   useAdvertisingAccountFilter: () => ({ accountId: mockAccountId }),
 }));
 jest.mock("../Numbers", () => ({
-  useNumbers: () => ({
-    data: mockMeasurementsLoading ? undefined : source,
+  useNumbers: (...args: unknown[]) => {
+    mockNumbersCalls.push(args);
+    return {
+    data: mockMeasurementsLoading || args[5] === false ? undefined : source,
     isError: mockMeasurementError,
     error: new Error("Ventas temporalmente no disponibles"),
-  }),
+  }; },
 }));
 jest.mock("../context", () => ({
   useAdsV22: () => ({
@@ -114,10 +118,11 @@ jest.mock("../context", () => ({
   ) => {
     mockQueries.push({ key, request, enabled });
     return {
-      data: {
+      data: key[0] === "tests" && mockTestsLoading ? undefined : {
         rows: mockCatalogRows,
         products: mockProducts,
         tests: mockTests,
+        assignments: source.summary.adProducts,
         capabilities: { canManageAds: mockCanManage },
       },
       isError: key[0] === "test-create-products" && key[1] === mockProductErrorStoreId,
@@ -147,6 +152,8 @@ describe("product-test decision receipt", () => {
     mockProductErrorStoreId = null;
     mockMeasurementsLoading = false;
     mockMeasurementError = false;
+    mockTestsLoading = false;
+    mockNumbersCalls.length = 0;
     mockQueries.length = 0;
     window.history.replaceState({}, "", "/");
     source.summary.quality = { warnings: [], coverage: "complete" };
@@ -157,6 +164,44 @@ describe("product-test decision receipt", () => {
       configurable: true,
       value: () => "7d7b6cb1-15cc-44ce-88f3-487066fd5a70",
     });
+  });
+  it("waits for the tests list before requesting its complete financial period", () => {
+    mockTestsLoading = true;
+    const ui = render(<AdvertisingTests />);
+    expect(mockNumbersCalls.filter((args) => args[3] === "tests-summary")
+      .every((args) => args[5] === false)).toBe(true);
+    expect(mockQueries.filter((query) => query.key[0] === "ad-products")
+      .every((query) => query.enabled === false)).toBe(true);
+    mockTestsLoading = false;
+    mockTests = [test];
+    ui.rerender(<AdvertisingTests />);
+    expect(mockNumbersCalls.some((args) => args[3] === "tests-summary" &&
+      args[0] === "2026-10-01" && args[5] === true)).toBe(true);
+  });
+  it("reads assignments instead of sales and daily spend when the selected tests list is empty", async () => {
+    render(<AdvertisingTests />);
+    expect(mockNumbersCalls.filter((args) => args[3] === "tests-summary")
+      .every((args) => args[5] === false)).toBe(true);
+    const assignments = mockQueries.find((query) => query.key[0] === "ad-products" && query.enabled);
+    expect(assignments).toBeDefined();
+    (axios.get as jest.Mock).mockResolvedValue({ data: { assignments: source.summary.adProducts } });
+    const signal = new AbortController().signal;
+    await assignments!.request({ companyId: "company", token: "token" }, signal);
+    expect(axios.get).toHaveBeenCalledWith(expect.stringContaining("/v22/ad-products"),
+      expect.objectContaining({ signal }));
+    expect(screen.getByText("Gastado en pruebas").parentElement).toHaveTextContent(/S\/\s*0/);
+  });
+  it("keeps at most three unadvertised product suggestions without requiring a financial read", () => {
+    mockMeasurementsLoading = true;
+    mockProducts = ["product", "new-1", "new-2", "new-3", "new-4"].map((id) => ({
+      id, name: id === "product" ? "Producto ya anunciado" : `Producto ${id}`,
+      storeId: "store", canTest: true, unitCost: "10", netPrice: "30", variants: [],
+    } as unknown as AdsProduct));
+    render(<AdvertisingTests />);
+    expect(screen.getAllByRole("button", { name: "Probar" })).toHaveLength(3);
+    expect(screen.queryByText("Producto ya anunciado")).not.toBeInTheDocument();
+    expect(screen.queryByText("Producto new-4")).not.toBeInTheDocument();
+    expect(mockNumbersCalls.every((args) => args[5] === false)).toBe(true);
   });
   it.each(["partial", "foreign"])(
     "keeps the spent-in-tests KPI unknown for %s data even when observed daily spend is numeric",
