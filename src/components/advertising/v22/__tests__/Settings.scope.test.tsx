@@ -83,7 +83,7 @@ it("uses the selected period and store in catalog keys and all related request p
   mockStoreId = "store-a";
   mount();
   const signal = new AbortController().signal;
-  expect(latest("config-ads")).toMatchObject({ key: ["config-ads", "2026-10-17", "2026-10-23", "store-a"], enabled: true });
+  expect(latest("config-ads")).toMatchObject({ key: ["config-ads", "2026-10-17", "2026-10-23", "store-a", "all"], enabled: true });
   await latest("config-ads").request(mockIdentity, signal);
   expect(getAllAdsCatalog).toHaveBeenLastCalledWith(mockIdentity, { from: "2026-10-17", to: "2026-10-23", level: "ad", storeId: "store-a" }, signal);
   expect(latest("products-v22").key).toEqual(["products-v22", "store-a"]);

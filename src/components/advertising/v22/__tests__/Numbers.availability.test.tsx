@@ -2,12 +2,14 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { adsGet, getAdsSales, type AdsSales, type AdsSummary } from "@/services/advertisingV22Service";
+import { getNumbersV23 } from "@/services/advertisingV23Service";
 import { useAdvertisingStoreFilter } from "../../AdvertisingStoreFilterContext";
 import { useAdsQuery, useAdsV22 } from "../context";
 import { emptySales } from "../model";
 import { AdvertisingNumbers, MonthlyNumbers } from "../Numbers";
 import { exportAdsWorkbook } from "../shared";
 
+jest.mock("@/services/advertisingV23Service", () => ({ getNumbersV23: jest.fn() }));
 jest.mock("../context", () => ({ useAdsQuery: jest.fn(), useAdsV22: jest.fn() }));
 jest.mock("../../AdvertisingStoreFilterContext", () => ({ useAdvertisingStoreFilter: jest.fn() }));
 jest.mock("@/services/advertisingV22Service", () => ({
@@ -43,19 +45,22 @@ jest.mock("recharts", () => {
   };
 });
 
-it("requests the selected business for the period, comparison and product context", async () => {
+it("keeps the selected business query scope while loading the complete v23 pool and product context", async () => {
   render(<AdvertisingNumbers />);
   const requests = jest.mocked(useAdsQuery).mock.calls;
-  const numbers = requests.filter(([key]) => key[0] === "numbers" && ["period", "comparison"].includes(String(key[1])));
-  expect(numbers.map(([key]) => key.at(-1))).toEqual(["store", "store"]);
+  const numbers = requests.filter(([key]) => key[0] === "numbers");
+  expect(numbers.length).toBeGreaterThanOrEqual(2);
+  expect(numbers.every(([key]) => key[3] === "store")).toBe(true);
   expect(requests.some(([key]) => key[0] === "products-v22" && key[1] === "store")).toBe(true);
-  jest.mocked(adsGet).mockResolvedValue(source);
-  jest.mocked(getAdsSales).mockResolvedValue(orders);
+  const adapt = (row: typeof orders.byChannel[number]) => ({ ...row, channelFamily: row.channel, channel: row.channel === "messages" ? "WHATSAPP" : "WEB" });
+  const raw = { ...orders, byStore: orders.byStore.map(adapt), byChannel: orders.byChannel.map(adapt), byProduct: orders.byProduct.map(adapt), byAd: orders.byAd.map(adapt), daily: orders.daily.map(adapt) };
+  jest.mocked(getNumbersV23).mockResolvedValue({ summary: source, sales: raw } as never);
   const identity = { token: "token", companyId: "company" };
   const signal = new AbortController().signal;
-  await numbers[0][1](identity, signal);
-  expect(jest.mocked(getAdsSales).mock.calls.every((call) => call[3] === "store")).toBe(true);
-  expect(jest.mocked(adsGet).mock.calls.filter((call) => call[1] === "/v22/summary").every((call) => call[2]?.storeId === "store")).toBe(true);
+  const result = await numbers[0][1](identity, signal) as { sales: AdsSales };
+  expect(getNumbersV23).toHaveBeenCalledWith(identity, "2026-10-01", "2026-10-02", signal);
+  expect(result.sales.byChannel[0].channel).toBe("web");
+  expect((result.sales.byChannel[0] as unknown as { realChannel: string }).realChannel).toBe("WEB");
 });
 
 let source: AdsSummary;

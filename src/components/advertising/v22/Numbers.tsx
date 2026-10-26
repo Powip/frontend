@@ -1,9 +1,9 @@
 "use client";
-import { endOfMonth, format, parseISO } from "date-fns";
+import { endOfMonth, format, parseISO, startOfMonth, subMonths } from "date-fns";
 import { es } from "date-fns/locale";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Bar,
   CartesianGrid,
@@ -28,20 +28,14 @@ import {
   getAllAdsCatalog,
 } from "@/services/advertisingV22Service";
 import { fetchBusinessProducts } from "@/services/businessProductsService";
-import { getNumbersV23, type SalesRowV23 } from "@/services/advertisingV23Service";
 import { useAdvertisingStoreFilter } from "../AdvertisingStoreFilterContext";
 import { useAdvertisingAccountFilter } from "../AdvertisingAccountFilterContext";
+import { getNumbersV23, type SalesRowV23 } from "@/services/advertisingV23Service";
 import { advertisingSectionHref } from "../advertising-sections";
 import { useAdsQuery, useAdsV22 } from "./context";
-import { ExecutiveNumbers } from "./ExecutiveNumbers";
-import {
-  executiveEfficiency,
-  executiveSpend,
-  executiveTotal,
-  comparableAccounts,
-} from "./executive-model";
 import {
   comparisonPeriod,
+  dateRange,
   dayKey,
   decimal,
   type Financial,
@@ -49,17 +43,21 @@ import {
   money,
   monthlyModel,
   numeric,
+  paidRows,
   pct,
   productFinancialRows,
   profitUsage,
   ratio,
   spendAvailabilityDetail,
+  spendRows,
   summarize,
   summarySpendAvailable,
   sumSales,
+  sumSpend,
   trafficLight,
 } from "./model";
-import { Block, dataWarning, exportAdsWorkbook, Failure, MetricCard, SelectField } from "./shared";
+import { Block, Failure, MetricCard, SelectField, exportAdsWorkbook } from "./shared";
+import { AdvertisingDataStatus } from "./DataStatus";
 
 export function useNumbers(
   from: string,
@@ -97,6 +95,8 @@ export function useNumbers(
   );
 }
 const dateLabel = (date: string) => format(parseISO(date), "d EEE", { locale: es });
+const difference = (current: number | null, previous: number | null) =>
+  current === null || previous === null || previous === 0 ? null : (current - previous) / previous;
 
 function missingMetricDetail(
   metric: Financial,
@@ -135,10 +135,9 @@ export function AdvertisingNumbers() {
   const { fromDate, toDate } = useAdminPeriod();
   const { storeId, stores } = useAdvertisingStoreFilter();
   const { settings } = useAdsV22();
-  const [accountId, setAccountId] = useState("all");
   const comparison = comparisonPeriod(fromDate, toDate);
-  const query = useNumbers(fromDate, comparison.effectiveTo, storeId, "period", accountId);
-  const previous = useNumbers(comparison.from, comparison.to, storeId, "comparison", accountId);
+  const query = useNumbers(fromDate, comparison.effectiveTo, storeId);
+  const previous = useNumbers(comparison.from, comparison.to, storeId, "comparison");
   const products = useAdsQuery(["products-v22", storeId], (identity, signal) =>
     adsGet<{ products: AdsProduct[] }>(identity, "/v22/products", { storeId }, signal),
   );
@@ -177,57 +176,10 @@ export function AdvertisingNumbers() {
         ]),
       ]
     : summary.quality.warnings;
-  const scopedFinancial = (channel = "all") => {
-    const legacy = summarize(summary, sales, storeId, channel);
-    if (!sales.executive) return legacy;
-    const metric = executiveTotal(
-      sales.executive.standard.daily.filter(
-        (row) =>
-          (storeId === "all" || row.storeId === storeId) &&
-          (channel === "all" || row.channelFamily === channel),
-      ),
-    );
-    const spend = channel === "all" ? executiveSpend(summary, storeId, accountId) : null;
-    const cod = sales.executive.shopifyCod;
-    const comparable =
-      (!cod?.enabled || (storeId !== "all" && !cod.storeIds.includes(storeId))) &&
-      !sales.executive.quality.codHistoryWithoutEnabledConfiguration;
-    const costs = executiveEfficiency(
-      metric,
-      spend,
-      comparable && comparableAccounts(summary, accountId),
-    );
-    return {
-      ...legacy,
-      spend,
-      orders: metric.orders,
-      confirmed: metric.confirmed,
-      delivered: metric.delivered,
-      units: metric.units,
-      deliveredUnits: metric.deliveredUnits,
-      revenue: numeric(metric.deliveredRevenue),
-      ticket: ratio(numeric(metric.deliveredRevenue), metric.delivered),
-      attributed: metric.attributedOrders,
-      costOrder: costs.costOrder,
-      costConfirmed: costs.costConfirmed,
-      costSale: costs.costDelivered,
-      costUnit:
-        comparable && comparableAccounts(summary, accountId)
-          ? ratio(spend, metric.comparableAttributedDeliveredUnits ?? null)
-          : null,
-      projectedCost: null,
-      projectedGain: null,
-      projectedSales: null,
-      projectedUnits: null,
-      projectedRoas: null,
-      maximum: null,
-      gain: null,
-      gainUnit: null,
-      usage: null,
-      roas: costs.roasDelivered,
-    };
-  };
-  const current = scopedFinancial();
+  const current = summarize(summary, sales, storeId);
+  const prior = previous.data
+    ? summarize(previous.data.summary, previous.data.sales, storeId)
+    : null;
   const scopeName =
     storeId === "all"
       ? "Todo el negocio"
@@ -241,7 +193,9 @@ export function AdvertisingNumbers() {
       : []),
     { id: "total", storeId, name: scopeName, channel: "all" },
   ];
-  const metrics = columns.map((column) => scopedFinancial(column.channel));
+  const metrics = columns.map((column) =>
+    summarize(summary, sales, column.storeId, column.channel),
+  );
   const definitions: Array<{
     label: string;
     key: Exclude<keyof Financial, "evidence">;
@@ -253,24 +207,9 @@ export function AdvertisingNumbers() {
     { label: "Confirmados", key: "confirmed", type: "count" },
     { label: "Entregados", key: "delivered", type: "count" },
     { label: "Unidades entregadas", key: "deliveredUnits", type: "count" },
-    {
-      label: "CPV · costo por pedido atribuido",
-      key: "costOrder",
-      type: "money",
-      permission: "spend",
-    },
-    {
-      label: "Costo por venta confirmada atribuida",
-      key: "costConfirmed",
-      type: "money",
-      permission: "spend",
-    },
-    {
-      label: "Costo por venta entregada atribuida",
-      key: "costSale",
-      type: "money",
-      permission: "spend",
-    },
+    { label: "Costo por pedido", key: "costOrder", type: "money", permission: "spend" },
+    { label: "Costo por confirmado", key: "costConfirmed", type: "money", permission: "spend" },
+    { label: "Costo por venta", key: "costSale", type: "money", permission: "spend" },
     { label: "Costo por unidad", key: "costUnit", type: "money", permission: "spend" },
     {
       label: "Costo por venta proyectado",
@@ -284,15 +223,10 @@ export function AdvertisingNumbers() {
       type: "money",
       permission: "profit",
     },
-    { label: "ROAS entregado", key: "roas", type: "ratio", permission: "spend" },
-    { label: "Ticket por pedido entregado", key: "ticket", type: "money" },
+    { label: "ROAS", key: "roas", type: "ratio", permission: "spend" },
+    { label: "Ticket promedio", key: "ticket", type: "money" },
     { label: "Ganancia por unidad", key: "gainUnit", type: "money", permission: "profit" },
-    {
-      label: "Ganancia reconocida con costos registrados",
-      key: "gain",
-      type: "money",
-      permission: "profit",
-    },
+    { label: "Ganancia", key: "gain", type: "money", permission: "profit" },
   ];
   const visibleDefinitions = definitions.filter(
     (row) => !row.permission || permissions[row.permission],
@@ -330,42 +264,49 @@ export function AdvertisingNumbers() {
     <main className="space-y-6 p-4 sm:p-6 lg:p-8">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold">Mis números</h2>
-        <SelectField
-          label="Cuenta publicitaria"
-          value={accountId}
-          onChange={setAccountId}
-          options={[
-            { value: "all", label: "Todas las cuentas" },
-            ...(summary.accounts ?? []).map((account) => ({
-              value: account.id,
-              label: `${account.name} · ${account.currency}`,
-            })),
-          ]}
+        <span className="rounded-full bg-primary/5 px-3 py-1 text-xs">
+          {current.attributed > 0
+            ? `✓ ${current.attributed < current.orders ? "Medido parcial" : "Medido por anuncio"} · ${pct(ratio(current.attributed, current.orders))} de pedidos`
+            : "◐ Estimado por canal"}
+        </span>
+      </div>
+      <AdvertisingDataStatus
+        warnings={warnings}
+        spendAvailable={summarySpendAvailable(summary, storeId)}
+        settingsHref={configurationLink("accounts")}
+      />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {permissions.spend && (
+          <MetricCard
+            label="Gasto en publicidad"
+            value={money(current.spend)}
+            detail={spendAvailabilityDetail(summary, storeId)}
+            variation={difference(current.spend, prior?.spend ?? null)}
+          />
+        )}
+        <MetricCard
+          label="Pedidos"
+          value={decimal(current.orders)}
+          variation={difference(current.orders, prior?.orders ?? null)}
+        />
+        <MetricCard
+          label="Unidades"
+          value={decimal(current.units)}
+          detail={`${current.deliveredUnits} entregadas`}
+          variation={difference(current.units, prior?.units ?? null)}
+        />
+        <MetricCard
+          label="Facturado (entregado)"
+          value={money(current.revenue)}
+          variation={difference(current.revenue, prior?.revenue ?? null)}
         />
       </div>
-      {warnings.map((warning) => (
-        <p
-          key={warning}
-          role="status"
-          className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
-        >
-          {dataWarning(warning)}
-        </p>
-      ))}
-      <ExecutiveNumbers
-        summary={summary}
-        sales={sales}
-        previous={previous.data}
-        storeId={storeId}
-        accountId={accountId}
-        canSpend={permissions.spend}
-      />
       {previous.isError && (
         <p className="text-xs text-muted-foreground">
           No pudimos obtener la comparación. Los valores del período actual siguen disponibles.
         </p>
       )}
-
+      <MonthlyNumbers />
       <Block
         title="Cuánto me cuesta vender"
         tools={
@@ -458,8 +399,8 @@ export function AdvertisingNumbers() {
         </Link>
         {current.missingCosts > 0 && permissions.profit && (
           <p className="text-sm text-amber-700">
-            {current.missingCosts} pedidos tienen costos históricos pendientes. Los márgenes no se
-            presentan como definitivos mientras falten costos completos de la cohorte.{" "}
+            {current.missingCosts} pedidos tienen costos históricos pendientes. La ganancia sólo
+            incluye la parte con costos registrados.{" "}
             <Link className="underline" href={configurationLink("sales-costs")}>
               Revisar costos de los pedidos →
             </Link>
@@ -467,7 +408,7 @@ export function AdvertisingNumbers() {
         )}
       </Block>
       <Block
-        title="Costo por producto"
+        title="Costo por producto · ◐ Estimado"
         tools={
           <Button
             size="sm"
@@ -482,14 +423,12 @@ export function AdvertisingNumbers() {
                     ...(permissions.spend
                       ? { Gasto: row.spend, "Costo por unidad": row.costUnit }
                       : {}),
-                    "Unidades vendidas": row.units,
                     "Unidades entregadas": row.deliveredUnits,
-                    "Facturación entregada": row.revenue,
                     "Precio neto": row.netUnitPrice,
                     ...(permissions.profit
                       ? {
                           "Costo + envío/unid.": row.costWithShipping,
-                          "Contribución registrada por unidad": row.gainUnit,
+                          "Ganancia por unidad": row.gainUnit,
                           "Publicidad / margen": profitUsage(row.costSale, row.maximum),
                         }
                       : {}),
@@ -510,17 +449,11 @@ export function AdvertisingNumbers() {
                   "Producto",
                   "N° anuncios",
                   ...(permissions.spend ? ["Gasto"] : []),
-                  "Unid. vendidas",
                   "Unid. entregadas",
-                  "Facturación entregada",
                   ...(permissions.spend ? ["Costo por unidad"] : []),
                   "Precio neto",
                   ...(permissions.profit
-                    ? [
-                        "Costo + envío/unid.",
-                        "Contribución registrada/unid.",
-                        "Publicidad / margen",
-                      ]
+                    ? ["Costo + envío/unid.", "Ganancia/unid.", "Publicidad / margen"]
                     : []),
                 ].map((label) => (
                   <th key={label} className="whitespace-nowrap p-3 text-left">
@@ -547,9 +480,7 @@ export function AdvertisingNumbers() {
                       )}
                     </td>
                   )}
-                  <td className="p-3">{row.units}</td>
                   <td className="p-3">{row.deliveredUnits}</td>
-                  <td className="p-3">{money(row.revenue)}</td>
                   {permissions.spend && <td className="p-3">{money(row.costUnit)}</td>}
                   <td className="p-3">{money(row.netUnitPrice)}</td>
                   {permissions.profit && (
@@ -584,11 +515,6 @@ export function AdvertisingNumbers() {
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-muted-foreground">
-          La contribución resta producto, envío y publicidad de los importes reconocidos con costos
-          registrados. No representa utilidad definitiva: devoluciones, comisiones y otros costos no
-          registrados permanecen pendientes.
-        </p>
         {!productRows.length && (
           <p className="text-sm text-muted-foreground">
             Asigna los productos de tus anuncios para comparar su costo.
@@ -601,8 +527,92 @@ export function AdvertisingNumbers() {
           Anuncios sin producto o de catálogo · Configurar →
         </Link>
       </Block>
+      <Block title="Del pedido a la venta">
+        <div className="grid gap-3 sm:grid-cols-4">
+          {[
+            { label: "Pedidos", count: current.orders },
+            { label: "Confirmados", count: current.confirmed },
+            { label: "Entregados", count: current.delivered },
+            { label: "En camino", count: current.inTransit },
+          ].map((stage) => (
+            <div key={stage.label} className="rounded-md bg-muted/50 p-4">
+              <p className="text-sm">{stage.label}</p>
+              <p className="text-xl font-semibold">{stage.count}</p>
+              <p className="text-xs text-muted-foreground">
+                {pct(ratio(stage.count, current.orders))}
+                {permissions.spend ? ` · ${money(ratio(current.spend, stage.count))} c/u` : ""}
+              </p>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Rechazados/anulados:{" "}
+          {Math.max(0, current.confirmed - current.delivered - current.inTransit)}
+        </p>
+      </Block>
+      {permissions.spend && <SpendingTimeline summary={summary} sales={sales} storeId={storeId} />}
       {exportError != null && <Failure error={exportError} />}
     </main>
+  );
+}
+
+function SpendingTimeline({
+  summary,
+  sales,
+  storeId,
+}: {
+  summary: AdsSummary;
+  sales: AdsSales;
+  storeId: string;
+}) {
+  const dates = dateRange(summary.from, summary.to);
+  const grouping = dates.length <= 31 ? "day" : dates.length <= 120 ? "week" : "month";
+  const groups = new Map<
+    string,
+    { date: string; spend: number | null; orders: number; current: boolean }
+  >();
+  for (const date of dates) {
+    const key =
+      grouping === "day"
+        ? date
+        : grouping === "month"
+          ? date.slice(0, 7)
+          : dayKey(
+              new Date(parseISO(date).getTime() - ((parseISO(date).getDay() + 6) % 7) * 86_400_000),
+            );
+    const item = groups.get(key) ?? { date: key, spend: 0, orders: 0, current: false };
+    const dailySpend = summarySpendAvailable(summary, storeId, date)
+      ? sumSpend(spendRows(summary, storeId).filter((row) => row.date === date))
+      : null;
+    item.spend = item.spend === null || dailySpend === null ? null : item.spend + dailySpend;
+    item.orders += sumSales(
+      paidRows(sales.daily, storeId).filter((row) => row.date === date),
+    ).orders;
+    item.current ||= date === summary.today;
+    groups.set(key, item);
+  }
+  return (
+    <Block
+      title={`Gasto y pedidos · por ${grouping === "day" ? "día" : grouping === "week" ? "semana" : "mes"}`}
+    >
+      <div className="h-64">
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart data={[...groups.values()]}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+            <YAxis yAxisId="spend" />
+            <YAxis yAxisId="orders" orientation="right" />
+            <Tooltip />
+            <Bar yAxisId="spend" dataKey="spend" name="Gasto" fill="#6366f1">
+              {[...groups.values()].map((row) => (
+                <Cell key={row.date} fillOpacity={row.current ? 0.45 : 1} />
+              ))}
+            </Bar>
+            <Line yAxisId="orders" dataKey="orders" name="Pedidos" stroke="#111827" dot={false} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    </Block>
   );
 }
 
@@ -1041,7 +1051,7 @@ export function MonthlyNumbers() {
           </p>
         )}
         <p className="text-xs text-muted-foreground">
-          Cada pedido cuenta en el día que entró; la entrega se muestra por separado. Si quedan
+          Cada pedido cuenta en el día que entró; se vuelve venta cuando se entrega. Si quedan
           pedidos en camino, el costo en cursiva es el proyectado con la tasa de entrega de los
           últimos 60 días. Un día queda cerrado cuando ya no tiene pedidos en camino.
         </p>

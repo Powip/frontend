@@ -150,13 +150,18 @@ export function AdvertisingAds() {
     );
   }, [navigationScope]);
   const [selected, setSelected] = useState<AdsRow | null>(null);
-  useEffect(() => setSelected(null), [storeId, accountId]);
   const [action, setActionSelection] = useState<ActionSelection | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const [viewName, setViewName] = useState("");
   const [saving, setSaving] = useState(false);
   const [undo, setUndo] = useState<{ rows: AdsRow[]; until: number } | null>(null);
+  useEffect(() => {
+    setSelected(null);
+    setAction(null);
+    setUndo(null);
+    setSaveOpen(false);
+  }, [storeId, accountId]);
   useEffect(() => {
     setSelected(null);
     setAction(null);

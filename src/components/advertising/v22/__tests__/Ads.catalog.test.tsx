@@ -10,6 +10,7 @@ import type { ActionSelection } from "../Actions";
 
 const mockSetPeriod = jest.fn();
 const mockSetStore = jest.fn();
+const mockAction = jest.fn();
 const mockAuth = {
   auth: { user: { id: "actor" }, accessToken: "token", company: { id: "company" } },
 };
@@ -183,7 +184,7 @@ jest.mock("../Numbers", () => ({
 }));
 jest.mock("../Thumbnail", () => ({ AdThumbnail: () => <span /> }));
 jest.mock("../Actions", () => ({
-  AdvertisingActionDialog: () => null,
+  AdvertisingActionDialog: (props: unknown) => { mockAction(props); return null; },
   META_MANAGEMENT_UNAVAILABLE: "No hay acceso confirmado para gestionar anuncios desde POWIP.",
 }));
 jest.mock("../AdDetail", () => ({
@@ -601,7 +602,7 @@ it("keeps observed ads visible under a channel filter while coverage and results
   expect(within(visibleRows()[0]).queryByText("Sin resultados")).not.toBeInTheDocument();
   expect(within(visibleRows()[0]).queryByText("Revisa y pausa.")).not.toBeInTheDocument();
   expect(screen.getByText(/faltan referencias de anuncio/)).toBeInTheDocument();
-  expect(screen.getByText(/La importación de Meta está incompleta/)).toBeInTheDocument();
+  expect(screen.getByText(/Faltan datos del período o quedan diferencias/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "↓ Excel" }));
   const exported = (exportAdsWorkbook as jest.Mock).mock.calls[0][1][0].rows;
   expect(exported).toHaveLength(1);
