@@ -223,10 +223,10 @@ export function AdvertisingTests() {
         </p>
       )}
       {!tests.data ? (
-        <div role="status" aria-label="Cargando pruebas" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div role="status" aria-label="Cargando pruebas" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-28 rounded-xl" />)}
         </div>
-      ) : <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      ) : <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <MetricCard
           label="Pruebas activas"
           value={list.filter((test) => test.status === "active").length}
