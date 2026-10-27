@@ -204,6 +204,7 @@ export interface OrderHeader extends UnitAssignmentState {
   callAttempts?: number;
   cancellationReason: string | null;
   notes: string | null;
+  customerNotes?: string | null;
   items: OrderItem[];
   payments: OrderPayment[];
   hasStockIssue?: boolean;

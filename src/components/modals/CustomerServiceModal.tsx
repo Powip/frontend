@@ -943,6 +943,9 @@ export default function CustomerServiceModal({
   const isConfirmed = receipt?.status === "LLAMADO";
   const isScheduledDelivery =
     !!receipt?.externalSource && receipt?.callStatus === "SCHEDULED";
+  const customerNotes = orderHeader?.customerNotes ?? receipt?.customerNotes;
+  const internalNotes = orderHeader?.notes ?? receipt?.notes;
+  const orderNotes = customerNotes ?? internalNotes;
 
   if (!receipt && !loading && (loadedReceiptKey !== receiptKey || !isPendingPurchase)) return null;
 
@@ -1137,6 +1140,39 @@ export default function CustomerServiceModal({
                       ))}
                     </div>
                   </div>
+
+                  {orderNotes?.trim() ? (
+                    <section
+                      aria-labelledby="order-notes-heading"
+                      className="border border-border rounded-lg p-4"
+                    >
+                      <h3 id="order-notes-heading" className="font-semibold mb-2 text-lg">
+                        Comentarios del pedido
+                      </h3>
+                      <span className="mb-2 block text-xs text-muted-foreground">
+                        {customerNotes == null
+                          ? "Solo visible para el equipo"
+                          : "Visible para el cliente en Powip Link"}
+                      </span>
+                      <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                        {orderNotes}
+                      </p>
+                    </section>
+                  ) : null}
+
+                  {customerNotes != null && internalNotes?.trim() && internalNotes !== customerNotes ? (
+                    <section
+                      aria-labelledby="internal-notes-heading"
+                      className="border border-border rounded-lg p-4"
+                    >
+                      <h3 id="internal-notes-heading" className="font-semibold mb-2 text-lg">
+                        Observaciones internas
+                      </h3>
+                      <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                        {internalNotes}
+                      </p>
+                    </section>
+                  ) : null}
 
                   {/* Resumen de Pagos */}
                   <div className="flex-1 border border-border rounded-lg p-4 bg-muted">

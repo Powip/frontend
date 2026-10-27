@@ -20,6 +20,8 @@ export interface OrderReceipt extends PrintableReceiptTracking {
   receiptType?: string;
   status: string;
   createdAt: string;
+  notes?: string | null;
+  customerNotes?: string | null;
   salesChannel?: string;
   closingChannel?: string;
   callStatus?: string;

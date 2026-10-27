@@ -295,7 +295,7 @@ function RegistrarVentaContent() {
     deliveryType: DeliveryType.DOMICILIO as DeliveryType | undefined,
     entregaEn: "DOMICILIO" as "DOMICILIO" | "SUCURSAL" | undefined,
     enviaPor: undefined as string | undefined,
-    notes: "",
+    customerNotes: "",
   });
   const [salesRegion, setSalesRegion] = useState<"LIMA" | "PROVINCIA">("LIMA");
 
@@ -627,7 +627,7 @@ function RegistrarVentaContent() {
       deliveryType: orderData.deliveryType as DeliveryType,
       entregaEn: orderData.deliveryType === "RETIRO_TIENDA" ? "SUCURSAL" : "DOMICILIO",
       enviaPor: orderData.courier ?? undefined,
-      notes: orderData.notes ?? "",
+      customerNotes: orderData.customerNotes ?? "",
     });
 
     setSalesRegion(orderData.salesRegion);
@@ -1010,7 +1010,7 @@ function RegistrarVentaContent() {
       deliveryType: undefined,
       entregaEn: undefined,
       enviaPor: undefined,
-      notes: "",
+      customerNotes: "",
     });
     setSalesRegion("LIMA");
     setScheduleDelivery(false);
@@ -1380,7 +1380,7 @@ function RegistrarVentaContent() {
         taxMode: taxMode,
 
         // --- Notas ---
-        notes: orderDetails.notes ?? null,
+        customerNotes: orderDetails.customerNotes,
 
         // --- Cliente ---
         customerId: activeClient.id,
@@ -1543,7 +1543,9 @@ function RegistrarVentaContent() {
             shippingTotal: shippingTotal ?? 0,
             courier: orderDetails.enviaPor ?? null,
             taxMode: taxMode,
-            notes: orderDetails.notes ?? null,
+            ...(orderDetails.customerNotes !== (orderData.customerNotes ?? "")
+              ? { customerNotes: orderDetails.customerNotes }
+              : {}),
             customerId: activeClient.id,
             items: cart.map((item) => ({
               ...buildOrderItem(item),
@@ -3311,17 +3313,44 @@ function RegistrarVentaContent() {
                   )}
                   <Disclosure label="Comentarios e ID de publicidad (opcional)">
                     <div className="space-y-1">
-                      <Label>Comentarios</Label>
+                      <Label htmlFor="order-notes">Comentarios del pedido</Label>
                       <Textarea
-                        placeholder="Observaciones adicionales sobre la venta"
-                        value={orderDetails.notes}
+                        id="order-notes"
+                        aria-describedby="order-notes-help"
+                        placeholder="Ej.: Shampoo personalizado: ingredientes e indicaciones de elaboración"
+                        maxLength={500}
+                        rows={3}
+                        value={orderDetails.customerNotes}
                         onChange={(e) =>
                           setOrderDetails({
                             ...orderDetails,
-                            notes: e.target.value,
+                            customerNotes: e.target.value,
                           })
                         }
                       />
+                      <p id="order-notes-help" className="text-xs text-muted-foreground">
+                        Se mostrarán en el pedido y el cliente podrá verlos en Powip Link. Máximo 500 caracteres.
+                      </p>
+                      {orderData?.customerNotes == null && orderData?.notes?.trim() ? (
+                        <div className="rounded-md border border-dashed p-3 text-sm space-y-2">
+                          <p className="font-medium">Comentario anterior (solo equipo)</p>
+                          <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                            {orderData.notes}
+                          </p>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={isSubmitting || leadAttemptFrozen}
+                            onClick={() => setOrderDetails((current) => ({
+                              ...current,
+                              customerNotes: orderData.notes ?? "",
+                            }))}
+                          >
+                            Usar como comentario para el cliente
+                          </Button>
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="space-y-1">
