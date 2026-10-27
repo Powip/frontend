@@ -3329,7 +3329,7 @@ function RegistrarVentaContent() {
                         }
                       />
                       <p id="order-notes-help" className="text-xs text-muted-foreground">
-                        Se mostrarán en el pedido y el cliente podrá verlos en Powip Link. Máximo 500 caracteres.
+                        Se mostrarán en el pedido, en la etiqueta de picking y para el cliente en Powip Link. Máximo 500 caracteres.
                       </p>
                       {orderData?.customerNotes == null && orderData?.notes?.trim() ? (
                         <div className="rounded-md border border-dashed p-3 text-sm space-y-2">
