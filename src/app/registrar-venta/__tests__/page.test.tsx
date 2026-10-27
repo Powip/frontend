@@ -759,6 +759,25 @@ async function fillCommonRequiredFields() {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe("RegistrarVentaPage — creación de venta con adelanto (FIX aprobacion-pagos-solo-finanzas)", () => {
+  it("guarda los ingredientes escritos durante la venta como comentarios visibles para el cliente", async () => {
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "order-custom-shampoo", payments: [] } });
+    renderPage();
+    await fillCommonRequiredFields();
+    await userEvent.click(screen.getByRole("button", {
+      name: "Comentarios e ID de publicidad (opcional)",
+    }));
+    const notes = screen.getByRole("textbox", { name: "Comentarios del pedido" });
+    expect(notes).toHaveAccessibleDescription(/el cliente podrá verlos en Powip Link/);
+    const ingredients = "Shampoo personalizado\nIngredientes: romero y aloe vera.\nSin perfume.";
+    fireEvent.change(notes, { target: { value: ingredients } });
+    await userEvent.click(screen.getByRole("button", { name: "Registrar pedido" }));
+
+    await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledWith(
+      expect.stringContaining("/order-header"),
+      expect.objectContaining({ customerNotes: ingredients }),
+    ));
+  });
+
   it.each([
     ["CONTRA_ENTREGA", "COD"],
     ["EFECTIVO", "PREPAID"],
@@ -1319,6 +1338,42 @@ describe("RegistrarVentaPage — persistencia de comprobantes", () => {
     });
     return file;
   }
+
+  it("conserva el comentario histórico solo para el equipo al editar otros datos", async () => {
+    const order = prepareEditing();
+    const legacyNotes = "Devolución del courier — mercadería registrada como merma";
+    Object.assign(order, { notes: legacyNotes });
+    renderPage();
+    await screen.findByRole("link", { name: /ver comprobante guardado/i });
+    await userEvent.click(screen.getByRole("button", {
+      name: "Comentarios e ID de publicidad (opcional)",
+    }));
+    expect(screen.getByRole("textbox", { name: "Comentarios del pedido" })).toHaveValue("");
+    expect(screen.getByText(legacyNotes)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
+
+    await waitFor(() => expect(mockedAxiosAuth.put).toHaveBeenCalledTimes(1));
+    expect(mockedAxiosAuth.put.mock.calls[0][1]).not.toHaveProperty("notes");
+    expect(mockedAxiosAuth.put.mock.calls[0][1]).not.toHaveProperty("customerNotes");
+  });
+
+  it("permite revisar y compartir explícitamente los ingredientes de un pedido anterior", async () => {
+    const order = prepareEditing();
+    const legacyNotes = "Shampoo personalizado\nIngredientes: romero y aloe vera.";
+    Object.assign(order, { notes: legacyNotes });
+    renderPage();
+    await screen.findByRole("link", { name: /ver comprobante guardado/i });
+    await userEvent.click(screen.getByRole("button", {
+      name: "Comentarios e ID de publicidad (opcional)",
+    }));
+    await userEvent.click(screen.getByRole("button", { name: "Usar como comentario para el cliente" }));
+    expect(screen.getByRole("textbox", { name: "Comentarios del pedido" })).toHaveValue(legacyNotes);
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
+
+    await waitFor(() => expect(mockedAxiosAuth.put).toHaveBeenCalledTimes(1));
+    expect(mockedAxiosAuth.put.mock.calls[0][1]).toEqual(expect.objectContaining({ customerNotes: legacyNotes }));
+    expect(mockedAxiosAuth.put.mock.calls[0][1]).not.toHaveProperty("notes");
+  });
 
   it("al editar muestra el comprobante guardado y conserva el pago si solo cambia la venta", async () => {
     prepareEditing();

@@ -31,6 +31,8 @@ export function buildPendingOrderDetail(order: OrderHeader): OrderReceipt {
     receiptType: order.receiptType,
     status: operationalStatus(order.status),
     createdAt: order.created_at,
+    notes: order.notes ?? null,
+    customerNotes: order.customerNotes ?? null,
     salesChannel: order.salesChannel,
     closingChannel: order.closingChannel,
     externalSource: order.externalSource,

@@ -19,6 +19,7 @@ import {
 import PaymentVerificationModal from "../PaymentVerificationModal";
 import type { OrderHeader } from "@/interfaces/IOrder";
 import type { LeadConfirmationResponse } from "@/types/leads";
+import { buildPendingOrderDetail } from "../customerServiceOrderDetail";
 
 
 jest.mock("@/hooks/useSaleLifecycleRouting", () => ({ useSaleLifecycleRouting: jest.fn(() => async () => false) }));
@@ -144,6 +145,41 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const client of clients.splice(0)) client.clear();
+});
+
+it.each(["LEAD", "SALE"] as const)("shows the saved order comments next to products for a %s", async (commercialStage) => {
+  const notes = "Shampoo personalizado\nIngredientes: romero y aloe vera.\nSin perfume.";
+  currentOrder = order({ commercialStage, customerNotes: notes, notes: "Observación de devolución para el equipo" });
+  const receipt = buildPendingOrderDetail(currentOrder);
+  jest.mocked(axiosAuth.get).mockImplementation(async (url) => {
+    if (String(url).endsWith("/order-header/order-cc-1")) return { data: currentOrder };
+    if (String(url).endsWith("/receipt")) return { data: receipt };
+    if (String(url).endsWith("/log-ventas/order-cc-1")) return { data: [] };
+    throw new Error(`Petición inesperada: ${String(url)}`);
+  });
+  renderModal();
+
+  const section = await screen.findByRole("region", { name: "Comentarios del pedido" });
+  expect(section.querySelector("p")?.textContent).toBe(notes);
+  expect(within(section).getByText("Visible para el cliente en Powip Link")).toBeInTheDocument();
+  expect(within(section).getByText(/Ingredientes:/)).toHaveClass("whitespace-pre-wrap");
+  expect(screen.getByText("Audífonos Bluetooth")).toBeInTheDocument();
+  expect(within(screen.getByRole("region", { name: "Observaciones internas" })).getByText("Observación de devolución para el equipo")).toBeInTheDocument();
+});
+
+it("keeps legacy registration notes visible to the team", async () => {
+  currentOrder = order({ notes: "Ingredientes de un pedido anterior: romero y aloe vera" });
+  renderModal();
+  const section = await screen.findByRole("region", { name: "Comentarios del pedido" });
+  expect(within(section).getByText(currentOrder.notes!)).toBeInTheDocument();
+  expect(within(section).getByText("Solo visible para el equipo")).toBeInTheDocument();
+});
+
+it.each([null, "", " \n "])("omits the order comments section when notes are %p", async (notes) => {
+  currentOrder = order({ notes });
+  renderModal();
+  await screen.findByText("Audífonos Bluetooth");
+  expect(screen.queryByRole("region", { name: "Comentarios del pedido" })).not.toBeInTheDocument();
 });
 
 it("reviews and confirms the Lead from CC without requesting a sale receipt", async () => {
