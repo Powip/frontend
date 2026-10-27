@@ -1,9 +1,9 @@
 "use client";
-import { canManageCustomerServiceOrder } from "@/utils/customerServiceOrderAccess";
+import { useCcPurchaseConfirmationAccess } from "@/hooks/useCcPurchaseConfirmationAccess";
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,14 +11,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   commercialLeadError,
   confirmCommercialOrderPurchase,
-  getCommercialLeadConfirmationCapabilities,
 } from "@/services/commercialLeadsService";
 import type { ConfirmCommercialOrderPurchaseInput } from "@/types/leads";
 import { commercialLeadHref, notifyCommercialChange } from "@/utils/commercialOrders";
 import { leadCommandId } from "@/components/commercial-leads/lead-ui";
 import {
   confirmarVentaCc,
-  getCcOrderConfirmationCapabilities,
 } from "@/services/atencionClienteService";
 
 interface Props {
@@ -40,31 +38,12 @@ export function CcSaleConfirmationPanel({
   embedded = false,
   onUpdated,
 }: Props) {
-  const { auth, hasPermission } = useAuth();
+  const { auth } = useAuth();
   const companyId = auth?.company?.id;
   const userId = auth?.user?.id;
-  const canManage = canManageCustomerServiceOrder(hasPermission, canalOrigen);
   const isShopifyCod = canalOrigen === "shopify_cod";
   const queryClient = useQueryClient();
-  const capabilities = useQuery({
-    queryKey: [
-      "cc-sale-confirmation-capabilities",
-      companyId,
-      userId,
-      isShopifyCod ? orderId : null,
-    ],
-    queryFn: () =>
-      isShopifyCod
-        ? getCcOrderConfirmationCapabilities(orderId)
-        : getCommercialLeadConfirmationCapabilities(),
-    enabled: canManage,
-    retry: false,
-  });
-  const canConfirm =
-    canManage &&
-    capabilities.isSuccess &&
-    capabilities.data?.enabled === true &&
-    capabilities.data.canConfirm;
+  const { capabilities, canRequestConfirmation, canConfirm } = useCcPurchaseConfirmationAccess(orderId, canalOrigen);
   const scope = JSON.stringify([
     companyId,
     userId,
@@ -169,8 +148,8 @@ export function CcSaleConfirmationPanel({
     >
       {!embedded && <h3 className="font-semibold">Gestión CC</h3>}
       <p>La compra sigue pendiente de confirmación del vendedor.</p>
-      {!canManage || (capabilities.data?.enabled && !capabilities.data.canConfirm) ? (
-        <p className="text-muted-foreground">Tu rol no permite confirmar ventas.</p>
+      {!canRequestConfirmation || (capabilities.data?.enabled && !capabilities.data.canConfirm) ? (
+        <p className="text-muted-foreground">Necesitas el permiso Confirmar compras para confirmar esta venta.</p>
       ) : capabilities.isPending ? (
         <p className="text-muted-foreground">Verificando permiso para confirmar la venta…</p>
       ) : capabilities.isError ? (
