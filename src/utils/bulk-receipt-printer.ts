@@ -148,7 +148,7 @@ function generateReceiptHTML(
   return `
     <div style="page-break-after: ${isLast ? "auto" : "always"}; max-width: 380px; margin: 0 auto; font-family: Arial, sans-serif; font-size: 12px; padding: 14px; color: #111;">
       <div style="display: flex; align-items: center; gap: 10px; padding-bottom: 10px; border-bottom: 2px solid #111; margin-bottom: 10px;">
-        <div style="width: 48px; height: 48px; color: #111; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: bold; flex-shrink: 0;">
+        <div style="width: 48px; height: 48px; border-radius: 8px; background: #1f2937; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: bold; flex-shrink: 0; overflow: hidden;">
           ${company?.logoUrl ? `<img src="${escapePrintHtml(company.logoUrl)}" alt="Logo" style="width: 100%; height: 100%; object-fit: contain;">` : "LOGO"}
         </div>
         <div>
