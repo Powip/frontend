@@ -102,8 +102,8 @@ export function buildNotaVentaHtml(
         #pdf-comprobante-root .head-row { display: flex; justify-content: space-between; align-items: flex-start; }
         #pdf-comprobante-root .company { display: flex; gap: 14px; align-items: center; }
         #pdf-comprobante-root .logo-box {
-          width: 56px; height: 56px; color: #111;
-          display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;
+          width: 56px; height: 56px; border-radius: 10px; background: #0f766e; color: #fff;
+          display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; overflow: hidden;
         }
         #pdf-comprobante-root .logo-box img { width: 100%; height: 100%; object-fit: contain; }
         #pdf-comprobante-root .company-name { font-size: 22px; font-weight: bold; }
