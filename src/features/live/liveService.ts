@@ -51,11 +51,11 @@ export async function getLiveConsole(storeId: string) {
     )
   ).data;
 }
-export async function getLiveCatalog(storeId: string, search = "") {
+export async function getLiveCatalog(storeId: string, search = "", signal?: AbortSignal) {
   return (
     await axiosAuth.get<{ products: LiveProduct[]; serverNow: string }>(
       `${adminPath(storeId)}/catalog`,
-      { params: { search } },
+      { params: { search }, signal },
     )
   ).data;
 }

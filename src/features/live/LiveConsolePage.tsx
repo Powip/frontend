@@ -32,6 +32,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
+import LiveCatalogDialog from "./LiveCatalogDialog";
 import LivePaymentSettings from "./LivePaymentSettings";
 import {
   LiveEmpty,
@@ -43,7 +44,6 @@ import {
 import LiveYapeReviews from "./LiveYapeReviews";
 import {
   createLivePaymentLink,
-  getLiveCatalog,
   getLiveConsole,
   liveAdminError,
   liveError,
@@ -780,7 +780,7 @@ export default function LiveConsolePage() {
         />
       ) : null}
       {catalogOpen && storeId ? (
-        <CatalogDialog
+        <LiveCatalogDialog
           storeId={storeId}
           onClose={() => setCatalogOpen(false)}
           onSelect={(item) => {
@@ -1119,100 +1119,6 @@ function ProductDialog({
             </Button>
           </DialogFooter>
         </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-function CatalogDialog({
-  storeId,
-  onClose,
-  onSelect,
-}: {
-  storeId: string;
-  onClose: () => void;
-  onSelect: (item: LiveProduct) => void;
-}) {
-  const [search, setSearch] = useState("");
-  const [items, setItems] = useState<LiveProduct[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const result = await getLiveCatalog(storeId, search);
-        if (!cancelled) {
-          setItems(
-            result.products.filter((item) =>
-              `${item.name} ${item.sku} ${item.variantLabel ?? ""}`
-                .toLocaleLowerCase()
-                .includes(search.toLocaleLowerCase()),
-            ),
-          );
-          setError("");
-        }
-      } catch (cause) {
-        if (!cancelled) setError(liveError(cause));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }, 250);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [storeId, search]);
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Agregar al live</DialogTitle>
-          <DialogDescription>
-            Selecciona una variante de tu catálogo y define su precio live.
-          </DialogDescription>
-        </DialogHeader>
-        <Input
-          placeholder="Buscar por nombre o SKU"
-          aria-label="Buscar producto para live"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
-        {error ? (
-          <LiveErrorBanner message={error} />
-        ) : loading ? (
-          <div className="flex justify-center p-6">
-            <Loader2 className="animate-spin" />
-          </div>
-        ) : items.length ? (
-          <div className="divide-y">
-            {items.map((item) => (
-              <button
-                key={item.variantId}
-                type="button"
-                onClick={() => onSelect(item)}
-                className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-muted"
-              >
-                <LiveProductImage product={item} className="h-12 w-12" />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {item.variantLabel || item.sku} · {liveMoney(item.regularPrice)} ·{" "}
-                    {item.availableStock} disp.
-                  </p>
-                </div>
-                <Plus className="h-4 w-4" />
-              </button>
-            ))}
-          </div>
-        ) : (
-          <LiveEmpty>No se encontraron variantes.</LiveEmpty>
-        )}
       </DialogContent>
     </Dialog>
   );

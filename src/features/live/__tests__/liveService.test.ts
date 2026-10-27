@@ -1,6 +1,8 @@
 import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 import {
   checkoutLivePurchase,
+  getLiveCatalog,
   liveVisitorToken,
   quoteLivePurchase,
   safeLiveUrl,
@@ -42,6 +44,17 @@ beforeEach(() => {
     value: jest.fn(() => id),
   });
   (axios.post as jest.Mock).mockResolvedValue({ data: {} });
+});
+
+test("catalog passes cancellation to the authenticated request", async () => {
+  const controller = new AbortController();
+  const catalog = { products: [], serverNow: "2026-10-27T12:00:00Z" };
+  (axiosAuth.get as jest.Mock).mockResolvedValue({ data: catalog });
+  await expect(getLiveCatalog(id, "", controller.signal)).resolves.toEqual(catalog);
+  expect(axiosAuth.get).toHaveBeenCalledWith(
+    expect.stringContaining(`/stores/${id}/catalog`),
+    { params: { search: "" }, signal: controller.signal },
+  );
 });
 
 test("anonymous visitor credential persists per store and never derives from customer PII", () => {
