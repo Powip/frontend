@@ -80,4 +80,96 @@ describe("NewCompanyPage (onboarding, FEAT-11)", () => {
     expect(push).not.toHaveBeenCalled();
     expect(refreshSession).not.toHaveBeenCalled();
   });
+
+  describe("validación y corrección del RUC / CUIT", () => {
+    const taxIdError = /Ingresa un RUC de 11 dígitos o un CUIT con formato/i;
+    const renderBillingStep = () => {
+      render(<NewCompanyPage />);
+      fill("companyName", "Mi Empresa SAC");
+      fireEvent.click(screen.getByRole("button", { name: /continuar/i }));
+      fill("billingAddress", "Av. Larco 123");
+      fill("phone", "+51 987 654 321");
+      fill("email", "empresa@test.pe");
+    };
+    const submit = () => fireEvent.click(screen.getByRole("button", { name: /crear empresa/i }));
+
+    beforeEach(() => {
+      mockedPost.mockResolvedValue({ status: 201 });
+      mockedFetchCompany.mockResolvedValue(null);
+    });
+
+    it.each([
+      ["RUC de 11 dígitos", "20605417036", "20605417036"],
+      ["CUIT con guiones", "20-60541703-6", "20-60541703-6"],
+      ["RUC con espacios alrededor", " 20605417036 ", "20605417036"],
+      ["CUIT con espacios alrededor", " 20-60541703-6 ", "20-60541703-6"],
+      ["campo opcional vacío", "", ""],
+      ["campo opcional con espacios", "   ", ""],
+    ])("permite guardar %s y envía el valor sin espacios", async (_label, value, expected) => {
+      renderBillingStep();
+      fill("cuit", value);
+
+      submit();
+
+      await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard"));
+      expect(screen.queryByText(taxIdError)).not.toBeInTheDocument();
+      expect(mockedPost).toHaveBeenCalledTimes(1);
+      const body = mockedPost.mock.calls[0][1] as FormData;
+      expect(body).toBeInstanceOf(FormData);
+      expect(body.get("cuit")).toBe(expected);
+      expect(body.get("user_id")).toBe("u1");
+      expect(body.get("name")).toBe("Mi Empresa SAC");
+    });
+
+    it.each([
+      ["RUC", "20605417036"],
+      ["CUIT", "20-60541703-6"],
+      ["RUC con espacios", " 20605417036 "],
+      ["campo vacío", ""],
+      ["solo espacios", "   "],
+    ])("quita el error inmediatamente al corregir a %s y conserva otros errores", (_label, corrected) => {
+      renderBillingStep();
+      fill("cuit", "20605");
+      fill("phone", "");
+      submit();
+      expect(screen.getByText(taxIdError)).toBeVisible();
+      expect(screen.getByText("Este campo es obligatorio.")).toBeVisible();
+      expect(mockedPost).not.toHaveBeenCalled();
+
+      fill("cuit", corrected);
+
+      expect(screen.queryByText(taxIdError)).not.toBeInTheDocument();
+      expect(screen.getByText("Este campo es obligatorio.")).toBeVisible();
+      expect(mockedPost).not.toHaveBeenCalled();
+    });
+
+    it("mantiene el error al editar un identificador que sigue incompleto y bloquea guardar", () => {
+      renderBillingStep();
+      fill("cuit", "20605");
+      submit();
+      expect(screen.getByText(taxIdError)).toBeVisible();
+
+      fill("cuit", "2060541703");
+
+      expect(screen.getByText(taxIdError)).toBeVisible();
+      submit();
+      expect(screen.getByText(taxIdError)).toBeVisible();
+      expect(mockedPost).not.toHaveBeenCalled();
+      expect(push).not.toHaveBeenCalled();
+    });
+
+    it.each(["206054170360", "2060541703A", "20-6054170-36", "20605 417036"])(
+      "rechaza el identificador inválido %s antes de enviar datos",
+      (value) => {
+        renderBillingStep();
+        fill("cuit", value);
+
+        submit();
+
+        expect(screen.getByText(taxIdError)).toBeVisible();
+        expect(mockedPost).not.toHaveBeenCalled();
+        expect(push).not.toHaveBeenCalled();
+      },
+    );
+  });
 });

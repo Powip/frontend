@@ -35,6 +35,11 @@ interface FormData {
 /** Límite de ms-company (ParseFilePipe maxSize 1000000). */
 const LOGO_MAX_BYTES = 1_000_000;
 
+function isValidTaxId(value: string): boolean {
+  const taxId = value.trim();
+  return !taxId || /^(?:\d{11}|\d{2}-\d{8}-\d)$/.test(taxId);
+}
+
 const STEPS = [
   { num: 1, name: "Tu empresa" },
   { num: 2, name: "Facturación" },
@@ -150,9 +155,9 @@ export default function NewCompanyPage() {
       newErrors.email = "El correo electrónico no es válido.";
     }
 
-    // CUIT (optional)
-    if (formData.cuit && !/^\d{2}-\d{8}-\d{1}$/.test(formData.cuit)) {
-      newErrors.cuit = "Formato inválido (ej: 20-12345678-9).";
+    // RUC / CUIT (optional)
+    if (!isValidTaxId(formData.cuit)) {
+      newErrors.cuit = "Ingresa un RUC de 11 dígitos o un CUIT con formato 20-12345678-9.";
     }
 
     // Logo size (optional). ms-company rechaza logos de más de 1MB.
@@ -163,6 +168,18 @@ export default function NewCompanyPage() {
     validationErrorsRef.current = newErrors;
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  const handleCuitChange = (value: string) => {
+    setFormData((previous) => ({ ...previous, cuit: value }));
+    if (isValidTaxId(value)) {
+      setErrors((previous) => {
+        if (!previous.cuit) return previous;
+        const next = { ...previous };
+        delete next.cuit;
+        return next;
+      });
+    }
   };
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -194,7 +211,7 @@ export default function NewCompanyPage() {
       body.append("description", formData.description);
       // ms-company exige el dueño: la empresa se crea para el usuario logueado.
       body.append("user_id", auth.user.id);
-      body.append("cuit", formData.cuit);
+      body.append("cuit", formData.cuit.trim());
       body.append("billing_address", formData.billingAddress);
       body.append("phone", formData.phone);
       body.append("billing_email", formData.email);
@@ -510,10 +527,8 @@ export default function NewCompanyPage() {
                   <Input
                     id="cuit"
                     value={formData.cuit}
-                    onChange={(e) =>
-                      setFormData((p) => ({ ...p, cuit: e.target.value }))
-                    }
-                    placeholder="Ej: 20-12345678-9"
+                    onChange={(e) => handleCuitChange(e.target.value)}
+                    placeholder="20123456789 o 20-12345678-9"
                     disabled={isLoading}
                     className={`mt-1.5 ${errors.cuit ? "border-red-400" : ""}`}
                   />
