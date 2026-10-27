@@ -75,7 +75,7 @@ interface ProductSearchMatrixProps {
   onAddVariant: (item: InventoryItemForSale) => void;
   qtyInCartByVariant: (variantId: string) => number;
   modelQtyInCart: (productKey: string) => number;
-  activePacksForProduct: (productKey: string) => Pack[];
+  activePacksForProduct: (productKey: string, variants?: InventoryItemForSale[]) => Pack[];
   /** Contador local de "agregados al carrito" por producto — usado para
    *  mostrar los más frecuentes primero mientras no exista un endpoint
    *  real de más vendidos. */
@@ -143,7 +143,7 @@ export default function ProductSearchMatrix({
           onAddVariant={onAddVariant}
           qtyInCartByVariant={qtyInCartByVariant}
           modelQty={modelQtyInCart(group.key)}
-          packs={activePacksForProduct(group.key)}
+          packs={activePacksForProduct(group.key, group.items)}
           isAdmin={isAdmin}
         />
       ))}

@@ -462,7 +462,8 @@ it("resolves historical UNKNOWN mode from warehouse before offering serialized s
   } }) : defaultGet(url, options));
   mockSearchParams = new URLSearchParams({ orderId: existingOrder.id });
   mountPage();
-  await screen.findByRole("checkbox", { name: /001234567890123/ });
+  // UNKNOWN resolves its mode before a second request loads selectable units.
+  await screen.findByRole("checkbox", { name: /001234567890123/ }, { timeout: 5000 });
   expect(screen.getByRole("button", { name: /actualizar venta/i })).toBeDisabled();
   await userEvent.click(screen.getByRole("checkbox", { name: /001234567890123/ }));
   await waitFor(() => expect(screen.getByRole("button", { name: /actualizar venta/i })).toBeEnabled());

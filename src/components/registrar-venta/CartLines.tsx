@@ -528,7 +528,12 @@ function BundleBlock({
         {lines.map((line) => (
           <div key={line.id} className="flex items-center gap-2.5">
             <Thumb imageUrl={line.imageUrl} name={line.productName} size={28} />
-            <span className="text-sm flex-1 truncate">{line.productName}</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm truncate">{line.productName}</p>
+              <p className="text-xs text-muted-foreground break-words">
+                {[Object.values(line.attributes ?? {}).filter(Boolean).join(" · "), line.sku].filter(Boolean).join(" · ")}
+              </p>
+            </div>
             <div className="flex items-center border rounded-md overflow-hidden shrink-0 bg-background">
               <button type="button" className="w-6 h-6 flex items-center justify-center" onClick={() => onQtyChange(line.id, -1)}>
                 <Minus className="h-3 w-3" />

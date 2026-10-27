@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CartItem } from "@/interfaces/IOrder";
-import { AppliedPack, GiftOption, Pack, VolumePack, BundlePack } from "@/interfaces/IPack";
+import { AppliedPack, GiftOption, Pack, VolumePack, BundlePack, BundleProductRef } from "@/interfaces/IPack";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
+import { bundleItemKey, hasValidBundleItems, matchesBundleItem } from "@/utils/bundleVariants";
 
 export function packNetUnit(p: VolumePack): number {
   return p.packPrice / p.minQty;
@@ -11,12 +12,22 @@ function bundleNetPerItem(p: BundlePack): Record<string, number> {
   const sumPvp = p.items.reduce((a, i) => a + i.price, 0);
   const perItem: Record<string, number> = {};
   p.items.forEach((i) => {
-    perItem[i.productKey] =
+    perItem[bundleItemKey(i)] =
       sumPvp > 0
         ? Math.round((i.price / sumPvp) * p.packPrice * 100) / 100
         : 0;
   });
   return perItem;
+}
+
+function appliedBundleMatchesCart(pack: BundlePack, cart: CartItem[]): boolean {
+  if (!hasValidBundleItems(pack)) return false;
+  const appliedLines = cart.filter((line) => line.packId === pack.id && !line.isGift);
+  return appliedLines.length > 0 &&
+    appliedLines.every((line) => pack.items.some((item) => matchesBundleItem(item, line))) &&
+    pack.items.every((item) => appliedLines.some((line) =>
+      line.quantity > 0 && matchesBundleItem(item, line),
+    ));
 }
 
 interface PvsState {
@@ -54,6 +65,14 @@ export function usePacksEngine({
     [cart],
   );
 
+  const bundleQtyInCart = useCallback(
+    (ref: BundleProductRef) =>
+      cart
+        .filter((line) => !line.isGift && matchesBundleItem(ref, line))
+        .reduce((quantity, line) => quantity + line.quantity, 0),
+    [cart],
+  );
+
   const subtotalPayable = useMemo(
     () => cart.filter((l) => !l.isGift).reduce((a, l) => a + l.price * l.quantity, 0),
     [cart],
@@ -72,8 +91,8 @@ export function usePacksEngine({
       }
       if (p.type === "BUNDLE") {
         // Pack corrupto en localStorage (ver nota en activePacksForProduct) nunca triggerea
-        if (!Array.isArray(p.items)) return false;
-        return p.items.every((i) => modelQtyInCart(i.productKey) > 0);
+        if (!hasValidBundleItems(p)) return false;
+        return p.items.every((item) => bundleQtyInCart(item) > 0);
       }
       if (p.type === "GIFT") {
         return p.triggerBy === "qty"
@@ -82,7 +101,7 @@ export function usePacksEngine({
       }
       return false;
     },
-    [modelQtyInCart, totalUnits, subtotalPayable],
+    [modelQtyInCart, bundleQtyInCart, totalUnits, subtotalPayable],
   );
 
   const activePacksForChannel = useMemo(
@@ -92,7 +111,7 @@ export function usePacksEngine({
   );
 
   const activePacksForProduct = useCallback(
-    (productKey: string) =>
+    (productKey: string, variants?: readonly Pick<InventoryItemForSale, "variantId" | "productName">[]) =>
       activePacksForChannel.filter(
         (p) =>
           (p.type === "VOLUME" && p.product.productKey === productKey) ||
@@ -101,8 +120,12 @@ export function usePacksEngine({
           // (ej. de una versión previa de esta feature) no debe romper el
           // render de ProductSearchMatrix para TODOS los productos.
           (p.type === "BUNDLE" &&
-            Array.isArray(p.items) &&
-            p.items.some((i) => i.productKey === productKey)),
+            hasValidBundleItems(p) &&
+            p.items.some((item) =>
+              "variantId" in item
+                ? variants?.some((variant) => matchesBundleItem(item, variant))
+                : item.productKey === productKey,
+            )),
       ),
     [activePacksForChannel],
   );
@@ -142,11 +165,11 @@ export function usePacksEngine({
     Object.keys(appliedPacks).forEach((pid) => {
       const p = packs.find((x) => x.id === pid);
       const stillValid =
-        p && p.active && (!channel || p.channels.includes(channel)) && packTriggered(p);
+        p && p.active && (!channel || p.channels.includes(channel)) && packTriggered(p) &&
+        (p.type !== "BUNDLE" || appliedBundleMatchesCart(p, cart));
       if (!stillValid) undoPack(pid);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, channel, packs]);
+  }, [cart, channel, packs, appliedPacks, packTriggered, undoPack]);
 
   const doApplyVolume = useCallback(
     (p: VolumePack) => {
@@ -168,12 +191,15 @@ export function usePacksEngine({
       const perItem = bundleNetPerItem(p);
       setCart((prev) =>
         prev.map((l) => {
-          const match = p.items.find((i) => i.productKey === l.productName);
-          if (!match || l.isGift) return l;
+          const match = p.items.find((item) => matchesBundleItem(item, l));
+          if (l.isGift) return l;
+          if (!match) {
+            return l.packId === p.id ? { ...l, packId: null, price: l.pvp ?? l.price } : l;
+          }
           return {
             ...l,
             pvp: l.pvp ?? l.price,
-            price: perItem[match.productKey],
+            price: perItem[bundleItemKey(match)],
             packId: p.id,
             discount: 0,
           };
@@ -266,15 +292,24 @@ export function usePacksEngine({
 
   const applyPack = useCallback(
     (p: Pack) => {
+      if (p.type === "BUNDLE") {
+        // A suggestion can become stale after changing variants, channel or config.
+        const current = packs.find((pack) => pack.id === p.id);
+        if (
+          current?.type !== "BUNDLE" || !current.active ||
+          (channel && !current.channels.includes(channel)) || !packTriggered(current)
+        ) return false;
+        doApplyBundle(current);
+        return true;
+      }
       if (p.type === "VOLUME" && p.variantFree) {
         openPVS(p);
         return;
       }
       if (p.type === "VOLUME") doApplyVolume(p);
-      if (p.type === "BUNDLE") doApplyBundle(p);
       if (p.type === "GIFT") setGiftOpen(p.id);
     },
-    [openPVS, doApplyVolume, doApplyBundle],
+    [openPVS, doApplyVolume, doApplyBundle, packs, channel, packTriggered],
   );
 
   const chooseGift = useCallback(
@@ -316,6 +351,7 @@ export function usePacksEngine({
     pendingHints,
     activePacksForProduct,
     modelQtyInCart,
+    bundleQtyInCart,
     subtotalPayable,
     totalUnits,
     applyPack,
