@@ -205,16 +205,18 @@ export default function LiveConsolePage() {
 
   async function run(key: string, operation: () => Promise<unknown>, success?: string) {
     const current = generation.current;
-    if (mutationLock.current === current) return;
+    if (mutationLock.current === current) return false;
     mutationLock.current = current;
     setBusy(key);
     try {
       await operation();
-      if (generation.current !== current) return;
+      if (generation.current !== current) return false;
       if (success) toast.success(success);
       await refresh(true);
+      return generation.current === current;
     } catch (cause) {
       if (generation.current === current) toast.error(liveAdminError(cause));
+      return false;
     } finally {
       if (mutationLock.current === current) mutationLock.current = null;
       if (generation.current === current) setBusy("");
@@ -779,14 +781,20 @@ export default function LiveConsolePage() {
           }}
         />
       ) : null}
-      {catalogOpen && storeId ? (
+      {catalogOpen && storeId && data ? (
         <LiveCatalogDialog
           storeId={storeId}
+          storeName={auth?.company?.stores?.find((store) => store.id === storeId)?.name}
+          configuredVariantIds={data.products.map((item) => item.variantId)}
+          busy={!!busy}
           onClose={() => setCatalogOpen(false)}
-          onSelect={(item) => {
-            setCatalogOpen(false);
-            setProduct({ ...item, enabled: true });
-          }}
+          onSave={(item, input) =>
+            run(
+              "product",
+              () => updateLiveProduct(storeId, item.variantId, input),
+              "Producto guardado en el Live",
+            )
+          }
         />
       ) : null}
       <Dialog
