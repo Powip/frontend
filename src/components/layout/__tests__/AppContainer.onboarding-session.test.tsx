@@ -65,7 +65,7 @@ async function findPlanHeading() {
   const title = await screen.findByRole("heading", { name: "Configura tu cuenta", level: 1 });
   const content = title.closest("header")?.parentElement;
   if (!content) throw new Error("Falta el contenido de la suscripción");
-  return within(content).findByRole("heading", { name: "Elige tu plan", level: 2 });
+  return within(content).findByRole("heading", { name: "Elige tu plan y empieza hoy", level: 2 });
 }
 
 function authFor(userId: string, companyId?: string) {
@@ -221,7 +221,7 @@ it("conserva la página al crear la sesión y continúa registro → planes → 
   expect(service.loginAccount).toHaveBeenCalledWith("registration@fixture.invalid", "synthetic123");
   await findPlanHeading();
   expect(screen.queryByLabelText("Nombre", { exact: true })).not.toBeInTheDocument();
-  await user.click(await screen.findByRole("button", { name: /Medium/ }));
+  await user.click(await screen.findByRole("button", { name: /Standard/ }));
   await user.click(screen.getByRole("button", { name: "Continuar al pago" }));
   await user.click(screen.getByRole("button", { name: /Registrar.*tarjeta/i }));
   await screen.findByText("Tarjeta de prueba: synthetic-card-token");

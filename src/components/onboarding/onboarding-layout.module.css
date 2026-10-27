@@ -181,6 +181,20 @@
   line-height: 1.3;
 }
 
+.planIntro {
+  margin-top: -8px;
+  color: #736880;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.planNote {
+  color: #736880;
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.6;
+}
+
 .cycle {
   display: flex;
   min-width: 0;

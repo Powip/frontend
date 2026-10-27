@@ -1,8 +1,8 @@
 "use client";
 
 import { Check } from "lucide-react";
-import { basePlanName, isEnterprisePlan, plansForCycle } from "@/lib/onboardingPlan";
-import { adaptPlans } from "@/lib/planCatalog";
+import { isEnterprisePlan, plansForCycle } from "@/lib/onboardingPlan";
+import { adaptPlans, planDisplayName } from "@/lib/planCatalog";
 import type { BackendPlan } from "@/types/onboarding";
 import styles from "./onboarding-layout.module.css";
 
@@ -38,7 +38,7 @@ export default function PlanPicker({
   return (
     <div className={styles.planPicker}>
       <div className={styles.planHeader}>
-        <h2 className={styles.planTitle}>Elige tu plan</h2>
+        <h2 className={styles.planTitle}>Elige tu plan y empieza hoy</h2>
         <fieldset className={styles.cycle} aria-label="Ciclo de facturación">
           {[false, true].map((annual) => (
             <button
@@ -53,6 +53,10 @@ export default function PlanPicker({
           ))}
         </fieldset>
       </div>
+      <p className={styles.planIntro}>
+        Todos los planes incluyen todos los módulos de la plataforma. La diferencia está en el
+        volumen de pedidos de tu negocio.
+      </p>
 
       {error ? (
         <div
@@ -92,10 +96,10 @@ export default function PlanPicker({
                   </div>
                 )}
 
-                <h4 className={styles.planName}>{basePlanName(plan.name)}</h4>
+                <h4 className={styles.planName}>{planDisplayName(plan.name)}</h4>
                 {plan.target && <p className={styles.planTarget}>{plan.target}</p>}
                 <ul className={styles.planFeatures}>
-                  {plan.features.slice(0, 3).map((feature) => (
+                  {(enterprise ? plan.features.slice(0, 3) : plan.features).map((feature) => (
                     <li key={feature} className={styles.planFeature}>
                       <Check size={13} aria-hidden="true" />
                       {feature}
@@ -116,6 +120,9 @@ export default function PlanPicker({
           })}
         </div>
       )}
+      <p className={styles.planNote}>
+        Todos los planes incluyen lo mismo, solo cambia el volumen de pedidos.
+      </p>
     </div>
   );
 }

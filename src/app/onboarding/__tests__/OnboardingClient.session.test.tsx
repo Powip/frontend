@@ -26,7 +26,7 @@ async function findPlanHeading() {
   const title = await screen.findByRole("heading", { name: "Configura tu cuenta", level: 1 });
   const content = title.closest("header")?.parentElement;
   if (!content) throw new Error("Falta el contenido de la suscripción");
-  return within(content).findByRole("heading", { name: "Elige tu plan", level: 2 });
+  return within(content).findByRole("heading", { name: "Elige tu plan y empieza hoy", level: 2 });
 }
 
 beforeEach(() => {
