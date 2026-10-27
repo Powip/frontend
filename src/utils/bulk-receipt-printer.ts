@@ -2,6 +2,7 @@ import QRCode from "qrcode";
 import JsBarcode from "jsbarcode";
 import { operationalStatus, receiptFinancialState } from "./orderState";
 import type { OrderStatus } from "@/interfaces/IOrder";
+import { renderReceiptCustomerNotesHtml } from "./receiptCustomerNotes";
 import { escapePrintHtml, renderPrintableUnitCodesHtml, type PrintableReceiptItem, type PrintableReceiptTracking } from "./receiptUnitCodes";
 
 /**
@@ -18,6 +19,7 @@ export interface ReceiptData extends PrintableReceiptTracking {
   createdAt?: string;
   callbackAt?: string | null;
   salesChannel?: string;
+  customerNotes?: string | null;
   customer: {
     fullName: string;
     phoneNumber?: string;
@@ -227,6 +229,8 @@ function generateReceiptHTML(
         </div>`;
         })
         .join("")}
+
+      ${renderReceiptCustomerNotesHtml(receipt.customerNotes)}
 
       <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; font-size: 10.5px;">
         <div style="color: #555; margin-bottom: 4px;">

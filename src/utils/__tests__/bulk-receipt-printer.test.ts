@@ -99,14 +99,68 @@ describe("buildReceiptsDocument", () => {
     expect(doc.body.textContent).toContain("S/ 20.00");
     expect(doc.querySelectorAll(".unit-code")).toHaveLength(2);
   });
+
+  it("conserva los 500 caracteres del comentario compartido, incluidos saltos y espacios", async () => {
+    const prefix = "  Ingredientes: romero, sábila y biotina.\n";
+    const suffix = "\nSin fragancia.  ";
+    const customerNotes = prefix + "A".repeat(500 - prefix.length - suffix.length) + suffix;
+    const data = { ...trackedReceipt(), customerNotes, notes: "OBSERVACIÓN INTERNA PRIVADA" };
+    const html = await buildReceiptsDocument([data], COMPANY);
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const section = doc.querySelector(".order-comments")!;
+    const text = section.querySelector(".order-comments-text") as HTMLElement;
+    expect(customerNotes).toHaveLength(500);
+    expect(section.textContent).toContain("Comentarios del pedido");
+    expect(text.textContent).toBe(customerNotes);
+    expect(text.style.whiteSpace).toBe("pre-wrap");
+    expect(text.style.overflowWrap).toBe("anywhere");
+    expect(text.getAttribute("style")).not.toMatch(/hidden|ellipsis|clamp|max-height/);
+    expect(doc.body.textContent).not.toContain(data.notes);
+    expect(doc.querySelectorAll(".unit-code")).toHaveLength(2);
+  });
+
+  it.each([undefined, null, "", "  \n\t "])("omite comentarios vacíos (%p) sin recuperar notas internas", async (customerNotes) => {
+    const data = { ...receipt("SIN-COMENTARIO"), customerNotes, notes: "SOLO NOTA INTERNA" };
+    if (customerNotes === undefined) delete data.customerNotes;
+    const html = await buildReceiptsDocument([data], COMPANY);
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    expect(doc.querySelector(".order-comments")).toBeNull();
+    expect(doc.body.textContent).not.toMatch(/Comentarios del pedido|SOLO NOTA INTERNA/);
+  });
+
+  it("escapa HTML y entidades del comentario antes de crear el documento imprimible", async () => {
+    const customerNotes = '</div><script>alert("comentario")</script><img src=x onerror="alert(1)"> & " \' &lt;b&gt;';
+    const html = await buildReceiptsDocument([{ ...receipt("TEXTO-SEGURO"), customerNotes }], COMPANY);
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    expect(doc.querySelector(".order-comments-text")?.textContent).toBe(customerNotes);
+    expect(doc.querySelector("script,[onerror]")).toBeNull();
+    expect(doc.querySelector(".order-comments-text")?.children).toHaveLength(0);
+  });
+
+  it("mantiene los comentarios asociados al pedido correcto en un lote con notas históricas", async () => {
+    const first = { ...receipt("COMENTARIO-UNO"), customerNotes: "Romero\nSin fragancia", notes: "PRIVADO-UNO" };
+    const second = { ...receipt("COMENTARIO-DOS"), notes: "PRIVADO-DOS" };
+    const third = { ...receipt("COMENTARIO-TRES"), customerNotes: "Sábila para el tercer pedido" };
+    const html = await buildReceiptsDocument([first, second, third], COMPANY);
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    const pages = Array.from(doc.body.children);
+    expect(pages).toHaveLength(3);
+    expect(pages.map(page => page.querySelector(".order-comments-text")?.textContent)).toEqual([
+      first.customerNotes, undefined, third.customerNotes,
+    ]);
+    expect(doc.querySelectorAll(".order-comments")).toHaveLength(2);
+    expect(doc.body.textContent).not.toMatch(/PRIVADO-UNO|PRIVADO-DOS/);
+    expect(html.match(/page-break-after: always/g)).toHaveLength(2);
+  });
 });
 
 describe("printReceipts", () => {
   it("escribe en la ventana exactamente el mismo documento que la vista previa", async () => {
-    const expected = await buildReceiptsDocument(RECEIPTS, COMPANY);
+    const receipts = RECEIPTS.map((data, index) => ({ ...data, customerNotes: index === 0 ? "Ingredientes: romero\nSin fragancia" : null }));
+    const expected = await buildReceiptsDocument(receipts, COMPANY);
     const { win, written } = fakePrintWindow();
 
-    const done = printReceipts(RECEIPTS, COMPANY, win as unknown as Window);
+    const done = printReceipts(receipts, COMPANY, win as unknown as Window);
     await Promise.resolve();
     await new Promise((r) => setTimeout(r, 0));
     win.onload?.();

@@ -42,6 +42,71 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
+describe("customer comments on picking labels", () => {
+  it("preserves all 500 characters and line breaks before totals without using internal or header notes", async () => {
+    const prefix = "  Ingredientes: romero, sábila y biotina.\n";
+    const suffix = "\nSin fragancia.  ";
+    const customerNotes = prefix + "A".repeat(500 - prefix.length - suffix.length) + suffix;
+    const receipt = { ...baseReceipt(), customerNotes, notes: "NOTA INTERNA PRIVADA" };
+    const view = windowFixture();
+    await printOrderLabel(receipt, {
+      notes: "NOTA PRIVADA DE CABECERA",
+      customerNotes: "COMENTARIO ANTERIOR DE CABECERA",
+    } as OrderHeader);
+
+    const document = view.document();
+    const section = document.querySelector(".order-comments")!;
+    const text = section.querySelector(".order-comments-text") as HTMLElement;
+    expect(customerNotes).toHaveLength(500);
+    expect(section.textContent).toContain("Comentarios del pedido");
+    expect(text.textContent).toBe(customerNotes);
+    expect(text.style.whiteSpace).toBe("pre-wrap");
+    expect(text.style.overflowWrap).toBe("anywhere");
+    expect(text.getAttribute("style")).not.toMatch(/hidden|ellipsis|clamp|max-height/);
+    expect(section.compareDocumentPosition(document.querySelector(".totals")!)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(document.body.textContent).not.toMatch(/NOTA INTERNA PRIVADA|NOTA PRIVADA DE CABECERA|COMENTARIO ANTERIOR DE CABECERA/);
+  });
+
+  it.each([undefined, null, "", "  \n\t "])("omits blank customer comments (%p) instead of falling back to private notes", async (customerNotes) => {
+    const receipt = { ...baseReceipt(), customerNotes, notes: "OBSERVACIÓN INTERNA" };
+    if (customerNotes === undefined) delete receipt.customerNotes;
+    const view = windowFixture();
+    await printOrderLabel(receipt, {
+      customerNotes: "COMENTARIO SOLO EN CABECERA",
+      notes: "OBSERVACIÓN INTERNA DE CABECERA",
+    } as OrderHeader);
+    const document = view.document();
+    expect(document.querySelector(".order-comments")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/Comentarios del pedido|OBSERVACIÓN INTERNA|COMENTARIO SOLO EN CABECERA/);
+  });
+
+  it("prints HTML and entity syntax as literal comment text in the popup document", async () => {
+    const customerNotes = '</div><script>alert("comentario")</script><img src=x onerror="alert(1)"> & " \' &lt;b&gt;';
+    const view = windowFixture();
+    await printOrderLabel({ ...baseReceipt(), customerNotes }, null);
+    const document = view.document();
+    expect(document.querySelector(".order-comments-text")?.textContent).toBe(customerNotes);
+    expect(document.querySelector("script,[onerror]")).toBeNull();
+    expect(document.querySelector(".order-comments-text")?.children).toHaveLength(0);
+  });
+
+  it("keeps each comment with its own batch label and omits a legacy-only comment", async () => {
+    const first = { ...baseReceipt(), customerNotes: "Romero\nSin fragancia", notes: "PRIVADO-UNO" };
+    const second = { ...baseReceipt(), orderId: id(2), orderNumber: "PED-2", notes: "PRIVADO-DOS" };
+    const third = { ...baseReceipt(), orderId: id(3), orderNumber: "PED-3", customerNotes: "Sábila para el tercer pedido" };
+    const view = windowFixture();
+    await printOrderLabelsBatch([first, second, third].map(receipt => ({ receipt, orderHeader: null })));
+    const document = view.document();
+    const pages = Array.from(document.querySelectorAll(".label-page"));
+    expect(pages).toHaveLength(3);
+    expect(pages.map(page => page.querySelector(".order-comments-text")?.textContent)).toEqual([
+      first.customerNotes, undefined, third.customerNotes,
+    ]);
+    expect(document.querySelectorAll(".order-comments")).toHaveLength(2);
+    expect(document.body.textContent).not.toMatch(/PRIVADO-UNO|PRIVADO-DOS/);
+  });
+});
+
 it("prints every confirmed IMEI under its product with leading zeros", async () => {
   const view = windowFixture();
   await printOrderLabel(baseReceipt(), null);

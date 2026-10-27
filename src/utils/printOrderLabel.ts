@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { OrderHeader } from "@/interfaces/IOrder";
 import { operationalStatus, receiptFinancialState } from "./orderState";
 import type { OrderStatus } from "@/interfaces/IOrder";
+import { renderReceiptCustomerNotesHtml } from "./receiptCustomerNotes";
 import {
   renderPrintableUnitCodesHtml,
   escapePrintHtml,
@@ -441,6 +442,8 @@ async function buildOrderLabelHtml(
         .join("")}
 
       <div class="pick-summary">Total a preparar: ${receipt.items.length} ítem${receipt.items.length === 1 ? "" : "s"} · ${escapePrintHtml(totalUnidades)} unidad${totalUnidades === 1 ? "" : "es"}</div>
+
+      ${renderReceiptCustomerNotesHtml(receipt.customerNotes)}
 
       <div class="totals">
         <div class="totals-line">

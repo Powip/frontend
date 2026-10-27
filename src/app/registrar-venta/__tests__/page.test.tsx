@@ -776,7 +776,7 @@ describe("RegistrarVentaPage — creación de venta con adelanto (FIX aprobacion
       name: "Comentarios e ID de publicidad (opcional)",
     }));
     const notes = screen.getByRole("textbox", { name: "Comentarios del pedido" });
-    expect(notes).toHaveAccessibleDescription(/el cliente podrá verlos en Powip Link/);
+    expect(notes).toHaveAccessibleDescription(/en el pedido, en la etiqueta de picking y para el cliente en Powip Link/);
     const ingredients = "Shampoo personalizado\nIngredientes: romero y aloe vera.\nSin perfume.";
     fireEvent.change(notes, { target: { value: ingredients } });
     await userEvent.click(screen.getByRole("button", { name: "Registrar pedido" }));
