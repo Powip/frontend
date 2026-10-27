@@ -24,7 +24,8 @@ import PlanPicker from "@/components/onboarding/PlanPicker";
 import { useAuth } from "@/contexts/AuthContext";
 import { type RegisterData, useOnboardingFlow } from "@/hooks/useOnboardingFlow";
 import { firstChargePreview, formatLimaDate, limaToday } from "@/lib/flowMigration";
-import { basePlanName, counterpartPlan, isAnnualPlanName } from "@/lib/onboardingPlan";
+import { counterpartPlan, isAnnualPlanName } from "@/lib/onboardingPlan";
+import { planDisplayName } from "@/lib/planCatalog";
 import { fetchAddOns, fetchPlans } from "@/services/onboardingService";
 import {
   addOnPrice,
@@ -64,29 +65,63 @@ interface OnboardingClientProps {
   blocked?: boolean;
 }
 
-const ADDON_MODAL_CONFIG: Record<
-  string,
-  { name: string; desc: string; icon: string; tags: string[] }
-> = {
+interface AddOnCopy {
+  name: string;
+  /** Línea destacada bajo el nombre. */
+  headline: string;
+  desc: string;
+  icon: string;
+  benefits: string[];
+}
+
+const ADDON_MODAL_CONFIG: Record<string, AddOnCopy> = {
   courier: {
     name: "Integración Courier",
-    desc: "Conecta Shalom y Olva. Genera guías, rastrea envíos y liquida COD sin salir de Powip.",
+    headline: "Conecta con Shalom y Eva Courier",
+    desc: "Genera guías, rastrea envíos y registra pagos contraentrega sin salir de la plataforma.",
     icon: "🚚",
-    tags: ["Shalom", "Olva", "Guías automáticas", "Liquidaciones COD"],
+    benefits: [
+      "Menos tiempo en procesos",
+      "Mayor control de tus envíos",
+      "Cobros contraentrega sin complicaciones",
+    ],
   },
   sunat: {
     name: "Integración SUNAT",
-    desc: "Emite boletas y facturas electrónicas. Envío automático al cliente por email y WhatsApp.",
+    headline: "Emite Boletas, Facturas y más",
+    desc: "Genera guías, boletas, facturas y envía a tu cliente de forma automática.",
     icon: "🧾",
-    tags: ["Boletas", "Facturas", "Notas de crédito", "Envío auto"],
+    benefits: [
+      "Cumple con SUNAT sin esfuerzo",
+      "Envío automático a tu cliente",
+      "Ahorra tiempo, gana confianza",
+    ],
   },
   marketplace: {
     name: "Integración Marketplace",
-    desc: "Conecta Falabella, Ripley y Mercado Libre. Gestiona pedidos de todos en un solo panel.",
+    headline: "Conecta con Falabella, Ripley",
+    desc: "Centraliza tus pedidos de marketplaces, genera guías y controla todo desde Powip.",
     icon: "🏪",
-    tags: ["Falabella", "Ripley", "Mercado Libre", "Stock sync"],
+    benefits: [
+      "Todos tus canales en un solo lugar",
+      "Inventario y pedidos siempre al día",
+      "Más ventas, menos errores",
+    ],
   },
 };
+
+/** Add-ons que se muestran pero todavía no existen en el catálogo: no se pueden elegir ni cobrar. */
+const COMING_SOON_ADDONS: (AddOnCopy & { key: string; priceLabel: string })[] = [
+  {
+    key: "partners-wp-ia",
+    name: "Integración con Partners WP IA u otras plataformas",
+    headline: "Vende por WhatsApp con IA",
+    desc: "Conéctate con las mejores plataformas del ecosistema.",
+    icon: "🤖",
+    benefits: ["IA que vende por ti", "Integraciones sin fricción", "Una sola plataforma, todo el control"],
+    priceLabel: "Único pago",
+  },
+];
 
 const STEPS = [
   { num: 1, name: "Cuenta" },
@@ -138,14 +173,14 @@ const BRAND_PANEL_CONTENT: Record<
 
 function planLabel(planName: string, price: number, isAnnual: boolean): string {
   if (!planName) return "Elige tu plan";
-  return `Plan ${basePlanName(planName)} — S/ ${price}/${isAnnual ? "año" : "mes"}`;
+  return `Plan ${planDisplayName(planName)} — S/ ${price}/${isAnnual ? "año" : "mes"}`;
 }
 
 /** Igual que planLabel, pero con el total cuando hay add-ons (encabezado mobile del paso Pago). */
 function summaryLabel(planName: string, summary: SubscriptionSummary, isAnnual: boolean): string {
   const count = summary.addOns.length;
   if (!planName || count === 0) return planLabel(planName, summary.total, isAnnual);
-  return `Plan ${basePlanName(planName)} + ${count} add-on${count > 1 ? "s" : ""} — S/ ${summary.total}/${isAnnual ? "año" : "mes"}`;
+  return `Plan ${planDisplayName(planName)} + ${count} add-on${count > 1 ? "s" : ""} — S/ ${summary.total}/${isAnnual ? "año" : "mes"}`;
 }
 
 function addOnDisplay(addOn: BackendAddOn): { name: string; icon: string } {
@@ -185,7 +220,7 @@ function BrandPanel({ currentStep, planName, price, isAnnual, summary }: BrandPa
           <section aria-label="Resumen de tu suscripción" className={styles.brandSummary}>
             <dl>
               <div>
-                <dt>Plan {basePlanName(planName)}</dt>
+                <dt>Plan {planDisplayName(planName)}</dt>
                 <dd>
                   S/ {price}/{period}
                 </dd>
@@ -340,7 +375,13 @@ function Step2({
 
       {/* Header */}
       <div className="mb-1 mt-2">
-        <h3 className="font-bold text-xl text-gray-900">Add-ons opcionales</h3>
+        <h3 className="font-bold text-xl text-gray-900">Add Ons</h3>
+        <p className="text-sm text-gray-700 mt-1">
+          Potencia tu operación. Integra, automatiza y escala sin límites.
+        </p>
+        <p className="text-xs font-semibold mt-1" style={{ color: "#4F3A96" }}>
+          ⭐ Todos los add ons disponibles para todos los planes
+        </p>
         <p className="text-sm text-gray-500 mt-1">
           {addOns.length > 0
             ? `${samePrice ? "" : "Desde "}S/ ${minAddOnPrice}/${period} cada uno`
@@ -367,13 +408,14 @@ function Step2({
           </button>
         </div>
       )}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {addOns.map((addon) => {
-          const config = ADDON_MODAL_CONFIG[addon.code] ?? {
+          const config: AddOnCopy = ADDON_MODAL_CONFIG[addon.code] ?? {
             name: addon.name,
+            headline: "",
             desc: addon.description ?? "",
             icon: "➕",
-            tags: [],
+            benefits: [],
           };
           const isSelected = selectedAddons.includes(addon.id);
           const isPopular = addon.code === "courier";
@@ -417,22 +459,22 @@ function Step2({
 
               {/* Name & desc */}
               <h4 className="font-bold text-gray-900 text-sm leading-tight">{config.name}</h4>
-              <p className="text-xs text-gray-500 mt-1 leading-relaxed line-clamp-3">
-                {config.desc}
-              </p>
+              {config.headline && (
+                <p className="text-xs font-semibold text-gray-700 mt-1 leading-snug">
+                  {config.headline}
+                </p>
+              )}
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed">{config.desc}</p>
 
-              {/* Tags */}
-              <div className="flex flex-wrap gap-1 mt-2">
-                {config.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
-                    style={{ background: "#f3f4f6", color: "#6b7280" }}
-                  >
-                    {tag}
-                  </span>
+              {/* Benefits */}
+              <ul className="mt-2 flex flex-col gap-1">
+                {config.benefits.map((benefit) => (
+                  <li key={benefit} className="flex items-start gap-1.5 text-[11px] text-gray-600">
+                    <Check className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "#4F3A96" }} />
+                    {benefit}
+                  </li>
                 ))}
-              </div>
+              </ul>
 
               {/* Price */}
               <div className="font-bold text-sm mt-3" style={{ color: "#4F3A96" }}>
@@ -441,7 +483,40 @@ function Step2({
             </button>
           );
         })}
+        {COMING_SOON_ADDONS.map((soon) => (
+          <div
+            key={soon.key}
+            aria-disabled="true"
+            className="relative text-left rounded-2xl border-2 border-dashed p-4 opacity-70 cursor-not-allowed"
+            style={{ borderColor: "#e5e7eb", background: "#fafafa" }}
+          >
+            <div
+              className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
+              style={{ background: "#6b7280", color: "white" }}
+            >
+              Próximamente
+            </div>
+            <div className="text-2xl mb-2">{soon.icon}</div>
+            <h4 className="font-bold text-gray-900 text-sm leading-tight">{soon.name}</h4>
+            <p className="text-xs font-semibold text-gray-700 mt-1 leading-snug">{soon.headline}</p>
+            <p className="text-xs text-gray-500 mt-1 leading-relaxed">{soon.desc}</p>
+            <ul className="mt-2 flex flex-col gap-1">
+              {soon.benefits.map((benefit) => (
+                <li key={benefit} className="flex items-start gap-1.5 text-[11px] text-gray-600">
+                  <Check className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "#9ca3af" }} />
+                  {benefit}
+                </li>
+              ))}
+            </ul>
+            <div className="font-bold text-sm mt-3 text-gray-500">{soon.priceLabel}</div>
+          </div>
+        ))}
       </div>
+
+      <p className="text-xs text-gray-500 leading-relaxed">
+        🚀 Más integraciones, más automatización, más crecimiento. Powip se adapta a tu negocio para
+        que tú te enfoques en crecer.
+      </p>
 
       {/* Total summary */}
       <div
@@ -620,7 +695,7 @@ function Step3({
       >
         {/* Plan row */}
         <div className="flex items-center justify-between mb-2">
-          <span className="font-semibold text-gray-800 text-sm">Plan {planName}</span>
+          <span className="font-semibold text-gray-800 text-sm">Plan {planDisplayName(planName)}</span>
           <span className="font-bold text-sm" style={{ color: "#4F3A96" }}>
             S/ {price}/{period}
           </span>
@@ -671,7 +746,7 @@ function Step3({
             <>
               <p className="font-semibold">Qué incluye tu plan</p>
               <p className="mt-1 text-xs leading-relaxed" style={{ color: "#047857" }}>
-                Acceso inmediato al activar — todas las herramientas del plan {planName} disponibles
+                Acceso inmediato al activar — todas las herramientas del plan {planDisplayName(planName)} disponibles
                 desde el primer día.
               </p>
             </>
