@@ -1,119 +1,14 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 /**
- * Tests: PacksPromosPage (app/packs-promos/page.tsx) — fixes del modal "Nuevo pack"
- *
- * Contexto de los cambios probados (se testea COMPORTAMIENTO de usuario, no
- * detalle de implementación):
- *
- * FIX 1 — `useProductCatalog` ya no gatea por `companyId`.
- *   Antes: `if (!companyId) { setProducts([]); return; }` dejaba el buscador de
- *   productos del modal vacío cuando `auth.company` era null/undefined (bug
- *   reportado). Ahora usa react-query (`queryKey: ["packs-catalog", debounced]`,
- *   debounce 350ms) y el backend deriva la empresa del JWT, así que el
- *   `<Combobox>` de "Producto" carga el catálogo aunque no haya empresa en el
- *   contexto de auth.
- *
- * FIX 1b — `useProductCatalog` acepta `options.enabled` para gatear la request.
- *   En `PackFormModal` la instancia del buscador de Volumen se crea con
- *   `useProductCatalog({ enabled: type === "VOLUME" })`. Como `type` inicializa
- *   en `editingPack?.type ?? "VOLUME"`, al editar un pack GIFT (o BUNDLE) el
- *   modal arranca con esa query `enabled: false` desde el primer render: no
- *   dispara el `GET /products/report` que ese tab no consume (GIFT usa
- *   `GiftSearchPicker`, otro service; el bundle monta su instancia por fila).
- *
- * FIX 2 — Tab "Bundle": lista dinámica de 2 a 10 productos (antes 2 fijos).
- *   - Botón "＋ Agregar producto" visible mientras hay < 10 filas.
- *   - Botón "×" (aria-label "Quitar producto N") por fila, visible mientras hay
- *     > 2 filas; con exactamente 2 no se puede bajar más.
- *   - `handleSave` rama BUNDLE valida: mínimo 2 productos con valor, distintos,
- *     máximo 10, todos resueltos y precio del pack < suma de PVP.
- *
- * FIX 3 — `GiftSearchPicker` (tab GIFT) migrado a react-query vía el hook interno
- *   `useGiftInventorySearch({ inventoryId, companyId })`. Antes hacía fetching
- *   manual (`useEffect` + `setTimeout` + `.then/.catch`) y tragaba el error en
- *   silencio. Ahora:
- *   - `useQuery({ queryKey: ["gift-inventory", inventoryId, companyId ?? null,
- *     debouncedQuery], enabled: !!inventoryId, staleTime: 30_000, placeholderData
- *     prev })`, con debounce de 350ms sobre el término.
- *   - `queryFn` llama a `searchInventoryItems({ inventoryId, companyId, q:
- *     debounced || undefined, page: 1, limit: 20 })`.
- *   - `enabled: !!inventoryId` → mientras `inventories[0]?.id` no resuelve
- *     (`inventoryId === ""`) la query no se dispara.
- *   - ante `isError`: `toast.error("No se pudo cargar el inventario para
- *     regalos.", { id: "gift-inventory-load-error" })`.
- *   `inventoryId` baja de `useAuth().inventories[0]?.id` (derivado en la página a
- *   `selectedInventory`).
- *
- * Comportamiento verificado:
- * 1. (FIX 1) Modal "Nuevo pack" con `auth.company = null` → pestaña Volumen → el
- *    Combobox de "Producto" ofrece las opciones de `getProducts` mockeado
- *    (el gate viejo ya no bloquea). Corazón del bug.
- * 2. (FIX 2) Tab Bundle arranca con 2 filas; "＋ Agregar producto" agrega hasta
- *    llegar a 10; al llegar a 10 el botón desaparece.
- * 3. (FIX 2) Con 2 filas no hay "×"; al pasar a 3 cada fila tiene "×"; quitar la
- *    fila del medio conserva la selección de las otras dos (keys estables).
- * 4. (FIX 2) Editar un BundlePack con 3 items (todos con `productId`) → el modal
- *    abre con 3 filas y cada Combobox muestra el producto ya elegido.
- * 5. (FIX 2) Editar un BundlePack legacy (items sin `productId`, solo
- *    `productKey`/`productName`) → abre con las 3 filas pobladas y los nombres
- *    visibles, no vacías.
- * 6. (FIX 2) Guardar un bundle con 1 solo producto → error "Un bundle requiere
- *    al menos 2 productos.". Guardar con precio ≥ suma de PVP → error de precio.
- * 7. (FIX 2 — happy path) Guardar un bundle válido (2 y 3 productos): se llama a
- *    `toast.success("Pack creado")`, el modal cierra y el pack queda persistido
- *    en `localStorage` (`powip.packs.local.<companyId>`) con `type: "BUNDLE"`,
- *    `items` con los `productId`/`price` de cada fila (en orden) y el `packPrice`
- *    elegido. Los BUNDLE van solo a localStorage, no tocan `promos.service`
- *    (ver `PacksContext.addPack`, rama `pack.type !== "VOLUME"`).
- * 8. (FIX 1 — rama de error) Si `getProducts` rechaza con un error genérico,
- *    `useProductCatalog` dispara `toast.error("No se pudo cargar el catálogo de
- *    productos.", { id: "packs-catalog-load-error-generic" })`. El id de sonner
- *    ahora lleva sufijo por caso (`-no-company` | `-generic`) para que el aviso
- *    "sin empresa" y el genérico no se pisen entre sí.
- * 9. (FIX 1 — dedupe) Con varias filas de bundle montadas y sin búsquedas
- *    distintas, todas las instancias del hook comparten
- *    `queryKey: ["packs-catalog", ""]` y react-query colapsa la carga del
- *    catálogo en una única llamada a `getProducts`.
- * 10. (FIX 1b — enabled gating) Editar un pack GIFT: el modal abre en el tab
- *    Regalo (`type === "GIFT"` desde el primer render), muestra sus controles
- *    propios ("Opciones de regalo", "Monto mínimo de compra") y no monta ningún
- *    `<select>` de producto. `getProducts` no se llama ni siquiera después de
- *    dejar correr la ventana del debounce de 350ms: la instancia del buscador
- *    de Volumen nace con `enabled: false` y react-query nunca invoca su queryFn.
- * 11. (FIX 3 — happy path) Editar un GiftPack con `inventories: [{ id: "inv-1" }]`
- *    → el modal abre en el tab Regalo con `GiftSearchPicker`. Al enfocar el
- *    buscador y tipear un término, tras la ventana de debounce (350ms) se llama
- *    a `searchInventoryItems` con `{ inventoryId: "inv-1", q: "<término>", page:
- *    1, limit: 20 }`, el dropdown lista los `productName` devueltos y al hacer
- *    click en uno aparece su chip "🎁 …" entre las opciones seleccionadas.
- * 12. (FIX 3 — enabled gating) Con `inventories: []` (`inventoryId === ""`),
- *    editar un GiftPack, enfocar y tipear en el buscador y dejar correr >350ms
- *    reales → `searchInventoryItems` no se llama nunca: `enabled: !!inventoryId`
- *    mantiene la query deshabilitada.
- * 13. (FIX 3 — rama de error) Si `searchInventoryItems` rechaza (con
- *    `inventories: [{ id: "inv-1" }]`), `useGiftInventorySearch` dispara
- *    `toast.error("No se pudo cargar el inventario para regalos.",
- *    { id: "gift-inventory-load-error" })` (id estable). El QueryClient de
- *    `renderPage()` ya trae `retry: false`.
- *
- * NOTA — `handleSave` rama BUNDLE llama a `crypto.randomUUID()` para el `id` de
- * un pack nuevo, y ese método no existe en el jsdom de jest-environment-jsdom 29.
- * El describe del happy path (7) lo define puntualmente en un `beforeAll` y
- * restaura el original en `afterAll`; el resto de los tests solo ejercita ramas
- * de validación que hacen `return` antes de esa línea.
- *
- * Work-arounds jsdom (mismo criterio que src/components/eva/__tests__/*):
- * - @/components/ui/dialog → contenedor plano visible cuando `open`. Como el
- *   mock no usa portal ni `aria-hidden`, la página de fondo (con sus botones de
- *   filtro "Volumen"/"Bundle"/...) sigue en el DOM: por eso las queries del
- *   modal se acotan con `within(getByTestId('pack-form-modal'))`.
- * - @/components/ui/combobox → `<select>` nativo (mismo rol accesible
- *   "combobox"): expone las `options` que le pasa el componente y reporta la
- *   selección por `onValueChange`. Radix Popover no funciona en jsdom.
- * - @/components/ui/checkbox → `<input type="checkbox">` nativo.
+ * PacksPromosPage: catálogo, formularios, variantes exactas y compatibilidad
+ * de bundles anteriores. BUNDLE usa una API compartida simulada; regalos
+ * conservan persistencia local y VOLUME conserva su servicio independiente.
+ * Los tests de aislamiento, importación, sesiones y tombstones viven en
+ * PacksContext.shared-bundles.test.tsx.
  */
 
 import React from 'react';
+import { tokenStore } from '@/lib/tokenStore';
 import { render, screen, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -152,6 +47,27 @@ jest.mock('@/services/promos.service', () => ({
   createVolumePromo: jest.fn(),
   updatePromo: jest.fn(),
   deletePromo: jest.fn(),
+}));
+
+let mockSharedBundles: import('@/interfaces/IPack').BundlePack[] = [];
+jest.mock('@/services/bundlePromos.service', () => ({
+  listBundlePromos: jest.fn(async () => ({ bundles: mockSharedBundles, deletedIds: [] })),
+  getBundleCapabilities: jest.fn(async () => ({ canManage: true })),
+  importBundlePromos: jest.fn(async (bundles: import('@/interfaces/IPack').BundlePack[]) => {
+    const current = new Map(mockSharedBundles.map((pack) => [pack.id, pack]));
+    for (const pack of bundles) if (!current.has(pack.id)) current.set(pack.id, { ...pack, shared: true, synced: false });
+    mockSharedBundles = [...current.values()];
+    return { acceptedIds: bundles.map((pack) => pack.id), bundles: mockSharedBundles };
+  }),
+  createBundlePromo: jest.fn(async (pack: import('@/interfaces/IPack').BundlePack) => {
+    const saved = { ...pack, shared: true, synced: false };
+    mockSharedBundles.push(saved); return saved;
+  }),
+  updateBundlePromo: jest.fn(async (id: string, pack: import('@/interfaces/IPack').BundlePack) => {
+    const saved = { ...pack, id, shared: true, synced: false };
+    mockSharedBundles = mockSharedBundles.map((value) => value.id === id ? saved : value); return saved;
+  }),
+  deleteBundlePromo: jest.fn(async (id: string) => { mockSharedBundles = mockSharedBundles.filter((pack) => pack.id !== id); }),
 }));
 
 jest.mock('@/services/inventoryItems.service', () => ({
@@ -387,6 +303,9 @@ async function selectBundleVariant(modal: Modal, user: User, row: number, varian
 beforeEach(() => {
   jest.clearAllMocks();
   window.localStorage.clear();
+  mockSharedBundles = [];
+  tokenStore.invalidate();
+  tokenStore.set('tok', COMPANY_ID);
   mockUseAuth.mockReturnValue(
     authValue({ id: COMPANY_ID, name: 'ACME' }) as unknown as ReturnType<
       typeof useAuth
@@ -757,11 +676,10 @@ describe('PacksPromosPage — guardar un bundle válido (FIX 2, happy path)', ()
   }
 
   function readStoredBundles(): BundlePack[] {
-    const raw = window.localStorage.getItem(`powip.packs.variants.v1.${COMPANY_ID}`);
-    return raw ? (JSON.parse(raw) as BundlePack[]) : [];
+    return mockSharedBundles.filter((pack) => pack.schemaVersion === 2);
   }
 
-  it('guarda un bundle de 2 productos: toast.success, modal cerrado y pack persistido en localStorage', async () => {
+  it('guarda un bundle de 2 productos: toast.success, modal cerrado y pack compartido en el servidor', async () => {
     mockGetProducts.mockResolvedValue([
       mkProduct('pa', 'Producto A', 10),
       mkProduct('pb', 'Producto B', 20),
@@ -792,10 +710,10 @@ describe('PacksPromosPage — guardar un bundle válido (FIX 2, happy path)', ()
     await waitFor(() =>
       expect(screen.queryByTestId('pack-form-modal')).not.toBeInTheDocument(),
     );
-    // Los BUNDLE se persisten solo en localStorage: no tocan la Promos API.
+    // BUNDLE usa su recurso compartido y no modifica promos VOLUME.
     expect(mockCreateVolumePromo).not.toHaveBeenCalled();
 
-    // Persistencia en localStorage con el shape correcto.
+    // Persistencia compartida con el mismo shape de variantes.
     await waitFor(() => expect(readStoredBundles()).toHaveLength(1));
     const [stored] = readStoredBundles();
     expect(stored).toMatchObject({
@@ -877,7 +795,7 @@ describe('PacksPromosPage — bundles con variantes exactas', () => {
   const secondVariant = { id: 'vit-1', sku: 'VIT-1', attributeValues: { Sabor: 'Naranja' }, priceVta: 20, isActive: true };
 
   function readVariants(): BundlePack[] {
-    return JSON.parse(window.localStorage.getItem(variantsKey) ?? '[]');
+    return mockSharedBundles.filter((pack) => pack.schemaVersion === 2);
   }
 
   function legacyBundle(withIds = true): BundlePack {
@@ -985,8 +903,8 @@ describe('PacksPromosPage — bundles con variantes exactas', () => {
     await user.type(modal.getByPlaceholderText(/Pantalón Denim/), 'Kit renombrado');
     await user.click(modal.getByRole('button', { name: /guardar pack/i }));
     await waitFor(() => expect(screen.queryByTestId('pack-form-modal')).not.toBeInTheDocument());
-    const [saved] = JSON.parse(window.localStorage.getItem(legacyKey) ?? '[]');
-    expect(saved).toEqual({ ...original, name: 'Kit renombrado' });
+    const [saved] = mockSharedBundles;
+    expect(saved).toEqual({ ...original, name: 'Kit renombrado', shared: true, synced: false });
     expect(saved).not.toHaveProperty('schemaVersion');
     expect(readVariants()).toEqual([]);
   });
@@ -1045,8 +963,8 @@ describe('PacksPromosPage — bundles con variantes exactas', () => {
     seedLocalPacks(COMPANY_ID, [legacyBundle()]);
     const user = userEvent.setup();
     renderPage();
-    const modal = await openEditModal(user, 'Kit anterior');
-    expect(modal.getByRole('combobox', { name: 'Variante 1...' })).toBeDisabled();
+    expect(await screen.findByText('Kit anterior')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /editar/i })).not.toBeInTheDocument();
     expect(mockGetVariants).not.toHaveBeenCalled();
   });
 

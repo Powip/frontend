@@ -77,7 +77,7 @@ function PacksPromosContent() {
     setSelectedInventory(inventories.length === 1 ? inventories[0].id : "");
   }, [selectedInventory, inventories]);
 
-  const { packs, addPack, updatePack, togglePack, deletePack } = usePacks();
+  const { packs, canManageBundles, addPack, updatePack, togglePack, deletePack } = usePacks();
 
   const [filter, setFilter] = useState<"all" | PackType | "off">("all");
   const filteredPacks = useMemo(() => {
@@ -190,7 +190,7 @@ function PacksPromosContent() {
               <PackCard
                 key={p.id}
                 pack={p}
-                isAdmin={isAdmin}
+                isAdmin={p.type === "BUNDLE" ? canManageBundles : isAdmin}
                 onEdit={() => {
                   setEditingId(p.id);
                   setModalOpen(true);
@@ -218,6 +218,10 @@ function PacksPromosContent() {
           inventoryId={selectedInventory}
           companyId={companyId}
           onSave={async (pack) => {
+            if (pack.type === "BUNDLE" && !canManageBundles) {
+              toast.error("Solo Administración puede configurar los bundles de la empresa.");
+              return;
+            }
             const ok = editingPack
               ? await updatePack(editingPack.id, pack)
               : await addPack(pack);

@@ -37,6 +37,7 @@
  */
 
 import React from 'react';
+import { tokenStore } from '@/lib/tokenStore';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -62,6 +63,12 @@ jest.mock('@/services/promos.service', () => ({
   createVolumePromo: jest.fn(),
   updatePromo: jest.fn(),
   deletePromo: jest.fn(),
+}));
+
+jest.mock('@/services/bundlePromos.service', () => ({
+  listBundlePromos: jest.fn().mockResolvedValue({ bundles: [], deletedIds: [] }),
+  getBundleCapabilities: jest.fn().mockResolvedValue({ canManage: false }),
+  importBundlePromos: jest.fn(), createBundlePromo: jest.fn(), updateBundlePromo: jest.fn(), deleteBundlePromo: jest.fn(),
 }));
 
 // ── Casts ────────────────────────────────────────────────────────────────────
@@ -206,6 +213,7 @@ beforeEach(() => {
   jest.restoreAllMocks();
   jest.clearAllMocks();
   window.localStorage.clear();
+  tokenStore.set("fake-token", COMPANY_ID);
   mockUseAuth.mockReturnValue(MOCK_AUTH as unknown as ReturnType<typeof useAuth>);
   mockListVolumePromos.mockResolvedValue([]);
 });
@@ -237,31 +245,13 @@ describe('PacksContext — variantes exactas y aislamiento por empresa', () => {
     expect(result.current.packs).toHaveLength(0);
   });
 
-  it('guarda bundles exactos fuera de la clave que pueden leer clientes antiguos y los restaura', async () => {
+  it('restaura bundles exactos fuera de la clave que pueden leer clientes antiguos', async () => {
     seedLocalStorage(COMPANY_ID, [VALID_BUNDLE, VALID_GIFT]);
-    const { result, unmount } = renderPacks();
-    await waitFor(() => expect(result.current.packs).toHaveLength(2));
-
-    await act(async () => expect(await result.current.addPack(EXACT_BUNDLE)).toBe(true));
-    expect(JSON.parse(window.localStorage.getItem(storageKey(COMPANY_ID))!)).toEqual([VALID_BUNDLE, VALID_GIFT]);
-    expect(JSON.parse(window.localStorage.getItem(variantKey(COMPANY_ID))!)).toEqual([EXACT_BUNDLE]);
-    unmount();
-
-    const restored = renderPacks();
-    await waitFor(() => expect(restored.result.current.packs).toHaveLength(3));
-    expect(restored.result.current.packs.find((pack) => pack.id === EXACT_BUNDLE.id)).toEqual(EXACT_BUNDLE);
-  });
-
-  it('convierte un bundle legacy sólo al actualizarlo explícitamente y conserva regalos', async () => {
-    seedLocalStorage(COMPANY_ID, [VALID_BUNDLE, VALID_GIFT]);
+    window.localStorage.setItem(variantKey(COMPANY_ID), JSON.stringify([EXACT_BUNDLE]));
     const { result } = renderPacks();
-    await waitFor(() => expect(result.current.packs).toHaveLength(2));
-    const converted = { ...EXACT_BUNDLE, id: VALID_BUNDLE.id };
-
-    await act(async () => expect(await result.current.updatePack(VALID_BUNDLE.id, converted)).toBe(true));
-    expect(JSON.parse(window.localStorage.getItem(storageKey(COMPANY_ID))!)).toEqual([VALID_GIFT]);
-    expect(JSON.parse(window.localStorage.getItem(variantKey(COMPANY_ID))!)).toEqual([converted]);
-    expect(result.current.packs).toEqual([converted, VALID_GIFT]);
+    await waitFor(() => expect(result.current.packs).toHaveLength(3));
+    expect(JSON.parse(window.localStorage.getItem(storageKey(COMPANY_ID))!)).toEqual([VALID_BUNDLE, VALID_GIFT]);
+    expect(result.current.packs.find((pack) => pack.id === EXACT_BUNDLE.id)).toEqual(EXACT_BUNDLE);
   });
 
   it('descarta un bundle v2 sin variante en lugar de tratarlo como legacy', async () => {
@@ -309,42 +299,15 @@ describe('PacksContext — variantes exactas y aislamiento por empresa', () => {
     expect(result.current.packs).toEqual([VALID_GIFT]);
   });
 
-  it('informa un error de persistencia sin mostrar el pack como guardado', async () => {
+  it('informa un error de persistencia de regalos sin mostrarlos como guardados', async () => {
     const { result } = renderPacks();
     await waitFor(() => expect(window.localStorage.getItem(storageKey(COMPANY_ID))).toBe('[]'));
     jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Quota', 'QuotaExceededError'); });
-
-    await act(async () => expect(await result.current.addPack(EXACT_BUNDLE)).toBe(false));
+    await act(async () => expect(await result.current.addPack(VALID_GIFT)).toBe(false));
     expect(result.current.packs).toHaveLength(0);
     expect(mockToast.error).toHaveBeenCalledWith('No se pudieron guardar los packs locales en este navegador.');
   });
 
-  it('revierte la escritura exacta si falla retirar la copia legacy al convertir', async () => {
-    seedLocalStorage(COMPANY_ID, [VALID_BUNDLE]);
-    const { result } = renderPacks();
-    await waitFor(() => expect(result.current.packs).toEqual([VALID_BUNDLE]));
-    const originalSet = Storage.prototype.setItem;
-    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
-      if (key === storageKey(COMPANY_ID)) throw new DOMException('Quota', 'QuotaExceededError');
-      originalSet.call(this, key, value);
-    });
-    await act(async () => expect(await result.current.updatePack(VALID_BUNDLE.id, { ...EXACT_BUNDLE, id: VALID_BUNDLE.id })).toBe(false));
-    expect(result.current.packs).toEqual([VALID_BUNDLE]);
-    expect(JSON.parse(window.localStorage.getItem(storageKey(COMPANY_ID))!)).toEqual([VALID_BUNDLE]);
-    expect(window.localStorage.getItem(variantKey(COMPANY_ID))).toBe('[]');
-  });
-
-  it('persiste activar y eliminar un bundle exacto conservando los legacy', async () => {
-    seedLocalStorage(COMPANY_ID, [VALID_BUNDLE]);
-    window.localStorage.setItem(variantKey(COMPANY_ID), JSON.stringify([EXACT_BUNDLE]));
-    const { result } = renderPacks();
-    await waitFor(() => expect(result.current.packs).toHaveLength(2));
-    await act(async () => { await result.current.togglePack(EXACT_BUNDLE.id); });
-    expect(JSON.parse(window.localStorage.getItem(variantKey(COMPANY_ID))!)[0].active).toBe(false);
-    await act(async () => expect(await result.current.deletePack(EXACT_BUNDLE.id)).toBe(true));
-    expect(window.localStorage.getItem(variantKey(COMPANY_ID))).toBe('[]');
-    expect(result.current.packs).toEqual([VALID_BUNDLE]);
-  });
 });
 
 // ── Tests ────────────────────────────────────────────────────────────────────

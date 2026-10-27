@@ -13,7 +13,7 @@ const mockPack: BundlePack = {
     { productId: "product-complement", productKey: "Complemento", productName: "Complemento", variantId: "complement", price: 20 },
     { productId: "product-supplement", productKey: "Suplemento anterior", productName: "Suplemento anterior", variantId: "supplement-300", sku: "SKU-ANTIGUO", attributes: { Tamaño: "300 g" }, price: 99 },
   ],
-  packPrice: 100,
+  packPrice: 100, shared: true, synced: false,
 };
 jest.mock("@/contexts/PacksContext", () => ({ usePacks: () => ({ packs: [mockPack] }) }));
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: { get: jest.fn() } }));
@@ -60,6 +60,7 @@ test("quotation autofill uses exact 300 g after rename, applies bundle and saves
     expect.objectContaining({ productVariantId: "supplement-300", sku: "SUP-300", variant: "300 g", isPack: true, quantity: 1 }),
   ]));
   expect(payload.lines.some((line: { productVariantId: string }) => line.productVariantId === "supplement-150")).toBe(false);
+  expect(payload.lines.every((line: { packId?: string }) => line.packId === undefined)).toBe(true);
   expect(payload.lines.reduce((sum: number, line: { unitPrice: number; quantity: number }) => sum + line.unitPrice * line.quantity, 0)).toBe(100);
   expect(getQuotationCatalog).toHaveBeenCalledWith({ storeId: "store-fixture", search: "SUP-300" });
 });

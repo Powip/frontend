@@ -1123,9 +1123,9 @@ export default function GuideDetailsModal({
             .lc-header { display: flex; align-items: flex-start; justify-content: space-between; }
             .lc-brand { display: flex; align-items: center; gap: 12px; }
             .lc-logo {
-              width: 40px; height: 40px; border: 2px solid #000; border-radius: 10px;
+              width: 40px; height: 40px;
               display: flex; align-items: center; justify-content: center;
-              font-weight: 800; font-size: 16px; flex-shrink: 0; overflow: hidden;
+              font-weight: 800; font-size: 16px; flex-shrink: 0;
             }
             .lc-logo img { width: 100%; height: 100%; object-fit: contain; }
             .lc-company-name { font-weight: 800; font-size: 15px; }

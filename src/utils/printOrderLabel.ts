@@ -175,8 +175,6 @@ const LABEL_STYLES = `
   .logo-box {
     width: 48px;
     height: 48px;
-    border-radius: 8px;
-    border: 1.5px solid #000;
     color: #000;
     display: flex;
     align-items: center;
@@ -184,7 +182,6 @@ const LABEL_STYLES = `
     font-size: 10px;
     font-weight: 700;
     flex-shrink: 0;
-    overflow: hidden;
   }
   .logo-box img { width: 100%; height: 100%; object-fit: contain; }
   .company-name { font-size: 18px; font-weight: 700; }

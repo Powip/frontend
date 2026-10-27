@@ -3,9 +3,8 @@ import type { TrackingMode } from "@/services/inventoryTrackingService";
    Packs & Promos
 
    VOLUME: conectado al backend real (Promos API — ver src/services/promos.service.ts).
-   BUNDLE / GIFT: todavía solo-UI (PacksContext + localStorage) — el backend aún
-   no confirma su shape. Cuando se confirme, este archivo se actualiza y dejan
-   de tener `synced: false`.
+   BUNDLE: compartido por empresa en /bundle-promos. GIFT sigue en localStorage.
+   synced identifica únicamente promos VOLUME referenciables desde cotizaciones.
 ----------------------------------------- */
 
 /** Canales soportados por la Promos API real (no coincide 1:1 con SalesChannel de la orden — ver PROMO_CHANNEL_LABEL) */
@@ -76,6 +75,8 @@ export interface BundlePack {
   schemaVersion?: 2;
   items: BundleProductRef[]; // la UI (handleSave) exige 2–10; el validador legacy admite ≥1
   packPrice: number;
+  /** Persistido en /bundle-promos; su ID no pertenece a /promos. */
+  shared?: boolean;
   synced?: boolean;
 }
 

@@ -144,7 +144,7 @@ export function printShippingGuide(
 
         .head{display:flex; justify-content:space-between; align-items:flex-start; gap:8mm; padding-bottom:3mm; border-bottom:2.2px solid var(--ink);}
         .biz{display:flex; gap:3mm; align-items:flex-start;}
-        .biz .logo{width:11mm;height:11mm;border:1.8px solid var(--ink);border-radius:2.4mm;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:6.5mm;flex-shrink:0;}
+        .biz .logo{width:11mm;height:11mm;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:6.5mm;flex-shrink:0;}
         .biz h1{font-size:4.4mm; font-weight:800; letter-spacing:-.02em; line-height:1.05;}
         .biz p{font-size:2.5mm; color:var(--ink); font-weight:700; line-height:1.3; margin-top:.6mm;}
         .biz p b{font-weight:800;}
@@ -242,7 +242,7 @@ export function printShippingGuide(
         <div class="biz">
           <div class="logo">${
             company?.logoUrl
-              ? `<img src="${escapePrintHtml(company.logoUrl)}" alt="Logo" style="width:100%;height:100%;object-fit:contain;border-radius:2.4mm;">`
+              ? `<img src="${escapePrintHtml(company.logoUrl)}" alt="Logo" style="width:100%;height:100%;object-fit:contain;">`
               : escapePrintHtml(companyInitial)
           }</div>
           <div>
