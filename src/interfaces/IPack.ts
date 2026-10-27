@@ -27,13 +27,20 @@ export const PROMO_CHANNELS: PromoChannel[] = [
 export type PackType = "VOLUME" | "BUNDLE" | "GIFT";
 
 export interface PackProductRef {
-  /** UUID real de ms-products. Presente en packs sincronizados (VOLUME); puede faltar en Bundle/Gift locales. */
+  /** UUID real de ms-products. Presente en VOLUME y bundles nuevos; puede faltar en bundles antiguos. */
   productId?: string;
   /** Nombre del producto, usado para matchear contra el carrito mientras el buscador de
    *  registrar-venta (inventory-item/search) no exponga productId por variante. */
   productKey: string;
   productName: string;
   price: number;
+}
+
+/** Los bundles nuevos usan una variante exacta; los antiguos sin variantId aplican por producto. */
+export interface BundleProductRef extends PackProductRef {
+  variantId?: string;
+  sku?: string;
+  attributes?: Record<string, string>;
 }
 
 export interface VolumePack {
@@ -65,7 +72,9 @@ export interface BundlePack {
   /** string[] a propósito: el motor de evaluación del carrito solo compara texto,
    *  no necesita saber si el canal viene del enum de Promos o del de Órdenes. */
   channels: string[];
-  items: PackProductRef[]; // la UI (handleSave) exige 2–10; el validador de localStorage (isValidLocalPack) solo exige ≥1
+  /** La versión 2 exige variantes exactas y usa almacenamiento separado de los bundles antiguos. */
+  schemaVersion?: 2;
+  items: BundleProductRef[]; // la UI (handleSave) exige 2–10; el validador legacy admite ≥1
   packPrice: number;
   synced?: boolean;
 }

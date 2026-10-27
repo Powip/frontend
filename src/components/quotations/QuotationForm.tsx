@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Plus, Search, Trash2, Package, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ import { usePacksEngine } from "@/hooks/usePacksEngine";
 import SuggestionsPanel from "@/components/registrar-venta/SuggestionsPanel";
 import type { CartItem } from "@/interfaces/IOrder";
 import type { InventoryItemForSale } from "@/interfaces/IProduct";
-import type { Pack } from "@/interfaces/IPack";
+import type { BundleProductRef, Pack } from "@/interfaces/IPack";
 import type {
   CreateQuotationInput,
   Quotation,
@@ -29,6 +29,8 @@ import type {
 } from "@/types/quotations";
 import { createQuotation, getQuotationCatalog, updateQuotation } from "@/services/quotationService";
 import { errorMessage, money } from "./quotationHelpers";
+import { resolveBundleVariant } from "@/utils/resolveBundleVariant";
+import { tokenStore } from "@/lib/tokenStore";
 
 function toCart(line: QuotationLine): CartItem {
   return {
@@ -100,6 +102,14 @@ export default function QuotationForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const { packs } = usePacks();
+  const bundleScope = useRef({ storeId, active: true });
+  bundleScope.current.storeId = storeId;
+  const currentCart = useRef(cart);
+  currentCart.current = cart;
+  useEffect(() => {
+    bundleScope.current.active = true;
+    return () => { bundleScope.current.active = false; };
+  }, []);
   const total = cart.reduce((sum, line) => sum + line.quantity * line.price, 0);
 
   const loadCatalog = useCallback(
@@ -215,7 +225,11 @@ export default function QuotationForm({
       );
       return;
     }
-    if ((quantities[product.variantId] || 0) + quantity > product.availableStock) {
+    const quantityInCart = currentCart.current.reduce(
+      (sum, line) => sum + (line.variantId === product.variantId ? line.quantity : 0),
+      0,
+    );
+    if (quantityInCart + quantity > product.availableStock) {
       toast.error(`Sin stock suficiente: quedan ${product.availableStock} unidades.`);
       return;
     }
@@ -234,6 +248,7 @@ export default function QuotationForm({
               id: crypto.randomUUID(),
               inventoryItemId: product.inventoryItemId,
               variantId: product.variantId,
+              trackingMode: product.trackingMode,
               productName: product.productName,
               sku: product.sku,
               attributes: product.attributes,
@@ -259,6 +274,26 @@ export default function QuotationForm({
       addProduct(best, quantity);
     } catch (failure) {
       toast.error(errorMessage(failure, "No se pudo consultar el stock."));
+    }
+  }
+
+  async function autoAddBundle(item: BundleProductRef) {
+    if (!("variantId" in item)) return autoAdd(item.productKey);
+    const session = tokenStore.snapshot();
+    const requestedStoreId = storeId;
+    const isCurrent = () => bundleScope.current.active &&
+      bundleScope.current.storeId === requestedStoreId && tokenStore.isCurrent(session);
+    try {
+      const variant = await resolveBundleVariant(item, {
+        search: async (search) => ({
+          data: (await loadCatalog(search)).map(catalogVariant),
+        }),
+      });
+      if (!isCurrent()) return;
+      if (!variant) throw new Error("La variante del bundle no está disponible en esta tienda.");
+      addProduct(variant);
+    } catch (failure) {
+      if (isCurrent()) toast.error(errorMessage(failure, "No se pudo consultar la variante del bundle."));
     }
   }
 
@@ -665,6 +700,7 @@ export default function QuotationForm({
                 appliedPacks={appliedPacks}
                 pendingHints={pendingHints}
                 modelQtyInCart={engine.modelQtyInCart}
+                bundleQtyInCart={engine.bundleQtyInCart}
                 subtotalPayable={engine.subtotalPayable}
                 totalUnits={engine.totalUnits}
                 isAdmin
@@ -676,7 +712,7 @@ export default function QuotationForm({
                       pack.minQty - engine.modelQtyInCart(pack.product.productKey),
                     );
                 }}
-                onAutoAddBundleItem={(product) => void autoAdd(product)}
+                onAutoAddBundleItem={(item) => void autoAddBundle(item)}
               />
               {giftHints.map((pack) => (
                 <div

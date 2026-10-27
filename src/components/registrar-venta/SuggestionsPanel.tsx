@@ -2,8 +2,9 @@
 
 import { Button } from "@/components/ui/button";
 import { Gift, Sparkles, PackageCheck, Lightbulb } from "lucide-react";
-import { Pack } from "@/interfaces/IPack";
+import { BundleProductRef, Pack } from "@/interfaces/IPack";
 import { packNetUnit } from "@/hooks/usePacksEngine";
+import { bundleItemKey, bundleItemLabel, hasValidBundleItems } from "@/utils/bundleVariants";
 
 const fmt = (n: number) => `S/ ${n.toFixed(2)}`;
 
@@ -14,12 +15,13 @@ interface SuggestionsPanelProps {
   /** Packs que ya cumplen su condición y están listos para aplicarse (usePacksEngine.pendingHints) */
   pendingHints: Pack[];
   modelQtyInCart: (productKey: string) => number;
+  bundleQtyInCart: (ref: BundleProductRef) => number;
   subtotalPayable: number;
   totalUnits: number;
   isAdmin: boolean;
   onApplyPack: (pack: Pack) => void;
   onAutoFillVolume: (pack: Pack) => void;
-  onAutoAddBundleItem: (productKey: string) => void;
+  onAutoAddBundleItem: (ref: BundleProductRef) => void;
 }
 
 export default function SuggestionsPanel({
@@ -28,6 +30,7 @@ export default function SuggestionsPanel({
   appliedPacks,
   pendingHints,
   modelQtyInCart,
+  bundleQtyInCart,
   subtotalPayable,
   totalUnits,
   isAdmin,
@@ -35,13 +38,16 @@ export default function SuggestionsPanel({
   onAutoFillVolume,
   onAutoAddBundleItem,
 }: SuggestionsPanelProps) {
-  const active = packs.filter((p) => p.active && (!channel || p.channels.includes(channel)));
-  const readyIds = new Set(pendingHints.map((p) => p.id));
+  const active = packs.filter((p) => p.active && (!channel || p.channels.includes(channel)) &&
+    (p.type !== "BUNDLE" || hasValidBundleItems(p)));
+  const ready = pendingHints.filter((p) => p.type !== "BUNDLE" ||
+    (hasValidBundleItems(p) && p.items.every((item) => bundleQtyInCart(item) > 0)));
+  const readyIds = new Set(ready.map((p) => p.id));
 
   const items: { icon: React.ReactNode; title: React.ReactNode; desc: React.ReactNode; action?: React.ReactNode }[] = [];
 
   // Packs ya calificados, listos para aplicar (volumen/bundle/regalo).
-  pendingHints.forEach((p) => {
+  ready.forEach((p) => {
     if (p.type === "VOLUME") {
       items.push({
         icon: <PackageCheck className="h-4 w-4" />,
@@ -57,7 +63,7 @@ export default function SuggestionsPanel({
           </>
         ),
         action: (
-          <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => onApplyPack(p)}>
+          <Button type="button" size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => onApplyPack(p)}>
             {p.variantFree ? "Elegir tallas y aplicar" : "Aplicar"}
           </Button>
         ),
@@ -75,11 +81,11 @@ export default function SuggestionsPanel({
         ),
         desc: (
           <>
-            Tienes ambos productos. Cierra en {fmt(p.packPrice)} y ahorra {fmt(Math.max(0, save))}.
+            Tienes los productos del bundle: {p.items.map(bundleItemLabel).join(" + ")}. Cierra en {fmt(p.packPrice)} y ahorra {fmt(Math.max(0, save))}.
           </>
         ),
         action: (
-          <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => onApplyPack(p)}>
+          <Button type="button" size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => onApplyPack(p)}>
             Aplicar bundle
           </Button>
         ),
@@ -101,7 +107,7 @@ export default function SuggestionsPanel({
           </>
         ),
         action: (
-          <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white" onClick={() => onApplyPack(p)}>
+          <Button type="button" size="sm" className="bg-amber-500 hover:bg-amber-600 text-white" onClick={() => onApplyPack(p)}>
             Elegir regalo
           </Button>
         ),
@@ -131,7 +137,7 @@ export default function SuggestionsPanel({
             </>
           ),
           action: (
-            <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => onAutoFillVolume(p)}>
+            <Button type="button" size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => onAutoFillVolume(p)}>
               Sumar {falta} u.
             </Button>
           ),
@@ -174,8 +180,8 @@ export default function SuggestionsPanel({
     }
 
     if (p.type === "BUNDLE") {
-      const present = p.items.filter((i) => modelQtyInCart(i.productKey) > 0);
-      const missing = p.items.filter((i) => modelQtyInCart(i.productKey) === 0);
+      const present = p.items.filter((item) => bundleQtyInCart(item) > 0);
+      const missing = p.items.filter((item) => bundleQtyInCart(item) === 0);
       const save = p.items.reduce((a, i) => a + i.price, 0) - p.packPrice;
       if (present.length > 0 && missing.length > 0) {
         items.push({
@@ -187,7 +193,7 @@ export default function SuggestionsPanel({
           ),
           desc: (
             <>
-              Falta agregar: {missing.map((i) => i.productName).join(", ")}. El combo cierra en{" "}
+              Falta agregar: {missing.map(bundleItemLabel).join(", ")}. El combo cierra en{" "}
               {fmt(p.packPrice)} y ahorra {fmt(Math.max(0, save))}.
             </>
           ),
@@ -195,12 +201,13 @@ export default function SuggestionsPanel({
             <div className="flex flex-wrap gap-1.5">
               {missing.map((i) => (
                 <Button
-                  key={i.productKey}
+                  key={bundleItemKey(i)}
+                  type="button"
                   size="sm"
                   variant="outline"
-                  onClick={() => onAutoAddBundleItem(i.productKey)}
+                  onClick={() => onAutoAddBundleItem(i)}
                 >
-                  + {i.productName}
+                  + {bundleItemLabel(i)}
                 </Button>
               ))}
             </div>

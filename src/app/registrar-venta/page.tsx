@@ -64,7 +64,7 @@ import { usePacksEngine } from "@/hooks/usePacksEngine";
 import { useCompanyCouriers } from "@/hooks/useCompanyCouriers";
 import type { Client, ClientType, DocumentType } from "@/interfaces/ICliente";
 import type { CartItem, OrderHeader } from "@/interfaces/IOrder";
-import type { GiftOption, Pack, VolumePack } from "@/interfaces/IPack";
+import type { BundleProductRef, GiftOption, Pack, VolumePack } from "@/interfaces/IPack";
 import type { InventoryItemForSale } from "@/interfaces/IProduct";
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
@@ -76,6 +76,7 @@ import { fetchSaleContext } from "@/services/saleContextService";
 import ubigeos from "@/utils/json/ubigeos.json";
 import { bumpProductFrequency, getProductFrequencies } from "@/utils/productFrequency";
 import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
+import { resolveBundleVariant } from "@/utils/resolveBundleVariant";
 import { buildOrderItem, getOrderItemPricing } from "./orderItemPricing";
 import { validateClientDocument } from "./clientDocumentValidation";
 import { buildClientUpdatePayload, clientToFormFields } from "./clientForm";
@@ -434,6 +435,8 @@ function RegistrarVentaContent() {
     inventories,
   });
   const selectedInventory = origin.catalogInventoryId;
+  const bundleScope = useRef({ companyId, inventoryId: selectedInventory, unitSelectionLocked });
+  bundleScope.current = { companyId, inventoryId: selectedInventory, unitSelectionLocked };
   const actorScope = `${userId ?? ""}:${companyId ?? ""}`;
   const leadContextScope = saleContext.data ? stores.map((store) => store.id).sort().join(",") : null;
   const unknownVariantIds = Array.from(new Set(cart.filter((line) => line.trackingMode === "UNKNOWN").map((line) => line.variantId))).sort().join(",");
@@ -879,18 +882,33 @@ function RegistrarVentaContent() {
     toast.success("Unidades agregadas — ya califica el pack");
   };
 
-  const handleAutoAddBundleItem = async (productKey: string) => {
-    const variants = await getVariantsForProduct(productKey);
-    const best = variants.reduce<InventoryItemForSale | null>(
-      (a, b) => (b.availableStock > (a?.availableStock ?? -1) ? b : a),
-      null,
-    );
-    if (!best) {
-      toast.error("No hay variantes disponibles para este producto");
-      return;
+  const handleAutoAddBundleItem = async (item: BundleProductRef) => {
+    const session = tokenStore.snapshot();
+    const scope = bundleScope.current;
+    const isCurrent = () => editorActive.current && tokenStore.isCurrent(session) &&
+      bundleScope.current.companyId === scope.companyId &&
+      bundleScope.current.inventoryId === scope.inventoryId;
+    try {
+      let variant: InventoryItemForSale | null;
+      if ("variantId" in item) {
+        variant = await resolveBundleVariant(item, scope);
+      } else {
+        const variants = await getVariantsForProduct(item.productKey);
+        variant = variants.reduce<InventoryItemForSale | null>(
+          (a, b) => (b.availableStock > (a?.availableStock ?? -1) ? b : a),
+          null,
+        );
+      }
+      if (!isCurrent()) return;
+      if (!variant) throw new Error("La variante del bundle no está disponible en el almacén seleccionado.");
+      if (bundleScope.current.unitSelectionLocked && isTracked(variant.trackingMode)) {
+        throw new Error("La selección de unidades ya no se puede cambiar en este estado.");
+      }
+      addToCart(variant);
+      toast.success(`${variant.productName} agregado`);
+    } catch (error) {
+      if (isCurrent()) toast.error(trackingError(error, "No se pudo consultar la variante del bundle."));
     }
-    addToCart(best);
-    toast.success(`${best.productName} agregado`);
   };
 
   const handleUndoPack = (packId: string) => {
@@ -899,7 +917,7 @@ function RegistrarVentaContent() {
   };
 
   const handleApplyPack = (pack: Pack) => {
-    packsEngine.applyPack(pack);
+    if (packsEngine.applyPack(pack) === false) return;
     if (pack.type !== "VOLUME" || !pack.variantFree) {
       if (pack.type !== "GIFT") toast.success(`${pack.name} aplicado`);
     }
@@ -2724,6 +2742,7 @@ function RegistrarVentaContent() {
                 appliedPacks={packsEngine.appliedPacks}
                 pendingHints={packsEngine.pendingHints}
                 modelQtyInCart={packsEngine.modelQtyInCart}
+                bundleQtyInCart={packsEngine.bundleQtyInCart}
                 subtotalPayable={packsEngine.subtotalPayable}
                 totalUnits={packsEngine.totalUnits}
                 isAdmin={isAdmin}
