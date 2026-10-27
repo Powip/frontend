@@ -159,7 +159,7 @@ it("honors the backend confirmation permission even for a CC manager", async () 
   });
   renderPanel();
 
-  expect(await screen.findByText("Tu rol no permite confirmar ventas.")).toBeInTheDocument();
+  expect(await screen.findByText("Necesitas el permiso Confirmar compras para confirmar esta venta.")).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Confirmar venta" })).not.toBeInTheDocument();
   expect(confirmCommercialOrderPurchase).not.toHaveBeenCalled();
 });

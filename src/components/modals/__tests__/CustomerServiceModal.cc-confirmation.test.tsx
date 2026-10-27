@@ -199,7 +199,7 @@ it("shows a readonly Lead without CC editor or confirmation action", async () =>
   currentOrder = order({ dniCliente: null, datosCompletos: false });
   renderModal();
 
-  expect(await screen.findByText("Tu rol no permite confirmar ventas.")).toBeInTheDocument();
+  expect(await screen.findByText("Necesitas el permiso Confirmar compras para confirmar esta venta.")).toBeInTheDocument();
   expect(screen.getByText("Audífonos Bluetooth")).toBeInTheDocument();
   expect(screen.queryByRole("textbox", { name: "DNI del cliente" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Confirmar venta" })).not.toBeInTheDocument();

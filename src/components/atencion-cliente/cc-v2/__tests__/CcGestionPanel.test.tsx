@@ -126,7 +126,7 @@ test("a classified Lead cannot dispatch or confirm through a historical CC statu
   expect(screen.queryByText("✓ PEDIDO CONFIRMADO")).not.toBeInTheDocument();
   expect(confirmarEntregaLima).not.toHaveBeenCalled();
   expect(confirmarDespacho).not.toHaveBeenCalled();
-  expect(await screen.findByText("Tu rol no permite confirmar ventas.")).toBeInTheDocument();
+  expect(await screen.findByText("Necesitas el permiso Confirmar compras para confirmar esta venta.")).toBeInTheDocument();
 });
 
 test("a confirmed sale with deferred preparation completes dispatch from CC", async () => {

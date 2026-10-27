@@ -33,6 +33,7 @@ interface Props {
   canalOrigen?: string | null;
   orderUpdatedAt?: string;
   commercialStockState?: "DEFERRED" | "QUEUED" | "PRESERVED" | "NOT_REQUIRED" | null;
+  pendingPurchase?: boolean;
 }
 
 const CHECKLIST_ITEMS = [
@@ -81,8 +82,9 @@ export function CcGestionPanel({
   canalOrigen,
   orderUpdatedAt,
   commercialStockState,
+  pendingPurchase,
 }: Props) {
-  const {auth, hasPermission}=useAuth();
+  const {hasPermission}=useAuth();
   const canManage=canManageCustomerServiceOrder(hasPermission, canalOrigen);
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState<string | null>(null);
@@ -150,9 +152,23 @@ export function CcGestionPanel({
     }
   };
 
-  if(!canManage)return <p className="rounded-lg border p-4 text-sm text-muted-foreground">Consulta del pedido. Tu rol no permite gestionar la atención al cliente.</p>;
-
-  const isLead = commercialStage === "LEAD";
+  const isLead = commercialStage === "LEAD" || pendingPurchase === true;
+  if (!canManage) {
+    return isLead ? (
+      <CcSaleConfirmationPanel
+        orderId={orderId}
+        commercialLeadId={commercialLeadId}
+        canalOrigen={canalOrigen}
+        orderUpdatedAt={orderUpdatedAt}
+        datosCompletos={datosCompletos}
+        onUpdated={onUpdated}
+      />
+    ) : (
+      <p className="rounded-lg border p-4 text-sm text-muted-foreground">
+        Consulta del pedido. Necesitas el permiso Gestionar atención al cliente para realizar estas acciones.
+      </p>
+    );
+  }
   // La confirmación comercial y el despacho se completan en este panel.
   if (!isLead && subEstadoCc === "confirmado" && commercialStockState !== "DEFERRED") {
     return (

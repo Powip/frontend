@@ -1,5 +1,6 @@
 ﻿"use client";
-import { canManageCustomerServiceOrder } from "@/utils/customerServiceOrderAccess";
+import { canCompleteCustomerServicePurchaseData, canManageCustomerServiceOrder, isCustomerServicePurchasePending } from "@/utils/customerServiceOrderAccess";
+import { useCcPurchaseConfirmationAccess } from "@/hooks/useCcPurchaseConfirmationAccess";
 import axios from "@/lib/axiosAuth";
 import { canPrepareDeferredManualOrder, canShipCommercialOrder, isCommercialLeadOrder, salesStatusBlockReason, salesPhysicalOperationBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
 import { formatSalesMoney } from "@/utils/salesMoney";
@@ -266,6 +267,9 @@ export default function CustomerServiceModal({
   const [tab, setTab] = useState("resumen");
   const [orderHeader, setOrderHeader] = useState<OrderHeader | null>(null);
   const canManageCc = canManageCustomerServiceOrder(hasPermission, orderHeader?.canalOrigen);
+  const canEditOrder = hasPermission("EDIT_SALE");
+  const isPendingPurchase = isCommercialLeadOrder(orderHeader ?? {}) ||
+    (!hideCallManagement && isCustomerServicePurchasePending(orderHeader ?? {}));
   const [lifecycleAction, setLifecycleAction] = useState<SaleUnitLifecycleAction | null>(null);
   const [reassignModalOpen, setReassignModalOpen] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);
@@ -369,7 +373,7 @@ export default function CustomerServiceModal({
       setAliclikSyncedAt(orderRes.data.aliclikSyncedAt ?? null);
       setEvaStatus(orderRes.data.evaStatus ?? null);
       setEvaSyncedAt(orderRes.data.evaSyncedAt ?? null);
-      if (isCommercialLeadOrder(orderRes.data)) {
+      if (isCommercialLeadOrder(orderRes.data) || (!hideCallManagement && isCustomerServicePurchasePending(orderRes.data))) {
         // Pending purchases share the order layout without issuing a sales receipt.
         setReceipt(buildPendingOrderDetail(orderRes.data));
         setLoadedReceiptKey(receiptKey);
@@ -391,7 +395,7 @@ export default function CustomerServiceModal({
     } finally {
       if (isCurrent()) setLoading(false);
     }
-  }, [orderId, receiptKey]);
+  }, [orderId, receiptKey, hideCallManagement]);
 
   const patchOrder = async (data: Record<string, unknown>, targetId = orderId): Promise<boolean> => {
     if (!orderHeader || orderHeader.id !== targetId) {
@@ -657,7 +661,7 @@ export default function CustomerServiceModal({
 
     const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${receipt.orderNumber}`;
     const greeting = `Hola ${receipt.customer.fullName}! Te contactamos por tu pedido ${receipt.orderNumber}.`;
-    const message = isCommercialLeadOrder(orderHeader ?? {}) ? greeting : `${greeting}\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
+    const message = isPendingPurchase ? greeting : `${greeting}\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
 
     window.open(
       `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
@@ -677,7 +681,7 @@ export default function CustomerServiceModal({
   };
 
   const handleDownloadPdf = async () => {
-    if (!receipt || isCommercialLeadOrder(orderHeader ?? {})) return;
+    if (!receipt || isPendingPurchase) return;
     const operation = beginPrint();
     try {
       await downloadNotaVentaPdf(receipt, orderHeader, auth?.company, operation);
@@ -685,7 +689,7 @@ export default function CustomerServiceModal({
   };
 
   const handlePrint = async () => {
-    if (!receipt || isCommercialLeadOrder(orderHeader ?? {})) return;
+    if (!receipt || isPendingPurchase) return;
     if (orderHeader && canPrepareDeferredManualOrder(orderHeader)) {
       toast.error(salesPhysicalOperationBlockReason(orderHeader));
       return;
@@ -759,7 +763,7 @@ export default function CustomerServiceModal({
   };
 
   const handleChangeStatus = async (newStatus: OrderStatus) => {
-    if (!receipt || isCommercialLeadOrder(orderHeader ?? {}) || newStatus === receipt.status) return;
+    if (!receipt || isPendingPurchase || newStatus === receipt.status) return;
     const blocked = salesStatusBlockReason(orderHeader ?? {}, newStatus);
     if (blocked) { toast.error(blocked); return; }
     if (await routeSaleLifecycle(orderHeader, newStatus, setLifecycleAction)) return;
@@ -925,7 +929,13 @@ export default function CustomerServiceModal({
     }
   };
 
-  const isPendingPurchase = isCommercialLeadOrder(orderHeader ?? {});
+  const confirmationAccess = useCcPurchaseConfirmationAccess(
+    orderId,
+    orderHeader?.canalOrigen,
+    open && isPendingPurchase && !hideCallManagement,
+  );
+  const canEditCustomerData = hasPermission("MANAGE_CUSTOMER_SERVICE") || canEditOrder ||
+    (canCompleteCustomerServicePurchaseData(orderHeader ?? {}) && confirmationAccess.canConfirm);
   const ccSubEstado = subEstadoCc ?? (canalOrigen === "shopify_cod" ? "por_confirmar" : null);
   const detailMoney = (value: number) => isPendingPurchase
     ? formatSalesMoney(value, orderHeader?.currency)
@@ -934,7 +944,7 @@ export default function CustomerServiceModal({
   const isScheduledDelivery =
     !!receipt?.externalSource && receipt?.callStatus === "SCHEDULED";
 
-  if (!receipt && !loading && (loadedReceiptKey !== receiptKey || !isCommercialLeadOrder(orderHeader ?? {}))) return null;
+  if (!receipt && !loading && (loadedReceiptKey !== receiptKey || !isPendingPurchase)) return null;
 
   // Si no hay nada que mostrar en la columna de gestión (llamada/upsell/aliclik/script),
   // el historial de comentarios pasa a ocupar el ancho completo en vez de dejar un hueco vacío.
@@ -1248,7 +1258,7 @@ export default function CustomerServiceModal({
                             if (onEditOrder) onEditOrder();
                             else router.push(`/registrar-venta?orderId=${orderId}`);
                           }}
-                          disabled={isPendingPurchase && !hasPermission("EDIT_SALE")}
+                          disabled={!canEditOrder}
                           title="Editar Pedido"
                         >
                           <Pencil className="h-4 w-4" />
@@ -1633,7 +1643,7 @@ export default function CustomerServiceModal({
                   {hasGestionColumn && (
                   <>
                   {/* CC v2: bloque datos incompletos (visible cuando el pedido tiene sub_estado_cc activo) */}
-                  {!hideCallManagement && canManageCc && (ccSubEstado || isPendingPurchase) && (
+                  {!hideCallManagement && canEditCustomerData && (ccSubEstado || isPendingPurchase) && (
                     <DatosIncompletosBlock
                       key={`datos-${orderId}`}
                       orderId={orderId}
@@ -1646,6 +1656,11 @@ export default function CustomerServiceModal({
                       }}
                     />
                   )}
+                  {!hideCallManagement && !canEditOrder && isPendingPurchase ? (
+                    <p className="text-sm text-muted-foreground">
+                      La edición completa del pedido requiere el permiso Editar ventas.
+                    </p>
+                  ) : null}
 
                   {/* Gestión de Llamada / Entrega — según origen del pedido */}
                   {!hideCallManagement && (
@@ -1657,6 +1672,7 @@ export default function CustomerServiceModal({
                         canalOrigen={orderHeader?.canalOrigen}
                         orderUpdatedAt={orderHeader?.updated_at}
                         commercialStockState={orderHeader?.commercialStockState}
+                        pendingPurchase={isPendingPurchase}
                         orderId={orderId}
                         subEstadoCc={ccSubEstado}
                         callAttempts={receipt.callAttempts ?? 0}
