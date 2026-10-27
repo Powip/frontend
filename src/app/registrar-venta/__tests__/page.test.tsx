@@ -129,6 +129,15 @@ jest.mock("@/services/promos.service", () => ({
   updatePromo: jest.fn(),
   deletePromo: jest.fn(),
 }));
+// Bundles are unrelated to the sale/payment/session behavior under test.
+// Keep their shared-catalog contract explicit instead of hitting HTTP fixtures
+// that model only order and inventory endpoints.
+jest.mock("@/services/bundlePromos.service", () => ({
+  listBundlePromos: jest.fn().mockResolvedValue({ bundles: [], deletedIds: [] }),
+  getBundleCapabilities: jest.fn().mockResolvedValue({ canManage: false }),
+  importBundlePromos: jest.fn(), createBundlePromo: jest.fn(),
+  updateBundlePromo: jest.fn(), deleteBundlePromo: jest.fn(),
+}));
 
 jest.mock("@/components/ui/select", () => {
   const React = require("react");
