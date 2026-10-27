@@ -7,6 +7,7 @@ import SuggestionsPanel from "@/components/registrar-venta/SuggestionsPanel";
 import type { BundlePack, GiftPack } from "@/interfaces/IPack";
 import type { CartItem } from "@/interfaces/IOrder";
 import * as api from "@/services/bundlePromos.service";
+import { listVolumePromos } from "@/services/promos.service";
 import { toast } from "sonner";
 import { tokenStore } from "@/lib/tokenStore";
 
@@ -73,7 +74,7 @@ function Recommendations() {
 }
 beforeEach(() => {
   jest.resetAllMocks();
-  jest.mocked(require("@/services/promos.service").listVolumePromos).mockResolvedValue([]);
+  jest.mocked(listVolumePromos).mockResolvedValue([]);
   window.localStorage.clear(); server.clear(); session();
   mockApi.listBundlePromos.mockImplementation(async (token) => ({
     bundles: [...rows(token).values()].filter((value): value is BundlePack => value !== null),
