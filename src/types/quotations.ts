@@ -20,6 +20,7 @@ export interface QuotationLine {
   stockInsufficient?: boolean;
   addedBy?: "VENDEDOR" | "CLIENTE";
   attributes?: Record<string, unknown>;
+  imageUrl?: string | null;
 }
 
 export interface QuotationCatalogItem {
@@ -33,6 +34,15 @@ export interface QuotationCatalogItem {
   imageUrl?: string;
   attributes?: Record<string, unknown>;
 }
+
+export interface QuotationCatalogPage {
+  data: QuotationCatalogItem[];
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}
+
+export type PublicQuotationCatalogPage = QuotationCatalogPage;
 
 export interface QuotationPayment {
   id: string;
@@ -50,12 +60,47 @@ export interface QuotationAddress {
   department?: string;
   province?: string;
   reference?: string;
+  documentNumber?: string;
+}
+
+export interface QuotationCustomer extends Partial<QuotationAddress> {
+  id: string;
+  name: string;
+  phone: string;
+}
+
+export interface QuotationInventory {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
+export interface QuotationPaymentDestination {
+  id: string;
+  method: "YAPE_QR" | "TRANSFERENCIA";
+  label: string;
+  holder: string;
+  phone?: string;
+  bank?: string;
+  accountNumber?: string;
+  cci?: string;
+  qrUrl?: string;
+  instructions?: string;
+  enabled?: boolean;
+}
+
+export interface QuotationSettings {
+  storeId: string;
+  destinations: QuotationPaymentDestination[];
+  version: number;
+  canManage: boolean;
 }
 
 export interface Quotation {
   id: string;
   number: string;
   storeId: string;
+  inventoryId?: string | null;
   customerName: string;
   customerPhone: string;
   status: QuotationStatus;
@@ -83,8 +128,10 @@ export interface Quotation {
 
 export interface CreateQuotationInput {
   storeId: string;
+  inventoryId?: string;
   customerName: string;
   customerPhone: string;
+  address?: QuotationAddress | null;
   lines: QuotationLine[];
   paymentType: QuotationPaymentType;
   suggestedDeposit?: number | null;
@@ -147,6 +194,50 @@ export interface ReconciledQuotationLeadPayment {
   order?: { id: string } | null;
 }
 
+/** Same public order projection returned by the normal tracking endpoint. */
+export interface PublicOrderTracking {
+  orderNumber: string;
+  status: string;
+  deliveryType: string;
+  createdAt: string;
+  customerNotes: string | null;
+  customer: {
+    fullName: string;
+    address?: string | null;
+    district?: string;
+    city?: string;
+    province?: string;
+  };
+  items: {
+    productName: string;
+    quantity: number;
+    unitPrice: number;
+    subtotal: number;
+    attributes?: Record<string, unknown>;
+  }[];
+  totals: {
+    grandTotal: number;
+    totalPaid: number;
+    pendingAmount: number;
+  };
+  timeline: {
+    step: string;
+    label: string;
+    completed: boolean;
+    current: boolean;
+  }[];
+  courier?: string | null;
+  businessName?: string;
+  businessPhone?: string | null;
+  shippingInfo?: {
+    shippingKey?: string | null;
+    shippingCode?: string | null;
+    shalomDestinationAgency?: string | null;
+    externalTrackingNumber?: string | null;
+    trackingUrl?: string | null;
+  } | null;
+}
+
 /** Public endpoint deliberately omits internal notes and staff/tenant identifiers. */
 export interface PublicQuotation {
   number: string;
@@ -166,7 +257,11 @@ export interface PublicQuotation {
   address?: QuotationAddress | null;
   orderNumber?: string | null;
   trackingStatus?: string | null;
+  tracking?: PublicOrderTracking | null;
   trackingUrl?: string | null;
   sellerPhone?: string | null;
   storeName?: string | null;
+  businessPhone?: string | null;
+  businessName?: string;
+  paymentDestinations?: QuotationPaymentDestination[];
 }

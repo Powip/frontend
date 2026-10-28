@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { toast } from "sonner";
 import QuotationForm from "@/components/quotations/QuotationForm";
 import axiosAuth from "@/lib/axiosAuth";
-import { createQuotation, getQuotationCatalog } from "@/services/quotationService";
+import { createQuotation, getQuotationCatalog, getQuotationInventories } from "@/services/quotationService";
 import type { BundlePack } from "@/interfaces/IPack";
 
 jest.setTimeout(15000);
@@ -18,7 +18,7 @@ const mockPack: BundlePack = {
 jest.mock("@/contexts/PacksContext", () => ({ usePacks: () => ({ packs: [mockPack] }) }));
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: { get: jest.fn() } }));
 jest.mock("@/services/quotationService", () => ({
-  createQuotation: jest.fn(), updateQuotation: jest.fn(), getQuotationCatalog: jest.fn(),
+  createQuotation: jest.fn(), updateQuotation: jest.fn(), getQuotationCatalog: jest.fn(), getQuotationInventories: jest.fn(), searchQuotationCustomers: jest.fn(), uploadQuotationLineImage: jest.fn(),
 }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 
@@ -34,6 +34,7 @@ beforeEach(() => {
   (axiosAuth.get as jest.Mock).mockResolvedValue({ data: {
     id: "supplement-300", sku: "SUP-300", isActive: true, product: { name: "Suplemento actual", status: true },
   } });
+  (getQuotationInventories as jest.Mock).mockResolvedValue([{ id: "inventory-fixture", name: "Principal", isActive: true }]);
   (getQuotationCatalog as jest.Mock).mockResolvedValue([complement, small, large]);
   (createQuotation as jest.Mock).mockResolvedValue({ id: "quotation-created" });
 });
@@ -62,7 +63,7 @@ test("quotation autofill uses exact 300 g after rename, applies bundle and saves
   expect(payload.lines.some((line: { productVariantId: string }) => line.productVariantId === "supplement-150")).toBe(false);
   expect(payload.lines.every((line: { packId?: string }) => line.packId === undefined)).toBe(true);
   expect(payload.lines.reduce((sum: number, line: { unitPrice: number; quantity: number }) => sum + line.unitPrice * line.quantity, 0)).toBe(100);
-  expect(getQuotationCatalog).toHaveBeenCalledWith({ storeId: "store-fixture", search: "SUP-300" });
+  expect(getQuotationCatalog).toHaveBeenCalledWith({ storeId: "store-fixture", inventoryId: "inventory-fixture", search: "SUP-300" }, undefined);
 });
 
 test.each(["missing", "out-of-stock"])("quotation refuses %s exact 300 g without replacing it with 150 g", async (reason) => {

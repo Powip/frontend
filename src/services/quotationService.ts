@@ -8,6 +8,9 @@ import type {
   Quotation,
   QuotationAddress,
   QuotationCatalogItem,
+  QuotationCatalogPage,
+  QuotationCustomer,
+  QuotationInventory,
   QuotationListParams,
   QuotationListResponse,
   QuotationPaymentInput,
@@ -20,14 +23,62 @@ const BASE = `${GATEWAY.ventas}/quotations`;
 const PUBLIC_BASE = `${GATEWAY.ventas}/public/quotations`;
 const publicPath = (token: string) => `${PUBLIC_BASE}/${encodeURIComponent(token)}`;
 
-export async function listQuotations(params: QuotationListParams) {
-  return (await axiosAuth.get<QuotationListResponse>(BASE, { params })).data;
+export async function listQuotations(
+  params: QuotationListParams,
+  options?: { signal?: AbortSignal },
+) {
+  return (
+    await axiosAuth.get<QuotationListResponse>(BASE, {
+      params,
+      ...(options?.signal ? { signal: options.signal } : {}),
+    })
+  ).data;
 }
-export async function getQuotation(id: string) {
+export async function getQuotation(id: string, options?: { signal?: AbortSignal }) {
+  if (options?.signal)
+    return (await axiosAuth.get<Quotation>(`${BASE}/${id}`, { signal: options.signal })).data;
   return (await axiosAuth.get<Quotation>(`${BASE}/${id}`)).data;
 }
-export async function getQuotationCatalog(params: { storeId: string; search?: string }) {
-  return (await axiosAuth.get<QuotationCatalogItem[]>(`${BASE}/catalog`, { params })).data;
+export async function getQuotationCatalog(
+  params: { storeId: string; inventoryId?: string; search?: string; page?: number; limit?: number },
+  signal?: AbortSignal,
+) {
+  return (
+    await axiosAuth.get<QuotationCatalogItem[]>(`${BASE}/catalog`, {
+      params,
+      ...(signal ? { signal } : {}),
+    })
+  ).data;
+}
+export async function getQuotationInventories(storeId: string, signal?: AbortSignal) {
+  return (
+    await axiosAuth.get<QuotationInventory[]>(`${BASE}/inventories`, {
+      params: { storeId },
+      ...(signal ? { signal } : {}),
+    })
+  ).data;
+}
+export async function searchQuotationCustomers(
+  params: { storeId: string; search: string },
+  signal?: AbortSignal,
+) {
+  return (
+    await axiosAuth.get<QuotationCustomer[]>(`${BASE}/customers`, {
+      params,
+      ...(signal ? { signal } : {}),
+    })
+  ).data;
+}
+export async function uploadQuotationLineImage(storeId: string, file: File): Promise<string> {
+  if (file.size > 5 * 1024 * 1024) throw new Error("La foto debe pesar como máximo 5 MB.");
+  if (!["image/jpeg", "image/png", "image/webp"].includes(file.type))
+    throw new Error("Adjunta una foto JPG, PNG o WebP.");
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await axiosAuth.post<{ imageUrl: string }>(`${BASE}/line-image`, form, {
+    params: { storeId },
+  });
+  return data.imageUrl;
 }
 export async function createQuotation(input: CreateQuotationInput) {
   return (await axiosAuth.post<Quotation>(BASE, input)).data;
@@ -56,10 +107,12 @@ export async function reconcileQuotationLeadPayment(
   paymentId: string,
   input: ReconcileQuotationLeadPaymentInput,
 ): Promise<ReconciledQuotationLeadPayment> {
-  return (await axiosAuth.post<ReconciledQuotationLeadPayment>(
-    `${BASE}/${encodeURIComponent(id)}/payments/${encodeURIComponent(paymentId)}/reconcile-lead`,
-    input,
-  )).data;
+  return (
+    await axiosAuth.post<ReconciledQuotationLeadPayment>(
+      `${BASE}/${encodeURIComponent(id)}/payments/${encodeURIComponent(paymentId)}/reconcile-lead`,
+      input,
+    )
+  ).data;
 }
 type QuotationConversionInput = ConvertQuotationInput & {
   commandId?: string;
@@ -72,12 +125,16 @@ const conversionAttempts = new Map<string, { selection: string; commandId: strin
 export async function convertQuotation(id: string, input: QuotationConversionInput) {
   const { commandId, leadVersion: _leadVersion, leadId: _leadId, ...selection } = input;
   const selectionKey = JSON.stringify(
-    Object.fromEntries(Object.entries(selection).sort(([left], [right]) => left.localeCompare(right))),
+    Object.fromEntries(
+      Object.entries(selection).sort(([left], [right]) => left.localeCompare(right)),
+    ),
   );
   const previous = conversionAttempts.get(id);
-  const attempt = previous?.selection === selectionKey && (commandId === undefined || commandId === previous.commandId)
-    ? previous
-    : { selection: selectionKey, commandId: commandId ?? crypto.randomUUID() };
+  const attempt =
+    previous?.selection === selectionKey &&
+    (commandId === undefined || commandId === previous.commandId)
+      ? previous
+      : { selection: selectionKey, commandId: commandId ?? crypto.randomUUID() };
   conversionAttempts.set(id, attempt);
 
   // Legacy also accepts commandId. Always send it rather than racing a flag read.
@@ -90,13 +147,28 @@ export async function convertQuotation(id: string, input: QuotationConversionInp
   if (conversionAttempts.get(id) === attempt) conversionAttempts.delete(id);
   return data;
 }
-export async function getPublicQuotation(token: string) {
-  return (await axios.get<PublicQuotation>(publicPath(token), { withCredentials: false })).data;
-}
-export async function getPublicQuotationCatalog(token: string) {
+export async function getPublicQuotation(token: string, options?: { signal?: AbortSignal }) {
   return (
-    await axios.get<QuotationCatalogItem[]>(`${publicPath(token)}/catalog`, {
+    await axios.get<PublicQuotation>(publicPath(token), {
       withCredentials: false,
+      ...(options?.signal ? { signal: options.signal } : {}),
+    })
+  ).data;
+}
+export async function getPublicQuotationCatalog(
+  token: string,
+  options?: { signal?: AbortSignal; search?: string; page?: number; limit?: number },
+): Promise<QuotationCatalogItem[] | QuotationCatalogPage> {
+  const params = {
+    ...(options?.search !== undefined ? { search: options.search } : {}),
+    ...(options?.page !== undefined ? { page: options.page } : {}),
+    ...(options?.limit !== undefined ? { limit: options.limit } : {}),
+  };
+  return (
+    await axios.get<QuotationCatalogItem[] | QuotationCatalogPage>(`${publicPath(token)}/catalog`, {
+      withCredentials: false,
+      ...(options?.signal ? { signal: options.signal } : {}),
+      ...(Object.keys(params).length ? { params } : {}),
     })
   ).data;
 }

@@ -1,7 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { getCommercialLeadConfirmationCapabilities } from "@/services/commercialLeadsService";
+import { notifyCommercialChange } from "@/utils/commercialOrders";
+import type { LeadConfirmationCapabilities } from "@/types/leads";
 import {
   AlertTriangle,
   ArrowRight,
@@ -56,8 +60,13 @@ import {
   listQuotations,
   renewQuotation,
 } from "@/services/quotationService";
-import type { Quotation, QuotationListResponse, QuotationStatus } from "@/types/quotations";
+import type {
+  Quotation,
+  QuotationListResponse,
+  QuotationStatus,
+} from "@/types/quotations";
 import QuotationForm from "@/components/quotations/QuotationForm";
+import QuotationPaymentSettings from "@/components/quotations/QuotationPaymentSettings";
 import {
   activeQuotationPayment,
   depositAmount,
@@ -71,6 +80,7 @@ import {
   formatExpiry,
   money,
   quotationHasStockIssue,
+  quotationHasUnlinkedLines,
   quotationStatus,
   quotationWhatsAppUrl,
   statusClasses,
@@ -84,9 +94,17 @@ const tabs: { value: QuotationStatus | "ALL"; label: string }[] = [
   { value: "VENCIDA", label: "Vencidas" },
   { value: "ALL", label: "Todas" },
 ];
-const initialSummary = { PREVENTA: 0, CONVERTIDA: 0, VENCIDA: 0, totalAmount: 0 };
+const initialSummary = {
+  PREVENTA: 0,
+  CONVERTIDA: 0,
+  VENCIDA: 0,
+  totalAmount: 0,
+};
 
 function QuotationsContent() {
+  const searchParams = useSearchParams();
+  const requestedQuotationId = searchParams.get("quotationId");
+  const requestedPanel = searchParams.get("panel");
   const { auth, selectedStoreId, setSelectedStore } = useAuth();
   const [result, setResult] = useState<QuotationListResponse>({
     data: [],
@@ -102,13 +120,45 @@ function QuotationsContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [newQuotation, setNewQuotation] = useState(false);
-  const [active, setActive] = useState<{ quotation: Quotation; panel: Panel } | null>(null);
+  const [active, setActive] = useState<{
+    quotation: Quotation;
+    panel: Panel;
+  } | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState<Quotation[]>([]);
   const [busy, setBusy] = useState("");
   const [whatsAppOpen, setWhatsAppOpen] = useState(false);
+  const [paymentSettingsOpen, setPaymentSettingsOpen] = useState(false);
   const request = useRef(0);
-  const canReviewPayments = (auth?.user.permissions || []).includes("VIEW_FINANCES") || ["ADMIN", "SUPER_ADMIN", "OWNER"].includes(auth?.user.role?.toUpperCase() || "");
+  const listRequest = useRef<AbortController | null>(null);
+  const detailRequest = useRef<AbortController | null>(null);
+  const panelOpen = useRef(false);
+  panelOpen.current = Boolean(active || newQuotation || whatsAppOpen || paymentSettingsOpen);
+  const [confirmationCaps, setConfirmationCaps] =
+    useState<LeadConfirmationCapabilities | null>(null);
+  const canConvert =
+    confirmationCaps !== null &&
+    (!confirmationCaps.enabled || confirmationCaps.canConfirm);
+  const requestedConversionReady = requestedPanel !== "convert" || confirmationCaps !== null;
+  const requestedCanConvert = requestedPanel === "convert" && canConvert;
+  useEffect(() => {
+    let active = true;
+    setConfirmationCaps(null);
+    getCommercialLeadConfirmationCapabilities()
+      .then((caps) => {
+        if (active) setConfirmationCaps(caps);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [auth?.company?.id]);
+  useEffect(() => () => detailRequest.current?.abort(), []);
+  const canReviewPayments =
+    (auth?.user.permissions || []).includes("VIEW_FINANCES") ||
+    ["ADMIN", "SUPER_ADMIN", "OWNER"].includes(
+      auth?.user.role?.toUpperCase() || "",
+    );
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -120,6 +170,9 @@ function QuotationsContent() {
   const reload = useCallback(
     async (quiet = false) => {
       const currentRequest = ++request.current;
+      listRequest.current?.abort();
+      const controller = new AbortController();
+      listRequest.current = controller;
       if (!selectedStoreId) {
         setLoading(false);
         return;
@@ -132,20 +185,24 @@ function QuotationsContent() {
           page,
           limit: 15,
           search: debouncedSearch || undefined,
-        });
+        }, { signal: controller.signal });
         if (request.current !== currentRequest) return;
         setResult(data);
         setError("");
         setSelected(
           (previous) =>
             new Set(
-              [...previous].filter((id) => data.data.some((quotation) => quotation.id === id)),
+              [...previous].filter((id) =>
+                data.data.some((quotation) => quotation.id === id),
+              ),
             ),
         );
         if (page > 1 && data.data.length === 0) setPage(page - 1);
       } catch (failure) {
-        if (request.current === currentRequest)
-          setError(errorMessage(failure, "No se pudieron cargar las cotizaciones."));
+        if (request.current === currentRequest && !controller.signal.aborted)
+          setError(
+            errorMessage(failure, "No se pudieron cargar las cotizaciones."),
+          );
       } finally {
         if (request.current === currentRequest) setLoading(false);
       }
@@ -154,10 +211,16 @@ function QuotationsContent() {
   );
   useEffect(() => {
     void reload();
-    const interval = setInterval(() => void reload(true), 30000);
+    const refreshVisible = () => {
+      if (document.visibilityState === "visible" && !panelOpen.current) void reload(true);
+    };
+    const interval = setInterval(refreshVisible, 30000);
+    document.addEventListener("visibilitychange", refreshVisible);
     return () => {
       ++request.current;
+      listRequest.current?.abort();
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshVisible);
     };
   }, [reload]);
   useEffect(() => {
@@ -165,23 +228,87 @@ function QuotationsContent() {
     setNewQuotation(false);
     setSelected(new Set());
     setPage(1);
-    setResult({ data: [], total: 0, page: 1, limit: 15, summary: initialSummary });
+    setResult({
+      data: [],
+      total: 0,
+      page: 1,
+      limit: 15,
+      summary: initialSummary,
+    });
   }, [selectedStoreId]);
 
+  useEffect(() => {
+    if (!requestedQuotationId || !selectedStoreId) return;
+    if (!requestedConversionReady) return;
+    let activeRequest = true;
+    const controller = new AbortController();
+    getQuotation(requestedQuotationId, { signal: controller.signal })
+      .then((quotation) => {
+        if (!activeRequest) return;
+        if (quotation.storeId !== selectedStoreId) {
+          setError("Selecciona la tienda de esta cotización para abrirla.");
+          return;
+        }
+        setActive({
+          quotation,
+          panel:
+            requestedPanel === "convert" &&
+            requestedCanConvert &&
+            quotationStatus(quotation) === "PREVENTA"
+              ? "convert"
+              : "detail",
+        });
+      })
+      .catch((failure) => {
+        if (activeRequest && !controller.signal.aborted)
+          setError(
+            errorMessage(failure, "No se pudo abrir la cotización del Lead."),
+          );
+      });
+    return () => {
+      activeRequest = false;
+      controller.abort();
+    };
+  }, [
+    requestedQuotationId,
+    requestedPanel,
+    selectedStoreId,
+    auth?.company?.id,
+    requestedCanConvert,
+    requestedConversionReady,
+  ]);
+
   async function open(quotation: Quotation, panel: Panel) {
+    if (panel === "convert" && !canConvert) {
+      toast.error("No tienes permiso para confirmar la compra.");
+      return;
+    }
     setBusy(quotation.id);
+    detailRequest.current?.abort();
+    const controller = new AbortController();
+    detailRequest.current = controller;
     try {
-      const fresh = await getQuotation(quotation.id);
-      if ((panel === "edit" || panel === "convert") && quotationStatus(fresh) !== "PREVENTA") {
-        toast.error("Esta cotización ya no está vigente. Actualiza el listado.");
+      const fresh = await getQuotation(quotation.id, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      if (fresh.storeId !== selectedStoreId) {
+        toast.error("Selecciona la tienda de esta cotización para abrirla.");
+        return;
+      }
+      if (
+        (panel === "edit" || panel === "convert") &&
+        quotationStatus(fresh) !== "PREVENTA"
+      ) {
+        toast.error(
+          "Esta cotización ya no está vigente. Actualiza el listado.",
+        );
         void reload();
         return;
       }
       setActive({ quotation: fresh, panel });
     } catch (failure) {
-      toast.error(errorMessage(failure, "No se pudo abrir la cotización."));
+      if (!controller.signal.aborted) toast.error(errorMessage(failure, "No se pudo abrir la cotización."));
     } finally {
-      setBusy("");
+      if (detailRequest.current === controller) setBusy("");
     }
   }
   async function renew(quotation: Quotation) {
@@ -203,18 +330,28 @@ function QuotationsContent() {
     const responses = await Promise.allSettled(
       targets.map((quotation) => deleteQuotation(quotation.id)),
     );
-    const succeeded = responses.filter((response) => response.status === "fulfilled").length;
+    const succeeded = responses.filter(
+      (response) => response.status === "fulfilled",
+    ).length;
     if (succeeded)
-      toast.success(`${succeeded} cotización${succeeded > 1 ? "es eliminadas" : " eliminada"}.`);
+      toast.success(
+        `${succeeded} cotización${succeeded > 1 ? "es eliminadas" : " eliminada"}.`,
+      );
     responses.forEach((response) => {
       if (response.status === "rejected")
-        toast.error(errorMessage(response.reason, "No se pudo eliminar una cotización."));
+        toast.error(
+          errorMessage(response.reason, "No se pudo eliminar una cotización."),
+        );
     });
     setSelected(new Set());
     await reload(true);
     setBusy("");
   }
   function saved() {
+    notifyCommercialChange(
+      auth?.company?.id,
+      searchParams.get("fromLead") ?? undefined,
+    );
     setActive(null);
     setNewQuotation(false);
     void reload();
@@ -224,7 +361,9 @@ function QuotationsContent() {
     setPage(1);
     setSelected(new Set());
   }
-  const selectedRows = result.data.filter((quotation) => selected.has(quotation.id));
+  const selectedRows = result.data.filter((quotation) =>
+    selected.has(quotation.id),
+  );
   const totalPages = Math.max(1, Math.ceil(result.total / result.limit));
   const summary = result.summary || initialSummary;
   const allCount = summary.PREVENTA + summary.VENCIDA + summary.CONVERTIDA;
@@ -236,7 +375,9 @@ function QuotationsContent() {
           <div>
             <div className="flex items-center gap-2">
               <FileText className="h-6 w-6 text-teal-600" />
-              <h1 className="text-2xl font-bold tracking-tight">Cotizaciones</h1>
+              <h1 className="text-2xl font-bold tracking-tight">
+                Cotizaciones
+              </h1>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
               Cotiza rápido. Completa el despacho cuando tu cliente decida.
@@ -251,12 +392,24 @@ function QuotationsContent() {
                 value={selectedStoreId ?? ""}
                 onChange={(event) => setSelectedStore(event.target.value)}
               >
-                <option value="" disabled>Selecciona una tienda</option>
+                <option value="" disabled>
+                  Selecciona una tienda
+                </option>
                 {(auth?.company?.stores ?? []).map((store) => (
-                  <option key={store.id} value={store.id}>{store.name}</option>
+                  <option key={store.id} value={store.id}>
+                    {store.name}
+                  </option>
                 ))}
               </select>
             </label>
+            <Button
+              variant="outline"
+              disabled={!selectedStoreId}
+              onClick={() => setPaymentSettingsOpen(true)}
+            >
+              <Wallet className="mr-2 h-4 w-4" />
+              Datos de cobro
+            </Button>
             <Button
               variant="outline"
               disabled={!selected.size}
@@ -291,7 +444,9 @@ function QuotationsContent() {
                   <MetricIcon className="h-5 w-5" />
                 </span>
                 <div>
-                  <p className="text-xs text-muted-foreground">{String(label)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {String(label)}
+                  </p>
                   <p className="text-2xl font-semibold">{String(value)}</p>
                 </div>
               </div>
@@ -314,18 +469,30 @@ function QuotationsContent() {
                   aria-controls="quotation-panel"
                   tabIndex={tab === value ? 0 : -1}
                   onKeyDown={(event) => {
-                    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                    if (
+                      !["ArrowLeft", "ArrowRight", "Home", "End"].includes(
+                        event.key,
+                      )
+                    )
+                      return;
                     event.preventDefault();
-                    const current = tabs.findIndex((item) => item.value === value);
+                    const current = tabs.findIndex(
+                      (item) => item.value === value,
+                    );
                     const next =
                       event.key === "Home"
                         ? 0
                         : event.key === "End"
                           ? tabs.length - 1
-                          : (current + (event.key === "ArrowRight" ? 1 : tabs.length - 1)) %
+                          : (current +
+                              (event.key === "ArrowRight"
+                                ? 1
+                                : tabs.length - 1)) %
                             tabs.length;
                     changeTab(tabs[next].value);
-                    document.getElementById(`quotation-tab-${tabs[next].value}`)?.focus();
+                    document
+                      .getElementById(`quotation-tab-${tabs[next].value}`)
+                      ?.focus();
                   }}
                   onClick={() => changeTab(value)}
                   className={`border-b-2 px-3 py-3 text-sm font-medium ${tab === value ? "border-teal-600 text-teal-700 dark:text-teal-300" : "border-transparent text-muted-foreground hover:text-foreground"}`}
@@ -355,7 +522,9 @@ function QuotationsContent() {
                 disabled={loading}
                 onClick={() => void reload()}
               >
-                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                <RefreshCw
+                  className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
+                />
               </Button>
             </div>
           </div>
@@ -365,7 +534,11 @@ function QuotationsContent() {
                 {selected.size} seleccionada{selected.size > 1 ? "s" : ""}
               </span>
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" onClick={() => setSelected(new Set())}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setSelected(new Set())}
+                >
                   Quitar selección
                 </Button>
                 <Button
@@ -373,12 +546,16 @@ function QuotationsContent() {
                   variant="outline"
                   disabled={
                     !!busy ||
-                    selectedRows.every((quotation) => quotationStatus(quotation) === "CONVERTIDA")
+                    selectedRows.every(
+                      (quotation) =>
+                        quotationStatus(quotation) === "CONVERTIDA",
+                    )
                   }
                   onClick={() =>
                     setDeleting(
                       selectedRows.filter(
-                        (quotation) => quotationStatus(quotation) !== "CONVERTIDA",
+                        (quotation) =>
+                          quotationStatus(quotation) !== "CONVERTIDA",
                       ),
                     )
                   }
@@ -404,7 +581,11 @@ function QuotationsContent() {
                 <p role="alert" className="text-sm text-destructive">
                   {error}
                 </p>
-                <Button variant="outline" className="mt-4" onClick={() => void reload()}>
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={() => void reload()}
+                >
                   Reintentar
                 </Button>
               </div>
@@ -453,7 +634,9 @@ function QuotationsContent() {
                         onCheckedChange={(checked) =>
                           setSelected(
                             checked
-                              ? new Set(result.data.map((quotation) => quotation.id))
+                              ? new Set(
+                                  result.data.map((quotation) => quotation.id),
+                                )
                               : new Set(),
                           )
                         }
@@ -485,9 +668,13 @@ function QuotationsContent() {
                       activeQuotationPayment(quotation)?.status === "PENDIENTE";
                     const soon =
                       status === "PREVENTA" &&
-                      new Date(quotation.expiresAt).getTime() - Date.now() < 3 * 3600000;
+                      new Date(quotation.expiresAt).getTime() - Date.now() <
+                        3 * 3600000;
                     return (
-                      <tr key={quotation.id} className="border-t hover:bg-muted/20">
+                      <tr
+                        key={quotation.id}
+                        className="border-t hover:bg-muted/20"
+                      >
                         <td className="p-3">
                           <Checkbox
                             aria-label={`Seleccionar ${quotation.number}`}
@@ -516,13 +703,19 @@ function QuotationsContent() {
                           )}
                         </td>
                         <td className="p-3">
-                          <p className="font-medium">{quotation.customerName}</p>
-                          <p className="text-xs text-muted-foreground">{quotation.customerPhone}</p>
+                          <p className="font-medium">
+                            {quotation.customerName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {quotation.customerPhone}
+                          </p>
                         </td>
                         <td className="max-w-[220px] p-3">
                           <p
                             className="truncate"
-                            title={quotation.lines.map((line) => line.name).join(", ")}
+                            title={quotation.lines
+                              .map((line) => line.name)
+                              .join(", ")}
                           >
                             {quotation.lines[0]?.name || "—"}
                             {quotation.lines.length > 1 && (
@@ -568,7 +761,11 @@ function QuotationsContent() {
                           </span>
                         </td>
                         <td className="p-3 text-xs">
-                          <p>{new Date(quotation.createdAt).toLocaleDateString("es-PE")}</p>
+                          <p>
+                            {new Date(quotation.createdAt).toLocaleDateString(
+                              "es-PE",
+                            )}
+                          </p>
                           <p className="mt-1 text-muted-foreground">
                             {quotation.sellerName || "—"}
                           </p>
@@ -581,9 +778,11 @@ function QuotationsContent() {
                               <Button
                                 size="sm"
                                 className="bg-teal-600 hover:bg-teal-700"
-                                disabled={stockIssue}
+                                disabled={stockIssue && !quotationHasUnlinkedLines(quotation)}
                                 title={
-                                  stockIssue ? "Revisa el stock antes de convertir" : undefined
+                                  stockIssue && !quotationHasUnlinkedLines(quotation)
+                                    ? "Revisa el stock antes de convertir"
+                                    : undefined
                                 }
                                 onClick={() => void open(quotation, "convert")}
                               >
@@ -618,11 +817,15 @@ function QuotationsContent() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => void open(quotation, "detail")}>
+                                <DropdownMenuItem
+                                  onClick={() => void open(quotation, "detail")}
+                                >
                                   <Eye className="mr-2 h-4 w-4" />
                                   Ver detalle
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => void open(quotation, "share")}>
+                                <DropdownMenuItem
+                                  onClick={() => void open(quotation, "share")}
+                                >
                                   <Link2 className="mr-2 h-4 w-4" />
                                   Compartir link
                                 </DropdownMenuItem>
@@ -639,14 +842,18 @@ function QuotationsContent() {
                                 {status !== "CONVERTIDA" && (
                                   <>
                                     <DropdownMenuItem
-                                      onClick={() => void open(quotation, "payment")}
+                                      onClick={() =>
+                                        void open(quotation, "payment")
+                                      }
                                     >
                                       <Wallet className="mr-2 h-4 w-4" />
                                       Registrar adelanto
                                     </DropdownMenuItem>
                                     {status === "PREVENTA" && (
                                       <DropdownMenuItem
-                                        onClick={() => void open(quotation, "edit")}
+                                        onClick={() =>
+                                          void open(quotation, "edit")
+                                        }
                                       >
                                         <Pencil className="mr-2 h-4 w-4" />
                                         Editar
@@ -723,7 +930,10 @@ function QuotationsContent() {
         />
       )}
       {active?.panel === "share" && (
-        <QuotationShareDialog quotation={active.quotation} onClose={() => setActive(null)} />
+        <QuotationShareDialog
+          quotation={active.quotation}
+          onClose={() => setActive(null)}
+        />
       )}
       {active?.panel === "payment" && (
         <QuotationPaymentDialog
@@ -743,6 +953,7 @@ function QuotationsContent() {
         <QuotationDetailDialog
           quotation={active.quotation}
           canReviewPayments={canReviewPayments}
+          canConvert={canConvert}
           onClose={() => setActive(null)}
           onUpdated={() => {
             void open(active.quotation, "detail");
@@ -754,16 +965,21 @@ function QuotationsContent() {
           onShare={() => setActive({ ...active, panel: "share" })}
         />
       )}
-      <AlertDialog open={deleting.length > 0} onOpenChange={(open) => !open && setDeleting([])}>
+      <AlertDialog
+        open={deleting.length > 0}
+        onOpenChange={(open) => !open && setDeleting([])}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
               Eliminar{" "}
-              {deleting.length === 1 ? deleting[0]?.number : `${deleting.length} cotizaciones`}
+              {deleting.length === 1
+                ? deleting[0]?.number
+                : `${deleting.length} cotizaciones`}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Esta acción elimina las cotizaciones seleccionadas. Las cotizaciones convertidas se
-              conservan en Ventas.
+              Esta acción elimina las cotizaciones seleccionadas. Las
+              cotizaciones convertidas se conservan en Ventas.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -782,7 +998,8 @@ function QuotationsContent() {
           <DialogHeader>
             <DialogTitle>Compartir cotizaciones</DialogTitle>
             <DialogDescription>
-              Abre cada conversación para revisar el mensaje y enviarlo desde WhatsApp.
+              Abre cada conversación para revisar el mensaje y enviarlo desde
+              WhatsApp.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -792,7 +1009,9 @@ function QuotationsContent() {
                 key={quotation.id}
               >
                 <div>
-                  <p className="text-sm font-semibold">{quotation.customerName}</p>
+                  <p className="text-sm font-semibold">
+                    {quotation.customerName}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     {quotation.number} · {quotation.customerPhone}
                   </p>
@@ -811,14 +1030,29 @@ function QuotationsContent() {
           </div>
         </DialogContent>
       </Dialog>
+      <Dialog open={paymentSettingsOpen} onOpenChange={setPaymentSettingsOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto rounded-2xl sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Datos de cobro de la tienda</DialogTitle>
+            <DialogDescription>
+              Configura los destinos de pago que verán tus clientes en sus cotizaciones.
+            </DialogDescription>
+          </DialogHeader>
+          {selectedStoreId && <QuotationPaymentSettings storeId={selectedStoreId} />}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
 
 export default function QuotationsPage() {
+  const { auth, selectedStoreId } = useAuth();
+  const scope = `${auth?.user?.id ?? ""}:${auth?.company?.id ?? ""}:${selectedStoreId ?? ""}`;
   return (
-    <PacksProvider>
-      <QuotationsContent />
-    </PacksProvider>
+    <Suspense fallback={<p role="status">Cargando cotizaciones…</p>}>
+      <PacksProvider key={scope}>
+        <QuotationsContent />
+      </PacksProvider>
+    </Suspense>
   );
 }
