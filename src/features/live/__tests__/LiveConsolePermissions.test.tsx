@@ -185,6 +185,29 @@ test("disabled opening controls describe missing setup and link to the relevant 
   expect(updateLiveSession).not.toHaveBeenCalled();
 });
 
+test.each([
+  ["YAPE", "live-yape-settings"],
+  ["SHIPPING", "live-shipping-settings"],
+] as const)(
+  "the console setup shortcut focuses missing %s instead of the disabled purchases switch",
+  async (code, targetId) => {
+    mockTab = "console";
+    mockRole = "ADMINISTRADOR";
+    const saved = fullConsole(false);
+    saved.readiness = { ready: false, checks: [{ code, ready: false, message: `Falta ${code}` }] };
+    (getLiveConsole as jest.Mock).mockResolvedValue(saved);
+    (getLiveYapeConfig as jest.Mock).mockResolvedValue({
+      config: { enabled: false, phone: "", holder: "", qrUrl: null, reviewHours: 24 },
+    });
+    const view = render(<LiveConsolePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Ir a Configuración" }));
+    expect(mockReplace).toHaveBeenCalledWith("/live?tab=config", { scroll: false });
+    mockTab = "config";
+    view.rerender(<LiveConsolePage />);
+    await waitFor(() => expect(document.getElementById(targetId)).toHaveFocus());
+  },
+);
+
 test("save shipping, enable purchases and save activation before opening; refresh preserves the draft", async () => {
   mockRole = "ADMINISTRADOR";
   let saved = fullConsole(false);
@@ -211,7 +234,7 @@ test("save shipping, enable purchases and save activation before opening; refres
   const view = render(<LiveConsolePage />);
   const toggle = await screen.findByRole("switch", { name: /^Habilitar compras del live/ });
   fireEvent.click(screen.getByRole("button", { name: "Configurar envío" }));
-  expect(document.getElementById("live-shipping-settings")).toHaveFocus();
+  await waitFor(() => expect(document.getElementById("live-shipping-settings")).toHaveFocus());
   fireEvent.change(screen.getByLabelText("Envío a domicilio"), { target: { value: "10" } });
   expect(toggle).toBeDisabled();
   expect(toggle).toHaveAccessibleDescription(/Primero guarda las tarifas/);

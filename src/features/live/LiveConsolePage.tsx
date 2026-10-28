@@ -131,13 +131,16 @@ export default function LiveConsolePage() {
   const canReviewPayments = (data ?? reviewData)?.capabilities.reviewPayments === true;
   useEffect(() => {
     if (tab !== "config" || !data || !configTarget) return;
-    const target = document.getElementById(
-      configTarget === "purchases" ? "live-enabled" : `live-${configTarget}-settings`,
-    );
-    if (!target) return;
-    target.scrollIntoView?.({ behavior: "smooth", block: "center" });
-    target.focus({ preventScroll: true });
-    setConfigTarget(null);
+    const frame = requestAnimationFrame(() => {
+      const target = document.getElementById(
+        configTarget === "purchases" ? "live-enabled" : `live-${configTarget}-settings`,
+      );
+      if (!target) return;
+      target.scrollIntoView?.({ behavior: "smooth", block: "center" });
+      target.focus({ preventScroll: true });
+      setConfigTarget(null);
+    });
+    return () => cancelAnimationFrame(frame);
   }, [tab, data, configTarget]);
   useEffect(() => {
     if (reviewData && rawTab !== "payments")
@@ -280,6 +283,14 @@ export default function LiveConsolePage() {
   function navigateToConfig(target: LiveConfigTarget = "purchases") {
     setConfigTarget(target);
     navigateToTab("config");
+  }
+  function navigateToPendingConfig() {
+    const missing = data?.readiness?.checks.find(
+      (check) => !check.ready && (check.code === "YAPE" || check.code === "SHIPPING"),
+    );
+    navigateToConfig(
+      missing?.code === "YAPE" ? "yape" : missing?.code === "SHIPPING" ? "shipping" : "purchases",
+    );
   }
   const pinText = `Compra aquí lo que ves en el live y paga con Yape: ${publicUrl}`;
 
@@ -469,7 +480,9 @@ export default function LiveConsolePage() {
                             variant="outline"
                             disabled={!!busy}
                             onClick={() =>
-                              action === "config" ? navigateToConfig() : navigateToTab("products")
+                              action === "config"
+                                ? navigateToPendingConfig()
+                                : navigateToTab("products")
                             }
                           >
                             {action === "config" ? "Ir a Configuración" : "Ir a Productos"}
