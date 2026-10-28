@@ -34,6 +34,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
 import LiveCatalogDialog from "./LiveCatalogDialog";
 import LivePaymentSettings from "./LivePaymentSettings";
+import LiveReadinessPanel, {
+  getLiveOpeningStatus,
+  type LiveConfigTarget,
+} from "./LiveReadinessPanel";
 import {
   LiveEmpty,
   LiveErrorBanner,
@@ -62,9 +66,9 @@ import type {
   LiveConsoleData,
   LivePlatform,
   LiveProduct,
+  LiveReadiness,
   LiveReservation,
   LiveReviewConsoleData,
-  LiveReadiness,
   LiveSession,
 } from "./types";
 
@@ -93,7 +97,7 @@ export default function LiveConsolePage() {
   const search = useSearchParams();
   const rawTab = search.get("tab");
   const requestedTab: Tab =
-    rawTab && Object.prototype.hasOwnProperty.call(tabLabels, rawTab) ? (rawTab as Tab) : "console";
+    rawTab && Object.hasOwn(tabLabels, rawTab) ? (rawTab as Tab) : "console";
   const scope = `${auth?.company?.id}:${auth?.user.id}:${auth?.user.role}:${selectedStoreId}`;
   const [fullSnapshot, setFullSnapshot] = useState<{
     scope: string;
@@ -111,6 +115,7 @@ export default function LiveConsolePage() {
   const [busy, setBusy] = useState("");
   const [product, setProduct] = useState<LiveProduct | null>(null);
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [configTarget, setConfigTarget] = useState<LiveConfigTarget | null>(null);
   const [releasing, setReleasing] = useState<LiveReservation[]>([]);
   const [paymentLink, setPaymentLink] = useState<{
     url: string;
@@ -124,6 +129,16 @@ export default function LiveConsolePage() {
   const canManage = data?.capabilities.manage === true;
   const canOperate = data?.capabilities.operate === true;
   const canReviewPayments = (data ?? reviewData)?.capabilities.reviewPayments === true;
+  useEffect(() => {
+    if (tab !== "config" || !data || !configTarget) return;
+    const target = document.getElementById(
+      configTarget === "purchases" ? "live-enabled" : `live-${configTarget}-settings`,
+    );
+    if (!target) return;
+    target.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    target.focus({ preventScroll: true });
+    setConfigTarget(null);
+  }, [tab, data, configTarget]);
   useEffect(() => {
     if (reviewData && rawTab !== "payments")
       router.replace("/live?tab=payments", { scroll: false });
@@ -190,6 +205,7 @@ export default function LiveConsolePage() {
     setError("");
     setProduct(null);
     setCatalogOpen(false);
+    setConfigTarget(null);
     setReleasing([]);
     setPaymentLink(null);
     setOrigin(window.location.origin);
@@ -251,6 +267,20 @@ export default function LiveConsolePage() {
   const transmitting = data?.session?.status === "LIVE";
   const readyToOpen = data?.readiness?.ready === true && data.config.enabled;
   const closed = !data?.config.enabled || !data.session || data.session.status === "CLOSED";
+  const showOpeningStatus = !transmitting && (closed || !readyToOpen);
+  const openingStatus = getLiveOpeningStatus({
+    readiness: data?.readiness,
+    purchasesEnabled: data?.config.enabled === true,
+    canManage: canOperate,
+    busy: !!busy,
+  });
+  function navigateToTab(value: Tab) {
+    router.replace(`/live?tab=${value}`, { scroll: false });
+  }
+  function navigateToConfig(target: LiveConfigTarget = "purchases") {
+    setConfigTarget(target);
+    navigateToTab("config");
+  }
   const pinText = `Compra aquí lo que ves en el live y paga con Yape: ${publicUrl}`;
 
   return (
@@ -321,45 +351,15 @@ export default function LiveConsolePage() {
         </Tabs>
       ) : data ? (
         <>
-          {!data.paymentMethods?.length ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-              <b>Configura cómo cobrar.</b> Configura el Yape del negocio. Los pedidos se confirman
-              después de validar el pago.
-            </div>
-          ) : null}
-          <LivePanel
-            title={data.readiness?.ready ? "Catálogo preparado" : "Prepara tu catálogo"}
-            description="Esta versión usa Yape manual: el negocio verifica el ingreso y después confirma el pedido. Cada compra genera un pedido independiente."
-          >
-            <p className="text-sm font-medium">
-              {data.config.enabled
-                ? "Compras habilitadas. Abre el catálogo cuando estés listo."
-                : "Las compras están desactivadas. Completa la configuración antes de habilitarlas."}
-            </p>
-            {data.readiness?.checks.length ? (
-              <ul
-                className="mt-3 grid gap-2 text-sm sm:grid-cols-2"
-                aria-label="Preparación del catálogo"
-              >
-                {data.readiness.checks.map((check) => (
-                  <li key={check.code} className={check.ready ? "text-teal-800" : "text-amber-900"}>
-                    <span className="mr-2 font-semibold">
-                      {check.ready ? "Listo:" : "Pendiente:"}
-                    </span>
-                    {check.message}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mt-2 text-sm text-muted-foreground">
-                Actualiza para comprobar los requisitos de apertura.
-              </p>
-            )}
-          </LivePanel>
-          {!canManage ? (
-            <p className="rounded-xl border bg-muted/50 p-3 text-sm text-muted-foreground">
-              La configuración y los productos requieren el rol Administrador vigente del negocio.
-            </p>
+          {closed || !readyToOpen ? (
+            <LiveReadinessPanel
+              readiness={data.readiness}
+              purchasesEnabled={data.config.enabled}
+              canManage={canManage}
+              busy={!!busy}
+              onConfigure={navigateToConfig}
+              onProducts={() => navigateToTab("products")}
+            />
           ) : null}
           {data.paymentIssues?.length ? (
             <LivePanel
@@ -390,7 +390,7 @@ export default function LiveConsolePage() {
           ) : null}
           <Tabs
             value={tab}
-            onValueChange={(value) => router.replace(`/live?tab=${value}`, { scroll: false })}
+            onValueChange={(value) => navigateToTab(value as Tab)}
             className="space-y-5"
           >
             <TabsList className="h-auto max-w-full flex-wrap justify-start gap-1 bg-muted/70 p-1">
@@ -431,6 +431,7 @@ export default function LiveConsolePage() {
                 <div className="flex flex-wrap gap-2">
                   <Button
                     disabled={!canOperate || !!busy || (!transmitting && !readyToOpen)}
+                    aria-describedby={showOpeningStatus ? "live-opening-status" : undefined}
                     variant={transmitting ? "outline" : "default"}
                     onClick={() => void updateSession({ status: transmitting ? "ENDED" : "LIVE" })}
                   >
@@ -440,6 +441,9 @@ export default function LiveConsolePage() {
                   <Button
                     variant="outline"
                     disabled={!canOperate || !!busy || (closed && !readyToOpen)}
+                    aria-describedby={
+                      showOpeningStatus && closed ? "live-opening-status" : undefined
+                    }
                     onClick={() => void updateSession({ status: closed ? "ENDED" : "CLOSED" })}
                   >
                     {closed ? "Abrir catálogo" : "Cerrar catálogo"}
@@ -451,6 +455,30 @@ export default function LiveConsolePage() {
                     </a>
                   </Button>
                 </div>
+                {showOpeningStatus ? (
+                  <div className="flex basis-full flex-wrap items-center justify-between gap-3 border-t pt-3">
+                    <p id="live-opening-status" className="text-sm text-muted-foreground">
+                      {openingStatus.message}
+                    </p>
+                    {openingStatus.actions.length ? (
+                      <div className="flex flex-wrap gap-2">
+                        {openingStatus.actions.map((action) => (
+                          <Button
+                            key={action}
+                            size="sm"
+                            variant="outline"
+                            disabled={!!busy}
+                            onClick={() =>
+                              action === "config" ? navigateToConfig() : navigateToTab("products")
+                            }
+                          >
+                            {action === "config" ? "Ir a Configuración" : "Ir a Productos"}
+                          </Button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {[
@@ -740,17 +768,21 @@ export default function LiveConsolePage() {
               <LiveYapeReviews key={storeId} storeId={storeId} canReview={canReviewPayments} />
             </TabsContent>
             <TabsContent value="config" className="space-y-5">
-              <LivePaymentSettings
-                key={`yape:${storeId}`}
-                storeId={storeId}
-                canManage={canManage}
-              />
+              <div id="live-yape-settings" tabIndex={-1}>
+                <LivePaymentSettings
+                  key={`yape:${storeId}`}
+                  storeId={storeId}
+                  canManage={canManage}
+                  onSaved={() => void refresh(true)}
+                />
+              </div>
               <LiveConfigPanel
                 key={`config:${storeId}`}
                 config={data.config}
                 readiness={data.readiness}
                 canManage={canManage}
                 busy={!!busy}
+                onConsole={() => navigateToTab("console")}
                 onSave={(input) =>
                   void run(
                     "config",
@@ -1137,18 +1169,36 @@ function LiveConfigPanel({
   canManage,
   busy,
   onSave,
+  onConsole,
 }: {
   config: LiveConfig;
   readiness?: LiveReadiness;
   canManage: boolean;
   busy: boolean;
   onSave: (config: LiveConfig) => void;
+  onConsole: () => void;
 }) {
   const [draft, setDraft] = useState({
     ...config,
     allowAccumulation: false,
     combineShipping: false,
   });
+  const activationPending = draft.enabled && !config.enabled;
+  const deactivationPending = !draft.enabled && config.enabled;
+  const shippingPending = readiness?.checks.some(
+    (check) => check.code === "SHIPPING" && !check.ready,
+  );
+  const activationMessage = activationPending
+    ? "Activación sin guardar. Guarda esta configuración para habilitar las compras y poder abrir el catálogo."
+    : deactivationPending
+      ? "Desactivación sin guardar. Las compras siguen habilitadas hasta que guardes esta configuración."
+      : readiness?.ready !== true
+        ? shippingPending
+          ? "Primero guarda las tarifas para comprobar el envío. Después de completar los demás requisitos podrás habilitar las compras."
+          : "Completa los requisitos pendientes de arriba. Puedes guardar esta configuración con las compras desactivadas."
+        : config.enabled
+          ? "Compras habilitadas. Vuelve a Consola en vivo para gestionar el catálogo."
+          : "Todo listo. Activa «Habilitar compras del live» y guarda para poder abrir el catálogo.";
   const choices: {
     key: keyof Pick<
       LiveConfig,
@@ -1234,17 +1284,27 @@ function LiveConfigPanel({
           <span>
             Habilitar compras del live
             <span className="mt-1 block text-xs font-normal text-muted-foreground">
-              Requiere Yape, productos con stock y al menos una tarifa de envío. Puedes guardar el
-              resto con las compras apagadas.
+              Actívalo y guarda después de completar Yape, productos con stock y envío.
             </span>
           </span>
           <Switch
             id="live-enabled"
             checked={draft.enabled}
+            aria-describedby="live-activation-help"
             disabled={!canManage || busy || (!draft.enabled && readiness?.ready !== true)}
             onCheckedChange={(enabled) => setDraft((value) => ({ ...value, enabled }))}
           />
         </label>
+        <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
+          <p id="live-activation-help" className="text-sm text-muted-foreground">
+            {activationMessage}
+          </p>
+          {config.enabled && draft.enabled && readiness?.ready && canManage ? (
+            <Button type="button" variant="outline" size="sm" onClick={onConsole} disabled={busy}>
+              Ir a Consola en vivo
+            </Button>
+          ) : null}
+        </div>
         <label htmlFor="live-url" className="grid gap-2 text-sm font-medium">
           Link de tu live o perfil
           <Input
@@ -1255,10 +1315,11 @@ function LiveConfigPanel({
             disabled={!canManage || busy}
           />
           <span className="text-xs font-normal text-muted-foreground">
-            Usa un enlace HTTPS de tu red social.
+            Opcional. Usa un enlace HTTPS de tu red social; no necesitas agregarlo para abrir el
+            catálogo.
           </span>
         </label>
-        <fieldset className="grid gap-4 sm:grid-cols-2">
+        <fieldset id="live-shipping-settings" tabIndex={-1} className="grid gap-4 sm:grid-cols-2">
           <legend className="mb-3 text-sm font-semibold">Tarifas de envío del live (S/)</legend>
           {(
             [
@@ -1388,9 +1449,21 @@ function LiveConfigPanel({
         <p className="text-xs text-muted-foreground">
           El límite por producto se configura en Productos del live.
         </p>
-        <Button type="submit" disabled={!canManage || busy || !valid}>
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Guardar configuración
-        </Button>
+        <div className="flex flex-wrap items-center gap-3 border-t pt-4">
+          <Button type="submit" disabled={!canManage || busy || !valid}>
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {busy
+              ? "Guardando configuración…"
+              : activationPending
+                ? "Guardar y habilitar compras"
+                : deactivationPending
+                  ? "Guardar y desactivar compras"
+                  : "Guardar configuración"}
+          </Button>
+          {activationPending || deactivationPending ? (
+            <p className="text-sm text-amber-800">Tienes cambios de activación sin guardar.</p>
+          ) : null}
+        </div>
       </form>
     </LivePanel>
   );

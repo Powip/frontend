@@ -21,9 +21,11 @@ import type { LiveYapeConfig } from "./types";
 export default function LivePaymentSettings({
   storeId,
   canManage,
+  onSaved,
 }: {
   storeId: string;
   canManage: boolean;
+  onSaved?: () => void;
 }) {
   const [config, setConfig] = useState<LiveYapeConfig | null>(null);
   const [errors, setErrors] = useState({ yape: "" });
@@ -123,6 +125,7 @@ export default function LivePaymentSettings({
                   if (isCurrent()) {
                     setConfig(result.config);
                     setNotice("Configuración de Yape guardada.");
+                    onSaved?.();
                   }
                 });
             }}
