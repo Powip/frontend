@@ -1,7 +1,7 @@
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: { get: jest.fn() } }));
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
-import { fetchSaleContext } from "../saleContextService";
+import { fetchSaleContext, type SaleContext } from "../saleContextService";
 
 describe("Contexto de venta autorizado", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -45,4 +45,31 @@ it("rechaza canales ajenos y stores malformados",async()=>{
   jest.mocked(axiosAuth.get).mockResolvedValue({data});
   await expect(fetchSaleContext("company-a")).rejects.toThrow("No se pudo cargar");
  }
+});
+
+describe("Campos opcionales de almacén en el contexto de venta (FEAT-24 H1-A)", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("acepta un contexto sin los campos nuevos", async () => {
+    const data: SaleContext = {
+      companyId: "company-a",
+      stores: [{ id: "store-a", name: "Tienda A" }],
+      inventories: [{ id: "warehouse", name: "Almacén", storeId: "store-a" }],
+    };
+    jest.mocked(axiosAuth.get).mockResolvedValue({ data });
+    await expect(fetchSaleContext("company-a")).resolves.toEqual(data);
+  });
+
+  it("acepta un contexto con tipo, principal y almacén por defecto de la tienda", async () => {
+    const data: SaleContext = {
+      companyId: "company-a",
+      stores: [
+        { id: "store-a", name: "Tienda A", defaultInventoryId: "warehouse" },
+        { id: "store-b", name: "Tienda B", defaultInventoryId: null },
+      ],
+      inventories: [{ id: "warehouse", name: "Almacén", storeId: "store-a", type: "PROPIO", isMain: true }],
+    };
+    jest.mocked(axiosAuth.get).mockResolvedValue({ data });
+    await expect(fetchSaleContext("company-a")).resolves.toEqual(data);
+  });
 });
