@@ -350,3 +350,109 @@ test("missing server amount never becomes a zero-sol Yape instruction", async ()
     screen.queryByRole("button", { name: "Enviar comprobante para revisión" }),
   ).not.toBeInTheDocument();
 });
+
+test("successful status polling preserves a visible proof validation error", async () => {
+  jest.useFakeTimers();
+  try {
+    render(
+      <LiveManualPaymentDialog
+        storeId={id}
+        visitor="visitor-a"
+        checkoutId={id}
+        onClose={jest.fn()}
+        onUpdated={jest.fn()}
+      />,
+    );
+    await screen.findByText("Negocio de prueba");
+    const submit = screen.getByRole("button", { name: "Enviar comprobante para revisión" });
+    expect(submit).toHaveAccessibleDescription(/Adjunta el comprobante/);
+    fireEvent.change(screen.getByLabelText("Comprobante de Yape"), {
+      target: { files: [new File(["pdf"], "proof.pdf", { type: "application/pdf" })] },
+    });
+    const error = await screen.findByRole("alert");
+    expect(error).toHaveTextContent(/JPG/);
+    await act(async () => {
+      jest.advanceTimersByTime(10000);
+    });
+    expect(getLiveCheckoutSnapshot).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("alert")).toHaveTextContent(/JPG/);
+    expect(screen.getByRole("alert")).toHaveFocus();
+    expect(uploadLiveYapeProof).not.toHaveBeenCalled();
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
+test("an older checkout read is aborted and cannot replace another store without remounting", async () => {
+  const previous = deferred<LiveCheckoutSnapshot>();
+  (getLiveCheckoutSnapshot as jest.Mock).mockImplementation((store: string) =>
+    store === id
+      ? previous.promise
+      : Promise.resolve({
+          ...snapshot,
+          checkoutId: second,
+          manualPayment: { ...snapshot.manualPayment, holder: "Titular nuevo" },
+        }),
+  );
+  const { rerender } = render(
+    <LiveManualPaymentDialog
+      storeId={id}
+      visitor="visitor-a"
+      checkoutId={id}
+      onClose={jest.fn()}
+      onUpdated={jest.fn()}
+    />,
+  );
+  const signal = (getLiveCheckoutSnapshot as jest.Mock).mock.calls[0][3] as AbortSignal;
+  rerender(
+    <LiveManualPaymentDialog
+      storeId={second}
+      visitor="visitor-b"
+      checkoutId={second}
+      onClose={jest.fn()}
+      onUpdated={jest.fn()}
+    />,
+  );
+  expect(signal.aborted).toBe(true);
+  await screen.findByText("Titular nuevo");
+  await act(async () => {
+    previous.resolve(snapshot);
+  });
+  expect(screen.queryByText("Negocio de prueba")).not.toBeInTheDocument();
+  expect(screen.getByText("Titular nuevo")).toBeInTheDocument();
+});
+
+test("proof retries reuse their command key and ignore duplicate submission clicks", async () => {
+  const proof = deferred<LiveCheckoutSnapshot>();
+  (uploadLiveYapeProof as jest.Mock)
+    .mockRejectedValueOnce(new Error("Conexión interrumpida"))
+    .mockReturnValueOnce(proof.promise);
+  render(
+    <LiveManualPaymentDialog
+      storeId={id}
+      visitor="visitor-a"
+      checkoutId={id}
+      onClose={jest.fn()}
+      onUpdated={jest.fn()}
+    />,
+  );
+  await screen.findByText("Negocio de prueba");
+  fireEvent.change(screen.getByLabelText("Número de operación Yape"), {
+    target: { value: "01234567" },
+  });
+  fireEvent.change(screen.getByLabelText("Comprobante de Yape"), {
+    target: { files: [new File(["png"], "yape.png", { type: "image/png" })] },
+  });
+  const submit = screen.getByRole("button", { name: "Enviar comprobante para revisión" });
+  fireEvent.click(submit);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Conexión interrumpida");
+  fireEvent.click(submit);
+  fireEvent.click(submit);
+  expect(uploadLiveYapeProof).toHaveBeenCalledTimes(2);
+  expect((uploadLiveYapeProof as jest.Mock).mock.calls[0][3].idempotencyKey).toBe(
+    (uploadLiveYapeProof as jest.Mock).mock.calls[1][3].idempotencyKey,
+  );
+  await act(async () => {
+    proof.resolve(reviewing);
+  });
+});

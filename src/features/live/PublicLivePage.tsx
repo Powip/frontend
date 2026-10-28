@@ -18,54 +18,37 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
-import ubigeos from "@/utils/json/ubigeos.json";
-import { isJunkDni } from "@/utils/junk-document.util";
-import LiveManualPaymentDialog from "./LiveManualPaymentDialog";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import type { LiveCheckoutDraft } from "./LiveCheckoutDialog";
 import { LiveProductImage, LiveReservationTimer } from "./LiveShared";
+import { createLivePolling, type LivePollingController } from "./livePolling";
 import {
-  checkoutLivePurchase,
   getPublicLive,
-  isLiveQuoteConflict,
+  isLiveReadDenied,
   liveError,
   liveMoney,
   liveOrderLabel,
   liveVisitorToken,
   platformNames,
-  quoteLivePurchase,
   removePublicLiveReservation,
   reserveLiveProduct,
   safeLiveUrl,
 } from "./liveService";
 import type {
-  LiveCheckoutSnapshot,
   LiveCustomer,
-  LivePaymentMethod,
   LiveProduct,
   LivePublicData,
   LivePublicOrder,
-  LivePurchaseInput,
-  LiveQuote,
-  LiveQuoteInput,
   LiveReservation,
 } from "./types";
 
-const departments: { name: string; provinces: { name: string; districts: string[] }[] }[] =
-  ubigeos[0].departments;
+const LiveCheckoutDialog = lazy(() => import("./LiveCheckoutDialog"));
+const LiveManualPaymentDialog = lazy(() => import("./LiveManualPaymentDialog"));
 
 const primary =
   "inline-flex items-center justify-center gap-2 rounded-xl bg-[#25F4EE] px-4 py-3 text-sm font-bold text-[#0B0B0F] transition hover:bg-[#78FAF5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0B0F] disabled:cursor-not-allowed disabled:opacity-40";
 const secondary =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:border-[#25F4EE]/60 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE] disabled:cursor-not-allowed disabled:opacity-40";
-const selectedSecondary = cn(secondary, "border-[#25F4EE] bg-[#25F4EE]/10 text-[#25F4EE]");
 const field =
   "mt-1.5 w-full rounded-xl border border-white/15 bg-black/50 px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-400 focus:border-[#25F4EE] focus:ring-2 focus:ring-[#25F4EE]/20 disabled:opacity-50";
 const isActive = (reservation: LiveReservation) =>
@@ -76,7 +59,12 @@ const customerValid = (customer: LiveCustomer) =>
   /^9\d{8}$/.test(customer.phone);
 
 export default function PublicLivePage({ storeId }: { storeId: string }) {
-  const [data, setData] = useState<LivePublicData | null>(null);
+  return <PublicLiveCatalog key={storeId} storeId={storeId} />;
+}
+
+function PublicLiveCatalog({ storeId }: { storeId: string }) {
+  const [snapshot, setSnapshot] = useState<{ storeId: string; value: LivePublicData } | null>(null);
+  const data = snapshot?.storeId === storeId ? snapshot.value : null;
   const [visitor, setVisitor] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -89,23 +77,52 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
   });
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [manualCheckoutId, setManualCheckoutId] = useState<string | null>(null);
+  const [checkoutDraft, setCheckoutDraft] = useState<LiveCheckoutDraft | undefined>();
   const [purchase, setPurchase] = useState<{
     items: { variantId: string; quantity: number }[];
     reservationIds?: string[];
   } | null>(null);
   const generation = useRef(0);
-  const busyLock = useRef(false);
+  const busyLock = useRef<number | null>(null);
   const cachedVisitor = useRef<{ storeId: string; token: string } | null>(null);
   const reserveAttempts = useRef(new Map<string, string>());
   const customerField = useRef<HTMLInputElement>(null);
-  const refresh = useCallback(
-    async (token: string, quiet = false) => {
-      const current = generation.current;
-      if (!quiet) setLoading(true);
-      try {
-        const result = await getPublicLive(storeId, token);
-        if (generation.current !== current) return;
-        setData(result);
+  const reader = useRef<LivePollingController | null>(null);
+  const modalWasOpen = useRef(false);
+  const latestData = useRef<LivePublicData | null>(null);
+  const [readError, setReadError] = useState("");
+  const refresh = useCallback(async (_token: string, quiet = false) => {
+    return (await reader.current?.refresh({ quiet, supersede: true })) ?? false;
+  }, []);
+  useEffect(() => {
+    generation.current += 1;
+    const token =
+      cachedVisitor.current?.storeId === storeId
+        ? cachedVisitor.current.token
+        : liveVisitorToken(storeId);
+    cachedVisitor.current = { storeId, token };
+    latestData.current = null;
+    busyLock.current = null;
+    setBusy("");
+    setVisitor(token);
+    setSnapshot(null);
+    setLoading(true);
+    setError("");
+    setReadError("");
+    setNotice("");
+    setCustomer({ name: "", phone: "", socialUsername: "" });
+    setQuantities({});
+    setPurchase(null);
+    setManualCheckoutId(null);
+    setCheckoutDraft(undefined);
+    reserveAttempts.current.clear();
+    const polling = createLivePolling({
+      load: (signal) => getPublicLive(storeId, token, signal),
+      intervalMs: () => (latestData.current?.session?.status === "LIVE" ? 5000 : 15000),
+      onData: (result) => {
+        latestData.current = result;
+        setSnapshot({ storeId, value: result });
+        setReadError("");
         const latestOrder = result.orders?.[0];
         if (
           latestOrder &&
@@ -123,47 +140,42 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
           setCustomer((previous) =>
             previous.phone ? previous : { name: knownCustomer.name, phone: knownCustomer.phone },
           );
-        setError("");
-      } catch (cause) {
-        if (generation.current === current) setError(liveError(cause));
-      } finally {
-        if (generation.current === current) setLoading(false);
-      }
-    },
-    [storeId],
-  );
-  useEffect(() => {
-    generation.current += 1;
-    const token =
-      cachedVisitor.current?.storeId === storeId
-        ? cachedVisitor.current.token
-        : liveVisitorToken(storeId);
-    cachedVisitor.current = { storeId, token };
-    setVisitor(token);
-    setData(null);
-    setError("");
-    setNotice("");
-    setCustomer({ name: "", phone: "", socialUsername: "" });
-    setQuantities({});
-    setPurchase(null);
-    setManualCheckoutId(null);
-    reserveAttempts.current.clear();
-    void refresh(token);
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") void refresh(token, true);
-    }, 5000);
+      },
+      onError: (cause) => {
+        setReadError(liveError(cause));
+        if (isLiveReadDenied(cause)) {
+          latestData.current = null;
+          setSnapshot(null);
+        }
+      },
+      onLoading: (pending, quiet) => {
+        if (!quiet || !pending) setLoading(pending);
+      },
+    });
+    reader.current = polling;
+    void polling.refresh({ quiet: false });
     return () => {
       generation.current += 1;
-      clearInterval(timer);
+      polling.dispose();
+      if (reader.current === polling) reader.current = null;
     };
-  }, [storeId, refresh]);
+  }, [storeId]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Each store creates a reader that must inherit the current modal and mutation pause state.
+  useEffect(() => {
+    const modalOpen = !!purchase || !!manualCheckoutId;
+    reader.current?.setPaused(!!busy || modalOpen, {
+      refreshOnResume: modalWasOpen.current && !modalOpen,
+    });
+    modalWasOpen.current = modalOpen;
+  }, [busy, purchase, manualCheckoutId, storeId]);
+  const displayError = error || readError;
 
   async function operate(key: string, callback: () => Promise<unknown>, success?: string) {
-    if (busyLock.current) return;
-    busyLock.current = true;
+    if (busyLock.current !== null) return;
+    const current = generation.current;
+    busyLock.current = current;
     setBusy(key);
     setError("");
-    const current = generation.current;
     try {
       await callback();
       if (generation.current !== current) return;
@@ -172,7 +184,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
     } catch (cause) {
       if (generation.current === current) setError(liveError(cause));
     } finally {
-      busyLock.current = false;
+      if (busyLock.current === current) busyLock.current = null;
       if (generation.current === current) setBusy("");
     }
   }
@@ -189,10 +201,12 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
     const selection = JSON.stringify(input);
     const attempt = reserveAttempts.current.get(selection) ?? crypto.randomUUID();
     reserveAttempts.current.set(selection, attempt);
+    const reserveGeneration = generation.current;
     await operate(
       `reserve:${product.variantId}`,
       async () => {
         await reserveLiveProduct(storeId, visitor, { ...input, idempotencyKey: attempt });
+        if (generation.current !== reserveGeneration) return;
         reserveAttempts.current.delete(selection);
         setQuantities((values) => ({ ...values, [product.variantId]: 1 }));
       },
@@ -202,7 +216,9 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
   const canAccumulate = data?.config.allowAccumulation === true && data.isTrusted;
   const products = data?.products.filter((product) => product.enabled) ?? [];
   const reservations = data?.reservations.filter(isActive) ?? [];
-  const payableReservations = reservations.filter((reservation) => !reservation.checkoutId);
+  const payableReservations = reservations.filter(
+    (reservation) => reservation.status === "ACTIVE" && !reservation.checkoutId,
+  );
   const paid = data?.reservations.filter((reservation) => reservation.status === "PAID") ?? [];
   const pinned = products.find((product) => product.variantId === data?.session?.pinnedVariantId);
   const remaining = pinned
@@ -387,13 +403,20 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
             </span>
           ) : null}
         </header>
-        {error ? (
+        {displayError ? (
           <div
             role="alert"
             className="mb-5 flex items-start gap-3 rounded-xl border border-[#FE2C55]/30 bg-[#FE2C55]/10 p-4 text-sm text-[#FFB5C4]"
           >
-            <p className="flex-1">{error}</p>
-            <button type="button" aria-label="Cerrar error" onClick={() => setError("")}>
+            <p className="flex-1">{displayError}</p>
+            <button
+              type="button"
+              aria-label="Cerrar error"
+              onClick={() => {
+                setError("");
+                setReadError("");
+              }}
+            >
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -603,10 +626,14 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                               </button>
                             </div>
                             <div className="mt-2">
-                              <LiveReservationTimer
-                                reservation={reservation}
-                                serverNow={data.serverNow}
-                              />
+                              {reservation.status === "PENDING" ? (
+                                <p className="text-xs text-amber-200">Confirmando apartado…</p>
+                              ) : (
+                                <LiveReservationTimer
+                                  reservation={reservation}
+                                  serverNow={data.serverNow}
+                                />
+                              )}
                             </div>
                           </div>
                         ))}
@@ -625,6 +652,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                       <button
                         type="button"
                         className={`${primary} mt-4 w-full`}
+                        aria-describedby="live-reservations-payment-help"
                         disabled={!!busy || !methods.length || !payableReservations.length}
                         onClick={() =>
                           setPurchase({
@@ -638,6 +666,14 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                         <CreditCard className="h-4 w-4" />
                         Pagar apartados
                       </button>
+                      <p id="live-reservations-payment-help" className="mt-2 text-xs text-zinc-400">
+                        {!methods.length
+                          ? "El negocio aún debe habilitar Yape para recibir pagos."
+                          : !payableReservations.length &&
+                              reservations.some((item) => item.status === "PENDING")
+                            ? "Podrás pagar cuando se confirme el stock de tus apartados."
+                            : "El total se calculará con los apartados confirmados y el envío."}
+                      </p>
                       {reservations.some((item) => item.checkoutId) ? (
                         <p className="mt-3 text-xs text-amber-200">
                           Hay apartados con un pago iniciado. Consulta el estado en tus compras del
@@ -759,606 +795,43 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
           </>
         )}
       </div>
-      {manualCheckoutId ? (
-        <LiveManualPaymentDialog
-          key={`${storeId}/${visitor}/${manualCheckoutId}`}
-          storeId={storeId}
-          visitor={visitor}
-          checkoutId={manualCheckoutId}
-          onClose={() => setManualCheckoutId(null)}
-          onUpdated={() => void refresh(visitor, true)}
-        />
-      ) : null}
-      {purchase && data ? (
-        <LiveCheckoutDialog
-          key={JSON.stringify(purchase)}
-          storeId={storeId}
-          visitor={visitor}
-          data={data}
-          selection={purchase}
-          customer={customer}
-          onCustomerChange={setCustomer}
-          onClose={() => setPurchase(null)}
-          onUpdated={() => void refresh(visitor, true)}
-        />
-      ) : null}
-    </main>
-  );
-}
-
-function LiveCheckoutDialog({
-  storeId,
-  visitor,
-  data,
-  selection,
-  customer,
-  onCustomerChange,
-  onClose,
-  onUpdated,
-}: {
-  storeId: string;
-  visitor: string;
-  data: LivePublicData;
-  selection: { items: { variantId: string; quantity: number }[]; reservationIds?: string[] };
-  customer: LiveCustomer;
-  onCustomerChange: (customer: LiveCustomer) => void;
-  onClose: () => void;
-  onUpdated: () => void;
-}) {
-  const deliveryMethods = (["HOME", "AGENCY"] as const).filter((type) => {
-    const amount = type === "HOME" ? data.config.homeShipping : data.config.agencyShipping;
-    return (
-      (data.deliveryMethods === undefined || data.deliveryMethods.includes(type)) &&
-      typeof amount === "number" &&
-      Number.isFinite(amount) &&
-      amount >= 0
-    );
-  });
-  const [manualCheckout, setManualCheckout] = useState<LiveCheckoutSnapshot | null>(null);
-  const [delivery, setDelivery] = useState<LivePurchaseInput["delivery"]>({
-    type: deliveryMethods[0] ?? "HOME",
-    department: "",
-    province: "",
-    district: "",
-    address: "",
-    agency: "",
-  });
-  const [receipt, setReceipt] = useState<LivePurchaseInput["receipt"]>({
-    type: "BOLETA",
-    dni: "",
-  });
-  const method: LivePaymentMethod | "" = data.paymentMethods?.includes("yape") ? "yape" : "";
-  const [quote, setQuote] = useState<LiveQuote | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const attempt = useRef<{ selection: string; id: string } | null>(null);
-  const lock = useRef(false);
-  const [quoteSelection, setQuoteSelection] = useState("");
-  const current = useRef(true);
-  useEffect(() => {
-    current.current = true;
-    return () => {
-      current.current = false;
-    };
-  }, []);
-  const inputSelection = JSON.stringify({ ...selection, customer, delivery, receipt, method });
-  const currentQuote = quoteSelection === inputSelection ? quote : null;
-  const department = departments.find((item) => item.name === delivery.department);
-  const province = department?.provinces.find((item) => item.name === delivery.province);
-  const locationValid =
-    !!province?.districts.includes(delivery.district) &&
-    [delivery.department, delivery.province, delivery.district].every(
-      (value) => value.length >= 2 && value.length <= 50,
-    );
-  const valid =
-    customerValid(customer) &&
-    deliveryMethods.includes(delivery.type) &&
-    locationValid &&
-    delivery.address.trim().length >= 3 &&
-    delivery.address.trim().length <= 150 &&
-    (delivery.type === "HOME" ||
-      (!!delivery.agency?.trim() && delivery.agency.trim().length <= 150)) &&
-    (receipt.type === "BOLETA"
-      ? /^\d{8}$/.test(receipt.dni) && !isJunkDni(receipt.dni)
-      : /^(10|20)\d{9}$/.test(receipt.ruc) &&
-        receipt.businessName.trim().length >= 3 &&
-        receipt.businessName.trim().length <= 150) &&
-    !!method &&
-    !!data.paymentMethods?.includes(method);
-  function selectionInput(): LiveQuoteInput {
-    return { ...selection, customer, delivery, receipt };
-  }
-  function input(acceptedQuote: LiveQuote): LivePurchaseInput {
-    const previous = attempt.current;
-    const acceptedSelection = `${inputSelection}:${acceptedQuote.quoteId}`;
-    const id = previous?.selection === acceptedSelection ? previous.id : crypto.randomUUID();
-    attempt.current = { selection: acceptedSelection, id };
-    return {
-      ...selection,
-      customer,
-      delivery,
-      receipt,
-      method: method as LivePaymentMethod,
-      idempotencyKey: id,
-      quoteId: acceptedQuote.quoteId,
-    };
-  }
-  async function calculate() {
-    if (lock.current || !valid) return;
-    lock.current = true;
-    setBusy(true);
-    setError("");
-    const selectionKey = inputSelection;
-    try {
-      const result = await quoteLivePurchase(storeId, visitor, selectionInput());
-      if (current.current) {
-        setQuote(result);
-        setQuoteSelection(selectionKey);
-      }
-    } catch (cause) {
-      if (current.current) {
-        setError(liveError(cause));
-        onUpdated();
-      }
-    } finally {
-      lock.current = false;
-      if (current.current) setBusy(false);
-    }
-  }
-  async function checkout() {
-    if (lock.current || !valid || !currentQuote) return;
-    lock.current = true;
-    setBusy(true);
-    setError("");
-    try {
-      const result = await checkoutLivePurchase(storeId, visitor, input(currentQuote));
-      if (result.manualPayment && result.checkoutId) {
-        if (current.current) {
-          setManualCheckout({ ...result, checkoutId: result.checkoutId });
-          onUpdated();
-        }
-        return;
-      }
-      throw new Error(
-        "No se generaron instrucciones Yape. Actualiza el estado antes de volver a intentar.",
-      );
-    } catch (cause) {
-      if (current.current) {
-        if (isLiveQuoteConflict(cause)) {
-          setQuote(null);
-          setQuoteSelection("");
-          attempt.current = null;
-          try {
-            const updated = await quoteLivePurchase(storeId, visitor, selectionInput());
-            if (current.current) {
-              setQuote(updated);
-              setQuoteSelection(inputSelection);
-              setError(
-                "La cotización cambió o venció. Revisa el total actualizado y vuelve a confirmar.",
-              );
-            }
-          } catch (quoteError) {
-            if (current.current) setError(liveError(quoteError));
-          }
-        } else {
-          setError(liveError(cause));
-        }
-        onUpdated();
-      }
-    } finally {
-      lock.current = false;
-      if (current.current) setBusy(false);
-    }
-  }
-  if (manualCheckout)
-    return (
-      <LiveManualPaymentDialog
-        key={`${storeId}/${visitor}/${manualCheckout.checkoutId}`}
-        storeId={storeId}
-        visitor={visitor}
-        checkoutId={manualCheckout.checkoutId}
-        initial={manualCheckout}
-        onClose={onClose}
-        onUpdated={onUpdated}
-      />
-    );
-  const items =
-    currentQuote?.items?.map((item, index) => ({
-      key: `${item.variantId}:${index}`,
-      name: item.name,
-      quantity: item.quantity,
-      price: item.unitPrice,
-    })) ??
-    (selection.reservationIds
-      ? data.reservations
-          .filter((reservation) => selection.reservationIds?.includes(reservation.id))
-          .map((reservation) => ({
-            key: reservation.id,
-            name:
-              reservation.productName ||
-              reservation.name ||
-              data.products.find((product) => product.variantId === reservation.variantId)?.name ||
-              "Producto",
-            quantity: reservation.quantity,
-            price: reservation.unitPrice,
-          }))
-      : selection.items.map((item) => {
-          const product = data.products.find((product) => product.variantId === item.variantId);
-          return {
-            key: item.variantId,
-            name: product?.name || "Producto",
-            quantity: item.quantity,
-            price: product?.livePrice ?? 0,
-          };
-        }));
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !busy) onClose();
-      }}
-    >
-      <DialogContent className="max-h-[92vh] overflow-y-auto border-white/15 bg-[#16161C] text-zinc-100 sm:max-w-xl">
-        <DialogHeader>
-          <DialogTitle className="text-lg">
-            {selection.reservationIds ? "Pagar tus apartados" : "Comprar ahora"}
-          </DialogTitle>
-          <DialogDescription className="text-zinc-400">
-            Completa la entrega y revisa el total antes de elegir cómo pagar.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="divide-y divide-white/10 rounded-xl border border-white/10 px-3">
-          {items.map((item) => (
-            <div key={item.key} className="flex justify-between gap-3 py-3 text-sm">
-              <span>
-                {item.quantity} × {item.name}
-              </span>
-              <b className="whitespace-nowrap">{liveMoney(item.price * item.quantity)}</b>
-            </div>
-          ))}
-        </div>
-        <form
-          className="space-y-5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void (currentQuote ? checkout() : calculate());
-          }}
-        >
-          {error ? (
-            <div
-              role="alert"
-              className="rounded-xl border border-[#FE2C55]/30 bg-[#FE2C55]/10 p-3 text-sm text-[#FFB5C4]"
-            >
-              {error}
-            </div>
-          ) : null}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="text-xs font-medium">
-              Nombre
-              <input
-                className={field}
-                required
-                minLength={3}
-                maxLength={120}
-                autoComplete="name"
-                value={customer.name}
-                disabled={busy}
-                onChange={(event) => onCustomerChange({ ...customer, name: event.target.value })}
-              />
-            </label>
-            <label className="text-xs font-medium">
-              WhatsApp
-              <input
-                className={field}
-                required
-                maxLength={9}
-                readOnly={!!data.customer}
-                type="tel"
-                inputMode="tel"
-                autoComplete="tel"
-                value={customer.phone}
-                disabled={busy}
-                onChange={(event) =>
-                  onCustomerChange({ ...customer, phone: event.target.value.replace(/\D/g, "") })
-                }
-              />
-            </label>
-          </div>
-          <label className="block text-xs font-medium">
-            Usuario en la red social (opcional)
-            <input
-              className={field}
-              maxLength={60}
-              placeholder="@tuusuario"
-              value={customer.socialUsername ?? ""}
-              disabled={busy}
-              onChange={(event) =>
-                onCustomerChange({ ...customer, socialUsername: event.target.value })
-              }
-            />
-          </label>
-          <fieldset>
-            <legend className="mb-2 text-sm font-semibold">Entrega</legend>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                ["HOME", "Domicilio"],
-                ["AGENCY", "Agencia"],
-              ]
-                .filter(([value]) => deliveryMethods.includes(value as "HOME" | "AGENCY"))
-                .map(([value, label]) => (
-                  <button
-                    key={value}
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      setDelivery((previous) => ({ ...previous, type: value as "HOME" | "AGENCY" }))
-                    }
-                    className={delivery.type === value ? selectedSecondary : secondary}
-                  >
-                    {label}
-                  </button>
-                ))}
-            </div>
-            {!deliveryMethods.length ? (
-              <p role="status" className="mt-3 text-sm text-amber-200">
-                El negocio aún debe habilitar una modalidad de entrega antes de aceptar compras.
-              </p>
-            ) : null}
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
-              <label className="min-w-0 text-xs font-medium">
-                Departamento
-                <select
-                  aria-label="Departamento"
-                  className={field}
-                  value={delivery.department}
-                  disabled={busy}
-                  onChange={(event) =>
-                    setDelivery((previous) => ({
-                      ...previous,
-                      department: event.target.value,
-                      province: "",
-                      district: "",
-                    }))
-                  }
-                >
-                  <option value="">Selecciona departamento</option>
-                  {departments.map((item) => (
-                    <option key={item.name} value={item.name}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="min-w-0 text-xs font-medium">
-                Provincia
-                <select
-                  aria-label="Provincia"
-                  className={field}
-                  value={delivery.province}
-                  disabled={busy || !department}
-                  onChange={(event) =>
-                    setDelivery((previous) => ({
-                      ...previous,
-                      province: event.target.value,
-                      district: "",
-                    }))
-                  }
-                >
-                  <option value="">Selecciona provincia</option>
-                  {(department?.provinces ?? []).map((item) => (
-                    <option key={item.name} value={item.name}>
-                      {item.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="min-w-0 text-xs font-medium">
-                Distrito
-                <select
-                  aria-label="Distrito"
-                  className={field}
-                  value={delivery.district}
-                  disabled={busy || !province}
-                  onChange={(event) =>
-                    setDelivery((previous) => ({ ...previous, district: event.target.value }))
-                  }
-                >
-                  <option value="">Selecciona distrito</option>
-                  {(province?.districts ?? []).map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-            <label className="mt-3 grid gap-1.5 text-xs font-medium">
-              {delivery.type === "HOME" ? "Dirección" : "Dirección de la agencia"}
-              <input
-                className={field}
-                autoComplete="street-address"
-                required
-                minLength={3}
-                maxLength={150}
-                disabled={busy}
-                value={delivery.address}
-                onChange={(event) =>
-                  setDelivery((previous) => ({ ...previous, address: event.target.value }))
-                }
-              />
-            </label>
-            {delivery.type === "AGENCY" ? (
-              <label className="mt-3 grid gap-1.5 text-xs font-medium">
-                Agencia y sucursal
-                <input
-                  className={field}
-                  required
-                  maxLength={150}
-                  disabled={busy}
-                  value={delivery.agency ?? ""}
-                  onChange={(event) =>
-                    setDelivery((previous) => ({ ...previous, agency: event.target.value }))
-                  }
-                />
-              </label>
-            ) : null}
-          </fieldset>
-          <fieldset>
-            <legend className="mb-2 text-sm font-semibold">Comprobante</legend>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                ["BOLETA", "Boleta"],
-                ["FACTURA", "Factura (RUC)"],
-              ].map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  disabled={busy}
-                  onClick={() =>
-                    setReceipt(
-                      value === "BOLETA"
-                        ? { type: "BOLETA", dni: "" }
-                        : { type: "FACTURA", ruc: "", businessName: "" },
-                    )
-                  }
-                  className={receipt.type === value ? selectedSecondary : secondary}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {receipt.type === "BOLETA" ? (
-              <label className="mt-3 grid gap-1.5 text-xs font-medium">
-                DNI del comprador
-                <input
-                  className={field}
-                  required
-                  pattern="[0-9]{8}"
-                  inputMode="numeric"
-                  maxLength={8}
-                  disabled={busy}
-                  value={receipt.dni}
-                  onChange={(event) =>
-                    setReceipt({ type: "BOLETA", dni: event.target.value.replace(/\D/g, "") })
-                  }
-                />
-                {receipt.dni && (receipt.dni.length !== 8 || isJunkDni(receipt.dni)) ? (
-                  <span className="text-amber-200">Ingresa un DNI válido de 8 dígitos.</span>
-                ) : null}
-              </label>
-            ) : (
-              <div className="mt-3 space-y-3">
-                <label className="block text-xs font-medium">
-                  RUC
-                  <input
-                    className={field}
-                    required
-                    pattern="(10|20)[0-9]{9}"
-                    inputMode="numeric"
-                    maxLength={11}
-                    disabled={busy}
-                    value={receipt.ruc ?? ""}
-                    onChange={(event) =>
-                      setReceipt((previous) =>
-                        previous.type === "FACTURA"
-                          ? { ...previous, ruc: event.target.value.replace(/\D/g, "") }
-                          : previous,
-                      )
-                    }
-                  />
-                </label>
-                <label className="block text-xs font-medium">
-                  Razón social
-                  <input
-                    className={field}
-                    required
-                    minLength={3}
-                    maxLength={150}
-                    disabled={busy}
-                    value={receipt.businessName ?? ""}
-                    onChange={(event) =>
-                      setReceipt((previous) =>
-                        previous.type === "FACTURA"
-                          ? { ...previous, businessName: event.target.value }
-                          : previous,
-                      )
-                    }
-                  />
-                </label>
-              </div>
-            )}
-          </fieldset>
-          <fieldset>
-            <legend className="mb-2 text-sm font-semibold">Medio de pago</legend>
-            {method ? (
-              <div className="grid grid-cols-2 gap-2">
-                {data.paymentMethods
-                  ?.filter((value) => value === "yape")
-                  .map((value) => (
-                    <button
-                      type="button"
-                      key={value}
-                      disabled={busy}
-                      className={method === value ? selectedSecondary : secondary}
-                    >
-                      Yape · comprobante
-                    </button>
-                  ))}
-              </div>
-            ) : (
-              <p className="rounded-xl bg-amber-400/10 p-3 text-sm text-amber-200">
-                Este negocio aún no ha habilitado Yape.
-              </p>
-            )}
-          </fieldset>
-          {currentQuote ? (
-            <div className="space-y-2 rounded-xl border border-[#25F4EE]/20 bg-[#25F4EE]/5 p-4 text-sm">
-              <div className="flex justify-between">
-                <span className="text-zinc-400">Productos</span>
-                <span>{liveMoney(currentQuote.subtotal)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-400">
-                  Envío
-                  {currentQuote.combinedOrderId || currentQuote.combinedOrderNumber
-                    ? " (pedido abierto)"
-                    : ""}
-                </span>
-                <span>{liveMoney(currentQuote.shipping)}</span>
-              </div>
-              {currentQuote.combinedOrderNumber ? (
-                <p className="text-xs text-[#9AFBF7]">
-                  Se suma a tu pedido {currentQuote.combinedOrderNumber}, sin pagar envío otra vez.
-                </p>
-              ) : null}
-              <div className="flex justify-between border-t border-white/10 pt-2 text-lg font-bold">
-                <span>Total</span>
-                <span className="text-[#25F4EE]">{liveMoney(currentQuote.total)}</span>
-              </div>
-            </div>
-          ) : (
-            <p className="text-xs text-zinc-400">
-              El costo de envío y el total se calculan con la información de entrega.
-            </p>
-          )}
-          <button type="submit" className={`${primary} w-full`} disabled={busy || !valid}>
-            {busy ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <CreditCard className="h-4 w-4" />
-            )}
-            {busy
-              ? "Procesando…"
-              : currentQuote
-                ? `Ver instrucciones Yape · ${liveMoney(currentQuote.total)}`
-                : "Calcular total"}
-          </button>
-          <p className="text-center text-[11px] leading-relaxed text-zinc-400">
-            El pedido se confirma cuando el negocio valida tu comprobante Yape.
+      <Suspense
+        fallback={
+          <p
+            role="status"
+            className="fixed inset-x-4 bottom-4 z-50 rounded-xl border border-[#25F4EE]/30 bg-[#16161C] p-4 text-center text-sm text-[#25F4EE]"
+          >
+            Cargando compra…
           </p>
-        </form>
-      </DialogContent>
-    </Dialog>
+        }
+      >
+        {manualCheckoutId ? (
+          <LiveManualPaymentDialog
+            key={`${storeId}/${visitor}/${manualCheckoutId}`}
+            storeId={storeId}
+            visitor={visitor}
+            checkoutId={manualCheckoutId}
+            onClose={() => setManualCheckoutId(null)}
+            onUpdated={() => void refresh(visitor, true)}
+          />
+        ) : null}
+        {purchase && data ? (
+          <LiveCheckoutDialog
+            key={JSON.stringify(purchase)}
+            storeId={storeId}
+            visitor={visitor}
+            data={data}
+            selection={purchase}
+            customer={customer}
+            onCustomerChange={setCustomer}
+            initialDraft={checkoutDraft}
+            onDraftChange={setCheckoutDraft}
+            onClose={() => setPurchase(null)}
+            onUpdated={() => void refresh(visitor, true)}
+          />
+        ) : null}
+      </Suspense>
+    </main>
   );
 }
 

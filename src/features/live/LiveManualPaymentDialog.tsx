@@ -18,8 +18,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { createLivePolling, type LivePollingController } from "./livePolling";
 import {
   getLiveCheckoutSnapshot,
+  isLiveReadDenied,
   liveError,
   liveMoney,
   liveOrderLabel,
@@ -34,22 +36,40 @@ const action =
 const outline =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 px-4 py-2.5 text-sm font-semibold text-white hover:border-[#25F4EE]/60 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE] disabled:opacity-40";
 
-export default function LiveManualPaymentDialog({
-  storeId,
-  visitor,
-  checkoutId,
-  initial,
-  onClose,
-  onUpdated,
-}: {
+type LiveManualPaymentProps = {
   storeId: string;
   visitor: string;
   checkoutId: string;
   initial?: LiveCheckoutSnapshot | null;
   onClose: () => void;
   onUpdated: () => void;
-}) {
-  const [snapshot, setSnapshot] = useState<LiveCheckoutSnapshot | null>(initial ?? null);
+};
+
+export default function LiveManualPaymentDialog(props: LiveManualPaymentProps) {
+  return (
+    <LiveManualPaymentForm
+      key={`${props.storeId}/${props.visitor}/${props.checkoutId}`}
+      {...props}
+    />
+  );
+}
+
+function LiveManualPaymentForm({
+  storeId,
+  visitor,
+  checkoutId,
+  initial,
+  onClose,
+  onUpdated,
+}: LiveManualPaymentProps) {
+  const key = `${storeId}/${visitor}/${checkoutId}`;
+  const [scopedSnapshot, setScopedSnapshot] = useState<{
+    key: string;
+    value: LiveCheckoutSnapshot;
+  } | null>(initial ? { key, value: initial } : null);
+  const snapshot = scopedSnapshot?.key === key ? scopedSnapshot.value : null;
+  const seed = useRef({ key, initial });
+  if (seed.current.key !== key) seed.current = { key, initial };
   const [loading, setLoading] = useState(!initial);
   const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -62,45 +82,82 @@ export default function LiveManualPaymentDialog({
   const attempt = useRef<{ selection: string; id: string } | null>(null);
   const lock = useRef(false);
   const mounted = useRef(true);
-  const key = `${storeId}/${visitor}/${checkoutId}`;
   const scope = useRef(key);
   scope.current = key;
-  const request = useRef(0);
+  const reader = useRef<LivePollingController | null>(null);
+  const latestSnapshot = useRef<LiveCheckoutSnapshot | null>(initial ?? null);
+  const [readError, setReadError] = useState("");
+  const errorNotice = useRef<HTMLParagraphElement>(null);
   const abort = useRef<AbortController | null>(null);
   const current = useCallback(() => mounted.current && scope.current === key, [key]);
   const refresh = useCallback(async () => {
-    const sequence = ++request.current;
-    try {
-      const result = await getLiveCheckoutSnapshot(storeId, visitor, checkoutId);
-      if (!current() || sequence !== request.current) return;
-      setSnapshot(result);
-      setError("");
-    } catch (cause) {
-      if (current() && sequence === request.current) setError(liveError(cause));
-    } finally {
-      if (current() && sequence === request.current) setLoading(false);
-    }
-  }, [storeId, visitor, checkoutId, current]);
+    return (await reader.current?.refresh({ quiet: true, supersede: true })) ?? false;
+  }, []);
   useEffect(() => {
     mounted.current = true;
+    latestSnapshot.current = seed.current.initial ?? null;
+    setScopedSnapshot(seed.current.initial ? { key, value: seed.current.initial } : null);
+    setLoading(!seed.current.initial);
     setFile(null);
     setSubmitted(false);
-    setOperationNumber("");
+    setOperationNumber(seed.current.initial?.manualPayment?.operationNumber ?? "");
     attempt.current = null;
     lock.current = false;
+    setBusy(false);
     setError("");
+    setReadError("");
     setInfo("");
-    void refresh();
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible" && !lock.current) void refresh();
-    }, 5000);
+    const polling = createLivePolling({
+      load: (signal) => getLiveCheckoutSnapshot(storeId, visitor, checkoutId, signal),
+      intervalMs: () => {
+        const value = latestSnapshot.current;
+        if (
+          value &&
+          (["PAID", "FAILED"].includes(value.status ?? "") ||
+            ["APPROVED", "REJECTED", "EXPIRED"].includes(value.manualPayment?.status ?? ""))
+        )
+          return 30000;
+        return value?.manualPayment?.status === "UNDER_REVIEW" ? 5000 : 10000;
+      },
+      onData: (value) => {
+        latestSnapshot.current = value;
+        setScopedSnapshot({ key, value });
+        setReadError("");
+      },
+      onError: (cause) => {
+        setReadError(liveError(cause));
+        if (isLiveReadDenied(cause)) {
+          latestSnapshot.current = null;
+          setScopedSnapshot(null);
+        }
+      },
+      onLoading: (pending) => {
+        if (!pending) setLoading(false);
+      },
+    });
+    reader.current = polling;
+    void polling.refresh({ quiet: !!seed.current.initial });
     return () => {
       mounted.current = false;
-      request.current += 1;
-      clearInterval(timer);
+      polling.dispose();
+      if (reader.current === polling) reader.current = null;
       abort.current?.abort();
     };
-  }, [refresh]);
+  }, [storeId, visitor, checkoutId, key]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Each scope creates a reader that must inherit the pause state even if busy did not change.
+  useEffect(() => {
+    reader.current?.setPaused(busy, { refreshOnResume: false });
+  }, [busy, key]);
+  useEffect(() => {
+    if (!error) return;
+    const frame = requestAnimationFrame(() => {
+      errorNotice.current?.scrollIntoView?.({ block: "nearest" });
+      errorNotice.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [error]);
+  const displayError = error || readError;
+
   const manual = snapshot?.manualPayment;
   const paid = snapshot?.status === "PAID" && manual?.status !== "REJECTED";
   const pending =
@@ -137,7 +194,6 @@ export default function LiveManualPaymentDialog({
       );
       if (!current()) return;
       setSubmitted(true);
-      request.current += 1;
       await refresh();
       if (!current()) return;
       setFile(null);
@@ -190,12 +246,14 @@ export default function LiveManualPaymentDialog({
             {snapshot?.orderNumber || `Compra ${checkoutId.slice(0, 8)}`}
           </DialogDescription>
         </DialogHeader>
-        {error ? (
+        {displayError ? (
           <p
+            ref={errorNotice}
+            tabIndex={-1}
             role="alert"
             className="rounded-xl border border-[#FE2C55]/35 bg-[#FE2C55]/10 p-3 text-sm text-rose-200"
           >
-            {error}
+            {displayError}
           </p>
         ) : null}
         {info ? (
@@ -361,7 +419,10 @@ export default function LiveManualPaymentDialog({
                   required
                   value={operationNumber}
                   disabled={busy}
-                  onChange={(event) => setOperationNumber(event.target.value)}
+                  onChange={(event) => {
+                    setOperationNumber(event.target.value);
+                    setError("");
+                  }}
                 />
               </label>
               <label className="grid min-w-0 gap-2 text-xs font-semibold">
@@ -395,6 +456,7 @@ export default function LiveManualPaymentDialog({
                 className={`${action} w-full`}
                 type="submit"
                 disabled={busy || !file || !operationNumber.trim() || !canUpload}
+                aria-describedby="live-yape-upload-help"
               >
                 {busy ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -403,6 +465,13 @@ export default function LiveManualPaymentDialog({
                 )}
                 Enviar comprobante para revisión
               </button>
+              <p id="live-yape-upload-help" className="text-center text-xs text-zinc-400">
+                {!file
+                  ? "Adjunta el comprobante en JPG, PNG o WebP para continuar."
+                  : !operationNumber.trim()
+                    ? "Ingresa el número de operación que aparece en tu comprobante."
+                    : "Tu comprobante será revisado por el negocio; el pago aún no está validado."}
+              </p>
               <p className="text-center text-[11px] text-zinc-400">
                 Subir el comprobante no confirma el pago.
               </p>

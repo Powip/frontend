@@ -77,7 +77,7 @@ test("server-scoped review payload exposes no console configuration or sales", a
   expect(screen.queryByText("Ventas del live")).not.toBeInTheDocument();
   expect(screen.queryByText("Conectar Mercado Pago")).not.toBeInTheDocument();
   expect(mockReplace).toHaveBeenCalledWith("/live?tab=payments", { scroll: false });
-  expect(getLiveYapeReviews).toHaveBeenCalledWith("store-a");
+  expect(getLiveYapeReviews).toHaveBeenCalledWith("store-a", expect.any(AbortSignal));
 });
 
 function fullConsole(ready: boolean, enabled = false): LiveConsoleData {
@@ -331,7 +331,9 @@ test("late console authorization for previous store cannot replace current store
       capabilities: { ...minimal().capabilities, reviewPayments: false },
     }),
   );
-  await waitFor(() => expect(getLiveYapeReviews).toHaveBeenCalledWith("store-b"));
+  await waitFor(() =>
+    expect(getLiveYapeReviews).toHaveBeenCalledWith("store-b", expect.any(AbortSignal)),
+  );
   expect(screen.queryByText(/rol Administrador vigente/)).not.toBeInTheDocument();
 });
 

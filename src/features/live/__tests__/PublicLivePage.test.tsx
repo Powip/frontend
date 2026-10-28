@@ -87,6 +87,31 @@ test("return query does not claim paid order without verified server response", 
   expect(screen.queryByText("Pago verificado")).not.toBeInTheDocument();
 });
 
+test("pending stock reservation explains why payment must wait for confirmation", async () => {
+  (getPublicLive as jest.Mock).mockResolvedValue({
+    ...data,
+    paymentMethods: ["yape"],
+    reservations: [
+      {
+        id: "reservation-pending",
+        variantId: storeId,
+        productName: "Crema Centella",
+        quantity: 1,
+        unitPrice: 20,
+        status: "PENDING",
+        type: "TIMED",
+        createdAt: data.serverNow,
+      },
+    ],
+  });
+  render(<PublicLivePage storeId={storeId} />);
+  expect(await screen.findByText("Confirmando apartado…")).toBeInTheDocument();
+  const payment = screen.getByRole("button", { name: "Pagar apartados" });
+  expect(payment).toBeDisabled();
+  expect(payment).toHaveAccessibleDescription(/cuando se confirme el stock/);
+  expect(checkoutLivePurchase).not.toHaveBeenCalled();
+});
+
 test("a trusted-customer flag does not advertise accumulation when the store does not offer it", async () => {
   (getPublicLive as jest.Mock).mockResolvedValue({
     ...data,
@@ -109,9 +134,9 @@ test("checkout offers only delivery methods with an explicit tariff, including f
   render(<PublicLivePage storeId={storeId} />);
   await screen.findByText("Crema Centella");
   fireEvent.click(screen.getByRole("button", { name: "Comprar ahora" }));
-  const dialog = within(screen.getByRole("dialog"));
-  expect(dialog.queryByRole("button", { name: "Domicilio" })).not.toBeInTheDocument();
-  expect(dialog.getByRole("button", { name: "Agencia" })).toBeEnabled();
+  const dialog = within(await screen.findByRole("dialog"));
+  expect(dialog.queryByRole("radio", { name: "Domicilio" })).not.toBeInTheDocument();
+  expect(dialog.getByRole("radio", { name: "Agencia" })).toBeEnabled();
   expect(dialog.getByLabelText("Dirección de la agencia")).toBeInTheDocument();
 });
 
@@ -125,8 +150,8 @@ test("missing shipping configuration explains the unavailable checkout instead o
   render(<PublicLivePage storeId={storeId} />);
   await screen.findByText("Crema Centella");
   fireEvent.click(screen.getByRole("button", { name: "Comprar ahora" }));
-  const dialog = within(screen.getByRole("dialog"));
-  expect(dialog.getByText(/habilitar una modalidad de entrega/)).toBeInTheDocument();
+  const dialog = within(await screen.findByRole("dialog"));
+  expect(dialog.getAllByText(/habilitar una modalidad de entrega/).length).toBeGreaterThan(0);
   expect(dialog.getByRole("button", { name: "Calcular total" })).toBeDisabled();
   expect(quoteLivePurchase).not.toHaveBeenCalled();
 });
@@ -184,7 +209,7 @@ async function openCheckoutForm(config: Partial<LivePublicData["config"]> = {}) 
   fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "María Torres" } });
   fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "987654321" } });
   fireEvent.click(screen.getByRole("button", { name: "Comprar ahora" }));
-  const dialog = within(screen.getByRole("dialog"));
+  const dialog = within(await screen.findByRole("dialog"));
   return dialog;
 }
 async function selectLocation(dialog: ReturnType<typeof within>, index: number, value: string) {
@@ -216,7 +241,7 @@ async function openQuotedCheckout() {
 test("invoice accepts only the server's 3–150 character business name contract", async () => {
   const dialog = await openCheckoutForm();
   await completeCheckoutDetails(dialog);
-  fireEvent.click(dialog.getByRole("button", { name: "Factura (RUC)" }));
+  fireEvent.click(dialog.getByRole("radio", { name: "Factura (RUC)" }));
   fireEvent.change(dialog.getByLabelText("RUC"), { target: { value: "20123456789" } });
   const business = dialog.getByLabelText("Razón social");
   expect(business).toHaveAttribute("minLength", "3");
@@ -354,7 +379,7 @@ test("changing a department clears province and district and invalidates the acc
 test("agency delivery requires its branch name and street address and preserves the selected geography", async () => {
   const dialog = await openCheckoutForm({ agencyShipping: 11 });
   await completeCheckoutDetails(dialog);
-  fireEvent.click(dialog.getByRole("button", { name: "Agencia", exact: true }));
+  fireEvent.click(dialog.getByRole("radio", { name: "Agencia", exact: true }));
   const calculate = dialog.getByRole("button", { name: "Calcular total" });
   expect(calculate).toBeDisabled();
   fireEvent.change(dialog.getByLabelText("Agencia y sucursal"), {
@@ -380,7 +405,7 @@ test("agency delivery requires its branch name and street address and preserves 
 test("factura requires RUC and business name instead of omitting the buyer document", async () => {
   const dialog = await openCheckoutForm();
   await completeCheckoutDetails(dialog);
-  fireEvent.click(dialog.getByRole("button", { name: "Factura (RUC)" }));
+  fireEvent.click(dialog.getByRole("radio", { name: "Factura (RUC)" }));
   const calculate = dialog.getByRole("button", { name: "Calcular total" });
   expect(calculate).toBeDisabled();
   fireEvent.change(dialog.getByLabelText("RUC"), { target: { value: "20654321987" } });

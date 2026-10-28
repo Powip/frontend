@@ -21,11 +21,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { LiveEmpty, LiveErrorBanner, LivePanel } from "./LiveShared";
+import { createLivePolling, type LivePollingController } from "./livePolling";
 import {
   getLiveYapeReviewProof,
   getLiveYapeReviews,
-  liveError,
+  isLiveReadDenied,
   liveAdminError,
+  liveError,
   liveMoney,
   reviewLiveYapePayment,
   safeLiveUrl,
@@ -39,56 +41,78 @@ export default function LiveYapeReviews({
   storeId: string;
   canReview: boolean;
 }) {
-  const [reviews, setReviews] = useState<LiveYapeReview[]>([]);
+  const [snapshot, setSnapshot] = useState<{
+    storeId: string;
+    reviews: LiveYapeReview[];
+    error: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [selected, setSelected] = useState<{
+  const [notice, setNotice] = useState<{ storeId: string; text: string } | null>(null);
+  const [selection, setSelection] = useState<{
+    storeId: string;
     review: LiveYapeReview;
     decision: "approve" | "reject";
   } | null>(null);
-  const active = useRef(true);
-  const key = useRef(storeId);
-  key.current = storeId;
-  const sequence = useRef(0);
+  const polling = useRef<LivePollingController | null>(null);
+  const pollingScope = useRef<string | null>(null);
+  const current = snapshot?.storeId === storeId && canReview ? snapshot : null;
+  const reviews = current?.reviews ?? [];
+  const error = current?.error ?? "";
+  const noticeText = notice?.storeId === storeId ? notice.text : "";
+  const selected = selection?.storeId === storeId && canReview ? selection : null;
+  const selectedOpen = Boolean(selected);
+  const pending = loading || (!current && canReview);
   const load = useCallback(
-    async (quiet = false) => {
-      const request = ++sequence.current;
-      if (!quiet) setLoading(true);
-      try {
-        const result = await getLiveYapeReviews(storeId);
-        if (!active.current || key.current !== storeId || request !== sequence.current) return;
-        setReviews(result.reviews);
-        setError("");
-      } catch (cause) {
-        if (active.current && key.current === storeId && request === sequence.current) {
-          setReviews([]);
-          setSelected(null);
-          setError(liveError(cause));
-        }
-      } finally {
-        if (active.current && key.current === storeId && request === sequence.current)
-          setLoading(false);
-      }
-    },
-    [storeId],
+    (quiet = false) =>
+      polling.current?.refresh({ quiet, supersede: true }) ?? Promise.resolve(false),
+    [],
   );
   useEffect(() => {
-    active.current = true;
-    setSelected(null);
-    setReviews([]);
-    setNotice("");
-    if (canReview) void load();
-    else setLoading(false);
-    const timer = setInterval(() => {
-      if (canReview && document.visibilityState === "visible") void load(true);
-    }, 15000);
+    setSelection(null);
+    setSnapshot(null);
+    setNotice(null);
+    if (!canReview) {
+      setLoading(false);
+      return;
+    }
+    let hasSnapshot = false;
+    const reader = createLivePolling<Awaited<ReturnType<typeof getLiveYapeReviews>>>({
+      load: (signal) => getLiveYapeReviews(storeId, signal),
+      intervalMs: 15000,
+      onData: (result) => {
+        hasSnapshot = true;
+        setSnapshot({ storeId, reviews: result.reviews, error: "" });
+      },
+      onError: (cause) => {
+        const denied = isLiveReadDenied(cause);
+        if (denied) {
+          hasSnapshot = false;
+          setSelection(null);
+        }
+        setSnapshot((previous) => ({
+          storeId,
+          reviews: !denied && previous?.storeId === storeId ? previous.reviews : [],
+          error: liveError(cause),
+        }));
+      },
+      onLoading: (active, quiet) => {
+        if (!quiet || !active || !hasSnapshot) setLoading(active);
+      },
+    });
+    polling.current = reader;
+    pollingScope.current = storeId;
+    void reader.refresh({ quiet: false });
     return () => {
-      active.current = false;
-      sequence.current += 1;
-      clearInterval(timer);
+      reader.dispose();
+      if (polling.current === reader) {
+        polling.current = null;
+        pollingScope.current = null;
+      }
     };
-  }, [load, canReview]);
+  }, [storeId, canReview]);
+  useEffect(() => {
+    if (pollingScope.current === storeId && canReview) polling.current?.setPaused(selectedOpen);
+  }, [storeId, canReview, selectedOpen]);
   if (!canReview)
     return (
       <LiveEmpty>
@@ -102,9 +126,9 @@ export default function LiveYapeReviews({
         permanece pendiente hasta que tu equipo valide o rechace el pago.
       </div>
       {error ? <LiveErrorBanner message={error} onRetry={() => void load()} /> : null}
-      {notice ? (
+      {noticeText ? (
         <p role="status" className="rounded-xl bg-teal-50 p-3 text-sm text-teal-900">
-          {notice}
+          {noticeText}
         </p>
       ) : null}
       <LivePanel
@@ -112,12 +136,12 @@ export default function LiveYapeReviews({
         description="Los apartados con comprobante esperan una decisión incluso cuando vence el plazo de revisión."
       >
         <div className="mb-4 flex justify-end">
-          <Button size="sm" variant="outline" onClick={() => void load()} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+          <Button size="sm" variant="outline" onClick={() => void load()} disabled={pending}>
+            <RefreshCw className={`h-4 w-4 ${pending ? "animate-spin" : ""}`} />
             Actualizar
           </Button>
         </div>
-        {loading && !reviews.length ? (
+        {pending && !reviews.length ? (
           <p className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             Cargando pagos…
@@ -151,14 +175,17 @@ export default function LiveYapeReviews({
                   </p>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
-                  <Button size="sm" onClick={() => setSelected({ review, decision: "approve" })}>
+                  <Button
+                    size="sm"
+                    onClick={() => setSelection({ storeId, review, decision: "approve" })}
+                  >
                     <CheckCircle2 className="h-4 w-4" />
                     Revisar y validar
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => setSelected({ review, decision: "reject" })}
+                    onClick={() => setSelection({ storeId, review, decision: "reject" })}
                   >
                     <XCircle className="h-4 w-4" />
                     Rechazar comprobante
@@ -177,16 +204,19 @@ export default function LiveYapeReviews({
           storeId={storeId}
           review={selected.review}
           decision={selected.decision}
-          onClose={() => setSelected(null)}
+          onClose={() => setSelection(null)}
           onComplete={(result) => {
-            setSelected(null);
-            setNotice(
-              selected.decision === "approve"
-                ? result.status === "PAID"
-                  ? "Pago validado. El pedido fue confirmado por el servidor."
-                  : "Revisión registrada. Consulta el estado del pedido."
-                : "Comprobante rechazado. El cliente podrá consultar el motivo.",
-            );
+            setSelection(null);
+            setNotice({
+              storeId,
+              text:
+                selected.decision === "approve"
+                  ? result.status === "PAID"
+                    ? "Pago validado. El pedido fue confirmado por el servidor."
+                    : "Revisión registrada. Consulta el estado del pedido."
+                  : "Comprobante rechazado. El cliente podrá consultar el motivo.",
+            });
+            polling.current?.setPaused(false, { refreshOnResume: false });
             void load(true);
           }}
         />
@@ -220,24 +250,24 @@ function ReviewDialog({
   const command = useRef<{ selection: string; key: string } | null>(null);
   useEffect(() => {
     active.current = true;
-    let cancelled = false;
-    void getLiveYapeReviewProof(storeId, review.checkoutId)
+    const controller = new AbortController();
+    void getLiveYapeReviewProof(storeId, review.checkoutId, controller.signal)
       .then((result) => {
-        if (!cancelled) {
+        if (!controller.signal.aborted) {
           const url = safeLiveUrl(result.url);
           if (!url) throw new Error("No se pudo abrir el comprobante.");
           setProof(url);
         }
       })
       .catch((cause) => {
-        if (!cancelled) setError(liveError(cause));
+        if (!controller.signal.aborted) setError(liveError(cause));
       })
       .finally(() => {
-        if (!cancelled) setProofLoading(false);
+        if (!controller.signal.aborted) setProofLoading(false);
       });
     return () => {
       active.current = false;
-      cancelled = true;
+      controller.abort();
     };
   }, [storeId, review.checkoutId]);
   async function submit() {
