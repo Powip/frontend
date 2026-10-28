@@ -1,105 +1,81 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Trash2, Home, Loader2, AlertTriangle } from "lucide-react";
-import axios from "axios";
-import axiosAuth from "@/lib/axiosAuth";
+import { Badge } from "@/components/ui/badge";
+import { Plus, Home } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import AlmacenModal from "../modals/AlmacenModal";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+  listWarehouses,
+  setMainWarehouse,
+  setStoreDefaultWarehouse,
+  setWarehouseType,
+  type WarehouseType,
+} from "@/services/warehousesService";
+import AlmacenModal from "../modals/AlmacenModal";
+import { WAREHOUSE_TYPE_OPTIONS, warehouseErrorMessage } from "./warehouseUi";
 
-interface Inventory {
-  id: string;
-  name: string;
-  is_active: boolean;
-  store_id: string;
+const SELECT_CLASS =
+  "h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50";
+
+const LOAD_ERROR = "No se pudieron cargar los almacenes. Inténtalo de nuevo.";
+
+interface WarehouseChange {
+  run: () => Promise<void>;
+  success: string;
 }
 
 const GestionAlmacenes = () => {
-  const [almacenes, setAlmacenes] = useState<Inventory[]>([]);
-  const [loading, setLoading] = useState(true);
   const [openModal, setOpenModal] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const deleteInFlight = useRef(false);
   const { auth, refreshInventories } = useAuth();
+  const queryClient = useQueryClient();
   const companyId = auth?.company?.id;
-  const fetchAlmacenes = useCallback(async () => {
-    const stores = auth?.company?.stores ?? [];
-    if (!companyId || stores.length === 0) return;
-    setLoading(true);
-    try {
-      const results = await Promise.all(
-        stores.map((store) =>
-          axiosAuth
-            .get(`${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/store/${store.id}`)
-            .then((r) => r.data as Inventory[])
-        )
-      );
-      setAlmacenes(results.flat());
-    } catch (error) {
-      console.error("Error fetching almacenes:", error);
-      toast.error("Error al cargar los almacenes");
-    } finally {
-      setLoading(false);
-    }
-  }, [companyId, auth?.company?.stores]);
+  const stores = useMemo(() => auth?.company?.stores ?? [], [auth?.company?.stores]);
 
+  // Todos los almacenes de la empresa del token, sin importar de qué tienda salieron.
+  const queryKey = useMemo(() => ["company-warehouses", companyId], [companyId]);
+  const query = useQuery({
+    queryKey,
+    queryFn: () => listWarehouses(),
+    enabled: Boolean(companyId && auth?.accessToken),
+    retry: false,
+    staleTime: 0,
+  });
+
+  const { error: loadFailure, errorUpdatedAt } = query;
+  const loadError = loadFailure ? warehouseErrorMessage(loadFailure, LOAD_ERROR) : null;
   useEffect(() => {
-    fetchAlmacenes();
-  }, [fetchAlmacenes]);
+    // Un toast por cada fallo de carga (incluidos los reintentos).
+    if (loadFailure) toast.error(warehouseErrorMessage(loadFailure, LOAD_ERROR));
+  }, [loadFailure, errorUpdatedAt]);
 
-  const handleDelete = async (id: string) => {
-    if (deleteInFlight.current) return;
-    deleteInFlight.current = true;
-    setDeletingId(id);
-    try {
-      try {
-        await axiosAuth.delete(
-          `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/${id}`,
-        );
-      } catch (error: unknown) {
-        const message: unknown = axios.isAxiosError(error)
-          ? error.response?.data?.message
-          : undefined;
-        const detail = typeof message === "string"
-          ? message.trim()
-          : Array.isArray(message)
-            ? message.filter((item): item is string => typeof item === "string")
-              .map((item) => item.trim()).filter(Boolean).join(". ")
-            : "";
-        toast.error(detail || "No se pudo eliminar el almacén. Inténtalo nuevamente.");
-        return;
-      }
+  const change = useMutation({
+    mutationFn: ({ run }: WarehouseChange) => run(),
+    onSuccess: async (_data, { success }) => {
+      await queryClient.invalidateQueries({ queryKey });
+      toast.success(success);
+    },
+    onError: (error) => {
+      toast.error(warehouseErrorMessage(error, "No se pudo guardar el cambio. Inténtalo de nuevo."));
+    },
+  });
 
-      setAlmacenes((current) => current.filter((almacen) => almacen.id !== id));
-      toast.success("Almacén eliminado correctamente");
-      const refreshes = await Promise.allSettled([
-        fetchAlmacenes(),
-        refreshInventories(),
-      ]);
-      if (refreshes.some((result) => result.status === "rejected")) {
-        toast.error("El almacén se eliminó, pero no se pudo actualizar la información. Actualiza la página.");
-      }
-    } finally {
-      deleteInFlight.current = false;
-      setDeletingId(null);
-    }
-  };
+  // Activos primero; el orden del backend se conserva dentro de cada grupo.
+  const warehouses = useMemo(() => {
+    const all = query.data?.warehouses ?? [];
+    return [...all.filter((w) => w.status), ...all.filter((w) => !w.status)];
+  }, [query.data]);
+  const links = query.data?.links ?? [];
+  const storeName = (id: string) => stores.find((store) => store.id === id)?.name ?? "—";
+  const busy = change.isPending;
 
   if (!companyId) return null;
+
+  const defaultFor = (storeId: string) =>
+    links.find((link) => link.store_id === storeId && link.is_default)?.inventory_id ?? "";
 
   return (
     <div className="space-y-6">
@@ -107,7 +83,7 @@ const GestionAlmacenes = () => {
         <div>
           <h3 className="text-lg font-medium">Gestión de Almacenes</h3>
           <p className="text-sm text-muted-foreground">
-            Administra los puntos de almacenamiento de tu empresa
+            Los almacenes son de tu empresa y se pueden compartir entre tiendas
           </p>
         </div>
         <Button
@@ -120,7 +96,7 @@ const GestionAlmacenes = () => {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {loading ? (
+        {query.isPending ? (
           Array.from({ length: 3 }).map((_, i) => (
             <Card key={i} className="animate-pulse">
               <CardContent className="p-6">
@@ -129,68 +105,81 @@ const GestionAlmacenes = () => {
               </CardContent>
             </Card>
           ))
-        ) : almacenes.length > 0 ? (
-          almacenes.map((almacen) => (
+        ) : loadError ? (
+          <div className="col-span-full py-12 flex flex-col items-center justify-center gap-3 border border-dashed rounded-lg">
+            <p className="font-medium">No se pudieron cargar los almacenes</p>
+            <p className="text-sm text-muted-foreground">{loadError}</p>
+            <Button
+              variant="outline"
+              disabled={query.isFetching}
+              onClick={() => void query.refetch()}
+            >
+              Reintentar
+            </Button>
+          </div>
+        ) : warehouses.length > 0 ? (
+          warehouses.map((almacen) => (
             <Card
               key={almacen.id}
+              data-testid={`warehouse-${almacen.id}`}
               className="hover:shadow-md transition-shadow"
             >
-              <CardContent className="p-6">
-                <div className="flex justify-between items-start">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-teal-50 text-teal-600 rounded-lg">
-                      <Home className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <h4 className="font-medium">{almacen.name}</h4>
-                      <p className="text-xs text-muted-foreground uppercase tracking-wider">
-                        Activo
-                      </p>
-                    </div>
+              <CardContent className="space-y-4 px-6">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-teal-50 text-teal-600 rounded-lg">
+                    <Home className="h-5 w-5" />
                   </div>
+                  <div className="min-w-0 flex-1">
+                    <h4 className="font-medium">{almacen.name}</h4>
+                    <p className="text-xs text-muted-foreground">
+                      {`Tienda de origen: ${storeName(almacen.store_id)}`}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    {almacen.is_main && <Badge>Principal</Badge>}
+                    {!almacen.status && <Badge variant="outline">Inactivo</Badge>}
+                  </div>
+                </div>
 
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Eliminar almacén ${almacen.name}`}
-                        aria-busy={deletingId === almacen.id}
-                        disabled={deletingId !== null}
-                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                      >
-                        {deletingId === almacen.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle className="flex items-center gap-2">
-                          <AlertTriangle className="h-5 w-5 text-red-500" />
-                          ¿Eliminar almacén?
-                        </AlertDialogTitle>
-                        <AlertDialogDescription>
-                          Solo puedes eliminar <strong>{almacen.name}</strong> si
-                          está vacío y no tiene productos, movimientos, pedidos ni
-                          integraciones vinculadas. El stock y el historial de
-                          los almacenes en uso se conservan.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction
-                          className="bg-red-600 hover:bg-red-700"
-                          disabled={deletingId !== null}
-                          onClick={() => handleDelete(almacen.id)}
-                        >
-                          Eliminar
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
+                <div className="flex items-end gap-2">
+                  <div className="flex-1 space-y-1">
+                    <span className="text-xs text-muted-foreground" aria-hidden="true">
+                      Tipo
+                    </span>
+                    <select
+                      aria-label={`Tipo de ${almacen.name}`}
+                      className={SELECT_CLASS}
+                      value={almacen.type}
+                      disabled={busy || !almacen.status}
+                      onChange={(e) => {
+                        const type = e.target.value as WarehouseType;
+                        change.mutate({
+                          run: () => setWarehouseType(almacen.id, type),
+                          success: "Tipo actualizado",
+                        });
+                      }}
+                    >
+                      {WAREHOUSE_TYPE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {almacen.status && !almacen.is_main && (
+                    <Button
+                      variant="outline"
+                      disabled={busy}
+                      onClick={() =>
+                        change.mutate({
+                          run: () => setMainWarehouse(almacen.id),
+                          success: "Almacén principal actualizado",
+                        })
+                      }
+                    >
+                      Hacer principal
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -205,13 +194,65 @@ const GestionAlmacenes = () => {
         )}
       </div>
 
+      {!query.isPending && !loadError && stores.length > 0 && warehouses.length > 0 && (
+        <div className="space-y-3 bg-card p-6 rounded-lg border">
+          <div>
+            <h3 className="text-lg font-medium">Almacén por defecto de cada tienda</h3>
+            <p className="text-sm text-muted-foreground">
+              Las ventas de la tienda salen de este almacén, salvo que se elija otro al
+              confirmar el pedido.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {stores.map((store) => {
+              const current = defaultFor(store.id);
+              // Un almacén inactivo no se ofrece, salvo que sea el actual (para no mostrar un valor vacío).
+              const options = warehouses.filter((w) => w.status || w.id === current);
+              return (
+                <div key={store.id} className="space-y-1">
+                  <p className="text-sm font-medium">{store.name}</p>
+                  <span className="text-xs text-muted-foreground" aria-hidden="true">
+                    Almacén por defecto
+                  </span>
+                  <select
+                    aria-label={`Almacén por defecto de ${store.name}`}
+                    className={SELECT_CLASS}
+                    value={current}
+                    disabled={busy}
+                    onChange={(e) => {
+                      // Se lee ya: el select controlado vuelve a su valor antes de que corra la mutación.
+                      const inventoryId = e.target.value;
+                      change.mutate({
+                        run: () => setStoreDefaultWarehouse(store.id, inventoryId),
+                        success: "Almacén por defecto actualizado",
+                      });
+                    }}
+                  >
+                    {current === "" && (
+                      <option value="" disabled>
+                        Sin almacén por defecto
+                      </option>
+                    )}
+                    {options.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.status ? w.name : `${w.name} (inactivo)`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <AlmacenModal
         open={openModal}
         onClose={() => setOpenModal(false)}
         onSaved={() => {
           setOpenModal(false);
-          fetchAlmacenes();
-          refreshInventories(); // Sincronizar estado global
+          void queryClient.invalidateQueries({ queryKey });
+          void refreshInventories(); // Sincronizar estado global
         }}
       />
     </div>

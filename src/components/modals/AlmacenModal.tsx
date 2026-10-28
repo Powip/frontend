@@ -1,5 +1,11 @@
 import AlmacenForm from "../forms/AlmacenForm";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 
 interface Props {
   open: boolean;
@@ -14,7 +20,11 @@ export default function AlmacenModal({ open, onClose, onSaved }: Props) {
     >
       <DialogContent className="!max-w-[90vw] sm:!max-w-[500px] !w-full">
         <DialogHeader>
-          <DialogTitle>Almacén</DialogTitle>
+          <DialogTitle>Nuevo almacén</DialogTitle>
+          <DialogDescription>
+            El almacén es de la empresa y se puede compartir entre tiendas. La tienda
+            seleccionada queda como su tienda de origen.
+          </DialogDescription>
         </DialogHeader>
         <AlmacenForm onClienteSaved={onSaved} />
       </DialogContent>
