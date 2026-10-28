@@ -30,9 +30,9 @@ import {
 import type { LiveCheckoutSnapshot } from "./types";
 
 const action =
-  "inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40";
+  "inline-flex items-center justify-center gap-2 rounded-xl bg-[#25F4EE] px-4 py-3 text-sm font-bold text-[#0B0B0F] hover:bg-[#78FAF5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0B0F] disabled:cursor-not-allowed disabled:opacity-40";
 const outline =
-  "inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/5 disabled:opacity-40";
+  "inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 px-4 py-2.5 text-sm font-semibold text-white hover:border-[#25F4EE]/60 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE] disabled:opacity-40";
 
 export default function LiveManualPaymentDialog({
   storeId,
@@ -183,17 +183,17 @@ export default function LiveManualPaymentDialog({
         if (!open && !busy) onClose();
       }}
     >
-      <DialogContent className="max-h-[92vh] overflow-y-auto border-white/15 bg-[#171428] text-slate-100 sm:max-w-lg">
+      <DialogContent className="max-h-[92vh] grid-cols-1 overflow-y-auto border-white/15 bg-[#0B0B0F] text-zinc-100 sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Pagar con Yape</DialogTitle>
-          <DialogDescription className="text-slate-400">
+          <DialogDescription className="text-zinc-400">
             {snapshot?.orderNumber || `Compra ${checkoutId.slice(0, 8)}`}
           </DialogDescription>
         </DialogHeader>
         {error ? (
           <p
             role="alert"
-            className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-200"
+            className="rounded-xl border border-[#FE2C55]/35 bg-[#FE2C55]/10 p-3 text-sm text-rose-200"
           >
             {error}
           </p>
@@ -201,25 +201,25 @@ export default function LiveManualPaymentDialog({
         {info ? (
           <p
             role="status"
-            className="rounded-xl border border-sky-400/20 bg-sky-400/10 p-3 text-sm text-sky-100"
+            className="rounded-xl border border-[#25F4EE]/20 bg-[#25F4EE]/10 p-3 text-sm text-[#25F4EE]"
           >
             {info}
           </p>
         ) : null}
         {loading && !snapshot ? (
-          <p className="flex items-center justify-center gap-2 py-8 text-sm text-slate-400">
+          <p className="flex items-center justify-center gap-2 py-8 text-sm text-zinc-400">
             <Loader2 className="h-4 w-4 animate-spin" />
             Cargando pago…
           </p>
         ) : !manual ? (
-          <p className="text-sm text-slate-400">
+          <p className="text-sm text-zinc-400">
             No se encontraron instrucciones de Yape para este pago.
           </p>
         ) : paid ? (
-          <div className="space-y-4 rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-5">
-            <CheckCircle2 className="h-7 w-7 text-emerald-300" />
-            <h2 className="font-bold text-emerald-200">Pago validado por el negocio</h2>
-            <p className="text-sm text-slate-300">
+          <div className="space-y-4 rounded-xl border border-[#25F4EE]/30 bg-[#25F4EE]/10 p-5">
+            <CheckCircle2 className="h-7 w-7 text-[#25F4EE]" />
+            <h2 className="font-bold text-[#25F4EE]">Pago validado por el negocio</h2>
+            <p className="text-sm text-zinc-300">
               {snapshot?.orderStatus === "ANULADO"
                 ? "Tu pedido fue anulado. Contacta al negocio para coordinar el pago o la entrega."
                 : snapshot?.orderStatus === "ENTREGADO"
@@ -251,14 +251,14 @@ export default function LiveManualPaymentDialog({
             </button>
           </div>
         ) : rejected ? (
-          <div className="space-y-3 rounded-xl border border-rose-400/30 bg-rose-400/10 p-4">
+          <div className="space-y-3 rounded-xl border border-[#FE2C55]/35 bg-[#FE2C55]/10 p-4">
             <h2 className="font-semibold text-rose-200">Comprobante no validado</h2>
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-zinc-300">
               {manual.rejectionReason ||
                 manual.reason ||
                 "Contacta al negocio para revisar tu pago."}
             </p>
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-zinc-300">
               Contacta al negocio antes de realizar otro pago. Este intento ya no admite otro
               comprobante.
             </p>
@@ -272,12 +272,12 @@ export default function LiveManualPaymentDialog({
               <Clock3 className="h-5 w-5" />
               <h2 className="font-bold">Comprobante en revisión</h2>
             </div>
-            <p className="text-sm leading-relaxed text-slate-300">
+            <p className="text-sm leading-relaxed text-zinc-300">
               El negocio verificará el ingreso en su cuenta Yape. Tu pedido estará disponible
               después de validar el pago.
             </p>
             {manual.reviewDeadlineAt ? (
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-zinc-400">
                 Revisión prevista hasta {new Date(manual.reviewDeadlineAt).toLocaleString("es-PE")}.
                 {manual.overdue ? " El negocio aún debe resolver la revisión." : ""}
               </p>
@@ -297,15 +297,15 @@ export default function LiveManualPaymentDialog({
           </p>
         ) : (
           <>
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <p className="text-xs text-slate-400">Monto exacto a yapear</p>
-              <p className="mt-1 text-3xl font-bold text-emerald-300">{liveMoney(paymentTotal)}</p>
+            <div className="rounded-xl border border-white/10 bg-[#16161C] p-4">
+              <p className="text-xs text-zinc-400">Monto exacto a yapear</p>
+              <p className="mt-1 text-3xl font-bold text-[#25F4EE]">{liveMoney(paymentTotal)}</p>
               <p className="mt-3 text-sm font-semibold">{manual.holder}</p>
               <div className="mt-1 flex items-center gap-3">
                 <span className="select-all text-lg font-bold tabular-nums">{manual.phone}</span>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 rounded-lg p-2 text-xs text-emerald-300 hover:bg-white/5"
+                  className="inline-flex items-center gap-1 rounded-lg p-2 text-xs text-[#25F4EE] hover:bg-[#25F4EE]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE]"
                   onClick={() => void copyPhone()}
                 >
                   <Copy className="h-3.5 w-3.5" />
@@ -335,7 +335,7 @@ export default function LiveManualPaymentDialog({
                 </div>
               </div>
             ) : null}
-            <p className="text-xs leading-relaxed text-slate-400">
+            <p className="text-xs leading-relaxed text-zinc-400">
               Desde este mismo teléfono puedes copiar el número o guardar el QR y abrirlo en Yape.
               Luego vuelve aquí para subir el comprobante.
             </p>
@@ -352,11 +352,11 @@ export default function LiveManualPaymentDialog({
                 void submit();
               }}
             >
-              <label className="grid gap-2 text-xs font-semibold">
+              <label className="grid min-w-0 gap-2 text-xs font-semibold">
                 Número de operación
                 <input
                   aria-label="Número de operación Yape"
-                  className="rounded-xl border border-white/15 bg-slate-950/40 px-3 py-3 text-sm outline-none focus:border-emerald-300"
+                  className="rounded-xl border border-white/15 bg-[#16161C] px-3 py-3 text-sm outline-none focus:border-[#25F4EE] focus:ring-2 focus:ring-[#25F4EE]/20"
                   maxLength={50}
                   required
                   value={operationNumber}
@@ -364,12 +364,12 @@ export default function LiveManualPaymentDialog({
                   onChange={(event) => setOperationNumber(event.target.value)}
                 />
               </label>
-              <label className="grid gap-2 text-xs font-semibold">
+              <label className="grid min-w-0 gap-2 text-xs font-semibold">
                 Comprobante de Yape
                 <input
                   key={key}
                   aria-label="Comprobante de Yape"
-                  className="max-w-full rounded-xl border border-white/15 p-3 text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-white"
+                  className="w-full min-w-0 max-w-full rounded-xl border border-white/15 bg-[#16161C] p-3 text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-[#25F4EE]/10 file:px-3 file:py-2 file:text-[#25F4EE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE]/60"
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   disabled={busy}
@@ -387,7 +387,7 @@ export default function LiveManualPaymentDialog({
                     }
                   }}
                 />
-                <span className="font-normal text-slate-400">
+                <span className="font-normal text-zinc-400">
                   Imagen JPG, PNG o WebP, hasta 5 MB.
                 </span>
               </label>
@@ -403,7 +403,7 @@ export default function LiveManualPaymentDialog({
                 )}
                 Enviar comprobante para revisión
               </button>
-              <p className="text-center text-[11px] text-slate-400">
+              <p className="text-center text-[11px] text-zinc-400">
                 Subir el comprobante no confirma el pago.
               </p>
             </form>

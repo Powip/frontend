@@ -26,15 +26,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { isJunkDni } from "@/utils/junk-document.util";
+import { cn } from "@/lib/utils";
 import ubigeos from "@/utils/json/ubigeos.json";
+import { isJunkDni } from "@/utils/junk-document.util";
 import LiveManualPaymentDialog from "./LiveManualPaymentDialog";
 import { LiveProductImage, LiveReservationTimer } from "./LiveShared";
 import {
   checkoutLivePurchase,
   getPublicLive,
-  liveError,
   isLiveQuoteConflict,
+  liveError,
   liveMoney,
   liveOrderLabel,
   liveVisitorToken,
@@ -61,11 +62,12 @@ const departments: { name: string; provinces: { name: string; districts: string[
   ubigeos[0].departments;
 
 const primary =
-  "inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40";
+  "inline-flex items-center justify-center gap-2 rounded-xl bg-[#25F4EE] px-4 py-3 text-sm font-bold text-[#0B0B0F] transition hover:bg-[#78FAF5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0B0F] disabled:cursor-not-allowed disabled:opacity-40";
 const secondary =
-  "inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm font-semibold text-white hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40";
+  "inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:border-[#25F4EE]/60 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE] disabled:cursor-not-allowed disabled:opacity-40";
+const selectedSecondary = cn(secondary, "border-[#25F4EE] bg-[#25F4EE]/10 text-[#25F4EE]");
 const field =
-  "mt-1.5 w-full rounded-xl border border-white/15 bg-slate-950/50 px-3 py-3 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-400/20 disabled:opacity-50";
+  "mt-1.5 w-full rounded-xl border border-white/15 bg-black/50 px-3 py-3 text-sm text-white outline-none placeholder:text-zinc-400 focus:border-[#25F4EE] focus:ring-2 focus:ring-[#25F4EE]/20 disabled:opacity-50";
 const isActive = (reservation: LiveReservation) =>
   ["ACTIVE", "PENDING"].includes(reservation.status);
 const customerValid = (customer: LiveCustomer) =>
@@ -234,10 +236,10 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
     return (
       <article
         key={product.variantId}
-        className={`rounded-2xl border p-4 ${featured ? "border-rose-400/50 bg-gradient-to-br from-rose-500/15 to-violet-500/10 shadow-xl shadow-rose-950/10" : "border-white/10 bg-white/[0.035]"}`}
+        className={`rounded-2xl border p-4 ${featured ? "border-[#FE2C55]/50 bg-gradient-to-br from-[#FE2C55]/10 to-[#25F4EE]/5 shadow-xl shadow-[#FE2C55]/10" : "border-white/10 bg-white/[0.035]"}`}
       >
         {featured ? (
-          <p className="mb-4 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-rose-300">
+          <p className="mb-4 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-[#FF8FA5]">
             <Pin className="h-3.5 w-3.5" />
             {onAir ? "Ahora en el live" : "Lo último que mostramos"}
           </p>
@@ -248,31 +250,31 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
             className={featured ? "h-24 w-24 sm:h-32 sm:w-32" : "h-20 w-20"}
           />
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-slate-400">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-400">
               {product.sku}
             </p>
             <h2 className={`mt-1 font-bold leading-snug ${featured ? "text-lg" : "text-sm"}`}>
               {product.name}
             </h2>
             {product.variantLabel ? (
-              <p className="mt-1 text-xs text-slate-400">{product.variantLabel}</p>
+              <p className="mt-1 text-xs text-zinc-400">{product.variantLabel}</p>
             ) : null}
             <div className="mt-2 flex flex-wrap items-baseline gap-2">
-              <span className={`font-bold text-emerald-300 ${featured ? "text-2xl" : "text-lg"}`}>
+              <span className={`font-bold text-[#25F4EE] ${featured ? "text-2xl" : "text-lg"}`}>
                 {liveMoney(product.livePrice)}
               </span>
               {product.regularPrice > product.livePrice ? (
-                <s className="text-xs text-slate-500">{liveMoney(product.regularPrice)}</s>
+                <s className="text-xs text-zinc-400">{liveMoney(product.regularPrice)}</s>
               ) : null}
             </div>
-            <span className="mt-1 inline-block rounded bg-rose-400/15 px-1.5 py-0.5 text-[10px] font-semibold text-rose-200">
+            <span className="mt-1 inline-block rounded bg-[#FE2C55]/15 px-1.5 py-0.5 text-[10px] font-semibold text-[#FFB5C4]">
               Precio live
             </span>
           </div>
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
           <p
-            className={`text-xs ${product.availableStock <= 3 ? "text-amber-300" : "text-slate-400"}`}
+            className={`text-xs ${product.availableStock <= 3 ? "text-amber-300" : "text-zinc-400"}`}
           >
             {product.availableStock <= 0
               ? "Agotado"
@@ -282,7 +284,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
             {product.maxPerCustomer ? ` · Máx. ${product.maxPerCustomer} por cliente` : ""}
           </p>
           {max > 0 ? (
-            <div className="inline-flex items-center gap-3 rounded-lg border border-white/15 bg-slate-950/40">
+            <div className="inline-flex items-center gap-3 rounded-lg border border-white/15 bg-black/40">
               <button
                 type="button"
                 aria-label={`Quitar una unidad de ${product.name}`}
@@ -315,7 +317,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
         {!closed ? (
           <div className="mt-3 grid grid-cols-2 gap-2">
             {max <= 0 ? (
-              <p className="col-span-2 rounded-xl bg-white/5 p-3 text-center text-xs text-slate-400">
+              <p className="col-span-2 rounded-xl bg-white/5 p-3 text-center text-xs text-zinc-400">
                 {product.availableStock <= 0 ? "Agotado" : "Llegaste al máximo para este producto"}
               </p>
             ) : (
@@ -358,24 +360,24 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
     );
   }
   return (
-    <main className="min-h-screen bg-[#100e20] text-slate-100 selection:bg-emerald-400/25">
+    <main className="min-h-screen border-t-2 border-[#25F4EE] bg-[#0B0B0F] text-zinc-100 selection:bg-[#25F4EE]/25">
       <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-5">
           <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-teal-400 to-teal-700 text-sm font-black text-white">
+            <div className="grid h-11 w-11 place-items-center rounded-2xl border border-[#25F4EE]/70 bg-[#25F4EE] text-sm font-black text-[#0B0B0F] shadow-[3px_3px_0_#FE2C55]">
               {data?.store.name.slice(0, 2).toUpperCase() || <ShoppingBag className="h-5 w-5" />}
             </div>
             <div>
               <p className="text-base font-bold">{data?.store.name || "Catálogo del live"}</p>
-              <p className="text-xs text-slate-400">Compra lo que ves en el live</p>
+              <p className="text-xs text-zinc-400">Compra lo que ves en el live</p>
             </div>
           </div>
           {data ? (
             <span
-              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold ${onAir ? "bg-rose-500/15 text-rose-300" : "bg-white/5 text-slate-400"}`}
+              className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-bold ${onAir ? "bg-[#FE2C55]/15 text-[#FF8FA5]" : "bg-white/5 text-zinc-400"}`}
             >
               <span
-                className={`h-1.5 w-1.5 rounded-full ${onAir ? "bg-rose-400" : "bg-slate-500"}`}
+                className={`h-1.5 w-1.5 rounded-full ${onAir ? "bg-[#FE2C55]" : "bg-zinc-500"}`}
               />
               {onAir
                 ? `EN VIVO · ${platformNames[data.session?.platform ?? "TIKTOK"]}`
@@ -388,7 +390,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
         {error ? (
           <div
             role="alert"
-            className="mb-5 flex items-start gap-3 rounded-xl border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-200"
+            className="mb-5 flex items-start gap-3 rounded-xl border border-[#FE2C55]/30 bg-[#FE2C55]/10 p-4 text-sm text-[#FFB5C4]"
           >
             <p className="flex-1">{error}</p>
             <button type="button" aria-label="Cerrar error" onClick={() => setError("")}>
@@ -399,7 +401,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
         {notice ? (
           <div
             role="status"
-            className={`mb-5 flex items-start gap-3 rounded-xl border p-4 text-sm ${notice.startsWith("Estamos verificando") ? "border-amber-400/30 bg-amber-500/10 text-amber-200" : "border-emerald-400/30 bg-emerald-500/10 text-emerald-200"}`}
+            className={`mb-5 flex items-start gap-3 rounded-xl border p-4 text-sm ${notice.startsWith("Estamos verificando") ? "border-amber-400/30 bg-amber-500/10 text-amber-200" : "border-[#25F4EE]/30 bg-[#25F4EE]/10 text-[#9AFBF7]"}`}
           >
             {notice.startsWith("Estamos verificando") ? (
               <Clock3 className="h-4 w-4 shrink-0" />
@@ -413,13 +415,13 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
           </div>
         ) : null}
         {loading && !data ? (
-          <div className="flex items-center justify-center gap-3 py-24 text-sm text-slate-400">
+          <div className="flex items-center justify-center gap-3 py-24 text-sm text-zinc-400">
             <Loader2 className="h-5 w-5 animate-spin" />
             Cargando catálogo…
           </div>
         ) : !data ? (
           <div className="rounded-2xl border border-white/10 p-8 text-center">
-            <p className="text-slate-400">No pudimos cargar este catálogo.</p>
+            <p className="text-zinc-400">No pudimos cargar este catálogo.</p>
             <button
               type="button"
               className={`${secondary} mt-4`}
@@ -432,7 +434,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
         ) : (
           <>
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-              <p className="max-w-xl text-sm leading-relaxed text-slate-400">
+              <p className="max-w-xl text-sm leading-relaxed text-zinc-400">
                 {closed
                   ? "El catálogo del live está cerrado. Los precios y las compras volverán a estar disponibles cuando el negocio lo abra."
                   : onAir
@@ -468,16 +470,16 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                     {pinned ? productCard(pinned, true) : null}
                     <div className="flex items-center justify-between">
                       <h1 className="flex items-center gap-2 text-lg font-bold">
-                        <ShoppingBag className="h-5 w-5 text-rose-300" />
+                        <ShoppingBag className="h-5 w-5 text-[#FF8FA5]" />
                         Todo lo del live
-                        <span className="text-sm font-medium text-slate-500">
+                        <span className="text-sm font-medium text-zinc-400">
                           ({products.length})
                         </span>
                       </h1>
                       <button
                         type="button"
                         aria-label="Actualizar catálogo"
-                        className="rounded-lg p-2 text-slate-400 hover:bg-white/5"
+                        className="rounded-lg p-2 text-zinc-400 hover:bg-white/5"
                         disabled={loading}
                         onClick={() => void refresh(visitor)}
                       >
@@ -488,8 +490,8 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                       remaining.map((product) => productCard(product))
                     ) : !pinned ? (
                       <div className="rounded-2xl border border-dashed border-white/15 p-8 text-center">
-                        <Package className="mx-auto h-8 w-8 text-slate-500" />
-                        <p className="mt-3 text-sm text-slate-400">
+                        <Package className="mx-auto h-8 w-8 text-zinc-400" />
+                        <p className="mt-3 text-sm text-zinc-400">
                           Todavía no hay productos en este live.
                         </p>
                       </div>
@@ -497,9 +499,9 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                   </>
                 ) : (
                   <div className="rounded-2xl border border-white/10 bg-white/5 px-6 py-12 text-center">
-                    <Clock3 className="mx-auto h-10 w-10 text-slate-500" />
+                    <Clock3 className="mx-auto h-10 w-10 text-zinc-400" />
                     <h1 className="mt-4 text-xl font-bold">Nos vemos en el próximo live</h1>
-                    <p className="mt-2 text-sm text-slate-400">
+                    <p className="mt-2 text-sm text-zinc-400">
                       Tus apartados anteriores siguen visibles aquí.
                     </p>
                   </div>
@@ -509,10 +511,10 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                 {!closed ? (
                   <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
                     <h2 className="text-sm font-bold">Tus datos para apartar</h2>
-                    <p className="mt-1 text-xs leading-relaxed text-slate-400">
+                    <p className="mt-1 text-xs leading-relaxed text-zinc-400">
                       Tu nombre y WhatsApp permiten al negocio contactarte por tu pedido.
                     </p>
-                    <label className="mt-4 block text-xs font-medium text-slate-300">
+                    <label className="mt-4 block text-xs font-medium text-zinc-300">
                       Nombre
                       <input
                         ref={customerField}
@@ -526,7 +528,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                         placeholder="Tu nombre"
                       />
                     </label>
-                    <label className="mt-3 block text-xs font-medium text-slate-300">
+                    <label className="mt-3 block text-xs font-medium text-zinc-300">
                       WhatsApp
                       <input
                         className={field}
@@ -547,9 +549,9 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                     </label>
                   </section>
                 ) : null}
-                <section className="rounded-2xl border border-emerald-400/20 bg-emerald-400/[0.04] p-4">
+                <section className="rounded-2xl border border-[#25F4EE]/20 bg-[#25F4EE]/[0.04] p-4">
                   <div className="flex items-center gap-2">
-                    <Clock3 className="h-4 w-4 text-emerald-300" />
+                    <Clock3 className="h-4 w-4 text-[#25F4EE]" />
                     <h2 className="flex-1 text-sm font-bold">
                       Tus apartados ({reservations.length})
                     </h2>
@@ -571,11 +573,11 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                                     "Producto"}
                                 </p>
                                 {reservation.variantLabel ? (
-                                  <p className="mt-1 text-[11px] text-slate-400">
+                                  <p className="mt-1 text-[11px] text-zinc-400">
                                     {reservation.variantLabel}
                                   </p>
                                 ) : null}
-                                <p className="mt-1 text-xs text-emerald-300">
+                                <p className="mt-1 text-xs text-[#25F4EE]">
                                   {liveMoney(reservation.unitPrice * reservation.quantity)}
                                 </p>
                               </div>
@@ -587,7 +589,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                                   reservation.type === "ACCUMULATED" ||
                                   !!reservation.checkoutId
                                 }
-                                className="rounded p-1 text-slate-400 hover:text-rose-300 disabled:opacity-40"
+                                className="rounded p-1 text-zinc-400 hover:text-[#FF8FA5] disabled:opacity-40"
                                 onClick={() =>
                                   void operate(
                                     "remove",
@@ -642,20 +644,20 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                           live.
                         </p>
                       ) : null}
-                      <p className="mt-3 text-[11px] leading-relaxed text-slate-400">
+                      <p className="mt-3 text-[11px] leading-relaxed text-zinc-400">
                         Los apartados con tiempo se liberan al vencer. Un comprobante Yape enviado
                         conserva el stock mientras el negocio revisa el pago.
                       </p>
                     </>
                   ) : (
-                    <p className="py-5 text-xs leading-relaxed text-slate-400">
+                    <p className="py-5 text-xs leading-relaxed text-zinc-400">
                       Cuando apartes un producto aparecerá aquí. Podrás pagar tus apartados juntos.
                     </p>
                   )}
                 </section>
                 {data.orders?.length ? (
-                  <section className="space-y-3 rounded-2xl border border-emerald-400/20 p-4">
-                    <h2 className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
+                  <section className="space-y-3 rounded-2xl border border-[#25F4EE]/20 p-4">
+                    <h2 className="flex items-center gap-2 text-sm font-semibold text-[#25F4EE]">
                       <Package className="h-4 w-4" />
                       Tus compras del live
                     </h2>
@@ -665,21 +667,21 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                           <p className="text-sm font-bold">
                             {order.orderNumber || `Compra ${order.id.slice(0, 8)}`}
                           </p>
-                          <span className="text-xs font-semibold text-emerald-300">
+                          <span className="text-xs font-semibold text-[#25F4EE]">
                             {liveMoney(order.total)}
                           </span>
                         </div>
-                        <p className="mt-1 text-xs text-slate-400">
+                        <p className="mt-1 text-xs text-zinc-400">
                           {order.status === "REFUND_PENDING"
                             ? "Pago recibido · devolución pendiente"
                             : paymentLabel(order)}
                         </p>
                         {liveOrderLabel(order.status) ? (
-                          <p className="mt-1 text-xs font-semibold text-slate-200">
+                          <p className="mt-1 text-xs font-semibold text-zinc-200">
                             {liveOrderLabel(order.status)}
                           </p>
                         ) : null}
-                        <ul className="mt-2 space-y-1 text-xs text-slate-300">
+                        <ul className="mt-2 space-y-1 text-xs text-zinc-300">
                           {order.items.map((item) => (
                             <li
                               key={
@@ -714,7 +716,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                             <ExternalLink className="h-3 w-3" />
                           </a>
                         ) : (
-                          <p className="mt-2 text-[11px] text-slate-400">
+                          <p className="mt-2 text-[11px] text-zinc-400">
                             {order.status === "REFUND_PENDING"
                               ? "El negocio gestionará la devolución del pago."
                               : ["PAID", "APPROVED", "MANUAL_APPROVED", "approved"].includes(
@@ -733,18 +735,18 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                   </section>
                 ) : null}
                 {paid.length ? (
-                  <section className="rounded-2xl border border-emerald-400/20 p-4">
-                    <p className="flex items-center gap-2 text-sm font-semibold text-emerald-300">
+                  <section className="rounded-2xl border border-[#25F4EE]/20 p-4">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-[#25F4EE]">
                       <Check className="h-4 w-4" />
                       Apartados pagados
                     </p>
-                    <p className="mt-2 text-xs text-slate-400">
+                    <p className="mt-2 text-xs text-zinc-400">
                       {paid.reduce((sum, item) => sum + item.quantity, 0)} unidades con pago
                       verificado. El negocio preparará tu pedido.
                     </p>
                   </section>
                 ) : null}
-                <p className="px-2 text-center text-[11px] leading-relaxed text-slate-500">
+                <p className="px-2 text-center text-[11px] leading-relaxed text-zinc-400">
                   El precio live aplica solo en este catálogo mientras esté abierto.
                   <br />
                   <span className="mt-3 inline-flex items-center gap-1">
@@ -996,12 +998,12 @@ function LiveCheckoutDialog({
         if (!open && !busy) onClose();
       }}
     >
-      <DialogContent className="max-h-[92vh] overflow-y-auto border-white/15 bg-[#171428] text-slate-100 sm:max-w-xl">
+      <DialogContent className="max-h-[92vh] overflow-y-auto border-white/15 bg-[#16161C] text-zinc-100 sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="text-lg">
             {selection.reservationIds ? "Pagar tus apartados" : "Comprar ahora"}
           </DialogTitle>
-          <DialogDescription className="text-slate-400">
+          <DialogDescription className="text-zinc-400">
             Completa la entrega y revisa el total antes de elegir cómo pagar.
           </DialogDescription>
         </DialogHeader>
@@ -1025,7 +1027,7 @@ function LiveCheckoutDialog({
           {error ? (
             <div
               role="alert"
-              className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-200"
+              className="rounded-xl border border-[#FE2C55]/30 bg-[#FE2C55]/10 p-3 text-sm text-[#FFB5C4]"
             >
               {error}
             </div>
@@ -1091,11 +1093,7 @@ function LiveCheckoutDialog({
                     onClick={() =>
                       setDelivery((previous) => ({ ...previous, type: value as "HOME" | "AGENCY" }))
                     }
-                    className={
-                      delivery.type === value
-                        ? `${secondary} border-emerald-400 text-emerald-300`
-                        : secondary
-                    }
+                    className={delivery.type === value ? selectedSecondary : secondary}
                   >
                     {label}
                   </button>
@@ -1223,11 +1221,7 @@ function LiveCheckoutDialog({
                         : { type: "FACTURA", ruc: "", businessName: "" },
                     )
                   }
-                  className={
-                    receipt.type === value
-                      ? `${secondary} border-emerald-400 text-emerald-300`
-                      : secondary
-                  }
+                  className={receipt.type === value ? selectedSecondary : secondary}
                 >
                   {label}
                 </button>
@@ -1305,11 +1299,7 @@ function LiveCheckoutDialog({
                       type="button"
                       key={value}
                       disabled={busy}
-                      className={
-                        method === value
-                          ? `${secondary} border-emerald-400 text-emerald-300`
-                          : secondary
-                      }
+                      className={method === value ? selectedSecondary : secondary}
                     >
                       Yape · comprobante
                     </button>
@@ -1322,13 +1312,13 @@ function LiveCheckoutDialog({
             )}
           </fieldset>
           {currentQuote ? (
-            <div className="space-y-2 rounded-xl border border-emerald-400/20 bg-emerald-400/5 p-4 text-sm">
+            <div className="space-y-2 rounded-xl border border-[#25F4EE]/20 bg-[#25F4EE]/5 p-4 text-sm">
               <div className="flex justify-between">
-                <span className="text-slate-400">Productos</span>
+                <span className="text-zinc-400">Productos</span>
                 <span>{liveMoney(currentQuote.subtotal)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-400">
+                <span className="text-zinc-400">
                   Envío
                   {currentQuote.combinedOrderId || currentQuote.combinedOrderNumber
                     ? " (pedido abierto)"
@@ -1337,17 +1327,17 @@ function LiveCheckoutDialog({
                 <span>{liveMoney(currentQuote.shipping)}</span>
               </div>
               {currentQuote.combinedOrderNumber ? (
-                <p className="text-xs text-emerald-200">
+                <p className="text-xs text-[#9AFBF7]">
                   Se suma a tu pedido {currentQuote.combinedOrderNumber}, sin pagar envío otra vez.
                 </p>
               ) : null}
               <div className="flex justify-between border-t border-white/10 pt-2 text-lg font-bold">
                 <span>Total</span>
-                <span className="text-emerald-300">{liveMoney(currentQuote.total)}</span>
+                <span className="text-[#25F4EE]">{liveMoney(currentQuote.total)}</span>
               </div>
             </div>
           ) : (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-zinc-400">
               El costo de envío y el total se calculan con la información de entrega.
             </p>
           )}
@@ -1363,7 +1353,7 @@ function LiveCheckoutDialog({
                 ? `Ver instrucciones Yape · ${liveMoney(currentQuote.total)}`
                 : "Calcular total"}
           </button>
-          <p className="text-center text-[11px] leading-relaxed text-slate-500">
+          <p className="text-center text-[11px] leading-relaxed text-zinc-400">
             El pedido se confirma cuando el negocio valida tu comprobante Yape.
           </p>
         </form>
