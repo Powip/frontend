@@ -26,6 +26,7 @@ import {
   requestSessionToken,
 } from "@/lib/sessionRefresh";
 import { partnersKeys } from "@/features/partners/keys/partners.keys";
+import { listWarehouses } from "@/services/warehousesService";
 
 // Configurar axios para enviar cookies automáticamente (httpOnly cookies)
 axios.defaults.withCredentials = true;
@@ -136,6 +137,21 @@ function saveStorePreference(storeId: string | null): void {
   } catch {
     // Optional preferences must not block a valid session in restricted browsers.
   }
+}
+
+/**
+ * Almacén por defecto de la tienda cuando lo posee otra tienda de la empresa
+ * (FEAT-24 H1-A): las tiendas nuevas se vinculan al almacén principal y
+ * `/inventory/store/:id` solo lista los almacenes que la tienda posee. Devuelve
+ * null si no hay uno por defecto, si ya está entre los propios o si está inactivo.
+ * `storeId` es el del dueño del almacén, igual que en los propios.
+ */
+async function fetchDefaultWarehouse(storeId: string, owned: Inventory[]): Promise<Inventory | null> {
+  const { warehouses, links } = await listWarehouses();
+  const defaultLink = links.find((entry) => entry.is_default && entry.store_id === storeId);
+  if (!defaultLink || owned.some((inventory) => inventory.id === defaultLink.inventory_id)) return null;
+  const warehouse = warehouses.find((entry) => entry.id === defaultLink.inventory_id && entry.status === true);
+  return warehouse ? { id: warehouse.id, name: warehouse.name, storeId: warehouse.store_id } : null;
 }
 
 const resolveSelectedStoreId = (
@@ -342,10 +358,23 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         `${process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics}/inventory/store/${selectedStoreId}`,
         { headers: { Authorization: `Bearer ${auth.accessToken}` }, signal },
       );
-      if (requestVersion === inventoryRequestVersion.current && requestingSession === sessionVersion.current && !signal?.aborted) {
-        setInventories(Array.isArray(res.data) ? res.data
-          .map((inventory) => ({ ...inventory, storeId: inventory.storeId ?? inventory.store_id ?? "" }))
-          .filter((inventory) => inventory.storeId === selectedStoreId) : []);
+      const isStale = () =>
+        requestVersion !== inventoryRequestVersion.current || requestingSession !== sessionVersion.current || Boolean(signal?.aborted);
+      if (isStale()) return;
+      const owned: Inventory[] = Array.isArray(res.data) ? res.data
+        .map((inventory) => ({ ...inventory, storeId: inventory.storeId ?? inventory.store_id ?? "" }))
+        .filter((inventory) => inventory.storeId === selectedStoreId) : [];
+      // Los propios se publican de inmediato: el almacén por defecto se suma al llegar.
+      setInventories(owned);
+
+      // Un fallo aquí deja la lista con solo los propios, como antes de FEAT-24.
+      try {
+        const defaultWarehouse = await fetchDefaultWarehouse(selectedStoreId, owned);
+        if (isStale()) return;
+        if (defaultWarehouse) setInventories([...owned, defaultWarehouse]);
+      } catch (err) {
+        if (isStale()) return;
+        console.error("No se pudo consultar el almacén por defecto de la tienda", err);
       }
     } catch (err) {
       if (signal?.aborted || requestVersion !== inventoryRequestVersion.current || requestingSession !== sessionVersion.current) return;

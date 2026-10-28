@@ -17,6 +17,10 @@ jest.mock("@/services/companyService", () => ({
 jest.mock("@/services/fetchUserSubscription", () => ({
   fetchUserSubscription: jest.fn(),
 }));
+// AuthContext consulta los almacenes de la empresa (FEAT-24 H1-A); sin red ni vínculos por defecto.
+jest.mock("@/services/warehousesService", () => ({
+  listWarehouses: jest.fn(async () => ({ warehouses: [], links: [] })),
+}));
 
 const mockAxios = jest.mocked(axios);
 const mockDecodeToken = jest.mocked(decodeToken);
