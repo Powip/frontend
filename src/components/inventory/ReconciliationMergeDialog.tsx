@@ -30,6 +30,8 @@ import { VariantStock } from "@/services/inventoryItems.service";
 import { useReconciliationTaskDetails } from "@/hooks/useReconciliationTaskDetails";
 import { useReconciliationStockByVariants } from "@/hooks/useReconciliationStockByVariants";
 import {
+  buildMergeWarehouses,
+  countAllowed,
   formatMoney,
   resolveMergeCost,
   validateMergeStock,
@@ -426,12 +428,23 @@ export function ReconciliationMergeDialog({
   const loserVariantId = isPair ? loserItems[0].variant_id : null;
   const loserStock = loserVariantId ? stockByVariantId.get(loserVariantId) : undefined;
   const loserDetail = loserVariantId ? candidateByVariantId.get(loserVariantId) : undefined;
+  // FEAT-24 H1-A: almacenes con stock entre las dos variantes (decide si hay conteo físico).
+  const warehouseRows = buildMergeWarehouses(winnerStock, loserStock);
   const pairSides: MergeStockSides = {
     winnerQuantity: winnerStock?.quantity ?? 0,
     winnerReserved: winnerStock?.reserved_quantity ?? 0,
     loserQuantity: loserStock?.quantity ?? 0,
     loserReserved: loserStock?.reserved_quantity ?? 0,
+    warehouseCount: warehouseRows.length,
   };
+  // Si ya estaba elegido "Conteo físico" y los datos nuevos lo dejan fuera (el
+  // stock pasó a estar en varios almacenes), se descarta la elección: el usuario
+  // vuelve a elegir entre las opciones que quedan. Es un ajuste de estado propio
+  // durante el render (React lo vuelve a renderizar antes de pintar).
+  if (stockMode === "count" && !countAllowed(pairSides)) {
+    setStockMode(null);
+    setCountedRaw("");
+  }
   const winnerCost = Number(winnerDetail?.variant.cost) || 0;
   const loserCost = Number(loserDetail?.variant.cost) || 0;
   const pairDataReady =
@@ -607,6 +620,7 @@ export function ReconciliationMergeDialog({
                 ) : (
                   <ReconciliationMergeStockCostStep
                     sides={pairSides}
+                    warehouseRows={warehouseRows}
                     winnerCost={winnerCost}
                     loserCost={loserCost}
                     showShopifyNotice={showShopifyNotice}
