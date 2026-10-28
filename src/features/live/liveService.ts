@@ -44,10 +44,11 @@ export function liveVisitorToken(storeId: string): string {
     return imported ?? crypto.randomUUID();
   }
 }
-export async function getLiveConsole(storeId: string) {
+export async function getLiveConsole(storeId: string, signal?: AbortSignal) {
   return (
     await axiosAuth.get<LiveConsoleData | import("./types").LiveReviewConsoleData>(
       `${adminPath(storeId)}/console`,
+      { signal },
     )
   ).data;
 }
@@ -99,8 +100,13 @@ export async function saveLiveTrustedCustomer(storeId: string, clientId: string)
 export async function removeLiveTrustedCustomer(storeId: string, clientId: string) {
   await axiosAuth.delete(`${adminPath(storeId)}/trusted-customers/${encodeURIComponent(clientId)}`);
 }
-export async function getPublicLive(storeId: string, visitor: string) {
-  return (await axios.get<LivePublicData>(publicPath(storeId), anonymousOptions(visitor))).data;
+export async function getPublicLive(storeId: string, visitor: string, signal?: AbortSignal) {
+  return (
+    await axios.get<LivePublicData>(publicPath(storeId), {
+      ...anonymousOptions(visitor),
+      ...(signal ? { signal } : {}),
+    })
+  ).data;
 }
 export async function reserveLiveProduct(
   storeId: string,
@@ -147,10 +153,8 @@ export async function checkoutLivePurchase(
     )
   ).data;
 }
-export const liveMoney = (amount: number) =>
-  new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN" }).format(
-    Number(amount) || 0,
-  );
+const moneyFormatter = new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN" });
+export const liveMoney = (amount: number) => moneyFormatter.format(Number(amount) || 0);
 export function liveOrderLabel(status?: string | null): string | null {
   const labels: Record<string, string> = {
     INCOMPLETE: "Datos por completar",
@@ -164,7 +168,7 @@ export function liveOrderLabel(status?: string | null): string | null {
     ANULADO: "Pedido anulado",
     PAGADO: "Pedido pagado",
   };
-  return status && Object.prototype.hasOwnProperty.call(labels, status) ? labels[status] : null;
+  return status && Object.hasOwn(labels, status) ? labels[status] : null;
 }
 export function liveError(error: unknown): string {
   if (axios.isAxiosError(error)) {
@@ -180,6 +184,10 @@ export function liveError(error: unknown): string {
   return error instanceof Error
     ? error.message
     : "No se pudo completar la operación. Intenta nuevamente.";
+}
+
+export function isLiveReadDenied(error: unknown): boolean {
+  return axios.isAxiosError(error) && [401, 403, 404].includes(error.response?.status ?? 0);
 }
 
 export function liveAdminError(error: unknown): string {
@@ -294,11 +302,12 @@ export async function getLiveCheckoutSnapshot(
   storeId: string,
   visitor: string,
   checkoutId: string,
+  signal?: AbortSignal,
 ) {
   return (
     await axios.get<import("./types").LiveCheckoutSnapshot>(
       `${publicPath(storeId)}/checkouts/${encodeURIComponent(checkoutId)}`,
-      anonymousOptions(visitor),
+      { ...anonymousOptions(visitor), ...(signal ? { signal } : {}) },
     )
   ).data;
 }
@@ -322,17 +331,23 @@ export async function uploadLiveYapeProof(
     )
   ).data;
 }
-export async function getLiveYapeReviews(storeId: string) {
+export async function getLiveYapeReviews(storeId: string, signal?: AbortSignal) {
   return (
     await axiosAuth.get<{ reviews: import("./types").LiveYapeReview[]; serverNow: string }>(
       `${adminPath(storeId)}/yape/reviews`,
+      { signal },
     )
   ).data;
 }
-export async function getLiveYapeReviewProof(storeId: string, checkoutId: string) {
+export async function getLiveYapeReviewProof(
+  storeId: string,
+  checkoutId: string,
+  signal?: AbortSignal,
+) {
   return (
     await axiosAuth.get<{ url: string; expiresAt: string }>(
       `${adminPath(storeId)}/yape/reviews/${encodeURIComponent(checkoutId)}/proof`,
+      { signal },
     )
   ).data;
 }

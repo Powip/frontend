@@ -46,9 +46,11 @@ import {
   LiveReservationTimer,
 } from "./LiveShared";
 import LiveYapeReviews from "./LiveYapeReviews";
+import { createLivePolling, type LivePollingController } from "./livePolling";
 import {
   createLivePaymentLink,
   getLiveConsole,
+  isLiveReadDenied,
   liveAdminError,
   liveError,
   liveMoney,
@@ -92,13 +94,24 @@ const statusLabels = {
 };
 
 export default function LiveConsolePage() {
-  const { auth, selectedStoreId, setSelectedStore } = useAuth();
+  const session = useAuth();
+  const scope = `${session.auth?.company?.id}:${session.auth?.user.id}:${session.auth?.user.role}:${session.selectedStoreId}`;
+  return <ScopedLiveConsolePage key={scope} session={session} scope={scope} />;
+}
+
+function ScopedLiveConsolePage({
+  session,
+  scope,
+}: {
+  session: ReturnType<typeof useAuth>;
+  scope: string;
+}) {
+  const { auth, selectedStoreId, setSelectedStore } = session;
   const router = useRouter();
   const search = useSearchParams();
   const rawTab = search.get("tab");
   const requestedTab: Tab =
     rawTab && Object.hasOwn(tabLabels, rawTab) ? (rawTab as Tab) : "console";
-  const scope = `${auth?.company?.id}:${auth?.user.id}:${auth?.user.role}:${selectedStoreId}`;
   const [fullSnapshot, setFullSnapshot] = useState<{
     scope: string;
     value: LiveConsoleData;
@@ -125,7 +138,11 @@ export default function LiveConsolePage() {
   const [origin, setOrigin] = useState("");
   const generation = useRef(0);
   const mutationLock = useRef<number | null>(null);
-  const requestSequence = useRef(0);
+  const polling = useRef<LivePollingController | null>(null);
+  const pollingScope = useRef<string | null>(null);
+  const overlayPaused = Boolean(product || catalogOpen || releasing.length || paymentLink);
+  const overlayPausedRef = useRef(overlayPaused);
+  overlayPausedRef.current = overlayPaused;
   const canManage = data?.capabilities.manage === true;
   const canOperate = data?.capabilities.operate === true;
   const canReviewPayments = (data ?? reviewData)?.capabilities.reviewPayments === true;
@@ -159,45 +176,9 @@ export default function LiveConsolePage() {
   const publicUrl = storeId && origin ? `${origin}/live/${encodeURIComponent(storeId)}` : "";
 
   const refresh = useCallback(
-    async (quiet = false) => {
-      const current = generation.current;
-      const request = ++requestSequence.current;
-      if (!storeId) {
-        setLoading(false);
-        return;
-      }
-      if (!quiet) setLoading(true);
-      try {
-        const result = await getLiveConsole(storeId);
-        if (generation.current !== current || requestSequence.current !== request) return;
-        if ("config" in result && result.capabilities.readConsole !== false) {
-          setFullSnapshot({ scope, value: result });
-          setReviewSnapshot(null);
-        } else {
-          setFullSnapshot(null);
-          setReviewSnapshot({ scope, value: result as LiveReviewConsoleData });
-          setProduct(null);
-          setCatalogOpen(false);
-          setReleasing([]);
-          setPaymentLink(null);
-        }
-        setError("");
-      } catch (cause) {
-        if (generation.current === current && requestSequence.current === request) {
-          setFullSnapshot(null);
-          setReviewSnapshot(null);
-          setProduct(null);
-          setCatalogOpen(false);
-          setReleasing([]);
-          setPaymentLink(null);
-          setError(liveError(cause));
-        }
-      } finally {
-        if (generation.current === current && requestSequence.current === request)
-          setLoading(false);
-      }
-    },
-    [storeId, scope],
+    (quiet = false) =>
+      polling.current?.refresh({ quiet, supersede: true }) ?? Promise.resolve(false),
+    [],
   );
   useEffect(() => {
     generation.current += 1;
@@ -212,33 +193,87 @@ export default function LiveConsolePage() {
     setReleasing([]);
     setPaymentLink(null);
     setOrigin(window.location.origin);
-    void refresh();
-    const timer = setInterval(() => {
-      if (document.visibilityState === "visible") void refresh(true);
-    }, 8000);
+    if (!storeId) {
+      setLoading(false);
+      return;
+    }
+    let hasSnapshot = false;
+    let interval = 8000;
+    const reader = createLivePolling<LiveConsoleData | LiveReviewConsoleData>({
+      load: (signal) => getLiveConsole(storeId, signal),
+      intervalMs: () => interval,
+      onData: (result) => {
+        hasSnapshot = true;
+        if ("config" in result && result.capabilities.readConsole !== false) {
+          interval = result.session?.status === "LIVE" ? 8000 : 15000;
+          setFullSnapshot({ scope, value: result });
+          setReviewSnapshot(null);
+        } else {
+          interval = 15000;
+          setFullSnapshot(null);
+          setReviewSnapshot({ scope, value: result as LiveReviewConsoleData });
+          setProduct(null);
+          setCatalogOpen(false);
+          setReleasing([]);
+          setPaymentLink(null);
+        }
+        setError("");
+      },
+      onError: (cause) => {
+        if (isLiveReadDenied(cause)) {
+          hasSnapshot = false;
+          setFullSnapshot(null);
+          setReviewSnapshot(null);
+          setProduct(null);
+          setCatalogOpen(false);
+          setReleasing([]);
+          setPaymentLink(null);
+        }
+        setError(liveError(cause));
+      },
+      onLoading: (pending, quiet) => {
+        if (!quiet || !pending || !hasSnapshot) setLoading(pending);
+      },
+    });
+    polling.current = reader;
+    pollingScope.current = scope;
+    void reader.refresh({ quiet: false });
     return () => {
       generation.current += 1;
-      clearInterval(timer);
+      reader.dispose();
+      if (polling.current === reader) {
+        polling.current = null;
+        pollingScope.current = null;
+      }
     };
-  }, [refresh]);
+  }, [storeId, scope]);
+  useEffect(() => {
+    if (pollingScope.current === scope) polling.current?.setPaused(Boolean(busy) || overlayPaused);
+  }, [busy, overlayPaused, scope]);
 
   async function run(key: string, operation: () => Promise<unknown>, success?: string) {
     const current = generation.current;
     if (mutationLock.current === current) return false;
     mutationLock.current = current;
+    const reader = polling.current;
+    reader?.setPaused(true);
     setBusy(key);
+    let reconciled = false;
     try {
       await operation();
       if (generation.current !== current) return false;
       if (success) toast.success(success);
-      await refresh(true);
+      reconciled = await refresh(true);
       return generation.current === current;
     } catch (cause) {
       if (generation.current === current) toast.error(liveAdminError(cause));
       return false;
     } finally {
       if (mutationLock.current === current) mutationLock.current = null;
-      if (generation.current === current) setBusy("");
+      if (generation.current === current) {
+        setBusy("");
+        reader?.setPaused(overlayPausedRef.current, { refreshOnResume: !reconciled });
+      }
     }
   }
   async function copy(text: string) {

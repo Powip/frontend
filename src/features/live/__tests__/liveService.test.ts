@@ -3,6 +3,10 @@ import axiosAuth from "@/lib/axiosAuth";
 import {
   checkoutLivePurchase,
   getLiveCatalog,
+  getLiveCheckoutSnapshot,
+  getLiveConsole,
+  getLiveYapeReviews,
+  getPublicLive,
   liveVisitorToken,
   quoteLivePurchase,
   safeLiveUrl,
@@ -51,10 +55,29 @@ test("catalog passes cancellation to the authenticated request", async () => {
   const catalog = { products: [], serverNow: "2026-10-27T12:00:00Z" };
   (axiosAuth.get as jest.Mock).mockResolvedValue({ data: catalog });
   await expect(getLiveCatalog(id, "", controller.signal)).resolves.toEqual(catalog);
-  expect(axiosAuth.get).toHaveBeenCalledWith(
-    expect.stringContaining(`/stores/${id}/catalog`),
-    { params: { search: "" }, signal: controller.signal },
-  );
+  expect(axiosAuth.get).toHaveBeenCalledWith(expect.stringContaining(`/stores/${id}/catalog`), {
+    params: { search: "" },
+    signal: controller.signal,
+  });
+});
+
+test("scoped Live readers pass abort signals while public reads remain anonymous", async () => {
+  const controller = new AbortController();
+  (axiosAuth.get as jest.Mock).mockResolvedValue({ data: {} });
+  (axios.get as jest.Mock).mockResolvedValue({ data: {} });
+  await getLiveConsole(id, controller.signal);
+  await getLiveYapeReviews(id, controller.signal);
+  for (const [, options] of (axiosAuth.get as jest.Mock).mock.calls)
+    expect(options.signal).toBe(controller.signal);
+  await getPublicLive(id, "visitor-private", controller.signal);
+  await getLiveCheckoutSnapshot(id, "visitor-private", id, controller.signal);
+  for (const [, options] of (axios.get as jest.Mock).mock.calls) {
+    expect(options).toEqual({
+      signal: controller.signal,
+      withCredentials: false,
+      headers: { "X-Live-Visitor": "visitor-private" },
+    });
+  }
 });
 
 test("anonymous visitor credential persists per store and never derives from customer PII", () => {
