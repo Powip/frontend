@@ -6,6 +6,7 @@ import {
   getLiveYapeReviews,
   updateLiveConfig,
   updateLiveSession,
+  updateLiveYapeConfig,
 } from "../liveService";
 import type { LiveConsoleData, LiveReviewConsoleData } from "../types";
 
@@ -35,6 +36,7 @@ jest.mock("../liveService", () => ({
   getLiveYapeConfig: jest.fn(),
   updateLiveConfig: jest.fn(),
   updateLiveSession: jest.fn(),
+  updateLiveYapeConfig: jest.fn(),
 }));
 const minimal = (id = "store-a"): LiveReviewConsoleData => ({
   store: { id, name: "Tienda" },
@@ -135,7 +137,7 @@ test("opening controls stay disabled until the server confirms readiness and pur
   expect(updateLiveSession).not.toHaveBeenCalled();
   (getLiveConsole as jest.Mock).mockResolvedValue(fullConsole(true, false));
   fireEvent.click(screen.getByRole("button", { name: "Actualizar live" }));
-  await screen.findByText("Stock disponible");
+  await screen.findByRole("heading", { name: "Catálogo preparado" });
   expect(screen.getByRole("button", { name: "Estoy en vivo" })).toBeDisabled();
   (getLiveConsole as jest.Mock).mockResolvedValue(fullConsole(true, true));
   fireEvent.click(screen.getByRole("button", { name: "Actualizar live" }));
@@ -160,13 +162,143 @@ test("configuration remains editable while purchases are off and enable requires
   fireEvent.click(screen.getByRole("button", { name: "Actualizar live" }));
   await waitFor(() => expect(toggle).toBeEnabled());
   fireEvent.click(toggle);
-  fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }));
+  expect(screen.getByText(/Activación sin guardar/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Guardar y habilitar compras" }));
   await waitFor(() =>
     expect(updateLiveConfig).toHaveBeenCalledWith(
       "store-a",
       expect.objectContaining({ enabled: true }),
     ),
   );
+});
+
+test("disabled opening controls describe missing setup and link to the relevant tab", async () => {
+  mockTab = "console";
+  mockRole = "ADMINISTRADOR";
+  (getLiveConsole as jest.Mock).mockResolvedValue(fullConsole(false));
+  render(<LiveConsolePage />);
+  const open = await screen.findByRole("button", { name: "Estoy en vivo" });
+  expect(open).toBeDisabled();
+  expect(open).toHaveAccessibleDescription("Falta completar: Stock disponible.");
+  fireEvent.click(screen.getByRole("button", { name: "Ir a Productos" }));
+  expect(mockReplace).toHaveBeenCalledWith("/live?tab=products", { scroll: false });
+  expect(updateLiveSession).not.toHaveBeenCalled();
+});
+
+test.each([
+  ["YAPE", "live-yape-settings"],
+  ["SHIPPING", "live-shipping-settings"],
+] as const)(
+  "the console setup shortcut focuses missing %s instead of the disabled purchases switch",
+  async (code, targetId) => {
+    mockTab = "console";
+    mockRole = "ADMINISTRADOR";
+    const saved = fullConsole(false);
+    saved.readiness = { ready: false, checks: [{ code, ready: false, message: `Falta ${code}` }] };
+    (getLiveConsole as jest.Mock).mockResolvedValue(saved);
+    (getLiveYapeConfig as jest.Mock).mockResolvedValue({
+      config: { enabled: false, phone: "", holder: "", qrUrl: null, reviewHours: 24 },
+    });
+    const view = render(<LiveConsolePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Ir a Configuración" }));
+    expect(mockReplace).toHaveBeenCalledWith("/live?tab=config", { scroll: false });
+    mockTab = "config";
+    view.rerender(<LiveConsolePage />);
+    await waitFor(() => expect(document.getElementById(targetId)).toHaveFocus());
+  },
+);
+
+test("save shipping, enable purchases and save activation before opening; refresh preserves the draft", async () => {
+  mockRole = "ADMINISTRADOR";
+  let saved = fullConsole(false);
+  saved.config.homeShipping = null;
+  saved.readiness = {
+    ready: false,
+    checks: [{ code: "SHIPPING", ready: false, message: "Configura una tarifa de envío" }],
+  };
+  (getLiveConsole as jest.Mock).mockImplementation(async () => saved);
+  (getLiveYapeConfig as jest.Mock).mockResolvedValue({
+    config: { enabled: true, phone: "912345678", holder: "Negocio", qrUrl: null, reviewHours: 24 },
+  });
+  (updateLiveConfig as jest.Mock).mockImplementation(async (_storeId, config) => {
+    saved = {
+      ...saved,
+      config,
+      readiness: {
+        ready: true,
+        checks: [{ code: "SHIPPING", ready: true, message: "Envío configurado" }],
+      },
+    };
+    return { config };
+  });
+  const view = render(<LiveConsolePage />);
+  const toggle = await screen.findByRole("switch", { name: /^Habilitar compras del live/ });
+  fireEvent.click(screen.getByRole("button", { name: "Configurar envío" }));
+  await waitFor(() => expect(document.getElementById("live-shipping-settings")).toHaveFocus());
+  fireEvent.change(screen.getByLabelText("Envío a domicilio"), { target: { value: "10" } });
+  expect(toggle).toBeDisabled();
+  expect(toggle).toHaveAccessibleDescription(/Primero guarda las tarifas/);
+  fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }));
+  await waitFor(() => expect(toggle).toBeEnabled());
+  expect(updateLiveConfig).toHaveBeenLastCalledWith(
+    "store-a",
+    expect.objectContaining({ enabled: false, homeShipping: 10 }),
+  );
+  fireEvent.click(toggle);
+  expect(toggle).toBeChecked();
+  expect(toggle).toHaveAccessibleDescription(/Activación sin guardar/);
+  fireEvent.click(screen.getByRole("button", { name: "Actualizar live" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Actualizar live" })).toBeEnabled(),
+  );
+  expect(toggle).toBeChecked();
+  expect(toggle).toHaveAccessibleDescription(/Activación sin guardar/);
+  expect(updateLiveConfig).toHaveBeenCalledTimes(1);
+  expect(updateLiveSession).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Guardar y habilitar compras" }));
+  await screen.findByRole("button", { name: "Ir a Consola en vivo" });
+  expect(updateLiveConfig).toHaveBeenLastCalledWith(
+    "store-a",
+    expect.objectContaining({ enabled: true, homeShipping: 10 }),
+  );
+  mockTab = "console";
+  view.rerender(<LiveConsolePage />);
+  expect(screen.getByRole("button", { name: "Estoy en vivo" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Abrir catálogo" })).toBeEnabled();
+});
+
+test("saving Yape refreshes opening requirements immediately", async () => {
+  mockRole = "ADMINISTRADOR";
+  const before = fullConsole(false);
+  before.readiness = {
+    ready: false,
+    checks: [{ code: "YAPE", ready: false, message: "Configura el Yape del negocio" }],
+  };
+  (getLiveConsole as jest.Mock).mockResolvedValue(before);
+  (getLiveYapeConfig as jest.Mock).mockResolvedValue({
+    config: { enabled: false, phone: "912345678", holder: "Negocio", qrUrl: null, reviewHours: 24 },
+  });
+  (updateLiveYapeConfig as jest.Mock).mockImplementation(async (_store, config) => {
+    (getLiveConsole as jest.Mock).mockResolvedValue(fullConsole(true));
+    return { config };
+  });
+  render(<LiveConsolePage />);
+  fireEvent.click(await screen.findByRole("switch", { name: "Permitir pagar por Yape" }));
+  fireEvent.click(screen.getByRole("button", { name: "Guardar Yape" }));
+  await screen.findByRole("heading", { name: "Catálogo preparado" });
+  expect(getLiveConsole).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole("switch", { name: /^Habilitar compras del live/ })).toBeEnabled();
+});
+
+test("an active live can still be ended or closed when readiness changes", async () => {
+  mockTab = "console";
+  mockRole = "ADMINISTRADOR";
+  const active = fullConsole(false, true);
+  active.session = { id: "session", status: "LIVE", platform: "TIKTOK", pinnedVariantId: null };
+  (getLiveConsole as jest.Mock).mockResolvedValue(active);
+  render(<LiveConsolePage />);
+  expect(await screen.findByRole("button", { name: "Terminar live" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Cerrar catálogo" })).toBeEnabled();
 });
 
 test("finance role cannot override server denial of payment review", async () => {
