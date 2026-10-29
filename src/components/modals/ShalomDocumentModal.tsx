@@ -6,13 +6,25 @@ import { X, FileText, Download, Printer, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
-import { OrderHeader } from "@/interfaces/IOrder";
 import { generateShalomTicketPdf, generateShalomLabelPdf } from "@/services/shalomService";
 import { useAuth } from "@/contexts/AuthContext";
 import { buildWhatsAppUrl, toWhatsAppNumber } from "@/utils/whatsapp/build-whatsapp-url";
 import { trackingUrlFor } from "@/app/centro-envios/components/shipmentUtils";
 
 export type ShalomDocTab = "comprobante" | "rotulo";
+
+export interface ShalomDocumentOrder {
+  id: string;
+  orderNumber: string;
+  courier?: string | null;
+  externalTrackingNumber?: string | null;
+  shippingCode?: string | null;
+  shalomRecipientPhone?: string | null;
+  customer?: {
+    fullName?: string | null;
+    phoneNumber?: string | null;
+  } | null;
+}
 
 interface ShalomDocState {
   url: string | null;
@@ -52,7 +64,7 @@ export function formatWhatsAppNumber(number: string): string {
   return `+${number.slice(0, 2)} ${number.slice(2, 5)} ${number.slice(5, 8)} ${number.slice(8)}`;
 }
 
-function docFileName(tab: ShalomDocTab, order: OrderHeader): string {
+function docFileName(tab: ShalomDocTab, order: ShalomDocumentOrder): string {
   return `${tab === "comprobante" ? "comprobante" : "rotulo"}-${order.shippingCode || order.orderNumber}.pdf`;
 }
 
@@ -65,11 +77,12 @@ function docFileName(tab: ShalomDocTab, order: OrderHeader): string {
  * (el componente se monta/desmonta con la tab de Radix).
  */
 export function useShalomDocumentViewer(
-  order: OrderHeader | null,
+  order: ShalomDocumentOrder | null,
   active: boolean = true,
+  initialTab: ShalomDocTab = "comprobante",
 ) {
   const { auth } = useAuth();
-  const [activeTab, setActiveTab] = useState<ShalomDocTab>("comprobante");
+  const [activeTab, setActiveTab] = useState<ShalomDocTab>(initialTab);
   const [docs, setDocs] = useState<Record<ShalomDocTab, ShalomDocState>>(EMPTY_DOCS);
   const [recipientKey, setRecipientKey] = useState<WhatsAppRecipientKey>("cliente");
   const urlsRef = useRef<string[]>([]);
@@ -117,17 +130,17 @@ export function useShalomDocumentViewer(
   useEffect(() => {
     requestGeneration.current += 1;
     if (!active) return;
-    setActiveTab("comprobante");
+    setActiveTab(initialTab);
     setRecipientKey("cliente");
     setDocs(EMPTY_DOCS);
-    fetchDoc("comprobante");
+    fetchDoc(initialTab);
     return () => {
       // Invalidate requests before they can attach the previous order's PDF.
       requestGeneration.current += 1;
       urlsRef.current.forEach((u) => URL.revokeObjectURL(u));
       urlsRef.current = [];
     };
-  }, [active, order?.id, fetchDoc]);
+  }, [active, order?.id, fetchDoc, initialTab]);
 
   function selectTab(tab: ShalomDocTab) {
     setActiveTab(tab);
@@ -370,8 +383,11 @@ function whatsAppButtonLabel(shareMode: WhatsAppShareMode): string {
  * pero como card para embeber directo en una columna en vez de requerir un
  * botón "Ver" que abra un modal aparte.
  */
-export function ShalomDocumentCard({ order }: { order: OrderHeader | null }) {
-  const viewer = useShalomDocumentViewer(order);
+export function ShalomDocumentCard({ order, initialTab = "comprobante" }: {
+  order: ShalomDocumentOrder | null;
+  initialTab?: ShalomDocTab;
+}) {
+  const viewer = useShalomDocumentViewer(order, true, initialTab);
   const {
     activeTab,
     current,
@@ -478,15 +494,17 @@ export function ShalomDocumentCard({ order }: { order: OrderHeader | null }) {
 interface ShalomDocumentModalProps {
   open: boolean;
   onClose: () => void;
-  order: OrderHeader | null;
+  order: ShalomDocumentOrder | null;
+  initialTab?: ShalomDocTab;
 }
 
 export default function ShalomDocumentModal({
   open,
   onClose,
   order,
+  initialTab = "comprobante",
 }: ShalomDocumentModalProps) {
-  const viewer = useShalomDocumentViewer(order, open);
+  const viewer = useShalomDocumentViewer(order, open, initialTab);
   const {
     activeTab,
     current,
