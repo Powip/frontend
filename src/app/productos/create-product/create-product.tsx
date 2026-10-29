@@ -895,7 +895,7 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                   const next = event.target.value as TrackingMode;
                   setTrackingMode(next);
                   if (isTracked(next)) setVariants((previous) => previous.map((variant) => ({ ...variant, stock: 0 })));
-                }}><option value="NONE">Por cantidad (sin código único)</option><option value="SERIAL">Número de serie por unidad</option><option value="IMEI">IMEI por unidad (15 dígitos)</option></select>
+                }}><option value="NONE">Por cantidad (sin código único)</option><option value="SERIAL">Número de serie por unidad</option><option value="IMEI">IMEI por unidad</option></select>
                 <p className="text-sm text-muted-foreground">{isEditMode ? "El modo no se cambia desde esta edición. Para asociar códigos al stock existente, abre Almacén y elige Asociar IMEI/series." : isTracked(trackingMode) ? "El producto se creará con stock 0. Registra después una compra con un código por unidad." : "El inventario se administra por cantidades."}</p>
               </div>
               {/* Row: Inventario + Categoría */}

@@ -45,6 +45,17 @@ describe("Confirmed unit codes for every print template", () => {
       expect(item.units![0].status).toBe("RESERVED");
     }
   });
+  it.each(["0", "00123", "0012345678901234", "0".repeat(99) + "1"])(
+    "prints confirmed variable-length IMEI without truncation: %s",
+    (code) => {
+      const { item, receipt } = fixture();
+      item.units![0].code = code;
+      const before = JSON.stringify(receipt);
+      expect(getPrintableUnitCodes(receipt, item)?.codes).toEqual([code, item.units![1].code]);
+      expect(renderPrintableUnitCodesHtml(receipt, item)).toContain(code);
+      expect(JSON.stringify(receipt)).toBe(before);
+    },
+  );
   it.each([undefined, "NONE"])(
     "keeps ordinary quantity line rendering unchanged (%s)",
     (mode) => {
@@ -137,7 +148,19 @@ describe("Confirmed unit codes for every print template", () => {
     [
       "invalid IMEI",
       (i: PrintableReceiptItem) => {
-        i.units![0].code = "123";
+        i.units![0].code = "IMEI-123";
+      },
+    ],
+    [
+      "empty IMEI",
+      (i: PrintableReceiptItem) => {
+        i.units![0].code = "";
+      },
+    ],
+    [
+      "oversized IMEI",
+      (i: PrintableReceiptItem) => {
+        i.units![0].code = "1".repeat(101);
       },
     ],
     [

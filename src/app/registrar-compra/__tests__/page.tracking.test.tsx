@@ -132,7 +132,7 @@ it("keeps quantity purchases on the legacy endpoint without code or operation fi
 });
 
 it.each([
-  ["IMEI", ["001234567890123", "001234567890124", "001234567890125"]],
+  ["IMEI", ["00123", "0012345678901234", "001234567890125"]],
   ["SERIAL", ["SERIE-001", "SERIE-002", "SERIE-003"]],
 ] as const)("adds more units of the same %s variant while preserving its codes and purchase line", async (mode, codes) => {
   apiGet.mockImplementation(async (url) => ({

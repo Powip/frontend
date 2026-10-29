@@ -12,9 +12,25 @@ describe("unit identifiers and purchase payload compatibility", () => {
     expect(validateUnitCodes([{ trackingMode: "IMEI", quantity: 1, codes }])).toContain(
       "registra 1 códigos",
     );
-    expect(validateUnitCodes([{ trackingMode: "IMEI", quantity: 1, codes: ["123"] }])).toContain(
-      "15 dígitos",
-    );
+    expect(validateUnitCodes([{ trackingMode: "IMEI", quantity: 1, codes: ["123"] }])).toBeNull();
+  });
+  it.each(["0", "00123", "00123456789012", "0012345678901234", "0".repeat(99) + "1"])(
+    "accepts variable-length numeric IMEI text without changing it: %s",
+    (code) => {
+      const codes = parseUnitCodes(` ${code} \n`);
+      expect(codes).toEqual([code]);
+      expect(validateUnitCodes([{ trackingMode: "IMEI", quantity: 1, codes }])).toBeNull();
+    },
+  );
+  it.each(["", " ", "IMEI123", "123-456", "１２３", "1".repeat(101)])(
+    "rejects empty, nonnumeric or oversized IMEI: %s",
+    (code) => expect(validateUnitCodes([{ trackingMode: "IMEI", quantity: 1, codes: [code] }])).toContain("solo números"),
+  );
+  it("requires distinct variable-length IMEI across variants", () => {
+    expect(validateUnitCodes([
+      { trackingMode: "IMEI", quantity: 1, codes: ["00123"] },
+      { trackingMode: "IMEI", quantity: 1, codes: ["00123"] },
+    ])).toContain("duplicado");
   });
   it("rejects normalized duplicates within a row and across different variants", () => {
     expect(
