@@ -55,6 +55,7 @@ export interface LiveCustomer {
 }
 export interface LiveReservation {
   id: string;
+  sessionId?: string;
   variantId: string;
   checkoutId?: string | null;
   reviewHold?: boolean;

@@ -7,6 +7,7 @@ import {
   getLiveConsole,
   getLiveYapeReviews,
   getPublicLive,
+  liveError,
   liveVisitorToken,
   quoteLivePurchase,
   safeLiveUrl,
@@ -73,6 +74,7 @@ test("scoped Live readers pass abort signals while public reads remain anonymous
   await getLiveCheckoutSnapshot(id, "visitor-private", id, controller.signal);
   for (const [, options] of (axios.get as jest.Mock).mock.calls) {
     expect(options).toEqual({
+      timeout: 20000,
       signal: controller.signal,
       withCredentials: false,
       headers: { "X-Live-Visitor": "visitor-private" },
@@ -109,7 +111,20 @@ test("quote sends sanitized delivery and no payment command or cookies", async (
   expect(body.method).toBeUndefined();
   expect(body.idempotencyKey).toBeUndefined();
   expect(body.quoteId).toBeUndefined();
-  expect(options).toEqual({ withCredentials: false, headers: { "X-Live-Visitor": id } });
+  expect(options).toEqual({
+    timeout: 20000,
+    withCredentials: false,
+    headers: { "X-Live-Visitor": id },
+  });
+});
+test("anonymous commands have a bounded timeout and uncertain responses never claim success", async () => {
+  await checkoutLivePurchase(id, id, input);
+  expect((axios.post as jest.Mock).mock.calls[0][2].timeout).toBe(20000);
+  const failure = { code: "ECONNABORTED" };
+  (axios.isAxiosError as unknown as jest.Mock).mockImplementation((value) => value === failure);
+  expect(liveError(failure)).toMatch(/No confirmamos el resultado/);
+  expect(liveError(failure)).toMatch(/reintenta la misma acción/);
+  expect(liveError(failure)).toMatch(/no inicies otra compra ni repitas el pago/);
 });
 test("checkout preserves caller idempotency command for retries", async () => {
   await checkoutLivePurchase(id, id, input);

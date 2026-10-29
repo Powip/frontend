@@ -126,9 +126,12 @@ test("a successful background read does not erase a reservation error", async ()
   fireEvent.click(screen.getByRole("button", { name: "Apartar" }));
   await flush();
   expect(screen.getByRole("alert")).toHaveTextContent("No se pudo apartar. Reintenta.");
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
+  await flush();
+  const reads = (getPublicLive as jest.Mock).mock.calls.length;
   await act(async () => jest.advanceTimersByTime(5_000));
   await flush();
-  expect(getPublicLive).toHaveBeenCalledTimes(2);
+  expect(getPublicLive).toHaveBeenCalledTimes(reads + 1);
   expect(screen.getByRole("alert")).toHaveTextContent("No se pudo apartar. Reintenta.");
 });
 
