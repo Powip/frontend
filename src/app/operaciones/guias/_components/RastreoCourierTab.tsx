@@ -1,7 +1,10 @@
 "use client";
 
+import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+
 import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { Link2, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,17 +24,8 @@ import CourierTrackingView from "@/components/couriers/CourierTrackingView";
 ------------------------------------------------------------------------ */
 
 export default function RastreoCourierTab({ qf }: { qf?: string }) {
-  const { selectedStoreId } = useAuth();
-  const [orders, setOrders] = useState<OrderHeader[]>([]);
+  const { orders, error, retry } = useBusinessOrders();
   const [dismissed, setDismissed] = useState(false);
-
-  useEffect(() => {
-    if (qf !== "sin-tracking" || !selectedStoreId) return;
-    axios
-      .get(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`)
-      .then((res) => setOrders(res.data ?? []))
-      .catch(() => setOrders([]));
-  }, [qf, selectedStoreId]);
 
   const sinTracking = useMemo(
     () => orders.filter((o) => !o.guideNumber && !o.externalTrackingNumber && !!o.externalSource),
@@ -39,6 +33,8 @@ export default function RastreoCourierTab({ qf }: { qf?: string }) {
   );
 
   const showBanner = qf === "sin-tracking" && !dismissed;
+
+  if (error) return <OperationsDataError retry={retry} />;
 
   return (
     <div className="space-y-4">

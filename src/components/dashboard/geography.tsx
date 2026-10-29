@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import {
   BarChart,
@@ -43,10 +43,13 @@ import {
 } from "@/components/ui/table";
 import { exportToExcel } from "@/lib/excel";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDashboardScope } from "@/contexts/DashboardScopeContext";
+import { reportCurrencyLabel } from "./ReportCurrencySelector";
+import { getDashboardOrders } from "@/services/dashboardService";
 import { Button } from "@/components/ui/button";
 import { DashboardCard } from "./DashboardCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { hasAdminAccess } from "@/config/permissions.config";
+import { hasAdminAccess, isSuperadmin } from "@/config/permissions.config";
 
 interface LocationStats {
   name: string;
@@ -137,8 +140,12 @@ interface GeographyProps {
 }
 
 export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
-  const { auth, selectedStoreId } = useAuth();
+  const { auth } = useAuth();
+  const { scopeParams, storeIds, canFetch, currency } = useDashboardScope();
+  const currencyPrefix = reportCurrencyLabel(currency);
+  const isAdmin = hasAdminAccess(auth?.user?.role) || isSuperadmin(auth?.user?.email);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [locationData, setLocationData] = useState<LocationStats[]>([]);
   const [paymentData, setPaymentData] = useState<PaymentStats[]>([]);
   const [deliveryData, setDeliveryData] = useState<DeliveryStats[]>([]);
@@ -152,6 +159,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [detailedOrders, setDetailedOrders] = useState<any[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [detailsError, setDetailsError] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
   // Modales de KPI
@@ -166,13 +174,13 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
   >("city");
 
   const fetchData = useCallback(async () => {
-    if (!selectedStoreId) return;
+    if (!canFetch) return;
 
     setLoading(true);
+    setLoadError(false);
     try {
-      const isAdmin = hasAdminAccess(auth?.user?.role);
       const params: any = {
-        storeId: selectedStoreId,
+        ...scopeParams,
         ...(!isAdmin && { sellerId: auth?.user?.id }),
       };
       if (fromDate) params.fromDate = fromDate;
@@ -192,7 +200,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
             params,
           }),
           axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/billing`, {
-            params: { storeId: selectedStoreId },
+            params: scopeParams,
           }),
           axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`, {
             params,
@@ -209,30 +217,32 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
       });
     } catch (error) {
       console.error("Error al obtener datos geográficos:", error);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
   }, [
-    selectedStoreId,
+    scopeParams,
+    canFetch,
     geoDimension,
     fromDate,
     toDate,
     auth?.user?.id,
-    auth?.user?.role,
+    isAdmin,
   ]);
 
   const fetchLocationDetails = useCallback(
     async (location: string) => {
-      if (!selectedStoreId) return;
+      if (!canFetch) return;
 
       setLoadingDetails(true);
+      setDetailsError(false);
       setSelectedLocation(location);
       setIsDetailsOpen(true);
 
       try {
-        const isAdmin = hasAdminAccess(auth?.user?.role);
         const params: any = {
-          storeId: selectedStoreId,
+          ...scopeParams,
           dimension: geoDimension,
           value: location,
           ...(!isAdmin && { sellerId: auth?.user?.id }),
@@ -247,38 +257,34 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
         setDetailedOrders(res.data);
       } catch (error) {
         console.error("Error al obtener detalle por ubicación:", error);
+        setDetailsError(true);
       } finally {
         setLoadingDetails(false);
       }
     },
     [
-      selectedStoreId,
+      scopeParams,
+      canFetch,
       geoDimension,
       fromDate,
       toDate,
       auth?.user?.id,
-      auth?.user?.role,
+      isAdmin,
     ],
   );
 
   const fetchBillingOrders = useCallback(async () => {
-    if (!selectedStoreId) return;
+    if (!canFetch || !auth?.accessToken) return;
     setLoadingDetails(true);
+    setDetailsError(false);
     setIsBillingModalOpen(true);
     try {
-      // Use the correct singular endpoint that exists in the controller
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-      );
-
-      // Get all orders and filter manually since the backend doesn't support these filters on this endpoint
-      const allOrders = res.data || [];
+      const allOrders = await getDashboardOrders(storeIds, fromDate, toDate, auth.accessToken, { currency });
 
       // Parse dates for comparison
       const start = fromDate ? new Date(fromDate + "T00:00:00") : null;
       const end = toDate ? new Date(toDate + "T23:59:59") : null;
 
-      const isAdmin = hasAdminAccess(auth?.user?.role);
       const filteredOrders = allOrders.filter((o: any) => {
         // Filter by state (ENTREGADO for billing)
         if (o.status !== "ENTREGADO") return false;
@@ -306,11 +312,12 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
       setBillingOrders(mappedOrders);
     } catch (error) {
       console.error("Error fetching billing orders:", error);
+      setDetailsError(true);
       toast.error("No se pudieron obtener las órdenes de facturación");
     } finally {
       setLoadingDetails(false);
     }
-  }, [selectedStoreId, fromDate, toDate, auth?.user?.id, auth?.user?.role]);
+  }, [storeIds, canFetch, fromDate, toDate, auth?.accessToken, auth?.user?.id, isAdmin]);
 
   useEffect(() => {
     if (fromDate && toDate) {
@@ -318,8 +325,28 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
     }
   }, [fetchData, fromDate, toDate]);
 
+  useEffect(() => {
+    const changed = (event: Event) => {
+      if (
+        auth?.company?.id &&
+        (event as CustomEvent<{ companyId: string }>).detail?.companyId ===
+          auth.company.id &&
+        fromDate &&
+        toDate
+      )
+        void fetchData();
+    };
+    window.addEventListener("commercial-leads:changed", changed);
+    return () =>
+      window.removeEventListener("commercial-leads:changed", changed);
+  }, [auth?.company?.id, fromDate, toDate, fetchData]);
+
   const periodBilling = summaryData.deliveredAmount;
   const topLocation = locationData[0];
+
+  if (loadError) {
+    return <div role="alert" className="p-8 text-destructive">No se pudieron cargar los datos geográficos. Intenta nuevamente.</div>;
+  }
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-background">
@@ -362,7 +389,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
           />
           <StatCard
             title="Facturación"
-            value={`S/ ${periodBilling.toLocaleString()}`}
+            value={`${currencyPrefix} ${periodBilling.toLocaleString()}`}
             subValue="Filtro aplicado"
             loading={loading}
             clickable
@@ -370,7 +397,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
           />
           <StatCard
             title="Ticket Promedio"
-            value={`S/ ${Math.round(paymentData.reduce((s, p) => s + p.totalAmount, 0) / (paymentData.reduce((s, p) => s + p.ordersCount, 0) || 1))}`}
+            value={`${currencyPrefix} ${Math.round(paymentData.reduce((s, p) => s + p.totalAmount, 0) / (paymentData.reduce((s, p) => s + p.ordersCount, 0) || 1))}`}
             subValue="Promedio general"
             loading={loading}
             clickable
@@ -436,7 +463,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
                 <Tooltip
                   cursor={{ fill: "var(--foreground)", opacity: 0.05 }}
                   formatter={(value) => [
-                    `S/ ${Number(value).toLocaleString("es-PE")}`,
+                    `${currencyPrefix} ${Number(value).toLocaleString("es-PE")}`,
                     "Monto",
                   ]}
                   itemStyle={{ color: "var(--foreground)" }}
@@ -534,7 +561,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
         <DialogContent className="sm:max-w-4xl w-[90vw]">
           <DialogHeader className="flex flex-row items-center justify-between border-b pb-4">
             <DialogTitle>Detalle de Zonas</DialogTitle>
-            {hasAdminAccess(auth?.user?.role) && (
+            {isAdmin && (
               <Button
                 size="sm"
                 variant="outline"
@@ -573,7 +600,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
                       {item.ordersCount}
                     </TableCell>
                     <TableCell className="text-xs text-right font-bold">
-                      S/ {item.totalAmount.toLocaleString()}
+                      {currencyPrefix} {item.totalAmount.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-xs text-right text-primary font-medium">
                       {item.percentage}%
@@ -590,7 +617,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
         <DialogContent className="sm:max-w-4xl w-[90vw]">
           <DialogHeader className="flex flex-row items-center justify-between border-b pb-4">
             <DialogTitle>Detalle de Métodos de Pago</DialogTitle>
-            {hasAdminAccess(auth?.user?.role) && (
+            {isAdmin && (
               <Button
                 size="sm"
                 variant="outline"
@@ -629,7 +656,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
                       {item.ordersCount}
                     </TableCell>
                     <TableCell className="text-xs text-right font-bold">
-                      S/ {item.totalAmount.toLocaleString()}
+                      {currencyPrefix} {item.totalAmount.toLocaleString()}
                     </TableCell>
                     <TableCell className="text-xs text-right text-primary font-medium">
                       {item.percentage}%
@@ -652,7 +679,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
                 Órdenes entregadas en el periodo seleccionado
               </p>
             </div>
-            {hasAdminAccess(auth?.user?.role) && (
+            {isAdmin && (
               <Button
                 size="sm"
                 variant="outline"
@@ -671,6 +698,10 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
             {loadingDetails ? (
               <div className="h-60 flex items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : detailsError ? (
+              <div role="alert" className="p-8 text-destructive">
+                No se pudieron cargar las órdenes de facturación.
               </div>
             ) : (
               <Table>
@@ -704,7 +735,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
                         {order.paymentMethod}
                       </TableCell>
                       <TableCell className="text-xs text-right font-bold">
-                        S/ {order.grandTotal.toLocaleString()}
+                        {currencyPrefix} {order.grandTotal.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-xs">
                         {new Date(order.createdAt).toLocaleDateString()}
@@ -734,7 +765,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
                     : "Distrito"}
               </p>
             </div>
-            {hasAdminAccess(auth?.user?.role) && (
+            {isAdmin && (
               <Button
                 onClick={() =>
                   exportToExcel(
@@ -756,6 +787,10 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
             {loadingDetails ? (
               <div className="h-40 flex items-center justify-center">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : detailsError ? (
+              <div role="alert" className="p-8 text-destructive">
+                No se pudieron cargar las órdenes de esta ubicación.
               </div>
             ) : detailedOrders.length === 0 ? (
               <div className="h-40 flex items-center justify-center text-muted-foreground italic">
@@ -790,7 +825,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
                       </TableCell>
                       <TableCell className="text-xs">{order.cliente}</TableCell>
                       <TableCell className="text-xs text-right font-bold">
-                        S/ {order.monto.toLocaleString()}
+                        {currencyPrefix} {order.monto.toLocaleString()}
                       </TableCell>
                       <TableCell className="text-xs text-gray-500">
                         {new Date(order.fecha).toLocaleDateString()}

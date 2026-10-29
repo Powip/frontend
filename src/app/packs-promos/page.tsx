@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Combobox } from "@/components/ui/combobox";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
+import { useBusinessInventories } from "@/hooks/useBusinessInventories";
 import { useAuth } from "@/contexts/AuthContext";
 import { isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
 import { PacksProvider, usePacks } from "@/contexts/PacksContext";
@@ -26,6 +27,7 @@ import {
   Pack,
   PackType,
   BundlePack,
+  BundleProductRef,
   GiftOption,
   GiftPack,
   PackProductRef,
@@ -36,11 +38,20 @@ import { InventoryItemForSale } from "@/interfaces/IProduct";
 import { searchInventoryItems } from "@/services/inventoryItems.service";
 import { getProducts } from "@/api/Productos";
 import { IGetProducts } from "@/api/Interfaces";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { initials } from "@/utils/productGrouping";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const fmt = (n: number) => `S/ ${(Number(n) || 0).toFixed(2)}`;
+
+function bundleVariantDetails(item: Pick<BundleProductRef, "attributes" | "sku">) {
+  return [
+    ...Object.entries(item.attributes ?? {}).map(([name, value]) => `${name}: ${value}`),
+    item.sku ? `SKU: ${item.sku}` : "",
+  ].filter(Boolean).join(" · ") || "Presentación única";
+}
 
 const PACK_TYPE_LABEL: Record<PackType, string> = {
   VOLUME: "Volumen",
@@ -51,7 +62,9 @@ const PACK_TYPE_LABEL: Record<PackType, string> = {
 const isDev = process.env.NODE_ENV === "development";
 
 function PacksPromosContent() {
-  const { auth, selectedStoreId, inventories } = useAuth();
+  const { auth } = useAuth();
+  const warehouseQuery = useBusinessInventories();
+  const inventories = warehouseQuery.inventories;
   const realIsAdmin =
     isSuperadmin(auth?.user?.email) || hasAdminAccess(auth?.user?.role);
   const [devRole, setDevRole] = useState<"admin" | "vendedor" | null>(null);
@@ -60,10 +73,11 @@ function PacksPromosContent() {
 
   const [selectedInventory, setSelectedInventory] = useState("");
   useEffect(() => {
-    setSelectedInventory(inventories[0]?.id || "");
-  }, [selectedStoreId, inventories]);
+    if (selectedInventory && inventories.some((inv) => inv.id === selectedInventory)) return;
+    setSelectedInventory(inventories.length === 1 ? inventories[0].id : "");
+  }, [selectedInventory, inventories]);
 
-  const { packs, addPack, updatePack, togglePack, deletePack } = usePacks();
+  const { packs, canManageBundles, addPack, updatePack, togglePack, deletePack } = usePacks();
 
   const [filter, setFilter] = useState<"all" | PackType | "off">("all");
   const filteredPacks = useMemo(() => {
@@ -122,6 +136,14 @@ function PacksPromosContent() {
           </div>
         </div>
 
+        <div className="max-w-md space-y-2">
+          <Label htmlFor="pack-inventory">Almacén de regalos</Label>
+          {warehouseQuery.isError ? <p role="alert">No se pudieron cargar los almacenes. <Button variant="outline" onClick={() => void warehouseQuery.refetch()}>Reintentar</Button></p> : null}
+          <select id="pack-inventory" className="w-full rounded border p-2 bg-background" value={selectedInventory} onChange={(event) => setSelectedInventory(event.target.value)} disabled={warehouseQuery.isPending || warehouseQuery.isError}>
+            <option value="">{warehouseQuery.isPending ? "Cargando almacenes..." : "Seleccionar almacén del negocio"}</option>
+            {inventories.map((inv) => <option key={inv.id} value={inv.id}>{inv.name}{inv.storeName ? ` · ${inv.storeName}` : ""}</option>)}
+          </select>
+        </div>
         {!isAdmin && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
             👁 Estás como <b>Vendedor</b>: ves los packs en modo solo lectura. La
@@ -168,7 +190,7 @@ function PacksPromosContent() {
               <PackCard
                 key={p.id}
                 pack={p}
-                isAdmin={isAdmin}
+                isAdmin={p.type === "BUNDLE" ? canManageBundles : isAdmin}
                 onEdit={() => {
                   setEditingId(p.id);
                   setModalOpen(true);
@@ -189,12 +211,17 @@ function PacksPromosContent() {
 
       {modalOpen && (
         <PackFormModal
+          key={`${companyId ?? "no-company"}:${editingPack?.id ?? "new"}`}
           open={modalOpen}
           onOpenChange={setModalOpen}
           editingPack={editingPack}
           inventoryId={selectedInventory}
           companyId={companyId}
           onSave={async (pack) => {
+            if (pack.type === "BUNDLE" && !canManageBundles) {
+              toast.error("Solo Administración puede configurar los bundles de la empresa.");
+              return;
+            }
             const ok = editingPack
               ? await updatePack(editingPack.id, pack)
               : await addPack(pack);
@@ -235,7 +262,7 @@ function PackCard({
 
   let desc = "";
   if (pack.type === "BUNDLE") {
-    desc = `${pack.items.map((i) => i.productName).join(" + ")} → ${fmt(pack.packPrice)} total`;
+    desc = `${pack.items.map((i) => i.variantId ? `${i.productName} (${bundleVariantDetails(i)})` : i.productName).join(" + ")} → ${fmt(pack.packPrice)} total`;
   } else if (pack.type === "GIFT") {
     const cond = pack.triggerBy === "qty" ? `${pack.minQty} prendas` : `de ${fmt(pack.minAmount || 0)}`;
     desc = `Compra ${cond} → regalo a elegir entre ${pack.gifts.length}: ${pack.gifts
@@ -271,6 +298,9 @@ function PackCard({
 
         <p className="text-xs text-muted-foreground">{desc}</p>
 
+        {pack.type === "BUNDLE" && pack.schemaVersion !== 2 && (
+          <p className="text-xs text-amber-700 dark:text-amber-300">Bundle anterior: aplica por producto, sin una variante específica.</p>
+        )}
         <div className="flex flex-wrap gap-1.5">
           {pack.channels.map((c) => (
             <span key={c} className="text-[10px] bg-muted rounded px-1.5 py-0.5 text-muted-foreground">
@@ -326,6 +356,7 @@ function PackCard({
  *  dispara la query, por lo que `products` cae al default `[]`, `loading` queda
  *  `false`, `isError` queda `false` y `errorReason` queda `null`. */
 function useProductCatalog(options?: { enabled?: boolean }) {
+  const { auth } = useAuth();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
@@ -340,12 +371,12 @@ function useProductCatalog(options?: { enabled?: boolean }) {
     isError,
     error,
   } = useQuery({
-    queryKey: ["packs-catalog", debouncedQuery],
+    queryKey: ["packs-catalog", auth?.company?.id, auth?.user?.id, debouncedQuery],
     queryFn: () =>
       getProducts({ status: true, name: debouncedQuery || undefined }),
     staleTime: 30_000,
     placeholderData: (prev) => prev, // evita el flicker a lista vacía entre búsquedas
-    enabled: options?.enabled ?? true,
+    enabled: (options?.enabled ?? true) && Boolean(auth?.user?.id && auth?.accessToken),
     // No reintentar 4xx de axios (incl. el 403 "sin empresa"): reintento inútil
     // que sólo demora el feedback. 1 reintento para el resto (5xx, errores JS).
     retry: (n, e) =>
@@ -407,12 +438,46 @@ function BundleProductRow({
 }: {
   value: string;
   onChange: (id: string) => void;
-  onResolve: (id: string, ref: PackProductRef) => void;
+  onResolve: (id: string, ref: BundleProductRef) => void;
   onRemove?: () => void;
   index: number;
-  resolvedRef?: PackProductRef;
+  resolvedRef?: BundleProductRef;
 }) {
   const search = useProductCatalog();
+  const { auth } = useAuth();
+  const productId = resolvedRef?.productId === value ? value : "";
+  const variantsQuery = useQuery({
+    queryKey: ["packs-product-variants", auth?.company?.id, auth?.user?.id, productId],
+    enabled: Boolean(productId && auth?.user?.id && auth?.accessToken),
+    queryFn: async () => {
+      const { data } = await axiosAuth.get<Array<{
+        id: string;
+        sku: string;
+        attributeValues: Record<string, string>;
+        priceVta: number | string;
+        isActive?: boolean;
+      }>>(`${GATEWAY.products}/product-variant/by-product/${encodeURIComponent(productId)}`);
+      return data.filter((variant) =>
+        typeof variant.id === "string" && Boolean(variant.id.trim()) &&
+        variant.isActive !== false &&
+        (typeof variant.priceVta === "number" || (typeof variant.priceVta === "string" && Boolean(variant.priceVta.trim()))) &&
+        Number.isFinite(Number(variant.priceVta)) && Number(variant.priceVta) >= 0,
+      );
+    },
+    staleTime: 30_000,
+    retry: (n, e) => axios.isAxiosError(e) && (e.response?.status ?? 0) < 500 ? false : n < 1,
+  });
+  const variants = variantsQuery.data ?? [];
+  const variantOptions = variants.map((variant) => ({
+    value: variant.id,
+    label: `${bundleVariantDetails({ attributes: variant.attributeValues, sku: variant.sku })} — ${fmt(Number(variant.priceVta))}`,
+  }));
+  // Keep the saved choice visible while loading, or if it is no longer in the catalog.
+  if (resolvedRef?.variantId && !variantOptions.some((option) => option.value === resolvedRef.variantId)) {
+    variantOptions.unshift({ value: resolvedRef.variantId, label: `${bundleVariantDetails(resolvedRef)} — ${fmt(resolvedRef.price)} (guardada)` });
+  }
+  const savedVariantUnavailable = resolvedRef?.variantId && variantsQuery.isSuccess &&
+    !variants.some((variant) => variant.id === resolvedRef.variantId);
 
   const options = useMemo(() => {
     const opts = toOptions(search.products);
@@ -428,6 +493,7 @@ function BundleProductRow({
   }, [search.products, value, resolvedRef]);
 
   const handleSelect = (id: string) => {
+    if (id === value) return;
     onChange(id);
     const product = search.products.find((p) => p.id === id);
     if (product) {
@@ -441,26 +507,59 @@ function BundleProductRow({
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <Combobox
-        className="flex-1"
-        options={options}
-        value={value}
-        onValueChange={handleSelect}
-        onSearchChange={search.setQuery}
-        isLoading={search.loading}
-        placeholder={`Producto ${index + 1}...`}
-        searchPlaceholder="Buscar producto..."
-      />
-      {onRemove && (
-        <button
-          type="button"
-          onClick={onRemove}
-          aria-label={`Quitar producto ${index + 1}`}
-          className="shrink-0 px-2 text-lg font-bold leading-none text-muted-foreground hover:text-destructive"
-        >
-          ×
-        </button>
+    <div className="space-y-2 rounded-lg border p-3">
+      <div className="flex items-center gap-2">
+        <Combobox
+          className="flex-1"
+          options={options}
+          value={value}
+          onValueChange={handleSelect}
+          onSearchChange={search.setQuery}
+          isLoading={search.loading}
+          placeholder={`Producto ${index + 1}...`}
+          searchPlaceholder="Buscar producto..."
+        />
+        {onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            aria-label={`Quitar producto ${index + 1}`}
+            className="shrink-0 px-2 text-lg font-bold leading-none text-muted-foreground hover:text-destructive"
+          >
+            ×
+          </button>
+        )}
+      </div>
+      {value && (
+        productId ? (
+          <div className="space-y-1" role="group" aria-labelledby={`bundle-variant-label-${index}`}>
+            <Label id={`bundle-variant-label-${index}`}>Variante del producto {index + 1}</Label>
+            <Combobox
+              options={variantOptions}
+              value={resolvedRef?.variantId ?? ""}
+              placeholder={`Variante ${index + 1}...`}
+              searchPlaceholder="Buscar tamaño, atributo o SKU..."
+              emptyMessage="No hay variantes disponibles."
+              isLoading={variantsQuery.isFetching}
+              disabled={variantsQuery.isError || variantsQuery.isPending}
+              onValueChange={(variantId) => {
+                const variant = variants.find((item) => item.id === variantId);
+                if (!variant || !resolvedRef) return;
+                onResolve(value, {
+                  ...resolvedRef,
+                  variantId: variant.id,
+                  sku: variant.sku,
+                  attributes: { ...variant.attributeValues },
+                  price: Number(variant.priceVta),
+                });
+              }}
+            />
+            {variantsQuery.isFetching && <p className="text-xs text-muted-foreground" role="status">Cargando variantes...</p>}
+            {variantsQuery.isError && <p className="text-xs text-destructive" role="alert">No se pudieron cargar las variantes. <button type="button" className="underline" onClick={() => void variantsQuery.refetch()}>Reintentar variantes</button></p>}
+            {variantsQuery.isSuccess && variants.length === 0 && <p className="text-xs text-muted-foreground">Este producto no tiene variantes disponibles.</p>}
+            {savedVariantUnavailable && <p className="text-xs text-amber-700 dark:text-amber-300">La variante guardada ya no está disponible en el catálogo. Puedes conservarla o elegir otra.</p>}
+          </div>
+        ) : <p className="text-xs text-amber-700 dark:text-amber-300">Vuelve a elegir este producto del catálogo para seleccionar una variante.</p>
       )}
     </div>
   );
@@ -517,9 +616,12 @@ function PackFormModal({
     }
     return ["", ""];
   });
-  const [bunItems, setBunItems] = useState<Record<string, PackProductRef>>(() => {
+  const legacyBundle = editingPack?.type === "BUNDLE" && editingPack.schemaVersion !== 2;
+  const [bunConverting, setBunConverting] = useState(false);
+  const bunRequiresVariants = !legacyBundle || bunConverting;
+  const [bunItems, setBunItems] = useState<Record<string, BundleProductRef>>(() => {
     if (editingPack?.type !== "BUNDLE") return {};
-    const map: Record<string, PackProductRef> = {};
+    const map: Record<string, BundleProductRef> = {};
     for (const item of editingPack.items) {
       const key = item.productId || item.productKey;
       if (key) map[key] = item;
@@ -534,10 +636,12 @@ function PackFormModal({
     bunProductIds.map((_, i) => i),
   );
   const addBundleRow = () => {
+    setBunConverting(true);
     setBunProductIds((prev) => [...prev, ""]);
     setBunRowKeys((prev) => [...prev, bunKeySeqRef.current++]);
   };
   const removeBundleRow = (i: number) => {
+    setBunConverting(true);
     setBunProductIds((prev) => prev.filter((_, idx) => idx !== i));
     setBunRowKeys((prev) => prev.filter((_, idx) => idx !== i));
   };
@@ -662,9 +766,13 @@ function PackFormModal({
         setError("Selecciona todos los productos.");
         return;
       }
+      if (bunRequiresVariants && items.some((item) => !item.productId || !item.variantId)) {
+        setError("Selecciona una variante específica para cada producto del bundle.");
+        return;
+      }
       const price = Number(bunPrice);
       const pvpSum = items.reduce((s, it) => s + it.price, 0);
-      if (!price || price >= pvpSum) {
+      if (!Number.isFinite(price) || price <= 0 || price >= pvpSum) {
         setError("El precio del bundle debe ser menor a la suma de PVP.");
         return;
       }
@@ -674,6 +782,7 @@ function PackFormModal({
         name: name.trim(),
         active: editingPack?.active ?? true,
         channels,
+        ...(bunRequiresVariants ? { schemaVersion: 2 as const } : {}),
         items,
         packPrice: price,
       };
@@ -814,20 +923,29 @@ function PackFormModal({
               <div className="space-y-2">
                 <Label>Productos del bundle (mínimo 2, máximo 10)</Label>
                 {catalogNoCompanyNote}
+                {legacyBundle && (
+                  <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
+                    {bunConverting
+                      ? "Estás convirtiendo este bundle: elige una variante específica para cada producto antes de guardar."
+                      : "Este bundle anterior aplica por producto, sin una variante específica. Puedes cambiar nombre, canales o precio conservándolo. Para limitarlo a tamaños o presentaciones, selecciona las variantes; cambiar los componentes también requiere elegirlas."}
+                  </p>
+                )}
                 {bunProductIds.map((id, i) => (
                   <BundleProductRow
                     key={bunRowKeys[i]}
                     index={i}
                     value={id}
                     resolvedRef={id ? bunItems[id] : undefined}
-                    onChange={(newId) =>
+                    onChange={(newId) => {
+                      setBunConverting(true);
                       setBunProductIds((prev) =>
                         prev.map((v, idx) => (idx === i ? newId : v)),
-                      )
-                    }
-                    onResolve={(resolvedId, ref) =>
-                      setBunItems((prev) => ({ ...prev, [resolvedId]: ref }))
-                    }
+                      );
+                    }}
+                    onResolve={(resolvedId, ref) => {
+                      setBunConverting(true);
+                      setBunItems((prev) => ({ ...prev, [resolvedId]: ref }));
+                    }}
                     onRemove={
                       bunProductIds.length > 2
                         ? () => removeBundleRow(i)
@@ -950,6 +1068,7 @@ function useGiftInventorySearch({
   inventoryId: string;
   companyId?: string;
 }) {
+  const { auth } = useAuth();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
@@ -959,7 +1078,7 @@ function useGiftInventorySearch({
   }, [query]);
 
   const { data, isFetching, isError } = useQuery({
-    queryKey: ["gift-inventory", inventoryId, companyId ?? null, debouncedQuery],
+    queryKey: ["gift-inventory", auth?.user?.id, inventoryId, companyId ?? null, debouncedQuery],
     queryFn: () =>
       searchInventoryItems({
         inventoryId,
@@ -968,7 +1087,7 @@ function useGiftInventorySearch({
         page: 1,
         limit: 20,
       }),
-    enabled: !!inventoryId,
+    enabled: !!inventoryId && Boolean(auth?.accessToken && auth?.user?.id && companyId),
     staleTime: 30_000,
     placeholderData: (prev) => prev, // evita el flicker a lista vacía entre búsquedas
   });

@@ -1,47 +1,48 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
-import { useRouter } from "next/navigation";
 import {
-  Check,
-  Zap,
-  ArrowRight,
   ArrowLeft,
-  Lock,
-  Shield,
-  Users,
-  CreditCard,
+  ArrowRight,
+  Check,
   CheckCircle2,
+  CreditCard,
   Loader2,
+  Shield,
 } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
-import { useOnboardingFlow, type RegisterData } from "@/hooks/useOnboardingFlow";
-import { fetchAddOns, fetchPlans } from "@/services/onboardingService";
-import PlanPicker from "@/components/onboarding/PlanPicker";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import AuthLayout from "@/components/auth/AuthLayout";
+import AuthPanel from "@/components/auth/AuthPanel";
+import RegisterForm from "@/components/forms/RegisterForm";
 import EnterpriseContactModal from "@/components/modals/EnterpriseContactModal";
-import { basePlanName, counterpartPlan, isAnnualPlanName } from "@/lib/onboardingPlan";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import ExistingSubscriptionNotice from "@/components/onboarding/ExistingSubscriptionNotice";
 import FlowWidgetStep from "@/components/onboarding/FlowWidgetStep";
+import MigrationScheduledSuccess from "@/components/onboarding/MigrationScheduledSuccess";
+import PlanPicker from "@/components/onboarding/PlanPicker";
+import { useAuth } from "@/contexts/AuthContext";
+import { type RegisterData, useOnboardingFlow } from "@/hooks/useOnboardingFlow";
+import { firstChargePreview, formatLimaDate, limaToday } from "@/lib/flowMigration";
+import { counterpartPlan, isAnnualPlanName } from "@/lib/onboardingPlan";
+import { planDisplayName } from "@/lib/planCatalog";
+import { fetchAddOns, fetchPlans } from "@/services/onboardingService";
 import {
   addOnPrice,
-  summarizeSubscription,
   type BackendAddOn,
   type BackendPlan,
   type OnboardingStep,
   type SubscriptionMe,
   type SubscriptionSummary,
+  summarizeSubscription,
 } from "@/types/onboarding";
+import styles from "../../components/onboarding/onboarding-layout.module.css";
 import {
   DEMO_ADD_ONS,
   DEMO_PLANS,
-  OnboardingDevPanel,
   demoSubscription,
+  OnboardingDevPanel,
 } from "./_components/OnboardingDevPanel";
-import Image from "next/image";
-import { toast } from "sonner";
 
 interface OnboardingClientProps {
   /** Plan preseleccionado (desde la landing o /sin-plan); se cambia en el paso 2. */
@@ -51,31 +52,76 @@ interface OnboardingClientProps {
   /** Usuario ya logueado (viene de /sin-plan): se saltea el registro. */
   initialAuth?: { userId: string };
   onGoToDashboard?: () => void;
+  /**
+   * "migration" = pantalla "Pasate a Flow" (FEAT-25): sin registro, checkout con migrate, primer
+   * cobro al vencer lo ya pagado y éxito programado. Por defecto, el onboarding de siempre.
+   */
+  mode?: "signup" | "migration";
+  /** Add-ons contratados hoy (por code): vienen marcados en el paso del plan. */
+  initialAddOnCodes?: string[];
+  /** Último día pagado del plan actual (yyyy-MM-dd), si sigue vigente. */
+  paidUntil?: string | null;
+  /** La empresa ya está bloqueada: el encabezado lo explica. */
+  blocked?: boolean;
 }
 
-const ADDON_MODAL_CONFIG: Record<
-  string,
-  { name: string; desc: string; icon: string; tags: string[] }
-> = {
+interface AddOnCopy {
+  name: string;
+  /** Línea destacada bajo el nombre. */
+  headline: string;
+  desc: string;
+  icon: string;
+  benefits: string[];
+}
+
+const ADDON_MODAL_CONFIG: Record<string, AddOnCopy> = {
   courier: {
     name: "Integración Courier",
-    desc: "Conecta Shalom y Olva. Genera guías, rastrea envíos y liquida COD sin salir de Powip.",
+    headline: "Conecta con Shalom y Eva Courier",
+    desc: "Genera guías, rastrea envíos y registra pagos contraentrega sin salir de la plataforma.",
     icon: "🚚",
-    tags: ["Shalom", "Olva", "Guías automáticas", "Liquidaciones COD"],
+    benefits: [
+      "Menos tiempo en procesos",
+      "Mayor control de tus envíos",
+      "Cobros contraentrega sin complicaciones",
+    ],
   },
   sunat: {
     name: "Integración SUNAT",
-    desc: "Emite boletas y facturas electrónicas. Envío automático al cliente por email y WhatsApp.",
+    headline: "Emite Boletas, Facturas y más",
+    desc: "Genera guías, boletas, facturas y envía a tu cliente de forma automática.",
     icon: "🧾",
-    tags: ["Boletas", "Facturas", "Notas de crédito", "Envío auto"],
+    benefits: [
+      "Cumple con SUNAT sin esfuerzo",
+      "Envío automático a tu cliente",
+      "Ahorra tiempo, gana confianza",
+    ],
   },
   marketplace: {
     name: "Integración Marketplace",
-    desc: "Conecta Falabella, Ripley y Mercado Libre. Gestiona pedidos de todos en un solo panel.",
+    headline: "Conecta con Falabella, Ripley",
+    desc: "Centraliza tus pedidos de marketplaces, genera guías y controla todo desde Powip.",
     icon: "🏪",
-    tags: ["Falabella", "Ripley", "Mercado Libre", "Stock sync"],
+    benefits: [
+      "Todos tus canales en un solo lugar",
+      "Inventario y pedidos siempre al día",
+      "Más ventas, menos errores",
+    ],
   },
 };
+
+/** Add-ons que se muestran pero todavía no existen en el catálogo: no se pueden elegir ni cobrar. */
+const COMING_SOON_ADDONS: (AddOnCopy & { key: string; priceLabel: string })[] = [
+  {
+    key: "partners-wp-ia",
+    name: "Integración con Partners WP IA u otras plataformas",
+    headline: "Vende por WhatsApp con IA",
+    desc: "Conéctate con las mejores plataformas del ecosistema.",
+    icon: "🤖",
+    benefits: ["IA que vende por ti", "Integraciones sin fricción", "Una sola plataforma, todo el control"],
+    priceLabel: "Único pago",
+  },
+];
 
 const STEPS = [
   { num: 1, name: "Cuenta" },
@@ -84,34 +130,42 @@ const STEPS = [
   { num: 4, name: "¡Listo!" },
 ];
 
-const BRAND_PANEL_CONTENT: Record<number, { headline: string; sub: string; mascot: string }> = {
+/** "Pasate a Flow" (FEAT-25): ya tienen cuenta, así que no hay paso de registro. */
+const MIGRATION_STEPS = [
+  { num: 2, name: "Plan" },
+  { num: 3, name: "Tarjeta" },
+  { num: 4, name: "¡Listo!" },
+];
+
+const BRAND_PANEL_CONTENT: Record<
+  number,
+  { headline: string; sub: string; mascot: string; viewBox: string }
+> = {
   1: {
     headline: "Bienvenido a Powip",
     sub: "Crea tu cuenta en segundos y accede inmediatamente a todas las herramientas de tu plan.",
     mascot: "/mascota-saludando.svg",
+    viewBox: "426 240 592 970",
   },
   2: {
     headline: "Elige tu plan",
-    sub: "Elige el plan que mejor se adapta a tu negocio y sumá los add-ons que necesites. Podés activar más add-ons después.",
+    sub: "Selecciona tu plan y las integraciones que necesitas para gestionar tu negocio.",
     mascot: "/mascota-idea.svg",
+    viewBox: "467 234 515 962",
   },
   3: {
     headline: "¡Casi listo!",
-    sub: "Revisa tu suscripción y activa tu cuenta. Tu primer mes comienza hoy.",
+    sub: "Revisa el total de tu suscripción y registra tu tarjeta con Flow.",
     mascot: "/mascota-pc-2.svg",
+    viewBox: "413 267 701 931",
   },
   4: {
     headline: "¡Todo listo!",
-    sub: "Tu cuenta está activa. Ahora podés configurar tu empresa y empezar a gestionar tus pedidos.",
+    sub: "Configura tu empresa para empezar a gestionar tus pedidos.",
     mascot: "/mascota-silla.svg",
+    viewBox: "425 263 646 964",
   },
 };
-
-const TRUST_SIGNALS = [
-  { icon: Shield, text: "Pago 100% seguro" },
-  { icon: Zap, text: "Acceso inmediato al activar" },
-  { icon: Users, text: "+1,200 negocios confían en Powip" },
-];
 
 // ---------------------------------------------------------------------------
 // BrandPanel
@@ -119,14 +173,14 @@ const TRUST_SIGNALS = [
 
 function planLabel(planName: string, price: number, isAnnual: boolean): string {
   if (!planName) return "Elige tu plan";
-  return `Plan ${basePlanName(planName)} — S/ ${price}/${isAnnual ? "año" : "mes"}`;
+  return `Plan ${planDisplayName(planName)} — S/ ${price}/${isAnnual ? "año" : "mes"}`;
 }
 
 /** Igual que planLabel, pero con el total cuando hay add-ons (encabezado mobile del paso Pago). */
 function summaryLabel(planName: string, summary: SubscriptionSummary, isAnnual: boolean): string {
   const count = summary.addOns.length;
   if (!planName || count === 0) return planLabel(planName, summary.total, isAnnual);
-  return `Plan ${basePlanName(planName)} + ${count} add-on${count > 1 ? "s" : ""} — S/ ${summary.total}/${isAnnual ? "año" : "mes"}`;
+  return `Plan ${planDisplayName(planName)} + ${count} add-on${count > 1 ? "s" : ""} — S/ ${summary.total}/${isAnnual ? "año" : "mes"}`;
 }
 
 function addOnDisplay(addOn: BackendAddOn): { name: string; icon: string } {
@@ -142,150 +196,71 @@ interface BrandPanelProps {
   summary: SubscriptionSummary;
 }
 
-function BrandPanel({
-  currentStep,
-  planName,
-  price,
-  isAnnual,
-  summary,
-}: BrandPanelProps) {
+function BrandPanel({ currentStep, planName, price, isAnnual, summary }: BrandPanelProps) {
   const content = BRAND_PANEL_CONTENT[currentStep] ?? BRAND_PANEL_CONTENT[1];
   const period = isAnnual ? "año" : "mes";
   const showSummary = currentStep === 3 && planName !== "";
 
   return (
-    <div
-      className="relative h-screen flex flex-col justify-between px-10 py-12 overflow-hidden"
-      style={{
-        background:
-          "linear-gradient(160deg, #3d2d78 0%, #4F3A96 55%, #6a4fc4 100%)",
-      }}
-    >
-      {/* Decorative circles */}
-      <div
-        className="absolute -top-20 -right-20 w-64 h-64 rounded-full opacity-10"
-        style={{ background: "rgba(255,255,255,0.3)" }}
+    <aside className={styles.brand} aria-label="Tu suscripción en Powip">
+      <Image
+        src="/logo-powip-text.svg"
+        alt="Powip"
+        width={160}
+        height={52}
+        priority
+        className={styles.brandLogo}
       />
-      <div
-        className="absolute -bottom-20 -left-20 w-48 h-48 rounded-full opacity-10"
-        style={{ background: "rgba(255,255,255,0.2)" }}
-      />
-
-      {/* Logo */}
-      <div className="flex justify-start items-center w-full z-10">
-        <Image
-          src="/logo-powip-text.svg"
-          alt="Logo Powip"
-          width={320}
-          height={100}
-          priority
-          className="w-auto h-10 brightness-0 invert"
-        />
+      <div>
+        <h2 className={styles.brandTitle}>{content.headline}</h2>
+        <p className={styles.brandDescription}>{content.sub}</p>
       </div>
-
-      {/* Main content */}
-      <div className="mt-12 flex-1 flex flex-col justify-start gap-8 z-10">
-        <div>
-          <h2 className="text-white font-black text-4xl leading-tight mb-4">
-            {content.headline}
-          </h2>
-          <p className="text-white/70 text-base leading-relaxed max-w-md">
-            {content.sub}
-          </p>
-        </div>
-
+      <div>
         {showSummary ? (
-          /* Resumen del pedido (paso Pago): mismo cálculo que el resumen principal */
-          <section
-            aria-label="Resumen de tu suscripción"
-            className="w-full max-w-sm rounded-2xl px-5 py-4 backdrop-blur-sm"
-            style={{ background: "rgba(255,255,255,0.12)" }}
-          >
-            <dl className="flex flex-col gap-2 text-sm">
-              <div className="flex items-center justify-between gap-4">
-                <dt className="text-white/90 font-medium">Plan {basePlanName(planName)}</dt>
-                <dd className="text-white font-semibold whitespace-nowrap">
+          <section aria-label="Resumen de tu suscripción" className={styles.brandSummary}>
+            <dl>
+              <div>
+                <dt>Plan {planDisplayName(planName)}</dt>
+                <dd>
                   S/ {price}/{period}
                 </dd>
               </div>
               {summary.addOns.map(({ addOn, price: addOnAmount }) => {
                 const { name, icon } = addOnDisplay(addOn);
                 return (
-                  <div key={addOn.id} className="flex items-center justify-between gap-4">
-                    <dt className="text-white/75">
+                  <div key={addOn.id}>
+                    <dt>
                       <span aria-hidden="true">{icon}</span> {name}
                     </dt>
-                    <dd className="text-white/90 whitespace-nowrap">
+                    <dd>
                       +S/ {addOnAmount}/{period}
                     </dd>
                   </div>
                 );
               })}
-              <div
-                className="flex items-center justify-between gap-4 pt-2 mt-1"
-                style={{ borderTop: "1px solid rgba(255,255,255,0.2)" }}
-              >
-                <dt className="text-white font-bold">Total {period === "año" ? "anual" : "mensual"}</dt>
-                <dd className="text-white font-black text-lg whitespace-nowrap">
+              <div className={styles.brandTotal}>
+                <dt>Total {period === "año" ? "anual" : "mensual"}</dt>
+                <dd>
                   S/ {summary.total}/{period}
                 </dd>
               </div>
             </dl>
           </section>
-        ) : (
-          /* Plan badge */
-          <div
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full self-start"
-            style={{ background: "rgba(255,255,255,0.12)" }}
-          >
-            <div className="w-2 h-2 rounded-full bg-white/80" />
-            <span className="text-white/90 text-sm font-medium">
-              {planLabel(planName, price, isAnnual)}
-            </span>
-          </div>
-        )}
-
-        {/* Trust signals */}
-        <div className="flex flex-col gap-3">
-          {TRUST_SIGNALS.map(({ icon: Icon, text }) => (
-            <div key={text} className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
-                <Icon className="w-4 h-4 text-white/80" />
-              </div>
-              <span className="text-white/75 text-sm">{text}</span>
-            </div>
-          ))}
-        </div>
+        ) : planName ? (
+          <p className={styles.brandPlan}>{planLabel(planName, price, isAnnual)}</p>
+        ) : null}
       </div>
-
-      {/* Mascot */}
-      <Image
-        src={content.mascot}
-        alt=""
-        aria-hidden="true"
-        width={800}
-        height={800}
-        priority
-        className="absolute -bottom-[80px] right-0 w-[500px] h-auto pointer-events-none select-none"
-      />
-
-      {/* Step dots */}
-      <div className="flex items-center gap-2 z-10">
-        {STEPS.map((step) => {
-          const isActive = step.num === currentStep;
-          return (
-            <div
-              key={step.num}
-              className="h-2 rounded-full transition-all duration-300"
-              style={{
-                width: isActive ? 24 : 8,
-                background: isActive ? "white" : "rgba(255,255,255,0.3)",
-              }}
-            />
-          );
-        })}
+      <div className={styles.brandArt} aria-hidden="true">
+        <svg
+          viewBox={content.viewBox}
+          className={styles.mascot}
+          focusable="false"
+          aria-hidden="true"
+        >
+          <image href={content.mascot} width={1500} height={1500} />
+        </svg>
       </div>
-    </div>
+    </aside>
   );
 }
 
@@ -293,317 +268,37 @@ function BrandPanel({
 // OnboardingProgress
 // ---------------------------------------------------------------------------
 
-function OnboardingProgress({ currentStep }: { currentStep: number }) {
+function OnboardingProgress({
+  currentStep,
+  steps = STEPS,
+}: {
+  currentStep: number;
+  steps?: { num: number; name: string }[];
+}) {
   return (
-    <div className="flex items-center gap-0">
-      {STEPS.map((step, idx) => {
-        const isCompleted = step.num < currentStep;
-        const isCurrent = step.num === currentStep;
-
-        return (
-          <div
-            key={step.num}
-            className="flex items-center flex-1 last:flex-none"
-          >
-            {/* Step circle */}
-            <div className="flex flex-col items-center gap-1.5">
-              <div
-                className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300"
-                style={{
-                  background: isCompleted
-                    ? "#e9f5f3"
-                    : isCurrent
-                      ? "#4F3A96"
-                      : "#f3f4f6",
-                  color: isCompleted
-                    ? "#008a7b"
-                    : isCurrent
-                      ? "white"
-                      : "#9ca3af",
-                  boxShadow: isCurrent
-                    ? "0 0 0 4px rgba(79,58,150,0.12)"
-                    : "none",
-                }}
-              >
-                {isCompleted ? <Check className="w-4 h-4" /> : step.num}
-              </div>
-              <span
-                className="text-xs font-medium whitespace-nowrap"
-                style={{
-                  color: isCompleted
-                    ? "#008a7b"
-                    : isCurrent
-                      ? "#4F3A96"
-                      : "#9ca3af",
-                }}
-              >
-                {step.name}
+    <nav aria-label="Progreso de la suscripción">
+      <ol className={styles.progress}>
+        {steps.map((step) => {
+          const isCompleted = step.num < currentStep;
+          const isCurrent = step.num === currentStep;
+          return (
+            <li
+              key={step.num}
+              className={`${styles.progressStep} ${isCurrent ? styles.progressCurrent : ""} ${isCompleted ? styles.progressComplete : ""}`}
+              aria-current={isCurrent ? "step" : undefined}
+            >
+              <span className={styles.progressIndex} aria-hidden="true">
+                {isCompleted ? <Check size={15} aria-hidden="true" /> : step.num}
               </span>
-            </div>
-
-            {/* Connector */}
-            {idx < STEPS.length - 1 && (
-              <div
-                className="flex-1 h-0.5 mb-5 mx-1 transition-all duration-300"
-                style={{
-                  background:
-                    step.num < currentStep
-                      ? "linear-gradient(90deg, #008a7b, #4F3A96)"
-                      : "#e5e7eb",
-                }}
-              />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Step1
-// ---------------------------------------------------------------------------
-
-type AccountFormValues = RegisterData;
-
-interface Step1Props {
-  isLoading: boolean;
-  error: string | null;
-  onNext: (data: AccountFormValues) => Promise<void>;
-}
-
-function Step1({ isLoading, error, onNext }: Step1Props) {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<AccountFormValues>();
-
-  return (
-    <form onSubmit={handleSubmit(onNext)} className="flex flex-col gap-4">
-      {/* Header */}
-      <div className="mb-1">
-        <h3 className="font-bold text-xl text-gray-900">Crea tu cuenta</h3>
-        <p className="text-sm text-gray-500 mt-1">
-          Completa los datos para empezar. Solo toma 1 minuto.
-        </p>
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex-1">
-          <Label htmlFor="name">
-            Nombre <span className="text-red-500">*</span>
-          </Label>
-          <Input
-            id="name"
-            placeholder="Juan"
-            className="mt-1.5"
-            {...register("name", {
-              required: "Requerido",
-              minLength: { value: 2, message: "Mínimo 2 caracteres" },
-            })}
-          />
-          {errors.name && (
-            <p className="text-xs text-red-500 mt-1">{errors.name.message}</p>
-          )}
-        </div>
-        <div className="flex-1">
-          <Label htmlFor="surname">
-            Apellido <span className="text-red-500">*</span>
-          </Label>
-          <Input
-            id="surname"
-            placeholder="Pérez"
-            className="mt-1.5"
-            {...register("surname", {
-              required: "Requerido",
-              minLength: { value: 2, message: "Mínimo 2 caracteres" },
-            })}
-          />
-          {errors.surname && (
-            <p className="text-xs text-red-500 mt-1">
-              {errors.surname.message}
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div>
-        <Label htmlFor="email">
-          Email <span className="text-red-500">*</span>
-        </Label>
-        <Input
-          id="email"
-          type="email"
-          placeholder="tu@negocio.com"
-          className="mt-1.5"
-          {...register("email", {
-            required: "Requerido",
-            pattern: { value: /\S+@\S+\.\S+/, message: "Email inválido" },
-          })}
-        />
-        {errors.email && (
-          <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>
-        )}
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex-1">
-          <Label htmlFor="password">
-            Contraseña <span className="text-red-500">*</span>
-          </Label>
-          <div className="relative mt-1.5">
-            <Input
-              id="password"
-              type="password"
-              placeholder="Mínimo 6 caracteres"
-              className="pr-10"
-              {...register("password", {
-                required: "Requerido",
-                minLength: { value: 6, message: "Mínimo 6 caracteres" },
-                pattern: {
-                  value: /(?=.*[a-z])(?=.*\d)/,
-                  message: "Debe tener una letra minúscula y un número",
-                },
-              })}
-            />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-              <Lock className="w-4 h-4" />
-            </span>
-          </div>
-          {errors.password && (
-            <p className="text-xs text-red-500 mt-1">
-              {errors.password.message}
-            </p>
-          )}
-        </div>
-
-        <div className="flex-1">
-          <Label htmlFor="phone">
-            WhatsApp <span className="text-red-500">*</span>
-          </Label>
-          <div className="flex mt-1.5">
-            <div className="bg-gray-50 border border-gray-300 border-r-0 px-3 py-1 rounded-l-xl text-gray-500 text-sm flex items-center whitespace-nowrap">
-              🇵🇪 +51
-            </div>
-            <Input
-              id="phone"
-              type="tel"
-              placeholder="987 654 321"
-              className="rounded-l-none"
-              {...register("phone", {
-                required: "Requerido",
-                minLength: { value: 9, message: "Mínimo 9 dígitos" },
-                maxLength: { value: 9, message: "Máximo 9 dígitos" },
-                pattern: { value: /^\d+$/, message: "Solo números" },
-              })}
-            />
-          </div>
-          {errors.phone && (
-            <p className="text-xs text-red-500 mt-1">{errors.phone.message}</p>
-          )}
-        </div>
-      </div>
-
-      {/* Datos que exige ms-auth (RegisterRequest): documento, dirección y distrito */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex-1">
-          <Label htmlFor="identityDocument">
-            DNI / RUC <span className="text-red-500">*</span>
-          </Label>
-          <Input
-            id="identityDocument"
-            inputMode="numeric"
-            placeholder="12345678"
-            className="mt-1.5"
-            {...register("identityDocument", {
-              required: "Requerido",
-              pattern: { value: /^(\d{8}|\d{11})$/, message: "DNI (8 dígitos) o RUC (11 dígitos)" },
-            })}
-          />
-          {errors.identityDocument && (
-            <p className="text-xs text-red-500 mt-1">{errors.identityDocument.message}</p>
-          )}
-        </div>
-        <div className="flex-1">
-          <Label htmlFor="district">
-            Distrito <span className="text-red-500">*</span>
-          </Label>
-          <Input
-            id="district"
-            placeholder="Miraflores"
-            className="mt-1.5"
-            {...register("district", { required: "Requerido" })}
-          />
-          {errors.district && (
-            <p className="text-xs text-red-500 mt-1">{errors.district.message}</p>
-          )}
-        </div>
-      </div>
-
-      <div>
-        <Label htmlFor="address">
-          Dirección <span className="text-red-500">*</span>
-        </Label>
-        <Input
-          id="address"
-          placeholder="Av. Larco 123"
-          className="mt-1.5"
-          {...register("address", {
-            required: "Requerido",
-            minLength: { value: 5, message: "Mínimo 5 caracteres" },
-          })}
-        />
-        {errors.address && (
-          <p className="text-xs text-red-500 mt-1">{errors.address.message}</p>
-        )}
-      </div>
-
-      {/* Trust banner */}
-      <div
-        className="rounded-xl p-4 flex items-center gap-3 mt-1 text-sm"
-        style={{
-          background: "#f0fdf9",
-          border: "1px solid #a7f3d0",
-          color: "#047857",
-        }}
-      >
-        <Lock className="w-4 h-4 shrink-0" />
-        <p>
-          <strong>Acceso inmediato</strong> al activar tu plan. Configura tu
-          empresa dentro de Powip.
-        </p>
-      </div>
-
-      {error && (
-        <p className="text-sm text-red-500 text-center bg-red-50 rounded-xl p-3">
-          {error}
-        </p>
-      )}
-
-      <button
-        type="submit"
-        disabled={isLoading}
-        className="w-full h-12 text-base rounded-xl font-semibold text-white flex items-center justify-center gap-2 mt-2 transition-opacity disabled:opacity-70"
-        style={{ background: "#4F3A96" }}
-      >
-        {isLoading ? (
-          <>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Creando cuenta...
-          </>
-        ) : (
-          <>
-            Continuar
-            <ArrowRight className="w-4 h-4" />
-          </>
-        )}
-      </button>
-
-      <p className="text-center text-xs text-gray-400 flex items-center justify-center gap-1.5">
-        <Lock className="w-3 h-3" /> SSL · Datos protegidos
-      </p>
-    </form>
+              <span>
+                {step.name}
+                <span className="sr-only">{isCompleted ? ", completado" : ""}</span>
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
   );
 }
 
@@ -622,6 +317,13 @@ interface Step2Props {
   selectedAddons: string[];
   onToggleAddon: (id: string) => void;
   onNext: () => void;
+  onSkipAddOns: () => void;
+  plansLoading: boolean;
+  plansError: string | null;
+  onRetryPlans: () => void;
+  addOnsLoading: boolean;
+  addOnsError: string | null;
+  onRetryAddOns: () => void;
   addOns: BackendAddOn[];
   summary: SubscriptionSummary;
 }
@@ -637,10 +339,21 @@ function Step2({
   selectedAddons,
   onToggleAddon,
   onNext,
+  onSkipAddOns,
+  plansLoading,
+  plansError,
+  onRetryPlans,
+  addOnsLoading,
+  addOnsError,
+  onRetryAddOns,
   addOns,
   summary,
 }: Step2Props) {
-  const hasPlan = planId !== "";
+  const hasPlan = !plansLoading && !plansError && plans.some((plan) => plan.id === planId);
+  const canContinue =
+    hasPlan &&
+    !addOnsLoading &&
+    !selectedAddons.some((id) => !addOns.some((addOn) => addOn.id === id));
   const period = isAnnual ? "año" : "mes";
   const addOnPrices = addOns.map((a) => addOnPrice(a, isAnnual));
   const minAddOnPrice = Math.min(...addOnPrices);
@@ -655,27 +368,54 @@ function Step2({
         onSelect={onSelectPlan}
         onCycleChange={onCycleChange}
         onEnterprise={onEnterprise}
+        isLoading={plansLoading}
+        error={plansError}
+        onRetry={onRetryPlans}
       />
 
       {/* Header */}
       <div className="mb-1 mt-2">
-        <h3 className="font-bold text-xl text-gray-900">Add-ons opcionales</h3>
+        <h3 className="font-bold text-xl text-gray-900">Add Ons</h3>
+        <p className="text-sm text-gray-700 mt-1">
+          Potencia tu operación. Integra, automatiza y escala sin límites.
+        </p>
+        <p className="text-xs font-semibold mt-1" style={{ color: "#4F3A96" }}>
+          ⭐ Todos los add ons disponibles para todos los planes
+        </p>
         <p className="text-sm text-gray-500 mt-1">
           {addOns.length > 0
             ? `${samePrice ? "" : "Desde "}S/ ${minAddOnPrice}/${period} cada uno`
-            : "Opcionales"} — actívalos ahora o después desde{" "}
-          <strong className="text-gray-700">Configuración</strong>.
+            : "Opcionales"}{" "}
+          — actívalos ahora o después desde <strong className="text-gray-700">Configuración</strong>
+          .
         </p>
       </div>
 
       {/* Add-on grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {addOnsLoading && (
+        <p role="status" className="text-sm text-gray-500">
+          Cargando add-ons...
+        </p>
+      )}
+      {addOnsError && (
+        <div
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+        >
+          <p>{addOnsError} Puedes omitirlos y activarlos después.</p>
+          <button type="button" onClick={onRetryAddOns} className="mt-2 font-semibold underline">
+            Reintentar carga de add-ons
+          </button>
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {addOns.map((addon) => {
-          const config = ADDON_MODAL_CONFIG[addon.code] ?? {
+          const config: AddOnCopy = ADDON_MODAL_CONFIG[addon.code] ?? {
             name: addon.name,
+            headline: "",
             desc: addon.description ?? "",
             icon: "➕",
-            tags: [],
+            benefits: [],
           };
           const isSelected = selectedAddons.includes(addon.id);
           const isPopular = addon.code === "courier";
@@ -718,37 +458,65 @@ function Step2({
               <div className="text-2xl mb-2">{config.icon}</div>
 
               {/* Name & desc */}
-              <h4 className="font-bold text-gray-900 text-sm leading-tight">
-                {config.name}
-              </h4>
-              <p className="text-xs text-gray-500 mt-1 leading-relaxed line-clamp-3">
-                {config.desc}
-              </p>
+              <h4 className="font-bold text-gray-900 text-sm leading-tight">{config.name}</h4>
+              {config.headline && (
+                <p className="text-xs font-semibold text-gray-700 mt-1 leading-snug">
+                  {config.headline}
+                </p>
+              )}
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed">{config.desc}</p>
 
-              {/* Tags */}
-              <div className="flex flex-wrap gap-1 mt-2">
-                {config.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="text-[10px] px-1.5 py-0.5 rounded-full font-medium"
-                    style={{ background: "#f3f4f6", color: "#6b7280" }}
-                  >
-                    {tag}
-                  </span>
+              {/* Benefits */}
+              <ul className="mt-2 flex flex-col gap-1">
+                {config.benefits.map((benefit) => (
+                  <li key={benefit} className="flex items-start gap-1.5 text-[11px] text-gray-600">
+                    <Check className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "#4F3A96" }} />
+                    {benefit}
+                  </li>
                 ))}
-              </div>
+              </ul>
 
               {/* Price */}
-              <div
-                className="font-bold text-sm mt-3"
-                style={{ color: "#4F3A96" }}
-              >
+              <div className="font-bold text-sm mt-3" style={{ color: "#4F3A96" }}>
                 + S/ {addOnPrice(addon, isAnnual)}/{period}
               </div>
             </button>
           );
         })}
+        {COMING_SOON_ADDONS.map((soon) => (
+          <div
+            key={soon.key}
+            aria-disabled="true"
+            className="relative text-left rounded-2xl border-2 border-dashed p-4 opacity-70 cursor-not-allowed"
+            style={{ borderColor: "#e5e7eb", background: "#fafafa" }}
+          >
+            <div
+              className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
+              style={{ background: "#6b7280", color: "white" }}
+            >
+              Próximamente
+            </div>
+            <div className="text-2xl mb-2">{soon.icon}</div>
+            <h4 className="font-bold text-gray-900 text-sm leading-tight">{soon.name}</h4>
+            <p className="text-xs font-semibold text-gray-700 mt-1 leading-snug">{soon.headline}</p>
+            <p className="text-xs text-gray-500 mt-1 leading-relaxed">{soon.desc}</p>
+            <ul className="mt-2 flex flex-col gap-1">
+              {soon.benefits.map((benefit) => (
+                <li key={benefit} className="flex items-start gap-1.5 text-[11px] text-gray-600">
+                  <Check className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "#9ca3af" }} />
+                  {benefit}
+                </li>
+              ))}
+            </ul>
+            <div className="font-bold text-sm mt-3 text-gray-500">{soon.priceLabel}</div>
+          </div>
+        ))}
       </div>
+
+      <p className="text-xs text-gray-500 leading-relaxed">
+        🚀 Más integraciones, más automatización, más crecimiento. Powip se adapta a tu negocio para
+        que tú te enfoques en crecer.
+      </p>
 
       {/* Total summary */}
       <div
@@ -773,7 +541,7 @@ function Step2({
         <button
           type="button"
           onClick={onNext}
-          disabled={!hasPlan}
+          disabled={!canContinue}
           className="w-full h-12 text-base rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ background: "#4F3A96" }}
         >
@@ -786,7 +554,7 @@ function Step2({
         </button>
         <button
           type="button"
-          onClick={onNext}
+          onClick={onSkipAddOns}
           disabled={!hasPlan}
           className="text-sm text-gray-400 hover:text-gray-600 font-medium py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -817,6 +585,8 @@ interface Step3Props {
   onCheckAgain: () => Promise<void>;
   onRetry: () => void;
   onError: (msg: string) => void;
+  /** Migración a Flow (FEAT-25): cuándo se cobra, en lugar de "Acceso inmediato al activar". */
+  firstChargeNotice?: string | null;
 }
 
 function Step3({
@@ -835,6 +605,7 @@ function Step3({
   onCheckAgain,
   onRetry,
   onError,
+  firstChargeNotice,
 }: Step3Props) {
   const period = isAnnual ? "año" : "mes";
 
@@ -911,9 +682,7 @@ function Step3({
     <div className="flex flex-col gap-4">
       {/* Header */}
       <div className="mb-1">
-        <h3 className="font-bold text-xl text-gray-900">
-          Resumen de tu suscripción
-        </h3>
+        <h3 className="font-bold text-xl text-gray-900">Resumen de tu suscripción</h3>
         <p className="text-sm text-gray-500 mt-1">
           Revisa los detalles antes de registrar tu tarjeta.
         </p>
@@ -926,9 +695,7 @@ function Step3({
       >
         {/* Plan row */}
         <div className="flex items-center justify-between mb-2">
-          <span className="font-semibold text-gray-800 text-sm">
-            Plan {planName}
-          </span>
+          <span className="font-semibold text-gray-800 text-sm">Plan {planDisplayName(planName)}</span>
           <span className="font-bold text-sm" style={{ color: "#4F3A96" }}>
             S/ {price}/{period}
           </span>
@@ -938,10 +705,7 @@ function Step3({
         {summary.addOns.map(({ addOn: addon, price: addOnAmount }) => {
           const { name, icon } = addOnDisplay(addon);
           return (
-            <div
-              key={addon.id}
-              className="flex items-center justify-between mb-2"
-            >
+            <div key={addon.id} className="flex items-center justify-between mb-2">
               <span className="text-gray-600 text-sm flex items-center gap-1.5">
                 {icon} {name}
               </span>
@@ -969,19 +733,24 @@ function Step3({
         className="rounded-xl p-4 flex items-start gap-3"
         style={{ background: "#f0fdf9", border: "1px solid #a7f3d0" }}
       >
-        <CheckCircle2
-          className="w-5 h-5 shrink-0 mt-0.5"
-          style={{ color: "#008a7b" }}
-        />
+        <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" style={{ color: "#008a7b" }} />
         <div className="text-sm" style={{ color: "#065f46" }}>
-          <p className="font-semibold">Qué incluye tu plan</p>
-          <p
-            className="mt-1 text-xs leading-relaxed"
-            style={{ color: "#047857" }}
-          >
-            Acceso inmediato al activar — todas las herramientas del plan{" "}
-            {planName} disponibles desde el primer día.
-          </p>
+          {firstChargeNotice ? (
+            <>
+              <p className="font-semibold">Cuándo te cobramos</p>
+              <p className="mt-1 text-xs leading-relaxed" style={{ color: "#047857" }}>
+                {firstChargeNotice}
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="font-semibold">Qué incluye tu plan</p>
+              <p className="mt-1 text-xs leading-relaxed" style={{ color: "#047857" }}>
+                Acceso inmediato al activar — todas las herramientas del plan {planDisplayName(planName)} disponibles
+                desde el primer día.
+              </p>
+            </>
+          )}
         </div>
       </div>
 
@@ -994,8 +763,8 @@ function Step3({
         <div className="text-sm text-indigo-900">
           <p className="font-semibold">Pago seguro con tarjeta</p>
           <p className="mt-1 text-xs leading-relaxed text-indigo-700">
-            Registrarás tu tarjeta de débito o crédito directamente en Flow.
-            Powip no almacena datos de tu tarjeta.
+            Registrarás tu tarjeta de débito o crédito directamente en Flow. Powip no almacena datos
+            de tu tarjeta.
           </p>
         </div>
       </div>
@@ -1061,8 +830,7 @@ function StepSuccess({
       const link = document.createElement("link");
       link.id = "gcal-css";
       link.rel = "stylesheet";
-      link.href =
-        "https://calendar.google.com/calendar/scheduling-button-script.css";
+      link.href = "https://calendar.google.com/calendar/scheduling-button-script.css";
       document.head.appendChild(link);
     }
 
@@ -1086,8 +854,7 @@ function StepSuccess({
     if (!document.getElementById("gcal-script")) {
       const script = document.createElement("script");
       script.id = "gcal-script";
-      script.src =
-        "https://calendar.google.com/calendar/scheduling-button-script.js";
+      script.src = "https://calendar.google.com/calendar/scheduling-button-script.js";
       script.async = true;
       script.onload = mountButton;
       document.head.appendChild(script);
@@ -1107,6 +874,9 @@ function StepSuccess({
     });
 
   const isPaid = subscription?.status === "ACTIVE";
+  const receiptPlanName = subscription?.plan.name ?? planName;
+  const receiptPrice = subscription?.plan.price ?? price;
+  const receiptIsAnnual = subscription ? subscription.plan.durationInDays >= 300 : isAnnual;
 
   return (
     <div className="flex flex-col gap-6">
@@ -1120,19 +890,14 @@ function StepSuccess({
         </div>
         <div>
           <h3 className="font-bold text-xl text-gray-900">¡Cuenta activada!</h3>
-          <p className="text-sm text-gray-500 mt-1">
-            Tu plan está activo. Bienvenido a Powip.
-          </p>
+          <p className="text-sm text-gray-500 mt-1">Tu plan está activo. Bienvenido a Powip.</p>
         </div>
       </div>
 
       {/* Receipt ticket */}
       <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 overflow-hidden">
         {/* Ticket header */}
-        <div
-          className="px-5 py-3 flex items-center gap-2"
-          style={{ background: "#f5f2ff" }}
-        >
+        <div className="px-5 py-3 flex items-center gap-2" style={{ background: "#f5f2ff" }}>
           <span className="text-base">🎫</span>
           <span className="text-sm font-semibold" style={{ color: "#4F3A96" }}>
             Comprobante de suscripción
@@ -1144,12 +909,9 @@ function StepSuccess({
             <>
               {/* Plan & price */}
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Plan {planName}</span>
-                <span
-                  className="text-sm font-bold"
-                  style={{ color: "#4F3A96" }}
-                >
-                  S/ {price}/{isAnnual ? "año" : "mes"}
+                <span className="text-sm text-gray-600">Plan {receiptPlanName}</span>
+                <span className="text-sm font-bold" style={{ color: "#4F3A96" }}>
+                  S/ {receiptPrice}/{receiptIsAnnual ? "año" : "mes"}
                 </span>
               </div>
 
@@ -1180,7 +942,11 @@ function StepSuccess({
                     color: isPaid ? "#166534" : "#854d0e",
                   }}
                 >
-                  {isPaid ? "Pagado" : "Pendiente"}
+                  {isPaid
+                    ? "Pagado"
+                    : subscription.status === "PENDING_RENEWAL"
+                      ? "Renovación pendiente"
+                      : "Pendiente"}
                 </span>
               </div>
             </>
@@ -1229,8 +995,8 @@ function StepSuccess({
               ¿Querés sacarle el máximo a Powip?
             </p>
             <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
-              Agendá una reunión de onboarding gratuita — un especialista te
-              guiará por las funciones clave de tu plan.
+              Agendá una reunión de onboarding gratuita — un especialista te guiará por las
+              funciones clave de tu plan.
             </p>
           </div>
         </div>
@@ -1262,12 +1028,23 @@ export default function OnboardingClient({
   price = 0,
   initialAuth,
   onGoToDashboard,
+  mode = "signup",
+  initialAddOnCodes,
+  paidUntil = null,
+  blocked = false,
 }: OnboardingClientProps) {
+  const isMigration = mode === "migration";
   const { auth, login, refreshSession } = useAuth();
   const router = useRouter();
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
   const [addOns, setAddOns] = useState<BackendAddOn[]>([]);
   const [plans, setPlans] = useState<BackendPlan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(false);
+  const [plansError, setPlansError] = useState<string | null>(null);
+  const [plansRevision, setPlansRevision] = useState(0);
+  const [addOnsLoading, setAddOnsLoading] = useState(false);
+  const [addOnsError, setAddOnsError] = useState<string | null>(null);
+  const [addOnsRevision, setAddOnsRevision] = useState(0);
   const [enterpriseOpen, setEnterpriseOpen] = useState(false);
 
   const {
@@ -1281,15 +1058,27 @@ export default function OnboardingClient({
     retry,
     goBack,
     setError,
+    resumeSession,
   } = useOnboardingFlow(
-    { planId, planName, price, initialUserId: initialAuth?.userId ?? null },
+    {
+      planId,
+      planName,
+      price,
+      initialUserId: initialAuth?.userId ?? auth?.user?.id ?? null,
+      migrate: isMigration,
+    },
     login,
     // Al pagar, ms-subscription pasa al usuario a ADMINISTRADOR en ms-auth: hace
     // falta un token nuevo con ese rol (y la suscripción ACTIVE en el contexto).
-    async () => {
-      await refreshSession();
-    },
+    () => refreshSession(),
   );
+
+  // Refresh can finish after this public page mounts. An existing account
+  // continues with its plan instead of being asked to register again.
+  const sessionUserId = auth?.user?.id;
+  useEffect(() => {
+    if (sessionUserId) resumeSession(sessionUserId);
+  }, [sessionUserId, resumeSession]);
 
   // El plan elegido manda; sin plan, el ciclo lo marca el toggle del paso 2.
   const [annualView, setAnnualView] = useState(isAnnualPlanName(planName));
@@ -1308,7 +1097,7 @@ export default function OnboardingClient({
         ? 1
         : flowState.step === "ADDONS"
           ? 2
-          : flowState.step === "DONE"
+          : flowState.step === "DONE" || flowState.step === "MIGRATION_SCHEDULED"
             ? 4
             : 3;
 
@@ -1331,10 +1120,18 @@ export default function OnboardingClient({
           isAnnual,
         )
       : null);
+  const completedPlan = flowState.step === "DONE" ? subscription?.plan : null;
+  const displayPlanName = completedPlan?.name ?? flowState.planName;
+  const displayPrice = completedPlan?.price ?? flowState.price;
+  const displayAnnual = completedPlan ? completedPlan.durationInDays >= 300 : isAnnual;
 
   const loadDevDemo = () => {
     setPlans(DEMO_PLANS);
     setAddOns(DEMO_ADD_ONS);
+    setPlansLoading(false);
+    setPlansError(null);
+    setAddOnsLoading(false);
+    setAddOnsError(null);
     if (!flowState.planId) setPlan(DEMO_PLANS.find((p) => p.name === "Medium") ?? DEMO_PLANS[0]);
     setDevDemoLoaded(true);
   };
@@ -1349,34 +1146,80 @@ export default function OnboardingClient({
   // Catálogo y plan se leen con el JWT (el gateway lo exige): recién hay sesión
   // después del registro, o de entrada si viene de /sin-plan.
   const accessToken = auth?.accessToken;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: The revision reloads the same catalog after an explicit retry.
   useEffect(() => {
     if (!accessToken) return;
     const controller = new AbortController();
+    setAddOnsLoading(true);
+    setAddOnsError(null);
     fetchAddOns(controller.signal)
-      .then(setAddOns)
-      .catch((err: unknown) => {
-        if ((err as { code?: string })?.code === "ERR_CANCELED") return;
-        toast.error("No pudimos cargar los add-ons. Podés continuar sin ellos.");
+      .then((catalog) => {
+        if (!controller.signal.aborted) setAddOns(catalog);
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setAddOns([]);
+        setAddOnsError("No pudimos cargar los add-ons.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setAddOnsLoading(false);
       });
     return () => controller.abort();
-  }, [accessToken]);
+  }, [accessToken, addOnsRevision]);
 
   // Catálogo de planes para el paso 2. Si la landing mandó un plan (?plan=Basic),
   // queda preseleccionado con su id y precio reales; si no existe, no se elige nada.
   const hintAppliedRef = useRef(false);
+  const latestFlow = useRef(flowState);
+  latestFlow.current = flowState;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: The revision reloads the same catalog after an explicit retry.
   useEffect(() => {
     if (!accessToken) return;
-    fetchPlans()
+    const controller = new AbortController();
+    setPlansLoading(true);
+    setPlansError(null);
+    fetchPlans(controller.signal)
       .then((catalog) => {
+        if (controller.signal.aborted) return;
         setPlans(catalog);
         if (hintAppliedRef.current) return;
         hintAppliedRef.current = true;
+        const current = latestFlow.current;
+        if (current.planId || (current.step !== "ADDONS" && current.step !== "REGISTRATION"))
+          return;
         const hint = planName.toLowerCase();
         const match = hint && catalog.find((p) => p.name.toLowerCase() === hint);
         if (match) setPlan(match);
       })
-      .catch(() => setError("No pudimos cargar los planes. Intentá nuevamente."));
-  }, [accessToken, planName, setPlan, setError]);
+      .catch(() => {
+        if (!controller.signal.aborted)
+          setPlansError("No pudimos cargar los planes. Intenta nuevamente.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setPlansLoading(false);
+      });
+    return () => controller.abort();
+  }, [accessToken, planName, setPlan, plansRevision]);
+
+  // Migración (FEAT-25): sus add-ons de hoy vienen marcados, una sola vez y si no eligió otros.
+  const addOnHintAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!isMigration || addOnHintAppliedRef.current || addOns.length === 0 || !initialAddOnCodes?.length) return;
+    addOnHintAppliedRef.current = true;
+    if (latestFlow.current.step !== "ADDONS") return;
+    const ids = addOns.filter((a) => initialAddOnCodes.includes(a.code)).map((a) => a.id);
+    setSelectedAddons((prev) => (prev.length > 0 ? prev : ids));
+  }, [addOns, initialAddOnCodes, isMigration]);
+
+  const firstChargeNotice = isMigration
+    ? (() => {
+        const period = isAnnual ? "año" : "mes";
+        const date = firstChargePreview(paidUntil, limaToday());
+        return date
+          ? `Hoy no te cobramos nada. Tu primer cobro será el ${formatLimaDate(date)}: S/ ${summary.total}/${period}. Hasta entonces sigues con tu plan actual.`
+          : `Se cobra hoy al registrar la tarjeta: S/ ${summary.total}/${period}.`;
+      })()
+    : null;
 
   const handleCycleChange = (annual: boolean) => {
     setAnnualView(annual);
@@ -1384,13 +1227,19 @@ export default function OnboardingClient({
     setPlan(counterpartPlan(plans, flowState.planName, annual) ?? { id: "", name: "", price: 0 });
   };
 
-  const handleStep1Next = async (data: AccountFormValues) => {
+  const handleStep1Next = async (data: RegisterData) => {
     await register(data);
   };
   const handleStep2Next = () => {
     if (!flowState.planId) return;
     resetDev();
     selectAddOns(selectedAddons);
+  };
+  const handleSkipAddOns = () => {
+    if (!flowState.planId) return;
+    resetDev();
+    setSelectedAddons([]);
+    selectAddOns([]);
   };
 
   const handleGoBack = () => {
@@ -1400,149 +1249,202 @@ export default function OnboardingClient({
   };
 
   const toggleAddon = (id: string) => {
-    setSelectedAddons((prev) =>
-      prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id],
-    );
+    setSelectedAddons((prev) => (prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]));
   };
 
-  return (
-    <div
-      className="min-h-screen lg:h-screen flex flex-col lg:overflow-hidden"
-      style={{ background: "#f7f5ff" }}
-    >
-      {/* Mobile header */}
-      <div
-        className="lg:hidden flex items-center gap-3 px-5 py-4"
-        style={{ background: "#4F3A96" }}
-      >
-        <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-          <span className="text-white font-black text-sm">P</span>
-        </div>
-        <span className="text-white font-black tracking-widest text-base">
-          POWIP
-        </span>
-        <div className="ml-auto min-w-0 truncate text-white/70 text-xs">
-          {currentStep === 3
-            ? summaryLabel(flowState.planName, summary, isAnnual)
-            : planLabel(flowState.planName, flowState.price, isAnnual)}
-        </div>
-      </div>
+  const devPanel = isDev ? (
+    <OnboardingDevPanel
+      currentStep={currentStep}
+      isOverriding={devStepOverride !== null || devPaymentStep !== null}
+      paymentStep={paymentStep}
+      demoLoaded={devDemoLoaded}
+      onStep={(step) => {
+        setDevStepOverride(step);
+        setDevPaymentStep(null);
+      }}
+      onPaymentStep={(step) => {
+        setDevStepOverride(3);
+        setDevPaymentStep(step);
+      }}
+      onLoadDemo={loadDevDemo}
+      onReset={resetDev}
+    />
+  ) : null;
 
-      <div className="grid lg:grid-cols-2 flex-1 lg:overflow-hidden">
-        {/* Brand panel — desktop only */}
-        <div className="hidden lg:block">
-          <BrandPanel
-            currentStep={currentStep}
-            planName={flowState.planName}
-            price={flowState.price}
-            isAnnual={isAnnual}
-            summary={summary}
+  const pageRef = useRef<HTMLDivElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const screenKey = `${currentStep}:${paymentStep}`;
+  const previousScreenRef = useRef<string | null>(null);
+  useEffect(() => {
+    const page = pageRef.current;
+    if (!page || previousScreenRef.current === screenKey) return;
+    previousScreenRef.current = screenKey;
+    const scroller = page.closest("main");
+    if (typeof scroller?.scrollTo === "function") scroller.scrollTo({ top: 0, left: 0 });
+    headingRef.current?.focus({ preventScroll: true });
+  }, [screenKey]);
+
+  if (isMigration && flowState.step === "EXISTING_SUBSCRIPTION") {
+    // Con migrate solo da ALREADY_SUBSCRIBED quien ya tiene Flow vigente.
+    return (
+      <AuthLayout>
+        <div className={`${styles.stepCard} space-y-4 text-center`}>
+          <p className="text-lg font-semibold text-gray-900">Ya estás en Flow.</p>
+          <button
+            type="button"
+            onClick={handleGoToDashboard}
+            className="text-sm font-medium text-[#4F3A96] underline"
+          >
+            Ir a Powip
+          </button>
+        </div>
+      </AuthLayout>
+    );
+  }
+
+  if (flowState.step === "EXISTING_SUBSCRIPTION" && flowState.subscription) {
+    return (
+      <AuthLayout>
+        <div className={styles.stepCard}>
+          <ExistingSubscriptionNotice
+            subscription={flowState.subscription}
+            continueHref={auth?.company || auth?.user?.companyId ? "/" : "/new-company"}
+            refreshSession={refreshSession}
           />
         </div>
+      </AuthLayout>
+    );
+  }
 
-        {/* Content panel */}
-        <div className="flex flex-col items-center justify-start lg:justify-center px-5 py-8 lg:py-12 overflow-y-auto lg:h-full lg:min-h-0">
-          <div className="w-full max-w-3xl">
-            {/* Plan pill — desktop only */}
-            <div
-              className="hidden lg:inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-sm font-medium mb-6"
-              style={{ background: "#ede9ff", color: "#4F3A96" }}
-            >
-              <div
-                className="w-2 h-2 rounded-full"
-                style={{ background: "#4F3A96" }}
+  if (currentStep === 1 && !initialAuth) {
+    return (
+      <>
+        <AuthLayout>
+          <AuthPanel
+            registration={
+              <RegisterForm
+                isLoading={flowState.isLoading}
+                error={flowState.error}
+                onNext={handleStep1Next}
               />
-              {planLabel(flowState.planName, flowState.price, isAnnual)}
-            </div>
+            }
+          />
+        </AuthLayout>
+        {devPanel}
+      </>
+    );
+  }
 
-            {/* Progress */}
-            <div className="mb-8">
-              <OnboardingProgress currentStep={currentStep} />
-            </div>
+  return (
+    <div ref={pageRef} className={styles.page} data-onboarding-layout="subscription">
+      <header className={styles.mobileHeader}>
+        <Link
+          href={isMigration ? "/" : "https://powip.lat"}
+          className={styles.back}
+          aria-label="Volver a la página principal"
+        >
+          <ArrowLeft size={18} aria-hidden="true" />
+        </Link>
+        <Image
+          src="/logo-powip-text.svg"
+          alt="Powip"
+          width={150}
+          height={48}
+          className={styles.mobileLogo}
+        />
+      </header>
+      <div className={styles.layout}>
+        <BrandPanel
+          currentStep={currentStep}
+          planName={displayPlanName}
+          price={displayPrice}
+          isAnnual={displayAnnual}
+          summary={summary}
+        />
+        <div className={styles.content}>
+          <header className={styles.flowHeader}>
+            <h1 ref={headingRef} tabIndex={-1} className={styles.heading}>
+              {isMigration ? "Pasate a Flow" : "Configura tu cuenta"}
+            </h1>
+            {blocked && (
+              <p role="alert" className="text-sm font-medium text-red-700">
+                Tu acceso a Powip está suspendido. Registra tu tarjeta para volver a usarlo.
+              </p>
+            )}
+            <p className={styles.stepCaption}>
+              {currentStep === 3
+                ? summaryLabel(flowState.planName, summary, isAnnual)
+                : planLabel(displayPlanName, displayPrice, displayAnnual)}
+            </p>
+            <OnboardingProgress currentStep={currentStep} steps={isMigration ? MIGRATION_STEPS : STEPS} />
+          </header>
+          <div className={styles.stepCard}>
+            {currentStep === 2 && (
+              <Step2
+                plans={plans}
+                planId={flowState.planId}
+                onSelectPlan={setPlan}
+                onCycleChange={handleCycleChange}
+                onEnterprise={() => setEnterpriseOpen(true)}
+                price={flowState.price}
+                isAnnual={isAnnual}
+                selectedAddons={selectedAddons}
+                onToggleAddon={toggleAddon}
+                onNext={handleStep2Next}
+                onSkipAddOns={handleSkipAddOns}
+                plansLoading={plansLoading}
+                plansError={plansError}
+                onRetryPlans={() => setPlansRevision((revision) => revision + 1)}
+                addOnsLoading={addOnsLoading}
+                addOnsError={addOnsError}
+                onRetryAddOns={() => setAddOnsRevision((revision) => revision + 1)}
+                addOns={addOns}
+                summary={summary}
+              />
+            )}
 
-            {/* Step content card */}
-            <div
-              className="p-6 sm:p-8"
-              style={{ borderColor: "rgba(79,58,150,0.08)" }}
-            >
-              {currentStep === 1 && !initialAuth && (
-                <Step1
-                  isLoading={flowState.isLoading}
-                  error={flowState.error}
-                  onNext={handleStep1Next}
-                />
-              )}
+            {currentStep === 3 && (
+              <Step3
+                planName={flowState.planName}
+                price={flowState.price}
+                isAnnual={isAnnual}
+                summary={summary}
+                isLoading={flowState.isLoading}
+                step={paymentStep}
+                error={flowState.error}
+                cardToken={flowState.cardToken}
+                redirectUrl={flowState.redirectUrl}
+                onBack={handleGoBack}
+                onInitiate={initiateCardRegistration}
+                onSubscribe={confirmPayment}
+                onCheckAgain={checkPaymentAgain}
+                onRetry={retry}
+                onError={setError}
+                firstChargeNotice={firstChargeNotice}
+              />
+            )}
 
-              {currentStep === 2 && (
-                <Step2
-                  plans={plans}
-                  planId={flowState.planId}
-                  onSelectPlan={setPlan}
-                  onCycleChange={handleCycleChange}
-                  onEnterprise={() => setEnterpriseOpen(true)}
-                  price={flowState.price}
-                  isAnnual={isAnnual}
-                  selectedAddons={selectedAddons}
-                  onToggleAddon={toggleAddon}
-                  onNext={handleStep2Next}
-                  addOns={addOns}
-                  summary={summary}
-                />
-              )}
+            {isMigration && currentStep === 4 && (
+              <MigrationScheduledSuccess
+                firstChargeDate={flowState.step === "MIGRATION_SCHEDULED" ? (flowState.firstChargeDate ?? null) : null}
+                onGoToDashboard={handleGoToDashboard}
+              />
+            )}
 
-              {currentStep === 3 && (
-                <Step3
-                  planName={flowState.planName}
-                  price={flowState.price}
-                  isAnnual={isAnnual}
-                  summary={summary}
-                  isLoading={flowState.isLoading}
-                  step={paymentStep}
-                  error={flowState.error}
-                  cardToken={flowState.cardToken}
-                  redirectUrl={flowState.redirectUrl}
-                  onBack={handleGoBack}
-                  onInitiate={initiateCardRegistration}
-                  onSubscribe={confirmPayment}
-                  onCheckAgain={checkPaymentAgain}
-                  onRetry={retry}
-                  onError={setError}
-                />
-              )}
-
-              {(currentStep === 4 || flowState.step === "DONE") && (
-                <StepSuccess
-                  planName={flowState.planName}
-                  price={flowState.price}
-                  isAnnual={isAnnual}
-                  subscription={subscription}
-                  onGoToDashboard={handleGoToDashboard}
-                />
-              )}
-            </div>
+            {!isMigration && (currentStep === 4 || flowState.step === "DONE") && (
+              <StepSuccess
+                planName={flowState.planName}
+                price={flowState.price}
+                isAnnual={isAnnual}
+                subscription={subscription}
+                onGoToDashboard={handleGoToDashboard}
+              />
+            )}
           </div>
         </div>
       </div>
       <EnterpriseContactModal open={enterpriseOpen} onClose={() => setEnterpriseOpen(false)} />
-
-      {isDev && (
-        <OnboardingDevPanel
-          currentStep={currentStep}
-          isOverriding={devStepOverride !== null || devPaymentStep !== null}
-          paymentStep={paymentStep}
-          demoLoaded={devDemoLoaded}
-          onStep={(step) => {
-            setDevStepOverride(step);
-            setDevPaymentStep(null);
-          }}
-          onPaymentStep={(step) => {
-            setDevStepOverride(3);
-            setDevPaymentStep(step);
-          }}
-          onLoadDemo={loadDevDemo}
-          onReset={resetDev}
-        />
-      )}
+      {devPanel}
     </div>
   );
 }

@@ -1,4 +1,7 @@
 "use client";
+import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
+
+import { OrderOriginLabel } from "../../_shared/OrderOriginLabel";
 
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -135,7 +138,7 @@ export function AnuladosTab({
             {paged.map((sale) => (
               <TableRow key={sale.id}>
                 <TableCell className="font-medium">
-                  {sale.orderNumber}
+                  {sale.orderNumber}<OrderOriginLabel {...sale} />
                 </TableCell>
                 <TableCell>
                   <div className="font-medium">{sale.clientName}</div>
@@ -156,7 +159,7 @@ export function AnuladosTab({
                   </span>
                 </TableCell>
                 <TableCell className="text-sm tabular-nums">
-                  {money(sale.total)}
+                  {money(sale.total)}<div className="mt-1"><FinancialStatusBadge pendingAmount={sale.pendingPayment} /></div>
                 </TableCell>
                 <TableCell className="sticky right-0 z-10 bg-gray-100 dark:bg-gray-900 border-l text-right">
                   <div className="flex items-center justify-end gap-1">

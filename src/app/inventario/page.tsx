@@ -35,6 +35,7 @@ import {
   PackagePlus,
   HelpCircle,
   GitMerge,
+  Camera,
 } from "lucide-react";
 import {
   Tooltip,
@@ -43,7 +44,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
@@ -52,14 +53,20 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import Image from "next/image";
 import { isAxiosError } from "axios";
-import {
-  exportInventoryItems,
-  searchInventoryItems,
-} from "@/services/inventoryItems.service";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useBusinessScope } from "@/contexts/BusinessScopeContext";
+import { useBusinessInventories } from "@/hooks/useBusinessInventories";
+import { fetchBusinessInventoryItems, filterBusinessInventoryItems, type BusinessInventoryItem } from "@/services/businessInventoryItemsService";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 
+import RegularizeProductModal from "@/components/inventory/RegularizeProductModal";
+import InventoryUnitTraceModal from "@/components/inventory/InventoryUnitTraceModal";
+import InventoryUnitMovementModal from "@/components/inventory/InventoryUnitMovementModal";
+import InventoryUnitsModal from "@/components/inventory/InventoryUnitsModal";
+import { isTracked } from "@/services/inventoryTrackingService";
 import AddStockModal from "@/components/modals/AddStockModal";
 import DeleteInventoryItemModal from "@/components/modals/DeleteInventoryItemModal";
+import EditProductImageModal from "@/components/modals/EditProductImageModal";
 import ImportExcelModal from "@/components/modals/ImportExcelModal";
 import { Pagination } from "@/components/ui/pagination";
 import ShopifySyncWizard from "../productos/shopify-sync-wizard";
@@ -70,128 +77,72 @@ import { ReconciliationTab } from "@/components/inventory/ReconciliationTab";
 const ITEMS_PER_PAGE = 10;
 
 export default function AlmacenPage() {
-  const { auth, selectedStoreId, inventories: storeInventories } = useAuth();
-
+  const { auth } = useAuth();
+  const queryClient = useQueryClient();
+  const { scope, storeIds, canFetch } = useBusinessScope();
+  const warehouses = useBusinessInventories({ scope, storeIds });
+  const storeInventories = warehouses.inventories;
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedInventoryId, setSelectedInventoryId] = useState<string | null>(
-    null,
-  );
-  const [productsWithDetails, setProductsWithDetails] = useState<
-    InventoryItemForSale[]
-  >([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingInventories, setIsLoadingInventories] = useState(true);
+  const [selectedInventoryId, setSelectedInventoryId] = useState("all");
   const [isExporting, setIsExporting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalItems, setTotalItems] = useState(0);
   const [mode, setMode] = useState<"table" | "shopify">("table");
-
-  const stores = auth?.company?.stores || [];
-  const currentStore =
-    stores.find((s) => s.id === selectedStoreId) || stores[0];
+  const companyId = auth?.company?.id ?? "";
+  const inventoryQuery = useQuery({
+    queryKey: ["business-inventory-items", companyId, auth?.user?.id, scope, storeIds, storeInventories.map((inv) => inv.id).sort()],
+    queryFn: ({ signal }) => fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth?.accessToken ?? "", signal }),
+    enabled: canFetch && warehouses.isSuccess,
+    retry: false,
+  });
+  const filteredItems = useMemo(() => filterBusinessInventoryItems(inventoryQuery.data ?? [], selectedInventoryId, searchQuery), [inventoryQuery.data, selectedInventoryId, searchQuery]);
+  const totalItems = filteredItems.length;
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+  const productsWithDetails = filteredItems.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const isLoadingInventories = warehouses.isPending;
+  const isLoading = warehouses.isPending || (warehouses.isSuccess && inventoryQuery.isPending);
+  const loadError = warehouses.error || inventoryQuery.error;
+  const refreshItems = async () => { await inventoryQuery.refetch({ throwOnError: true }); };
+  const handleStockRefresh = () => {
+    void refreshItems().catch(() => {
+      toast.warning("Los cambios se guardaron, pero no se pudo actualizar el almacén. Recarga la página.");
+    });
+  };
+  const totals = filteredItems.reduce((sum, row) => ({ physical: sum.physical + row.physicalStock, available: sum.available + row.availableStock }), { physical: 0, available: 0 });
 
   const router = useRouter();
+
+  const [unitTrace, setUnitTrace] = useState<{ companyId: string; userId: string; code: string } | null>(null);
+  const [trackingItem, setTrackingItem] = useState<{ item: BusinessInventoryItem; companyId: string; action: "regularize" | "units" | "transfer" | "write-off" } | null>(null);
+  useEffect(() => { setTrackingItem(null); setUnitTrace(null); }, [companyId, auth?.user?.id]);
 
   const [addStockOpen, setAddStockOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItemForSale | null>(
     null,
   );
+  const [imageItem, setImageItem] = useState<InventoryItemForSale | null>(null);
+  const imageTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedInventoryId]);
   useEffect(() => {
-    if (!auth?.company) return;
-
-    setIsLoadingInventories(false);
-
-    if (storeInventories.length > 0) {
-      if (!selectedInventoryId) {
-        setSelectedInventoryId(storeInventories[0].id);
-      } else {
-        const exists = storeInventories.some(
-          (inv) => inv.id === selectedInventoryId,
-        );
-        if (!exists) {
-          setSelectedInventoryId(storeInventories[0].id);
-        }
-      }
-    } else {
-      setSelectedInventoryId(null);
-    }
-  }, [storeInventories, selectedInventoryId, auth?.company]);
-
+    setCurrentPage((page) => Math.min(page, Math.max(totalPages, 1)));
+  }, [totalPages]);
   useEffect(() => {
-    if (!selectedInventoryId) return;
-
-    const loadInventoryItems = async () => {
-      setIsLoading(true);
-
-      try {
-        const response = await searchInventoryItems({
-          inventoryId: selectedInventoryId,
-          q: searchQuery || undefined,
-          page: currentPage,
-          limit: ITEMS_PER_PAGE,
-        });
-
-        setProductsWithDetails(response.data);
-        setTotalPages(response.meta.totalPages);
-        setTotalItems(response.meta.total);
-      } catch (err) {
-        console.error("Error loading inventory items:", err);
-        toast.error("Error al cargar los productos del inventario");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    const timer = setTimeout(() => {
-      loadInventoryItems();
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [selectedInventoryId, currentPage, searchQuery]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, selectedInventoryId]);
-
-  const refreshItems = useCallback(async () => {
-    if (!selectedInventoryId) return;
-    setIsLoading(true);
-    try {
-      const response = await searchInventoryItems({
-        inventoryId: selectedInventoryId,
-        q: searchQuery || undefined,
-        page: currentPage,
-        limit: ITEMS_PER_PAGE,
-      });
-      setProductsWithDetails(response.data);
-      setTotalPages(response.meta.totalPages);
-      setTotalItems(response.meta.total);
-    } catch (err) {
-      console.error("Error refreshing items:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedInventoryId, searchQuery, currentPage]);
+    if (selectedInventoryId !== "all" && warehouses.isSuccess && !storeInventories.some((inv) => inv.id === selectedInventoryId)) setSelectedInventoryId("all");
+  }, [selectedInventoryId, storeInventories, warehouses.isSuccess]);
 
   if (!auth) return null;
 
   const handleExportExcel = async () => {
-    if (!selectedInventoryId) {
-      toast.warning("Seleccione un almacén para exportar");
-      return;
-    }
+    if (loadError || isLoading) { toast.error("Espera a que el inventario termine de cargar correctamente."); return; }
 
     setIsExporting(true);
 
     try {
-      const items = await exportInventoryItems({
-        inventoryId: selectedInventoryId,
-        q: searchQuery || undefined,
-      });
+      const fresh = await fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth.accessToken });
+      const items = filterBusinessInventoryItems(fresh, selectedInventoryId, searchQuery);
 
       if (items.length === 0) {
         toast.warning("No hay productos para exportar");
@@ -205,6 +156,8 @@ export default function AlmacenPage() {
         { header: "SKU Empresa", key: "companySku", width: 20 },
         { header: "SKU POWIP", key: "sku", width: 20 },
         { header: "Nombre", key: "name", width: 30 },
+        { header: "Tienda", key: "store", width: 25 },
+        { header: "Almacén", key: "inventory", width: 25 },
         { header: "Stock", key: "stock", width: 12 },
         { header: "Reservado", key: "reservado", width: 12 },
         { header: "Disponible", key: "disponible", width: 12 },
@@ -224,6 +177,8 @@ export default function AlmacenPage() {
           companySku: prod.companySku ?? "",
           sku: prod.sku,
           name: prod.productName,
+          store: prod.storeName || prod.storeId,
+          inventory: prod.inventoryName,
           stock: prod.physicalStock,
           reservado: prod.reservedStock,
           disponible: prod.availableStock,
@@ -238,7 +193,7 @@ export default function AlmacenPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Almacen_${currentStore?.name || "Tienda"}.xlsx`;
+      a.download = `Almacen_${scope === "business" ? "Negocio" : "Tienda"}.xlsx`;
       a.click();
       window.URL.revokeObjectURL(url);
 
@@ -267,9 +222,18 @@ export default function AlmacenPage() {
 
   return (
     <div className="h-screen flex flex-col px-6">
+      {trackingItem?.companyId === companyId && trackingItem.action === "regularize" ? <RegularizeProductModal key={`${companyId}:${trackingItem.item.productId}`} companyId={companyId} productId={trackingItem.item.productId} productName={trackingItem.item.productName} onClose={() => setTrackingItem(null)} onSaved={handleStockRefresh} /> : null}
+      {trackingItem?.companyId === companyId && trackingItem.action === "units" ? <InventoryUnitsModal key={`${companyId}:${trackingItem.item.inventoryItemId}`} companyId={companyId} inventoryItemId={trackingItem.item.inventoryItemId} productName={trackingItem.item.productName} onViewHistory={(code) => setUnitTrace({ companyId, userId: auth.user.id, code })} onClose={() => setTrackingItem(null)} /> : null}
+      {trackingItem?.companyId === companyId && (trackingItem.action === "transfer" || trackingItem.action === "write-off") ? <InventoryUnitMovementModal key={`${companyId}:${auth.user?.id}:${trackingItem.item.inventoryItemId}:${trackingItem.action}`} companyId={companyId} source={trackingItem.item} action={trackingItem.action} onClose={() => setTrackingItem(null)} onSaved={() => {
+        handleStockRefresh();
+        void queryClient.invalidateQueries({ queryKey: ["admin-shrinkage-list", companyId] });
+        void queryClient.invalidateQueries({ queryKey: ["admin-shrinkage-summary", companyId] });
+        void queryClient.invalidateQueries({ queryKey: ["inventory-movement-history", companyId] });
+      }} /> : null}
+      {unitTrace?.companyId === companyId && unitTrace.userId === auth.user.id ? <InventoryUnitTraceModal companyId={companyId} initialCode={unitTrace.code} onClose={() => setUnitTrace(null)} /> : null}
       <HeaderConfig
         title="Almacén"
-        description="Gestión de productos y control de stock por tienda"
+        description="Control de stock por tienda y almacén"
       />
 
       {mode === "shopify" ? (
@@ -298,6 +262,7 @@ export default function AlmacenPage() {
             </TabsList>
 
             <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setUnitTrace({ companyId, userId: auth.user.id, code: "" })}>Buscar IMEI/serie</Button>
               <Link href="/compras">
                 <Button variant="outline" size="sm">
                   <ShoppingCart className="mr-2 h-4 w-4" />
@@ -334,15 +299,16 @@ export default function AlmacenPage() {
                       <Select
                         value={selectedInventoryId || undefined}
                         onValueChange={(value) => setSelectedInventoryId(value)}
-                        disabled={storeInventories.length <= 1}
+                        disabled={storeInventories.length === 0}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Seleccionar almacén" />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="all">Todos los almacenes del alcance</SelectItem>
                           {storeInventories.map((inv) => (
                             <SelectItem key={inv.id} value={inv.id}>
-                              {inv.name}
+                              {inv.name} {inv.storeName ? `· ${inv.storeName}` : ""}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -354,7 +320,7 @@ export default function AlmacenPage() {
                     <div>
                       <p className="text-sm text-muted-foreground">Tienda:</p>
                       <p className="font-medium">
-                        {currentStore?.name ?? "Sin tienda"}
+                        {scope === "business" ? "Todo el negocio" : auth.company?.stores?.find((store) => store.id === storeIds[0])?.name || "Tienda seleccionada"}
                       </p>
                     </div>
                   </div>
@@ -364,6 +330,7 @@ export default function AlmacenPage() {
                   <div className="relative flex-1 sm:max-w-md">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
+                      ref={searchInputRef}
                       placeholder="Buscar por SKU, nombre o variante..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -384,7 +351,7 @@ export default function AlmacenPage() {
                       variant="outline"
                       size="sm"
                       onClick={handleExportExcel}
-                      disabled={isExporting}
+                      disabled={isExporting || isLoading || Boolean(loadError)}
                     >
                       {isExporting ? (
                         <>
@@ -401,6 +368,12 @@ export default function AlmacenPage() {
                   </div>
                 </div>
 
+                {loadError ? (
+                  <div role="alert" className="mb-4 rounded border border-destructive p-4">
+                    No se pudo cargar el inventario. {loadError instanceof Error ? loadError.message : "Verifica la sesión."}
+                    <Button variant="outline" className="ml-3" onClick={() => { void warehouses.refetch(); if (warehouses.isSuccess) void inventoryQuery.refetch(); }}>Reintentar</Button>
+                  </div>
+                ) : !isLoading ? <p className="mb-3 text-sm text-muted-foreground">{totalItems} posiciones · Stock físico: {totals.physical} · Disponible: {totals.available}</p> : null}
                 <div className="rounded-md border flex-1 overflow-auto">
                   <Table>
                     <TableHeader>
@@ -501,13 +474,23 @@ export default function AlmacenPage() {
                             colSpan={10}
                             className="text-center py-6 text-muted-foreground"
                           >
-                            No hay productos en este almacén
+                            {loadError ? "No se pudo consultar el stock" : "No hay productos en este alcance"}
                           </TableCell>
                         </TableRow>
                       ) : (
                         productsWithDetails.map((prod) => (
                           <TableRow key={prod.inventoryItemId} className="hover:bg-muted/30 transition-colors">
                             <TableCell className="border-r">
+                              <button
+                                type="button"
+                                className="group relative block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                aria-label={`Cambiar imagen de ${prod.productName}`}
+                                title="Cambiar imagen"
+                                onClick={(event) => {
+                                  imageTriggerRef.current = event.currentTarget;
+                                  setImageItem(prod);
+                                }}
+                              >
                               {prod.imageUrl ? (
                                 <Image 
                                   src={prod.imageUrl} 
@@ -521,6 +504,10 @@ export default function AlmacenPage() {
                                   <ShoppingBag className="h-8 w-8" />
                                 </div>
                               )}
+                                <span className="absolute -bottom-1 -right-1 rounded-full border bg-background p-1 text-muted-foreground group-hover:text-primary">
+                                  <Camera className="h-3 w-3" aria-hidden="true" />
+                                </span>
+                              </button>
                             </TableCell>
                             <TableCell className="border-r font-medium text-xs max-w-[130px]" title={prod.companySku ? `${prod.companySku} (POWIP: ${prod.sku})` : prod.sku}>
                               {prod.companySku ? (
@@ -533,7 +520,8 @@ export default function AlmacenPage() {
                               )}
                             </TableCell>
                             <TableCell className="border-r text-sm max-w-[250px] truncate" title={prod.productName}>
-                              {prod.productName}
+                              <div>{prod.productName}</div>
+                              <div className="text-xs text-muted-foreground">{prod.storeName || "Tienda"} · {prod.inventoryName}</div>
                             </TableCell>
                             <TableCell className="border-r text-sm">
                               {Object.entries(prod.attributes || {})
@@ -561,11 +549,20 @@ export default function AlmacenPage() {
                               ${prod.priceVta}
                             </TableCell>
                             <TableCell className="text-right space-x-1">
+                              <Button size="sm" variant="outline" disabled={!prod.productId} onClick={() => setTrackingItem({ item: prod, companyId, action: isTracked(prod.trackingMode) ? "units" : "regularize" })}>
+                                {isTracked(prod.trackingMode) ? "Ver unidades" : "Asociar IMEI/series"}
+                              </Button>
+                              {isTracked(prod.trackingMode) ? <>
+                                <Button size="sm" variant="outline" onClick={() => setTrackingItem({ item: prod, companyId, action: "transfer" })}>Transferir unidades</Button>
+                                <Button size="sm" variant="outline" onClick={() => setTrackingItem({ item: prod, companyId, action: "write-off" })}>Registrar merma</Button>
+                              </> : null}
+                              {isTracked(prod.trackingMode) ? <Button size="sm" variant="ghost" disabled={!prod.productId} onClick={() => setTrackingItem({ item: prod, companyId, action: "regularize" })}>Revisar activación</Button> : null}
                               <Button
                                 size="icon"
                                 variant="ghost"
                                 className="h-8 w-8 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
-                                title="Ajustar Stock"
+                                title={isTracked(prod.trackingMode) ? "Registra los IMEI o series desde Compras" : "Ajustar Stock"}
+                                disabled={isTracked(prod.trackingMode)}
                                 onClick={() => {
                                   setSelectedItem(prod);
                                   setAddStockOpen(true);
@@ -588,7 +585,8 @@ export default function AlmacenPage() {
                                 size="icon"
                                 variant="ghost"
                                 className="h-8 w-8 text-destructive hover:text-destructive"
-                                title="Eliminar"
+                                title={isTracked(prod.trackingMode) ? "Conserva las unidades identificadas y su historial" : "Eliminar"}
+                                disabled={isTracked(prod.trackingMode)}
                                 onClick={() => {
                                   setSelectedItem(prod);
                                   setDeleteOpen(true);
@@ -623,7 +621,7 @@ export default function AlmacenPage() {
           <TabsContent value="history" className="flex-1 flex flex-col mt-0">
             <Card className="flex-1 flex flex-col">
               <CardContent className="p-6 overflow-auto">
-                <MovementHistoryTable companyId={auth?.company?.id} />
+                <MovementHistoryTable companyId={auth?.company?.id} scope={scope} inventories={storeInventories} scopeReady={warehouses.isSuccess} scopeError={scope === "store" ? warehouses.error : undefined} onRetryScope={() => void warehouses.refetch()} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -634,6 +632,7 @@ export default function AlmacenPage() {
           >
             <Card className="flex-1 flex flex-col">
               <CardContent className="p-6 overflow-auto">
+                <p className="mb-3 text-sm text-muted-foreground">Reconciliación del catálogo de todo el negocio.</p>
                 <ReconciliationTab companyId={auth?.company?.id} />
               </CardContent>
             </Card>
@@ -644,15 +643,15 @@ export default function AlmacenPage() {
       <ImportExcelModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        inventoryId={selectedInventoryId || ""}
-        onSuccess={refreshItems}
+        inventoryId={selectedInventoryId === "all" ? "" : selectedInventoryId}
+        onSuccess={handleStockRefresh}
       />
 
       <AddStockModal
         open={addStockOpen}
         item={selectedItem}
         onClose={() => setAddStockOpen(false)}
-        onSuccess={refreshItems}
+        onSuccess={handleStockRefresh}
       />
 
       <DeleteInventoryItemModal
@@ -663,6 +662,38 @@ export default function AlmacenPage() {
         onClose={() => setDeleteOpen(false)}
         onSuccess={refreshItems}
       />
+
+      {imageItem && (
+        <EditProductImageModal
+          key={imageItem.inventoryItemId}
+          item={imageItem}
+          onClose={() => setImageItem(null)}
+          onCloseAutoFocus={() => {
+            if (imageTriggerRef.current?.isConnected) {
+              imageTriggerRef.current.focus();
+            } else {
+              searchInputRef.current?.focus();
+            }
+          }}
+          onSuccess={async (imageUrl) => {
+            const queryKey = ["business-inventory-items", companyId, auth.user?.id];
+            await queryClient.cancelQueries({ queryKey }, { revert: false, silent: true });
+            queryClient.setQueriesData<BusinessInventoryItem[]>(
+              { queryKey },
+              (items) => items?.map((item) =>
+                (imageItem.productId
+                  ? item.productId === imageItem.productId
+                  : item.variantId === imageItem.variantId)
+                  ? { ...item, imageUrl }
+                  : item,
+              ),
+            );
+            void refreshItems().catch(() => {
+              toast.warning("Imagen guardada, pero no se pudo actualizar el almacén. Recarga la página.");
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

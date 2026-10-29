@@ -1,124 +1,24 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 /**
- * Tests: PacksPromosPage (app/packs-promos/page.tsx) — fixes del modal "Nuevo pack"
- *
- * Contexto de los cambios probados (se testea COMPORTAMIENTO de usuario, no
- * detalle de implementación):
- *
- * FIX 1 — `useProductCatalog` ya no gatea por `companyId`.
- *   Antes: `if (!companyId) { setProducts([]); return; }` dejaba el buscador de
- *   productos del modal vacío cuando `auth.company` era null/undefined (bug
- *   reportado). Ahora usa react-query (`queryKey: ["packs-catalog", debounced]`,
- *   debounce 350ms) y el backend deriva la empresa del JWT, así que el
- *   `<Combobox>` de "Producto" carga el catálogo aunque no haya empresa en el
- *   contexto de auth.
- *
- * FIX 1b — `useProductCatalog` acepta `options.enabled` para gatear la request.
- *   En `PackFormModal` la instancia del buscador de Volumen se crea con
- *   `useProductCatalog({ enabled: type === "VOLUME" })`. Como `type` inicializa
- *   en `editingPack?.type ?? "VOLUME"`, al editar un pack GIFT (o BUNDLE) el
- *   modal arranca con esa query `enabled: false` desde el primer render: no
- *   dispara el `GET /products/report` que ese tab no consume (GIFT usa
- *   `GiftSearchPicker`, otro service; el bundle monta su instancia por fila).
- *
- * FIX 2 — Tab "Bundle": lista dinámica de 2 a 10 productos (antes 2 fijos).
- *   - Botón "＋ Agregar producto" visible mientras hay < 10 filas.
- *   - Botón "×" (aria-label "Quitar producto N") por fila, visible mientras hay
- *     > 2 filas; con exactamente 2 no se puede bajar más.
- *   - `handleSave` rama BUNDLE valida: mínimo 2 productos con valor, distintos,
- *     máximo 10, todos resueltos y precio del pack < suma de PVP.
- *
- * FIX 3 — `GiftSearchPicker` (tab GIFT) migrado a react-query vía el hook interno
- *   `useGiftInventorySearch({ inventoryId, companyId })`. Antes hacía fetching
- *   manual (`useEffect` + `setTimeout` + `.then/.catch`) y tragaba el error en
- *   silencio. Ahora:
- *   - `useQuery({ queryKey: ["gift-inventory", inventoryId, companyId ?? null,
- *     debouncedQuery], enabled: !!inventoryId, staleTime: 30_000, placeholderData
- *     prev })`, con debounce de 350ms sobre el término.
- *   - `queryFn` llama a `searchInventoryItems({ inventoryId, companyId, q:
- *     debounced || undefined, page: 1, limit: 20 })`.
- *   - `enabled: !!inventoryId` → mientras `inventories[0]?.id` no resuelve
- *     (`inventoryId === ""`) la query no se dispara.
- *   - ante `isError`: `toast.error("No se pudo cargar el inventario para
- *     regalos.", { id: "gift-inventory-load-error" })`.
- *   `inventoryId` baja de `useAuth().inventories[0]?.id` (derivado en la página a
- *   `selectedInventory`).
- *
- * Comportamiento verificado:
- * 1. (FIX 1) Modal "Nuevo pack" con `auth.company = null` → pestaña Volumen → el
- *    Combobox de "Producto" ofrece las opciones de `getProducts` mockeado
- *    (el gate viejo ya no bloquea). Corazón del bug.
- * 2. (FIX 2) Tab Bundle arranca con 2 filas; "＋ Agregar producto" agrega hasta
- *    llegar a 10; al llegar a 10 el botón desaparece.
- * 3. (FIX 2) Con 2 filas no hay "×"; al pasar a 3 cada fila tiene "×"; quitar la
- *    fila del medio conserva la selección de las otras dos (keys estables).
- * 4. (FIX 2) Editar un BundlePack con 3 items (todos con `productId`) → el modal
- *    abre con 3 filas y cada Combobox muestra el producto ya elegido.
- * 5. (FIX 2) Editar un BundlePack legacy (items sin `productId`, solo
- *    `productKey`/`productName`) → abre con las 3 filas pobladas y los nombres
- *    visibles, no vacías.
- * 6. (FIX 2) Guardar un bundle con 1 solo producto → error "Un bundle requiere
- *    al menos 2 productos.". Guardar con precio ≥ suma de PVP → error de precio.
- * 7. (FIX 2 — happy path) Guardar un bundle válido (2 y 3 productos): se llama a
- *    `toast.success("Pack creado")`, el modal cierra y el pack queda persistido
- *    en `localStorage` (`powip.packs.local.<companyId>`) con `type: "BUNDLE"`,
- *    `items` con los `productId`/`price` de cada fila (en orden) y el `packPrice`
- *    elegido. Los BUNDLE van solo a localStorage, no tocan `promos.service`
- *    (ver `PacksContext.addPack`, rama `pack.type !== "VOLUME"`).
- * 8. (FIX 1 — rama de error) Si `getProducts` rechaza con un error genérico,
- *    `useProductCatalog` dispara `toast.error("No se pudo cargar el catálogo de
- *    productos.", { id: "packs-catalog-load-error-generic" })`. El id de sonner
- *    ahora lleva sufijo por caso (`-no-company` | `-generic`) para que el aviso
- *    "sin empresa" y el genérico no se pisen entre sí.
- * 9. (FIX 1 — dedupe) Con varias filas de bundle montadas y sin búsquedas
- *    distintas, todas las instancias del hook comparten
- *    `queryKey: ["packs-catalog", ""]` y react-query colapsa la carga del
- *    catálogo en una única llamada a `getProducts`.
- * 10. (FIX 1b — enabled gating) Editar un pack GIFT: el modal abre en el tab
- *    Regalo (`type === "GIFT"` desde el primer render), muestra sus controles
- *    propios ("Opciones de regalo", "Monto mínimo de compra") y no monta ningún
- *    `<select>` de producto. `getProducts` no se llama ni siquiera después de
- *    dejar correr la ventana del debounce de 350ms: la instancia del buscador
- *    de Volumen nace con `enabled: false` y react-query nunca invoca su queryFn.
- * 11. (FIX 3 — happy path) Editar un GiftPack con `inventories: [{ id: "inv-1" }]`
- *    → el modal abre en el tab Regalo con `GiftSearchPicker`. Al enfocar el
- *    buscador y tipear un término, tras la ventana de debounce (350ms) se llama
- *    a `searchInventoryItems` con `{ inventoryId: "inv-1", q: "<término>", page:
- *    1, limit: 20 }`, el dropdown lista los `productName` devueltos y al hacer
- *    click en uno aparece su chip "🎁 …" entre las opciones seleccionadas.
- * 12. (FIX 3 — enabled gating) Con `inventories: []` (`inventoryId === ""`),
- *    editar un GiftPack, enfocar y tipear en el buscador y dejar correr >350ms
- *    reales → `searchInventoryItems` no se llama nunca: `enabled: !!inventoryId`
- *    mantiene la query deshabilitada.
- * 13. (FIX 3 — rama de error) Si `searchInventoryItems` rechaza (con
- *    `inventories: [{ id: "inv-1" }]`), `useGiftInventorySearch` dispara
- *    `toast.error("No se pudo cargar el inventario para regalos.",
- *    { id: "gift-inventory-load-error" })` (id estable). El QueryClient de
- *    `renderPage()` ya trae `retry: false`.
- *
- * NOTA — `handleSave` rama BUNDLE llama a `crypto.randomUUID()` para el `id` de
- * un pack nuevo, y ese método no existe en el jsdom de jest-environment-jsdom 29.
- * El describe del happy path (7) lo define puntualmente en un `beforeAll` y
- * restaura el original en `afterAll`; el resto de los tests solo ejercita ramas
- * de validación que hacen `return` antes de esa línea.
- *
- * Work-arounds jsdom (mismo criterio que src/components/eva/__tests__/*):
- * - @/components/ui/dialog → contenedor plano visible cuando `open`. Como el
- *   mock no usa portal ni `aria-hidden`, la página de fondo (con sus botones de
- *   filtro "Volumen"/"Bundle"/...) sigue en el DOM: por eso las queries del
- *   modal se acotan con `within(getByTestId('pack-form-modal'))`.
- * - @/components/ui/combobox → `<select>` nativo (mismo rol accesible
- *   "combobox"): expone las `options` que le pasa el componente y reporta la
- *   selección por `onValueChange`. Radix Popover no funciona en jsdom.
- * - @/components/ui/checkbox → `<input type="checkbox">` nativo.
+ * PacksPromosPage: catálogo, formularios, variantes exactas y compatibilidad
+ * de bundles anteriores. BUNDLE usa una API compartida simulada; regalos
+ * conservan persistencia local y VOLUME conserva su servicio independiente.
+ * Los tests de aislamiento, importación, sesiones y tombstones viven en
+ * PacksContext.shared-bundles.test.tsx.
  */
 
 import React from 'react';
+import { tokenStore } from '@/lib/tokenStore';
 import { render, screen, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
+
+jest.mock('@/hooks/useBusinessInventories', () => ({ useBusinessInventories: () => {
+  const { auth, inventories } = require('@/contexts/AuthContext').useAuth();
+  return { inventories: inventories.map((inv: { id: string; name: string }) => ({ ...inv, storeId: 'owner-store' })), isPending: false, isError: false, refetch: jest.fn() };
+} }));
 
 jest.mock('sonner', () => ({
   toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn() },
@@ -136,6 +36,8 @@ jest.mock('@/contexts/AuthContext', () => ({
   useAuth: jest.fn(),
 }));
 
+jest.mock('@/lib/axiosAuth', () => ({ __esModule: true, default: { get: jest.fn() } }));
+
 jest.mock('@/api/Productos', () => ({
   getProducts: jest.fn(),
 }));
@@ -145,6 +47,27 @@ jest.mock('@/services/promos.service', () => ({
   createVolumePromo: jest.fn(),
   updatePromo: jest.fn(),
   deletePromo: jest.fn(),
+}));
+
+let mockSharedBundles: import('@/interfaces/IPack').BundlePack[] = [];
+jest.mock('@/services/bundlePromos.service', () => ({
+  listBundlePromos: jest.fn(async () => ({ bundles: mockSharedBundles, deletedIds: [] })),
+  getBundleCapabilities: jest.fn(async () => ({ canManage: true })),
+  importBundlePromos: jest.fn(async (bundles: import('@/interfaces/IPack').BundlePack[]) => {
+    const current = new Map(mockSharedBundles.map((pack) => [pack.id, pack]));
+    for (const pack of bundles) if (!current.has(pack.id)) current.set(pack.id, { ...pack, shared: true, synced: false });
+    mockSharedBundles = [...current.values()];
+    return { acceptedIds: bundles.map((pack) => pack.id), bundles: mockSharedBundles };
+  }),
+  createBundlePromo: jest.fn(async (pack: import('@/interfaces/IPack').BundlePack) => {
+    const saved = { ...pack, shared: true, synced: false };
+    mockSharedBundles.push(saved); return saved;
+  }),
+  updateBundlePromo: jest.fn(async (id: string, pack: import('@/interfaces/IPack').BundlePack) => {
+    const saved = { ...pack, id, shared: true, synced: false };
+    mockSharedBundles = mockSharedBundles.map((value) => value.id === id ? saved : value); return saved;
+  }),
+  deleteBundlePromo: jest.fn(async (id: string) => { mockSharedBundles = mockSharedBundles.filter((pack) => pack.id !== id); }),
 }));
 
 jest.mock('@/services/inventoryItems.service', () => ({
@@ -172,14 +95,17 @@ jest.mock('@/components/ui/combobox', () => {
     onValueChange,
     options,
     placeholder,
+    disabled,
   }: {
     value?: string;
     onValueChange?: (v: string) => void;
     options?: { value: string; label: string }[];
     placeholder?: string;
+    disabled?: boolean;
   }) => (
     <select
       aria-label={placeholder}
+      disabled={disabled}
       value={value ?? ''}
       onChange={(e) => onValueChange?.(e.target.value)}
     >
@@ -215,6 +141,7 @@ jest.mock('@/components/ui/checkbox', () => {
 // ── Imports bajo prueba (después de los mocks) ───────────────────────────────
 
 import { AxiosError } from 'axios';
+import axiosAuth from '@/lib/axiosAuth';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { getProducts } from '@/api/Productos';
@@ -229,6 +156,7 @@ import PacksPromosPage from '../page';
 
 const mockUseAuth = jest.mocked(useAuth);
 const mockGetProducts = jest.mocked(getProducts);
+const mockGetVariants = jest.mocked(axiosAuth.get);
 const mockListVolumePromos = jest.mocked(listVolumePromos);
 const mockCreateVolumePromo = jest.mocked(createVolumePromo);
 const mockSearchInventoryItems = jest.mocked(searchInventoryItems);
@@ -364,17 +292,31 @@ async function openEditModal(user: User, packName: string) {
 
 type Modal = Awaited<ReturnType<typeof openNewPackModal>>;
 
+async function selectBundleVariant(modal: Modal, user: User, row: number, variantId: string) {
+  const selector = modal.getByRole('combobox', { name: `Variante ${row}...` });
+  await waitFor(() => expect(within(selector).getAllByRole('option', { name: /SKU/ }).length).toBeGreaterThan(0));
+  await user.selectOptions(selector, variantId);
+}
+
 // ── Setup ───────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
   jest.clearAllMocks();
   window.localStorage.clear();
+  mockSharedBundles = [];
+  tokenStore.invalidate();
+  tokenStore.set('tok', COMPANY_ID);
   mockUseAuth.mockReturnValue(
     authValue({ id: COMPANY_ID, name: 'ACME' }) as unknown as ReturnType<
       typeof useAuth
     >,
   );
   mockGetProducts.mockResolvedValue([]);
+  mockGetVariants.mockImplementation(async (url) => {
+    const productId = String(url).split('/').pop()!;
+    const prices: Record<string, number> = { pa: 10, pb: 20, pc: 30 };
+    return { data: [{ id: `v-${productId}`, sku: `SKU-${productId}`, attributeValues: {}, priceVta: prices[productId] ?? 10, isActive: true }] };
+  });
   mockListVolumePromos.mockResolvedValue([]);
   // Default seguro: `searchInventoryItems` (buscador de regalos del tab GIFT) no
   // se ejercita en estos tests, pero sin retorno rompería si algún flujo lo
@@ -487,21 +429,21 @@ describe('PacksPromosPage — tab Bundle: filas dinámicas de producto (FIX 2)',
     await user.click(modal.getByRole('button', { name: /bundle/i }));
 
     await waitFor(() =>
-      expect(modal.getAllByRole('combobox')).toHaveLength(2),
+      expect(modal.getAllByRole('combobox', { name: /^Producto \d/ })).toHaveLength(2),
     );
 
     for (let filas = 3; filas <= 10; filas++) {
       await user.click(
         modal.getByRole('button', { name: /agregar producto/i }),
       );
-      expect(modal.getAllByRole('combobox')).toHaveLength(filas);
+      expect(modal.getAllByRole('combobox', { name: /^Producto \d/ })).toHaveLength(filas);
     }
 
     // Con 10 filas el botón de agregar ya no se muestra.
     expect(
       modal.queryByRole('button', { name: /agregar producto/i }),
     ).not.toBeInTheDocument();
-    expect(modal.getAllByRole('combobox')).toHaveLength(10);
+    expect(modal.getAllByRole('combobox', { name: /^Producto \d/ })).toHaveLength(10);
   });
 
   it('el botón "×" aparece solo con 3+ filas y quitar la fila del medio conserva las demás', async () => {
@@ -517,7 +459,7 @@ describe('PacksPromosPage — tab Bundle: filas dinámicas de producto (FIX 2)',
     await user.click(modal.getByRole('button', { name: /bundle/i }));
 
     await waitFor(() =>
-      expect(modal.getAllByRole('combobox')).toHaveLength(2),
+      expect(modal.getAllByRole('combobox', { name: /^Producto \d/ })).toHaveLength(2),
     );
     // Con exactamente 2 filas no se puede bajar más: no hay "×".
     expect(
@@ -532,16 +474,19 @@ describe('PacksPromosPage — tab Bundle: filas dinámicas de producto (FIX 2)',
 
     // Elegimos un producto distinto en cada fila.
     await waitFor(() =>
-      expect(modal.getAllByRole('combobox')[0]).toHaveTextContent(/Producto A/),
+      expect(modal.getAllByRole('combobox', { name: /^Producto \d/ })[0]).toHaveTextContent(/Producto A/),
     );
-    await user.selectOptions(modal.getAllByRole('combobox')[0], 'pa');
-    await user.selectOptions(modal.getAllByRole('combobox')[1], 'pb');
-    await user.selectOptions(modal.getAllByRole('combobox')[2], 'pc');
+    await user.selectOptions(modal.getAllByRole('combobox', { name: /^Producto \d/ })[0], 'pa');
+    await user.selectOptions(modal.getAllByRole('combobox', { name: /^Producto \d/ })[1], 'pb');
+    await selectBundleVariant(modal, user, 1, 'v-pa');
+    await selectBundleVariant(modal, user, 2, 'v-pb');
+    await user.selectOptions(modal.getAllByRole('combobox', { name: /^Producto \d/ })[2], 'pc');
+    await selectBundleVariant(modal, user, 3, 'v-pc');
 
     // Quitamos la fila del medio.
     await user.click(modal.getByRole('button', { name: 'Quitar producto 2' }));
 
-    const selects = modal.getAllByRole('combobox');
+    const selects = modal.getAllByRole('combobox', { name: /^Producto \d/ });
     expect(selects).toHaveLength(2);
     expect(selects[0]).toHaveValue('pa');
     expect(selects[1]).toHaveValue('pc');
@@ -575,9 +520,9 @@ describe('PacksPromosPage — tab Bundle: filas dinámicas de producto (FIX 2)',
     const modal = await openEditModal(user, 'Combo Trío');
 
     await waitFor(() =>
-      expect(modal.getAllByRole('combobox')).toHaveLength(3),
+      expect(modal.getAllByRole('combobox', { name: /^Producto \d/ })).toHaveLength(3),
     );
-    const selects = modal.getAllByRole('combobox');
+    const selects = modal.getAllByRole('combobox', { name: /^Producto \d/ });
 
     expect(selects[0]).toHaveTextContent(/Polo Rojo/);
     expect(selects[1]).toHaveTextContent(/Short Azul/);
@@ -610,9 +555,9 @@ describe('PacksPromosPage — tab Bundle: filas dinámicas de producto (FIX 2)',
     const modal = await openEditModal(user, 'Combo Clásico');
 
     await waitFor(() =>
-      expect(modal.getAllByRole('combobox')).toHaveLength(3),
+      expect(modal.getAllByRole('combobox', { name: /^Producto \d/ })).toHaveLength(3),
     );
-    const selects = modal.getAllByRole('combobox');
+    const selects = modal.getAllByRole('combobox', { name: /^Producto \d/ });
 
     expect(selects[0]).toHaveTextContent(/Camisa Beige/);
     expect(selects[1]).toHaveTextContent(/Pantalón Gris/);
@@ -646,9 +591,9 @@ describe('PacksPromosPage — validación de bundle al guardar (FIX 2)', () => {
     await fillNameAndChannel(modal, user, 'Mi bundle');
 
     await waitFor(() =>
-      expect(modal.getAllByRole('combobox')[0]).toHaveTextContent(/Producto A/),
+      expect(modal.getAllByRole('combobox', { name: /^Producto \d/ })[0]).toHaveTextContent(/Producto A/),
     );
-    await user.selectOptions(modal.getAllByRole('combobox')[0], 'pa');
+    await user.selectOptions(modal.getAllByRole('combobox', { name: /^Producto \d/ })[0], 'pa');
 
     await user.click(modal.getByRole('button', { name: /guardar pack/i }));
 
@@ -670,10 +615,12 @@ describe('PacksPromosPage — validación de bundle al guardar (FIX 2)', () => {
     await fillNameAndChannel(modal, user, 'Bundle caro');
 
     await waitFor(() =>
-      expect(modal.getAllByRole('combobox')[0]).toHaveTextContent(/Producto A/),
+      expect(modal.getAllByRole('combobox', { name: /^Producto \d/ })[0]).toHaveTextContent(/Producto A/),
     );
-    await user.selectOptions(modal.getAllByRole('combobox')[0], 'pa');
-    await user.selectOptions(modal.getAllByRole('combobox')[1], 'pb');
+    await user.selectOptions(modal.getAllByRole('combobox', { name: /^Producto \d/ })[0], 'pa');
+    await user.selectOptions(modal.getAllByRole('combobox', { name: /^Producto \d/ })[1], 'pb');
+    await selectBundleVariant(modal, user, 1, 'v-pa');
+    await selectBundleVariant(modal, user, 2, 'v-pb');
 
     // PVP total = 10 + 20 = 30; ponemos 100 en el precio del bundle.
     await user.type(modal.getByRole('spinbutton'), '100');
@@ -729,11 +676,10 @@ describe('PacksPromosPage — guardar un bundle válido (FIX 2, happy path)', ()
   }
 
   function readStoredBundles(): BundlePack[] {
-    const raw = window.localStorage.getItem(`powip.packs.local.${COMPANY_ID}`);
-    return raw ? (JSON.parse(raw) as BundlePack[]) : [];
+    return mockSharedBundles.filter((pack) => pack.schemaVersion === 2);
   }
 
-  it('guarda un bundle de 2 productos: toast.success, modal cerrado y pack persistido en localStorage', async () => {
+  it('guarda un bundle de 2 productos: toast.success, modal cerrado y pack compartido en el servidor', async () => {
     mockGetProducts.mockResolvedValue([
       mkProduct('pa', 'Producto A', 10),
       mkProduct('pb', 'Producto B', 20),
@@ -746,10 +692,12 @@ describe('PacksPromosPage — guardar un bundle válido (FIX 2, happy path)', ()
     await fillNameAndChannel(modal, user, 'Combo Dúo');
 
     await waitFor(() =>
-      expect(modal.getAllByRole('combobox')[0]).toHaveTextContent(/Producto A/),
+      expect(modal.getAllByRole('combobox', { name: /^Producto \d/ })[0]).toHaveTextContent(/Producto A/),
     );
-    await user.selectOptions(modal.getAllByRole('combobox')[0], 'pa');
-    await user.selectOptions(modal.getAllByRole('combobox')[1], 'pb');
+    await user.selectOptions(modal.getAllByRole('combobox', { name: /^Producto \d/ })[0], 'pa');
+    await user.selectOptions(modal.getAllByRole('combobox', { name: /^Producto \d/ })[1], 'pb');
+    await selectBundleVariant(modal, user, 1, 'v-pa');
+    await selectBundleVariant(modal, user, 2, 'v-pb');
 
     // PVP total = 10 + 20 = 30; el bundle sale 25 (< 30) → válido.
     await user.type(modal.getByRole('spinbutton'), '25');
@@ -762,10 +710,10 @@ describe('PacksPromosPage — guardar un bundle válido (FIX 2, happy path)', ()
     await waitFor(() =>
       expect(screen.queryByTestId('pack-form-modal')).not.toBeInTheDocument(),
     );
-    // Los BUNDLE se persisten solo en localStorage: no tocan la Promos API.
+    // BUNDLE usa su recurso compartido y no modifica promos VOLUME.
     expect(mockCreateVolumePromo).not.toHaveBeenCalled();
 
-    // Persistencia en localStorage con el shape correcto.
+    // Persistencia compartida con el mismo shape de variantes.
     await waitFor(() => expect(readStoredBundles()).toHaveLength(1));
     const [stored] = readStoredBundles();
     expect(stored).toMatchObject({
@@ -796,15 +744,18 @@ describe('PacksPromosPage — guardar un bundle válido (FIX 2, happy path)', ()
     // Tercera fila desde "＋ Agregar producto" (lista dinámica de FIX 2).
     await user.click(modal.getByRole('button', { name: /agregar producto/i }));
     await waitFor(() =>
-      expect(modal.getAllByRole('combobox')).toHaveLength(3),
+      expect(modal.getAllByRole('combobox', { name: /^Producto \d/ })).toHaveLength(3),
     );
     await waitFor(() =>
-      expect(modal.getAllByRole('combobox')[2]).toHaveTextContent(/Producto C/),
+      expect(modal.getAllByRole('combobox', { name: /^Producto \d/ })[2]).toHaveTextContent(/Producto C/),
     );
 
-    await user.selectOptions(modal.getAllByRole('combobox')[0], 'pa');
-    await user.selectOptions(modal.getAllByRole('combobox')[1], 'pb');
-    await user.selectOptions(modal.getAllByRole('combobox')[2], 'pc');
+    await user.selectOptions(modal.getAllByRole('combobox', { name: /^Producto \d/ })[0], 'pa');
+    await user.selectOptions(modal.getAllByRole('combobox', { name: /^Producto \d/ })[1], 'pb');
+    await selectBundleVariant(modal, user, 1, 'v-pa');
+    await selectBundleVariant(modal, user, 2, 'v-pb');
+    await user.selectOptions(modal.getAllByRole('combobox', { name: /^Producto \d/ })[2], 'pc');
+    await selectBundleVariant(modal, user, 3, 'v-pc');
 
     // PVP total = 10 + 20 + 30 = 60; el bundle sale 45 (< 60) → válido.
     await user.type(modal.getByRole('spinbutton'), '45');
@@ -833,6 +784,206 @@ describe('PacksPromosPage — guardar un bundle válido (FIX 2, happy path)', ()
 });
 
 // ── FIX 1 — rama de error: falla la carga del catálogo ─────────────────────
+
+describe('PacksPromosPage — bundles con variantes exactas', () => {
+  const variantsKey = `powip.packs.variants.v1.${COMPANY_ID}`;
+  const legacyKey = `powip.packs.local.${COMPANY_ID}`;
+  const supplementVariants = [
+    { id: 'mag-150', sku: 'MAG-150', attributeValues: { Tamaño: '150 gramos' }, priceVta: '49.00', isActive: true },
+    { id: 'mag-300', sku: 'MAG-300', attributeValues: { Tamaño: '300 gramos' }, priceVta: '79.00', isActive: true },
+  ];
+  const secondVariant = { id: 'vit-1', sku: 'VIT-1', attributeValues: { Sabor: 'Naranja' }, priceVta: 20, isActive: true };
+
+  function readVariants(): BundlePack[] {
+    return mockSharedBundles.filter((pack) => pack.schemaVersion === 2);
+  }
+
+  function legacyBundle(withIds = true): BundlePack {
+    return {
+      id: 'legacy-salud', type: 'BUNDLE', name: 'Kit anterior', active: true, channels: ['TIENDA_FISICA'], packPrice: 60,
+      items: [
+        { ...(withIds ? { productId: 'mag' } : {}), productKey: 'Magnesio', productName: 'Magnesio', price: 49 },
+        { ...(withIds ? { productId: 'vit' } : {}), productKey: 'Vitamina', productName: 'Vitamina', price: 20 },
+      ],
+    };
+  }
+
+  beforeEach(() => {
+    Object.defineProperty(globalThis.crypto, 'randomUUID', { configurable: true, value: () => 'bundle-exacto' });
+    mockGetProducts.mockResolvedValue([mkProduct('mag', 'Magnesio', 49), mkProduct('vit', 'Vitamina', 20)]);
+    mockGetVariants.mockImplementation(async (url) => ({
+      data: String(url).endsWith('/mag') ? supplementVariants : [secondVariant],
+    }));
+  });
+
+  async function newBundle(user: User) {
+    const modal = await openNewPackModal(user);
+    await user.click(modal.getByRole('button', { name: /bundle/i }));
+    await user.type(modal.getByPlaceholderText(/Pantalón Denim/), 'Kit salud');
+    await user.click(modal.getByRole('checkbox', { name: /tienda fisica/i }));
+    await waitFor(() => expect(modal.getByRole('combobox', { name: 'Producto 1...' })).toHaveTextContent('Magnesio'));
+    await user.selectOptions(modal.getByRole('combobox', { name: 'Producto 1...' }), 'mag');
+    await user.selectOptions(modal.getByRole('combobox', { name: 'Producto 2...' }), 'vit');
+    return modal;
+  }
+
+  it('permite elegir 300 gramos, usa su precio y conserva variante/atributos/SKU al recargar y editar', async () => {
+    const user = userEvent.setup();
+    const view = renderPage();
+    let modal = await newBundle(user);
+    const selector = modal.getByRole('combobox', { name: 'Variante 1...' });
+    await waitFor(() => expect(selector).toHaveTextContent('Tamaño: 300 gramos · SKU: MAG-300 — S/ 79.00'));
+    expect(selector).toHaveTextContent('Tamaño: 150 gramos · SKU: MAG-150 — S/ 49.00');
+    expect(selector).toHaveValue('');
+    await user.selectOptions(selector, 'mag-300');
+    await selectBundleVariant(modal, user, 2, 'vit-1');
+    // 80 is above the product report's 49 + 20 but below the selected 79 + 20.
+    await user.type(modal.getByRole('spinbutton'), '80');
+    await user.click(modal.getByRole('button', { name: /guardar pack/i }));
+    await waitFor(() => expect(readVariants()).toHaveLength(1));
+    expect(readVariants()[0]).toMatchObject({
+      schemaVersion: 2, packPrice: 80,
+      items: [
+        { productId: 'mag', variantId: 'mag-300', sku: 'MAG-300', attributes: { Tamaño: '300 gramos' }, price: 79 },
+        { productId: 'vit', variantId: 'vit-1', sku: 'VIT-1', attributes: { Sabor: 'Naranja' }, price: 20 },
+      ],
+    });
+    expect(JSON.parse(window.localStorage.getItem(legacyKey) ?? '[]')).toEqual([]);
+    expect(mockGetVariants).toHaveBeenCalledWith(expect.stringMatching(/\/product-variant\/by-product\/mag$/));
+    view.unmount();
+    renderPage();
+    expect(await screen.findByText(/Magnesio \(Tamaño: 300 gramos · SKU: MAG-300\)/)).toBeInTheDocument();
+    modal = await openEditModal(user, 'Kit salud');
+    expect(modal.getByRole('combobox', { name: 'Variante 1...' })).toHaveValue('mag-300');
+    await selectBundleVariant(modal, user, 1, 'mag-150');
+    await user.clear(modal.getByRole('spinbutton'));
+    await user.type(modal.getByRole('spinbutton'), '60');
+    await user.click(modal.getByRole('button', { name: /guardar pack/i }));
+    await waitFor(() => expect(readVariants()[0].items[0]).toMatchObject({ variantId: 'mag-150', price: 49, sku: 'MAG-150', attributes: { Tamaño: '150 gramos' } }));
+    expect(mockToast.success).toHaveBeenCalledWith('Pack actualizado');
+  });
+
+  it('exige selección explícita aunque el segundo producto tenga una sola variante', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const modal = await newBundle(user);
+    await selectBundleVariant(modal, user, 1, 'mag-300');
+    await waitFor(() => expect(modal.getByRole('combobox', { name: 'Variante 2...' })).toHaveTextContent('VIT-1'));
+    expect(modal.getByRole('combobox', { name: 'Variante 2...' })).toHaveValue('');
+    await user.type(modal.getByRole('spinbutton'), '60');
+    await user.click(modal.getByRole('button', { name: /guardar pack/i }));
+    expect(await modal.findByText(/selecciona una variante específica para cada producto/i)).toBeInTheDocument();
+    expect(readVariants()).toEqual([]);
+  });
+
+  it('cambiar producto limpia su variante y mantiene la regla de productos distintos', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const modal = await newBundle(user);
+    await selectBundleVariant(modal, user, 1, 'mag-300');
+    await user.selectOptions(modal.getByRole('combobox', { name: 'Producto 1...' }), 'vit');
+    expect(modal.getByRole('combobox', { name: 'Variante 1...' })).toHaveValue('');
+    expect(modal.getByRole('combobox', { name: 'Variante 1...' })).not.toHaveTextContent('MAG-300');
+    await user.type(modal.getByRole('spinbutton'), '30');
+    await user.click(modal.getByRole('button', { name: /guardar pack/i }));
+    expect(await modal.findByText(/los productos del bundle deben ser distintos/i)).toBeInTheDocument();
+    expect(readVariants()).toEqual([]);
+  });
+
+  it('muestra el alcance anterior y permite renombrar sin inventar variantes ni convertirlo', async () => {
+    const original = legacyBundle(false);
+    seedLocalPacks(COMPANY_ID, [original]);
+    const user = userEvent.setup();
+    renderPage();
+    expect(await screen.findByText(/bundle anterior: aplica por producto/i)).toBeInTheDocument();
+    const modal = await openEditModal(user, original.name);
+    expect(modal.getByText(/puedes cambiar nombre, canales o precio conservándolo/i)).toBeInTheDocument();
+    expect(mockGetVariants).not.toHaveBeenCalled();
+    await user.clear(modal.getByPlaceholderText(/Pantalón Denim/));
+    await user.type(modal.getByPlaceholderText(/Pantalón Denim/), 'Kit renombrado');
+    await user.click(modal.getByRole('button', { name: /guardar pack/i }));
+    await waitFor(() => expect(screen.queryByTestId('pack-form-modal')).not.toBeInTheDocument());
+    const [saved] = mockSharedBundles;
+    expect(saved).toEqual({ ...original, name: 'Kit renombrado', shared: true, synced: false });
+    expect(saved).not.toHaveProperty('schemaVersion');
+    expect(readVariants()).toEqual([]);
+  });
+
+  it('convierte un bundle anterior solo después de elegir todas las variantes', async () => {
+    seedLocalPacks(COMPANY_ID, [legacyBundle()]);
+    const user = userEvent.setup();
+    renderPage();
+    const modal = await openEditModal(user, 'Kit anterior');
+    await waitFor(() => expect(modal.getByRole('combobox', { name: 'Variante 1...' })).toHaveTextContent('MAG-300'));
+    expect(modal.getByRole('combobox', { name: 'Variante 1...' })).toHaveValue('');
+    await selectBundleVariant(modal, user, 1, 'mag-300');
+    expect(modal.getByText(/estás convirtiendo este bundle/i)).toBeInTheDocument();
+    await user.click(modal.getByRole('button', { name: /guardar pack/i }));
+    expect(await modal.findByText(/selecciona una variante específica para cada producto/i)).toBeInTheDocument();
+    expect(readVariants()).toEqual([]);
+    await selectBundleVariant(modal, user, 2, 'vit-1');
+    await user.click(modal.getByRole('button', { name: /guardar pack/i }));
+    await waitFor(() => expect(readVariants()).toHaveLength(1));
+    expect(readVariants()[0]).toMatchObject({ id: 'legacy-salud', schemaVersion: 2 });
+    expect(JSON.parse(window.localStorage.getItem(legacyKey) ?? '[]')).toEqual([]);
+  });
+
+  it('un error al pedir variantes ofrece reintento y no escoge otra presentación', async () => {
+    mockGetVariants.mockRejectedValue(new AxiosError('unavailable', 'ERR_BAD_RESPONSE', undefined, undefined, { status: 403 } as never));
+    const user = userEvent.setup();
+    renderPage();
+    const modal = await newBundle(user);
+    await waitFor(() => expect(modal.getAllByRole('button', { name: /reintentar variantes/i })).toHaveLength(2));
+    expect(modal.getByRole('combobox', { name: 'Variante 1...' })).toBeDisabled();
+    mockGetVariants.mockResolvedValue({ data: supplementVariants });
+    await user.click(modal.getAllByRole('button', { name: /reintentar variantes/i })[0]);
+    await waitFor(() => expect(modal.getByRole('combobox', { name: 'Variante 1...' })).toHaveTextContent('MAG-300'));
+    expect(modal.getByRole('combobox', { name: 'Variante 1...' })).toHaveValue('');
+    expect(readVariants()).toEqual([]);
+  });
+
+  it('no ofrece variantes inactivas o con precios inválidos', async () => {
+    mockGetVariants.mockResolvedValue({ data: [
+      ...supplementVariants,
+      { ...supplementVariants[0], id: 'inactive', sku: 'INACTIVE', isActive: false },
+      { ...supplementVariants[0], id: 'bad-price', sku: 'BAD-PRICE', priceVta: 'invalid' },
+    ] });
+    const user = userEvent.setup();
+    renderPage();
+    const modal = await newBundle(user);
+    const selector = modal.getByRole('combobox', { name: 'Variante 1...' });
+    await waitFor(() => expect(selector).toHaveTextContent('MAG-300'));
+    expect(selector).not.toHaveTextContent('INACTIVE');
+    expect(selector).not.toHaveTextContent('BAD-PRICE');
+  });
+
+  it('no consulta variantes sin una sesión autenticada', async () => {
+    const value = authValue({ id: COMPANY_ID, name: 'ACME' });
+    mockUseAuth.mockReturnValue({ ...value, auth: { ...value.auth, accessToken: '' } } as unknown as ReturnType<typeof useAuth>);
+    seedLocalPacks(COMPANY_ID, [legacyBundle()]);
+    const user = userEvent.setup();
+    renderPage();
+    expect(await screen.findByText('Kit anterior')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /editar/i })).not.toBeInTheDocument();
+    expect(mockGetVariants).not.toHaveBeenCalled();
+  });
+
+  it('limpia los componentes del formulario al cambiar de empresa', async () => {
+    const user = userEvent.setup();
+    const view = renderPage();
+    const modal = await newBundle(user);
+    await selectBundleVariant(modal, user, 1, 'mag-300');
+    mockUseAuth.mockReturnValue(authValue({ id: 'company-2', name: 'Otra empresa' }) as unknown as ReturnType<typeof useAuth>);
+    view.rerender(<QueryClientProvider client={new QueryClient()}><PacksPromosPage /></QueryClientProvider>);
+    const freshModal = within(await screen.findByTestId('pack-form-modal'));
+    expect(freshModal.getByPlaceholderText(/Pantalón Denim/)).toHaveValue('');
+    await user.click(freshModal.getByRole('button', { name: /bundle/i }));
+    await waitFor(() => expect(freshModal.getByRole('combobox', { name: 'Producto 1...' })).toHaveTextContent('Magnesio'));
+    expect(freshModal.getByRole('combobox', { name: 'Producto 1...' })).toHaveValue('');
+    expect(freshModal.queryByRole('combobox', { name: 'Variante 1...' })).not.toBeInTheDocument();
+    expect(window.localStorage.getItem('powip.packs.variants.v1.company-2')).toBe('[]');
+  });
+});
 
 describe('PacksPromosPage — error al cargar el catálogo de productos (FIX 1)', () => {
   it('dispara toast.error genérico (id "...-generic") cuando getProducts rechaza', async () => {
@@ -930,12 +1081,12 @@ describe('PacksPromosPage — catálogo: 403 "sin empresa" vs error genérico (h
 
     // Las filas del bundle montan (2 comboboxes) y la nota convive con ellas.
     await waitFor(() =>
-      expect(modal.getAllByRole('combobox')).toHaveLength(2),
+      expect(modal.getAllByRole('combobox', { name: /^Producto \d/ })).toHaveLength(2),
     );
     const note = await modal.findByText(NO_COMPANY_NOTE);
 
     // "arriba de": la nota precede en el DOM al primer selector de producto.
-    const firstRow = modal.getAllByRole('combobox')[0];
+    const firstRow = modal.getAllByRole('combobox', { name: /^Producto \d/ })[0];
     expect(
       note.compareDocumentPosition(firstRow) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -998,14 +1149,14 @@ describe('PacksPromosPage — dedupe del catálogo por queryKey compartida (FIX 
     await user.click(modal.getByRole('button', { name: /bundle/i }));
 
     await waitFor(() =>
-      expect(modal.getAllByRole('combobox')).toHaveLength(2),
+      expect(modal.getAllByRole('combobox', { name: /^Producto \d/ })).toHaveLength(2),
     );
 
     // Hasta 4 filas de bundle: 4 instancias de useProductCatalog + la del tab
     // Volumen, todas con queryKey ["packs-catalog", ""] (sin tipear búsquedas).
     await user.click(modal.getByRole('button', { name: /agregar producto/i }));
     await user.click(modal.getByRole('button', { name: /agregar producto/i }));
-    expect(modal.getAllByRole('combobox')).toHaveLength(4);
+    expect(modal.getAllByRole('combobox', { name: /^Producto \d/ })).toHaveLength(4);
 
     // react-query colapsa la request compartida en una sola.
     await waitFor(() => expect(mockGetProducts).toHaveBeenCalledTimes(1));

@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import { useState, useMemo } from "react";
+import { useMetricOrders } from "@/hooks/useMetricOrders";
 import {
   ResponsiveContainer,
   BarChart,
@@ -13,7 +12,6 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
-  LineChart,
   Line,
   PieChart,
   Pie,
@@ -21,7 +19,7 @@ import {
   AreaChart,
 } from "recharts";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
-import { format, differenceInDays } from "date-fns";
+import { format, parseISO, differenceInDays } from "date-fns";
 
 /* ─────────────────── Constants ─────────────────── */
 
@@ -62,9 +60,7 @@ const DAY_LABELS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 /* ─────────────────── Component ─────────────────── */
 
 export default function MetricasOperacionesPage() {
-  const { selectedStoreId } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [orders, setOrders] = useState<any[]>([]);
+  const { orders, loading, error, retry } = useMetricOrders();
 
   // Date range
   const [fromDate, setFromDate] = useState<string>("");
@@ -77,31 +73,12 @@ export default function MetricasOperacionesPage() {
 
   const periodDates = useMemo(() => {
     if (!fromDate || !toDate) return { from: new Date(), to: new Date() };
-    const from = new Date(fromDate);
+    const from = parseISO(fromDate);
     from.setHours(0, 0, 0, 0);
-    const to = new Date(toDate);
+    const to = parseISO(toDate);
     to.setHours(23, 59, 59, 999);
     return { from, to };
   }, [fromDate, toDate]);
-
-  // Fetch orders
-  useEffect(() => {
-    if (!selectedStoreId) return;
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const res = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
-        );
-        setOrders(res.data || []);
-      } catch (error) {
-        console.error("Error fetching orders for operations:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [selectedStoreId]);
 
   // Filter orders for the period
   const periodOrders = useMemo(
@@ -243,11 +220,11 @@ export default function MetricasOperacionesPage() {
     for (let i = diff; i >= 0; i--) {
       const d = new Date(periodDates.to);
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split("T")[0];
+      const dateStr = format(d, "yyyy-MM-dd");
       const dayLabel = d.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
 
       const dayOrders = orders.filter((o) => {
-        const od = new Date(o.created_at).toISOString().split("T")[0];
+        const od = format(new Date(o.created_at), "yyyy-MM-dd");
         return od === dateStr;
       });
 
@@ -278,7 +255,12 @@ export default function MetricasOperacionesPage() {
       .filter((o) => o.status === "ANULADO")
       .forEach((o) => {
         // Use notes for specific reason if available
-        const reason = o.notes || o.cancellationReason?.reason || o.cancellationReason || "Sin motivo";
+        const cancellationReason: unknown = o.cancellationReason;
+        const reason = o.notes || (
+          typeof cancellationReason === "object" && cancellationReason !== null && "reason" in cancellationReason
+            ? cancellationReason.reason
+            : cancellationReason
+        ) || "Sin motivo";
         const label = typeof reason === "string" ? reason : "Sin motivo";
         reasons[label] = (reasons[label] || 0) + 1;
       });
@@ -334,6 +316,15 @@ export default function MetricasOperacionesPage() {
         </div>
       </div>
 
+      {error ? (
+        <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+          <p className="text-sm text-destructive">No se pudieron cargar las métricas de operaciones.</p>
+          <button type="button" onClick={retry} className="mt-2 text-sm font-semibold underline">
+            Reintentar
+          </button>
+        </div>
+      ) : (
+      <>
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* En Cola */}
@@ -685,6 +676,8 @@ export default function MetricasOperacionesPage() {
           )}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

@@ -1,4 +1,6 @@
-import { Client } from "./ICliente";
+import type { InventoryUnit, TrackingMode } from "@/services/inventoryTrackingService";
+import type { UnitAssignmentState } from "@/services/saleTrackingService";
+import type { Client } from "./ICliente";
 
 export interface IOrder {
   id: string;
@@ -27,6 +29,9 @@ export interface IOrder {
 }
 
 export interface CartItem {
+  trackingMode?: TrackingMode | "UNKNOWN";
+  unitIds?: string[];
+  units?: InventoryUnit[];
   id: string;
   inventoryItemId: string;
   variantId: string;
@@ -117,6 +122,9 @@ export interface OrderCustomer {
 }
 
 export interface OrderItem {
+  trackingMode?: TrackingMode | "UNKNOWN";
+  unitIds?: string[];
+  units?: InventoryUnit[];
   id: string;
   productVariantId: string;
   sku: string;
@@ -149,15 +157,36 @@ export interface OrderPayment {
 /* -----------------------------------------
    OrderHeader (principal)
 ----------------------------------------- */
-export interface OrderHeader {
+export interface OrderHeader extends UnitAssignmentState {
   id: string;
   waLastNotice?: unknown;
+  currency?: string | null;
+  commercialStage?: "LEAD" | "SALE" | null;
+  commercialLeadId?: string | null;
+  commercialLead?: {
+    receivedAt?: string;
+    updatedAt?: string;
+    status: "NUEVO" | "CONTACTADO" | "SEGUIMIENTO" | "PERDIDO" | "CONVERTIDO";
+    confirmedAt: string | null;
+    confirmedBy: string | null;
+    confirmationBasis: "SELLER" | "WEB_PREPAID" | "LEGACY_VERIFIED" | null;
+  } | null;
+  commercialStockState?: "DEFERRED" | "QUEUED" | "PRESERVED" | "NOT_REQUIRED" | null;
+  shopifyCommercialGate?: boolean | null;
+  commercialCommittedAt?: string | null;
   receiptType: ReceiptType;
   orderType: OrderType;
   orderNumber: string;
   storeId: string;
+  storeName?: string;
+  stockStoreName?: string;
+  inventoryId?: string | null;
+  stockStoreId?: string | null;
+  stockVersion?: number;
   customer: Client;
   salesChannel: SalesChannel;
+  salesChannelId?: string | null;
+  salesChannelType?: string | null;
   closingChannel: SalesChannel;
   deliveryType: DeliveryType;
   courierId: string | null;
@@ -176,6 +205,7 @@ export interface OrderHeader {
   callAttempts?: number;
   cancellationReason: string | null;
   notes: string | null;
+  customerNotes?: string | null;
   items: OrderItem[];
   payments: OrderPayment[];
   hasStockIssue?: boolean;
@@ -264,7 +294,10 @@ export interface CanalConfig {
   empresaId: string | null;
   canalNombre: string;
   canalLabel: string;
-  flujoEntrada: "directo_operaciones" | "call_center_cod" | "call_center_carrito";
+  flujoEntrada:
+    | "directo_operaciones"
+    | "call_center_cod"
+    | "call_center_carrito";
   requiereConfirmacionCc: boolean;
   activo: boolean;
   datosRequeridos: string[];
@@ -367,40 +400,40 @@ export interface CcUpsellResponse {
 }
 
 export interface CcKpisFunnelDistribucionBucket {
-  count:      number;
+  count: number;
   percentage: number;
 }
 
 export interface CcKpisFunnelDistribucion {
-  total:       number;
-  pendiente:   CcKpisFunnelDistribucionBucket;
-  confirmado:  CcKpisFunnelDistribucionBucket;
-  noContesta:  CcKpisFunnelDistribucionBucket;
-  anulado:     CcKpisFunnelDistribucionBucket;
+  total: number;
+  pendiente: CcKpisFunnelDistribucionBucket;
+  confirmado: CcKpisFunnelDistribucionBucket;
+  noContesta: CcKpisFunnelDistribucionBucket;
+  anulado: CcKpisFunnelDistribucionBucket;
 }
 
 export interface CcKpisFunnelSubBreakdown {
   despachado: CcKpisFunnelDistribucionBucket; // % sobre confirmado
-  entregado:  CcKpisFunnelDistribucionBucket; // % sobre confirmado
+  entregado: CcKpisFunnelDistribucionBucket; // % sobre confirmado
 }
 
 export interface CcKpisFunnelResponse {
-  ingresados:      { count: number };
-  gestionados:     { count: number; percentage: number };
-  confirmados:     { count: number; percentage: number };
-  despachados:     { count: number; percentage: number };
-  entregados:      { count: number; percentage: number };
+  ingresados: { count: number };
+  gestionados: { count: number; percentage: number };
+  confirmados: { count: number; percentage: number };
+  despachados: { count: number; percentage: number };
+  entregados: { count: number; percentage: number };
   conversionFinal: { percentage: number };
   // Campos opcionales — agregados aditivamente por el backend (Fase 5)
-  distribucion?:   CcKpisFunnelDistribucion;
-  subBreakdown?:   CcKpisFunnelSubBreakdown;
+  distribucion?: CcKpisFunnelDistribucion;
+  subBreakdown?: CcKpisFunnelSubBreakdown;
 }
 
 export interface CcStorePerformanceItem {
-  shop:            string | null;
-  ingresados:      number;
-  confirmados:     number;
-  tasaConversion:  number;
+  shop: string | null;
+  ingresados: number;
+  confirmados: number;
+  tasaConversion: number;
 }
 
 /* -----------------------------------------
@@ -417,7 +450,7 @@ export interface CcAgingDiasBuckets {
 }
 
 export interface CcAgingEstadoRow {
-  estado: 'PENDIENTE' | 'NO_CONTESTA' | 'DESPACHADO';
+  estado: "PENDIENTE" | "NO_CONTESTA" | "DESPACHADO";
   dias: CcAgingDiasBuckets;
   total: number;
 }
@@ -431,7 +464,7 @@ export interface CcAgingResponse {
    Fase 7 — Análisis de intentos
 ----------------------------------------- */
 export interface CcIntentoBucket {
-  etiqueta: '1' | '2' | '3' | '3+';
+  etiqueta: "1" | "2" | "3" | "3+";
   totalLlamadas: number;
   confirmados: number;
   noContesta: number;
@@ -454,10 +487,10 @@ export interface CcUpsellRecordItem {
   quantity: number;
   unitPrice: number;
   subtotal: number;
-  addedByName: string | null;  // quien hizo el upsell
-  sellerName: string | null;   // vendedor atribuido al pedido
+  addedByName: string | null; // quien hizo el upsell
+  sellerName: string | null; // vendedor atribuido al pedido
   shop: string | null;
-  createdAt: string;           // ISO
+  createdAt: string; // ISO
 }
 
 export interface CcUpsellRecordsResponse {

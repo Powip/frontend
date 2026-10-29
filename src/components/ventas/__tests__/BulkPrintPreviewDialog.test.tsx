@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 
 jest.mock("sonner", () => ({
   toast: {
@@ -14,7 +20,10 @@ jest.mock("@/utils/bulk-receipt-printer", () => ({
 }));
 
 import { toast } from "sonner";
-import { buildReceiptsDocument, type ReceiptData } from "@/utils/bulk-receipt-printer";
+import {
+  buildReceiptsDocument,
+  type ReceiptData,
+} from "@/utils/bulk-receipt-printer";
 import {
   BulkPrintPreviewDialog,
   type PrintPreviewOrder,
@@ -38,12 +47,16 @@ function receiptFor(order: PrintPreviewOrder): ReceiptData {
   };
 }
 
-function setup(overrides: Partial<React.ComponentProps<typeof BulkPrintPreviewDialog>> = {}) {
+function setup(
+  overrides: Partial<React.ComponentProps<typeof BulkPrintPreviewDialog>> = {},
+) {
   const props = {
     open: true,
     orders: ORDERS,
     company: COMPANY,
-    fetchReceipt: jest.fn(async (order: PrintPreviewOrder) => receiptFor(order)),
+    fetchReceipt: jest.fn(async (order: PrintPreviewOrder) =>
+      receiptFor(order),
+    ),
     onConfirm: jest.fn(async () => {}),
     onClose: jest.fn(),
     ...overrides,
@@ -60,9 +73,13 @@ async function confirmStep() {
 }
 
 async function waitForFrame() {
-  const frame = (await screen.findByTitle("Vista previa de etiquetas")) as HTMLIFrameElement;
+  const frame = (await screen.findByTitle(
+    "Vista previa de etiquetas",
+  )) as HTMLIFrameElement;
   fireEvent.load(frame);
-  jest.spyOn(frame.contentWindow as Window, "focus").mockImplementation(() => {});
+  jest
+    .spyOn(frame.contentWindow as Window, "focus")
+    .mockImplementation(() => {});
   return frame;
 }
 
@@ -81,19 +98,66 @@ async function printFromPreview() {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockBuild.mockResolvedValue("<!DOCTYPE html><html><body>ETIQUETAS</body></html>");
+  mockBuild.mockResolvedValue(
+    "<!DOCTYPE html><html><body>ETIQUETAS</body></html>",
+  );
 });
 
 describe("BulkPrintPreviewDialog", () => {
+  it("never renders or prints a receipt returned for another order", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    setup({
+      fetchReceipt: jest.fn(async () => ({
+        ...receiptFor(ORDERS[0]),
+        orderId: "another-order",
+      })),
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No se pudieron generar las etiquetas.",
+    );
+    expect(mockBuild).not.toHaveBeenCalled();
+    expect(printButton()).toBeDisabled();
+  });
+
+  it("unmounts the old preview immediately on company/user scope change", async () => {
+    const { rerender, props } = setup({ scopeKey: "company-a:user-a" });
+    const old = await waitForFrame();
+    expect(old.getAttribute("srcdoc")).toContain("ETIQUETAS");
+    let resolveNew!: (r: ReceiptData) => void;
+    const next = jest.fn(
+      () =>
+        new Promise<ReceiptData>((resolve) => {
+          resolveNew = resolve;
+        }),
+    );
+    rerender(
+      <BulkPrintPreviewDialog
+        {...props}
+        scopeKey="company-b:user-b"
+        orders={[ORDERS[0]]}
+        fetchReceipt={next}
+      />,
+    );
+    expect(
+      screen.queryByTitle("Vista previa de etiquetas"),
+    ).not.toBeInTheDocument();
+    expect(printButton()).toBeDisabled();
+    resolveNew(receiptFor(ORDERS[0]));
+    await waitForFrame();
+  });
   it("genera la vista previa con el mismo documento de impresión y en el orden seleccionado", async () => {
     const { props } = setup();
 
-    expect(screen.getByRole("status")).toHaveTextContent("Generando etiquetas…");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Generando etiquetas…",
+    );
     expect(printButton()).toBeDisabled();
 
     const frame = await waitForFrame();
 
-    const fetchCalls = (props.fetchReceipt as jest.Mock).mock.calls as [PrintPreviewOrder][];
+    const fetchCalls = (props.fetchReceipt as jest.Mock).mock.calls as [
+      PrintPreviewOrder,
+    ][];
     expect(fetchCalls.map(([o]) => o.orderNumber)).toEqual([
       "ORD-002",
       "ORD-001",
@@ -110,7 +174,9 @@ describe("BulkPrintPreviewDialog", () => {
   it("no pide recibos ni cambia estados mientras está cerrado", () => {
     const { props } = setup({ open: false });
 
-    expect(screen.queryByText("Vista previa de etiquetas")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Vista previa de etiquetas"),
+    ).not.toBeInTheDocument();
     expect(props.fetchReceipt).not.toHaveBeenCalled();
     expect(props.onConfirm).not.toHaveBeenCalled();
   });
@@ -135,7 +201,9 @@ describe("BulkPrintPreviewDialog", () => {
     expect(props.onConfirm).not.toHaveBeenCalled();
     const confirm = await confirmStep();
     expect(confirm).toHaveTextContent("PREPARADO");
-    const listed = within(within(confirm).getByRole("list", { name: "Pedidos a actualizar" }))
+    const listed = within(
+      within(confirm).getByRole("list", { name: "Pedidos a actualizar" }),
+    )
       .getAllByRole("listitem")
       .map((li) => li.textContent);
     expect(listed).toEqual(["ORD-002", "ORD-001"]);
@@ -146,7 +214,11 @@ describe("BulkPrintPreviewDialog", () => {
     await printFromPreview();
 
     const confirm = await confirmStep();
-    fireEvent.click(within(confirm).getByRole("button", { name: "Sí, marcar como PREPARADO" }));
+    fireEvent.click(
+      within(confirm).getByRole("button", {
+        name: "Sí, marcar como PREPARADO",
+      }),
+    );
 
     await waitFor(() => expect(props.onClose).toHaveBeenCalledTimes(1));
     expect(props.onConfirm).toHaveBeenCalledTimes(1);
@@ -159,11 +231,17 @@ describe("BulkPrintPreviewDialog", () => {
     const confirm = await confirmStep();
     fireEvent.click(within(confirm).getByRole("button", { name: "Volver" }));
 
-    await waitFor(() => expect(screen.queryByRole("region", CONFIRM_STEP)).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("region", CONFIRM_STEP),
+      ).not.toBeInTheDocument(),
+    );
     expect(props.onConfirm).not.toHaveBeenCalled();
     expect(props.onClose).not.toHaveBeenCalled();
     expect(mockToast.info).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: /Marcar como PREPARADO/ })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Marcar como PREPARADO/ }),
+    ).toBeInTheDocument();
   });
 
   it("permite reabrir la confirmación después de cancelarla", async () => {
@@ -174,9 +252,15 @@ describe("BulkPrintPreviewDialog", () => {
         name: "Volver",
       }),
     );
-    await waitFor(() => expect(screen.queryByRole("region", CONFIRM_STEP)).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("region", CONFIRM_STEP),
+      ).not.toBeInTheDocument(),
+    );
 
-    fireEvent.click(screen.getByRole("button", { name: /Marcar como PREPARADO/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: /Marcar como PREPARADO/ }),
+    );
     fireEvent.click(
       within(await confirmStep()).getByRole("button", {
         name: "Sí, marcar como PREPARADO",
@@ -194,7 +278,11 @@ describe("BulkPrintPreviewDialog", () => {
         name: "Volver",
       }),
     );
-    await waitFor(() => expect(screen.queryByRole("region", CONFIRM_STEP)).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("region", CONFIRM_STEP),
+      ).not.toBeInTheDocument(),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Cerrar" }));
 
@@ -208,9 +296,11 @@ describe("BulkPrintPreviewDialog", () => {
   it("si el navegador no puede imprimir, avisa y no pide confirmación", async () => {
     const { props } = setup();
     const frame = await waitForFrame();
-    jest.spyOn(frame.contentWindow as Window, "print").mockImplementation(() => {
-      throw new Error("blocked");
-    });
+    jest
+      .spyOn(frame.contentWindow as Window, "print")
+      .mockImplementation(() => {
+        throw new Error("blocked");
+      });
     jest.spyOn(console, "error").mockImplementation(() => {});
     await waitFor(() => expect(printButton()).toBeEnabled());
 

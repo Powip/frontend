@@ -1,8 +1,13 @@
 "use client";
 
+import { OrderOriginLabel } from "@/app/operaciones/_shared/OrderOriginLabel";
+
+import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { toast } from "sonner";
@@ -127,13 +132,11 @@ function formatCountdown(ms: number): string {
 }
 
 export default function PlanificacionTab() {
-  const { selectedStoreId } = useAuth();
   const { can } = useOperationsRole();
   const router = useRouter();
   const getUserInfo = useUserAuditInfo();
 
-  const [orders, setOrders] = useState<OrderHeader[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { orders, loading, error, retry, refetch: load } = useBusinessOrders();
   const [viewMode, setViewMode] = useState<ViewMode>("cal");
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -142,20 +145,6 @@ export default function PlanificacionTab() {
   const [rescheduleDate, setRescheduleDate] = useState("");
   const [paymentSale, setPaymentSale] = useState<Sale | null>(null);
   const [busy, setBusy] = useState(false);
-
-  const load = () => {
-    if (!selectedStoreId) return;
-    setLoading(true);
-    axios
-      .get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-      )
-      .then((res) => setOrders(res.data ?? []))
-      .catch(() => setOrders([]))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(load, [selectedStoreId]);
 
   // Cuenta regresiva al próximo pase automático (solo visual, ver BACKEND GAP arriba).
   useEffect(() => {
@@ -185,9 +174,8 @@ export default function PlanificacionTab() {
     for (const o of orders) {
       if (o.deliveryType !== "DOMICILIO") continue;
       if (o.status === "ENTREGADO" || o.status === "ANULADO") continue;
-      // PAGADO/PENDIENTE/INCOMPLETE/PREVENTA todavía no pasaron por
-      // preparación real de almacén — no son responsabilidad de Operaciones
-      // todavía, así que no deben planificarse acá (ver PRE_FULFILLMENT_STATUSES).
+      // La preparación se gestiona en Pedidos › Pendientes.
+      // La planificación de guías empieza cuando el paquete está preparado.
       if (PRE_FULFILLMENT_STATUSES.includes(o.status)) continue;
       if (getPedidosTab(o) !== "despachar") continue;
 
@@ -358,6 +346,8 @@ export default function PlanificacionTab() {
       `agendados_${activeDayKey}.xlsx`,
     );
   };
+
+  if (error) return <OperationsDataError retry={retry} />;
 
   if (loading) {
     return (

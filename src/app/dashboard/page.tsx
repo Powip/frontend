@@ -9,16 +9,21 @@ import { Geography } from "@/components/dashboard/geography";
 import { TeamManagement } from "@/components/dashboard/TeamManagement";
 import { FinanceStats } from "@/components/dashboard/FinanceStats";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
+import { useDashboardScope } from "@/contexts/DashboardScopeContext";
 
 export default function DashboardPage() {
+  return <DashboardContent />;
+}
+
+function DashboardContent() {
+  const { scope, scopeParams } = useDashboardScope();
   const [fromDate, setFromDate] = useState<string>(
     format(startOfMonth(new Date()), "yyyy-MM-dd")
   );
   const [toDate, setToDate] = useState<string>(
     format(endOfMonth(new Date()), "yyyy-MM-dd")
   );
-
-  console.log("[DEBUG] DashboardPage renderizando");
+  const panelKey = JSON.stringify([scopeParams, fromDate, toDate]);
 
   const handlePeriodChange = (from: string, to: string) => {
     setFromDate(from);
@@ -36,7 +41,7 @@ export default function DashboardPage() {
             PANEL DE CONTROL
           </h1>
           <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] mt-1">
-            Resumen General de Operaciones
+            {scope === "business" ? "Resumen de todas las tiendas del negocio" : "Resumen de la tienda seleccionada"}
           </p>
         </div>
         <div className="flex items-center gap-4">
@@ -45,7 +50,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="flex-1 overflow-hidden flex flex-col">
-        <Tabs defaultValue="general" className="flex-1 flex flex-col min-h-0">
+        <Tabs defaultValue="general" className="flex-1 flex flex-col min-h-0 gap-0">
           <div className="px-8 border-b border-border bg-background">
             <TabsList className="bg-transparent p-0 gap-8 flex justify-start items-center h-12">
               <TabsTrigger
@@ -82,23 +87,23 @@ export default function DashboardPage() {
           </div>
 
           <TabsContent value="general" className="flex-1 overflow-auto mt-0 scrollbar-none outline-none">
-            <Stats fromDate={fromDate} toDate={toDate} />
+            <Stats key={panelKey} fromDate={fromDate} toDate={toDate} />
           </TabsContent>
 
           <TabsContent value="analysis" className="flex-1 overflow-hidden mt-0">
-            <Analysis fromDate={fromDate} toDate={toDate} />
+            <Analysis key={panelKey} fromDate={fromDate} toDate={toDate} />
           </TabsContent>
 
           <TabsContent value="geography" className="flex-1 overflow-hidden mt-0">
-            <Geography fromDate={fromDate} toDate={toDate} />
+            <Geography key={panelKey} fromDate={fromDate} toDate={toDate} />
           </TabsContent>
 
           <TabsContent value="team" className="flex-1 overflow-hidden mt-0">
-            <TeamManagement fromDate={fromDate} toDate={toDate} />
+            <TeamManagement key={panelKey} fromDate={fromDate} toDate={toDate} />
           </TabsContent>
 
           <TabsContent value="finance" className="flex-1 overflow-hidden mt-0">
-            <FinanceStats fromDate={fromDate} toDate={toDate} />
+            <FinanceStats key={panelKey} fromDate={fromDate} toDate={toDate} />
           </TabsContent>
         </Tabs>
       </div>

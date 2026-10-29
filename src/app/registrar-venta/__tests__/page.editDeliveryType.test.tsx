@@ -8,7 +8,7 @@
  * 1. Se muestra el tipo de entrega actual y, al pasar a DOMICILIO, el form
  *    exige "Método de envío" (validación existente) antes de habilitar
  *    "Actualizar venta".
- * 2. Guardado correcto: un único PUT /order-header/:id con el nuevo
+ * 2. Guardado correcto: un único PUT /order-header/manual/:id/full con el nuevo
  *    deliveryType y luego `router.replace(returnTo + "&updated=<id>")` (sin
  *    abrir el recibo). Mientras guarda muestra "Procesando..." y no permite
  *    un segundo envío.
@@ -25,6 +25,7 @@
 
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
 
@@ -188,6 +189,7 @@ jest.mock("@/components/registrar-venta/SuggestionsPanel", () => ({
 // ── Imports bajo prueba (después de los mocks) ──────────────────────────────
 
 import axiosAuth from "@/lib/axiosAuth";
+import { tokenStore } from "@/lib/tokenStore";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import RegistrarVentaPage from "../page";
@@ -237,6 +239,11 @@ const RETURN_TO = `/operaciones/pedidos?tab=despachar&sel=${ORDER_ID},order-2&da
 const ORDER = {
   id: ORDER_ID,
   orderNumber: "ORD-0001",
+  storeId: "store-2",
+  inventoryId: "warehouse-1",
+  stockStoreId: "store-1",
+  stockVersion: 1,
+  companyId: "company-1",
   orderType: "VENTA",
   status: "PREPARADO",
   salesChannel: "WHATSAPP",
@@ -284,10 +291,19 @@ const ORDER = {
   ],
 };
 
+const SALE_CONTEXT = {
+  companyId: "company-1",
+  stores: [
+    { id: "store-1", name: "Tienda navegación" },
+    { id: "store-2", name: "Tienda de la venta" },
+  ],
+  inventories: [{ id: "warehouse-1", name: "Almacén compartido", storeId: "store-1" }],
+};
+
 const MOCK_AUTH = {
   auth: {
     user: { id: "user-1", name: "Op", surname: "Test", role: "ADMIN", permissions: [] },
-    company: { id: "company-1", name: "Empresa Test", stores: [] },
+    company: { id: "company-1", name: "Empresa Test", stores: SALE_CONTEXT.stores },
     accessToken: "fake-token",
     subscription: null,
     exp: 9999999999,
@@ -305,11 +321,16 @@ const MOCK_AUTH = {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  tokenStore.set(MOCK_AUTH.auth.accessToken, JSON.stringify([MOCK_AUTH.auth.user.id, MOCK_AUTH.auth.company.id]));
   mockSearchParams = new URLSearchParams({ orderId: ORDER_ID, returnTo: RETURN_TO });
   mockUseAuth.mockReturnValue(MOCK_AUTH as unknown as ReturnType<typeof useAuth>);
   mockedAxiosAuth.get.mockImplementation((url: string) => {
-    if (url.endsWith(`/order-header/${ORDER_ID}`))
+    if (url.endsWith(`/order-header/manual/${ORDER_ID}`))
       return Promise.resolve({ data: ORDER });
+    if (url.endsWith("/order-header/sale-context"))
+      return Promise.resolve({ data: SALE_CONTEXT });
+    if (url.endsWith("/inventory-item/search"))
+      return Promise.resolve({ data: { data: [], meta: { page: 1, total: 0, totalPages: 1 } } });
     if (url.includes("/couriers/company/"))
       return Promise.resolve({
         data: [{ id: "c-1", name: "Courier Uno", companyId: "company-1" }],
@@ -335,7 +356,8 @@ const deliveryTypeSelect = () =>
   within(fieldByLabel(/tipo de entrega/i)).getByRole("combobox") as HTMLSelectElement;
 
 async function renderLoaded() {
-  render(<RegistrarVentaPage />);
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  render(<QueryClientProvider client={queryClient}><RegistrarVentaPage /></QueryClientProvider>);
   await waitFor(() => expect(deliveryTypeSelect().value).toBe("RETIRO_TIENDA"));
 }
 
@@ -392,7 +414,7 @@ describe("RegistrarVentaPage — editar tipo de entrega desde la revisión de gu
     );
     expect(mockPush).not.toHaveBeenCalled();
     const [url, payload] = mockedAxiosAuth.put.mock.calls[0];
-    expect(url).toMatch(new RegExp(`/order-header/${ORDER_ID}$`));
+    expect(url).toMatch(new RegExp(`/order-header/manual/${ORDER_ID}/full$`));
     expect(payload).toEqual(
       expect.objectContaining({
         deliveryType: "DOMICILIO",

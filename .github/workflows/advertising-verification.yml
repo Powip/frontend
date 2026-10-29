@@ -1,0 +1,73 @@
+name: Publicidad verification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/app/publicidad/**'
+      - 'src/components/advertising/**'
+      - 'src/components/layout/Sidebar.tsx'
+      - 'src/components/layout/__tests__/Sidebar.*.test.tsx'
+      - 'src/hooks/useAdvertising*.ts'
+      - 'src/services/advertising*.ts'
+      - 'src/types/advertising*.ts'
+      - 'src/contexts/AuthContext.tsx'
+      - 'src/contexts/AdminPeriodContext.tsx'
+      - 'src/contexts/Providers.tsx'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'jest.advertising-v22.config.cjs'
+      - 'jest.setup.ts'
+      - 'tsconfig.json'
+      - '.github/workflows/advertising-verification.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/app/publicidad/**'
+      - 'src/components/advertising/**'
+      - 'src/components/layout/Sidebar.tsx'
+      - 'src/components/layout/__tests__/Sidebar.*.test.tsx'
+      - 'src/hooks/useAdvertising*.ts'
+      - 'src/services/advertising*.ts'
+      - 'src/types/advertising*.ts'
+      - 'src/contexts/AuthContext.tsx'
+      - 'src/contexts/AdminPeriodContext.tsx'
+      - 'src/contexts/Providers.tsx'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'jest.advertising-v22.config.cjs'
+      - 'jest.setup.ts'
+      - 'tsconfig.json'
+      - '.github/workflows/advertising-verification.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: advertising-verification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Publicidad types and regressions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies without production secrets
+        run: npm ci --no-audit --no-fund
+      - name: Verify TypeScript
+        run: npm run typecheck
+      - name: Verify Publicidad lint rules used by the production build
+        run: npx eslint src/components/advertising/v22 src/services/advertisingV22Service.ts src/services/advertisingV23Service.ts
+      - name: Verify Publicidad calculations, permissions, navigation and UI
+        run: npm run test:advertising -- --silent

@@ -29,17 +29,35 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import axiosAuth from "@/lib/axiosAuth";
+import { API } from "@/lib/api";
 import {
   getEvaCredentials,
   getEvaDistricts,
   createEvaOrdersBulk,
+  getEvaSkuMap,
+  saveEvaSkuMap,
+  getEvaShippingRates,
   type EvaCredentialSafe,
   type EvaClientType,
   type EvaPaymentMethod,
   type EvaServiceType,
   type CreateEvaOrderPayload,
   type EvaSendOrdersBulkItemResult,
+  type EvaShippingRates,
 } from "@/services/evaService";
+import EvaLinkProductsStep from "./EvaLinkProductsStep";
+import EvaSkuItemsEditor from "./EvaSkuItemsEditor";
+import {
+  buildEvaItemsPayload,
+  codesFromMappings,
+  findUnlinkedVariants,
+  isValidShippingCostInput,
+  itemsHaveEvaSku,
+  resolveEvaShippingCost,
+  roundToCents,
+  type EvaLinkCandidate,
+} from "./evaModalHelpers";
 
 // ─── CONSTANTES ─────────────────────────────────────────
 
@@ -127,7 +145,13 @@ export interface EvaGuideOrderItem {
     quantity: number;
     unitPrice?: number;
     attributes?: Record<string, string>;
+    /** FEAT-26: variante de Powip — clave del vínculo con el código EVA. */
+    productVariantId?: string | null;
   }>;
+  /** Estado EVA del pedido: si ya tiene, el pedido ya estaba en EVA. */
+  evaStatus?: string | null;
+  /** Costo de envío ya registrado (puede llegar como string decimal). */
+  carrierShippingCost?: number | string | null;
 }
 
 interface EvaGuideRowState {
@@ -138,10 +162,15 @@ interface EvaGuideRowState {
   district: string;
   districtMismatch: boolean;
   address: string;
+  /** Monto a cobrar: el pendiente del pedido (total menos pagos PAID). */
   amount: string;
+  /** Sin pendiente: va como SOLO ENTREGAR con monto 0, sin importar el método global. */
+  prepaid: boolean;
   product: string;
   packages: string;
-  sku: string;
+  /** Costo del envío EVA (S/), precargado desde la tarifa por distrito. */
+  shippingCost: string;
+  shippingCostTouched: boolean;
 }
 
 interface EvaGuideResultRow {
@@ -159,15 +188,16 @@ export interface SendToEvaGuideModalProps {
   guideId: string;
   companyId: string;
   orders: EvaGuideOrderItem[];
+  /**
+   * Suma de costos de envío de los pedidos de la guía que ya estaban en EVA:
+   * se suma a los nuevos para actualizar `quotedAmount` de la guía.
+   */
+  alreadySentShippingCost?: number;
   onClose: () => void;
   onSuccess: () => void;
 }
 
 // ─── HELPERS ────────────────────────────────────────────
-
-function buildSkuDefault(items: EvaGuideOrderItem["items"]): string {
-  return items.map((i) => `${i.sku}(${i.quantity})`).join(",");
-}
 
 function buildProductDefault(items: EvaGuideOrderItem["items"]): string {
   const joined = items.map((i) => i.productName).join(", ");
@@ -192,7 +222,8 @@ function computeOrderAmounts(order: EvaGuideOrderItem): {
     order.payments
       ?.filter((p) => p.status === "PAID")
       .reduce((sum, p) => sum + Number(p.amount), 0) ?? 0;
-  const pending = Math.max(total - paid, 0);
+  // Redondeo a centavos: pagos en cuotas dejan residuos (12.30 - 12.10 - 0.20 ≠ 0).
+  const pending = Math.max(roundToCents(total - paid), 0);
   return { total, paid, pending };
 }
 
@@ -200,6 +231,7 @@ function buildRow(
   order: EvaGuideOrderItem,
   clientType: EvaClientType,
   districts: string[],
+  rates: EvaShippingRates | null,
 ): EvaGuideRowState {
   const items = order.items ?? [];
   const rawDistrict = (order.customer?.district ?? "").trim();
@@ -208,26 +240,37 @@ function buildRow(
     ? districts.find((d) => normalizeDistrict(d) === normalizedTarget)
     : undefined;
 
-  // Number() defensivo — algunos endpoints serializan columnas decimal como
-  // string (mismo patrón que el resto de GuideDetailsModal con grandTotal).
-  const amount = Number(order.totals?.grandTotal ?? order.grandTotal ?? 0);
+  // EVA cobra solo lo que falta pagar (FEAT-26), igual que el envío individual.
+  const { pending } = computeOrderAmounts(order);
+  const district = match ?? "";
+  const cost = resolveEvaShippingCost(rates, district);
 
   return {
     selected: true,
     recipientName: order.customer?.fullName ?? "",
     recipientPhone: order.customer?.phoneNumber ?? "",
-    district: match ?? "",
+    district,
     districtMismatch: !match && rawDistrict.length > 0,
     address: order.customer?.address ?? "",
-    amount: Number.isFinite(amount) ? String(amount) : "0",
+    amount: String(pending),
+    prepaid: pending === 0,
     product: clientType === "RECOJO" ? buildProductDefault(items) : "",
     packages:
       clientType === "RECOJO" ? String(Math.max(items.length, 1)) : "1",
-    sku: clientType === "ALMACEN" ? buildSkuDefault(items) : "",
+    shippingCost: cost === null ? "" : String(cost),
+    shippingCostTouched: false,
   };
 }
 
-function isRowValid(row: EvaGuideRowState, clientType: EvaClientType): boolean {
+/**
+ * `skuComplete`: en ALMACEN, si todos los ítems del pedido tienen un código EVA
+ * válido (ver `itemsHaveEvaSku`); en RECOJO no se usa.
+ */
+function isRowValid(
+  row: EvaGuideRowState,
+  clientType: EvaClientType,
+  skuComplete: boolean,
+): boolean {
   if (!row.recipientName.trim()) return false;
   if (!isValidEvaPhone(row.recipientPhone)) return false;
   if (!row.district) return false;
@@ -246,7 +289,9 @@ function isRowValid(row: EvaGuideRowState, clientType: EvaClientType): boolean {
       return false;
   }
 
-  if (clientType === "ALMACEN" && !row.sku.trim()) return false;
+  if (clientType === "ALMACEN" && !skuComplete) return false;
+
+  if (!isValidShippingCostInput(row.shippingCost)) return false;
 
   return true;
 }
@@ -255,8 +300,10 @@ function isRowValid(row: EvaGuideRowState, clientType: EvaClientType): boolean {
 
 export default function SendToEvaGuideModal({
   open,
+  guideId,
   companyId: propCompanyId,
   orders,
+  alreadySentShippingCost,
   onClose,
   onSuccess,
 }: SendToEvaGuideModalProps) {
@@ -277,6 +324,13 @@ export default function SendToEvaGuideModal({
 
   // Filas por pedido (key = orderId)
   const [rows, setRows] = useState<Record<string, EvaGuideRowState>>({});
+
+  // FEAT-26: códigos EVA por ítem (ALMACEN) y tarifa de envío
+  const [codes, setCodes] = useState<Record<string, string>>({});
+  const [linkedCodes, setLinkedCodes] = useState<Record<string, string>>({});
+  const [linkCandidates, setLinkCandidates] = useState<EvaLinkCandidate[]>([]);
+  const [savingLinks, setSavingLinks] = useState(false);
+  const [rates, setRates] = useState<EvaShippingRates | null>(null);
 
   // Envío
   const [sending, setSending] = useState(false);
@@ -314,9 +368,29 @@ export default function SendToEvaGuideModal({
     setSending(false);
     setPaymentMethod("EFECTIVO");
     setServiceType(1);
+    setCodes({});
+    setLinkedCodes({});
+    setLinkCandidates([]);
+    setSavingLinks(false);
+    setRates(null);
 
-    Promise.all([getEvaCredentials(token, companyId), getEvaDistricts(token)])
-      .then(([cred, districtList]) => {
+    Promise.all([
+      getEvaCredentials(token, companyId),
+      getEvaDistricts(token),
+      getEvaSkuMap(token, companyId).catch(() => {
+        toast.warning(
+          "No se pudieron cargar los vínculos de SKU EVA: revisá los códigos antes de enviar.",
+        );
+        return [];
+      }),
+      getEvaShippingRates(token, companyId).catch(() => {
+        toast.warning(
+          "No se pudo cargar la tarifa de EVA: completá el costo de envío a mano.",
+        );
+        return null;
+      }),
+    ])
+      .then(([cred, districtList, mappings, loadedRates]) => {
         setDistricts(districtList);
 
         if (!cred || !cred.isActive) {
@@ -327,6 +401,7 @@ export default function SendToEvaGuideModal({
         }
 
         setCredential(cred);
+        setRates(loadedRates);
 
         const initialRows: Record<string, EvaGuideRowState> = {};
         orders.forEach((order) => {
@@ -334,9 +409,19 @@ export default function SendToEvaGuideModal({
             order,
             cred.clientType,
             districtList,
+            loadedRates,
           );
         });
         setRows(initialRows);
+
+        const initialCodes = codesFromMappings(mappings);
+        setCodes(initialCodes);
+        setLinkedCodes(initialCodes);
+        setLinkCandidates(
+          cred.clientType === "ALMACEN"
+            ? findUnlinkedVariants(orders, initialCodes)
+            : [],
+        );
       })
       .catch(() => {
         setCredentialError(
@@ -369,6 +454,46 @@ export default function SendToEvaGuideModal({
     });
   };
 
+  /** Distrito nuevo: si el costo no se editó a mano, se recalcula con la tarifa. */
+  const changeDistrict = (orderId: string, district: string) => {
+    const row = rows[orderId];
+    const patch: Partial<EvaGuideRowState> = {
+      district,
+      districtMismatch: false,
+    };
+    if (row && !row.shippingCostTouched) {
+      const cost = resolveEvaShippingCost(rates, district);
+      patch.shippingCost = cost === null ? "" : String(cost);
+    }
+    updateRow(orderId, patch);
+  };
+
+  const handleSaveLinks = async (written: Record<string, string>) => {
+    if (!companyId) return;
+    const toSave = linkCandidates
+      .filter((c) => written[c.variantId])
+      .map((c) => ({
+        variantId: c.variantId,
+        evaSku: written[c.variantId],
+        powipSku: c.powipSku,
+        productName: c.productName,
+      }));
+    setSavingLinks(true);
+    try {
+      if (toSave.length > 0) await saveEvaSkuMap(token, companyId, toSave);
+      const saved = Object.fromEntries(
+        toSave.map((entry) => [`v:${entry.variantId}`, entry.evaSku]),
+      );
+      setCodes((prev) => ({ ...prev, ...saved }));
+      setLinkedCodes((prev) => ({ ...prev, ...saved }));
+      setLinkCandidates([]);
+    } catch {
+      toast.error("No se pudieron guardar los vínculos de SKU. Probá de nuevo.");
+    } finally {
+      setSavingLinks(false);
+    }
+  };
+
   const toggleAll = (checked: boolean) => {
     setRows((prev) => {
       const next: Record<string, EvaGuideRowState> = {};
@@ -386,9 +511,21 @@ export default function SendToEvaGuideModal({
     return orders.filter((order) => {
       const row = rows[order.id];
       if (!row?.selected) return false;
-      return isRowValid(row, credential.clientType);
+      return isRowValid(
+        row,
+        credential.clientType,
+        itemsHaveEvaSku(order.id, order.items ?? [], codes),
+      );
     });
-  }, [orders, rows, credential]);
+  }, [orders, rows, credential, codes]);
+
+  /** Suma de los costos de envío de los pedidos que se van a enviar. */
+  const selectedShippingCostTotal = selectedValidOrders.reduce((sum, order) => {
+    const cost = Number(rows[order.id]?.shippingCost);
+    return rows[order.id]?.shippingCost.trim() && Number.isFinite(cost)
+      ? sum + cost
+      : sum;
+  }, 0);
 
   const allSelected =
     orders.length > 0 && orders.every((order) => rows[order.id]?.selected);
@@ -413,15 +550,18 @@ export default function SendToEvaGuideModal({
             recipientPhone: normalizeEvaPhone(row.recipientPhone),
             district: row.district.trim(),
             address: row.address.trim(),
-            amount: parseFloat(row.amount),
-            paymentMethod,
+            amount: row.prepaid ? 0 : parseFloat(row.amount),
+            paymentMethod: row.prepaid ? "SOLO ENTREGAR" : paymentMethod,
             serviceType,
+            ...(row.shippingCost.trim() !== "" && {
+              shippingCost: Number(row.shippingCost),
+            }),
             ...(credential.clientType === "RECOJO" && {
               product: row.product.trim(),
               packages: parseInt(row.packages, 10),
             }),
             ...(credential.clientType === "ALMACEN" && {
-              sku: row.sku.trim(),
+              items: buildEvaItemsPayload(order.id, order.items ?? [], codes),
             }),
           };
           return payload;
@@ -445,6 +585,37 @@ export default function SendToEvaGuideModal({
 
       setResults(resultRows);
       setIsSuccess(true);
+
+      // Costo de la guía (FEAT-26): los ya enviados + los creados ahora. Un
+      // pedido que ya estaba en EVA vuelve como "created" idempotente, pero su
+      // costo ya viene en alreadySentShippingCost: no se cuenta dos veces.
+      const newCost = resultRows.reduce((sum, result) => {
+        if (result.outcome !== "created") return sum;
+        const order = selectedValidOrders.find((o) => o.id === result.orderId);
+        if (!order || order.evaStatus) return sum;
+        const row = rows[result.orderId];
+        const cost = Number(row?.shippingCost);
+        return row?.shippingCost.trim() && Number.isFinite(cost)
+          ? sum + cost
+          : sum;
+      }, 0);
+      // Se espera antes de onSuccess(): el padre vuelve a pedir la guía y tiene
+      // que ver el quotedAmount ya actualizado.
+      if (guideId && newCost > 0) {
+        const guideTotal = roundToCents(
+          (alreadySentShippingCost ?? 0) + newCost,
+        );
+        await axiosAuth
+          .patch(`${API.courier}/shipping-guides/${guideId}/quote`, {
+            quotedAmount: guideTotal,
+            quotedCurrency: "PEN",
+          })
+          .catch(() =>
+            toast.warning(
+              "El envío salió bien, pero no se pudo actualizar el costo de la guía.",
+            ),
+          );
+      }
 
       const createdCount = resultRows.filter(
         (r) => r.outcome === "created",
@@ -622,6 +793,14 @@ export default function SendToEvaGuideModal({
                     Entendido, cerrar
                   </Button>
                 </div>
+              ) : credential?.clientType === "ALMACEN" &&
+                linkCandidates.length > 0 ? (
+                /* ── PASO "VINCULAR PRODUCTOS" (FEAT-26) ── */
+                <EvaLinkProductsStep
+                  candidates={linkCandidates}
+                  saving={savingLinks}
+                  onSave={handleSaveLinks}
+                />
               ) : (
                 credential && (
                   /* ── PANTALLA DE CONFIGURACIÓN ── */
@@ -722,7 +901,11 @@ export default function SendToEvaGuideModal({
                         const row = rows[order.id];
                         if (!row) return null;
 
-                        const valid = isRowValid(row, credential.clientType);
+                        const valid = isRowValid(
+                          row,
+                          credential.clientType,
+                          itemsHaveEvaSku(order.id, order.items ?? [], codes),
+                        );
                         const districtOptions = districts.map((d) => ({
                           value: d,
                           label: d,
@@ -868,6 +1051,11 @@ export default function SendToEvaGuideModal({
                                   <span className="font-mono font-bold text-sm text-slate-800 dark:text-slate-100">
                                     S/ {amounts.total.toFixed(2)}
                                   </span>
+                                  {row.prepaid && (
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-green-100 dark:bg-green-950/50 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 uppercase">
+                                      Pagado — solo entregar
+                                    </span>
+                                  )}
                                   {amounts.pending > 0 && (
                                     <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 uppercase">
                                       Pendiente S/ {amounts.pending.toFixed(2)}
@@ -932,10 +1120,7 @@ export default function SendToEvaGuideModal({
                                     <Combobox
                                       value={row.district}
                                       onValueChange={(value) =>
-                                        updateRow(order.id, {
-                                          district: value,
-                                          districtMismatch: false,
-                                        })
+                                        changeDistrict(order.id, value)
                                       }
                                       options={districtOptions}
                                       placeholder="Seleccionar"
@@ -976,14 +1161,15 @@ export default function SendToEvaGuideModal({
                                       htmlFor={`eva-guide-${order.id}-amount`}
                                       className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase"
                                     >
-                                      Monto (S/)
+                                      Monto a cobrar (S/)
                                     </Label>
                                     <Input
                                       id={`eva-guide-${order.id}-amount`}
                                       type="number"
                                       min={0}
                                       step={0.01}
-                                      value={row.amount}
+                                      disabled={row.prepaid}
+                                      value={row.prepaid ? "0" : row.amount}
                                       onChange={(e) =>
                                         updateRow(order.id, {
                                           amount: e.target.value,
@@ -1035,26 +1221,45 @@ export default function SendToEvaGuideModal({
                                       </div>
                                     </>
                                   ) : (
-                                    <div className="space-y-1 sm:col-span-2">
-                                      <Label
-                                        htmlFor={`eva-guide-${order.id}-sku`}
-                                        className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase"
-                                      >
-                                        SKU(s)
-                                      </Label>
-                                      <Input
-                                        id={`eva-guide-${order.id}-sku`}
-                                        value={row.sku}
-                                        onChange={(e) =>
-                                          updateRow(order.id, {
-                                            sku: e.target.value,
-                                          })
+                                    <div className="sm:col-span-2 lg:col-span-3">
+                                      <EvaSkuItemsEditor
+                                        orderId={order.id}
+                                        items={items}
+                                        codes={codes}
+                                        linkedCodes={linkedCodes}
+                                        onChange={(key, value) =>
+                                          setCodes((prev) => ({
+                                            ...prev,
+                                            [key]: value,
+                                          }))
                                         }
-                                        placeholder="CODIGO(cant),CODIGO(cant)"
-                                        className="h-9 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-600 dark:text-slate-100 text-xs"
                                       />
                                     </div>
                                   )}
+
+                                  <div className="space-y-1">
+                                    <Label
+                                      htmlFor={`eva-guide-${order.id}-shippingCost`}
+                                      className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase"
+                                    >
+                                      Costo envío (S/)
+                                    </Label>
+                                    <Input
+                                      id={`eva-guide-${order.id}-shippingCost`}
+                                      type="number"
+                                      min={0}
+                                      step={0.01}
+                                      value={row.shippingCost}
+                                      onChange={(e) =>
+                                        updateRow(order.id, {
+                                          shippingCost: e.target.value,
+                                          shippingCostTouched: true,
+                                        })
+                                      }
+                                      placeholder="Sin tarifa"
+                                      className="h-9 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-600 dark:text-slate-100 text-xs"
+                                    />
+                                  </div>
                                 </div>
                               </div>
                             </CardContent>
@@ -1071,6 +1276,14 @@ export default function SendToEvaGuideModal({
                         </span>
                         <span className="font-bold text-slate-800 dark:text-slate-100">
                           {selectedValidOrders.length} de {orders.length}
+                        </span>
+                      </div>
+                      <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-lg p-3 flex items-center justify-between text-sm">
+                        <span className="text-slate-600 dark:text-slate-300 font-medium">
+                          Costo envío total
+                        </span>
+                        <span className="font-mono font-bold text-slate-800 dark:text-slate-100">
+                          S/ {selectedShippingCostTotal.toFixed(2)}
                         </span>
                       </div>
 

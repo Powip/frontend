@@ -35,6 +35,11 @@ jest.mock('@/services/evaService', () => ({
   getEvaCredentials: jest.fn(),
   getEvaDistricts: jest.fn(),
   createEvaOrder: jest.fn(),
+  // FEAT-26: el modal también carga ítems, vínculos de SKU y tarifa al abrir.
+  getEvaSkuMap: jest.fn().mockResolvedValue([]),
+  saveEvaSkuMap: jest.fn(),
+  getEvaShippingRates: jest.fn().mockResolvedValue({ defaultCost: null, districts: {} }),
+  fetchEvaOrderItems: jest.fn().mockResolvedValue([]),
 }));
 
 jest.mock('@/components/ui/button', () => {
@@ -196,6 +201,7 @@ jest.mock('lucide-react', () => ({
   Loader2: () => null,
   CheckCircle2: () => null,
   AlertCircle: () => null,
+  AlertTriangle: () => null,
   Package: () => null,
   Truck: () => null,
 }));

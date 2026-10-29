@@ -1,6 +1,6 @@
 /**
  * Tests: ReconciliationMergeDialog (FEAT-17 Anexo B — "Unificar" con detalle
- * de producto + flujo de 2 pasos)
+ * de producto + flujo de 3 pasos (Anexo E))
  *
  * Comportamiento verificado:
  * 1. `task: null` no renderiza nada.
@@ -55,6 +55,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
+
+jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { company: { id: 'company-a' }, user: { id: 'user-a' }, accessToken: 'test-token' } }) }));
 
 jest.mock('sonner', () => ({
   toast: {
@@ -316,6 +318,23 @@ const STOCK_FIXTURE: VariantStock[] = [
   { variant_id: 'variant-c', quantity: 3, reserved_quantity: 0, available: 3, inventories: [] },
 ];
 
+// ── Fixtures: par (Anexo E) ───────────────────────────────────────────────────
+// A (shopify, costo 20, stock 5/1) y B (aliclik, sugerida, costo 30, stock 10/2).
+
+function makePairTask(overrides: Partial<ReconciliationTask> = {}): ReconciliationTask {
+  const base = makeClusterTask();
+  return {
+    ...base,
+    id: 'task-pair-1',
+    items: base.items.filter((item) => item.variant_id !== 'variant-c'),
+    ...overrides,
+  };
+}
+
+function makePairDetails(): ReconciliationTaskDetails {
+  return { task_id: 'task-pair-1', candidates: [makeCandidateA(), makeCandidateB()] };
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function buildWrapper() {
@@ -357,6 +376,12 @@ function getBySpanText(regex: RegExp): HTMLElement {
 function getStatCardText(labelRegex: RegExp): string {
   const label = screen.getByText(labelRegex);
   return label.closest('div')?.textContent ?? '';
+}
+
+/** Paso 1 → 2 ("Corroborar") → 3 ("Vista previa"). */
+async function goToFinalStep(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole('button', { name: /corroborar/i }));
+  await user.click(await screen.findByRole('button', { name: /vista previa/i }));
 }
 
 // ── Setup ────────────────────────────────────────────────────────────────────
@@ -405,7 +430,7 @@ describe('ReconciliationMergeDialog', () => {
       await screen.findAllByRole('radio');
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /vista previa/i }));
+      await goToFinalStep(user);
       await user.click(screen.getByRole('button', { name: /aplicar unificación/i }));
 
       await waitFor(() =>
@@ -426,7 +451,7 @@ describe('ReconciliationMergeDialog', () => {
       await screen.findAllByRole('radio');
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /vista previa/i }));
+      await goToFinalStep(user);
       await user.click(screen.getByRole('button', { name: /aplicar unificación/i }));
 
       await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
@@ -442,7 +467,7 @@ describe('ReconciliationMergeDialog', () => {
       expect(radios[2]).toBeChecked();
       expect(radios[1]).not.toBeChecked();
 
-      await user.click(screen.getByRole('button', { name: /vista previa/i }));
+      await goToFinalStep(user);
       await user.click(screen.getByRole('button', { name: /aplicar unificación/i }));
 
       await waitFor(() =>
@@ -468,14 +493,14 @@ describe('ReconciliationMergeDialog', () => {
     });
   });
 
-  describe('"← Volver" (paso 2)', () => {
-    it('vuelve al paso 1 sin cerrar el diálogo ni aplicar el merge', async () => {
+  describe('"← Volver" (paso 3)', () => {
+    it('vuelve al paso 2 sin cerrar el diálogo ni aplicar el merge', async () => {
       const onClose = jest.fn();
       renderDialog(makeClusterTask(), onClose);
       await screen.findAllByRole('radio');
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /vista previa/i }));
+      await goToFinalStep(user);
       expect(
         await screen.findByRole('button', { name: /aplicar unificación/i }),
       ).toBeInTheDocument();
@@ -504,7 +529,7 @@ describe('ReconciliationMergeDialog', () => {
       await screen.findAllByRole('radio');
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /vista previa/i }));
+      await goToFinalStep(user);
       await user.click(screen.getByRole('button', { name: /aplicar unificación/i }));
 
       expect(await screen.findByText(/aplicando/i)).toBeInTheDocument();
@@ -524,7 +549,7 @@ describe('ReconciliationMergeDialog', () => {
       await screen.findAllByRole('radio');
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /vista previa/i }));
+      await goToFinalStep(user);
       await user.click(screen.getByRole('button', { name: /aplicar unificación/i }));
 
       expect(
@@ -548,7 +573,7 @@ describe('ReconciliationMergeDialog', () => {
       await screen.findAllByRole('radio');
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /vista previa/i }));
+      await goToFinalStep(user);
       await user.click(screen.getByRole('button', { name: /aplicar unificación/i }));
 
       await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith(conflictMessage));
@@ -567,7 +592,7 @@ describe('ReconciliationMergeDialog', () => {
       ).not.toBeInTheDocument();
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /vista previa/i }));
+      await goToFinalStep(user);
 
       expect(await screen.findByText(/esta acción no se puede deshacer/i)).toBeInTheDocument();
       expect(
@@ -606,7 +631,7 @@ describe('ReconciliationMergeDialog', () => {
       await screen.findAllByRole('radio');
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /vista previa/i }));
+      await goToFinalStep(user);
 
       await waitFor(() =>
         expect(getStatCardText(/stock total antes → después/i)).toContain('10 → 18'),
@@ -631,7 +656,7 @@ describe('ReconciliationMergeDialog', () => {
       expect(screen.queryByRole('button', { name: /ver detalle/i })).not.toBeInTheDocument();
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /vista previa/i }));
+      await goToFinalStep(user);
       await user.click(screen.getByRole('button', { name: /aplicar unificación/i }));
 
       await waitFor(() =>
@@ -657,7 +682,7 @@ describe('ReconciliationMergeDialog', () => {
       await waitFor(() => expect(screen.getAllByText(/stock —/i).length).toBeGreaterThan(0));
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /vista previa/i }));
+      await goToFinalStep(user);
 
       // Con `stockQuery.isError` el sumbox NO arma un "antes → después" con
       // un "0" inventado: muestra sólo "—" (el label sigue teniendo su
@@ -684,7 +709,7 @@ describe('ReconciliationMergeDialog', () => {
       await screen.findAllByRole('radio');
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /vista previa/i }));
+      await goToFinalStep(user);
 
       expect(await screen.findAllByText(/calculando…/i)).toHaveLength(2);
       expect(screen.queryByText(/0 → 0/)).not.toBeInTheDocument();
@@ -693,6 +718,174 @@ describe('ReconciliationMergeDialog', () => {
       await waitFor(() =>
         expect(getStatCardText(/stock total antes → después/i)).toContain('10 → 18'),
       );
+    });
+  });
+
+  describe('par de variantes — stock y costo (Anexo E)', () => {
+    beforeEach(() => {
+      mockGetTaskDetails.mockResolvedValue(makePairDetails());
+    });
+
+    it('el paso 2 muestra las dos variantes lado a lado con su costo', async () => {
+      renderDialog(makePairTask());
+      await screen.findAllByRole('radio');
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: /corroborar/i }));
+
+      const compare = await screen.findByTestId('merge-compare');
+      expect(within(compare).getByText('Producto A')).toBeInTheDocument();
+      expect(within(compare).getByText('Producto B')).toBeInTheDocument();
+      expect(within(compare).getAllByText(/costo/i).length).toBeGreaterThan(0);
+    });
+
+    it('sin elegir stock no deja aplicar; con "Usar stock de la madre" manda winner y el costo de la madre', async () => {
+      renderDialog(makePairTask());
+      await screen.findAllByRole('radio');
+      const user = userEvent.setup();
+      await goToFinalStep(user);
+
+      const apply = await screen.findByRole('button', { name: /aplicar unificación/i });
+      expect(apply).toBeDisabled();
+
+      await user.click(screen.getByRole('radio', { name: /usar stock de la madre/i }));
+      expect(apply).toBeEnabled();
+      await user.click(apply);
+
+      await waitFor(() =>
+        expect(mockResolveMerge).toHaveBeenCalledWith('task-pair-1', 'variant-b', ['variant-a'], {
+          stockMode: 'winner',
+          priceBase: 30,
+        }),
+      );
+    });
+
+    it('conteo físico menor que las reservas muestra el error y bloquea; con 12 manda count', async () => {
+      renderDialog(makePairTask());
+      await screen.findAllByRole('radio');
+      const user = userEvent.setup();
+      await goToFinalStep(user);
+
+      await user.click(await screen.findByRole('radio', { name: /conteo físico/i }));
+      const input = screen.getByLabelText(/cantidad contada/i);
+      await user.type(input, '2');
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Hay 3 unidades reservadas en pedidos; la cantidad no puede ser menor',
+      );
+      expect(screen.getByRole('button', { name: /aplicar unificación/i })).toBeDisabled();
+
+      await user.clear(input);
+      await user.type(input, '12');
+      await user.click(screen.getByRole('button', { name: /aplicar unificación/i }));
+
+      await waitFor(() =>
+        expect(mockResolveMerge).toHaveBeenCalledWith('task-pair-1', 'variant-b', ['variant-a'], {
+          stockMode: 'count',
+          countedQuantity: 12,
+          priceBase: 30,
+        }),
+      );
+    });
+
+    it('costo "Otro valor" manda lo ingresado', async () => {
+      renderDialog(makePairTask());
+      await screen.findAllByRole('radio');
+      const user = userEvent.setup();
+      await goToFinalStep(user);
+
+      await user.click(await screen.findByRole('radio', { name: /sumar ambos/i }));
+      await user.click(screen.getByRole('radio', { name: /otro valor/i }));
+      await user.type(screen.getByLabelText(/nuevo costo/i), '25,50');
+      await user.click(screen.getByRole('button', { name: /aplicar unificación/i }));
+
+      await waitFor(() =>
+        expect(mockResolveMerge).toHaveBeenCalledWith('task-pair-1', 'variant-b', ['variant-a'], {
+          stockMode: 'sum',
+          priceBase: 25.5,
+        }),
+      );
+    });
+
+    it('muestra el aviso de Shopify si cualquiera de las dos viene de Shopify', async () => {
+      renderDialog(makePairTask());
+      await screen.findAllByRole('radio');
+      const user = userEvent.setup();
+      await goToFinalStep(user);
+      expect(await screen.findByText(/se sincroniza periódicamente con shopify/i)).toBeInTheDocument();
+    });
+
+    it('sin variantes de Shopify no muestra el aviso', async () => {
+      const task = makePairTask();
+      renderDialog({
+        ...task,
+        items: task.items.map((item) => ({ ...item, source: 'aliclik' as const })),
+      });
+      await screen.findAllByRole('radio');
+      const user = userEvent.setup();
+      await goToFinalStep(user);
+      await screen.findByRole('radio', { name: /sumar ambos/i });
+      expect(screen.queryByText(/se sincroniza periódicamente con shopify/i)).not.toBeInTheDocument();
+    });
+
+    it('cambiar de madre en el paso 1 resetea lo elegido en el paso 3', async () => {
+      renderDialog(makePairTask());
+      await screen.findAllByRole('radio');
+      const user = userEvent.setup();
+      await goToFinalStep(user);
+      await user.click(await screen.findByRole('radio', { name: /usar stock de la madre/i }));
+
+      await user.click(screen.getByRole('button', { name: /volver/i }));
+      await user.click(screen.getByRole('button', { name: /volver/i }));
+      // Re-consultar: los radios del paso 1 se vuelven a montar.
+      await user.click(screen.getByRole('radio', { name: /elegir "producto a"/i }));
+      await goToFinalStep(user);
+
+      expect(await screen.findByRole('radio', { name: /usar stock de la madre \(5\)/i })).not.toBeChecked();
+      expect(screen.getByRole('button', { name: /aplicar unificación/i })).toBeDisabled();
+    });
+
+    it('tras cambiar la madre a "Producto A" (costo 20), "Usar stock de la madre" manda winner con el costo de A', async () => {
+      renderDialog(makePairTask());
+      await screen.findAllByRole('radio');
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('radio', { name: /elegir "producto a"/i }));
+      await goToFinalStep(user);
+
+      await user.click(await screen.findByRole('radio', { name: /usar stock de la madre/i }));
+      await user.click(screen.getByRole('button', { name: /aplicar unificación/i }));
+
+      await waitFor(() =>
+        expect(mockResolveMerge).toHaveBeenCalledWith('task-pair-1', 'variant-a', ['variant-b'], {
+          stockMode: 'winner',
+          priceBase: 20,
+        }),
+      );
+    });
+
+    it('si el detalle llega sin una de las candidatas, el paso 3 muestra el error y no deja aplicar', async () => {
+      mockGetTaskDetails.mockResolvedValue({
+        task_id: 'task-pair-1',
+        candidates: [makeCandidateB()],
+      });
+      renderDialog(makePairTask());
+      await screen.findAllByRole('radio');
+      const user = userEvent.setup();
+      await goToFinalStep(user);
+
+      expect(await screen.findByText(/no se pudieron cargar el stock o el costo/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /reintentar/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /aplicar unificación/i })).toBeDisabled();
+    });
+
+    it('si falla el stock en un par, el paso 3 no deja aplicar y ofrece reintentar', async () => {
+      mockGetStock.mockRejectedValueOnce(new Error('stock down'));
+      renderDialog(makePairTask());
+      await screen.findAllByRole('radio');
+      const user = userEvent.setup();
+      await goToFinalStep(user);
+
+      expect(await screen.findByText(/no se pudieron cargar el stock o el costo/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /reintentar/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /aplicar unificación/i })).toBeDisabled();
     });
   });
 });

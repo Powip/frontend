@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import {
   BarChart,
@@ -27,10 +27,13 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDashboardScope } from "@/contexts/DashboardScopeContext";
+import { reportCurrencyLabel } from "./ReportCurrencySelector";
+import { getDashboardOrders } from "@/services/dashboardService";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DashboardCard } from "./DashboardCard";
-import { hasAdminAccess } from "@/config/permissions.config";
+import { hasAdminAccess, isSuperadmin } from "@/config/permissions.config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import {
@@ -144,8 +147,12 @@ interface AnalysisProps {
 }
 
 export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
-  const { auth, selectedStoreId } = useAuth();
+  const { auth } = useAuth();
+  const { scopeParams, storeIds, canFetch, currency } = useDashboardScope();
+  const currencyPrefix = reportCurrencyLabel(currency);
+  const isAdmin = hasAdminAccess(auth?.user?.role) || isSuperadmin(auth?.user?.email);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [channelData, setChannelData] = useState<{
     salesChannels: ChannelStats[];
     closingChannels: ChannelStats[];
@@ -164,13 +171,13 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
   >("category");
 
   const fetchData = useCallback(async (from?: string, to?: string) => {
-    if (!selectedStoreId) return;
+    if (!canFetch) return;
 
     setLoading(true);
+    setLoadError(false);
     try {
-      const isAdmin = hasAdminAccess(auth?.user?.role);
-      const params: Record<string, string> = { 
-        storeId: selectedStoreId,
+      const params: Record<string, string | undefined> = {
+        ...scopeParams,
         ...(!isAdmin && { sellerId: auth?.user?.id })
       };
       if (from) params.fromDate = from;
@@ -193,16 +200,33 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
       setCategoryData(categoryRes.data);
     } catch (error) {
       console.error("Error al obtener datos de análisis:", error);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
-  }, [selectedStoreId, auth?.user?.id, auth?.user?.role]);
+  }, [scopeParams, canFetch, auth?.user?.id, isAdmin]);
 
   useEffect(() => {
     if (fromDate && toDate) {
       fetchData(fromDate, toDate);
     }
   }, [fetchData, fromDate, toDate]);
+
+  useEffect(() => {
+    const changed = (event: Event) => {
+      if (
+        auth?.company?.id &&
+        (event as CustomEvent<{ companyId: string }>).detail?.companyId ===
+          auth.company.id &&
+        fromDate &&
+        toDate
+      )
+        void fetchData(fromDate, toDate);
+    };
+    window.addEventListener("commercial-leads:changed", changed);
+    return () =>
+      window.removeEventListener("commercial-leads:changed", changed);
+  }, [auth?.company?.id, fromDate, toDate, fetchData]);
 
   // Derived data for charts
   const getChannelChartData = () => {
@@ -253,14 +277,9 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
 
   // Export Facturación function
   const handleExportFacturacion = async () => {
+    if (!canFetch || !auth?.accessToken) return;
     try {
-      // Use the correct singular endpoint that exists in the controller
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-      );
-
-      // Get all orders and filter manually since the backend doesn't support these filters on this endpoint
-      const allOrders = response.data || [];
+      const allOrders = await getDashboardOrders(storeIds, fromDate, toDate, auth.accessToken, { currency });
 
       // Parse dates for comparison
       const start = fromDate ? new Date(fromDate + "T00:00:00") : null;
@@ -297,11 +316,11 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
         ["Total Órdenes:", orders.length],
         [
           "Total Facturación:",
-          `S/ ${orders.reduce((s: number, o: any) => s + (o.grandTotal || 0), 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
+          `${currencyPrefix} ${orders.reduce((s: number, o: any) => s + (o.grandTotal || 0), 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
         ],
         [
           "Ticket Promedio:",
-          `S/ ${(orders.length > 0 ? orders.reduce((s: number, o: any) => s + (o.grandTotal || 0), 0) / orders.length : 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
+          `${currencyPrefix} ${(orders.length > 0 ? orders.reduce((s: number, o: any) => s + (o.grandTotal || 0), 0) / orders.length : 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
         ],
         [""],
         ["POR CANAL DE VENTA"],
@@ -358,14 +377,19 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
       XLSX.writeFile(wb, `facturacion_${fromDate}_${toDate}.xlsx`);
     } catch (error) {
       console.error("Error exporting:", error);
+      toast.error("No se pudo exportar la facturación del período seleccionado");
     }
   };
+
+  if (loadError) {
+    return <div role="alert" className="p-8 text-destructive">No se pudieron cargar los datos de análisis. Intenta nuevamente.</div>;
+  }
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-background">
 
       {/* Export / Actions Header within component if needed */}
-      {hasAdminAccess(auth?.user?.role) && (
+      {isAdmin && (
         <div className="px-8 pt-4 pb-2 flex justify-end">
           <Button
             onClick={handleExportFacturacion}
@@ -405,7 +429,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
           />
           <StatCard
             title="Ventas Periodo"
-            value={`S/ ${channelData?.salesChannels.reduce((sum, c) => sum + c.totalAmount, 0).toLocaleString() || 0}`}
+            value={`${currencyPrefix} ${channelData?.salesChannels.reduce((sum, c) => sum + c.totalAmount, 0).toLocaleString() || 0}`}
             subValue="Periodo seleccionado"
             loading={loading}
           />
@@ -479,7 +503,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
                 <Tooltip
                   cursor={{ fill: "var(--foreground)", opacity: 0.05 }}
                   formatter={(value) => [
-                    `S/ ${Number(value).toLocaleString("es-PE")}`,
+                    `${currencyPrefix} ${Number(value).toLocaleString("es-PE")}`,
                     "Monto",
                   ]}
                   itemStyle={{ color: "var(--foreground)" }}
@@ -554,7 +578,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
                 </Pie>
                 <Tooltip
                   formatter={(value) => [
-                    `S/ ${Number(value).toLocaleString()}`,
+                    `${currencyPrefix} ${Number(value).toLocaleString()}`,
                     "Monto",
                   ]}
                   itemStyle={{ color: "var(--foreground)" }}
@@ -589,7 +613,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
                 Facturación Total
               </p>
               <p className="text-lg font-bold text-blue-500">
-                S/{" "}
+                {currencyPrefix}{" "}
                 {categoryTotals.totalBilling.toLocaleString("es-PE", {
                   minimumFractionDigits: 2,
                 })}
@@ -616,7 +640,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
                 Ticket Promedio
               </p>
               <p className="text-lg font-bold text-amber-500">
-                S/{" "}
+                {currencyPrefix}{" "}
                 {avgTicket.toLocaleString("es-PE", {
                   minimumFractionDigits: 2,
                 })}
@@ -657,7 +681,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
                       {cat.categoryName}
                     </TableCell>
                     <TableCell className="text-right">
-                      S/{" "}
+                      {currencyPrefix}{" "}
                       {cat.totalAmount.toLocaleString("es-PE", {
                         minimumFractionDigits: 2,
                       })}
@@ -724,7 +748,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
                       {item.categoryName || item.brandName}
                     </TableCell>
                     <TableCell className="text-right">
-                      S/{" "}
+                      {currencyPrefix}{" "}
                       {item.totalAmount.toLocaleString("es-PE", {
                         minimumFractionDigits: 2,
                       })}

@@ -1,15 +1,19 @@
+import type { ConfirmCommercialOrderPurchaseInput, LeadConfirmationCapabilities, LeadConfirmationResponse } from "@/types/leads";
 import axiosAuth from "@/lib/axiosAuth";
 import { OrderHeader, SubEstadoCc, TipoGestionCC, KpisCC, CcKpisFinancierosResponse, CcKpisFunnelResponse, CcStorePerformanceItem, CcUpsellResponse, CcAgingResponse, CcIntentosResponse, CcUpsellRecordsResponse } from "@/interfaces/IOrder";
 
 const BASE = process.env.NEXT_PUBLIC_API_VENTAS;
 
 export interface PedidosCcFilters {
+  dateBasis?: "CREATED" | "COMMERCIAL_EVENTS";
+  search?: string;
   tipoGestion?: TipoGestionCC;
   subEstado?: SubEstadoCc;
   agenteId?: string;
   unassigned?: boolean;
   canalOrigen?: string;
   storeId?: string;
+  storeIds?: string[];
   startDate?: string;
   endDate?: string;
   page?: number;
@@ -23,17 +27,28 @@ export interface PaginatedCcResult {
   totalPages: number;
 }
 
+function ccStoreParams({ storeId, storeIds }: Pick<PedidosCcFilters, "storeId" | "storeIds">): Record<string, string> {
+  if (storeIds !== undefined) {
+    if (storeId !== undefined || !Array.isArray(storeIds) || !storeIds.length || storeIds.length > 200 || storeIds.some((id) => !id.trim()))
+      throw new Error("Selecciona tiendas del negocio sin combinar storeId y storeIds");
+    return { storeIds: [...new Set(storeIds)].sort().join(",") };
+  }
+  if (!storeId?.trim()) throw new Error("Selecciona tiendas del negocio");
+  return { storeId };
+}
+
 export async function getPedidosCC(
   filters: PedidosCcFilters,
   signal?: AbortSignal,
 ): Promise<PaginatedCcResult> {
-  const params = new URLSearchParams();
+  const params = new URLSearchParams(ccStoreParams(filters));
+  if (filters.dateBasis) params.set("dateBasis", filters.dateBasis);
+  if (filters.search?.trim()) params.set("search", filters.search.trim());
   if (filters.tipoGestion)     params.set("tipoGestion", filters.tipoGestion);
   if (filters.subEstado)       params.set("subEstado", filters.subEstado);
   if (filters.unassigned)      params.set("unassigned", "true");
   else if (filters.agenteId)   params.set("agenteId", filters.agenteId);
   if (filters.canalOrigen)     params.set("canalOrigen", filters.canalOrigen);
-  if (filters.storeId)         params.set("storeId", filters.storeId);
   if (filters.startDate)       params.set("startDate", filters.startDate);
   if (filters.endDate)         params.set("endDate", filters.endDate);
   if (filters.page)            params.set("page", String(filters.page));
@@ -47,7 +62,7 @@ export async function getPedidosCC(
 
 /** Tamaño pedido al backend; puede aplicar un tope menor, por eso el corte usa `total`. */
 const ALL_PEDIDOS_PAGE_SIZE = 200;
-/** Resguardo de requests secuenciales por búsqueda (≤ 4000 pedidos si se respeta el tamaño). */
+/** Resguardo de requests secuenciales para descargas explícitas (≤ 4000 pedidos). */
 const ALL_PEDIDOS_MAX_PAGES = 20;
 
 export interface AllPedidosCcResult {
@@ -60,9 +75,8 @@ export interface AllPedidosCcResult {
 
 /**
  * Trae todas las páginas de /atencion-al-cliente/pedidos para los filtros dados.
- * El endpoint no acepta búsqueda por texto, así que el buscador de Gestión COD
- * filtra en cliente sobre este conjunto completo (mismo patrón que
- * cierreDiaProductosService.fetchAllPedidosCC).
+ * Solo para operaciones que requieren una descarga explícita completa. La tabla
+ * y su buscador usan getPedidosCC con la paginación del servidor.
  *
  * No asume que el backend respete `limit`: sigue pidiendo páginas mientras lo
  * acumulado sea menor que el `total` real de la respuesta (totalPages solo se
@@ -102,10 +116,9 @@ export async function getAllPedidosCC(
   };
 }
 
-export async function getKpisCC(tipoGestion: TipoGestionCC, storeId: string): Promise<KpisCC> {
-  const res = await axiosAuth.get<KpisCC>(
-    `${BASE}/atencion-al-cliente/kpis?tipoGestion=${tipoGestion}&storeId=${storeId}`,
-  );
+export async function getKpisCC(tipoGestion: TipoGestionCC, scope: string | string[], signal?: AbortSignal): Promise<KpisCC> {
+  const params = ccStoreParams(typeof scope === "string" ? { storeId: scope } : { storeIds: scope });
+  const res = await axiosAuth.get<KpisCC>(`${BASE}/atencion-al-cliente/kpis`, { params: { tipoGestion, ...params }, signal });
   return res.data;
 }
 
@@ -152,6 +165,24 @@ export async function confirmarDespacho(orderId: string): Promise<void> {
   await axiosAuth.post(
     `${BASE}/atencion-al-cliente/pedidos/${orderId}/confirmar-despacho`,
   );
+}
+
+export async function getCcOrderConfirmationCapabilities(
+  orderId: string,
+): Promise<LeadConfirmationCapabilities> {
+  return (await axiosAuth.get<LeadConfirmationCapabilities>(
+    `${BASE}/atencion-al-cliente/pedidos/${encodeURIComponent(orderId)}/confirmation-capabilities`,
+  )).data;
+}
+
+export async function confirmarVentaCc(
+  orderId: string,
+  command: ConfirmCommercialOrderPurchaseInput,
+): Promise<LeadConfirmationResponse> {
+  return (await axiosAuth.post<LeadConfirmationResponse>(
+    `${BASE}/atencion-al-cliente/pedidos/${encodeURIComponent(orderId)}/confirmar-venta`,
+    command,
+  )).data;
 }
 
 export async function recuperarVentaCC(orderId: string): Promise<void> {

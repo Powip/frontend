@@ -1,4 +1,7 @@
 "use client";
+import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
+
+import { OrderOriginLabel } from "../../_shared/OrderOriginLabel";
 
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -138,7 +141,7 @@ export function HistorialTab({
             )}
             {paged.map((sale) => (
               <TableRow key={sale.id}>
-                <TableCell className="font-medium">{sale.orderNumber}</TableCell>
+                <TableCell className="font-medium">{sale.orderNumber}<OrderOriginLabel {...sale} /></TableCell>
                 <TableCell className="text-sm">{formatDateTime(sale.createdAt)}</TableCell>
                 <TableCell className="text-sm">{formatDateTime(sale.updatedAt)}</TableCell>
                 <TableCell>
@@ -165,7 +168,7 @@ export function HistorialTab({
                     </span>
                   )}
                 </TableCell>
-                <TableCell className="text-sm tabular-nums">{money(sale.total)}</TableCell>
+                <TableCell className="text-sm tabular-nums">{money(sale.total)}<div className="mt-1"><FinancialStatusBadge pendingAmount={sale.pendingPayment} /></div></TableCell>
                 <TableCell className="sticky right-0 z-10 bg-gray-100 dark:bg-gray-900 border-l text-right">
                   <div className="flex items-center justify-end gap-1">
                     <OrderDetailButton orderId={sale.id} orderNumber={sale.orderNumber} />

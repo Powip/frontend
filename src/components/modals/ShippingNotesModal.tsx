@@ -1,5 +1,7 @@
 "use client";
 
+import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
+
 import React, { useState, useEffect, useRef } from "react";
 import {
   Dialog,
@@ -13,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { MessageSquare, Send, User } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import { ScrollArea } from "../ui/scroll-area";
 import { useAuth } from "@/contexts/AuthContext";
@@ -40,6 +42,7 @@ export default function ShippingNotesModal({
   initialNotes = "[]",
   onNoteAdded,
 }: ShippingNotesModalProps) {
+  const invalidateBusinessData = useInvalidateBusinessData();
   const [notes, setNotes] = useState<Note[]>([]);
   const [newNote, setNewNote] = useState("");
   const [sending, setSending] = useState(false);
@@ -86,6 +89,7 @@ export default function ShippingNotesModal({
       
       toast.success("Comentario agregado");
       setNewNote("");
+      void invalidateBusinessData();
       onNoteAdded();
     } catch (error: any) {
       toast.error("Error al agregar comentario");

@@ -1,10 +1,12 @@
-import axios from 'axios';
-import { OrderHeader } from '@/interfaces/IOrder';
+import axiosAuth from "@/lib/axiosAuth";
+import { OrderHeader } from "@/interfaces/IOrder";
 
 const BASE = process.env.NEXT_PUBLIC_API_VENTAS;
 
-export async function getIncompleteOrders(storeId: string): Promise<OrderHeader[]> {
-  const res = await axios.get<OrderHeader[]>(
+export async function getIncompleteOrders(
+  storeId: string,
+): Promise<OrderHeader[]> {
+  const res = await axiosAuth.get<OrderHeader[]>(
     `${BASE}/order-header/store/${storeId}/incomplete`,
   );
   return res.data;
@@ -28,16 +30,20 @@ export async function repairOrder(
     notes?: string;
   },
 ): Promise<OrderHeader> {
-  const res = await axios.patch<OrderHeader>(
+  const res = await axiosAuth.patch<OrderHeader>(
     `${BASE}/order-header/${orderId}/repair`,
     data,
   );
   return res.data;
 }
 
-export async function confirmOrder(orderId: string): Promise<OrderHeader> {
-  const res = await axios.patch<OrderHeader>(
+export async function confirmOrder(
+  orderId: string,
+  commandId?: string,
+): Promise<OrderHeader> {
+  const res = await axiosAuth.patch<OrderHeader>(
     `${BASE}/order-header/${orderId}/confirm`,
+    commandId ? { commandId } : undefined,
   );
   return res.data;
 }

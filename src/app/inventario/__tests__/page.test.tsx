@@ -1,74 +1,19 @@
-/**
- * Tests: AlmacenPage (app/inventario/page.tsx) — FEAT-09
- *
- * Comportamiento verificado:
- * 1. Al hacer click en "Exportar en Excel" se llama a `exportInventoryItems`
- *    (con `inventoryId` y `q` actuales de pantalla) y NO se dispara ninguna
- *    llamada extra a `searchInventoryItems` (el fetch paginado que alimenta
- *    la tabla).
- * 2. Mientras la promesa de `exportInventoryItems` está pendiente, el botón
- *    muestra "Exportando..." y queda deshabilitado; al resolver, vuelve al
- *    estado normal.
- * 3. Si `exportInventoryItems` devuelve más filas que `ITEMS_PER_PAGE`
- *    (25 vs. 10), el Excel se arma con las 25 filas devueltas, no con las 10
- *    que están en pantalla — verificado contando las llamadas a
- *    `worksheet.addRow` sobre un mock de ExcelJS.
- * 4. Si `exportInventoryItems` rechaza la promesa, se muestra un
- *    `toast.error` (mensaje distinto si es timeout de gateway vs. otro
- *    error), el botón vuelve a estar habilitado y la tabla en pantalla no se
- *    rompe (sigue mostrando sus filas).
- * 5. Regresión: la paginación normal de la tabla (`searchInventoryItems` con
- *    `page`/`limit`) sigue funcionando sin cambios.
- * 6. FEAT-17 Fase 5: la pestaña nueva "Reconciliación" se renderiza en el
- *    `TabsList` junto a "Stock Actual" e "Historial de Movimientos" (cambio
- *    aditivo). La cobertura de comportamiento de `ReconciliationTab` en sí
- *    vive en components/inventory/__tests__/ReconciliationTab.test.tsx.
- *
- * Mocks aplicados:
- * - @/contexts/AuthContext → useAuth
- * - @/services/inventoryItems.service → searchInventoryItems, exportInventoryItems
- * - sonner → toast.success/error/warning
- * - next/navigation → useRouter/usePathname (usados por HeaderConfig y la página)
- * - exceljs → Workbook mínimo en memoria (sin parseo real), expone
- *   `__getAddRowCalls()` para contar cuántas filas arma el export.
- * - window.URL.createObjectURL/revokeObjectURL y HTMLAnchorElement.click →
- *   no implementados en jsdom, se stubean (mismo patrón que
- *   ExcelImportWizard.test.tsx).
- */
-
+/** Stock export regressions: full scope, current filter, loading, all rows, gateway errors, tabs and pagination. */
+import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-
-// ── Mocks de infraestructura ─────────────────────────────────────────────────
-
-jest.mock('@/contexts/AuthContext', () => ({
-  useAuth: jest.fn(),
-}));
-
-jest.mock('@/services/inventoryItems.service', () => ({
-  searchInventoryItems: jest.fn(),
-  exportInventoryItems: jest.fn(),
-}));
-
-jest.mock('sonner', () => ({
-  toast: {
-    success: jest.fn(),
-    error: jest.fn(),
-    warning: jest.fn(),
-  },
-}));
-
-jest.mock('next/navigation', () => ({
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
-  usePathname: () => '/inventario',
-}));
-
-/**
- * Mock mínimo de ExcelJS: solo lo que `handleExportExcel` necesita
- * (Workbook.addWorksheet → columns/getRow/addRow, xlsx.writeBuffer). No
- * parsea nada — solo registra las filas agregadas para poder contar cuántas
- * llegaron al Excel final.
- */
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fetchBusinessInventoryItems } from '@/services/businessInventoryItemsService';
+import type { BusinessInventoryItem } from '@/services/businessInventoryItemsService';
+import { toast } from 'sonner';
+import ExcelJS from 'exceljs';
+import AlmacenPage from '../page';
+jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { accessToken: 'fake-token', user: { id: 'user-1' }, company: { id: 'company-1', stores: [{id:'store-1', name:'Principal'}] } } }) }));
+jest.mock('@/contexts/BusinessScopeContext', () => ({ useBusinessScope: () => ({scope:'business',storeIds:['store-1'],canFetch:true}) }));
+jest.mock('@/hooks/useBusinessInventories', () => ({useBusinessInventories: () => ({inventories:[{id:'inv-1',name:'Almacén Principal',storeId:'store-1'}],isSuccess:true,isPending:false,refetch:jest.fn()})}));
+jest.mock('@/services/businessInventoryItemsService', () => ({ ...jest.requireActual('@/services/businessInventoryItemsService'), fetchBusinessInventoryItems: jest.fn() }));
+jest.mock('sonner', () => ({ toast: { success:jest.fn(),error:jest.fn(),warning:jest.fn() } }));
+jest.mock('next/navigation', () => ({ useRouter: () => ({push:jest.fn(),replace:jest.fn()}),usePathname:()=>'/inventario' }));
 jest.mock('exceljs', () => {
   const addRowCalls: unknown[] = [];
 
@@ -111,346 +56,51 @@ jest.mock('exceljs', () => {
   };
 });
 
-// ── Imports bajo prueba (después de los mocks) ────────────────────────────────
 
-import { useAuth } from '@/contexts/AuthContext';
-import {
-  searchInventoryItems,
-  exportInventoryItems,
-} from '@/services/inventoryItems.service';
-import { toast } from 'sonner';
-import ExcelJS from 'exceljs';
-import AlmacenPage from '../page';
-import type { InventoryItemForSale } from '@/interfaces/IProduct';
-
-// ── Casts ────────────────────────────────────────────────────────────────────
-
-const mockUseAuth = jest.mocked(useAuth);
-const mockSearchInventoryItems = jest.mocked(searchInventoryItems);
-const mockExportInventoryItems = jest.mocked(exportInventoryItems);
+const fetch = jest.mocked(fetchBusinessInventoryItems);
 const mockToast = toast as jest.Mocked<typeof toast>;
-const mockExcelJS = ExcelJS as unknown as {
-  __getAddRowCalls: () => unknown[];
-  __resetAddRowCalls: () => void;
-};
-
-// ── Fixtures ─────────────────────────────────────────────────────────────────
-
-const MOCK_AUTH = {
-  auth: {
-    user: { id: 'user-1', email: 'admin@powip.com', role: 'ADMIN', permissions: [] },
-    company: {
-      id: 'company-1',
-      name: 'Powip Test',
-      stores: [{ id: 'store-1', name: 'Tienda Principal' }],
-    },
-    accessToken: 'fake-token',
-    subscription: null,
-    exp: 9999999999,
-  },
-  loading: false,
-  login: jest.fn(),
-  logout: jest.fn(),
-  updateCompany: jest.fn(),
-  selectedStoreId: 'store-1',
-  setSelectedStore: jest.fn(),
-  inventories: [{ id: 'inv-1', name: 'Almacén Principal', storeId: 'store-1' }],
-  refreshInventories: jest.fn(),
-  hasPermission: jest.fn().mockReturnValue(true),
-};
-
-function makeItem(
-  id: string,
-  name: string,
-  overrides: Partial<InventoryItemForSale> = {},
-): InventoryItemForSale {
-  return {
-    inventoryItemId: id,
-    variantId: `variant-${id}`,
-    productName: name,
-    sku: `SKU-${id}`,
-    companySku: null,
-    price: 100,
-    priceBase: 50,
-    priceVta: 100,
-    availableStock: 10,
-    physicalStock: 12,
-    reservedStock: 2,
-    attributes: {},
-    imageUrl: null,
-    ...overrides,
-  };
-}
-
-const DEFAULT_ITEMS = [
-  makeItem('item-1', 'Producto Uno'),
-  makeItem('item-2', 'Producto Dos'),
-];
-const DEFAULT_META = { page: 1, limit: 10, total: 2, totalPages: 1 };
-
-function renderPage() {
-  return render(<AlmacenPage />);
-}
-
-async function waitForInitialLoad() {
-  await screen.findByText('Producto Uno');
-}
-
-// ── Setup ────────────────────────────────────────────────────────────────────
-
-beforeAll(() => {
-  window.URL.createObjectURL = jest.fn(() => 'blob:mock-url');
-  window.URL.revokeObjectURL = jest.fn();
-  jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+const mockExcelJS = ExcelJS as unknown as { __getAddRowCalls: () => Array<Record<string, unknown>>; __resetAddRowCalls: () => void };
+const makeItem = (id: string, name: string): BusinessInventoryItem => ({ inventoryItemId:id,productId:'product',variantId:`variant-${id}`,productName:name,sku:`SKU-${id}`,price:100,priceVta:100,availableStock:10,physicalStock:12,reservedStock:2, inventoryId:'inv-1', inventoryName:'Almacén Principal',storeId:'store-1',storeName:'Principal' });
+const DEFAULT_ITEMS = [makeItem('item-1','Producto Uno'),makeItem('item-2','Producto Dos')];
+function renderPage() { const client = new QueryClient({defaultOptions:{queries:{retry:false}}}); return render(<QueryClientProvider client={client}><AlmacenPage /></QueryClientProvider>); }
+async function loaded() { await screen.findByText('Producto Uno'); }
+beforeAll(() => { window.URL.createObjectURL = jest.fn(()=>'blob:mock'); window.URL.revokeObjectURL=jest.fn(); jest.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{}); });
+beforeEach(() => { jest.clearAllMocks(); fetch.mockReset(); fetch.mockResolvedValue(DEFAULT_ITEMS); mockExcelJS.__resetAddRowCalls(); });
+it('exports a fresh full physical scope with authenticated company context', async () => {
+ renderPage(); await loaded(); const user=userEvent.setup(); await user.click(screen.getByRole('button',{name:/exportar en excel/i}));
+ await waitFor(()=>expect(mockToast.success).toHaveBeenCalledWith('Exportados 2 producto(s)'));
+ expect(fetch).toHaveBeenCalledTimes(2); expect(fetch).toHaveBeenLastCalledWith(expect.objectContaining({companyId:'company-1',accessToken:'fake-token',inventories:[{id:'inv-1',name:'Almacén Principal',storeId:'store-1'}]}));
+ expect(mockExcelJS.__getAddRowCalls()[0]).toMatchObject({store:'Principal',inventory:'Almacén Principal'});
 });
-
-beforeEach(() => {
-  jest.clearAllMocks();
-  mockExcelJS.__resetAddRowCalls();
-  mockUseAuth.mockReturnValue(MOCK_AUTH as unknown as ReturnType<typeof useAuth>);
-  mockSearchInventoryItems.mockResolvedValue({
-    data: DEFAULT_ITEMS,
-    meta: DEFAULT_META,
-  });
-  mockExportInventoryItems.mockResolvedValue(DEFAULT_ITEMS);
+it('exports only the current search match from the full scope', async () => {
+ renderPage(); await loaded(); const user=userEvent.setup(); await user.type(screen.getByPlaceholderText(/buscar por sku/i),'Uno'); await user.click(screen.getByRole('button',{name:/exportar en excel/i}));
+ await waitFor(()=>expect(mockToast.success).toHaveBeenCalledWith('Exportados 1 producto(s)')); expect(mockExcelJS.__getAddRowCalls()).toEqual([expect.objectContaining({name:'Producto Uno'})]);
 });
-
-// ── Tests ────────────────────────────────────────────────────────────────────
-
-describe('AlmacenPage — export a Excel (FEAT-09)', () => {
-  describe('llamada al service de export', () => {
-    it('al clickear "Exportar en Excel" llama a exportInventoryItems con el inventoryId actual y no dispara un searchInventoryItems adicional', async () => {
-      renderPage();
-      await waitForInitialLoad();
-
-      const searchCallsBeforeClick = mockSearchInventoryItems.mock.calls.length;
-
-      const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /exportar en excel/i }));
-
-      await waitFor(() => expect(mockExportInventoryItems).toHaveBeenCalledTimes(1));
-      expect(mockExportInventoryItems).toHaveBeenCalledWith({
-        inventoryId: 'inv-1',
-        q: undefined,
-      });
-
-      // No se disparó ningún fetch adicional del listado paginado por el export.
-      expect(mockSearchInventoryItems.mock.calls.length).toBe(searchCallsBeforeClick);
-    });
-
-    it('incluye la búsqueda actual de pantalla como filtro del export', async () => {
-      renderPage();
-      await waitForInitialLoad();
-
-      const user = userEvent.setup();
-      const searchInput = screen.getByPlaceholderText(/buscar por sku, nombre o variante/i);
-      await user.type(searchInput, 'zap');
-
-      // Esperamos a que el debounce de búsqueda de la tabla dispare con el
-      // texto final, para asegurar que el estado `searchQuery` ya reflejó el
-      // valor completo antes de exportar.
-      await waitFor(() =>
-        expect(mockSearchInventoryItems).toHaveBeenCalledWith(
-          expect.objectContaining({ q: 'zap' }),
-        ),
-      );
-
-      await user.click(screen.getByRole('button', { name: /exportar en excel/i }));
-
-      await waitFor(() =>
-        expect(mockExportInventoryItems).toHaveBeenCalledWith({
-          inventoryId: 'inv-1',
-          q: 'zap',
-        }),
-      );
-    });
-  });
-
-  describe('estado de carga del botón', () => {
-    it('muestra "Exportando..." y deshabilita el botón mientras exportInventoryItems está pendiente, y lo restaura al resolver', async () => {
-      // Promesa con resolución diferida (setTimeout real) para poder
-      // observar el estado intermedio de carga antes de que se resuelva.
-      mockExportInventoryItems.mockImplementation(
-        () =>
-          new Promise((resolve) => {
-            setTimeout(() => resolve(DEFAULT_ITEMS), 50);
-          }),
-      );
-
-      renderPage();
-      await waitForInitialLoad();
-
-      const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /exportar en excel/i }));
-
-      const loadingButton = await screen.findByRole('button', { name: /exportando/i });
-      expect(loadingButton).toBeDisabled();
-
-      await waitFor(
-        () =>
-          expect(
-            screen.getByRole('button', { name: /exportar en excel/i }),
-          ).not.toBeDisabled(),
-        { timeout: 2000 },
-      );
-      expect(screen.queryByText(/exportando\.\.\./i)).not.toBeInTheDocument();
-    });
-  });
-
-  describe('exporta todas las filas devueltas, no solo la página en pantalla', () => {
-    it('arma el Excel con las 25 filas de exportInventoryItems aunque la tabla solo muestre 10 (ITEMS_PER_PAGE)', async () => {
-      const pageItems = Array.from({ length: 10 }, (_, i) =>
-        makeItem(`page-${i}`, `Producto Página ${i}`),
-      );
-      mockSearchInventoryItems.mockResolvedValue({
-        data: pageItems,
-        meta: { page: 1, limit: 10, total: 25, totalPages: 3 },
-      });
-
-      const allItems = Array.from({ length: 25 }, (_, i) =>
-        makeItem(`all-${i}`, `Producto Completo ${i}`),
-      );
-      mockExportInventoryItems.mockResolvedValue(allItems);
-
-      renderPage();
-      await screen.findByText('Producto Página 0');
-      // La tabla en pantalla solo tiene la página actual (10 filas).
-      expect(screen.queryByText('Producto Completo 0')).not.toBeInTheDocument();
-
-      const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /exportar en excel/i }));
-
-      await waitFor(() =>
-        expect(mockToast.success).toHaveBeenCalledWith('Exportados 25 producto(s)'),
-      );
-
-      expect(mockExcelJS.__getAddRowCalls()).toHaveLength(25);
-    });
-  });
-
-  describe('manejo de errores al exportar', () => {
-    it('detecta timeout cuando el gateway devuelve 504 sin código ECONNABORTED (caso real en producción: axiosAuth no configura timeout de cliente)', async () => {
-      const gatewayTimeoutError = {
-        isAxiosError: true,
-        code: undefined,
-        response: { status: 504 },
-        message: 'Request failed with status code 504',
-      };
-      mockExportInventoryItems.mockRejectedValue(gatewayTimeoutError);
-
-      renderPage();
-      await waitForInitialLoad();
-
-      const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /exportar en excel/i }));
-
-      await waitFor(() =>
-        expect(mockToast.error).toHaveBeenCalledWith(
-          'La exportación tardó demasiado. Intente nuevamente o aplique un filtro más específico.',
-        ),
-      );
-
-      expect(screen.getByRole('button', { name: /exportar en excel/i })).not.toBeDisabled();
-      // La tabla sigue mostrando sus filas — el error del export no la rompió.
-      expect(screen.getByText('Producto Uno')).toBeInTheDocument();
-      expect(screen.getByText('Producto Dos')).toBeInTheDocument();
-    });
-
-    it('muestra un mensaje de timeout cuando el error es ECONNABORTED (señal secundaria, client-side) y reactiva el botón sin romper la tabla', async () => {
-      const timeoutError = {
-        isAxiosError: true,
-        code: 'ECONNABORTED',
-        message: 'timeout of 20000ms exceeded',
-      };
-      mockExportInventoryItems.mockRejectedValue(timeoutError);
-
-      renderPage();
-      await waitForInitialLoad();
-
-      const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /exportar en excel/i }));
-
-      await waitFor(() =>
-        expect(mockToast.error).toHaveBeenCalledWith(
-          'La exportación tardó demasiado. Intente nuevamente o aplique un filtro más específico.',
-        ),
-      );
-
-      expect(screen.getByRole('button', { name: /exportar en excel/i })).not.toBeDisabled();
-      // La tabla sigue mostrando sus filas — el error del export no la rompió.
-      expect(screen.getByText('Producto Uno')).toBeInTheDocument();
-      expect(screen.getByText('Producto Dos')).toBeInTheDocument();
-    });
-
-    it('muestra un mensaje genérico cuando el error no es timeout y reactiva el botón sin romper la tabla', async () => {
-      mockExportInventoryItems.mockRejectedValue(new Error('Network Error'));
-
-      renderPage();
-      await waitForInitialLoad();
-
-      const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /exportar en excel/i }));
-
-      await waitFor(() =>
-        expect(mockToast.error).toHaveBeenCalledWith(
-          'No se pudo exportar el inventario. Intente nuevamente.',
-        ),
-      );
-
-      expect(screen.getByRole('button', { name: /exportar en excel/i })).not.toBeDisabled();
-      expect(screen.getByText('Producto Uno')).toBeInTheDocument();
-      expect(screen.getByText('Producto Dos')).toBeInTheDocument();
-    });
-  });
+it('disables the button and restores it while export is pending', async () => {
+ let resolve!: (rows: BusinessInventoryItem[])=>void;
+ fetch.mockResolvedValueOnce(DEFAULT_ITEMS).mockImplementationOnce(()=>new Promise((done)=>{resolve=done;}));
+ renderPage(); await loaded(); const user=userEvent.setup(); await user.click(screen.getByRole('button',{name:/exportar en excel/i}));
+ expect(await screen.findByRole('button',{name:/exportando/i})).toBeDisabled(); resolve(DEFAULT_ITEMS);
+ await waitFor(()=>expect(screen.getByRole('button',{name:/exportar en excel/i})).not.toBeDisabled());
 });
-
-describe('AlmacenPage — pestaña de Reconciliación (FEAT-17 Fase 5)', () => {
-  // Cambio aditivo: agrega una pestaña nueva al `Tabs` existente. Radix Tabs
-  // desmonta (`Presence`) el contenido de las pestañas inactivas, así que
-  // `ReconciliationTab` (con su propio fetch a reconciliationTask.service) NO
-  // se monta mientras la pestaña activa siga siendo "Stock Actual" (default) —
-  // por eso este test no necesita mockear ese service. La cobertura de
-  // comportamiento de `ReconciliationTab` vive en su propio archivo de test
-  // (components/inventory/__tests__/ReconciliationTab.test.tsx).
-  it('renderiza la pestaña "Reconciliación" junto a Stock Actual e Historial de Movimientos', async () => {
-    renderPage();
-    await waitForInitialLoad();
-
-    expect(screen.getByRole('tab', { name: /stock actual/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /historial de movimientos/i })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: /reconciliación/i })).toBeInTheDocument();
-  });
+it('exports all 25 rows while the table displays only the first ten', async () => {
+ const rows=Array.from({length:25},(_,index)=>makeItem(`row-${index}`,`Producto Completo ${index}`)); fetch.mockResolvedValue(rows);
+ renderPage(); await screen.findByText('Producto Completo 0'); expect(screen.queryByText('Producto Completo 10')).not.toBeInTheDocument();
+ const user=userEvent.setup(); await user.click(screen.getByRole('button',{name:/exportar en excel/i})); await waitFor(()=>expect(mockExcelJS.__getAddRowCalls()).toHaveLength(25));
+ expect(mockToast.success).toHaveBeenCalledWith('Exportados 25 producto(s)');
 });
-
-describe('AlmacenPage — regresión: paginación normal de la tabla', () => {
-  it('al pasar de página llama a searchInventoryItems con page:2 y actualiza la tabla (sin usar exportInventoryItems)', async () => {
-    mockSearchInventoryItems.mockImplementation(async (params) => {
-      if (params.page === 2) {
-        return {
-          data: [makeItem('item-p2', 'Producto Página 2')],
-          meta: { page: 2, limit: 10, total: 12, totalPages: 2 },
-        };
-      }
-      return {
-        data: [makeItem('item-p1', 'Producto Página 1')],
-        meta: { page: 1, limit: 10, total: 12, totalPages: 2 },
-      };
-    });
-
-    renderPage();
-    await screen.findByText('Producto Página 1');
-
-    const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: /siguiente/i }));
-
-    await waitFor(() =>
-      expect(mockSearchInventoryItems).toHaveBeenCalledWith(
-        expect.objectContaining({ inventoryId: 'inv-1', page: 2, limit: 10 }),
-      ),
-    );
-
-    expect(await screen.findByText('Producto Página 2')).toBeInTheDocument();
-    expect(screen.queryByText('Producto Página 1')).not.toBeInTheDocument();
-    expect(mockExportInventoryItems).not.toHaveBeenCalled();
-  });
+it.each([
+ [{isAxiosError:true,response:{status:504},message:'504'},'La exportación tardó demasiado. Intente nuevamente o aplique un filtro más específico.'],
+ [{isAxiosError:true,code:'ECONNABORTED',message:'timeout'},'La exportación tardó demasiado. Intente nuevamente o aplique un filtro más específico.'],
+ [new Error('Network Error'),'No se pudo exportar el inventario. Intente nuevamente.'],
+])('reports export failure without losing the loaded stock rows', async (error,message) => {
+ fetch.mockResolvedValueOnce(DEFAULT_ITEMS).mockRejectedValueOnce(error); renderPage(); await loaded(); const user=userEvent.setup(); await user.click(screen.getByRole('button',{name:/exportar en excel/i}));
+ await waitFor(()=>expect(mockToast.error).toHaveBeenCalledWith(message)); expect(screen.getByText('Producto Uno')).toBeInTheDocument(); expect(screen.getByRole('button',{name:/exportar en excel/i})).not.toBeDisabled();
+});
+it('keeps Stock, Movement History and Reconciliation tabs available', async () => {
+ renderPage(); await loaded(); for(const name of [/stock actual/i,/historial de movimientos/i,/reconciliación/i]) expect(screen.getByRole('tab',{name})).toBeInTheDocument();
+});
+it('paginates the complete union without repeating fetches or exporting', async () => {
+ fetch.mockResolvedValue(Array.from({length:12},(_,index)=>makeItem(`row-${index}`,`Producto Página ${index}`))); renderPage(); await screen.findByText('Producto Página 0');
+ const user=userEvent.setup(); await user.click(screen.getByRole('button',{name:/siguiente/i})); expect(await screen.findByText('Producto Página 10')).toBeInTheDocument(); expect(screen.queryByText('Producto Página 0')).not.toBeInTheDocument(); expect(fetch).toHaveBeenCalledTimes(1); expect(mockExcelJS.__getAddRowCalls()).toHaveLength(0);
 });

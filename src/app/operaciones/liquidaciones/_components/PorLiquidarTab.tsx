@@ -1,5 +1,7 @@
 "use client";
 
+import { OrderOriginLabel } from "../../_shared/OrderOriginLabel";
+
 import { useEffect, useMemo, useState } from "react";
 import { DateRange } from "react-day-picker";
 import {
@@ -202,6 +204,8 @@ export function PorLiquidarTab({
   const exportRows = (list: GuiaPorLiquidar[]) =>
     list.map((g) => ({
       Pedido: g.id,
+      Tienda: g.storeName || g.storeId || "",
+      Almacén: g.stockStoreName || g.inventoryId || g.stockStoreId || "",
       Cliente: g.cliente,
       Ciudad: g.ciudad,
       Courier: g.courier,
@@ -483,7 +487,7 @@ export function PorLiquidarTab({
                             />
                           </TableCell>
                           <TableCell className="font-semibold">
-                            {g.id}
+                            {g.id}<OrderOriginLabel {...g} />
                             {g.entregaParcial && (
                               <div className="mt-0.5">
                                 <Badge

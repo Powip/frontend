@@ -25,11 +25,11 @@ export function Pagination({
   const isDisabled = totalPages <= 1;
 
   return (
-    <div className="flex items-center justify-between py-4 px-2 border-t bg-background">
+    <div className="flex flex-wrap items-center justify-between gap-3 py-4 px-2 border-t bg-background">
       <p className="text-sm text-muted-foreground">
         Mostrando {totalItems > 0 ? startIndex + 1 : 0} - {endIndex} de {totalItems} {itemName}
       </p>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           variant="outline"
           size="sm"

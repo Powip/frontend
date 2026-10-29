@@ -6,7 +6,8 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Loader2, Plus, Minus, Package, Info } from "lucide-react";
 import { toast } from "sonner";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { useAuth } from "@/contexts/AuthContext";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 
@@ -43,8 +44,8 @@ export default function AddStockModal({
 
         setIsSubmitting(true);
         try {
-            await axios.patch(
-                `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/${item.inventoryItemId}/add-stock`,
+            await axiosAuth.patch(
+                `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/inventory-item/${item.inventoryItemId}/add-stock`,
                 { 
                     quantity,
                     userEmail: auth?.user.email,

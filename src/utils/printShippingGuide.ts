@@ -5,18 +5,17 @@ import { GUIDE_STATUS_LABEL, ZONE_LABELS } from "@/constants/operationsDomain";
 import type { OrderDetail, ShippingGuide } from "@/components/modals/GuideDetailsModal";
 import { getGoogleMapsUrl } from "@/components/shared/MapsLink";
 
-const escapeHtml = (value: string) =>
-  value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+import {
+  escapePrintHtml,
+  renderPrintableUnitCodesHtml,
+  type PrintDocumentOptions,
+} from "./receiptUnitCodes";
 
 /** Enlace de Google Maps bajo la dirección: URL completa, partida en líneas para no desbordar la celda. */
 function renderMapsUrl(value?: string | null): string {
   const url = getGoogleMapsUrl(value);
   if (!url) return "";
-  const safe = escapeHtml(url);
+  const safe = escapePrintHtml(url);
   return `<span class="maps">Google Maps: <a href="${safe}">${safe}</a></span>`;
 }
 
@@ -48,7 +47,12 @@ export function printShippingGuide(
   guide: PrintableGuide,
   ordersDetails: OrderDetail[],
   company?: PrintGuideCompany | null,
-): void {
+  { isCurrent, signal }: PrintDocumentOptions = {},
+): Promise<void> {
+  const current = () => !signal?.aborted && (!isCurrent || isCurrent());
+  if (!current()) return Promise.resolve();
+  const hasTrackedItems = ordersDetails.some((order) => order.items?.some((item) =>
+    item.trackingMode === "SERIAL" || item.trackingMode === "IMEI" || item.trackingMode === "UNKNOWN"));
   const companyName = company?.name || "MI EMPRESA";
   const companyCuit = company?.cuit || "";
   const companyAddress = company?.billingAddress || "";
@@ -86,7 +90,7 @@ export function printShippingGuide(
     });
     const contenido =
       order.items
-        ?.map((it) => `<span class="q">${it.quantity}×</span> ${it.productName}`)
+        ?.map((it) => `<span class="q">${escapePrintHtml(it.quantity)}×</span> ${escapePrintHtml(it.productName)}${renderPrintableUnitCodesHtml(order, it)}`)
         .join("<br/>") || "-";
     return { order, pending, barcode, contenido };
   });
@@ -99,17 +103,17 @@ export function printShippingGuide(
     <tr>
       <td class="idx">${index + 1}</td>
       <td class="ord">
-        <b>${r.order.orderNumber}</b>
-        ${r.barcode ? `<span class="bc"><img src="${r.barcode}" alt="Código de barras"></span>` : ""}
+        <b>${escapePrintHtml(r.order.orderNumber)}</b>
+        ${r.barcode ? `<span class="bc"><img src="${escapePrintHtml(r.barcode)}" alt="Código de barras"></span>` : ""}
       </td>
       <td class="who">
-        <b>${r.order.customer.fullName}</b>
-        <span>${r.order.customer.phoneNumber || "-"}</span>
-        <span>DNI ${r.order.customer.dni || "—"}</span>
+        <b>${escapePrintHtml(r.order.customer.fullName)}</b>
+        <span>${escapePrintHtml(r.order.customer.phoneNumber || "-")}</span>
+        <span>DNI ${escapePrintHtml(r.order.customer.dni || "—")}</span>
       </td>
       <td class="addr">
-        <span class="dist">${r.order.customer.district || "-"}</span><br/>
-        ${r.order.customer.address || "-"}
+        <span class="dist">${escapePrintHtml(r.order.customer.district || "-")}</span><br/>
+        ${escapePrintHtml(r.order.customer.address || "-")}
         ${renderMapsUrl(r.order.customer.googleMapsUrl)}
       </td>
       <td class="cont">${r.contenido}</td>
@@ -128,7 +132,7 @@ export function printShippingGuide(
     <html>
     <head>
       <meta charset="utf-8">
-      <title>Guía de salida — ${guide.guideNumber}</title>
+      <title>Guía de salida — ${escapePrintHtml(guide.guideNumber)}</title>
       <style>
         :root{
           --ink:#000000;
@@ -223,6 +227,12 @@ export function printShippingGuide(
         @media print{
           .section, .box, .firmas, .obs{break-inside:avoid;}
           tr{break-inside:avoid;}
+          ${hasTrackedItems ? `
+          .section, tbody, tbody tr{break-inside:auto;page-break-inside:auto;}
+          .sec-h{break-after:avoid;page-break-after:avoid;}
+          thead{display:table-header-group;break-after:avoid;page-break-after:avoid;}
+          .unit-code{break-inside:avoid;page-break-inside:avoid;}
+          ` : ""}
         }
       </style>
     </head>
@@ -232,32 +242,32 @@ export function printShippingGuide(
         <div class="biz">
           <div class="logo">${
             company?.logoUrl
-              ? `<img src="${company.logoUrl}" alt="Logo" style="width:100%;height:100%;object-fit:contain;border-radius:2.4mm;">`
-              : companyInitial
+              ? `<img src="${escapePrintHtml(company.logoUrl)}" alt="Logo" style="width:100%;height:100%;object-fit:contain;border-radius:2.4mm;">`
+              : escapePrintHtml(companyInitial)
           }</div>
           <div>
-            <h1>${companyName}</h1>
+            <h1>${escapePrintHtml(companyName)}</h1>
             <p>${
-              [companyCuit ? `<b>RUC ${companyCuit}</b>` : "", companyAddress]
+              [companyCuit ? `<b>RUC ${escapePrintHtml(companyCuit)}</b>` : "", escapePrintHtml(companyAddress)]
                 .filter(Boolean)
                 .join(" · ")
-            }${companyPhone ? `<br/>${companyPhone}` : ""}</p>
+            }${companyPhone ? `<br/>${escapePrintHtml(companyPhone)}` : ""}</p>
           </div>
         </div>
         <div class="doc">
           <div class="kicker">Guía de salida</div>
-          <div class="no">${guide.guideNumber}</div>
+          <div class="no">${escapePrintHtml(guide.guideNumber)}</div>
           <div class="row">
             <div><div class="k">Fecha</div><div class="v">${fecha}</div></div>
             <div><div class="k">Despacho</div><div class="v mono">${hora}</div></div>
           </div>
-          <div class="badge">${statusLabel}</div>
+          <div class="badge">${escapePrintHtml(statusLabel)}</div>
         </div>
       </div>
 
       <div class="meta">
-        <div><div class="k">Zona</div><div class="v sm">${zonasLabel}</div></div>
-        <div><div class="k">Courier</div><div class="v sm">${guide.courierName || "-"}</div></div>
+        <div><div class="k">Zona</div><div class="v sm">${escapePrintHtml(zonasLabel)}</div></div>
+        <div><div class="k">Courier</div><div class="v sm">${escapePrintHtml(guide.courierName || "-")}</div></div>
         <div><div class="k">Pedidos</div><div class="v">${ordersDetails.length}</div></div>
         <div><div class="k">Paquetes</div><div class="v">${ordersDetails.length}</div></div>
         <div><div class="k">Cobranza total</div><div class="v mono">S/ ${codTotal.toFixed(2)}</div></div>
@@ -355,22 +365,62 @@ export function printShippingGuide(
       <div class="foot">
         <div class="pw"><span class="m">◆</span> Generado por POWIP</div>
         <div class="u">Operaciones › Guías &amp; Courier · powip.lat</div>
-        <div class="r">Impreso ${format(new Date(), "dd/MM/yyyy")} · Página 1 de 1</div>
+        <div class="r">Impreso ${format(new Date(), "dd/MM/yyyy")}${hasTrackedItems ? "" : " · Página 1 de 1"}</div>
       </div>
 
     </body>
     </html>
   `;
 
+  if (!current()) return Promise.resolve();
   const printWindow = window.open("", "_blank");
-  if (printWindow) {
-    printWindow.document.write(content);
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
-  } else {
+  if (!printWindow) {
     toast.error(
       "No se pudo abrir la ventana de impresión — revisa el bloqueador de pop-ups del navegador",
     );
+    return Promise.resolve();
   }
+  return new Promise<void>((resolve, reject) => {
+    const cleanup = () => {
+      signal?.removeEventListener("abort", cancel);
+      printWindow.onload = null;
+    };
+    const cancel = () => {
+      printWindow.close();
+      cleanup();
+      resolve();
+    };
+    signal?.addEventListener("abort", cancel, { once: true });
+    const printWhenLoaded = () => {
+      if (!current() || printWindow.closed) {
+        cancel();
+        return;
+      }
+      try {
+        printWindow.focus();
+        printWindow.print();
+        printWindow.close();
+        cleanup();
+        resolve();
+      } catch (error) {
+        printWindow.close();
+        cleanup();
+        reject(error);
+      }
+    };
+    if (!current()) {
+      cancel();
+      return;
+    }
+    try {
+      printWindow.document.write(content);
+      // document.write may open the document and clear previous window handlers.
+      printWindow.onload = printWhenLoaded;
+      printWindow.document.close();
+    } catch (error) {
+      printWindow.close();
+      cleanup();
+      reject(error);
+    }
+  });
 }

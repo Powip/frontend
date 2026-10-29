@@ -1,12 +1,15 @@
 "use client";
 
+import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
+import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { DateRange } from "react-day-picker";
 import { useAuth } from "@/contexts/AuthContext";
-import { useOrdersByStore } from "@/hooks/useOrdersByStore";
-import { useIncompleteOrders } from "@/hooks/useIncompleteOrders";
+import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+import { useBusinessScope } from "@/contexts/BusinessScopeContext";
+import { useQuery } from "@tanstack/react-query";
 import { useCcPedidos } from "@/hooks/useCcPedidos";
-import { useCcPedidosAll } from "@/hooks/useCcPedidosAll";
 import { useCcKpis } from "@/hooks/useCcKpis";
 import { OrderHeader, OrderStatus, SubEstadoCc, TipoGestionCC } from "@/interfaces/IOrder";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
@@ -18,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Gift, FileDown, MessageCircle, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { exportSalesToExcel } from "@/utils/exportSalesExcel";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 import { confirmOrder } from "@/services/incompleteOrdersService";
 
 import { isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
@@ -29,7 +32,6 @@ import { CcTabsL2, defaultSubEstado } from "@/components/atencion-cliente/cc-v2/
 import { CcKpiBar } from "@/components/atencion-cliente/cc-v2/CcKpiBar";
 import { CcToolbar, AGENTE_UNASSIGNED } from "@/components/atencion-cliente/cc-v2/CcToolbar";
 import { CcPedidosTable } from "@/components/atencion-cliente/cc-v2/CcPedidosTable";
-import { matchesCcSearch } from "@/components/atencion-cliente/cc-v2/ccPedidoFields";
 import { exportCcPedidosToExcel } from "@/utils/exportCcPedidosExcel";
 import { useAgentes } from "@/hooks/useAgentes";
 import { IncompleteOrdersTab } from "@/components/atencion-cliente/IncompleteOrdersTab";
@@ -81,6 +83,9 @@ function mapOrderToLegacySale(order: OrderHeader) {
 
 const CC_PAGE_SIZE = 50;
 
+/** Estados legacy que Atención al cliente pide al servidor (Correcciones y Preventa). */
+const ATENCION_LEGACY_STATUSES: OrderStatus[] = ["INCOMPLETE", "PREVENTA"];
+
 /** Sub-pestañas de Gestión COD que permiten exportar la selección a Excel. */
 const CC_EXPORT_TABS: Partial<Record<SubEstadoCc, string>> = {
   contactado: "Contactado",
@@ -92,7 +97,11 @@ const CC_EXPORT_TABS: Partial<Record<SubEstadoCc, string>> = {
    Page
 ------------------------------------------------------- */
 export default function AtencionClientePage() {
-  const { auth, selectedStoreId } = useAuth();
+  const { auth, hasPermission } = useAuth();
+  const canReadLegacyOrders = ["VIEW_SALES", "VIEW_FINANCES", "MANAGE_OPERATIONS"].some(hasPermission);
+  const routeSaleLifecycle = useSaleLifecycleRouting();
+  const { storeIds, scope, scopeKey, canFetch } = useBusinessScope();
+  const invalidateBusinessData = useInvalidateBusinessData();
 
 
   /* ── CC v2 state ─────────────────────────────────────── */
@@ -107,16 +116,19 @@ export default function AtencionClientePage() {
   const [exportingCc, setExportingCc] = useState(false);
   const [movimientosActive, setMovimientosActive] = useState(false);
   const [cierreDiaActive, setCierreDiaActive] = useState(false);
+  const [activeRootTab, setActiveRootTab] = useState("cc");
+  const legacyTabActive = activeRootTab === "preventa" || activeRootTab === "correcciones";
 
   // RBAC: solo admin/owner/superadmin ven la pestaña Movimientos
   const isAdmin =
     isSuperadmin(auth?.user?.email) || hasAdminAccess(auth?.user?.role);
 
   /* ── CC v2 data ──────────────────────────────────────── */
-  const { data: agentes = [], isLoading: agentesLoading } = useAgentes(selectedStoreId);
+  const { data: agentes = [], isLoading: agentesLoading, isError: agentesError, refetch: refetchAgentes } = useAgentes(storeIds, auth?.company?.id);
 
   const ccFilters = {
-    storeId: selectedStoreId ?? undefined,
+    storeIds,
+    search: search.trim() || undefined,
     tipoGestion: l1,
     subEstado: l2,
     canalOrigen: canalFiltro || undefined,
@@ -126,57 +138,32 @@ export default function AtencionClientePage() {
     endDate: dateFiltro?.to?.toISOString(),
   };
 
-  const { data: ccResult, isLoading: ccPageLoading, refetch: refetchCcPage } = useCcPedidos({
+  const { data: ccResult, isLoading: ccPageLoading, isError: ccPageError, refetch: refetchCcPage } = useCcPedidos({
     ...ccFilters,
     page: pageCc,
     limit: CC_PAGE_SIZE,
   });
 
-  // Búsqueda: el endpoint no filtra por texto, así que con búsqueda activa se
-  // traen todos los pedidos de la pestaña (mismos filtros) y se filtra en cliente.
   const isSearching = search.trim().length > 0;
-  const {
-    data: ccAllResult,
-    isLoading: ccAllLoading,
-    isError: ccAllError,
-    refetch: refetchCcAll,
-  } = useCcPedidosAll(ccFilters, isSearching);
-
   const ccPedidos = ccResult?.data ?? [];
-
-  const ccSearchMatches = useMemo(
-    () => (isSearching ? (ccAllResult?.data ?? []).filter((o) => matchesCcSearch(o, search)) : []),
-    [isSearching, ccAllResult, search],
-  );
-
-  const ccSearchPages = Math.max(1, Math.ceil(ccSearchMatches.length / CC_PAGE_SIZE));
-  // Si un refresco reduce los resultados, no quedarse en una página vacía.
-  const ccSearchPage = Math.min(pageCc, ccSearchPages);
-
-  const ccRows = useMemo(
-    () =>
-      isSearching
-        ? ccSearchMatches.slice((ccSearchPage - 1) * CC_PAGE_SIZE, ccSearchPage * CC_PAGE_SIZE)
-        : (ccResult?.data ?? []),
-    [isSearching, ccSearchMatches, ccSearchPage, ccResult],
-  );
-  const ccCurrentPage = isSearching ? ccSearchPage : pageCc;
-  const ccTotalPages = isSearching ? ccSearchPages : (ccResult?.totalPages ?? 1);
-  const ccTotal = isSearching ? ccSearchMatches.length : ccResult?.total;
-  const ccLoading = isSearching ? ccAllLoading : ccPageLoading;
+  const ccRows = ccPedidos;
+  const ccCurrentPage = ccResult?.page ?? pageCc;
+  const ccTotalPages = ccResult?.totalPages ?? 1;
+  const ccTotal = ccResult?.total;
+  const ccLoading = ccPageLoading;
 
   function refetchCc() {
     refetchCcPage();
-    if (isSearching) refetchCcAll();
+    void invalidateBusinessData();
   }
 
   // Resetear página cuando cambia cualquier filtro (excepto la propia página)
   useEffect(() => {
     setPageCc(1);
-  }, [l1, l2, canalFiltro, agenteFiltro, dateFiltro, search]);
+  }, [l1, l2, canalFiltro, agenteFiltro, dateFiltro, search, scopeKey]);
 
   function handleSearchChange(value: string) {
-    setSearch(value);
+    setSearch(value.slice(0, 200));
     setPageCc(1); // en el mismo render: no mostrar la página N de la búsqueda anterior
   }
 
@@ -189,14 +176,17 @@ export default function AtencionClientePage() {
   useEffect(() => {
     setSelectedCcIds(new Set());
     selectedOrdersCache.current = new Map();
-  }, [l1, l2, canalFiltro, agenteFiltro, dateFiltro, search]);
+  }, [l1, l2, canalFiltro, agenteFiltro, dateFiltro, search, scopeKey]);
 
   // KPIs por tab para contadores globales (independiente de la tab activa)
-  const { data: kpisCod }     = useCcKpis("cod",     selectedStoreId);
-  const { data: kpisLima }    = useCcKpis("lima",    selectedStoreId);
-  const { data: kpisCarrito } = useCcKpis("carrito", selectedStoreId);
+  const codQuery = useCcKpis("cod", storeIds);
+  const limaQuery = useCcKpis("lima", storeIds);
+  const carritoQuery = useCcKpis("carrito", storeIds);
+  const kpisCod = codQuery.data;
+  const kpisLima = limaQuery.data;
+  const kpisCarrito = carritoQuery.data;
   // KPIs de la tab activa para KpiBar y L2 sub-tabs
-  const { data: ccKpis, isLoading: kpisLoading } = useCcKpis(l1, selectedStoreId);
+  const { data: ccKpis, isLoading: kpisLoading, isError: kpisError, refetch: refetchKpis } = useCcKpis(l1, storeIds);
 
   // Contadores globales: cada tab muestra su total real sin importar dónde estés
   const l1Counts = useMemo(() => ({
@@ -224,11 +214,10 @@ export default function AtencionClientePage() {
   );
 
   /* ── Legacy orders ───────────────────────────────────── */
-  const { data: ordersData, isLoading: legacyLoading, refetch: refetchOrders } =
-    useOrdersByStore(selectedStoreId);
-
-  const { data: incompleteOrders = [], isLoading: incompleteLoading, refetch: refetchIncomplete } =
-    useIncompleteOrders(selectedStoreId);
+  const { orders: ordersData, loading: legacyLoading, error: legacyError, refetch: refetchOrders } = useBusinessOrders(undefined, undefined, { includeCcLeads: true, statuses: ATENCION_LEGACY_STATUSES, enabled: canReadLegacyOrders && legacyTabActive });
+  const incompleteOrders = useMemo(() => ordersData.filter((order) => order.status === "INCOMPLETE"), [ordersData]);
+  const incompleteLoading = legacyLoading;
+  const refetchIncomplete = refetchOrders;
 
   const legacySales = useMemo(() => {
     if (!ordersData) return [];
@@ -243,34 +232,31 @@ export default function AtencionClientePage() {
   );
 
   /* ── Promos ──────────────────────────────────────────── */
-  const [promoItems, setPromoItems] = useState<any[]>([]);
-  const [promoLoading, setPromoLoading] = useState(false);
   const [promoFromDate, setPromoFromDate] = useState("");
   const [promoToDate, setPromoToDate] = useState("");
-
-  const fetchPromoItems = useCallback(async () => {
-    if (!selectedStoreId) return;
-    try {
-      setPromoLoading(true);
-      const params = new URLSearchParams({ storeId: selectedStoreId });
-      if (promoFromDate) params.append("fromDate", promoFromDate);
-      if (promoToDate) params.append("toDate", promoToDate);
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-items/promo-items?${params}`,
-      );
-      setPromoItems(res.data);
-    } catch {
-      toast.error("Error al cargar promos vendidas");
-    } finally {
-      setPromoLoading(false);
-    }
-  }, [selectedStoreId, promoFromDate, promoToDate]);
+  const promosQuery = useQuery<any[]>({
+    queryKey: ["business-sold-promos", scopeKey, promoFromDate, promoToDate],
+    enabled: false,
+    queryFn: async ({ signal }) => {
+      const responses = await Promise.all(storeIds.map((storeId) => axiosAuth.get(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-items/promo-items`,
+        { params: { storeId, fromDate: promoFromDate || undefined, toDate: promoToDate || undefined }, signal },
+      )));
+      return responses.flatMap((response) => response.data);
+    },
+    retry: false,
+  });
+  const promoItems = promosQuery.data ?? [];
+  const promoLoading = promosQuery.isFetching;
+  const refetchPromos = promosQuery.refetch;
+  const fetchPromoItems = useCallback(() => { if (canFetch) void refetchPromos(); }, [canFetch, refetchPromos]);
 
   /* ── Modals ──────────────────────────────────────────── */
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentOrderId, setPaymentOrderId] = useState<string | null>(null);
   const [paymentOrderNumber, setPaymentOrderNumber] = useState<string>("");
 
+  const [lifecycleOrderId, setLifecycleOrderId] = useState<string | null>(null);
   const [reassignSellerModalOpen, setReassignSellerModalOpen] = useState(false);
   const [orderToReassign, setOrderToReassign] = useState<OrderHeader | null>(null);
   const [isReassigningLoading, setIsReassigningLoading] = useState(false);
@@ -313,17 +299,14 @@ export default function AtencionClientePage() {
    * Selección efectiva (la que usan WA Masivo, Copiar y Exportar, y la que
    * muestran sus contadores). Toma la versión más reciente de cada pedido y
    * descarta los que ya no pertenecen a la pestaña activa:
-   *  - con búsqueda, el conjunto completo de la pestaña es la referencia;
-   *  - sin búsqueda, la página visible lo es para los pedidos seleccionados en
+   *  - la página visible es la referencia para los pedidos seleccionados en
    *    ella (si un refresco los sacó de la pestaña, dejan de contarse);
    *  - los de otras páginas usan la copia tomada al seleccionarlos.
    */
   const selectedCcOrders = (() => {
     if (selectedCcIds.size === 0) return [];
-    const poolLoaded = isSearching && !!ccAllResult && !ccAllResult.truncated;
-    const pageLoaded = !isSearching && !!ccResult;
+    const pageLoaded = !!ccResult;
     const fresh = new Map<string, OrderHeader>();
-    if (isSearching) (ccAllResult?.data ?? []).forEach((o) => fresh.set(o.id, o));
     ccRows.forEach((o) => fresh.set(o.id, o));
 
     return [...selectedCcIds]
@@ -331,7 +314,7 @@ export default function AtencionClientePage() {
         const current = fresh.get(id);
         if (current) return current;
         const cached = selectedOrdersCache.current.get(id);
-        if (!cached || poolLoaded) return undefined;
+        if (!cached) return undefined;
         if (pageLoaded && cached.page === pageCc) return undefined;
         return cached.order;
       })
@@ -410,6 +393,7 @@ export default function AtencionClientePage() {
 
   /* ── Recuperar venta anulada ────────────────────────── */
   async function handleRecuperar(order: OrderHeader) {
+    if (await routeSaleLifecycle(order, "PENDIENTE", () => setLifecycleOrderId(order.id))) return;
     try {
       await recuperarVentaCC(order.id);
       toast.success("Pedido recuperado exitosamente");
@@ -432,7 +416,9 @@ export default function AtencionClientePage() {
     setCierreDiaActive(false);
   }
 
+  const scopeError = ccPageError || kpisError || legacyError || agentesError || codQuery.isError || limaQuery.isError || carritoQuery.isError;
   if (!auth) return null;
+  if (scopeError) return <main className="p-6 space-y-4"><HeaderConfig title="Atención al Cliente" description="Gestión de pedidos" /><div role="alert">No se pudieron cargar todos los datos de Atención al cliente.</div><Button onClick={() => { refetchCc(); void refetchKpis(); if (legacyTabActive) void refetchOrders(); void refetchAgentes(); void codQuery.refetch(); void limaQuery.refetch(); void carritoQuery.refetch(); }}>Reintentar</Button></main>;
 
   return (
     <OrderDetailModalProvider onOrderUpdated={refetchCc}>
@@ -448,11 +434,11 @@ export default function AtencionClientePage() {
           </div>
 
           {/* ── Tabs raíz: CC v2 | Legacy | Otras ─────────────── */}
-          <Tabs defaultValue="cc" className="w-full">
+          <Tabs value={activeRootTab} onValueChange={setActiveRootTab} className="w-full">
             <div className="px-6 pt-4">
               <TabsList>
                 <TabsTrigger value="cc">📞 Call Center v2</TabsTrigger>
-                <TabsTrigger value="preventa" className="text-violet-600">
+                {canReadLegacyOrders ? <><TabsTrigger value="preventa" className="text-violet-600">
                   Pre-Ventas
                   {pedidosPreVenta.length > 0 && (
                     <span className="ml-1 rounded-full bg-violet-600 text-white text-xs px-1.5 py-0.5">
@@ -471,7 +457,7 @@ export default function AtencionClientePage() {
                 <TabsTrigger value="promos" className="text-purple-600">
                   <Gift className="h-3.5 w-3.5 mr-1" />
                   Promos
-                </TabsTrigger>
+                </TabsTrigger></> : null}
               </TabsList>
             </div>
 
@@ -500,9 +486,15 @@ export default function AtencionClientePage() {
               {/* Content */}
               <div className="p-6 space-y-4 bg-gray-50 dark:bg-slate-900 min-h-screen">
                 {cierreDiaActive ? (
-                  <CcCierreDiaTab storeId={selectedStoreId ?? ""} />
+                  storeIds.map((storeId) => <section key={storeId} className="space-y-3">
+                    {scope === "business" && <h2 className="font-semibold">{auth.company?.stores?.find((store) => store.id === storeId)?.name ?? storeId}</h2>}
+                    <CcCierreDiaTab storeId={storeId} />
+                  </section>)
                 ) : movimientosActive ? (
-                  <CcMovimientosTab storeId={selectedStoreId ?? ""} />
+                  storeIds.map((storeId) => <section key={storeId} className="space-y-3">
+                    {scope === "business" && <h2 className="font-semibold">{auth.company?.stores?.find((store) => store.id === storeId)?.name ?? storeId}</h2>}
+                    <CcMovimientosTab storeId={storeId} />
+                  </section>)
                 ) : (
                   <>
                     <CcKpiBar tipoGestion={l1} kpis={ccKpis} loading={kpisLoading} />
@@ -524,12 +516,6 @@ export default function AtencionClientePage() {
                       onExportar={exportTabLabel ? handleExportarCc : undefined}
                       exporting={exportingCc}
                     />
-                    {isSearching && ccAllResult?.truncated && (
-                      <p role="status" className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                        Resultados incompletos: la búsqueda cubre {ccAllResult.data.length} de {ccAllResult.total} pedidos de esta pestaña.
-                        Acota con los filtros de fecha, agente o canal para buscar en el resto.
-                      </p>
-                    )}
                     {ccLoading ? (
                       <div className="bg-white dark:bg-slate-800 rounded-lg p-8 text-center text-gray-400 dark:text-slate-500 text-sm">
                         {isSearching ? "Buscando pedidos..." : "Cargando pedidos..."}
@@ -538,9 +524,7 @@ export default function AtencionClientePage() {
                       <CcPedidosTable
                         data={ccRows}
                         emptyMessage={
-                          isSearching && ccAllError ? (
-                            "No se pudieron cargar los pedidos para la búsqueda. Intenta nuevamente."
-                          ) : isSearching ? (
+                          isSearching ? (
                             <span>
                               No se encontraron pedidos para “{search.trim()}” con los filtros actuales.{" "}
                               <button
@@ -666,10 +650,11 @@ export default function AtencionClientePage() {
                       <Label>Hasta</Label>
                       <Input type="date" value={promoToDate} onChange={(e) => setPromoToDate(e.target.value)} className="w-40" />
                     </div>
-                    <Button onClick={fetchPromoItems} disabled={promoLoading}>
+                    <Button onClick={fetchPromoItems} disabled={promoLoading || !canFetch}>
                       {promoLoading ? "Cargando..." : "Buscar"}
                     </Button>
                   </div>
+                  {promosQuery.isError && <p role="alert">No se pudieron cargar las promociones vendidas. Vuelve a buscar para reintentar.</p>}
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -712,13 +697,14 @@ export default function AtencionClientePage() {
         </main>
 
         {/* ── Modals ─────────────────────────────────────────── */}
+        {lifecycleOrderId && <SaleUnitLifecycleModal open orderId={lifecycleOrderId} action="reactivate" onClose={() => setLifecycleOrderId(null)} onUpdated={refetchCc} />}
         <PaymentVerificationModal
           open={paymentModalOpen}
           onClose={() => { setPaymentModalOpen(false); setPaymentOrderId(null); }}
           orderId={paymentOrderId ?? ""}
           orderNumber={paymentOrderNumber}
           onPaymentUpdated={refetchCc}
-          canApprove={true}
+          canApprove={false}
         />
 
         {orderToReassign && (

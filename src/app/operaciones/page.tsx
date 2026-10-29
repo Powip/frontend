@@ -1,7 +1,10 @@
 "use client";
 
+import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { useRouter } from "next/navigation";
@@ -25,6 +28,7 @@ import {
   isFailedDelivery,
   hasCourierSyncError,
   SHIPPING_STATUSES,
+  isOperationsOrderVisible,
 } from "@/utils/domain/operations-pedidos-tabs";
 import { GUIDE_AGE_THRESHOLDS } from "@/constants/operationsDomain";
 import { GlobalScanner } from "./_shared/GlobalScanner";
@@ -67,31 +71,11 @@ function guessFailureReason(order: OrderHeader): string {
 }
 
 export default function OperacionesTableroPage() {
-  const { selectedStoreId } = useAuth();
   const router = useRouter();
-  const [orders, setOrders] = useState<OrderHeader[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { orders: allOrders, loading, error, retry, refetch: load } = useBusinessOrders();
+  const orders = useMemo(() => allOrders.filter(isOperationsOrderVisible), [allOrders]);
+  const pendingCount = useMemo(() => orders.filter((order) => getPedidosTab(order) === "pendientes").length, [orders]);
   const [scannerOpen, setScannerOpen] = useState(false);
-
-  const load = useCallback(async () => {
-    if (!selectedStoreId) return;
-    setLoading(true);
-    try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-      );
-      setOrders(res.data ?? []);
-    } catch {
-      // silencioso: el tablero no es la pantalla de trabajo, si falla se
-      // ve vacío y el usuario puede refrescar
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedStoreId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   const shippingOrders = useMemo(
     () => orders.filter((o) => o.deliveryType === "DOMICILIO" && SHIPPING_STATUSES.includes(o.status)),
@@ -210,6 +194,7 @@ export default function OperacionesTableroPage() {
     const workbook = XLSX.utils.book_new();
 
     const kpiSheet = XLSX.utils.json_to_sheet([
+      { KPI: "Pendientes por preparar", Valor: pendingCount, Detalle: "Incluye pedidos pagados y con saldo" },
       { KPI: "Por despachar", Valor: tabCounts.counts.despachar, Detalle: `${money(tabCounts.porDespacharPendiente)} por cobrar · ${tabCounts.porDespacharProvincia} a provincia` },
       { KPI: "En camino", Valor: tabCounts.counts.camino, Detalle: `${tabCounts.enCaminoMas15} con más de 15 días` },
       { KPI: "Necesita atención", Valor: tabCounts.counts.atencion, Detalle: `${money(tabCounts.atencionEnJuego)} en juego` },
@@ -246,6 +231,8 @@ export default function OperacionesTableroPage() {
     return <PowipPulseLoader label="Cargando..." />;
   }
 
+  if (error) return <OperationsDataError retry={retry} />;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -274,7 +261,8 @@ export default function OperacionesTableroPage() {
       <GlobalScanner open={scannerOpen} onOpenChange={setScannerOpen} />
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <Kpi icon={<Package className="h-4 w-4" />} color="teal" label="Pendientes por preparar" value={pendingCount} sub="Pagados y con saldo" onClick={() => goPedidos("pendientes")} />
         <Kpi
           icon={<Package className="h-4 w-4" />}
           color="teal"

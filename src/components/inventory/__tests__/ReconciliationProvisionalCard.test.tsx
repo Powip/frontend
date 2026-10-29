@@ -50,6 +50,8 @@ import React from 'react';
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
 
+jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { company: { id: 'company-a' }, user: { id: 'user-a' }, accessToken: 'test-token' } }) }));
+
 jest.mock('sonner', () => ({
   toast: {
     success: jest.fn(),
@@ -241,6 +243,14 @@ beforeEach(() => {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('ReconciliationProvisionalCard', () => {
+  describe('canal (FEAT-17 Anexo D)', () => {
+    it('muestra el chip de canal con su etiqueta, no el texto plano de la fuente', () => {
+      renderCard({ task: makeTask({ items: [makeItem({ source: 'shopify' })] }) });
+      expect(screen.getByText('Shopify')).toBeInTheDocument();
+      expect(screen.queryByText('shopify')).not.toBeInTheDocument();
+    });
+  });
+
   describe('sin sugerencias', () => {
     it('muestra "Confirmar como nuevo" (sin el bloque "¿Es la misma?") y lo clickea llama a onConfirmNew', async () => {
       const onConfirmNew = jest.fn();

@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import StatsChart from '@/components/superadmin/StatsChart';
+import { CompanyOnboardingSummary } from '@/components/superadmin/CompanyOnboardingSummary';
 import { toast } from 'sonner';
 import {
   getSubscriptionByUserId, createSubscription, updateSubscription, Plan,
@@ -541,6 +542,8 @@ function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth, allUse
           </div>
         ) : (
           <div className="px-6 py-5 space-y-6">
+            <CompanyOnboardingSummary company={company} />
+
             {/* Period selector */}
             <div className="flex flex-col sm:flex-row items-end sm:items-center justify-end mb-4 gap-2">
               <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mr-2">Filtrar por fecha</Label>

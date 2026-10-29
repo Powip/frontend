@@ -24,7 +24,7 @@ import {
   X,
 } from "lucide-react";
 import { updateCompany } from "@/services/companyService";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import {
@@ -42,7 +42,11 @@ import { useRouter } from "next/navigation";
 import { isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
 
 interface Store {
-  id?: string;
+  id: string;
+  company_id?: string;
+  color?: string | null;
+  is_legacy?: boolean;
+  is_active?: boolean;
   name: string;
   description: string;
   url_web: string;
@@ -59,6 +63,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CatalogoMarcas from "@/components/brands/CatalogoMarcas";
 import GestionAlmacenes from "@/components/forms/GestionAlmacenes";
 import GestionCouriers from "@/components/couriers/GestionCouriers";
+import StoreSalesChannels from "@/components/stores/StoreSalesChannels";
 
 export default function TiendasPage() {
   const [stores, setStores] = useState<Store[]>([]);
@@ -73,6 +78,9 @@ export default function TiendasPage() {
   const { auth, logout, updateCompany: updateAuthCompany } = useAuth();
   const [shopifyConnectedShops, setShopifyConnectedShops] = useState<any[]>([]);
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState("tiendas");
+  const [channelStoreId, setChannelStoreId] = useState("");
+  const [storesError, setStoresError] = useState(false);
 
   // --- Canales de venta ---
   const [newSalesChannel, setNewSalesChannel] = useState("");
@@ -93,17 +101,36 @@ export default function TiendasPage() {
     : defaultChannels;
 
   const companyId = auth?.company?.id;
+  const currentCompanyId = useRef(companyId);
+  currentCompanyId.current = companyId;
+  const companyOwnerId = (auth?.company as { userId?: string } | null)?.userId;
+  const canManageStoreChannels =
+    !!auth?.user &&
+    (companyOwnerId === auth.user.id ||
+      auth.user.permissions?.includes("MANAGE_ADVERTISING_CONNECTIONS"));
+  const canAccess =
+    !!auth?.user &&
+    (hasAdminAccess(auth.user.role) ||
+      isSuperadmin(auth.user.email) ||
+      canManageStoreChannels);
+  const commercialStores = stores.filter(
+    (store) => !store.is_legacy && store.is_active !== false,
+  );
+  const legacyStoresCount = stores.filter((store) => store.is_legacy).length;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "canales") setActiveTab("canales");
+    setChannelStoreId(params.get("storeId") ?? "");
+  }, []);
 
   // Redirigir si no es admin o superadmin
   useEffect(() => {
-    const userRole = auth?.user?.role;
-    const userEmail = auth?.user?.email;
-
-    if (auth && auth.user && !hasAdminAccess(userRole) && !isSuperadmin(userEmail)) {
+    if (auth && auth.user && !canAccess) {
       toast.error("No tienes permisos para acceder a esta configuración");
       router.push("/dashboard");
     }
-  }, [auth, router]);
+  }, [auth, canAccess, router]);
 
   const handleAddSalesChannel = async () => {
     const name = newSalesChannel.trim();
@@ -181,43 +208,64 @@ export default function TiendasPage() {
   };
 
   const fetchStore = useCallback(async () => {
+    if (!companyId) return;
     setLoading(true);
+    setStoresError(false);
     try {
-      if (!auth?.company?.id) return;
-
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${auth.company.id}`,
+        `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${companyId}`,
       );
-
-      setStores(response.data?.stores);
-    } catch (error) {
-      console.error("Error obteniendo tiendas:", error);
+      if (currentCompanyId.current !== companyId) return;
+      if (
+        response.data?.id !== companyId ||
+        !Array.isArray(response.data.stores) ||
+        response.data.stores.some(
+          (store: Store) =>
+            !store ||
+            typeof store.id !== "string" ||
+            typeof store.name !== "string" ||
+            (store.company_id !== undefined && store.company_id !== companyId),
+        )
+      ) {
+        throw new Error("Invalid store context");
+      }
+      setStores(response.data.stores);
+    } catch {
+      if (currentCompanyId.current === companyId) {
+        setStores([]);
+        setStoresError(true);
+      }
     } finally {
-      setLoading(false);
+      if (currentCompanyId.current === companyId) setLoading(false);
     }
-  }, [auth]);
+  }, [companyId]);
 
   const fetchShopifyStatus = useCallback(async () => {
     try {
-      if (!auth?.company?.id) return;
+      if (!companyId) return;
       const integrationApiUrl =
         process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3007";
       const response = await axios.get(
-        `${integrationApiUrl}/shopify/status/${auth.company.id}`,
+        `${integrationApiUrl}/shopify/status/${companyId}`,
       );
-      setShopifyConnectedShops(response.data);
+      if (currentCompanyId.current === companyId)
+        setShopifyConnectedShops(
+          Array.isArray(response.data) ? response.data : [],
+        );
     } catch {
       // Shopify no disponible: se omite sin afectar la página
-      setShopifyConnectedShops([]);
+      if (currentCompanyId.current === companyId) setShopifyConnectedShops([]);
     }
-  }, [auth]);
+  }, [companyId]);
 
   useEffect(() => {
-    if (auth?.company?.id) {
-      fetchStore();
-      fetchShopifyStatus();
+    setStores([]);
+    setShopifyConnectedShops([]);
+    if (companyId) {
+      void fetchStore();
+      void fetchShopifyStatus();
     }
-  }, [auth, fetchStore, fetchShopifyStatus]);
+  }, [companyId, fetchStore, fetchShopifyStatus]);
 
   const handleAddStore = async () => {
     try {
@@ -283,8 +331,7 @@ export default function TiendasPage() {
     }
   };
 
-
-  if (!auth || (!hasAdminAccess(auth.user?.role) && !isSuperadmin(auth.user?.email))) return null;
+  if (!auth || !canAccess) return null;
 
   if (loading) {
     return (
@@ -303,9 +350,14 @@ export default function TiendasPage() {
         description="Gestiona tiendas, almacenes, marcas, canales de venta y couriers"
       />
 
-      <div className="px-10">
-        <Tabs defaultValue="tiendas" className="space-y-6">
-          <TabsList className="bg-muted p-1">
+      <div className="px-4 sm:px-6 lg:px-10">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="space-y-6"
+        >
+          <TabsList className="h-auto flex-wrap justify-start bg-muted p-1">
+            <TabsTrigger value="tiendas">Tiendas</TabsTrigger>
             <TabsTrigger value="almacenes">Almacenes</TabsTrigger>
             <TabsTrigger value="marcas">Marcas</TabsTrigger>
             <TabsTrigger value="canales">Canales de Venta</TabsTrigger>
@@ -314,9 +366,9 @@ export default function TiendasPage() {
 
           <TabsContent value="tiendas" className="space-y-6">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle>Tus tiendas</CardTitle>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   {shopifyConnectedShops.length > 0 ? (
                     <div className="flex items-center gap-1">
                       <Button
@@ -468,10 +520,7 @@ export default function TiendasPage() {
 
                   <Dialog>
                     <DialogTrigger asChild>
-                      <Button
-                        size="sm"
-                        className="gap-2 bg-teal-600 hover:bg-teal-700"
-                      >
+                      <Button size="sm" className="gap-2">
                         <Plus className="h-4 w-4" />
                         Nueva tienda
                       </Button>
@@ -524,10 +573,7 @@ export default function TiendasPage() {
                           />
                         </div>
 
-                        <Button
-                          onClick={handleAddStore}
-                          className="w-full bg-teal-600 hover:bg-teal-700"
-                        >
+                        <Button onClick={handleAddStore} className="w-full">
                           Crear tienda
                         </Button>
                       </div>
@@ -537,13 +583,49 @@ export default function TiendasPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {stores.map((store) => (
+                  {storesError ? (
+                    <div role="alert" className="rounded-lg border p-4 text-sm">
+                      No se pudieron cargar las tiendas.
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="ml-3"
+                        onClick={() => void fetchStore()}
+                      >
+                        Reintentar
+                      </Button>
+                    </div>
+                  ) : null}
+                  {legacyStoresCount > 0 ? (
+                    <p className="rounded-lg bg-muted/40 p-3 text-sm text-muted-foreground">
+                      La tienda inicial conserva sus ventas y almacenes.
+                      {commercialStores.length === 0
+                        ? " Crea una tienda comercial para nuevas ventas y asignaciones."
+                        : ""}
+                    </p>
+                  ) : null}
+                  {!storesError && commercialStores.length === 0 ? (
+                    <p className="py-4 text-sm text-muted-foreground">
+                      Aún no hay tiendas comerciales.
+                    </p>
+                  ) : null}
+                  {commercialStores.map((store) => (
                     <div
                       key={store.id}
-                      className="flex items-center justify-between rounded-lg border p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                      className="flex flex-col gap-3 rounded-lg border p-4 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div>
-                        <h4 className="font-medium">{store.name}</h4>
+                        <h4 className="flex items-center gap-2 font-medium">
+                          {store.color &&
+                          /^#[0-9a-f]{6}$/i.test(store.color) ? (
+                            <span
+                              className="size-3 rounded-full"
+                              style={{ backgroundColor: store.color }}
+                              aria-hidden="true"
+                            />
+                          ) : null}
+                          {store.name}
+                        </h4>
                         <p className="text-sm text-gray-500">
                           {store.description}
                         </p>
@@ -565,7 +647,17 @@ export default function TiendasPage() {
                           </div>
                         )}
                       </div>
-                      <div className="flex gap-2 items-center">
+                      <div className="flex flex-wrap gap-2 items-center">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setChannelStoreId(store.id);
+                            setActiveTab("canales");
+                          }}
+                        >
+                          Canales
+                        </Button>
                         {shopifyConnectedShops.some(
                           (s) => s.store_id === store.id,
                         ) && (
@@ -593,10 +685,8 @@ export default function TiendasPage() {
                                   },
                                 )
                                 .then((response) => {
-                                  const {
-                                    total_found,
-                                    orders_synced,
-                                  } = response.data;
+                                  const { total_found, orders_synced } =
+                                    response.data;
                                   if (total_found === 0) {
                                     toast.success(
                                       "Sincronización finalizada: No se encontraron nuevas órdenes.",
@@ -621,6 +711,7 @@ export default function TiendasPage() {
                             <Button
                               size="sm"
                               variant="outline"
+                              aria-label={`Editar ${store.name}`}
                               onClick={() => handleEditStore(store)}
                             >
                               <Edit2 className="h-4 w-4" />
@@ -679,7 +770,7 @@ export default function TiendasPage() {
                                 </div>
                                 <Button
                                   onClick={handleUpdateStore}
-                                  className="w-full bg-teal-600 hover:bg-teal-700"
+                                  className="w-full"
                                 >
                                   Guardar cambios
                                 </Button>
@@ -692,6 +783,7 @@ export default function TiendasPage() {
                             <Button
                               size="sm"
                               variant="destructive"
+                              aria-label={`Eliminar ${store.name}`}
                               disabled={stores.length <= 1}
                             >
                               <Trash2 className="h-4 w-4" />
@@ -761,14 +853,26 @@ export default function TiendasPage() {
             <CatalogoMarcas />
           </TabsContent>
 
-          <TabsContent value="canales">
+          <TabsContent value="canales" className="space-y-6">
+            <StoreSalesChannels
+              key={`${auth.user.id}:${companyId}:${channelStoreId}`}
+              stores={commercialStores}
+              initialStoreId={channelStoreId}
+              canManage={canManageStoreChannels}
+              onColorChange={(storeId, color) =>
+                setStores((rows) =>
+                  rows.map((store) =>
+                    store.id === storeId ? { ...store, color } : store,
+                  ),
+                )
+              }
+            />
             <Card>
               <CardHeader>
-                <CardTitle>Canales de venta</CardTitle>
+                <CardTitle>Tipos de canal</CardTitle>
                 <p className="text-sm text-muted-foreground">
-                  Configura los canales disponibles para registrar ventas. Estos
-                  canales se usarán tanto para el canal de venta como para el
-                  canal de cierre.
+                  Opciones generales para ventas sin un canal de tienda
+                  registrado.
                 </p>
               </CardHeader>
               <CardContent>

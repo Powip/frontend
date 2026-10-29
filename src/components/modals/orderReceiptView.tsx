@@ -2,6 +2,8 @@ import { OrderStatus } from "@/interfaces/IOrder";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { MapsLink } from "@/components/shared/MapsLink";
+import { operationalStatus, receiptFinancialState } from "@/utils/orderState";
+import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
 
 interface Props {
   data: any;
@@ -68,7 +70,7 @@ export default function OrderReceiptView({ data }: Props) {
   const { orderNumber, status, customer, items, totals, payments, salesChannel, closingChannel } =
     data;
 
-  const statusStyle = STATUS_STYLES[status as OrderStatus] ?? {
+  const statusStyle = STATUS_STYLES[operationalStatus(status as OrderStatus)] ?? {
     bg: "bg-gray-400",
     text: "text-white",
     label: status,
@@ -76,22 +78,17 @@ export default function OrderReceiptView({ data }: Props) {
 
   // Expandir items: cada unidad como una fila separada
   const expandedItems = items.flatMap((item: any) =>
-    Array.from({ length: item.quantity }, () => ({
+    Array.from({ length: item.quantity }, (_, unitIndex) => ({
       ...item,
+      units: item.units?.[unitIndex] ? [item.units[unitIndex]] : [],
       originalQuantity: item.quantity, // Guardar cantidad original para calcular descuento prorrateado
       quantity: 1,
       subtotal: item.unitPrice,
     }))
   );
 
-  const totalPaid = Array.isArray(payments)
-    ? payments.reduce(
-        (acc: number, payment: any) => acc + Number(payment.amount || 0),
-        0
-      )
-    : 0;
-
-  const pendingAmount = Math.max(totals.grandTotal - totalPaid, 0);
+  const isQuotation = typeof totals.quotationPendingAdvance === "number";
+  const { totalPaid, pendingAmount, isPaid: fullyPaid } = receiptFinancialState(data);
 
   return (
     <div id="receipt-content" className="p-6 text-sm min-w-0">
@@ -111,7 +108,7 @@ export default function OrderReceiptView({ data }: Props) {
         const total = totals.grandTotal || 0;
 
         // Caso 1: Completamente pagado (aprobado)
-        if (totalPaidApproved >= total) {
+        if (fullyPaid) {
           return (
             <Alert className="mb-6 border-green-200 bg-green-50">
               <AlertTitle className="text-green-800">✅ Pago Completo</AlertTitle>
@@ -167,9 +164,9 @@ export default function OrderReceiptView({ data }: Props) {
           </AlertTitle>
           <AlertDescription className="text-amber-800 break-words">
             <p>
-              Tenga en cuenta que para realizar el despacho es{" "}
-              <strong>obligatorio</strong> que el cliente realice el pago en
-              su totalidad antes de la entrega.
+              El pedido puede prepararse y enviarse con saldo pendiente.
+              Es <strong>obligatorio</strong> aprobar el pago total antes de
+              entregar el paquete o revelar la clave de recojo.
             </p>
             <p>
               Por favor, contacte con el cliente para validar el pago y
@@ -192,11 +189,14 @@ export default function OrderReceiptView({ data }: Props) {
             Total: S/{Number(totals.grandTotal).toFixed(2)}
           </p>
           {pendingAmount > 0 ? (
+            <>
+            <FinancialStatusBadge pendingAmount={pendingAmount} />
             <Badge className="bg-red-100 text-red-700">
               Por cobrar S/ {pendingAmount.toFixed(2)}
             </Badge>
+            </>
           ) : (
-            <Badge className="bg-emerald-100 text-emerald-700">Pagado</Badge>
+            <Badge className={fullyPaid ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800"}>{fullyPaid ? "Pagado" : "Pago por verificar"}</Badge>
           )}
         </div>
       </div>
@@ -277,6 +277,7 @@ export default function OrderReceiptView({ data }: Props) {
               <div key={i} className="border rounded-md p-3 flex justify-between items-start">
                 <div className="space-y-1">
                   <p className="text-black-600 font-medium">{item.productName}</p>
+                  {item.units?.length > 0 && <p className="text-xs font-mono">IMEI / series: {item.units.map((unit: { code: string }) => unit.code).join(", ")}</p>}
                   {item.attributes && (
                     <div className="text-xs text-muted-foreground space-y-0.5">
                       {Object.entries(item.attributes).map(([k, v]) => (
@@ -348,6 +349,13 @@ export default function OrderReceiptView({ data }: Props) {
           </div>
         )}
 
+        {isQuotation && totals.quotationPendingAdvance > 0 && (
+          <div className="flex justify-between font-medium text-amber-700">
+            <span>Adelanto por verificar:</span>
+            <span>S/ {Number(totals.quotationPendingAdvance).toFixed(2)}</span>
+          </div>
+        )}
+
         {pendingAmount > 0 ? (
           <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
             <span className="font-bold text-red-700">Por Cobrar</span>
@@ -356,9 +364,9 @@ export default function OrderReceiptView({ data }: Props) {
             </span>
           </div>
         ) : (
-          <div className="flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-            <span className="font-bold text-emerald-700">
-              ✓ Pagado en su totalidad
+          <div className={`flex items-center justify-center rounded-lg border px-3 py-2.5 ${fullyPaid ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+            <span className={`font-bold ${fullyPaid ? "text-emerald-700" : "text-amber-800"}`}>
+              {fullyPaid ? "✓ Pagado en su totalidad" : "Pago por verificar"}
             </span>
           </div>
         )}

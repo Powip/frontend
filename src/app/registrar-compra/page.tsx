@@ -1,10 +1,13 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
+import { useBusinessInventories } from "@/hooks/useBusinessInventories";
 import { toast } from "sonner";
+import { canCorrectTrackingRequest, createTrackedPurchase, getTrackedPurchase, isTracked, parseUnitCodes, purchaseLinePayload, trackingError, updateTrackedPurchase, validateUnitCodes, type InventoryUnit, type TrackingMode } from "@/services/inventoryTrackingService";
 import {
   ArrowLeft,
   ArrowRight,
@@ -64,6 +67,7 @@ interface Supplier {
 }
 
 interface ProductVariant {
+  trackingMode?: TrackingMode;
   inventoryItemId: string;
   variantId: string;
   productName: string;
@@ -80,6 +84,9 @@ interface ProductVariant {
 }
 
 interface CartItem {
+  trackingMode?: TrackingMode;
+  codesText: string;
+  units?: InventoryUnit[];
   id: string;
   inventoryItemId: string;
   variantId: string;
@@ -95,6 +102,8 @@ interface CartItem {
 }
 
 interface PurchaseData {
+  companyId: string;
+  hasTrackedUnits?: boolean;
   id: string;
   purchaseNumber: string;
   inventoryId: string;
@@ -103,6 +112,9 @@ interface PurchaseData {
   paymentMethod?: string;
   purchaseDate?: string;
   items: {
+    trackingMode?: TrackingMode;
+    codes?: string[];
+    units?: InventoryUnit[];
     id: string;
     variantId: string;
     supplierId: string;
@@ -130,11 +142,19 @@ const PAYMENT_METHODS = [
 ];
 
 export default function RegistrarCompraPage() {
+  const { auth } = useAuth();
+  return <RegistrarCompraForm key={`${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}`} />;
+}
+
+function RegistrarCompraForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editPurchaseId = searchParams.get("edit");
+  const trackedEditHint = searchParams.get("tracked") === "1";
 
-  const { auth, selectedStoreId, inventories } = useAuth();
+  const { auth } = useAuth();
+  const warehouseQuery = useBusinessInventories();
+  const inventories = warehouseQuery.inventories;
 
   const companyId = auth?.company?.id;
 
@@ -179,6 +199,39 @@ export default function RegistrarCompraPage() {
 
   // Submitting
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const active = useRef(true);
+  const searchVersion = useRef(0);
+  useEffect(() => { active.current = true; return () => { active.current = false; searchVersion.current++; }; }, []);
+  const [pendingTracked, setPendingTracked] = useState<Record<string, unknown> | null>(null);
+  const pendingTrackedRef = useRef<Record<string, unknown> | null>(null);
+  const [canCorrect, setCanCorrect] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const recoveryKey = `powip:tracked-purchase:v1:${companyId}:${auth?.user?.id}`;
+  const clearRecovery = () => {
+    try { sessionStorage.removeItem(recoveryKey); } catch { /* Storage may be disabled in this browser. */ }
+  };
+  useEffect(() => {
+    if (!companyId || !auth?.user?.id || editPurchaseId) return;
+    try {
+      const raw = sessionStorage.getItem(recoveryKey);
+      if (!raw) return;
+      const saved = JSON.parse(raw) as { request?: Record<string, unknown>; cart?: CartItem[] };
+      if (!saved.request || typeof saved.request.operationId !== "string" || !Array.isArray(saved.request.items) || !Array.isArray(saved.cart)) return;
+      pendingTrackedRef.current = saved.request;
+      setPendingTracked(saved.request); setCart(saved.cart);
+      setSelectedInventoryId(String(saved.request.inventoryId ?? ""));
+      setSelectedSupplierId(String(saved.request.supplierId ?? ""));
+      setReceiptType(String(saved.request.receiptType ?? "FACTURA"));
+      setPaymentMethod(String(saved.request.paymentMethod ?? "EFECTIVO"));
+      setPurchaseDate(String(saved.request.purchaseDate ?? ""));
+      setNotes(String(saved.request.notes ?? ""));
+      setCurrentStep(2);
+      setSubmitError("Recuperé una solicitud pendiente. Reintenta la misma compra para confirmar su resultado sin duplicarla.");
+    } catch { /* Invalid or unavailable storage must not alter the current form. */ }
+  }, [recoveryKey, companyId, auth?.user?.id, editPurchaseId]);
+  const trackedEdit = isEditMode && !!editPurchaseData?.hasTrackedUnits;
+  const formLocked = isSubmitting || !!pendingTracked;
+  const codeError = validateUnitCodes(cart.map((item) => ({ trackingMode: item.trackingMode, quantity: item.quantity, codes: parseUnitCodes(item.codesText), label: item.productName })));
 
   // Create supplier modal
   const [supplierModalOpen, setSupplierModalOpen] = useState(false);
@@ -189,11 +242,13 @@ export default function RegistrarCompraPage() {
     setIsLoadingPurchase(true);
     setIsEditMode(true);
     try {
-      const res = await axios.get<PurchaseData>(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/purchase/${purchaseId}`,
-      );
-
-      const purchase = res.data;
+      let purchase = trackedEditHint
+        ? await getTrackedPurchase<PurchaseData>(purchaseId)
+        : (await axiosAuth.get<PurchaseData>(`${process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics}/purchase/${purchaseId}`)).data;
+      if (!active.current) return;
+      if (purchase.hasTrackedUnits && !trackedEditHint) purchase = await getTrackedPurchase<PurchaseData>(purchaseId);
+      if (!active.current) return;
+      if (purchase.companyId !== companyId) throw new Error("La compra no pertenece al negocio activo.");
       setEditPurchaseData(purchase);
       setSelectedInventoryId(purchase.inventoryId);
       setNotes(purchase.notes || "");
@@ -215,8 +270,8 @@ export default function RegistrarCompraPage() {
         let currentStock = 0;
         let brandName = "";
         try {
-          const stockRes = await axios.get(
-            `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/search`,
+          const stockRes = await axiosAuth.get(
+            `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/inventory-item/search`,
             {
               params: {
                 inventoryId: purchase.inventoryId,
@@ -250,44 +305,49 @@ export default function RegistrarCompraPage() {
           supplierName: item.supplierName,
           brandName: brandName,
           currentStock,
+          trackingMode: item.trackingMode ?? "NONE",
+          codesText: (item.codes ?? item.units?.map((unit) => unit.code) ?? []).join("\n"),
+          units: item.units,
         };
       });
 
       const cartItems = await Promise.all(cartItemsPromises);
+      if (!active.current) return;
       setCart(cartItems);
       setCurrentStep(2); // Go to step 2 in edit mode
       toast.success(`Compra ${purchase.purchaseNumber} cargada para edición`);
     } catch (error) {
+      if (!active.current) return;
       console.error("Error loading purchase", error);
-      toast.error("Error al cargar la compra");
+      toast.error(trackingError(error, "Error al cargar la compra"));
       router.push("/compras");
     } finally {
-      setIsLoadingPurchase(false);
+      if (active.current) setIsLoadingPurchase(false);
     }
-  }, [router]);
+  }, [router, companyId, trackedEditHint]);
 
   // Load purchase data if in edit mode
   useEffect(() => {
-    if (editPurchaseId) {
+    if (editPurchaseId && companyId) {
       loadPurchaseForEdit(editPurchaseId);
     }
-  }, [editPurchaseId, loadPurchaseForEdit]);
+  }, [editPurchaseId, companyId, loadPurchaseForEdit]);
 
   // Set default inventory
   useEffect(() => {
-    if (inventories.length > 0 && !selectedInventoryId && !isEditMode) {
+    if (inventories.length === 1 && !selectedInventoryId && !editPurchaseId) {
       setSelectedInventoryId(inventories[0].id);
     }
-  }, [inventories, selectedInventoryId, isEditMode]);
+  }, [inventories, selectedInventoryId, editPurchaseId]);
 
   const fetchSuppliers = useCallback(async () => {
     if (!companyId) return;
     setSuppliersLoading(true);
     try {
-      const res = await axios.get<Supplier[]>(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers/company/${companyId}`,
+      const res = await axiosAuth.get<Supplier[]>(
+        `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/suppliers/company/${companyId}`,
       );
-      setSuppliers(res.data.filter((s) => s.isActive));
+      if (active.current) setSuppliers(res.data.filter((s) => s.isActive));
     } catch (error) {
       console.error("Error fetching suppliers", error);
       toast.error("Error al cargar proveedores");
@@ -311,8 +371,8 @@ export default function RegistrarCompraPage() {
 
     setIsCreatingSupplier(true);
     try {
-      const res = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`,
+      const res = await axiosAuth.post(
+        `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/suppliers`,
         { name: newSupplierName.trim(), companyId },
       );
 
@@ -338,13 +398,15 @@ export default function RegistrarCompraPage() {
   const searchProducts = useCallback(async (page = 1) => {
     if (!selectedInventoryId) return;
 
+    const version = ++searchVersion.current;
     setProductsLoading(true);
     try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/search`,
+      const res = await axiosAuth.get(
+        `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/inventory-item/search`,
         {
           params: {
             inventoryId: selectedInventoryId,
+            companyId,
             q: productQuery || undefined,
             page,
             limit: 10,
@@ -352,6 +414,7 @@ export default function RegistrarCompraPage() {
         },
       );
 
+      if (!active.current || version !== searchVersion.current) return;
       setProducts(res.data.data);
       setProductsMeta({
         total: res.data.meta.total,
@@ -359,12 +422,13 @@ export default function RegistrarCompraPage() {
       });
       setProductsPage(page);
     } catch (error) {
+      if (!active.current || version !== searchVersion.current) return;
       console.error("Error searching products", error);
       toast.error("Error al buscar productos");
     } finally {
-      setProductsLoading(false);
+      if (active.current && version === searchVersion.current) setProductsLoading(false);
     }
-  }, [selectedInventoryId, productQuery]);
+  }, [selectedInventoryId, productQuery, companyId]);
 
   // Auto-search when entering step 2
   useEffect(() => {
@@ -374,11 +438,7 @@ export default function RegistrarCompraPage() {
   }, [currentStep, selectedInventoryId, searchProducts]);
 
   const addToCart = (product: ProductVariant) => {
-    const existing = cart.find((item) => item.variantId === product.variantId);
-    if (existing) {
-      toast.warning("Este producto ya está en el carrito");
-      return;
-    }
+    if (trackedEdit || formLocked) return;
 
     const selectedSupplier = suppliers.find((s) => s.id === selectedSupplierId);
 
@@ -395,9 +455,18 @@ export default function RegistrarCompraPage() {
       supplierName: product.supplierName || selectedSupplier?.name || "",
       brandName: product.brandName || "",
       currentStock: product.physicalStock ?? product.availableStock,
+      trackingMode: product.trackingMode ?? "NONE",
+      codesText: "",
     };
 
-    setCart((prev) => [...prev, newItem]);
+    setCart((prev) => {
+      const existing = prev.find((item) => item.variantId === product.variantId);
+      if (!existing) return [...prev, newItem];
+      if (!isTracked(existing.trackingMode)) return prev;
+      return prev.map((item) => item.id === existing.id
+        ? { ...item, quantity: item.quantity + 1 }
+        : item);
+    });
   };
 
   const removeFromCart = (cartItemId: string) => {
@@ -428,7 +497,7 @@ export default function RegistrarCompraPage() {
   const canProceedToStep2 = () => {
     return (
       selectedSupplierId &&
-      selectedInventoryId &&
+      inventories.some((inv) => inv.id === selectedInventoryId) &&
       receiptType &&
       paymentMethod &&
       purchaseDate
@@ -436,18 +505,19 @@ export default function RegistrarCompraPage() {
   };
 
   const canSubmit = () => {
-    if (cart.length === 0) return false;
-    if (!selectedInventoryId) return false;
+    if (cart.length === 0 || codeError) return false;
+    if (!inventories.some((inv) => inv.id === selectedInventoryId)) return false;
     return cart.every((item) => item.quantity > 0 && item.unitCost >= 0);
   };
 
   const handleSubmit = async () => {
-    if (!canSubmit()) {
-      toast.error("Completa todos los campos del carrito");
+    if (isSubmitting) return;
+    if (!pendingTrackedRef.current && !canSubmit()) {
+      toast.error(codeError || "Completa todos los campos del carrito");
       return;
     }
 
-    setIsSubmitting(true);
+    setIsSubmitting(true); setSubmitError(""); setCanCorrect(false);
     try {
       const selectedSupplier = suppliers.find(
         (s) => s.id === selectedSupplierId,
@@ -455,7 +525,7 @@ export default function RegistrarCompraPage() {
 
       const payload = {
         companyId,
-        storeId: selectedStoreId,
+        storeId: inventories.find((inv) => inv.id === selectedInventoryId)?.storeId,
         inventoryId: selectedInventoryId,
         notes: notes || null,
         userEmail: auth?.user?.email || null,
@@ -464,27 +534,36 @@ export default function RegistrarCompraPage() {
         purchaseDate,
         supplierId: selectedSupplierId,
         supplierName: getSelectedSupplierName(),
-        items: cart.map((item) => ({
-          variantId: item.variantId,
-          supplierId: item.supplierId,
-          supplierName: item.supplierName,
-          sku: item.sku,
-          productName: item.productName,
-          quantity: item.quantity,
-          unitCost: item.unitCost,
-          attributes: item.attributes,
-        })),
+        items: cart.map((item) => purchaseLinePayload({ ...item, codes: parseUnitCodes(item.codesText) })),
       };
 
-      if (isEditMode && editPurchaseData) {
-        await axios.put(
-          `${process.env.NEXT_PUBLIC_API_INVENTORY}/purchase/${editPurchaseData.id}`,
+      const hasTracked = !!pendingTrackedRef.current || trackedEdit || cart.some((item) => isTracked(item.trackingMode));
+      if (hasTracked) {
+        let request = pendingTrackedRef.current;
+        if (!request) {
+          const { companyId: _company, userEmail: _email, ...safePayload } = payload;
+          request = { ...safePayload, ...(!isEditMode ? { operationId: crypto.randomUUID() } : {}) };
+          pendingTrackedRef.current = request;
+          setPendingTracked(request);
+          if (!isEditMode) {
+            try { sessionStorage.setItem(recoveryKey, JSON.stringify({ request, cart })); } catch { /* In-memory retry remains available. */ }
+          }
+        }
+        if (isEditMode && editPurchaseData) await updateTrackedPurchase(editPurchaseData.id, request);
+        else await createTrackedPurchase(request);
+        if (!isEditMode) clearRecovery();
+        if (!active.current) return;
+        pendingTrackedRef.current = null; setPendingTracked(null);
+        toast.success(isEditMode ? "Compra actualizada; sus unidades se conservaron" : "Compra registrada con sus unidades");
+      } else if (isEditMode && editPurchaseData) {
+        await axiosAuth.put(
+          `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/purchase/${editPurchaseData.id}`,
           payload,
         );
         toast.success("Compra actualizada correctamente");
       } else {
-        await axios.post(
-          `${process.env.NEXT_PUBLIC_API_INVENTORY}/purchase`,
+        await axiosAuth.post(
+          `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/purchase`,
           payload,
         );
         toast.success("Compra registrada correctamente");
@@ -492,16 +571,14 @@ export default function RegistrarCompraPage() {
         setNotes("");
       }
 
-      router.push("/compras");
+      if (active.current) router.push("/compras");
     } catch (error) {
-      console.error("Error saving purchase", error);
-      toast.error(
-        isEditMode
-          ? "Error al actualizar la compra"
-          : "Error al registrar la compra",
-      );
+      if (!active.current) return;
+      const message = trackingError(error, isEditMode ? "Error al actualizar la compra" : "Error al registrar la compra");
+      setSubmitError(message); setCanCorrect(canCorrectTrackingRequest(error));
+      toast.error(message);
     } finally {
-      setIsSubmitting(false);
+      if (active.current) setIsSubmitting(false);
     }
   };
 
@@ -536,7 +613,8 @@ export default function RegistrarCompraPage() {
   return (
     <div className="flex flex-col lg:flex-row min-h-screen lg:h-screen w-full bg-background overflow-hidden">
       {/* Main content */}
-      <main className="flex-1 p-4 lg:p-6 space-y-4 md:space-y-6 overflow-y-auto">
+      <main className={`flex-1 p-4 lg:p-6 space-y-4 md:space-y-6 overflow-y-auto ${formLocked ? "pointer-events-none" : ""}`}>
+        <fieldset disabled={formLocked} className="contents">
         {/* Header */}
         <div className="flex flex-col md:flex-row items-start md:items-center gap-4">
           <Link href="/compras">
@@ -689,9 +767,12 @@ export default function RegistrarCompraPage() {
                     <Package className="h-4 w-4" />
                     Almacén *
                   </Label>
+                  {warehouseQuery.isPending ? <p>Cargando almacenes del negocio...</p> : warehouseQuery.isError ? <p role="alert">No se pudieron cargar los almacenes. <Button variant="outline" onClick={() => void warehouseQuery.refetch()}>Reintentar</Button></p> : null}
+                  {editPurchaseId ? <p className="text-xs text-muted-foreground">La compra conserva su almacén original.</p> : null}
                   <Select
                     value={selectedInventoryId}
                     onValueChange={setSelectedInventoryId}
+                    disabled={Boolean(editPurchaseId) || warehouseQuery.isPending || warehouseQuery.isError}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar almacén" />
@@ -699,7 +780,7 @@ export default function RegistrarCompraPage() {
                     <SelectContent>
                       {inventories.map((inv) => (
                         <SelectItem key={inv.id} value={inv.id}>
-                          {inv.name}
+                          {inv.name}{inv.storeName ? ` · ${inv.storeName}` : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -898,13 +979,14 @@ export default function RegistrarCompraPage() {
                               <Button
                                 size="sm"
                                 onClick={() => addToCart(product)}
-                                disabled={cart.some(
-                                  (item) =>
-                                    item.variantId === product.variantId,
+                                disabled={trackedEdit || cart.some(
+                                  (item) => item.variantId === product.variantId && !isTracked(item.trackingMode),
                                 )}
                               >
                                 <Plus className="h-4 w-4 mr-1" />
-                                Agregar
+                                {cart.some((item) => item.variantId === product.variantId && isTracked(item.trackingMode))
+                                  ? "Agregar otra unidad"
+                                  : "Agregar"}
                               </Button>
                             </TableCell>
                           </TableRow>
@@ -950,7 +1032,7 @@ export default function RegistrarCompraPage() {
                     ? `Productos de la compra (${cart.length})`
                     : `Carrito de Compra (${cart.length} productos)`}
                 </CardTitle>
-                {cart.length > 0 && (
+                {cart.length > 0 && !trackedEdit && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -998,6 +1080,12 @@ export default function RegistrarCompraPage() {
                                 <p className="font-medium">
                                   {item.productName}
                                 </p>
+                                {isTracked(item.trackingMode) ? <div className="mt-2 min-w-52 space-y-1">
+                                  <Label htmlFor={`codes-${item.id}`}>{item.trackingMode} · un código por unidad</Label>
+                                  <Textarea id={`codes-${item.id}`} value={item.codesText} disabled={trackedEdit} rows={3} spellCheck={false} autoComplete="off" placeholder="Pega un código por línea" onChange={(event) => setCart((previous) => previous.map((entry) => entry.id === item.id ? { ...entry, codesText: event.target.value } : entry))} />
+                                  <p className="text-xs">{parseUnitCodes(item.codesText).length} de {item.quantity} códigos</p>
+                                  {!trackedEdit && <p className="text-xs text-muted-foreground">Para ingresar otro equipo del mismo modelo, pulsa «Agregar otra unidad» y añade su código en una línea nueva.</p>}
+                                </div> : null}
                                 {Object.keys(item.attributes || {}).length >
                                   0 && (
                                   <p className="text-xs text-muted-foreground">
@@ -1024,6 +1112,8 @@ export default function RegistrarCompraPage() {
                                 type="number"
                                 min={1}
                                 value={item.quantity}
+                                disabled={trackedEdit}
+                                aria-label={`Cantidad de ${item.productName}`}
                                 onChange={(e) =>
                                   updateCartItem(
                                     item.id,
@@ -1057,6 +1147,8 @@ export default function RegistrarCompraPage() {
                               <Button
                                 variant="ghost"
                                 size="icon"
+                                disabled={trackedEdit}
+                                aria-label={`Quitar ${item.productName}`}
                                 onClick={() => removeFromCart(item.id)}
                               >
                                 <Trash2 className="h-4 w-4 text-red-500" />
@@ -1072,10 +1164,15 @@ export default function RegistrarCompraPage() {
             </Card>
           </>
         )}
+        </fieldset>
       </main>
 
       {/* Summary Sidebar */}
       <aside className="w-full lg:w-80 border-t lg:border-l bg-muted/30 p-4 lg:p-6 flex flex-col shrink-0 overflow-y-auto">
+        {trackedEdit ? <p className="mb-3 text-sm">Puedes editar los datos y costos. Las variantes, cantidades y códigos de esta compra se conservan; su sustitución todavía no está disponible.</p> : null}
+        {codeError ? <p role="alert" className="mb-3 text-sm text-destructive">{codeError}</p> : null}
+        {submitError ? <p role="alert" className="mb-3 text-sm text-destructive">{submitError}</p> : null}
+        {pendingTracked && submitError ? <div className="mb-3 space-y-2 text-sm"><p>Conservé la solicitud y sus códigos. Reintentar evita registrar la misma compra dos veces.</p><Button onClick={() => void handleSubmit()} disabled={isSubmitting}>Reintentar misma solicitud</Button>{canCorrect ? <Button variant="outline" onClick={() => { clearRecovery(); pendingTrackedRef.current = null; setPendingTracked(null); setSubmitError(""); setCanCorrect(false); }}>Corregir datos</Button> : null}</div> : null}
         <h2 className="font-semibold text-lg mb-4">
           {isEditMode ? "Resumen de Edición" : "Resumen de Compra"}
         </h2>

@@ -1,4 +1,5 @@
 import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 import { OrderStatus } from "@/interfaces/IOrder";
 
 interface BulkUpdateResult {
@@ -21,8 +22,33 @@ export async function processBulkStatusChange(
   userInfo?: { userId: string; sellerName: string },
   callStatus?: string,
   callbackAt?: string,
+  authenticatedOrderIds?: ReadonlySet<string>,
 ): Promise<BulkUpdateResult> {
   if (orderIds.length === 0) return { success: [], failed: [] };
+
+  const trackedIds = orderIds.filter((id) => authenticatedOrderIds?.has(id));
+  if (trackedIds.length) {
+    const normalIds = orderIds.filter((id) => !authenticatedOrderIds?.has(id));
+    const result = await processBulkStatusChange(normalIds, newStatus, apiBaseUrl, undefined, _batchSize, userInfo, callStatus, callbackAt);
+    for (let offset = 0; offset < trackedIds.length; offset += 10) {
+      const batch = trackedIds.slice(offset, offset + 10);
+      const updates = await Promise.allSettled(batch.map((id) => axiosAuth.patch(
+        `${apiBaseUrl}/order-header/manual/${id}/status`,
+        {
+          ...(newStatus !== undefined && { status: newStatus }),
+          ...(callStatus !== undefined && { callStatus }),
+          ...(callbackAt !== undefined && { callbackAt }),
+          ...(userInfo && { userId: userInfo.userId, sellerName: userInfo.sellerName }),
+        },
+      )));
+      updates.forEach((update, index) => {
+        if (update.status === "fulfilled") result.success.push(batch[index]);
+        else result.failed.push({ id: batch[index], error: update.reason?.response?.data?.message || "No se pudo actualizar el pedido" });
+      });
+    }
+    onProgress?.(orderIds.length, orderIds.length);
+    return result;
+  }
 
   try {
     const response = await axios.patch(`${apiBaseUrl}/order-header/bulk-status`, {

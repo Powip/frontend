@@ -9,6 +9,14 @@ import { toPayment } from "./to-payment.mapper";
 export function toOrder(dto: OrderResponseDto): Order {
   return {
     id: dto.id,
+    ...(dto.currency !== undefined ? { currency: dto.currency } : {}),
+    ...(dto.commercialStage != null
+      ? {
+          commercialStage: dto.commercialStage,
+          commercialLeadId: dto.commercialLeadId,
+          commercialStockState: dto.commercialStockState,
+        }
+      : {}),
 
     receiptType: dto.receiptType,
     orderType: dto.orderType,

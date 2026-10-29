@@ -1,7 +1,8 @@
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
-const API_INVENTORY = process.env.NEXT_PUBLIC_API_INVENTORY;
+const API_INVENTORY = process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics;
 
 interface SearchInventoryItemsResponse {
   data: InventoryItemForSale[];
@@ -25,10 +26,10 @@ export async function searchInventoryItems(params: {
   brandId?: string;
   categoryId?: string;
   subcategoryId?: string;
-}): Promise<SearchInventoryItemsResponse> {
+}, signal?: AbortSignal): Promise<SearchInventoryItemsResponse> {
   const res = await axiosAuth.get<SearchInventoryItemsResponse>(
     `${API_INVENTORY}/inventory-item/search`,
-    { params },
+    { params, signal },
   );
 
   return res.data;

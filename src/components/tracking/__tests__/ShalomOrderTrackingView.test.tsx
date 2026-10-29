@@ -25,7 +25,7 @@
  */
 
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render as renderRTL, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // ── Mocks de infraestructura ──────────────────────────────────────────────────
@@ -250,8 +250,8 @@ function mockOrdersResponse(orders: ReturnType<typeof makeOrder>[]) {
     if (typeof url === 'string' && url.includes('order-header')) {
       return Promise.resolve({ data: orders });
     }
-    // Llamadas a guías de envío devuelven 404 por defecto
-    return Promise.reject(new Error('Not found'));
+    // La consulta empresarial de guías está disponible y vacía por defecto.
+    return Promise.resolve({ data: [] });
   });
 }
 
@@ -571,3 +571,19 @@ describe('ShalomOrderTrackingView', () => {
     });
   });
 });
+
+// Exercise the shared business query with an isolated cache per render.
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+jest.mock("@/lib/axiosAuth", () => { const mod = require("axios"); return { __esModule: true, default: mod.__esModule ? mod.default : mod }; });
+jest.mock("@/contexts/BusinessScopeContext", () => ({
+  useBusinessScope: () => {
+    const { auth, selectedStoreId } = require("@/contexts/AuthContext").useAuth();
+    const storeIds = auth?.company?.stores?.length ? auth.company.stores.map((store: { id: string }) => store.id) : selectedStoreId ? [selectedStoreId] : [];
+    return { storeIds, scope: "business", canFetch: !!auth?.accessToken && storeIds.length > 0 };
+  },
+}));
+function render(node: ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  return renderRTL(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
+}

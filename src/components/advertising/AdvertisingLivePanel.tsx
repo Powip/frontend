@@ -1,0 +1,525 @@
+"use client";
+
+import { useQueryClient } from "@tanstack/react-query";
+import { RefreshCw } from "lucide-react";
+import type { ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useAdvertisingSnapshot } from "@/hooks/useAdvertisingSnapshot";
+import type {
+  AdvertisingProviderWire,
+  AdvertisingSelectionPayload,
+} from "@/services/advertisingService";
+import {
+  advertisingErrorMessage,
+  advertisingErrorStatus,
+  advertisingSelectionConflictCode,
+  importAdvertisingHistory,
+  pauseAdvertisingUpdates,
+  selectAdvertisingAccounts,
+  startAdvertisingAuthorization,
+} from "@/services/advertisingService";
+import { AdvertisingConnectedAccountStore } from "./AdvertisingConnectedAccountStore";
+import { AdvertisingConnections, AdvertisingDashboard } from "./AdvertisingDashboard";
+import { AdvertisingDisconnectAccountDialog } from "./AdvertisingDisconnectAccountDialog";
+import { AdvertisingEffectiveSpend } from "./AdvertisingEffectiveSpend";
+import { AdvertisingLiveAccountsDialog } from "./AdvertisingLiveAccountsDialog";
+import { AdvertisingManualReview } from "./AdvertisingManualReview";
+import { AdvertisingModuleSummary } from "./AdvertisingModuleSummary";
+import { advertisingHistoryNotice } from "./advertising-history";
+import { snapshotFromWire } from "./advertising-model";
+
+interface Props {
+  companyId: string | null | undefined;
+  actorId: string | null | undefined;
+  token: string | null | undefined;
+  companyName: string;
+  from: string;
+  to: string;
+  manualContent?: ReactNode;
+  connectionsOnly?: boolean;
+  storeIds?: string[];
+  presentation?: "legacy" | "module";
+  onAccountsSelected?: () => void;
+}
+
+const EMPTY_STORE_IDS: string[] = [];
+
+export function validatedAdvertisingAuthorizationUrl(
+  provider: AdvertisingProviderWire,
+  value: string,
+): string {
+  const url = new URL(value);
+  if (
+    provider !== "meta" ||
+    url.origin !== "https://www.facebook.com" ||
+    !/^\/v\d+\.\d+\/dialog\/oauth$/.test(url.pathname) ||
+    url.username ||
+    url.password ||
+    url.hash
+  ) {
+    throw new Error("No pudimos iniciar la conexión. Inténtalo de nuevo.");
+  }
+  return url.toString();
+}
+
+export function AdvertisingLivePanel({
+  companyId,
+  actorId,
+  token,
+  companyName,
+  from,
+  to,
+  manualContent,
+  connectionsOnly = false,
+  storeIds = EMPTY_STORE_IDS,
+  presentation = "legacy",
+  onAccountsSelected,
+}: Props) {
+  const queryClient = useQueryClient();
+  const query = useAdvertisingSnapshot({ token, actorId, companyId, from, to });
+  const [dialogProvider, setDialogProvider] = useState<AdvertisingProviderWire | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [disconnectAccountId, setDisconnectAccountId] = useState<string | null>(null);
+  const mounted = useRef(true);
+  const openedConnected = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const wire = query.data;
+  const historyNoticeSnapshot = useRef(wire);
+  const parsed = useMemo(() => {
+    if (!wire) return { snapshot: null, invalid: false };
+    try {
+      return { snapshot: snapshotFromWire(wire), invalid: false };
+    } catch {
+      return { snapshot: null, invalid: true };
+    }
+  }, [wire]);
+  const snapshot = parsed.snapshot;
+  const operationalSnapshot = useMemo(
+    () =>
+      snapshot
+        ? { ...snapshot, accounts: snapshot.accounts.filter((account) => !account.disconnectedAt) }
+        : null,
+    [snapshot],
+  );
+  const disconnectAccount = wire?.accounts.find(
+    (account) => account.id === disconnectAccountId && !account.disconnectedAt,
+  );
+  const canDisconnect =
+    wire?.capabilities.canDisconnect === true &&
+    wire.capabilities.canManage &&
+    wire.capabilities.canReconcile;
+  const currentIdentity = useRef({ actorId, companyId, token });
+  currentIdentity.current = { actorId, companyId, token };
+  useEffect(() => {
+    if (wire && disconnectAccountId && (!disconnectAccount || !canDisconnect)) {
+      setDisconnectAccountId(null);
+      setPending(null);
+    }
+  }, [wire, disconnectAccountId, disconnectAccount, canDisconnect]);
+  useEffect(() => {
+    if (!wire || wire === historyNoticeSnapshot.current || notice !== "Importando historial…")
+      return;
+    const imports = wire.accounts.flatMap((account) =>
+      account.historyImport ? [account.historyImport] : [],
+    );
+    if (imports.length > 0) setNotice(advertisingHistoryNotice(imports));
+  }, [wire, notice]);
+  const initialSelectedIds = useMemo(
+    () =>
+      wire?.accounts
+        .filter(
+          (account) =>
+            account.provider === dialogProvider && account.enabled && !account.disconnectedAt,
+        )
+        .map((account) => account.externalId) ?? [],
+    [wire?.accounts, dialogProvider],
+  );
+
+  useEffect(() => {
+    if (!wire || openedConnected.current) return;
+    const url = new URL(window.location.href);
+    const connected = url.searchParams.get("connected");
+    if (connected !== "meta" && connected !== "tiktok") return;
+    openedConnected.current = true;
+    url.searchParams.delete("connected");
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${url.search}${url.hash}`,
+    );
+    if (wire.capabilities.canManage && wire.providers[connected].status === "connected")
+      setDialogProvider(connected);
+  }, [wire]);
+
+  async function connect(provider: AdvertisingProviderWire) {
+    if (!token || !companyId || pending) return;
+    setPending("connect");
+    setError(null);
+    setNotice(null);
+    try {
+      const { url } = await startAdvertisingAuthorization(token, companyId, provider);
+      if (mounted.current)
+        window.location.assign(validatedAdvertisingAuthorizationUrl(provider, url));
+    } catch (failure: unknown) {
+      if (mounted.current) setError(advertisingErrorMessage(failure));
+    } finally {
+      if (mounted.current) setPending(null);
+    }
+  }
+
+  async function pause(provider: AdvertisingProviderWire) {
+    if (!token || !companyId || pending) return;
+    setPending("pause");
+    setError(null);
+    setNotice(null);
+    try {
+      await pauseAdvertisingUpdates(token, companyId, provider);
+      if (mounted.current) {
+        setNotice("Actualizaciones pausadas.");
+        await query.refetch();
+      }
+    } catch (failure: unknown) {
+      if (mounted.current) setError(advertisingErrorMessage(failure));
+    } finally {
+      if (mounted.current) setPending(null);
+    }
+  }
+
+  async function save(payload: AdvertisingSelectionPayload) {
+    if (!token || !companyId || !dialogProvider || !wire || pending) return;
+    const provider = dialogProvider;
+    setPending("save");
+    setError(null);
+    setNotice(null);
+    let selected = false;
+    try {
+      const result = await selectAdvertisingAccounts(token, companyId, provider, payload);
+      selected = true;
+      if (mounted.current) {
+        setDialogProvider(null);
+        historyNoticeSnapshot.current = wire;
+        setNotice(
+          result.selectedCount > 0
+            ? advertisingHistoryNotice(result.imports)
+            : "Cuentas guardadas.",
+        );
+        if (result.selectedCount > 0) onAccountsSelected?.();
+      }
+    } catch (failure: unknown) {
+      if (mounted.current) {
+        setError(advertisingErrorMessage(failure));
+        const conflict = advertisingSelectionConflictCode(failure);
+        if (
+          conflict ||
+          advertisingErrorStatus(failure) === 401 ||
+          advertisingErrorStatus(failure) === 403
+        ) {
+          setDialogProvider(null);
+          await query.refetch();
+        }
+      }
+    } finally {
+      if (mounted.current) {
+        if (selected) await query.refetch();
+        setPending(null);
+      }
+    }
+  }
+
+  async function refresh() {
+    if (!token || !companyId || !wire || pending) return;
+    setPending("sync");
+    setError(null);
+    setNotice(null);
+    try {
+      const providers = (["meta", "tiktok"] as const).filter(
+        (provider) =>
+          wire.providers[provider].available &&
+          wire.providers[provider].status === "connected" &&
+          wire.accounts.some(
+            (account) =>
+              account.provider === provider && account.enabled && !account.disconnectedAt,
+          ),
+      );
+      const results = await Promise.all(
+        providers.map((provider) => importAdvertisingHistory(token, companyId, provider)),
+      );
+      if (mounted.current) {
+        historyNoticeSnapshot.current = wire;
+        setNotice(
+          providers.length
+            ? advertisingHistoryNotice(results.flatMap((result) => result.imports))
+            : "No hay cuentas activas para actualizar.",
+        );
+      }
+    } catch (failure: unknown) {
+      if (mounted.current) setError(advertisingErrorMessage(failure));
+    } finally {
+      if (mounted.current) {
+        await query.refetch();
+        setPending(null);
+      }
+    }
+  }
+
+  function closeDisconnect() {
+    setDisconnectAccountId(null);
+    setPending(null);
+  }
+
+  async function accountDisconnected(accountId: string) {
+    if (
+      !mounted.current ||
+      currentIdentity.current.actorId !== actorId ||
+      currentIdentity.current.companyId !== companyId ||
+      currentIdentity.current.token !== token ||
+      accountId !== disconnectAccountId
+    )
+      return;
+    closeDisconnect();
+    setNotice("Cuenta desconectada.");
+    const prefixes = new Set([
+      "advertising-snapshot",
+      "advertising-meta",
+      "advertising-workspace",
+      "advertising-orders",
+      "advertising-order-comparison",
+    ]);
+    const predicate = (query: { queryKey: readonly unknown[] }) =>
+      prefixes.has(String(query.queryKey[0])) &&
+      query.queryKey[1] === actorId &&
+      query.queryKey[2] === companyId;
+    await queryClient.cancelQueries({ predicate });
+    if (
+      !mounted.current ||
+      currentIdentity.current.actorId !== actorId ||
+      currentIdentity.current.companyId !== companyId ||
+      currentIdentity.current.token !== token
+    )
+      return;
+    await queryClient.resetQueries({ predicate });
+  }
+
+  if (!token || !actorId || !companyId)
+    return (
+      <p className="p-4 text-sm text-muted-foreground">
+        Inicia sesión con una empresa para consultar publicidad.
+      </p>
+    );
+  if (query.isError || parsed.invalid)
+    return (
+      <div className="space-y-4 p-4 sm:p-6 lg:p-8">
+        <Card>
+          <CardContent className="space-y-3">
+            <p role="alert" className="text-sm">
+              {parsed.invalid
+                ? "No pudimos leer los datos de publicidad. Inténtalo de nuevo."
+                : advertisingErrorMessage(query.error)}
+            </p>
+            <Button variant="outline" size="sm" onClick={() => void query.refetch()}>
+              Volver a intentar
+            </Button>
+          </CardContent>
+        </Card>
+        {!query.isAccessDenied && manualContent && (
+          <details className="rounded-lg border border-border">
+            <summary className="cursor-pointer p-4 text-sm font-medium">
+              Ver registros manuales
+            </summary>
+            {manualContent}
+          </details>
+        )}
+      </div>
+    );
+  if (!wire || !snapshot || !operationalSnapshot)
+    return (
+      <div className="space-y-4 p-4 sm:p-6 lg:p-8" role="status" aria-label="Cargando publicidad">
+        <Skeleton className="h-24" />
+        <Skeleton className="h-56" />
+      </div>
+    );
+  const manage = wire.capabilities.canManage;
+  const actions =
+    manage && !pending
+      ? {
+          onConnect: (provider: AdvertisingProviderWire) => void connect(provider),
+          onReconnect: (provider: AdvertisingProviderWire) => void connect(provider),
+          onManage: (provider: AdvertisingProviderWire) => {
+            setError(null);
+            setNotice(null);
+            setDialogProvider(provider);
+          },
+          onPause: (provider: AdvertisingProviderWire) => void pause(provider),
+          ...(canDisconnect
+            ? {
+                onDisconnect: (accountId: string) => {
+                  if (
+                    !wire.accounts.some(
+                      (account) => account.id === accountId && !account.disconnectedAt,
+                    )
+                  )
+                    return;
+                  setError(null);
+                  setNotice(null);
+                  setPending("disconnect");
+                  setDisconnectAccountId(accountId);
+                },
+              }
+            : {}),
+        }
+      : {};
+  const effectiveContent = wire.effective ? (
+    <AdvertisingEffectiveSpend effective={wire.effective} from={from} to={to} />
+  ) : undefined;
+  const manualReviewContent = (
+    <div className="space-y-4">
+      <AdvertisingManualReview
+        snapshot={snapshot}
+        isDemo={false}
+        live={{
+          wire,
+          companyId,
+          token,
+          storeIds,
+          canReconcile: wire.capabilities.canReconcile,
+          onChanged: async () => {
+            await queryClient.invalidateQueries({
+              queryKey: ["advertising-snapshot", actorId, companyId],
+            });
+          },
+        }}
+      />
+      {manualContent && (
+        <details className="rounded-lg border border-border">
+          <summary className="cursor-pointer p-4 text-sm font-medium">
+            Registros originales de este navegador
+          </summary>
+          <p className="px-4 pb-3 text-xs text-muted-foreground">
+            Esta asignación manual se conserva. Se revisa antes de usarla como consumo de anuncios.
+          </p>
+          {manualContent}
+        </details>
+      )}
+    </div>
+  );
+  return (
+    <div className="min-w-0 space-y-4">
+      <div className={connectionsOnly ? "space-y-3" : "space-y-3 px-4 pt-4 sm:px-6 lg:px-8"}>
+        {error && dialogProvider === null && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        {notice && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {notice}
+          </p>
+        )}
+        {pending && pending !== "disconnect" && (
+          <p role="status" className="text-sm text-muted-foreground">
+            {pending === "connect"
+              ? "Abriendo la conexión…"
+              : pending === "pause"
+                ? "Pausando actualizaciones…"
+                : "Actualizando datos…"}
+          </p>
+        )}
+        {manage && wire.accounts.some((account) => account.enabled && !account.disconnectedAt) && (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={pending !== null || query.isFetching}
+            onClick={() => void refresh()}
+          >
+            <RefreshCw aria-hidden="true" />
+            Actualizar gasto
+          </Button>
+        )}
+        {!manage && Object.values(wire.providers).some((provider) => provider.available) && (
+          <p className="text-xs text-muted-foreground">
+            Necesitas permiso para gestionar estas cuentas.
+          </p>
+        )}
+      </div>
+      {connectionsOnly ? (
+        <AdvertisingConnections
+          snapshot={operationalSnapshot}
+          showAccounts={presentation === "module"}
+          from={from}
+          to={to}
+          renderStore={
+            presentation === "module"
+              ? (accountId) =>
+                  operationalSnapshot.accounts.find((account) => account.id === accountId)
+                    ?.provider === "meta" ? (
+                    <AdvertisingConnectedAccountStore
+                      accountId={accountId}
+                      identity={{ token, actorId, companyId, from, to }}
+                    />
+                  ) : null
+              : undefined
+          }
+          {...actions}
+        />
+      ) : presentation === "module" ? (
+        <AdvertisingModuleSummary
+          companyId={companyId}
+          actorId={actorId}
+          token={token}
+          companyName={companyName}
+          from={from}
+          to={to}
+          snapshot={operationalSnapshot}
+          canManage={manage}
+          effectiveContent={effectiveContent}
+          manualReviewContent={manualReviewContent}
+        />
+      ) : (
+        <AdvertisingDashboard
+          companyName={companyName}
+          from={from}
+          to={to}
+          snapshot={operationalSnapshot}
+          manualContent={manualContent}
+          effectiveContent={effectiveContent}
+          manualReviewContent={manualReviewContent}
+          {...actions}
+        />
+      )}
+      <AdvertisingLiveAccountsDialog
+        provider={dialogProvider}
+        companyId={companyId}
+        companyName={companyName}
+        token={token}
+        initialSelectedIds={initialSelectedIds}
+        busy={pending === "save"}
+        error={error}
+        onClose={() => setDialogProvider(null)}
+        onSave={save}
+      />
+      {disconnectAccount ? (
+        <AdvertisingDisconnectAccountDialog
+          key={`${actorId}:${companyId}:${disconnectAccount.id}`}
+          actorId={actorId}
+          companyId={companyId}
+          token={token}
+          account={disconnectAccount}
+          canDisconnect={canDisconnect}
+          onClose={closeDisconnect}
+          onDisconnected={accountDisconnected}
+        />
+      ) : null}
+    </div>
+  );
+}

@@ -37,7 +37,8 @@
  */
 
 import React from 'react';
-import { renderHook, waitFor } from '@testing-library/react';
+import { tokenStore } from '@/lib/tokenStore';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { listVolumePromos } from '@/services/promos.service';
@@ -62,6 +63,12 @@ jest.mock('@/services/promos.service', () => ({
   createVolumePromo: jest.fn(),
   updatePromo: jest.fn(),
   deletePromo: jest.fn(),
+}));
+
+jest.mock('@/services/bundlePromos.service', () => ({
+  listBundlePromos: jest.fn().mockResolvedValue({ bundles: [], deletedIds: [] }),
+  getBundleCapabilities: jest.fn().mockResolvedValue({ canManage: false }),
+  importBundlePromos: jest.fn(), createBundlePromo: jest.fn(), updateBundlePromo: jest.fn(), deleteBundlePromo: jest.fn(),
 }));
 
 // ── Casts ────────────────────────────────────────────────────────────────────
@@ -104,6 +111,20 @@ const VALID_BUNDLE: BundlePack = {
   items: [{ productKey: 'prod-a', productName: 'Producto A', price: 50 }],
   packPrice: 70,
 };
+
+const EXACT_BUNDLE: BundlePack = {
+  ...VALID_BUNDLE,
+  id: 'bundle-300',
+  schemaVersion: 2,
+  items: [
+    { productId: 'supplement', productKey: 'Suplemento', productName: 'Suplemento', variantId: 'variant-300', sku: 'SUP-300', attributes: { Tamaño: '300 g' }, price: 80 },
+    { productId: 'vitamin', productKey: 'Vitamina', productName: 'Vitamina', variantId: 'variant-vitamin', sku: 'VIT', price: 40 },
+  ],
+};
+
+function variantKey(companyId: string) {
+  return `powip.packs.variants.v1.${companyId}`;
+}
 
 /** `items` es un objeto en vez de array — dato corrupto real de un shape viejo. */
 const CORRUPT_BUNDLE = {
@@ -189,10 +210,104 @@ function renderPacks() {
 // ── Setup ────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
+  jest.restoreAllMocks();
   jest.clearAllMocks();
   window.localStorage.clear();
+  tokenStore.set("fake-token", COMPANY_ID);
   mockUseAuth.mockReturnValue(MOCK_AUTH as unknown as ReturnType<typeof useAuth>);
   mockListVolumePromos.mockResolvedValue([]);
+});
+
+describe('PacksContext — variantes exactas y aislamiento por empresa', () => {
+  it.each(['legacy', 'variants'])('conserva el bucket sano si hay JSON malformado en %s', async (damaged) => {
+    seedLocalStorage(COMPANY_ID, [VALID_BUNDLE]);
+    window.localStorage.setItem(variantKey(COMPANY_ID), JSON.stringify([EXACT_BUNDLE]));
+    window.localStorage.setItem(damaged === 'legacy' ? storageKey(COMPANY_ID) : variantKey(COMPANY_ID), '{');
+    const { result } = renderPacks();
+    const expected = damaged === 'legacy' ? EXACT_BUNDLE : VALID_BUNDLE;
+    await waitFor(() => expect(result.current.packs).toEqual([expected]));
+    expect(mockToast.error).toHaveBeenCalledWith(DAMAGED_PACK_TOAST);
+    await act(async () => expect(await result.current.addPack(VALID_GIFT)).toBe(true));
+    expect(result.current.packs).toEqual([expected, VALID_GIFT]);
+  });
+
+  it('deja de cargar y oculta los packs al salir de la empresa durante una consulta', async () => {
+    let resolveFirst!: (packs: never[]) => void;
+    mockListVolumePromos.mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }));
+    seedLocalStorage(COMPANY_ID, [VALID_BUNDLE]);
+    const { result, rerender } = renderPacks();
+    await waitFor(() => expect(result.current.loading).toBe(true));
+    mockUseAuth.mockReturnValue({ ...MOCK_AUTH, auth: null } as unknown as ReturnType<typeof useAuth>);
+    rerender();
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.packs).toHaveLength(0);
+    await act(async () => resolveFirst([]));
+    expect(result.current.packs).toHaveLength(0);
+  });
+
+  it('restaura bundles exactos fuera de la clave que pueden leer clientes antiguos', async () => {
+    seedLocalStorage(COMPANY_ID, [VALID_BUNDLE, VALID_GIFT]);
+    window.localStorage.setItem(variantKey(COMPANY_ID), JSON.stringify([EXACT_BUNDLE]));
+    const { result } = renderPacks();
+    await waitFor(() => expect(result.current.packs).toHaveLength(3));
+    expect(JSON.parse(window.localStorage.getItem(storageKey(COMPANY_ID))!)).toEqual([VALID_BUNDLE, VALID_GIFT]);
+    expect(result.current.packs.find((pack) => pack.id === EXACT_BUNDLE.id)).toEqual(EXACT_BUNDLE);
+  });
+
+  it('descarta un bundle v2 sin variante en lugar de tratarlo como legacy', async () => {
+    const broken = { ...EXACT_BUNDLE, items: EXACT_BUNDLE.items.map(({ variantId: _variantId, ...item }) => item) };
+    window.localStorage.setItem(variantKey(COMPANY_ID), JSON.stringify([broken]));
+    const { result } = renderPacks();
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith(DAMAGED_PACK_TOAST));
+    expect(result.current.packs).toHaveLength(0);
+  });
+
+  it('prefiere la versión exacta ante un id duplicado y retira la copia legacy', async () => {
+    seedLocalStorage(COMPANY_ID, [VALID_BUNDLE]);
+    const converted = { ...EXACT_BUNDLE, id: VALID_BUNDLE.id };
+    window.localStorage.setItem(variantKey(COMPANY_ID), JSON.stringify([converted]));
+    const { result } = renderPacks();
+    await waitFor(() => expect(result.current.packs).toEqual([converted]));
+    expect(window.localStorage.getItem(storageKey(COMPANY_ID))).toBe('[]');
+  });
+
+  it('no escribe los bundles de A en B al cambiar de empresa', async () => {
+    seedLocalStorage(COMPANY_ID, [VALID_BUNDLE]);
+    seedLocalStorage('company-2', [VALID_GIFT]);
+    window.localStorage.setItem(variantKey(COMPANY_ID), JSON.stringify([EXACT_BUNDLE]));
+    const { result, rerender } = renderPacks();
+    await waitFor(() => expect(result.current.packs).toHaveLength(2));
+
+    mockUseAuth.mockReturnValue({ ...MOCK_AUTH, auth: { ...MOCK_AUTH.auth, company: { id: 'company-2' } } } as unknown as ReturnType<typeof useAuth>);
+    rerender();
+    await waitFor(() => expect(result.current.packs).toEqual([VALID_GIFT]));
+    expect(JSON.parse(window.localStorage.getItem(storageKey(COMPANY_ID))!)).toEqual([VALID_BUNDLE]);
+    expect(JSON.parse(window.localStorage.getItem(variantKey(COMPANY_ID))!)).toEqual([EXACT_BUNDLE]);
+    expect(JSON.parse(window.localStorage.getItem(storageKey('company-2'))!)).toEqual([VALID_GIFT]);
+    expect(window.localStorage.getItem(variantKey('company-2'))).toBe('[]');
+  });
+
+  it('ignora una respuesta tardía de packs del servidor de otra empresa', async () => {
+    let resolveFirst!: (packs: never[]) => void;
+    mockListVolumePromos.mockReturnValueOnce(new Promise((resolve) => { resolveFirst = resolve; }));
+    seedLocalStorage('company-2', [VALID_GIFT]);
+    const { result, rerender } = renderPacks();
+    mockUseAuth.mockReturnValue({ ...MOCK_AUTH, auth: { ...MOCK_AUTH.auth, company: { id: 'company-2' } } } as unknown as ReturnType<typeof useAuth>);
+    rerender();
+    await waitFor(() => expect(result.current.packs).toEqual([VALID_GIFT]));
+    await act(async () => resolveFirst([]));
+    expect(result.current.packs).toEqual([VALID_GIFT]);
+  });
+
+  it('informa un error de persistencia de regalos sin mostrarlos como guardados', async () => {
+    const { result } = renderPacks();
+    await waitFor(() => expect(window.localStorage.getItem(storageKey(COMPANY_ID))).toBe('[]'));
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new DOMException('Quota', 'QuotaExceededError'); });
+    await act(async () => expect(await result.current.addPack(VALID_GIFT)).toBe(false));
+    expect(result.current.packs).toHaveLength(0);
+    expect(mockToast.error).toHaveBeenCalledWith('No se pudieron guardar los packs locales en este navegador.');
+  });
+
 });
 
 // ── Tests ────────────────────────────────────────────────────────────────────

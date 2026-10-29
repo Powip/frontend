@@ -9,6 +9,8 @@ import {
   EvaCredentialSafe,
   EvaClientType,
 } from "@/services/evaService";
+import EvaShippingRatesSection from "./_components/EvaShippingRatesSection";
+import EvaSkuMapSection from "./_components/EvaSkuMapSection";
 
 const API_INTEGRATIONS = (
   process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3004"
@@ -373,6 +375,16 @@ export default function EvaConfigPage() {
             Actualizar credenciales →
           </button>
         </div>
+      )}
+
+      {/* FEAT-26: tarifa de envío (todas) y vínculo de SKU (cuentas ALMACEN) */}
+      {!saving && credential?.isActive && companyId && token && (
+        <>
+          <EvaShippingRatesSection companyId={companyId} token={token} />
+          {credential.clientType === "ALMACEN" && (
+            <EvaSkuMapSection companyId={companyId} token={token} />
+          )}
+        </>
       )}
 
       {/* Estado NO CONFIGURADO — formulario */}

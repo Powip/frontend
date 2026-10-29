@@ -4,13 +4,13 @@ import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Card, CardContent } from "@/components/ui/card";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { useAuth } from "@/contexts/AuthContext";
-import { Building2, Store, User, Blocks } from "lucide-react";
+import { Building2, Store, User, Blocks, CreditCard } from "lucide-react";
 import Link from "next/link";
 import { HelpHeaderLink, HelpSection } from "./_components/HelpSection";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 
 export default function ConfiguracionPage() {
+  const { auth } = useAuth();
+  const isAdmin = auth?.user?.role === "ADMINISTRADOR";
   const configSections = [
     {
       title: "Datos Personales",
@@ -21,13 +21,25 @@ export default function ConfiguracionPage() {
       bgColor: "bg-blue-50",
     },
     {
-      title: "Empresa + Suscripción",
-      description: "Información de la empresa y gestión de planes",
+      title: "Empresa",
+      description: "Información y datos de facturación de la empresa",
       icon: Building2,
       href: "/configuracion/empresa",
       color: "text-teal-600",
       bgColor: "bg-teal-50",
     },
+    ...(isAdmin
+      ? [
+          {
+            title: "Plan y facturación",
+            description: "Tu plan, add-ons y próximos cobros",
+            icon: CreditCard,
+            href: "/configuracion/plan",
+            color: "text-purple-600",
+            bgColor: "bg-purple-50",
+          },
+        ]
+      : []),
     {
       title: "Gestión de Tiendas",
       description: "Crea y administra tus tiendas",

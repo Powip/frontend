@@ -1,5 +1,7 @@
 "use client";
 
+import { AdvertisingCompanySpend } from "@/components/advertising/AdvertisingCompanySpend";
+
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
@@ -119,6 +121,10 @@ export default function GastosPage() {
 
   return (
     <div className="p-8 space-y-6">
+      <AdvertisingCompanySpend from={fromDate} to={toDate} />
+      <p className="text-sm text-muted-foreground">
+        Estos indicadores usan registros manuales por conciliar.
+      </p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <Card className="text-center">
           <CardContent className="pt-4 pb-3">

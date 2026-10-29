@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { DateRange } from "react-day-picker";
+import { useBusinessScope } from "@/contexts/BusinessScopeContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAgentePerformance } from "@/hooks/useAgentePerformance";
 import { AgentPerformanceCard } from "@/components/atencion-cliente/AgentPerformanceCard";
@@ -67,6 +68,7 @@ const PRESETS = [
 
 export default function AgentesPage() {
   const { auth, selectedStoreId } = useAuth();
+  const { storeIds } = useBusinessScope();
   const companyId = auth?.company?.id;
 
   const [range, setRange] = useState<DateRange>({
@@ -75,13 +77,14 @@ export default function AgentesPage() {
   });
   const [calendarOpen, setCalendarOpen] = useState(false);
 
-  const { data: agentes, isLoading } = useAgentePerformance(
-    selectedStoreId,
+  const { data: agentes, isLoading, isError, refetch } = useAgentePerformance(
+    storeIds,
     companyId,
     range,
   );
 
   if (!auth) return null;
+  if (isError) return <main className="p-6 space-y-4"><HeaderConfig title="Gestión de Agentes CC" /><div role="alert">No se pudo cargar el desempeño de los agentes.</div><Button onClick={() => void refetch()}>Reintentar</Button></main>;
 
   const currentUserId = auth.user.id;
   const mySelf = agentes?.find((a) => a.id === currentUserId);
@@ -178,9 +181,9 @@ export default function AgentesPage() {
         )}
 
         {/* ── Leaderboard (solo admin/supervisor) ────── */}
-        {(isAdmin || isSupervisor) && selectedStoreId && companyId && (
+        {(isAdmin || isSupervisor) && storeIds.length > 0 && companyId && (
           <CcLeaderboard
-            storeId={selectedStoreId}
+            storeId={storeIds}
             companyId={companyId}
             range={range}
           />

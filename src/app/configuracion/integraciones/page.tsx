@@ -2,10 +2,15 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import { format, startOfMonth } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAdvertisingSnapshot } from "@/hooks/useAdvertisingSnapshot";
+import type { AdvertisingProviderWire } from "@/services/advertisingService";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   ArrowRight,
   Package,
@@ -30,7 +35,7 @@ const API_INTEGRATIONS = (
   process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3004"
 ).replace(/\/$/, "");
 
-type Category = "courier" | "canal" | "servicio";
+type Category = "courier" | "canal" | "publicidad" | "servicio";
 type CategoryFilter = "all" | Category;
 
 interface IntegrationDef {
@@ -44,8 +49,12 @@ interface IntegrationDef {
   category: Category;
   categoryLabel: string;
   methodTag: string;
-  /** Ruta interna con la integración real (login/API/OAuth). */
+  /** Ruta de configuración o información de la integración. */
   href?: string;
+  /** El conector todavía no está disponible; solo permite consultar información. */
+  upcoming?: boolean;
+  /** Estado de publicidad validado por el backend, independiente de los partners legacy. */
+  advertisingProvider?: AdvertisingProviderWire;
   /** Logo real del partner, en `public/integrations/`. Si está, reemplaza al ícono. */
   logo?: string;
   /** Fondo del chip de logo — solo necesario si el logo es claro/transparente (ver Aliclik). */
@@ -129,6 +138,34 @@ const INTEGRATIONS: IntegrationDef[] = [
     methodTag: "OAuth",
   },
   {
+    id: "meta-ads",
+    title: "Meta Ads",
+    description: "Consulta el gasto de tus cuentas de Facebook e Instagram.",
+    icon: Megaphone,
+    href: "/configuracion/integraciones/publicidad",
+    color: "text-primary",
+    bgColor: "bg-primary/10",
+    category: "publicidad",
+    categoryLabel: "Publicidad",
+    methodTag: "",
+    upcoming: true,
+    advertisingProvider: "meta",
+  },
+  {
+    id: "tiktok-ads",
+    title: "TikTok Ads",
+    description: "Consulta el gasto de tus cuentas de TikTok.",
+    icon: Megaphone,
+    href: "/configuracion/integraciones/publicidad",
+    color: "text-primary",
+    bgColor: "bg-primary/10",
+    category: "publicidad",
+    categoryLabel: "Publicidad",
+    methodTag: "",
+    upcoming: true,
+    advertisingProvider: "tiktok",
+  },
+  {
     id: "grint",
     title: "Grint Solutions",
     description: "GRINT te ayuda con contabilidad, SUNAT y formalización para que puedas enfocarte en hacer crecer tu negocio.",
@@ -173,7 +210,7 @@ const INTEGRATIONS: IntegrationDef[] = [
 ];
 
 /** Estado manual (sin backend) de los partners de servicio — ver `IntegrationDef.externalLink`. */
-const MANUAL_PARTNER_IDS = INTEGRATIONS.filter((i) => !i.href).map((i) => i.id);
+const MANUAL_PARTNER_IDS = INTEGRATIONS.filter((i) => !i.href && !i.upcoming).map((i) => i.id);
 const manualStorageKey = (companyId: string) => `powip:integraciones-manuales:${companyId}`;
 
 /** Un color por método de conexión — misma señal visual que el mockup (login/apikey/oauth/service). */
@@ -188,13 +225,15 @@ const CATEGORY_CHIPS: { value: CategoryFilter; label: string }[] = [
   { value: "all", label: "Todas" },
   { value: "courier", label: "Couriers" },
   { value: "canal", label: "Canales de venta" },
+  { value: "publicidad", label: "Publicidad" },
   { value: "servicio", label: "Servicios" },
 ];
 
-const CATEGORY_ORDER: Category[] = ["courier", "canal", "servicio"];
+const CATEGORY_ORDER: Category[] = ["courier", "canal", "publicidad", "servicio"];
 const SECTION_LABELS: Record<Category, string> = {
   courier: "🚚 Couriers",
   canal: "🛍️ Canales de venta",
+  publicidad: "Publicidad",
   servicio: "🤝 Partners de servicio",
 };
 
@@ -202,6 +241,15 @@ export default function IntegracionesHubPage() {
   const { auth } = useAuth();
   const companyId = auth?.company?.id;
   const token = auth?.accessToken;
+  const canReadAdvertising = auth?.user.permissions.includes("VIEW_FINANCES") === true;
+  const today = new Date();
+  const advertising = useAdvertisingSnapshot({
+    token: canReadAdvertising ? token : undefined,
+    actorId: auth?.user.id,
+    companyId,
+    from: format(startOfMonth(today), "yyyy-MM-dd"),
+    to: format(today, "yyyy-MM-dd"),
+  });
 
   const [statusMap, setStatusMap] = useState<Record<string, boolean>>({});
   const [statusLoaded, setStatusLoaded] = useState(false);
@@ -296,7 +344,7 @@ export default function IntegracionesHubPage() {
   const connectedCount =
     Object.values(statusMap).filter(Boolean).length +
     MANUAL_PARTNER_IDS.filter((id) => manualStatus[id]).length;
-  const totalCount = INTEGRATIONS.length;
+  const totalCount = INTEGRATIONS.filter((integration) => !integration.upcoming).length;
 
   return (
     <main className="flex-1 p-8">
@@ -378,6 +426,41 @@ export default function IntegracionesHubPage() {
               </div>
               {section.items.map((integration) => {
                 const Icon = integration.icon;
+                if (integration.category === "publicidad") {
+                  const provider = integration.advertisingProvider;
+                  const state = canReadAdvertising && !advertising.isError && provider
+                    ? advertising.data?.providers[provider]
+                    : undefined;
+                  const statusLabel = !state ? "Consultar disponibilidad"
+                    : !state.available ? "Próximamente"
+                    : state.status === "connected" ? "Conectada"
+                    : state.status === "needs-auth" ? "Reconectar"
+                    : state.status === "paused" ? "Pausada"
+                    : "Disponible";
+                  return (
+                    <Card key={integration.id} className="h-full gap-0 py-0 border-border bg-card text-card-foreground">
+                      <CardContent className="flex h-full flex-col p-6">
+                        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                          <div className="rounded-lg bg-primary/10 p-3 text-primary">
+                            <Icon className="h-6 w-6" aria-hidden="true" />
+                          </div>
+                          <Badge variant="secondary">{statusLabel}</Badge>
+                        </div>
+                        <div className="text-xs font-medium text-muted-foreground">Publicidad</div>
+                        <h3 className="mb-2 mt-1 text-lg font-semibold">{integration.title}</h3>
+                        <p className="flex-1 text-sm text-muted-foreground">{integration.description}</p>
+                        <div className="mt-4 border-t border-border pt-4">
+                          <Button variant="link" asChild className="h-auto p-0">
+                            <Link href={integration.href ?? "/configuracion/integraciones/publicidad"}>
+                              Ver publicidad
+                              <ArrowRight aria-hidden="true" />
+                            </Link>
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                }
                 const isManual = !integration.href;
                 const connected = isManual ? !!manualStatus[integration.id] : statusMap[integration.id];
 

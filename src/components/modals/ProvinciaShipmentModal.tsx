@@ -35,6 +35,7 @@ import {
 import { OrderHeader } from "@/interfaces/IOrder";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import OrderReceiptModal from "@/components/modals/orderReceiptModal";
+import { orderFinancialState } from "@/utils/orderState";
 
 interface ShippingGuide {
   id: string;
@@ -77,12 +78,7 @@ interface ProvinciaShipmentModalProps {
 // Helper to calculate pending payment
 const calculatePendingPayment = (order: OrderHeader): number => {
   if (!order) return 0;
-  const grandTotal = parseFloat(order.grandTotal) || 0;
-  if (!order.payments) return grandTotal;
-  const totalPaid = order.payments
-    .filter((p) => p && p.status === "PAID")
-    .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
-  return grandTotal - totalPaid;
+  return orderFinancialState(order).pendingAmount;
 };
 
 export default function ProvinciaShipmentModal({
@@ -114,7 +110,7 @@ export default function ProvinciaShipmentModal({
   useEffect(() => {
     if (envioItem?.guide) {
       setExternalGuideReference(envioItem.guide.externalGuideReference || "");
-      setShippingKey(envioItem.guide.shippingKey || "");
+      setShippingKey(orderFinancialState(envioItem.order).isPaid ? envioItem.guide.shippingKey || "" : "");
       setShippingOffice(envioItem.guide.shippingOffice || "");
       setShippingProofUrl(envioItem.guide.shippingProofUrl || "");
     }
@@ -124,7 +120,7 @@ export default function ProvinciaShipmentModal({
 
   const { order, guide, daysSinceCreated } = envioItem;
   const pendingPayment = calculatePendingPayment(order);
-  const isPaid = pendingPayment <= 0;
+  const isPaid = orderFinancialState(order).isPaid;
   const isProvincia = order.salesRegion === "PROVINCIA";
 
   const handleSave = async () => {
@@ -136,7 +132,7 @@ export default function ProvinciaShipmentModal({
         `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}`,
         {
           externalGuideReference,
-          shippingKey,
+          ...(shippingKey || isPaid ? { shippingKey } : {}),
           shippingOffice,
           shippingProofUrl,
         },
@@ -550,22 +546,13 @@ export default function ProvinciaShipmentModal({
                       <Key className="h-3 w-3" /> Clave de envío
                     </Label>
                     {isEditing ? (
-                      isPaid ? (
                         <Input
+                          type={isPaid ? "text" : "password"}
                           value={shippingKey}
                           onChange={(e) => setShippingKey(e.target.value)}
-                          placeholder="Ej: 1612"
+                          placeholder={isPaid ? "Ej: 1612" : "Registrar nueva clave (oculta)"}
                           className="h-8"
                         />
-                      ) : (
-                        <Input
-                          value=""
-                          disabled
-                          placeholder="Bloqueada"
-                          title="El pedido debe quedar libre de deuda antes de ingresar la clave"
-                          className="h-8 disabled:cursor-not-allowed disabled:opacity-60"
-                        />
-                      )
                     ) : (
                       <div className="flex items-center gap-2">
                         {isPaid ? (
@@ -627,7 +614,7 @@ export default function ProvinciaShipmentModal({
               {!isPaid ? (
                 <Badge className="bg-amber-100 text-amber-800 flex items-center gap-1">
                   <DollarSign className="h-3 w-3" />
-                  Pago Pendiente: S/ {pendingPayment.toFixed(2)}
+                  {Number.isFinite(pendingPayment) ? `Con saldo: S/ ${pendingPayment.toFixed(2)}` : "Pago por verificar"}
                 </Badge>
               ) : (
                 <Badge className="bg-green-100 text-green-800 flex items-center gap-1">

@@ -13,6 +13,7 @@ import {
   ReconciliationTaskSuggestionMatch,
   getReconciliationTaskErrorMessage,
 } from "@/services/reconciliationTask.service";
+import { ReconciliationSourceChip } from "./ReconciliationSourceChip";
 import { useReconciliationVariantSearch } from "@/hooks/useReconciliationVariantSearch";
 import type { ReconciliationLinkTargetVariant } from "./ReconciliationLinkDialog";
 
@@ -148,9 +149,7 @@ export function ReconciliationProvisionalCard({
                 SKU: {item?.sku ?? item?.company_sku ?? "Sin SKU"}
               </span>
               {item?.source && (
-                <Badge variant="outline" className="text-[10px] uppercase">
-                  {item.source}
-                </Badge>
+                <ReconciliationSourceChip source={item.source} />
               )}
               {itemAttributeChip && (
                 <Badge variant="secondary" className="text-[10px]">

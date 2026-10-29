@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
+import { useBusinessInventories } from "@/hooks/useBusinessInventories";
 import ExcelJS from "exceljs";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -158,11 +161,14 @@ const getCellNumber = (
 
 interface ExcelImportWizardProps {
   onBack: () => void;
+  inventoryId?: string;
 }
 
 /* ═══════ COMPONENTE ═══════ */
-export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
-  const { auth, inventories } = useAuth();
+export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWizardProps) {
+  const { auth } = useAuth();
+  const warehouseQuery = useBusinessInventories();
+  const inventories = warehouseQuery.inventories;
   const [step, setStep] = useState(1);
 
   /* ─── Step 1 state ─── */
@@ -170,7 +176,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState("");
-  const [selectedInventoryId, setSelectedInventoryId] = useState("");
+  const [selectedInventoryId, setSelectedInventoryId] = useState(inventoryId || "");
   const [templateDownloaded, setTemplateDownloaded] = useState(false);
   const skipSubcategoryResetRef = useRef(false);
 
@@ -199,8 +205,8 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
     if (allSubcategories[categoryId]) return allSubcategories[categoryId];
 
     try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${categoryId}`,
+      const res = await axiosAuth.get(
+        `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/subcategories/category/${categoryId}`,
       );
       setAllSubcategories((prev) => ({ ...prev, [categoryId]: res.data }));
       return res.data;
@@ -224,8 +230,8 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
 
   /* ─── Load categories ─── */
   useEffect(() => {
-    axios
-      .get(`${process.env.NEXT_PUBLIC_API_PRODUCTOS}/categories`)
+    axiosAuth
+      .get(`${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/categories`)
       .then((res) => setCategories(res.data))
       .catch((err) => console.error("Error cargando categorías:", err));
   }, []);
@@ -237,9 +243,9 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
       setSelectedSubcategoryId("");
       return;
     }
-    axios
+    axiosAuth
       .get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${selectedCategoryId}`,
+        `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/subcategories/category/${selectedCategoryId}`,
       )
       .then((res) => {
         setSubcategories(res.data);
@@ -358,8 +364,8 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
 
     /* ── Hoja de referencia: Categorías Válidas ── */
     try {
-      const res = await axios.get<SubcategoryWithCategory[]>(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories`,
+      const res = await axiosAuth.get<SubcategoryWithCategory[]>(
+        `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/subcategories`,
       );
 
       const validSheet = workbook.addWorksheet("Categorías Válidas");
@@ -562,7 +568,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
       toast.error("No hay productos válidos para guardar");
       return;
     }
-    if (!selectedInventoryId) {
+    if (!inventories.some((inv) => inv.id === selectedInventoryId)) {
       toast.error("Seleccioná un almacén antes de guardar");
       return;
     }
@@ -589,11 +595,11 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
       })),
     };
 
-    const apiUrl = `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/bulk-import`;
+    const apiUrl = `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/products/bulk-import`;
 
     setIsSaving(true);
     try {
-      const res = await axios.post(apiUrl, payload);
+      const res = await axiosAuth.post(apiUrl, payload);
 
       if (res.data.created === 0 && res.data.errors > 0) {
         toast.error(
@@ -630,6 +636,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         description="Carga masiva de productos vía Excel"
       />
 
+      {warehouseQuery.isError ? <div role="alert">No se pudieron cargar los almacenes del negocio. <Button variant="outline" onClick={() => void warehouseQuery.refetch()}>Reintentar</Button></div> : null}
       {/* ─── Step indicator ─── */}
       <div className="flex items-center justify-center gap-2 mb-8">
         {stepLabels.map((label, i) => {
@@ -775,8 +782,9 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
                 </div>
               </div>
 
+              {warehouseQuery.isPending ? <p>Cargando almacenes...</p> : warehouseQuery.isError ? <p role="alert">No se pudieron cargar los almacenes. <Button type="button" variant="outline" onClick={() => void warehouseQuery.refetch()}>Reintentar</Button></p> : null}
               {/* Inventory */}
-              {inventories.length > 1 && (
+              {inventories.length > 0 && (
                 <div className="space-y-1.5">
                   <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                     Almacén destino
@@ -784,6 +792,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
                   <Select
                     value={selectedInventoryId}
                     onValueChange={setSelectedInventoryId}
+                    disabled={Boolean(inventoryId) || warehouseQuery.isPending || warehouseQuery.isError}
                   >
                     <SelectTrigger className="h-10 bg-muted/50 border-none shadow-none ring-0 focus:ring-1">
                       <SelectValue placeholder="Seleccionar almacén..." />
@@ -791,7 +800,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
                     <SelectContent>
                       {inventories.map((inv: any) => (
                         <SelectItem key={inv.id} value={inv.id}>
-                          {inv.name}
+                          {inv.name}{inv.storeName ? ` · ${inv.storeName}` : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -951,6 +960,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
                   <Select
                     value={selectedInventoryId}
                     onValueChange={setSelectedInventoryId}
+                    disabled={Boolean(inventoryId) || warehouseQuery.isPending || warehouseQuery.isError}
                   >
                     <SelectTrigger className="bg-white dark:bg-background">
                       <SelectValue placeholder="Seleccioná el almacén..." />
@@ -958,7 +968,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
                     <SelectContent>
                       {inventories.map((inv: any) => (
                         <SelectItem key={inv.id} value={inv.id}>
-                          {inv.name}
+                          {inv.name}{inv.storeName ? ` · ${inv.storeName}` : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>

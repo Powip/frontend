@@ -1,15 +1,21 @@
 "use client";
+import { CcCierreDiaMoneyNotice } from "./CcCierreDiaMoneyNotice";
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { PackageSearch, Pencil, CheckCircle2, Save } from "lucide-react";
-import { useCierreDiaClosingDataDay, useCierreDiaDay, useSaveCierreDia } from "@/hooks/useCierreDia";
+import {
+  useCierreDiaClosingDataDay,
+  useCierreDiaDay,
+  useSaveCierreDia,
+} from "@/hooks/useCierreDia";
 import { CcCierreDiaProductTable } from "./CcCierreDiaProductTable";
 import { CcCierreDiaUpsellCards } from "./CcCierreDiaUpsellCards";
 import { CcCierreDiaCpvCard, CpvValues } from "./CcCierreDiaCpvCard";
 import { CcCierreDiaEstadoBadge } from "./CcCierreDiaEstadoBadge";
+import { CcCierreDiaAdvertisingScope } from "./CcCierreDiaAdvertisingScope";
 import {
   computeMetrics,
   EMPTY_PRODUCT_TOTALS,
@@ -31,14 +37,32 @@ export function CcCierreDiaDayView({ storeId, date, onRegularizar }: Props) {
   // Solo el día de hoy se refresca solo (cada 30s + al volver a la pestaña)
   // — un día pasado ya cerrado no va a cambiar, no vale la pena pollear.
   const isToday = date === todayISO();
-  const { data: manualRecord, isLoading: isLoadingManual } = useCierreDiaDay(storeId, date, isToday);
-  const { data: closingData, isLoading: isLoadingProductos, isError: isErrorProductos } =
-    useCierreDiaClosingDataDay(storeId, date, isToday);
+  const { data: manualRecord, isLoading: isLoadingManual } = useCierreDiaDay(
+    storeId,
+    date,
+    isToday,
+  );
+  const {
+    data: closingData,
+    isLoading: isLoadingProductos,
+    isError: isErrorProductos,
+    error: closingError,
+  } = useCierreDiaClosingDataDay(storeId, date, isToday);
+  const advertisingScope = (
+    <CcCierreDiaAdvertisingScope from={date} to={date} />
+  );
 
   if (isLoadingManual || isLoadingProductos) {
     return (
-      <div className="bg-white dark:bg-slate-800 rounded-lg p-8 text-center text-gray-400 dark:text-slate-500 text-sm">
-        Cargando cierre del día...
+      <div className="space-y-4">
+        {advertisingScope}
+        <CcCierreDiaMoneyNotice
+          error={closingError}
+          hasSaved={!!manualRecord}
+        />
+        <div className="bg-white dark:bg-slate-800 rounded-lg p-8 text-center text-gray-400 dark:text-slate-500 text-sm">
+          Cargando cierre del día...
+        </div>
       </div>
     );
   }
@@ -48,35 +72,46 @@ export function CcCierreDiaDayView({ storeId, date, onRegularizar }: Props) {
 
   if (!record) {
     return (
-      <Card className="border-2 border-dashed">
-        <CardContent className="py-10 text-center">
-          <PackageSearch className="mx-auto h-8 w-8 text-muted-foreground mb-3" />
-          <p className="text-sm font-bold mb-1">Sin datos para este día</p>
-          <p className="text-xs text-muted-foreground mb-4">
-            No hay pedidos COD registrados ni un cierre guardado para esta fecha. Puedes
-            regularizarlo ingresando los datos manualmente.
-          </p>
-          <Button onClick={() => onRegularizar(date)}>
-            + Regularizar datos de este día
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        {advertisingScope}
+        <CcCierreDiaMoneyNotice
+          error={closingError}
+          hasSaved={!!manualRecord}
+        />
+        <Card className="border-2 border-dashed">
+          <CardContent className="py-10 text-center">
+            <PackageSearch className="mx-auto h-8 w-8 text-muted-foreground mb-3" />
+            <p className="text-sm font-bold mb-1">Sin datos para este día</p>
+            <p className="text-xs text-muted-foreground mb-4">
+              No hay pedidos COD registrados ni un cierre guardado para esta
+              fecha. Puedes regularizarlo ingresando los datos manualmente.
+            </p>
+            <Button onClick={() => onRegularizar(date)}>
+              + Regularizar datos de este día
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   const m = computeMetrics(record);
 
   return (
-    <CcCierreDiaDayContent
-      storeId={storeId}
-      date={date}
-      record={record}
-      metrics={m}
-      closingData={closingData}
-      isLoadingProductos={isLoadingProductos}
-      isErrorProductos={isErrorProductos}
-      onRegularizar={onRegularizar}
-    />
+    <div className="space-y-4">
+      {advertisingScope}
+      <CcCierreDiaMoneyNotice error={closingError} hasSaved={!!manualRecord} />
+      <CcCierreDiaDayContent
+        storeId={storeId}
+        date={date}
+        record={record}
+        metrics={m}
+        closingData={closingData}
+        isLoadingProductos={isLoadingProductos}
+        isErrorProductos={isErrorProductos}
+        onRegularizar={onRegularizar}
+      />
+    </div>
   );
 }
 
@@ -92,7 +127,14 @@ interface ContentProps {
 }
 
 function CcCierreDiaDayContent({
-  storeId, date, record, metrics: m, closingData, isLoadingProductos, isErrorProductos, onRegularizar,
+  storeId,
+  date,
+  record,
+  metrics: m,
+  closingData,
+  isLoadingProductos,
+  isErrorProductos,
+  onRegularizar,
 }: ContentProps) {
   // Pedidos CREADOS hoy (cohorte por created_at) — distinto de `m.total`,
   // que es el embudo agrupado por fecha de última actualización (ver BUG
@@ -120,10 +162,13 @@ function CcCierreDiaDayContent({
 
   // Recalculado en vivo mientras se edita el gasto publicitario, antes de
   // guardar — igual que `calcCPV()` en el mockup.
-  const publiLive = cpvValues.publiMeta + cpvValues.publiTiktok + cpvValues.publiGoogle;
+  const publiLive =
+    cpvValues.publiMeta + cpvValues.publiTiktok + cpvValues.publiGoogle;
   const margenBrutoLive = record.ingreso - record.costo;
   const margenNetoLive = margenBrutoLive - publiLive;
-  const pctMargenNetoLive = record.ingreso ? (margenNetoLive / record.ingreso) * 100 : 0;
+  const pctMargenNetoLive = record.ingreso
+    ? (margenNetoLive / record.ingreso) * 100
+    : 0;
 
   async function handleGuardarDia() {
     try {
@@ -156,12 +201,18 @@ function CcCierreDiaDayContent({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-base font-extrabold flex items-center gap-2 flex-wrap">
-            Cierre del Día · <span className="text-teal-600 dark:text-teal-400">{formatDate(date)}</span>
+            Cierre del Día ·{" "}
+            <span className="text-teal-600 dark:text-teal-400">
+              {formatDate(date)}
+            </span>
             <CcCierreDiaEstadoBadge isAuto={record.isAuto} />
           </h3>
           <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
             {record.isAuto ? (
-              <>Calculado en vivo desde los pedidos COD del día · gasto publicitario pendiente de cargar</>
+              <>
+                Calculado en vivo desde los pedidos COD del día · gasto
+                publicitario pendiente de cargar
+              </>
             ) : (
               <>
                 <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
@@ -171,7 +222,11 @@ function CcCierreDiaDayContent({
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => onRegularizar(date)}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onRegularizar(date)}
+          >
             <Pencil className="h-3.5 w-3.5 mr-1.5" /> Editar datos
           </Button>
           <Button
@@ -193,30 +248,45 @@ function CcCierreDiaDayContent({
             <p className="text-[10px] font-bold uppercase tracking-wide text-white/70">
               Pedidos ingresados
             </p>
-            <p className="text-4xl font-black leading-none">{pedidosIngresados}</p>
-            <p className="text-[9px] text-white/55 mt-0.5">Todos los pedidos creados hoy</p>
+            <p className="text-4xl font-black leading-none">
+              {pedidosIngresados}
+            </p>
+            <p className="text-[9px] text-white/55 mt-0.5">
+              Todos los pedidos creados hoy
+            </p>
           </div>
           <div className="h-10 w-px bg-white/20 hidden sm:block" />
           <div className="text-center">
             <p className="text-[10px] text-white/70">Tasa confirm.</p>
-            <p className="text-lg font-extrabold text-emerald-300">{formatPct(m.tasaConfirmacion)}</p>
+            <p className="text-lg font-extrabold text-emerald-300">
+              {formatPct(m.tasaConfirmacion)}
+            </p>
           </div>
           <div className="h-10 w-px bg-white/20 hidden sm:block" />
           <div className="text-center">
             <p className="text-[10px] text-white/70">Tasa anulación</p>
-            <p className="text-lg font-extrabold text-red-300">{formatPct(m.tasaAnulacion)}</p>
+            <p className="text-lg font-extrabold text-red-300">
+              {formatPct(m.tasaAnulacion)}
+            </p>
           </div>
           <div className="h-10 w-px bg-white/20 hidden sm:block" />
           <div className="text-center">
             <p className="text-[10px] text-white/70">En gestión</p>
-            <p className="text-lg font-extrabold text-amber-200">{formatPct(m.tasaEnGestion)}</p>
+            <p className="text-lg font-extrabold text-amber-200">
+              {formatPct(m.tasaEnGestion)}
+            </p>
           </div>
           <div className="h-10 w-px bg-white/20 hidden sm:block" />
           <div className="ml-auto text-right">
-            <p className="text-[10px] text-white/70">Ingreso (confirm+desp+entreg)</p>
-            <p className="text-xl font-extrabold">{formatCurrency(record.ingreso)}</p>
             <p className="text-[10px] text-white/70">
-              Margen neto: {formatCurrency(m.margenNeto)} ({formatPct(m.pctMargenNeto)})
+              Ingreso (confirm+desp+entreg)
+            </p>
+            <p className="text-xl font-extrabold">
+              {formatCurrency(record.ingreso)}
+            </p>
+            <p className="text-[10px] text-white/70">
+              Margen neto: {formatCurrency(m.margenNeto)} (
+              {formatPct(m.pctMargenNeto)})
             </p>
           </div>
         </CardContent>
@@ -237,11 +307,20 @@ function CcCierreDiaDayContent({
                   <p className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground truncate">
                     {s.label}
                   </p>
-                  <p className={`text-xl font-extrabold leading-tight ${s.colorClass}`}>{count}</p>
+                  <p
+                    className={`text-xl font-extrabold leading-tight ${s.colorClass}`}
+                  >
+                    {count}
+                  </p>
                   <div className="h-1 rounded-full bg-muted mt-1.5 overflow-hidden">
-                    <div className={`h-full rounded-full ${s.barClass}`} style={{ width: `${pct}%` }} />
+                    <div
+                      className={`h-full rounded-full ${s.barClass}`}
+                      style={{ width: `${pct}%` }}
+                    />
                   </div>
-                  <p className="text-[9px] text-muted-foreground mt-1">{formatPct(pct)}</p>
+                  <p className="text-[9px] text-muted-foreground mt-1">
+                    {formatPct(pct)}
+                  </p>
                 </CardContent>
               </Card>
             );
@@ -250,7 +329,10 @@ function CcCierreDiaDayContent({
       </div>
 
       {/* upsells — datos reales del día (pedidos + upsell-records) */}
-      <CcCierreDiaUpsellCards summary={closingData?.upsellSummary} isLoading={isLoadingProductos} />
+      <CcCierreDiaUpsellCards
+        summary={closingData?.upsellSummary}
+        isLoading={isLoadingProductos}
+      />
 
       {/* CPV: gasto por plataforma (editable) + resumen de rentabilidad */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -263,14 +345,30 @@ function CcCierreDiaDayContent({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-1.5">
-            <Row label="💵 Ingreso bruto" value={formatCurrency(record.ingreso)} />
-            <Row label="📦 Costo de producto" value={`− ${formatCurrency(record.costo)}`} tone="rd" />
-            <Row label="📣 Gasto publicidad" value={`− ${formatCurrency(publiLive)}`} tone="rd" />
-            <Row label="Margen bruto (sin publi)" value={`${formatCurrency(margenBrutoLive)} · ${formatPct(record.ingreso ? (margenBrutoLive / record.ingreso) * 100 : 0)}`} tone="g" />
+            <Row
+              label="💵 Ingreso bruto"
+              value={formatCurrency(record.ingreso)}
+            />
+            <Row
+              label="📦 Costo de producto"
+              value={`− ${formatCurrency(record.costo)}`}
+              tone="rd"
+            />
+            <Row
+              label="📣 Publicidad manual"
+              value={`− ${formatCurrency(publiLive)}`}
+              tone="rd"
+            />
+            <Row
+              label="Margen bruto (sin publi)"
+              value={`${formatCurrency(margenBrutoLive)} · ${formatPct(record.ingreso ? (margenBrutoLive / record.ingreso) * 100 : 0)}`}
+              tone="g"
+            />
             <div className="pt-2 mt-1 border-t border-white/20 flex items-center justify-between">
               <span className="text-sm font-bold">✅ Margen neto real</span>
               <span className="text-lg font-extrabold text-emerald-300">
-                {formatCurrency(margenNetoLive)} · {formatPct(pctMargenNetoLive)}
+                {formatCurrency(margenNetoLive)} ·{" "}
+                {formatPct(pctMargenNetoLive)}
               </span>
             </div>
           </CardContent>
@@ -289,8 +387,21 @@ function CcCierreDiaDayContent({
   );
 }
 
-function Row({ label, value, tone }: { label: string; value: string; tone?: "g" | "rd" }) {
-  const toneClass = tone === "g" ? "text-emerald-300" : tone === "rd" ? "text-red-200" : "text-white";
+function Row({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "g" | "rd";
+}) {
+  const toneClass =
+    tone === "g"
+      ? "text-emerald-300"
+      : tone === "rd"
+        ? "text-red-200"
+        : "text-white";
   return (
     <div className="flex items-center justify-between py-1 border-b border-white/10 last:border-0">
       <span className="text-xs text-white/80">{label}</span>

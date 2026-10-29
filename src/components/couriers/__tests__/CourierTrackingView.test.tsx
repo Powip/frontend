@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render as renderRTL, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 jest.mock("xlsx", () => ({
@@ -91,7 +91,11 @@ jest.mock("@/services/courierService", () => ({
 
 jest.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
-    auth: { accessToken: "token", company: { id: "company-1" } },
+    auth: {
+      accessToken: "token",
+      user: { id: "user-1" },
+      company: { id: "company-1", stores: [{ id: "store-1", name: "Tienda Test" }] },
+    },
     selectedStoreId: "store-1",
   }),
 }));
@@ -197,3 +201,19 @@ describe("CourierTrackingView — orden por fecha de despacho", () => {
     expect(renderedOrderNumbers()).toEqual(EXPECTED_ORDER);
   });
 });
+
+// Exercise the shared business query with an isolated cache per render.
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+jest.mock("@/lib/axiosAuth", () => { const mod = jest.requireMock("axios"); return { __esModule: true, default: mod.__esModule ? mod.default : mod }; });
+jest.mock("@/contexts/BusinessScopeContext", () => ({
+  useBusinessScope: () => {
+    const { auth, selectedStoreId } = jest.requireMock("@/contexts/AuthContext").useAuth();
+    const storeIds = auth?.company?.stores?.length ? auth.company.stores.map((store: { id: string }) => store.id) : selectedStoreId ? [selectedStoreId] : [];
+    return { storeIds, scope: "business", canFetch: !!auth?.accessToken && storeIds.length > 0 };
+  },
+}));
+function render(node: ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  return renderRTL(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
+}

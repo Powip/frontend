@@ -1,169 +1,250 @@
 "use client";
 
 import axios from "axios";
+import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { postLoginRoute } from "@/lib/subscriptionGate";
-import { useState } from "react";
-import { toast } from "sonner";
-import { Eye, EyeOff, ArrowRight } from "lucide-react";
-
-import { Input } from "../ui/input";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  getPartnerLoginStatus,
+  type PartnerLoginStatus,
+} from "@/features/partners/services/get-partner-login-status";
+import { API } from "@/lib/api";
+import { loginErrorMessage } from "@/lib/authErrors";
+import { PAYWALL_ROUTE, postLoginRoute } from "@/lib/subscriptionGate";
 import ForgotPassword from "../modals/forgotPasswortModal";
+import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import { AuthErrorNotice, FieldError, notifyAuthError } from "./AuthFeedback";
+import styles from "./auth-form.module.css";
 
 interface LoginData {
   email: string;
   password: string;
 }
 
-export default function LoginForm() {
-  const { auth, login, inventories } = useAuth();
+function fieldError(field: keyof LoginData, value: string) {
+  if (!value.trim()) {
+    return field === "email" ? "Ingresa tu correo electrónico." : "Ingresa tu contraseña.";
+  }
+  if (field === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
+    return "Usa un correo válido, como tu@negocio.com.";
+  }
+  return undefined;
+}
+
+interface LoginFormProps {
+  onAuthenticated?: () => void;
+}
+
+async function resolveLoginPartnerStatus(accessToken: string): Promise<PartnerLoginStatus> {
+  // Missing configuration cannot turn a relative /me response into confirmation.
+  if (!API.partners) return "unknown";
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      getPartnerLoginStatus(accessToken),
+      new Promise<PartnerLoginStatus>((resolve) => {
+        deadline = setTimeout(() => resolve("unknown"), 5_000);
+      }),
+    ]);
+  } catch {
+    // Auth succeeded: this optional lookup is not an invalid-password error.
+    return "unknown";
+  } finally {
+    if (deadline !== undefined) clearTimeout(deadline);
+  }
+}
+
+export default function LoginForm({ onAuthenticated }: LoginFormProps = {}) {
+  const { login } = useAuth();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [loginData, setLoginData] = useState<LoginData>({
     email: "",
     password: "",
   });
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>(
-    {},
-  );
+  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
+  const [serverError, setServerError] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const pendingFocusRef = useRef<keyof LoginData | null>(null);
+  const submittingRef = useRef(false);
   const [open, setOpen] = useState<boolean>(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    const field = pendingFocusRef.current;
+    if (!field || !errors[field]) return;
+    formRef.current
+      ?.querySelector<HTMLInputElement>(`[name="${field}"]`)
+      ?.focus({ preventScroll: true });
+    pendingFocusRef.current = null;
+  }, [errors]);
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {};
 
-    if (loginData.email.trim() === "") {
-      newErrors.email = "El correo electrónico es obligatorio";
-    }
-    if (loginData.password.trim() === "") {
-      newErrors.password = "La contraseña es obligatoria";
-    }
+    newErrors.email = fieldError("email", loginData.email);
+    newErrors.password = fieldError("password", loginData.password);
     setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return newErrors;
+  };
+
+  const updateField = (field: keyof LoginData, value: string) => {
+    setLoginData((previous) => ({ ...previous, [field]: value }));
+    setServerError(null);
+    setErrors((previous) =>
+      previous[field] ? { ...previous, [field]: fieldError(field, value) } : previous,
+    );
+  };
+
+  const showLoginError = (message: string) => {
+    setServerError(message);
+    notifyAuthError("No pudimos iniciar sesión", message);
   };
 
   const handleOnLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    if (isLoading || submittingRef.current) return;
+    setServerError(null);
 
-    if (!validateForm()) {
-      toast.error("Por favor, completa todos los campos requeridos.");
-      setIsLoading(false);
+    const newErrors = validateForm();
+    const firstError = newErrors.email ? "email" : newErrors.password ? "password" : null;
+    if (firstError) {
+      notifyAuthError(
+        "Revisa tus datos",
+        newErrors[firstError] ?? "Completa los campos indicados.",
+      );
+      pendingFocusRef.current = firstError;
       return;
     }
 
+    submittingRef.current = true;
+    setIsLoading(true);
+
     try {
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_USERS}/auth/login`,
-        loginData,
-        { withCredentials: true }, // Para recibir httpOnly cookie
+        "/api/auth/login",
+        { ...loginData, email: loginData.email.trim() },
+        { withCredentials: true }, // Cookie HttpOnly del mismo origen que la aplicación.
       );
 
       // login() retorna AuthData con company, subscription, etc.
       const authResult = await login(response.data);
 
       if (!authResult) {
-        toast.error("Error procesando la sesión del usuario.");
+        showLoginError("No pudimos cargar tu sesión. Intenta ingresar nuevamente.");
+        return;
+      }
+
+      // Un flujo que recupera sesión puede continuar en esta misma página.
+      if (onAuthenticated) {
+        onAuthenticated();
         return;
       }
 
       // Con empresa (dueño o staff) → dashboard. Sin empresa: con plan vigente →
       // crear empresa; sin plan → elegir y pagar plan (FEAT-11, lib/subscriptionGate).
-      router.push(
-        postLoginRoute(
-          !!authResult.company || !!authResult.user?.companyId,
-          authResult.subscription?.status,
-        ),
+      const destination = postLoginRoute(
+        !!authResult.company || !!authResult.user?.companyId,
+        authResult.subscription?.status,
       );
-    } catch (error: any) {
-      console.error("Login Error:", error.response?.data || error.message);
-      const errorMessage =
-        error.response?.data?.message ||
-        "El usuario y/o la contraseña son incorrectos";
-      toast.error(errorMessage);
+      if (
+        destination === PAYWALL_ROUTE &&
+        (await resolveLoginPartnerStatus(authResult.accessToken)) === "partner"
+      ) {
+        router.push("/partners");
+        return;
+      }
+      router.push(destination);
+    } catch (error: unknown) {
+      showLoginError(loginErrorMessage(error));
     } finally {
+      submittingRef.current = false;
       setIsLoading(false);
     }
   };
 
   return (
     <div>
-      <form className="flex flex-col gap-5">
-        <div>
-          <Label htmlFor="email">Correo electrónico</Label>
+      <form
+        ref={formRef}
+        className={styles.form}
+        onSubmit={handleOnLogin}
+        noValidate
+        aria-busy={isLoading}
+      >
+        <div className={styles.field}>
+          <Label htmlFor="email" className={styles.label}>
+            Correo electrónico
+          </Label>
           <Input
             value={loginData.email}
-            onChange={(e) =>
-              setLoginData({ ...loginData, email: e.target.value })
-            }
+            onChange={(e) => updateField("email", e.target.value)}
             id="email"
+            name="email"
             type="email"
+            autoComplete="email"
             placeholder="tu@negocio.com"
             required
-            className={`mt-1.5 rounded-xl ${errors.email ? "border-red-400" : ""}`}
+            disabled={isLoading}
+            aria-invalid={Boolean(errors.email)}
+            aria-describedby={errors.email ? "login-email-error" : undefined}
+            className={styles.input}
           />
-          {errors.email && (
-            <p className="text-xs text-red-500 mt-1">{errors.email}</p>
-          )}
+          <FieldError id="login-email-error" message={errors.email} />
         </div>
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <Label htmlFor="password">Contraseña</Label>
-            <button
-              type="button"
-              onClick={() => setOpen(true)}
-              className="text-xs font-medium hover:opacity-80 transition-opacity"
-              style={{ color: "#4F3A96" }}
-            >
-              ¿Olvidaste tu contraseña?
-            </button>
-          </div>
-          <div className="relative">
+        <div className={styles.field}>
+          <Label htmlFor="password" className={styles.label}>
+            Contraseña
+          </Label>
+          <div className={styles.password}>
             <Input
               value={loginData.password}
-              onChange={(e) =>
-                setLoginData({ ...loginData, password: e.target.value })
-              }
+              onChange={(e) => updateField("password", e.target.value)}
               id="password"
+              name="password"
               type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
               placeholder="••••••••"
               required
-              className={`rounded-xl pr-10 ${errors.password ? "border-red-400" : ""}`}
+              disabled={isLoading}
+              aria-invalid={Boolean(errors.password)}
+              aria-describedby={errors.password ? "login-password-error" : undefined}
+              className={styles.passwordInput}
             />
             <button
               type="button"
-              className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600"
+              className={styles.passwordToggle}
               onClick={() => setShowPassword(!showPassword)}
-              tabIndex={-1}
+              disabled={isLoading}
+              aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              aria-pressed={showPassword}
             >
               {showPassword ? (
-                <EyeOff className="w-4 h-4" />
+                <EyeOff size={18} aria-hidden="true" />
               ) : (
-                <Eye className="w-4 h-4" />
+                <Eye size={18} aria-hidden="true" />
               )}
             </button>
           </div>
-          {errors.password && (
-            <p className="text-xs text-red-500 mt-1">{errors.password}</p>
-          )}
+          <FieldError id="login-password-error" message={errors.password} />
+          <div className={styles.recovery}>
+            <button type="button" onClick={() => setOpen(true)} className={styles.link}>
+              ¿Olvidaste tu contraseña?
+            </button>
+          </div>
         </div>
-        <button
-          type="submit"
-          onClick={(e) => handleOnLogin(e)}
-          disabled={isLoading}
-          className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-70 mt-1"
-          style={{ background: "#4F3A96" }}
-        >
+        {serverError && <AuthErrorNotice title="No pudimos iniciar sesión" message={serverError} />}
+        <button type="submit" disabled={isLoading} className={styles.submit}>
           {isLoading ? (
             <>
-              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span className={styles.spinner} aria-hidden="true" />
               Iniciando sesión...
             </>
           ) : (
             <>
-              Ingresar <ArrowRight className="w-4 h-4" />
+              Ingresar <ArrowRight size={17} aria-hidden="true" />
             </>
           )}
         </button>

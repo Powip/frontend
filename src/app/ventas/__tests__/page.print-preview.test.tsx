@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 jest.mock("axios", () => ({
   default: { get: jest.fn(), patch: jest.fn(), post: jest.fn() },
@@ -7,6 +7,12 @@ jest.mock("axios", () => ({
   post: jest.fn(),
 }));
 
+jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: jest.requireMock("axios") }));
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: "company-1:business:store-1,store-2", storeIds: ["store-1", "store-2"] }) }));
+// Referencia estable: después de una acción, la vista recarga invalidando las consultas del negocio.
+const mockInvalidate = jest.fn();
+const mockRouterPush = jest.fn();
+jest.mock("@/hooks/useInvalidateBusinessData", () => ({ useInvalidateBusinessData: () => mockInvalidate }));
 jest.mock("sonner", () => ({
   toast: {
     success: jest.fn(),
@@ -21,7 +27,7 @@ jest.mock("@/contexts/AuthContext", () => ({
 }));
 
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({ push: mockRouterPush, replace: jest.fn() }),
   usePathname: () => "/ventas",
 }));
 
@@ -30,18 +36,51 @@ jest.mock("@/services/atencionClienteService", () => ({
   reassignSeller: jest.fn(),
 }));
 
-jest.mock("@/hooks/useOrdersByStore", () => ({
-  useOrdersByStore: jest.fn(),
+jest.mock("@/hooks/useBusinessOrders", () => ({
+  useBusinessOrders: jest.fn(),
+}));
+jest.mock("@/hooks/useBusinessOrdersCount", () => ({
+  useBusinessOrdersCount: () => ({ count: 0, loading: false, error: false, retry: jest.fn(), refetch: jest.fn() }),
+}));
+// El listado nuevo recibe una página del servidor. Los fixtures siguen siendo
+// compartidos con los casos de impresión y estados de esta suite.
+jest.mock("@/hooks/useBusinessSalesPage", () => ({
+  useBusinessSalesPage: (_storeIds: string[], query: import("@/services/businessSalesService").BusinessSalesQuery) => {
+    const React = jest.requireActual("react") as typeof import("react");
+    const fixture = jest.requireMock("@/hooks/useBusinessOrders").useBusinessOrders();
+    const data = React.useMemo(() => {
+      const commercial = fixture.orders.filter((order: BusinessSalesOrder) => order.status !== "INCOMPLETE" && order.commercialStage !== "LEAD" && order.salesOperationalEligible !== false);
+      const operational = commercial;
+      const rows = commercial.filter((order: OrderHeader) =>
+        query.tab === "pendientes" ? order.status === "PENDIENTE" : query.tab === "anuladas" ? order.status === "ANULADO" : true,
+      ).sort((a: OrderHeader, b: OrderHeader) => b.created_at.localeCompare(a.created_at));
+      return {
+        data: rows.slice((query.page - 1) * query.limit, query.page * query.limit),
+        total: rows.length, page: query.page, totalPages: Math.max(1, Math.ceil(rows.length / query.limit)),
+        counts: { pendientes: operational.filter((order: OrderHeader) => order.status === "PENDIENTE").length, anuladas: commercial.filter((order: OrderHeader) => order.status === "ANULADO").length, todas: commercial.length, pendientesAntiguos: 0 },
+        metadata: { couriers: [], statuses: [...new Set(commercial.map((order: OrderHeader) => order.status))], channels: [], products: [] },
+        kpis: { pendientes: operational.filter((order: OrderHeader) => order.status === "PENDIENTE").length, anuladas: 0, amounts: [] },
+      };
+    }, [fixture.orders, query.tab, query.page, query.limit]);
+    return { data, isFetching: false, isDebouncing: false, isError: false, refetch: fixture.refetch };
+  },
+}));
+// Hoy fijo en 09-26: los pedidos del 09-01 y 09-02 entran en la ventana de 30 días.
+jest.mock("@/lib/peruDate", () => ({
+  ...jest.requireActual("@/lib/peruDate"),
+  todayInPeru: () => "2026-09-26",
 }));
 
 jest.mock("@/utils/bulk-receipt-printer", () => ({
   ...jest.requireActual("@/utils/bulk-receipt-printer"),
   buildReceiptsDocument: jest.fn(async () => "<!DOCTYPE html><html><body>ETIQUETAS</body></html>"),
+  openPrintWindow: jest.fn(() => ({ close: jest.fn() })),
+  printReceipts: jest.fn(async () => {}),
 }));
 
 jest.mock("@/components/modals/CustomerServiceModal", () => ({
   __esModule: true,
-  default: () => null,
+  default: ({ open, orderId }: { open: boolean; orderId: string }) => open ? <div data-testid="order-detail">{orderId}</div> : null,
 }));
 jest.mock("@/components/modals/CommentsTimelineModal", () => ({
   __esModule: true,
@@ -61,7 +100,18 @@ jest.mock("@/components/modals/CreateGuideModal", () => ({
 }));
 jest.mock("@/components/modals/CancellationModal", () => ({
   __esModule: true,
-  default: () => null,
+  default: ({ open, onConfirm }: { open: boolean; onConfirm: (reason: string, notes: string) => void }) => open ? <button onClick={() => onConfirm("OTHER", "Cliente canceló")}>Confirmar anulación normal</button> : null,
+}));
+jest.mock("@/components/registrar-venta/SaleUnitLifecycleModal", () => ({
+  __esModule: true,
+  default: ({ action, orderId }: { action: string; orderId: string }) => <div data-testid="lifecycle-flow">{action}:{orderId}</div>,
+}));
+jest.mock("@/components/ventas/StatusSelect", () => ({
+  StatusSelect: ({ status, onStatusChange, onExtraAction, options }: { status: string; onStatusChange: (status: string) => void; onExtraAction?: () => void; options?: string[] }) => <div data-testid="status-select" data-available-statuses={options?.join(",")}><button onClick={() => onStatusChange("PREPARADO")}>Preparar {status}</button><button onClick={() => onStatusChange("ANULADO")}>Anular {status}</button>{onExtraAction && <button onClick={onExtraAction}>Reprogramar {status}</button>}</div>,
+}));
+jest.mock("@/components/ventas/RescheduleDialog", () => ({
+  RescheduleDialog: ({ open, onConfirm }: { open: boolean; onConfirm: (date: Date) => void }) => open
+    ? <button onClick={() => onConfirm(new Date("2026-10-24T17:00:00.000Z"))}>Confirmar reprogramación</button> : null,
 }));
 jest.mock("@/components/modals/ReassignSellerModal", () => ({
   __esModule: true,
@@ -69,14 +119,17 @@ jest.mock("@/components/modals/ReassignSellerModal", () => ({
 }));
 
 import axios from "axios";
+import { toast } from "sonner";
+import { openPrintWindow, printReceipts } from "@/utils/bulk-receipt-printer";
 import { useAuth } from "@/contexts/AuthContext";
-import { useOrdersByStore } from "@/hooks/useOrdersByStore";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
 import type { OrderHeader } from "@/interfaces/IOrder";
+import type { BusinessSalesOrder } from "@/services/businessSalesService";
 import VentasPage from "../page";
 
 const mockedAxios = axios as unknown as { get: jest.Mock; patch: jest.Mock; post: jest.Mock };
 const mockUseAuth = jest.mocked(useAuth);
-const mockUseOrdersByStore = jest.mocked(useOrdersByStore);
+const mockUseOrdersByStore = jest.mocked(useBusinessOrders);
 const refetch = jest.fn();
 
 process.env.NEXT_PUBLIC_API_VENTAS = "http://ventas";
@@ -143,11 +196,14 @@ beforeEach(() => {
     hasPermission: jest.fn().mockReturnValue(true),
   } as unknown as ReturnType<typeof useAuth>);
   mockUseOrdersByStore.mockReturnValue({
-    data: ORDERS,
+    orders: ORDERS,
+    loading: false,
+    error: false,
+    retry: jest.fn(),
     refetch,
-  } as unknown as ReturnType<typeof useOrdersByStore>);
+  } as unknown as ReturnType<typeof useBusinessOrders>);
   mockedAxios.get.mockImplementation(async (url: string) => {
-    const match = url.match(/order-header\/(.+)\/receipt$/);
+    const match = url.match(/order-header\/(?:manual\/)?(.+)\/receipt$/);
     if (match) {
       return { data: { orderId: match[1], orderNumber: match[1], customer: { fullName: "x" } } };
     }
@@ -169,7 +225,7 @@ async function confirmStep() {
 }
 
 async function openPreviewForAllPendientes() {
-  render(<VentasPage />);
+  const view = render(<VentasPage />);
   await screen.findByText("ORD-001");
   const pendientesPanel = screen.getByRole("tabpanel");
   fireEvent.click(within(pendientesPanel).getAllByRole("checkbox")[0]);
@@ -182,7 +238,7 @@ async function openPreviewForAllPendientes() {
   const print = jest.spyOn(frameWindow, "print").mockImplementation(() => {});
   const printButton = within(dialog).getByRole("button", { name: /Imprimir \/ Guardar PDF/ });
   await waitFor(() => expect(printButton).toBeEnabled());
-  return { dialog, print, printButton };
+  return { dialog, print, printButton, view };
 }
 
 describe("VentasPage — imprimir seleccionados en Ventas pendientes", () => {
@@ -231,6 +287,7 @@ describe("VentasPage — imprimir seleccionados en Ventas pendientes", () => {
 
     fireEvent.click(printButton);
     expect(mockedAxios.patch).not.toHaveBeenCalled();
+    expect(mockInvalidate).not.toHaveBeenCalled();
 
     fireEvent.click(
       within(await confirmStep()).getByRole("button", {
@@ -248,6 +305,310 @@ describe("VentasPage — imprimir seleccionados en Ventas pendientes", () => {
       expect.objectContaining({ status: "PREPARADO", userId: "user-1" }),
     );
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(refetch).toHaveBeenCalled();
+    expect(mockInvalidate).toHaveBeenCalled();
+    // Una sola recarga: la invalidación ya refresca cada consulta activa de la vista
+    expect(refetch).not.toHaveBeenCalled();
+  });
+});
+
+
+it("blocks preparation/label printing for a selected sale whose units are still pending", async () => {
+  const prior = mockUseOrdersByStore.getMockImplementation()!();
+  mockUseOrdersByStore.mockReturnValue({ ...prior, orders: ORDERS.map((order) => ({ ...order, unitAssignmentStatus: "PENDING", unitCatalogValidated: true, stockVersion: 2, confirmedStockVersion: null })) });
+  render(<VentasPage />);
+  await screen.findByText("ORD-001");
+  fireEvent.click(within(screen.getByRole("tabpanel")).getAllByRole("checkbox")[0]);
+  fireEvent.click(screen.getByRole("button", { name: /Imprimir seleccionados \(2\)/ }));
+  expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/pendiente de confirmación/));
+  expect(screen.queryByTitle("Vista previa de etiquetas")).not.toBeInTheDocument();
+  expect(mockedAxios.patch).not.toHaveBeenCalled();
+});
+
+it("confirmed tracked preparation uses the authenticated status route", async () => {
+  const prior = mockUseOrdersByStore.getMockImplementation()!();
+  mockUseOrdersByStore.mockReturnValue({ ...prior, orders: ORDERS.map((order) => ({ ...order, unitAssignmentStatus: "CONFIRMED", unitCatalogValidated: true, stockVersion: 2, confirmedStockVersion: 2 })) });
+  const { printButton } = await openPreviewForAllPendientes();
+  expect(mockedAxios.get).toHaveBeenCalledWith("http://ventas/order-header/manual/o-1/receipt");
+  expect(mockedAxios.get).toHaveBeenCalledWith("http://ventas/order-header/manual/o-2/receipt");
+  fireEvent.click(printButton);
+  fireEvent.click(within(await confirmStep()).getByRole("button", { name: "Sí, marcar como PREPARADO" }));
+  await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalledTimes(2));
+  expect(mockedAxios.patch).toHaveBeenCalledWith("http://ventas/order-header/manual/o-1/status", expect.objectContaining({ status: "PREPARADO" }));
+  expect(mockedAxios.patch).toHaveBeenCalledWith("http://ventas/order-header/manual/o-2/status", expect.objectContaining({ status: "PREPARADO" }));
+});
+
+it.each(['company', 'user'])('hides an existing private print preview when %s changes', async (changed) => {
+  const { view } = await openPreviewForAllPendientes();
+  const prior = mockUseAuth.getMockImplementation()!();
+  const company = prior.auth?.company;
+  if (!company) throw new Error("The authenticated fixture requires a company");
+  mockUseAuth.mockReturnValue({ ...prior, auth: { ...prior.auth!,
+    company: { ...company, id: changed === 'company' ? 'company-2' : 'company-1' },
+    user: { ...prior.auth!.user, id: changed === 'user' ? 'user-2' : 'user-1' },
+  } });
+  view.rerender(<VentasPage />);
+  expect(screen.queryByTitle('Vista previa de etiquetas')).not.toBeInTheDocument();
+  expect(mockedAxios.patch).not.toHaveBeenCalled();
+});
+
+
+describe("Ventas — anulación de pedido en envío", () => {
+  async function cancelInTransit(unitAssignmentStatus: "CONFIRMED" | "NONE") {
+    const order = { ...ORDERS[0], status: "EN_ENVIO" as const, unitAssignmentStatus, unitCatalogValidated: true, stockVersion: 1, confirmedStockVersion: 1 };
+    mockUseOrdersByStore.mockReturnValue({ orders: [order], loading: false, error: false, retry: jest.fn(), refetch } as unknown as ReturnType<typeof useBusinessOrders>);
+    render(<VentasPage />);
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas/i }), { button: 0, ctrlKey: false });
+    const cancel = await screen.findByRole("button", { name: "Anular EN_ENVIO" });
+    await act(async () => { fireEvent.click(cancel); });
+  }
+  test("tracked order opens physical return and cannot be cancelled by a generic patch", async () => {
+    await cancelInTransit("CONFIRMED");
+    expect(await screen.findByTestId("lifecycle-flow")).toHaveTextContent("return:o-1");
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Confirmar anulación normal" })).not.toBeInTheDocument();
+  });
+  test("NONE retains its existing cancellation path", async () => {
+    await cancelInTransit("NONE");
+    fireEvent.click(await screen.findByRole("button", { name: "Confirmar anulación normal" }));
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalledWith("http://ventas/order-header/o-1", expect.objectContaining({ status: "ANULADO", cancellationReason: "OTHER", notes: "Cliente canceló" })));
+    expect(screen.queryByTestId("lifecycle-flow")).not.toBeInTheDocument();
+  });
+});
+
+
+function customerServiceOrders(): BusinessSalesOrder[] {
+  // Synthetic confirmation evidence: these fixtures do not assert the current state of production orders.
+  const orders: BusinessSalesOrder[] = [
+    { ...makeOrder("angela", "ORD-152907", "2026-09-23T10:00:00.000Z"), ccConfirmadoAt: "2026-09-23T11:00:00.000Z", subEstadoCc: "entrega_lima", canalOrigen: null, stockVersion: 1, salesOperationalEligible: true },
+    { ...makeOrder("elisa", "ORD-152728", "2026-09-24T10:00:00.000Z"), storeId: "store-2", externalSource: "shopify", subEstadoCc: "por_confirmar", canalOrigen: "shopify_cod", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0, salesOperationalEligible: false },
+  ];
+  return orders.map((order) => ({ ...order, items: [{
+    id: `item-${order.id}`, productVariantId: "variant-1", sku: "SKU-CC", productName: "Producto Blumie", attributes: {},
+    quantity: 1, unitPrice: "100.00", subtotal: "100.00", discountType: "NONE", discountAmount: "0.00",
+    created_at: order.created_at, updated_at: order.updated_at,
+  }] }));
+}
+
+function useFixtureOrders(orders: BusinessSalesOrder[]) {
+  mockUseOrdersByStore.mockReturnValue({ orders, loading: false, error: false, retry: jest.fn(), refetch } as unknown as ReturnType<typeof useBusinessOrders>);
+}
+
+async function openAllSales() {
+  fireEvent.mouseDown(screen.getByRole("tab", { name: /Todas las Ventas/ }), { button: 0, ctrlKey: false });
+  return screen.getByRole("tabpanel");
+}
+
+describe("Ventas — detalle y acciones solo de ventas confirmadas", () => {
+  it("conserva la vista previa de lectura aunque el pedido pierda la confirmación física de Shopify", async () => {
+    const { view } = await openPreviewForAllPendientes();
+    useFixtureOrders(ORDERS.map((order) => ({ ...order, ccConfirmadoAt: "2026-09-23T11:00:00.000Z", externalSource: "shopify", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0, salesOperationalEligible: true })));
+    view.rerender(<VentasPage />);
+    expect(screen.getByTitle("Vista previa de etiquetas")).toBeInTheDocument();
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
+  });
+
+  it("conserva el detalle abierto cuando cambia solo la clasificación de Atención", async () => {
+    const view = render(<VentasPage />);
+    await openAllSales();
+    fireEvent.click(await screen.findByRole("button", { name: "Ver detalle del pedido ORD-001" }));
+    expect(await screen.findByTestId("order-detail")).toHaveTextContent("o-1");
+    useFixtureOrders(ORDERS.map((order) => ({ ...order, ccConfirmadoAt: "2026-09-23T11:00:00.000Z", subEstadoCc: "entrega_lima", salesOperationalEligible: true })));
+    view.rerender(<VentasPage />);
+    expect(screen.getByTestId("order-detail")).toHaveTextContent("o-1");
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
+  });
+
+  it("muestra e imprime ventas confirmadas aunque conserven datos de Atención y excluye leads", async () => {
+    useFixtureOrders([...ORDERS, ...customerServiceOrders()]);
+    render(<VentasPage />);
+    await screen.findByText("ORD-001");
+    expect(screen.getByText("ORD-152907")).toBeInTheDocument();
+    expect(screen.queryByText("ORD-152728")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Todas las Ventas/ })).toHaveTextContent("3");
+    const panel = await openAllSales();
+    expect(await within(panel).findByText("ORD-152907")).toBeInTheDocument();
+    for (const number of ["ORD-152907"]) {
+      const row = within(panel).getByText(number).closest("tr")!;
+      expect(within(row).queryByText(/^En Atención/)).not.toBeInTheDocument();
+      expect(within(row).getByRole("checkbox")).toBeEnabled();
+      expect(within(row).getByRole("button", { name: `Ver detalle del pedido ${number}` })).toBeEnabled();
+      expect(within(row).getByRole("button", { name: "Anular PENDIENTE" })).toBeInTheDocument();
+      expect(within(row).getByRole("button", { name: "1 items" })).toBeInTheDocument();
+    }
+    fireEvent.click(within(panel).getAllByRole("checkbox")[0]);
+    fireEvent.click(within(panel).getByRole("button", { name: /Imprimir seleccionados \(3\)/ }));
+    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledTimes(3));
+    expect(mockedAxios.get.mock.calls.map(([url]) => url)).toEqual([
+      "http://ventas/order-header/angela/receipt",
+      "http://ventas/order-header/o-2/receipt", "http://ventas/order-header/o-1/receipt",
+    ]);
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
+  });
+
+  it("un usuario sin permiso de Atención puede abrir una venta confirmada sin redirección", async () => {
+    const prior = mockUseAuth.getMockImplementation()!();
+    mockUseAuth.mockReturnValue({ ...prior, hasPermission: () => false });
+    useFixtureOrders(customerServiceOrders());
+    render(<VentasPage />);
+    const panel = await openAllSales();
+    await within(panel).findByText("ORD-152907");
+    expect(within(panel).queryByText("ORD-152728")).not.toBeInTheDocument();
+    for (const [number, id] of [["ORD-152907", "angela"]]) {
+      fireEvent.click(within(panel).getByRole("button", { name: `Ver detalle del pedido ${number}` }));
+      await waitFor(() => expect(screen.getByTestId("order-detail")).toHaveTextContent(id));
+    }
+    expect(within(panel).queryByRole("link", { name: "Atención al cliente" })).not.toBeInTheDocument();
+    expect(mockRouterPush).not.toHaveBeenCalled();
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
+  });
+
+  it("permite preparar una venta histórica confirmada aunque conserve datos de Atención", async () => {
+    useFixtureOrders(customerServiceOrders());
+    render(<VentasPage />);
+    const panel = await openAllSales();
+    const row = (await within(panel).findByText("ORD-152907")).closest("tr")!;
+    expect(within(row).getByTestId("status-select").getAttribute("data-available-statuses")).toContain("PREPARADO");
+    fireEvent.click(within(row).getByRole("button", { name: "Preparar PENDIENTE" }));
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalledWith("http://ventas/order-header/angela", expect.objectContaining({ status: "PREPARADO", userId: "user-1" })));
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("prepara una venta manual diferida desde Ventas con la ruta autenticada y sin exigir ir al Lead", async () => {
+    useFixtureOrders([{ ...ORDERS[0], commercialStage: "SALE", commercialStockState: "DEFERRED", commercialLeadId: "lead-manual", externalSource: null, unitAssignmentStatus: "NONE", stockVersion: 0, salesRegion: "PROVINCIA" }]);
+    render(<VentasPage />);
+    const row = (await screen.findByText("ORD-001")).closest("tr")!;
+    const statuses = within(row).getByTestId("status-select").getAttribute("data-available-statuses")!.split(",");
+    expect(statuses).toContain("PREPARADO");
+    expect(statuses).not.toContain("LLAMADO");
+    expect(statuses).not.toContain("EN_ENVIO");
+    expect(within(row).getByText(/Al marcar Preparado, se registrará la reserva/)).toBeInTheDocument();
+    expect(within(row).queryByRole("link", { name: "Preparar reserva de stock" })).not.toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: "Preparar PENDIENTE" }));
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalledWith("http://ventas/order-header/manual/o-1/status", expect.objectContaining({ status: "PREPARADO", userId: "user-1" })));
+    expect(mockedAxios.patch).toHaveBeenCalledTimes(1);
+  });
+
+  it("recarga una reserva manual encolada si preparar recibe el rechazo de inventario pendiente", async () => {
+    useFixtureOrders([{ ...ORDERS[0], commercialStage: "SALE", commercialStockState: "DEFERRED", externalSource: null, unitAssignmentStatus: "NONE", stockVersion: 0 }]);
+    mockedAxios.patch.mockRejectedValueOnce({ response: { status: 409, data: { message: "La reserva está pendiente de confirmación" } } });
+    const loggedError = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      render(<VentasPage />);
+      fireEvent.click(await screen.findByRole("button", { name: "Preparar PENDIENTE" }));
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith("La reserva está pendiente de confirmación"));
+      expect(mockInvalidate).toHaveBeenCalled();
+      expect(toast.success).not.toHaveBeenCalled();
+    } finally { loggedError.mockRestore(); }
+  });
+
+  it("exige preparar la reserva manual antes de imprimir su etiqueta", async () => {
+    useFixtureOrders([{ ...ORDERS[0], commercialStage: "SALE", commercialStockState: "DEFERRED", externalSource: null, unitAssignmentStatus: "NONE", stockVersion: 0 }]);
+    render(<VentasPage />);
+    const row = (await screen.findByText("ORD-001")).closest("tr")!;
+    fireEvent.click(within(row).getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: /Imprimir seleccionados \(1\)/ }));
+    expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/Al marcar Preparado, se registrará la reserva/));
+    expect(mockedAxios.get).not.toHaveBeenCalled();
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
+  });
+
+  it("no expone preparación, anulación ni detalle de un Shopify sin confirmación", async () => {
+    useFixtureOrders(customerServiceOrders());
+    render(<VentasPage />);
+    const panel = await openAllSales();
+    expect(within(panel).queryByText("ORD-152728")).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Ver detalle del pedido ORD-152728" })).not.toBeInTheDocument();
+    expect(mockedAxios.patch).not.toHaveBeenCalled();
+    expect(mockedAxios.get).not.toHaveBeenCalled();
+  });
+
+  it("permite reprogramar una compra confirmada con reserva diferida sin preparar el pedido", async () => {
+    useFixtureOrders([{ ...customerServiceOrders()[1], commercialStage: "SALE", commercialStockState: "DEFERRED", salesOperationalEligible: true }]);
+    render(<VentasPage />);
+    const panel = await openAllSales();
+    const row = (await within(panel).findByText("ORD-152728")).closest("tr")!;
+    fireEvent.click(within(row).getByRole("button", { name: "Reprogramar PENDIENTE" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Confirmar reprogramación" }));
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalledWith("http://ventas/order-header/elisa", expect.objectContaining({ callStatus: "SCHEDULED", callbackAt: "2026-10-24T17:00:00.000Z", userId: "user-1" })));
+    expect(mockedAxios.patch.mock.calls.every(([, payload]) => !payload.status)).toBe(true);
+  });
+
+  it("mantiene impresión para Shopify ya comprometido aunque conserve el chip de Atención", async () => {
+    useFixtureOrders([{ ...customerServiceOrders()[1], commercialCommittedAt: "2026-09-24T11:00:00.000Z", stockVersion: 1, salesOperationalEligible: true }]);
+    render(<VentasPage />);
+    const panel = await openAllSales();
+    const row = (await within(panel).findByText("ORD-152728")).closest("tr")!;
+    expect(within(row).getByRole("checkbox")).toBeEnabled();
+    expect(within(row).getByRole("button", { name: "Ver detalle del pedido ORD-152728" })).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("checkbox"));
+    fireEvent.click(within(panel).getByRole("button", { name: /Imprimir seleccionados \(1\)/ }));
+    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledWith("http://ventas/order-header/elisa/receipt"));
+  });
+});
+
+
+describe("Ventas — impresión genérica pendiente de terminar", () => {
+  it.each(["sin confirmación física", "otra página", "solo clasificación CC"] as const)("revalida la impresión retenida si cambia a %s", async (change) => {
+    const orders: BusinessSalesOrder[] = Array.from({ length: 12 }, (_, index) => ({
+      ...makeOrder(`race-${index}`, `ORD-RACE-${index}`, `2026-09-${String(index + 1).padStart(2, "0")}T10:00:00.000Z`),
+      salesOperationalEligible: true,
+    }));
+    useFixtureOrders(orders);
+    let finishPrint!: () => void;
+    const printNow = jest.fn();
+    const printMock = jest.mocked(printReceipts);
+    printMock.mockImplementationOnce(async (_receipts, _company, printWindow, isCurrent) => {
+      // window.onload runs after the helper returns. Hold that boundary without
+      // leaving an unresolved React act scope in the synthetic print helper.
+      finishPrint = () => {
+        if (!isCurrent?.()) { printWindow?.close(); return; }
+        printNow();
+      };
+    });
+    const view = render(<VentasPage />);
+    try {
+      const panel = await openAllSales();
+      const row = (await within(panel).findByText("ORD-RACE-11")).closest("tr")!;
+      fireEvent.click(within(row).getByRole("checkbox"));
+      fireEvent.click(within(panel).getByRole("button", { name: /Imprimir seleccionados \(1\)/ }));
+      await waitFor(() => expect(printMock).toHaveBeenCalledTimes(1));
+      const isCurrent = printMock.mock.calls[0][3]!;
+      const printWindow = jest.mocked(openPrintWindow).mock.results.at(-1)!.value as Window;
+      expect(isCurrent()).toBe(true);
+
+      if (change === "sin confirmación física") {
+        useFixtureOrders(orders.map((order) => order.id === "race-11"
+          ? { ...order, externalSource: "shopify", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0, salesOperationalEligible: false, subEstadoCc: "por_confirmar" }
+          : order));
+        view.rerender(<VentasPage />);
+        expect(screen.queryByText("ORD-RACE-11")).not.toBeInTheDocument();
+        expect(screen.queryByRole("button", { name: "Ver detalle del pedido ORD-RACE-11" })).not.toBeInTheDocument();
+      } else if (change === "solo clasificación CC") {
+        useFixtureOrders(orders.map((order) => order.id === "race-11"
+          ? { ...order, ccConfirmadoAt: "2026-09-23T11:00:00.000Z", stockVersion: 1, salesOperationalEligible: true, subEstadoCc: "entrega_lima" }
+          : order));
+        view.rerender(<VentasPage />);
+        const updatedRow = screen.getByText("ORD-RACE-11").closest("tr")!;
+        expect(within(updatedRow).queryByText(/^En Atención/)).not.toBeInTheDocument();
+        expect(within(updatedRow).getByRole("button", { name: "Anular PENDIENTE" })).toBeInTheDocument();
+        expect(within(updatedRow).getByRole("button", { name: "Ver detalle del pedido ORD-RACE-11" })).toBeEnabled();
+      } else {
+        fireEvent.click(screen.getByRole("button", { name: "2" }));
+        await screen.findByText("ORD-RACE-0");
+      }
+      expect(isCurrent()).toBe(change === "solo clasificación CC");
+      await act(async () => { finishPrint(); });
+      if (change === "solo clasificación CC") {
+        expect(printNow).toHaveBeenCalledTimes(1);
+      } else {
+        await waitFor(() => expect(printWindow.close).toHaveBeenCalled());
+        expect(printNow).not.toHaveBeenCalled();
+      }
+      expect(mockedAxios.patch).not.toHaveBeenCalled();
+      expect(mockedAxios.post).not.toHaveBeenCalled();
+    } finally {
+      printMock.mockReset().mockResolvedValue(undefined);
+    }
   });
 });

@@ -6,6 +6,7 @@ import { Truck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type VariantProps } from "class-variance-authority";
 import SendToEvaModal from "./SendToEvaModal";
+import type { EvaLinkableItem } from "@/services/evaService";
 
 type ButtonVariantProps = VariantProps<typeof buttonVariants>;
 
@@ -18,6 +19,8 @@ interface SendToEvaButtonProps {
   district: string;
   address: string;
   amount: number;
+  /** Ítems del pedido (FEAT-26) — si no llegan, el modal los carga solo. */
+  items?: EvaLinkableItem[];
   onSuccess?: () => void;
   variant?: ButtonVariantProps["variant"];
   size?: ButtonVariantProps["size"];
@@ -33,6 +36,7 @@ export default function SendToEvaButton({
   district,
   address,
   amount,
+  items,
   onSuccess,
   variant = "outline",
   size = "default",
@@ -64,6 +68,7 @@ export default function SendToEvaButton({
         district={district}
         address={address}
         amount={amount}
+        items={items}
         onSuccess={onSuccess}
       />
     </>

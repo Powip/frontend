@@ -2,6 +2,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { getCommercialLeadCapabilities } from "@/services/commercialLeadsService";
+import { adsGet, type AdsSettings } from "@/services/advertisingV22Service";
+import { getLiveAvailability } from "@/lib/liveAvailability";
 import { useTheme } from "next-themes";
 import {
   Menu,
@@ -40,6 +44,10 @@ import {
   Landmark,
   PiggyBank,
   CalendarRange,
+  Handshake,
+  LayoutList,
+  Plug,
+  Radio,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -57,6 +65,7 @@ import {
   SIDEBAR_ITEMS_PERMISSIONS,
   isSuperadmin,
   hasAdminAccess,
+  hasRouteAccess,
 } from "@/config/permissions.config";
 import {
   DropdownMenu,
@@ -113,7 +122,39 @@ function NavItemBadge({
 export function Sidebar({ className }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
-  const { auth, logout, hasPermission } = useAuth();
+  const { auth, logout, hasPermission, selectedStoreId } = useAuth();
+  const liveAccess = useQuery({
+    queryKey: ["live-availability", auth?.user.id, auth?.company?.id, auth?.user.role, selectedStoreId],
+    queryFn: ({ signal }) => getLiveAvailability(selectedStoreId!, signal),
+    enabled: !!auth?.accessToken && !!auth.company?.id && !!selectedStoreId,
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+  });
+  const canAccessLive = liveAccess.isSuccess && liveAccess.data?.available === true;
+  const commercialAccess = useQuery({
+    queryKey: ["commercial-leads-capabilities", auth?.user.id, auth?.company?.id, auth?.user.role, auth?.user.permissions],
+    queryFn: getCommercialLeadCapabilities,
+    enabled: !!auth?.accessToken && !!auth?.company?.id,
+    retry: false, staleTime: 0, gcTime: 0,
+  });
+  const commercialCaps = commercialAccess.data;
+  const canViewCommercialLeads = Boolean(commercialCaps?.enabled && commercialCaps.canView);
+  const canManageCommercialLeadTypes = Boolean(commercialCaps?.enabled && commercialCaps.canManageTypes);
+  const advertisingAccess = useQuery({
+    queryKey: ["ads-v22", auth?.user.id, auth?.company?.id, "settings"],
+    queryFn: ({ signal }) =>
+      adsGet<AdsSettings>(
+        { token: auth!.accessToken!, companyId: auth!.company!.id },
+        "/v22/settings",
+        undefined,
+        signal,
+      ),
+    enabled: !!auth?.accessToken && !!auth.company?.id,
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+  });
   const router = useRouter();
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
@@ -126,6 +167,7 @@ export function Sidebar({ className }: SidebarProps) {
         children: [
           { name: "Principal", href: "/dashboard", icon: LayoutDashboard },
           { name: "Ventas", href: "/metricas/ventas", icon: ShoppingCart },
+          ...(canViewCommercialLeads ? [{name: "Leads", href: "/metricas/leads", icon: Users}] : []),
           { name: "Inventario", href: "/metricas/inventario", icon: Package },
           { name: "Operaciones", href: "/metricas/operaciones", icon: Truck },
           { name: "Seguimiento", href: "/metricas/seguimientos", icon: MapPin },
@@ -143,10 +185,18 @@ export function Sidebar({ className }: SidebarProps) {
         name: "Comercial",
         icon: ShoppingCart,
         children: [
+          ...((canViewCommercialLeads || canManageCommercialLeadTypes) ? [{name: "Leads", href: "/leads-comerciales", icon: Users}] : []),
           {
             name: "Ventas",
             href: "/ventas",
             icon: ShoppingCart,
+          },
+          {
+            name: "Cotizaciones",
+            href: "/cotizaciones",
+            icon: FileText,
+            badge: "Nuevo",
+            badgeUntil: "2026-11-28T23:59:59-05:00",
           },
           {
             name: "Registrar venta",
@@ -159,6 +209,7 @@ export function Sidebar({ className }: SidebarProps) {
             icon: PackagePlus,
           },
           { name: "Clientes", href: "/clientes", icon: Users },
+          ...(canAccessLive ? [{ name: "POWIP Live", href: "/live", icon: Radio }] : []),
           // 🔴 KILL SWITCH (hotfix checkouts abandonados) — revertir: descomentar
           // {
           //   name: "Carritos Abandonados",
@@ -238,7 +289,7 @@ export function Sidebar({ className }: SidebarProps) {
         name: "Configuración",
         icon: Settings,
         children: [
-          { name: "Usuarios", href: "/usuarios", icon: UserCog },
+          { name: "Usuarios y roles", href: "/usuarios", icon: UserCog },
           { name: "Configuración", href: "/configuracion", icon: Settings },
           {
             name: "WhatsApp",
@@ -271,7 +322,7 @@ export function Sidebar({ className }: SidebarProps) {
             href: "/administracion/canales",
             icon: Building2,
           },
-          { name: "Pauta por canal", href: "/administracion/pauta", icon: Megaphone },
+          { name: "Inversión publicitaria", href: "/administracion/pauta", icon: Megaphone },
           {
             name: "Punto de Equilibrio",
             href: "/administracion/equilibrio",
@@ -291,12 +342,27 @@ export function Sidebar({ className }: SidebarProps) {
         ],
       },
       {
+        name: "Publicidad",
+        icon: Megaphone,
+        href: "/publicidad",
+      },
+      {
+        name: "Partners",
+        icon: Handshake,
+        href: "/partners",
+      },
+      {
+        name: "Partners Admin",
+        icon: LayoutList,
+        href: "/partners/admin",
+      },
+      {
         name: "Super Admin",
         icon: ShieldCheck,
         href: "/superadmin",
       },
     ],
-    [],
+    [canViewCommercialLeads, canManageCommercialLeadTypes, canAccessLive],
   );
 
   // Auto-colapsar en móviles
@@ -341,6 +407,8 @@ export function Sidebar({ className }: SidebarProps) {
   // Filtrar navegación por permisos y mostrar Superadmin solo a autorizados
   const filteredNavigation = navigation
     .filter((item: NavigationItem) => {
+      if (item.name === "Publicidad")
+        return !advertisingAccess.isError && advertisingAccess.data?.capabilities.view === true;
       // Si es Super Admin, verificar específicamente por email
       if (item.name === "Super Admin") {
         return isSuperadmin(auth?.user.email);
@@ -353,11 +421,18 @@ export function Sidebar({ className }: SidebarProps) {
         );
       }
 
+      if (item.name === "Partners Admin") {
+        return hasPermission("VIEW_PARTNERS_ADMIN") || hasPermission("PARTNERS_VIEW");
+      }
+
       const requiredPermission = SIDEBAR_ITEMS_PERMISSIONS[item.name];
       if (!requiredPermission) return true;
       return hasPermission(requiredPermission);
     })
     .map((item: NavigationItem) => {
+      if (item.name === "Partners Admin" && item.href && !hasRouteAccess(item.href, auth?.user)) {
+        return { ...item, href: "/partners/admin/solicitudes" };
+      }
       if (item.children) {
         return {
           ...item,
@@ -381,7 +456,7 @@ export function Sidebar({ className }: SidebarProps) {
   return (
     <div
       className={cn(
-        "flex flex-col px-3 pt-6 pb-6 h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300",
+        "flex shrink-0 flex-col px-3 pt-6 pb-6 h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300",
         isCollapsed ? "w-16 px-1" : "w-64 px-3",
         className,
       )}

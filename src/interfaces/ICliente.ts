@@ -30,6 +30,8 @@ export interface Client {
   isActive: boolean;
   // Estadísticas de compras (opcionales, vienen del backend si disponibles)
   totalPurchases?: number; // Número total de compras
-  totalPurchaseAmount?: number; // Monto total de compras
+  totalPurchaseAmount?: number | string | null; // Scalar only when the persisted currency is unique
+  purchaseCurrency?: string | null;
+  purchaseAmountsByCurrency?: { currency: string | null; amount: string }[];
   lastPurchaseDate?: string; // Fecha de última compra
 }

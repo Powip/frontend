@@ -1,10 +1,12 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
-import { format } from "date-fns";
+import { useEffect, useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
+import type { BusinessInventory } from "@/services/inventoryCatalogService";
+import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
-import { toast } from "sonner";
 import { Pagination } from "@/components/ui/pagination";
-import { getMovementsByCompany, InventoryMovement } from "@/services/inventoryMovementService";
+import { fetchScopedInventoryMovements, filterInventoryMovements } from "@/services/inventoryMovementService";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -66,14 +68,18 @@ const REFERENCE_MAP: Record<string, string> = {
 
 interface MovementHistoryTableProps {
   companyId: string | undefined;
+  scope?: "business" | "store";
+  inventories?: BusinessInventory[];
+  scopeReady?: boolean;
+  scopeError?: Error | null;
+  onRetryScope?: () => void;
 }
 
-export function MovementHistoryTable({ companyId }: MovementHistoryTableProps) {
-  const [movements, setMovements] = useState<InventoryMovement[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+const NO_INVENTORIES: BusinessInventory[] = [];
+
+export function MovementHistoryTable({ companyId, scope = "business", inventories = NO_INVENTORIES, scopeReady = true, scopeError, onRetryScope }: MovementHistoryTableProps) {
+  const { auth } = useAuth();
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalItems, setTotalItems] = useState(0);
 
   // Filter states
   const [search, setSearch] = useState("");
@@ -82,40 +88,20 @@ export function MovementHistoryTable({ companyId }: MovementHistoryTableProps) {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  const loadMovements = useCallback(async () => {
-    if (!companyId) return;
-    setIsLoading(true);
-    try {
-      const response = await getMovementsByCompany(companyId, {
-        page: currentPage,
-        limit: ITEMS_PER_PAGE,
-        type: typeFilter !== "ALL" ? typeFilter : undefined,
-        userEmail: userEmailFilter || undefined,
-        startDate: startDate || undefined,
-        endDate: endDate || undefined,
-        search: search || undefined,
-      });
-
-      setMovements(response.data);
-      setTotalPages(response.meta.totalPages);
-      setTotalItems(response.meta.total);
-    } catch (err) {
-      console.error("Error loading movements:", err);
-      toast.error("Error al cargar el historial de movimientos");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [companyId, currentPage, typeFilter, userEmailFilter, startDate, endDate, search]);
-
-  useEffect(() => {
-    loadMovements();
-  }, [loadMovements]);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    setCurrentPage(1);
-    loadMovements();
-  };
+  const query = useQuery({
+    queryKey: ["inventory-movement-history", companyId, auth?.user?.id, scope, scope === "store" ? inventories.map((inv) => inv.id).sort() : []],
+    queryFn: ({ signal }) => fetchScopedInventoryMovements({ companyId: companyId ?? "", accessToken: auth?.accessToken ?? "", scope, inventories, signal }),
+    enabled: Boolean(companyId && auth?.company?.id === companyId && auth?.accessToken && auth?.user?.id && (scope === "business" || scopeReady)) && !scopeError,
+    retry: false,
+  });
+  const filtered = useMemo(() => filterInventoryMovements(query.data ?? [], { search, type: typeFilter !== "ALL" ? typeFilter : undefined, userEmail: userEmailFilter, startDate, endDate }), [query.data, search, typeFilter, userEmailFilter, startDate, endDate]);
+  const movements = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const totalItems = filtered.length;
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+  const error = scopeError || query.error;
+  const isLoading = !error && (query.isFetching || (scope === "store" && !scopeReady));
+  useEffect(() => { setCurrentPage(1); }, [search, typeFilter, userEmailFilter, startDate, endDate]);
+  const handleSearch = (event: React.FormEvent) => { event.preventDefault(); setCurrentPage(1); };
 
   const clearFilters = () => {
     setSearch("");
@@ -127,9 +113,14 @@ export function MovementHistoryTable({ companyId }: MovementHistoryTableProps) {
   };
 
   const getLocalizedType = (type: string) => TYPE_MAP[type]?.label || type;
-  const getLocalizedReason = (reason: string) => {
+  const getLocalizedReason = (reason: string | null) => {
+    if (!reason) return "-";
     if (REASON_MAP[reason]) return REASON_MAP[reason];
     
+    if (reason.startsWith("UNIT_TRANSFER_OUT - ")) return `Transferencia de IMEI/series · Salida (${reason.slice("UNIT_TRANSFER_OUT - ".length)})`;
+    if (reason.startsWith("UNIT_TRANSFER_IN - ")) return `Transferencia de IMEI/series · Ingreso (${reason.slice("UNIT_TRANSFER_IN - ".length)})`;
+    if (reason.startsWith("SHRINKAGE - ")) return `Merma (${reason.slice("SHRINKAGE - ".length)})`;
+
     // Handle dynamic reasons like PURCHASE - XXX
     if (reason.startsWith("PURCHASE - ")) return `Compra (${reason.replace("PURCHASE - ", "")})`;
     if (reason.startsWith("PURCHASE_EDIT_REVERT - ")) return `Reversión edición compra (${reason.replace("PURCHASE_EDIT_REVERT - ", "")})`;
@@ -147,7 +138,7 @@ export function MovementHistoryTable({ companyId }: MovementHistoryTableProps) {
     <div className="flex flex-col space-y-4">
       <div className="flex flex-col space-y-1">
         <h3 className="text-lg font-semibold tracking-tight">Historial de Movimientos</h3>
-        <p className="text-sm text-muted-foreground">Gestión de ingresos y egresos de stock</p>
+        <p className="text-sm text-muted-foreground">{scope === "business" ? "Todos los movimientos del negocio, incluidos registros históricos" : "Movimientos de los almacenes de la tienda seleccionada"}</p>
       </div>
 
       <div className="bg-muted/40 p-4 rounded-lg border border-border/50">
@@ -222,6 +213,7 @@ export function MovementHistoryTable({ companyId }: MovementHistoryTableProps) {
         </form>
       </div>
 
+      {error ? <div role="alert" className="rounded border border-destructive p-4">No se pudo cargar el historial. {error instanceof Error ? error.message : "Verifica el alcance y la sesión."} <Button variant="outline" onClick={() => { if (scopeError) onRetryScope?.(); else void query.refetch(); }}>Reintentar</Button></div> : null}
       <div className="rounded-md border shadow-sm overflow-hidden min-h-[450px] flex flex-col bg-card">
         <Table>
           <TableHeader>
@@ -236,7 +228,7 @@ export function MovementHistoryTable({ companyId }: MovementHistoryTableProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {isLoading ? (
+            {error ? <TableRow><TableCell colSpan={7}>Historial no disponible.</TableCell></TableRow> : isLoading ? (
               [...Array(10)].map((_, i) => (
                 <TableRow key={i}>
                   <TableCell><Skeleton className="h-4 w-28" /></TableCell>
@@ -262,7 +254,7 @@ export function MovementHistoryTable({ companyId }: MovementHistoryTableProps) {
                 return (
                   <TableRow key={movement.id} className="hover:bg-muted/30 transition-colors">
                     <TableCell className="text-xs font-medium">
-                      {format(new Date(movement.created_at), "dd/MM/yy, HH:mm", { locale: es })}
+                      {format(parseISO(movement.created_at), "dd/MM/yy, HH:mm", { locale: es })}
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col">
@@ -316,14 +308,14 @@ export function MovementHistoryTable({ companyId }: MovementHistoryTableProps) {
             )}
           </TableBody>
         </Table>
-        {!isLoading && movements.length === 0 && (
+        {!error && !isLoading && movements.length === 0 && (
           <div className="flex-1 flex items-center justify-center p-8 text-muted-foreground italic">
             No se encontraron movimientos.
           </div>
         )}
       </div>
 
-      <div className="mt-4 flex justify-between items-center">
+      {!error && <div className="mt-4 flex justify-between items-center">
         <div className="text-xs text-muted-foreground">
           Mostrando <span className="font-medium">{movements.length}</span> de <span className="font-medium">{totalItems}</span> registros
         </div>
@@ -337,7 +329,7 @@ export function MovementHistoryTable({ companyId }: MovementHistoryTableProps) {
             itemName="movimientos"
           />
         )}
-      </div>
+      </div>}
     </div>
   );
 }

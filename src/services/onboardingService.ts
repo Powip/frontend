@@ -11,10 +11,9 @@ import type {
 /**
  * Llamadas del onboarding (FEAT-11).
  *
- * - Registro y login van a ms-auth por NEXT_PUBLIC_API_USERS (el mismo host que
- *   LoginForm): ms-auth deja la cookie httpOnly de refresh en SU dominio y el
- *   silentRefresh de AuthContext la busca ahí. Por el gateway la cookie quedaría
- *   en otro dominio y la sesión se perdería al volver de Flow.
+ * - Registro va a ms-auth por NEXT_PUBLIC_API_USERS. Login usa el proxy de
+ *   la aplicación, como LoginForm, para que la cookie HttpOnly de refresh sea
+ *   del mismo origen y permita recuperar la sesión al volver de Flow en Safari.
  * - Todo lo de suscripción va por el gateway (/subscription/** → ms-subscription)
  *   con el JWT real; ms-subscription saca el usuario del token.
  */
@@ -36,29 +35,39 @@ export async function registerAccount(payload: RegisterPayload): Promise<{ userI
   return data;
 }
 
-export async function loginAccount(email: string, password: string): Promise<{ accessToken: string }> {
+export async function loginAccount(
+  email: string,
+  password: string,
+): Promise<{ accessToken: string }> {
   const { data } = await axios.post<{ accessToken: string }>(
-    `${API_USERS}/auth/login`,
+    "/api/auth/login",
     { email, password },
     { withCredentials: true },
   );
   return data;
 }
 
-export async function fetchPlans(): Promise<BackendPlan[]> {
-  const { data } = await axiosAuth.get<BackendPlan[]>(`${GATEWAY.subscription}/plans`);
+export async function fetchPlans(signal?: AbortSignal): Promise<BackendPlan[]> {
+  const { data } = await axiosAuth.get<BackendPlan[]>(`${GATEWAY.subscription}/plans`, { signal });
   return Array.isArray(data) ? data : [];
 }
 
 export async function fetchAddOns(signal?: AbortSignal): Promise<BackendAddOn[]> {
-  const { data } = await axiosAuth.get<BackendAddOn[]>(`${GATEWAY.subscription}/add-ons`, { signal });
+  const { data } = await axiosAuth.get<BackendAddOn[]>(`${GATEWAY.subscription}/add-ons`, {
+    signal,
+  });
   return Array.isArray(data) ? data : [];
 }
 
-export async function startFlowCheckout(planId: string, addOnIds: string[]): Promise<FlowCheckoutResponse> {
+/** options.migrate: lo manda solo "Pasate a Flow" (FEAT-25); sin él, un plan no-Flow vigente da 409. */
+export async function startFlowCheckout(
+  planId: string,
+  addOnIds: string[],
+  options?: { migrate?: boolean },
+): Promise<FlowCheckoutResponse> {
   const { data } = await axiosAuth.post<FlowCheckoutResponse>(
     `${GATEWAY.subscription}/subscriptions/flow/checkout`,
-    { planId, addOnIds },
+    options?.migrate ? { planId, addOnIds, migrate: true } : { planId, addOnIds },
   );
   return data;
 }

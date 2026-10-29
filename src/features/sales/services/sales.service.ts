@@ -7,3 +7,8 @@ export async function getSalesByStore(storeId: string): Promise<Order[]> {
 
   return responseDtos.map(toOrder);
 }
+
+export async function getSalesByStores(storeIds: string[], signal?: AbortSignal): Promise<Order[]> {
+  const responses = await Promise.all([...new Set(storeIds)].map((storeId) => api.getSalesByStore(storeId, signal)));
+  return Array.from(new Map(responses.flat().map((dto) => [dto.id, dto])).values()).map(toOrder);
+}

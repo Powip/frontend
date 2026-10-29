@@ -1,5 +1,7 @@
 "use client";
 
+import { AdvertisingCompanySpend } from "@/components/advertising/AdvertisingCompanySpend";
+
 /**
  * Resumen — §7 doc técnica.
  *
@@ -311,7 +313,7 @@ export default function ResumenAdminPage() {
         nivel: nivelCpv,
       },
       {
-        nombre: "ROAS POWIP",
+        nombre: "Ventas / inversión manual",
         valor:
           derivados.roasPowip != null
             ? `${derivados.roasPowip.toFixed(1)}×`
@@ -457,7 +459,7 @@ export default function ResumenAdminPage() {
       tipo: "negativo" as const,
     },
     {
-      label: "− Publicidad",
+      label: "− Publicidad por conciliar",
       valor: -pnl.gastosMarketing,
       tipo: "negativo" as const,
     },
@@ -518,7 +520,7 @@ export default function ResumenAdminPage() {
       sub: "pasivo · no es utilidad",
     },
     {
-      label: "Inversión ADS",
+      label: "Inversión manual",
       valor: fmt0(derivados.inversionAds),
       sub:
         derivados.inversionAds > 0
@@ -537,6 +539,10 @@ export default function ResumenAdminPage() {
 
   return (
     <div className="p-8 space-y-6">
+      <AdvertisingCompanySpend from={fromDate} to={toDate} />
+      <p className="text-sm text-muted-foreground">
+        Estos indicadores usan registros manuales por conciliar.
+      </p>
       <div
         className={cn("rounded-2xl p-6 text-white bg-gradient-to-br", heroTone)}
       >
@@ -550,7 +556,7 @@ export default function ResumenAdminPage() {
                 <>
                   Margen neto {pnl.margenNeto.toFixed(1)}% · CPV neto{" "}
                   {derivados.cpvNeto != null ? fmt0(derivados.cpvNeto) : "—"} ·
-                  ROAS{" "}
+                  Ventas / inversión manual{" "}
                   {derivados.roasPowip != null
                     ? `${derivados.roasPowip.toFixed(1)}×`
                     : "—"}
@@ -586,7 +592,7 @@ export default function ResumenAdminPage() {
             </p>
           </div>
           <div className="bg-white/15 rounded-lg p-3">
-            <p className="text-[11px] opacity-85">Inversión ADS</p>
+            <p className="text-[11px] opacity-85">Inversión manual</p>
             <p className="text-lg font-bold mt-0.5">
               {fmt0(derivados.inversionAds)}
             </p>

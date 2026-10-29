@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Loader2, Download, UploadCloud, File, AlertTriangle, CheckCircle } from "lucide-react";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 

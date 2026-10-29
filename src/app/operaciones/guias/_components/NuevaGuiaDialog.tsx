@@ -1,7 +1,14 @@
 "use client";
+import { canShipCommercialOrder } from "@/utils/commercialOrders";
+
+import { OrderOriginLabel } from "@/app/operaciones/_shared/OrderOriginLabel";
+
+import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
 
 import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import { Loader2, PackagePlus, FolderInput, Search, Lock } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -51,12 +58,11 @@ export default function NuevaGuiaDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { selectedStoreId } = useAuth();
   const { can } = useOperationsRole();
   const canDispatch = can(OPS_PERMISSIONS.DISPATCH);
+  const invalidateBusinessData = useInvalidateBusinessData();
 
-  const [orders, setOrders] = useState<OrderHeader[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { orders, loading, error, retry, refetch: load } = useBusinessOrders(undefined, undefined, { enabled: open });
   const [search, setSearch] = useState("");
   const [zoneFilter, setZoneFilter] = useState<string>("ALL");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -67,26 +73,6 @@ export default function NuevaGuiaDialog({
   const [detailsGuideId, setDetailsGuideId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
-  const load = async () => {
-    if (!selectedStoreId) return;
-    setLoading(true);
-    try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-      );
-      setOrders(res.data ?? []);
-    } catch {
-      toast.error("No se pudieron cargar los pedidos");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (open) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, selectedStoreId]);
-
   // Elegibles para armar guía: preparados o ya confirmados por llamada (o
   // con guía previa sin courier), con entrega a domicilio y sin guía
   // asignada todavía. PAGADO queda afuera a propósito — cobrar el 100% no
@@ -96,7 +82,7 @@ export default function NuevaGuiaDialog({
   // handleCreateGuide/handleAddToExisting encadenan los pasos intermedios
   // hasta LLAMADO automáticamente para los que sí son elegibles.
   const eligible = useMemo(() => {
-    return orders.filter(
+    return orders.filter(canShipCommercialOrder).filter(
       (o) =>
         o.deliveryType === "DOMICILIO" &&
         !o.guideNumber &&
@@ -125,6 +111,11 @@ export default function NuevaGuiaDialog({
         .filter((o) => selectedIds.has(o.id))
         .map((o) => ({
           id: o.id,
+          storeId: o.storeId,
+          storeName: o.storeName,
+          stockStoreName: o.stockStoreName,
+          inventoryId: o.inventoryId,
+          stockStoreId: o.stockStoreId,
           orderNumber: o.orderNumber,
           clientName: o.customer?.fullName ?? "-",
           address: o.customer?.address ?? "-",
@@ -153,6 +144,9 @@ export default function NuevaGuiaDialog({
 
   const handleCreateGuide = async (guidesData: CreateGuideData[]) => {
     setSubmitting(true);
+    const createdGuides: string[] = [];
+    const createdOrderIds = new Set<string>();
+    let updatingGuide: string | null = null;
     try {
       let lastGuideId: string | null = null;
       for (const guideData of guidesData) {
@@ -162,6 +156,11 @@ export default function NuevaGuiaDialog({
         );
         const guideNumber = res.data.guideNumber;
         lastGuideId = res.data.id;
+        createdGuides.push(guideNumber);
+        // El POST persiste todos los pedidos de la guía antes de los PATCH.
+        // Retirarlos de la selección ante un fallo evita crearla dos veces.
+        guideData.orderIds.forEach((id) => createdOrderIds.add(id));
+        updatingGuide = guideNumber;
         for (const orderId of guideData.orderIds) {
           // ORDER_STATUS_FLOW solo permite ASIGNADO_A_GUIA desde LLAMADO — si
           // el pedido viene de PREPARADO se encadenan los pasos intermedios
@@ -186,10 +185,18 @@ export default function NuevaGuiaDialog({
             status: "ASIGNADO_A_GUIA",
             courier: guideData.courierName,
             courierId: guideData.courierId || null,
+            ...(guideData.orderCarrierCosts?.[orderId] !== undefined
+              ? { carrierShippingCost: guideData.orderCarrierCosts[orderId] }
+              : {}),
           });
         }
+        updatingGuide = null;
       }
-      toast.success("Guía generada correctamente");
+      toast.success(
+        createdGuides.length === 1
+          ? `Guía ${createdGuides[0]} creada con ${createdOrderIds.size} pedido(s)`
+          : `${createdGuides.length} guías creadas con ${createdOrderIds.size} pedido(s). Revísalas en Guías & Courier para aprobarlas.`,
+      );
       setCreateModalOpen(false);
       setSelectedIds(new Set());
       await load();
@@ -199,7 +206,24 @@ export default function NuevaGuiaDialog({
       }
     } catch (error: unknown) {
       const axiosError = error as { response?: { data?: { message?: string } } };
-      toast.error(axiosError?.response?.data?.message || "Error generando la guía");
+      const message = axiosError?.response?.data?.message || "Error generando la guía";
+      if (createdGuides.length > 0) {
+        setSelectedIds((selected) => new Set([...selected].filter((id) => !createdOrderIds.has(id))));
+        if (guidesData.every((guide) => guide.orderIds.every((id) => createdOrderIds.has(id)))) {
+          setCreateModalOpen(false);
+        }
+        void invalidateBusinessData();
+        toast.error(
+          `Guías creadas: ${createdGuides.join(", ")}. ` +
+            (updatingGuide
+              ? `No se completó la actualización de los pedidos de ${updatingGuide}. Revísala en Guías & Courier. `
+              : "No se pudieron crear todas las guías. ") +
+            `Los pedidos con guía creada se retiraron de la selección. ${message}`,
+        );
+      } else {
+        toast.error(message);
+      }
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -214,12 +238,8 @@ export default function NuevaGuiaDialog({
     setSubmitting(true);
     try {
       const orderIds = selectedOrders.map((o) => o.id);
-      // NOTA: no existe hoy en el resto del código un endpoint documentado
-      // "orders/add" (solo se confirmó /orders/remove, ver GuideDetailsModal).
-      // Se infiere por simetría con ese endpoint — VERIFICAR con backend
-      // antes de confiar en este flujo en producción.
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guideId}/orders/add`,
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guideId}/orders`,
         { orderIds },
       );
       // BUG: AddToExistingGuideModal deja elegir guías en estado CREADA,
@@ -269,6 +289,7 @@ export default function NuevaGuiaDialog({
     } catch (error: unknown) {
       const axiosError = error as { response?: { data?: { message?: string } } };
       toast.error(axiosError?.response?.data?.message || "Error agregando pedidos a la guía");
+      return false;
     } finally {
       setSubmitting(false);
     }
@@ -285,7 +306,7 @@ export default function NuevaGuiaDialog({
             </DialogTitle>
           </DialogHeader>
 
-          {loading ? (
+          {error ? <OperationsDataError retry={retry} /> : loading ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground">
               <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Cargando pedidos listos para armar guía…
             </div>
@@ -371,7 +392,7 @@ export default function NuevaGuiaDialog({
                               onChange={(e) => toggleOne(o.id, e.target.checked)}
                             />
                           </td>
-                          <td className="px-3 py-2 font-semibold">{o.orderNumber}</td>
+                          <td className="px-3 py-2 font-semibold"><span>{o.orderNumber}</span><OrderOriginLabel {...o} /></td>
                           <td className="px-3 py-2">{o.customer?.fullName}</td>
                           <td className="px-3 py-2">
                             {o.customer?.zone ? (
@@ -420,7 +441,7 @@ export default function NuevaGuiaDialog({
         open={createModalOpen}
         onClose={() => setCreateModalOpen(false)}
         selectedOrders={selectedOrders}
-        storeId={selectedStoreId || ""}
+        storeId={selectedOrders[0]?.storeId || ""}
         onConfirm={handleCreateGuide}
         isLoading={submitting}
       />
@@ -429,7 +450,7 @@ export default function NuevaGuiaDialog({
         open={addModalOpen}
         onClose={() => setAddModalOpen(false)}
         selectedOrders={selectedOrders}
-        storeId={selectedStoreId || ""}
+        storeId={selectedOrders[0]?.storeId || ""}
         onConfirm={handleAddToExisting}
         isLoading={submitting}
       />

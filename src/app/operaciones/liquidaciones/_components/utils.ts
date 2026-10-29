@@ -69,6 +69,11 @@ export function buildGuiasPorLiquidar(
       return {
         id: o.orderNumber,
         orderId: o.id,
+        storeId: o.storeId,
+        storeName: o.storeName,
+        stockStoreName: o.stockStoreName,
+        inventoryId: o.inventoryId,
+        stockStoreId: o.stockStoreId,
         cliente: o.customer?.fullName ?? "Sin nombre",
         ciudad: o.customer?.city || o.salesRegion,
         courier,

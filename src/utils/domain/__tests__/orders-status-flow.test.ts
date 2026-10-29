@@ -87,10 +87,12 @@ describe("ORDER_STATUS_FLOW.PAGADO (guardia anti-regresión — fiel al backend)
 });
 
 describe("getAvailableStatuses", () => {
-  it("para PAGADO ofrece el estado actual + PREPARADO + ANULADO", () => {
+  it("normaliza PAGADO a la etapa PENDIENTE sin ofrecer un estado financiero", () => {
     expect(getAvailableStatuses("PAGADO")).toEqual([
-      "PAGADO",
+      "PENDIENTE",
       "PREPARADO",
+      "LLAMADO",
+      "EN_ENVIO",
       "ANULADO",
     ]);
   });

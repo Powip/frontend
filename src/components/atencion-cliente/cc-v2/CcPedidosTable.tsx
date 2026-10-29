@@ -152,6 +152,7 @@ export function CcPedidosTable({
               : "bg-gray-100 text-gray-600";
 
             const dniFaltante = isDniFaltante(order);
+            const moneyPrefix = order.currency === "PEN" ? "S/" : order.currency || "Moneda no informada";
 
             return (
               <TableRow key={order.id}>
@@ -166,6 +167,7 @@ export function CcPedidosTable({
 
                 <TableCell className="font-mono text-xs font-semibold">
                   {order.orderNumber}
+                    {order.commercialStage === "LEAD" && <span className="block text-xs">Lead · compra pendiente</span>}
                 </TableCell>
 
                 {/* Fecha de creación */}
@@ -251,6 +253,7 @@ export function CcPedidosTable({
                         district={order.customer?.district ?? ""}
                         address={order.customer?.address ?? ""}
                         amount={porCobrar}
+                        items={order.items}
                         onSuccess={() => onEvaSent?.(order)}
                         variant="outline"
                         size="sm"
@@ -263,16 +266,16 @@ export function CcPedidosTable({
 
                 {showAdelanto && (
                   <TableCell className="text-green-600 text-sm font-medium">
-                    S/{totalPaid.toFixed(2)}
+                    {moneyPrefix} {totalPaid.toFixed(2)}
                   </TableCell>
                 )}
                 {showAdelanto && (
                   <TableCell className="text-red-600 text-sm font-medium">
-                    S/{porCobrar.toFixed(2)}
+                    {moneyPrefix} {porCobrar.toFixed(2)}
                   </TableCell>
                 )}
 
-                <TableCell className="text-sm">S/{grandTotal.toFixed(2)}</TableCell>
+                <TableCell className="text-sm">{moneyPrefix} {grandTotal.toFixed(2)}</TableCell>
 
                 {/* Upsell */}
                 <TableCell className="text-center">
@@ -338,7 +341,7 @@ export function CcPedidosTable({
                       <WhatsAppIcon className="h-3.5 w-3.5" />
                       <WhatsAppLastNoticeIndicator notice={parseWhatsAppLastNotice(order.waLastNotice)} />
                     </Button>
-                    {order.subEstadoCc === "anulado_cc" && onRecuperar && (
+                    {order.commercialStage !== "LEAD" && order.subEstadoCc === "anulado_cc" && onRecuperar && (
                       <Button
                         size="icon"
                         variant="outline"

@@ -1,13 +1,17 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import axios from "axios";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+
+import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import ScannerSheet from "@/app/centro-envios/components/ScannerSheet";
 import { OrderHeader } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import { useUserAuditInfo } from "@/hooks/useUserAuditInfo";
 import { SHIPPING_STATUSES } from "@/utils/domain/operations-pedidos-tabs";
+import { assignmentBlockReason, requiresAuthenticatedSaleMutation, saleMutationUrl } from "@/services/saleTrackingService";
 
 /**
  * El botón "📷 Escanear" del ribbon vive en el layout, disponible desde
@@ -24,24 +28,10 @@ export function GlobalScanner({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { auth, selectedStoreId } = useAuth();
+  const { auth } = useAuth();
   const getUserInfo = useUserAuditInfo();
-  const [orders, setOrders] = useState<OrderHeader[]>([]);
-
-  const loadOrders = useCallback(async () => {
-    if (!selectedStoreId) return;
-    try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-      );
-      const shippable = (res.data as OrderHeader[]).filter(
-        (o) => o.deliveryType === "DOMICILIO" && SHIPPING_STATUSES.includes(o.status),
-      );
-      setOrders(shippable);
-    } catch {
-      toast.error("No se pudieron cargar los pedidos para escanear");
-    }
-  }, [selectedStoreId]);
+  const { orders: allOrders, loading, error, retry, refetch: loadOrders } = useBusinessOrders(undefined, undefined, { enabled: open });
+  const orders = allOrders.filter((o) => o.deliveryType === "DOMICILIO" && SHIPPING_STATUSES.includes(o.status));
 
   // Recarga siempre al abrir — un pedido puede haber cambiado de estado (p.ej.
   // recién pasó a PREPARADO) o de tienda seleccionada desde la última vez que
@@ -52,26 +42,45 @@ export function GlobalScanner({
     onOpenChange(next);
   };
 
-  const patchOrder = async (orderId: string, data: Record<string, unknown>) => {
-    await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`, {
-      ...data,
+  const patchOrder = async (order: OrderHeader, status: "EN_ENVIO" | "ENTREGADO") => {
+    if (!auth) throw new Error("Inicia sesión para actualizar el pedido.");
+    const blocked = assignmentBlockReason(order, status);
+    if (blocked) {
+      toast.error(blocked);
+      throw new Error(blocked);
+    }
+    const response = await axios.patch<OrderHeader>(saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", order.id, order), {
+      status,
       ...getUserInfo(),
     });
+    await loadOrders();
+    if (requiresAuthenticatedSaleMutation(order) && (
+      response.data?.status !== status || assignmentBlockReason(response.data, status)
+    )) {
+      const message = "La operación está pendiente de confirmación de IMEI/series. Consulta la venta antes de volver a escanear.";
+      toast.warning(message);
+      // ScannerSheet sólo registra éxito cuando esta promesa se resuelve.
+      throw new Error(message);
+    }
   };
 
   const handleDispatch = async (order: OrderHeader) => {
-    await patchOrder(order.id, { status: "EN_ENVIO" });
-    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: "EN_ENVIO" } : o)));
+    await patchOrder(order, "EN_ENVIO");
   };
 
   const handleConfirmDelivery = async (order: OrderHeader) => {
-    await patchOrder(order.id, { status: "ENTREGADO" });
-    setOrders((prev) =>
-      prev.filter((o) => o.id !== order.id), // ya no aplica a "por confirmar en escáner"
-    );
+    await patchOrder(order, "ENTREGADO");
   };
 
   if (!auth) return null;
+
+  if (open && (loading || error)) return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent><DialogHeader><DialogTitle>Escanear pedidos</DialogTitle></DialogHeader>
+        {error ? <OperationsDataError retry={retry} /> : <p role="status">Cargando pedidos…</p>}
+      </DialogContent>
+    </Dialog>
+  );
 
   return (
     <ScannerSheet

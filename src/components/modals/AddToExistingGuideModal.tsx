@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
+
+import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
+import { useBusinessGuides } from "@/hooks/useBusinessGuides";
+import { useAuth } from "@/contexts/AuthContext";
+
+import { useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -18,11 +24,14 @@ import {
   Info,
   AlertTriangle,
 } from "lucide-react";
-import axios from "axios";
+import { resolveGuideOrigin } from "./guideOrigin";
 import { Input } from "@/components/ui/input";
 
 interface SelectedOrder {
   id: string;
+  storeId?: string;
+  inventoryId?: string | null;
+  stockStoreId?: string | null;
   orderNumber: string;
   clientName: string;
   address: string;
@@ -34,6 +43,7 @@ interface SelectedOrder {
 
 interface ShippingGuide {
   id: string;
+  storeId: string;
   guideNumber: string;
   status: string;
   deliveryType: string;
@@ -53,7 +63,7 @@ interface AddToExistingGuideModalProps {
     guideNumber: string,
     guideStatus: string,
     courierName?: string | null,
-  ) => Promise<void>;
+  ) => Promise<void | boolean>;
   isLoading?: boolean;
 }
 
@@ -69,12 +79,23 @@ export default function AddToExistingGuideModal({
   open,
   onClose,
   selectedOrders,
-  storeId,
+  storeId: _legacyStoreId,
   onConfirm,
   isLoading = false,
 }: AddToExistingGuideModalProps) {
-  const [guides, setGuides] = useState<ShippingGuide[]>([]);
-  const [loadingGuides, setLoadingGuides] = useState(false);
+  const invalidateBusinessData = useInvalidateBusinessData();
+  const { auth } = useAuth();
+  const stores = auth?.company?.stores;
+  const companyStoreIds = useMemo(() => stores?.map((store) => store.id) ?? [], [stores]);
+  const origin = useMemo(() => resolveGuideOrigin(selectedOrders, companyStoreIds), [selectedOrders, companyStoreIds]);
+  const guideQuery = useBusinessGuides<ShippingGuide>({ includeAllStores: true });
+  const loadingGuides = guideQuery.loading;
+  const error = guideQuery.error;
+  const retry = guideQuery.retry;
+  const guides = useMemo(() => guideQuery.guides.filter((guide) => {
+    return !origin.error && companyStoreIds.includes(guide.storeId) &&
+      ["CREADA", "ASIGNADA", "EN_RUTA"].includes(guide.status);
+  }), [guideQuery.guides, companyStoreIds, origin.error]);
   const [search, setSearch] = useState("");
   const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
 
@@ -88,37 +109,6 @@ export default function AddToExistingGuideModal({
     );
     return types.size === 1 ? Array.from(types)[0] : "MIXED";
   }, [selectedOrders]);
-
-  // 2. Fetch de guías habilitadas
-  useEffect(() => {
-    if (open && storeId) {
-      const fetchGuides = async () => {
-        setLoadingGuides(true);
-        try {
-          // Buscamos guías con estado CREADA o ASIGNADA por ahora
-          // Podríamos hacer dos llamadas o filtrar en el frontend
-          const res = await axios.get<ShippingGuide[]>(
-            `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${storeId}`,
-          );
-
-          // Solo guías activas que no estén terminadas ni canceladas
-          const activeGuides = res.data.filter(
-            (g) =>
-              g.status === "CREADA" ||
-              g.status === "ASIGNADA" ||
-              g.status === "EN_RUTA",
-          );
-
-          setGuides(activeGuides);
-        } catch (error) {
-          console.error("Error fetching guides:", error);
-        } finally {
-          setLoadingGuides(false);
-        }
-      };
-      fetchGuides();
-    }
-  }, [open, storeId]);
 
   // 3. Filtrar guías por compatibilidad y búsqueda
   const filteredGuides = useMemo(() => {
@@ -136,10 +126,11 @@ export default function AddToExistingGuideModal({
   }, [guides, ordersDispatchType, search]);
 
   const handleConfirm = async () => {
-    if (!selectedGuideId) return;
-    const guide = guides.find((g) => g.id === selectedGuideId);
+    if (isLoading || loadingGuides || !selectedGuideId || origin.error || error) return;
+    const guide = filteredGuides.find((g) => g.id === selectedGuideId);
     if (guide) {
-      await onConfirm(guide.id, guide.guideNumber, guide.status, guide.courierName);
+      const confirmed = await onConfirm(guide.id, guide.guideNumber, guide.status, guide.courierName);
+      if (confirmed !== false) await invalidateBusinessData();
     }
   };
 
@@ -160,6 +151,8 @@ export default function AddToExistingGuideModal({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
+          {origin.error && <p role="alert" className="text-destructive">{origin.error}</p>}
+          {error && <OperationsDataError retry={retry} message="No se pudieron cargar las guías." />}
           {isMixed && (
             <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-md flex items-start gap-2 text-sm">
               <AlertTriangle className="h-5 w-5 flex-shrink-0" />
@@ -205,7 +198,7 @@ export default function AddToExistingGuideModal({
                   Cargando guías...
                 </p>
               </div>
-            ) : filteredGuides.length === 0 ? (
+            ) : filteredGuides.length === 0 && !error ? (
               <div className="p-8 text-center text-muted-foreground">
                 {isMixed
                   ? "Corrige la selección de pedidos"
@@ -275,7 +268,7 @@ export default function AddToExistingGuideModal({
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={isLoading || !selectedGuideId || isMixed}
+            disabled={isLoading || loadingGuides || !!origin.error || error || !filteredGuides.some((guide) => guide.id === selectedGuideId) || isMixed}
             className="bg-teal-600 hover:bg-teal-700"
           >
             {isLoading ? (

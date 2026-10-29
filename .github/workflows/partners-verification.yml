@@ -1,0 +1,66 @@
+name: Frontend verification
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'jest.config.ts'
+      - 'jest.setup.ts'
+      - 'tsconfig.json'
+      - '.github/workflows/partners-verification.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'jest.config.ts'
+      - 'jest.setup.ts'
+      - 'tsconfig.json'
+      - '.github/workflows/partners-verification.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: partners-verification-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    name: Regression shard ${{ matrix.shard }}/4
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies (no production secrets)
+        run: npm ci --no-audit --no-fund
+      - name: Global TypeScript verification
+        run: npm run typecheck
+      - name: Global regression suite (including Partners)
+        run: npm test -- --runInBand --silent --shard=${{ matrix.shard }}/4
+
+  verify:
+    if: ${{ always() }}
+    needs: regression
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every regression shard
+        env:
+          SHARD_RESULT: ${{ needs.regression.result }}
+        run: test "$SHARD_RESULT" = "success"

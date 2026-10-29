@@ -1,5 +1,9 @@
 import QRCode from "qrcode";
 import JsBarcode from "jsbarcode";
+import { operationalStatus, receiptFinancialState } from "./orderState";
+import type { OrderStatus } from "@/interfaces/IOrder";
+import { renderReceiptCustomerNotesHtml } from "./receiptCustomerNotes";
+import { escapePrintHtml, renderPrintableUnitCodesHtml, type PrintableReceiptItem, type PrintableReceiptTracking } from "./receiptUnitCodes";
 
 /**
  * Receipt data structure matching the backend's OrderReceipt format
@@ -7,7 +11,7 @@ import JsBarcode from "jsbarcode";
  * ver `OrderReceipt` ahí; acá solo se declaran los campos que este template
  * usa, aunque la respuesta real trae más).
  */
-export interface ReceiptData {
+export interface ReceiptData extends PrintableReceiptTracking {
   orderId: string;
   orderNumber: string;
   receiptType?: string;
@@ -15,6 +19,7 @@ export interface ReceiptData {
   createdAt?: string;
   callbackAt?: string | null;
   salesChannel?: string;
+  customerNotes?: string | null;
   customer: {
     fullName: string;
     phoneNumber?: string;
@@ -29,7 +34,7 @@ export interface ReceiptData {
   // Opcionales a propósito: un pedido en lote puede llegar con el receipt
   // incompleto (backend devuelve el header sin items/totals armados todavía)
   // y no queremos que eso tumbe la impresión de todo el lote.
-  items?: {
+  items?: (PrintableReceiptItem & {
     productName: string;
     sku?: string;
     quantity: number;
@@ -37,7 +42,7 @@ export interface ReceiptData {
     subtotal: number;
     discountAmount: number;
     attributes?: Record<string, any>;
-  }[];
+  })[];
   payments?: { paymentMethod: string }[];
   totals?: {
     productsTotal: number;
@@ -132,10 +137,10 @@ function generateReceiptHTML(
     pendingAmount: 0,
   };
   const items = receipt.items ?? [];
-  const totalPaid = totals.totalPaid || 0;
-  const pendingAmount = totals.pendingAmount || 0;
+  const { totalPaid, pendingAmount, isPaid } = receiptFinancialState({ totals: receipt.totals ?? { grandTotal: Number.NaN } });
+  const status = operationalStatus(receipt.status as OrderStatus);
   const statusInfo = receipt.status
-    ? (PRINT_STATUS_LABEL[receipt.status] ?? { label: receipt.status, bg: "#f1f5f9", color: "#334155" })
+    ? (PRINT_STATUS_LABEL[status] ?? { label: status, bg: "#f1f5f9", color: "#334155" })
     : null;
   const paymentMethods =
     Array.from(new Set((receipt.payments ?? []).map((p) => p.paymentMethod))).join(" / ") || "-";
@@ -144,25 +149,25 @@ function generateReceiptHTML(
     <div style="page-break-after: ${isLast ? "auto" : "always"}; max-width: 380px; margin: 0 auto; font-family: Arial, sans-serif; font-size: 12px; padding: 14px; color: #111;">
       <div style="display: flex; align-items: center; gap: 10px; padding-bottom: 10px; border-bottom: 2px solid #111; margin-bottom: 10px;">
         <div style="width: 48px; height: 48px; border-radius: 8px; background: #1f2937; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: bold; flex-shrink: 0; overflow: hidden;">
-          ${company?.logoUrl ? `<img src="${company.logoUrl}" alt="Logo" style="width: 100%; height: 100%; object-fit: contain;">` : "LOGO"}
+          ${company?.logoUrl ? `<img src="${escapePrintHtml(company.logoUrl)}" alt="Logo" style="width: 100%; height: 100%; object-fit: contain;">` : "LOGO"}
         </div>
         <div>
-          <div style="font-size: 16px; font-weight: bold;">${company?.name ?? "-"}</div>
-          ${company?.cuit ? `<div style="font-size: 10px; color: #666; margin-top: 2px;">RUC ${company.cuit}</div>` : ""}
+          <div style="font-size: 16px; font-weight: bold;">${escapePrintHtml(company?.name ?? "-")}</div>
+          ${company?.cuit ? `<div style="font-size: 10px; color: #666; margin-top: 2px;">RUC ${escapePrintHtml(company.cuit)}</div>` : ""}
         </div>
       </div>
 
       <div style="display: flex; gap: 12px; align-items: flex-start; margin-bottom: 8px;">
         ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" style="width: 72px; height: 72px; flex-shrink: 0;">` : ""}
         <div>
-          <div style="font-size: 20px; font-weight: bold; letter-spacing: 0.5px;">${receipt.orderNumber}</div>
+          <div style="font-size: 20px; font-weight: bold; letter-spacing: 0.5px;">${escapePrintHtml(receipt.orderNumber)}</div>
           <div style="font-size: 10px; color: #444; margin-top: 3px; display: flex; gap: 10px;">
             ${receipt.createdAt ? `<span>Creado: <b style="color:#111;">${fmtShort(receipt.createdAt)}</b></span>` : ""}
             ${receipt.callbackAt ? `<span>Entrega: <b style="color:#111;">${fmtShort(receipt.callbackAt)}</b></span>` : ""}
           </div>
           ${
             statusInfo
-              ? `<div style="display: inline-block; margin-top: 5px; padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: bold; background: ${statusInfo.bg}; color: ${statusInfo.color};">${statusInfo.label}</div>`
+              ? `<div style="display: inline-block; margin-top: 5px; padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: bold; background: ${statusInfo.bg}; color: ${statusInfo.color};">${escapePrintHtml(statusInfo.label)}</div>`
               : ""
           }
         </div>
@@ -175,11 +180,11 @@ function generateReceiptHTML(
       }
 
       ${
-        pendingAmount > 0
+        !isPaid
           ? `
       <div style="display: flex; justify-content: space-between; align-items: center; background: #111; color: #fff; padding: 8px 10px; border-radius: 6px; margin-bottom: 10px;">
-        <div style="font-size: 10px; font-weight: bold; text-transform: uppercase; line-height: 1.4;">Por cobrar contra entrega<br/>Pago: ${paymentMethods}</div>
-        <div style="font-size: 20px; font-weight: bold; white-space: nowrap;">S/ ${pendingAmount.toFixed(2)}</div>
+        <div style="font-size: 10px; font-weight: bold; text-transform: uppercase; line-height: 1.4;">Por cobrar contra entrega<br/>Pago: ${escapePrintHtml(paymentMethods)}</div>
+        <div style="font-size: 20px; font-weight: bold; white-space: nowrap;">${Number.isFinite(pendingAmount) ? `S/ ${pendingAmount.toFixed(2)}` : "Pago por verificar"}</div>
       </div>`
           : `
       <div style="display: flex; justify-content: space-between; align-items: center; background: #dcfce7; color: #166534; padding: 8px 10px; border-radius: 6px; margin-bottom: 10px; font-size: 11px; font-weight: bold;">
@@ -190,16 +195,16 @@ function generateReceiptHTML(
 
       <div style="display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed #ccc;">
         <div style="font-size: 10.5px; line-height: 1.55;">
-          <div><b>Cliente:</b> ${receipt.customer.fullName}</div>
-          <div><b>Tel:</b> ${receipt.customer.phoneNumber || "-"} · <b>DNI:</b> ${receipt.customer.dni || "-"}</div>
-          <div><b>Dir:</b> ${receipt.customer.address || "-"}</div>
-          ${receipt.customer.reference ? `<div><b>Ref:</b> ${receipt.customer.reference}</div>` : ""}
+          <div><b>Cliente:</b> ${escapePrintHtml(receipt.customer.fullName)}</div>
+          <div><b>Tel:</b> ${escapePrintHtml(receipt.customer.phoneNumber || "-")} · <b>DNI:</b> ${escapePrintHtml(receipt.customer.dni || "-")}</div>
+          <div><b>Dir:</b> ${escapePrintHtml(receipt.customer.address || "-")}</div>
+          ${receipt.customer.reference ? `<div><b>Ref:</b> ${escapePrintHtml(receipt.customer.reference)}</div>` : ""}
         </div>
         <div style="text-align: right; font-size: 10px; flex-shrink: 0;">
-          ${receipt.customer.district ? `<div style="display: inline-block; background: #fef3c7; color: #92400e; font-weight: bold; padding: 2px 8px; border-radius: 4px; font-size: 10.5px; margin-bottom: 3px;">${receipt.customer.district}</div>` : ""}
-          <div style="color: #555;">${receipt.customer.city || "-"}</div>
-          <div style="color: #555;">Prov. ${receipt.customer.province || "-"}</div>
-          <div style="color: #555;">Canal: ${receipt.salesChannel || "-"}</div>
+          ${receipt.customer.district ? `<div style="display: inline-block; background: #fef3c7; color: #92400e; font-weight: bold; padding: 2px 8px; border-radius: 4px; font-size: 10.5px; margin-bottom: 3px;">${escapePrintHtml(receipt.customer.district)}</div>` : ""}
+          <div style="color: #555;">${escapePrintHtml(receipt.customer.city || "-")}</div>
+          <div style="color: #555;">Prov. ${escapePrintHtml(receipt.customer.province || "-")}</div>
+          <div style="color: #555;">Canal: ${escapePrintHtml(receipt.salesChannel || "-")}</div>
         </div>
       </div>
 
@@ -212,17 +217,20 @@ function generateReceiptHTML(
         <div style="display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-bottom: 1px dotted #ddd;">
           <div style="width: 14px; height: 14px; border: 1.5px solid #333; border-radius: 2px; margin-top: 2px; flex-shrink: 0;"></div>
           <div style="text-align: center; width: 26px; flex-shrink: 0;">
-            <div style="font-size: 15px; font-weight: bold; line-height: 1;">${item.quantity}</div>
+            <div style="font-size: 15px; font-weight: bold; line-height: 1;">${escapePrintHtml(item.quantity)}</div>
             <div style="font-size: 8px; color: #666;">und</div>
           </div>
           <div style="flex: 1; min-width: 0;">
-            <div style="font-weight: bold; font-size: 11px;">${item.productName}</div>
-            <div style="font-size: 9px; color: #666; margin-top: 1px;">${attrs ? `${attrs} · ` : ""}${item.sku ? `SKU: ${item.sku}` : ""}</div>
+            <div style="font-weight: bold; font-size: 11px;">${escapePrintHtml(item.productName)}</div>
+            <div style="font-size: 9px; color: #666; margin-top: 1px;">${attrs ? `${escapePrintHtml(attrs)} · ` : ""}${item.sku ? `SKU: ${escapePrintHtml(item.sku)}` : ""}</div>
+            ${renderPrintableUnitCodesHtml(receipt, item)}
           </div>
           <div style="font-size: 11px; font-weight: 600; white-space: nowrap;">S/ ${Number(item.subtotal).toFixed(2)}</div>
         </div>`;
         })
         .join("")}
+
+      ${renderReceiptCustomerNotesHtml(receipt.customerNotes)}
 
       <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; font-size: 10.5px;">
         <div style="color: #555; margin-bottom: 4px;">
@@ -324,6 +332,7 @@ export async function printReceipts(
   receipts: ReceiptData[],
   company: PrintCompany | null | undefined,
   printWindow: Window | null,
+  isCurrent: () => boolean = () => true,
 ): Promise<void> {
   if (receipts.length === 0) {
     throw new Error("No receipts to print");
@@ -335,6 +344,10 @@ export async function printReceipts(
   }
 
   const printContent = await buildReceiptsDocument(receipts, company);
+  if (!isCurrent()) {
+    printWindow.close();
+    throw new Error("La sesión cambió. Vuelve a seleccionar los recibos para imprimir.");
+  }
 
   // Reemplaza el placeholder de openPrintWindow() por el contenido final.
   printWindow.document.open();
@@ -342,8 +355,13 @@ export async function printReceipts(
   printWindow.document.close();
 
   // Wait for content to load then print
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     printWindow.onload = () => {
+      if (!isCurrent()) {
+        printWindow.close();
+        reject(new Error("La sesión cambió. Vuelve a seleccionar los recibos para imprimir."));
+        return;
+      }
       printWindow.focus();
       printWindow.print();
       printWindow.close();

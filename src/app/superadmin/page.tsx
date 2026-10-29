@@ -81,6 +81,7 @@ import { ConversionFunnel } from "@/components/superadmin/ConversionFunnel";
 import { UsersView } from "@/components/superadmin/UsersView";
 import { InventoryView } from "@/components/superadmin/InventoryView";
 import { OverviewView } from "@/components/superadmin/OverviewView";
+import { ShopifyHealthCard } from "@/components/superadmin/ShopifyHealthCard";
 import { CreateUserModal } from "@/components/superadmin/CreateUserModal";
 import { useSaasMetrics, useChurnAlerts } from "@/hooks/useSaasMetrics";
 import { useConversionFunnel } from "@/hooks/useConversionFunnel";
@@ -518,6 +519,7 @@ export default function SuperadminPage() {
         </TabsContent>
 
         <TabsContent value="system" className="space-y-4">
+          <ShopifyHealthCard token={auth?.accessToken} />
           <div className="grid gap-4 md:grid-cols-3">
             <Card className="border-l-4 border-l-green-500">
               <CardContent className="pt-6">

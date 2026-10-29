@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   ReconciliationTaskDetails,
   getReconciliationTaskDetails,
@@ -14,10 +15,11 @@ import {
  * `task.items` en vez de reintentar en silencio.
  */
 export function useReconciliationTaskDetails(taskId: string | null) {
+  const { auth } = useAuth();
   return useQuery<ReconciliationTaskDetails, Error>({
-    queryKey: ["reconciliation-task-details", taskId],
+    queryKey: ["reconciliation-task-details", auth?.company?.id, auth?.user?.id, taskId],
     queryFn: () => getReconciliationTaskDetails(taskId as string),
-    enabled: taskId !== null,
+    enabled: taskId !== null && Boolean(auth?.company?.id && auth?.user?.id && auth?.accessToken),
     staleTime: 30 * 1000,
     retry: false,
   });

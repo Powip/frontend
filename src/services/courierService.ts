@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_COURIER; // ms-courier base URL
 
@@ -21,8 +21,21 @@ export interface ShippingGuide {
   deliveryAddress?: string;
 }
 
-export const fetchCouriers = async (companyId: string): Promise<Courier[]> => {
-  const response = await axios.get(`${API_URL}/couriers/company/${companyId}`);
+export const fetchCouriers = async (
+  companyId: string,
+  options?: { signal?: AbortSignal; accessToken?: string },
+): Promise<Courier[]> => {
+  const response = await axios.get(`${API_URL}/couriers/company/${companyId}`, {
+    signal: options?.signal,
+    headers: options?.accessToken ? { Authorization: `Bearer ${options.accessToken}` } : undefined,
+    timeout: 15_000,
+  });
+  if (!Array.isArray(response.data) || response.data.some((courier) =>
+    !courier || typeof courier.id !== "string" || typeof courier.name !== "string" ||
+    (courier.companyId && courier.companyId !== companyId)
+  )) {
+    throw new Error("No se pudieron cargar los couriers de la empresa.");
+  }
   return response.data;
 };
 

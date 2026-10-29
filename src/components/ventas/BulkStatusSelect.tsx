@@ -53,12 +53,12 @@ export function BulkStatusSelect({
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 w-full items-center gap-2 sm:w-auto">
       <Select onValueChange={handleValueChange} disabled={isSelectDisabled}>
         <SelectTrigger
           size="sm"
           className={cn(
-            "w-[230px] font-semibold transition-colors",
+            "w-full max-w-full font-semibold transition-colors sm:w-[230px]",
             isSelectDisabled
               ? "bg-muted text-muted-foreground border-border cursor-not-allowed opacity-50"
               : "border-violet-600 bg-violet-600 text-white data-[placeholder]:text-white shadow-sm hover:bg-violet-700 dark:border-violet-500 dark:bg-violet-500 dark:hover:bg-violet-600",

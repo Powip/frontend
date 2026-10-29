@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import {
   BarChart,
   Bar,
@@ -27,6 +27,7 @@ import {
   Target,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDashboardScope } from "@/contexts/DashboardScopeContext";
 import { isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
 import { DashboardCard } from "./DashboardCard";
 
@@ -97,13 +98,14 @@ interface TeamManagementProps {
 }
 
 export const TeamManagement: React.FC<TeamManagementProps> = ({ fromDate, toDate }) => {
-  const { auth, selectedStoreId } = useAuth();
-  const companyId = auth?.company?.id;
+  const { auth } = useAuth();
+  const { scopeParams, canFetch } = useDashboardScope();
   const currentUserId = auth?.user?.id;
   const currentUserRole = auth?.user?.role;
   const isAdmin = isSuperadmin(auth?.user?.email) || hasAdminAccess(currentUserRole);
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   
   // States for Admin View
   const [sellers, setSellers] = useState<SellerStats[]>([]);
@@ -116,11 +118,12 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({ fromDate, toDate
 
   const fetchStats = useCallback(
     async (from?: string, to?: string) => {
-      if (!companyId || !selectedStoreId) return;
+      if (!canFetch) return;
       setLoading(true);
+      setLoadError(false);
 
       try {
-        const params: Record<string, string> = {};
+        const params: Record<string, string | undefined> = { ...scopeParams };
         if (from) params.fromDate = from;
         if (to) params.toDate = to;
 
@@ -128,15 +131,13 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({ fromDate, toDate
           // Fetch seller stats and delivery effectiveness in parallel
           const [sellerRes, deliveryRes] = await Promise.all([
             axios.get(
-              `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/summary/company/${companyId}/sellers`,
+              `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-seller`,
               { params },
             ),
-            axios
-              .get(
-                `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/delivery-by-seller`,
-                { params: { ...params, storeId: selectedStoreId } },
-              )
-              .catch(() => ({ data: [] })),
+            axios.get(
+              `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/delivery-by-seller`,
+              { params },
+            ),
           ]);
 
           const delStats: Record<
@@ -152,12 +153,19 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({ fromDate, toDate
           setDeliveryStats(delStats);
 
           const enrichedSellers = (sellerRes.data || []).map(
-            (s: SellerStats) => {
+            (s: { sellerId: string; sellerName: string; ordersCount: number; productsCount: number; totalAmount: number; monthlySales: number; weeklySales: number }) => {
               const del = delStats[s.sellerId];
               return {
-                ...s,
+                sellerId: s.sellerId === "SIN_VENDEDOR" ? "unassigned" : s.sellerId,
+                sellerName: s.sellerName,
+                totalSales: s.totalAmount,
+                orderCount: s.ordersCount,
+                productsCount: s.productsCount,
+                averageTicket: s.ordersCount > 0 ? s.totalAmount / s.ordersCount : 0,
+                monthlySales: s.monthlySales,
+                weeklySales: s.weeklySales,
                 deliveredCount: del?.delivered || 0,
-                createdCount: del?.created || s.orderCount,
+                createdCount: del?.created ?? s.ordersCount,
                 deliveryEffectiveness:
                   del && del.created > 0
                     ? Math.round((del.delivered / del.created) * 100)
@@ -173,7 +181,6 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({ fromDate, toDate
             {
               params: {
                 ...params,
-                storeId: selectedStoreId,
                 sellerId: currentUserId,
               },
             },
@@ -182,18 +189,19 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({ fromDate, toDate
         }
       } catch (error) {
         console.error("Error fetching stats:", error);
+        setLoadError(true);
       } finally {
         setLoading(false);
       }
     },
-    [companyId, selectedStoreId, isAdmin, currentUserId],
+    [scopeParams, canFetch, isAdmin, currentUserId],
   );
 
   useEffect(() => {
-    if (companyId && selectedStoreId && fromDate && toDate) {
+    if (canFetch && fromDate && toDate) {
       fetchStats(fromDate, toDate);
     }
-  }, [companyId, selectedStoreId, fromDate, toDate, fetchStats]);
+  }, [canFetch, fromDate, toDate, fetchStats]);
 
   // Calculations for ADMIN
   const activeSellers = (sellers || []).filter((s) => s && s.sellerId && s.sellerId !== "unknown");
@@ -219,6 +227,10 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({ fromDate, toDate
   const sellerEffectiveness = sellerSummary?.funnelMetrics?.ingresados > 0 
     ? Math.round((sellerSummary?.funnelMetrics?.entregados / sellerSummary?.funnelMetrics?.ingresados) * 100) 
     : 0;
+
+  if (loadError) {
+    return <div role="alert" className="p-8 text-destructive">No se pudieron cargar los datos del equipo. Intenta nuevamente.</div>;
+  }
 
   return (
     <div className="flex flex-col h-full w-full overflow-auto bg-background">

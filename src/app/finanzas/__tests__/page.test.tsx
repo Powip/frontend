@@ -16,7 +16,8 @@
  *    tiene gestión de Call Center (`subEstadoCc` seteado), ese subestado debe
  *    estar en CC_CONFIRMED_SUBESTADOS ("confirmado" o "reprogramado");
  *    "carrito_recuperado" ya NO pasa. Pedidos sin `subEstadoCc` (sin gestión
- *    CC) pasan igual.
+ *    CC) pasan igual, y también las ventas confirmadas por el vendedor
+ *    (`commercialStage` SALE) aunque su subestado siga en "por_confirmar".
  * 5. `fetchOrders` usa `Promise.allSettled`, no `Promise.all`. Las guías
  *    (`/shipping-guides/store/:id`) son solo enriquecimiento:
  *      - Si falla `order-header/store/:id` o `.../leads-cod` (fuentes de verdad
@@ -44,7 +45,18 @@
  *   prueba.
  */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
+
+let scopedStoreIds = ['store-1'];
+jest.mock('@/contexts/BusinessScopeContext', () => ({ useBusinessScope: () => ({ storeIds: scopedStoreIds, scope: 'business', canFetch: true, scopeKey: `company-1:business:${scopedStoreIds.join(',')}` }) }));
+jest.mock('@/lib/axiosAuth', () => ({ __esModule: true, default: jest.requireMock('axios') }));
+function render(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return rtlRender(ui, { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+}
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
 
@@ -64,6 +76,7 @@ jest.mock('sonner', () => ({
     success: jest.fn(),
     error: jest.fn(),
     warning: jest.fn(),
+    info: jest.fn(),
   },
 }));
 
@@ -74,6 +87,7 @@ jest.mock('@/contexts/AuthContext', () => ({
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
   usePathname: () => '/finanzas',
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 jest.mock('@/components/modals/CustomerServiceModal', () => ({
@@ -88,6 +102,7 @@ jest.mock('@/components/modals/PaymentVerificationModal', () => ({
   __esModule: true,
   default: () => null,
 }));
+jest.mock('@/utils/bulk-receipt-printer', () => ({ openPrintWindow: jest.fn(), printReceipts: jest.fn() }));
 
 // ── Imports bajo prueba (después de los mocks) ────────────────────────────────
 
@@ -96,6 +111,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import FinanzasPage from '../page';
 import type { OrderHeader, SubEstadoCc } from '@/interfaces/IOrder';
+import { openPrintWindow, printReceipts } from '@/utils/bulk-receipt-printer';
 
 const mockedAxios = axios as unknown as {
   get: jest.Mock;
@@ -113,7 +129,7 @@ process.env.NEXT_PUBLIC_API_COURIER = 'http://courier';
 const MOCK_AUTH = {
   auth: {
     user: { id: 'user-1', name: 'Ana', surname: 'Vendedora', email: 'ana@powip.com', role: 'ADMIN', permissions: [] },
-    company: { id: 'company-1', name: 'Powip Test', stores: [] },
+    company: { id: 'company-1', name: 'Powip Test', stores: [{ id: 'store-1', name: 'Tienda Test' }] },
     accessToken: 'fake-token',
     subscription: null,
     exp: 9999999999,
@@ -207,6 +223,7 @@ function mockFetchOrdersEndpoints({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  scopedStoreIds = ['store-1'];
   mockUseAuth.mockReturnValue(MOCK_AUTH as unknown as ReturnType<typeof useAuth>);
 });
 
@@ -218,9 +235,9 @@ describe('FinanzasPage — fetchOrders (merge con leads-cod)', () => {
 
     await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledTimes(3));
 
-    expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/store/store-1');
-    expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/store/store-1/leads-cod');
-    expect(mockedAxios.get).toHaveBeenCalledWith('http://courier/shipping-guides/store/store-1');
+    expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/store/store-1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/store/store-1/leads-cod', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(mockedAxios.get).toHaveBeenCalledWith('http://courier/shipping-guides/store/store-1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it('mergea pedidos de order-header y leads-cod sin duplicar por id (leads-cod tiene precedencia)', async () => {
@@ -290,7 +307,8 @@ describe('FinanzasPage — fetchOrders (merge con leads-cod)', () => {
       ),
     );
     // La tabla queda vacía: no se pudo mergear ninguna fuente.
-    expect(screen.getByText('Pagos Pendientes (0)')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('No se pudieron cargar');
+    expect(screen.queryByText('Pagos Pendientes (0)')).not.toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
@@ -500,6 +518,47 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
     expect(screen.queryByText('CC Por Confirmar')).not.toBeInTheDocument();
   });
 
+  it('incluye una venta confirmada por el vendedor (commercialStage SALE) aunque su subEstadoCc siga en "por_confirmar"', async () => {
+    // La confirmación del vendedor marca la venta como SALE pero no toca el subestado de CC:
+    // sigue "por_confirmar" hasta que CC confirme el despacho. Su pago por aprobar ya es de
+    // una venta real (ORD-153293, Cleo Joyas, 2026-10-25) y /ventas lo muestra con el punto rojo.
+    const sale = makeOrderHeader({
+      id: 'order-sale-por-confirmar',
+      orderNumber: 'ORD-SALEPORCONF',
+      status: 'PENDIENTE',
+      commercialStage: 'SALE',
+      subEstadoCc: CC_NOT_CONFIRMED,
+      customer: { ...makeOrderHeader().customer, fullName: 'Venta Confirmada Vendedor' },
+    });
+
+    mockFetchOrdersEndpoints({ orders: [sale] });
+
+    render(<FinanzasPage />);
+
+    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(screen.getByText('Venta Confirmada Vendedor')).toBeInTheDocument();
+  });
+
+  it('mantiene fuera una venta SALE INCOMPLETE con pago PENDING (la denylist de status sigue aplicando)', async () => {
+    const control = makeControlOrder();
+    const incompleteSale = makeOrderHeader({
+      id: 'order-sale-incomplete',
+      orderNumber: 'ORD-SALEINCOMP',
+      status: 'INCOMPLETE',
+      commercialStage: 'SALE',
+      subEstadoCc: CC_NOT_CONFIRMED,
+      customer: { ...makeOrderHeader().customer, fullName: 'Venta Incompleta' },
+    });
+
+    mockFetchOrdersEndpoints({ orders: [control, incompleteSale] });
+
+    render(<FinanzasPage />);
+
+    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(screen.getByText('Control Cuenta')).toBeInTheDocument();
+    expect(screen.queryByText('Venta Incompleta')).not.toBeInTheDocument();
+  });
+
   it('excluye un pedido PREPARADO con subEstadoCc "anulado_cc" (terminal negativo, no es venta real)', async () => {
     const control = makeControlOrder();
     const ccCancelled = makeOrderHeader({
@@ -598,5 +657,118 @@ describe('FinanzasPage — leads COD del endpoint /leads-cod', () => {
     expect(screen.getByText('Lead Reprogramado')).toBeInTheDocument();
     expect(screen.queryByText('Lead Contactado')).not.toBeInTheDocument();
     expect(screen.queryByText('Lead Por Confirmar')).not.toBeInTheDocument();
+  });
+});
+
+
+describe('Finanzas — alcance del negocio', () => {
+  beforeEach(() => {
+    mockUseAuth.mockReturnValue({
+      ...MOCK_AUTH,
+      auth: {
+        ...MOCK_AUTH.auth,
+        company: {
+          ...MOCK_AUTH.auth.company,
+          stores: [{ id: 'KUNCA', name: 'KUNCA' }, { id: 'WEB', name: 'WEB' }],
+        },
+      },
+    } as unknown as ReturnType<typeof useAuth>);
+  });
+
+  it('incluye pagos de WEB aunque KUNCA esté vacía y conserva guías compartidas por pedido', async () => {
+    scopedStoreIds = ['KUNCA', 'WEB'];
+    mockedAxios.get.mockImplementation(async (url: string) => {
+      if (url.includes('/leads-cod')) return { data: [] };
+      if (url.includes('/shipping-guides/')) return { data: [] };
+      return { data: url.endsWith('/WEB') ? [makeOrderHeader({ storeId: 'WEB' })] : [] };
+    });
+    const view = render(<FinanzasPage />);
+    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(screen.getByText('Juan Pérez')).toBeInTheDocument();
+    scopedStoreIds = ['KUNCA'];
+    view.rerender(<FinanzasPage />);
+    expect(await screen.findByText('Pagos Pendientes (0)')).toBeInTheDocument();
+    expect(screen.queryByText('Juan Pérez')).not.toBeInTheDocument();
+  });
+
+  it('una falla de autorización en la segunda tienda muestra reintento y oculta totales parciales', async () => {
+    scopedStoreIds = ['KUNCA', 'WEB'];
+    mockedAxios.get.mockImplementation(async (url: string) => {
+      if (url.includes('/leads-cod') || url.includes('/shipping-guides/')) return { data: [] };
+      if (url.endsWith('/WEB')) throw new Error('Unauthorized');
+      return { data: [makeOrderHeader()] };
+    });
+    render(<FinanzasPage />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudieron cargar');
+    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+    expect(screen.queryByText('Pagos Pendientes (1)')).not.toBeInTheDocument();
+  });
+});
+
+describe('Finanzas — lectura segura de comprobantes para lotes', () => {
+  const printWindow = { close: jest.fn() } as unknown as Window;
+  const tracked = { unitAssignmentStatus: 'CONFIRMED', unitCatalogValidated: true, hasTrackedUnits: true, stockVersion: 2, confirmedStockVersion: 2 } as const;
+  beforeEach(() => {
+    jest.mocked(openPrintWindow).mockReturnValue(printWindow);
+    jest.mocked(printReceipts).mockResolvedValue(undefined);
+  });
+  async function selectAndPrint(orders: OrderHeader[], readReceipt: (url: string) => Promise<unknown>) {
+    mockFetchOrdersEndpoints({ orders });
+    const baseRead = mockedAxios.get.getMockImplementation()!;
+    mockedAxios.get.mockImplementation((url: string) => url.endsWith('/receipt') ? readReceipt(url) : baseRead(url));
+    const view = render(<FinanzasPage />);
+    const tab = await screen.findByRole('tab', { name: `Entregados (${orders.length})` });
+    fireEvent.mouseDown(tab, { button: 0, ctrlKey: false });
+    const panel = screen.getByRole('tabpanel');
+    fireEvent.click(within(panel).getAllByRole('checkbox')[0]);
+    fireEvent.click(within(panel).getByRole('button', { name: /Imprimir seleccionados/ }));
+    return view;
+  }
+  const receiptResult = (url: string) => Promise.resolve({ data: { orderId: url.match(/order-header\/(?:manual\/)?([^/]+)\/receipt/)![1], orderNumber: 'ORD-001', customer: { fullName: 'Cliente' } } });
+  it('conserva NONE y consulta las series por JWT sin perder pedidos de un lote mixto', async () => {
+    await selectAndPrint([
+      makeOrderHeader({ id: 'normal-1', status: 'ENTREGADO', unitAssignmentStatus: 'NONE' }),
+      makeOrderHeader({ id: 'tracked-1', status: 'ENTREGADO', ...tracked }),
+    ], receiptResult);
+    await waitFor(() => expect(printReceipts).toHaveBeenCalledTimes(1));
+    expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/normal-1/receipt');
+    expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/manual/tracked-1/receipt');
+    expect(jest.mocked(printReceipts).mock.calls[0][0].map(receipt => receipt.orderId).sort()).toEqual(['normal-1', 'tracked-1']);
+    expect(mockedAxios.get).not.toHaveBeenCalledWith('http://ventas/order-header/tracked-1/receipt');
+  });
+  it('consulta UNKNOWN histórico mediante la ruta autenticada', async () => {
+    await selectAndPrint([makeOrderHeader({ status: 'ENTREGADO', unitAssignmentStatus: 'PENDING_SELECTION', unitCatalogValidated: false })], receiptResult);
+    await waitFor(() => expect(printReceipts).toHaveBeenCalledTimes(1));
+    expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/manual/order-1/receipt');
+  });
+  it('rechaza un comprobante de otra orden sin imprimirlo', async () => {
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+    await selectAndPrint([makeOrderHeader({ status: 'ENTREGADO', ...tracked })], async () => ({ data: { orderId: 'other-order' } }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Error al preparar los recibos para imprimir'));
+    expect(printReceipts).not.toHaveBeenCalled();
+    expect(printWindow.close).toHaveBeenCalled();
+    errors.mockRestore();
+  });
+  it('no cae a la lectura pública tras un rechazo de autenticación', async () => {
+    const errors = jest.spyOn(console, 'error').mockImplementation(() => {});
+    await selectAndPrint([makeOrderHeader({ status: 'ENTREGADO', ...tracked })], async () => { throw { response: { status: 403 } }; });
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Error al preparar los recibos para imprimir'));
+    expect(printReceipts).not.toHaveBeenCalled();
+    expect(mockedAxios.get).not.toHaveBeenCalledWith('http://ventas/order-header/order-1/receipt');
+    errors.mockRestore();
+  });
+  it.each(['company', 'user'])('descarta respuestas pendientes si cambia %s', async (changed) => {
+    let resolveReceipt!: (value: unknown) => void;
+    const pending = new Promise(resolve => { resolveReceipt = resolve; });
+    const view = await selectAndPrint([makeOrderHeader({ status: 'ENTREGADO', ...tracked })], () => pending);
+    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/manual/order-1/receipt'));
+    mockUseAuth.mockReturnValue({ ...MOCK_AUTH, auth: { ...MOCK_AUTH.auth,
+      company: { ...MOCK_AUTH.auth.company, id: changed === 'company' ? 'company-2' : 'company-1' },
+      user: { ...MOCK_AUTH.auth.user, id: changed === 'user' ? 'user-2' : 'user-1' },
+    } } as unknown as ReturnType<typeof useAuth>);
+    view.rerender(<FinanzasPage />);
+    await act(async () => { resolveReceipt({ data: { orderId: 'order-1', customer: { fullName: 'Private' } } }); });
+    expect(printWindow.close).toHaveBeenCalled();
+    expect(printReceipts).not.toHaveBeenCalled();
   });
 });

@@ -13,6 +13,10 @@ import type { Payment } from "./payment";
 
 export interface Order {
   id: string;
+  currency?: string | null;
+  commercialStage?: "LEAD" | "SALE" | null;
+  commercialLeadId?: string | null;
+  commercialStockState?: "DEFERRED" | "QUEUED" | "PRESERVED" | "NOT_REQUIRED" | null;
 
   receiptType: ReceiptType;
   orderType: OrderType;

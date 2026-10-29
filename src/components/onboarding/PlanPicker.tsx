@@ -1,9 +1,10 @@
 "use client";
 
 import { Check } from "lucide-react";
+import { isEnterprisePlan, plansForCycle } from "@/lib/onboardingPlan";
+import { adaptPlans, planDisplayName } from "@/lib/planCatalog";
 import type { BackendPlan } from "@/types/onboarding";
-import { basePlanName, isEnterprisePlan, plansForCycle } from "@/lib/onboardingPlan";
-import { adaptPlans } from "@/lib/planCatalog";
+import styles from "./onboarding-layout.module.css";
 
 interface PlanPickerProps {
   plans: BackendPlan[];
@@ -13,6 +14,9 @@ interface PlanPickerProps {
   onCycleChange: (isAnnual: boolean) => void;
   /** Enterprise no se paga online: abre el contacto con ventas. */
   onEnterprise: () => void;
+  isLoading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
 }
 
 /** Paso 2 del onboarding (FEAT-11): elección del plan y del ciclo de pago. */
@@ -23,37 +27,57 @@ export default function PlanPicker({
   onSelect,
   onCycleChange,
   onEnterprise,
+  isLoading = false,
+  error,
+  onRetry,
 }: PlanPickerProps) {
   const cyclePlans = plansForCycle(plans, isAnnual);
   const visible = adaptPlans(cyclePlans);
   const period = isAnnual ? "año" : "mes";
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="font-bold text-xl text-gray-900">Elige tu plan</h3>
-        <div className="flex rounded-lg p-1" style={{ background: "#ede9ff" }}>
+    <div className={styles.planPicker}>
+      <div className={styles.planHeader}>
+        <h2 className={styles.planTitle}>Elige tu plan y empieza hoy</h2>
+        <fieldset className={styles.cycle} aria-label="Ciclo de facturación">
           {[false, true].map((annual) => (
             <button
               key={String(annual)}
               type="button"
               onClick={() => onCycleChange(annual)}
-              className="px-3 py-1 rounded-md text-xs font-semibold transition-colors"
-              style={{
-                background: isAnnual === annual ? "#4F3A96" : "transparent",
-                color: isAnnual === annual ? "white" : "#4F3A96",
-              }}
+              className={styles.cycleButton}
+              aria-pressed={isAnnual === annual}
             >
               {annual ? "Anual" : "Mensual"}
             </button>
           ))}
-        </div>
+        </fieldset>
       </div>
+      <p className={styles.planIntro}>
+        Todos los planes incluyen todos los módulos de la plataforma. La diferencia está en el
+        volumen de pedidos de tu negocio.
+      </p>
 
-      {visible.length === 0 ? (
-        <p className="text-sm text-gray-500">Cargando planes...</p>
+      {error ? (
+        <div
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+        >
+          <p>{error}</p>
+          <button type="button" onClick={onRetry} className="mt-2 font-semibold underline">
+            Reintentar carga de planes
+          </button>
+        </div>
+      ) : isLoading ? (
+        <p className="text-sm text-gray-500" role="status">
+          Cargando planes...
+        </p>
+      ) : visible.length === 0 ? (
+        <p className="text-sm text-gray-500" role="status">
+          No hay planes disponibles para este ciclo. Prueba con {isAnnual ? "Mensual" : "Anual"}.
+        </p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className={styles.planGrid}>
           {visible.map((plan, i) => {
             const enterprise = isEnterprisePlan(plan.name);
             const isSelected = plan.id === selectedPlanId;
@@ -63,47 +87,26 @@ export default function PlanPicker({
                 type="button"
                 aria-pressed={isSelected}
                 onClick={() => (enterprise ? onEnterprise() : onSelect(cyclePlans[i]))}
-                className="relative text-left rounded-2xl border-2 p-4 transition-all duration-200 cursor-pointer"
-                style={{
-                  borderColor: isSelected ? "#4F3A96" : "#e5e7eb",
-                  background: isSelected ? "#f5f2ff" : "white",
-                  boxShadow: isSelected
-                    ? "0 0 0 4px rgba(79,58,150,0.08), 0 1px 3px rgba(0,0,0,0.04)"
-                    : "0 1px 3px rgba(0,0,0,0.04)",
-                }}
+                className={styles.planCard}
               >
-                {plan.popular && (
-                  <div
-                    className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
-                    style={{ background: "#4F3A96", color: "white" }}
-                  >
-                    Más popular
-                  </div>
-                )}
+                {plan.popular && <div className={styles.popular}>Más popular</div>}
                 {isSelected && (
-                  <div
-                    className="absolute top-3 right-3 w-5 h-5 rounded-full flex items-center justify-center"
-                    style={{ background: "#4F3A96" }}
-                  >
+                  <div className={styles.selected} aria-hidden="true">
                     <Check className="w-3 h-3 text-white" />
                   </div>
                 )}
 
-                <h4 className="font-bold text-gray-900 text-sm leading-tight">
-                  {basePlanName(plan.name)}
-                </h4>
-                {plan.target && (
-                  <p className="text-xs text-gray-500 mt-1 leading-relaxed">{plan.target}</p>
-                )}
-                <ul className="mt-2 space-y-1">
-                  {plan.features.slice(0, 3).map((feature) => (
-                    <li key={feature} className="flex items-start gap-1.5 text-[11px] text-gray-500">
-                      <Check className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "#4F3A96" }} />
+                <h4 className={styles.planName}>{planDisplayName(plan.name)}</h4>
+                {plan.target && <p className={styles.planTarget}>{plan.target}</p>}
+                <ul className={styles.planFeatures}>
+                  {(enterprise ? plan.features.slice(0, 3) : plan.features).map((feature) => (
+                    <li key={feature} className={styles.planFeature}>
+                      <Check size={13} aria-hidden="true" />
                       {feature}
                     </li>
                   ))}
                 </ul>
-                <div className="font-bold text-sm mt-3" style={{ color: "#4F3A96" }}>
+                <div className={styles.planPrice}>
                   {enterprise ? (
                     "Contactar con ventas"
                   ) : (
@@ -117,6 +120,9 @@ export default function PlanPicker({
           })}
         </div>
       )}
+      <p className={styles.planNote}>
+        Todos los planes incluyen lo mismo, solo cambia el volumen de pedidos.
+      </p>
     </div>
   );
 }

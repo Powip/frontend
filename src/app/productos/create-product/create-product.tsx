@@ -1,9 +1,12 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
+import { useBusinessInventories } from "@/hooks/useBusinessInventories";
 import { toast } from "sonner";
 import Image from "next/image";
 import { Loader2, Plus, Image as ImageIcon, X as XIcon } from "lucide-react";
+import { isTracked, type TrackingMode } from "@/services/inventoryTrackingService";
 import { uploadImage } from "@/services/uploadService";
 
 import {
@@ -105,10 +108,16 @@ interface ProductCreateFormProps {
   editVariantId?: string | null;
 }
 
-export default function ProductCreateForm({
-  editVariantId,
-}: ProductCreateFormProps) {
-  const { auth, inventories } = useAuth();
+export default function ProductCreateForm(props: ProductCreateFormProps) {
+  const { auth } = useAuth();
+  return <ProductCreateFormForCompany key={`${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}:${props.editVariantId ?? "new"}`} {...props} />;
+}
+
+function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) {
+  const { auth } = useAuth();
+  const warehouseQuery = useBusinessInventories();
+  const inventories = warehouseQuery.inventories;
+  const companyId = auth?.company?.id ?? "";
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isLoadingProduct, setIsLoadingProduct] = useState(false);
@@ -148,6 +157,7 @@ export default function ProductCreateForm({
   );
 
   const [variants, setVariants] = useState<VariantForm[]>([]);
+  const [trackingMode, setTrackingMode] = useState<TrackingMode>("NONE");
   const [companySku, setCompanySku] = useState("");
   const [message, setMessage] = useState("");
 
@@ -163,29 +173,31 @@ export default function ProductCreateForm({
   // Cargar categorías
   // =========================
   useEffect(() => {
-    axios
-      .get(`${process.env.NEXT_PUBLIC_API_PRODUCTOS}/categories`)
+    if (!auth?.company?.id) return;
+    axiosAuth
+      .get(`${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/categories`)
       .then((res) => setCategories(res.data))
       .catch((err) => console.error("Error al cargar categorías", err));
 
     // Cargar proveedores
-    axios
-      .get(`${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`)
+    axiosAuth
+      .get(`${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/suppliers/company/${auth?.company?.id}`)
       .then((res) => setSuppliers(res.data))
       .catch((err) => console.error("Error al cargar proveedores", err));
 
     // Cargar marcas
-    axios
-      .get(`${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands`)
+    axiosAuth
+      .get(`${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/brands`)
       .then((res) => setBrands(res.data))
       .catch((err) => console.error("Error al cargar marcas", err));
-  }, []);
+  }, [auth?.company?.id]);
 
   // =========================
   // Cargar datos del producto si está en modo edición
   // =========================
   useEffect(() => {
-    if (!editVariantId) return;
+    if (!editVariantId || !companyId) return;
+    let cancelled = false;
 
     const loadProductForEdit = async () => {
       setIsLoadingProduct(true);
@@ -193,11 +205,12 @@ export default function ProductCreateForm({
 
       try {
         // Obtener la variante y su producto
-        const { data: variants } = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/multiple/by-ids`,
+        const { data: variants } = await axiosAuth.post(
+          `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/product-variant/multiple/by-ids`,
           { ids: [editVariantId] },
         );
 
+        if (cancelled) return;
         if (variants.length === 0) {
           toast.error("No se encontró el producto");
           return;
@@ -205,14 +218,17 @@ export default function ProductCreateForm({
 
         const variant = variants[0];
         const product = variant.product;
+        if (product?.companyId !== companyId) throw new Error("El producto no pertenece al negocio activo.");
         setEditProductId(product.id);
+        setTrackingMode(product.trackingMode ?? "NONE");
 
         // Obtener detalles completos del producto CON relaciones (subcategory, etc.)
-        const { data: productDetailsArray } = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/details`,
+        const { data: productDetailsArray } = await axiosAuth.post(
+          `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/products/details`,
           { productIds: [product.id] },
         );
 
+        if (cancelled) return;
         if (!productDetailsArray || productDetailsArray.length === 0) {
           toast.error("No se encontraron detalles del producto");
           setIsLoadingProduct(false);
@@ -238,16 +254,17 @@ export default function ProductCreateForm({
         const categoryId = productDetails.subcategory?.category?.id;
 
         // Cargar subcategorías de la categoría para el select
-        const { data: subcategoriesData } = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${categoryId}`,
+        const { data: subcategoriesData } = await axiosAuth.get(
+          `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/subcategories/category/${categoryId}`,
         );
         setSubcategories(subcategoriesData);
 
         // Obtener atributos default de la subcategoría
-        const { data: subcategoryData } = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/${subcategoryId}`,
+        const { data: subcategoryData } = await axiosAuth.get(
+          `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/subcategories/${subcategoryId}`,
         );
 
+        if (cancelled) return;
         // Cargar atributos default de la subcategoría
         const attrs: DefaultAttribute[] =
           subcategoryData.defaultAttributes || [];
@@ -269,8 +286,8 @@ export default function ProductCreateForm({
         setCompanySku(product.companySku || "");
 
         // Obtener TODAS las variantes del producto para mostrarlas
-        const { data: allVariants } = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/by-product/${product.id}`,
+        const { data: allVariants } = await axiosAuth.get(
+          `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/product-variant/by-product/${product.id}`,
         );
 
         // Llenar las variantes con sus valores
@@ -322,15 +339,17 @@ export default function ProductCreateForm({
 
         editLoadComplete.current = true;
       } catch (error) {
+        if (cancelled) return;
         console.error("Error cargando producto para editar:", error);
         toast.error("Error al cargar el producto");
       } finally {
-        setIsLoadingProduct(false);
+        if (!cancelled) setIsLoadingProduct(false);
       }
     };
 
     loadProductForEdit();
-  }, [editVariantId]);
+    return () => { cancelled = true; };
+  }, [editVariantId, companyId]);
 
   // Auto-seleccionar inventario si solo hay uno
   useEffect(() => {
@@ -360,9 +379,9 @@ export default function ProductCreateForm({
 
     if (!form.categoryId) return;
 
-    axios
+    axiosAuth
       .get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${form.categoryId}`,
+        `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/subcategories/category/${form.categoryId}`,
       )
       .then((res) => setSubcategories(res.data))
       .catch((err) => console.error("Error al cargar subcategorías", err));
@@ -381,9 +400,9 @@ export default function ProductCreateForm({
 
     if (!form.subcategoryId) return;
 
-    axios
+    axiosAuth
       .get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/${form.subcategoryId}`,
+        `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/subcategories/${form.subcategoryId}`,
       )
       .then((res) => {
         const attrs: DefaultAttribute[] = res.data.defaultAttributes || [];
@@ -580,16 +599,16 @@ export default function ProductCreateForm({
 
     setIsCreatingSupplier(true);
     try {
-      const res = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`,
+      const res = await axiosAuth.post(
+        `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/suppliers`,
         { name: quickSupplierName.trim(), companyId: auth?.company?.id },
       );
 
       toast.success("Proveedor creado exitosamente");
 
       // Recargar proveedores
-      const suppliersRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`,
+      const suppliersRes = await axiosAuth.get(
+        `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/suppliers`,
       );
       setSuppliers(suppliersRes.data);
 
@@ -620,8 +639,8 @@ export default function ProductCreateForm({
 
     setIsCreatingBrand(true);
     try {
-      const res = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands`,
+      const res = await axiosAuth.post(
+        `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/brands`,
         {
           name: quickBrandName.trim(),
           supplierId: form.supplierId,
@@ -631,8 +650,8 @@ export default function ProductCreateForm({
       toast.success("Marca creada exitosamente");
 
       // Recargar marcas
-      const brandsRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands`,
+      const brandsRes = await axiosAuth.get(
+        `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/brands`,
       );
       setBrands(brandsRes.data);
 
@@ -666,6 +685,7 @@ export default function ProductCreateForm({
     setCustomAttributes([]);
     setVariants([]);
     setCompanySku("");
+    setTrackingMode("NONE");
     setMessage("");
   };
 
@@ -687,8 +707,10 @@ export default function ProductCreateForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage("");
+    if (!companyId || !auth?.accessToken) { toast.error("Selecciona un negocio e inicia sesión antes de guardar."); return; }
+    if (isEditMode && !editProductId) { toast.error("No se pudo validar el producto a editar."); return; }
 
-    if (!form.inventory_id) {
+    if (!isEditMode && !inventories.some((inv) => inv.id === form.inventory_id)) {
       toast.error("Debe seleccionar un inventario.");
       return;
     }
@@ -750,12 +772,13 @@ export default function ProductCreateForm({
       attributeValues: v.attributes,
       priceBase: v.priceBase,
       priceVta: v.priceVta,
-      stock: v.stock,
+      stock: isTracked(trackingMode) ? 0 : v.stock,
       minStock: Number(v.minStock),
       images: [],
     }));
 
     const payload = {
+      ...(isTracked(trackingMode) ? { trackingMode } : {}),
       name: form.name,
       description: form.description,
       companySku: companySku.trim() || undefined,
@@ -789,8 +812,8 @@ export default function ProductCreateForm({
           description: form.description,
         };
 
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/${editProductId}`,
+        await axiosAuth.patch(
+          `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/products/${editProductId}`,
           productPayload,
         );
 
@@ -803,13 +826,13 @@ export default function ProductCreateForm({
             };
 
             if (v.id) {
-              return axios.patch(
-                `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/${v.id}`,
+              return axiosAuth.patch(
+                `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/product-variant/${v.id}`,
                 variantPayload,
               );
             } else {
-              return axios.post(
-                `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant`,
+              return axiosAuth.post(
+                `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/product-variant`,
                 { ...variantPayload, productId: editProductId },
               );
             }
@@ -820,8 +843,8 @@ export default function ProductCreateForm({
         window.history.back();
       } else {
         // Modo creación
-        const res = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/with-variants`,
+        const res = await axiosAuth.post(
+          `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/products/with-variants`,
           payload,
         );
 
@@ -866,16 +889,26 @@ export default function ProductCreateForm({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="product-tracking-mode">Control de unidades</Label>
+                <select id="product-tracking-mode" className="w-full rounded-md border p-2" value={trackingMode} disabled={isEditMode || isSubmitting} onChange={(event) => {
+                  const next = event.target.value as TrackingMode;
+                  setTrackingMode(next);
+                  if (isTracked(next)) setVariants((previous) => previous.map((variant) => ({ ...variant, stock: 0 })));
+                }}><option value="NONE">Por cantidad (sin código único)</option><option value="SERIAL">Número de serie por unidad</option><option value="IMEI">IMEI por unidad</option></select>
+                <p className="text-sm text-muted-foreground">{isEditMode ? "El modo no se cambia desde esta edición. Para asociar códigos al stock existente, abre Almacén y elige Asociar IMEI/series." : isTracked(trackingMode) ? "El producto se creará con stock 0. Registra después una compra con un código por unidad." : "El inventario se administra por cantidades."}</p>
+              </div>
               {/* Row: Inventario + Categoría */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="inventory_id">Almacén</Label>
+                  <Label htmlFor="inventory_id">Almacén destino</Label>
+                  {warehouseQuery.isPending ? <p>Cargando almacenes...</p> : warehouseQuery.isError ? <p role="alert">No se pudieron cargar los almacenes. <Button type="button" variant="outline" onClick={() => void warehouseQuery.refetch()}>Reintentar</Button></p> : null}
                   <Select
                     value={form.inventory_id || undefined}
                     onValueChange={(value) =>
                       setForm((prev) => ({ ...prev, inventory_id: value }))
                     }
-                    disabled={inventories.length === 1}
+                    disabled={isEditMode || warehouseQuery.isPending || warehouseQuery.isError || inventories.length === 1}
                   >
                     <SelectTrigger id="inventory_id">
                       <SelectValue placeholder="Seleccionar almacén..." />
@@ -883,7 +916,7 @@ export default function ProductCreateForm({
                     <SelectContent>
                       {inventories.map((inv) => (
                         <SelectItem key={inv.id} value={inv.id}>
-                          {inv.name}
+                          {inv.name}{inv.storeName ? ` · ${inv.storeName}` : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1189,8 +1222,9 @@ export default function ProductCreateForm({
                       {/* Datos de la variante */}
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                         <div className="space-y-1">
-                          <Label className="text-xs">Precio base</Label>
+                          <Label htmlFor={`variant-${index}-base-price`} className="text-xs">Precio base</Label>
                           <Input
+                            id={`variant-${index}-base-price`}
                             type="number"
                             value={variant.priceBase || ""}
                             onChange={(e) =>
@@ -1204,8 +1238,9 @@ export default function ProductCreateForm({
                         </div>
 
                         <div className="space-y-1">
-                          <Label className="text-xs">Precio venta</Label>
+                          <Label htmlFor={`variant-${index}-sale-price`} className="text-xs">Precio venta</Label>
                           <Input
+                            id={`variant-${index}-sale-price`}
                             type="number"
                             value={variant.priceVta || ""}
                             onChange={(e) =>
@@ -1219,11 +1254,12 @@ export default function ProductCreateForm({
                         </div>
 
                         <div className="space-y-1">
-                          <Label className="text-xs">Stock</Label>
+                          <Label htmlFor={`variant-${index}-stock`} className="text-xs">Stock</Label>
                           <Input
+                            id={`variant-${index}-stock`}
                             type="number"
-                            value={variant.stock || ""}
-                            disabled={isEditMode}
+                            value={isTracked(trackingMode) && !isEditMode ? 0 : variant.stock || ""}
+                            disabled={isEditMode || isTracked(trackingMode)}
                             onChange={(e) =>
                               updateVariantField(index, "stock", e.target.value)
                             }

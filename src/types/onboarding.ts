@@ -1,12 +1,15 @@
 export type OnboardingStep =
-  | 'REGISTRATION'
-  | 'ADDONS'
-  | 'CARD_REDIRECT'
-  | 'CARD_WIDGET'
-  | 'CONFIRMING'
-  | 'PAYMENT_PENDING'
-  | 'DONE'
-  | 'ERROR';
+  | "REGISTRATION"
+  | "ADDONS"
+  | "CARD_REDIRECT"
+  | "CARD_WIDGET"
+  | "CONFIRMING"
+  | "PAYMENT_PENDING"
+  | "EXISTING_SUBSCRIPTION"
+  /** Migración a Flow programada (FEAT-25): Flow cobra por primera vez al vencer lo ya pagado. */
+  | "MIGRATION_SCHEDULED"
+  | "DONE"
+  | "ERROR";
 
 /** Add-on del catálogo de ms-subscription (GET /subscription/add-ons). */
 export interface BackendAddOn {
@@ -23,7 +26,10 @@ export interface BackendAddOn {
 }
 
 /** Precio del add-on en el ciclo del plan (mensual o anual). */
-export function addOnPrice(addOn: Pick<BackendAddOn, 'amount' | 'annualAmount'>, isAnnual: boolean): number {
+export function addOnPrice(
+  addOn: Pick<BackendAddOn, "amount" | "annualAmount">,
+  isAnnual: boolean,
+): number {
   return isAnnual ? (addOn.annualAmount ?? addOn.amount * 12) : addOn.amount;
 }
 
@@ -64,13 +70,20 @@ export interface BackendPlan {
 /** GET /subscription/subscriptions/me — null si el usuario no tiene suscripción. */
 export interface SubscriptionMe {
   id: string;
-  status: 'ACTIVE' | 'PENDING_PAYMENT' | 'PENDING_RENEWAL' | 'EXPIRED' | 'CANCELED';
-  gateway: 'FLOW' | 'MERCADOPAGO' | 'MANUAL';
+  status: "ACTIVE" | "PENDING_PAYMENT" | "PENDING_RENEWAL" | "EXPIRED" | "CANCELED";
+  gateway: "FLOW" | "MERCADOPAGO" | "MANUAL";
   autoRenewal: boolean | null;
   startDate: string | null;
   endDate: string | null;
   plan: { id: string; name: string; price: number; durationInDays: number };
   addOns: { code: string; name: string; amount: number }[];
+  /** Migración a Flow ya hecha que espera su primer cobro mientras sigue el plan actual (FEAT-25). */
+  scheduledFlow?: {
+    id: string;
+    firstChargeDate: string;
+    plan: { id: string; name: string; price: number; durationInDays: number };
+    addOns: { code: string; name: string; amount: number }[];
+  } | null;
 }
 
 /** POST /subscription/subscriptions/flow/checkout */
@@ -89,10 +102,16 @@ export interface OnboardingState {
   addOnIds: string[];
   userId: string | null;
   cardToken: string | null;
+  /** The subscription created by this checkout, never an unrelated /me result. */
+  checkoutSubscriptionId?: string | null;
   redirectUrl: string | null;
   subscription: SubscriptionMe | null;
   error: string | null;
   isLoading: boolean;
+  /** Pantalla "Pasate a Flow" (FEAT-25): el checkout manda migrate y el éxito puede ser programado. */
+  migrate?: boolean;
+  /** Primer cobro de la migración programada (yyyy-MM-dd). */
+  firstChargeDate?: string | null;
 }
 
 /** Lo que sobrevive a la redirección a Flow (localStorage). */
@@ -103,4 +122,8 @@ export interface StoredOnboardingState {
   addOnIds: string[];
   userId: string;
   cardToken: string;
+  /** Older saved checkouts may only contain the card token. */
+  subscriptionId?: string;
+  /** Checkout de la migración a Flow (FEAT-25). */
+  migrate?: true;
 }

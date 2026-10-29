@@ -1,5 +1,7 @@
 "use client";
 
+import { OperationsDataError } from "../../_shared/OperationsDataError";
+
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Lock, Pencil, Plus, Save, X } from "lucide-react";
@@ -47,6 +49,7 @@ export default function CourierTransportTable() {
 
   const [couriers, setCouriers] = useState<Courier[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [localTariffs, setLocalTariffs] = useState<Record<string, LocalTariff>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<{
@@ -62,10 +65,12 @@ export default function CourierTransportTable() {
   const load = async () => {
     if (!companyId) return;
     setLoading(true);
+    setLoadError(false);
     try {
       const data = await fetchCouriers(companyId);
       setCouriers(data);
     } catch {
+      setLoadError(true);
       toast.error("No se pudieron cargar los couriers de transporte");
     } finally {
       setLoading(false);
@@ -165,6 +170,8 @@ export default function CourierTransportTable() {
     () => couriers.filter((c) => !c.name.toLowerCase().includes("shalom")),
     [couriers],
   );
+
+  if (loadError) return <OperationsDataError retry={load} message="No se pudieron cargar los couriers de transporte." />;
 
   return (
     <div className="space-y-3">

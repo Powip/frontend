@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import React, { useEffect, useState } from "react";
+import axiosAuth from "@/lib/axiosAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   Loader2,
   ChevronDown,
@@ -12,7 +13,6 @@ import {
   buildDetailedSalesExportRows,
   exportDetailedSalesToExcel,
 } from "@/utils/exportDetailedSalesReport";
-import { OrderResponseDto } from "@/features/sales/dto/order.dto";
 import { toast } from "sonner";
 import {
   ComposedChart,
@@ -28,8 +28,11 @@ import {
   Cell,
 } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDashboardScope } from "@/contexts/DashboardScopeContext";
+import { reportCurrencyLabel } from "./ReportCurrencySelector";
+import { getDashboardOrders } from "@/services/dashboardService";
 import { DashboardCard } from "./DashboardCard";
-import { hasAdminAccess } from "@/config/permissions.config";
+import { hasAdminAccess, isSuperadmin } from "@/config/permissions.config";
 // --- Types ---
 
 interface StatCardProps {
@@ -231,42 +234,15 @@ const GapIndicator: React.FC<{ count?: number }> = ({ count }) => (
   </div>
 );
 
-const FunnelCOD: React.FC<{ 
-  selectedStoreId: string;
+const FunnelCOD: React.FC<{
   fromDate: string;
   toDate: string;
-}> = ({ selectedStoreId, fromDate, toDate }) => {
+  funnelData: DashboardData | null;
+  loading: boolean;
+}> = ({ fromDate, toDate, funnelData, loading }) => {
   const { auth } = useAuth();
-  const [funnelData, setFunnelData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const fetchFunnelData = useCallback(async () => {
-    if (!selectedStoreId) return;
-    setLoading(true);
-    try {
-      const isAdmin = hasAdminAccess(auth?.user?.role);
-      const res = await axios.get<DashboardData>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`,
-        { 
-          params: { 
-            storeId: selectedStoreId, 
-            fromDate, 
-            toDate,
-            ...(!isAdmin && { sellerId: auth?.user?.id })
-          } 
-        }
-      );
-      setFunnelData(res.data);
-    } catch (error) {
-      console.error("Error fetching funnel data:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedStoreId, fromDate, toDate, auth?.user?.id, auth?.user?.role]);
-
-  useEffect(() => {
-    fetchFunnelData();
-  }, [fetchFunnelData]);
+  const { storeIds, canFetch, currency } = useDashboardScope();
+  const currencyPrefix = reportCurrencyLabel(currency);
 
   const baseTotal = funnelData?.totalOrders || 0;
   const ingresados = funnelData?.funnelMetrics?.ingresados || 0;
@@ -283,15 +259,13 @@ const FunnelCOD: React.FC<{
   const [downloading, setDownloading] = useState(false);
 
   const handleExport = async () => {
-    if (!selectedStoreId) return;
+    if (!canFetch || !auth?.accessToken) return;
     setDownloading(true);
     try {
-      const res = await axios.get<OrderResponseDto[]>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-        { params: { fromDate, toDate } }
-      );
-
-      const orders = res.data;
+      const scopedOrders = await getDashboardOrders(storeIds, fromDate, toDate, auth.accessToken, { currency });
+      const orders = (hasAdminAccess(auth.user.role) || isSuperadmin(auth.user.email))
+        ? scopedOrders
+        : scopedOrders.filter((order) => order.sellerId === auth.user.id);
 
       // Ordenar por estado jerárquico
       const statusWeight: Record<string, number> = {
@@ -340,7 +314,7 @@ const FunnelCOD: React.FC<{
         </div>
         <button
           onClick={handleExport}
-          disabled={downloading}
+          disabled={downloading || loading || !funnelData?.totalOrders}
           className="flex items-center gap-2 px-4 py-2 bg-[#00f2ad] text-slate-900 rounded-md text-xs font-bold hover:bg-[#00d89a] transition-colors shadow-none disabled:opacity-50 tracking-tight"
         >
           {downloading ? (
@@ -534,7 +508,7 @@ const FunnelCOD: React.FC<{
                     axisLine={false}
                     tickLine={false}
                     tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
-                    tickFormatter={(v) => `S/${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                    tickFormatter={(v) => `${currencyPrefix}${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
                   />
                   <YAxis
                     yAxisId="right"
@@ -556,7 +530,7 @@ const FunnelCOD: React.FC<{
                       color: "var(--foreground)",
                     }}
                     formatter={(value: number, name: string) => {
-                      if (name === "amount") return [`S/ ${value.toLocaleString("es-PE")}`, "Ventas"];
+                      if (name === "amount") return [`${currencyPrefix} ${value.toLocaleString("es-PE")}`, "Ventas"];
                       if (name === "orders") return [value, "Órdenes"];
                       if (name === "units") return [value, "Unidades"];
                       return [value, name];
@@ -672,40 +646,71 @@ interface StatsProps {
 }
 
 export const Stats: React.FC<StatsProps> = ({ fromDate, toDate }) => {
-  const { selectedStoreId, auth } = useAuth();
-  const [data, setData] = useState<DashboardData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { selectedStoreId, setSelectedStore, auth } = useAuth();
+  const { scope, setScope, scopeParams, canFetch: scopeReady, currency } = useDashboardScope();
+  const currencyPrefix = reportCurrencyLabel(currency);
+  const accessToken = auth?.accessToken;
+  const userId = auth?.user.id;
+  const userRole = auth?.user.role;
+  const isAdmin = hasAdminAccess(userRole) || isSuperadmin(auth?.user.email);
+  const [retryCount, setRetryCount] = useState(0);
+  useEffect(() => {
+    const changed = (event: Event) => {
+      if (
+        auth?.company?.id &&
+        (event as CustomEvent<{ companyId: string }>).detail?.companyId ===
+          auth.company.id
+      )
+        setRetryCount((value) => value + 1);
+    };
+    window.addEventListener("commercial-leads:changed", changed);
+    return () =>
+      window.removeEventListener("commercial-leads:changed", changed);
+  }, [auth?.company?.id]);
 
-  const fetchStats = useCallback(async () => {
-    if (!selectedStoreId) return;
-
-    setLoading(true);
-    try {
-      const isAdmin = hasAdminAccess(auth?.user?.role);
-      const summaryRes = await axios.get<DashboardData>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`,
-        {
-          params: {
-            storeId: selectedStoreId,
-            ...(fromDate && { fromDate }),
-            ...(toDate && { toDate }),
-            ...(!isAdmin && { sellerId: auth?.user?.id }),
-          },
-        }
-      );
-      setData(summaryRes.data);
-    } catch (error) {
-      console.error("Error al obtener las estadísticas:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedStoreId, fromDate, toDate, auth?.user?.id, auth?.user?.role]);
+  const requestKey = JSON.stringify([scopeParams, fromDate, toDate, userId, isAdmin]);
+  const [result, setResult] = useState<{
+    key: string;
+    data: DashboardData | null;
+    loading: boolean;
+    error: boolean;
+  } | null>(null);
+  const canFetch = scopeReady && Boolean(fromDate && toDate);
+  const data = result?.key === requestKey ? result.data : null;
+  const loading = canFetch && (result?.key !== requestKey || result.loading);
+  const error = result?.key === requestKey && result.error;
+  const otherStores = (auth?.company?.stores ?? []).filter((store) => store.id !== selectedStoreId);
 
   useEffect(() => {
-    if (fromDate && toDate) {
-      fetchStats();
-    }
-  }, [fetchStats, fromDate, toDate]);
+    if (!canFetch || !accessToken || !userId) return;
+
+    const controller = new AbortController();
+    setResult({ key: requestKey, data: null, loading: true, error: false });
+
+    axiosAuth.get<DashboardData>(
+      `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`,
+      {
+        params: {
+          ...scopeParams,
+          fromDate,
+          toDate,
+          ...(!isAdmin && { sellerId: userId }),
+        },
+        headers: { Authorization: `Bearer ${accessToken}` },
+        signal: controller.signal,
+      },
+    ).then((response) => {
+      if (!controller.signal.aborted) {
+        setResult({ key: requestKey, data: response.data, loading: false, error: false });
+      }
+    }).catch(() => {
+      if (!controller.signal.aborted) {
+        setResult({ key: requestKey, data: null, loading: false, error: true });
+      }
+    });
+
+    return () => controller.abort();
+  }, [scopeParams, canFetch, accessToken, userId, isAdmin, fromDate, toDate, requestKey, retryCount]);
 
   const deliveryPercentage =
     data && data.totalOrders > 0
@@ -716,13 +721,41 @@ export const Stats: React.FC<StatsProps> = ({ fromDate, toDate }) => {
     <div className="flex flex-col h-full w-full overflow-hidden bg-background">
       {/* Contenido principal */}
       <div className="flex-1 flex flex-col p-8 gap-8 min-h-0 overflow-y-auto scrollbar-none pb-32">
+        {error && (
+          <div role="alert" className="flex items-center justify-between gap-4 rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+            <p className="text-sm">No se pudieron cargar las estadísticas.</p>
+            <Button variant="outline" onClick={() => setRetryCount((count) => count + 1)}>
+              Reintentar
+            </Button>
+          </div>
+        )}
+        {!scopeReady && (
+          <p role="status" className="text-sm text-muted-foreground">Selecciona una tienda para ver sus estadísticas.</p>
+        )}
+        {!loading && data?.totalOrders === 0 && (
+          <div role="status" className="rounded-lg border border-border bg-card p-4">
+            <p className="text-sm font-medium">{scope === "business" ? "No hay pedidos en este negocio para el período seleccionado." : "No hay pedidos en esta tienda para el período seleccionado."}</p>
+            {scope === "store" && otherStores.length > 0 && (
+              <>
+                <p className="mt-1 text-sm text-muted-foreground">Puedes consultar las otras tiendas del negocio:</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {otherStores.map((store) => (
+                    <Button key={store.id} variant="outline" onClick={() => { setSelectedStore(store.id); setScope("store"); }}>
+                      Ver {store.name}
+                    </Button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
         {/* Cards de resumen */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           <StatCard
             title="Ventas Totales"
             value={
               data
-                ? `S/ ${data.totalSales.toLocaleString("es-PE", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                ? `${currencyPrefix} ${data.totalSales.toLocaleString("es-PE", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
                 : "-"
             }
             description="Monto acumulado"
@@ -732,7 +765,7 @@ export const Stats: React.FC<StatsProps> = ({ fromDate, toDate }) => {
 
           <StatCard
             title="Órdenes"
-            value={data?.totalOrders || 0}
+            value={data?.totalOrders ?? "-"}
             description="Total pedidos"
             loading={loading}
             subValueColor="text-green-600"
@@ -740,7 +773,7 @@ export const Stats: React.FC<StatsProps> = ({ fromDate, toDate }) => {
 
           <StatCard
             title="Productos"
-            value={data?.totalProducts || 0}
+            value={data?.totalProducts ?? "-"}
             description="Total ítems vendidos"
             loading={loading}
           />
@@ -749,7 +782,7 @@ export const Stats: React.FC<StatsProps> = ({ fromDate, toDate }) => {
             title="Ticket Promedio"
             value={
               data
-                ? `S/ ${data.averageTicket.toLocaleString("es-PE", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                ? `${currencyPrefix} ${data.averageTicket.toLocaleString("es-PE", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
                 : "-"
             }
             description="Por orden"
@@ -759,17 +792,19 @@ export const Stats: React.FC<StatsProps> = ({ fromDate, toDate }) => {
 
           <StatCard
             title="Entregados"
-            value={data?.totalDelivered || 0}
-            description={`${deliveryPercentage}% efectividad`}
+            value={data?.totalDelivered ?? "-"}
+            description={data ? `${deliveryPercentage}% efectividad` : "Efectividad de entrega"}
             loading={loading}
             subValueColor="text-green-600"
           />
         </div>
 
         {/* Funnel Section */}
-        <div className="grid grid-cols-1 gap-6 min-h-[600px] pb-8">
-          <FunnelCOD selectedStoreId={selectedStoreId || ""} fromDate={fromDate} toDate={toDate} />
-        </div>
+        {(loading || data) && (
+          <div className="grid grid-cols-1 gap-6 min-h-[600px] pb-8">
+            <FunnelCOD fromDate={fromDate} toDate={toDate} funnelData={data} loading={loading} />
+          </div>
+        )}
       </div>
     </div>
   );

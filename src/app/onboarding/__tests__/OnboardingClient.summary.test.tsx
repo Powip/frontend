@@ -87,12 +87,41 @@ describe("OnboardingClient — resúmenes", () => {
     expect(screen.getByText("S/ 276/mes")).toBeInTheDocument();
   });
 
+  it("las tarjetas de add-ons llevan el texto comercial y el precio sigue siendo el del catálogo", async () => {
+    await renderAtPlanStep();
+
+    expect(screen.getByRole("heading", { name: "Add Ons", level: 3 })).toBeInTheDocument();
+    expect(
+      screen.getByText("Potencia tu operación. Integra, automatiza y escala sin límites."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Conecta con Shalom y Eva Courier")).toBeInTheDocument();
+    expect(screen.getByText("Emite Boletas, Facturas y más")).toBeInTheDocument();
+    expect(screen.getByText("Conecta con Falabella, Ripley")).toBeInTheDocument();
+    expect(screen.getByText("Mayor control de tus envíos")).toBeInTheDocument();
+    expect(screen.getByText("Cumple con SUNAT sin esfuerzo")).toBeInTheDocument();
+    expect(screen.getByText("Más ventas, menos errores")).toBeInTheDocument();
+    expect(screen.getAllByText("+ S/ 29/mes")).toHaveLength(3);
+  });
+
+  it("el add-on que aún no existe sale como Próximamente y no se puede elegir", async () => {
+    await renderAtPlanStep();
+
+    expect(screen.getByText("Próximamente")).toBeInTheDocument();
+    expect(screen.getByText("Integración con Partners WP IA u otras plataformas")).toBeInTheDocument();
+    expect(screen.getByText("Único pago")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Partners/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Integración con Partners WP IA u otras plataformas"));
+    expect(screen.getByText("Plan S/189")).toBeInTheDocument();
+    expect(screen.getByText("S/ 189/mes")).toBeInTheDocument();
+  });
+
   it("sin add-ons, el panel lateral del paso Pago muestra solo plan y total", async () => {
     await renderAtPlanStep();
     goToPayment();
 
     const panel = sidePanel();
-    expect(within(panel).getByText("Plan Medium")).toBeInTheDocument();
+    expect(within(panel).getByText("Plan Standard")).toBeInTheDocument();
     expect(within(panel).getByText("Total mensual")).toBeInTheDocument();
     expect(within(panel).getAllByRole("term")).toHaveLength(2);
     expect(within(panel).getAllByText("S/ 189/mes")).toHaveLength(2);

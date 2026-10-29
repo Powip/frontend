@@ -19,6 +19,8 @@ jest.mock('axios', () => {
   };
 });
 
+jest.mock('@/lib/axiosAuth', () => ({ __esModule: true, default: jest.requireMock('axios') }));
+
 jest.mock('sonner', () => ({
   toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn() },
 }));
@@ -47,6 +49,7 @@ jest.mock('@/components/ui/dialog', () => {
 jest.mock('@/utils/downloadNotaVentaPdf', () => ({ downloadNotaVentaPdf: jest.fn() }));
 jest.mock('@/utils/printOrderLabel', () => ({ printOrderLabel: jest.fn() }));
 jest.mock('@/hooks/useQrCode', () => ({ useQRCode: () => '' }));
+jest.mock('@/hooks/useCcPurchaseConfirmationAccess', () => ({ useCcPurchaseConfirmationAccess: () => ({ canConfirm: false }) }));
 jest.mock('@/services/shalomService', () => ({ trackShalomGuide: jest.fn() }));
 
 jest.mock('@/components/modals/CancellationModal', () => ({ __esModule: true, default: () => null }));

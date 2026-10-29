@@ -31,7 +31,7 @@ jest.mock("sonner", () => ({
 }));
 
 jest.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ auth: { accessToken: "token" } }),
+  useAuth: () => ({ auth: { accessToken: "token", company: { id: "company-1" } } }),
 }));
 
 jest.mock("@/services/shalomService", () => ({

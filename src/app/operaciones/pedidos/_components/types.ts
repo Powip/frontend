@@ -2,12 +2,15 @@ import {
   parseWhatsAppLastNotice,
   type WhatsAppLastNotice,
 } from "@/features/whatsapp/utils/last-notice.util";
+import { type UnitAssignmentState } from "@/services/saleTrackingService";
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import type { OpsPermission } from "@/config/operationsPermissions";
 import { ORDER_STATUS_FLOW, getStatusLabel } from "@/utils/domain/orders-status-flow";
 import { formatProductsForExport, type SaleExportData } from "@/utils/exportSalesExcel";
 import { countProductUnits } from "@/components/ventas/SalesTableFilters";
 import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
+import { operationalStatus, orderFinancialState } from "@/utils/orderState";
+import type { SalesPhysicalOrderProjection } from "@/utils/commercialOrders";
 
 /* -----------------------------------------------------------------------
    Modelo de fila para las tablas de Pedidos.
@@ -16,9 +19,14 @@ import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
    tocarlos, más los campos que necesita Necesita Atención que en el viejo
    vivían solo en el OrderHeader crudo.
 ------------------------------------------------------------------------ */
-export interface Sale {
+export interface Sale extends UnitAssignmentState, Omit<SalesPhysicalOrderProjection, "stockVersion"> {
   id: string;
   waLastNotice?: WhatsAppLastNotice | null;
+  storeId?: string;
+  storeName?: string;
+  stockStoreName?: string;
+  inventoryId?: string | null;
+  stockStoreId?: string | null;
   customerId: string;
   orderNumber: string;
   clientName: string;
@@ -68,6 +76,7 @@ export interface Sale {
 }
 
 export interface SaleItem {
+  trackingMode?: string;
   /** Identificador inequívoco del producto (filtro por producto). */
   productVariantId: string | null;
   productName: string;
@@ -81,15 +90,12 @@ export interface SaleItem {
 }
 
 export function paidAmount(order: OrderHeader): number {
-  return (order.payments ?? [])
-    .filter((p) => p.status === "PAID")
-    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+  return orderFinancialState(order).totalPaid;
 }
 
 export function mapOrderToSale(order: OrderHeader): Sale {
   const total = Number(order.grandTotal || 0);
-  const advancePayment = paidAmount(order);
-  const pendingPayment = Math.max(total - advancePayment, 0);
+  const { totalPaid: advancePayment, pendingAmount: pendingPayment } = orderFinancialState(order);
   const hasPendingApprovalPayments = (order.payments ?? []).some(
     (p) => p.status === "PENDING",
   );
@@ -97,6 +103,16 @@ export function mapOrderToSale(order: OrderHeader): Sale {
   return {
     id: order.id,
     waLastNotice: parseWhatsAppLastNotice(order.waLastNotice),
+    commercialStage: order.commercialStage,
+    commercialLeadId: order.commercialLeadId,
+    commercialStockState: order.commercialStockState,
+    shopifyCommercialGate: order.shopifyCommercialGate,
+    commercialCommittedAt: order.commercialCommittedAt,
+    storeId: order.storeId,
+    storeName: order.storeName,
+    stockStoreName: order.stockStoreName,
+    inventoryId: order.inventoryId,
+    stockStoreId: order.stockStoreId,
     customerId: order.customer?.id,
     orderNumber: order.orderNumber,
     clientName: order.customer?.fullName ?? "—",
@@ -109,7 +125,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     total,
     courier: order.courier ?? null,
     courierId: order.courierId ?? null,
-    status: order.status,
+    status: operationalStatus(order.status),
     paymentMethod:
       order.payments?.length > 0 ? order.payments[0].paymentMethod : "—",
     deliveryType: (order.deliveryType ?? "").replace("_", " "),
@@ -123,6 +139,13 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     pendingPayment,
     notes: order.notes ?? "",
     hasStockIssue: order.hasStockIssue ?? false,
+    unitAssignmentStatus: order.unitAssignmentStatus,
+    unitStockState: order.unitStockState,
+    unitCatalogValidated: order.unitCatalogValidated,
+    hasTrackedUnits: order.hasTrackedUnits,
+    unitAssignmentError: order.unitAssignmentError,
+    confirmedStockVersion: order.confirmedStockVersion,
+    stockVersion: order.stockVersion,
     zone: order.customer?.zone ?? undefined,
     guideNumber: order.guideNumber ?? null,
     callStatus: order.callStatus,
@@ -147,6 +170,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     updatedAt: order.updated_at,
     items: (order.items ?? []).map((it) => ({
       productVariantId: it.productVariantId ?? null,
+      trackingMode: it.trackingMode,
       productName: it.productName,
       sku: it.sku,
       attributes: it.attributes ?? {},
@@ -165,6 +189,10 @@ export function mapOrderToSale(order: OrderHeader): Sale {
 export function buildPedidosExportRows(sales: Sale[], productFilter?: string): SaleExportData[] {
   return sales.map((s) => ({
     orderNumber: s.orderNumber,
+    storeId: s.storeId,
+    storeName: s.storeName,
+    inventoryId: s.inventoryId,
+    stockStoreId: s.stockStoreId,
     clientName: s.clientName,
     phoneNumber: s.phoneNumber,
     documentType: s.documentType,

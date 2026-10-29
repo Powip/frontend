@@ -42,6 +42,8 @@ import {
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
 
+jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { company: { id: 'company-a' }, user: { id: 'user-a' }, accessToken: 'test-token' } }) }));
+
 jest.mock('@/services/reconciliationTask.service', () => ({
   searchReconciliationVariants: jest.fn(),
 }));

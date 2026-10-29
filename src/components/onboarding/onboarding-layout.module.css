@@ -1,0 +1,488 @@
+.page {
+  min-height: 100dvh;
+  min-width: 0;
+  background: #f8f7fc;
+  color: #302645;
+  color-scheme: light;
+  font-family: var(--next-font-manrope), Arial, Helvetica, sans-serif;
+}
+
+.page h1,
+.page h2,
+.page h3,
+.page h4 {
+  font-family: inherit;
+}
+
+.page button:focus-visible,
+.page a:focus-visible {
+  outline: 3px solid #baa7e1;
+  outline-offset: 3px;
+}
+
+.mobileHeader {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: grid;
+  height: 56px;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  align-items: center;
+  border-bottom: 1px solid #edeaf3;
+  background: #fff;
+  padding: 6px 12px;
+}
+
+.mobileLogo {
+  grid-column: 2;
+  width: 118px;
+  height: auto;
+  justify-self: center;
+}
+
+.back {
+  display: inline-flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #4f3a96;
+}
+
+.layout {
+  min-width: 0;
+}
+
+.brand {
+  display: none;
+}
+
+.content {
+  min-width: 0;
+  padding: 0 16px 40px;
+}
+
+.flowHeader,
+.stepCard {
+  width: 100%;
+  max-width: 960px;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.flowHeader {
+  position: sticky;
+  top: 56px;
+  z-index: 20;
+  border-bottom: 1px solid #e8e2ef;
+  background: #f8f7fc;
+  padding: 20px 0 18px;
+}
+
+.heading {
+  color: #302645;
+  font-size: clamp(23px, 2.2vw, 30px);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.25;
+}
+
+.heading:focus {
+  outline: none;
+}
+
+.stepCaption {
+  margin-top: 6px;
+  color: #736880;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.progress {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.progressStep {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: #7b7289;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.progressIndex {
+  display: flex;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: #ece7f4;
+  color: #76658f;
+  font-size: 12px;
+}
+
+.progressCurrent {
+  color: #4f3a96;
+}
+
+.progressCurrent .progressIndex {
+  background: #4f3a96;
+  color: #fff;
+}
+
+.progressComplete {
+  color: #6045a5;
+}
+
+.progressComplete .progressIndex {
+  background: #e5dcf2;
+  color: #6045a5;
+}
+
+.stepCard {
+  min-width: 0;
+  margin-top: 24px;
+  border: 1px solid #ece8f3;
+  border-radius: 20px;
+  background: #fff;
+  padding: 24px;
+  box-shadow: 0 8px 30px rgb(47 30 85 / 3%);
+}
+
+.planPicker {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.planHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.planTitle {
+  color: #302645;
+  font-size: 21px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.planIntro {
+  margin-top: -8px;
+  color: #736880;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.planNote {
+  color: #736880;
+  font-size: 12px;
+  font-style: italic;
+  line-height: 1.6;
+}
+
+.cycle {
+  display: flex;
+  min-width: 0;
+  margin: 0;
+  border: 1px solid #eee8f6;
+  border-radius: 10px;
+  background: #f5f2fa;
+  padding: 4px;
+}
+
+.cycleButton {
+  min-height: 36px;
+  border-radius: 7px;
+  padding: 8px 14px;
+  color: #6045a5;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cycleButton[aria-pressed="true"] {
+  background: #4f3a96;
+  color: #fff;
+}
+
+.planGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 155px), 1fr));
+  align-items: stretch;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.planCard {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  border: 2px solid #e4dfeb;
+  border-radius: 14px;
+  background: #fff;
+  padding: 20px 18px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 150ms,
+    background 150ms;
+}
+
+.planCard:hover {
+  border-color: #b7a6d5;
+}
+
+.planCard[aria-pressed="true"] {
+  border-color: #4f3a96;
+  background: #f8f5fd;
+}
+
+.popular {
+  position: absolute;
+  top: -11px;
+  left: 16px;
+  border-radius: 6px;
+  background: #4f3a96;
+  padding: 3px 9px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.selected {
+  position: absolute;
+  top: 17px;
+  right: 14px;
+  display: flex;
+  width: 21px;
+  height: 21px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  background: #4f3a96;
+  color: #fff;
+}
+
+.planName {
+  padding-right: 22px;
+  color: #302645;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.planTarget {
+  margin-top: 7px;
+  color: #736880;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.planFeatures {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.planFeature {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  color: #736880;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.planFeature > svg {
+  margin-top: 3px;
+  flex-shrink: 0;
+  color: #6045a5;
+}
+
+.planPrice {
+  margin-top: 20px;
+  color: #4f3a96;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+@media (min-width: 1024px) {
+  .mobileHeader {
+    display: none;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(280px, 0.62fr) minmax(0, 1.38fr);
+    align-items: start;
+  }
+
+  .brand {
+    position: sticky;
+    top: 0;
+    display: grid;
+    height: 100dvh;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
+    gap: 24px;
+    overflow: hidden;
+    background: linear-gradient(165deg, #382769 0%, #4c358c 58%, #6546aa 100%);
+    padding: 32px clamp(24px, 2.5vw, 40px);
+    color: #fff;
+  }
+
+  .brandLogo {
+    width: 136px;
+    height: auto;
+    filter: brightness(0) invert(1);
+  }
+
+  .brandTitle {
+    color: #fff;
+    font-size: clamp(28px, 2.3vw, 36px);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1.15;
+  }
+
+  .brandDescription {
+    margin-top: 12px;
+    color: #ddd3ef;
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .brandPlan {
+    color: #e4daf3;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.6;
+  }
+
+  .brandSummary {
+    border-top: 1px solid rgb(255 255 255 / 18%);
+    padding-top: 18px;
+  }
+
+  .brandSummary dl {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    font-size: 13px;
+  }
+
+  .brandSummary dl > div {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .brandSummary dt {
+    color: #e4daf3;
+  }
+
+  .brandSummary dd {
+    color: #fff;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .brandTotal {
+    border-top: 1px solid rgb(255 255 255 / 18%);
+    margin-top: 2px;
+    padding-top: 12px;
+    font-weight: 700;
+  }
+
+  .brandArt {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    place-items: center;
+  }
+
+  .mascot {
+    width: 100%;
+    height: 100%;
+    max-height: 360px;
+  }
+
+  .content {
+    padding: 0 clamp(24px, 3vw, 48px) 48px;
+  }
+
+  .flowHeader {
+    top: 0;
+    padding-top: 30px;
+    padding-bottom: 22px;
+  }
+
+  .stepCard {
+    padding: 28px;
+  }
+}
+
+@media (max-width: 479px) {
+  .content {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .flowHeader {
+    padding-top: 16px;
+    padding-bottom: 14px;
+  }
+
+  .stepCard {
+    margin-top: 18px;
+    border-radius: 16px;
+    padding: 20px 16px;
+  }
+
+  .progressStep {
+    flex-direction: column;
+    gap: 5px;
+    font-size: 11px;
+  }
+}
+
+@media (min-width: 1024px) and (max-height: 740px) {
+  .brand {
+    gap: 18px;
+    padding-top: 24px;
+    padding-bottom: 24px;
+  }
+
+  .brandTitle {
+    font-size: 28px;
+  }
+
+  .brandDescription {
+    font-size: 13px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .planCard {
+    transition: none;
+  }
+}

@@ -5,6 +5,8 @@ import { CcLeaderboard } from '../cc-v2/CcLeaderboard';
 import { AgentePerformanceKpis } from '@/interfaces/IOrder';
 import { getAgentesPerformance } from '@/services/agentesService';
 
+jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { accessToken: 'token', user: { id: 'user' } } }) }));
+
 // ── Mocks ────────────────────────────────────────────────────────────────────
 
 jest.mock('@/services/agentesService', () => ({

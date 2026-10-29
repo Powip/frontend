@@ -1,8 +1,16 @@
 "use client";
+import { isCommercialSaleOrder, canPrepareDeferredManualOrder, canShipCommercialOrder, salesPhysicalOperationBlockReason, salesStatusBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
+import { formatSalesMoney } from "@/utils/salesMoney";
+import { deliveryPaymentBlockReason, operationalStatus, orderFinancialState } from "@/utils/orderState";
+import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
 
+import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
+import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
+import { type SaleUnitLifecycleAction } from "@/services/saleUnitLifecycleService";
+import { assignmentBlockReason, hasUnitAssignment, unitAssignmentLabel, requiresAuthenticatedSaleStatusMutation, saleMutationUrl, saleReceiptUrl, type UnitAssignmentState } from "@/services/saleTrackingService";
 import Link from "next/link";
 import Image from "next/image";
-import { Fragment, useEffect, useMemo, useState, useCallback } from "react";
+import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState, useCallback, type ReactNode } from "react";
 import {
   Plus,
   Pencil,
@@ -20,6 +28,7 @@ import {
   ChevronRight,
   ChevronDown,
   Package,
+  FileText,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -47,14 +56,24 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-import { OrderHeader, OrderStatus, OrderItem } from "@/interfaces/IOrder";
+import { OrderHeader, OrderStatus, OrderItem, type SubEstadoCc } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
-import ImportSalesModal from "@/components/modals/ImportSalesModal";
+import axiosAuth from "@/lib/axiosAuth";
+import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
+import { useBusinessSalesPage } from "@/hooks/useBusinessSalesPage";
+import { getBusinessSalesExport, type BusinessSalesOrder, type BusinessSalesQuery, type BusinessSalesTab } from "@/services/businessSalesService";
 import {
-  OrderDetailButton,
-  OrderDetailModalProvider,
-} from "@/components/orders/OrderDetailModal";
+  daysWithoutMovement,
+  isPendienteStatus,
+  ventasRecentFrom,
+  ventasAntiguosTo,
+} from "./ventasTabs";
+import { todayInPeru, type DateWindow } from "@/lib/peruDate";
+import { useBusinessScope } from "@/contexts/BusinessScopeContext";
+import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
+import { hasAdminAccess, isSuperadmin } from "@/config/permissions.config";
+import ImportSalesModal from "@/components/modals/ImportSalesModal";
+import { orderDetailButtonClassName } from "@/components/orders/OrderDetailModal";
 import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { WhatsAppLastNoticeIndicator } from "@/components/whatsapp/WhatsAppLastNoticeIndicator";
@@ -73,8 +92,6 @@ import {
   SalesTableFilters,
   SalesFilters,
   emptySalesFilters,
-  applyFilters,
-  buildProductFilterOptions,
   countProductUnits,
 } from "@/components/ventas/SalesTableFilters";
 import { Copy, MessageSquare, DollarSign } from "lucide-react";
@@ -111,7 +128,6 @@ import { BulkStatusSelect } from "@/components/ventas/BulkStatusSelect";
 import type { BulkExtraAction } from "@/components/ventas/BulkStatusSelect";
 import { processBulkStatusChange } from "@/utils/bulkStatusUtils";
 import { RescheduleDialog } from "@/components/ventas/RescheduleDialog";
-import { useOrdersByStore } from "@/hooks/useOrdersByStore";
 import {
   enviarPedidoALima,
   reassignSeller,
@@ -133,14 +149,6 @@ const ORDER_STATUS = {
   ANULADO: "ANULADO",
 };
 
-// PAGADO es "PENDIENTE ya cobrado al 100%", no una etapa de fulfillment
-// distinta (ver ORDER_STATUS_FLOW/FULFILLMENT_RANK en orders-status-flow.ts,
-// donde PAGADO comparte rango con PENDIENTE) — debe listarse junto con
-// PENDIENTE en "Ventas Pendientes", si no la tab queda en 0 apenas se cobra
-// un pedido y solo se lo ve en "Todas las Ventas".
-const isPendienteStatus = (status: OrderStatus) =>
-  status === ORDER_STATUS.PENDIENTE || status === ORDER_STATUS.PAGADO;
-
 const ALL_STATUSES: OrderStatus[] = [
   "PENDIENTE",
   "PREPARADO",
@@ -150,9 +158,22 @@ const ALL_STATUSES: OrderStatus[] = [
   "ANULADO",
 ];
 
-export interface Sale {
+export interface Sale extends UnitAssignmentState {
+  salesOperationalEligible?: boolean;
+  shopifyCommercialGate?: boolean | null;
+  commercialCommittedAt?: string | null;
+  subEstadoCc?: SubEstadoCc | null;
+  canalOrigen?: string | null;
+  currency?: string | null;
+  commercialStage?: "LEAD" | "SALE" | null;
+  commercialLeadId?: string | null;
+  commercialStockState?: "DEFERRED" | "QUEUED" | "PRESERVED" | "NOT_REQUIRED" | null;
+
   id: string;
   waLastNotice?: WhatsAppLastNotice | null;
+  storeId: string;
+  inventoryId?: string | null;
+  stockStoreId?: string | null;
   customerId: string;
   orderNumber: string;
   clientName: string;
@@ -189,10 +210,26 @@ export interface Sale {
   aliclikSyncedAt?: string | null;
   callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | "SCHEDULED" | null;
   callbackAt?: string | null;
+  /** ISO de order.created_at / order.updated_at: reglas de pestaña y días sin movimiento. */
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Base de una pestaña mientras su lista no está completa (referencia estable). */
+const NO_SALES: Sale[] = [];
+const SalesOrderDetailModal = lazy(() => import("@/components/modals/CustomerServiceModal"));
+
+/** The server owns confirmation eligibility; never expose a rejected row to stale actions. */
+function isVisibleSalesOrder(order: BusinessSalesOrder): boolean {
+  return order.status !== "INCOMPLETE" && isCommercialSaleOrder(order) && order.salesOperationalEligible !== false;
 }
 
 function formatSoles(amount: number): string {
   return `S/ ${amount.toFixed(2)}`;
+}
+
+function formatDaysWithoutMovement(days: number): string {
+  return `${days} ${days === 1 ? "día" : "días"} sin movimiento`;
 }
 
 function formatCallbackAt(dateStr: string): string {
@@ -216,12 +253,9 @@ function ReprogramadoChip({ sale }: { sale: Pick<Sale, "callStatus" | "callbackA
    Mapper
 ----------------------------------------- */
 
-function mapOrderToSale(order: OrderHeader): Sale {
+function mapOrderToSale(order: BusinessSalesOrder): Sale {
   const total = Number(order.grandTotal);
-  const advancePayment = order.payments
-    .filter((p) => p.status === "PAID")
-    .reduce((acc, p) => acc + Number(p.amount || 0), 0);
-  const pendingPayment = Math.max(total - advancePayment, 0);
+  const { totalPaid: advancePayment, pendingAmount: pendingPayment } = orderFinancialState(order);
   const hasPendingApprovalPayments = order.payments.some(
     (p) => p.status === "PENDING",
   );
@@ -229,6 +263,15 @@ function mapOrderToSale(order: OrderHeader): Sale {
   return {
     id: order.id,
     waLastNotice: parseWhatsAppLastNotice(order.waLastNotice),
+    salesOperationalEligible: order.salesOperationalEligible,
+    shopifyCommercialGate: order.shopifyCommercialGate,
+    commercialCommittedAt: order.commercialCommittedAt,
+    subEstadoCc: order.subEstadoCc,
+    canalOrigen: order.canalOrigen,
+    currency: order.currency, commercialStage: order.commercialStage, commercialLeadId: order.commercialLeadId, commercialStockState: order.commercialStockState,
+    storeId: order.storeId,
+    inventoryId: order.inventoryId,
+    stockStoreId: order.stockStoreId,
     customerId: order.customer.id,
     orderNumber: order.orderNumber,
     clientName: order.customer.fullName,
@@ -237,7 +280,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     documentNumber: order.customer.documentNumber ?? null,
     date: new Date(order.created_at).toLocaleDateString("es-AR"),
     total,
-    status: order.status,
+    status: operationalStatus(order.status),
     paymentMethod:
       order.payments.length > 0 ? order.payments[0].paymentMethod : "—",
     deliveryType: order.deliveryType.replace("_", " "),
@@ -251,6 +294,13 @@ function mapOrderToSale(order: OrderHeader): Sale {
     advancePayment,
     pendingPayment,
     hasStockIssue: order.hasStockIssue ?? false,
+    unitAssignmentStatus: order.unitAssignmentStatus,
+    unitStockState: order.unitStockState,
+    unitCatalogValidated: order.unitCatalogValidated,
+    hasTrackedUnits: order.hasTrackedUnits,
+    unitAssignmentError: order.unitAssignmentError,
+    confirmedStockVersion: order.confirmedStockVersion,
+    stockVersion: order.stockVersion,
     hasPendingApprovalPayments,
     externalTrackingNumber: order.externalTrackingNumber || "",
     shippingCode: order.shippingCode || "",
@@ -266,6 +316,8 @@ function mapOrderToSale(order: OrderHeader): Sale {
     aliclikSyncedAt: order.aliclikSyncedAt ?? null,
     callStatus: order.callStatus ?? null,
     callbackAt: order.callbackAt ?? null,
+    createdAt: order.created_at,
+    updatedAt: order.updated_at,
   };
 }
 
@@ -273,8 +325,14 @@ function mapOrderToSale(order: OrderHeader): Sale {
    Page
 ----------------------------------------- */
 
-export default function VentasPage() {
-  const [sales, setSales] = useState<Sale[]>([]);
+function VentasContent() {
+  const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
+  const [detailOrderScope, setDetailOrderScope] = useState("");
+  const [salesState, setSales] = useState<Sale[]>([]);
+  const [loadedSalesScope, setLoadedSalesScope] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
+  const exportController = useRef<AbortController | null>(null);
+  useEffect(() => () => exportController.current?.abort(), []);
   const [createGuideOrder, setCreateGuideOrder] = useState<OrderHeader | null>(
     null,
   );
@@ -292,12 +350,24 @@ export default function VentasPage() {
   // filtros de cada tabla
   const [kpiDateFrom, setKpiDateFrom] = useState("");
   const [kpiDateTo, setKpiDateTo] = useState("");
+  // Cada pestaña baja solo su período (FEAT-27). "Hoy" en hora de Perú.
+  const [today] = useState(() => todayInPeru());
+  const [anuladasWindow, setAnuladasWindow] = useState<DateWindow>(() => ({ fromDate: ventasRecentFrom(today), toDate: "" }));
+  const [todasWindow, setTodasWindow] = useState<DateWindow>(() => ({ fromDate: ventasRecentFrom(today), toDate: "" }));
+  // Pendientes: los recientes (30 días) o los antiguos, que se bajan solo mientras están elegidos
+  const [pendientesView, setPendientesView] = useState<"recientes" | "antiguos">("recientes");
 
   // Paginación para Todas las Ventas
   const [pageAll, setPageAll] = useState(1);
+  const [pagePendientes, setPagePendientes] = useState(1);
+  const [pageAnulados, setPageAnulados] = useState(1);
+  useEffect(() => { setPagePendientes(1); }, [filtersPendiente, pendientesView]);
+  useEffect(() => { setPageAnulados(1); }, [filtersAnulado, anuladasWindow]);
+  useEffect(() => { setPageAll(1); }, [todasWindow]);
   const ITEMS_PER_PAGE = 10;
 
   // Estado para modal de cancelación
+  const [lifecycle, setLifecycle] = useState<{ orderId: string; action: SaleUnitLifecycleAction } | null>(null);
   const [cancellationModalOpen, setCancellationModalOpen] = useState(false);
   const [saleToCancel, setSaleToCancel] = useState<Sale | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -315,6 +385,7 @@ export default function VentasPage() {
   // Estado para modal de confirmación de impresión
   const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
   const [pendingPrintSales, setPendingPrintSales] = useState<Sale[]>([]);
+  const [pendingPrintScope, setPendingPrintScope] = useState("");
 
   const [importModalOpen, setImportModalOpen] = useState(false);
 
@@ -395,10 +466,97 @@ export default function VentasPage() {
   const BULK_ACTION_REPROGRAMAR = "__REPROGRAMAR__";
 
   const { auth, selectedStoreId } = useAuth();
+  const printScope = `${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}`;
+  const activePrintScope = useRef(printScope);
+  activePrintScope.current = printScope;
+  const printEpoch = useRef(0);
+  const printWindows = useRef(new Set<Window>());
+  useEffect(() => {
+    setPrintPreviewOpen(false);
+    setPendingPrintSales([]);
+    setIsPrinting(false);
+    return () => {
+      printEpoch.current += 1;
+      for (const win of printWindows.current) win.close();
+      printWindows.current.clear();
+    };
+  }, [printScope]);
+  const routeSaleLifecycle = useSaleLifecycleRouting();
   const router = useRouter();
 
-  const { data: ordersData, refetch: refetchOrders } =
-    useOrdersByStore(selectedStoreId);
+  const { scopeKey, storeIds } = useBusinessScope();
+  const activeFilters = activeTab === "pendientes" ? filtersPendiente : activeTab === "anuladas" ? filtersAnulado : filtersAll;
+  const activeWindow = activeTab === "pendientes"
+    ? pendientesView === "recientes" ? { fromDate: ventasRecentFrom(today), toDate: "" } : { fromDate: "", toDate: ventasAntiguosTo(today) }
+    : activeTab === "anuladas" ? anuladasWindow : todasWindow;
+  const fromDates = [activeWindow.fromDate, activeFilters.dateFrom].filter(Boolean).sort();
+  const toDates = [activeWindow.toDate, activeFilters.dateTo].filter(Boolean).sort();
+  const salesQuery: BusinessSalesQuery = {
+    ...activeFilters, dateFrom: fromDates.at(-1) || "", dateTo: toDates[0] || "",
+    tab: activeTab as BusinessSalesTab,
+    page: activeTab === "pendientes" ? pagePendientes : activeTab === "anuladas" ? pageAnulados : pageAll,
+    limit: ITEMS_PER_PAGE,
+    sort: activeTab === "pendientes" && pendientesView === "antiguos" ? "updated_asc" : "created_desc",
+    kpiDateFrom, kpiDateTo,
+  };
+  const salesScope = JSON.stringify([scopeKey, salesQuery]);
+  const pageSessionScope = `${printScope}:${salesScope}`;
+  const sales = loadedSalesScope === salesScope ? salesState : NO_SALES;
+  const { data: salesPage, isFetching, isDebouncing, isError: salesError, refetch: refetchPage } = useBusinessSalesPage(storeIds, salesQuery);
+  const ordersData = salesPage?.data;
+  const queryReady = !!salesPage && !isFetching && !isDebouncing && !salesError;
+  const queryState = { loading: isFetching || isDebouncing, error: salesError, retry: () => { void refetchPage(); }, ready: queryReady };
+  const ventas = {
+    ...queryState,
+    antiguos: { ...queryState, count: salesPage?.counts?.pendientesAntiguos ?? null },
+    anuladas: queryState,
+    todas: { ...queryState, count: salesPage?.counts?.todas ?? null },
+    kpis: queryState,
+  };
+  const bulkSelectionReady = queryReady;
+  const bulkSelectionScope = salesScope;
+  const currentBulkSelection = useRef({ ready: bulkSelectionReady, scope: bulkSelectionScope });
+  currentBulkSelection.current = { ready: bulkSelectionReady, scope: bulkSelectionScope };
+  const canMutateBulkSelection = () => currentBulkSelection.current.ready && currentBulkSelection.current.scope === bulkSelectionScope;
+  // A row may remain readable during a background refetch; writes need a fresh page.
+  const currentPageState = useRef({ ready: false, scope: pageSessionScope, sales: new Map<string, Sale>() });
+  currentPageState.current = {
+    ready: queryReady && loadedSalesScope === salesScope,
+    scope: pageSessionScope,
+    sales: new Map((ordersData ?? []).filter(isVisibleSalesOrder).map((order) => [order.id, mapOrderToSale(order)])),
+  };
+  const visibleSale = useCallback((id: string) => {
+    const current = currentPageState.current;
+    return current.scope === pageSessionScope ? current.sales.get(id) : undefined;
+  }, [pageSessionScope]);
+  const mutationSale = useCallback((id: string) => currentPageState.current.ready ? visibleSale(id) : undefined, [visibleSale]);
+  const canMutateIds = (ids: readonly string[]) => ids.length > 0 && ids.every((id) => !!mutationSale(id));
+  const canReadIds = (ids: readonly string[]) => ids.length > 0 && ids.every((id) => !!visibleSale(id));
+  const canFulfillIds = (ids: readonly string[]) => canMutateIds(ids) && ids.every((id) => !salesPhysicalOperationBlockReason(mutationSale(id)!));
+  const detailOrderIsVisible = !!detailOrderId && detailOrderScope === pageSessionScope && !!visibleSale(detailOrderId);
+  useEffect(() => {
+    if (detailOrderId && !detailOrderIsVisible) setDetailOrderId(null);
+  }, [detailOrderId, detailOrderIsVisible]);
+  const todasLoading = ventas.todas.loading;
+  const todasError = ventas.todas.error;
+  const invalidateBusinessData = useInvalidateBusinessData();
+  const refetchOrders = useCallback(() => { void invalidateBusinessData(); }, [invalidateBusinessData]);
+  const importStore = auth?.company?.stores?.find((store) => store.id === selectedStoreId);
+  const canExport = isSuperadmin(auth?.user?.email) || hasAdminAccess(auth?.user?.role);
+  useEffect(() => {
+    setSelectedPendientesIds(new Set()); setSelectedAnuladosIds(new Set()); setSelectedTodasIds(new Set()); setExpandedRows(new Set());
+  }, [salesScope]);
+
+  useEffect(() => {
+    setSelectedPendientesIds(new Set());
+    setSelectedAnuladosIds(new Set());
+    setSelectedTodasIds(new Set());
+    setPageAll(1);
+    setPagePendientes(1);
+    setPageAnulados(1);
+    setCreateGuideOrder(null);
+    setImportModalOpen(false);
+  }, [scopeKey]);
 
   // Calcular estados disponibles comunes para la selección de la pestaña activa
   const bulkAvailableStatuses = useMemo(() => {
@@ -416,7 +574,7 @@ export default function VentasPage() {
     selectedSales.forEach((sale, index) => {
       const nextStatuses = (ORDER_STATUS_FLOW as any)[sale.status] || [];
       const filteredNext = nextStatuses.filter(
-        (s: OrderStatus) => s !== "ANULADO",
+        (s: OrderStatus) => s !== "ANULADO" && !salesStatusBlockReason(sale, s),
       );
 
       if (index === 0) {
@@ -431,20 +589,20 @@ export default function VentasPage() {
 
   // Sincronizar datos del hook → estado local (permite actualizaciones optimistas locales)
   useEffect(() => {
-    if (!ordersData) return;
+    if (!ordersData) { setSales([]); return; }
 
     // INCOMPLETE = carrito/checkout que nunca se terminó (con errores de
     // sync, se repara en Atención al Cliente › Pedidos con errores) — no es
     // una venta real, así que no debe listarse acá (se colaba en "Todas"
     // porque `sales` no filtraba por status).
-    const sorted = [...ordersData]
-      .filter((o) => o.status !== "INCOMPLETE")
-      .sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      );
+    const sorted = ordersData.filter(isVisibleSalesOrder);
     const mappedSales = sorted.map(mapOrderToSale);
     setSales(mappedSales);
+    setLoadedSalesScope(salesScope);
+    const visibleIds = new Set(mappedSales.map((sale) => sale.id));
+    setSelectedPendientesIds((ids) => new Set([...ids].filter((id) => visibleIds.has(id))));
+    setSelectedAnuladosIds((ids) => new Set([...ids].filter((id) => visibleIds.has(id))));
+    setSelectedTodasIds((ids) => new Set([...ids].filter((id) => visibleIds.has(id))));
 
     // Initialize tracking edits
     const edits: Record<
@@ -465,7 +623,7 @@ export default function VentasPage() {
       };
     });
     setTrackingEdits(edits);
-  }, [ordersData]);
+  }, [ordersData, salesScope]);
 
   // Helper: info del usuario actual para trazabilidad
   const getUserInfo = () => ({
@@ -479,17 +637,35 @@ export default function VentasPage() {
     orderId: string,
     payload: Record<string, unknown>,
   ) => {
-    await axios.patch(
-      `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+    const sale = mutationSale(orderId);
+    if (!sale) throw new Error("Vuelve a cargar el pedido antes de actualizarlo.");
+    const targetStatus = typeof payload.status === "string" ? payload.status : "";
+    const blocked = salesStatusBlockReason(sale, targetStatus) || assignmentBlockReason(sale, targetStatus) || deliveryPaymentBlockReason(sale.pendingPayment, targetStatus);
+    if (blocked) throw new Error(blocked);
+    await axiosAuth.patch(
+      saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", orderId, sale),
       { ...payload, ...getUserInfo() },
     );
   };
 
   const handleCreateGuide = async (guidesData: CreateGuideData[]) => {
+    if (!canMutateIds(guidesData.flatMap((guide) => guide.orderIds))) return false;
+    for (const id of guidesData.flatMap((guide) => guide.orderIds)) {
+      const sale = mutationSale(id)!;
+      const blocked = salesStatusBlockReason(sale, "ASIGNADO_A_GUIA") || assignmentBlockReason(sale, "ASIGNADO_A_GUIA");
+      if (blocked || !canShipCommercialOrder(sale)) { toast.error(blocked || "Esta venta no requiere una guía física."); return false; }
+    }
     setIsCreatingGuide(true);
     try {
       for (const guideData of guidesData) {
-        const guideResponse = await axios.post(
+        for (const id of guideData.orderIds) {
+          const sale = mutationSale(id);
+          if (!sale) throw new Error("Vuelve a cargar el pedido antes de crear la guía.");
+          const blocked = salesStatusBlockReason(sale, "ASIGNADO_A_GUIA") || assignmentBlockReason(sale, "ASIGNADO_A_GUIA");
+          if (blocked) throw new Error(blocked);
+          if (!canShipCommercialOrder(sale)) throw new Error("Esta venta no requiere una guía física.");
+        }
+        const guideResponse = await axiosAuth.post(
           `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides`,
           guideData,
         );
@@ -508,6 +684,7 @@ export default function VentasPage() {
       refetchOrders();
     } catch (error: any) {
       toast.error(error?.response?.data?.message || "Error creando guía");
+      return false;
     } finally {
       setIsCreatingGuide(false);
     }
@@ -518,6 +695,13 @@ export default function VentasPage() {
     newStatus: OrderStatus,
     cancellationReason?: CancellationReason,
   ) => {
+    const selectedCommercial = mutationSale(saleId);
+    if (!selectedCommercial) return;
+    const blocked = salesStatusBlockReason(selectedCommercial, newStatus);
+    if (blocked) { toast.error(blocked); return; }
+    if (await routeSaleLifecycle(sales.find((sale) => sale.id === saleId), newStatus, (action) => setLifecycle({ orderId: saleId, action }))) return;
+    if (!mutationSale(saleId)) return;
+
     // Si el nuevo estado es ANULADO y no hay motivo, abrir modal
     if (newStatus === "ANULADO" && !cancellationReason) {
       const sale = sales.find((s) => s.id === saleId);
@@ -537,15 +721,13 @@ export default function VentasPage() {
         payload.cancellationReason = cancellationReason;
       }
 
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
-        payload,
-      );
+      await patchOrder(saleId, payload);
       toast.success(`Estado actualizado a ${newStatus}`);
       refetchOrders();
     } catch (error) {
       console.error("Error actualizando estado", error);
-      toast.error("No se pudo actualizar el estado");
+      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message || (error instanceof Error ? error.message : "No se pudo actualizar el estado"));
+      if (canPrepareDeferredManualOrder(selectedCommercial)) refetchOrders();
     }
   };
 
@@ -553,12 +735,18 @@ export default function VentasPage() {
     reason: CancellationReason,
     notes?: string,
   ) => {
-    if (!saleToCancel) return;
+    if (!saleToCancel || !mutationSale(saleToCancel.id)) return;
+    if (await routeSaleLifecycle(sales.find((sale) => sale.id === saleToCancel.id) ?? saleToCancel, "ANULADO", (action) => {
+      setCancellationModalOpen(false);
+      setSaleToCancel(null);
+      setLifecycle({ orderId: saleToCancel.id, action });
+    })) return;
+    if (!mutationSale(saleToCancel.id)) return;
 
     setIsCancelling(true);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleToCancel.id}`,
+      await axiosAuth.patch(
+        saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", saleToCancel.id, saleToCancel),
         {
           status: "ANULADO",
           cancellationReason: reason,
@@ -579,6 +767,7 @@ export default function VentasPage() {
   };
 
   const toggleSale = (id: string) => {
+    if (!mutationSale(id)) return;
     const next = new Set(selectedSaleIds);
     if (next.has(id)) {
       next.delete(id);
@@ -589,8 +778,9 @@ export default function VentasPage() {
   };
 
   const handleDelete = async (id: string) => {
+    if (!mutationSale(id)) return;
     try {
-      await axios.delete(
+      await axiosAuth.delete(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${id}`,
       );
       toast.success("Venta eliminada");
@@ -619,9 +809,9 @@ Teléfono: ${sale.phoneNumber}
 Distrito: ${sale.district}
 Dirección: ${sale.address}${mapsLine ? `\n${mapsLine}` : ""}
 Fecha: ${sale.date}
-Total Venta: ${formatSoles(sale.total)}
-Adelanto: ${formatSoles(sale.advancePayment)}
-Por Cobrar: ${formatSoles(sale.pendingPayment)}
+Total Venta: ${formatSalesMoney(sale.total, sale.currency)}
+Adelanto: ${formatSalesMoney(sale.advancePayment, sale.currency)}
+Por Cobrar: ${formatSalesMoney(sale.pendingPayment, sale.currency)}
 Estado: ${sale.status}
 `.trim();
       })
@@ -632,18 +822,27 @@ Estado: ${sale.status}
   };
 
   // Exportar a Excel (XLSX)
-  const handleExportExcel = (
-    salesList: Sale[],
-    tabName: string,
-    productFilter: string,
+  const handleExportExcel = async (
+    _visibleSales: Sale[], tabName: string, productFilter: string,
   ) => {
+    if (isExporting) return;
+    setIsExporting(true);
+    const controller = new AbortController();
+    exportController.current = controller;
+    try {
+    const salesList = (await getBusinessSalesExport(storeIds, salesQuery, controller.signal)).filter(isVisibleSalesOrder).map(mapOrderToSale);
     if (salesList.length === 0) {
       toast.warning("No hay datos para exportar");
       return;
     }
 
     const exportData: SaleExportData[] = salesList.map((s) => ({
+      commercialStage:s.commercialStage, commercialLeadId:s.commercialLeadId, currency:s.currency,
       orderNumber: s.orderNumber,
+      storeId: s.storeId,
+      storeName: auth?.company?.stores?.find((store) => store.id === s.storeId)?.name,
+      inventoryId: s.inventoryId,
+      stockStoreId: s.stockStoreId,
       clientName: s.clientName,
       phoneNumber: s.phoneNumber,
       documentType: s.documentType,
@@ -671,6 +870,12 @@ Estado: ${sale.status}
 
     exportSalesToExcel(exportData, `ventas_${tabName}`);
     toast.success(`Exportados ${salesList.length} registros`);
+    } catch {
+      if (!controller.signal.aborted) toast.error("No se pudo completar la exportación. Intenta nuevamente.");
+    } finally {
+      if (exportController.current === controller) exportController.current = null;
+      setIsExporting(false);
+    }
   };
 
   const handleBulkPrint = () => {
@@ -682,21 +887,35 @@ Estado: ${sale.status}
       toast.warning("No hay pedidos seleccionados para imprimir");
       return;
     }
+    if (!canMutateIds(Array.from(selectedSaleIds))) return;
 
+    const blocked = selectedPendientes.map((sale) => salesPhysicalOperationBlockReason(sale) || assignmentBlockReason(sale, "PREPARADO")).find(Boolean);
+    if (blocked) { toast.error(blocked); return; }
     setPendingPrintSales(selectedPendientes);
+    setPendingPrintScope(printScope);
     setPrintPreviewOpen(true);
   };
 
-  const fetchPrintReceipt = useCallback(async (sale: { id: string }) => {
-    const res = await axios.get<ReceiptData>(
-      `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
+  const fetchPrintReceipt = useCallback(async (sale: { id: string } & UnitAssignmentState) => {
+    const currentSale = mutationSale(sale.id);
+    if (!currentSale) throw new Error("Vuelve a cargar el pedido antes de imprimirlo.");
+    const blocked = salesPhysicalOperationBlockReason(currentSale);
+    if (blocked) throw new Error(blocked);
+    const epoch = printEpoch.current;
+    const res = await axiosAuth.get<ReceiptData>(
+      saleReceiptUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", sale.id, currentSale),
     );
+    if (printScope !== activePrintScope.current || epoch !== printEpoch.current)
+      throw new Error("La sesión cambió. Vuelve a abrir la vista previa.");
+    if (res.data?.orderId !== sale.id) throw new Error("El comprobante no corresponde al pedido seleccionado.");
     return res.data;
-  }, []);
+  }, [printScope, mutationSale]);
 
   // Confirmar impresión y cambiar estados
   const handleConfirmPrint = async () => {
-    if (pendingPrintSales.length === 0) return;
+    if (pendingPrintSales.length === 0 || pendingPrintScope !== printScope || !canFulfillIds(pendingPrintSales.map((sale) => sale.id))) return;
+    const epoch = printEpoch.current;
+    const isCurrent = () => epoch === printEpoch.current && printScope === activePrintScope.current;
 
     setIsPrinting(true);
     let successCount = 0;
@@ -707,10 +926,14 @@ Estado: ${sale.status}
     setOrdersWithStockIssue(issues);
 
     for (const sale of pendingPrintSales) {
+      const currentSale = mutationSale(sale.id);
+      if (!isCurrent() || !currentSale) { setIsPrinting(false); return; }
       const newStatus = "PREPARADO";
       try {
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}`,
+        const blocked = salesStatusBlockReason(currentSale, newStatus) || assignmentBlockReason(currentSale, newStatus);
+        if (blocked) throw new Error(blocked);
+        await axiosAuth.patch(
+          saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", sale.id, currentSale),
           { status: newStatus, ...getUserInfo() },
         );
         successCount++;
@@ -719,6 +942,7 @@ Estado: ${sale.status}
         errorCount++;
       }
     }
+    if (!isCurrent()) return;
 
     if (successCount > 0) {
       toast.success(`${successCount} pedido(s) actualizados a PREPARADO`);
@@ -753,6 +977,7 @@ Estado: ${sale.status}
       toast.warning("No hay pedidos seleccionados para imprimir");
       return;
     }
+    if (!canReadIds(selectedSales.map((sale) => sale.id))) return;
 
     // Abrir la ventana ANTES de cualquier await: si se abre después de
     // esperar las requests de abajo, el navegador la bloquea en silencio.
@@ -761,6 +986,10 @@ Estado: ${sale.status}
       toast.error("No se pudo abrir la ventana de impresión. Verifica que los popups no estén bloqueados.");
       return;
     }
+    printWindows.current.add(printWindow);
+    const epoch = printEpoch.current;
+    const isPrintSessionCurrent = () => epoch === printEpoch.current && printScope === activePrintScope.current;
+    const isCurrent = () => isPrintSessionCurrent() && canReadIds(selectedSales.map((sale) => sale.id));
 
     setIsPrinting(true);
     toast.info(`Preparando ${selectedSales.length} recibo(s) para imprimir...`);
@@ -768,30 +997,39 @@ Estado: ${sale.status}
     try {
       const receipts = await Promise.all(
         selectedSales.map(async (sale) => {
-          const res = await axios.get<ReceiptData>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
+          const currentSale = visibleSale(sale.id);
+          if (!currentSale) throw new Error("Vuelve a cargar el pedido antes de imprimirlo.");
+          const res = await axiosAuth.get<ReceiptData>(
+            saleReceiptUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", sale.id, currentSale),
           );
+          if (res.data?.orderId !== sale.id) throw new Error("El comprobante no corresponde al pedido seleccionado.");
           return res.data;
         }),
       );
 
       // Imprimir usando la utilidad compartida (formato compacto con QR)
-      await printReceipts(receipts, auth?.company, printWindow);
+      if (!isCurrent()) { printWindow.close(); return; }
+      await printReceipts(receipts, auth?.company, printWindow, isCurrent);
+      if (!isCurrent()) return;
 
       toast.success(`${selectedSales.length} recibo(s) enviados a imprimir`);
       setSelectedIdsForActiveTab(new Set());
     } catch (error) {
       printWindow.close();
+      if (!isCurrent()) return;
       console.error("Error en impresión masiva", error);
       toast.error("Error al preparar los recibos para imprimir");
     } finally {
-      setIsPrinting(false);
+      printWindows.current.delete(printWindow);
+      if (isPrintSessionCurrent()) setIsPrinting(false);
     }
   };
 
   const handleBulkStatusChange = async (newStatus: OrderStatus) => {
+    if (!canMutateBulkSelection()) return;
     const selectedIds = Array.from(selectedSaleIds);
     if (selectedIds.length === 0) return;
+    if (!canMutateIds(selectedIds)) return;
 
     if (newStatus === "ANULADO") {
       toast.error(
@@ -800,6 +1038,18 @@ Estado: ${sale.status}
       return;
     }
 
+    for (const id of selectedIds) {
+      const sale = mutationSale(id);
+      if (!sale) return;
+      const blocked = salesStatusBlockReason(sale, newStatus);
+      if (blocked) { toast.error(blocked); return; }
+      if (await routeSaleLifecycle(sale, newStatus, () => toast.error("Reactiva las ventas con IMEI/series individualmente para seleccionar y confirmar sus unidades."))) return;
+    }
+    if (!canMutateBulkSelection() || !canMutateIds(selectedIds)) return;
+
+    const selectedSales = selectedIds.map((id) => mutationSale(id)!);
+    const blocked = selectedSales.map((sale) => salesStatusBlockReason(sale, newStatus) || assignmentBlockReason(sale, newStatus)).find(Boolean);
+    if (blocked) { toast.error(blocked); return; }
     setIsBulkLoading(true);
     const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
 
@@ -816,6 +1066,9 @@ Estado: ${sale.status}
         uInfo.userId
           ? { userId: uInfo.userId, sellerName: uInfo.sellerName || "" }
           : undefined,
+        undefined,
+        undefined,
+        new Set(selectedSales.filter(requiresAuthenticatedSaleStatusMutation).map((sale) => sale.id)),
       );
 
       if (result.success.length > 0) {
@@ -844,8 +1097,10 @@ Estado: ${sale.status}
   };
 
   const handleBulkReprogramar = async (callbackAtDate: Date) => {
+    if (!canMutateBulkSelection()) return;
     const selectedIds = Array.from(selectedSaleIds);
     if (selectedIds.length === 0) return;
+    if (!canMutateIds(selectedIds)) return;
 
     const callbackAt = callbackAtDate.toISOString();
     setIsBulkLoading(true);
@@ -863,6 +1118,7 @@ Estado: ${sale.status}
           : undefined,
         "SCHEDULED",
         callbackAt,
+        new Set(sales.filter(requiresAuthenticatedSaleStatusMutation).map((sale) => sale.id)),
       );
       if (result.success.length > 0)
         toast.success(`${result.success.length} pedido(s) reprogramados`);
@@ -883,9 +1139,10 @@ Estado: ${sale.status}
     saleId: string,
     callbackAt: Date,
   ) => {
+    if (!mutationSale(saleId)) return;
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
+      await axiosAuth.patch(
+        saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", saleId, sales.find((sale) => sale.id === saleId)),
         {
           callStatus: "SCHEDULED",
           callbackAt: callbackAt.toISOString(),
@@ -899,15 +1156,16 @@ Estado: ${sale.status}
     }
   };
 
-  const bulkExtraActions: BulkExtraAction[] = [
+  const bulkExtraActions: BulkExtraAction[] = canMutateIds(Array.from(selectedSaleIds)) ? [
     {
       value: BULK_ACTION_REPROGRAMAR,
       label: "Reprogramar",
       colorClassName: "text-violet-600",
     },
-  ];
+  ] : [];
 
   const handleBulkExtraAction = (actionValue: string) => {
+    if (!canMutateBulkSelection() || !canMutateIds(Array.from(selectedSaleIds))) return;
     if (actionValue === BULK_ACTION_REPROGRAMAR) setBulkRescheduleOpen(true);
   };
 
@@ -982,6 +1240,7 @@ Estado: ${sale.status}
 
   // Save tracking fields for an order - only if changed
   const handleSaveTracking = async (orderId: string) => {
+    if (!mutationSale(orderId)) return;
     if (!hasTrackingChanges(orderId)) return;
 
     const data = trackingEdits[orderId];
@@ -989,8 +1248,8 @@ Estado: ${sale.status}
 
     setSavingOrderId(orderId);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      await axiosAuth.patch(
+        saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", orderId, sales.find((sale) => sale.id === orderId)),
         {
           externalTrackingNumber: data.externalTrackingNumber,
           shippingCode: data.shippingCode,
@@ -1023,6 +1282,7 @@ Estado: ${sale.status}
   };
 
   const handleEnviarLima = async (saleId: string) => {
+    if (!mutationSale(saleId)) return;
     setSendingLimaId(saleId);
     try {
       await enviarPedidoALima(saleId);
@@ -1036,7 +1296,7 @@ Estado: ${sale.status}
   };
 
   const handleReassignSeller = async (sellerId: string, sellerName: string) => {
-    if (!saleToReassign) return;
+    if (!saleToReassign || !mutationSale(saleToReassign.id)) return;
     setIsReassigningLoading(true);
     try {
       await reassignSeller(
@@ -1065,6 +1325,8 @@ Estado: ${sale.status}
   const renderPendientesTable = (
     data: Sale[],
     showTracking: boolean = false,
+    // status: carga o error de la consulta, como primera fila de la tabla
+    extra: { status?: ReactNode; showDaysWithoutMovement?: boolean } = {},
   ) => (
     <div className="overflow-x-auto rounded-xl border border-border/70">
       <Table className="min-w-[1200px]">
@@ -1074,12 +1336,14 @@ Estado: ${sale.status}
             <TableHead className="w-9 min-w-9 2xl:sticky 2xl:left-0 2xl:z-20 bg-muted" />
             <TableHead className="w-[45px] min-w-[45px] 2xl:sticky 2xl:left-9 2xl:z-20 bg-muted">
               <Checkbox
+                disabled={!queryReady || data.length === 0}
                 checked={
                   data.length > 0 &&
                   data.every((s) => selectedSaleIds.has(s.id))
                 }
                 onCheckedChange={(checked) => {
                   if (checked) {
+                    if (!canMutateIds(data.map((sale) => sale.id))) return;
                     const next = new Set(selectedSaleIds);
                     data.forEach((s) => next.add(s.id));
                     setSelectedIdsForActiveTab(next);
@@ -1119,6 +1383,11 @@ Estado: ${sale.status}
           </TableRow>
         </TableHeader>
         <TableBody>
+          {extra.status && (
+            <TableRow>
+              <TableCell colSpan={PENDIENTES_COLSPAN}>{extra.status}</TableCell>
+            </TableRow>
+          )}
           {data.map((sale) => {
             const isExpanded = expandedRows.has(sale.id);
             return (
@@ -1143,12 +1412,14 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:left-9 w-[45px] min-w-[45px] 2xl:z-10 bg-background">
                     <Checkbox
+                      disabled={!queryReady}
                       checked={selectedSaleIds.has(sale.id)}
                       onCheckedChange={() => toggleSale(sale.id)}
                     />
                   </TableCell>
                   <TableCell className="font-medium 2xl:sticky 2xl:left-[81px] w-[100px] min-w-[100px] 2xl:z-10 bg-background text-xs">
                     <div className="flex items-center gap-1">
+                      {hasUnitAssignment(sale) && <span className="text-xs text-amber-700">{unitAssignmentLabel(sale)}</span>}
                       {sale.hasStockIssue && (
                         <span title="Stock insuficiente - No se puede preparar">
                           <AlertTriangle className="h-4 w-4 text-amber-500" />
@@ -1221,7 +1492,14 @@ Estado: ${sale.status}
                     </DropdownMenu>
                   </TableCell>
                   {/* Columnas scrolleables */}
-                  <TableCell className="text-xs">{sale.date}</TableCell>
+                  <TableCell className="text-xs">
+                    {sale.date}
+                    {extra.showDaysWithoutMovement && (
+                      <div className="mt-1 font-semibold text-amber-600 dark:text-amber-400">
+                        {formatDaysWithoutMovement(daysWithoutMovement(sale.updatedAt, today))}
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell className="text-xs">
                     <div>{sale.paymentMethod}</div>
                     <div className="text-muted-foreground">
@@ -1230,14 +1508,15 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell className="text-xs text-right tabular-nums">
                     <div className="font-semibold">
-                      {formatSoles(sale.total)}
+                      {formatSalesMoney(sale.total, sale.currency)}
                     </div>
                     <div className="text-green-600">
-                      Adel: {formatSoles(sale.advancePayment)}
+                      Adel: {formatSalesMoney(sale.advancePayment, sale.currency)}
                     </div>
                     <div className="text-red-600">
-                      Debe: {formatSoles(sale.pendingPayment)}
+                      Debe: {formatSalesMoney(sale.pendingPayment, sale.currency)}
                     </div>
+                    <FinancialStatusBadge pendingAmount={sale.pendingPayment} />
                   </TableCell>
                   <TableCell className="text-xs">
                     <span className="inline-flex items-center gap-1">
@@ -1267,7 +1546,7 @@ Estado: ${sale.status}
                       options={getAvailableStatuses(
                         sale.status,
                         sale.salesRegion,
-                      )}
+                      ).filter((status) => status === sale.status || (!salesStatusBlockReason(sale, status) && !assignmentBlockReason(sale, status)))}
                       extraAction={{
                         value: "__REPROGRAMAR__",
                         label: "Reprogramar",
@@ -1275,15 +1554,22 @@ Estado: ${sale.status}
                       onStatusChange={(status) =>
                         handleChangeStatus(sale.id, status)
                       }
-                      onExtraAction={() => setRescheduleDialogSaleId(sale.id)}
+                      onExtraAction={() => { if (mutationSale(sale.id)) setRescheduleDialogSaleId(sale.id); }}
                     />
+                    {salesPhysicalOperationBlockReason(sale) && <p className="mt-1 text-[10px] text-muted-foreground">{salesPhysicalOperationBlockReason(sale)}{sale.commercialLeadId && sale.commercialStockState === "DEFERRED" && !canPrepareDeferredManualOrder(sale) && <Link className="ml-1 font-semibold text-violet-700 underline" href={commercialLeadHref(sale.commercialLeadId)}>Preparar reserva de stock</Link>}</p>}
                     <ReprogramadoChip sale={sale} />
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-[140px] w-[100px] min-w-[100px] 2xl:z-10 bg-background">
-                    <OrderDetailButton
-                      orderId={sale.id}
-                      orderNumber={sale.orderNumber}
-                    />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={orderDetailButtonClassName}
+                        aria-label={`Ver detalle del pedido ${sale.orderNumber}`}
+                        onClick={() => { if (visibleSale(sale.id)) { setDetailOrderScope(pageSessionScope); setDetailOrderId(sale.id); } }}
+                      >
+                        <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+                        Ver
+                      </Button>
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-0 w-[140px] min-w-[140px] 2xl:z-10 bg-background text-right">
                     <div className="flex gap-1 justify-end">
@@ -1369,7 +1655,7 @@ Estado: ${sale.status}
               </Fragment>
             );
           })}
-          {data.length === 0 && (
+          {data.length === 0 && !extra.status && (
             <TableRow>
               <TableCell
                 colSpan={PENDIENTES_COLSPAN}
@@ -1387,7 +1673,7 @@ Estado: ${sale.status}
   // Tabla para Anulados (con delete)
   const ANULADOS_COLSPAN = 12;
 
-  const renderAnuladosTable = (data: Sale[], showTracking: boolean = false) => (
+  const renderAnuladosTable = (data: Sale[], showTracking: boolean = false, status?: ReactNode) => (
     <div className="overflow-x-auto rounded-xl border border-border/70">
       <Table className="min-w-[1050px]">
         <TableHeader>
@@ -1396,12 +1682,14 @@ Estado: ${sale.status}
             <TableHead className="w-9 min-w-9 2xl:sticky 2xl:left-0 2xl:z-20 bg-muted" />
             <TableHead className="w-[45px] min-w-[45px] 2xl:sticky 2xl:left-9 2xl:z-20 bg-muted">
               <Checkbox
+                disabled={!queryReady || data.length === 0}
                 checked={
                   data.length > 0 &&
                   data.every((s) => selectedSaleIds.has(s.id))
                 }
                 onCheckedChange={(checked) => {
                   if (checked) {
+                    if (!canMutateIds(data.map((sale) => sale.id))) return;
                     const next = new Set(selectedSaleIds);
                     data.forEach((s) => next.add(s.id));
                     setSelectedIdsForActiveTab(next);
@@ -1438,6 +1726,11 @@ Estado: ${sale.status}
           </TableRow>
         </TableHeader>
         <TableBody>
+          {status && (
+            <TableRow>
+              <TableCell colSpan={ANULADOS_COLSPAN}>{status}</TableCell>
+            </TableRow>
+          )}
           {data.map((sale) => {
             const isExpanded = expandedRows.has(sale.id);
             return (
@@ -1462,6 +1755,7 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:left-9 w-[45px] min-w-[45px] 2xl:z-10 bg-background">
                     <Checkbox
+                      disabled={!queryReady}
                       checked={selectedSaleIds.has(sale.id)}
                       onCheckedChange={() => toggleSale(sale.id)}
                     />
@@ -1487,14 +1781,15 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell className="text-xs text-right tabular-nums">
                     <div className="font-semibold">
-                      {formatSoles(sale.total)}
+                      {formatSalesMoney(sale.total, sale.currency)}
                     </div>
                     <div className="text-green-600">
-                      Adel: {formatSoles(sale.advancePayment)}
+                      Adel: {formatSalesMoney(sale.advancePayment, sale.currency)}
                     </div>
                     <div className="text-red-600">
-                      Debe: {formatSoles(sale.pendingPayment)}
+                      Debe: {formatSalesMoney(sale.pendingPayment, sale.currency)}
                     </div>
+                    <FinancialStatusBadge pendingAmount={sale.pendingPayment} />
                   </TableCell>
                   <TableCell className="text-xs">
                     <span className="inline-flex items-center gap-1">
@@ -1533,10 +1828,16 @@ Estado: ${sale.status}
                     />
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-[140px] w-[100px] min-w-[100px] 2xl:z-10 bg-background">
-                    <OrderDetailButton
-                      orderId={sale.id}
-                      orderNumber={sale.orderNumber}
-                    />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={orderDetailButtonClassName}
+                        aria-label={`Ver detalle del pedido ${sale.orderNumber}`}
+                        onClick={() => { if (visibleSale(sale.id)) { setDetailOrderScope(pageSessionScope); setDetailOrderId(sale.id); } }}
+                      >
+                        <FileText className="h-3.5 w-3.5" aria-hidden="true" />
+                        Ver
+                      </Button>
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-0 w-[140px] min-w-[140px] 2xl:z-10 bg-background text-right">
                     <div className="flex gap-1 justify-end">
@@ -1590,7 +1891,7 @@ Estado: ${sale.status}
               </Fragment>
             );
           })}
-          {data.length === 0 && (
+          {data.length === 0 && !status && (
             <TableRow>
               <TableCell
                 colSpan={ANULADOS_COLSPAN}
@@ -1609,102 +1910,88 @@ Estado: ${sale.status}
      Filters
   ----------------------------------------- */
 
-  const allPendientes = useMemo(
-    () => sales.filter((s) => isPendienteStatus(s.status)),
-    [sales],
-  );
-  const allAnulados = useMemo(
-    () => sales.filter((s) => s.status === ORDER_STATUS.ANULADO),
-    [sales],
-  );
+  // El servidor filtra todo el negocio antes de devolver esta página.
+  const allPendientes = activeTab === "pendientes" ? sales : NO_SALES;
+  const allAnulados = activeTab === "anuladas" ? sales : NO_SALES;
+  const allTodas = activeTab === "todas" ? sales : NO_SALES;
 
-  const pendientes = useMemo(
-    () => applyFilters(allPendientes, filtersPendiente),
-    [allPendientes, filtersPendiente],
-  );
+  // Recientes y Antiguos comparten la selección de Pendientes: se vacía al cambiar
+  const changePendientesView = (view: "recientes" | "antiguos") => {
+    if (view === pendientesView) return;
+    setPendientesView(view);
+    setSelectedPendientesIds(new Set());
+  };
+  // Lo mismo al cambiar el período de Anuladas o Todas: se vacía la selección de esa pestaña
+  const changeAnuladasWindow = (period: DateWindow) => {
+    setAnuladasWindow(period);
+    setSelectedAnuladosIds(new Set());
+  };
+  const changeTodasWindow = (period: DateWindow) => {
+    setTodasWindow(period);
+    setSelectedTodasIds(new Set());
+  };
 
-  const anulados = useMemo(
-    () => applyFilters(allAnulados, filtersAnulado),
-    [allAnulados, filtersAnulado],
-  );
-
-  const todasLasVentas = useMemo(
-    () => applyFilters(sales, filtersAll),
-    [sales, filtersAll],
-  );
-
-  // Opciones del filtro Producto: los productos de toda la pestaña (no solo
-  // de lo filtrado/paginado), así elegir uno no achica la lista.
-  const productOptionsPendientes = useMemo(
-    () => buildProductFilterOptions(allPendientes),
-    [allPendientes],
-  );
-  const productOptionsAnulados = useMemo(
-    () => buildProductFilterOptions(allAnulados),
-    [allAnulados],
-  );
-  const productOptionsAll = useMemo(
-    () => buildProductFilterOptions(sales),
-    [sales],
-  );
-
-  const kpis = useMemo(() => {
-    const salesInRange =
-      kpiDateFrom || kpiDateTo
-        ? applyFilters(sales, {
-            ...emptySalesFilters,
-            dateFrom: kpiDateFrom,
-            dateTo: kpiDateTo,
-          })
-        : sales;
-
-    const pendientesInRange = salesInRange.filter((s) =>
-      isPendienteStatus(s.status),
-    );
-    const anuladosInRange = salesInRange.filter(
-      (s) => s.status === ORDER_STATUS.ANULADO,
-    );
-    const porCobrar = pendientesInRange.reduce(
-      (acc, s) => acc + s.pendingPayment,
-      0,
-    );
-    const adelantado = pendientesInRange.reduce(
-      (acc, s) => acc + s.advancePayment,
-      0,
-    );
-    return {
-      pendientes: pendientesInRange.length,
-      anuladas: anuladosInRange.length,
-      porCobrar,
-      adelantado,
-    };
-  }, [sales, kpiDateFrom, kpiDateTo]);
+  const pendientes = allPendientes;
+  const anulados = allAnulados;
+  const todasLasVentas = allTodas;
+  const productOptionsPendientes = salesPage?.metadata?.products ?? [];
+  const productOptionsAnulados = productOptionsPendientes;
+  const productOptionsAll = productOptionsPendientes;
+  const kpis = {
+    pendientes: salesPage?.kpis?.pendientes ?? 0,
+    anuladas: salesPage?.kpis?.anuladas ?? 0,
+    currencyBalances: salesPage?.kpis?.amounts ?? [],
+  };
+  const pendientesPage = pagePendientes;
+  const anuladosPage = pageAnulados;
+  const todasPage = pageAll;
 
   const selectedPendientesCount = pendientes.filter((s) =>
     selectedSaleIds.has(s.id),
   ).length;
 
+  // Carga o error de la consulta de una pestaña: se ve en su tabla, sin tapar la página
+  const renderQueryStatus = (
+    // ready: false mientras la lista no cubre el período pedido (loader en vez de filas)
+    state: { loading: boolean; error: boolean; retry: () => void; ready?: boolean },
+    loadingLabel: string,
+    errorText: string,
+  ) =>
+    state.loading || (state.ready === false && !state.error) ? (
+      <PowipPulseLoader label={loadingLabel} />
+    ) : state.error ? (
+      <div role="alert" className="flex flex-col items-center gap-3 py-6 text-sm text-muted-foreground">
+        {errorText}
+        <Button variant="outline" size="sm" onClick={state.retry}>
+          Reintentar
+        </Button>
+      </div>
+    ) : null;
+
+  // KPIs: "…" mientras cargan y "—" si fallan (con el aviso arriba). Nunca un 0 sin datos.
+  const kpiText = (value: string | number) =>
+    ventas.kpis.loading ? "…" : ventas.kpis.error ? "—" : value;
+
+  // Número de Todas: el conteo del servidor mientras su lista no está lista; después, lo que muestra
+  const todasTabCount = ventas.todas.count;
+
   if (!auth) return null;
 
   return (
-    <OrderDetailModalProvider
-      onOrderUpdated={refetchOrders}
-      showTracking
-      onOpenCreateGuide={(order) => setCreateGuideOrder(order)}
-    >
-      <div className="flex h-screen w-full bg-slate-100 dark:bg-background">
-        <main className="flex-1 p-6 space-y-6 overflow-auto">
+      <div className="flex h-screen min-w-0 w-full bg-slate-100 dark:bg-background">
+        <main className="min-w-0 flex-1 p-3 sm:p-6 space-y-6 overflow-auto">
           <HeaderConfig
             title="Ventas"
             description="Gestión de ventas pendientes y anuladas — todo en un solo panel."
           >
             <Button
               variant="outline"
-              className="w-full lg:w-auto"
-              onClick={() => setImportModalOpen(true)}
+              className="h-auto min-h-9 w-full max-w-full whitespace-normal text-center lg:w-auto"
+              disabled={!importStore}
+              onClick={() => { if (importStore) setImportModalOpen(true); }}
             >
               <UploadCloud className="h-4 w-4 mr-2" />
-              Importar Excel
+              {importStore ? `Importar Excel a ${importStore.name}` : "Selecciona una tienda para importar"}
             </Button>
             <Link href="/registrar-venta" className="w-full lg:w-auto">
               <Button
@@ -1734,6 +2021,14 @@ Estado: ${sale.status}
               }}
             />
           </div>
+          {!ventas.kpis.loading && ventas.kpis.error && (
+            <div role="alert" className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              No se pudieron calcular las estadísticas.
+              <Button variant="outline" size="sm" onClick={ventas.kpis.retry}>
+                Reintentar
+              </Button>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-4">
             <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
               <CardContent className="p-5">
@@ -1741,7 +2036,7 @@ Estado: ${sale.status}
                   <div>
                     <p className="text-sm text-muted-foreground">Pendientes</p>
                     <h3 className="mt-2 text-3xl font-bold tracking-tight">
-                      {kpis.pendientes}
+                      {kpiText(kpis.pendientes)}
                     </h3>
                   </div>
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -1757,7 +2052,7 @@ Estado: ${sale.status}
                   <div>
                     <p className="text-sm text-muted-foreground">Anuladas</p>
                     <h3 className="mt-2 text-3xl font-bold tracking-tight">
-                      {kpis.anuladas}
+                      {kpiText(kpis.anuladas)}
                     </h3>
                   </div>
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400">
@@ -1773,7 +2068,7 @@ Estado: ${sale.status}
                   <div>
                     <p className="text-sm text-muted-foreground">Por cobrar</p>
                     <h3 className="mt-2 text-3xl font-bold tracking-tight">
-                      {formatSoles(kpis.porCobrar)}
+                      {ventas.kpis.loading || ventas.kpis.error ? kpiText("") : kpis.currencyBalances.length ? kpis.currencyBalances.map((group) => <span key={group.currency ?? "UNKNOWN"} className="block">{formatSalesMoney(group.pending, group.currency)}</span>) : "0.00"}
                     </h3>
                   </div>
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
@@ -1789,7 +2084,7 @@ Estado: ${sale.status}
                   <div>
                     <p className="text-sm text-muted-foreground">Adelantado</p>
                     <h3 className="mt-2 text-3xl font-bold tracking-tight">
-                      {formatSoles(kpis.adelantado)}
+                      {ventas.kpis.loading || ventas.kpis.error ? kpiText("") : kpis.currencyBalances.length ? kpis.currencyBalances.map((group) => <span key={group.currency ?? "UNKNOWN"} className="block">{formatSalesMoney(group.paid, group.currency)}</span>) : "0.00"}
                     </h3>
                   </div>
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400">
@@ -1802,38 +2097,46 @@ Estado: ${sale.status}
 
           {/* Tabs para Ventas */}
           <Tabs
-            defaultValue="pendientes"
-            className="w-full"
+            value={activeTab}
+            className="min-w-0 w-full"
             onValueChange={setActiveTab}
           >
-            <TabsList className="mb-4">
+            <TabsList className="mb-4 h-auto max-w-full flex-wrap justify-start">
               <TabsTrigger value="pendientes">
                 Ventas Pendientes
                 <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
-                  {pendientes.length}
+                  {salesPage?.counts?.pendientes ?? "—"}
                 </span>
               </TabsTrigger>
               <TabsTrigger value="anuladas">
                 Ventas Anuladas
+                {ventas.anuladas.ready && (
                 <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
-                  {anulados.length}
+                  {salesPage?.counts?.anuladas ?? "—"}
                 </span>
+                )}
               </TabsTrigger>
               <TabsTrigger value="todas">
                 Todas las Ventas
+                {todasTabCount !== null && (
                 <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
-                  {todasLasVentas.length}
+                  {todasTabCount}
                 </span>
+                )}
               </TabsTrigger>
             </TabsList>
 
             {/* Tab Pendientes */}
             <TabsContent value="pendientes">
               <Card>
-                <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  <CardTitle>Ventas Pendientes</CardTitle>
-                  <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                <CardHeader className="flex min-w-0 flex-col gap-4">
+                  <div>
+                    <CardTitle>Ventas Pendientes</CardTitle>
+                    <p className="mt-1 text-sm text-muted-foreground">Los leads de Atención aparecen en Ventas cuando se confirma la compra.</p>
+                  </div>
+                  <div className="flex min-w-0 w-full flex-wrap items-center gap-2 [&>button]:h-auto [&>button]:min-h-9 [&>button]:whitespace-normal">
                     <BulkStatusSelect
+                      disabled={!queryReady}
                       selectedCount={selectedSaleIds.size}
                       availableStatuses={bulkAvailableStatuses}
                       onStatusChange={handleBulkStatusChange}
@@ -1843,7 +2146,7 @@ Estado: ${sale.status}
                     />
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto"
+                      className="w-full sm:w-auto"
                       disabled={selectedPendientesCount === 0 || isPrinting}
                       onClick={handleBulkPrint}
                     >
@@ -1854,7 +2157,7 @@ Estado: ${sale.status}
                     </Button>
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto text-green-600 border-green-200 hover:bg-green-50"
+                      className="w-full sm:w-auto text-green-600 border-green-200 hover:bg-green-50"
                       disabled={selectedPendientesCount === 0}
                       onClick={() => handleBulkWhatsApp(pendientes)}
                     >
@@ -1863,17 +2166,18 @@ Estado: ${sale.status}
                     </Button>
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto"
+                      className="w-full sm:w-auto"
                       disabled={selectedPendientesCount === 0}
                       onClick={() => handleCopySelected(pendientes)}
                     >
                       <Copy className="h-4 w-4 mr-2" />
                       Copiar seleccionados ({selectedPendientesCount})
                     </Button>
-                    {auth?.user?.role === "ADMIN" && (
+                    {canExport && (
                       <Button
                         variant="outline"
-                        className="w-full lg:w-auto"
+                        className="w-full sm:w-auto"
+                        disabled={!queryReady || isExporting}
                         onClick={() =>
                           handleExportExcel(
                             pendientes,
@@ -1889,20 +2193,49 @@ Estado: ${sale.status}
                   </div>
                 </CardHeader>
                 <CardContent>
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <Button
+                      variant={pendientesView === "recientes" ? "default" : "outline"}
+                      size="sm"
+                      className="h-8"
+                      aria-pressed={pendientesView === "recientes"}
+                      onClick={() => changePendientesView("recientes")}
+                    >
+                      Recientes
+                    </Button>
+                    <Button
+                      variant={pendientesView === "antiguos" ? "default" : "outline"}
+                      size="sm"
+                      className="h-8"
+                      aria-pressed={pendientesView === "antiguos"}
+                      disabled={ventas.antiguos.count === 0}
+                      onClick={() => changePendientesView("antiguos")}
+                    >
+                      {ventas.antiguos.count
+                        ? `Pendientes antiguos (${ventas.antiguos.count})`
+                        : "Pendientes antiguos"}
+                    </Button>
+                    <span className="text-xs text-muted-foreground">
+                      Los pendientes de más de 30 días están en Pendientes antiguos
+                    </span>
+                  </div>
                   <SalesTableFilters
                     filters={filtersPendiente}
                     onFiltersChange={setFiltersPendiente}
                     showProductFilter
                     availableProducts={productOptionsPendientes}
                   />
-                  {renderPendientesTable(pendientes, activeTab === "todas")}
+                  {renderPendientesTable(pendientes, activeTab === "todas", {
+                    showDaysWithoutMovement: pendientesView === "antiguos",
+                    status: renderQueryStatus(queryState, pendientesView === "antiguos" ? "Cargando pendientes antiguos..." : "Cargando ventas...", pendientesView === "antiguos" ? "No se pudieron cargar los pendientes antiguos." : "No se pudieron cargar las ventas del alcance seleccionado."),
+                  })}
                 </CardContent>
                 <Pagination
-                  currentPage={1}
-                  totalPages={Math.ceil(pendientes.length / 10) || 1}
-                  totalItems={pendientes.length}
+                  currentPage={pendientesPage}
+                  totalPages={salesPage?.totalPages ?? 1}
+                  totalItems={salesPage?.total ?? 0}
                   itemsPerPage={10}
-                  onPageChange={() => {}}
+                  onPageChange={setPagePendientes}
                   itemName="ventas"
                 />
               </Card>
@@ -1911,10 +2244,11 @@ Estado: ${sale.status}
             {/* Tab Anuladas */}
             <TabsContent value="anuladas">
               <Card>
-                <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <CardHeader className="flex min-w-0 flex-col gap-4">
                   <CardTitle>Ventas Anuladas</CardTitle>
-                  <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                  <div className="flex min-w-0 w-full flex-wrap items-center gap-2 [&>button]:h-auto [&>button]:min-h-9 [&>button]:whitespace-normal">
                     <BulkStatusSelect
+                      disabled={!ventas.anuladas.ready}
                       selectedCount={selectedSaleIds.size}
                       availableStatuses={bulkAvailableStatuses}
                       onStatusChange={handleBulkStatusChange}
@@ -1924,7 +2258,7 @@ Estado: ${sale.status}
                     />
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto"
+                      className="w-full sm:w-auto"
                       disabled={
                         anulados.filter((s) => selectedSaleIds.has(s.id))
                           .length === 0 || isPrinting
@@ -1939,7 +2273,7 @@ Estado: ${sale.status}
                     </Button>
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto text-green-600 border-green-200 hover:bg-green-50"
+                      className="w-full sm:w-auto text-green-600 border-green-200 hover:bg-green-50"
                       disabled={
                         anulados.filter((s) => selectedSaleIds.has(s.id))
                           .length === 0
@@ -1952,7 +2286,7 @@ Estado: ${sale.status}
                     </Button>
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto"
+                      className="w-full sm:w-auto"
                       disabled={
                         anulados.filter((s) => selectedSaleIds.has(s.id))
                           .length === 0
@@ -1963,10 +2297,11 @@ Estado: ${sale.status}
                       Copiar seleccionados (
                       {anulados.filter((s) => selectedSaleIds.has(s.id)).length})
                     </Button>
-                    {auth?.user?.role === "ADMIN" && (
+                    {canExport && (
                       <Button
                         variant="outline"
-                        className="w-full lg:w-auto"
+                        className="w-full sm:w-auto"
+                        disabled={!queryReady || isExporting}
                         onClick={() =>
                           handleExportExcel(
                             anulados,
@@ -1987,15 +2322,16 @@ Estado: ${sale.status}
                     onFiltersChange={setFiltersAnulado}
                     showProductFilter
                     availableProducts={productOptionsAnulados}
+                    dateWindow={{ value: anuladasWindow, today, defaultFromDate: ventasRecentFrom(today), onChange: changeAnuladasWindow }}
                   />
-                  {renderAnuladosTable(anulados, activeTab === "todas")}
+                  {renderAnuladosTable(anulados, activeTab === "todas", renderQueryStatus(ventas.anuladas, "Cargando ventas...", "No se pudieron cargar las ventas de este período."))}
                 </CardContent>
                 <Pagination
-                  currentPage={1}
-                  totalPages={Math.ceil(anulados.length / 10) || 1}
-                  totalItems={anulados.length}
+                  currentPage={anuladosPage}
+                  totalPages={salesPage?.totalPages ?? 1}
+                  totalItems={salesPage?.total ?? 0}
                   itemsPerPage={10}
-                  onPageChange={() => {}}
+                  onPageChange={setPageAnulados}
                   itemName="ventas"
                 />
               </Card>
@@ -2004,10 +2340,14 @@ Estado: ${sale.status}
             {/* Tab Todas las Ventas */}
             <TabsContent value="todas">
               <Card>
-                <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  <CardTitle>Todas las Ventas</CardTitle>
-                  <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                <CardHeader className="flex min-w-0 flex-col gap-4">
+                  <div>
+                    <CardTitle>Todas las Ventas</CardTitle>
+                    <p className="mt-1 text-sm text-muted-foreground">Incluye los pedidos que están en Atención al cliente.</p>
+                  </div>
+                  <div className="flex min-w-0 w-full flex-wrap items-center gap-2 [&>button]:h-auto [&>button]:min-h-9 [&>button]:whitespace-normal">
                     <BulkStatusSelect
+                      disabled={!ventas.todas.ready}
                       selectedCount={selectedSaleIds.size}
                       availableStatuses={bulkAvailableStatuses}
                       onStatusChange={handleBulkStatusChange}
@@ -2017,7 +2357,7 @@ Estado: ${sale.status}
                     />
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto"
+                      className="w-full sm:w-auto"
                       disabled={
                         todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
                           .length === 0 || isPrinting
@@ -2036,7 +2376,7 @@ Estado: ${sale.status}
                     </Button>
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto text-green-600 border-green-200 hover:bg-green-50"
+                      className="w-full sm:w-auto text-green-600 border-green-200 hover:bg-green-50"
                       disabled={
                         todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
                           .length === 0
@@ -2053,7 +2393,7 @@ Estado: ${sale.status}
                     </Button>
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto"
+                      className="w-full sm:w-auto"
                       disabled={
                         todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
                           .length === 0
@@ -2068,10 +2408,11 @@ Estado: ${sale.status}
                       }
                       )
                     </Button>
-                    {auth?.user?.role === "ADMIN" && (
+                    {canExport && (
                       <Button
                         variant="outline"
-                        className="w-full lg:w-auto"
+                        className="w-full sm:w-auto"
+                        disabled={!queryReady || isExporting}
                         onClick={() =>
                           handleExportExcel(
                             todasLasVentas,
@@ -2095,21 +2436,18 @@ Estado: ${sale.status}
                     }}
                     showProductFilter
                     availableProducts={productOptionsAll}
+                    dateWindow={{ value: todasWindow, today, defaultFromDate: ventasRecentFrom(today), onChange: changeTodasWindow }}
                   />
                   {renderPendientesTable(
-                    todasLasVentas.slice(
-                      (pageAll - 1) * ITEMS_PER_PAGE,
-                      pageAll * ITEMS_PER_PAGE,
-                    ),
+                    todasLasVentas,
                     activeTab === "todas",
+                    { status: renderQueryStatus({ loading: todasLoading, error: todasError, retry: ventas.todas.retry, ready: ventas.todas.ready }, "Cargando ventas...", "No se pudieron cargar las ventas de este período.") },
                   )}
                 </CardContent>
                 <Pagination
-                  currentPage={pageAll}
-                  totalPages={
-                    Math.ceil(todasLasVentas.length / ITEMS_PER_PAGE) || 1
-                  }
-                  totalItems={todasLasVentas.length}
+                  currentPage={todasPage}
+                  totalPages={salesPage?.totalPages ?? 1}
+                  totalItems={salesPage?.total ?? 0}
                   itemsPerPage={ITEMS_PER_PAGE}
                   onPageChange={setPageAll}
                   itemName="ventas"
@@ -2119,21 +2457,37 @@ Estado: ${sale.status}
           </Tabs>
         </main>
 
-        {createGuideOrder && (
+        {detailOrderId && detailOrderIsVisible && (
+          <Suspense fallback={null}>
+            <SalesOrderDetailModal
+              open
+              orderId={detailOrderId}
+              onClose={() => setDetailOrderId(null)}
+              onOrderUpdated={refetchOrders}
+              showTracking
+              onOpenCreateGuide={(order) => { if (mutationSale(order.id)) setCreateGuideOrder(order); }}
+            />
+          </Suspense>
+        )}
+
+        {createGuideOrder && mutationSale(createGuideOrder.id) && (
           <CreateGuideModal
             open={!!createGuideOrder}
             onClose={() => setCreateGuideOrder(null)}
-            storeId={selectedStoreId || ""}
+            storeId={createGuideOrder.storeId}
             isLoading={isCreatingGuide}
             selectedOrders={[
               {
                 id: createGuideOrder.id,
+                storeId: createGuideOrder.storeId,
+                inventoryId: createGuideOrder.inventoryId,
+                stockStoreId: createGuideOrder.stockStoreId,
                 orderNumber: createGuideOrder.orderNumber,
                 clientName: createGuideOrder.customer.fullName,
                 address: createGuideOrder.customer.address,
                 district: createGuideOrder.customer.district,
                 total: Number(createGuideOrder.grandTotal),
-                pendingPayment: getPendingPayment(createGuideOrder),
+                pendingPayment: orderFinancialState(createGuideOrder).pendingAmount,
                 zone: createGuideOrder.customer.zone,
               },
             ]}
@@ -2142,7 +2496,7 @@ Estado: ${sale.status}
         )}
 
         <CancellationModal
-          open={cancellationModalOpen}
+          open={cancellationModalOpen && !!saleToCancel && !!mutationSale(saleToCancel.id)}
           onClose={() => {
             setCancellationModalOpen(false);
             setSaleToCancel(null);
@@ -2153,7 +2507,7 @@ Estado: ${sale.status}
         />
 
         <CommentsTimelineModal
-          open={commentsModalOpen}
+          open={commentsModalOpen && !!selectedSaleForComments && !!mutationSale(selectedSaleForComments.id)}
           onClose={() => {
             setCommentsModalOpen(false);
             setSelectedSaleForComments(null);
@@ -2163,7 +2517,7 @@ Estado: ${sale.status}
         />
 
         <PaymentVerificationModal
-          open={paymentModalOpen}
+          open={paymentModalOpen && !!selectedSaleForPayment && !!mutationSale(selectedSaleForPayment.id)}
           onClose={() => {
             setPaymentModalOpen(false);
             setSelectedSaleForPayment(null);
@@ -2173,8 +2527,11 @@ Estado: ${sale.status}
           onPaymentUpdated={refetchOrders}
         />
 
+        {lifecycle && mutationSale(lifecycle.orderId) && <SaleUnitLifecycleModal open {...lifecycle} onClose={() => setLifecycle(null)} onUpdated={refetchOrders} />}
         <BulkPrintPreviewDialog
-          open={printPreviewOpen}
+          key={printScope}
+          scopeKey={printScope}
+          open={printPreviewOpen && pendingPrintScope === printScope && canMutateIds(pendingPrintSales.map((sale) => sale.id))}
           orders={pendingPrintSales}
           company={auth?.company}
           fetchReceipt={fetchPrintReceipt}
@@ -2240,24 +2597,24 @@ Estado: ${sale.status}
           </AlertDialogContent>
         </AlertDialog>
 
-        <ImportSalesModal
+        {importStore && <ImportSalesModal
           isOpen={importModalOpen}
           onClose={() => setImportModalOpen(false)}
           onSuccess={() => {
             refetchOrders();
             setImportModalOpen(false);
           }}
-          storeId={selectedStoreId || ""}
+          storeId={importStore.id}
           userId={auth.user?.id}
           sellerName={
             auth.user
               ? `${auth.user.name || ""} ${auth.user.surname || ""}`.trim()
               : undefined
           }
-        />
+        />}
 
         <RescheduleDialog
-          open={rescheduleDialogSaleId !== null}
+          open={rescheduleDialogSaleId !== null && !!mutationSale(rescheduleDialogSaleId)}
           onOpenChange={(open) => {
             if (!open) setRescheduleDialogSaleId(null);
           }}
@@ -2280,7 +2637,7 @@ Estado: ${sale.status}
 
         {saleToReassign && (
           <ReassignSellerModal
-            open={reassignSellerModalOpen}
+            open={reassignSellerModalOpen && !!mutationSale(saleToReassign.id)}
             onClose={() => {
               setReassignSellerModalOpen(false);
               setSaleToReassign(null);
@@ -2293,6 +2650,10 @@ Estado: ${sale.status}
           />
         )}
       </div>
-    </OrderDetailModalProvider>
   );
+}
+
+export default function VentasPage() {
+  const { scopeKey } = useBusinessScope();
+  return <VentasContent key={scopeKey} />;
 }

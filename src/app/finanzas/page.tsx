@@ -1,7 +1,10 @@
 "use client";
+import LeadPaymentsTab from "@/components/finanzas/LeadPaymentsTab";
+import { commercialLeadHref } from "@/utils/commercialOrders";
+import { formatSalesMoney } from "@/utils/salesMoney";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Pencil,
   ArrowLeft,
@@ -24,7 +27,12 @@ import { Label } from "@/components/ui/label";
 
 import { OrderHeader, OrderStatus, SubEstadoCc } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { useQuery } from "@tanstack/react-query";
+import { useBusinessScope } from "@/contexts/BusinessScopeContext";
+import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+import { useBusinessGuides } from "@/hooks/useBusinessGuides";
 import {
   OrderDetailButton,
   OrderDetailModalProvider,
@@ -32,7 +40,7 @@ import {
 import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
 import {
   SalesTableFilters,
@@ -52,6 +60,7 @@ import { openPrintWindow, printReceipts, ReceiptData } from "@/utils/bulk-receip
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
+import { saleReceiptUrl, type UnitAssignmentState } from "@/services/saleTrackingService";
 
 /* -----------------------------------------
    Types
@@ -85,8 +94,17 @@ const PAGOS_PENDIENTES_EXCLUDED_STATUSES: OrderStatus[] = [
 
 const CC_CONFIRMED_SUBESTADOS: SubEstadoCc[] = ["confirmado", "reprogramado"];
 
-export interface Sale {
+export interface Sale extends UnitAssignmentState {
+  currency?: string | null;
+  commercialStage?: "LEAD" | "SALE" | null;
+  commercialLeadId?: string | null;
+  commercialStockState?: "DEFERRED" | "QUEUED" | "PRESERVED" | "NOT_REQUIRED" | null;
+
+  items?: OrderHeader["items"];
   id: string;
+  storeId: string;
+  inventoryId?: string | null;
+  stockStoreId?: string | null;
   orderNumber: string;
   clientName: string;
   phoneNumber: string;
@@ -124,6 +142,7 @@ export interface Sale {
 
 /** Forma mínima de una guía de ms-courier usada solo para enriquecer la tabla. */
 interface ShippingGuideLite {
+  id: string;
   orderIds?: string[];
   deliveryType?: string;
   courierName?: string;
@@ -152,6 +171,16 @@ function mapOrderToSale(order: OrderHeader): Sale {
 
   return {
     id: order.id,
+    currency: order.currency, commercialStage: order.commercialStage, commercialLeadId: order.commercialLeadId, commercialStockState: order.commercialStockState,
+    unitAssignmentStatus: order.unitAssignmentStatus,
+    unitCatalogValidated: order.unitCatalogValidated,
+    hasTrackedUnits: order.hasTrackedUnits,
+    stockVersion: order.stockVersion,
+    confirmedStockVersion: order.confirmedStockVersion,
+    items: order.items,
+    storeId: order.storeId,
+    inventoryId: order.inventoryId,
+    stockStoreId: order.stockStoreId,
     orderNumber: order.orderNumber,
     clientName: customer?.fullName ?? "—",
     phoneNumber: customer?.phoneNumber ?? "999",
@@ -192,9 +221,9 @@ function mapOrderToSale(order: OrderHeader): Sale {
    Page
 ----------------------------------------- */
 
-export default function FinanzasPage() {
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [loading, setLoading] = useState(true);
+export default function FinanzasPage() { return <Suspense fallback={<PowipPulseLoader label="Cargando Finanzas…" />}><FinanzasContent /></Suspense>; }
+
+function FinanzasContent() {
 
   // Filtros avanzados
   const [filtersPagosPendientes, setFiltersPagosPendientes] =
@@ -222,96 +251,76 @@ export default function FinanzasPage() {
   const [selectedSaleForPayment, setSelectedSaleForPayment] =
     useState<Sale | null>(null);
 
-  const { auth, selectedStoreId } = useAuth();
+  const { auth } = useAuth();
+  const printScope = `${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}`;
+  const activePrintScope = useRef(printScope);
+  activePrintScope.current = printScope;
+  const printEpoch = useRef(0);
+  const printWindows = useRef(new Set<Window>());
+  useEffect(() => {
+    setIsPrinting(false);
+    setSelectedSaleIds(new Set());
+    return () => {
+      printEpoch.current += 1;
+      for (const win of printWindows.current) win.close();
+      printWindows.current.clear();
+    };
+  }, [printScope]);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedLeadId = searchParams.get("leadId") ?? "";
+  const [leadPaymentsOpen, setLeadPaymentsOpen] = useState(searchParams.get("tab") === "anticiposLeads");
 
-  const fetchOrders = useCallback(async () => {
-    try {
-      // Las guías (llamada #3) son solo enriquecimiento: si cae ms-courier, el
-      // resto de Finanzas debe seguir disponible. Por eso allSettled y no all.
-      const [ordersResult, leadsCodResult, guidesResult] =
-        await Promise.allSettled([
-          axios.get<OrderHeader[]>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-          ),
-          axios.get<OrderHeader[]>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}/leads-cod`,
-          ),
-          axios.get<ShippingGuideLite[]>(
-            `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
-          ),
-        ]);
+  const { storeIds, canFetch, scopeKey } = useBusinessScope();
+  const ordersQuery = useBusinessOrders(undefined, undefined, {includeCcLeads: true, includeCommercialLeads: true});
+  const invalidateBusinessData = useInvalidateBusinessData();
+  const guidesQuery = useBusinessGuides<ShippingGuideLite>();
+  // Los leads COD confirmados/reprogramados siguen participando en revisión de pagos.
+  const leadsQuery = useQuery({
+    queryKey: ["business-finance-cod-leads", scopeKey],
+    enabled: canFetch,
+    queryFn: async ({ signal }) => {
+      const responses = await Promise.all(storeIds.map((storeId) => axiosAuth.get<OrderHeader[]>(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${storeId}/leads-cod`, { signal },
+      )));
+      return responses.flatMap((response) => response.data ?? []);
+    },
+    retry: false,
+  });
+  const loading = ordersQuery.loading || (canFetch && leadsQuery.isPending) || guidesQuery.loading;
+  const loadError = ordersQuery.error || leadsQuery.isError;
+  const sales = useMemo(() => {
+    if (loadError) return [];
+    const ordersById = new Map<string, OrderHeader>();
+    ordersQuery.orders.forEach((order) => ordersById.set(order.id, order));
+    (leadsQuery.data ?? []).forEach((order) => ordersById.set(order.id, order));
+    const guideMap = new Map<string, ShippingGuideLite>();
+    guidesQuery.guides.forEach((guide) => guide.orderIds?.forEach((id) => guideMap.set(id, guide)));
+    return Array.from(ordersById.values()).map(mapOrderToSale).filter((sale) => sale.status !== "ANULADO").map((sale) => {
+      const guide = guideMap.get(sale.id);
+      return { ...sale, shippingDeliveryType: guide?.deliveryType, shippingCourierName: guide?.courierName };
+    });
+  }, [ordersQuery.orders, leadsQuery.data, guidesQuery.guides, loadError]);
+  const refetchOrders = ordersQuery.refetch;
+  const refetchGuides = guidesQuery.refetch;
+  const refetchLeads = leadsQuery.refetch;
+  const fetchOrders = useCallback(() => {
+    void refetchOrders();
+    void refetchGuides();
+    void refetchLeads();
+    void invalidateBusinessData();
+  }, [refetchOrders, refetchGuides, refetchLeads, invalidateBusinessData]);
+  useEffect(() => { setSelectedSaleIds(new Set()); }, [scopeKey]);
+  useEffect(() => { if (loadError) toast.error("No se pudieron cargar los datos de Finanzas. Reintentá."); }, [loadError]);
+  useEffect(() => {
+    if (guidesQuery.error) toast.warning("No se pudo cargar info de couriers; el resto de Finanzas está disponible.");
+  }, [guidesQuery.error]);
 
-      // Fuentes de verdad de la tabla: si falla cualquiera, no hay nada que mostrar.
-      if (
-        ordersResult.status === "rejected" ||
-        leadsCodResult.status === "rejected"
-      ) {
-        console.error(
-          "Error fetching orders",
-          ordersResult.status === "rejected" ? ordersResult.reason : undefined,
-          leadsCodResult.status === "rejected"
-            ? leadsCodResult.reason
-            : undefined,
-        );
-        toast.error("No se pudieron cargar los datos de Finanzas. Reintentá.");
-        setSales([]);
-        return;
-      }
-
-      const ordersById = new Map<string, OrderHeader>();
-      (ordersResult.value.data ?? []).forEach((order) =>
-        ordersById.set(order.id, order),
-      );
-      (leadsCodResult.value.data ?? []).forEach((order) =>
-        ordersById.set(order.id, order),
-      );
-      const allOrders = Array.from(ordersById.values());
-
-      const mappedSales = allOrders.map(mapOrderToSale);
-
-      // Enriquecimiento con guías: opcional. Si falló, se omite y se avisa.
-      const guideMap = new Map<string, ShippingGuideLite>();
-      if (guidesResult.status === "fulfilled") {
-        const allGuides: ShippingGuideLite[] = guidesResult.value.data ?? [];
-        allGuides.forEach((g) => {
-          if (Array.isArray(g.orderIds)) {
-            g.orderIds.forEach((oid) => guideMap.set(oid, g));
-          }
-        });
-      } else {
-        console.error("Error fetching shipping guides", guidesResult.reason);
-        toast.warning(
-          "No se pudo cargar info de couriers; el resto de Finanzas está disponible.",
-        );
-      }
-
-      // Enriquecer ventas con info de courier
-      const enrichedSales = mappedSales.map((sale) => {
-        const guide = guideMap.get(sale.id);
-        if (guide) {
-          return {
-            ...sale,
-            shippingDeliveryType: guide.deliveryType || undefined,
-            shippingCourierName: guide.courierName || undefined,
-          };
-        }
-        return sale;
-      });
-
-      // Excluir pedidos anulados: no corresponde revisarlos en ninguna vista de Finanzas
-      const activeSales = enrichedSales.filter(
-        (sale) => sale.status !== ORDER_STATUS.ANULADO,
-      );
-
-      setSales(activeSales);
-    } catch (error) {
-      console.error("Error fetching orders", error);
-      toast.error("No se pudieron cargar los datos de Finanzas. Reintentá.");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedStoreId]);
+  useEffect(() => {
+    const refresh = (event: Event) => { if (auth?.company?.id && (event as CustomEvent<{companyId?: string}>).detail?.companyId === auth.company.id) fetchOrders(); };
+    window.addEventListener("commercial-leads:changed", refresh);
+    return () => window.removeEventListener("commercial-leads:changed", refresh);
+  }, [auth?.company?.id, fetchOrders]);
 
   // Helper: info del usuario actual para trazabilidad
   const getUserInfo = useCallback(
@@ -330,6 +339,7 @@ export default function FinanzasPage() {
       newStatus: OrderStatus,
       cancellationReason?: CancellationReason,
     ) => {
+      if (sales.find((sale) => sale.id === saleId)?.commercialStage === "LEAD") { toast.error("Gestiona la compra desde el Lead; el pago no confirma la venta."); return; }
       // Si el nuevo estado es ANULADO y no hay motivo, abrir modal
       if (newStatus === "ANULADO" && !cancellationReason) {
         const sale = sales.find((s) => s.id === saleId);
@@ -349,7 +359,7 @@ export default function FinanzasPage() {
           payload.cancellationReason = cancellationReason;
         }
 
-        await axios.patch(
+        await axiosAuth.patch(
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
           payload,
         );
@@ -365,11 +375,11 @@ export default function FinanzasPage() {
 
   const handleConfirmCancellation = useCallback(
     async (reason: CancellationReason, notes?: string) => {
-      if (!saleToCancel) return;
+      if (!saleToCancel || saleToCancel.commercialStage === "LEAD") return;
 
       setIsCancelling(true);
       try {
-        await axios.patch(
+        await axiosAuth.patch(
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleToCancel.id}`,
           {
             status: "ANULADO",
@@ -403,17 +413,12 @@ export default function FinanzasPage() {
     });
   }, []);
 
-  useEffect(() => {
-    if (!selectedStoreId) return;
-    setLoading(true);
-    fetchOrders();
-  }, [selectedStoreId, fetchOrders]);
-
   const handleWhatsApp = (
     phoneNumber: string,
     orderNumber?: string,
     clientName?: string,
     pendingAmount?: number,
+    currency?: string | null,
   ) => {
     const phone = phoneNumber.replace(/\D/g, "");
     const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
@@ -424,7 +429,7 @@ export default function FinanzasPage() {
       message += `Te contactamos por tu pedido ${orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}\n\n`;
     }
     if (pendingAmount && pendingAmount > 0) {
-      message += `Tienes un pago pendiente de S/${pendingAmount.toFixed(2)} por verificar.`;
+      message += `Tienes un pago pendiente de ${formatSalesMoney(pendingAmount,currency)} por verificar.`;
     }
 
     window.open(
@@ -460,6 +465,7 @@ export default function FinanzasPage() {
           sale.orderNumber,
           sale.clientName,
           sale.pendingPayment,
+          sale.currency,
         );
       }, index * 600);
     });
@@ -477,15 +483,15 @@ export default function FinanzasPage() {
       .map((sale) => {
         const mapsLine = formatGoogleMapsClipboardLine(sale.googleMapsUrl);
         return `
-Venta ${sale.orderNumber}
+${sale.commercialStage === "LEAD" ? "Lead" : "Venta"} ${sale.orderNumber}
 Cliente: ${sale.clientName}
 Teléfono: ${sale.phoneNumber}
 Distrito: ${sale.district}
 Dirección: ${sale.address}${mapsLine ? `\n${mapsLine}` : ""}
 Fecha: ${sale.date}
-Total Venta: $${sale.total.toFixed(2)}
-Adelanto: $${sale.advancePayment.toFixed(2)}
-Por Cobrar: $${sale.pendingPayment.toFixed(2)}
+Total: ${formatSalesMoney(sale.total,sale.currency)}
+Adelanto: ${formatSalesMoney(sale.advancePayment,sale.currency)}
+Por Cobrar: ${formatSalesMoney(sale.pendingPayment,sale.currency)}
 Estado: ${sale.status}
 `.trim();
       })
@@ -503,7 +509,12 @@ Estado: ${sale.status}
     }
 
     const exportData: SaleExportData[] = salesList.map((s) => ({
+      commercialStage:s.commercialStage, commercialLeadId:s.commercialLeadId, currency:s.currency,
       orderNumber: s.orderNumber,
+      storeId: s.storeId,
+      storeName: auth?.company?.stores?.find((store) => store.id === s.storeId)?.name,
+      inventoryId: s.inventoryId,
+      stockStoreId: s.stockStoreId,
       clientName: s.clientName,
       phoneNumber: s.phoneNumber,
       documentType: s.documentType,
@@ -532,6 +543,7 @@ Estado: ${sale.status}
   // Impresión masiva genérica
   const handleBulkPrintForStatus = async (salesList: Sale[]) => {
     const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
+    if (selectedSales.some((sale) => sale.commercialStage === "LEAD")) { toast.error("Los Leads no emiten comprobantes de venta. Consulta sus pagos desde la bandeja."); return; }
 
     if (selectedSales.length === 0) {
       toast.warning("No hay pedidos seleccionados para imprimir");
@@ -545,6 +557,9 @@ Estado: ${sale.status}
       toast.error("No se pudo abrir la ventana de impresión. Verifica que los popups no estén bloqueados.");
       return;
     }
+    printWindows.current.add(printWindow);
+    const epoch = printEpoch.current;
+    const isCurrent = () => epoch === printEpoch.current && printScope === activePrintScope.current;
 
     setIsPrinting(true);
     toast.info(`Preparando ${selectedSales.length} recibo(s) para imprimir...`);
@@ -552,24 +567,29 @@ Estado: ${sale.status}
     try {
       const receipts = await Promise.all(
         selectedSales.map(async (sale) => {
-          const res = await axios.get<ReceiptData>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
+          const res = await axiosAuth.get<ReceiptData>(
+            saleReceiptUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", sale.id, sale),
           );
+          if (res.data?.orderId !== sale.id) throw new Error("El comprobante no corresponde al pedido seleccionado.");
           return res.data;
         }),
       );
 
       // Imprimir usando la utilidad compartida (formato compacto con QR)
-      await printReceipts(receipts, auth?.company, printWindow);
+      if (!isCurrent()) return;
+      await printReceipts(receipts, auth?.company, printWindow, isCurrent);
+      if (!isCurrent()) return;
 
       toast.success(`${selectedSales.length} recibo(s) enviados a imprimir`);
       setSelectedSaleIds(new Set());
     } catch (error) {
       printWindow.close();
+      if (!isCurrent()) return;
       console.error("Error en impresión masiva", error);
       toast.error("Error al preparar los recibos para imprimir");
     } finally {
-      setIsPrinting(false);
+      printWindows.current.delete(printWindow);
+      if (isCurrent()) setIsPrinting(false);
     }
   };
 
@@ -633,6 +653,7 @@ Estado: ${sale.status}
             </TableCell>
             <TableCell className="font-medium w-[100px] min-w-[100px]">
               {sale.orderNumber}
+              {sale.commercialStage === "LEAD" && <Link className="block text-xs underline" href={sale.commercialLeadId ? commercialLeadHref(sale.commercialLeadId) : "/leads-comerciales"}>Lead pendiente de compra</Link>}
             </TableCell>
             <TableCell className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-10 bg-background border-r">
               {sale.clientName}
@@ -667,6 +688,7 @@ Estado: ${sale.status}
             <TableCell className="w-[120px] min-w-[120px]">
               <select
                 value={sale.status}
+                disabled={sale.commercialStage === "LEAD"}
                 onChange={(e) =>
                   handleChangeStatus(sale.id, e.target.value as OrderStatus)
                 }
@@ -821,6 +843,7 @@ Estado: ${sale.status}
             </TableCell>
             <TableCell className="font-medium w-[100px] min-w-[100px]">
               {sale.orderNumber}
+              {sale.commercialStage === "LEAD" && <Link className="block text-xs underline" href={sale.commercialLeadId ? commercialLeadHref(sale.commercialLeadId) : "/leads-comerciales"}>Lead pendiente de compra</Link>}
             </TableCell>
             <TableCell className="w-[100px] min-w-[100px] text-xs text-muted-foreground truncate max-w-[100px]">
               {sale.externalId || "-"}
@@ -929,15 +952,17 @@ Estado: ${sale.status}
     const filtered = sales.filter(
       (s) =>
         s.hasPendingPayments &&
-        !PAGOS_PENDIENTES_EXCLUDED_STATUSES.includes(s.status) &&
-        (!s.subEstadoCc || CC_CONFIRMED_SUBESTADOS.includes(s.subEstadoCc)),
+        (s.commercialStage === "LEAD" ? s.status !== "ANULADO" : !PAGOS_PENDIENTES_EXCLUDED_STATUSES.includes(s.status)) &&
+        // Una venta confirmada por el vendedor (SALE) conserva su subestado de CC hasta que CC
+        // confirma el despacho; su pago ya es de una venta real y /ventas lo muestra.
+        (s.commercialStage === "LEAD" || s.commercialStage === "SALE" || !s.subEstadoCc || CC_CONFIRMED_SUBESTADOS.includes(s.subEstadoCc)),
     );
     return applyFilters(filtered, filtersPagosPendientes);
   }, [sales, filtersPagosPendientes]);
 
   const entregados = useMemo(() => {
     const statusFiltered = sales.filter(
-      (s) => s.status === ORDER_STATUS.ENTREGADO,
+      (s) => s.commercialStage !== "LEAD" && s.status === ORDER_STATUS.ENTREGADO,
     );
     return applyFilters(statusFiltered, filtersEntregado);
   }, [sales, filtersEntregado]);
@@ -955,15 +980,19 @@ Estado: ${sale.status}
       <div className="flex h-screen w-full">
         <main className="flex-1 p-6 space-y-6 overflow-auto">
           <div className="flex flex-col items-center mb-6">
+            <Button variant="outline" onClick={() => setLeadPaymentsOpen((open) => !open)}>Anticipos de Leads</Button>
             <HeaderConfig
               title="Finanzas"
-              description="Gestión de pagos pendientes y ventas entregadas"
+              description="Pagos de ventas, anticipos de Leads y liquidaciones"
             />
           </div>
 
+          {leadPaymentsOpen && <LeadPaymentsTab requestedLeadId={requestedLeadId} onPaymentUpdated={fetchOrders} />}
           {/* Tabs para Finanzas */}
           {loading ? (
             <PowipPulseLoader label="Cargando finanzas..." />
+          ) : loadError ? (
+            <div role="alert" className="space-y-3"><p>No se pudieron cargar los datos de Finanzas del alcance seleccionado.</p><Button onClick={fetchOrders}>Reintentar</Button></div>
           ) : (
           <Tabs defaultValue="pagosPendientes" className="w-full">
             <TabsList className="mb-4">
@@ -1080,6 +1109,7 @@ Estado: ${sale.status}
                         <TableRow key={sale.id}>
                           <TableCell className="font-medium w-[100px] min-w-[100px]">
                             {sale.orderNumber}
+              {sale.commercialStage === "LEAD" && <Link className="block text-xs underline" href={sale.commercialLeadId ? commercialLeadHref(sale.commercialLeadId) : "/leads-comerciales"}>Lead pendiente de compra</Link>}
                           </TableCell>
                           <TableCell className="w-[100px] min-w-[100px] text-xs text-muted-foreground truncate max-w-[100px]">
                             {sale.externalId || "-"}
@@ -1111,7 +1141,7 @@ Estado: ${sale.status}
                             <Badge variant="outline">{sale.status}</Badge>
                           </TableCell>
                           <TableCell className="w-[100px] min-w-[100px]">
-                            S/{sale.total.toFixed(2)}
+                            {formatSalesMoney(sale.total, sale.currency)}
                           </TableCell>
                           <TableCell className="w-[140px] min-w-[140px]">
                             <Badge className="bg-amber-100 text-amber-800">
@@ -1119,7 +1149,7 @@ Estado: ${sale.status}
                             </Badge>
                           </TableCell>
                           <TableCell className="font-medium text-amber-600 w-[140px] min-w-[140px]">
-                            S/{sale.pendingPaymentsAmount.toFixed(2)}
+                            {formatSalesMoney(sale.pendingPaymentsAmount, sale.currency)}
                           </TableCell>
                           <TableCell className="w-[120px] min-w-[120px] text-xs">
                             {sale.sellerName || "—"}
@@ -1150,6 +1180,7 @@ Estado: ${sale.status}
                                     sale.orderNumber,
                                     sale.clientName,
                                     sale.pendingPaymentsAmount,
+                                    sale.currency,
                                   )
                                 }
                               >

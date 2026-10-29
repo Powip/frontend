@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 
 /**
  * Ventas › "Todas las Ventas" — filtro por producto + exportación.
@@ -15,6 +15,9 @@ jest.mock("axios", () => ({
   patch: jest.fn(),
   post: jest.fn(),
 }));
+jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: jest.requireMock("axios") }));
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: "company-1:business:store-1", storeIds: ["store-1"] }) }));
+jest.mock("@/hooks/useInvalidateBusinessData", () => ({ useInvalidateBusinessData: () => jest.fn() }));
 jest.mock("sonner", () => ({
   toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn(), info: jest.fn() },
 }));
@@ -27,7 +30,14 @@ jest.mock("@/services/atencionClienteService", () => ({
   enviarPedidoALima: jest.fn(),
   reassignSeller: jest.fn(),
 }));
-jest.mock("@/hooks/useOrdersByStore", () => ({ useOrdersByStore: jest.fn() }));
+jest.mock("@/hooks/useBusinessOrders", () => ({ useBusinessOrders: jest.fn() }));
+jest.mock("@/hooks/useBusinessSalesPage", () => ({ useBusinessSalesPage: jest.fn() }));
+jest.mock("@/services/businessSalesService", () => ({ getBusinessSalesExport: jest.fn() }));
+jest.mock("@/hooks/useBusinessOrdersCount", () => ({
+  useBusinessOrdersCount: () => ({ count: 0, loading: false, error: false, retry: jest.fn(), refetch: jest.fn() }),
+}));
+// Hoy fijo en 09-26: los pedidos del 09-01 al 09-25 entran en la ventana de 30 días.
+jest.mock("@/lib/peruDate", () => ({ ...jest.requireActual("@/lib/peruDate"), todayInPeru: () => "2026-09-26" }));
 jest.mock("@/utils/exportSalesExcel", () => ({
   ...jest.requireActual("@/utils/exportSalesExcel"),
   exportSalesToExcel: jest.fn(),
@@ -41,13 +51,18 @@ jest.mock("@/components/modals/CancellationModal", () => ({ __esModule: true, de
 jest.mock("@/components/modals/ReassignSellerModal", () => ({ __esModule: true, default: () => null }));
 
 import { useAuth } from "@/contexts/AuthContext";
-import { useOrdersByStore } from "@/hooks/useOrdersByStore";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+import { useBusinessSalesPage } from "@/hooks/useBusinessSalesPage";
+import { getBusinessSalesExport } from "@/services/businessSalesService";
+import { useMemo } from "react";
+import { applyFilters, buildProductFilterOptions } from "@/components/ventas/SalesTableFilters";
+import { isInPeruWindow } from "@/lib/peruDate";
 import { exportSalesToExcel } from "@/utils/exportSalesExcel";
 import type { OrderHeader, OrderItem } from "@/interfaces/IOrder";
 import VentasPage from "../page";
 
 const mockUseAuth = jest.mocked(useAuth);
-const mockUseOrdersByStore = jest.mocked(useOrdersByStore);
+const mockUseOrdersByStore = jest.mocked(useBusinessOrders);
 const mockExport = jest.mocked(exportSalesToExcel);
 
 function item(productVariantId: string, productName: string, talla: string, quantity: number): OrderItem {
@@ -96,6 +111,20 @@ const ORDERS = Array.from({ length: 25 }, (_, i) => {
   return makeOrder(n, n, POLO_L_ORDERS.has(n) ? [POLO_L(n), POLO_M(1)] : [POLO_M(2)]);
 });
 
+
+function serverFilter(orders: OrderHeader[], query: { dateFrom?: string; dateTo?: string; product?: string; search?: string }) {
+  return applyFilters(orders.map(order => ({
+    ...order, date: new Date(order.created_at).toLocaleDateString("es-AR"), total: Number(order.grandTotal),
+    pendingPayment: Number(order.grandTotal), advancePayment: 0, clientName: order.customer.fullName,
+    phoneNumber: order.customer.phoneNumber, deliveryType: order.deliveryType,
+  })), { ...emptySalesFiltersForTest, ...query }).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+}
+const emptySalesFiltersForTest = {
+  dateFrom: "", dateTo: "", search: "", paymentMethod: "", hasPendingBalance: "" as const,
+  region: "" as const, deliveryType: "" as const, courier: "", zone: "", hasGuide: "" as const,
+  source: "" as const, status: "" as const, salesChannel: "", product: "",
+};
+
 beforeEach(() => {
   jest.clearAllMocks();
   mockUseAuth.mockReturnValue({
@@ -106,9 +135,29 @@ beforeEach(() => {
     selectedStoreId: "store-1",
   } as unknown as ReturnType<typeof useAuth>);
   mockUseOrdersByStore.mockReturnValue({
-    data: ORDERS,
+    orders: ORDERS,
+    loading: false,
+    error: false,
+    retry: jest.fn(),
     refetch: jest.fn(),
-  } as unknown as ReturnType<typeof useOrdersByStore>);
+  } as unknown as ReturnType<typeof useBusinessOrders>);
+  jest.mocked(useBusinessSalesPage).mockImplementation((_ids, query) => {
+    const legacy = mockUseOrdersByStore();
+    const querySignature = JSON.stringify(query);
+    const response = useMemo(() => {
+      const applied = JSON.parse(querySignature) as typeof query;
+      const filtered = serverFilter(legacy.orders, applied);
+      return {
+        data: filtered.slice((applied.page - 1) * applied.limit, applied.page * applied.limit),
+        total: filtered.length, page: applied.page, totalPages: Math.max(1, Math.ceil(filtered.length / applied.limit)),
+        counts: { pendientes: legacy.orders.length, anuladas: 0, todas: legacy.orders.length, pendientesAntiguos: 0 },
+        kpis: { pendientes: legacy.orders.length, anuladas: 0, amounts: [] },
+        metadata: { products: buildProductFilterOptions(legacy.orders) },
+      };
+    }, [legacy.orders, querySignature]);
+    return { data: response, isFetching: legacy.loading, isError: legacy.error, isDebouncing: false, refetch: legacy.error ? legacy.retry : legacy.refetch } as unknown as ReturnType<typeof useBusinessSalesPage>;
+  });
+  jest.mocked(getBusinessSalesExport).mockImplementation(async (_ids, query) => serverFilter(mockUseOrdersByStore().orders, query));
 });
 
 async function openTodasWithFilters() {
@@ -132,7 +181,7 @@ describe("VentasPage — filtro por producto", () => {
     fireEvent.change(within(panel).getByLabelText("Producto"), { target: { value: "var-polo-l" } });
 
     expect(visibleOrders(panel)).toEqual(["ORD-024", "ORD-012", "ORD-002", "ORD-001"]);
-    expect(screen.getByRole("tab", { name: /Todas las Ventas/ })).toHaveTextContent(/Todas las Ventas\s*4$/);
+    expect(screen.getByRole("tab", { name: /Todas las Ventas/ })).toHaveTextContent(/Todas las Ventas\s*25$/);
   });
 
   it("mantiene el producto elegido al pasar de página", async () => {
@@ -158,7 +207,7 @@ describe("VentasPage — filtro por producto", () => {
 
     fireEvent.click(within(panel).getByRole("button", { name: /Exportar Excel/ }));
 
-    expect(mockExport).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mockExport).toHaveBeenCalledTimes(1));
     const [rows, prefix] = mockExport.mock.calls[0];
     expect(prefix).toBe("ventas_todas_las_ventas");
     expect(rows).toHaveLength(1);
@@ -173,16 +222,53 @@ describe("VentasPage — filtro por producto", () => {
   it("las unidades son las del producto filtrado en cada orden; sin filtro no se agregan", async () => {
     const panel = await openTodasWithFilters();
     fireEvent.click(within(panel).getByRole("button", { name: /Exportar Excel/ }));
+    await waitFor(() => expect(mockExport).toHaveBeenCalledTimes(1));
     expect(mockExport.mock.calls[0][0][0]).not.toHaveProperty("filteredProductUnits");
 
     fireEvent.change(within(panel).getByLabelText("Producto"), { target: { value: "var-polo-m" } });
+    await waitFor(() => expect(within(panel).getByRole("button", { name: /Exportar Excel/ })).toBeEnabled());
     fireEvent.click(within(panel).getByRole("button", { name: /Exportar Excel/ }));
 
+    await waitFor(() => expect(mockExport).toHaveBeenCalledTimes(2));
     const rows = mockExport.mock.calls[1][0];
     expect(rows).toHaveLength(25);
     const units = Object.fromEntries(rows.map((r) => [r.orderNumber, r.filteredProductUnits]));
     expect(units["ORD-012"]).toBe(1); // Polo L x12 + Polo M x1 → solo cuenta Polo M
     expect(units["ORD-003"]).toBe(2);
     expect(rows.every((r) => r.total === 100)).toBe(true);
+  });
+});
+
+
+describe('Ventas — lectura de todas las tiendas y origen', () => {
+  it('exporta pedidos de KUNCA y WEB con sus almacenes, aunque el encabezado seleccione KUNCA', async () => {
+    const orders = [
+      { ...makeOrder(1, 1, [POLO_M(1)]), storeId: 'KUNCA', inventoryId: 'shared-warehouse', stockStoreId: 'KUNCA' },
+      { ...makeOrder(2, 2, [POLO_L(1)]), storeId: 'WEB', inventoryId: 'shared-warehouse', stockStoreId: 'KUNCA' },
+    ];
+    mockUseOrdersByStore.mockReturnValue({ orders, loading: false, error: false, retry: jest.fn(), refetch: jest.fn() } as unknown as ReturnType<typeof useBusinessOrders>);
+    const panel = await openTodasWithFilters();
+    fireEvent.click(within(panel).getByRole('button', { name: /Exportar Excel/ }));
+    await waitFor(() => expect(mockExport).toHaveBeenCalledTimes(1));
+    expect(mockExport.mock.calls[0][0]).toEqual(expect.arrayContaining([
+      expect.objectContaining({ storeId: 'KUNCA', inventoryId: 'shared-warehouse', stockStoreId: 'KUNCA' }),
+      expect.objectContaining({ storeId: 'WEB', inventoryId: 'shared-warehouse', stockStoreId: 'KUNCA' }),
+    ]));
+  });
+
+  it('al fallar la lectura ofrece reintento sin mostrar una lista vacía como resultado', () => {
+    const retry = jest.fn();
+    mockUseOrdersByStore.mockReturnValue({ orders: [], loading: false, error: true, retry, refetch: jest.fn() } as unknown as ReturnType<typeof useBusinessOrders>);
+    render(<VentasPage />);
+    expect(within(screen.getByRole('tabpanel')).getByRole('alert')).toHaveTextContent('No se pudieron cargar');
+    expect(screen.getByRole('tab', { name: /Todas las Ventas/ })).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole('tabpanel')).getByRole('button', { name: 'Reintentar' }));
+    expect(retry).toHaveBeenCalled();
+  });
+
+  it('importar requiere una tienda destino válida y la muestra explícitamente', () => {
+    mockUseAuth.mockReturnValue({ auth: { user: { role: 'ADMIN' }, company: { id: 'company-1', stores: [{ id: 'KUNCA', name: 'KUNCA' }, { id: 'WEB', name: 'Kunca COD - web' }] } }, selectedStoreId: 'KUNCA' } as unknown as ReturnType<typeof useAuth>);
+    render(<VentasPage />);
+    expect(screen.getByRole('button', { name: 'Importar Excel a KUNCA' })).toBeEnabled();
   });
 });

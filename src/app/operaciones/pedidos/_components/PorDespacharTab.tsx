@@ -1,4 +1,7 @@
 "use client";
+import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
+
+import { OrderOriginLabel } from "../../_shared/OrderOriginLabel";
 
 import { WhatsAppLastNoticeIndicator } from "@/components/whatsapp/WhatsAppLastNoticeIndicator";
 import { useEffect, useMemo, useState } from "react";
@@ -910,7 +913,7 @@ export function PorDespacharTab({
                   <TableCell className="sticky left-8 z-10 w-32 min-w-32 bg-gray-100 font-medium dark:bg-gray-900">
                     <div className="flex items-center gap-1.5">
                       <StockIssueIcon show={sale.hasStockIssue} />
-                      {sale.orderNumber}
+                      {sale.orderNumber}<OrderOriginLabel {...sale} />
                     </div>
                   </TableCell>
                   <TableCell className="sticky left-40 z-10 w-28 min-w-28 bg-gray-100 text-sm dark:bg-gray-900">
@@ -953,7 +956,7 @@ export function PorDespacharTab({
                     </span>
                   </TableCell>
                   <TableCell className="text-sm tabular-nums">
-                    {money(sale.total)}
+                    {money(sale.total)}<div className="mt-1"><FinancialStatusBadge pendingAmount={sale.pendingPayment} /></div>
                     {sale.pendingPayment > 0 && (
                       <div className="text-xs font-semibold text-red-600">
                         Saldo {money(sale.pendingPayment)}

@@ -5,7 +5,9 @@ import { useRouter, usePathname } from "next/navigation";
 import { useEffect, ReactNode } from "react";
 import { getRoutePermissions, hasAnyPermission, isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
 import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
+import { isPublicLiveRoute } from "@/lib/liveRoutes";
 import { resolveSubscriptionRedirect } from "@/lib/subscriptionGate";
+import { resolveBusinessQuestionsRedirect } from "@/lib/businessQuestionsGate";
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -17,6 +19,7 @@ const PUBLIC_ROUTES = [
   "/restablecer-contrasena",
   "/subscriptions",
   "/rastreo",
+  "/c/",
   "/onboarding",
   "/p/",
 ];
@@ -31,7 +34,16 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const pathname = usePathname();
 
   // Verificar si es una ruta pública
-  const isPublicRoute = PUBLIC_ROUTES.some(route => pathname?.startsWith(route));
+  // El retorno OAuth debe conservar sus parámetros en memoria mientras se
+  // recupera la sesión. La API sigue exigiendo sesión, permisos y state válido.
+  const isAdvertisingCallback =
+    pathname === "/configuracion/integraciones/publicidad/callback";
+  const isPublicRoute =
+    isPublicLiveRoute(pathname ?? "") || isAdvertisingCallback || PUBLIC_ROUTES.some(route => pathname?.startsWith(route)) ||
+    pathname === "/partners/solicitud";
+  // Only skip the Company/plan gate. Session, route permissions and the portal's
+  // live /me authorization still apply; a similar prefix is not a Partners route.
+  const isPartnersRoute = /^\/partners(?:\/|$)/.test(pathname ?? "");
 
   // Obtener permisos requeridos para la ruta actual
   const requiredPermissions = pathname ? getRoutePermissions(pathname) : [];
@@ -47,16 +59,31 @@ export default function AuthGuard({ children }: AuthGuardProps) {
       : hasAnyPermission(auth?.user?.permissions, requiredPermissions));
 
   // Sin pago no se entra (FEAT-11): usuarios sin empresa van a elegir/pagar un
-  // plan o, si ya pagaron, a crear su empresa. Ver lib/subscriptionGate.ts.
-  const gateRedirect =
-    !loading && auth && !isPublicRoute && pathname
+  // plan o, si ya pagaron, a crear su empresa. Con empresa, el bloqueo de la
+  // migración a Flow (FEAT-25). Ver lib/subscriptionGate.ts.
+  const subscriptionRedirect =
+    !loading && auth && !isPublicRoute && !isPartnersRoute && pathname
       ? resolveSubscriptionRedirect({
           pathname,
           isSuperadmin: isSuperadmin(auth.user?.email),
           hasCompany: !!auth.company || !!auth.user?.companyId,
           subscriptionStatus: auth.subscription?.status,
+          access: auth.access,
         })
       : null;
+
+  const gateRedirect = subscriptionRedirect || (
+    !loading && auth && !isPublicRoute && !isPartnersRoute && pathname
+      ? resolveBusinessQuestionsRedirect({
+          pathname,
+          company: auth.company,
+          userId: auth.user.id,
+          userRole: auth.user.role,
+          userCompanyId: auth.user.companyId,
+          isSuperadmin: isSuperadmin(auth.user.email),
+        })
+      : null
+  );
 
   useEffect(() => {
     // Si no está cargando, no hay auth, y NO es ruta pública -> login

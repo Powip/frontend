@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import { useState, useMemo } from "react";
+import { useMetricOrders } from "@/hooks/useMetricOrders";
+import { MetricDataError } from "@/components/metrics/MetricDataError";
+import { useMetricGuides } from "@/hooks/useMetricShipping";
 import {
   ResponsiveContainer,
   BarChart,
@@ -20,7 +21,7 @@ import {
   Line,
 } from "recharts";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
-import { format, differenceInDays } from "date-fns";
+import { parseISO, format, differenceInDays } from "date-fns";
 import { ChevronDown, AlertTriangle } from "lucide-react";
 
 /* ─────────────────── Types ─────────────────── */
@@ -61,10 +62,13 @@ const COURIER_COLORS = [
 /* ─────────────────── Component ─────────────────── */
 
 export default function MetricasSeguimientosPage() {
-  const { selectedStoreId } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [orders, setOrders] = useState<any[]>([]);
-  const [guides, setGuides] = useState<ShippingGuide[]>([]);
+  const orderData = useMetricOrders();
+  const guideData = useMetricGuides<ShippingGuide>();
+  const { orders } = orderData;
+  const { guides } = guideData;
+  const loading = orderData.loading || guideData.loading;
+  const error = orderData.error || guideData.error;
+  const retry = () => { void orderData.retry(); void guideData.retry(); };
 
   // Date range
   const [fromDate, setFromDate] = useState<string>("");
@@ -77,37 +81,12 @@ export default function MetricasSeguimientosPage() {
 
   const periodDates = useMemo(() => {
     if (!fromDate || !toDate) return { from: new Date(), to: new Date() };
-    const from = new Date(fromDate);
+    const from = parseISO(fromDate);
     from.setHours(0, 0, 0, 0);
-    const to = new Date(toDate);
+    const to = parseISO(toDate);
     to.setHours(23, 59, 59, 999);
     return { from, to };
   }, [fromDate, toDate]);
-
-  // Fetch data
-  useEffect(() => {
-    if (!selectedStoreId) return;
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const [ordersRes, guidesRes] = await Promise.all([
-          axios.get(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
-          ),
-          axios.get<ShippingGuide[]>(
-            `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`
-          ),
-        ]);
-        setOrders(ordersRes.data || []);
-        setGuides(guidesRes.data || []);
-      } catch (error) {
-        console.error("Error fetching seguimiento data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [selectedStoreId, fromDate, toDate]);
 
   // Filter orders and guides for the period
   const periodOrders = useMemo(
@@ -229,11 +208,11 @@ export default function MetricasSeguimientosPage() {
     for (let i = diff; i >= 0; i--) {
       const d = new Date(periodDates.to);
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split("T")[0];
+      const dateStr = format(d, "yyyy-MM-dd");
       const dayLabel = d.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
 
       const dayGuides = periodGuides.filter((g) => {
-        const gd = new Date(g.created_at).toISOString().split("T")[0];
+        const gd = format(new Date(g.created_at), "yyyy-MM-dd");
         return gd === dateStr;
       });
 
@@ -264,9 +243,11 @@ export default function MetricasSeguimientosPage() {
     periodOrders
       .filter((o) => o.status === "ANULADO")
       .forEach((o) => {
-        const reason = typeof o.cancellationReason === "string"
-          ? o.cancellationReason
-          : o.cancellationReason?.reason || "Sin motivo";
+        const cancellationReason: unknown = o.cancellationReason;
+        const value = typeof cancellationReason === "object" && cancellationReason !== null && "reason" in cancellationReason
+          ? cancellationReason.reason
+          : cancellationReason;
+        const reason = typeof value === "string" && value ? value : "Sin motivo";
         reasons[reason] = (reasons[reason] || 0) + 1;
       });
 
@@ -300,6 +281,8 @@ export default function MetricasSeguimientosPage() {
       }))
       .sort((a, b) => b.tasa - a.tasa);
   }, [periodGuides]);
+
+  if (error) return <MetricDataError retry={() => { void retry(); }} />;
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-background min-h-screen">

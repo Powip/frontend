@@ -18,6 +18,8 @@ jest.mock('axios', () => {
   };
 });
 
+jest.mock('@/lib/axiosAuth', () => ({ __esModule: true, default: jest.requireMock('axios') }));
+
 jest.mock('sonner', () => ({
   toast: {
     success: jest.fn(),
@@ -50,6 +52,7 @@ jest.mock('@/components/ui/dialog', () => {
 jest.mock('@/utils/downloadNotaVentaPdf', () => ({ downloadNotaVentaPdf: jest.fn() }));
 jest.mock('@/utils/printOrderLabel', () => ({ printOrderLabel: jest.fn() }));
 jest.mock('@/hooks/useQrCode', () => ({ useQRCode: () => '' }));
+jest.mock('@/hooks/useCcPurchaseConfirmationAccess', () => ({ useCcPurchaseConfirmationAccess: () => ({ canConfirm: false }) }));
 jest.mock('@/services/shalomService', () => ({ trackShalomGuide: jest.fn() }));
 
 jest.mock('@/components/modals/CancellationModal', () => ({ __esModule: true, default: () => null }));
@@ -126,12 +129,12 @@ describe('CustomerServiceModal — visibilidad de la clave', () => {
     jest.clearAllMocks();
   });
 
-  it('showTracking=false con saldo pendiente: no muestra la clave y muestra el bloqueo', async () => {
-    mockApi(40);
+  it.each([40, 0.01])('showTracking=false con saldo %s: no muestra la clave y muestra el bloqueo', async (balance) => {
+    mockApi(balance);
     renderModal(false);
 
     expect(await screen.findByText('Clave de recojo bloqueada')).toBeInTheDocument();
-    expect(screen.getByText('Pendiente de cobro · S/ 40.00')).toBeInTheDocument();
+    expect(screen.getByText(`Pendiente de cobro · S/ ${balance.toFixed(2)}`)).toBeInTheDocument();
     expect(screen.getByText('TRK-1')).toBeInTheDocument();
     expect(screen.queryByText(CLAVE)).not.toBeInTheDocument();
   });

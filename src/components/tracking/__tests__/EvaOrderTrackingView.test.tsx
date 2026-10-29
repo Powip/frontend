@@ -30,7 +30,7 @@
  */
 
 import React from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render as renderRTL, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
@@ -379,6 +379,7 @@ describe('EvaOrderTrackingView', () => {
       await waitFor(() => {
         expect(mockAxiosGet).toHaveBeenCalledWith(
           'http://api-ventas/order-header/store/store-1',
+          expect.objectContaining({ headers: { Authorization: 'Bearer fake-token' }, signal: expect.any(AbortSignal) }),
         );
       });
     });
@@ -584,6 +585,7 @@ describe('EvaOrderTrackingView', () => {
         expect(mockAxiosGet).toHaveBeenNthCalledWith(
           2,
           'http://api-ventas/order-header/store/store-1',
+          expect.objectContaining({ headers: { Authorization: 'Bearer fake-token' }, signal: expect.any(AbortSignal) }),
         );
       });
     });
@@ -748,9 +750,7 @@ describe('EvaOrderTrackingView', () => {
       mockAxiosGet.mockRejectedValue(new Error('Network error'));
       renderView();
       await waitFor(() => {
-        expect(mockToast.error).toHaveBeenCalledWith(
-          expect.stringMatching(/error al cargar pedidos de eva courier/i),
-        );
+        expect(screen.getByRole("alert")).toHaveTextContent("No se pudieron cargar los pedidos.");
       });
     });
 
@@ -758,9 +758,9 @@ describe('EvaOrderTrackingView', () => {
       mockAxiosGet.mockRejectedValue(new Error('500'));
       renderView();
       await waitFor(() => {
-        expect(mockToast.error).toHaveBeenCalled();
+        expect(screen.getByRole("alert")).toHaveTextContent("No se pudieron cargar los pedidos.");
       });
-      expect(screen.getByText('No hay pedidos con courier EVA')).toBeInTheDocument();
+      expect(screen.queryByText('No hay pedidos con courier EVA')).not.toBeInTheDocument();
     });
   });
 
@@ -781,5 +781,45 @@ describe('EvaOrderTrackingView', () => {
 
       expect(screen.getByText(/1 registro$/)).toBeInTheDocument();
     });
+  });
+});
+
+// Exercise the shared business query with an isolated cache per render.
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+jest.mock("@/lib/axiosAuth", () => { const mod = require("axios"); return { __esModule: true, default: mod.__esModule ? mod.default : mod }; });
+jest.mock("@/contexts/BusinessScopeContext", () => ({
+  useBusinessScope: () => {
+    const { auth, selectedStoreId } = require("@/contexts/AuthContext").useAuth();
+    const storeIds = auth?.company?.stores?.length ? auth.company.stores.map((store: { id: string }) => store.id) : selectedStoreId ? [selectedStoreId] : [];
+    return { storeIds, scope: "business", canFetch: !!auth?.accessToken && storeIds.length > 0 };
+  },
+}));
+function render(node: ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  return renderRTL(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
+}
+
+
+describe('EVA tracking in the common business scope', () => {
+  it('loads sister-store shipments while the selected destination has no orders', async () => {
+    mockUseAuth.mockReturnValue({ ...MOCK_AUTH, selectedStoreId: 'empty', auth: { ...MOCK_AUTH.auth, company: { ...MOCK_AUTH.auth.company, stores: [{ id: 'empty', name: 'KUNCA' }, { id: 'web', name: 'WEB' }, { id: 'livii', name: 'LIVII' }] } } } as unknown as ReturnType<typeof useAuth>);
+    mockAxiosGet.mockImplementation((url: string) => Promise.resolve({ data: url.endsWith('/web') ? [{ ...ORDER_REGISTRADO, id: 'web-order', storeId: 'web', orderNumber: 'WEB-SHIPMENT' }] : url.endsWith('/livii') ? [{ ...ORDER_REGISTRADO, id: 'livii-order', storeId: 'livii', orderNumber: 'LIVII-SHIPMENT' }] : [] }));
+    renderView();
+    expect(await screen.findByText('WEB-SHIPMENT')).toBeInTheDocument();
+    expect(await screen.findByText('LIVII-SHIPMENT')).toBeInTheDocument();
+    expect(mockAxiosGet.mock.calls.map(([url]) => url).sort()).toEqual(['http://api-ventas/order-header/store/empty', 'http://api-ventas/order-header/store/livii', 'http://api-ventas/order-header/store/web']);
+    for (const [, config] of mockAxiosGet.mock.calls) {
+      expect(config.headers).toEqual({ Authorization: 'Bearer fake-token' });
+      expect(config.params.includeCcLeads).toBeUndefined();
+    }
+  });
+  it('retries a failed business request and then displays the returned shipment', async () => {
+    mockAxiosGet.mockRejectedValueOnce(new Error('Temporary failure')).mockResolvedValue({ data: [ORDER_REGISTRADO] });
+    renderView();
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudieron cargar los pedidos.');
+    await userEvent.click(screen.getByRole('button', { name: /reintentar/i }));
+    expect(await screen.findByText('ORD-001')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

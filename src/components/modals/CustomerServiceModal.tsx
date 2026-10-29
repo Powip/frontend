@@ -1,5 +1,21 @@
 ﻿"use client";
-import axios from "axios";
+import { canCompleteCustomerServicePurchaseData, canManageCustomerServiceOrder, isCustomerServicePurchasePending } from "@/utils/customerServiceOrderAccess";
+import { useCcPurchaseConfirmationAccess } from "@/hooks/useCcPurchaseConfirmationAccess";
+import axios from "@/lib/axiosAuth";
+import { canPrepareDeferredManualOrder, canShipCommercialOrder, isCommercialLeadOrder, salesStatusBlockReason, salesPhysicalOperationBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
+import { formatSalesMoney } from "@/utils/salesMoney";
+import { deliveryPaymentBlockReason, operationalStatus, receiptFinancialState } from "@/utils/orderState";
+import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
+import { buildPendingOrderDetail } from "./customerServiceOrderDetail";
+import { CcSaleConfirmationPanel } from "@/components/atencion-cliente/cc-v2/CcSaleConfirmationPanel";
+import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
+import { useReceiptPrintScope } from "@/hooks/useReceiptPrintScope";
+import { printCustomerShippingLabel } from "@/utils/printCustomerShippingLabel";
+import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
+import { SaleUnitLifecycleButtons } from "@/components/registrar-venta/SaleUnitLifecycleActions";
+import { UnitAssignmentNotice } from "@/components/registrar-venta/SaleUnitSelection";
+import { type SaleUnitLifecycleAction } from "@/services/saleUnitLifecycleService";
+import { assignmentBlockReason, requiresAuthenticatedSaleMutation, saleMutationUrl, saleReceiptUrl } from "@/services/saleTrackingService";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -94,6 +110,12 @@ import { GoogleMapsUrlField } from "@/components/shared/GoogleMapsUrlField";
 import { OrderEvidenceSection } from "@/components/orders/OrderEvidenceSection";
 import { OrderWhatsAppMessages } from "@/components/whatsapp/OrderWhatsAppMessages";
 
+type CustomerServiceReceipt = Omit<OrderReceipt, "items"> & {
+  items: (OrderReceipt["items"][number] & {
+    units?: { id: string; code: string; status: string }[];
+  })[];
+};
+
 interface LogEntry {
   id: number;
   orderId: string;
@@ -165,6 +187,8 @@ interface Props {
   orderId: string;
   onClose: () => void;
   onOrderUpdated?: () => void;
+  /** Return to the editor when this detail is already open from the order form. */
+  onEditOrder?: () => void;
   /** Hide call management section for non-customer-service views */
   hideCallManagement?: boolean;
   /** Optional shipping guide data to display in the modal */
@@ -186,6 +210,7 @@ export default function CustomerServiceModal({
   orderId,
   onClose,
   onOrderUpdated,
+  onEditOrder,
   hideCallManagement = false,
   shippingGuide: shippingGuideProp,
   showTracking = false,
@@ -195,8 +220,17 @@ export default function CustomerServiceModal({
 }: Props) {
   const router = useRouter();
   const { auth, hasPermission } = useAuth();
+  const routeSaleLifecycle = useSaleLifecycleRouting();
   const [loading, setLoading] = useState(false);
-  const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
+  const receiptKey = `${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}:${orderId}`;
+  const [receiptRevision, setReceiptRevision] = useState(0);
+  const beginPrint = useReceiptPrintScope(`${receiptKey}:${receiptRevision}`, Boolean(open && orderId && auth?.company?.id && auth?.user?.id));
+  const activeReceiptKey = useRef(receiptKey);
+  activeReceiptKey.current = receiptKey;
+  const receiptReadSequence = useRef(0);
+  const [loadedReceipt, setReceipt] = useState<CustomerServiceReceipt | null>(null);
+  const [loadedReceiptKey, setLoadedReceiptKey] = useState("");
+  const receipt = loadedReceiptKey === receiptKey ? loadedReceipt : null;
   const [cancellationModalOpen, setCancellationModalOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -214,8 +248,14 @@ export default function CustomerServiceModal({
   const [savingNotes, setSavingNotes] = useState(false);
 
   // Print confirmation state
-  const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
+  const [printConfirmation, setPrintConfirmation] = useState<{
+    key: string; orderId: string; stockVersion?: number; status: string;
+  } | null>(null);
+  const printConfirmOpen = Boolean(open && receipt && printConfirmation?.key === receiptKey &&
+    printConfirmation.orderId === receipt.orderId && printConfirmation.stockVersion === receipt.stockVersion &&
+    printConfirmation.status === receipt.status);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  useEffect(() => { setPrintConfirmation(null); setIsUpdatingStatus(false); }, [open, receiptKey]);
 
   // Scheduling states
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>(
@@ -227,6 +267,11 @@ export default function CustomerServiceModal({
   // selector de estado, y como `order` de ReassignDeliveryModal).
   const [tab, setTab] = useState("resumen");
   const [orderHeader, setOrderHeader] = useState<OrderHeader | null>(null);
+  const canManageCc = canManageCustomerServiceOrder(hasPermission, orderHeader?.canalOrigen);
+  const canEditOrder = hasPermission("EDIT_SALE");
+  const isPendingPurchase = isCommercialLeadOrder(orderHeader ?? {}) ||
+    (!hideCallManagement && isCustomerServicePurchasePending(orderHeader ?? {}));
+  const [lifecycleAction, setLifecycleAction] = useState<SaleUnitLifecycleAction | null>(null);
   const [reassignModalOpen, setReassignModalOpen] = useState(false);
   const [changingStatus, setChangingStatus] = useState(false);
   const [syncingTracking, setSyncingTracking] = useState(false);
@@ -303,17 +348,21 @@ export default function CustomerServiceModal({
 
   const fetchReceipt = useCallback(async () => {
     if (!orderId) return;
+    const sequence = ++receiptReadSequence.current;
+    const isCurrent = () => sequence === receiptReadSequence.current && receiptKey === activeReceiptKey.current;
     try {
+      setReceipt(null);
+      setOrderHeader(null);
+      setLoadedReceiptKey("");
+      setPrintConfirmation(null);
+      setReceiptRevision((revision) => revision + 1);
       setLoading(true);
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`,
-      );
-      setReceipt(res.data);
-
       const orderRes = await axios.get(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
       );
-      setOrderHeader(orderRes.data);
+      if (!isCurrent()) return;
+      if (orderRes.data?.id !== orderId) throw new Error("El pedido no corresponde a la consulta.");
+      setOrderHeader({ ...orderRes.data, status: operationalStatus(orderRes.data.status) });
       setNotes(orderRes.data.notes || "");
       // CC v2: cargar campos de datos incompletos + sub-estado
       setDatosCompletos(orderRes.data.datosCompletos ?? true);
@@ -325,13 +374,54 @@ export default function CustomerServiceModal({
       setAliclikSyncedAt(orderRes.data.aliclikSyncedAt ?? null);
       setEvaStatus(orderRes.data.evaStatus ?? null);
       setEvaSyncedAt(orderRes.data.evaSyncedAt ?? null);
+      if (isCommercialLeadOrder(orderRes.data) || (!hideCallManagement && isCustomerServicePurchasePending(orderRes.data))) {
+        // Pending purchases share the order layout without issuing a sales receipt.
+        setReceipt(buildPendingOrderDetail(orderRes.data));
+        setLoadedReceiptKey(receiptKey);
+        setTab((current) => current === "seguimiento" || current === "reasignacion" ? "resumen" : current);
+        return;
+      }
+      const res = await axios.get(
+        saleReceiptUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", orderId, orderRes.data),
+      );
+      if (!isCurrent()) return;
+      if (res.data?.orderId !== orderId) throw new Error("El comprobante no corresponde al pedido solicitado.");
+      setReceipt({ ...res.data, status: operationalStatus(res.data.status), totals: { ...res.data.totals, pendingAmount: receiptFinancialState(res.data).pendingAmount } });
+      setLoadedReceiptKey(receiptKey);
+      setOrderHeader({ ...orderRes.data, status: operationalStatus(orderRes.data.status) });
     } catch (err) {
+      if (!isCurrent()) return;
       console.error("Error fetching receipt", err);
       toast.error("Error al cargar el pedido");
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [orderId]);
+  }, [orderId, receiptKey, hideCallManagement]);
+
+  const patchOrder = async (data: Record<string, unknown>, targetId = orderId): Promise<boolean> => {
+    if (!orderHeader || orderHeader.id !== targetId) {
+      throw new Error("Vuelve a cargar el pedido antes de actualizarlo.");
+    }
+    const targetStatus = typeof data.status === "string" ? data.status : "";
+    const blocked = salesStatusBlockReason(orderHeader, targetStatus) || assignmentBlockReason(orderHeader, targetStatus) || deliveryPaymentBlockReason(receipt ? receiptFinancialState(receipt).pendingAmount : Number.NaN, targetStatus);
+    if (blocked) {
+      toast.error(blocked);
+      return false;
+    }
+    const response = await axios.patch<OrderHeader>(
+      saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", targetId, orderHeader),
+      data,
+    );
+    if (targetStatus && requiresAuthenticatedSaleMutation(orderHeader) && (
+      response.data?.status !== targetStatus || assignmentBlockReason(response.data, targetStatus)
+    )) {
+      toast.warning("La operación está pendiente de confirmación de IMEI/series. Consulta la venta antes de cambiar nuevamente su estado.");
+      await fetchReceipt();
+      onOrderUpdated?.();
+      return false;
+    }
+    return true;
+  };
 
   const fetchShippingGuide = useCallback(async () => {
     if (!orderId) return;
@@ -381,6 +471,7 @@ export default function CustomerServiceModal({
       setShippingGuideData(null);
       fetchShippingGuide();
     }
+    return () => { receiptReadSequence.current += 1; };
   }, [open, orderId, fetchReceipt, fetchLogs, fetchShippingGuide, shippingGuideProp, initialTab]);
 
   const handleUpdateCallStatus = async (
@@ -400,23 +491,14 @@ export default function CustomerServiceModal({
           : ["LLAMADO" as OrderStatus];
         if (steps.length > 0) {
           for (const step of steps) {
-            await axios.patch(
-              `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-              { status: step, ...(step === "LLAMADO" && { callStatus }) },
-            );
+            if (!(await patchOrder({ status: step, ...(step === "LLAMADO" && { callStatus }) }))) return;
           }
         } else {
           // Ya está en LLAMADO o más adelante — solo confirmar la llamada.
-          await axios.patch(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-            { callStatus },
-          );
+          await patchOrder({ callStatus });
         }
       } else {
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-          { callStatus },
-        );
+        await patchOrder({ callStatus });
       }
 
       toast.success(
@@ -441,15 +523,12 @@ export default function CustomerServiceModal({
       // Ajustar a formato ISO para el backend
       const callbackAt = scheduledDate.toISOString();
 
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        {
-          callStatus: "SCHEDULED",
-          callbackAt,
-          userId: auth?.user?.id,
-          sellerName: auth?.user?.email,
-        },
-      );
+      await patchOrder({
+        callStatus: "SCHEDULED",
+        callbackAt,
+        userId: auth?.user?.id,
+        sellerName: auth?.user?.email,
+      });
 
       // Registrar log de programación
       await axios.post(`${process.env.NEXT_PUBLIC_API_VENTAS}/log-ventas`, {
@@ -480,10 +559,7 @@ export default function CustomerServiceModal({
   const handleSaveNotes = async () => {
     try {
       setSavingNotes(true);
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        { notes },
-      );
+      await patchOrder({ notes });
       toast.success("Notas guardadas correctamente");
     } catch (error) {
       console.error("Error saving notes", error);
@@ -494,6 +570,8 @@ export default function CustomerServiceModal({
   };
 
   const [savingTracking, setSavingTracking] = useState(false);
+  const [newShippingKey, setNewShippingKey] = useState("");
+  useEffect(() => setNewShippingKey(""), [receiptKey, open]);
   // QR del link público de rastreo — fallback genérico para couriers sin
   // documento propio descargable por API (Aliclik/EVA hoy); Shalom usa
   // ShalomDocumentCard (PDF real) en vez de esto.
@@ -528,7 +606,8 @@ export default function CustomerServiceModal({
   // revela solo cuando el pedido queda libre de deuda, no con solo tener un
   // comprobante cargado — puede haber comprobante de un pago parcial y
   // seguir habiendo saldo pendiente.
-  const isDebtFree = (receipt?.totals.pendingAmount ?? 0) <= 0;
+  const financialState = receipt ? receiptFinancialState(receipt) : null;
+  const isDebtFree = financialState?.isPaid === true;
 
   const handleSaveTracking = async () => {
     if (!receipt || !orderId || !originalTracking) return;
@@ -548,15 +627,12 @@ export default function CustomerServiceModal({
 
     try {
       setSavingTracking(true);
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        {
-          externalTrackingNumber: receipt.externalTrackingNumber,
-          shippingCode: receipt.shippingCode,
-          shippingKey: receipt.shippingKey,
-          shippingOffice: receipt.shippingOffice,
-        },
-      );
+      await patchOrder({
+        externalTrackingNumber: receipt.externalTrackingNumber,
+        shippingCode: receipt.shippingCode,
+        ...(receipt.shippingKey || isDebtFree ? { shippingKey: receipt.shippingKey } : {}),
+        shippingOffice: receipt.shippingOffice,
+      });
       toast.success("Tracking actualizado");
       // Update original tracking to match new saved state
       setOriginalTracking({
@@ -585,7 +661,8 @@ export default function CustomerServiceModal({
     const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
 
     const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${receipt.orderNumber}`;
-    const message = `Hola ${receipt.customer.fullName}! Te contactamos por tu pedido ${receipt.orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
+    const greeting = `Hola ${receipt.customer.fullName}! Te contactamos por tu pedido ${receipt.orderNumber}.`;
+    const message = isPendingPurchase ? greeting : `${greeting}\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
 
     window.open(
       `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
@@ -605,253 +682,75 @@ export default function CustomerServiceModal({
   };
 
   const handleDownloadPdf = async () => {
-    if (!receipt) return;
-    await downloadNotaVentaPdf(receipt, orderHeader, auth?.company);
+    if (!receipt || isPendingPurchase) return;
+    const operation = beginPrint();
+    try {
+      await downloadNotaVentaPdf(receipt, orderHeader, auth?.company, operation);
+    } finally { operation.release(); }
   };
 
   const handlePrint = async () => {
-    if (!receipt) return;
-    await printOrderLabel(receipt, orderHeader, auth?.company);
-
-    // Si el pedido todavía no está preparado, mostrar confirmación para
-    // pasarlo a PREPARADO. PAGADO cuenta igual que PENDIENTE acá — cobrar el
-    // 100% no es lo mismo que empacar, tampoco fue preparado por almacén
-    // todavía.
-    if (receipt.status === "PENDIENTE" || receipt.status === "PAGADO") {
-      setPrintConfirmOpen(true);
+    if (!receipt || isPendingPurchase) return;
+    if (orderHeader && canPrepareDeferredManualOrder(orderHeader)) {
+      toast.error(salesPhysicalOperationBlockReason(orderHeader));
+      return;
     }
+    const operation = beginPrint();
+    try {
+      await printOrderLabel(receipt, orderHeader, auth?.company, operation);
+      if (!operation.isCurrent?.()) return;
+
+      // El cobro completo todavía no equivale a la preparación del paquete.
+      if ((receipt.status === "PENDIENTE" || receipt.status === "PAGADO") && !salesStatusBlockReason(orderHeader ?? {}, "PREPARADO")) {
+        setPrintConfirmation({ key: receiptKey, orderId: receipt.orderId, stockVersion: receipt.stockVersion, status: receipt.status });
+      }
+    } finally { operation.release(); }
   };
 
   const handleConfirmPrintStatus = async () => {
+    if (!printConfirmOpen || activeReceiptKey.current !== receiptKey) return;
+    const operation = beginPrint();
     try {
       setIsUpdatingStatus(true);
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        { status: "PREPARADO" },
-      );
+      if (!(await patchOrder({ status: "PREPARADO" }))) return;
+      if (!operation.isCurrent?.()) return;
       toast.success("Pedido actualizado a PREPARADO");
       fetchReceipt();
       onOrderUpdated?.();
-      setPrintConfirmOpen(false);
+      setPrintConfirmation(null);
     } catch (error) {
+      if (!operation.isCurrent?.()) return;
       console.error("Error updating status to PREPARADO", error);
       toast.error("No se pudo actualizar el estado del pedido");
     } finally {
-      setIsUpdatingStatus(false);
+      if (operation.isCurrent?.()) setIsUpdatingStatus(false);
+      operation.release();
     }
   };
 
   const handlePrintShippingReceipt = async () => {
     if (!receipt || !shippingGuide) return;
-
-    // Datos de la company desde el auth context
-    const company = auth?.company;
-    const companyName = company?.name || "MI EMPRESA";
-    const companyCuit = company?.cuit || "";
-    const companyAddress = company?.billingAddress || "";
-    const companyPhone = company?.phone || "";
-    const companyLogo = company?.logoUrl;
-
-    const printWindow = window.open("", "_blank", "width=500,height=700");
-    if (!printWindow) {
-      toast.error("No se pudo abrir la ventana de impresión");
-      return;
-    }
-
-    // Construir dirección completa del consignado con formato courier
-    const courierName = shippingGuide.courierName || "COURIER";
-    const customerAddress = shippingGuide.shippingOffice
-      ? `${courierName} ${shippingGuide.shippingOffice}`
-      : receipt.customer.address || "-";
-
-    // Logo: usar imagen si existe, sino texto del nombre de la empresa
-    const logoElement = companyLogo
-      ? `<img src="${companyLogo}" alt="${companyName}" class="brand-logo">`
-      : `<div class="brand-name">${companyName}</div>`;
-
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Comprobante de Envío - ${receipt.orderNumber}</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { 
-            font-family: Arial, sans-serif; 
-            padding: 20px;
-            max-width: 400px;
-            margin: 0 auto;
-          }
-          .container {
-            border: 2px solid #000;
-            padding: 20px;
-          }
-          .row {
-            display: flex;
-            margin-bottom: 15px;
-          }
-          .col-left {
-            width: 45%;
-            font-size: 10px;
-            line-height: 1.4;
-          }
-          .col-right {
-            width: 55%;
-            text-align: right;
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-          }
-          .section-title {
-            font-weight: bold;
-            font-size: 10px;
-            margin-bottom: 2px;
-          }
-          .brand-logo {
-            max-height: 40px;
-            max-width: 120px;
-            object-fit: contain;
-          }
-          .brand-name {
-            font-size: 20px;
-            font-weight: bold;
-            letter-spacing: 1px;
-          }
-          .label {
-            font-size: 9px;
-            color: #666;
-          }
-          .consignado-title {
-            font-size: 10px;
-            font-weight: bold;
-            margin-bottom: 4px;
-          }
-          .customer-name {
-            font-size: 12px;
-            font-weight: bold;
-            text-transform: uppercase;
-            margin-bottom: 6px;
-          }
-          .dni-row {
-            margin-bottom: 4px;
-            font-size: 10px;
-          }
-          .dni-label {
-            font-weight: bold;
-          }
-          .info-value {
-            font-size: 11px;
-          }
-          .location {
-            font-size: 11px;
-            margin-bottom: 4px;
-            text-transform: uppercase;
-          }
-          .address-line {
-            font-size: 10px;
-            text-transform: uppercase;
-          }
-          .courier-box {
-            margin-top: 15px;
-            padding-top: 12px;
-            border-top: 1px solid #ccc;
-          }
-          .courier-name {
-            font-size: 24px;
-            font-weight: bold;
-            letter-spacing: 1px;
-          }
-          .order-footer {
-            margin-top: 15px;
-            padding-top: 10px;
-            border-top: 1px dashed #999;
-            font-size: 10px;
-            text-align: center;
-            color: #666;
-          }
-          @media print {
-            body { padding: 10px; }
-            @page { margin: 5mm; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <div class="row">
-            <!-- REMITENTE (lado izquierdo) -->
-            <div class="col-left">
-              <div class="section-title">REMITENTE</div>
-              <div>${companyName}</div>
-              ${companyCuit ? `<div>${companyCuit}</div>` : ""}
-              ${companyAddress ? `<div>${companyAddress}</div>` : ""}
-              ${companyPhone ? `<div>${companyPhone}</div>` : ""}
-            </div>
-            
-            <!-- MARCA/LOGO (lado derecho) -->
-            <div class="col-right">
-              ${logoElement}
-            </div>
-          </div>
-
-          <!-- CONSIGNADO -->
-          <div style="text-align: right; margin-top: 10px;">
-            <div class="consignado-title">CONSIGNADO</div>
-            <div class="customer-name">${receipt.customer.fullName}</div>
-            
-            <div class="dni-row">
-              <span class="dni-label">DNI</span> 
-              <span class="info-value">${receipt.customer.dni || "-"}</span>
-            </div>
-            
-            <div class="dni-row">
-              <span class="dni-label">TELEFONO</span> 
-              <span class="info-value">${receipt.customer.phoneNumber || "-"}</span>
-            </div>
-            
-            <div class="location">
-              ${receipt.customer.province || "-"} - ${receipt.customer.city || receipt.customer.province || "-"} - ${receipt.customer.district || "-"}
-            </div>
-            
-            <div class="address-line">
-              ${customerAddress}
-            </div>
-          </div>
-
-          <!-- COURIER -->
-          <div class="courier-box">
-            <div class="courier-name">${courierName.toUpperCase()}</div>
-          </div>
-
-        </div>
-      </body>
-      </html>
-    `;
-
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-
-    printWindow.onload = () => {
-      printWindow.focus();
-      printWindow.print();
-      printWindow.close();
-    };
+    const operation = beginPrint();
+    try {
+      await printCustomerShippingLabel(receipt, shippingGuide, auth?.company, operation);
+    } finally { operation.release(); }
   };
 
   const handleConfirmCancellation = async (
     reason: CancellationReason,
     reasonNotes?: string,
   ) => {
+    if (await routeSaleLifecycle(orderHeader, "ANULADO", (action) => {
+      setCancellationModalOpen(false);
+      setLifecycleAction(action);
+    })) return;
     setIsCancelling(true);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        {
-          status: "ANULADO",
-          cancellationReason: reason,
-          notes: reasonNotes,
-        },
-      );
+      if (!(await patchOrder({
+        status: "ANULADO",
+        cancellationReason: reason,
+        notes: reasonNotes,
+      }))) return;
       toast.success("Venta anulada");
       setCancellationModalOpen(false);
       onClose();
@@ -865,7 +764,10 @@ export default function CustomerServiceModal({
   };
 
   const handleChangeStatus = async (newStatus: OrderStatus) => {
-    if (!receipt || newStatus === receipt.status) return;
+    if (!receipt || isPendingPurchase || newStatus === receipt.status) return;
+    const blocked = salesStatusBlockReason(orderHeader ?? {}, newStatus);
+    if (blocked) { toast.error(blocked); return; }
+    if (await routeSaleLifecycle(orderHeader, newStatus, setLifecycleAction)) return;
     if (newStatus === "ANULADO") {
       setCancellationModalOpen(true);
       return;
@@ -876,10 +778,7 @@ export default function CustomerServiceModal({
     }
     setChangingStatus(true);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        { status: newStatus },
-      );
+      if (!(await patchOrder({ status: newStatus }))) return;
       toast.success(`Estado actualizado a ${newStatus}`);
       fetchReceipt();
       onOrderUpdated?.();
@@ -887,6 +786,10 @@ export default function CustomerServiceModal({
       toast.error(
         error?.response?.data?.message || "No se pudo actualizar el estado",
       );
+      if (orderHeader && canPrepareDeferredManualOrder(orderHeader)) {
+        void fetchReceipt();
+        onOrderUpdated?.();
+      }
     } finally {
       setChangingStatus(false);
     }
@@ -894,10 +797,7 @@ export default function CustomerServiceModal({
 
   const handleReprogramDelivery = async (targetId: string, callbackAt: Date) => {
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${targetId}`,
-        { callStatus: "SCHEDULED", callbackAt: callbackAt.toISOString() },
-      );
+      await patchOrder({ callStatus: "SCHEDULED", callbackAt: callbackAt.toISOString() }, targetId);
       toast.success("Pedido reprogramado");
       setReassignModalOpen(false);
       fetchReceipt();
@@ -973,6 +873,9 @@ export default function CustomerServiceModal({
   // PREPARADO en ms-ventas (mismo patrón que usaba ShipmentDetailModal).
   const releaseFromGuide = async () => {
     if (!orderHeader) return;
+    const blocked = salesStatusBlockReason(orderHeader, "PREPARADO") || assignmentBlockReason(orderHeader, "PREPARADO");
+    if (blocked) throw new Error(blocked);
+    if (!canShipCommercialOrder(orderHeader)) throw new Error("Esta venta no requiere una guía física.");
     const guideRes = await axios.get(
       `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${orderHeader.id}`,
     );
@@ -981,10 +884,9 @@ export default function CustomerServiceModal({
       `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guideId}/orders/remove`,
       { orderIds: [orderHeader.id] },
     );
-    await axios.patch(
-      `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderHeader.id}`,
-      { guideNumber: null, status: "PREPARADO" },
-    );
+    if (!(await patchOrder({ guideNumber: null, status: "PREPARADO" }))) {
+      throw new Error("El cambio de estado todavía no está confirmado.");
+    }
   };
 
   const handleReleaseFromGuide = async () => {
@@ -1028,11 +930,25 @@ export default function CustomerServiceModal({
     }
   };
 
+  const confirmationAccess = useCcPurchaseConfirmationAccess(
+    orderId,
+    orderHeader?.canalOrigen,
+    open && isPendingPurchase && !hideCallManagement,
+  );
+  const canEditCustomerData = hasPermission("MANAGE_CUSTOMER_SERVICE") || canEditOrder ||
+    (canCompleteCustomerServicePurchaseData(orderHeader ?? {}) && confirmationAccess.canConfirm);
+  const ccSubEstado = subEstadoCc ?? (canalOrigen === "shopify_cod" ? "por_confirmar" : null);
+  const detailMoney = (value: number) => isPendingPurchase
+    ? formatSalesMoney(value, orderHeader?.currency)
+    : `S/${value.toFixed(2)}`;
   const isConfirmed = receipt?.status === "LLAMADO";
   const isScheduledDelivery =
     !!receipt?.externalSource && receipt?.callStatus === "SCHEDULED";
+  const customerNotes = orderHeader?.customerNotes ?? receipt?.customerNotes;
+  const internalNotes = orderHeader?.notes ?? receipt?.notes;
+  const orderNotes = customerNotes ?? internalNotes;
 
-  if (!receipt && !loading) return null;
+  if (!receipt && !loading && (loadedReceiptKey !== receiptKey || !isPendingPurchase)) return null;
 
   // Si no hay nada que mostrar en la columna de gestión (llamada/upsell/aliclik/script),
   // el historial de comentarios pasa a ocupar el ancho completo en vez de dejar un hueco vacío.
@@ -1099,7 +1015,7 @@ export default function CustomerServiceModal({
             <div className="p-8 text-center">Cargando...</div>
           ) : (
             receipt && (
-              <div className="space-y-4">
+              <div className="min-w-0 space-y-4">
                 <DialogHeader>
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div>
@@ -1114,16 +1030,18 @@ export default function CustomerServiceModal({
                         {storeName ? ` · ${storeName}` : ""}
                       </div>
                     </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                    <FinancialStatusBadge pendingAmount={financialState?.pendingAmount ?? Number.NaN} />
                     <Select
                       value={receipt.status}
                       onValueChange={(v) => handleChangeStatus(v as OrderStatus)}
-                      disabled={changingStatus}
+                      disabled={changingStatus || isPendingPurchase}
                     >
                       <SelectTrigger className="w-[190px] h-9 text-sm font-semibold">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {getAvailableStatuses(receipt.status as OrderStatus).map(
+                        {getAvailableStatuses(receipt.status as OrderStatus).filter((status) => status === receipt.status || !salesStatusBlockReason(orderHeader ?? {}, status)).map(
                           (s) => (
                             <SelectItem key={s} value={s}>
                               {s}
@@ -1132,8 +1050,12 @@ export default function CustomerServiceModal({
                         )}
                       </SelectContent>
                     </Select>
+                    </div>
                   </div>
                 </DialogHeader>
+                {!isPendingPurchase && orderHeader && <UnitAssignmentNotice order={orderHeader} />}
+                {orderHeader?.commercialStage === "SALE" && orderHeader.commercialStockState === "DEFERRED" && <p className="text-sm text-amber-700">{salesPhysicalOperationBlockReason(orderHeader)}{orderHeader.commercialLeadId && !canPrepareDeferredManualOrder(orderHeader) && <a className="ml-1 font-semibold underline" href={commercialLeadHref(orderHeader.commercialLeadId)}>Preparar reserva de stock</a>}</p>}
+                {!isPendingPurchase && orderHeader && <SaleUnitLifecycleButtons order={orderHeader} onAction={setLifecycleAction} />}
 
                 <Tabs value={tab} onValueChange={setTab}>
                   <div className="overflow-x-auto -mx-1 px-1">
@@ -1141,13 +1063,13 @@ export default function CustomerServiceModal({
                       <TabsTrigger value="resumen" className="whitespace-nowrap">
                         <Package className="h-4 w-4 mr-1.5" /> Resumen
                       </TabsTrigger>
-                      <TabsTrigger value="seguimiento" className="whitespace-nowrap">
+                      <TabsTrigger disabled={isPendingPurchase} value="seguimiento" className="whitespace-nowrap">
                         <Truck className="h-4 w-4 mr-1.5" /> Seguimiento
                       </TabsTrigger>
                       <TabsTrigger value="pagos" className="whitespace-nowrap">
                         <DollarSign className="h-4 w-4 mr-1.5" /> Pagos
                       </TabsTrigger>
-                      <TabsTrigger value="reasignacion" className="whitespace-nowrap">
+                      <TabsTrigger disabled={isPendingPurchase} value="reasignacion" className="whitespace-nowrap">
                         <Repeat className="h-4 w-4 mr-1.5" /> Reasignación
                       </TabsTrigger>
                     </TabsList>
@@ -1180,6 +1102,11 @@ export default function CustomerServiceModal({
                               </span>
                             )}
                           </div>
+                          {item.units?.length ? (
+                            <p className="text-xs font-mono break-all">
+                              IMEI / series: {item.units.map((unit) => unit.code).join(", ")}
+                            </p>
+                          ) : null}
                           {item.attributes &&
                             Object.keys(item.attributes).length > 0 && (
                               <div className="text-xs text-muted-foreground mt-1">
@@ -1201,19 +1128,52 @@ export default function CustomerServiceModal({
                             </span>
                             <span>
                               Valor Und:{" "}
-                              <strong>S/{item.unitPrice.toFixed(2)}</strong>
+                              <strong>{detailMoney(item.unitPrice)}</strong>
                             </span>
                           </div>
                           <div className="flex justify-between text-sm font-medium mt-1 pt-1 border-t border-border">
                             <span>Sub Total:</span>
                             <span className="text-primary">
-                              S/{item.subtotal.toFixed(2)}
+                              {detailMoney(item.subtotal)}
                             </span>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
+
+                  {orderNotes?.trim() ? (
+                    <section
+                      aria-labelledby="order-notes-heading"
+                      className="border border-border rounded-lg p-4"
+                    >
+                      <h3 id="order-notes-heading" className="font-semibold mb-2 text-lg">
+                        Comentarios del pedido
+                      </h3>
+                      <span className="mb-2 block text-xs text-muted-foreground">
+                        {customerNotes == null
+                          ? "Solo visible para el equipo"
+                          : "Visible para el cliente en Powip Link"}
+                      </span>
+                      <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                        {orderNotes}
+                      </p>
+                    </section>
+                  ) : null}
+
+                  {customerNotes != null && internalNotes?.trim() && internalNotes !== customerNotes ? (
+                    <section
+                      aria-labelledby="internal-notes-heading"
+                      className="border border-border rounded-lg p-4"
+                    >
+                      <h3 id="internal-notes-heading" className="font-semibold mb-2 text-lg">
+                        Observaciones internas
+                      </h3>
+                      <p className="text-sm whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                        {internalNotes}
+                      </p>
+                    </section>
+                  ) : null}
 
                   {/* Resumen de Pagos */}
                   <div className="flex-1 border border-border rounded-lg p-4 bg-muted">
@@ -1223,31 +1183,31 @@ export default function CustomerServiceModal({
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
                         <span>Productos:</span>
-                        <span>S/{receipt.totals.productsTotal.toFixed(2)}</span>
+                        <span>{detailMoney(receipt.totals.productsTotal)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>IGV 18%:</span>
-                        <span>S/{receipt.totals.taxTotal.toFixed(2)}</span>
+                        <span>{detailMoney(receipt.totals.taxTotal)}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Envío:</span>
-                        <span>S/{receipt.totals.shippingTotal.toFixed(2)}</span>
+                        <span>{detailMoney(receipt.totals.shippingTotal)}</span>
                       </div>
                       <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
                         <span>Total:</span>
-                        <span>S/{receipt.totals.grandTotal.toFixed(2)}</span>
+                        <span>{detailMoney(receipt.totals.grandTotal)}</span>
                       </div>
                       <div className="flex justify-between text-muted-foreground">
                         <span>Descuentos:</span>
-                        <span>S/{receipt.totals.discountTotal.toFixed(2)}</span>
+                        <span>{detailMoney(receipt.totals.discountTotal)}</span>
                       </div>
                       <div className="flex justify-between text-green-600 font-medium">
                         <span>Adelanto:</span>
-                        <span>S/{receipt.totals.totalPaid.toFixed(2)}</span>
+                        <span>{detailMoney(receipt.totals.totalPaid)}</span>
                       </div>
                       <div className="flex justify-between text-red-600 font-bold text-base">
                         <span>Por Cobrar:</span>
-                        <span>S/{receipt.totals.pendingAmount.toFixed(2)}</span>
+                        <span>{detailMoney(receipt.totals.pendingAmount)}</span>
                       </div>
                     </div>
                   </div>
@@ -1256,12 +1216,12 @@ export default function CustomerServiceModal({
                 {/* ================================== */}
                 {/* SECCIÓN DERECHA */}
                 {/* ================================== */}
-                <div className="flex flex-col">
+                <div className="flex min-w-0 flex-col">
                   {/* Cliente — misma altura que Productos + Resumen de Pagos */}
                   <div className="border border-border rounded-lg p-5 flex-1 flex flex-col">
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                       <h3 className="font-semibold text-lg">Cliente</h3>
-                      <div className="flex gap-1">
+                      <div className="flex flex-wrap gap-1">
                         <Button
                           size="icon"
                           variant="outline"
@@ -1279,6 +1239,7 @@ export default function CustomerServiceModal({
                             const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${receipt.orderNumber}`;
                             window.open(trackingUrl, "_blank");
                           }}
+                          disabled={isPendingPurchase}
                           title="Rastreo"
                         >
                           <Truck className="h-4 w-4" />
@@ -1288,8 +1249,9 @@ export default function CustomerServiceModal({
                           variant="outline"
                           className="relative h-9 w-9 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900"
                           onClick={() => setPaymentModalOpen(true)}
+                          aria-label={isPendingPurchase ? "Gestionar adelantos y comprobantes" : undefined}
                           title={
-                            receipt.payments.some((p) => p.status === "PENDING")
+                            isPendingPurchase ? "Gestionar adelantos y comprobantes" : receipt.payments.some((p) => p.status === "PENDING")
                               ? "Pagos pendientes de aprobación"
                               : "Gestionar Pagos"
                           }
@@ -1309,6 +1271,7 @@ export default function CustomerServiceModal({
                           variant="outline"
                           className="h-9 w-9 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900"
                           onClick={handlePrint}
+                          disabled={isPendingPurchase}
                           title="Imprimir"
                         >
                           <Printer className="h-4 w-4" />
@@ -1318,6 +1281,7 @@ export default function CustomerServiceModal({
                           variant="outline"
                           className="h-9 w-9 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900"
                           onClick={handleDownloadPdf}
+                          disabled={isPendingPurchase}
                           title="Descargar PDF"
                         >
                           <Download className="h-4 w-4" />
@@ -1327,16 +1291,18 @@ export default function CustomerServiceModal({
                           size="icon"
                           variant="outline"
                           className="h-9 w-9"
-                          onClick={() =>
-                            router.push(`/registrar-venta?orderId=${orderId}`)
-                          }
+                          onClick={() => {
+                            if (onEditOrder) onEditOrder();
+                            else router.push(`/registrar-venta?orderId=${orderId}`);
+                          }}
+                          disabled={!canEditOrder}
                           title="Editar Pedido"
                         >
                           <Pencil className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
                       <div className="flex items-center gap-1">
                         <span className="text-muted-foreground">Nombre: </span>
                         <span className="font-medium">
@@ -1398,7 +1364,7 @@ export default function CustomerServiceModal({
                           {receipt.customer.clientType || "-"}
                         </span>
                       </div>
-                      <div className="col-span-2 flex items-center gap-1">
+                      <div className="col-span-full flex items-center gap-1">
                         <span className="text-muted-foreground">
                           Dirección:{" "}
                         </span>
@@ -1419,7 +1385,7 @@ export default function CustomerServiceModal({
                       </div>
                       <GoogleMapsUrlField
                         url={receipt.customer.googleMapsUrl}
-                        className="col-span-2"
+                        className="col-span-full"
                       />
                       <div className="flex items-center gap-1">
                         <span className="text-muted-foreground">
@@ -1502,8 +1468,8 @@ export default function CustomerServiceModal({
                       {/* Datos de tracking manual — para couriers sin
                           integración por API, el tracking/código/oficina/
                           clave se tipean a mano. */}
-                      {showTracking && receipt && (
-                        <div className="col-span-2 mt-4 pt-4 border-t border-dashed border-muted-foreground/30">
+                      {!isPendingPurchase && showTracking && receipt && (
+                        <div className="col-span-full mt-4 pt-4 border-t border-dashed border-muted-foreground/30">
                           <div className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-muted-foreground mb-3">
                             Datos de tracking
                           </div>
@@ -1574,7 +1540,15 @@ export default function CustomerServiceModal({
                               tab Seguimiento, sin exponer el valor real en
                               ningún texto. */}
                           {!isDebtFree ? (
-                            receipt.shippingKey ? lockedKeyCard : null
+                            <>
+                              {receipt.shippingKey ? lockedKeyCard : null}
+                              <Input type="password" className="mt-3 h-8 text-xs" placeholder="Registrar nueva clave (oculta)" value={newShippingKey} onChange={(event) => setNewShippingKey(event.target.value)} onBlur={async () => {
+                                if (!newShippingKey.trim()) return;
+                                try {
+                                  if (await patchOrder({ shippingKey: newShippingKey })) { setNewShippingKey(""); void fetchReceipt(); onOrderUpdated?.(); }
+                                } catch { toast.error("No se pudo guardar la clave de recojo"); }
+                              }} />
+                            </>
                           ) : (
                             <div className="mt-3">
                               <span className="text-muted-foreground block text-[10px] uppercase mb-1">
@@ -1607,7 +1581,7 @@ export default function CustomerServiceModal({
                           receipt.shippingCode ||
                           receipt.shippingKey ||
                           receipt.shippingOffice) && (
-                          <div className="col-span-2 mt-4 pt-4 border-t border-dashed border-muted-foreground/30">
+                          <div className="col-span-full mt-4 pt-4 border-t border-dashed border-muted-foreground/30">
                             <div className="grid grid-cols-2 gap-4">
                               <div>
                                 <span className="text-muted-foreground block text-xs underline mb-1">
@@ -1678,7 +1652,7 @@ export default function CustomerServiceModal({
                   <div className="space-y-3">
                   {/* Promo del día (solo vista de atención al cliente) y Evidencia de
                       despacho, arriba de la gestión — ocupan solo esta columna. */}
-                  {!hideCallManagement && (
+                  {!hideCallManagement && !isPendingPurchase && (
                     <div className="flex items-center justify-between gap-2 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
                       <p className="text-sm text-red-700 dark:text-red-400 truncate">
                         <span className="font-semibold">Promo del día</span>
@@ -1698,16 +1672,17 @@ export default function CustomerServiceModal({
                       </Button>
                     </div>
                   )}
-                  <OrderEvidenceSection
+                  {!isPendingPurchase && <OrderEvidenceSection
                     orderId={orderId}
                     canUpload={isOperaciones && hasPermission("MANAGE_OPERATIONS")}
                     accessToken={auth?.accessToken}
-                  />
+                  />}
                   {hasGestionColumn && (
                   <>
                   {/* CC v2: bloque datos incompletos (visible cuando el pedido tiene sub_estado_cc activo) */}
-                  {!hideCallManagement && subEstadoCc && (
+                  {!hideCallManagement && canEditCustomerData && (ccSubEstado || isPendingPurchase) && (
                     <DatosIncompletosBlock
+                      key={`datos-${orderId}`}
                       orderId={orderId}
                       dniCliente={dniCliente}
                       customer={receipt?.customer ?? null}
@@ -1718,15 +1693,28 @@ export default function CustomerServiceModal({
                       }}
                     />
                   )}
+                  {!hideCallManagement && !canEditOrder && isPendingPurchase ? (
+                    <p className="text-sm text-muted-foreground">
+                      La edición completa del pedido requiere el permiso Editar ventas.
+                    </p>
+                  ) : null}
 
                   {/* Gestión de Llamada / Entrega — según origen del pedido */}
                   {!hideCallManagement && (
-                    subEstadoCc ? (
+                    ccSubEstado ? (
                       <CcGestionPanel
+                        key={`gestion-${orderId}`}
+                        commercialStage={orderHeader?.commercialStage}
+                        commercialLeadId={orderHeader?.commercialLeadId}
+                        canalOrigen={orderHeader?.canalOrigen}
+                        orderUpdatedAt={orderHeader?.updated_at}
+                        commercialStockState={orderHeader?.commercialStockState}
+                        pendingPurchase={isPendingPurchase}
                         orderId={orderId}
-                        subEstadoCc={subEstadoCc}
+                        subEstadoCc={ccSubEstado}
                         callAttempts={receipt.callAttempts ?? 0}
                         datosCompletos={datosCompletos}
+                        beforeCancellation={() => routeSaleLifecycle(orderHeader, "ANULADO", setLifecycleAction)}
                         aliclikDispatchStatus={aliclikDispatchStatus}
                         aliclikSyncedAt={aliclikSyncedAt}
                         evaStatus={evaStatus}
@@ -1734,6 +1722,20 @@ export default function CustomerServiceModal({
                         onUpdated={() => {
                           fetchReceipt();
                           fetchLogs();
+                          onOrderUpdated?.();
+                        }}
+                      />
+                    ) : isPendingPurchase ? (
+                      <CcSaleConfirmationPanel
+                        key={`confirmar-${orderId}`}
+                        orderId={orderId}
+                        commercialLeadId={orderHeader?.commercialLeadId}
+                        canalOrigen={orderHeader?.canalOrigen}
+                        orderUpdatedAt={orderHeader?.updated_at}
+                        datosCompletos={datosCompletos}
+                        onUpdated={() => {
+                          void fetchReceipt();
+                          void fetchLogs();
                           onOrderUpdated?.();
                         }}
                       />
@@ -1808,7 +1810,7 @@ export default function CustomerServiceModal({
                             <Button
                               variant="destructive"
                               className="flex-1"
-                              onClick={() => setCancellationModalOpen(true)}
+                              onClick={() => { void handleChangeStatus("ANULADO"); }}
                             >
                               ANULAR VENTA
                             </Button>
@@ -1851,7 +1853,7 @@ export default function CustomerServiceModal({
                               <Button
                                 variant="outline"
                                 className="w-full border-red-300 text-red-600 hover:bg-red-50"
-                                onClick={() => setCancellationModalOpen(true)}
+                                onClick={() => { void handleChangeStatus("ANULADO"); }}
                               >
                                 Anular Pedido
                               </Button>
@@ -2074,7 +2076,7 @@ export default function CustomerServiceModal({
                   <div className="border border-border rounded-lg p-3">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="font-semibold">Historial / Comentarios</h3>
-                      <DropdownMenu>
+                      {!isPendingPurchase && <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="outline" size="sm">
                             Más acciones
@@ -2084,12 +2086,12 @@ export default function CustomerServiceModal({
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
                             className="text-red-600"
-                            onClick={() => setCancellationModalOpen(true)}
+                            onClick={() => { void handleChangeStatus("ANULADO"); }}
                           >
                             Anular Venta
                           </DropdownMenuItem>
                         </DropdownMenuContent>
-                      </DropdownMenu>
+                      </DropdownMenu>}
                     </div>
 
                     {/* Historial — más reciente arriba; scrollea de a un comentario por vez.
@@ -2154,9 +2156,10 @@ export default function CustomerServiceModal({
                     </div>
 
                     {/* Input para nuevo comentario */}
-                    <div className="border-t pt-3">
+                    {(!isPendingPurchase || canManageCc) && <div className="border-t pt-3">
                       <div className="flex gap-2">
                         <Textarea
+                          aria-label="Comentario de Gestión CC"
                           value={newComment}
                           onChange={(e) => setNewComment(e.target.value)}
                           placeholder="Escribe un comentario..."
@@ -2170,6 +2173,7 @@ export default function CustomerServiceModal({
                           }}
                         />
                         <Button
+                          aria-label="Guardar comentario"
                           onClick={handleSendComment}
                           disabled={!newComment.trim() || isSendingComment}
                           size="sm"
@@ -2181,7 +2185,7 @@ export default function CustomerServiceModal({
                       <p className="text-xs text-muted-foreground mt-1">
                         Enter para enviar
                       </p>
-                    </div>
+                    </div>}
                   </div>
                   </div>
                   </TabsContent>
@@ -2884,7 +2888,7 @@ export default function CustomerServiceModal({
                                 : "El pedido debe quedar libre de deuda antes de copiar la clave"
                             }
                             onClick={() => {
-                              if (!shippingGuide.shippingKey) return;
+                              if (!isDebtFree || !shippingGuide.shippingKey) return;
                               navigator.clipboard.writeText(shippingGuide.shippingKey);
                               toast.success("Código de recojo copiado");
                             }}
@@ -2955,22 +2959,22 @@ export default function CustomerServiceModal({
                   </TabsContent>
 
                   <TabsContent value="pagos" className="pt-3 space-y-4">
-                    <div className="grid grid-cols-3 gap-3.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
                       <div className="rounded-2xl border border-border p-5 text-center">
                         <div className="text-xl sm:text-2xl font-extrabold">
-                          S/ {receipt.totals.grandTotal.toFixed(2)}
+                          {detailMoney(receipt.totals.grandTotal)}
                         </div>
                         <div className="text-sm text-muted-foreground mt-1">Total</div>
                       </div>
                       <div className="rounded-2xl border border-border p-5 text-center">
                         <div className="text-xl sm:text-2xl font-extrabold text-emerald-600">
-                          S/ {receipt.totals.totalPaid.toFixed(2)}
+                          {detailMoney(receipt.totals.totalPaid)}
                         </div>
                         <div className="text-sm text-muted-foreground mt-1">Pagado</div>
                       </div>
                       <div className="rounded-2xl border border-border p-5 text-center">
                         <div className="text-xl sm:text-2xl font-extrabold text-orange-600">
-                          S/ {receipt.totals.pendingAmount.toFixed(2)}
+                          {detailMoney(receipt.totals.pendingAmount)}
                         </div>
                         <div className="text-sm text-muted-foreground mt-1">Saldo</div>
                       </div>
@@ -3028,7 +3032,7 @@ export default function CustomerServiceModal({
                           </div>
                           <div className="text-right">
                             <div className="font-semibold">
-                              S/{Number(p.amount).toFixed(2)}
+                              {detailMoney(Number(p.amount))}
                             </div>
                             <div
                               className={
@@ -3097,7 +3101,7 @@ export default function CustomerServiceModal({
       </Dialog>
 
       {/* Modal de confirmación de impresión */}
-      <AlertDialog open={printConfirmOpen} onOpenChange={setPrintConfirmOpen}>
+      <AlertDialog open={printConfirmOpen} onOpenChange={(value) => { if (!value) setPrintConfirmation(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
@@ -3130,6 +3134,7 @@ export default function CustomerServiceModal({
         </AlertDialogContent>
       </AlertDialog>
 
+      {lifecycleAction && open && <SaleUnitLifecycleModal open orderId={orderId} action={lifecycleAction} onClose={() => setLifecycleAction(null)} onUpdated={() => { void fetchReceipt(); onOrderUpdated?.(); }} />}
       {/* Modal de Cancelación */}
       <CancellationModal
         open={cancellationModalOpen}
@@ -3155,14 +3160,17 @@ export default function CustomerServiceModal({
       {/* Modal de Pagos */}
       <PaymentVerificationModal
         open={paymentModalOpen}
-        onClose={() => setPaymentModalOpen(false)}
+        onClose={() => {
+          setPaymentModalOpen(false);
+          if (isPendingPurchase) void fetchReceipt();
+        }}
         orderId={orderId}
         orderNumber={receipt?.orderNumber || ""}
         onPaymentUpdated={() => {
           fetchReceipt();
           onOrderUpdated?.();
         }}
-        canApprove={true}
+        canApprove={!isPendingPurchase}
       />
 
       {/* Modal de agregar productos (Promo del día) */}

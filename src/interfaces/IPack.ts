@@ -1,10 +1,10 @@
+import type { TrackingMode } from "@/services/inventoryTrackingService";
 /* -----------------------------------------
    Packs & Promos
 
    VOLUME: conectado al backend real (Promos API — ver src/services/promos.service.ts).
-   BUNDLE / GIFT: todavía solo-UI (PacksContext + localStorage) — el backend aún
-   no confirma su shape. Cuando se confirme, este archivo se actualiza y dejan
-   de tener `synced: false`.
+   BUNDLE: compartido por empresa en /bundle-promos. GIFT sigue en localStorage.
+   synced identifica únicamente promos VOLUME referenciables desde cotizaciones.
 ----------------------------------------- */
 
 /** Canales soportados por la Promos API real (no coincide 1:1 con SalesChannel de la orden — ver PROMO_CHANNEL_LABEL) */
@@ -26,13 +26,20 @@ export const PROMO_CHANNELS: PromoChannel[] = [
 export type PackType = "VOLUME" | "BUNDLE" | "GIFT";
 
 export interface PackProductRef {
-  /** UUID real de ms-products. Presente en packs sincronizados (VOLUME); puede faltar en Bundle/Gift locales. */
+  /** UUID real de ms-products. Presente en VOLUME y bundles nuevos; puede faltar en bundles antiguos. */
   productId?: string;
   /** Nombre del producto, usado para matchear contra el carrito mientras el buscador de
    *  registrar-venta (inventory-item/search) no exponga productId por variante. */
   productKey: string;
   productName: string;
   price: number;
+}
+
+/** Los bundles nuevos usan una variante exacta; los antiguos sin variantId aplican por producto. */
+export interface BundleProductRef extends PackProductRef {
+  variantId?: string;
+  sku?: string;
+  attributes?: Record<string, string>;
 }
 
 export interface VolumePack {
@@ -64,14 +71,19 @@ export interface BundlePack {
   /** string[] a propósito: el motor de evaluación del carrito solo compara texto,
    *  no necesita saber si el canal viene del enum de Promos o del de Órdenes. */
   channels: string[];
-  items: PackProductRef[]; // la UI (handleSave) exige 2–10; el validador de localStorage (isValidLocalPack) solo exige ≥1
+  /** La versión 2 exige variantes exactas y usa almacenamiento separado de los bundles antiguos. */
+  schemaVersion?: 2;
+  items: BundleProductRef[]; // la UI (handleSave) exige 2–10; el validador legacy admite ≥1
   packPrice: number;
+  /** Persistido en /bundle-promos; su ID no pertenece a /promos. */
+  shared?: boolean;
   synced?: boolean;
 }
 
 /** Opción de regalo: referencia una variante real de inventario (para poder
  *  incluirla en el pedido con un productVariantId válido al confirmar la venta) */
 export interface GiftOption {
+  trackingMode?: TrackingMode;
   variantId: string;
   inventoryItemId: string;
   sku: string;

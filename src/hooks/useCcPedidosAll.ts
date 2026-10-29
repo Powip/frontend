@@ -1,3 +1,4 @@
+import { useAuth } from "@/contexts/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { getAllPedidosCC, type PedidosCcFilters, type AllPedidosCcResult } from "@/services/atencionClienteService";
 
@@ -15,9 +16,11 @@ export function useCcPedidosAll(
   filters: Omit<PedidosCcFilters, "page" | "limit">,
   enabled: boolean,
 ) {
+  const { auth } = useAuth();
   return useQuery<AllPedidosCcResult>({
-    queryKey: ["cc-pedidos-all", filters],
+    queryKey: ["cc-pedidos-all", auth?.company?.id, auth?.user?.id, filters],
     queryFn: ({ signal }) => getAllPedidosCC(filters, signal),
-    enabled: enabled && !!filters.storeId,
+    retry: false,
+    enabled: enabled && !!auth?.accessToken && (!!filters.storeId || !!filters.storeIds?.length),
   });
 }

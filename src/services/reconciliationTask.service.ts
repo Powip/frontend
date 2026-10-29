@@ -1,8 +1,9 @@
 import axios from "axios";
 import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
 const API_PRODUCTS =
-  process.env.NEXT_PUBLIC_API_PRODUCTOS || "http://localhost:3005";
+  process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products;
 
 const BASE_URL = `${API_PRODUCTS}/reconciliation-tasks`;
 
@@ -102,9 +103,21 @@ export interface BulkConfirmResultItem {
   message?: string;
 }
 
-export interface ListReconciliationTasksParams {
-  type?: ReconciliationTaskType;
-  status?: ReconciliationTaskStatus;
+// FEAT-17 Anexo D — bandeja paginada por tab (ms-products
+// `GET /reconciliation-tasks?tab&page&limit`). Las rechazadas no aparecen en
+// ninguna tab ni contador.
+export type ReconciliationTabKey =
+  | "por_unificar"
+  | "aplicadas"
+  | "provisionales"
+  | "cola_manual";
+
+export type ReconciliationTaskCounts = Record<ReconciliationTabKey, number>;
+
+export interface ReconciliationTaskPage {
+  data: ReconciliationTask[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+  counts: ReconciliationTaskCounts;
 }
 
 interface ReconciliationTaskApiErrorBody {
@@ -133,11 +146,13 @@ export function getReconciliationTaskErrorMessage(
   return fallback;
 }
 
-export async function listReconciliationTasks(
-  params?: ListReconciliationTasksParams,
-): Promise<ReconciliationTask[]> {
-  const res = await axiosAuth.get<ReconciliationTask[]>(BASE_URL, {
-    params,
+export async function listReconciliationTaskPage(params: {
+  tab: ReconciliationTabKey;
+  page: number;
+  limit?: number;
+}): Promise<ReconciliationTaskPage> {
+  const res = await axiosAuth.get<ReconciliationTaskPage>(BASE_URL, {
+    params: { tab: params.tab, page: params.page, limit: params.limit ?? 10 },
   });
   return res.data;
 }
@@ -165,6 +180,17 @@ export async function resolveReconciliationLink(
   return res.data;
 }
 
+// FEAT-17 Anexo E — paso 3 del modal de Unificar (solo pares).
+export type MergeStockMode = "winner" | "sum" | "count";
+
+export interface ResolveMergeOptions {
+  stockMode: MergeStockMode;
+  // Solo con `stockMode: "count"`.
+  countedQuantity?: number;
+  // Costo final de la madre (`priceBase`).
+  priceBase: number;
+}
+
 /**
  * Solo aplica a tareas `type: 'duplicate_cluster'`. Ambos ids deben salir
  * de `task.items` — lo valida el backend (requiere cargar la tarea), no
@@ -174,12 +200,22 @@ export async function resolveReconciliationMerge(
   id: string,
   winnerVariantId: string,
   loserVariantIds: string[],
+  options?: ResolveMergeOptions,
 ): Promise<ReconciliationTask> {
   const res = await axiosAuth.post<ReconciliationTask>(
     `${BASE_URL}/${id}/resolve-merge`,
     {
       winner_variant_id: winnerVariantId,
       loser_variant_ids: loserVariantIds,
+      ...(options
+        ? {
+            stock_mode: options.stockMode,
+            ...(options.stockMode === "count"
+              ? { counted_quantity: options.countedQuantity }
+              : {}),
+            price_base: options.priceBase,
+          }
+        : {}),
     },
   );
   return res.data;
@@ -282,6 +318,9 @@ export interface ReconciliationTaskDetailProductVariant {
   company_sku: string | null;
   attribute_values: Record<string, string>;
   price: number;
+  // Costo (`priceBase`). FEAT-17 Anexo E; opcional por compatibilidad con un
+  // backend que todavía no lo manda.
+  cost?: number | null;
   is_active: boolean;
 }
 
