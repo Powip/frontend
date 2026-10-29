@@ -8,7 +8,7 @@ import { liveMoney } from "./liveService";
 import type { LiveProduct } from "./types";
 
 const action =
-  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/20 px-3 py-2.5 text-xs font-semibold transition hover:border-[#25F4EE]/60 hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE] disabled:cursor-not-allowed disabled:opacity-40";
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/20 px-3 py-2.5 text-xs font-semibold transition hover:border-[#25F4EE]/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE] disabled:cursor-not-allowed disabled:opacity-40";
 
 export default function LivePublicProductCard({
   group,
