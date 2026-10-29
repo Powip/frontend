@@ -38,6 +38,8 @@ interface PanelProviderProps {
   initialState?: PanelUiState;
   now?: number;
   sources?: PanelSourceRegistry;
+  /** Zona IANA de quien consulta; la pantalla real envía la del navegador. */
+  timeZone?: string;
   onStateChange?: (state: PanelUiState) => void;
   children: ReactNode;
 }
@@ -47,6 +49,7 @@ export function PanelProvider({
   initialState = DEFAULT_PANEL_STATE,
   now: fixedNow,
   sources = DEFAULT_PANEL_SOURCES,
+  timeZone,
   onStateChange,
   children,
 }: PanelProviderProps) {
@@ -61,7 +64,10 @@ export function PanelProvider({
 
   const closeDrilldown = useCallback(() => setDrilldown(null), []);
 
-  const view = useMemo(() => derivePanelView(state, session, now), [state, session, now]);
+  const view = useMemo(
+    () => derivePanelView(state, session, now, timeZone),
+    [state, session, now, timeZone],
+  );
 
   const value = useMemo<PanelContextValue>(
     () => ({

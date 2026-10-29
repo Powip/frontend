@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { PanelSession } from "@/features/panel-control/shared/models/panel-session.model";
 import { PanelProvider } from "@/features/panel-control/shared/state/panel-context";
 import type { PanelUiState } from "@/features/panel-control/shared/state/panel-state.model";
+import { getClientTimeZone } from "@/features/panel-control/shared/utils/client-time-zone";
 import {
   parsePanelUrlState,
   serializePanelUrlState,
@@ -22,6 +23,8 @@ export function PanelControlScreen() {
   const [initialState] = useState(() =>
     parsePanelUrlState(new URLSearchParams(searchParams.toString())),
   );
+  // La zona del equipo que consulta: los días se cuentan en ella, no en la del servidor.
+  const [timeZone] = useState(getClientTimeZone);
 
   const session = useMemo<PanelSession | null>(() => {
     if (!auth) return null;
@@ -61,7 +64,12 @@ export function PanelControlScreen() {
   }
 
   return (
-    <PanelProvider session={session} initialState={initialState} onStateChange={syncUrl}>
+    <PanelProvider
+      session={session}
+      initialState={initialState}
+      timeZone={timeZone}
+      onStateChange={syncUrl}
+    >
       <PanelShell />
     </PanelProvider>
   );

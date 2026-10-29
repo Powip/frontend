@@ -23,7 +23,7 @@ export function InventarioCard({ state }: { state: ResumenState }) {
       titulo="Inventario"
       skeleton="tabla"
       subtitulo={
-        state.data
+        state.data?.actual.inventario
           ? `${formatNumber(state.data.actual.inventario.agotados)} agotados · ${formatNumber(state.data.actual.inventario.criticos)} con menos de ${state.data.actual.inventario.umbralCriticoDias} días de cobertura · stock actual`
           : "Stock actual: no depende del periodo"
       }
@@ -40,7 +40,16 @@ export function InventarioCard({ state }: { state: ResumenState }) {
       }
     >
       {(data) => {
-        const alertas = data.actual.inventario.alertas.slice(0, MAX_ALERTAS);
+        const inventario = data.actual.inventario;
+        if (!inventario) {
+          return (
+            <p className="text-xs text-pc-text-muted">
+              Pendiente de integración: falta el stock reservado por pedido para calcular agotados y
+              productos críticos. Mientras tanto, revisa Operaciones → Inventario.
+            </p>
+          );
+        }
+        const alertas = inventario.alertas.slice(0, MAX_ALERTAS);
         if (!alertas.length) {
           return <p className="text-xs text-pc-text-muted">Todo con stock suficiente.</p>;
         }

@@ -37,9 +37,9 @@ La interfaz marca cada vista o cifra con un badge: **Demo** (ámbar), **Pendient
 | `canales-fichas` | **Real** parcial: `GET /config/canales?empresaId=` | Filtro Canal, Configuración → Canales |
 | `opciones-asesores` | **Real**: `GET /atencion-al-cliente/agentes/vendedores?companyId=` | Filtro Asesor(a), previsualización de roles |
 | Tiendas | **Real**: `auth.company.stores` | Filtro Tienda |
-| `estado-periodo` | **Demo** | Línea de estado ("% del periodo aún abierto", cuadres) |
-| `resumen` | **Demo** | Pestaña Resumen, todos sus bloques |
-| `detalle` | **Demo** | Drawer de detalle (paginación, búsqueda, por producto, por estado, Excel) |
+| `estado-periodo` | **Real parcial**: `GET /panel/estado` (ms-ventas). Falta el bloque `calidad` (cuadres) | Línea de estado ("% del periodo aún abierto") |
+| `resumen` | **Real parcial**: `GET /panel/resumen` (ms-ventas). Faltan `gane`, `inventario`, la comparación con el periodo anterior y las metas | Pestaña Resumen |
+| `detalle` | **Real en el Resumen** (`GET /panel/detalle`, ms-ventas); **demo** en las demás pestañas hasta conectarlas | Drawer de detalle (paginación, búsqueda, por producto, por estado, Excel) |
 | `config-metas` | **Demo**: metas por defecto de la especificación §11 y metas mensuales de ejemplo | Semáforos, Configuración → Metas |
 | `canales-comparativo`, `canales-detalle` | **Demo** | Ventas y canales → Canales |
 | `productos` | **Demo** | Ventas y canales → Productos |
@@ -62,6 +62,17 @@ La interfaz marca cada vista o cifra con un badge: **Demo** (ámbar), **Pendient
 **Un solo universo demo:** todas las fuentes demo leen el mismo conjunto determinista de pedidos (`shared/data/demo/demo-universe.ts`: 400 días, ítems con precio neto y cantidad, sesiones Live y pauta registrada). Por eso Resumen, las cuatro subpestañas de Ventas y canales y el drawer cuadran entre sí con cualquier filtro. Si el catálogo real de canales está disponible, el demo usa esos nombres y les asigna una familia demo (por el nombre cuando es reconocible; si no, por rotación). La vista lo avisa con la nota «Cifras demo» y con el badge Demo en cada bloque.
 
 **Permisos en demo:** las fuentes demo reciben el rol y **omiten** los campos de costo, margen, ganancia y comisión a los roles sin permiso, igual que deberá hacerlo el backend.
+
+### 2.1 Backend conectado (Fase A, 2026-10-28)
+
+`GET /panel/estado`, `GET /panel/resumen` y `GET /panel/detalle` ya existen en ms-ventas (`src/panel/`). Lo que decidió el backend y conviene saber:
+
+- **Zona horaria**: el panel manda `zona_horaria` con la del navegador (`getClientTimeZone`); el día va de 00:00 a 23:59 en esa zona (Lima si no se envía). `PanelProvider` recibe `timeZone` (Lima por defecto, para que las pruebas no dependan de la máquina).
+- **Una venta es la «venta confirmada» de `/ventas`**: un pedido que sigue en gestión del call center es un lead abierto, no una venta. Incompleto y Preventa no cuentan. RECHAZADO se reconoce como una venta confirmada y despachada que se anuló (salvo falta de stock) hasta que exista el estado.
+- **Detalle por pestaña**: el registro admite una lista de fuentes con `pestanas`; el detalle es real solo para `resumen` y demo para el resto (nunca se muestran pedidos reales detrás de una cifra demo). Al conectar una pestaña, agregar su nombre a `pestanas` de `detalle.source.ts`.
+- **Grupos del drawer conectados**: los que usa el Resumen (ver `GRUPOS_DEL_PERIODO` y `GRUPOS_DE_ESTADO_ACTUAL` en ms-ventas). El resto responde HTTP 400.
+- **Colas de hoy** (leads sin llamar, ventas sin guía): solo pedidos abiertos de los últimos 14 días.
+- Los permisos (403, identidad impuesta a Confirmadora y Vendedora, empresa del token) los aplica el servidor; las pruebas del backend los fijan.
 
 ## 3. Contrato común
 

@@ -9,7 +9,7 @@ import {
   maxDayKey,
   minDayKey,
   startOfMonthKey,
-  toLimaDayKey,
+  toZoneDayKey,
 } from "./lima-time";
 
 interface RangeKeys {
@@ -88,8 +88,12 @@ function resolveRange(selection: PanelPeriodSelection, hoy: string): RangeKeys {
   }
 }
 
-export function resolvePeriod(selection: PanelPeriodSelection, now: number): PanelPeriod {
-  const hoy = toLimaDayKey(now);
+export function resolvePeriod(
+  selection: PanelPeriodSelection,
+  now: number,
+  timeZone: string = PANEL_TIME_ZONE,
+): PanelPeriod {
+  const hoy = toZoneDayKey(now, timeZone);
   const range = resolveRange(selection, hoy);
   const hastaEfectivo = minDayKey(range.hasta, hoy);
   return {
@@ -100,7 +104,7 @@ export function resolvePeriod(selection: PanelPeriodSelection, now: number): Pan
     diasTranscurridos: diffDays(range.desde, hastaEfectivo) + 1,
     incluyeHoy: range.hasta >= hoy,
     hoy,
-    zonaHoraria: PANEL_TIME_ZONE,
+    zonaHoraria: timeZone,
   };
 }
 

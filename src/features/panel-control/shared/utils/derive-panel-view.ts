@@ -44,6 +44,7 @@ export function derivePanelView(
   state: PanelUiState,
   session: PanelSession,
   now: number,
+  timeZone?: string,
 ): PanelView {
   if (session.rol.status === "sin_resolver") {
     return { access: "sin_rol", motivo: session.rol.motivo, rolJwt: session.rol.rolJwt };
@@ -80,7 +81,7 @@ export function derivePanelView(
       ? requested
       : (subtabs[0]?.id ?? getDefaultSubtab(tab));
 
-  const period = resolvePeriod(state.filters.periodo, now);
+  const period = resolvePeriod(state.filters.periodo, now, timeZone);
 
   return {
     access: "permitido",

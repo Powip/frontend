@@ -31,6 +31,18 @@ export function toLimaDayKey(instant: number): string {
   return fromUtcDate(new Date(instant + LIMA_UTC_OFFSET_MINUTES * 60_000));
 }
 
+/** Día calendario (`YYYY-MM-DD`) que `instant` tiene en la zona IANA indicada. */
+export function toZoneDayKey(instant: number, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(instant));
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
 export function addDays(key: string, days: number): string {
   return fromUtcDate(new Date(dayKeyToUtcMidnight(key) + days * DAY_MS));
 }

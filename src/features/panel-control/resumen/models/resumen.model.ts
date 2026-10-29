@@ -134,6 +134,7 @@ export interface ResumenPanel {
   ventasDiarias: VentaDiaria[];
   ventasPorCanal: VentaPorCanal[];
   clientes: ResumenClientes;
-  inventario: ResumenInventario;
+  /** Ausente mientras el backend no tenga stock reservado por pedido (README §5 n.º 12). */
+  inventario?: ResumenInventario;
   flujo: ResumenFlujo;
 }

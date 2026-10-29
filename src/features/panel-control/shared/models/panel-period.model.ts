@@ -13,5 +13,6 @@ export interface PanelPeriod {
   diasTranscurridos: number;
   incluyeHoy: boolean;
   hoy: string;
-  zonaHoraria: typeof PANEL_TIME_ZONE;
+  /** Zona IANA en la que se cuentan los días (la del navegador; Lima por defecto). */
+  zonaHoraria: string;
 }

@@ -20,14 +20,59 @@ describe("registro de fuentes", () => {
   });
 
   it("oculta las fuentes demo en modo solo reales y mantiene las reales", () => {
-    expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "resumen", "solo_real").origin.kind).toBe(
+    expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "productos", "solo_real").origin.kind).toBe(
       "pendiente",
     );
-    expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", "solo_real").source).toBeNull();
-    expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "resumen", "mixto").origin.kind).toBe("demo");
+    expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "callcenter", "solo_real").source).toBeNull();
+    expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "productos", "mixto").origin.kind).toBe(
+      "demo",
+    );
     expect(
       resolvePanelSource(DEFAULT_PANEL_SOURCES, "canales-fichas", "solo_real").origin.kind,
     ).toBe("real");
+  });
+
+  it("estado y resumen ya se leen del backend (ms-ventas) y no se ocultan en solo reales", () => {
+    for (const id of ["estado-periodo", "resumen"] as const) {
+      expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, id, "solo_real", "resumen")).toMatchObject({
+        source: { kind: "real" },
+        origin: { kind: "real" },
+      });
+    }
+  });
+
+  describe("el detalle de pedidos sigue a la pestaña que lo abre", () => {
+    it("en el Resumen lee del backend, también en solo reales", () => {
+      for (const modo of ["mixto", "solo_real"] as const) {
+        expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", modo, "resumen")).toMatchObject(
+          { source: { kind: "real" }, origin: { kind: "real" } },
+        );
+      }
+    });
+
+    it("en una pestaña aún demo nunca muestra pedidos reales detrás de una cifra demo", () => {
+      for (const pestana of [
+        "canales",
+        "callcenter",
+        "operaciones",
+        "finanzas",
+        "equipo",
+      ] as const) {
+        expect(
+          resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", "mixto", pestana),
+        ).toMatchObject({ source: { kind: "demo" }, origin: { kind: "demo" } });
+        // En «Solo datos reales» esa vista queda pendiente, como el resto de lo demo.
+        expect(
+          resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", "solo_real", pestana),
+        ).toMatchObject({ source: null, origin: { kind: "pendiente" } });
+      }
+    });
+
+    it("sin pestaña (tabla de desarrollo) informa la fuente real", () => {
+      expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", "mixto").origin.kind).toBe(
+        "real",
+      );
+    });
   });
 });
 

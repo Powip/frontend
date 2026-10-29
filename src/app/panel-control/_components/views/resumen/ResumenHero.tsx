@@ -113,7 +113,7 @@ export function ResumenHero({ state, onVerTareas }: ResumenHeroProps) {
         destacado
         origin={origin}
         className={clase}
-        sub="El contrato no envió la ganancia para este rol o periodo."
+        sub="Pendiente: falta la pauta publicitaria registrada por día y el costo de cada producto para calcular la ganancia."
       />
     )
   ) : (

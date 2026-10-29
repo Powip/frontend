@@ -1,12 +1,27 @@
+import { detalleDemoSource } from "../../../detalle/sources/detalle.demo";
+import { estadoPeriodoDemoSource } from "../../../estado-periodo/sources/estado-periodo.demo";
+import { resumenDemoSource } from "../../../resumen/sources/resumen.demo";
 import { PANEL_ROLE_POLICIES } from "../../config/panel-roles.config";
 import { PANEL_CONTRACT_IDS, type PanelContractId } from "../../models/panel-contract.model";
 import type { PanelCapability, PanelRole } from "../../models/panel-role.model";
 import { CATALOGO, contexto, MES, NOW } from "../demo/__tests__/demo-contexto";
 import { obtenerUniversoDemo } from "../demo/demo-universe";
-import { rolPuedeUsarContrato } from "../panel-autorizacion";
+import { conAutorizacion, rolPuedeUsarContrato } from "../panel-autorizacion";
 import { PANEL_CONTRACTS } from "../panel-contracts";
 import type { PanelSource, PanelSourceContext } from "../panel-source";
 import { DEFAULT_PANEL_SOURCES } from "../panel-sources";
+
+/**
+ * Estos tres contratos ya se leen de ms-ventas. Aquí se prueban con su fuente demo,
+ * que es la especificación ejecutable de los permisos; la versión real de esas
+ * reglas (403, campos omitidos, identidad impuesta) la prueba el backend.
+ */
+const FUENTES = {
+  ...DEFAULT_PANEL_SOURCES,
+  "estado-periodo": conAutorizacion(estadoPeriodoDemoSource),
+  resumen: conAutorizacion(resumenDemoSource),
+  detalle: conAutorizacion(detalleDemoSource),
+};
 
 const CAMPOS_SENSIBLES = new Set([
   "costoUnitario",
@@ -94,7 +109,7 @@ describe("permisos: ningún rol sin permiso recibe costos, margen, ganancia ni c
       const ctx: PanelSourceContext = contexto(role, asesor);
       for (const id of PANEL_CONTRACT_IDS) {
         if (CONTRATOS_REALES.includes(id) || CONTRATOS_CON_ESCRITURA.includes(id)) continue;
-        const source = DEFAULT_PANEL_SOURCES[id] as PanelSource<PanelContractId> | undefined;
+        const source = FUENTES[id] as PanelSource<PanelContractId> | undefined;
         if (!source) continue;
         const permitido = rolPuedeUsarContrato(id, role, ctx.capabilities);
         for (const query of consultas(id)) {
@@ -131,7 +146,7 @@ describe("permisos: ningún rol sin permiso recibe costos, margen, ganancia ni c
       };
       for (const id of PANEL_CONTRACT_IDS) {
         if (CONTRATOS_REALES.includes(id) || CONTRATOS_CON_ESCRITURA.includes(id)) continue;
-        const source = DEFAULT_PANEL_SOURCES[id] as PanelSource<PanelContractId> | undefined;
+        const source = FUENTES[id] as PanelSource<PanelContractId> | undefined;
         if (!source || !rolPuedeUsarContrato(id, role, ctx.capabilities)) continue;
         for (const query of consultas(id)) {
           const respuesta = await source.fetch(query as never, ctx).catch(() => null);

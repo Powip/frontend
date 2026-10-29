@@ -12,11 +12,12 @@ import {
   configEstadosDemoSource,
 } from "../../configuracion/sources/configuracion.demo";
 import { detalleDemoSource } from "../../detalle/sources/detalle.demo";
+import { detalleRealSource } from "../../detalle/sources/detalle.source";
 import {
   equipoConfirmadorasDemoSource,
   equipoVendedorasDemoSource,
 } from "../../equipo/sources/equipo.demo";
-import { estadoPeriodoDemoSource } from "../../estado-periodo/sources/estado-periodo.demo";
+import { estadoPeriodoRealSource } from "../../estado-periodo/sources/estado-periodo.source";
 import {
   compartirReporteDemoSource,
   exportacionLibroDemoSource,
@@ -34,19 +35,20 @@ import {
 } from "../../operaciones/sources/operaciones.demo";
 import { productosDemoSource } from "../../productos/sources/productos.demo";
 import { publicidadDemoSource } from "../../publicidad/sources/publicidad.demo";
-import { resumenDemoSource } from "../../resumen/sources/resumen.demo";
+import { resumenRealSource } from "../../resumen/sources/resumen.source";
 import type { PanelContractId } from "../models/panel-contract.model";
 import { conAutorizacion } from "./panel-autorizacion";
 import type { PanelSource, PanelSourceRegistry } from "./panel-source";
 
 function autorizarRegistro(registro: PanelSourceRegistry): PanelSourceRegistry {
   const autorizado: PanelSourceRegistry = {};
-  for (const [id, source] of Object.entries(registro) as [
+  for (const [id, entrada] of Object.entries(registro) as [
     PanelContractId,
-    PanelSource<PanelContractId>,
+    PanelSource<PanelContractId> | readonly PanelSource<PanelContractId>[],
   ][]) {
-    (autorizado as Record<PanelContractId, PanelSource<PanelContractId>>)[id] =
-      conAutorizacion(source);
+    (autorizado as Record<PanelContractId, unknown>)[id] = Array.isArray(entrada)
+      ? entrada.map((fuente) => conAutorizacion(fuente))
+      : conAutorizacion(entrada as PanelSource<PanelContractId>);
   }
   return autorizado;
 }
@@ -54,9 +56,10 @@ function autorizarRegistro(registro: PanelSourceRegistry): PanelSourceRegistry {
 export const DEFAULT_PANEL_SOURCES: PanelSourceRegistry = autorizarRegistro({
   "canales-fichas": canalesFichasRealSource,
   "opciones-asesores": opcionesAsesoresRealSource,
-  "estado-periodo": estadoPeriodoDemoSource,
-  resumen: resumenDemoSource,
-  detalle: detalleDemoSource,
+  "estado-periodo": estadoPeriodoRealSource,
+  resumen: resumenRealSource,
+  // Real en el Resumen (ya conectado); demo en las pestañas que todavía no tienen backend.
+  detalle: [detalleRealSource, detalleDemoSource],
   "config-metas": configMetasDemoSource,
   "canales-comparativo": canalesComparativoDemoSource,
   "canales-detalle": canalesDetalleDemoSource,

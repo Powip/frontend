@@ -9,7 +9,8 @@ export const ESTADO_PERIODO_CONTRACT = defineContract({
   titulo: "Línea de estado del periodo",
   metodo: "GET",
   endpoint: "/panel/estado",
-  estado: "pendiente",
+  endpointActual: "GET /panel/estado (ms-ventas)",
+  estado: "parcial",
   pantallas: [
     "resumen",
     "canales",
@@ -24,6 +25,7 @@ export const ESTADO_PERIODO_CONTRACT = defineContract({
   camposRestringidos: ["actual.calidad (solo Dueño)"],
   respuesta: "PanelEnvelope<EstadoPeriodo>",
   pendientes: [
+    "PENDIENTE: el bloque «calidad» (datos completos y cuadres) depende de /panel/config/cuadres",
     "La especificación §13.2 ubica la línea de estado dentro de /panel/resumen; el frontend la necesita en todas las pestañas, por eso se propone un contrato propio",
     "Periodo abierto = pedidos del periodo en PENDIENTE, en curso o por liquidar ÷ pedidos del periodo (fecha_ingreso)",
     REGLA_VENTA_PENDIENTE,
