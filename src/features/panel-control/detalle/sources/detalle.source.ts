@@ -28,3 +28,12 @@ export const detalleProductosRealSource: PanelSource<"detalle"> = {
   descripcion:
     "GET /panel/detalle (ms-ventas): pedidos que contienen el producto, cupón o categoría clicado. Publicidad y Clientes siguen en demo",
 };
+
+/** El mismo endpoint, para la subpestaña Clientes de Ventas y canales. */
+export const detalleClientesRealSource: PanelSource<"detalle"> = {
+  ...detalleRealSource,
+  pestanas: ["canales"],
+  subpestanas: ["clientes"],
+  descripcion:
+    "GET /panel/detalle (ms-ventas): pedidos de una zona, departamento o método de pago, clientes nuevos, recurrentes y lista negra, y el historial completo de un cliente. Solo Publicidad sigue en demo",
+};

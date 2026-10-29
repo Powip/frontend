@@ -1,8 +1,10 @@
 import axiosAuth from "@/lib/axiosAuth";
 import { canalesComparativoRealSource } from "../../../canales/sources/canales-comparativo.source";
 import { canalesDetalleRealSource } from "../../../canales/sources/canales-detalle.source";
+import { clientesZonasRealSource } from "../../../clientes-zonas/sources/clientes-zonas.source";
 import {
   detalleCanalesRealSource,
+  detalleClientesRealSource,
   detalleProductosRealSource,
   detalleRealSource,
 } from "../../../detalle/sources/detalle.source";
@@ -154,6 +156,33 @@ describe("fuentes reales del panel (ms-ventas)", () => {
     );
     expect(mockGet).toHaveBeenCalledWith("https://ventas.example.com/panel/detalle", {
       params: { ...CONSULTA, grupo: "ventas", grupo_params: '{"producto":"var-1"}' },
+    });
+  });
+
+  it("clientes lee GET /panel/clientes con los filtros tal cual", async () => {
+    const sobre = { actual: {}, anterior_misma_antiguedad: null, metas: null, generado_en: "x" };
+    mockGet.mockResolvedValue({ data: sobre });
+    expect(clientesZonasRealSource).toMatchObject({ contractId: "clientes-zonas", kind: "real" });
+    await expect(clientesZonasRealSource.fetch(CONSULTA as never, CONTEXTO)).resolves.toBe(sobre);
+    expect(mockGet).toHaveBeenCalledWith("https://ventas.example.com/panel/clientes", {
+      params: CONSULTA,
+    });
+  });
+
+  it("el detalle de pedidos de Clientes es el mismo endpoint, solo para esa subpestaña", async () => {
+    mockGet.mockResolvedValue({ data: {} });
+    expect(detalleClientesRealSource).toMatchObject({
+      contractId: "detalle",
+      kind: "real",
+      pestanas: ["canales"],
+      subpestanas: ["clientes"],
+    });
+    await detalleClientesRealSource.fetch(
+      { ...CONSULTA, grupo: "historial_cliente", grupo_params: '{"cliente":"c1"}' } as never,
+      CONTEXTO,
+    );
+    expect(mockGet).toHaveBeenCalledWith("https://ventas.example.com/panel/detalle", {
+      params: { ...CONSULTA, grupo: "historial_cliente", grupo_params: '{"cliente":"c1"}' },
     });
   });
 });

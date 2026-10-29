@@ -2,6 +2,7 @@ import {
   canalesComparativoDemoSource,
   canalesDetalleDemoSource,
 } from "../../../canales/sources/canales.demo";
+import { clientesZonasDemoSource } from "../../../clientes-zonas/sources/clientes-zonas.demo";
 import { detalleDemoSource } from "../../../detalle/sources/detalle.demo";
 import { estadoPeriodoDemoSource } from "../../../estado-periodo/sources/estado-periodo.demo";
 import { productosDemoSource } from "../../../productos/sources/productos.demo";
@@ -29,6 +30,7 @@ const FUENTES = {
   "canales-comparativo": conAutorizacion(canalesComparativoDemoSource),
   "canales-detalle": conAutorizacion(canalesDetalleDemoSource),
   productos: conAutorizacion(productosDemoSource),
+  "clientes-zonas": conAutorizacion(clientesZonasDemoSource),
 };
 
 const CAMPOS_SENSIBLES = new Set([

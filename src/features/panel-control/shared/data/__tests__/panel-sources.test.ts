@@ -49,9 +49,18 @@ describe("registro de fuentes", () => {
     }
   });
 
-  it("productos ya se lee del backend, también en solo reales", () => {
+  it("productos y clientes ya se leen del backend, también en solo reales", () => {
     expect(
       resolvePanelSource(DEFAULT_PANEL_SOURCES, "productos", "solo_real", "canales", "productos"),
+    ).toMatchObject({ source: { kind: "real" }, origin: { kind: "real" } });
+    expect(
+      resolvePanelSource(
+        DEFAULT_PANEL_SOURCES,
+        "clientes-zonas",
+        "solo_real",
+        "canales",
+        "clientes",
+      ),
     ).toMatchObject({ source: { kind: "real" }, origin: { kind: "real" } });
   });
 
@@ -98,8 +107,16 @@ describe("registro de fuentes", () => {
       }
     });
 
-    it("las demás subpestañas de Ventas y canales siguen en demo hasta que se conecten", () => {
-      for (const subpestana of ["publicidad", "clientes"] as const) {
+    it("en Ventas y canales la subpestaña Clientes también lee del backend", () => {
+      for (const modo of ["mixto", "solo_real"] as const) {
+        expect(
+          resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", modo, "canales", "clientes"),
+        ).toMatchObject({ source: { kind: "real" }, origin: { kind: "real" } });
+      }
+    });
+
+    it("Publicidad, la única subpestaña sin backend, sigue en demo", () => {
+      for (const subpestana of ["publicidad"] as const) {
         expect(
           resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", "mixto", "canales", subpestana),
         ).toMatchObject({ source: { kind: "demo" } });

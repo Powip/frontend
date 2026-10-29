@@ -39,13 +39,13 @@ La interfaz marca cada vista o cifra con un badge: **Demo** (ámbar), **Pendient
 | Tiendas | **Real**: `auth.company.stores` | Filtro Tienda |
 | `estado-periodo` | **Real parcial**: `GET /panel/estado` (ms-ventas). Falta el bloque `calidad` (cuadres) | Línea de estado ("% del periodo aún abierto") |
 | `resumen` | **Real parcial**: `GET /panel/resumen` (ms-ventas). Faltan `gane`, `inventario`, la comparación con el periodo anterior y las metas | Pestaña Resumen |
-| `detalle` | **Real en el Resumen y en Ventas y canales → Canales y Productos** (`GET /panel/detalle`, ms-ventas); **demo** en las demás pestañas y subpestañas hasta conectarlas | Drawer de detalle (paginación, búsqueda, por producto, por estado, Excel) |
+| `detalle` | **Real en el Resumen y en Ventas y canales → Canales, Productos y Clientes** (`GET /panel/detalle`, ms-ventas); **demo** en las demás pestañas y subpestañas hasta conectarlas | Drawer de detalle (paginación, búsqueda, por producto, por estado, Excel) |
 | `config-metas` | **Demo**: metas por defecto de la especificación §11 y metas mensuales de ejemplo | Semáforos, Configuración → Metas |
 | `canales-comparativo` | **Real parcial**: `GET /panel/canales?vista=` (ms-ventas). Ventas y entregas completas; `ganancia` solo trae facturado y entregado | Ventas y canales → Canales |
 | `canales-detalle` | **Real parcial**: `GET /panel/canales/{id}` (ms-ventas). Sin `costos`; el tipo de bloque se infiere de los pedidos | Ventas y canales → Canales |
 | `productos` | **Real parcial**: `GET /panel/productos` (ms-ventas). Sin stock; costo y margen solo si todas las líneas del producto tienen costo | Ventas y canales → Productos |
 | `publicidad` | **Demo** | Ventas y canales → Publicidad |
-| `clientes-zonas` | **Demo** | Ventas y canales → Clientes y zonas |
+| `clientes-zonas` | **Real**: `GET /panel/clientes` (ms-ventas). Nuevos, recurrentes, recompra, lista negra, zonas, departamentos, métodos de pago y mejores clientes | Ventas y canales → Clientes y zonas |
 | `callcenter` | **Demo** | Call center |
 | `operaciones-cola`, `operaciones-couriers`, `operaciones-inventario` | **Demo** | Operaciones |
 | `acciones-pedido` | **Pendiente** | Botones Preparar, Asignar guía, Coordinar recojo, Reclamar al courier, Llamar, Pedir liquidación, Completar motivo (avisan y no cambian nada) |
@@ -99,6 +99,19 @@ La interfaz marca cada vista o cifra con un badge: **Demo** (ámbar), **Pendient
 - **Cupones**: salen de `external_data` de Shopify; los demás canales no tienen. Se normalizan: `QUANTITY DISCOUNT -39.00` y `UPSELL -30` son el mismo descuento.
 - **Categorías**: tal como vienen del import (`Sin categoría` cuando está vacía); hoy muchas líneas no la tienen o dicen «Shopify».
 - **Drawer**: `producto`, `cupon` y `categoria` abren los **pedidos que contienen ese ítem** (README §4.1) y `con_upsell` las ventas con upsell. El encabezado del drawer suma esos pedidos completos; la parte del producto está en su fila de `porProducto`, que coincide con la tabla.
+
+### 2.4 Backend conectado (Fase B3: Clientes y zonas, 2026-10-29)
+
+`GET /panel/clientes` ya existe en ms-ventas (solo Dueño y Supervisora). Lo que decidió el backend:
+
+- **Historial**: cubre desde el primer pedido de la empresa (`historial.desde`). **Un rechazo también cuenta como compra** (RECHAZADO es venta en el panel); sin eso, quien solo tuvo un rechazo no era ni nuevo ni recurrente y nuevos + recurrentes no sumaba «con compra».
+- **Nuevos** = primera compra de siempre dentro del periodo (en la zona horaria de quien consulta); **recurrentes** = compraron antes; **recompra** = clientes con 2+ compras de siempre ÷ con compra; **valor histórico** = neto entregado de siempre ÷ con compra.
+- **Lista negra** = ventas a clientes con un rechazo anterior a ese pedido; la efectividad se mide entre entregados y rechazados.
+- **Zonas y departamentos** suman «Vendí». La zona es `salesRegion`; el departamento sale de la ciudad del cliente, unificada (mayúsculas y tildes), y sin dato dice «Sin dato».
+- **Método de pago** = el del pago de mayor monto que no se perdió (un pedido suele tener adelanto y saldo); los pedidos sin pagos van a «Sin pago registrado».
+- **Mejores clientes**: top 10 por neto entregado de siempre (con nombre del cliente, por eso solo Dueño y Supervisora).
+- **Drawer**: `metodo` abre los pedidos de ese pago principal; `historial_cliente {cliente}` abre todas las ventas del cliente sin importar el periodo (el cliente debe ser de la empresa del token; a Confirmadora y Vendedora se les impone su identidad).
+- **Publicidad** es la única subpestaña de Ventas y canales que sigue en demo: no existe el registro de pauta por día, tienda y canal.
 
 ## 3. Contrato común
 
@@ -218,7 +231,7 @@ Generada desde los descriptores (`PANEL_CONTRACTS`) y el registro de fuentes (`D
 | `canales-detalle` | `GET /panel/canales/{id}` | `CanalSeleccionado` | §4.2 | §3.1 | ingreso; por liquidar: estado actual | Dueño, Supervisora | real parcial |
 | `productos` | `GET /panel/productos` | `ProductosSubtab` | §4.2 | §3.1 | ingreso | Dueño, Supervisora | real parcial |
 | `publicidad` | `GET /panel/publicidad` | `PublicidadSubtab` | §4.2 | §3.1 | fecha de la pauta / ingreso | Dueño, Supervisora | demo |
-| `clientes-zonas` | `GET /panel/clientes` | `ClientesZonasSubtab` | §4.2 | §3.1 | ingreso; historial: todo | Dueño, Supervisora | demo |
+| `clientes-zonas` | `GET /panel/clientes` | `ClientesZonasSubtab` | §4.2 | §3.1 | ingreso; historial: todo | Dueño, Supervisora | real |
 | `callcenter` | `GET /panel/callcenter` | `CallCenterView` | §4.3 | §3.1 | ingreso; cola: estado actual | Dueño, Supervisora, Confirmadora (identidad) | demo |
 | `operaciones-cola` / `-couriers` / `-inventario` | `GET /panel/operaciones?sub=` | `ColaSubtab`, `CouriersSubtab`, `InventarioSubtab` | §4.4 | §3.1 | cola e inventario: estado actual; couriers: ingreso | Dueño, Supervisora | demo |
 | `finanzas-resultado` | `GET /panel/finanzas?reloj=pedido` | `ResultadoSubtab` | §4.5 | §3.1 | **fecha del pedido** | Dueño · `ver_finanzas` | demo |
