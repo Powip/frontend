@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
   Form,
@@ -38,7 +38,10 @@ import {
 import type { WhatsAppOutOfHoursPolicy } from "@/features/whatsapp/enums/whatsapp.enums";
 import { toSendingScheduleValues } from "@/features/whatsapp/mappers/to-scheduling-form-values.mapper";
 import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp/models/resource-state.model";
-import type { WhatsAppSendingSettings } from "@/features/whatsapp/models/sending-settings.model";
+import type {
+  WhatsAppSaveSettings,
+  WhatsAppSendingSettings,
+} from "@/features/whatsapp/models/sending-settings.model";
 import {
   type SendingScheduleValues,
   sendingScheduleSchema,
@@ -48,18 +51,38 @@ import { FormDraftActions } from "./FormDraftActions";
 import { SettingsStateGate } from "./SettingsStateGate";
 
 const SENDING_HOURS_NOTE_ID = "sending-hours-persistence-note";
+const FORM_FIELDS: (keyof SendingScheduleValues)[] = [
+  "days",
+  "from",
+  "to",
+  "outOfHours",
+  "dedupe",
+  "maxPerOrderPerDay",
+];
 
 interface SendingHoursSectionProps {
   settings: ResourceState<WhatsAppSendingSettings>;
   canManage: boolean;
   canPersist: boolean;
+  onSave?: WhatsAppSaveSettings;
 }
 
 function toValues(settings: ResourceState<WhatsAppSendingSettings>): SendingScheduleValues {
   return toSendingScheduleValues(settings.kind === "ready" ? settings.data : null);
 }
 
-export function SendingHoursSection({ settings, canManage, canPersist }: SendingHoursSectionProps) {
+/** "schedule.to" (backend) → "to" (formulario). */
+function toFormField(backendField: string): keyof SendingScheduleValues | null {
+  const name = backendField.replace(/^schedule\./, "") as keyof SendingScheduleValues;
+  return FORM_FIELDS.includes(name) ? name : null;
+}
+
+export function SendingHoursSection({
+  settings,
+  canManage,
+  canPersist,
+  onSave,
+}: SendingHoursSectionProps) {
   const form = useForm<SendingScheduleValues>({
     resolver: zodResolver(sendingScheduleSchema),
     defaultValues: toValues(settings),
@@ -67,6 +90,7 @@ export function SendingHoursSection({ settings, canManage, canPersist }: Sending
   });
   const days = useWatch({ control: form.control, name: "days" });
   const { isDirty } = form.formState;
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!form.formState.isDirty) form.reset(toValues(settings));
@@ -76,6 +100,36 @@ export function SendingHoursSection({ settings, canManage, canPersist }: Sending
     const next = days.includes(day) ? days.filter((item) => item !== day) : [...days, day];
     form.setValue("days", next, { shouldDirty: true, shouldValidate: true });
   };
+
+  const handleSave = form.handleSubmit(async (values) => {
+    if (!onSave || saving) return;
+    setSaving(true);
+    try {
+      const result = await onSave({
+        schedule: {
+          days: values.days,
+          from: values.from,
+          to: values.to,
+          outOfHours: values.outOfHours,
+          timezone: "America/Lima",
+        },
+        dedupe: values.dedupe,
+        maxPerOrderPerDay: Number.parseInt(values.maxPerOrderPerDay, 10),
+      });
+      if (result.ok) {
+        form.reset(values);
+        return;
+      }
+      for (const [field, message] of Object.entries(result.fieldErrors ?? {})) {
+        const name = toFormField(field);
+        if (name) form.setError(name, { message });
+      }
+    } finally {
+      setSaving(false);
+    }
+  });
+
+  const notSavedYet = settings.kind === "ready" && settings.data.version === 0;
 
   return (
     <WaCard aria-labelledby="sending-hours-title">
@@ -100,8 +154,14 @@ export function SendingHoursSection({ settings, canManage, canPersist }: Sending
                   avisos). No son la configuración guardada de la tienda.
                 </p>
               )}
+              {notSavedYet && (
+                <p className="m-0 text-xs text-wa-muted">
+                  Esta tienda todavía no tiene un horario guardado. Se muestran los valores
+                  sugeridos; guárdalos para que apliquen.
+                </p>
+              )}
               <fieldset
-                disabled={!canManage}
+                disabled={!canManage || saving}
                 className="m-0 flex min-w-0 flex-col gap-3.5 border-0 p-0"
               >
                 <legend className="sr-only">Horario y límites de envío</legend>
@@ -173,7 +233,7 @@ export function SendingHoursSection({ settings, canManage, canPersist }: Sending
                       <FormLabel className={waLabel}>Si un aviso cae fuera del horario</FormLabel>
                       <Select
                         value={field.value}
-                        disabled={!canManage}
+                        disabled={!canManage || saving}
                         onValueChange={(value) => {
                           if (!value || value === field.value) return;
                           form.setValue("outOfHours", value as WhatsAppOutOfHoursPolicy, {
@@ -263,9 +323,10 @@ export function SendingHoursSection({ settings, canManage, canPersist }: Sending
                 isDirty={canManage && isDirty}
                 blocked={!canPersist}
                 blockedReasonId={SENDING_HOURS_NOTE_ID}
-                saveLabel="Guardar horario"
+                saveLabel={saving ? "Guardando…" : "Guardar horario"}
                 discardTitle="¿Descartar los cambios del horario?"
                 onConfirmDiscard={() => form.reset(toValues(settings))}
+                onSave={onSave ? () => void handleSave() : undefined}
               />
             </form>
           </Form>

@@ -20,3 +20,15 @@ export interface WhatsAppSendingSettings {
   missingData: WhatsAppMissingDataSettings;
   version: number;
 }
+
+export type WhatsAppSendingSettingsPatch = Partial<
+  Pick<WhatsAppSendingSettings, "schedule" | "dedupe" | "maxPerOrderPerDay" | "missingData">
+>;
+
+export type WhatsAppSaveSettingsResult =
+  | { ok: true }
+  | { ok: false; fieldErrors: Record<string, string> | null };
+
+export type WhatsAppSaveSettings = (
+  patch: WhatsAppSendingSettingsPatch,
+) => Promise<WhatsAppSaveSettingsResult>;

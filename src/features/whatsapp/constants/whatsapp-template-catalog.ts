@@ -40,7 +40,6 @@ export const WHATSAPP_TEMPLATE_VARIABLES: WhatsAppTemplateVariableDefinition[] =
   { key: "orden", label: "N° de pedido", sample: "ORD-149912" },
   { key: "courier", label: "Courier", sample: "Shalom" },
   { key: "link_rastreo", label: "Link de rastreo POWIP", sample: "powip.lat/r/K7X2Q" },
-  { key: "fecha_entrega", label: "Fecha estimada", sample: "jueves 8 de octubre" },
   { key: "agencia", label: "Agencia de recojo", sample: "Shalom Arequipa – Av. Ejército 710" },
   { key: "saldo", label: "Saldo por cobrar", sample: "298.00" },
   { key: "tienda", label: "Nombre de tu tienda", sample: "LIVII" },
@@ -53,7 +52,6 @@ const BASE_VARIABLE_KEYS = [
   "orden",
   "courier",
   "link_rastreo",
-  "fecha_entrega",
   "agencia",
   "saldo",
   "tienda",
@@ -92,7 +90,7 @@ export const WHATSAPP_TEMPLATE_USAGE_DEFINITIONS: WhatsAppTemplateUsageDefinitio
     variableKeys: BASE_VARIABLE_KEYS,
     suggestion: {
       headerText: "📦 Tu pedido va en camino",
-      body: "Hola {{cliente}}, tu pedido *{{orden}}* ya está en camino con {{courier}}. Llegada estimada: *{{fecha_entrega}}*.",
+      body: "Hola {{cliente}}, tu pedido *{{orden}}* ya está en camino con {{courier}}. Te avisaremos cuando esté por llegar.",
       buttonText: "Rastrear mi pedido",
     },
   },
@@ -169,7 +167,7 @@ export const WHATSAPP_TEMPLATE_USAGE_DEFINITIONS: WhatsAppTemplateUsageDefinitio
     variableKeys: BASE_VARIABLE_KEYS,
     suggestion: {
       headerText: null,
-      body: "Hola {{cliente}}, tu pedido {{orden}} llega el {{fecha_entrega}}. Recuerda tener listo el saldo de *S/ {{saldo}}* para pagar contra entrega.",
+      body: "Hola {{cliente}}, tu pedido {{orden}} ya está en camino. Recuerda tener listo el saldo de *S/ {{saldo}}* para pagar contra entrega.",
       buttonText: "Rastrear mi pedido",
     },
   },

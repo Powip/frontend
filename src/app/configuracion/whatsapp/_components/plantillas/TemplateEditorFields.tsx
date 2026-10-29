@@ -149,7 +149,7 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
           <div className="flex items-center justify-between gap-3">
             <FormLabel className={waLabel}>{label}</FormLabel>
             <span className="wa-num text-xs text-wa-muted" aria-hidden="true">
-              {field.value.length} / {WHATSAPP_TEMPLATE_LIMITS.body}
+              {field.value?.length ?? 0} / {WHATSAPP_TEMPLATE_LIMITS.body}
             </span>
           </div>
           <FormControl>
@@ -170,7 +170,7 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
             {hint}
             <span className="sr-only">
               {" "}
-              {field.value.length} / {WHATSAPP_TEMPLATE_LIMITS.body} caracteres.
+              {field.value?.length} / {WHATSAPP_TEMPLATE_LIMITS.body} caracteres.
             </span>
           </FormDescription>
           <FormMessage className="text-xs text-wa-red" />
@@ -352,7 +352,7 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
                   />
                 </FormControl>
                 <FormDescription className={waHint}>
-                  Admite una variable. {field.value.length} / {WHATSAPP_TEMPLATE_LIMITS.headerText}{" "}
+                  Admite una variable. {field.value?.length} / {WHATSAPP_TEMPLATE_LIMITS.headerText}{" "}
                   caracteres.
                 </FormDescription>
                 <FormMessage className="text-xs text-wa-red" />
@@ -402,7 +402,7 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
               />
             </FormControl>
             <FormDescription className={waHint}>
-              Sin variables. {field.value.length} / {WHATSAPP_TEMPLATE_LIMITS.footer} caracteres.
+              Sin variables. {field.value?.length} / {WHATSAPP_TEMPLATE_LIMITS.footer} caracteres.
             </FormDescription>
             <FormMessage className="text-xs text-wa-red" />
           </FormItem>

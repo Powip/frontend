@@ -97,8 +97,8 @@ export const WHATSAPP_CONTRACTS = {
   templates: {
     id: "C-12",
     label: "Plantillas",
-    status: PROPOSED_IN_SPEC,
-    evidence: null,
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/templates.api.ts",
   },
   templateCatalog: {
     id: "C-13/C-14",
@@ -109,20 +109,20 @@ export const WHATSAPP_CONTRACTS = {
   rules: {
     id: "C-16",
     label: "Avisos automáticos",
-    status: PROPOSED_IN_SPEC,
-    evidence: null,
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/rules.api.ts",
   },
   settings: {
     id: "C-18",
     label: "Horario, datos faltantes y respuesta automática",
-    status: PROPOSED_IN_SPEC,
-    evidence: null,
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/settings.api.ts",
   },
   upcomingQueue: {
     id: "C-20",
     label: "Próximas 24 horas",
-    status: PROPOSED,
-    evidence: null,
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/queue.api.ts",
   },
   campaigns: {
     id: "C-21",
@@ -145,8 +145,8 @@ export const WHATSAPP_CONTRACTS = {
   messages: {
     id: "C-24",
     label: "Historial de envíos",
-    status: PROPOSED_IN_SPEC,
-    evidence: null,
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/queue.api.ts",
   },
   optOuts: {
     id: "C-25",

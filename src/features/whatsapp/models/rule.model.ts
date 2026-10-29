@@ -66,3 +66,24 @@ export interface WhatsAppRulePreview {
   estimatedCost: WhatsAppMoneyEstimate | null;
   computedAt: Date;
 }
+
+/** Lo que se manda en PUT /wa/rules/:id (C-16). */
+export interface WhatsAppRuleUpdate {
+  templateId: string | null;
+  when: WhatsAppRuleWhen;
+  reminder: WhatsAppRuleReminder | null;
+  scope: WhatsAppRuleScope;
+}
+
+export type WhatsAppRuleMutationResult =
+  | { ok: true }
+  | { ok: false; fieldErrors: Record<string, string> | null };
+
+export type WhatsAppSaveRule = (
+  rule: WhatsAppRule,
+  update: WhatsAppRuleUpdate,
+) => Promise<WhatsAppRuleMutationResult>;
+
+/** Resuelven true si la acción se completó (para cerrar el diálogo). */
+export type WhatsAppActivateRule = (rule: WhatsAppRule, includeExisting: boolean) => Promise<boolean>;
+export type WhatsAppDeactivateRule = (rule: WhatsAppRule) => Promise<boolean>;

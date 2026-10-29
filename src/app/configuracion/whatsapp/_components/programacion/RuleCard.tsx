@@ -55,13 +55,18 @@ import {
 } from "@/features/whatsapp/constants/whatsapp-scheduling-catalog";
 import { WHATSAPP_TEMPLATE_STATUS_LABELS } from "@/features/whatsapp/constants/whatsapp-template-catalog";
 import {
+  WHATSAPP_RULE_DATE_MODES,
   WHATSAPP_RULE_WHEN_MODES,
   WHATSAPP_TEMPLATE_STATUSES,
   type WhatsAppRuleWhenMode,
 } from "@/features/whatsapp/enums/whatsapp.enums";
 import { toRuleConfigValues } from "@/features/whatsapp/mappers/to-scheduling-form-values.mapper";
 import type { WhatsAppResourceState } from "@/features/whatsapp/models/resource-state.model";
-import type { WhatsAppRule } from "@/features/whatsapp/models/rule.model";
+import type {
+  WhatsAppRule,
+  WhatsAppRuleUpdate,
+  WhatsAppSaveRule,
+} from "@/features/whatsapp/models/rule.model";
 import type { WhatsAppScopeCatalogs } from "@/features/whatsapp/models/scope-catalog.model";
 import type { WhatsAppTemplate } from "@/features/whatsapp/models/template.model";
 import {
@@ -101,6 +106,7 @@ interface RuleCardProps {
   onRequestActivation: (request: RuleActivationRequest) => void;
   onRequestDeactivation: (rule: WhatsAppRule) => void;
   onPreviewTemplate: (template: WhatsAppTemplate) => void;
+  onSave?: WhatsAppSaveRule;
 }
 
 function toWhen(values: RuleConfigValues) {
@@ -109,6 +115,46 @@ function toWhen(values: RuleConfigValues) {
     minutes: values.delayMinutes ? Number(values.delayMinutes) : null,
     time: values.fixedTime || null,
     hours: values.hoursBefore ? Number(values.hoursBefore) : null,
+  };
+}
+/** Campo del backend (C-16) → campo del formulario, para pintar errores 422. */
+const BACKEND_FIELD_TO_FORM: Record<string, keyof RuleConfigValues> = {
+  templateId: "templateId",
+  "when.mode": "whenMode",
+  "when.minutes": "delayMinutes",
+  "when.time": "fixedTime",
+  "when.hours": "hoursBefore",
+  "reminder.hours": "reminderHours",
+  "scope.from": "from",
+  "scope.to": "to",
+  "scope.maxOrderAgeDays": "maxOrderAgeDays",
+};
+
+function toRuleUpdate(values: RuleConfigValues, supportsReminder: boolean): WhatsAppRuleUpdate {
+  const mode = values.whenMode;
+  const isRange = values.dateMode === WHATSAPP_RULE_DATE_MODES.RANGE;
+  return {
+    templateId: values.templateId || null,
+    when: {
+      mode,
+      minutes: mode === WHATSAPP_RULE_WHEN_MODES.DELAY_MINUTES ? Number(values.delayMinutes) : null,
+      time: mode === WHATSAPP_RULE_WHEN_MODES.FIXED_TIME ? values.fixedTime : null,
+      hours:
+        mode === WHATSAPP_RULE_WHEN_MODES.HOURS_BEFORE_DELIVERY ? Number(values.hoursBefore) : null,
+    },
+    reminder: supportsReminder
+      ? { enabled: values.reminderEnabled, hours: Number(values.reminderHours) || 48 }
+      : null,
+    scope: {
+      dateMode: values.dateMode,
+      from: isRange ? values.from || null : null,
+      to: isRange ? values.to || null : null,
+      maxOrderAgeDays: Number(values.maxOrderAgeDays),
+      storeIds: [...values.storeIds],
+      salesChannels: [...values.salesChannels],
+      shippingTypes: [...values.shippingTypes],
+      courierIds: [...values.courierIds],
+    },
   };
 }
 
@@ -124,6 +170,7 @@ export function RuleCard({
   onRequestActivation,
   onRequestDeactivation,
   onPreviewTemplate,
+  onSave,
 }: RuleCardProps) {
   const definition = getRuleDefinition(rule.key);
   const supportsReminder = rule.reminder !== null || (definition?.supportsReminder ?? false);
@@ -145,6 +192,27 @@ export function RuleCard({
   const preselectApplied = useRef(false);
   const headingId = useId();
   const readOnly = !canManage;
+
+    const [saving, setSaving] = useState(false);
+
+  const handleSave = form.handleSubmit(async (formValues) => {
+    if (!onSave || saving) return;
+    setSaving(true);
+    try {
+      const result = await onSave(rule, toRuleUpdate(formValues, supportsReminder));
+      if (result.ok) {
+        form.reset(formValues);
+        setPreselectedNote(false);
+        return;
+      }
+      for (const [field, message] of Object.entries(result.fieldErrors ?? {})) {
+        const name = BACKEND_FIELD_TO_FORM[field];
+        if (name) form.setError(name, { message });
+      }
+    } finally {
+      setSaving(false);
+    }
+  });
 
   useEffect(() => {
     if (!form.formState.isDirty) form.reset(toRuleConfigValues(rule));
@@ -509,14 +577,14 @@ export function RuleCard({
               >
                 Descartar cambios
               </Button>
-              <BlockedActionButton
-                className={waButton({ variant: "primary", size: "sm" })}
-                blocked={!canPersist}
-                blockedReasonId={persistenceNoteId}
-                onClick={() => undefined}
-              >
-                Guardar cambios
-              </BlockedActionButton>
+                <BlockedActionButton
+                  className={waButton({ variant: "primary", size: "sm" })}
+                  blocked={!canPersist || !onSave || saving}
+                  blockedReasonId={persistenceNoteId}
+                  onClick={() => void handleSave()}
+                >
+                  {saving ? "Guardando…" : "Guardar cambios"}
+                </BlockedActionButton>
             </div>
           )}
         </form>

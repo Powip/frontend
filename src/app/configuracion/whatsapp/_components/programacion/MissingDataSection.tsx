@@ -1,7 +1,7 @@
 "use client";
 
 import { Bell, Link2, type LucideIcon, RefreshCw, Smartphone } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -12,7 +12,10 @@ import { WhatsAppResourceState } from "@/components/whatsapp/WhatsAppResourceSta
 import { WHATSAPP_SENDING_SETTINGS_SUGGESTED } from "@/features/whatsapp/constants/whatsapp-scheduling-catalog";
 import type { WhatsAppSkippedNotice } from "@/features/whatsapp/models/queue.model";
 import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp/models/resource-state.model";
-import type { WhatsAppSendingSettings } from "@/features/whatsapp/models/sending-settings.model";
+import type {
+  WhatsAppSaveSettings,
+  WhatsAppSendingSettings,
+} from "@/features/whatsapp/models/sending-settings.model";
 import { formatLimaTime } from "@/features/whatsapp/utils/lima-time.util";
 import { cn } from "@/lib/utils";
 import { FormDraftActions } from "./FormDraftActions";
@@ -31,6 +34,7 @@ interface MissingDataSectionProps {
   canManage: boolean;
   canPersist: boolean;
   onCorrectOrder?: (orderId: string) => void;
+  onSave?: WhatsAppSaveSettings;
 }
 
 function toValues(settings: ResourceState<WhatsAppSendingSettings>): MissingDataValues {
@@ -59,14 +63,34 @@ export function MissingDataSection({
   canManage,
   canPersist,
   onCorrectOrder,
+  onSave,
 }: MissingDataSectionProps) {
   const form = useForm<MissingDataValues>({ defaultValues: toValues(settings) });
   const values = useWatch({ control: form.control }) as MissingDataValues;
   const { isDirty } = form.formState;
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!form.formState.isDirty) form.reset(toValues(settings));
   }, [settings, form]);
+
+  const handleSave = form.handleSubmit(async (formValues) => {
+    if (!onSave || saving) return;
+    setSaving(true);
+    try {
+      const result = await onSave({
+        missingData: {
+          notifyAgent: formValues.notifyAgent,
+          sendWhenFixed: formValues.sendWhenFixed,
+        },
+      });
+      if (result.ok) form.reset(formValues);
+    } finally {
+      setSaving(false);
+    }
+  });
+
+  const notSavedYet = settings.kind === "ready" && settings.data.version === 0;
 
   const configurable: { name: keyof MissingDataValues; label: string; icon: LucideIcon }[] = [
     {
@@ -116,7 +140,10 @@ export function MissingDataSection({
                 className="flex flex-col gap-2.5"
                 onSubmit={(event) => event.preventDefault()}
               >
-                <fieldset disabled={!canManage} className="m-0 flex flex-col gap-2.5 border-0 p-0">
+                <fieldset
+                  disabled={!canManage || saving}
+                  className="m-0 flex flex-col gap-2.5 border-0 p-0"
+                >
                   <legend className="sr-only">Configurables</legend>
                   {configurable.map((option) => (
                     <div key={option.name} className={TOGGLE_ROW}>
@@ -147,6 +174,12 @@ export function MissingDataSection({
                       guardados.
                     </p>
                   )}
+                  {notSavedYet && (
+                    <p className="m-0 text-xs text-wa-muted">
+                      Esta tienda todavía no tiene esta configuración guardada. Se muestran los
+                      valores sugeridos; guárdalos para que apliquen.
+                    </p>
+                  )}
                 </fieldset>
                 {!canPersist && isDirty && (
                   <p id={MISSING_DATA_NOTE_ID} className="m-0 text-xs text-wa-muted">
@@ -157,9 +190,10 @@ export function MissingDataSection({
                   isDirty={canManage && isDirty}
                   blocked={!canPersist}
                   blockedReasonId={MISSING_DATA_NOTE_ID}
-                  saveLabel="Guardar"
+                  saveLabel={saving ? "Guardando…" : "Guardar"}
                   discardTitle="¿Descartar los cambios de datos faltantes?"
                   onConfirmDiscard={() => form.reset(toValues(settings))}
+                  onSave={onSave ? () => void handleSave() : undefined}
                 />
               </form>
             )}

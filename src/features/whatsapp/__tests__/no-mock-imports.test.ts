@@ -84,6 +84,6 @@ describe("assertWhatsAppContractAvailable", () => {
     expect(() => assertWhatsAppContractAvailable("templates")).toThrow(
       WhatsAppContractUnavailableError,
     );
-    expect(() => assertWhatsAppContractAvailable("serviceBaseUrl")).toThrow(/C-00.1/);
+    expect(() => assertWhatsAppContractAvailable("campaigns")).toThrow(/C-00.1/);
   });
 });

@@ -8,9 +8,12 @@ import { WhatsAppResourceState } from "@/components/whatsapp/WhatsAppResourceSta
 import { WHATSAPP_RULE_DEFINITIONS } from "@/features/whatsapp/constants/whatsapp-scheduling-catalog";
 import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp/models/resource-state.model";
 import type {
+  WhatsAppActivateRule,
+  WhatsAppDeactivateRule,
   WhatsAppRule,
   WhatsAppRulePreview,
   WhatsAppRulesData,
+  WhatsAppSaveRule,
 } from "@/features/whatsapp/models/rule.model";
 import type { WhatsAppScopeCatalogs } from "@/features/whatsapp/models/scope-catalog.model";
 import type { WhatsAppTemplate } from "@/features/whatsapp/models/template.model";
@@ -61,6 +64,9 @@ interface RulesSectionProps {
   onDismissLink: () => void;
   getPreview: (rule: WhatsAppRule) => ResourceState<WhatsAppRulePreview>;
   onRetry?: () => void;
+  onSaveRule?: WhatsAppSaveRule;
+  onActivateRule?: WhatsAppActivateRule;
+  onDeactivateRule?: WhatsAppDeactivateRule;
 }
 
 export function RulesSection({
@@ -74,6 +80,9 @@ export function RulesSection({
   onDismissLink,
   getPreview,
   onRetry,
+  onSaveRule,
+  onActivateRule,
+  onDeactivateRule,
 }: RulesSectionProps) {
   const [activation, setActivation] = useState<{
     key: number;
@@ -160,6 +169,7 @@ export function RulesSection({
                   }
                   onRequestDeactivation={setDeactivation}
                   onPreviewTemplate={setPreviewTemplate}
+                  onSave={onSaveRule}
                 />
               ))}
             </div>
@@ -167,17 +177,35 @@ export function RulesSection({
         </WhatsAppResourceState>
       )}
 
-      <ActivateRuleDialog
+             <ActivateRuleDialog
         key={activation?.key ?? 0}
         request={activation?.request ?? null}
         preview={activation ? getPreview(activation.request.rule) : { kind: "pending-integration" }}
         canPersist={canPersist}
         onClose={() => setActivation(null)}
+        onActivate={
+          onActivateRule
+            ? (request, includeExisting) => {
+                void onActivateRule(request.rule, includeExisting).then((done) => {
+                  if (done) setActivation(null);
+                });
+              }
+            : undefined
+        }
       />
       <DeactivateRuleDialog
         rule={deactivation}
         canPersist={canPersist}
         onClose={() => setDeactivation(null)}
+        onDeactivate={
+          onDeactivateRule
+            ? (rule) => {
+                void onDeactivateRule(rule).then((done) => {
+                  if (done) setDeactivation(null);
+                });
+              }
+            : undefined
+        }
       />
       <RuleMessagePreviewDialog
         template={previewTemplate}

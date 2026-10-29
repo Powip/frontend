@@ -47,7 +47,7 @@ export function WhatsAppPhonePreview({
   emptyBodyLabel = "Escribe tu mensaje…",
   className,
 }: WhatsAppPhonePreviewProps) {
-  const hasBody = body.trim().length > 0;
+  const hasBody = (body ?? "").trim().length > 0;
 
   return (
     <figure

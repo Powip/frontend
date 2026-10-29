@@ -10,12 +10,18 @@ import type {
 } from "@/features/whatsapp/models/queue.model";
 import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp/models/resource-state.model";
 import type {
+  WhatsAppActivateRule,
+  WhatsAppDeactivateRule,
   WhatsAppRule,
   WhatsAppRulePreview,
   WhatsAppRulesData,
+  WhatsAppSaveRule,
 } from "@/features/whatsapp/models/rule.model";
 import type { WhatsAppScopeCatalogs } from "@/features/whatsapp/models/scope-catalog.model";
-import type { WhatsAppSendingSettings } from "@/features/whatsapp/models/sending-settings.model";
+import type {
+  WhatsAppSaveSettings,
+  WhatsAppSendingSettings,
+} from "@/features/whatsapp/models/sending-settings.model";
 import type { WhatsAppTemplate } from "@/features/whatsapp/models/template.model";
 import type { CampaignValues } from "@/features/whatsapp/schemas/campaign.schema";
 import type { RuleLinkResolution } from "@/features/whatsapp/utils/rule-link.util";
@@ -47,7 +53,14 @@ export interface SchedulingViewProps {
   getRulePreview: (rule: WhatsAppRule) => ResourceState<WhatsAppRulePreview>;
   getSegmentCount: (values: CampaignValues) => ResourceState<WhatsAppSegmentCount>;
   onCorrectOrder?: (orderId: string) => void;
+  /** C-18: guarda horario o datos faltantes. Sin él, guardar queda bloqueado. */
+  onSaveSettings?: WhatsAppSaveSettings;
   now?: () => Date;
+    /** C-16: guardar, activar y desactivar avisos, y reintentar la carga. */
+  onSaveRule?: WhatsAppSaveRule;
+  onActivateRule?: WhatsAppActivateRule;
+  onDeactivateRule?: WhatsAppDeactivateRule;
+  onRetryRules?: () => void;
 }
 
 export function SchedulingView({
@@ -66,6 +79,11 @@ export function SchedulingView({
   getRulePreview,
   getSegmentCount,
   onCorrectOrder,
+  onSaveSettings,
+  onSaveRule,
+  onActivateRule,
+  onDeactivateRule,
+  onRetryRules,
   now,
 }: SchedulingViewProps) {
   return (
@@ -80,6 +98,10 @@ export function SchedulingView({
         link={link}
         onDismissLink={onDismissLink}
         getPreview={getRulePreview}
+        onSaveRule={onSaveRule}
+        onActivateRule={onActivateRule}
+        onDeactivateRule={onDeactivateRule}
+        onRetry={onRetryRules}
       />
       <MissingDataSection
         settings={settings}
@@ -87,12 +109,14 @@ export function SchedulingView({
         canManage={canManage}
         canPersist={canPersist.settings}
         onCorrectOrder={onCorrectOrder}
+        onSave={onSaveSettings}
       />
       <div className="grid gap-5 lg:grid-cols-2">
         <SendingHoursSection
           settings={settings}
           canManage={canManage}
           canPersist={canPersist.settings}
+          onSave={onSaveSettings}
         />
         <UpcomingQueueSection queue={queue} now={now?.()} />
       </div>

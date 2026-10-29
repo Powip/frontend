@@ -134,7 +134,12 @@ export function TemplatesTable({ templates, canManage, onEdit, onDuplicate }: Te
                 <td className={cn(waTd, "max-w-[340px]")}>
                   <span className={cn(waTemplateName, "block break-all")}>{template.name}</span>
                   <span className="block max-w-[42ch] truncate text-xs text-wa-muted">
-                    {template.body.replace(/\s+/g, " ")}
+                    {(() => {
+                      const t = template as any;
+                      const bodyComponent = t.components?.find((c: any) => c.type === "BODY");
+                      const bodyText = t.body || bodyComponent?.text || "";
+                      return bodyText.replace(/\s+/g, " ");
+                    })()}
                   </span>
                 </td>
                 <td className={waTd}>{usageLabel}</td>
