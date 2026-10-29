@@ -41,11 +41,15 @@ import {
   lineHasStockIssue,
   money,
   quotationHasStockIssue,
+  quotationHasUnlinkedLines,
+  quotationHttpUrl,
   quotationStatus,
   quotationWhatsAppUrl,
   statusClasses,
   statusLabels,
 } from "./quotationHelpers";
+import QuotationLocationFields from "./QuotationLocationFields";
+import { isCompleteQuotationLocation, quotationLocation, quotationSalesRegion, quotationSuggestedZone } from "./quotationLocations";
 
 const fieldClass =
   "flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm";
@@ -487,6 +491,9 @@ export function QuotationDetailDialog({
                 {quotation.lines.map((line, index) => (
                   <tr key={line.id || index} className="border-t">
                     <td className="p-3">
+                      {quotationHttpUrl(line.imageUrl) && (
+                        <img src={quotationHttpUrl(line.imageUrl)!} alt={line.name} width={48} height={48} loading="lazy" decoding="async" className="mb-2 h-12 w-12 rounded-md object-cover" />
+                      )}
                       <p className="font-medium">{line.name}</p>
                       <p className="text-xs text-muted-foreground">
                         {[line.variant, line.sku].filter(Boolean).join(" · ")}
@@ -668,7 +675,7 @@ export function QuotationDetailDialog({
                   </Button>
                   <Button
                     className="bg-teal-600 hover:bg-teal-700"
-                    disabled={!canConvert || quotationHasStockIssue(quotation)}
+                    disabled={!canConvert || (!quotationHasUnlinkedLines(quotation) && quotationHasStockIssue(quotation))}
                     onClick={onConvert}
                   >
                     Convertir a venta
@@ -693,15 +700,14 @@ export function QuotationConvertDialog({
   onSaved: (quotation: Quotation) => void;
 }) {
   const savedAddress = quotation.address;
+  const savedLocation = quotationLocation(savedAddress);
   const [fields, setFields] = useState({
     currency: "",
     address: savedAddress?.address || "",
-    department: savedAddress?.department || "Lima",
-    province: savedAddress?.province || "Lima",
-    district: savedAddress?.district || "",
+    ...savedLocation,
     reference: savedAddress?.reference || "",
-    documentNumber: "",
-    zone: "LIMA_CENTRO",
+    documentNumber: savedAddress?.documentNumber || "",
+    zone: quotationSuggestedZone(savedLocation),
     clientType: "TRADICIONAL",
     salesChannel: "",
     closingChannel: "",
@@ -716,10 +722,13 @@ export function QuotationConvertDialog({
     setFields((previous) => ({ ...previous, [key]: value }));
   const shipping =
     fields.deliveryType === "DOMICILIO" ? Number(fields.shippingTotal) || 0 : 0;
+  const hasUnlinkedLines = quotationHasUnlinkedLines(quotation);
+  const unlinkedLinesMessage =
+    "Reemplaza las líneas manuales o sin vincular por productos del catálogo antes de crear la venta. Puedes editar la cotización y conservar sus pagos.";
   async function submit(event: React.FormEvent) {
     event.preventDefault();
-    if (!fields.address.trim() || !fields.district.trim())
-      return setError("Completa dirección y distrito para despachar la venta.");
+    if (!fields.address.trim() || !isCompleteQuotationLocation(fields))
+      return setError("Completa dirección y distrito, seleccionando también departamento y provincia para despachar la venta.");
     if (!/^[A-Z]{3}$/.test(fields.currency))
       return setError(
         "Selecciona la moneda del pedido y del anticipo conciliado.",
@@ -747,10 +756,7 @@ export function QuotationConvertDialog({
       district: fields.district.trim(),
       deliveryType: fields.deliveryType as "DOMICILIO" | "RETIRO_TIENDA",
       shippingTotal: shipping,
-      salesRegion:
-        fields.department.trim().toLowerCase() === "lima"
-          ? "LIMA"
-          : "PROVINCIA",
+      salesRegion: quotationSalesRegion(fields),
       paymentMethod: fields.paymentMethod as
         | "CONTRAENTREGA"
         | "YAPE_QR"
@@ -759,7 +765,9 @@ export function QuotationConvertDialog({
     };
     try {
       const saved = await convertQuotation(quotation.id, payload);
-      toast.success(`Venta ${saved.orderNumber || ""} creada.`);
+      toast.success(
+        `Venta ${saved.orderNumber || ""} ${hasUnlinkedLines ? "recuperada" : "creada"}.`,
+      );
       onSaved(saved);
     } catch (failure) {
       setError(errorMessage(failure, "No se pudo convertir la cotización."));
@@ -815,7 +823,7 @@ export function QuotationConvertDialog({
             )
           }
         >
-          {["salesChannel", "closingChannel", "paymentMethod"].includes(key) ? (
+          {["salesChannel", "closingChannel", "paymentMethod", "zone"].includes(key) ? (
             <option value="">Selecciona una opción</option>
           ) : null}
           {options.map(([value, label]) => (
@@ -859,15 +867,34 @@ export function QuotationConvertDialog({
                 .join(" · ")}
             </p>
           </div>
+          {hasUnlinkedLines && (
+            <div
+              role="alert"
+              className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-300"
+            >
+              <p>{unlinkedLinesMessage}</p>
+              <p className="mt-2">
+                Si una conversión anterior se interrumpió, puedes recuperar su venta existente.
+                Esta acción sólo recupera una venta ya registrada.
+              </p>
+            </div>
+          )}
           <div className="grid gap-6 sm:grid-cols-2">
             <div className="space-y-4">
               {textField("currency", "Moneda (PEN, USD…)", true)}
               {textField("address", "Dirección de entrega", true)}
-              <div className="grid grid-cols-2 gap-3">
-                {textField("department", "Departamento", true)}
-                {textField("province", "Provincia", true)}
-              </div>
-              {textField("district", "Distrito", true)}
+              <QuotationLocationFields
+                idPrefix="convert"
+                value={fields}
+                labelSuffix=" *"
+                className={`${fieldClass} mt-1.5 min-w-0`}
+                disabled={saving}
+                onChange={(location) => setFields((previous) => ({
+                  ...previous,
+                  ...location,
+                  zone: quotationSuggestedZone(location),
+                }))}
+              />
               {selectField(
                 "zone",
                 "Zona",
@@ -964,11 +991,15 @@ export function QuotationConvertDialog({
             </Button>
             <Button
               type="submit"
-              disabled={saving || quotationHasStockIssue(quotation)}
+              disabled={
+                saving || (!hasUnlinkedLines && quotationHasStockIssue(quotation))
+              }
               className="bg-teal-600 hover:bg-teal-700"
             >
               {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {saving ? "Creando venta…" : "Confirmar y crear venta"}
+              {hasUnlinkedLines
+                ? saving ? "Recuperando venta…" : "Recuperar venta existente"
+                : saving ? "Creando venta…" : "Confirmar y crear venta"}
             </Button>
           </DialogFooter>
         </form>

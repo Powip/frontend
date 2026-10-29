@@ -19,9 +19,16 @@ import {
 } from "lucide-react";
 import type {
   PublicQuotation,
+  QuotationCatalogPage,
   QuotationCatalogItem,
+  QuotationLine,
   QuotationPaymentMethod,
 } from "@/types/quotations";
+import PublicQuotationTrackingDetails from "./PublicQuotationTrackingDetails";
+import PublicQuotationPaymentDestinations from "./PublicQuotationPaymentDestinations";
+import QuotationLocationFields from "./QuotationLocationFields";
+import { isCompleteQuotationLocation, quotationLocation } from "./quotationLocations";
+import { quotationHttpUrl } from "./quotationHelpers";
 import {
   addPublicQuotationLine,
   confirmPublicQuotation,
@@ -42,6 +49,15 @@ const secondary =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50";
 const field =
   "mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100";
+const trackingStatusLabels: Record<string, string> = {
+  PENDIENTE: "Pedido recibido",
+  PREPARADO: "En preparación",
+  LLAMADO: "Contactándote",
+  EN_ENVIO: "En camino",
+  ENTREGADO: "Entregado",
+  ANULADO: "Anulado",
+  LEAD: "Compra pendiente de confirmación",
+};
 
 export default function PublicQuotationPage({ token }: { token: string }) {
   const [quote, setQuote] = useState<PublicQuotation | null>(null);
@@ -53,30 +69,54 @@ export default function PublicQuotationPage({ token }: { token: string }) {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState("");
+  const [catalogQuery, setCatalogQuery] = useState("");
+  const [catalogPage, setCatalogPage] = useState(0);
+  const [catalogHasMore, setCatalogHasMore] = useState(false);
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [method, setMethod] = useState<QuotationPaymentMethod>("YAPE_QR");
   const [paymentAmount, setPaymentAmount] = useState("");
   const [proof, setProof] = useState<File | null>(null);
   const [address, setAddress] = useState("");
+  const [department, setDepartment] = useState("");
+  const [province, setProvince] = useState("");
   const [district, setDistrict] = useState("");
+  const [reference, setReference] = useState("");
+  const [documentNumber, setDocumentNumber] = useState("");
   const requestGeneration = useRef(0);
+  const quoteRevision = useRef(0);
+  const busyRef = useRef(false);
+  const quoteRequest = useRef<{ generation: number; controller: AbortController } | null>(null);
+  const catalogRequest = useRef<{ controller: AbortController; key: string } | null>(null);
+  const catalogCache = useRef(new Map<string, QuotationCatalogPage & { fetchedAt: number }>());
+  const catalogSessionToken = useRef(token);
+  const catalogSessionReady = catalogSessionToken.current === token;
 
   const refresh = useCallback(
     async (initial = false) => {
       const generation = requestGeneration.current;
+      if (quoteRequest.current?.generation === generation || busyRef.current) return;
+      const revision = quoteRevision.current;
+      const controller = new AbortController();
+      quoteRequest.current = { generation, controller };
       try {
-        const data = await getPublicQuotation(token);
-        if (generation !== requestGeneration.current) return;
+        const data = await getPublicQuotation(token, { signal: controller.signal });
+        if (generation !== requestGeneration.current || revision !== quoteRevision.current || controller.signal.aborted) return;
         setQuote(data);
         if (initial) {
+          const location = quotationLocation(data.address);
           setAddress(data.address?.address ?? "");
-          setDistrict(data.address?.district ?? "");
+          setDepartment(location.department);
+          setProvince(location.province);
+          setDistrict(location.district);
+          setReference(data.address?.reference ?? "");
+          setDocumentNumber(data.address?.documentNumber ?? "");
         }
         setError("");
       } catch (cause) {
-        if (generation !== requestGeneration.current) return;
+        if (generation !== requestGeneration.current || revision !== quoteRevision.current || controller.signal.aborted) return;
         setError(quotationError(cause));
       } finally {
+        if (quoteRequest.current?.controller === controller) quoteRequest.current = null;
         if (generation === requestGeneration.current) setLoading(false);
       }
     },
@@ -90,27 +130,113 @@ export default function PublicQuotationPage({ token }: { token: string }) {
     setError("");
     setNotice("");
     setBusy(false);
+    busyRef.current = false;
     setCatalog([]);
     setCatalogOpen(false);
     setCatalogLoading(false);
     setCatalogSearch("");
+    setCatalogQuery("");
+    setCatalogPage(0);
+    setCatalogHasMore(false);
     setPaymentOpen(false);
     setProof(null);
     setAddress("");
+    setDepartment("");
+    setProvince("");
     setDistrict("");
+    setReference("");
+    setDocumentNumber("");
+    catalogCache.current.clear();
+    catalogSessionToken.current = token;
     void refresh(true);
     const interval = window.setInterval(() => {
-      void refresh();
+      if (document.visibilityState === "visible") void refresh();
     }, 30_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       requestGeneration.current += 1;
+      quoteRequest.current?.controller.abort();
+      quoteRequest.current = null;
+      catalogRequest.current?.controller.abort();
+      catalogRequest.current = null;
       window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [refresh]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setCatalogQuery(catalogSearch.trim()), 250);
+    return () => window.clearTimeout(timer);
+  }, [catalogSearch]);
+
+  const loadCatalog = useCallback(async (page: number, search: string) => {
+    const generation = requestGeneration.current;
+    const revision = quoteRevision.current;
+    const key = `${search}\u0000${page}`;
+    if (catalogRequest.current?.key === key) return;
+    catalogRequest.current?.controller.abort();
+    catalogRequest.current = null;
+    const cached = page === 1 ? catalogCache.current.get(search) : undefined;
+    if (cached && Date.now() - cached.fetchedAt < 30_000) {
+      setCatalog(cached.data);
+      setCatalogPage(cached.page);
+      setCatalogHasMore(cached.hasMore);
+      setCatalogLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    catalogRequest.current = { controller, key };
+    setCatalogLoading(true);
+    if (page === 1) {
+      setCatalog([]);
+      setCatalogPage(0);
+      setCatalogHasMore(false);
+    }
+    try {
+      const response = await getPublicQuotationCatalog(token, { signal: controller.signal, search, page, limit: 30 });
+      if (generation !== requestGeneration.current || revision !== quoteRevision.current || controller.signal.aborted) return;
+      const result: QuotationCatalogPage = Array.isArray(response)
+        ? { data: response, page, limit: 30, hasMore: false }
+        : response;
+      setCatalog((previous) => {
+        if (page === 1) return result.data;
+        const combined = new Map(previous.map((item) => [item.productVariantId, item]));
+        result.data.forEach((item) => combined.set(item.productVariantId, item));
+        return [...combined.values()];
+      });
+      setCatalogPage(result.page);
+      setCatalogHasMore(result.hasMore);
+      if (page === 1) {
+        catalogCache.current.set(search, { ...result, fetchedAt: Date.now() });
+        if (catalogCache.current.size > 8) catalogCache.current.delete(catalogCache.current.keys().next().value!);
+      }
+    } catch (cause) {
+      if (generation !== requestGeneration.current || revision !== quoteRevision.current || controller.signal.aborted) return;
+      setError(quotationError(cause));
+    } finally {
+      if (catalogRequest.current?.controller === controller) catalogRequest.current = null;
+      if (generation === requestGeneration.current && !controller.signal.aborted) setCatalogLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (!catalogOpen || !catalogSessionReady) return;
+    void loadCatalog(1, catalogQuery);
+    return () => {
+      catalogRequest.current?.controller.abort();
+      catalogRequest.current = null;
+    };
+  }, [catalogOpen, catalogQuery, loadCatalog, catalogSessionReady]);
 
   async function act(action: () => Promise<PublicQuotation>, success: string) {
     const generation = requestGeneration.current;
     setBusy(true);
+    busyRef.current = true;
+    quoteRevision.current += 1;
+    catalogCache.current.clear();
     setError("");
     setNotice("");
     try {
@@ -122,24 +248,10 @@ export default function PublicQuotationPage({ token }: { token: string }) {
       if (generation !== requestGeneration.current) return;
       setError(quotationError(cause));
     } finally {
-      if (generation === requestGeneration.current) setBusy(false);
-    }
-  }
-
-  async function openCatalog() {
-    const generation = requestGeneration.current;
-    setCatalogOpen(!catalogOpen);
-    if (catalogOpen) return;
-    setCatalogLoading(true);
-    try {
-      const data = await getPublicQuotationCatalog(token);
-      if (generation !== requestGeneration.current) return;
-      setCatalog(data);
-    } catch (cause) {
-      if (generation !== requestGeneration.current) return;
-      setError(quotationError(cause));
-    } finally {
-      if (generation === requestGeneration.current) setCatalogLoading(false);
+      if (generation === requestGeneration.current) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   }
 
@@ -159,6 +271,8 @@ export default function PublicQuotationPage({ token }: { token: string }) {
       return;
     }
     setBusy(true);
+    busyRef.current = true;
+    quoteRevision.current += 1;
     setError("");
     setNotice("");
     try {
@@ -174,7 +288,10 @@ export default function PublicQuotationPage({ token }: { token: string }) {
       if (generation !== requestGeneration.current) return;
       setError(quotationError(cause));
     } finally {
-      if (generation === requestGeneration.current) setBusy(false);
+      if (generation === requestGeneration.current) {
+        busyRef.current = false;
+        setBusy(false);
+      }
     }
   }
 
@@ -209,41 +326,60 @@ export default function PublicQuotationPage({ token }: { token: string }) {
     );
 
   const converted = quote.status === "CONVERTIDA";
-  const cancelled = converted && quote.trackingStatus === "ANULADO";
+  const orderTracking = converted ? quote.tracking : null;
+  const trackingStatus = orderTracking?.status ?? quote.trackingStatus ?? "PENDIENTE";
+  const cancelled = converted && trackingStatus === "ANULADO";
+  const awaitingConfirmation = converted && trackingStatus === "LEAD";
+  const customerName = orderTracking?.customer.fullName ?? quote.customerName;
+  const businessName = orderTracking ? orderTracking.businessName : quote.businessName ?? quote.storeName;
+  const orderNumber = orderTracking?.orderNumber ?? quote.orderNumber;
+  const verifiedBalance = orderTracking?.totals.pendingAmount ?? quote.verifiedBalance;
+  const displayLines: QuotationLine[] = orderTracking
+    ? orderTracking.items.map((item) => ({
+        name: item.productName,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        variant: item.attributes
+          ? Object.entries(item.attributes).map(([key, value]) => `${key}: ${String(value)}`).join(" | ")
+          : undefined,
+      }))
+    : quote.lines;
   const expired =
     quote.status === "VENCIDA" || (!converted && new Date(quote.expiresAt).getTime() <= Date.now());
   const active = !converted && !expired;
   const stockProblem = quote.lines.some((line) => line.stockInsufficient);
   const activePayment = quote.payments[quote.payments.length - 1];
   const pendingPayment =
-    !cancelled && activePayment?.status === "PENDIENTE" && !(converted && quote.verifiedBalance === 0)
+    !cancelled && activePayment?.status === "PENDIENTE" && !(converted && verifiedBalance === 0)
       ? activePayment
       : undefined;
   const fullyPaid =
-    quote.verifiedBalance != null
-      ? quote.verifiedBalance <= 0
+    verifiedBalance != null
+      ? verifiedBalance <= 0
       : quote.pendingBalance <= 0 && !pendingPayment;
-  const tracking = quote.trackingStatus ?? "PENDIENTE";
-  const stage = /ENTREGAD|DELIVERED/i.test(tracking)
+  const stage = /ENTREGAD|DELIVERED/i.test(trackingStatus)
     ? 3
-    : /EN_ENVIO|ENVIAD|CAMINO|TRANSIT/i.test(tracking)
+    : /EN_ENVIO|ENVIAD|CAMINO|TRANSIT/i.test(trackingStatus)
       ? 2
-      : /PREPAR|CONFIRM/i.test(tracking)
+      : /PREPAR|CONFIRM/i.test(trackingStatus)
         ? 1
         : 0;
   const stages = converted
     ? ["Pedido recibido", "En preparación", "En camino", "Entregado"]
     : ["Cotización enviada", "Confirmada por ti", "En preparación", "Entregado"];
   const stageIndex = converted ? stage : quote.customerConfirmed ? 1 : 0;
-  const sellerPhone = quote.sellerPhone?.replace(/\D/g, "");
+  const timeline = orderTracking?.timeline ?? stages.map((label, index) => ({
+    step: label,
+    label,
+    completed: index < stageIndex,
+    current: index === stageIndex,
+  }));
+  const sellerPhone = (orderTracking ? orderTracking.businessPhone : quote.businessPhone ?? quote.sellerPhone)?.replace(/\D/g, "");
   const whatsapp = sellerPhone
     ? `https://wa.me/${sellerPhone.length === 9 ? `51${sellerPhone}` : sellerPhone}?text=${encodeURIComponent(`Hola, quisiera consultar sobre ${quote.number}.`)}`
     : null;
-  const visibleCatalog = catalog.filter((item) =>
-    `${item.name} ${item.variant ?? ""} ${item.sku ?? ""}`
-      .toLocaleLowerCase()
-      .includes(catalogSearch.toLocaleLowerCase()),
-  );
+  const visibleCatalog = catalog.filter((item) => item.stockAvailable != null && item.stockAvailable > 0);
+  const catalogSearching = catalogSearch.trim() !== catalogQuery;
 
   return (
     <div className="min-h-screen bg-[#f4f7f7] px-4 py-6 text-slate-800 sm:px-6 sm:py-10">
@@ -264,7 +400,7 @@ export default function PublicQuotationPage({ token }: { token: string }) {
           <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15">
             {cancelled ? (
               <AlertCircle />
-            ) : expired ? (
+            ) : expired || awaitingConfirmation ? (
               <Clock3 />
             ) : converted ? (
               <Truck />
@@ -274,48 +410,60 @@ export default function PublicQuotationPage({ token }: { token: string }) {
               <ShoppingBag />
             )}
           </div>
-          <p className="mb-2 text-sm text-teal-100">Hola, {quote.customerName}</p>
+          <p className="mb-2 text-sm text-teal-100">Hola, {customerName}</p>
+          {businessName && (
+            <p className="mb-2 text-sm font-semibold text-teal-100">{businessName}</p>
+          )}
           <h1 className="text-2xl font-bold sm:text-3xl">
             {cancelled
               ? "Tu pedido fue anulado"
               : expired
                 ? "Tu cotización ha vencido"
-                : converted
-                  ? "Sigue tu pedido"
-                  : quote.customerConfirmed
-                    ? "Pedido confirmado"
-                    : "Esperando tu confirmación"}
+                : awaitingConfirmation
+                  ? "Compra pendiente de confirmación"
+                  : converted
+                    ? "Sigue tu pedido"
+                    : quote.customerConfirmed
+                      ? "Pedido confirmado"
+                      : "Esperando tu confirmación"}
           </h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-teal-50/85">
             {cancelled
-              ? `Tu pedido ${quote.orderNumber ?? ""} fue anulado. Contacta al vendedor si necesitas ayuda.`
+              ? `Tu pedido ${orderNumber ?? ""} fue anulado. Contacta al vendedor si necesitas ayuda.`
               : expired
                 ? "El precio y el stock pueden haber cambiado. Contacta al vendedor para renovar tu cotización."
-                : converted
-                  ? `Tu pedido ${quote.orderNumber ?? ""} ya está registrado. Aquí podrás consultar su avance.`
-                  : quote.paymentType === "COMPLETO"
-                    ? "Revisa tus productos y reporta el pago completo para confirmar tu pedido."
-                    : "Confirma tu pedido o adelanta un monto. Podrás pagar el saldo contraentrega."}
+                : awaitingConfirmation
+                  ? "El vendedor está revisando tu compra. Aquí verás el avance cuando esté confirmada."
+                  : converted
+                    ? `Tu pedido ${orderNumber ?? ""} ya está registrado. Aquí podrás consultar su avance.`
+                    : quote.paymentType === "COMPLETO"
+                      ? "Revisa tus productos y reporta el pago completo para confirmar tu pedido."
+                      : "Confirma tu pedido o adelanta un monto. Podrás pagar el saldo contraentrega."}
           </p>
+          {orderTracking && !cancelled && (
+            <p className="mt-3 text-sm font-semibold">
+              Estado actual: {trackingStatusLabels[trackingStatus] ?? trackingStatus.replace(/_/g, " ")}
+            </p>
+          )}
         </section>
 
         {!expired && !cancelled && (
-          <ol aria-label="Estado del pedido" className="my-7 grid grid-cols-4 gap-2">
-            {stages.map((label, index) => (
+          <ol aria-label="Estado del pedido" className="my-7 grid auto-cols-fr grid-flow-col gap-2">
+            {timeline.map((item, index) => (
               <li
-                key={label}
-                aria-current={index === stageIndex ? "step" : undefined}
+                key={item.step}
+                aria-current={item.current ? "step" : undefined}
                 className="text-center"
               >
                 <span
-                  className={`mx-auto mb-2 flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${index <= stageIndex ? "bg-teal-700 text-white" : "bg-slate-200 text-slate-400"}`}
+                  className={`mx-auto mb-2 flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${item.completed || item.current ? "bg-teal-700 text-white" : "bg-slate-200 text-slate-400"}`}
                 >
-                  {index <= stageIndex ? <Check size={15} /> : index + 1}
+                  {item.completed || item.current ? <Check size={15} /> : index + 1}
                 </span>
                 <span
-                  className={`block text-[11px] sm:text-xs ${index <= stageIndex ? "font-semibold text-teal-800" : "text-slate-400"}`}
+                  className={`block text-[11px] sm:text-xs ${item.completed || item.current ? "font-semibold text-teal-800" : "text-slate-400"}`}
                 >
-                  {label}
+                  {item.label}
                 </span>
               </li>
             ))}
@@ -356,9 +504,12 @@ export default function PublicQuotationPage({ token }: { token: string }) {
             </button>
           </div>
           <div className="divide-y divide-slate-100 px-6">
-            {quote.lines.map((line, index) => (
+            {displayLines.map((line, index) => (
               <div key={line.id ?? index} className="flex items-start justify-between gap-4 py-5">
-                <div>
+                {quotationHttpUrl(line.imageUrl) && (
+                  <img src={quotationHttpUrl(line.imageUrl)!} alt={line.name} width={64} height={64} loading="lazy" decoding="async" className="h-16 w-16 shrink-0 rounded-lg object-cover" />
+                )}
+                <div className="min-w-0 flex-1">
                   <p className="font-semibold">{line.name}</p>
                   {line.variant && <p className="mt-1 text-xs text-slate-500">{line.variant}</p>}
                   <p className="mt-1 text-sm text-slate-500">
@@ -398,14 +549,31 @@ export default function PublicQuotationPage({ token }: { token: string }) {
                   )}
                 </div>
                 <span className="whitespace-nowrap font-bold">
-                  {money(line.quantity * line.unitPrice)}
+                  {money(orderTracking?.items[index]?.subtotal ?? line.quantity * line.unitPrice)}
                 </span>
               </div>
             ))}
           </div>
+          {orderTracking?.customerNotes?.trim() && (
+            <div className="border-t border-slate-100 px-6 py-5">
+              <h3 className="font-semibold">Comentarios del pedido</h3>
+              <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600 [overflow-wrap:anywhere]">
+                {orderTracking.customerNotes}
+              </p>
+            </div>
+          )}
+          {orderTracking && (cancelled || awaitingConfirmation) && (
+            <p className="border-t border-slate-100 px-6 py-4 text-sm text-slate-600">
+              Pagos aprobados registrados: {money(orderTracking.totals.totalPaid)}
+            </p>
+          )}
           <div className="flex items-center justify-between bg-slate-50 px-6 py-5">
-            <span className="font-semibold">Total {converted ? "de productos" : "cotizado"}</span>
-            <span className="text-2xl font-extrabold text-teal-800">{money(quote.total)}</span>
+            <span className="font-semibold">
+              {orderTracking ? "Total del pedido" : `Total ${converted ? "de productos" : "cotizado"}`}
+            </span>
+            <span className="text-2xl font-extrabold text-teal-800">
+              {money(orderTracking?.totals.grandTotal ?? quote.total)}
+            </span>
           </div>
         </section>
 
@@ -423,7 +591,7 @@ export default function PublicQuotationPage({ token }: { token: string }) {
             <button
               className="flex w-full items-center justify-between text-left font-semibold text-teal-800"
               aria-expanded={catalogOpen}
-              onClick={() => void openCatalog()}
+              onClick={() => setCatalogOpen((open) => !open)}
             >
               <span className="flex items-center gap-2">
                 <Plus size={18} />
@@ -443,12 +611,14 @@ export default function PublicQuotationPage({ token }: { token: string }) {
                   value={catalogSearch}
                   onChange={(event) => setCatalogSearch(event.target.value)}
                 />
-                {catalogLoading ? (
+                {catalogSearching || (catalogLoading && catalogPage === 0) ? (
                   <p className="py-5 text-sm text-slate-400">Cargando productos…</p>
                 ) : (
                   <div className="mt-3 max-h-80 divide-y divide-slate-100 overflow-auto">
                     {visibleCatalog.length === 0 && (
-                      <p className="py-5 text-sm text-slate-500">No hay productos disponibles.</p>
+                      <p className="py-5 text-sm text-slate-500">
+                        {catalogHasMore ? "No hay productos con stock en esta página. Puedes cargar más." : "No hay productos disponibles."}
+                      </p>
                     )}
                     {visibleCatalog.map((item) => (
                       <div
@@ -481,6 +651,16 @@ export default function PublicQuotationPage({ token }: { token: string }) {
                       </div>
                     ))}
                   </div>
+                )}
+                {catalogHasMore && !catalogSearching && (
+                  <button
+                    type="button"
+                    className={`${secondary} mt-4 w-full`}
+                    disabled={catalogLoading}
+                    onClick={() => void loadCatalog(catalogPage + 1, catalogQuery)}
+                  >
+                    {catalogLoading ? "Cargando…" : "Cargar más productos"}
+                  </button>
                 )}
               </div>
             )}
@@ -568,10 +748,7 @@ export default function PublicQuotationPage({ token }: { token: string }) {
         {active && paymentOpen && (
           <section className="mt-5 rounded-2xl border border-violet-200 bg-white p-6">
             <h2 className="font-bold">Reportar un pago</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Realiza el pago con los datos que te compartió el vendedor y adjunta tu comprobante.
-              Te avisaremos aquí cuando se apruebe.
-            </p>
+            <PublicQuotationPaymentDestinations destinations={quote.paymentDestinations} />
             <form className="mt-5 space-y-4" onSubmit={submitPayment}>
               <label className="block text-sm font-semibold">
                 Método de pago
@@ -636,13 +813,26 @@ export default function PublicQuotationPage({ token }: { token: string }) {
             </p>
             <form
               className="mt-5 space-y-4"
+              noValidate
               onSubmit={(event) => {
                 event.preventDefault();
+                if (!address.trim() || !isCompleteQuotationLocation({ department, province, district })) {
+                  setError("Completa tu dirección y selecciona departamento, provincia y distrito.");
+                  return;
+                }
+                if (documentNumber && !/^\d{8}$/.test(documentNumber)) {
+                  setError("El DNI debe tener 8 dígitos.");
+                  return;
+                }
                 void act(
                   () =>
                     savePublicQuotationAddress(token, {
                       address: address.trim(),
-                      district: district.trim(),
+                      department,
+                      province,
+                      district,
+                      reference: reference.trim(),
+                      documentNumber,
                     }),
                   "Dirección guardada. El vendedor ya puede verla.",
                 );
@@ -659,20 +849,27 @@ export default function PublicQuotationPage({ token }: { token: string }) {
                   placeholder="Calle, número, piso o departamento"
                 />
               </label>
+              <QuotationLocationFields
+                idPrefix="public-delivery"
+                value={{ department, province, district }}
+                disabled={busy}
+                onChange={(location) => {
+                  setDepartment(location.department);
+                  setProvince(location.province);
+                  setDistrict(location.district);
+                }}
+              />
               <label className="block text-sm font-semibold">
-                Distrito
-                <input
-                  className={field}
-                  maxLength={100}
-                  required
-                  value={district}
-                  onChange={(event) => setDistrict(event.target.value)}
-                  placeholder="Tu distrito"
-                />
+                Referencia (opcional)
+                <input className={field} maxLength={150} value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Frente al parque, puerta azul…" />
+              </label>
+              <label className="block text-sm font-semibold">
+                DNI (opcional)
+                <input className={field} inputMode="numeric" maxLength={8} value={documentNumber} onChange={(event) => setDocumentNumber(event.target.value.replace(/\D/g, ""))} placeholder="8 dígitos" />
               </label>
               <button
                 className={primary}
-                disabled={busy || !address.trim() || !district.trim()}
+                disabled={busy || !address.trim() || !isCompleteQuotationLocation({ department, province, district })}
                 type="submit"
               >
                 <Check size={16} />
@@ -682,7 +879,9 @@ export default function PublicQuotationPage({ token }: { token: string }) {
           </section>
         )}
 
-        {converted && !cancelled && (
+        {orderTracking && <PublicQuotationTrackingDetails tracking={orderTracking} />}
+
+        {converted && !cancelled && !awaitingConfirmation && !orderTracking && (
           <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-6">
             <h2 className="font-bold">Información de entrega</h2>
             <p className="mt-3 text-sm text-slate-600">{quote.customerName}</p>

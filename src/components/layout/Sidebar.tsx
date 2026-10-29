@@ -194,6 +194,8 @@ export function Sidebar({ className }: SidebarProps) {
             name: "Cotizaciones",
             href: "/cotizaciones",
             icon: FileText,
+            badge: "Nuevo",
+            badgeUntil: "2026-11-28T23:59:59-05:00",
           },
           {
             name: "Registrar venta",
