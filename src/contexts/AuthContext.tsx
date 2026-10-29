@@ -15,6 +15,7 @@ import { fetchUserCompany, fetchCompanyById } from "@/services/companyService";
 import { fetchUserSubscription } from "@/services/fetchUserSubscription";
 import { fetchSubscriptionAccess } from "@/services/subscriptionAccess";
 import type { SubscriptionAccess } from "@/types/subscriptionAccess";
+import type { MonthlyOrderVolume } from "@/lib/onboardingQuestions";
 import axios from "axios";
 import { GATEWAY } from "@/lib/gateway";
 import { isSuperadmin } from "@/config/permissions.config";
@@ -57,6 +58,7 @@ type InventoryResponse = Omit<Inventory, "storeId"> & { storeId?: string; store_
 interface Company {
   id: string;
   name: string;
+  userId?: string;
   stores?: Store[];
   // Datos adicionales para comprobante de envío
   cuit?: string; // RUC/CUIT
@@ -64,7 +66,9 @@ interface Company {
   phone?: string; // Teléfono
   logoUrl?: string; // URL del logo (para futuro)
   sales_channels?: string[];
+  onboarding_sales_channels?: string[] | null;
   closing_channels?: string[];
+  monthly_order_volume?: MonthlyOrderVolume | null;
   iva?: number;
   powipCommissionRate?: number;
 }

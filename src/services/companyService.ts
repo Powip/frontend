@@ -1,4 +1,5 @@
 import axios from "axios";
+import type { MonthlyOrderVolume } from "@/lib/onboardingQuestions";
 
 interface Store {
   id: string;
@@ -16,6 +17,8 @@ export interface Company {
   billingEmail?: string;
   logoUrl?: string;
   sales_channels?: string[];
+  onboarding_sales_channels?: string[] | null;
+  monthly_order_volume?: MonthlyOrderVolume | null;
   closing_channels?: string[];
   createdAt?: string;
   iva?: number;
@@ -29,6 +32,7 @@ export const fetchUserCompany = async (
   try {
     const response = await axios.get(
       `${process.env.NEXT_PUBLIC_API_COMPANY}/company/user/${userId}`,
+      { headers: { Authorization: `Bearer ${token}` } },
     );
 
     // Si no trae company
@@ -45,6 +49,8 @@ export const fetchUserCompany = async (
       phone: response.data.phone,
       logoUrl: response.data.logo_url,
       sales_channels: response.data.sales_channels,
+      onboarding_sales_channels: response.data.onboarding_sales_channels,
+      monthly_order_volume: response.data.monthly_order_volume,
       closing_channels: response.data.closing_channels,
       billingEmail: response.data.billing_email,
       iva: response.data.iva != null ? Number(response.data.iva) : undefined,
@@ -62,6 +68,7 @@ export const fetchCompanyById = async (
   try {
     const response = await axios.get(
       `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${companyId}/with-stores`,
+      { headers: { Authorization: `Bearer ${token}` } },
     );
 
     if (!response.data) return null;
@@ -76,6 +83,8 @@ export const fetchCompanyById = async (
       phone: response.data.phone,
       logoUrl: response.data.logo_url,
       sales_channels: response.data.sales_channels,
+      onboarding_sales_channels: response.data.onboarding_sales_channels,
+      monthly_order_volume: response.data.monthly_order_volume,
       closing_channels: response.data.closing_channels,
       billingEmail: response.data.billing_email,
       iva: response.data.iva != null ? Number(response.data.iva) : undefined,
@@ -106,6 +115,8 @@ export const getAllCompanies = async (token: string): Promise<Company[]> => {
     phone: c.phone,
     logoUrl: c.logo_url,
     sales_channels: c.sales_channels,
+    onboarding_sales_channels: c.onboarding_sales_channels,
+    monthly_order_volume: c.monthly_order_volume,
     closing_channels: c.closing_channels,
     billingEmail: c.billing_email,
     createdAt: c.created_at,
@@ -121,6 +132,9 @@ export const createCompany = async (token: string, data: Partial<Company>) => {
       billing_address: data.billingAddress,
       phone: data.phone,
       billing_email: data.billingEmail,
+      sales_channels: data.sales_channels,
+      onboarding_sales_channels: data.onboarding_sales_channels,
+      monthly_order_volume: data.monthly_order_volume,
     },
     {
       headers: {
@@ -153,6 +167,29 @@ export const updateCompany = async (
         Authorization: `Bearer ${token}`,
       },
     },
+  );
+  return response.data;
+};
+
+export interface CompanyOnboardingQuestions {
+  onboarding_sales_channels: string[];
+  monthly_order_volume: MonthlyOrderVolume;
+}
+
+export type CompanyOnboardingProfile = CompanyOnboardingQuestions & { id: string };
+
+export const submitCompanyOnboardingQuestions = async (
+  companyId: string,
+  token: string,
+  answers: CompanyOnboardingQuestions,
+): Promise<CompanyOnboardingProfile> => {
+  const response = await axios.patch<CompanyOnboardingProfile>(
+    `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${companyId}/onboarding-questions`,
+    {
+      onboarding_sales_channels: answers.onboarding_sales_channels,
+      monthly_order_volume: answers.monthly_order_volume,
+    },
+    { headers: { Authorization: `Bearer ${token}` } },
   );
   return response.data;
 };

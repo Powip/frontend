@@ -20,8 +20,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { fetchUserCompany } from "@/services/companyService";
 import { Label } from "@/components/ui/label";
+import { BusinessQuestions } from "@/components/onboarding/BusinessQuestions";
+import { businessQuestionErrors, type BusinessQuestionAnswers } from "@/lib/onboardingQuestions";
 
-interface FormData {
+interface FormData extends BusinessQuestionAnswers {
   companyName: string;
   description: string;
   logo: File | null;
@@ -42,7 +44,8 @@ function isValidTaxId(value: string): boolean {
 
 const STEPS = [
   { num: 1, name: "Tu empresa" },
-  { num: 2, name: "Facturación" },
+  { num: 2, name: "Tu operación" },
+  { num: 3, name: "Facturación" },
 ];
 
 function CompanyProgress({ currentStep }: { currentStep: number }) {
@@ -126,6 +129,8 @@ export default function NewCompanyPage() {
     phone: "",
     email: "",
     currency: Currency.PEN,
+    salesChannels: [],
+    monthlyOrderVolume: "",
   });
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -133,7 +138,7 @@ export default function NewCompanyPage() {
 
   // VALIDATION
   const validateForm = (): boolean => {
-    const newErrors: Record<string, string> = {};
+    const newErrors: Record<string, string> = { ...businessQuestionErrors(formData) };
 
     const requiredFields: (keyof FormData)[] = [
       "companyName",
@@ -199,9 +204,15 @@ export default function NewCompanyPage() {
     if (!validateForm()) {
       toast.error("Por favor completa correctamente el formulario.");
       // Si el error está en un campo del paso 1, volver a ese paso.
-      if (["companyName", "currency", "logo"].some((f) => validationErrorsRef.current[f])) setStep(1);
+      if (["companyName", "currency", "logo"].some((f) => validationErrorsRef.current[f])) {
+        setStep(1);
+      } else if (["salesChannels", "monthlyOrderVolume"].some((f) => validationErrorsRef.current[f])) {
+        setStep(2);
+      }
       return;
     }
+    // Enter on an earlier step must not submit an incomplete company.
+    if (step !== 3) return;
     if (!auth) return;
 
     setIsLoading(true);
@@ -216,6 +227,8 @@ export default function NewCompanyPage() {
       body.append("phone", formData.phone);
       body.append("billing_email", formData.email);
       body.append("currency", formData.currency);
+      formData.salesChannels.forEach((channel) => body.append("onboarding_sales_channels[]", channel));
+      body.append("monthly_order_volume", formData.monthlyOrderVolume);
       if (formData.logo) {
         body.append("logo", formData.logo);
       }
@@ -256,7 +269,7 @@ export default function NewCompanyPage() {
 
   return (
     <div className="min-h-screen py-12 px-4" style={{ background: "#f7f5ff" }}>
-      <div className="max-w-lg mx-auto">
+      <div className={`mx-auto ${step === 2 ? "max-w-3xl" : "max-w-lg"}`}>
         {/* Header */}
         <div className="text-center mb-8">
           <div
@@ -271,7 +284,9 @@ export default function NewCompanyPage() {
           <p className="text-sm text-gray-500 mt-1">
             {step === 1
               ? "Cuéntanos sobre tu negocio."
-              : "Datos de contacto y facturación."}
+              : step === 2
+                ? "Cuéntanos cómo vendes y cuántos pedidos despachas."
+                : "Datos de contacto y facturación."}
           </p>
         </div>
 
@@ -444,6 +459,48 @@ export default function NewCompanyPage() {
             {/* STEP 2 */}
             {step === 2 && (
               <div className="flex flex-col gap-5">
+                <BusinessQuestions
+                  salesChannels={formData.salesChannels}
+                  monthlyOrderVolume={formData.monthlyOrderVolume}
+                  onSalesChannelsChange={(salesChannels) => {
+                    setFormData((previous) => ({ ...previous, salesChannels }));
+                    if (salesChannels.length) {
+                      setErrors((previous) => ({ ...previous, salesChannels: "" }));
+                    }
+                  }}
+                  onMonthlyOrderVolumeChange={(monthlyOrderVolume) => {
+                    setFormData((previous) => ({ ...previous, monthlyOrderVolume }));
+                    setErrors((previous) => ({ ...previous, monthlyOrderVolume: "" }));
+                  }}
+                  errors={errors}
+                  disabled={isLoading}
+                />
+                <Button
+                  type="button"
+                  size="lg"
+                  className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-xl text-base font-semibold"
+                  style={{ background: "#4F3A96" }}
+                  onClick={() => {
+                    const questionErrors = businessQuestionErrors(formData);
+                    setErrors(questionErrors);
+                    if (Object.keys(questionErrors).length === 0) setStep(3);
+                  }}
+                >
+                  Continuar <ArrowRight className="h-4 w-4" />
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setStep(1)}
+                  className="flex w-full items-center justify-center gap-1.5 py-2 text-sm text-gray-400 hover:text-gray-600"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" /> Volver
+                </button>
+              </div>
+            )}
+
+            {/* STEP 3 */}
+            {step === 3 && (
+              <div className="flex flex-col gap-5">
                 {/* Dirección de facturación */}
                 <div>
                   <Label htmlFor="billingAddress">
@@ -578,7 +635,8 @@ export default function NewCompanyPage() {
                 {/* Volver */}
                 <button
                   type="button"
-                  onClick={() => setStep(1)}
+                  onClick={() => setStep(2)}
+                  disabled={isLoading}
                   className="flex items-center justify-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 w-full py-2"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" /> Volver
