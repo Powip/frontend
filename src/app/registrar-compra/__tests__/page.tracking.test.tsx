@@ -74,7 +74,7 @@ jest.mock("@/components/ui/select", () => ({
 const apiGet = jest.mocked(axiosAuth.get);
 const apiPost = jest.mocked(axiosAuth.post);
 const create = jest.mocked(createTrackedPurchase);
-const variant = (mode: "NONE" | "IMEI" = "NONE") => ({
+const variant = (mode: "NONE" | "IMEI" | "SERIAL" = "NONE") => ({
   variantId: "v1",
   inventoryItemId: "i1",
   productName: "Celular",
@@ -86,7 +86,7 @@ const variant = (mode: "NONE" | "IMEI" = "NONE") => ({
   availableStock: 0,
 });
 beforeEach(() => {
-  jest.clearAllMocks();
+  jest.resetAllMocks();
   mockParams = new URLSearchParams();
   mockCompany = "company-a";
   sessionStorage.clear();
@@ -107,12 +107,15 @@ async function addProduct() {
   fireEvent.change(option.closest("select")!, { target: { value: "s1" } });
   fireEvent.click(screen.getByRole("button", { name: "Agregar Productos" }));
   const product = await screen.findByText("Celular");
-  fireEvent.click(within(product.closest("tr")!).getByRole("button", { name: "Agregar" }));
+  const addButton = within(product.closest("tr")!).getByRole("button", { name: "Agregar" });
+  fireEvent.click(addButton);
+  return addButton;
 }
 
 it("keeps quantity purchases on the legacy endpoint without code or operation fields", async () => {
   render(<RegistrarCompraPage />);
-  await addProduct();
+  const addButton = await addProduct();
+  expect(addButton).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Registrar Compra" }));
   await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(1));
   const [url, payload] = apiPost.mock.calls[0];
@@ -126,6 +129,46 @@ it("keeps quantity purchases on the legacy endpoint without code or operation fi
   expect(payload).not.toHaveProperty("items.0.codes");
   expect(payload).not.toHaveProperty("items.0.trackingMode");
   expect(create).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["IMEI", ["001234567890123", "001234567890124", "001234567890125"]],
+  ["SERIAL", ["SERIE-001", "SERIE-002", "SERIE-003"]],
+] as const)("adds more units of the same %s variant while preserving its codes and purchase line", async (mode, codes) => {
+  apiGet.mockImplementation(async (url) => ({
+    data: String(url).includes("/suppliers/company/")
+      ? [{ id: "s1", name: "Proveedor A", isActive: true }]
+      : { data: [variant(mode)], meta: { total: 1, totalPages: 1 } },
+  }));
+  create.mockResolvedValue({ id: "purchase" });
+  render(<RegistrarCompraPage />);
+  const addButton = await addProduct();
+  const codeInput = screen.getByLabelText(`${mode} · un código por unidad`);
+  fireEvent.change(codeInput, { target: { value: codes[0] } });
+  const costInput = within(codeInput.closest("tr")!).getAllByRole("spinbutton")[1];
+  fireEvent.change(costInput, { target: { value: "17.5" } });
+  expect(addButton).toBeEnabled();
+  expect(addButton).toHaveAccessibleName("Agregar otra unidad");
+  act(() => {
+    fireEvent.click(addButton);
+    fireEvent.click(addButton);
+  });
+  expect(screen.getByLabelText("Cantidad de Celular")).toHaveValue(3);
+  expect(codeInput).toHaveValue(codes[0]);
+  expect(costInput).toHaveValue(17.5);
+  expect(screen.getByText("1 de 3 códigos")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Registrar Compra" })).toBeDisabled();
+  fireEvent.change(codeInput, { target: { value: [codes[0], codes[0], codes[2]].join("\n") } });
+  expect(screen.getByText(/Código duplicado/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Registrar Compra" })).toBeDisabled();
+  fireEvent.change(codeInput, { target: { value: codes.join("\n") } });
+  fireEvent.click(screen.getByRole("button", { name: "Registrar Compra" }));
+  await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+  expect(create.mock.calls[0][0]).toMatchObject({
+    items: [{ variantId: "v1", quantity: 3, unitCost: 17.5, codes: [...codes] }],
+  });
+  expect(create.mock.calls[0][0].items).toHaveLength(1);
+  expect(apiPost).not.toHaveBeenCalled();
 });
 
 it("preserves IMEI zeroes, locks uncertain requests and retries the same operation", async () => {
@@ -146,6 +189,7 @@ it("preserves IMEI zeroes, locks uncertain requests and retries the same operati
   fireEvent.click(screen.getByRole("button", { name: "Registrar Compra" }));
   await screen.findByText("Conexión interrumpida");
   expect(screen.getByLabelText("IMEI · un código por unidad")).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Agregar otra unidad" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Reintentar misma solicitud" }));
   await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/compras"));
   expect(create.mock.calls[1][0]).toEqual(create.mock.calls[0][0]);
@@ -187,6 +231,7 @@ it("loads tracked edits through the proxy and preserves the same units while cha
   expect(screen.getByLabelText("Cantidad de Celular")).toBeDisabled();
   expect(screen.getByLabelText("IMEI · un código por unidad")).toHaveValue("001234567890123");
   expect(screen.getByLabelText("IMEI · un código por unidad")).toBeDisabled();
+  expect(await screen.findByRole("button", { name: "Agregar otra unidad" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: /Guardar Cambios/ }));
   await waitFor(() =>
     expect(updateTrackedPurchase).toHaveBeenCalledWith(
