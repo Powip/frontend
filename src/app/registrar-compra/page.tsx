@@ -438,11 +438,7 @@ function RegistrarCompraForm() {
   }, [currentStep, selectedInventoryId, searchProducts]);
 
   const addToCart = (product: ProductVariant) => {
-    const existing = cart.find((item) => item.variantId === product.variantId);
-    if (existing) {
-      toast.warning("Este producto ya está en el carrito");
-      return;
-    }
+    if (trackedEdit || formLocked) return;
 
     const selectedSupplier = suppliers.find((s) => s.id === selectedSupplierId);
 
@@ -463,7 +459,14 @@ function RegistrarCompraForm() {
       codesText: "",
     };
 
-    setCart((prev) => [...prev, newItem]);
+    setCart((prev) => {
+      const existing = prev.find((item) => item.variantId === product.variantId);
+      if (!existing) return [...prev, newItem];
+      if (!isTracked(existing.trackingMode)) return prev;
+      return prev.map((item) => item.id === existing.id
+        ? { ...item, quantity: item.quantity + 1 }
+        : item);
+    });
   };
 
   const removeFromCart = (cartItemId: string) => {
@@ -977,11 +980,13 @@ function RegistrarCompraForm() {
                                 size="sm"
                                 onClick={() => addToCart(product)}
                                 disabled={trackedEdit || cart.some(
-                                  (item) => item.variantId === product.variantId,
+                                  (item) => item.variantId === product.variantId && !isTracked(item.trackingMode),
                                 )}
                               >
                                 <Plus className="h-4 w-4 mr-1" />
-                                Agregar
+                                {cart.some((item) => item.variantId === product.variantId && isTracked(item.trackingMode))
+                                  ? "Agregar otra unidad"
+                                  : "Agregar"}
                               </Button>
                             </TableCell>
                           </TableRow>
@@ -1079,6 +1084,7 @@ function RegistrarCompraForm() {
                                   <Label htmlFor={`codes-${item.id}`}>{item.trackingMode} · un código por unidad</Label>
                                   <Textarea id={`codes-${item.id}`} value={item.codesText} disabled={trackedEdit} rows={3} spellCheck={false} autoComplete="off" placeholder="Pega un código por línea" onChange={(event) => setCart((previous) => previous.map((entry) => entry.id === item.id ? { ...entry, codesText: event.target.value } : entry))} />
                                   <p className="text-xs">{parseUnitCodes(item.codesText).length} de {item.quantity} códigos</p>
+                                  {!trackedEdit && <p className="text-xs text-muted-foreground">Para ingresar otro equipo del mismo modelo, pulsa «Agregar otra unidad» y añade su código en una línea nueva.</p>}
                                 </div> : null}
                                 {Object.keys(item.attributes || {}).length >
                                   0 && (
