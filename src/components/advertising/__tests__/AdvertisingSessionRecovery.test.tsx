@@ -268,6 +268,7 @@ describe("advertising callback session recovery with the real guard and Auth pro
     await waitFor(() =>
       expect(get).toHaveBeenCalledWith(
         `https://company.example.test/company/${COMPANY_ID}/with-stores`,
+        { headers: { Authorization: `Bearer ${TOKEN}` } },
       ),
     );
     expect(await screen.findByRole("alert")).toHaveTextContent(/empresa/);

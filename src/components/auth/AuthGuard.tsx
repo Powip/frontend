@@ -7,6 +7,7 @@ import { getRoutePermissions, hasAnyPermission, isSuperadmin, hasAdminAccess } f
 import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
 import { isPublicLiveRoute } from "@/lib/liveRoutes";
 import { resolveSubscriptionRedirect } from "@/lib/subscriptionGate";
+import { resolveBusinessQuestionsRedirect } from "@/lib/businessQuestionsGate";
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -59,7 +60,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   // Sin pago no se entra (FEAT-11): usuarios sin empresa van a elegir/pagar un
   // plan o, si ya pagaron, a crear su empresa. Con empresa, el bloqueo de la
   // migración a Flow (FEAT-25). Ver lib/subscriptionGate.ts.
-  const gateRedirect =
+  const subscriptionRedirect =
     !loading && auth && !isPublicRoute && !isPartnersRoute && pathname
       ? resolveSubscriptionRedirect({
           pathname,
@@ -69,6 +70,19 @@ export default function AuthGuard({ children }: AuthGuardProps) {
           access: auth.access,
         })
       : null;
+
+  const gateRedirect = subscriptionRedirect || (
+    !loading && auth && !isPublicRoute && !isPartnersRoute && pathname
+      ? resolveBusinessQuestionsRedirect({
+          pathname,
+          company: auth.company,
+          userId: auth.user.id,
+          userRole: auth.user.role,
+          userCompanyId: auth.user.companyId,
+          isSuperadmin: isSuperadmin(auth.user.email),
+        })
+      : null
+  );
 
   useEffect(() => {
     // Si no está cargando, no hay auth, y NO es ruta pública -> login
