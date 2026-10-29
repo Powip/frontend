@@ -41,6 +41,14 @@ describe("registro de fuentes", () => {
     }
   });
 
+  it("el comparativo y el detalle de canal ya se leen del backend, también en solo reales", () => {
+    for (const id of ["canales-comparativo", "canales-detalle"] as const) {
+      expect(
+        resolvePanelSource(DEFAULT_PANEL_SOURCES, id, "solo_real", "canales", "canales"),
+      ).toMatchObject({ source: { kind: "real" }, origin: { kind: "real" } });
+    }
+  });
+
   describe("el detalle de pedidos sigue a la pestaña que lo abre", () => {
     it("en el Resumen lee del backend, también en solo reales", () => {
       for (const modo of ["mixto", "solo_real"] as const) {
@@ -64,6 +72,25 @@ describe("registro de fuentes", () => {
         // En «Solo datos reales» esa vista queda pendiente, como el resto de lo demo.
         expect(
           resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", "solo_real", pestana),
+        ).toMatchObject({ source: null, origin: { kind: "pendiente" } });
+      }
+    });
+
+    it("en Ventas y canales solo la subpestaña Canales lee del backend", () => {
+      for (const modo of ["mixto", "solo_real"] as const) {
+        expect(
+          resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", modo, "canales", "canales"),
+        ).toMatchObject({ source: { kind: "real" }, origin: { kind: "real" } });
+      }
+    });
+
+    it("las demás subpestañas de Ventas y canales siguen en demo hasta que se conecten", () => {
+      for (const subpestana of ["productos", "publicidad", "clientes"] as const) {
+        expect(
+          resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", "mixto", "canales", subpestana),
+        ).toMatchObject({ source: { kind: "demo" } });
+        expect(
+          resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", "solo_real", "canales", subpestana),
         ).toMatchObject({ source: null, origin: { kind: "pendiente" } });
       }
     });

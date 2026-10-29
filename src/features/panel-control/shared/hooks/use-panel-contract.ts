@@ -37,7 +37,13 @@ function usePanelContractSetup<K extends PanelContractId>(
   const { view, sources, state, now, session } = usePanel();
   const catalogoContexto = useContext(PanelCatalogContext);
   const ready = view.access === "permitido" ? view : null;
-  const { source, origin } = resolvePanelSource(sources, contractId, state.dataMode, ready?.tab);
+  const { source, origin } = resolvePanelSource(
+    sources,
+    contractId,
+    state.dataMode,
+    ready?.tab,
+    ready?.subtab,
+  );
   const capacidades =
     options.permisosDe === "usuario" ? ready?.actualCapabilities : ready?.capabilities;
   const rol = options.permisosDe === "usuario" ? ready?.actualRole : ready?.role;

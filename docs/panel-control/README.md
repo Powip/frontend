@@ -39,9 +39,10 @@ La interfaz marca cada vista o cifra con un badge: **Demo** (ámbar), **Pendient
 | Tiendas | **Real**: `auth.company.stores` | Filtro Tienda |
 | `estado-periodo` | **Real parcial**: `GET /panel/estado` (ms-ventas). Falta el bloque `calidad` (cuadres) | Línea de estado ("% del periodo aún abierto") |
 | `resumen` | **Real parcial**: `GET /panel/resumen` (ms-ventas). Faltan `gane`, `inventario`, la comparación con el periodo anterior y las metas | Pestaña Resumen |
-| `detalle` | **Real en el Resumen** (`GET /panel/detalle`, ms-ventas); **demo** en las demás pestañas hasta conectarlas | Drawer de detalle (paginación, búsqueda, por producto, por estado, Excel) |
+| `detalle` | **Real en el Resumen y en Ventas y canales → Canales** (`GET /panel/detalle`, ms-ventas); **demo** en las demás pestañas y subpestañas hasta conectarlas | Drawer de detalle (paginación, búsqueda, por producto, por estado, Excel) |
 | `config-metas` | **Demo**: metas por defecto de la especificación §11 y metas mensuales de ejemplo | Semáforos, Configuración → Metas |
-| `canales-comparativo`, `canales-detalle` | **Demo** | Ventas y canales → Canales |
+| `canales-comparativo` | **Real parcial**: `GET /panel/canales?vista=` (ms-ventas). Ventas y entregas completas; `ganancia` solo trae facturado y entregado | Ventas y canales → Canales |
+| `canales-detalle` | **Real parcial**: `GET /panel/canales/{id}` (ms-ventas). Sin `costos`; el tipo de bloque se infiere de los pedidos | Ventas y canales → Canales |
 | `productos` | **Demo** | Ventas y canales → Productos |
 | `publicidad` | **Demo** | Ventas y canales → Publicidad |
 | `clientes-zonas` | **Demo** | Ventas y canales → Clientes y zonas |
@@ -73,6 +74,19 @@ La interfaz marca cada vista o cifra con un badge: **Demo** (ámbar), **Pendient
 - **Grupos del drawer conectados**: los que usa el Resumen (ver `GRUPOS_DEL_PERIODO` y `GRUPOS_DE_ESTADO_ACTUAL` en ms-ventas). El resto responde HTTP 400.
 - **Colas de hoy** (leads sin llamar, ventas sin guía): solo pedidos abiertos de los últimos 14 días.
 - Los permisos (403, identidad impuesta a Confirmadora y Vendedora, empresa del token) los aplica el servidor; las pruebas del backend los fijan.
+
+### 2.2 Backend conectado (Fase B1: Canales, 2026-10-29)
+
+`GET /panel/canales?vista=ventas|entregas|ganancia` y `GET /panel/canales/{id}` ya existen en ms-ventas. Solo Dueño y Supervisora; `vista=ganancia` responde 403 a quien no ve costos (incluido un Dueño que previsualiza como Supervisora). Lo que decidió el backend:
+
+- **Cuadres**: Σ filas (con «Sin canal») = total = «Vendí» del Resumen; el KPI de un canal = su fila = su drawer. El total se calcula sobre todos los pedidos, no promedia filas.
+- **Descuentos** = precio de lista − neto de las líneas (coincide con `discountAmount`); **upsell** sale de `upsell_records`.
+- **`vista=ganancia`**: trae `facturacion` y `entregado`. Costo, pauta, comisión, flete y ganancia llegan `null` con `gananciaParcial: true` y la pantalla dice «Pendiente»: `unit_cost` solo se llena desde octubre y en ~24 % de las líneas, y no hay pauta por canal ni comisión configurada. Los tipos del frontend (`CanalGananciaFila`, `RentabilidadCanalFila`) admiten `null`.
+- **Familia**: `canal_config` no la guarda. `canales[].familia` es `null` y la tendencia semanal agrupa todo en «Sin familia» (lo vendido sin canal va a «Otras»).
+- **Tipo de bloque del detalle**: se infiere del comportamiento de los pedidos del canal (call center → `lead`; tienda física → `presencial`; marketplace; prepago; el resto `conversacional`). Un canal Live se ve hoy como `conversacional`: faltan las sesiones con inversión. `costos` no se envía.
+- **Embudo de leads**: «contactados» = sub-estado `contactado` del call center o ya confirmado (`callAttempts` casi no se llena). Los grupos del drawer `contactados` y `ventas_rango {desde,hasta,familias}` ya existen; este último usa el rango propio del gráfico, no el periodo de la pantalla.
+- **Drawer**: es real solo en la subpestaña Canales (`PanelSource.subpestanas`); Productos, Publicidad y Clientes siguen en demo y nunca muestran pedidos reales detrás de una cifra demo.
+- Pendientes: metas (`metaPeriodo`, `avanceMeta`), primer intento de entrega, flete, comisión a descontar y plazo de liquidación del marketplace.
 
 ## 3. Contrato común
 
@@ -188,8 +202,8 @@ Generada desde los descriptores (`PANEL_CONTRACTS`) y el registro de fuentes (`D
 | `resumen` | `GET /panel/resumen` | `ResumenView` (4 tarjetas, Qué hacer hoy, gráficos, Flujo) | §4.1 | §3.1 | ingreso; tareas e inventario: estado actual | Dueño, Supervisora | demo |
 | `detalle` | `GET /panel/detalle` | `DetailDrawer` (+ Excel del detalle) | `resumen`, `porProducto`, `porEstado`, `pedidos{filas,total,pagina,tamanoPagina}`; con caja: `movimientoCaja`, `movimientoFecha`, `movimientoMonto` | §3.1 + `grupo`, `grupo_params`, `pagina`, `tamano_pagina`, `buscar` | según el grupo (tabla §4.1) | Todos; identidad impuesta | demo |
 | `canales-fichas` | `GET /config/canales` | catálogo del panel (filtro Canal), `ConfigCanalesView` | `id`, `nombre`, `activo`; el resto admite `null` + `camposPendientes` | `empresaId` | — | Todos | **real** parcial |
-| `canales-comparativo` | `GET /panel/canales?vista=` | `ComparativoCanales` | §4.2 | §3.1 + `vista` | ingreso | Dueño, Supervisora (`ganancia`: Dueño) | demo |
-| `canales-detalle` | `GET /panel/canales/{id}` | `CanalSeleccionado` | §4.2 | §3.1 | ingreso; por liquidar: estado actual | Dueño, Supervisora | demo |
+| `canales-comparativo` | `GET /panel/canales?vista=` | `ComparativoCanales` | §4.2 | §3.1 + `vista` | ingreso | Dueño, Supervisora (`ganancia`: Dueño) | real parcial |
+| `canales-detalle` | `GET /panel/canales/{id}` | `CanalSeleccionado` | §4.2 | §3.1 | ingreso; por liquidar: estado actual | Dueño, Supervisora | real parcial |
 | `productos` | `GET /panel/productos` | `ProductosSubtab` | §4.2 | §3.1 | ingreso | Dueño, Supervisora | demo |
 | `publicidad` | `GET /panel/publicidad` | `PublicidadSubtab` | §4.2 | §3.1 | fecha de la pauta / ingreso | Dueño, Supervisora | demo |
 | `clientes-zonas` | `GET /panel/clientes` | `ClientesZonasSubtab` | §4.2 | §3.1 | ingreso; historial: todo | Dueño, Supervisora | demo |

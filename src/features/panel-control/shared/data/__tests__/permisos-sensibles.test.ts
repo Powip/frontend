@@ -1,3 +1,7 @@
+import {
+  canalesComparativoDemoSource,
+  canalesDetalleDemoSource,
+} from "../../../canales/sources/canales.demo";
 import { detalleDemoSource } from "../../../detalle/sources/detalle.demo";
 import { estadoPeriodoDemoSource } from "../../../estado-periodo/sources/estado-periodo.demo";
 import { resumenDemoSource } from "../../../resumen/sources/resumen.demo";
@@ -12,7 +16,7 @@ import type { PanelSource, PanelSourceContext } from "../panel-source";
 import { DEFAULT_PANEL_SOURCES } from "../panel-sources";
 
 /**
- * Estos tres contratos ya se leen de ms-ventas. Aquí se prueban con su fuente demo,
+ * Estos contratos ya se leen de ms-ventas. Aquí se prueban con su fuente demo,
  * que es la especificación ejecutable de los permisos; la versión real de esas
  * reglas (403, campos omitidos, identidad impuesta) la prueba el backend.
  */
@@ -21,6 +25,8 @@ const FUENTES = {
   "estado-periodo": conAutorizacion(estadoPeriodoDemoSource),
   resumen: conAutorizacion(resumenDemoSource),
   detalle: conAutorizacion(detalleDemoSource),
+  "canales-comparativo": conAutorizacion(canalesComparativoDemoSource),
+  "canales-detalle": conAutorizacion(canalesDetalleDemoSource),
 };
 
 const CAMPOS_SENSIBLES = new Set([

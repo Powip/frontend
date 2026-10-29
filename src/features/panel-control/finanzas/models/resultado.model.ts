@@ -45,7 +45,8 @@ export interface RentabilidadCanalFila {
   canalId: string | null;
   canalNombre: string;
   entregado: number;
-  ganancia: number;
+  /** `null` mientras no existan costo, pauta y comisión: se muestra «Pendiente». */
+  ganancia: number | null;
   gananciaParcial: boolean;
   margen: number | null;
   retornoPublicidad: number | null;

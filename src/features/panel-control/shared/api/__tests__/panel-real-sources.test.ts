@@ -1,5 +1,10 @@
 import axiosAuth from "@/lib/axiosAuth";
-import { detalleRealSource } from "../../../detalle/sources/detalle.source";
+import { canalesComparativoRealSource } from "../../../canales/sources/canales-comparativo.source";
+import { canalesDetalleRealSource } from "../../../canales/sources/canales-detalle.source";
+import {
+  detalleCanalesRealSource,
+  detalleRealSource,
+} from "../../../detalle/sources/detalle.source";
 import { estadoPeriodoRealSource } from "../../../estado-periodo/sources/estado-periodo.source";
 import { resumenRealSource } from "../../../resumen/sources/resumen.source";
 import type { PanelQuery } from "../../models/panel-query.model";
@@ -75,5 +80,51 @@ describe("fuentes reales del panel (ms-ventas)", () => {
   it("un error del backend (403, 400) llega al bloque tal cual para que muestre «Reintentar»", async () => {
     mockGet.mockRejectedValue(new Error("Request failed with status code 403"));
     await expect(resumenRealSource.fetch(CONSULTA as never, CONTEXTO)).rejects.toThrow("403");
+  });
+
+  it("el comparativo de canales manda la vista elegida junto con los filtros", async () => {
+    const sobre = { actual: {}, anterior_misma_antiguedad: null, metas: null, generado_en: "x" };
+    mockGet.mockResolvedValue({ data: sobre });
+    const consulta = { ...CONSULTA, vista: "entregas" };
+    expect(canalesComparativoRealSource).toMatchObject({
+      contractId: "canales-comparativo",
+      kind: "real",
+    });
+    await expect(canalesComparativoRealSource.fetch(consulta as never, CONTEXTO)).resolves.toBe(
+      sobre,
+    );
+    expect(mockGet).toHaveBeenCalledWith("https://ventas.example.com/panel/canales", {
+      params: consulta,
+    });
+  });
+
+  it("el detalle de un canal lleva el id en la ruta, codificado, y no entre los parámetros", async () => {
+    const sobre = { actual: {}, anterior_misma_antiguedad: null, metas: null, generado_en: "x" };
+    mockGet.mockResolvedValue({ data: sobre });
+    expect(canalesDetalleRealSource).toMatchObject({ contractId: "canales-detalle", kind: "real" });
+    await expect(
+      canalesDetalleRealSource.fetch(
+        { ...CONSULTA, canal_id: "txt:tiktok live" } as never,
+        CONTEXTO,
+      ),
+    ).resolves.toBe(sobre);
+    expect(mockGet).toHaveBeenCalledWith(
+      "https://ventas.example.com/panel/canales/txt%3Atiktok%20live",
+      { params: CONSULTA },
+    );
+  });
+
+  it("el detalle de pedidos de Canales es el mismo endpoint, solo para esa subpestaña", async () => {
+    mockGet.mockResolvedValue({ data: {} });
+    expect(detalleCanalesRealSource).toMatchObject({
+      contractId: "detalle",
+      kind: "real",
+      pestanas: ["canales"],
+      subpestanas: ["canales"],
+    });
+    await detalleCanalesRealSource.fetch({ ...CONSULTA, grupo: "ventas" } as never, CONTEXTO);
+    expect(mockGet).toHaveBeenCalledWith("https://ventas.example.com/panel/detalle", {
+      params: { ...CONSULTA, grupo: "ventas" },
+    });
   });
 });

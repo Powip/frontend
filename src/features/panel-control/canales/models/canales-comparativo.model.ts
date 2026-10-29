@@ -32,17 +32,18 @@ export interface CanalEntregasFila {
   perdido: number;
 }
 
+/** `null` = el sistema todavía no guarda ese dato (costo, pauta, comisión, flete): se muestra «Pendiente». */
 export interface CanalGananciaFila {
   canalId: string | null;
   facturacion: number;
   entregado: number;
-  costoProducto: number;
+  costoProducto: number | null;
   costoIncompleto: boolean;
-  pautaDirecta: number;
-  pautaGeneralEstimada: number;
-  comision: number;
-  flete: number;
-  ganancia: number;
+  pautaDirecta: number | null;
+  pautaGeneralEstimada: number | null;
+  comision: number | null;
+  flete: number | null;
+  ganancia: number | null;
   gananciaParcial: boolean;
   margen: number | null;
   retornoPublicidad: number | null;

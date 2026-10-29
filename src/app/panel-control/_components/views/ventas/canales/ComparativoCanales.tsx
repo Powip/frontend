@@ -229,7 +229,9 @@ function TablaComparativo({ data, origen, abrir }: TablaProps): ReactNode {
     {
       ...soles<CanalGananciaFila>("ganancia", "Ganancia", (fila) => fila.ganancia),
       cell: (fila) =>
-        fila.gananciaParcial ? (
+        fila.ganancia === null ? (
+          <span className="text-pc-text-muted">Pendiente</span>
+        ) : fila.gananciaParcial ? (
           <span className="text-pc-text-muted" title="Tope: hay entregas sin costo cargado">
             ≤ {formatSoles(fila.ganancia)}
           </span>
@@ -266,9 +268,12 @@ function TablaComparativo({ data, origen, abrir }: TablaProps): ReactNode {
           pauta_general: formatSoles(total.pautaGeneralEstimada),
           comision: formatSoles(total.comision),
           flete: formatSoles(total.flete),
-          ganancia: total.gananciaParcial
-            ? `≤ ${formatSoles(total.ganancia)}`
-            : formatSoles(total.ganancia),
+          ganancia:
+            total.ganancia === null
+              ? "Pendiente"
+              : total.gananciaParcial
+                ? `≤ ${formatSoles(total.ganancia)}`
+                : formatSoles(total.ganancia),
           margen: formatPercent(total.margen),
           retorno: formatVeces(total.retornoPublicidad),
           costo_venta: formatSoles(total.costoPorVenta),
@@ -277,8 +282,10 @@ function TablaComparativo({ data, origen, abrir }: TablaProps): ReactNode {
       <p role="note" className="text-xs text-pc-text-muted">
         <i>Pauta general (est.)</i> es un reparto estimado del presupuesto general según la
         facturación de cada canal que recibe pauta general; no es inversión registrada por canal.
-        {total.gananciaParcial &&
-          " * Hay entregas sin costo de producto cargado: «≤» indica que la ganancia es un tope, no la cifra final."}
+        {total.ganancia === null
+          ? " La ganancia está pendiente: todavía no se registran el costo del producto (solo hay costo en parte de las líneas desde octubre), la pauta por canal, la comisión ni el flete."
+          : total.gananciaParcial &&
+            " * Hay entregas sin costo de producto cargado: «≤» indica que la ganancia es un tope, no la cifra final."}
       </p>
     </div>
   );

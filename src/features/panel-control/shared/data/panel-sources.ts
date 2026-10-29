@@ -1,9 +1,7 @@
 import { opcionesAsesoresRealSource } from "../../asesores/sources/opciones-asesores.source";
 import { callCenterDemoSource } from "../../call-center/sources/call-center.demo";
-import {
-  canalesComparativoDemoSource,
-  canalesDetalleDemoSource,
-} from "../../canales/sources/canales.demo";
+import { canalesComparativoRealSource } from "../../canales/sources/canales-comparativo.source";
+import { canalesDetalleRealSource } from "../../canales/sources/canales-detalle.source";
 import { canalesFichasRealSource } from "../../canales/sources/canales-fichas.source";
 import { clientesZonasDemoSource } from "../../clientes-zonas/sources/clientes-zonas.demo";
 import { configMetasDemoSource } from "../../configuracion/sources/config-metas.demo";
@@ -12,7 +10,7 @@ import {
   configEstadosDemoSource,
 } from "../../configuracion/sources/configuracion.demo";
 import { detalleDemoSource } from "../../detalle/sources/detalle.demo";
-import { detalleRealSource } from "../../detalle/sources/detalle.source";
+import { detalleCanalesRealSource, detalleRealSource } from "../../detalle/sources/detalle.source";
 import {
   equipoConfirmadorasDemoSource,
   equipoVendedorasDemoSource,
@@ -59,10 +57,10 @@ export const DEFAULT_PANEL_SOURCES: PanelSourceRegistry = autorizarRegistro({
   "estado-periodo": estadoPeriodoRealSource,
   resumen: resumenRealSource,
   // Real en el Resumen (ya conectado); demo en las pestañas que todavía no tienen backend.
-  detalle: [detalleRealSource, detalleDemoSource],
+  detalle: [detalleRealSource, detalleCanalesRealSource, detalleDemoSource],
   "config-metas": configMetasDemoSource,
-  "canales-comparativo": canalesComparativoDemoSource,
-  "canales-detalle": canalesDetalleDemoSource,
+  "canales-comparativo": canalesComparativoRealSource,
+  "canales-detalle": canalesDetalleRealSource,
   productos: productosDemoSource,
   publicidad: publicidadDemoSource,
   "clientes-zonas": clientesZonasDemoSource,
