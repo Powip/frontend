@@ -39,11 +39,11 @@ La interfaz marca cada vista o cifra con un badge: **Demo** (ámbar), **Pendient
 | Tiendas | **Real**: `auth.company.stores` | Filtro Tienda |
 | `estado-periodo` | **Real parcial**: `GET /panel/estado` (ms-ventas). Falta el bloque `calidad` (cuadres) | Línea de estado ("% del periodo aún abierto") |
 | `resumen` | **Real parcial**: `GET /panel/resumen` (ms-ventas). Faltan `gane`, `inventario`, la comparación con el periodo anterior y las metas | Pestaña Resumen |
-| `detalle` | **Real en el Resumen y en Ventas y canales → Canales** (`GET /panel/detalle`, ms-ventas); **demo** en las demás pestañas y subpestañas hasta conectarlas | Drawer de detalle (paginación, búsqueda, por producto, por estado, Excel) |
+| `detalle` | **Real en el Resumen y en Ventas y canales → Canales y Productos** (`GET /panel/detalle`, ms-ventas); **demo** en las demás pestañas y subpestañas hasta conectarlas | Drawer de detalle (paginación, búsqueda, por producto, por estado, Excel) |
 | `config-metas` | **Demo**: metas por defecto de la especificación §11 y metas mensuales de ejemplo | Semáforos, Configuración → Metas |
 | `canales-comparativo` | **Real parcial**: `GET /panel/canales?vista=` (ms-ventas). Ventas y entregas completas; `ganancia` solo trae facturado y entregado | Ventas y canales → Canales |
 | `canales-detalle` | **Real parcial**: `GET /panel/canales/{id}` (ms-ventas). Sin `costos`; el tipo de bloque se infiere de los pedidos | Ventas y canales → Canales |
-| `productos` | **Demo** | Ventas y canales → Productos |
+| `productos` | **Real parcial**: `GET /panel/productos` (ms-ventas). Sin stock; costo y margen solo si todas las líneas del producto tienen costo | Ventas y canales → Productos |
 | `publicidad` | **Demo** | Ventas y canales → Publicidad |
 | `clientes-zonas` | **Demo** | Ventas y canales → Clientes y zonas |
 | `callcenter` | **Demo** | Call center |
@@ -87,6 +87,18 @@ La interfaz marca cada vista o cifra con un badge: **Demo** (ámbar), **Pendient
 - **Embudo de leads**: «contactados» = sub-estado `contactado` del call center o ya confirmado (`callAttempts` casi no se llena). Los grupos del drawer `contactados` y `ventas_rango {desde,hasta,familias}` ya existen; este último usa el rango propio del gráfico, no el periodo de la pantalla.
 - **Drawer**: es real solo en la subpestaña Canales (`PanelSource.subpestanas`); Productos, Publicidad y Clientes siguen en demo y nunca muestran pedidos reales detrás de una cifra demo.
 - Pendientes: metas (`metaPeriodo`, `avanceMeta`), primer intento de entrega, flete, comisión a descontar y plazo de liquidación del marketplace.
+
+### 2.3 Backend conectado (Fase B2: Productos, 2026-10-29)
+
+`GET /panel/productos` ya existe en ms-ventas (solo Dueño y Supervisora). Lo que decidió el backend:
+
+- **Cuadres**: Σ productos = Σ categorías = Σ ventas diarias = facturación neta = «Vendí» (las líneas suman exactamente el neto del pedido en las 720 ventas verificadas).
+- **Producto**: cada variante es un producto propio (variante fusionada > variante > SKU). El nombre es el de la línea; la `variante` sale de los atributos (la «Default Title» de Shopify no cuenta). Sin producto base, la variante es su propia base.
+- **Costo y margen** (solo Dueño): `costoUnitario` ponderado y `margen` solo si TODAS las líneas del producto tienen costo; si falta alguna, `null`. `unit_cost` existe solo desde octubre y en ~24 % de las líneas.
+- **Stock**: siempre `null` (vive en ms-logistics); la tabla dice «Pendiente».
+- **Cupones**: salen de `external_data` de Shopify; los demás canales no tienen. Se normalizan: `QUANTITY DISCOUNT -39.00` y `UPSELL -30` son el mismo descuento.
+- **Categorías**: tal como vienen del import (`Sin categoría` cuando está vacía); hoy muchas líneas no la tienen o dicen «Shopify».
+- **Drawer**: `producto`, `cupon` y `categoria` abren los **pedidos que contienen ese ítem** (README §4.1) y `con_upsell` las ventas con upsell. El encabezado del drawer suma esos pedidos completos; la parte del producto está en su fila de `porProducto`, que coincide con la tabla.
 
 ## 3. Contrato común
 
@@ -204,7 +216,7 @@ Generada desde los descriptores (`PANEL_CONTRACTS`) y el registro de fuentes (`D
 | `canales-fichas` | `GET /config/canales` | catálogo del panel (filtro Canal), `ConfigCanalesView` | `id`, `nombre`, `activo`; el resto admite `null` + `camposPendientes` | `empresaId` | — | Todos | **real** parcial |
 | `canales-comparativo` | `GET /panel/canales?vista=` | `ComparativoCanales` | §4.2 | §3.1 + `vista` | ingreso | Dueño, Supervisora (`ganancia`: Dueño) | real parcial |
 | `canales-detalle` | `GET /panel/canales/{id}` | `CanalSeleccionado` | §4.2 | §3.1 | ingreso; por liquidar: estado actual | Dueño, Supervisora | real parcial |
-| `productos` | `GET /panel/productos` | `ProductosSubtab` | §4.2 | §3.1 | ingreso | Dueño, Supervisora | demo |
+| `productos` | `GET /panel/productos` | `ProductosSubtab` | §4.2 | §3.1 | ingreso | Dueño, Supervisora | real parcial |
 | `publicidad` | `GET /panel/publicidad` | `PublicidadSubtab` | §4.2 | §3.1 | fecha de la pauta / ingreso | Dueño, Supervisora | demo |
 | `clientes-zonas` | `GET /panel/clientes` | `ClientesZonasSubtab` | §4.2 | §3.1 | ingreso; historial: todo | Dueño, Supervisora | demo |
 | `callcenter` | `GET /panel/callcenter` | `CallCenterView` | §4.3 | §3.1 | ingreso; cola: estado actual | Dueño, Supervisora, Confirmadora (identidad) | demo |

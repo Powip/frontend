@@ -164,7 +164,17 @@ export function ProductosSubtab() {
     {
       id: "stock",
       header: "Stock",
-      cell: (fila) => formatNumber(fila.stock),
+      cell: (fila) =>
+        fila.stock === null ? (
+          <span
+            className="text-pc-text-muted"
+            title="El stock vive en otro servicio y aún no se conecta"
+          >
+            Pendiente
+          </span>
+        ) : (
+          formatNumber(fila.stock)
+        ),
       sortValue: (fila) => fila.stock,
       exportValue: (fila) => fila.stock,
       exportFormat: "numero",

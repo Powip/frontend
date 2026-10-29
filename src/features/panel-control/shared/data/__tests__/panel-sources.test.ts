@@ -20,11 +20,11 @@ describe("registro de fuentes", () => {
   });
 
   it("oculta las fuentes demo en modo solo reales y mantiene las reales", () => {
-    expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "productos", "solo_real").origin.kind).toBe(
+    expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "publicidad", "solo_real").origin.kind).toBe(
       "pendiente",
     );
     expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "callcenter", "solo_real").source).toBeNull();
-    expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "productos", "mixto").origin.kind).toBe(
+    expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "publicidad", "mixto").origin.kind).toBe(
       "demo",
     );
     expect(
@@ -47,6 +47,12 @@ describe("registro de fuentes", () => {
         resolvePanelSource(DEFAULT_PANEL_SOURCES, id, "solo_real", "canales", "canales"),
       ).toMatchObject({ source: { kind: "real" }, origin: { kind: "real" } });
     }
+  });
+
+  it("productos ya se lee del backend, también en solo reales", () => {
+    expect(
+      resolvePanelSource(DEFAULT_PANEL_SOURCES, "productos", "solo_real", "canales", "productos"),
+    ).toMatchObject({ source: { kind: "real" }, origin: { kind: "real" } });
   });
 
   describe("el detalle de pedidos sigue a la pestaña que lo abre", () => {
@@ -84,8 +90,16 @@ describe("registro de fuentes", () => {
       }
     });
 
+    it("en Ventas y canales la subpestaña Productos también lee del backend", () => {
+      for (const modo of ["mixto", "solo_real"] as const) {
+        expect(
+          resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", modo, "canales", "productos"),
+        ).toMatchObject({ source: { kind: "real" }, origin: { kind: "real" } });
+      }
+    });
+
     it("las demás subpestañas de Ventas y canales siguen en demo hasta que se conecten", () => {
-      for (const subpestana of ["productos", "publicidad", "clientes"] as const) {
+      for (const subpestana of ["publicidad", "clientes"] as const) {
         expect(
           resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", "mixto", "canales", subpestana),
         ).toMatchObject({ source: { kind: "demo" } });

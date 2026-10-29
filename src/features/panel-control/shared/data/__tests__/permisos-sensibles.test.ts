@@ -4,6 +4,7 @@ import {
 } from "../../../canales/sources/canales.demo";
 import { detalleDemoSource } from "../../../detalle/sources/detalle.demo";
 import { estadoPeriodoDemoSource } from "../../../estado-periodo/sources/estado-periodo.demo";
+import { productosDemoSource } from "../../../productos/sources/productos.demo";
 import { resumenDemoSource } from "../../../resumen/sources/resumen.demo";
 import { PANEL_ROLE_POLICIES } from "../../config/panel-roles.config";
 import { PANEL_CONTRACT_IDS, type PanelContractId } from "../../models/panel-contract.model";
@@ -27,6 +28,7 @@ const FUENTES = {
   detalle: conAutorizacion(detalleDemoSource),
   "canales-comparativo": conAutorizacion(canalesComparativoDemoSource),
   "canales-detalle": conAutorizacion(canalesDetalleDemoSource),
+  productos: conAutorizacion(productosDemoSource),
 };
 
 const CAMPOS_SENSIBLES = new Set([

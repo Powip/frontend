@@ -10,7 +10,11 @@ import {
   configEstadosDemoSource,
 } from "../../configuracion/sources/configuracion.demo";
 import { detalleDemoSource } from "../../detalle/sources/detalle.demo";
-import { detalleCanalesRealSource, detalleRealSource } from "../../detalle/sources/detalle.source";
+import {
+  detalleCanalesRealSource,
+  detalleProductosRealSource,
+  detalleRealSource,
+} from "../../detalle/sources/detalle.source";
 import {
   equipoConfirmadorasDemoSource,
   equipoVendedorasDemoSource,
@@ -31,7 +35,7 @@ import {
   operacionesCouriersDemoSource,
   operacionesInventarioDemoSource,
 } from "../../operaciones/sources/operaciones.demo";
-import { productosDemoSource } from "../../productos/sources/productos.demo";
+import { productosRealSource } from "../../productos/sources/productos.source";
 import { publicidadDemoSource } from "../../publicidad/sources/publicidad.demo";
 import { resumenRealSource } from "../../resumen/sources/resumen.source";
 import type { PanelContractId } from "../models/panel-contract.model";
@@ -57,11 +61,16 @@ export const DEFAULT_PANEL_SOURCES: PanelSourceRegistry = autorizarRegistro({
   "estado-periodo": estadoPeriodoRealSource,
   resumen: resumenRealSource,
   // Real en el Resumen (ya conectado); demo en las pestañas que todavía no tienen backend.
-  detalle: [detalleRealSource, detalleCanalesRealSource, detalleDemoSource],
+  detalle: [
+    detalleRealSource,
+    detalleCanalesRealSource,
+    detalleProductosRealSource,
+    detalleDemoSource,
+  ],
   "config-metas": configMetasDemoSource,
   "canales-comparativo": canalesComparativoRealSource,
   "canales-detalle": canalesDetalleRealSource,
-  productos: productosDemoSource,
+  productos: productosRealSource,
   publicidad: publicidadDemoSource,
   "clientes-zonas": clientesZonasDemoSource,
   callcenter: callCenterDemoSource,

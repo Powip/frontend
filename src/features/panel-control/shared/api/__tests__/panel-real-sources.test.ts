@@ -3,9 +3,11 @@ import { canalesComparativoRealSource } from "../../../canales/sources/canales-c
 import { canalesDetalleRealSource } from "../../../canales/sources/canales-detalle.source";
 import {
   detalleCanalesRealSource,
+  detalleProductosRealSource,
   detalleRealSource,
 } from "../../../detalle/sources/detalle.source";
 import { estadoPeriodoRealSource } from "../../../estado-periodo/sources/estado-periodo.source";
+import { productosRealSource } from "../../../productos/sources/productos.source";
 import { resumenRealSource } from "../../../resumen/sources/resumen.source";
 import type { PanelQuery } from "../../models/panel-query.model";
 import { getPanel } from "../panel-http";
@@ -125,6 +127,33 @@ describe("fuentes reales del panel (ms-ventas)", () => {
     await detalleCanalesRealSource.fetch({ ...CONSULTA, grupo: "ventas" } as never, CONTEXTO);
     expect(mockGet).toHaveBeenCalledWith("https://ventas.example.com/panel/detalle", {
       params: { ...CONSULTA, grupo: "ventas" },
+    });
+  });
+
+  it("productos lee GET /panel/productos con los filtros tal cual", async () => {
+    const sobre = { actual: {}, anterior_misma_antiguedad: null, metas: null, generado_en: "x" };
+    mockGet.mockResolvedValue({ data: sobre });
+    expect(productosRealSource).toMatchObject({ contractId: "productos", kind: "real" });
+    await expect(productosRealSource.fetch(CONSULTA as never, CONTEXTO)).resolves.toBe(sobre);
+    expect(mockGet).toHaveBeenCalledWith("https://ventas.example.com/panel/productos", {
+      params: CONSULTA,
+    });
+  });
+
+  it("el detalle de pedidos de Productos es el mismo endpoint, solo para esa subpestaña", async () => {
+    mockGet.mockResolvedValue({ data: {} });
+    expect(detalleProductosRealSource).toMatchObject({
+      contractId: "detalle",
+      kind: "real",
+      pestanas: ["canales"],
+      subpestanas: ["productos"],
+    });
+    await detalleProductosRealSource.fetch(
+      { ...CONSULTA, grupo: "ventas", grupo_params: '{"producto":"var-1"}' } as never,
+      CONTEXTO,
+    );
+    expect(mockGet).toHaveBeenCalledWith("https://ventas.example.com/panel/detalle", {
+      params: { ...CONSULTA, grupo: "ventas", grupo_params: '{"producto":"var-1"}' },
     });
   });
 });
