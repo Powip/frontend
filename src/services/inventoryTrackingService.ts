@@ -71,11 +71,11 @@ export function validateUnitCodes(
       const code = raw.replace(/^ +| +$/g, "").toUpperCase();
       if (
         line.trackingMode === "IMEI"
-          ? !/^[0-9]{15}$/.test(code)
+          ? !/^[0-9]{1,100}$/.test(code)
           : !/^[A-Z0-9._/-]{1,100}$/.test(code)
       ) {
         return line.trackingMode === "IMEI"
-          ? `${label}: cada IMEI debe tener exactamente 15 dígitos.`
+          ? `${label}: cada IMEI debe contener solo números, hasta 100 caracteres.`
           : `${label}: usa series de 1 a 100 letras, números, puntos, guiones, barras o guiones bajos.`;
       }
       if (seen.has(code))

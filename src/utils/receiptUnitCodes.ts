@@ -58,7 +58,7 @@ function validLine(item: PrintableReceiptItem, state: string): boolean {
       unit.status !== state ||
       typeof unit.code !== "string" ||
       !/^[A-Za-z0-9._/-]{1,100}$/.test(unit.code) ||
-      (item.trackingMode === "IMEI" && !/^\d{15}$/.test(unit.code))
+      (item.trackingMode === "IMEI" && !/^[0-9]{1,100}$/.test(unit.code))
     )
       return false;
     const normalized = unit.code.toUpperCase();

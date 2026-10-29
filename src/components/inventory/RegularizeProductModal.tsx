@@ -236,7 +236,7 @@ export default function RegularizeProductModal({
                   onChange={(event) => setMode(event.target.value as "SERIAL" | "IMEI")}
                 >
                   <option value="SERIAL">Número de serie</option>
-                  <option value="IMEI">IMEI (15 dígitos)</option>
+                  <option value="IMEI">IMEI</option>
                 </select>
               </div>
               <p className="text-sm">
