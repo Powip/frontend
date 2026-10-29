@@ -7,10 +7,7 @@ import {
   CreditCard,
   ExternalLink,
   Loader2,
-  Minus,
   Package,
-  Pin,
-  Plus,
   Radio,
   RefreshCw,
   ShoppingBag,
@@ -19,8 +16,17 @@ import {
   X,
 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type { LiveCheckoutDraft } from "./LiveCheckoutDialog";
-import { LiveProductImage, LiveReservationTimer } from "./LiveShared";
+import LivePublicProductCard from "./LivePublicProductCard";
+import { LiveReservationTimer } from "./LiveShared";
+import { groupLiveProducts, type LiveCartItem, removePurchasedItems } from "./liveCatalog";
 import { createLivePolling, type LivePollingController } from "./livePolling";
 import {
   getPublicLive,
@@ -63,7 +69,12 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
 }
 
 function PublicLiveCatalog({ storeId }: { storeId: string }) {
-  const [snapshot, setSnapshot] = useState<{ storeId: string; value: LivePublicData } | null>(null);
+  const [snapshot, setSnapshot] = useState<{
+    storeId: string;
+    value: LivePublicData;
+    receivedAt: number;
+  } | null>(null);
+  const [clock, setClock] = useState(Date.now);
   const data = snapshot?.storeId === storeId ? snapshot.value : null;
   const [visitor, setVisitor] = useState("");
   const [loading, setLoading] = useState(true);
@@ -75,6 +86,10 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
     phone: "",
     socialUsername: "",
   });
+  const [cart, setCart] = useState<LiveCartItem[]>([]);
+  const [reserveSource, setReserveSource] = useState<"card" | "cart">("card");
+  const [reserveSelection, setReserveSelection] = useState<LiveCartItem[] | null>(null);
+  const [reservationError, setReservationError] = useState("");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [manualCheckoutId, setManualCheckoutId] = useState<string | null>(null);
   const [checkoutDraft, setCheckoutDraft] = useState<LiveCheckoutDraft | undefined>();
@@ -87,6 +102,8 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
   const cachedVisitor = useRef<{ storeId: string; token: string } | null>(null);
   const reserveAttempts = useRef(new Map<string, string>());
   const customerField = useRef<HTMLInputElement>(null);
+  const errorNotice = useRef<HTMLDivElement>(null);
+  const cartSection = useRef<HTMLElement>(null);
   const reader = useRef<LivePollingController | null>(null);
   const modalWasOpen = useRef(false);
   const latestData = useRef<LivePublicData | null>(null);
@@ -112,6 +129,9 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
     setNotice("");
     setCustomer({ name: "", phone: "", socialUsername: "" });
     setQuantities({});
+    setCart([]);
+    setReserveSelection(null);
+    setReservationError("");
     setPurchase(null);
     setManualCheckoutId(null);
     setCheckoutDraft(undefined);
@@ -120,8 +140,10 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
       load: (signal) => getPublicLive(storeId, token, signal),
       intervalMs: () => (latestData.current?.session?.status === "LIVE" ? 5000 : 15000),
       onData: (result) => {
+        // Reads started before mutations are aborted by the scoped reader. A fresh response
+        // is authoritative, including holds that expired or were released before reconciliation.
         latestData.current = result;
-        setSnapshot({ storeId, value: result });
+        setSnapshot({ storeId, value: result, receivedAt: Date.now() });
         setReadError("");
         const latestOrder = result.orders?.[0];
         if (
@@ -162,13 +184,31 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
   }, [storeId]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Each store creates a reader that must inherit the current modal and mutation pause state.
   useEffect(() => {
-    const modalOpen = !!purchase || !!manualCheckoutId;
+    const modalOpen = !!purchase || !!manualCheckoutId || !!reserveSelection;
     reader.current?.setPaused(!!busy || modalOpen, {
       refreshOnResume: modalWasOpen.current && !modalOpen,
     });
     modalWasOpen.current = modalOpen;
-  }, [busy, purchase, manualCheckoutId, storeId]);
+  }, [busy, purchase, manualCheckoutId, reserveSelection, storeId]);
   const displayError = error || readError;
+  useEffect(() => {
+    if (!error || reserveSelection) return;
+    errorNotice.current?.scrollIntoView?.({ block: "nearest" });
+    errorNotice.current?.focus({ preventScroll: true });
+  }, [error, reserveSelection]);
+  const hasExpiringReservations =
+    data?.reservations.some((item) => isActive(item) && item.expiresAt && !item.reviewHold) ??
+    false;
+  useEffect(() => {
+    if (!hasExpiringReservations) return;
+    const timer = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [hasExpiringReservations]);
+  const serverTime =
+    data && snapshot ? Date.parse(data.serverNow) + Math.max(0, clock - snapshot.receivedAt) : 0;
+  const isCurrentReservation = (item: LiveReservation) =>
+    isActive(item) &&
+    (item.reviewHold || !item.expiresAt || Date.parse(item.expiresAt) > serverTime);
 
   async function operate(key: string, callback: () => Promise<unknown>, success?: string) {
     if (busyLock.current !== null) return;
@@ -180,50 +220,143 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
       await callback();
       if (generation.current !== current) return;
       if (success) setNotice(success);
-      await refresh(visitor, true);
+      // A completed command must not remain busy while a slower catalog read reconciles it.
+      void refresh(visitor, true);
+      return true;
     } catch (cause) {
-      if (generation.current === current) setError(liveError(cause));
+      if (generation.current === current) {
+        const message = liveError(cause);
+        setError(message);
+        setReservationError(message);
+      }
+      return false;
     } finally {
       if (busyLock.current === current) busyLock.current = null;
       if (generation.current === current) setBusy("");
     }
   }
-  function ensureCustomer() {
-    if (customerValid(customer)) return true;
-    setError("Escribe tu nombre y un WhatsApp válido para guardar tus apartados.");
-    customerField.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-    customerField.current?.focus();
-    return false;
+  function acknowledgeReservation(reservation: LiveReservation, serverNow: string) {
+    if (!reservation.id) return;
+    setSnapshot((previous) => {
+      if (!previous || previous.storeId !== storeId) return previous;
+      const known = previous.value.reservations.some((item) => item.id === reservation.id);
+      const value = {
+        ...previous.value,
+        serverNow,
+        // Until the fresh read arrives, conservatively account for this acknowledged hold.
+        // An idempotent replay already visible in the snapshot must not subtract it twice.
+        products: known
+          ? previous.value.products
+          : previous.value.products.map((product) =>
+              product.variantId === reservation.variantId
+                ? {
+                    ...product,
+                    availableStock: Math.max(0, product.availableStock - reservation.quantity),
+                    remainingLimit:
+                      product.remainingLimit == null
+                        ? product.remainingLimit
+                        : Math.max(0, product.remainingLimit - reservation.quantity),
+                  }
+                : product,
+            ),
+        reservations: [
+          ...previous.value.reservations.filter((item) => item.id !== reservation.id),
+          reservation,
+        ],
+      };
+      latestData.current = value;
+      return { storeId, value, receivedAt: Date.now() };
+    });
   }
-  async function reserve(product: LiveProduct, quantity: number) {
-    if (!ensureCustomer()) return;
-    const input = { variantId: product.variantId, quantity, customer };
-    const selection = JSON.stringify(input);
-    const attempt = reserveAttempts.current.get(selection) ?? crypto.randomUUID();
-    reserveAttempts.current.set(selection, attempt);
-    const reserveGeneration = generation.current;
-    await operate(
-      `reserve:${product.variantId}`,
+  async function reserveItems(items: LiveCartItem[], fromCart = false) {
+    if (!customerValid(customer)) {
+      setReservationError("");
+      setReserveSelection(items);
+      return;
+    }
+    const current = generation.current;
+    const done = await operate(
+      items.length === 1 ? `reserve:${items[0].variantId}` : "reserve:selection",
       async () => {
-        await reserveLiveProduct(storeId, visitor, { ...input, idempotencyKey: attempt });
-        if (generation.current !== reserveGeneration) return;
-        reserveAttempts.current.delete(selection);
-        setQuantities((values) => ({ ...values, [product.variantId]: 1 }));
+        for (const item of items) {
+          const input = { ...item, customer };
+          const selection = JSON.stringify(input);
+          const attempt = reserveAttempts.current.get(selection) ?? crypto.randomUUID();
+          reserveAttempts.current.set(selection, attempt);
+          const result = await reserveLiveProduct(storeId, visitor, {
+            ...input,
+            idempotencyKey: attempt,
+          });
+          if (generation.current !== current) return;
+          acknowledgeReservation(result.reservation, result.serverNow);
+          reserveAttempts.current.delete(selection);
+          setQuantities((values) => ({ ...values, [item.variantId]: 1 }));
+          if (fromCart) setCart((previous) => removePurchasedItems(previous, [item]));
+          // Successfully accepted holds are removed from a batch retry, even if a later item fails.
+          setReserveSelection(
+            (previous) =>
+              previous?.filter((pending) => pending.variantId !== item.variantId) ?? null,
+          );
+        }
       },
-      `${quantity} × ${product.name}: ${canAccumulate ? "acumulado guardado" : "apartado guardado"}.`,
+      "Apartados guardados. Puedes seguir eligiendo y pagarlos juntos antes de que venzan.",
+    );
+    if (done && generation.current === current) {
+      setReserveSelection(null);
+      setReservationError("");
+    }
+  }
+  function reserve(product: LiveProduct, quantity: number) {
+    setReserveSource("card");
+    setReserveSelection([{ variantId: product.variantId, quantity }]);
+    setReservationError("");
+    if (customerValid(customer)) void reserveItems([{ variantId: product.variantId, quantity }]);
+  }
+  function addToCart(product: LiveProduct, quantity: number) {
+    const previousQuantity =
+      cart.find((item) => item.variantId === product.variantId)?.quantity ?? 0;
+    if (previousQuantity + quantity > availableFor(product)) {
+      setError(
+        "La cantidad de esta variante supera el stock o el límite disponible. Revisa tu selección.",
+      );
+      return;
+    }
+    setCart((previous) => {
+      const existing = previous.find((item) => item.variantId === product.variantId);
+      return existing
+        ? previous.map((item) =>
+            item.variantId === product.variantId
+              ? { ...item, quantity: item.quantity + quantity }
+              : item,
+          )
+        : [...previous, { variantId: product.variantId, quantity }];
+    });
+    setNotice(
+      `${quantity} × ${product.name}${product.variantLabel ? ` · ${product.variantLabel}` : ""} agregado a tu compra.`,
     );
   }
   const canAccumulate = data?.config.allowAccumulation === true && data.isTrusted;
   const products = data?.products.filter((product) => product.enabled) ?? [];
-  const reservations = data?.reservations.filter(isActive) ?? [];
+  const reservations = data?.reservations.filter(isCurrentReservation) ?? [];
   const payableReservations = reservations.filter(
     (reservation) => reservation.status === "ACTIVE" && !reservation.checkoutId,
   );
   const paid = data?.reservations.filter((reservation) => reservation.status === "PAID") ?? [];
-  const pinned = products.find((product) => product.variantId === data?.session?.pinnedVariantId);
-  const remaining = pinned
-    ? products.filter((product) => product.variantId !== pinned.variantId)
-    : products;
+  const productGroups = groupLiveProducts(products);
+  const pinned = productGroups.find((group) =>
+    group.variants.some((product) => product.variantId === data?.session?.pinnedVariantId),
+  );
+  const remaining = productGroups.filter((group) => group.id !== pinned?.id);
+  const reservedUnits = reservations.reduce((sum, item) => sum + item.quantity, 0);
+  const cartRows = cart.map((item) => ({
+    ...item,
+    product: products.find((product) => product.variantId === item.variantId),
+  }));
+  const cartInvalid = cartRows.some(
+    (item) => !item.product || item.quantity > availableFor(item.product),
+  );
+  const cartUnits = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const reservationLimitExceeded = reservedUnits + cartUnits > (data?.config.maxReservedUnits ?? 0);
   const onAir = data?.session?.status === "LIVE";
   const closed = !data?.config.enabled || !data.session || data.session.status === "CLOSED";
   const socialUrl = data?.config.showBackLink ? safeLiveUrl(data.config.liveUrl) : null;
@@ -234,150 +367,47 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
         .filter(
           (reservation) =>
             reservation.variantId === product.variantId &&
-            (isActive(reservation) || reservation.status === "PAID"),
+            (!reservation.sessionId || reservation.sessionId === data?.session?.id) &&
+            (isCurrentReservation(reservation) || reservation.status === "PAID"),
         )
         .reduce((sum, reservation) => sum + reservation.quantity, 0) ?? 0;
     return Math.max(
       0,
       Math.min(
         product.availableStock,
+        Math.max(0, (data?.config.maxReservedUnits ?? 0) - reservedUnits),
         product.remainingLimit ??
           (product.maxPerCustomer === null ? Infinity : product.maxPerCustomer - used),
       ),
     );
   }
-  function productCard(product: LiveProduct, featured = false) {
-    const max = availableFor(product);
-    const quantity = Math.max(1, Math.min(quantities[product.variantId] ?? 1, max || 1));
+  function productCard(group: (typeof productGroups)[number], featured = false) {
     return (
-      <article
-        key={product.variantId}
-        className={`rounded-2xl border p-4 ${featured ? "border-[#FE2C55]/50 bg-gradient-to-br from-[#FE2C55]/10 to-[#25F4EE]/5 shadow-xl shadow-[#FE2C55]/10" : "border-white/10 bg-white/[0.035]"}`}
-      >
-        {featured ? (
-          <p className="mb-4 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-[#FF8FA5]">
-            <Pin className="h-3.5 w-3.5" />
-            {onAir ? "Ahora en el live" : "Lo último que mostramos"}
-          </p>
-        ) : null}
-        <div className="flex gap-4">
-          <LiveProductImage
-            product={product}
-            className={featured ? "h-24 w-24 sm:h-32 sm:w-32" : "h-20 w-20"}
-          />
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-400">
-              {product.sku}
-            </p>
-            <h2 className={`mt-1 font-bold leading-snug ${featured ? "text-lg" : "text-sm"}`}>
-              {product.name}
-            </h2>
-            {product.variantLabel ? (
-              <p className="mt-1 text-xs text-zinc-400">{product.variantLabel}</p>
-            ) : null}
-            <div className="mt-2 flex flex-wrap items-baseline gap-2">
-              <span className={`font-bold text-[#25F4EE] ${featured ? "text-2xl" : "text-lg"}`}>
-                {liveMoney(product.livePrice)}
-              </span>
-              {product.regularPrice > product.livePrice ? (
-                <s className="text-xs text-zinc-400">{liveMoney(product.regularPrice)}</s>
-              ) : null}
-            </div>
-            <span className="mt-1 inline-block rounded bg-[#FE2C55]/15 px-1.5 py-0.5 text-[10px] font-semibold text-[#FFB5C4]">
-              Precio live
-            </span>
-          </div>
-        </div>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-          <p
-            className={`text-xs ${product.availableStock <= 3 ? "text-amber-300" : "text-zinc-400"}`}
-          >
-            {product.availableStock <= 0
-              ? "Agotado"
-              : product.availableStock <= 3
-                ? `¡Quedan ${product.availableStock}!`
-                : `${product.availableStock} disponibles`}
-            {product.maxPerCustomer ? ` · Máx. ${product.maxPerCustomer} por cliente` : ""}
-          </p>
-          {max > 0 ? (
-            <div className="inline-flex items-center gap-3 rounded-lg border border-white/15 bg-black/40">
-              <button
-                type="button"
-                aria-label={`Quitar una unidad de ${product.name}`}
-                disabled={quantity <= 1 || !!busy}
-                className="p-2 disabled:opacity-30"
-                onClick={() =>
-                  setQuantities((values) => ({
-                    ...values,
-                    [product.variantId]: Math.max(1, quantity - 1),
-                  }))
-                }
-              >
-                <Minus className="h-3 w-3" />
-              </button>
-              <span className="min-w-3 text-center text-sm font-bold tabular-nums">{quantity}</span>
-              <button
-                type="button"
-                aria-label={`Agregar una unidad de ${product.name}`}
-                disabled={quantity >= max || !!busy}
-                className="p-2 disabled:opacity-30"
-                onClick={() =>
-                  setQuantities((values) => ({ ...values, [product.variantId]: quantity + 1 }))
-                }
-              >
-                <Plus className="h-3 w-3" />
-              </button>
-            </div>
-          ) : null}
-        </div>
-        {!closed ? (
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            {max <= 0 ? (
-              <p className="col-span-2 rounded-xl bg-white/5 p-3 text-center text-xs text-zinc-400">
-                {product.availableStock <= 0 ? "Agotado" : "Llegaste al máximo para este producto"}
-              </p>
-            ) : (
-              <>
-                {data?.config.allowBuyNow ? (
-                  <button
-                    type="button"
-                    className={primary}
-                    disabled={!!busy || !methods.length}
-                    onClick={() =>
-                      setPurchase({ items: [{ variantId: product.variantId, quantity }] })
-                    }
-                  >
-                    <ShoppingBag className="h-4 w-4" />
-                    Comprar ahora
-                  </button>
-                ) : null}
-                {data?.config.allowReservations ? (
-                  <button
-                    type="button"
-                    className={secondary}
-                    disabled={!!busy}
-                    onClick={() => void reserve(product, quantity)}
-                  >
-                    {busy === `reserve:${product.variantId}` ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : canAccumulate ? (
-                      <Plus className="h-4 w-4" />
-                    ) : (
-                      <Clock3 className="h-4 w-4" />
-                    )}
-                    {canAccumulate ? "Acumular" : "Apartar"}
-                  </button>
-                ) : null}
-              </>
-            )}
-          </div>
-        ) : null}
-      </article>
+      <LivePublicProductCard
+        key={group.id}
+        group={group}
+        featured={featured}
+        onAir={onAir}
+        busy={busy}
+        quantities={quantities}
+        canBuy={!closed && data?.config.allowBuyNow === true}
+        canReserve={!closed && data?.config.allowReservations === true}
+        canPay={methods.length > 0}
+        availableFor={availableFor}
+        onQuantity={(variantId, quantity) =>
+          setQuantities((values) => ({ ...values, [variantId]: quantity }))
+        }
+        onAdd={addToCart}
+        onBuy={(product, quantity) =>
+          setPurchase({ items: [{ variantId: product.variantId, quantity }] })
+        }
+        onReserve={reserve}
+      />
     );
   }
   return (
     <main className="min-h-screen border-t-2 border-[#25F4EE] bg-[#0B0B0F] text-zinc-100 selection:bg-[#25F4EE]/25">
-      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
+      <div className="mx-auto max-w-5xl px-4 py-6 pb-28 sm:px-6 sm:py-8">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-5">
           <div className="flex items-center gap-3">
             <div className="grid h-11 w-11 place-items-center rounded-2xl border border-[#25F4EE]/70 bg-[#25F4EE] text-sm font-black text-[#0B0B0F] shadow-[3px_3px_0_#FE2C55]">
@@ -406,6 +436,8 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
         {displayError ? (
           <div
             role="alert"
+            ref={errorNotice}
+            tabIndex={-1}
             className="mb-5 flex items-start gap-3 rounded-xl border border-[#FE2C55]/30 bg-[#FE2C55]/10 p-4 text-sm text-[#FFB5C4]"
           >
             <p className="flex-1">{displayError}</p>
@@ -496,7 +528,7 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
                         <ShoppingBag className="h-5 w-5 text-[#FF8FA5]" />
                         Todo lo del live
                         <span className="text-sm font-medium text-zinc-400">
-                          ({products.length})
+                          ({productGroups.length})
                         </span>
                       </h1>
                       <button
@@ -531,6 +563,146 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
                 )}
               </div>
               <aside className="space-y-5 lg:sticky lg:top-6">
+                {!closed ? (
+                  <section
+                    ref={cartSection}
+                    id="live-cart"
+                    aria-labelledby="live-cart-title"
+                    className="rounded-2xl border border-[#25F4EE]/40 bg-[#25F4EE]/[0.04] p-4"
+                  >
+                    <h2 id="live-cart-title" className="flex items-center gap-2 text-sm font-bold">
+                      <ShoppingBag className="h-4 w-4 text-[#25F4EE]" />
+                      Tu selección ({cartUnits})
+                    </h2>
+                    <p className="mt-2 text-xs leading-relaxed text-zinc-400">
+                      Agrega varias tallas, colores o productos y paga todo en una compra. Aquí
+                      todavía no se reserva stock.
+                    </p>
+                    {cartRows.length ? (
+                      <>
+                        <ul className="mt-3 divide-y divide-white/10">
+                          {cartRows.map((item) => (
+                            <li key={item.variantId} className="py-3">
+                              <div className="flex items-start gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-semibold">
+                                    {item.product?.name ?? "Producto no disponible"}
+                                  </p>
+                                  <p className="mt-1 text-[11px] text-zinc-400">
+                                    {item.product?.variantLabel || item.product?.sku}
+                                  </p>
+                                  <p className="mt-1 text-xs text-[#25F4EE]">
+                                    {item.product
+                                      ? liveMoney(item.product.livePrice * item.quantity)
+                                      : "Revisa este producto"}
+                                  </p>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="rounded p-2 text-zinc-400 hover:text-[#FF8FA5]"
+                                  aria-label={`Quitar de selección ${item.product?.name ?? "producto"} ${item.product?.variantLabel ?? ""}`}
+                                  disabled={!!busy}
+                                  onClick={() =>
+                                    setCart((previous) =>
+                                      previous.filter((row) => row.variantId !== item.variantId),
+                                    )
+                                  }
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                              <label className="mt-2 flex items-center justify-between text-xs">
+                                Cantidad
+                                <input
+                                  type="number"
+                                  className="w-20 rounded-lg border border-white/20 bg-[#16161C] px-2 py-2"
+                                  min={1}
+                                  max={item.product ? Math.max(1, availableFor(item.product)) : 1}
+                                  step={1}
+                                  value={item.quantity}
+                                  aria-label={`Cantidad de ${item.product?.name ?? "producto"} ${item.product?.variantLabel ?? ""}`}
+                                  disabled={!!busy}
+                                  onChange={(event) => {
+                                    const quantity = Number(event.target.value);
+                                    if (Number.isInteger(quantity) && quantity > 0)
+                                      setCart((previous) =>
+                                        previous.map((row) =>
+                                          row.variantId === item.variantId
+                                            ? { ...row, quantity }
+                                            : row,
+                                        ),
+                                      );
+                                  }}
+                                />
+                              </label>
+                              {!item.product || item.quantity > availableFor(item.product) ? (
+                                <p className="mt-2 text-xs text-amber-200">
+                                  Cambió la disponibilidad. Reduce la cantidad o retira esta
+                                  variante para continuar.
+                                </p>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="mt-3 flex justify-between border-t border-white/10 pt-3 text-sm font-bold">
+                          <span>Productos</span>
+                          <span>
+                            {liveMoney(
+                              cartRows.reduce(
+                                (sum, item) => sum + (item.product?.livePrice ?? 0) * item.quantity,
+                                0,
+                              ),
+                            )}
+                          </span>
+                        </p>
+                        {data.config.allowBuyNow ? (
+                          <button
+                            type="button"
+                            className={`${primary} mt-4 w-full`}
+                            disabled={
+                              !!busy || cartInvalid || reservationLimitExceeded || !methods.length
+                            }
+                            onClick={() =>
+                              setPurchase({ items: cart.map((item) => ({ ...item })) })
+                            }
+                          >
+                            <ShoppingBag className="h-4 w-4" />
+                            Comprar selección
+                          </button>
+                        ) : null}
+                        {data.config.allowReservations ? (
+                          <button
+                            type="button"
+                            className={`${secondary} mt-2 w-full`}
+                            disabled={!!busy || cartInvalid || reservationLimitExceeded}
+                            aria-describedby="live-selection-reserve-help"
+                            onClick={() => {
+                              setReserveSource("cart");
+                              setReserveSelection(cart.map((item) => ({ ...item })));
+                              setReservationError("");
+                            }}
+                          >
+                            {busy === "reserve:selection" ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Clock3 className="h-4 w-4" />
+                            )}
+                            Apartar selección
+                          </button>
+                        ) : null}
+                        <p id="live-selection-reserve-help" className="mt-2 text-xs text-zinc-400">
+                          {reservationLimitExceeded
+                            ? `Puedes mantener hasta ${data.config.maxReservedUnits} unidades apartadas en total. Reduce tu selección o paga tus apartados.`
+                            : `Los apartados duran ${data.config.reservationMinutes} minutos, con un máximo de ${data.config.maxReservedUnits} unidades en total.`}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="mt-4 text-xs text-zinc-400">
+                        Elige una variante y pulsa Agregar a mi compra para empezar.
+                      </p>
+                    )}
+                  </section>
+                ) : null}
                 {!closed ? (
                   <section className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
                     <h2 className="text-sm font-bold">Tus datos para apartar</h2>
@@ -795,6 +967,113 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
           </>
         )}
       </div>
+      {reserveSelection ? (
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open && !busy) {
+              setReserveSelection(null);
+              setReservationError("");
+            }
+          }}
+        >
+          <DialogContent
+            className="max-h-[90dvh] overflow-y-auto border-white/15 bg-[#16161C] text-zinc-100 sm:max-w-md"
+            aria-busy={!!busy}
+          >
+            <DialogHeader>
+              <DialogTitle>Guardar tus apartados</DialogTitle>
+              <DialogDescription className="text-zinc-400">
+                Confirma tus datos. El stock se aparta por {data?.config.reservationMinutes} minutos
+                y podrás pagar varios productos juntos.
+              </DialogDescription>
+            </DialogHeader>
+            <form
+              className="space-y-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!customerValid(customer)) {
+                  setReservationError(
+                    "Escribe un nombre de al menos 3 caracteres y un WhatsApp de 9 dígitos que empiece por 9.",
+                  );
+                  return;
+                }
+                void reserveItems(reserveSelection, reserveSource === "cart");
+              }}
+            >
+              {reservationError ? (
+                <p
+                  role="alert"
+                  className="rounded-lg border border-[#FE2C55]/30 p-3 text-sm text-[#FFB5C4]"
+                >
+                  {reservationError} Los productos ya apartados siguen en Tus apartados. Reintenta
+                  los que faltan.
+                </p>
+              ) : null}
+              <label className="block text-xs font-medium">
+                Nombre
+                <input
+                  className={field}
+                  value={customer.name}
+                  maxLength={120}
+                  autoComplete="name"
+                  disabled={!!busy}
+                  onChange={(event) =>
+                    setCustomer((previous) => ({ ...previous, name: event.target.value }))
+                  }
+                />
+              </label>
+              <label className="block text-xs font-medium">
+                WhatsApp
+                <input
+                  className={field}
+                  type="tel"
+                  inputMode="tel"
+                  value={customer.phone}
+                  maxLength={9}
+                  autoComplete="tel"
+                  readOnly={!!data?.customer}
+                  disabled={!!busy}
+                  onChange={(event) =>
+                    setCustomer((previous) => ({
+                      ...previous,
+                      phone: event.target.value.replace(/\D/g, ""),
+                    }))
+                  }
+                />
+              </label>
+              <p className="text-xs text-zinc-400">
+                {reserveSelection.reduce((sum, item) => sum + item.quantity, 0)} unidades por
+                apartar. Máximo {data?.config.maxReservedUnits} unidades activas.
+              </p>
+              <button
+                type="submit"
+                className={`${primary} w-full`}
+                disabled={!!busy || !reserveSelection.length}
+              >
+                {busy ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Clock3 className="h-4 w-4" />
+                )}
+                {busy ? "Confirmando apartados…" : "Confirmar apartados"}
+              </button>
+            </form>
+          </DialogContent>
+        </Dialog>
+      ) : null}
+      {!closed && data && cartUnits > 0 ? (
+        <button
+          type="button"
+          className={`${primary} fixed inset-x-4 bottom-4 z-30 shadow-xl lg:hidden`}
+          onClick={() =>
+            cartSection.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
+        >
+          <ShoppingBag className="h-4 w-4" />
+          Ver mi selección · {cartUnits} {cartUnits === 1 ? "unidad" : "unidades"}
+        </button>
+      ) : null}
       <Suspense
         fallback={
           <p
@@ -826,6 +1105,9 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
             onCustomerChange={setCustomer}
             initialDraft={checkoutDraft}
             onDraftChange={setCheckoutDraft}
+            onCheckoutCreated={() =>
+              setCart((previous) => removePurchasedItems(previous, purchase.items))
+            }
             onClose={() => setPurchase(null)}
             onUpdated={() => void refresh(visitor, true)}
           />

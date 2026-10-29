@@ -165,8 +165,11 @@ test("retries a failed reserve with same idempotency key", async () => {
   fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "987654321" } });
   fireEvent.click(screen.getByRole("button", { name: "Apartar" }));
   expect(await screen.findByText("Sin conexión")).toBeInTheDocument();
-  await waitFor(() => expect(screen.getByRole("button", { name: "Apartar" })).toBeEnabled());
-  fireEvent.click(screen.getByRole("button", { name: "Apartar" }));
+  const retry = within(await screen.findByRole("dialog", { name: "Guardar tus apartados" }));
+  await waitFor(() =>
+    expect(retry.getByRole("button", { name: "Confirmar apartados" })).toBeEnabled(),
+  );
+  fireEvent.click(retry.getByRole("button", { name: "Confirmar apartados" }));
   await waitFor(() => expect(reserveLiveProduct).toHaveBeenCalledTimes(2));
   const calls = (reserveLiveProduct as jest.Mock).mock.calls;
   expect(calls[0][2].idempotencyKey).toBe(calls[1][2].idempotencyKey);

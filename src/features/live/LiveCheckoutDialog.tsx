@@ -57,6 +57,7 @@ type LiveCheckoutDialogProps = {
   onCustomerChange: (customer: LiveCustomer) => void;
   onClose: () => void;
   onUpdated: () => void;
+  onCheckoutCreated?: () => void;
   initialDraft?: LiveCheckoutDraft;
   onDraftChange?: (draft: LiveCheckoutDraft) => void;
 };
@@ -74,6 +75,7 @@ function LiveCheckoutForm({
   onCustomerChange,
   onClose,
   onUpdated,
+  onCheckoutCreated,
   initialDraft,
   onDraftChange,
 }: LiveCheckoutDialogProps) {
@@ -280,6 +282,7 @@ function LiveCheckoutForm({
       if (result.manualPayment && result.checkoutId) {
         if (current.current) {
           setManualCheckout({ ...result, checkoutId: result.checkoutId });
+          onCheckoutCreated?.();
           onUpdated();
         }
         return;

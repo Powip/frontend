@@ -19,6 +19,7 @@ const BASE = `${GATEWAY.ventas}/live`;
 const adminPath = (storeId: string) => `${BASE}/stores/${encodeURIComponent(storeId)}`;
 const publicPath = (storeId: string) => `${BASE}/public/${encodeURIComponent(storeId)}`;
 const anonymousOptions = (visitor: string) => ({
+  timeout: 20000,
   withCredentials: false,
   headers: { "X-Live-Visitor": visitor },
 });
@@ -172,6 +173,8 @@ export function liveOrderLabel(status?: string | null): string | null {
 }
 export function liveError(error: unknown): string {
   if (axios.isAxiosError(error)) {
+    if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT")
+      return "La respuesta está tardando demasiado. No confirmamos el resultado. Actualiza el estado o reintenta la misma acción; no inicies otra compra ni repitas el pago.";
     if (error.response?.data?.code === "CUSTOMER_REVIEW_REQUIRED")
       return "Los datos de esta compra necesitan revisión del negocio. Contacta al negocio antes de pagar; este intento no se puede confirmar todavía.";
     const message: unknown = error.response?.data?.message;
