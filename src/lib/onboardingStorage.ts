@@ -1,6 +1,8 @@
 import type { StoredOnboardingState } from "@/types/onboarding";
 
 const KEY = "powip_onboarding";
+const isHttpsUrl = (value: unknown): value is string =>
+  typeof value === "string" && /^https:\/\/\S+$/.test(value);
 export const ONBOARDING_STORAGE_TTL_MS = 24 * 60 * 60 * 1000;
 
 /** Allow only checkout metadata, never credentials, bearer tokens or card details. */
@@ -30,6 +32,7 @@ export function validateStoredOnboardingState(value: unknown): StoredOnboardingS
     userId: record.userId,
     cardToken: record.cardToken,
     ...(typeof record.subscriptionId === "string" ? { subscriptionId: record.subscriptionId } : {}),
+    ...(isHttpsUrl(record.redirectUrl) ? { redirectUrl: record.redirectUrl } : {}),
     addOnIds: [...new Set(record.addOnIds as string[])],
     ...(record.migrate === true ? { migrate: true as const } : {}),
   };

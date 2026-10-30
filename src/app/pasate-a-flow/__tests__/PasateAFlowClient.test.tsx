@@ -59,7 +59,7 @@ beforeEach(() => {
 it("el personal no puede pagar desde acá", async () => {
   renderWith({ ...aviso, owner: false });
 
-  expect(await screen.findByText("Solo el dueño de la cuenta puede registrar la tarjeta.")).toBeInTheDocument();
+  expect(await screen.findByText("Solo el dueño de la cuenta puede registrar el medio de pago.")).toBeInTheDocument();
   expect(onboardingProps).not.toHaveBeenCalled();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Ir al inicio" })); });
   expect(refreshSession).toHaveBeenCalledTimes(1);
@@ -160,7 +160,7 @@ it("Ir a Powip recarga la sesión y vuelve al inicio", async () => {
 
 it("Cerrar sesión cierra la sesión y va al login", async () => {
   renderWith({ ...aviso, owner: false });
-  await screen.findByText("Solo el dueño de la cuenta puede registrar la tarjeta.");
+  await screen.findByText("Solo el dueño de la cuenta puede registrar el medio de pago.");
 
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Cerrar sesión" })); });
 

@@ -99,7 +99,7 @@ it("arranca en el plan, sin registro, con su plan y su add-on marcados", async (
   expect(await screen.findByRole("heading", { name: "Pasate a Flow", level: 1 })).toBeInTheDocument();
   const progress = screen.getByRole("navigation", { name: "Progreso de la suscripción" });
   expect(within(progress).queryByText("Cuenta")).not.toBeInTheDocument();
-  expect(within(progress).getByText("Tarjeta")).toBeInTheDocument();
+  expect(within(progress).getByText("Pago")).toBeInTheDocument();
 
   await openPayment();
 
@@ -123,7 +123,7 @@ it("vencido avisa que se cobra hoy", async () => {
   renderMigration({ paidUntil: null });
   await openPayment();
 
-  expect(screen.getByText("Se cobra hoy al registrar la tarjeta: S/ 129/mes.")).toBeInTheDocument();
+  expect(screen.getByText("Se cobra hoy al registrar tu medio de pago: S/ 129/mes.")).toBeInTheDocument();
 });
 
 it("manda migrate y, si ya quedó programada, muestra el primer cobro y vuelve a Powip", async () => {
@@ -193,7 +193,7 @@ it("bloqueado explica que el acceso está suspendido", async () => {
   renderMigration({ blocked: true, paidUntil: null });
 
   expect(
-    await screen.findByText("Tu acceso a Powip está suspendido. Registra tu tarjeta para volver a usarlo."),
+    await screen.findByText("Tu acceso a Powip está suspendido. Registra tu tarjeta o Yape para volver a usarlo."),
   ).toBeInTheDocument();
 });
 
@@ -206,5 +206,5 @@ it("el onboarding normal no cambia", async () => {
   expect(screen.getByRole("heading", { name: "Configura tu cuenta", level: 1 })).toBeInTheDocument();
   expect(screen.getByText(/Acceso inmediato al activar/)).toBeInTheDocument();
   expect(screen.queryByText(/Hoy no te cobramos nada/)).not.toBeInTheDocument();
-  expect(screen.queryByText(/Se cobra hoy al registrar la tarjeta/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Se cobra hoy al registrar tu medio de pago/)).not.toBeInTheDocument();
 });

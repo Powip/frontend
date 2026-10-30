@@ -4,6 +4,7 @@ import { useCallback, useEffect, useReducer, useRef } from "react";
 import { toast } from "sonner";
 import { registrationErrorMessage } from "@/lib/authErrors";
 import { notifyAuthError } from "@/lib/authToast";
+import { goToExternalPage } from "@/lib/browserNavigation";
 import { isScheduledMigration } from "@/lib/flowMigration";
 import {
   clearOnboardingState,
@@ -58,13 +59,19 @@ export const POLL_DELAY_MS = 3000;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const HAS_PLAN = new Set(["ACTIVE", "PENDING_RENEWAL"]);
 
+/**
+ * Dónde registra el cliente su medio de pago: el widget embebido de Flow (solo tarjeta) o la
+ * página de Flow (tarjeta o Yape recurrente). Las dos vuelven por /onboarding/callback.
+ */
+export type CardRegistrationVia = "widget" | "redirect";
+
 export interface UseOnboardingFlowReturn {
   state: OnboardingState;
   setPlan: (plan: { id: string; name: string; price: number }) => void;
   selectAddOns: (ids: string[]) => void;
   register: (data: RegisterData) => Promise<void>;
   resumeSession: (userId: string) => void;
-  initiateCardRegistration: () => Promise<void>;
+  initiateCardRegistration: (via?: CardRegistrationVia) => Promise<void>;
   confirmPayment: () => Promise<void>;
   checkPaymentAgain: () => Promise<void>;
   restoreFromStorage: (stored: StoredOnboardingState) => void;
@@ -450,7 +457,7 @@ export function useOnboardingFlow(
     [isCurrentPayment, showExistingSubscription],
   );
 
-  const initiateCardRegistration = useCallback(async () => {
+  const initiateCardRegistration = useCallback(async (via: CardRegistrationVia = "widget") => {
     const revision = beginPayment();
     if (revision === null) return;
     const snapshot = stateRef.current;
@@ -471,6 +478,10 @@ export function useOnboardingFlow(
         return;
       }
       if (snapshot.cardToken) {
+        if (via === "redirect" && snapshot.redirectUrl) {
+          goToExternalPage(snapshot.redirectUrl);
+          return;
+        }
         dispatch({ type: "SET_STEP", step: "CARD_WIDGET" });
         return;
       }
@@ -494,6 +505,7 @@ export function useOnboardingFlow(
         userId: snapshot.userId,
         cardToken: checkout.cardToken,
         subscriptionId: checkout.subscriptionId,
+        ...(checkout.redirectUrl ? { redirectUrl: checkout.redirectUrl } : {}),
         ...(snapshot.migrate ? { migrate: true as const } : {}),
       });
       dispatch({
@@ -502,6 +514,10 @@ export function useOnboardingFlow(
         redirectUrl: checkout.redirectUrl,
         subscriptionId: checkout.subscriptionId,
       });
+      if (via === "redirect" && checkout.redirectUrl) {
+        goToExternalPage(checkout.redirectUrl);
+        return;
+      }
       dispatch({ type: "SET_STEP", step: "CARD_WIDGET" });
     } catch (err: unknown) {
       if (!isCurrentPayment(revision)) return;
@@ -532,7 +548,7 @@ export function useOnboardingFlow(
             ? "Este plan todavía no está disponible para pago online. Contacta a soporte."
             : code === "INVALID_EMAIL"
               ? "Flow no aceptó el email de tu cuenta: tiene que ser un email real que recibas. Contacta a soporte para corregirlo."
-              : "No pudimos iniciar el registro de tarjeta. Intenta nuevamente.";
+              : "No pudimos iniciar el registro del medio de pago. Intenta nuevamente.";
       toast.error(message);
       dispatch({ type: "SET_ERROR", error: message });
     } finally {
@@ -548,7 +564,7 @@ export function useOnboardingFlow(
     if (!token) {
       dispatch({
         type: "SET_ERROR",
-        error: "No encontramos el registro de tu tarjeta. Volvé a intentarlo.",
+        error: "No encontramos el registro de tu medio de pago. Volvé a intentarlo.",
       });
       endPayment(revision);
       return;
@@ -645,8 +661,8 @@ export function useOnboardingFlow(
             });
             const message =
               code === "CARD_REJECTED"
-                ? "Flow no pudo registrar tu tarjeta. Probá con otra tarjeta."
-                : "Este registro de tarjeta ya no es válido. Volvé a intentarlo.";
+                ? "Flow no pudo registrar tu medio de pago. Probá con otra tarjeta o con Yape."
+                : "Este registro del medio de pago ya no es válido. Volvé a intentarlo.";
             toast.error(message);
             dispatch({ type: "SET_ERROR", error: message });
             return;
@@ -658,7 +674,7 @@ export function useOnboardingFlow(
 
       if (isCurrentPayment(revision)) {
         const message =
-          "No pudimos confirmar el registro de tu tarjeta. Volvé a intentarlo o contactá a soporte.";
+          "No pudimos confirmar el registro de tu medio de pago. Volvé a intentarlo o contactá a soporte.";
         toast.error(message);
         dispatch({ type: "SET_ERROR", error: message });
       }

@@ -1,12 +1,14 @@
 import { act, renderHook } from "@testing-library/react";
 import { AxiosError, AxiosHeaders } from "axios";
 import { toast } from "sonner";
-import { getStoredOnboardingState } from "@/lib/onboardingStorage";
+import { goToExternalPage } from "@/lib/browserNavigation";
+import { getStoredOnboardingState, saveOnboardingState } from "@/lib/onboardingStorage";
 import * as api from "@/services/onboardingService";
 import type { SubscriptionMe } from "@/types/onboarding";
 import { useOnboardingFlow } from "../useOnboardingFlow";
 
 jest.mock("sonner", () => ({ toast: { error: jest.fn() } }));
+jest.mock("@/lib/browserNavigation", () => ({ goToExternalPage: jest.fn() }));
 jest.mock("@/services/onboardingService", () => {
   const actual = jest.requireActual("@/services/onboardingService");
   return {
@@ -383,6 +385,63 @@ describe("useOnboardingFlow", () => {
 
     expect(result.current.state.error).toMatch(/email/i);
     expect(result.current.state.step).not.toBe("CARD_WIDGET");
+  });
+
+  it("redirect: crea el checkout y lleva a la página de Flow (tarjeta o Yape) en vez del widget", async () => {
+    mocked.startFlowCheckout.mockResolvedValue({
+      subscriptionId: "s1",
+      status: "PENDING_PAYMENT",
+      redirectUrl: "https://www.flow.cl/register?token=tk",
+      cardToken: "tk",
+    });
+    const { result } = setup();
+    act(() => result.current.selectAddOns(["a1"]));
+
+    await act(() => result.current.initiateCardRegistration("redirect"));
+
+    expect(mocked.startFlowCheckout).toHaveBeenCalledWith("p1", ["a1"]);
+    expect(goToExternalPage).toHaveBeenCalledWith("https://www.flow.cl/register?token=tk");
+    expect(getStoredOnboardingState()).toMatchObject({
+      cardToken: "tk",
+      subscriptionId: "s1",
+      redirectUrl: "https://www.flow.cl/register?token=tk",
+    });
+    expect(result.current.state.step).not.toBe("CARD_WIDGET");
+  });
+
+  it("widget (por defecto): no sale de Powip", async () => {
+    mocked.startFlowCheckout.mockResolvedValue({
+      subscriptionId: "s1",
+      status: "PENDING_PAYMENT",
+      redirectUrl: "https://www.flow.cl/register?token=tk",
+      cardToken: "tk",
+    });
+    const { result } = setup();
+
+    await act(() => result.current.initiateCardRegistration());
+
+    expect(goToExternalPage).not.toHaveBeenCalled();
+    expect(result.current.state.step).toBe("CARD_WIDGET");
+  });
+
+  it("redirect con un checkout guardado reusa su link sin crear otro checkout", async () => {
+    saveOnboardingState({
+      planId: "p1",
+      planName: "Basic",
+      price: 99,
+      addOnIds: [],
+      userId: "u1",
+      cardToken: "tk-guardado",
+      subscriptionId: "s-guardada",
+      redirectUrl: "https://www.flow.cl/register?token=tk-guardado",
+    });
+    const { result } = setup();
+    expect(result.current.state.redirectUrl).toBe("https://www.flow.cl/register?token=tk-guardado");
+
+    await act(() => result.current.initiateCardRegistration("redirect"));
+
+    expect(mocked.startFlowCheckout).not.toHaveBeenCalled();
+    expect(goToExternalPage).toHaveBeenCalledWith("https://www.flow.cl/register?token=tk-guardado");
   });
 
   async function reachWidget(result: ReturnType<typeof setup>["result"]) {

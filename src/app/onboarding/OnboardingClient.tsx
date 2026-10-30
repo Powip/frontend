@@ -8,6 +8,7 @@ import {
   CreditCard,
   Loader2,
   Shield,
+  Smartphone,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -22,7 +23,11 @@ import FlowWidgetStep from "@/components/onboarding/FlowWidgetStep";
 import MigrationScheduledSuccess from "@/components/onboarding/MigrationScheduledSuccess";
 import PlanPicker from "@/components/onboarding/PlanPicker";
 import { useAuth } from "@/contexts/AuthContext";
-import { type RegisterData, useOnboardingFlow } from "@/hooks/useOnboardingFlow";
+import {
+  type CardRegistrationVia,
+  type RegisterData,
+  useOnboardingFlow,
+} from "@/hooks/useOnboardingFlow";
 import { firstChargePreview, formatLimaDate, limaToday } from "@/lib/flowMigration";
 import { counterpartPlan, isAnnualPlanName } from "@/lib/onboardingPlan";
 import { planDisplayName } from "@/lib/planCatalog";
@@ -133,7 +138,7 @@ const STEPS = [
 /** "Pasate a Flow" (FEAT-25): ya tienen cuenta, así que no hay paso de registro. */
 const MIGRATION_STEPS = [
   { num: 2, name: "Plan" },
-  { num: 3, name: "Tarjeta" },
+  { num: 3, name: "Pago" },
   { num: 4, name: "¡Listo!" },
 ];
 
@@ -155,7 +160,7 @@ const BRAND_PANEL_CONTENT: Record<
   },
   3: {
     headline: "¡Casi listo!",
-    sub: "Revisa el total de tu suscripción y registra tu tarjeta con Flow.",
+    sub: "Revisa el total de tu suscripción y registra tu tarjeta o Yape con Flow.",
     mascot: "/mascota-pc-2.svg",
     viewBox: "413 267 701 931",
   },
@@ -580,7 +585,7 @@ interface Step3Props {
   cardToken: string | null;
   redirectUrl: string | null;
   onBack: () => void;
-  onInitiate: () => Promise<void>;
+  onInitiate: (via?: CardRegistrationVia) => Promise<void>;
   onSubscribe: () => Promise<void>;
   onCheckAgain: () => Promise<void>;
   onRetry: () => void;
@@ -615,7 +620,7 @@ function Step3({
         <Loader2 className="h-10 w-10 animate-spin" style={{ color: "#4F3A96" }} />
         <p className="font-semibold text-gray-900">Confirmando tu pago...</p>
         <p className="text-sm text-gray-500">
-          Estamos registrando tu tarjeta y procesando el primer cobro. Puede tardar unos segundos.
+          Estamos registrando tu medio de pago y procesando el primer cobro. Puede tardar unos segundos.
         </p>
       </div>
     );
@@ -671,7 +676,7 @@ function Step3({
             href={redirectUrl}
             className="text-xs text-center text-gray-400 hover:text-gray-600 underline"
           >
-            ¿No carga el formulario? Registrá tu tarjeta en la página de Flow
+            ¿Prefieres pagar con Yape o no carga el formulario? Continúa en la página de Flow
           </a>
         )}
       </div>
@@ -684,7 +689,7 @@ function Step3({
       <div className="mb-1">
         <h3 className="font-bold text-xl text-gray-900">Resumen de tu suscripción</h3>
         <p className="text-sm text-gray-500 mt-1">
-          Revisa los detalles antes de registrar tu tarjeta.
+          Revisa los detalles antes de registrar tu medio de pago.
         </p>
       </div>
 
@@ -761,10 +766,10 @@ function Step3({
       >
         <Shield className="w-5 h-5 shrink-0 mt-0.5 text-indigo-500" />
         <div className="text-sm text-indigo-900">
-          <p className="font-semibold">Pago seguro con tarjeta</p>
+          <p className="font-semibold">Pago seguro con Flow</p>
           <p className="mt-1 text-xs leading-relaxed text-indigo-700">
-            Registrarás tu tarjeta de débito o crédito directamente en Flow. Powip no almacena datos
-            de tu tarjeta.
+            Registra tu tarjeta de débito o crédito, o tu Yape, directamente en Flow. El cobro se
+            renueva solo cada período. Powip no almacena tus datos de pago.
           </p>
         </div>
       </div>
@@ -772,7 +777,7 @@ function Step3({
       {/* Register card button */}
       <button
         type="button"
-        onClick={onInitiate}
+        onClick={() => void onInitiate("widget")}
         disabled={isLoading}
         className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2 mt-1 transition-opacity disabled:opacity-70"
         style={{ background: "#4F3A96" }}
@@ -788,6 +793,18 @@ function Step3({
             Registrar tarjeta
           </>
         )}
+      </button>
+
+      {/* Yape recurrente: solo lo ofrece la página de Flow, no el widget embebido */}
+      <button
+        type="button"
+        onClick={() => void onInitiate("redirect")}
+        disabled={isLoading}
+        className="w-full h-12 rounded-xl font-semibold flex items-center justify-center gap-2 transition-opacity disabled:opacity-70"
+        style={{ color: "#4F3A96", border: "1.5px solid #4F3A96", background: "white" }}
+      >
+        <Smartphone className="w-4 h-4" />
+        Pagar con Yape
       </button>
 
       {/* Back button */}
@@ -1217,7 +1234,7 @@ export default function OnboardingClient({
         const date = firstChargePreview(paidUntil, limaToday());
         return date
           ? `Hoy no te cobramos nada. Tu primer cobro será el ${formatLimaDate(date)}: S/ ${summary.total}/${period}. Hasta entonces sigues con tu plan actual.`
-          : `Se cobra hoy al registrar la tarjeta: S/ ${summary.total}/${period}.`;
+          : `Se cobra hoy al registrar tu medio de pago: S/ ${summary.total}/${period}.`;
       })()
     : null;
 
@@ -1368,7 +1385,7 @@ export default function OnboardingClient({
             </h1>
             {blocked && (
               <p role="alert" className="text-sm font-medium text-red-700">
-                Tu acceso a Powip está suspendido. Registra tu tarjeta para volver a usarlo.
+                Tu acceso a Powip está suspendido. Registra tu tarjeta o Yape para volver a usarlo.
               </p>
             )}
             <p className={styles.stepCaption}>

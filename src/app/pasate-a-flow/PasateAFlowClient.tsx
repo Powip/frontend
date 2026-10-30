@@ -14,7 +14,7 @@ const HAS_PLAN = new Set(["ACTIVE", "PENDING_RENEWAL"]);
 type MeState = { status: "loading" } | { status: "error" } | { status: "ready"; me: SubscriptionMe | null };
 
 /**
- * "Pasate a Flow" (FEAT-25): el dueño de una empresa sin Flow registra su tarjeta con su plan
+ * "Pasate a Flow" (FEAT-25): el dueño de una empresa sin Flow registra su tarjeta o Yape con su plan
  * actual marcado. Llega desde el banner (AVISO) o lo trae el gate (BLOQUEADO).
  */
 export default function PasateAFlowClient() {
@@ -95,7 +95,7 @@ export default function PasateAFlowClient() {
   if (!access.owner) {
     return frame(
       <>
-        <p className="text-gray-900">Solo el dueño de la cuenta puede registrar la tarjeta.</p>
+        <p className="text-gray-900">Solo el dueño de la cuenta puede registrar el medio de pago.</p>
         {goHomeLink("Ir al inicio")}
       </>,
     );
