@@ -59,6 +59,8 @@ export const useGoogleSheets = () => {
     try {
       const next = await googleSheetsApi.getConfig();
       setConfig(next);
+      // La marca solo vale mientras el servidor sigue en READY.
+      if (next.status !== 'READY') setReconfiguring(false);
       if (next.status === 'NEEDS_RECONNECT') {
         setError(next.lastError || RECONNECT_MESSAGE);
       }
@@ -166,7 +168,6 @@ export const useGoogleSheets = () => {
         setReview(await googleSheetsApi.review());
         setLocalStep('REVIEW');
         await refresh();
-        setReconfiguring(false);
       }),
     [run, refresh],
   );
@@ -176,6 +177,7 @@ export const useGoogleSheets = () => {
       run(async () => {
         await googleSheetsApi.activate(acknowledgeHistory);
         setLocalStep(null);
+        setReconfiguring(false);
         await refresh();
       }),
     [run, refresh],

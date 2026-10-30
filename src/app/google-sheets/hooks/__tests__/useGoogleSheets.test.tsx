@@ -243,6 +243,36 @@ describe('useGoogleSheets', () => {
       expect(result.current.step).toBe('CONNECT_ACCOUNT');
     });
 
+    it('si review falla tras guardar, activar con el servidor READY termina en STATUS sin marca', async () => {
+      api.getConfig.mockResolvedValue(ready);
+      api.saveConfig.mockResolvedValue(undefined as never);
+      api.review.mockRejectedValue(new Error('boom'));
+      api.activate.mockResolvedValue(undefined as never);
+      const { result } = await setup();
+      act(() => result.current.reconfigure());
+      await act(async () => {
+        await result.current.saveConfig({ storeId: 's1', tabIds: [1], headerMapping: {} });
+      });
+      await act(async () => {
+        await result.current.activate(true);
+      });
+      expect(result.current.reconfiguring).toBe(false);
+      expect(result.current.step).toBe('STATUS');
+    });
+
+    it('si la consulta falla tras guardar, sigue en el flujo de configuración', async () => {
+      api.getConfig.mockResolvedValue(ready);
+      api.saveConfig.mockResolvedValue(undefined as never);
+      api.review.mockResolvedValue({} as never);
+      const { result } = await setup();
+      act(() => result.current.reconfigure());
+      api.getConfig.mockRejectedValue(new Error('boom'));
+      await act(async () => {
+        await result.current.saveConfig({ storeId: 's1', tabIds: [1], headerMapping: {} });
+      });
+      expect(result.current.step).toBe('REVIEW');
+    });
+
     it('disconnect limpia la marca', async () => {
       api.getConfig.mockResolvedValue(ready);
       api.disconnect.mockResolvedValue(undefined as never);
