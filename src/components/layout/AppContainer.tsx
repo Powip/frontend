@@ -57,6 +57,7 @@ function ScopedAppContainer({ children }: { children: React.ReactNode }) {
     "/rastreo",
     "/c/",
     "/onboarding",
+    "/p/",
     "/pasate-a-flow",
     "/cuenta-suspendida",
   ];

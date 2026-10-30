@@ -108,6 +108,7 @@ import { printOrderLabel, type OrderReceipt } from "@/utils/printOrderLabel";
 import { downloadNotaVentaPdf } from "@/utils/downloadNotaVentaPdf";
 import { GoogleMapsUrlField } from "@/components/shared/GoogleMapsUrlField";
 import { OrderEvidenceSection } from "@/components/orders/OrderEvidenceSection";
+import { OrderWhatsAppMessages } from "@/components/whatsapp/OrderWhatsAppMessages";
 
 type CustomerServiceReceipt = Omit<OrderReceipt, "items"> & {
   items: (OrderReceipt["items"][number] & {
@@ -2862,6 +2863,8 @@ export default function CustomerServiceModal({
                       </div>
                     );
                   })()}
+
+                  <OrderWhatsAppMessages orderId={orderId} />
 
                   {/* Acciones — calca la lista de botones full-width del
                       mockup (icono + label, alineados a la izquierda). Cada

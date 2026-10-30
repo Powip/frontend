@@ -179,6 +179,7 @@ export interface OrderPayment {
 ----------------------------------------- */
 export interface OrderHeader extends UnitAssignmentState {
   id: string;
+  waLastNotice?: unknown;
   currency?: string | null;
   commercialStage?: "LEAD" | "SALE" | null;
   commercialLeadId?: string | null;

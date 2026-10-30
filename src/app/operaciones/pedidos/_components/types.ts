@@ -1,3 +1,7 @@
+import {
+  parseWhatsAppLastNotice,
+  type WhatsAppLastNotice,
+} from "@/features/whatsapp/utils/last-notice.util";
 import { type UnitAssignmentState } from "@/services/saleTrackingService";
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import type { OpsPermission } from "@/config/operationsPermissions";
@@ -17,6 +21,7 @@ import type { SalesPhysicalOrderProjection } from "@/utils/commercialOrders";
 ------------------------------------------------------------------------ */
 export interface Sale extends UnitAssignmentState, Omit<SalesPhysicalOrderProjection, "stockVersion"> {
   id: string;
+  waLastNotice?: WhatsAppLastNotice | null;
   storeId?: string;
   storeName?: string;
   stockStoreName?: string;
@@ -97,6 +102,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
 
   return {
     id: order.id,
+    waLastNotice: parseWhatsAppLastNotice(order.waLastNotice),
     commercialStage: order.commercialStage,
     commercialLeadId: order.commercialLeadId,
     commercialStockState: order.commercialStockState,

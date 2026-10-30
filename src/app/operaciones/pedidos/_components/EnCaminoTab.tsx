@@ -3,6 +3,7 @@ import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
 
 import { OrderOriginLabel } from "../../_shared/OrderOriginLabel";
 
+import { WhatsAppLastNoticeIndicator } from "@/components/whatsapp/WhatsAppLastNoticeIndicator";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -404,8 +405,9 @@ export function EnCaminoTab({
                           <Button size="icon" variant="ghost" className="h-7 w-7" title="Rastrear" onClick={() => openOrderDetail(sale.id)}>
                             <SearchIcon className="h-3.5 w-3.5" />
                           </Button>
-                          <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:text-green-700" title="WhatsApp" onClick={() => actions.onWhatsApp(sale)}>
+                          <Button size="icon" variant="ghost" className="relative h-7 w-7 text-green-600 hover:text-green-700" title="WhatsApp" onClick={() => actions.onWhatsApp(sale)}>
                             <WhatsAppIcon className="h-3.5 w-3.5" />
+                            <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} />
                           </Button>
                         </div>
                       </TableCell>

@@ -21,6 +21,7 @@ const PUBLIC_ROUTES = [
   "/rastreo",
   "/c/",
   "/onboarding",
+  "/p/",
 ];
 
 /**
