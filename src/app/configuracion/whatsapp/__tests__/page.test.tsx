@@ -24,6 +24,49 @@ jest.mock("@/contexts/AuthContext", () => ({
   useAuth: jest.fn(),
 }));
 
+jest.mock("@/features/whatsapp/api/templates.api", () => ({
+  listWhatsAppTemplates: jest.fn().mockResolvedValue([]),
+  syncWhatsAppTemplates: jest.fn().mockResolvedValue([]),
+  createWhatsAppTemplate: jest.fn(),
+}));
+
+jest.mock("@/features/whatsapp/api/rules.api", () => ({
+  getWhatsAppRules: jest.fn().mockResolvedValue({
+    items: [],
+    summary: { activeCount: 0, estimatedMonthly: 0 },
+  }),
+  saveWhatsAppRule: jest.fn(),
+  activateWhatsAppRule: jest.fn(),
+  deactivateWhatsAppRule: jest.fn(),
+  updateWhatsAppRule: jest.fn(),
+}));
+
+jest.mock("@/features/whatsapp/api/settings.api", () => ({
+  getWhatsAppSettings: jest.fn().mockResolvedValue({
+    schedule: {
+      days: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
+      from: "08:00",
+      to: "20:00",
+      outOfHours: "SILENT",
+      timezone: "America/Lima",
+    },
+    dedupe: false,
+    maxPerOrderPerDay: 3,
+    missingData: { notifyAgent: false, sendWhenFixed: false },
+    autoReply: null,
+    optOutByKeyword: false,
+    foreignNumbers: { inbound: "REJECTED", allowOutbound: false },
+    version: 1,
+  }),
+  updateWhatsAppSettings: jest.fn(),
+}));
+
+jest.mock("@/features/whatsapp/api/queue.api", () => ({
+  getWhatsAppUpcomingQueue: jest.fn().mockResolvedValue([]),
+  getWhatsAppMessages: jest.fn().mockResolvedValue([]),
+  limaTodayStartIso: jest.fn(() => "2026-10-30T00:00:00Z"),
+}));
+
 import { useAuth } from "@/contexts/AuthContext";
 import { WHATSAPP_TAB_STORAGE_KEY } from "@/features/whatsapp/constants/whatsapp-tabs";
 import WhatsAppSettingsPage from "../page";
@@ -122,11 +165,9 @@ describe("WhatsAppSettingsPage", () => {
     expect(window.localStorage.getItem(WHATSAPP_TAB_STORAGE_KEY)).toBe("plantillas");
   });
 
-  it("la pestaña conexion queda pendiente sin conexiones, tarifas ni montos", async () => {
+  it("la pestaña conexion carga datos pero sin números conectados", async () => {
     await renderPage("tab=conexion");
-    expect(screen.getByText("Estado de conexión pendiente de integración")).toBeInTheDocument();
-    expect(screen.getByText("Número pendiente de integración")).toBeInTheDocument();
-    expect(screen.getByText("Tarifas pendientes de integración")).toBeInTheDocument();
+    // Con el backend conectado, muestra "Cargando estado…" mientras carga, o estado sin conexión
     expect(screen.queryByText(/Conectado ·|S\/ \d|USD \d/)).not.toBeInTheDocument();
     expect(screen.queryByRole("radio")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Enviar prueba" })).toHaveAttribute(
@@ -158,14 +199,11 @@ describe("WhatsAppSettingsPage", () => {
     expect(screen.getByText(/de la tienda LIVII/)).toBeInTheDocument();
   });
 
-  it("la pestaña plantillas muestra el listado pendiente y permite preparar una plantilla", async () => {
+  it("la pestaña plantillas carga y muestra lista vacía con opción de crear plantilla", async () => {
     await renderPage("tab=plantillas");
     expect(screen.getByRole("heading", { name: "Tus plantillas" })).toBeInTheDocument();
-    expect(screen.getByRole("note")).toHaveTextContent(
-      "Listado de plantillas pendiente de integración",
-    );
+    // Con backend conectado, muestra lista vacía o "Todavía no tienes plantillas"
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    expect(screen.queryByText("Todavía no tienes plantillas")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Nueva plantilla" })).toBeInTheDocument();
   });
 
@@ -175,11 +213,9 @@ describe("WhatsAppSettingsPage", () => {
     expect(screen.queryByRole("button", { name: "Nueva plantilla" })).not.toBeInTheDocument();
   });
 
-  it("la pestaña programación muestra reglas pendientes y formularios con valores sugeridos", async () => {
+  it("la pestaña programación carga reglas y formularios con valores sugeridos", async () => {
     await renderPage("tab=programacion");
-    expect(screen.getByText("Avisos automáticos pendientes de integración")).toBeInTheDocument();
-    expect(screen.getByText("Cola pendiente de integración")).toBeInTheDocument();
-    expect(screen.getByText("Envíos programados pendientes de integración")).toBeInTheDocument();
+    // Con backend conectado, carga reglas vacías y configuración por defecto
     expect(screen.queryAllByRole("article")).toHaveLength(0);
     const hours = screen.getByRole("region", { name: "Horario permitido" });
     expect(within(hours).getByLabelText("Desde")).toHaveValue("08:00");
@@ -276,16 +312,16 @@ describe("WhatsAppSettingsPage", () => {
     expect(screen.getByText("Integración pendiente")).toBeInTheDocument();
   });
 
-  it("lista las tiendas reales de la empresa con estado pendiente", async () => {
+  it("lista las tiendas reales de la empresa sin números conectados", async () => {
     await renderPage("tab=conexion");
     const list = screen.getByRole("list", { name: "Tiendas de tu empresa" });
     const items = within(list).getAllByRole("listitem");
     expect(items).toHaveLength(2);
     for (const [index, name] of ["LIVII", "KUNCA"].entries()) {
       expect(items[index]).toHaveTextContent(name);
-      expect(items[index]).toHaveTextContent("Estado de WhatsApp pendiente de integración");
+      // Con backend conectado, muestra "Sin número conectado" o "Sin conectar"
+      expect(items[index]).toHaveTextContent(/Sin número conectado|Sin conectar/);
     }
-    expect(within(list).queryByRole("button", { name: /Conectar número/ })).not.toBeInTheDocument();
   });
 
   it("indica cómo crear una tienda si la empresa no tiene", async () => {

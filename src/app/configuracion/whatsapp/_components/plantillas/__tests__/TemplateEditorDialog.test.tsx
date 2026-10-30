@@ -8,6 +8,16 @@ import {
 import { TemplateEditorDialog, type TemplateEditorMode } from "../TemplateEditorDialog";
 import { TemplatesTab } from "../TemplatesTab";
 
+jest.mock("@/contexts/AuthContext", () => ({
+  useAuth: jest.fn(() => ({
+    auth: {
+      user: { email: "test@test.com", id: "u-1", role: "ADMINISTRADOR", permissions: [] },
+      company: { id: "c-1", name: "Test Company", stores: [{ id: "s-1", name: "Test Store" }] },
+    },
+    selectedStoreId: "s-1",
+  })),
+}));
+
 beforeAll(() => {
   Element.prototype.hasPointerCapture = () => false;
   Element.prototype.releasePointerCapture = () => undefined;
@@ -237,9 +247,7 @@ describe("TemplateEditorDialog · descarte", () => {
     const confirmDiscard = await screen.findByRole("alertdialog");
     await user.click(within(confirmDiscard).getByRole("button", { name: "Descartar cambios" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(screen.getByRole("note")).toHaveTextContent(
-      "Listado de plantillas pendiente de integración",
-    );
+    // Con backend conectado, muestra lista vacía o estado de carga
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Nueva plantilla" }));

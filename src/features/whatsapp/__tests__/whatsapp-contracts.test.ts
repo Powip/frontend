@@ -21,11 +21,19 @@ describe("registro de contratos", () => {
     }
   });
 
-  it("ningún contrato del módulo WhatsApp está disponible todavía", () => {
+  it("los contratos del módulo WhatsApp confirmados tienen evidencia, los demás están indisponibles", () => {
     const whatsappContracts = new Set(WHATSAPP_TAB_DEFINITIONS.flatMap((tab) => tab.contracts));
+    const confirmedContracts = new Set(["templates", "rules", "settings", "upcomingQueue", "messages"]);
+
     for (const key of whatsappContracts) {
-      expect(WHATSAPP_CONTRACTS[key].status).not.toBe(WHATSAPP_CONTRACT_STATUSES.CONFIRMED);
-      expect(isWhatsAppContractAvailable(key)).toBe(false);
+      if (confirmedContracts.has(key)) {
+        expect(WHATSAPP_CONTRACTS[key].status).toBe(WHATSAPP_CONTRACT_STATUSES.CONFIRMED);
+        expect(WHATSAPP_CONTRACTS[key].evidence).toMatch(/^src\//);
+        expect(isWhatsAppContractAvailable(key)).toBe(true);
+      } else {
+        expect(WHATSAPP_CONTRACTS[key].status).not.toBe(WHATSAPP_CONTRACT_STATUSES.CONFIRMED);
+        expect(isWhatsAppContractAvailable(key)).toBe(false);
+      }
     }
     expect(isWhatsAppContractAvailable("serviceBaseUrl")).toBe(false);
   });
