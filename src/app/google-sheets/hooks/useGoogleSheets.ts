@@ -32,12 +32,13 @@ function toMessage(error: unknown): string {
 }
 
 /** Paso de pantalla derivado del estado del servidor. */
-function baseStep(config: GoogleConfigView | null): SetupStep {
+function baseStep(config: GoogleConfigView | null, reconfiguring: boolean): SetupStep {
   if (!config || !config.connected || config.status === 'NEEDS_RECONNECT') {
     return 'CONNECT_ACCOUNT';
   }
   if (!config.file) return 'SELECT_FILE';
-  return config.status === 'READY' ? 'STATUS' : 'CONFIGURE';
+  if (config.status !== 'READY') return 'CONFIGURE';
+  return reconfiguring ? 'CONFIGURE' : 'STATUS';
 }
 
 /**
@@ -47,6 +48,7 @@ function baseStep(config: GoogleConfigView | null): SetupStep {
 export const useGoogleSheets = () => {
   const [config, setConfig] = useState<GoogleConfigView | null>(null);
   const [localStep, setLocalStep] = useState<'MAP_FIELDS' | 'REVIEW' | null>(null);
+  const [reconfiguring, setReconfiguring] = useState(false);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [review, setReview] = useState<ReviewResult | null>(null);
   const [issues, setIssues] = useState<SyncIssue[]>([]);
@@ -136,6 +138,18 @@ export const useGoogleSheets = () => {
 
   const goConfigure = useCallback(() => setLocalStep(null), []);
 
+  /** Desde STATUS (READY): abre la configuración sin cambiar el estado del servidor. */
+  const reconfigure = useCallback(() => {
+    setLocalStep(null);
+    setReconfiguring(true);
+  }, []);
+
+  /** Vuelve a STATUS: la integración sigue READY. */
+  const cancelReconfigure = useCallback(() => {
+    setLocalStep(null);
+    setReconfiguring(false);
+  }, []);
+
   const savePreview = useCallback(
     (tabIds: number[]) =>
       run(async () => {
@@ -152,6 +166,7 @@ export const useGoogleSheets = () => {
         setReview(await googleSheetsApi.review());
         setLocalStep('REVIEW');
         await refresh();
+        setReconfiguring(false);
       }),
     [run, refresh],
   );
@@ -180,6 +195,7 @@ export const useGoogleSheets = () => {
       run(async () => {
         await googleSheetsApi.disconnect();
         setLocalStep(null);
+        setReconfiguring(false);
         setPreview(null);
         setReview(null);
         setIssues([]);
@@ -190,7 +206,8 @@ export const useGoogleSheets = () => {
 
   const getAccessToken = useCallback(() => googleSheetsApi.getAccessToken(), []);
 
-  const base = baseStep(config);
+  const isReconfiguring = reconfiguring && config?.status === 'READY';
+  const base = baseStep(config, isReconfiguring);
   const step: SetupStep = base === 'CONFIGURE' && localStep ? localStep : base;
 
   return {
@@ -204,6 +221,9 @@ export const useGoogleSheets = () => {
     connectAccount,
     selectFile,
     goConfigure,
+    reconfigure,
+    cancelReconfigure,
+    reconfiguring: isReconfiguring,
     savePreview,
     saveConfig,
     activate,

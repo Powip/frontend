@@ -202,4 +202,57 @@ describe('useGoogleSheets', () => {
       jest.useRealTimers();
     }
   });
+
+  describe('reconfigurar desde READY', () => {
+    const ready = { ...withFile, status: 'READY' as const };
+
+    it('reconfigure lleva a CONFIGURE y cancelReconfigure vuelve a STATUS', async () => {
+      api.getConfig.mockResolvedValue(ready);
+      const { result } = await setup();
+      act(() => result.current.reconfigure());
+      expect(result.current.step).toBe('CONFIGURE');
+      expect(result.current.reconfiguring).toBe(true);
+      act(() => result.current.cancelReconfigure());
+      expect(result.current.step).toBe('STATUS');
+      expect(result.current.reconfiguring).toBe(false);
+    });
+
+    it('al guardar, el servidor pasa a NEEDS_SETUP y se limpia la marca', async () => {
+      api.getConfig.mockResolvedValue(ready);
+      api.saveConfig.mockResolvedValue(undefined as never);
+      api.review.mockResolvedValue({} as never);
+      const { result } = await setup();
+      act(() => result.current.reconfigure());
+      api.getConfig.mockResolvedValue({ ...withFile, status: 'NEEDS_SETUP' });
+      await act(async () => {
+        await result.current.saveConfig({ storeId: 's1', tabIds: [1], headerMapping: {} });
+      });
+      expect(result.current.reconfiguring).toBe(false);
+      expect(result.current.step).toBe('REVIEW');
+    });
+
+    it('si el servidor no está en READY ignora la marca', async () => {
+      api.getConfig.mockResolvedValue(ready);
+      const { result } = await setup();
+      act(() => result.current.reconfigure());
+      api.getConfig.mockResolvedValue({ ...withFile, status: 'NEEDS_RECONNECT' });
+      await act(async () => {
+        await result.current.refresh();
+      });
+      expect(result.current.reconfiguring).toBe(false);
+      expect(result.current.step).toBe('CONNECT_ACCOUNT');
+    });
+
+    it('disconnect limpia la marca', async () => {
+      api.getConfig.mockResolvedValue(ready);
+      api.disconnect.mockResolvedValue(undefined as never);
+      const { result } = await setup();
+      act(() => result.current.reconfigure());
+      api.getConfig.mockResolvedValue({ ...baseConfig, connected: false });
+      await act(async () => {
+        await result.current.disconnect();
+      });
+      expect(result.current.reconfiguring).toBe(false);
+    });
+  });
 });

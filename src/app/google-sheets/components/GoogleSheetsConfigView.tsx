@@ -127,6 +127,13 @@ export function GoogleSheetsConfigView() {
                 g.savePreview(ids);
               }}
             />
+            {g.reconfiguring && (
+              <div className="px-6 pb-6">
+                <Button variant="outline" className="w-full" onClick={g.cancelReconfigure} disabled={loading}>
+                  Cancelar
+                </Button>
+              </div>
+            )}
           </>
         )}
 
@@ -154,7 +161,7 @@ export function GoogleSheetsConfigView() {
             loading={loading}
             onSyncNow={g.syncNow}
             onDisconnect={g.disconnect}
-            onReconfigure={g.goConfigure}
+            onReconfigure={g.reconfigure}
             onReconnect={g.connectAccount}
           />
         )}
