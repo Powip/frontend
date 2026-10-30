@@ -176,7 +176,7 @@ export function liveError(error: unknown): string {
     if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT")
       return "La respuesta está tardando demasiado. No confirmamos el resultado. Actualiza el estado o reintenta la misma acción; no inicies otra compra ni repitas el pago.";
     if (error.response?.data?.code === "CUSTOMER_REVIEW_REQUIRED")
-      return "Los datos de esta compra necesitan revisión del negocio. Contacta al negocio antes de pagar; este intento no se puede confirmar todavía.";
+      return "Revisa nombre completo o razón social, WhatsApp, DNI/RUC y entrega. Deben corresponder al mismo comprador. Corrige los datos y vuelve a calcular el total. Contacta al negocio antes de pagar si ya son correctos.";
     const message: unknown = error.response?.data?.message;
     if (typeof message === "string") return message;
     if (Array.isArray(message))
@@ -191,6 +191,10 @@ export function liveError(error: unknown): string {
 
 export function isLiveReadDenied(error: unknown): boolean {
   return axios.isAxiosError(error) && [401, 403, 404].includes(error.response?.status ?? 0);
+}
+
+export function isLiveCustomerReviewRequired(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.data?.code === "CUSTOMER_REVIEW_REQUIRED";
 }
 
 export function liveAdminError(error: unknown): string {

@@ -87,6 +87,8 @@ function renderCheckout(
     buyer?: LiveCustomer;
     onDraftChange?: (draft: LiveCheckoutDraft) => void;
     store?: string;
+    publicData?: LivePublicData;
+    selection?: { items: { variantId: string; quantity: number }[]; reservationIds?: string[] };
   } = {},
 ) {
   const onUpdated = jest.fn();
@@ -97,8 +99,8 @@ function renderCheckout(
       <LiveCheckoutDialog
         storeId={store}
         visitor="visitor"
-        data={data}
-        selection={selection}
+        data={options.publicData ?? data}
+        selection={options.selection ?? selection}
         customer={buyer}
         onCustomerChange={setBuyer}
         onClose={onClose}
@@ -162,6 +164,83 @@ test("keeps a quote failure visible and focused by the action while retaining en
   expect(screen.getByLabelText("Dirección")).toHaveValue("Av. Prueba 123");
   expect(screen.getByLabelText("DNI del comprador")).toHaveValue("71829364");
   expect(screen.getByRole("button", { name: "Calcular total" })).toBeEnabled();
+});
+
+const reviewConflict = () =>
+  Object.assign(new Error("review"), {
+    isAxiosError: true,
+    response: {
+      status: 409,
+      data: { code: "CUSTOMER_REVIEW_REQUIRED", message: "PRIVATE_STORED_CUSTOMER_DETAIL" },
+    },
+  });
+
+test("a customer review explains what to check and lets the buyer correct the same held purchase", async () => {
+  const heldSelection = { items: [], reservationIds: ["held-one"] };
+  const heldData: LivePublicData = {
+    ...data,
+    customer,
+    reservations: [
+      {
+        id: "held-one",
+        variantId: "variant-one",
+        customer,
+        quantity: 2,
+        unitPrice: 20,
+        status: "ACTIVE",
+        type: "TIMED",
+        expiresAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+        createdAt: data.serverNow,
+      },
+    ],
+  };
+  (quoteLivePurchase as jest.Mock).mockRejectedValueOnce(reviewConflict());
+  const onDraftChange = jest.fn();
+  renderCheckout({
+    initialDraft: draft,
+    publicData: heldData,
+    selection: heldSelection,
+    onDraftChange,
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Calcular total" }));
+  const error = await screen.findByRole("alert");
+  expect(error).toHaveFocus();
+  expect(error).toHaveTextContent(/nombre completo o razón social, WhatsApp, DNI\/RUC y entrega/);
+  expect(error).toHaveTextContent(/mismo comprador/);
+  expect(error).toHaveTextContent(/vuelve a calcular el total/);
+  expect(screen.queryByText("PRIVATE_STORED_CUSTOMER_DETAIL")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Dirección")).toHaveValue(draft.delivery.address);
+  expect(screen.getByLabelText("DNI del comprador")).toHaveValue("71829364");
+  expect(screen.getByLabelText("WhatsApp")).toHaveAttribute("readOnly");
+  expect(screen.getByText(/Este WhatsApp está vinculado a tus apartados/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Revisar datos del comprador" }));
+  const name = screen.getByRole("textbox", { name: /^Nombre/ });
+  expect(name).toHaveFocus();
+  fireEvent.change(name, { target: { value: "María Torres García" } });
+  fireEvent.click(screen.getByRole("button", { name: "Calcular total" }));
+  expect(await screen.findByRole("button", { name: /Ver instrucciones Yape/ })).toBeEnabled();
+  expect((quoteLivePurchase as jest.Mock).mock.calls[1][2]).toMatchObject({
+    ...heldSelection,
+    ...draft,
+    customer: { ...customer, name: "María Torres García" },
+  });
+  expect(heldData.reservations[0]).toMatchObject({ id: "held-one", quantity: 2, status: "ACTIVE" });
+  expect(onDraftChange).toHaveBeenLastCalledWith(draft);
+  expect(checkoutLivePurchase).not.toHaveBeenCalled();
+});
+
+test("customer review at confirmation invalidates the accepted total without dropping the draft", async () => {
+  (checkoutLivePurchase as jest.Mock).mockRejectedValueOnce(reviewConflict());
+  renderCheckout({ initialDraft: draft });
+  fireEvent.click(screen.getByRole("button", { name: "Calcular total" }));
+  fireEvent.click(await screen.findByRole("button", { name: /Ver instrucciones Yape/ }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(/mismo comprador/);
+  expect(screen.getByRole("button", { name: "Calcular total" })).toBeEnabled();
+  expect(screen.queryByRole("button", { name: /Ver instrucciones Yape/ })).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Dirección")).toHaveValue(draft.delivery.address);
+  expect(screen.getByLabelText("DNI del comprador")).toHaveValue("71829364");
+  expect(screen.queryByRole("dialog", { name: "Instrucciones Yape" })).not.toBeInTheDocument();
+  expect(checkoutLivePurchase).toHaveBeenCalledTimes(1);
 });
 
 test("quotes explicitly and uses the server amount without starting payment automatically", async () => {
