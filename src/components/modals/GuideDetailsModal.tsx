@@ -57,16 +57,13 @@ import {
   type PrintableReceiptItem,
 } from "@/utils/receiptUnitCodes";
 import PaymentVerificationModal from "./PaymentVerificationModal";
+import ShalomShippingLabelsModal from "./ShalomShippingLabelsModal";
 import SendToShalomModal from "@/components/shalom/SendToShalomModal";
 import SendToAliclikGuideModal from "@/components/aliclik/SendToAliclikGuideModal";
 import SendToEvaGuideModal from "@/components/eva/SendToEvaGuideModal";
 import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
 import { FileSpreadsheet } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  getShalomLabelPdfUrl,
-  getShalomTicketPdfUrl,
-} from "@/services/shalomService";
 import { shouldDisplayNote } from "@/lib/logFilters";
 import {
   normalizeCourier,
@@ -271,6 +268,8 @@ export default function GuideDetailsModal({
 
   // Shalom modal
   const [shalomModalOpen, setShalomModalOpen] = useState(false);
+  const [shalomLabelsOpen, setShalomLabelsOpen] = useState(false);
+  useEffect(() => setShalomLabelsOpen(false), [open, readScope]);
   // Aliclik modal
   const [aliclikModalOpen, setAliclikModalOpen] = useState(false);
   // EVA modal
@@ -2253,8 +2252,16 @@ export default function GuideDetailsModal({
                   </Button>
                   <Button variant="outline" onClick={handlePrintShippingLabels}>
                     <FileText className="h-4 w-4 mr-2" />
-                    Imprimir etiqueta de envío
+                    {isShalomCourier(guide.courierName)
+                      ? "Imprimir etiqueta de despacho"
+                      : "Imprimir etiqueta de envío"}
                   </Button>
+                  {isShalomCourier(guide.courierName) && (
+                    <Button variant="outline" disabled={!token || !companyId} onClick={() => setShalomLabelsOpen(true)}>
+                      <FileText className="h-4 w-4 mr-2" />
+                      Etiqueta de envío Shalom
+                    </Button>
+                  )}
                 </>
               )}
               <Button variant="outline" onClick={handleClose}>
@@ -2264,6 +2271,17 @@ export default function GuideDetailsModal({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ShalomShippingLabelsModal
+        open={loaded && shalomLabelsOpen && isShalomCourier(guide?.courierName)}
+        onClose={() => setShalomLabelsOpen(false)}
+        orders={ordersDetails.map((order) => ({
+          ...order,
+          courier: "Shalom",
+          externalTrackingNumber: order.externalTrackingNumber || order.external_tracking_number,
+          shippingCode: order.shippingCode || order.shipping_code,
+        }))}
+      />
 
       {/* Modal de Pago / Verificación */}
       <PaymentVerificationModal

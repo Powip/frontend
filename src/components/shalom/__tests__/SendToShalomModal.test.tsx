@@ -74,6 +74,12 @@ jest.mock('@/utils/printOrderLabel', () => ({
 jest.mock('@/utils/printShippingGuide', () => ({
   printShippingGuide: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock('@/components/modals/ShalomShippingLabelsModal', () => ({
+  __esModule: true,
+  default: ({ open, orders }: { open: boolean; orders: unknown[] }) => open
+    ? <div data-testid="shalom-label-orders">{JSON.stringify(orders)}</div>
+    : null,
+}));
 
 // Mock de @/lib/api para que las URLs sean strings predecibles
 jest.mock('@/lib/api', () => ({
@@ -1279,5 +1285,93 @@ describe('SendToShalomModal', () => {
         screen.getByText('Agencia de origen (tu tienda)'),
       ).toBeInTheDocument();
     });
+  });
+});
+
+describe('SendToShalomModal: etiqueta oficial de envío', () => {
+  type LabelOrder = typeof MOCK_ORDER & {
+    externalTrackingNumber?: string;
+    shippingCode?: string;
+    external_tracking_number?: string;
+    shipping_code?: string;
+  };
+  const successResponse = {
+    data: {
+      success: true,
+      summary: { total: 1, successful: 1, failed: 0 },
+      data: [{ orderId: MOCK_ORDER.id, success: true }],
+      trackingData: { [MOCK_ORDER.id]: { orderNumber: '101818469', orderCode: 'WJPH' } },
+      errors: [],
+    },
+  };
+
+  async function submitOrders(orders: LabelOrder[], response: unknown = successResponse) {
+    (axios.get as jest.Mock).mockResolvedValue({ data: { success: true, data: [MOCK_AGENCY] } });
+    mockAxiosPost.mockResolvedValue(response);
+    const user = userEvent.setup();
+    const props = { ...BASE_PROPS, orders };
+    const view = render(<SendToShalomModal {...props} />);
+    await waitFor(() => {
+      const selects = screen.getAllByRole('combobox') as HTMLSelectElement[];
+      expect(selects.filter(select => Array.from(select.options).some(option => option.value === 'LIMA'))).toHaveLength(orders.length + 1);
+    });
+    for (const select of screen.getAllByRole('combobox') as HTMLSelectElement[]) {
+      if (Array.from(select.options).some(option => option.value === 'LIMA')) {
+        await user.selectOptions(select, 'LIMA');
+      }
+    }
+    await user.type(screen.getAllByPlaceholderText('Ej: 1357')[0], '1357');
+    const send = screen.getByRole('button', { name: /confirmar y enviar a shalom/i });
+    await waitFor(() => expect(send).toBeEnabled());
+    await user.click(send);
+    await screen.findByRole('button', { name: 'Etiqueta de envío Shalom' });
+    return { user, view, props };
+  }
+
+  it('abre el documento oficial con el tracking nuevo aunque el padre aún conserve valores anteriores', async () => {
+    const staleOrder = { ...MOCK_ORDER, externalTrackingNumber: 'OLD-GUIDE', shippingCode: 'OLD-CODE' };
+    const { user } = await submitOrders([staleOrder]);
+    expect(screen.getByRole('button', { name: /imprimir etiquetas de despacho/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Etiqueta de envío Shalom' }));
+    expect(JSON.parse(screen.getByTestId('shalom-label-orders').textContent!)).toEqual([
+      expect.objectContaining({ id: MOCK_ORDER.id, courier: 'Shalom', externalTrackingNumber: '101818469', shippingCode: 'WJPH' }),
+    ]);
+    expect(printOrderLabelsBatch).not.toHaveBeenCalled();
+    expect(printShippingGuide).not.toHaveBeenCalled();
+  });
+
+  it('cruza respuestas desordenadas por ID y excluye al fallido sin descartar destinatarios homónimos', async () => {
+    const orders = [MOCK_ORDER, { ...MOCK_ORDER, id: 'order-failed', orderNumber: 'ORD-002', customer: { ...MOCK_ORDER.customer, dni: '22345678' } },
+      { ...MOCK_ORDER, id: 'order-third', orderNumber: 'ORD-003', customer: { ...MOCK_ORDER.customer, dni: '32345678' } }];
+    const response = {
+      data: {
+        success: true,
+        summary: { total: 3, successful: 2, failed: 1 },
+        data: [{ orderId: 'order-third', success: true }, { orderId: 'order-failed', success: false }, { orderId: MOCK_ORDER.id, success: true }],
+        trackingData: {
+          'order-third': { orderNumber: '303838679', orderCode: 'THRD' },
+          [MOCK_ORDER.id]: { orderNumber: '101818469', orderCode: 'FRST' },
+        },
+        errors: [{ index: 1, error: 'Destino inválido', shipmentInfo: { recipientName: MOCK_ORDER.customer.fullName, recipientDoc: '22345678' } }],
+      },
+    };
+    const { user } = await submitOrders(orders, response);
+    await user.click(screen.getByRole('button', { name: 'Etiqueta de envío Shalom' }));
+    expect(JSON.parse(screen.getByTestId('shalom-label-orders').textContent!)).toEqual([
+      expect.objectContaining({ id: MOCK_ORDER.id, externalTrackingNumber: '101818469', shippingCode: 'FRST' }),
+      expect.objectContaining({ id: 'order-third', externalTrackingNumber: '303838679', shippingCode: 'THRD' }),
+    ]);
+  });
+
+  it.each(['company', 'user', 'logout', 'close'])('oculta el rótulo abierto y sus datos anteriores al cambiar %s', async change => {
+    const { user, view, props } = await submitOrders([MOCK_ORDER]);
+    await user.click(screen.getByRole('button', { name: 'Etiqueta de envío Shalom' }));
+    expect(screen.getByTestId('shalom-label-orders')).toBeInTheDocument();
+    if (change === 'company') mockUseAuth.mockReturnValue({ ...MOCK_AUTH, auth: { ...MOCK_AUTH.auth, company: { ...MOCK_AUTH.auth.company, id: 'company-2' } } } as unknown as ReturnType<typeof useAuth>);
+    if (change === 'user') mockUseAuth.mockReturnValue({ ...MOCK_AUTH, auth: { ...MOCK_AUTH.auth, user: { id: 'user-2' } } } as unknown as ReturnType<typeof useAuth>);
+    if (change === 'logout') mockUseAuth.mockReturnValue({ auth: null } as ReturnType<typeof useAuth>);
+    view.rerender(<SendToShalomModal {...props} open={change !== 'close'} />);
+    expect(screen.queryByTestId('shalom-label-orders')).not.toBeInTheDocument();
+    if (change !== 'close') expect(screen.getByRole('button', { name: 'Etiqueta de envío Shalom' })).toBeDisabled();
   });
 });

@@ -54,7 +54,7 @@ export function hasSyncError(order: OrderHeader): boolean {
   );
 }
 
-export function trackingUrlFor(order: OrderHeader): string {
+export function trackingUrlFor(order: Pick<OrderHeader, "orderNumber">): string {
   const base = process.env.NEXT_PUBLIC_LANDING_URL || "https://www.powip.lat";
   return `${base}/rastreo/${order.orderNumber}`;
 }
