@@ -22,6 +22,7 @@ function rowsText(rows: number[]): string {
 export function StepReview({ review, loading, onActivate, onBack }: Props) {
   const [acknowledged, setAcknowledged] = useState(false);
   const blocked = review.overLimit && !acknowledged;
+  const newTabNames = (review.newTabs ?? []).map((t) => t.name).join(', ');
 
   return (
     <>
@@ -62,10 +63,20 @@ export function StepReview({ review, loading, onActivate, onBack }: Props) {
           </ul>
         )}
 
+        {review.reactivation && (
+          <p role="note" className="rounded-md border p-3 text-sm text-muted-foreground">
+            {newTabNames
+              ? `Las pestañas que ya sincronizabas conservan su historial y siguen cargando sus ventas nuevas. Pestañas nuevas: ${newTabNames}.`
+              : 'Las pestañas que ya sincronizabas conservan su historial y siguen cargando sus ventas nuevas.'}
+          </p>
+        )}
+
         {review.overLimit && (
           <div className="space-y-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
             <p>
-              {`Tu hoja tiene ${review.dataRows} filas con datos y el límite para cargar de una vez es ${review.limit}. Si continúas, se tomarán como punto de partida y solo se cargarán las ventas nuevas que agregues después.`}
+              {review.reactivation
+                ? `Las pestañas nuevas (${newTabNames}) tienen ${review.dataRows} filas con datos y el límite para cargar de una vez es ${review.limit}. Si continúas, esas filas se tomarán como punto de partida y solo se cargarán las ventas que agregues después en esas pestañas.`
+                : `Tu hoja tiene ${review.dataRows} filas con datos y el límite para cargar de una vez es ${review.limit}. Si continúas, se tomarán como punto de partida y solo se cargarán las ventas nuevas que agregues después.`}
             </p>
             <div className="flex items-center gap-2">
               <Checkbox
@@ -73,7 +84,11 @@ export function StepReview({ review, loading, onActivate, onBack }: Props) {
                 checked={acknowledged}
                 onCheckedChange={(c) => setAcknowledged(c === true)}
               />
-              <label htmlFor="gs-ack">Entiendo que mis ventas anteriores no se cargarán</label>
+              <label htmlFor="gs-ack">
+                {review.reactivation
+                  ? 'Entiendo que las ventas que ya están en las pestañas nuevas no se cargarán'
+                  : 'Entiendo que mis ventas anteriores no se cargarán'}
+              </label>
             </div>
           </div>
         )}

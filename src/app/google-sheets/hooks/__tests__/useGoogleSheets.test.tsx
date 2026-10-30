@@ -145,7 +145,17 @@ describe('useGoogleSheets', () => {
     api.getConfig.mockResolvedValue(withFile);
     api.preview.mockResolvedValue({ fields: [], tabs: [] });
     api.saveConfig.mockResolvedValue();
-    const review = { dataRows: 1, orders: 1, valid: 1, withProblems: 0, overLimit: false, limit: 100, problems: [] };
+    const review = {
+      dataRows: 1,
+      orders: 1,
+      valid: 1,
+      withProblems: 0,
+      overLimit: false,
+      limit: 100,
+      reactivation: false,
+      newTabs: [],
+      problems: [],
+    };
     api.review.mockResolvedValue(review);
     const { result } = await setup();
     await act(async () => {

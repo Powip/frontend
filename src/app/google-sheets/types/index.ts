@@ -109,6 +109,13 @@ export interface ReviewResult {
   withProblems: number;
   overLimit: boolean;
   limit: number;
+  /**
+   * true si el archivo ya estaba activado (Reconfigurar): `dataRows` y `overLimit`
+   * cuentan solo las pestañas nuevas; las demás conservan su historial.
+   */
+  reactivation: boolean;
+  /** Pestañas que se activan por primera vez. */
+  newTabs: GoogleTab[];
   problems: ReviewProblem[];
 }
 
