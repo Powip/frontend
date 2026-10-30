@@ -99,19 +99,16 @@ describe("Canales · comparativo", () => {
     }
   });
 
-  it("entregas: efectividad n/a para presencial y sin flete para la Supervisora", async () => {
+  it("entregas: efectividad n/a para presencial y flete para el Dueño", async () => {
     const pos = canalDe("Presencial");
     const dueno = await comparativo("entregas");
-    const supervisora = await comparativo("entregas", MES, "supervisora");
-    if (dueno.vista !== "entregas" || supervisora.vista !== "entregas") throw new Error("vista");
+    if (dueno.vista !== "entregas") throw new Error("vista");
     expect(dueno.filas.find((fila) => fila.canalId === pos.id)?.efectividadEntrega).toBeNull();
     expect(dueno.filas.every((fila) => typeof fila.flete === "number")).toBe(true);
-    expect(supervisora.filas.every((fila) => fila.flete === undefined)).toBe(true);
-    expect(supervisora.total.flete).toBeUndefined();
   });
 
   it("ganancia solo para el Dueño y su pauta cuadra con Publicidad y con Gané", async () => {
-    await expect(comparativo("ganancia", MES, "supervisora")).rejects.toThrow("403");
+    await expect(comparativo("ganancia", MES, "confirmadora")).rejects.toThrow("403");
     const ganancia = await comparativo("ganancia");
     if (ganancia.vista !== "ganancia") throw new Error("vista");
     const publicidad = (await publicidadDemoSource.fetch(MES, ctx())).actual;
@@ -163,9 +160,11 @@ describe("Canales · detalle por tipo", () => {
     expect((await drawer(grupos.de("leads", "", { canal: lead.id }))).pedidos.total).toBe(
       etapa("recibidos"),
     );
-    expect((await drawer(grupos.de("contactados", "", { canal: lead.id }))).pedidos.total).toBe(
-      etapa("contactados"),
-    );
+    expect(detalle.bloque.embudo.map((item) => item.etapa)).toEqual([
+      "recibidos",
+      "llamados",
+      "entregados",
+    ]);
     expect((await drawer(grupos.de("entregados", "", { canal: lead.id }))).pedidos.total).toBe(
       etapa("entregados"),
     );
@@ -210,26 +209,19 @@ describe("Canales · detalle por tipo", () => {
     expect(detalle.kpis.cobradoEnCaja).toBe(detalle.kpis.facturacion);
   });
 
-  it("marketplace y prepago ocultan comisión y pasarela a la Supervisora", async () => {
+  it("marketplace: neto a recibir = bruto − comisión; prepago: reembolsos abren sus pedidos", async () => {
     const mkp = canalDe("Marketplace");
     const pre = canalDe("Online prepago");
     const mkpDueno = await detalleCanal(mkp.id);
-    const mkpSup = await detalleCanal(mkp.id, "supervisora");
-    if (mkpDueno.bloque.tipo !== "marketplace" || mkpSup.bloque.tipo !== "marketplace")
-      throw new Error("bloque");
+    if (mkpDueno.bloque.tipo !== "marketplace") throw new Error("bloque");
     expect(mkpDueno.bloque.netoARecibir).toBeCloseTo(
       mkpDueno.bloque.porLiquidarBruto - (mkpDueno.bloque.comisionADescontar ?? 0),
       2,
     );
-    expect(mkpSup.bloque.comisionADescontar).toBeUndefined();
-    expect(mkpSup.costos).toBeUndefined();
-    expect("comisionPct" in mkpSup.ficha).toBe(false);
-    expect("pasarelaPct" in mkpSup.ficha).toBe(false);
-    const preSup = await detalleCanal(pre.id, "supervisora");
-    if (preSup.bloque.tipo !== "prepago") throw new Error("bloque");
-    expect(preSup.bloque.pasarela).toBeUndefined();
+    const preDueno = await detalleCanal(pre.id);
+    if (preDueno.bloque.tipo !== "prepago") throw new Error("bloque");
     const reembolsos = await drawer(grupos.de("reembolsados", "", { canal: pre.id }));
-    expect(reembolsos.pedidos.total).toBe(preSup.bloque.pedidosReembolsados);
+    expect(reembolsos.pedidos.total).toBe(preDueno.bloque.pedidosReembolsados);
   });
 
   it("conversacional: las vendedoras suman la facturación del canal", async () => {
@@ -270,17 +262,11 @@ describe("Productos", () => {
     expect(variante?.sku).not.toBe(base?.sku);
   });
 
-  it("sin costo el margen es null (—), nunca 0% ni 100%; la Supervisora no recibe costo ni margen", async () => {
+  it("sin costo el margen es null (—), nunca 0% ni 100%", async () => {
     const { actual } = await productosDemoSource.fetch(MES, ctx());
     const sinCosto = actual.productos.filter((fila) => fila.costoUnitario === null);
     expect(sinCosto.length).toBeGreaterThan(0);
     expect(sinCosto.every((fila) => fila.margen === null)).toBe(true);
-    const supervisora = (await productosDemoSource.fetch(MES, ctx("supervisora"))).actual;
-    expect(
-      supervisora.productos.every(
-        (fila) => fila.costoUnitario === undefined && fila.margen === undefined,
-      ),
-    ).toBe(true);
   });
 
   it("cada producto, cupón, categoría y el upsell abren sus pedidos", async () => {
@@ -330,14 +316,6 @@ describe("Publicidad", () => {
         .inversionNoSeparable,
     ).toBe(true);
     expect((await publicidadDemoSource.fetch(MES, ctx())).actual.inversionNoSeparable).toBe(false);
-  });
-
-  it("la Supervisora no recibe comisiones ni ganancia", async () => {
-    const { actual } = await publicidadDemoSource.fetch(MES, ctx("supervisora"));
-    expect(actual.kpis.comisionesPlataformas).toBeUndefined();
-    expect(
-      actual.porCanal.every((fila) => fila.comision === undefined && fila.ganancia === undefined),
-    ).toBe(true);
   });
 });
 

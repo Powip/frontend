@@ -382,9 +382,15 @@ export function DetailDrawer() {
                 <div className="space-y-4">
                   <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
                     {[
-                      ["Facturación", formatSoles(data.resumen.facturacion)],
+                      [
+                        data.resumen.alcance === "lineas" ? "Facturación del ítem" : "Facturación",
+                        formatSoles(data.resumen.facturacion),
+                      ],
                       ["N° ventas", formatNumber(data.resumen.ventas)],
-                      ["Unidades", formatNumber(data.resumen.unidades)],
+                      [
+                        data.resumen.alcance === "lineas" ? "Unidades del ítem" : "Unidades",
+                        formatNumber(data.resumen.unidades),
+                      ],
                       ["Ticket prom.", formatSoles(data.resumen.ticket)],
                     ].map(([label, value]) => (
                       <div key={label} className="rounded-xl bg-pc-surface-muted px-3 py-2.5">
@@ -397,6 +403,15 @@ export function DetailDrawer() {
                       </div>
                     ))}
                   </dl>
+                  {data.resumen.alcance === "lineas" && (
+                    <p
+                      role="note"
+                      className="rounded-lg bg-pc-info-soft px-3 py-2 text-xs text-pc-info"
+                    >
+                      Facturación, unidades y ticket son solo de este producto o categoría (cuadran
+                      con su fila de la tabla). Los pedidos de abajo muestran su total completo.
+                    </p>
+                  )}
                   {data.resumen.movimientoCaja !== undefined && (
                     <p
                       role="note"

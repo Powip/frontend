@@ -108,7 +108,6 @@ const CONTRATOS_CON_ESCRITURA: PanelContractId[] = [
 ];
 
 const ROLES: [PanelRole, string | null][] = [
-  ["supervisora", null],
   ["confirmadora", "a1"],
   ["vendedora", "a1"],
 ];

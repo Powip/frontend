@@ -191,18 +191,13 @@ describe("Operaciones", () => {
     expect(within(dialogo).getByText(/Por fecha de despacho/)).toBeInTheDocument();
   });
 
-  it("couriers: la Supervisora no ve flete y un courier sin plazo muestra «Pendiente»", async () => {
-    renderTab("operaciones", "couriers", { role: "supervisora" });
+  it("couriers: un courier sin plazo muestra «Pendiente»", async () => {
+    renderTab("operaciones", "couriers");
     const tabla = await screen.findByRole("table", { name: "Rendimiento por courier" });
-    expect(within(tabla).queryByRole("columnheader", { name: /Flete/ })).not.toBeInTheDocument();
-    expect(
-      within(tabla).queryByRole("columnheader", { name: /Costo rechazos/ }),
-    ).not.toBeInTheDocument();
     const fila = within(tabla)
       .getByRole("button", { name: /Ver envíos de Courier demo C/ })
       .closest("tr");
     expect(fila?.textContent).toMatch(/Pendiente/);
-    expect(screen.queryByRole("region", { name: "Flete promedio" })).not.toBeInTheDocument();
   });
 
   it("inventario: el stock negativo es «Error de datos» y el valor al costo es solo del Dueño", async () => {
@@ -210,13 +205,5 @@ describe("Operaciones", () => {
     const tabla = await screen.findByRole("table", { name: "Stock y cobertura" });
     expect(within(tabla).getAllByText("Error de datos").length).toBeGreaterThan(0);
     expect(screen.getByRole("region", { name: "Valor al costo" })).toBeInTheDocument();
-  });
-
-  it("inventario para la Supervisora sin costo ni valor", async () => {
-    renderTab("operaciones", "inventario", { role: "supervisora" });
-    const tabla = await screen.findByRole("table", { name: "Stock y cobertura" });
-    expect(within(tabla).queryByRole("columnheader", { name: /Costo/ })).not.toBeInTheDocument();
-    expect(within(tabla).queryByRole("columnheader", { name: /^Valor/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Valor al costo" })).not.toBeInTheDocument();
   });
 });

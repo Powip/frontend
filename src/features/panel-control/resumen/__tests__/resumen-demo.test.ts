@@ -290,16 +290,6 @@ describe("Resumen demo · comparación a la misma antigüedad", () => {
 });
 
 describe("Resumen demo · permisos", () => {
-  it("la Supervisora no recibe ganancia, retorno de publicidad ni flete", async () => {
-    const { actual, anterior_misma_antiguedad } = await resumen(MES, "supervisora");
-    expect(actual.gane).toBeUndefined();
-    expect(anterior_misma_antiguedad?.gane).toBeUndefined();
-    expect(actual.ventasPorCanal.every((fila) => fila.retornoPublicidad === undefined)).toBe(true);
-    expect("flete" in actual.flujo.rechazados).toBe(false);
-    const productos = await detalle(grupos.ventas(), MES, "supervisora");
-    expect(productos.porProducto.every((fila) => fila.margen === undefined)).toBe(true);
-  });
-
   it("el Dueño recibe ganancia con costos incompletos informados", async () => {
     const { actual } = await resumen();
     expect(actual.gane).toBeDefined();

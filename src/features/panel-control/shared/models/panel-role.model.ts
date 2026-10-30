@@ -1,4 +1,4 @@
-export const PANEL_ROLES = ["dueno", "supervisora", "confirmadora", "vendedora"] as const;
+export const PANEL_ROLES = ["dueno", "confirmadora", "vendedora"] as const;
 
 export type PanelRole = (typeof PANEL_ROLES)[number];
 
@@ -33,7 +33,6 @@ export type PanelRoleResolution =
 
 export const PANEL_ROLE_PERMISSION_CLAIMS: Record<PanelRole, string> = {
   dueno: "PANEL_ROL_DUENO",
-  supervisora: "PANEL_ROL_SUPERVISORA",
   confirmadora: "PANEL_ROL_CONFIRMADORA",
   vendedora: "PANEL_ROL_VENDEDORA",
 };

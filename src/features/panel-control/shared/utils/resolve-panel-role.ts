@@ -28,8 +28,7 @@ const JWT_ROLE_TO_PANEL: Record<string, { role: "confirmadora" | "vendedora"; ev
 const ROLES_SIN_EQUIVALENCIA: Record<string, string> = {
   CALLER:
     "El catálogo lo describe como 'Integraciones externas'; no hay evidencia de que sea una confirmadora",
-  OPERACIONES:
-    "La especificación no define una vista para Operaciones; Supervisora no tiene un rol propio en el JWT",
+  OPERACIONES: "La especificación no define una vista para Operaciones",
   COURIER: "La especificación no define una vista para Courier",
 };
 

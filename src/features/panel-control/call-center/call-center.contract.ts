@@ -7,7 +7,7 @@ export const CALLCENTER_CONTRACT = defineContract({
   endpoint: "/panel/callcenter",
   estado: "pendiente",
   pantallas: ["callcenter"],
-  roles: ["dueno", "supervisora", "confirmadora"],
+  roles: ["dueno", "confirmadora"],
   respuesta: "PanelEnvelope<CallCenterPanel>",
   pendientes: [
     "Fuentes existentes aprovechables: /atencion-al-cliente/kpis/{funnel,aging,intentos,upsell}, /atencion-al-cliente/agentes/kpis, /atencion-al-cliente/upsell-records",

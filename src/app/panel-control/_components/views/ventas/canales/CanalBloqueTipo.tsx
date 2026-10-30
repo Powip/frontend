@@ -56,7 +56,6 @@ const TITULO: Record<CanalBloqueEspecifico["tipo"], { titulo: string; subtitulo:
 
 const ETAPA: Record<EtapaEmbudo, { label: string; grupo: GrupoDetalleTipo }> = {
   recibidos: { label: "Leads recibidos", grupo: "leads" },
-  contactados: { label: "Contactados", grupo: "contactados" },
   llamados: { label: "Confirmados (venta)", grupo: "ventas" },
   entregados: { label: "Entregados", grupo: "entregados" },
 };

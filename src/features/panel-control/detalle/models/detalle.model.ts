@@ -118,6 +118,11 @@ export interface DetalleResumen {
   unidades: number;
   ticket: number | null;
   movimientoCaja?: number;
+  /**
+   * «lineas» = el drawer se abrió desde un producto o una categoría: facturación y unidades
+   * son solo de esas líneas (cuadran con su fila); las filas siguen siendo pedidos completos.
+   */
+  alcance?: "pedidos" | "lineas";
 }
 
 export interface DetallePedidoFila {

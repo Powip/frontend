@@ -46,18 +46,6 @@ describe("PanelShell", () => {
     expect(screen.getByText(/1 set – 21 set/)).toBeInTheDocument();
   });
 
-  it("la Supervisora inicia en Operaciones y no ve Finanzas ni Configuración", () => {
-    renderWithPanel(<PanelShell />, { role: "supervisora" });
-    expect(tabs()).toEqual(["Resumen", "Ventas y canales", "Call center", "Operaciones", "Equipo"]);
-    expect(screen.getByRole("tab", { name: "Operaciones" })).toHaveAttribute(
-      "aria-selected",
-      "true",
-    );
-    expect(
-      screen.getByRole("tablist", { name: /subsecciones de operaciones/i }),
-    ).toBeInTheDocument();
-  });
-
   it("la Confirmadora solo ve Call center, sin Excel completo ni Compartir, con asesora fija", () => {
     renderWithPanel(<PanelShell />, { role: "confirmadora" });
     expect(tabs()).toEqual(["Call center"]);
@@ -74,7 +62,8 @@ describe("PanelShell", () => {
     expect(
       screen.getByRole("heading", { name: /tu rol todavía no tiene una vista/i }),
     ).toBeInTheDocument();
-    expect(screen.getByText("PANEL_ROL_SUPERVISORA")).toBeInTheDocument();
+    expect(screen.getByText("PANEL_ROL_CONFIRMADORA")).toBeInTheDocument();
+    expect(screen.queryByText("PANEL_ROL_SUPERVISORA")).not.toBeInTheDocument();
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
   });
 

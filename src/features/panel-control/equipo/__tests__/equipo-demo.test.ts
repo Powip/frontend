@@ -20,11 +20,8 @@ import { obtenerUniversoDemo } from "../../shared/data/demo/demo-universe";
 import { SIN_ASESOR } from "../../shared/models/panel-filters.model";
 import { equipoConfirmadorasDemoSource, equipoVendedorasDemoSource } from "../sources/equipo.demo";
 
-const vendedoras = async (
-  agrupar: "zona" | "asesora" = "asesora",
-  upsell: "con" | "sin" = "con",
-  role: "dueno" | "supervisora" = "dueno",
-) => (await equipoVendedorasDemoSource.fetch({ ...MES, agrupar, upsell }, contexto(role))).actual;
+const vendedoras = async (agrupar: "zona" | "asesora" = "asesora", upsell: "con" | "sin" = "con") =>
+  (await equipoVendedorasDemoSource.fetch({ ...MES, agrupar, upsell }, contexto())).actual;
 
 describe("Equipo · Vendedoras y caja", () => {
   it("total = pagado + pendiente + perdido y ambas agrupaciones dan el mismo total", async () => {
@@ -66,18 +63,13 @@ describe("Equipo · Vendedoras y caja", () => {
     }
   });
 
-  it("«sin upsell» descuenta exactamente el upsell y la Supervisora no recibe comisión", async () => {
+  it("«sin upsell» descuenta exactamente el upsell", async () => {
     const con = await vendedoras("asesora", "con");
     const sin = await vendedoras("asesora", "sin");
     expect(con.total.total - sin.total.total).toBeCloseTo(con.kpis.upsell, 2);
     expect(con.grupos.every((grupo) => typeof grupo.metricas.comisionEstimada === "number")).toBe(
       true,
     );
-    const supervisora = await vendedoras("asesora", "con", "supervisora");
-    expect(supervisora.grupos.every((grupo) => grupo.metricas.comisionEstimada === undefined)).toBe(
-      true,
-    );
-    expect(supervisora.total.comisionEstimada).toBeUndefined();
   });
 });
 
@@ -92,12 +84,6 @@ describe("Equipo · Confirmadoras", () => {
       expect(fila.efectividadEntrega).toBe(par?.entregaDeLoConfirmado);
       expect(fila.asignados).toBe(par?.asignados);
     }
-  });
-
-  it("la Supervisora no recibe comisión ni regla de comisión", async () => {
-    const { actual } = await equipoConfirmadorasDemoSource.fetch(MES, contexto("supervisora"));
-    expect(actual.reglaComision).toBeUndefined();
-    expect(actual.filas.every((fila) => fila.comisionEstimada === undefined)).toBe(true);
   });
 });
 

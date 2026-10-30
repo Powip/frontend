@@ -132,7 +132,7 @@ describe("DataTable", () => {
         getRowKey={(fila) => fila.id}
         exportar={{ titulo: "Prueba", nombreBase: "prueba", origen: "demo" }}
       />,
-      { role: "supervisora" },
+      { role: "confirmadora" },
     );
     expect(screen.queryByRole("columnheader", { name: /margen/i })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /excel \(demo\)/i }));

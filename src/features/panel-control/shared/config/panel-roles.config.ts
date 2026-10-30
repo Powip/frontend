@@ -39,15 +39,6 @@ export const PANEL_ROLE_POLICIES: Record<PanelRole, PanelRolePolicy> = {
     asesorFijo: false,
     restricciones: "Ninguna",
   },
-  supervisora: {
-    role: "supervisora",
-    etiqueta: "Supervisora",
-    pestanas: ["resumen", "canales", "callcenter", "operaciones", "equipo"],
-    inicio: "operaciones",
-    capacidades: ["exportar_libro", "exportar_tabla", "elegir_asesor"],
-    asesorFijo: false,
-    restricciones: "No ve costos, márgenes, ganancia, comisiones ni Finanzas",
-  },
   confirmadora: {
     role: "confirmadora",
     etiqueta: "Confirmadora",

@@ -4,7 +4,6 @@ import {
   type PedidoConEstado,
   pedidosEnRango,
   repartirPauta,
-  seleccionarGrupo,
 } from "../../shared/data/demo/demo-consultas";
 import {
   obtenerUniversoDemo,
@@ -326,16 +325,6 @@ export const canalesDetalleDemoSource: PanelSource<"canales-detalle"> = {
         tipo: "lead",
         embudo: [
           { etapa: "recibidos", pedidos: agregado.leads },
-          {
-            etapa: "contactados",
-            pedidos: seleccionarGrupo(
-              universo,
-              panelQuery,
-              "contactados",
-              { canal: canal.id },
-              context.now,
-            ).length,
-          },
           { etapa: "llamados", pedidos: agregado.confirmados },
           { etapa: "entregados", pedidos: agregado.entregados },
         ],

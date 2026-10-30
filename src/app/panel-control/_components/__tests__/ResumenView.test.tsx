@@ -69,17 +69,6 @@ describe("ResumenView", () => {
     expect(facturacion.nextElementSibling?.textContent).toBe(vendi);
   });
 
-  it("la Supervisora ve Entregado en lugar de Gané", async () => {
-    renderWithPanel(<PanelShell />, {
-      sources: DEMO,
-      role: "supervisora",
-      state: { ...DEFAULT_PANEL_STATE, navigation: { tab: "resumen", subtab: null } },
-    });
-    await listo();
-    expect(screen.getByRole("region", { name: "Entregado" })).toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Gané" })).not.toBeInTheDocument();
-  });
-
   it("en modo solo reales cada bloque queda pendiente y no se muestra ninguna cifra demo", async () => {
     renderWithPanel(<PanelShell />, {
       sources: DEMO,

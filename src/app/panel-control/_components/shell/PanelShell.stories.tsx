@@ -152,8 +152,6 @@ export const ConfiguracionCanales: Story = {
   },
 };
 
-export const Supervisora: Story = { args: { role: "supervisora" } };
-
 export const Confirmadora: Story = { args: { role: "confirmadora" } };
 
 export const SoloDatosReales: Story = {
@@ -164,13 +162,6 @@ export const RolSinResolver: Story = { args: { role: null } };
 
 export const Movil: Story = {
   parameters: { viewport: { defaultViewport: "mobile2" } },
-};
-
-export const SupervisoraResumen: Story = {
-  args: {
-    role: "supervisora",
-    state: { ...DEFAULT_PANEL_STATE, navigation: { tab: "resumen", subtab: null } },
-  },
 };
 
 const ventas = (subtab: "canales" | "productos" | "publicidad" | "clientes"): PanelUiState => ({
@@ -185,10 +176,6 @@ export const VentasProductos: Story = { args: { state: ventas("productos") } };
 export const VentasPublicidad: Story = { args: { state: ventas("publicidad") } };
 
 export const VentasClientes: Story = { args: { state: ventas("clientes") } };
-
-export const SupervisoraVentasCanales: Story = {
-  args: { role: "supervisora", state: ventas("canales") },
-};
 
 export const VentasSoloReales: Story = {
   args: { state: { ...ventas("canales"), dataMode: "solo_real" } },
@@ -214,10 +201,6 @@ export const OperacionesCouriers: Story = { args: { state: navegar("operaciones"
 
 export const OperacionesInventario: Story = {
   args: { state: navegar("operaciones", "inventario") },
-};
-
-export const SupervisoraOperacionesCouriers: Story = {
-  args: { role: "supervisora", state: navegar("operaciones", "couriers") },
 };
 
 export const FinanzasResultado: Story = { args: { state: navegar("finanzas", "resultado") } };

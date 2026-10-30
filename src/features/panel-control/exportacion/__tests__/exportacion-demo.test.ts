@@ -8,7 +8,7 @@ import {
   exportacionLibroDemoSource,
 } from "../sources/exportacion.demo";
 
-async function leerLibro(role: "dueno" | "supervisora") {
+async function leerLibro(role: "dueno") {
   const { archivo, nombreArchivo } = await exportacionLibroDemoSource.fetch(
     { ...MES, formato: "xlsx" },
     contexto(role),
@@ -45,17 +45,6 @@ describe("Excel completo", () => {
     expect(typeof neto).toBe("number");
   });
 
-  it("la Supervisora no recibe columnas de costo, flete, margen, ganancia ni comisión", async () => {
-    const hojas = await construirHojasLibro(MES, contexto("supervisora"));
-    const encabezados = hojas.flatMap((hoja) => hoja.columnas.map(([nombre]) => nombre));
-    expect(hojas.find((hoja) => hoja.nombre === "Pedidos")?.columnas).toHaveLength(25);
-    for (const prohibido of [/costo/i, /flete/i, /margen/i, /comisi/i]) {
-      expect(encabezados.some((nombre) => prohibido.test(nombre))).toBe(false);
-    }
-    const resumen = hojas.find((hoja) => hoja.nombre === "Resumen");
-    expect(resumen?.filas.some((fila) => fila[0] === "Ganancia")).toBe(false);
-  });
-
   it("la Confirmadora no puede descargarlo", async () => {
     await expect(
       exportacionLibroDemoSource.fetch({ ...MES, formato: "xlsx" }, contexto("confirmadora", "a1")),
@@ -80,18 +69,5 @@ describe("Compartir reporte", () => {
     expect(reporte.texto).toMatch(/Venta total: S\/ /);
     expect(reporte.texto).toMatch(/CPA: S\/ /);
     expect(reporte.texto).toMatch(/Cifras de demostración/);
-  });
-
-  it("la Supervisora no recibe producto, envíos ni ganancias", async () => {
-    const reporte = await compartirReporteDemoSource.fetch(MES, contexto("supervisora"));
-    for (const campo of [
-      "producto",
-      "envios",
-      "gananciaSobreVentaTotal",
-      "gananciaSobreEntregado",
-    ]) {
-      expect(campo in reporte).toBe(false);
-    }
-    expect(reporte.texto).not.toMatch(/Ganancia|Producto|Envíos/);
   });
 });

@@ -4,8 +4,8 @@ import {
 } from "../models/panel-contract.model";
 import type { PanelRole } from "../models/panel-role.model";
 
-export const ROLES_TODOS: PanelRole[] = ["dueno", "supervisora", "confirmadora", "vendedora"];
-export const ROLES_GESTION: PanelRole[] = ["dueno", "supervisora"];
+export const ROLES_TODOS: PanelRole[] = ["dueno", "confirmadora", "vendedora"];
+export const ROLES_GESTION: PanelRole[] = ["dueno"];
 export const ROLES_DUENO: PanelRole[] = ["dueno"];
 
 export const REGLA_VENTA_PENDIENTE =

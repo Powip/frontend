@@ -38,6 +38,5 @@ export const COMPARTIR_REPORTE_CONTRACT = defineContract({
   respuesta: "CompartirReporteResponse",
   pendientes: [
     "La especificación define dos ganancias en el mismo reporte (sobre facturado y sobre entregado); decidir si ambas se mantienen",
-    "Supervisora: confirmar si puede compartir sin las cifras de costo",
   ],
 });

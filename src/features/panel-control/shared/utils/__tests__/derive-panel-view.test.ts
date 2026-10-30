@@ -4,9 +4,7 @@ import { derivePanelView, type PanelViewReady } from "../derive-panel-view";
 
 const now = new Date("2026-09-21T21:00:00Z").getTime();
 
-function session(
-  role: "dueno" | "supervisora" | "confirmadora" | "vendedora" | null,
-): PanelSession {
+function session(role: "dueno" | "confirmadora" | "vendedora" | null): PanelSession {
   return {
     userId: "user-1",
     userName: "Usuaria",
@@ -38,7 +36,6 @@ describe("derivePanelView", () => {
 
   it("aplica pestañas e inicio por rol", () => {
     expect(ready(DEFAULT_PANEL_STATE, "dueno")).toMatchObject({ tab: "resumen" });
-    expect(ready(DEFAULT_PANEL_STATE, "supervisora").tab).toBe("operaciones");
     expect(ready(DEFAULT_PANEL_STATE, "confirmadora").tabs).toEqual(["callcenter"]);
     expect(ready(DEFAULT_PANEL_STATE, "vendedora").tabs).toEqual(["misventas"]);
   });
@@ -48,13 +45,13 @@ describe("derivePanelView", () => {
       ...DEFAULT_PANEL_STATE,
       navigation: { tab: "finanzas" as const, subtab: null },
     };
-    expect(ready(state, "supervisora").tab).toBe("operaciones");
+    expect(ready(state, "confirmadora").tab).toBe("callcenter");
     expect(ready(state, "dueno").tab).toBe("finanzas");
   });
 
   it("solo el Dueño tiene permiso de costos", () => {
     expect(ready(DEFAULT_PANEL_STATE, "dueno").capabilities.has("ver_costos")).toBe(true);
-    for (const role of ["supervisora", "confirmadora", "vendedora"] as const) {
+    for (const role of ["confirmadora", "vendedora"] as const) {
       expect(ready(DEFAULT_PANEL_STATE, role).capabilities.has("ver_costos")).toBe(false);
     }
   });
@@ -86,7 +83,7 @@ describe("derivePanelView", () => {
 
   it("un rol sin ver_como no puede previsualizar", () => {
     const state = { ...DEFAULT_PANEL_STATE, preview: { role: "dueno" as const, asesorId: null } };
-    expect(ready(state, "supervisora").role).toBe("supervisora");
+    expect(ready(state, "vendedora").role).toBe("vendedora");
   });
 
   it("construye la consulta con los filtros activos y el periodo en hora Lima", () => {

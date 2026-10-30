@@ -27,7 +27,8 @@ export interface CanalDetalleCostos {
   retornoPublicidad: number | null;
 }
 
-export type EtapaEmbudo = "recibidos" | "contactados" | "llamados" | "entregados";
+/** «Contactado» es lo mismo que «llamado»: el embudo no lo muestra como etapa aparte. */
+export type EtapaEmbudo = "recibidos" | "llamados" | "entregados";
 
 export interface EmbudoLeadEtapa {
   etapa: EtapaEmbudo;

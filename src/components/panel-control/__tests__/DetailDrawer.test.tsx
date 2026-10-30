@@ -111,13 +111,36 @@ describe("DetailDrawer", () => {
     ).toBeInTheDocument();
   });
 
-  it("la Supervisora no ve margen", async () => {
-    const supervisora = await abrir("supervisora");
-    await supervisora.user.click(
-      within(supervisora.dialogo).getByRole("button", { name: "Por producto" }),
+  it("la Confirmadora no ve margen", async () => {
+    const confirmadora = await abrir("confirmadora");
+    await confirmadora.user.click(
+      within(confirmadora.dialogo).getByRole("button", { name: "Por producto" }),
     );
     expect(
-      within(supervisora.dialogo).queryByRole("columnheader", { name: /margen/i }),
+      within(confirmadora.dialogo).queryByRole("columnheader", { name: /margen/i }),
     ).not.toBeInTheDocument();
+  });
+
+  it("abierto desde un producto, el encabezado avisa que suma solo el ítem", async () => {
+    const user = userEvent.setup();
+    const soloItem: typeof detalleDemoSource = {
+      ...detalleDemoSource,
+      fetch: async (query, context) => {
+        const r = await detalleDemoSource.fetch(query, context);
+        return { ...r, resumen: { ...r.resumen, alcance: "lineas" } };
+      },
+    };
+    renderWithPanel(
+      <>
+        <Abrir grupo={grupos.ventas()} />
+        <DetailDrawer />
+      </>,
+      { role: "dueno", sources: { ...TEST_SOURCES, detalle: soloItem } },
+    );
+    await user.click(screen.getByRole("button", { name: "Abrir detalle" }));
+    const dialogo = await screen.findByRole("dialog");
+    expect(await within(dialogo).findByText("Facturación del ítem")).toBeInTheDocument();
+    expect(within(dialogo).getByText("Unidades del ítem")).toBeInTheDocument();
+    expect(within(dialogo).getByRole("note")).toHaveTextContent(/muestran su total completo/);
   });
 });

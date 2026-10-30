@@ -225,18 +225,6 @@ describe("Operaciones · couriers", () => {
     }
     expect(departamentos.reduce((suma, fila) => suma + fila.envios, 0)).toBe(kpis.envios);
   });
-
-  it("la Supervisora no recibe flete ni costo de rechazos", async () => {
-    const { kpis, couriers: filas, departamentos } = await couriers(MES, contexto("supervisora"));
-    expect(kpis.fleteTotal).toBeUndefined();
-    expect(kpis.fletePromedio).toBeUndefined();
-    expect(
-      filas.every((fila) => fila.fleteTotal === undefined && fila.costoRechazos === undefined),
-    ).toBe(true);
-    expect(departamentos.every((fila) => fila.fletePromedio === undefined)).toBe(true);
-    const dueno = await couriers();
-    expect(typeof dueno.kpis.fleteTotal).toBe("number");
-  });
 });
 
 describe("Operaciones · inventario", () => {
@@ -285,12 +273,5 @@ describe("Operaciones · inventario", () => {
     expect(dueno.productos.some((fila) => fila.costoUnitario === null && fila.valor === null)).toBe(
       true,
     );
-    const supervisora = await inventario(MES, contexto("supervisora"));
-    expect(supervisora.kpis.valorAlCosto).toBeUndefined();
-    expect(
-      supervisora.productos.every(
-        (fila) => fila.costoUnitario === undefined && fila.valor === undefined,
-      ),
-    ).toBe(true);
   });
 });

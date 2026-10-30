@@ -171,22 +171,6 @@ describe("Ventas y canales · Canales", () => {
     expect(await screen.findByRole("dialog", { name: /· ventas/ })).toBeInTheDocument();
   });
 
-  it("la Supervisora no ve ganancia, costos ni comisiones", async () => {
-    renderSubtab("canales", { role: "supervisora" });
-    await screen.findByRole("table", { name: "Comparativo de canales · ventas" });
-    await screen.findByRole("region", { name: "Facturación" });
-    expect(screen.queryByRole("button", { name: "Ganancia" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: /^Ganancia/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: "Retorno de publicidad" })).not.toBeInTheDocument();
-    expect(screen.queryByText(/^Comisión:/)).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Editar ficha/ })).not.toBeInTheDocument();
-    await userEvent.setup().click(screen.getByRole("button", { name: "Entregas y cobro" }));
-    const entregas = await screen.findByRole("table", {
-      name: "Comparativo de canales · entregas y cobro",
-    });
-    expect(within(entregas).queryByRole("columnheader", { name: /Flete/ })).not.toBeInTheDocument();
-  });
-
   it("en modo solo reales el comparativo y el detalle quedan pendientes", async () => {
     renderSubtab("canales", { soloReal: true });
     expect((await screen.findAllByText(/pendiente de integración/i)).length).toBeGreaterThan(0);
@@ -203,13 +187,6 @@ describe("Ventas y canales · Productos", () => {
     const fila = within(tabla).getAllByRole("button", { name: /^Ver ventas de / })[0];
     await user.click(fila);
     expect(await screen.findByRole("dialog", { name: /· ventas/ })).toBeInTheDocument();
-  });
-
-  it("la Supervisora no recibe costo ni margen", async () => {
-    renderSubtab("productos", { role: "supervisora" });
-    const tabla = await screen.findByRole("table", { name: "Productos vendidos" });
-    expect(within(tabla).queryByRole("columnheader", { name: /Margen/ })).not.toBeInTheDocument();
-    expect(within(tabla).queryByRole("columnheader", { name: /Costo/ })).not.toBeInTheDocument();
   });
 
   it("la variante se muestra como producto propio y el upsell abre su grupo", async () => {

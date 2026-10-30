@@ -23,8 +23,14 @@ describe("resolvePanelRole", () => {
 
   it("prioriza el permiso PANEL_ROL_* del JWT", () => {
     expect(
+      resolvePanelRole({ role: "OPERACIONES", permissions: ["PANEL_ROL_CONFIRMADORA"] }),
+    ).toMatchObject({ role: "confirmadora", source: "permiso_panel" });
+  });
+
+  it("no existe el rol Supervisora: su permiso no resuelve ningún rol", () => {
+    expect(
       resolvePanelRole({ role: "OPERACIONES", permissions: ["PANEL_ROL_SUPERVISORA"] }),
-    ).toMatchObject({ role: "supervisora", source: "permiso_panel" });
+    ).toMatchObject({ status: "sin_resolver" });
   });
 
   it("no inventa roles sin evidencia", () => {

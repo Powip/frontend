@@ -163,12 +163,6 @@ describe("Equipo", () => {
     );
   });
 
-  it("la Supervisora ve el equipo sin columna de comisión", async () => {
-    renderTab("equipo", "vendedoras", "supervisora");
-    const tabla = await screen.findByRole("table", { name: "Vendedoras y caja" });
-    expect(within(tabla).queryByRole("columnheader", { name: /Comisión/ })).not.toBeInTheDocument();
-  });
-
   it("Confirmadoras abre la entrega de lo confirmado de cada una", async () => {
     const user = renderTab("equipo", "confirmadoras");
     const tabla = await screen.findByRole("table", { name: "Confirmadoras" });

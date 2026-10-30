@@ -83,13 +83,15 @@ describe("Finanzas · Resultado (por fecha del pedido)", () => {
   });
 
   it("es solo del Dueño", async () => {
-    await expect(finanzasResultadoDemoSource.fetch(MES, contexto("supervisora"))).rejects.toThrow(
+    await expect(
+      finanzasResultadoDemoSource.fetch(MES, contexto("confirmadora", "a1")),
+    ).rejects.toThrow("403");
+    await expect(finanzasCajaDemoSource.fetch(MES, contexto("confirmadora", "a1"))).rejects.toThrow(
       "403",
     );
-    await expect(finanzasCajaDemoSource.fetch(MES, contexto("supervisora"))).rejects.toThrow("403");
-    await expect(finanzasCobranzaDemoSource.fetch(MES, contexto("supervisora"))).rejects.toThrow(
-      "403",
-    );
+    await expect(
+      finanzasCobranzaDemoSource.fetch(MES, contexto("confirmadora", "a1")),
+    ).rejects.toThrow("403");
   });
 });
 

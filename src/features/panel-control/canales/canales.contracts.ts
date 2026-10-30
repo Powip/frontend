@@ -62,7 +62,7 @@ export const CANALES_COMPARATIVO_CONTRACT = defineContract({
     "Descuentos = precio de lista − neto de las líneas; upsell sale de upsell_records",
     "PENDIENTE: vista=ganancia solo trae facturado y entregado; costo, pauta, comisión, flete y ganancia llegan null (costo solo desde octubre y en parte de las líneas; no hay pauta por canal ni comisión configurada)",
     "PENDIENTE: metas del periodo, primer intento de entrega y flete (entregas) no se guardan: llegan null o se omiten",
-    "PENDIENTE: la familia del canal no está en canal_config; la tendencia agrupa todo en «Sin familia» hasta que exista",
+    "CONECTADO: la familia sale del nombre del canal de origen (Web → Online COD, Live Tiktok → Live, Tiktok/Facebook/Instagram/WhatsApp/Recompra/Recomendado → Conversacional, Rappi → Plataforma aliada, Falabella/Ripley → Marketplace, Tienda física/POS → Presencial); un canal desconocido va a «Sin familia»",
     COMPARACION_PENDIENTE,
   ],
 });
@@ -79,8 +79,8 @@ export const CANALES_DETALLE_CONTRACT = defineContract({
   camposRestringidos: ["actual.costos"],
   respuesta: "PanelEnvelope<CanalDetalle>",
   pendientes: [
-    "CONECTADO: ficha, KPIs y bloque propio. El tipo de bloque se INFIERE de los pedidos del canal (lead, presencial, marketplace, prepago o conversacional) porque la ficha no guarda la familia",
-    "«Contactados» del embudo = sub-estado «contactado» del call center o ya confirmado; callAttempts casi no se llena",
+    "CONECTADO: ficha, KPIs y bloque propio. El tipo de bloque sale de la familia del canal de origen; si el canal no es conocido se infiere de sus pedidos",
+    "Embudo: recibidos → confirmados (venta) → entregados; «contactado» es lo mismo que «llamado» y no es etapa aparte",
     "PENDIENTE: costos (no se envían hasta tener costo, pauta y comisión), comisión a descontar y plazo de liquidación del marketplace",
     "PENDIENTE: sesiones de TikTok Live requieren la tabla de lives con inversión manual (no existe); un canal Live hoy se ve como conversacional",
   ],
