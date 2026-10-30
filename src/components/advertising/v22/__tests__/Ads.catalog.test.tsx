@@ -4,6 +4,7 @@ import axios from "axios";
 import { AdvertisingAds } from "../Ads";
 import { AdvertisingV22Provider, useAdsV22 } from "../context";
 import { emptySales } from "../model";
+import * as adsModel from "../model";
 import { exportAdsWorkbook } from "../shared";
 import type { AdsRow, AdsSavedView, AdsSettings } from "@/services/advertisingV22Service";
 import type { ActionSelection } from "../Actions";
@@ -561,20 +562,29 @@ it("deduplicates identical full catalogs, loads every server page, limits DOM to
   view.client.clear();
 });
 it("requests the independent 30-day creative reference only after opening a creative view or detail", async () => {
-  const view = mount();
-  await screen.findByText("Mostrando 1–50 de 101");
-  expect(catalogCalls()).toHaveLength(2);
-  fireEvent.change(screen.getByRole("combobox", { name: "Vista" }), {
-    target: { value: "creatives" },
-  });
-  await waitFor(() => expect(catalogCalls()).toHaveLength(4));
-  expect(catalogCalls()[2][1].params.from).not.toBe("2026-10-01");
-  fireEvent.change(screen.getByRole("combobox", { name: "Vista" }), {
-    target: { value: "performance" },
-  });
-  expect(visibleRows()).toHaveLength(50);
-  view.unmount();
-  view.client.clear();
+  const today = jest.spyOn(adsModel, "limaToday").mockReturnValue("2026-10-17");
+  try {
+    const view = mount();
+    await screen.findByText("Mostrando 1–50 de 101");
+    expect(catalogCalls()).toHaveLength(2);
+    expect(catalogCalls()[0][1].params.from).toBe(mockFromDate);
+    fireEvent.change(screen.getByRole("combobox", { name: "Vista" }), {
+      target: { value: "creatives" },
+    });
+    await waitFor(() => expect(catalogCalls()).toHaveLength(4));
+    expect(catalogCalls()[2][1].params).toEqual(
+      expect.objectContaining({ from: "2026-09-18", to: "2026-10-17" }),
+    );
+    expect(catalogCalls()[2][1].params.from).not.toBe(mockFromDate);
+    fireEvent.change(screen.getByRole("combobox", { name: "Vista" }), {
+      target: { value: "performance" },
+    });
+    expect(visibleRows()).toHaveLength(50);
+    view.unmount();
+    view.client.clear();
+  } finally {
+    today.mockRestore();
+  }
 });
 it("loads the creative reference when opening a detail from performance, then retains the current page", async () => {
   const view = mount();
