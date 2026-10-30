@@ -14,6 +14,7 @@ import { StepFile } from './steps/StepFile';
 import { StepStoreTabs } from './steps/StepStoreTabs';
 import { StepMap } from './steps/StepMap';
 import { StepReview } from './steps/StepReview';
+import { SyncStatusPanel } from './SyncStatusPanel';
 
 const STEPS: { label: string; value: SetupStep }[] = [
   { label: 'Conectar', value: 'CONNECT_ACCOUNT' },
@@ -145,11 +146,17 @@ export function GoogleSheetsConfigView() {
           <StepReview review={review} loading={loading} onActivate={g.activate} onBack={g.goConfigure} />
         )}
 
-        {step === 'STATUS' && (
-          <CardContent className="py-10">
-            {/* T19 reemplaza este marcador por SyncStatusPanel. */}
-            <p>La integración está activa.</p>
-          </CardContent>
+        {config && step === 'STATUS' && (
+          <SyncStatusPanel
+            config={config}
+            issues={g.issues}
+            stores={stores}
+            loading={loading}
+            onSyncNow={g.syncNow}
+            onDisconnect={g.disconnect}
+            onReconfigure={g.goConfigure}
+            onReconnect={g.connectAccount}
+          />
         )}
       </Card>
 
