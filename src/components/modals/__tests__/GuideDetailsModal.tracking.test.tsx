@@ -149,6 +149,17 @@ describe("GuideDetailsModal: lectura e impresión con IMEI/series", () => {
     expect(print.html[1]).toContain("1 ítem");
     await act(async () => print.win.onload?.());
   });
+  it("la etiqueta de guía usa la entrega aceptada del comprobante en vez de la oficina anterior", async () => {
+    const data = { ...receipt(), shippingOffice: "Oficina anterior", delivery: { type: "AGENCY", department: "Ancash", province: "Huaraz", district: "Huaraz", address: "Av. Nueva 456", agency: "Shalom Huaraz" } };
+    const print = popup(); setup(data);
+    fireEvent.click(await screen.findByRole("button", { name: "Imprimir etiqueta de envío" }));
+    await waitFor(() => expect(print.html).toHaveLength(2));
+    const doc = new DOMParser().parseFromString(print.html[1], "text/html");
+    expect(doc.body.textContent).toContain("Av. Nueva 456");
+    expect(doc.body.textContent).toContain("Shalom Huaraz");
+    expect(doc.body.textContent).not.toContain("Oficina anterior");
+    await act(async () => print.win.onload?.());
+  });
   it("conserva el lote completo en orden y el aviso del pedido aún no confirmado", async () => {
     const second = { ...receipt(), id: "order-2", orderId: "order-2", orderNumber: "PED-002", unitAssignmentStatus: "PENDING" };
     jest.mocked(axios.get).mockImplementation(async url => ({ data: String(url).includes("shipping-guides") ? { ...guide, orderIds: ["order-1", "order-2"] } : String(url).includes("order-2") ? second : receipt() }));

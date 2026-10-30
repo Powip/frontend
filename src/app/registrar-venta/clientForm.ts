@@ -1,4 +1,5 @@
 import type { Client } from "@/interfaces/ICliente";
+import type { OrderDeliveryPatch } from "@/interfaces/IOrder";
 import type { UpdateClientPayload } from "@/services/clients.service";
 
 // Use the same normalization for loading a client and comparing edits. The API
@@ -30,13 +31,7 @@ export function buildClientUpdatePayload(
 
   // Existing clients from imports can have fields that don't meet today's
   // create validation. A PATCH must validate only the values actually edited.
-  for (const field of [
-    "fullName",
-    "phoneNumber",
-    "province",
-    "district",
-    "address",
-  ] as const) {
+  for (const field of ["fullName", "phoneNumber", "province", "district", "address"] as const) {
     if (form[field] !== previous[field]) changes[field] = form[field];
   }
   if (form.clientType !== previous.clientType) changes.clientType = form.clientType;
@@ -60,4 +55,32 @@ export function buildClientUpdatePayload(
     }
   }
   return changes;
+}
+
+/** Route one-order delivery edits away from the shared customer PATCH. */
+export function splitOrderClientChanges(
+  changes: UpdateClientPayload,
+  hasDeliverySnapshot: boolean,
+) {
+  if (!hasDeliverySnapshot) return { sharedClientChanges: changes, deliveryChanges: undefined };
+  const sharedClientChanges = { ...changes };
+  const deliveryChanges: OrderDeliveryPatch = {};
+  for (const field of [
+    "province",
+    "district",
+    "address",
+    "reference",
+    "latitude",
+    "longitude",
+    "googleMapsUrl",
+  ] as const) {
+    if (changes[field] !== undefined) Object.assign(deliveryChanges, { [field]: changes[field] });
+    delete sharedClientChanges[field];
+  }
+  if (changes.city !== undefined) deliveryChanges.department = changes.city;
+  delete sharedClientChanges.city;
+  return {
+    sharedClientChanges,
+    deliveryChanges: Object.keys(deliveryChanges).length ? deliveryChanges : undefined,
+  };
 }

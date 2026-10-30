@@ -1348,6 +1348,9 @@ export default function SendToShalomModal({
                                     <p className="text-[11px] text-slate-400 dark:text-slate-500">
                                       {order.customer?.address || order.address || "—"}
                                     </p>
+                                    {order.delivery?.type === "AGENCY" && order.delivery.agency && (
+                                      <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Agencia elegida: {order.delivery.agency}. Selecciona la agencia correspondiente en Shalom.</p>
+                                    )}
                                     {(order.customer?.district || order.customer?.city || order.customer?.province) && (
                                       <p className="text-[11px] text-slate-400 dark:text-slate-500">
                                         {[order.customer?.district, order.customer?.city || order.customer?.province]
@@ -1426,6 +1429,9 @@ export default function SendToShalomModal({
                                       <p className="text-[11px] text-slate-700 dark:text-slate-200 font-medium leading-tight">
                                         {order.customer.address}
                                       </p>
+                                    )}
+                                    {order.delivery?.type === "AGENCY" && order.delivery.agency && (
+                                      <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Agencia elegida: {order.delivery.agency}. Confirma la agencia de destino en Shalom.</p>
                                     )}
                                     <div className="flex flex-wrap gap-3">
                                       {order.customer?.district && (

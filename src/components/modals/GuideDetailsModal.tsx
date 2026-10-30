@@ -13,6 +13,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import type { OrderDeliveryDetails } from "@/interfaces/IOrder";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import {
@@ -118,6 +119,7 @@ export interface OrderDetail extends PrintableReceiptTracking {
   status: string;
   grandTotal: number;
   salesChannel?: string;
+  delivery?: OrderDeliveryDetails;
   customer: {
     fullName: string;
     phoneNumber: string;
@@ -1018,9 +1020,12 @@ export default function GuideDetailsModal({
       const labelsHtml = labelsData
         .map(({ order, qrDataUrl, barcodeDataUrl }, index) => {
           const isLast = index === labelsData.length - 1;
-          const customerAddress = order.shippingOffice
+          const customerAddress = order.delivery?.address ?? (order.shippingOffice
             ? `${courierName} ${order.shippingOffice}`
-            : order.customer.address || "-";
+            : order.customer.address || "-");
+          const destination = order.delivery ? {
+            province: order.delivery.province, city: order.delivery.department, district: order.delivery.district,
+          } : order.customer;
           const itemsCount = order.items?.length ?? 0;
           const unitDetails = order.items
             .filter((item) => item.trackingMode === "SERIAL" || item.trackingMode === "IMEI")
@@ -1058,7 +1063,7 @@ export default function GuideDetailsModal({
                   <div class="lc-col lc-col-border">
                     <div class="lc-label">Zona</div>
                     <div class="lc-value">${escapePrintHtml(zonaLabel)}</div>
-                    ${order.customer.district ? `<div class="lc-sub">${escapePrintHtml(order.customer.district)}</div>` : ""}
+                    ${destination.district ? `<div class="lc-sub">${escapePrintHtml(destination.district)}</div>` : ""}
                   </div>
                 </div>
 
@@ -1070,11 +1075,12 @@ export default function GuideDetailsModal({
                     <div class="lc-dest-values"><span>${escapePrintHtml(order.customer.dni || "—")}</span><span>${escapePrintHtml(order.customer.phoneNumber || "—")}</span></div>
                   </div>
                   <div class="lc-dest-location">${
-                    escapePrintHtml([order.customer.province, order.customer.city, order.customer.district]
+                    escapePrintHtml([destination.province, destination.city, destination.district]
                       .filter(Boolean)
                       .join(" · ") || "-")
                   }</div>
                   <div class="lc-dest-address">${escapePrintHtml(customerAddress)}</div>
+                  ${order.delivery?.type === "AGENCY" && order.delivery.agency ? `<div class="lc-dest-address">Agencia: ${escapePrintHtml(order.delivery.agency)}</div>` : ""}
                 </div>
 
                 <div class="lc-row lc-order">

@@ -218,6 +218,8 @@ export interface LiveCheckoutSnapshot extends LiveCheckout {
   checkoutId: string;
   method?: LivePaymentMethod;
   customer?: LiveCustomer;
+  delivery?: LiveQuoteInput["delivery"];
+  receipt?: LiveQuoteInput["receipt"];
   orderNumber?: string | null;
   createdAt?: string;
   manualPayment?: LiveManualPayment | null;

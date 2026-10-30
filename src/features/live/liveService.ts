@@ -175,8 +175,10 @@ export function liveError(error: unknown): string {
   if (axios.isAxiosError(error)) {
     if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT")
       return "La respuesta está tardando demasiado. No confirmamos el resultado. Actualiza el estado o reintenta la misma acción; no inicies otra compra ni repitas el pago.";
+    if (error.response?.data?.code === "DELIVERY_REVIEW_REQUIRED")
+      return "La dirección de entrega no coincide con la registrada para este comprador. Revisa la dirección y la ubicación. Si quieres recibir en otra dirección, contacta al negocio para actualizarla antes de pagar con Yape.";
     if (error.response?.data?.code === "CUSTOMER_REVIEW_REQUIRED")
-      return "Revisa nombre completo o razón social, WhatsApp, DNI/RUC y entrega. Deben corresponder al mismo comprador. Corrige los datos y vuelve a calcular el total. Contacta al negocio antes de pagar si ya son correctos.";
+      return "Revisa nombre completo o razón social, WhatsApp y DNI/RUC. Deben corresponder al mismo comprador. Corrige los datos y vuelve a intentar. Contacta al negocio antes de pagar si ya son correctos.";
     const message: unknown = error.response?.data?.message;
     if (typeof message === "string") return message;
     if (Array.isArray(message))
@@ -197,7 +199,13 @@ export function isLiveCustomerReviewRequired(error: unknown): boolean {
   return axios.isAxiosError(error) && error.response?.data?.code === "CUSTOMER_REVIEW_REQUIRED";
 }
 
+export function isLiveDeliveryReviewRequired(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.data?.code === "DELIVERY_REVIEW_REQUIRED";
+}
+
 export function liveAdminError(error: unknown): string {
+  if (isLiveDeliveryReviewRequired(error))
+    return "La entrega de esta compra requiere revisión. Confirma con el cliente la dirección y ubicación antes de continuar con el pago.";
   if (axios.isAxiosError(error) && error.response?.data?.code === "CUSTOMER_REVIEW_REQUIRED")
     return "Los datos del cliente o de entrega requieren revisión antes de confirmar el pedido. Revisa el caso con el cliente; no apruebes otro pago para resolverlo.";
   return liveError(error);

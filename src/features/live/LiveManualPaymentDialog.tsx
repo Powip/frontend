@@ -18,6 +18,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import LiveCheckoutDetails from "./LiveCheckoutDetails";
+import LiveCheckoutSteps from "./LiveCheckoutSteps";
 import { createLivePolling, type LivePollingController } from "./livePolling";
 import {
   getLiveCheckoutSnapshot,
@@ -167,6 +169,12 @@ function LiveManualPaymentForm({
   const paymentTotal = snapshot?.quote?.total;
   const hasPaymentTotal =
     typeof paymentTotal === "number" && Number.isFinite(paymentTotal) && paymentTotal > 0;
+  const paymentItems = new Map<string, { name: string; quantity: number; unitPrice: number }>();
+  for (const item of snapshot?.quote?.items ?? []) {
+    const itemKey = `${item.variantId}:${item.unitPrice}`;
+    const previous = paymentItems.get(itemKey);
+    paymentItems.set(itemKey, { ...item, quantity: (previous?.quantity ?? 0) + item.quantity });
+  }
   const canUpload =
     hasPaymentTotal &&
     !!manual &&
@@ -246,6 +254,49 @@ function LiveManualPaymentForm({
             {snapshot?.orderNumber || `Compra ${checkoutId.slice(0, 8)}`}
           </DialogDescription>
         </DialogHeader>
+        <LiveCheckoutSteps step={3} />
+        {snapshot ? (
+          <details className="rounded-xl border border-white/10 bg-[#16161C] p-4 text-sm">
+            <summary className="cursor-pointer rounded font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE]">
+              Resumen de tu compra
+            </summary>
+            <div className="mt-4 space-y-4">
+              {snapshot.quote?.items?.length ? (
+                <ul className="divide-y divide-white/10">
+                  {[...paymentItems].map(([itemKey, item]) => (
+                    <li key={itemKey} className="flex justify-between gap-3 py-2">
+                      <span className="min-w-0 break-words">
+                        {item.quantity} × {item.name}
+                      </span>
+                      <span className="shrink-0">{liveMoney(item.quantity * item.unitPrice)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <LiveCheckoutDetails
+                customer={snapshot.customer}
+                delivery={snapshot.delivery}
+                receipt={snapshot.receipt}
+              />
+              {snapshot.quote ? (
+                <dl className="space-y-2 border-t border-white/10 pt-3">
+                  <div className="flex justify-between gap-3">
+                    <dt>Productos</dt>
+                    <dd>{liveMoney(snapshot.quote.subtotal)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt>Envío</dt>
+                    <dd>{liveMoney(snapshot.quote.shipping)}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3 font-bold">
+                    <dt>Total de la compra</dt>
+                    <dd>{liveMoney(snapshot.quote.total)}</dd>
+                  </div>
+                </dl>
+              ) : null}
+            </div>
+          </details>
+        ) : null}
         {displayError ? (
           <p
             ref={errorNotice}

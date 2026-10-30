@@ -74,18 +74,23 @@ export function buildNotaVentaHtml(
   const rawStatus = hasTrackedItems ? receipt.status : (orderHeader?.status ?? receipt.status);
   const statusColor = PDF_STATUS_COLOR[rawStatus] ?? { bg: "#f1f5f9", color: "#334155" };
   const statusLabel = getStatusLabel(rawStatus as OrderStatus).toUpperCase();
-  const deliveryLabel =
-    PRINT_DELIVERY_TYPE_LABEL[orderHeader?.deliveryType ?? ""] ?? orderHeader?.deliveryType ?? "-";
+  const deliveryLabel = receipt.delivery
+    ? receipt.delivery.type === "AGENCY" ? "Retiro en agencia" : "Envío a domicilio"
+    : PRINT_DELIVERY_TYPE_LABEL[orderHeader?.deliveryType ?? ""] ?? orderHeader?.deliveryType ?? "-";
   const paymentMethods =
     Array.from(new Set(receipt.payments.map((p) => toTitleCase(p.paymentMethod)))).join(" / ") ||
     "-";
   const emitido = format(new Date(receipt.createdAt), "dd/MM/yyyy · HH:mm");
+  const destination = receipt.delivery ? {
+    address: receipt.delivery.address, district: receipt.delivery.district,
+    city: receipt.delivery.department, province: receipt.delivery.province,
+  } : receipt.customer;
   const direccion = [
-    receipt.customer.address,
-    receipt.customer.district,
-    receipt.customer.province
-      ? `${receipt.customer.city || ""} - ${receipt.customer.province}`
-      : receipt.customer.city,
+    destination.address,
+    destination.district,
+    destination.province
+      ? `${destination.city || ""} - ${destination.province}`
+      : destination.city,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -234,6 +239,7 @@ export function buildNotaVentaHtml(
             <div class="summary-label">DIRECCIÓN</div>
             <div class="summary-value">${escapePrintHtml(direccion || "-")}</div>
           </div>
+          ${receipt.delivery?.type === "AGENCY" && receipt.delivery.agency ? `<div class="full"><div class="summary-label">AGENCIA</div><div class="summary-value">${escapePrintHtml(receipt.delivery.agency)}</div></div>` : ""}
         </div>
       </div>
 

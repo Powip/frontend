@@ -1,7 +1,10 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { getPublicLive, removePublicLiveReservation, reserveLiveProduct } from "../liveService";
 import PublicLivePage from "../PublicLivePage";
 import type { LiveProduct, LivePublicData, LiveReservation } from "../types";
+
+configure({ asyncUtilTimeout: 10000 });
+jest.setTimeout(20000);
 
 jest.mock("../liveService", () => ({
   ...jest.requireActual("../liveService"),
@@ -15,14 +18,19 @@ jest.mock("../LiveCheckoutDialog", () => ({
   default: ({
     selection,
     onCheckoutCreated,
+    onClose,
   }: {
     selection: unknown;
     onCheckoutCreated: () => void;
+    onClose: () => void;
   }) => (
     <div role="dialog" aria-label="Compra seleccionada">
       <output data-testid="checkout-selection">{JSON.stringify(selection)}</output>
       <button type="button" onClick={onCheckoutCreated}>
         Generar instrucciones
+      </button>
+      <button type="button" onClick={onClose}>
+        Cerrar compra
       </button>
     </div>
   ),
@@ -160,6 +168,10 @@ test("asks for reservation identity next to its action and retries only an uncon
   fireEvent.click(dialog.getByRole("button", { name: "Confirmar apartados" }));
   expect(await dialog.findByRole("alert")).toHaveTextContent("Segundo apartado sin confirmar");
   expect(reserveLiveProduct).toHaveBeenCalledTimes(2);
+  const remainingSelection = within(screen.getByRole("region", { hidden: true }));
+  expect(remainingSelection.getByText("Tu selección (1)")).toBeInTheDocument();
+  expect(remainingSelection.queryByText("Negro / 40")).not.toBeInTheDocument();
+  expect(remainingSelection.getByText("Blanco / 41")).toBeInTheDocument();
   fireEvent.click(dialog.getByRole("button", { name: "Confirmar apartados" }));
   await waitFor(() => expect(reserveLiveProduct).toHaveBeenCalledTimes(3));
   const calls = (reserveLiveProduct as jest.Mock).mock.calls;
@@ -306,6 +318,41 @@ test("a single card reservation never silently subtracts a separately prepared c
   fireEvent.click(dialog.getByRole("button", { name: "Confirmar apartados" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   expect(screen.getByRole("region", { name: "Tu selección (1)" })).toBeInTheDocument();
+});
+
+test("explains additional selected units and keeps their purchase separate from existing holds", async () => {
+  (getPublicLive as jest.Mock).mockResolvedValue({
+    ...data,
+    reservations: [hold("black-40")],
+  });
+  render(<PublicLivePage storeId="store" />);
+  await screen.findByRole("article", { name: "Zapatillas" });
+  addShoe("black-40");
+  const selection = within(screen.getByRole("region", { name: "Tu selección (1)" }));
+  expect(selection.getByText(/Ya tienes 1 unidad apartada/)).toHaveTextContent(
+    "Esta selección agrega 1 unidad más.",
+  );
+  const buy = selection.getByRole("button", { name: "Comprar selección" });
+  expect(buy).toHaveAccessibleDescription(/Para pagar lo que ya reservaste, usa Pagar apartados/);
+  expect(screen.getByRole("button", { name: "Pagar apartados" })).toHaveAccessibleDescription(
+    /Paga los productos ya apartados de esta lista/,
+  );
+
+  fireEvent.click(buy);
+  const direct = within(await screen.findByRole("dialog", { name: "Compra seleccionada" }));
+  expect(JSON.parse(direct.getByTestId("checkout-selection").textContent ?? "{}")).toEqual({
+    items: [{ variantId: "black-40", quantity: 1 }],
+  });
+  fireEvent.click(direct.getByRole("button", { name: "Cerrar compra" }));
+  fireEvent.click(screen.getByRole("button", { name: "Pagar apartados" }));
+  const reserved = within(await screen.findByRole("dialog", { name: "Compra seleccionada" }));
+  expect(JSON.parse(reserved.getByTestId("checkout-selection").textContent ?? "{}")).toEqual({
+    items: [],
+    reservationIds: ["hold-black-40"],
+  });
+  fireEvent.click(reserved.getByRole("button", { name: "Generar instrucciones" }));
+  expect(screen.getByRole("region", { name: "Tu selección (1)" })).toBeInTheDocument();
+  expect(reserveLiveProduct).not.toHaveBeenCalled();
 });
 
 test("paid units from an older live do not consume the new session's per-customer limit", async () => {

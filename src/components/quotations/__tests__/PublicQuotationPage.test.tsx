@@ -404,6 +404,19 @@ describe("PublicQuotationPage", () => {
     },
   );
 
+  it("keeps the accepted agency separate from an issued transport agency", async () => {
+    api.getPublicQuotation.mockResolvedValue(quotation({
+      status: "CONVERTIDA", tracking: tracking({
+        delivery: { type: "AGENCY", department: "Ancash", province: "Huaraz", district: "Huaraz", address: "Av. Nueva 456", agency: "Agencia elegida Huaraz" },
+      }),
+    }));
+    render(<PublicQuotationPage token="own-agency" />);
+    expect(await screen.findByText("Agencia elegida Huaraz")).toBeInTheDocument();
+    expect(screen.getByText("Av. Nueva 456")).toBeInTheDocument();
+    expect(screen.getByText("Retiro en agencia")).toBeInTheDocument();
+    expect(screen.getByText("Agencia Cayma")).toBeInTheDocument();
+  });
+
   it("shows store pickup without inventing courier or dispatch information", async () => {
     api.getPublicQuotation.mockResolvedValue(quotation({
       status: "CONVERTIDA", tracking: tracking({

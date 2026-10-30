@@ -79,7 +79,7 @@ import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
 import { resolveBundleVariant } from "@/utils/resolveBundleVariant";
 import { buildOrderItem, getOrderItemPricing } from "./orderItemPricing";
 import { validateClientDocument } from "./clientDocumentValidation";
-import { buildClientUpdatePayload, clientToFormFields } from "./clientForm";
+import { buildClientUpdatePayload, clientToFormFields, splitOrderClientChanges } from "./clientForm";
 import { clientSaveErrorMessage } from "./clientSaveError";
 import {
   resolvePaymentProofTarget,
@@ -252,6 +252,7 @@ function RegistrarVentaContent() {
   const [loadingClient, setLoadingClient] = useState(false);
   const [originalClient, setOriginalClient] = useState<Client | null>(null);
   const [clientForm, setClientForm] = useState(emptyClientForm);
+  const [orderDeliveryAgency, setOrderDeliveryAgency] = useState("");
   const [clientErrors, setClientErrors] = useState<
     Partial<Record<keyof typeof emptyClientForm, string>>
   >({});
@@ -616,6 +617,7 @@ function RegistrarVentaContent() {
     setClientFound(cust);
     setOriginalClient(cust);
     setClientForm(clientToFormFields(cust));
+    setOrderDeliveryAgency(orderData.deliverySnapshot?.agency ?? "");
     setSearchState("found");
 
     // --- Detalles de la venta ---
@@ -1307,15 +1309,17 @@ function RegistrarVentaContent() {
         }
       }
       // Auto-guardar cambios del cliente si tiene modificaciones sin guardar
-      else if (isFound && hasClientChanges && clientFound?.id) {
+      else if (isFound && Object.keys(sharedClientChanges).length > 0 && clientFound?.id) {
         try {
           const updated = await updateClient(clientFound.id, {
             companyId: auth?.company?.id,
-            ...clientChanges,
+            ...sharedClientChanges,
           });
           if (!isCurrentEditor()) return;
-          setClientFound(updated);
-          setOriginalClient(updated);
+          if (!orderData?.deliverySnapshot) {
+            setClientFound(updated);
+            setOriginalClient(updated);
+          }
           activeClient = updated;
         } catch (error) {
           if (!isCurrentEditor()) return;
@@ -1547,6 +1551,17 @@ function RegistrarVentaContent() {
               ? { customerNotes: orderDetails.customerNotes }
               : {}),
             customerId: activeClient.id,
+            ...(orderData.deliverySnapshot && activeClient.id !== orderData.customer.id
+              ? { delivery: {
+                  department: clientForm.department, province: clientForm.province,
+                  district: clientForm.district, address: clientForm.address,
+                  agency: orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO ? orderDeliveryAgency.trim() : null,
+                  reference: clientForm.reference || null,
+                  latitude: clientForm.latitude ? Number(clientForm.latitude) : null,
+                  longitude: clientForm.longitude ? Number(clientForm.longitude) : null,
+                  googleMapsUrl: clientForm.googleMapsUrl || null,
+                } }
+              : deliveryChanges ? { delivery: deliveryChanges } : {}),
             items: cart.map((item) => ({
               ...buildOrderItem(item),
               // Campos de promo del día (solo para items nuevos cuando isPromo=true)
@@ -1833,11 +1848,15 @@ function RegistrarVentaContent() {
 
   const handleUpdateClient = async () => {
     if (!clientFound?.id || !auth?.company?.id) return;
+    if (!Object.keys(sharedClientChanges).length) {
+      if (deliveryChanges) toast.info("La entrega se guardará solo en este pedido al confirmar los cambios.");
+      return;
+    }
 
     try {
       const updated = await updateClient(clientFound.id, {
         companyId: auth.company.id,
-        ...clientChanges,
+        ...sharedClientChanges,
       });
 
       setClientFound(updated);
@@ -1871,8 +1890,10 @@ function RegistrarVentaContent() {
   const hasValidCart =
     cart.length > 0 && cart.every((item) => item.quantity > 0 && item.price >= 0);
 
-  const hasValidDelivery =
-    orderDetails.deliveryType === DeliveryType.RETIRO_TIENDA ||
+  const hasValidDelivery = orderData?.deliverySnapshot
+    ? orderDetails.deliveryType === DeliveryType.DOMICILIO ||
+      (orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && !!orderDeliveryAgency.trim())
+    : orderDetails.deliveryType === DeliveryType.RETIRO_TIENDA ||
     (orderDetails.deliveryType === DeliveryType.DOMICILIO && Boolean(orderDetails.enviaPor) &&
       (Boolean(orderId) || orderDetails.enviaPor === "OTROS" ||
         couriers.some((courier) => courier.name === orderDetails.enviaPor)));
@@ -1938,7 +1959,10 @@ function RegistrarVentaContent() {
   const checklistPct = Math.round((checklistDone / checklist.length) * 100);
 
   const clientChanges = originalClient ? buildClientUpdatePayload(originalClient, clientForm) : {};
-  const hasClientChanges = Object.keys(clientChanges).length > 0;
+  const { sharedClientChanges, deliveryChanges: destinationChanges } = splitOrderClientChanges(clientChanges, !!orderData?.deliverySnapshot);
+  const agencyChanged = !!orderData?.deliverySnapshot && orderDeliveryAgency.trim() !== (orderData.deliverySnapshot.agency ?? "").trim();
+  const deliveryChanges = agencyChanged ? { ...destinationChanges, agency: orderDeliveryAgency.trim() || null } : destinationChanges;
+  const hasClientChanges = Object.keys(clientChanges).length > 0 || agencyChanged;
 
   if (!auth) return null;
 
@@ -2625,8 +2649,9 @@ function RegistrarVentaContent() {
                       <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
                         <span>⚠️</span>
                         <span>
-                          Los datos del cliente se actualizarán automáticamente al confirmar la
-                          venta.
+                          {orderData?.deliverySnapshot
+                            ? "La entrega se guardará solo en este pedido al confirmar los cambios."
+                            : "Los datos del cliente se actualizarán automáticamente al confirmar la venta."}
                         </span>
                       </div>
                     )}
@@ -3225,13 +3250,32 @@ function RegistrarVentaContent() {
                           <SelectValue placeholder="Seleccionar tipo de entrega" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={DeliveryType.RETIRO_TIENDA}>
-                            Retiro en tienda
-                          </SelectItem>
+                          {!orderData?.deliverySnapshot && (
+                            <SelectItem value={DeliveryType.RETIRO_TIENDA}>
+                              Retiro en tienda
+                            </SelectItem>
+                          )}
                           <SelectItem value={DeliveryType.DOMICILIO}>Envío a domicilio</SelectItem>
+                          {orderData?.deliverySnapshot && (
+                            <SelectItem value={DeliveryType.PUNTO_EXTERNO}>Envío a agencia</SelectItem>
+                          )}
                         </SelectContent>
                       </Select>
                     </div>
+
+                    {orderData?.deliverySnapshot && orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && (
+                      <div className="md:col-span-2 space-y-1">
+                        <Label htmlFor="order-delivery-agency">Agencia y sucursal de este pedido</Label>
+                        <Input
+                          id="order-delivery-agency"
+                          value={orderDeliveryAgency}
+                          maxLength={150}
+                          disabled={isSubmitting}
+                          placeholder="Ej.: Shalom — agencia principal"
+                          onChange={(event) => setOrderDeliveryAgency(event.target.value)}
+                        />
+                      </div>
+                    )}
 
                     {/* Método de envío */}
                     {orderDetails.deliveryType === DeliveryType.DOMICILIO && (

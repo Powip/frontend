@@ -64,6 +64,15 @@ function rootFor(receipt: OrderReceipt) {
   document.body.innerHTML = buildNotaVentaHtml(receipt, null, { name: "Empresa" });
   return document.getElementById("pdf-comprobante-root")!;
 }
+
+it("includes the accepted agency and receipt delivery mode in the PDF", () => {
+  const data = { ...fixture(), delivery: { type: "AGENCY" as const, department: "Ancash", province: "Huaraz", district: "Huaraz", address: "Av. Nueva 456", agency: "Shalom Huaraz" } };
+  document.body.innerHTML = buildNotaVentaHtml(data, { deliveryType: "DOMICILIO" } as OrderHeader);
+  expect(document.body.textContent).toContain("Shalom Huaraz");
+  expect(document.body.textContent).toContain("Av. Nueva 456");
+  expect(document.body.textContent).not.toContain("Av. Central");
+  expect(document.body.textContent).toContain("Retiro en agencia");
+});
 // JSDOM has no layout engine. Model measured block heights so the actual DOM
 // pagination can be exercised; the browser/PDF visual run verifies real fonts.
 function height(element: Element): number {

@@ -99,6 +99,26 @@ export type ShalomStatus =
 /* -----------------------------------------
    Sub-entidades
 ----------------------------------------- */
+export interface OrderDeliverySnapshot {
+  version: 1;
+  type: "HOME" | "AGENCY";
+  department: string;
+  province: string;
+  district: string;
+  address: string;
+  agency: string | null;
+  reference: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  googleMapsUrl: string | null;
+  zone: string | null;
+}
+
+export type OrderDeliveryPatch = Partial<Omit<OrderDeliverySnapshot, "version" | "type" | "zone">>;
+
+/** Destination accepted for this order, without internal delivery metadata. */
+export type OrderDeliveryDetails = Pick<OrderDeliverySnapshot, "type" | "department" | "province" | "district" | "address" | "agency">;
+
 export interface OrderCustomer {
   id: string;
   companyId: string;
@@ -254,6 +274,7 @@ export interface OrderHeader extends UnitAssignmentState {
   externalId?: string | null;
   syncErrors?: Record<string, string> | null;
   externalData?: Record<string, unknown> | null;
+  deliverySnapshot?: OrderDeliverySnapshot | null;
   created_at: string;
   updated_at: string;
 
@@ -293,10 +314,7 @@ export interface CanalConfig {
   empresaId: string | null;
   canalNombre: string;
   canalLabel: string;
-  flujoEntrada:
-    | "directo_operaciones"
-    | "call_center_cod"
-    | "call_center_carrito";
+  flujoEntrada: "directo_operaciones" | "call_center_cod" | "call_center_carrito";
   requiereConfirmacionCc: boolean;
   activo: boolean;
   datosRequeridos: string[];

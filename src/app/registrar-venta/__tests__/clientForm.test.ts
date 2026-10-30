@@ -1,5 +1,9 @@
 import type { Client } from "@/interfaces/ICliente";
-import { buildClientUpdatePayload, clientToFormFields } from "../clientForm";
+import {
+  buildClientUpdatePayload,
+  clientToFormFields,
+  splitOrderClientChanges,
+} from "../clientForm";
 
 function client(overrides: Partial<Client> = {}): Client {
   return {
@@ -18,6 +22,44 @@ function client(overrides: Partial<Client> = {}): Client {
 }
 
 describe("cambios del cliente al registrar una venta", () => {
+  it("sends snapshot-order delivery changes only to the order and preserves identity updates separately", () => {
+    const changes = {
+      fullName: "Cliente corregido",
+      city: "Arequipa",
+      province: "Arequipa",
+      district: "Cayma",
+      address: "Av. Nueva 789",
+      reference: null,
+      latitude: null,
+      longitude: null,
+      googleMapsUrl: null,
+    };
+    expect(splitOrderClientChanges(changes, true)).toEqual({
+      sharedClientChanges: { fullName: "Cliente corregido" },
+      deliveryChanges: {
+        department: "Arequipa",
+        province: "Arequipa",
+        district: "Cayma",
+        address: "Av. Nueva 789",
+        reference: null,
+        latitude: null,
+        longitude: null,
+        googleMapsUrl: null,
+      },
+    });
+    expect(changes.city).toBe("Arequipa");
+  });
+
+  it("keeps historical customer edits unchanged and omits a delivery patch if no destination was edited", () => {
+    expect(splitOrderClientChanges({ address: "Av. Nueva 789" }, false)).toEqual({
+      sharedClientChanges: { address: "Av. Nueva 789" },
+      deliveryChanges: undefined,
+    });
+    expect(splitOrderClientChanges({ phoneNumber: "987654321" }, true)).toEqual({
+      sharedClientChanges: { phoneNumber: "987654321" },
+      deliveryChanges: undefined,
+    });
+  });
   it("no reenvía campos sin cambios ni el companyId", () => {
     const original = client();
 

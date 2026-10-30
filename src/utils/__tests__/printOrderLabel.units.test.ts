@@ -42,6 +42,18 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
+it("prints the accepted agency and delivery mode from the receipt even with an older order header", async () => {
+  const receipt = { ...baseReceipt(), delivery: { type: "AGENCY" as const, department: "Ancash", province: "Huaraz", district: "Huaraz", address: "Av. Nueva 456", agency: '<Shalom & Huaraz>' } };
+  const view = windowFixture();
+  await printOrderLabel(receipt, { deliveryType: "DOMICILIO", shalomDestinationAgency: "Agencia anterior" } as OrderHeader);
+  const document = view.document();
+  expect(document.body.textContent).toContain("<Shalom & Huaraz>");
+  expect(document.body.textContent).toContain("Av. Nueva 456");
+  expect(document.body.textContent).toContain("Retiro en agencia");
+  expect(document.body.textContent).not.toContain("Agencia anterior");
+  expect(document.querySelector("shalom")).toBeNull();
+});
+
 describe("customer comments on picking labels", () => {
   it("preserves all 500 characters and line breaks before totals without using internal or header notes", async () => {
     const prefix = "  Ingredientes: romero, sábila y biotina.\n";

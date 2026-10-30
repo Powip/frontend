@@ -85,6 +85,14 @@ test("preserves the courier-office address and existing sender layout for NONE w
   );
   expect(home.querySelector(".address-line")?.textContent).toContain("Jr. Cliente 123");
 });
+test("snapshot labels keep accepted delivery ahead of a previous courier office", () => {
+  const data = { ...receipt("NONE"), delivery: { type: "AGENCY" as const, department: "Ancash", province: "Huaraz", district: "Huaraz", address: "Av. Nueva 456", agency: "Shalom Huaraz" } };
+  const doc = new DOMParser().parseFromString(buildCustomerShippingLabelHtml(data, guide, company), "text/html");
+  expect(doc.body.textContent).toContain("Av. Nueva 456");
+  expect(doc.body.textContent).toContain("Shalom Huaraz");
+  expect(doc.body.textContent).not.toContain("Agencia Centro");
+  expect(doc.body.textContent).not.toContain("Jr. Cliente 123");
+});
 test("prints complete confirmed leading-zero codes under their product with quantity and attributes", () => {
   const doc = new DOMParser().parseFromString(
     buildCustomerShippingLabelHtml(receipt(), guide, company),

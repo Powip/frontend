@@ -351,6 +351,9 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
   const cartRows = cart.map((item) => ({
     ...item,
     product: products.find((product) => product.variantId === item.variantId),
+    reservedQuantity: reservations
+      .filter((reservation) => reservation.variantId === item.variantId)
+      .reduce((sum, reservation) => sum + reservation.quantity, 0),
   }));
   const cartInvalid = cartRows.some(
     (item) => !item.product || item.quantity > availableFor(item.product),
@@ -635,6 +638,16 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
                                   }}
                                 />
                               </label>
+                              {item.reservedQuantity > 0 ? (
+                                <p className="mt-2 text-xs text-amber-200">
+                                  Ya tienes {item.reservedQuantity}{" "}
+                                  {item.reservedQuantity === 1
+                                    ? "unidad apartada"
+                                    : "unidades apartadas"}{" "}
+                                  de esta variante. Esta selección agrega {item.quantity}{" "}
+                                  {item.quantity === 1 ? "unidad más" : "unidades más"}.
+                                </p>
+                              ) : null}
                               {!item.product || item.quantity > availableFor(item.product) ? (
                                 <p className="mt-2 text-xs text-amber-200">
                                   Cambió la disponibilidad. Reduce la cantidad o retira esta
@@ -659,6 +672,7 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
                           <button
                             type="button"
                             className={`${primary} mt-4 w-full`}
+                            aria-describedby="live-selection-payment-help"
                             disabled={
                               !!busy || cartInvalid || reservationLimitExceeded || !methods.length
                             }
@@ -669,6 +683,16 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
                             <ShoppingBag className="h-4 w-4" />
                             Comprar selección
                           </button>
+                        ) : null}
+                        {data.config.allowBuyNow ? (
+                          <p
+                            id="live-selection-payment-help"
+                            className="mt-2 text-xs text-zinc-400"
+                          >
+                            {reservations.length
+                              ? "Compra los productos de esta selección. Para pagar lo que ya reservaste, usa Pagar apartados."
+                              : "Compra estos productos directamente, sin apartarlos primero."}
+                          </p>
                         ) : null}
                         {data.config.allowReservations ? (
                           <button
@@ -844,7 +868,7 @@ function PublicLiveCatalog({ storeId }: { storeId: string }) {
                           : !payableReservations.length &&
                               reservations.some((item) => item.status === "PENDING")
                             ? "Podrás pagar cuando se confirme el stock de tus apartados."
-                            : "El total se calculará con los apartados confirmados y el envío."}
+                            : "Paga los productos ya apartados de esta lista, más el envío. Tu selección se compra por separado."}
                       </p>
                       {reservations.some((item) => item.checkoutId) ? (
                         <p className="mt-3 text-xs text-amber-200">
