@@ -106,19 +106,23 @@ export function MisVentasView() {
             <KpiCard
               key="meta"
               label="Mi meta del periodo"
-              value={formatPercent(d.meta.avance)}
+              value={d.meta.metaPeriodo === null ? "Pendiente" : formatPercent(d.meta.avance)}
               origin={origin}
               sub={
-                <>
-                  <ProgressBar
-                    logrado={d.vendi.facturacion}
-                    meta={d.meta.metaPeriodo}
-                    etiqueta="Avance de mi meta del periodo"
-                  />
-                  <span className="mt-1 block">
-                    Meta {formatSoles(d.meta.metaPeriodo)} · falta {formatSoles(d.meta.falta)}
-                  </span>
-                </>
+                d.meta.metaPeriodo === null ? (
+                  "Todavía no hay metas configuradas"
+                ) : (
+                  <>
+                    <ProgressBar
+                      logrado={d.vendi.facturacion}
+                      meta={d.meta.metaPeriodo}
+                      etiqueta="Avance de mi meta del periodo"
+                    />
+                    <span className="mt-1 block">
+                      Meta {formatSoles(d.meta.metaPeriodo)} · falta {formatSoles(d.meta.falta)}
+                    </span>
+                  </>
+                )
               }
             />,
             <KpiCard

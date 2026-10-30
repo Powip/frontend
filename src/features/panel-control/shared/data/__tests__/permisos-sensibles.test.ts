@@ -10,6 +10,7 @@ import {
   equipoVendedorasDemoSource,
 } from "../../../equipo/sources/equipo.demo";
 import { estadoPeriodoDemoSource } from "../../../estado-periodo/sources/estado-periodo.demo";
+import { misVentasDemoSource } from "../../../mis-ventas/sources/mis-ventas.demo";
 import { productosDemoSource } from "../../../productos/sources/productos.demo";
 import { resumenDemoSource } from "../../../resumen/sources/resumen.demo";
 import { PANEL_ROLE_POLICIES } from "../../config/panel-roles.config";
@@ -39,6 +40,7 @@ const FUENTES = {
   callcenter: conAutorizacion(callCenterDemoSource),
   "equipo-vendedoras": conAutorizacion(equipoVendedorasDemoSource),
   "equipo-confirmadoras": conAutorizacion(equipoConfirmadorasDemoSource),
+  "mis-ventas": conAutorizacion(misVentasDemoSource),
 };
 
 const CAMPOS_SENSIBLES = new Set([

@@ -192,6 +192,30 @@ describe("Mis ventas", () => {
   });
 });
 
+describe("Mis ventas · sin metas configuradas", () => {
+  it("la meta queda «Pendiente» en lugar de inventar un avance", async () => {
+    const sinMeta: typeof misVentasDemoSource = {
+      ...misVentasDemoSource,
+      fetch: async (query, context) => {
+        const r = await misVentasDemoSource.fetch(query, context);
+        return {
+          ...r,
+          actual: { ...r.actual, meta: { metaPeriodo: null, avance: null, falta: null } },
+        };
+      },
+    };
+    renderWithPanel(<PanelShell />, {
+      role: "vendedora",
+      sources: { ...DEMO, "mis-ventas": sinMeta },
+      state: { ...DEFAULT_PANEL_STATE, navigation: { tab: "misventas", subtab: null } },
+    });
+    expect(await screen.findByText("Todavía no hay metas configuradas")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("progressbar", { name: /Avance de mi meta/ }),
+    ).not.toBeInTheDocument();
+  });
+});
+
 describe("Configuración", () => {
   it("Metas: editar habilita Guardar y avisa que está pendiente; un valor inválido lo bloquea", async () => {
     const user = renderTab("configuracion", "metas");

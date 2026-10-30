@@ -8,6 +8,7 @@ import {
   detalleCanalesRealSource,
   detalleClientesRealSource,
   detalleEquipoRealSource,
+  detalleMisVentasRealSource,
   detalleProductosRealSource,
   detalleRealSource,
 } from "../../../detalle/sources/detalle.source";
@@ -16,6 +17,7 @@ import {
   equipoVendedorasRealSource,
 } from "../../../equipo/sources/equipo.source";
 import { estadoPeriodoRealSource } from "../../../estado-periodo/sources/estado-periodo.source";
+import { misVentasRealSource } from "../../../mis-ventas/sources/mis-ventas.source";
 import { productosRealSource } from "../../../productos/sources/productos.source";
 import { resumenRealSource } from "../../../resumen/sources/resumen.source";
 import type { PanelQuery } from "../../models/panel-query.model";
@@ -222,5 +224,15 @@ describe("fuentes reales del panel (ms-ventas)", () => {
       params: { ...CONSULTA, tipo: "confirmadoras" },
     });
     expect(detalleEquipoRealSource).toMatchObject({ kind: "real", pestanas: ["equipo"] });
+  });
+
+  it("mis ventas lee GET /panel/mis-ventas y su detalle sirve solo a esa pestaña", async () => {
+    mockGet.mockResolvedValue({ data: {} });
+    expect(misVentasRealSource).toMatchObject({ contractId: "mis-ventas", kind: "real" });
+    await misVentasRealSource.fetch(CONSULTA as never, CONTEXTO);
+    expect(mockGet).toHaveBeenCalledWith("https://ventas.example.com/panel/mis-ventas", {
+      params: CONSULTA,
+    });
+    expect(detalleMisVentasRealSource).toMatchObject({ kind: "real", pestanas: ["misventas"] });
   });
 });

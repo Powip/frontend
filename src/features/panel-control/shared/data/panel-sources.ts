@@ -15,6 +15,7 @@ import {
   detalleCanalesRealSource,
   detalleClientesRealSource,
   detalleEquipoRealSource,
+  detalleMisVentasRealSource,
   detalleProductosRealSource,
   detalleRealSource,
 } from "../../detalle/sources/detalle.source";
@@ -32,7 +33,7 @@ import {
   finanzasCobranzaDemoSource,
   finanzasResultadoDemoSource,
 } from "../../finanzas/sources/finanzas.demo";
-import { misVentasDemoSource } from "../../mis-ventas/sources/mis-ventas.demo";
+import { misVentasRealSource } from "../../mis-ventas/sources/mis-ventas.source";
 import {
   operacionesColaDemoSource,
   operacionesCouriersDemoSource,
@@ -71,6 +72,7 @@ export const DEFAULT_PANEL_SOURCES: PanelSourceRegistry = autorizarRegistro({
     detalleClientesRealSource,
     detalleCallCenterRealSource,
     detalleEquipoRealSource,
+    detalleMisVentasRealSource,
     detalleDemoSource,
   ],
   "config-metas": configMetasDemoSource,
@@ -88,7 +90,7 @@ export const DEFAULT_PANEL_SOURCES: PanelSourceRegistry = autorizarRegistro({
   "finanzas-cobranza": finanzasCobranzaDemoSource,
   "equipo-vendedoras": equipoVendedorasRealSource,
   "equipo-confirmadoras": equipoConfirmadorasRealSource,
-  "mis-ventas": misVentasDemoSource,
+  "mis-ventas": misVentasRealSource,
   "config-estados": configEstadosDemoSource,
   "config-cuadres": configCuadresDemoSource,
   "exportacion-libro": exportacionLibroDemoSource,
