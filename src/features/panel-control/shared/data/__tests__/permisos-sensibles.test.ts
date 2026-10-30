@@ -5,6 +5,10 @@ import {
 } from "../../../canales/sources/canales.demo";
 import { clientesZonasDemoSource } from "../../../clientes-zonas/sources/clientes-zonas.demo";
 import { detalleDemoSource } from "../../../detalle/sources/detalle.demo";
+import {
+  equipoConfirmadorasDemoSource,
+  equipoVendedorasDemoSource,
+} from "../../../equipo/sources/equipo.demo";
 import { estadoPeriodoDemoSource } from "../../../estado-periodo/sources/estado-periodo.demo";
 import { productosDemoSource } from "../../../productos/sources/productos.demo";
 import { resumenDemoSource } from "../../../resumen/sources/resumen.demo";
@@ -33,6 +37,8 @@ const FUENTES = {
   productos: conAutorizacion(productosDemoSource),
   "clientes-zonas": conAutorizacion(clientesZonasDemoSource),
   callcenter: conAutorizacion(callCenterDemoSource),
+  "equipo-vendedoras": conAutorizacion(equipoVendedorasDemoSource),
+  "equipo-confirmadoras": conAutorizacion(equipoConfirmadorasDemoSource),
 };
 
 const CAMPOS_SENSIBLES = new Set([

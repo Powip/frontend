@@ -7,9 +7,14 @@ import {
   detalleCallCenterRealSource,
   detalleCanalesRealSource,
   detalleClientesRealSource,
+  detalleEquipoRealSource,
   detalleProductosRealSource,
   detalleRealSource,
 } from "../../../detalle/sources/detalle.source";
+import {
+  equipoConfirmadorasRealSource,
+  equipoVendedorasRealSource,
+} from "../../../equipo/sources/equipo.source";
 import { estadoPeriodoRealSource } from "../../../estado-periodo/sources/estado-periodo.source";
 import { productosRealSource } from "../../../productos/sources/productos.source";
 import { resumenRealSource } from "../../../resumen/sources/resumen.source";
@@ -201,5 +206,21 @@ describe("fuentes reales del panel (ms-ventas)", () => {
       kind: "real",
       pestanas: ["callcenter"],
     });
+  });
+
+  it("equipo agrega el tipo a la consulta y su detalle sirve solo a esa pestaña", async () => {
+    mockGet.mockResolvedValue({ data: {} });
+    await equipoVendedorasRealSource.fetch(
+      { ...CONSULTA, agrupar: "zona", upsell: "sin" } as never,
+      CONTEXTO,
+    );
+    expect(mockGet).toHaveBeenCalledWith("https://ventas.example.com/panel/equipo", {
+      params: { ...CONSULTA, agrupar: "zona", upsell: "sin", tipo: "vendedoras" },
+    });
+    await equipoConfirmadorasRealSource.fetch(CONSULTA as never, CONTEXTO);
+    expect(mockGet).toHaveBeenLastCalledWith("https://ventas.example.com/panel/equipo", {
+      params: { ...CONSULTA, tipo: "confirmadoras" },
+    });
+    expect(detalleEquipoRealSource).toMatchObject({ kind: "real", pestanas: ["equipo"] });
   });
 });

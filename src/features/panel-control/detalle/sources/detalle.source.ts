@@ -37,6 +37,14 @@ export const detalleCallCenterRealSource: PanelSource<"detalle"> = {
     "GET /panel/detalle (ms-ventas): leads, confirmados, anulados por motivo, cola por antigüedad, duplicados, lista negra, celda del mapa de calor y fila del ranking",
 };
 
+/** El mismo endpoint, para la pestaña Equipo. */
+export const detalleEquipoRealSource: PanelSource<"detalle"> = {
+  ...detalleRealSource,
+  pestanas: ["equipo"],
+  descripcion:
+    "GET /panel/detalle (ms-ventas): ventas, entregados, cobrado, pendiente, rechazados y upsell de cada vendedora o zona, y los leads de cada confirmadora",
+};
+
 /** El mismo endpoint, para la subpestaña Clientes de Ventas y canales. */
 export const detalleClientesRealSource: PanelSource<"detalle"> = {
   ...detalleRealSource,

@@ -14,13 +14,14 @@ import {
   detalleCallCenterRealSource,
   detalleCanalesRealSource,
   detalleClientesRealSource,
+  detalleEquipoRealSource,
   detalleProductosRealSource,
   detalleRealSource,
 } from "../../detalle/sources/detalle.source";
 import {
-  equipoConfirmadorasDemoSource,
-  equipoVendedorasDemoSource,
-} from "../../equipo/sources/equipo.demo";
+  equipoConfirmadorasRealSource,
+  equipoVendedorasRealSource,
+} from "../../equipo/sources/equipo.source";
 import { estadoPeriodoRealSource } from "../../estado-periodo/sources/estado-periodo.source";
 import {
   compartirReporteDemoSource,
@@ -69,6 +70,7 @@ export const DEFAULT_PANEL_SOURCES: PanelSourceRegistry = autorizarRegistro({
     detalleProductosRealSource,
     detalleClientesRealSource,
     detalleCallCenterRealSource,
+    detalleEquipoRealSource,
     detalleDemoSource,
   ],
   "config-metas": configMetasDemoSource,
@@ -84,8 +86,8 @@ export const DEFAULT_PANEL_SOURCES: PanelSourceRegistry = autorizarRegistro({
   "finanzas-resultado": finanzasResultadoDemoSource,
   "finanzas-caja": finanzasCajaDemoSource,
   "finanzas-cobranza": finanzasCobranzaDemoSource,
-  "equipo-vendedoras": equipoVendedorasDemoSource,
-  "equipo-confirmadoras": equipoConfirmadorasDemoSource,
+  "equipo-vendedoras": equipoVendedorasRealSource,
+  "equipo-confirmadoras": equipoConfirmadorasRealSource,
   "mis-ventas": misVentasDemoSource,
   "config-estados": configEstadosDemoSource,
   "config-cuadres": configCuadresDemoSource,

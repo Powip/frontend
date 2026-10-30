@@ -88,7 +88,7 @@ describe("registro de fuentes", () => {
     });
 
     it("en una pestaña aún demo nunca muestra pedidos reales detrás de una cifra demo", () => {
-      for (const pestana of ["canales", "operaciones", "finanzas", "equipo"] as const) {
+      for (const pestana of ["canales", "operaciones", "finanzas"] as const) {
         expect(
           resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", "mixto", pestana),
         ).toMatchObject({ source: { kind: "demo" }, origin: { kind: "demo" } });
