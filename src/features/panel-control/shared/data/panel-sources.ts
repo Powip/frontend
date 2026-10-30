@@ -1,5 +1,5 @@
 import { opcionesAsesoresRealSource } from "../../asesores/sources/opciones-asesores.source";
-import { callCenterDemoSource } from "../../call-center/sources/call-center.demo";
+import { callCenterRealSource } from "../../call-center/sources/call-center.source";
 import { canalesComparativoRealSource } from "../../canales/sources/canales-comparativo.source";
 import { canalesDetalleRealSource } from "../../canales/sources/canales-detalle.source";
 import { canalesFichasRealSource } from "../../canales/sources/canales-fichas.source";
@@ -11,6 +11,7 @@ import {
 } from "../../configuracion/sources/configuracion.demo";
 import { detalleDemoSource } from "../../detalle/sources/detalle.demo";
 import {
+  detalleCallCenterRealSource,
   detalleCanalesRealSource,
   detalleClientesRealSource,
   detalleProductosRealSource,
@@ -67,6 +68,7 @@ export const DEFAULT_PANEL_SOURCES: PanelSourceRegistry = autorizarRegistro({
     detalleCanalesRealSource,
     detalleProductosRealSource,
     detalleClientesRealSource,
+    detalleCallCenterRealSource,
     detalleDemoSource,
   ],
   "config-metas": configMetasDemoSource,
@@ -75,7 +77,7 @@ export const DEFAULT_PANEL_SOURCES: PanelSourceRegistry = autorizarRegistro({
   productos: productosRealSource,
   publicidad: publicidadDemoSource,
   "clientes-zonas": clientesZonasRealSource,
-  callcenter: callCenterDemoSource,
+  callcenter: callCenterRealSource,
   "operaciones-cola": operacionesColaDemoSource,
   "operaciones-couriers": operacionesCouriersDemoSource,
   "operaciones-inventario": operacionesInventarioDemoSource,

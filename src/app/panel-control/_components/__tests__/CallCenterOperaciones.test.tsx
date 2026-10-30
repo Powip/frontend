@@ -157,6 +157,43 @@ describe("Call center", () => {
     expect(celdas.every((texto) => texto.includes("Usuaria Prueba"))).toBe(true);
   });
 
+  it("con datos reales: contactación «No aplica» y 1ª llamada pendiente, sin inventar cifras", async () => {
+    // Mismo origen demo (la tarjeta solo depende de los valores); las cifras son las del backend.
+    const real: typeof callCenterDemoSource = {
+      ...callCenterDemoSource,
+      fetch: async (query, context) => {
+        const r = await callCenterDemoSource.fetch(query, context);
+        return {
+          ...r,
+          actual: {
+            ...r.actual,
+            kpis: {
+              ...r.actual.kpis,
+              contactacion: null,
+              tiempoPrimeraLlamadaMin: null,
+              leadsConPrimeraLlamada: 0,
+              llamadasTardias: 0,
+            },
+          },
+        };
+      },
+    };
+    renderWithPanel(<PanelShell />, {
+      role: "dueno",
+      sources: { ...DEMO, callcenter: real },
+      state: { ...DEFAULT_PANEL_STATE, navigation: { tab: "callcenter", subtab: null } },
+    });
+    const valor = await screen.findByText("No aplica");
+    const tarjeta = valor.closest("section");
+    expect(tarjeta).toHaveAttribute("aria-label", "Contactados");
+    expect(
+      within(tarjeta as HTMLElement).queryByRole("button", { name: /Ver pedidos/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Pendiente: todavía no se registra la hora de la primera llamada"),
+    ).toBeInTheDocument();
+  });
+
   it("en modo solo reales queda pendiente y no muestra cifras demo", async () => {
     renderTab("callcenter", null, { soloReal: true });
     expect((await screen.findAllByText(/pendiente de integración/i)).length).toBeGreaterThan(0);

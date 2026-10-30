@@ -154,7 +154,11 @@ export function CallCenterKpis({ state }: { state: CallCenterState }) {
             }
             meta={metaDe(data, "tiempo_primera_llamada", k.tiempoPrimeraLlamadaMin)}
             metaDemo={metaDemo}
-            sub={`Mediana de ${formatNumber(k.leadsConPrimeraLlamada)} leads · ${formatNumber(k.llamadasTardias)} sobre la meta`}
+            sub={
+              k.tiempoPrimeraLlamadaMin === null && k.leadsConPrimeraLlamada === 0
+                ? "Pendiente: todavía no se registra la hora de la primera llamada"
+                : `Mediana de ${formatNumber(k.leadsConPrimeraLlamada)} leads · ${formatNumber(k.llamadasTardias)} sobre la meta`
+            }
             onDrill={
               k.llamadasTardias > 0
                 ? () =>
@@ -169,13 +173,25 @@ export function CallCenterKpis({ state }: { state: CallCenterState }) {
             key="contactados"
             label="Contactados"
             glosario="contactados"
-            value={formatPercent(k.contactacion)}
+            value={k.contactacion === null ? "No aplica" : formatPercent(k.contactacion)}
             origin={origin}
-            delta={a ? calcularDelta(k.contactacion, a.contactacion) : undefined}
-            meta={metaDe(data, "contactados", k.contactacion)}
+            delta={
+              a && k.contactacion !== null
+                ? calcularDelta(k.contactacion, a.contactacion)
+                : undefined
+            }
+            meta={k.contactacion === null ? undefined : metaDe(data, "contactados", k.contactacion)}
             metaDemo={metaDemo}
-            sub={`${formatNumber(k.contactados)} de ${formatNumber(k.trabajados)} leads ya trabajados`}
-            onDrill={() => openDrilldown(grupos.de("contactados", "Leads contactados"))}
+            sub={
+              k.contactacion === null
+                ? `Contactado = llamado: ${formatNumber(k.trabajados)} leads ya trabajados`
+                : `${formatNumber(k.contactados)} de ${formatNumber(k.trabajados)} leads ya trabajados`
+            }
+            onDrill={
+              k.contactacion === null
+                ? undefined
+                : () => openDrilldown(grupos.de("contactados", "Leads contactados"))
+            }
           />,
           <KpiCard
             key="confirmados"

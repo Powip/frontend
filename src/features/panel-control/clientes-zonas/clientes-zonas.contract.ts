@@ -18,7 +18,7 @@ export const CLIENTES_ZONAS_CONTRACT = defineContract({
     "CONECTADO: clientes con compra, nuevos, recurrentes (nuevos + recurrentes = con compra), recompra, valor histórico, lista negra, zonas, departamentos, métodos de pago y los 10 mejores clientes",
     "El historial cubre desde el primer pedido de la empresa (historial.desde); un rechazo también cuenta como compra",
     "Lista negra = cliente con un rechazo anterior al pedido; RECHAZADO se reconoce como venta despachada que se anuló (salvo falta de stock) mientras no exista el estado",
-    "Método de pago = el del pago de mayor monto que no se perdió; los pedidos sin pagos van a «Sin pago registrado»",
+    "Método de pago = el método que más suma entre los pagos que no se perdieron; los pedidos sin pagos van a «Sin pago registrado»",
     "Departamento: sale de la ciudad del cliente, unificada (mayúsculas, tildes); sin dato → «Sin dato». Zona: salesRegion",
     "Producto, cupón y categoría de otras subpestañas no aplican aquí; el historial de un cliente abre todas sus ventas de siempre",
     REGLA_VENTA_PENDIENTE,

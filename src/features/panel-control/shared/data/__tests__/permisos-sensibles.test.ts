@@ -1,3 +1,4 @@
+import { callCenterDemoSource } from "../../../call-center/sources/call-center.demo";
 import {
   canalesComparativoDemoSource,
   canalesDetalleDemoSource,
@@ -31,6 +32,7 @@ const FUENTES = {
   "canales-detalle": conAutorizacion(canalesDetalleDemoSource),
   productos: conAutorizacion(productosDemoSource),
   "clientes-zonas": conAutorizacion(clientesZonasDemoSource),
+  callcenter: conAutorizacion(callCenterDemoSource),
 };
 
 const CAMPOS_SENSIBLES = new Set([

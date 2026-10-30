@@ -1,8 +1,10 @@
 import axiosAuth from "@/lib/axiosAuth";
+import { callCenterRealSource } from "../../../call-center/sources/call-center.source";
 import { canalesComparativoRealSource } from "../../../canales/sources/canales-comparativo.source";
 import { canalesDetalleRealSource } from "../../../canales/sources/canales-detalle.source";
 import { clientesZonasRealSource } from "../../../clientes-zonas/sources/clientes-zonas.source";
 import {
+  detalleCallCenterRealSource,
   detalleCanalesRealSource,
   detalleClientesRealSource,
   detalleProductosRealSource,
@@ -183,6 +185,21 @@ describe("fuentes reales del panel (ms-ventas)", () => {
     );
     expect(mockGet).toHaveBeenCalledWith("https://ventas.example.com/panel/detalle", {
       params: { ...CONSULTA, grupo: "historial_cliente", grupo_params: '{"cliente":"c1"}' },
+    });
+  });
+
+  it("call center lee GET /panel/callcenter y su detalle sirve solo a esa pestaña", async () => {
+    const sobre = { actual: {}, anterior_misma_antiguedad: null, metas: null, generado_en: "x" };
+    mockGet.mockResolvedValue({ data: sobre });
+    expect(callCenterRealSource).toMatchObject({ contractId: "callcenter", kind: "real" });
+    await expect(callCenterRealSource.fetch(CONSULTA as never, CONTEXTO)).resolves.toBe(sobre);
+    expect(mockGet).toHaveBeenCalledWith("https://ventas.example.com/panel/callcenter", {
+      params: CONSULTA,
+    });
+    expect(detalleCallCenterRealSource).toMatchObject({
+      contractId: "detalle",
+      kind: "real",
+      pestanas: ["callcenter"],
     });
   });
 });

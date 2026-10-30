@@ -23,7 +23,9 @@ describe("registro de fuentes", () => {
     expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "publicidad", "solo_real").origin.kind).toBe(
       "pendiente",
     );
-    expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "callcenter", "solo_real").source).toBeNull();
+    expect(
+      resolvePanelSource(DEFAULT_PANEL_SOURCES, "operaciones-cola", "solo_real").source,
+    ).toBeNull();
     expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "publicidad", "mixto").origin.kind).toBe(
       "demo",
     );
@@ -39,6 +41,18 @@ describe("registro de fuentes", () => {
         origin: { kind: "real" },
       });
     }
+  });
+
+  it("call center y su detalle ya se leen del backend, también en solo reales", () => {
+    expect(
+      resolvePanelSource(DEFAULT_PANEL_SOURCES, "callcenter", "solo_real", "callcenter"),
+    ).toMatchObject({
+      source: { kind: "real" },
+      origin: { kind: "real" },
+    });
+    expect(
+      resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", "solo_real", "callcenter"),
+    ).toMatchObject({ source: { kind: "real" } });
   });
 
   it("el comparativo y el detalle de canal ya se leen del backend, también en solo reales", () => {
@@ -74,13 +88,7 @@ describe("registro de fuentes", () => {
     });
 
     it("en una pestaña aún demo nunca muestra pedidos reales detrás de una cifra demo", () => {
-      for (const pestana of [
-        "canales",
-        "callcenter",
-        "operaciones",
-        "finanzas",
-        "equipo",
-      ] as const) {
+      for (const pestana of ["canales", "operaciones", "finanzas", "equipo"] as const) {
         expect(
           resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", "mixto", pestana),
         ).toMatchObject({ source: { kind: "demo" }, origin: { kind: "demo" } });
