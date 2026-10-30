@@ -114,6 +114,7 @@ export function printShippingGuide(
       <td class="addr">
         <span class="dist">${escapePrintHtml(r.order.customer.district || "-")}</span><br/>
         ${escapePrintHtml(r.order.customer.address || "-")}
+        ${r.order.delivery?.type === "AGENCY" && r.order.delivery.agency ? `<br/>Agencia: ${escapePrintHtml(r.order.delivery.agency)}` : ""}
         ${renderMapsUrl(r.order.customer.googleMapsUrl)}
       </td>
       <td class="cont">${r.contenido}</td>

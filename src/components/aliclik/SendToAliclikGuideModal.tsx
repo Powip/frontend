@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import type { OrderDeliveryDetails } from "@/interfaces/IOrder";
 import {
   Dialog,
   DialogContent,
@@ -45,6 +46,7 @@ import {
 export interface AliclikGuideOrderItem {
   id: string;
   orderNumber: string;
+  delivery?: OrderDeliveryDetails;
   customer?: {
     fullName?: string;
     district?: string;
@@ -536,6 +538,9 @@ export default function SendToAliclikGuideModal({
                                       </span>
                                     )}
                                   </p>
+                                )}
+                                {order.delivery?.type === "AGENCY" && order.delivery.agency && (
+                                  <p className="mt-1 text-sm text-blue-700 dark:text-blue-300">Agencia elegida: {order.delivery.agency}</p>
                                 )}
                               </div>
                             </div>

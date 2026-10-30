@@ -27,6 +27,14 @@ function windowFixture() {
 afterEach(() => jest.restoreAllMocks());
 
 describe("printShippingGuide: códigos confirmados y alcance de impresión", () => {
+  it("incluye la agencia aceptada del pedido sin interpretar su texto como HTML", async () => {
+    const popup = windowFixture();
+    const data: OrderDetail = { ...order(), delivery: { type: "AGENCY", department: "Ancash", province: "Huaraz", district: "Huaraz", address: "Dirección", agency: "<Shalom & Huaraz>" } };
+    const done = printShippingGuide(guide, [data]);
+    expect(popup.document().querySelector("td.addr")?.textContent).toContain("<Shalom & Huaraz>");
+    expect(popup.document().querySelector("shalom")).toBeNull();
+    popup.win.onload?.(); await done;
+  });
   it("conserva todas las series largas por producto y todos los pedidos sin cambiar el saldo", async () => {
     const popup = windowFixture();
     const normal = { ...order(), id: "order-2", orderNumber: "PED-002", items: [order().items[1]], payments: [{ amount: 100, status: "PAID" }] };

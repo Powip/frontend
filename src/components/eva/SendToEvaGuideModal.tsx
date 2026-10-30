@@ -1,5 +1,7 @@
 "use client";
 
+import type { OrderDeliveryDetails } from "@/interfaces/IOrder";
+
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Dialog,
@@ -118,6 +120,7 @@ function normalizeDistrict(value: string): string {
 export interface EvaGuideOrderItem {
   id: string;
   orderNumber: string;
+  delivery?: OrderDeliveryDetails;
   status?: string;
   customer: {
     fullName: string;
@@ -985,6 +988,9 @@ export default function SendToEvaGuideModal({
                                   <p className="text-[11px] text-slate-700 dark:text-slate-200 font-medium leading-tight">
                                     {order.customer.address}
                                   </p>
+                                )}
+                                {order.delivery?.type === "AGENCY" && order.delivery.agency && (
+                                  <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Agencia elegida: {order.delivery.agency}</p>
                                 )}
                                 <div className="flex flex-wrap gap-3">
                                   {order.customer?.district && (

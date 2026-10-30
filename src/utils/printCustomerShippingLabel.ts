@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import type { OrderDeliveryDetails } from "@/interfaces/IOrder";
 import {
   escapePrintHtml,
   getPrintableUnitCodes,
@@ -10,6 +11,7 @@ import {
 
 export interface CustomerShippingReceipt extends PrintableReceiptTracking {
   orderNumber: string;
+  delivery?: OrderDeliveryDetails;
   customer: {
     fullName: string;
     dni?: string | null;
@@ -37,7 +39,7 @@ export interface CustomerShippingCompany {
   logoUrl?: string | null;
 }
 
-/** Keep the courier label's legacy address/layout and add tracked products only. */
+/** Snapshot orders print their accepted destination; legacy orders keep the office override. */
 export function buildCustomerShippingLabelHtml(
   receipt: CustomerShippingReceipt,
   shippingGuide: CustomerShippingGuide,
@@ -49,9 +51,12 @@ export function buildCustomerShippingLabelHtml(
   const companyPhone = company?.phone || "";
   const companyLogo = company?.logoUrl;
   const courierName = shippingGuide.courierName || "COURIER";
-  const customerAddress = shippingGuide.shippingOffice
+  const customerAddress = receipt.delivery?.address ?? (shippingGuide.shippingOffice
     ? `${courierName} ${shippingGuide.shippingOffice}`
-    : receipt.customer.address || "-";
+    : receipt.customer.address || "-");
+  const destination = receipt.delivery ? {
+    province: receipt.delivery.province, city: receipt.delivery.department, district: receipt.delivery.district,
+  } : receipt.customer;
   const logoElement = companyLogo
     ? `<img src="${escapePrintHtml(companyLogo)}" alt="${escapePrintHtml(companyName)}" class="brand-logo">`
     : `<div class="brand-name">${escapePrintHtml(companyName)}</div>`;
@@ -215,12 +220,13 @@ export function buildCustomerShippingLabelHtml(
             </div>
             
             <div class="location">
-              ${escapePrintHtml(receipt.customer.province || "-")} - ${escapePrintHtml(receipt.customer.city || receipt.customer.province || "-")} - ${escapePrintHtml(receipt.customer.district || "-")}
+              ${escapePrintHtml(destination.province || "-")} - ${escapePrintHtml(destination.city || destination.province || "-")} - ${escapePrintHtml(destination.district || "-")}
             </div>
             
             <div class="address-line">
               ${escapePrintHtml(customerAddress)}
             </div>
+            ${receipt.delivery?.type === "AGENCY" && receipt.delivery.agency ? `<div class="address-line">Agencia: ${escapePrintHtml(receipt.delivery.agency)}</div>` : ""}
           </div>
 
           ${trackedProducts}

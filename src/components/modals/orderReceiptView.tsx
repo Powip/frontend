@@ -225,6 +225,18 @@ export default function OrderReceiptView({ data }: Props) {
           <span className="text-muted-foreground">Dirección: </span>
           <span className="text-black-600 font-medium">{customer.address || "-"}</span>
         </div>
+        {data.delivery && (
+          <div>
+            <span className="text-muted-foreground">Entrega: </span>
+            <span className="font-medium">{data.delivery.type === "AGENCY" ? "Retiro en agencia" : "Envío a domicilio"}</span>
+          </div>
+        )}
+        {data.delivery?.type === "AGENCY" && data.delivery.agency && (
+          <div className="col-span-full">
+            <span className="text-muted-foreground">Agencia: </span>
+            <span className="font-medium">{data.delivery.agency}</span>
+          </div>
+        )}
         <div>
           <span className="text-muted-foreground">Referencia: </span>
           <span className="text-black-600 font-medium">{customer.reference || "-"}</span>

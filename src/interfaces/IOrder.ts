@@ -116,6 +116,9 @@ export interface OrderDeliverySnapshot {
 
 export type OrderDeliveryPatch = Partial<Omit<OrderDeliverySnapshot, "version" | "type" | "zone">>;
 
+/** Destination accepted for this order, without internal delivery metadata. */
+export type OrderDeliveryDetails = Pick<OrderDeliverySnapshot, "type" | "department" | "province" | "district" | "address" | "agency">;
+
 export interface OrderCustomer {
   id: string;
   companyId: string;

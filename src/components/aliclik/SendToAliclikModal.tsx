@@ -30,7 +30,8 @@ import {
   type AliclikCourierOption,
   type AliclikCreateOrderResult,
 } from "@/services/aliclikService";
-import { updateClient } from "@/services/clients.service";
+
+import { saveAliclikDestinationCoordinates } from "@/services/orderDeliveryService";
 
 // ─── CONSTANTES ─────────────────────────────────────────
 
@@ -238,21 +239,12 @@ export default function SendToAliclikModal({
 
     setSending(true);
     try {
-      // Si faltan coordenadas y el usuario las completó, persistirlas en el cliente antes del POST
+      // Save GPS against the accepted order destination; legacy orders keep their existing client behavior.
       if (coordsMissing && overrideCoordsValid) {
-        if (!clientId) {
-          toast.error("No se pudo determinar el cliente para guardar las coordenadas");
-          setSending(false);
-          return;
-        }
         try {
-          await updateClient(clientId, {
-            companyId,
-            latitude: overrideLatNum,
-            longitude: overrideLngNum,
-          });
+          await saveAliclikDestinationCoordinates(orderId, companyId, clientId, overrideLatNum, overrideLngNum);
         } catch {
-          toast.error("Error al guardar las coordenadas del cliente");
+          toast.error("No se pudieron guardar las coordenadas de entrega del cliente. Revisa los datos del pedido y vuelve a intentar.");
           setSending(false);
           return;
         }
@@ -431,7 +423,7 @@ export default function SendToAliclikModal({
                       <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
                         <p className="text-xs font-bold text-amber-600 dark:text-amber-400 mb-2 flex items-center gap-1.5">
                           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                          Aliclik requiere coordenadas GPS del cliente
+                          Aliclik requiere coordenadas GPS del destino
                         </p>
                         <div className="grid grid-cols-2 gap-2">
                           <div className="space-y-1">
@@ -480,7 +472,7 @@ export default function SendToAliclikModal({
                           </div>
                         </div>
                         <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5">
-                          Las coordenadas se guardarán en el perfil del cliente automáticamente.
+                          Las coordenadas deben corresponder a la dirección de entrega de este pedido.
                         </p>
                       </div>
                     )}

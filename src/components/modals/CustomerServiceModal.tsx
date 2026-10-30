@@ -1386,6 +1386,15 @@ export default function CustomerServiceModal({
                         url={receipt.customer.googleMapsUrl}
                         className="col-span-full"
                       />
+                      {receipt.delivery && (
+                        <div className="col-span-full">
+                          <span className="text-muted-foreground">Entrega del pedido: </span>
+                          <span className="font-medium">{receipt.delivery.type === "AGENCY" ? "Retiro en agencia" : "Envío a domicilio"}</span>
+                          {receipt.delivery.type === "AGENCY" && receipt.delivery.agency && (
+                            <p className="mt-1 break-words"><span className="text-muted-foreground">Agencia: </span>{receipt.delivery.agency}</p>
+                          )}
+                        </div>
+                      )}
                       <div className="flex items-center gap-1">
                         <span className="text-muted-foreground">
                           Departamento:{" "}

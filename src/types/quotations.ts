@@ -1,3 +1,5 @@
+import type { OrderDeliveryDetails } from "@/interfaces/IOrder";
+
 export type QuotationStatus = "PREVENTA" | "VENCIDA" | "CONVERTIDA";
 export type QuotationPaymentType = "COMPLETO" | "ADELANTO";
 export type QuotationPaymentMethod = "YAPE_QR" | "MERCADO_PAGO" | "TRANSFERENCIA";
@@ -199,6 +201,7 @@ export interface PublicOrderTracking {
   orderNumber: string;
   status: string;
   deliveryType: string;
+  delivery?: OrderDeliveryDetails;
   createdAt: string;
   customerNotes: string | null;
   customer: {

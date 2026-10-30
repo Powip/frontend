@@ -21,11 +21,17 @@ export default function PublicQuotationTrackingDetails({
 
   const shipping = tracking.shippingInfo;
   const trackingUrl = safeTrackingUrl(shipping?.trackingUrl);
-  const location = [tracking.customer.district, tracking.customer.city, tracking.customer.province]
+  const destination = tracking.delivery ? {
+    address: tracking.delivery.address, district: tracking.delivery.district,
+    city: tracking.delivery.department, province: tracking.delivery.province,
+  } : tracking.customer;
+  const location = [destination.district, destination.city, destination.province]
     .filter(Boolean)
     .join(", ");
   const fullyPaid = tracking.totals.pendingAmount <= 0;
-  const deliveryType = tracking.deliveryType.replace(/_/g, " ").toLocaleLowerCase("es-PE");
+  const deliveryType = tracking.delivery
+    ? tracking.delivery.type === "AGENCY" ? "Retiro en agencia" : "Envío a domicilio"
+    : tracking.deliveryType.replace(/_/g, " ").toLocaleLowerCase("es-PE");
 
   return (
     <>
@@ -39,16 +45,22 @@ export default function PublicQuotationTrackingDetails({
             <dt className="text-slate-500">Cliente</dt>
             <dd className="mt-1 font-semibold">{tracking.customer.fullName}</dd>
           </div>
-          {tracking.customer.address && (
+          {destination.address && (
             <div>
               <dt className="text-slate-500">Dirección</dt>
-              <dd className="mt-1 break-words">{tracking.customer.address}</dd>
+              <dd className="mt-1 break-words">{destination.address}</dd>
             </div>
           )}
           {location && (
             <div>
               <dt className="text-slate-500">Ubicación</dt>
               <dd className="mt-1">{location}</dd>
+            </div>
+          )}
+          {tracking.delivery?.type === "AGENCY" && tracking.delivery.agency && (
+            <div>
+              <dt className="text-slate-500">Agencia elegida para este pedido</dt>
+              <dd className="mt-1 break-words">{tracking.delivery.agency}</dd>
             </div>
           )}
           <div>

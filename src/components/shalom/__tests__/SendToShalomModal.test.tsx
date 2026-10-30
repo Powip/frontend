@@ -250,6 +250,14 @@ async function renderModal(propOverrides: Partial<typeof BASE_PROPS> = {}) {
   return result;
 }
 
+it("shows the accepted agency as guidance without treating free text as a Shalom branch id", async () => {
+  const delivery = { type: "AGENCY", department: "Ancash", province: "Huaraz", district: "Huaraz", address: "Av. Nueva 456", agency: "Agencia elegida Huaraz" };
+  await renderModal({ orders: [{ ...MOCK_ORDER, delivery } as typeof MOCK_ORDER] });
+  expect(screen.getAllByText(/Agencia elegida Huaraz/).length).toBeGreaterThan(0);
+  const selects = screen.getAllByRole("combobox") as HTMLSelectElement[];
+  expect(selects.some((select) => select.value === delivery.agency)).toBe(false);
+});
+
 /**
  * Agencia de prueba que retorna axios.get.
  * lugar_over se mapea a api_name en fetchAgencies, así que el <select>

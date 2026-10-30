@@ -2,7 +2,7 @@ import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { OrderHeader } from "@/interfaces/IOrder";
+import { OrderHeader, type OrderDeliveryDetails } from "@/interfaces/IOrder";
 import { operationalStatus, receiptFinancialState } from "./orderState";
 import type { OrderStatus } from "@/interfaces/IOrder";
 import { renderReceiptCustomerNotesHtml } from "./receiptCustomerNotes";
@@ -28,6 +28,7 @@ export interface OrderReceipt extends PrintableReceiptTracking {
   callStatus?: string;
   callAttempts?: number;
   callbackAt?: string | null;
+  delivery?: OrderDeliveryDetails;
   customer: {
     id?: string;
     fullName: string;
@@ -107,6 +108,7 @@ const PRINT_STATUS_LABEL: Record<string, { label: string }> = {
 export const PRINT_DELIVERY_TYPE_LABEL: Record<string, string> = {
   DOMICILIO: "Envío a domicilio",
   RETIRO_TIENDA: "Retiro en tienda",
+  PUNTO_EXTERNO: "Retiro en agencia",
 };
 
 export async function generateQR(text: string, size = 120): Promise<string> {
@@ -348,14 +350,19 @@ async function buildOrderLabelHtml(
   const hasTrackedItems = receipt.items.some(item => item.trackingMode === "SERIAL" || item.trackingMode === "IMEI");
   const rawStatus = operationalStatus((hasTrackedItems ? receipt.status : orderHeader?.status ?? receipt.status) as OrderStatus);
   const statusInfo = PRINT_STATUS_LABEL[rawStatus] ?? { label: rawStatus };
-  const deliveryLabel =
-    PRINT_DELIVERY_TYPE_LABEL[orderHeader?.deliveryType ?? ""] ??
+  const deliveryLabel = receipt.delivery
+    ? receipt.delivery.type === "AGENCY" ? "Retiro en agencia" : "Envío a domicilio"
+    : PRINT_DELIVERY_TYPE_LABEL[orderHeader?.deliveryType ?? ""] ??
     orderHeader?.deliveryType ??
     "-";
   const paymentMethods =
     Array.from(new Set(receipt.payments.map((p) => p.paymentMethod))).join(" / ") || "-";
   const totalUnidades = receipt.items.reduce((s, it) => s + it.quantity, 0);
   const fmtShort = (d: string | Date) => format(new Date(d), "dd/MM/yy");
+  const destination = receipt.delivery ? {
+    address: receipt.delivery.address, district: receipt.delivery.district,
+    city: receipt.delivery.department, province: receipt.delivery.province,
+  } : receipt.customer;
 
   return `
     <div class="label-page" style="${pageBreakAfter ? "page-break-after: always;" : ""}">
@@ -401,13 +408,14 @@ async function buildOrderLabelHtml(
         <div class="customer-info">
           <div><b>Cliente:</b> ${escapePrintHtml(receipt.customer.fullName)}</div>
           <div><b>Tel:</b> ${escapePrintHtml(receipt.customer.phoneNumber || "-")} · <b>DNI:</b> ${escapePrintHtml(receipt.customer.dni || "-")}</div>
-          <div><b>Dir:</b> ${escapePrintHtml(receipt.customer.address || "-")}</div>
+          <div><b>Dir:</b> ${escapePrintHtml(destination.address || "-")}</div>
+          ${receipt.delivery?.type === "AGENCY" && receipt.delivery.agency ? `<div><b>Agencia:</b> ${escapePrintHtml(receipt.delivery.agency)}</div>` : ""}
           ${receipt.customer.reference ? `<div><b>Ref:</b> ${escapePrintHtml(receipt.customer.reference)}</div>` : ""}
         </div>
         <div class="location-info">
-          ${receipt.customer.district ? `<div class="district-pill">${escapePrintHtml(receipt.customer.district)}</div>` : ""}
-          <div>${escapePrintHtml(receipt.customer.city || "-")}</div>
-          <div>Prov. ${escapePrintHtml(receipt.customer.province || "-")}</div>
+          ${destination.district ? `<div class="district-pill">${escapePrintHtml(destination.district)}</div>` : ""}
+          <div>${escapePrintHtml(destination.city || "-")}</div>
+          <div>Prov. ${escapePrintHtml(destination.province || "-")}</div>
           <div>Canal: ${escapePrintHtml(receipt.salesChannel || "-")}</div>
         </div>
       </div>

@@ -55,6 +55,13 @@ jest.mock('@/services/clients.service', () => ({
   updateClient: jest.fn(),
 }));
 
+jest.mock('@/services/orderDeliveryService', () => ({
+  saveAliclikDestinationCoordinates: jest.fn(async (_orderId: string, companyId: string, clientId: string | undefined, latitude: number, longitude: number) => {
+    if (!clientId) throw new Error('Cliente requerido');
+    await require('@/services/clients.service').updateClient(clientId, { companyId, latitude, longitude });
+  }),
+}));
+
 /**
  * Mock de Radix Select → <select> nativo.
  * Permite testear valor inicial y cambios con userEvent.selectOptions.
