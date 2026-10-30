@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2, Home, Loader2, AlertTriangle } from "lucide-react";
 import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import AlmacenModal from "../modals/AlmacenModal";
@@ -31,6 +32,8 @@ const GestionAlmacenes = () => {
   const [almacenes, setAlmacenes] = useState<Inventory[]>([]);
   const [loading, setLoading] = useState(true);
   const [openModal, setOpenModal] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const deleteInFlight = useRef(false);
   const { auth, refreshInventories } = useAuth();
   const companyId = auth?.company?.id;
   const fetchAlmacenes = useCallback(async () => {
@@ -40,10 +43,9 @@ const GestionAlmacenes = () => {
     try {
       const results = await Promise.all(
         stores.map((store) =>
-          axios
+          axiosAuth
             .get(`${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/store/${store.id}`)
             .then((r) => r.data as Inventory[])
-            .catch(() => [] as Inventory[])
         )
       );
       setAlmacenes(results.flat());
@@ -60,18 +62,40 @@ const GestionAlmacenes = () => {
   }, [fetchAlmacenes]);
 
   const handleDelete = async (id: string) => {
+    if (deleteInFlight.current) return;
+    deleteInFlight.current = true;
+    setDeletingId(id);
     try {
-      await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/${id}`,
-      );
+      try {
+        await axiosAuth.delete(
+          `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/${id}`,
+        );
+      } catch (error: unknown) {
+        const message: unknown = axios.isAxiosError(error)
+          ? error.response?.data?.message
+          : undefined;
+        const detail = typeof message === "string"
+          ? message.trim()
+          : Array.isArray(message)
+            ? message.filter((item): item is string => typeof item === "string")
+              .map((item) => item.trim()).filter(Boolean).join(". ")
+            : "";
+        toast.error(detail || "No se pudo eliminar el almacén. Inténtalo nuevamente.");
+        return;
+      }
+
+      setAlmacenes((current) => current.filter((almacen) => almacen.id !== id));
       toast.success("Almacén eliminado correctamente");
-      fetchAlmacenes();
-      refreshInventories(); // Sincronizar estado global
-    } catch (error: any) {
-      console.error(error);
-      toast.error(
-        error.response?.data?.message || "Error al eliminar el almacén",
-      );
+      const refreshes = await Promise.allSettled([
+        fetchAlmacenes(),
+        refreshInventories(),
+      ]);
+      if (refreshes.some((result) => result.status === "rejected")) {
+        toast.error("El almacén se eliminó, pero no se pudo actualizar la información. Actualiza la página.");
+      }
+    } finally {
+      deleteInFlight.current = false;
+      setDeletingId(null);
     }
   };
 
@@ -130,9 +154,16 @@ const GestionAlmacenes = () => {
                       <Button
                         variant="ghost"
                         size="sm"
+                        aria-label={`Eliminar almacén ${almacen.name}`}
+                        aria-busy={deletingId === almacen.id}
+                        disabled={deletingId !== null}
                         className="text-destructive hover:text-destructive hover:bg-destructive/10"
                       >
-                        <Trash2 className="h-4 w-4" />
+                        {deletingId === almacen.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
                       </Button>
                     </AlertDialogTrigger>
                     <AlertDialogContent>
@@ -142,15 +173,17 @@ const GestionAlmacenes = () => {
                           ¿Eliminar almacén?
                         </AlertDialogTitle>
                         <AlertDialogDescription>
-                          Esta acción eliminará el almacén{" "}
-                          <strong>{almacen.name}</strong> y todo su stock
-                          asociado. Esta acción no se puede deshacer.
+                          Solo puedes eliminar <strong>{almacen.name}</strong> si
+                          está vacío y no tiene productos, movimientos, pedidos ni
+                          integraciones vinculadas. El stock y el historial de
+                          los almacenes en uso se conservan.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
                         <AlertDialogAction
                           className="bg-red-600 hover:bg-red-700"
+                          disabled={deletingId !== null}
                           onClick={() => handleDelete(almacen.id)}
                         >
                           Eliminar
