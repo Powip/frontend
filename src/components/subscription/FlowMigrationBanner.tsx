@@ -24,7 +24,7 @@ export default function FlowMigrationBanner() {
   const hasPaidDays =
     !!subscription && HAS_PLAN.has(subscription.status) && firstChargePreview(subscription.endDate, limaToday()) !== null;
   const message =
-    `Registra tu tarjeta hasta el ${formatLimaDate(access.deadline)} para seguir usando Powip.` +
+    `Registra tu tarjeta o Yape hasta el ${formatLimaDate(access.deadline)} para seguir usando Powip.` +
     (hasPaidDays ? " Hoy no te cobramos nada: el primer cobro es cuando vence lo que ya pagaste." : "");
 
   return (

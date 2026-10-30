@@ -237,7 +237,7 @@ export default function CallbackClient() {
             <Loader2 className="h-10 w-10 animate-spin text-[#4F3A96] mx-auto" aria-hidden="true" />
             <h1 className="text-xl font-bold text-gray-900">Confirmando tu pago</h1>
             <p className="text-sm text-gray-500">
-              Estamos verificando tu tarjeta y activando tu suscripción.
+              Estamos verificando tu medio de pago y activando tu suscripción.
             </p>
           </>
         )}

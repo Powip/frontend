@@ -124,6 +124,8 @@ export interface StoredOnboardingState {
   cardToken: string;
   /** Older saved checkouts may only contain the card token. */
   subscriptionId?: string;
+  /** Página de Flow del mismo checkout: ofrece tarjeta y Yape recurrente (el widget, solo tarjeta). */
+  redirectUrl?: string;
   /** Checkout de la migración a Flow (FEAT-25). */
   migrate?: true;
 }

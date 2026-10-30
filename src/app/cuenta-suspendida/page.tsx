@@ -36,7 +36,7 @@ export default function CuentaSuspendidaPage() {
         <CardHeader>
           <CardTitle className="text-xl font-bold">Cuenta suspendida</CardTitle>
           <CardDescription>
-            {`La cuenta de ${companyName || "tu empresa"} está suspendida. Para volver a usar Powip, el dueño tiene que registrar su tarjeta.`}
+            {`La cuenta de ${companyName || "tu empresa"} está suspendida. Para volver a usar Powip, el dueño tiene que registrar su tarjeta o Yape.`}
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">

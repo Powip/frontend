@@ -39,7 +39,7 @@ it("al dueño con días pagados le avisa la fecha y que hoy no se le cobra", () 
 
   expect(
     screen.getByText(
-      "Registra tu tarjeta hasta el viernes 23/10 para seguir usando Powip. Hoy no te cobramos nada: el primer cobro es cuando vence lo que ya pagaste.",
+      "Registra tu tarjeta o Yape hasta el viernes 23/10 para seguir usando Powip. Hoy no te cobramos nada: el primer cobro es cuando vence lo que ya pagaste.",
     ),
   ).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Pasarme a Flow" })).toHaveAttribute("href", "/pasate-a-flow");
@@ -48,7 +48,7 @@ it("al dueño con días pagados le avisa la fecha y que hoy no se le cobra", () 
 it("al dueño vencido solo le avisa la fecha", () => {
   renderWith({ access: aviso, endDate: "2026-10-18" });
 
-  expect(screen.getByText("Registra tu tarjeta hasta el viernes 23/10 para seguir usando Powip.")).toBeInTheDocument();
+  expect(screen.getByText("Registra tu tarjeta o Yape hasta el viernes 23/10 para seguir usando Powip.")).toBeInTheDocument();
   expect(screen.queryByText(/Hoy no te cobramos nada/)).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Pasarme a Flow" })).toBeInTheDocument();
 });
