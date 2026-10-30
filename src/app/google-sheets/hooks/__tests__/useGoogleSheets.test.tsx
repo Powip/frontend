@@ -99,7 +99,7 @@ describe('useGoogleSheets', () => {
   });
 
   it('selectFile guarda y pasa a CONFIGURE', async () => {
-    api.getConfig.mockResolvedValue(baseConfig);
+    api.getConfig.mockResolvedValueOnce(baseConfig).mockResolvedValue(withFile);
     api.saveSheet.mockResolvedValue();
     const { result } = await setup();
     await act(async () => {
@@ -157,5 +157,49 @@ describe('useGoogleSheets', () => {
     });
     expect(result.current.step).toBe('REVIEW');
     expect(result.current.review).toEqual(review);
+  });
+
+  it('cambiar de archivo en READY vuelve a CONFIGURE según el servidor', async () => {
+    api.getConfig
+      .mockResolvedValueOnce({ ...withFile, status: 'READY' })
+      .mockResolvedValue({ ...baseConfig, file: { id: 'f2', name: 'Otra' } });
+    api.saveSheet.mockResolvedValue();
+    const { result } = await setup();
+    expect(result.current.step).toBe('STATUS');
+    await act(async () => {
+      await result.current.selectFile({ id: 'f2', name: 'Otra' });
+    });
+    expect(result.current.step).toBe('CONFIGURE');
+  });
+
+  it('el polling sigue tras una consulta fallida mientras corre la sync', async () => {
+    jest.useFakeTimers();
+    try {
+      const running = { ...withFile, status: 'READY' as const, running: true };
+      api.getConfig
+        .mockResolvedValueOnce(running)
+        .mockRejectedValueOnce(new Error('red'))
+        .mockResolvedValueOnce(running)
+        .mockResolvedValue({ ...running, running: false });
+      const { result } = renderHook(() => useGoogleSheets());
+      await act(async () => {});
+      expect(api.getConfig).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(3000);
+      });
+      expect(api.getConfig).toHaveBeenCalledTimes(2);
+      expect(result.current.error).toBeTruthy();
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(3000);
+      });
+      expect(api.getConfig).toHaveBeenCalledTimes(3);
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(3000);
+      });
+      expect(api.getConfig).toHaveBeenCalledTimes(4);
+      expect(result.current.config?.running).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

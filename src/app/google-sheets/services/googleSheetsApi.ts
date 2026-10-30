@@ -10,7 +10,7 @@ import type {
   SyncIssue,
 } from '../types';
 
-const API_INTEGRATIONS = process.env.NEXT_PUBLIC_API_INTEGRATIONS || 'http://localhost:3004';
+const API_INTEGRATIONS = process.env.NEXT_PUBLIC_API_INTEGRATIONS || 'http://localhost:3007';
 const BASE = `${API_INTEGRATIONS}/integrations/google`;
 
 /**

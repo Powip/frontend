@@ -88,12 +88,17 @@ export const useGoogleSheets = () => {
   }, [refresh]);
 
   // Mientras corre una sincronización, se vuelve a consultar la config.
+  // pollTick re-arma el temporizador aunque una consulta falle.
   const running = config?.running === true;
+  const [pollTick, setPollTick] = useState(0);
   useEffect(() => {
     if (!running) return;
-    const timer = setTimeout(refresh, POLL_MS);
+    const timer = setTimeout(async () => {
+      await refresh();
+      setPollTick((t) => t + 1);
+    }, POLL_MS);
     return () => clearTimeout(timer);
-  }, [running, config, refresh]);
+  }, [running, pollTick, refresh]);
 
   /** Ejecuta una acción mostrando loading y traduciendo errores. */
   const run = useCallback(async <T,>(action: () => Promise<T>): Promise<T | undefined> => {
@@ -122,10 +127,11 @@ export const useGoogleSheets = () => {
     (file: GoogleFile) =>
       run(async () => {
         await googleSheetsApi.saveSheet(file.id, file.name);
-        setConfig((prev) => (prev ? { ...prev, file } : prev));
         setLocalStep(null);
+        // Al cambiar de archivo el servidor reinicia el estado: manda el servidor.
+        await refresh();
       }),
-    [run],
+    [run, refresh],
   );
 
   const goConfigure = useCallback(() => setLocalStep(null), []);
