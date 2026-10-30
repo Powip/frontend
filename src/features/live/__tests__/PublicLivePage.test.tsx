@@ -152,7 +152,7 @@ test("missing shipping configuration explains the unavailable checkout instead o
   fireEvent.click(screen.getByRole("button", { name: "Comprar ahora" }));
   const dialog = within(await screen.findByRole("dialog"));
   expect(dialog.getAllByText(/habilitar una modalidad de entrega/).length).toBeGreaterThan(0);
-  expect(dialog.getByRole("button", { name: "Ver total con envío" })).toBeDisabled();
+  expect(dialog.getByRole("button", { name: "Continuar" })).toBeEnabled();
   expect(quoteLivePurchase).not.toHaveBeenCalled();
 });
 test("retries a failed reserve with same idempotency key", async () => {
@@ -236,8 +236,8 @@ async function completeCheckoutDetails(dialog: ReturnType<typeof within>) {
 async function openQuotedCheckout() {
   const dialog = await openCheckoutForm();
   await completeCheckoutDetails(dialog);
-  fireEvent.click(dialog.getByRole("button", { name: "Ver total con envío" }));
-  await dialog.findByRole("button", { name: /Ver instrucciones Yape/ });
+  fireEvent.click(dialog.getByRole("button", { name: "Continuar" }));
+  await dialog.findByRole("button", { name: /Continuar con Yape/ });
   return dialog;
 }
 
@@ -250,11 +250,11 @@ test("invoice accepts only the server's 3–150 character business name contract
   expect(business).toHaveAttribute("minLength", "3");
   expect(business).toHaveAttribute("maxLength", "150");
   fireEvent.change(business, { target: { value: "AB" } });
-  expect(dialog.getByRole("button", { name: "Ver total con envío" })).toBeDisabled();
+  expect(dialog.getByRole("button", { name: "Continuar" })).toBeEnabled();
   fireEvent.change(business, { target: { value: "A".repeat(151) } });
-  expect(dialog.getByRole("button", { name: "Ver total con envío" })).toBeDisabled();
+  expect(dialog.getByRole("button", { name: "Continuar" })).toBeEnabled();
   fireEvent.change(business, { target: { value: "Empresa de prueba" } });
-  expect(dialog.getByRole("button", { name: "Ver total con envío" })).toBeEnabled();
+  expect(dialog.getByRole("button", { name: "Continuar" })).toBeEnabled();
 });
 
 test("customer conflict stops before checkout and shows a safe contact-the-business message", async () => {
@@ -269,7 +269,7 @@ test("customer conflict stops before checkout and shows a safe contact-the-busin
       },
     }),
   );
-  fireEvent.click(dialog.getByRole("button", { name: "Ver total con envío" }));
+  fireEvent.click(dialog.getByRole("button", { name: "Continuar" }));
   expect(await dialog.findByRole("alert")).toHaveTextContent(/Contacta al negocio antes de pagar/);
   expect(screen.queryByText("private server detail")).not.toBeInTheDocument();
   expect(checkoutLivePurchase).not.toHaveBeenCalled();
@@ -278,7 +278,7 @@ test("customer conflict stops before checkout and shows a safe contact-the-busin
 test("checkout sends the accepted quote and a duplicate click does not start another payment", async () => {
   (checkoutLivePurchase as jest.Mock).mockImplementation(() => new Promise(() => {}));
   const dialog = await openQuotedCheckout();
-  const confirm = dialog.getByRole("button", { name: /Ver instrucciones Yape/ });
+  const confirm = dialog.getByRole("button", { name: /Continuar con Yape/ });
   fireEvent.click(confirm);
   fireEvent.click(confirm);
   expect(checkoutLivePurchase).toHaveBeenCalledTimes(1);
@@ -314,11 +314,11 @@ test.each(["PRICE_CHANGED", "QUOTE_EXPIRED", "QUOTE_MISMATCH"])(
       total: 30,
     };
     (quoteLivePurchase as jest.Mock).mockResolvedValue(updated);
-    fireEvent.click(dialog.getByRole("button", { name: /Ver instrucciones Yape/ }));
+    fireEvent.click(dialog.getByRole("button", { name: /Continuar con Yape/ }));
     await dialog.findByText(/Revisa el total actualizado y vuelve a confirmar/);
     expect(checkoutLivePurchase).toHaveBeenCalledTimes(1);
     expect(quoteLivePurchase).toHaveBeenCalledTimes(2);
-    const confirm = dialog.getByRole("button", { name: /Ver instrucciones Yape/ });
+    const confirm = dialog.getByRole("button", { name: /Continuar con Yape/ });
     expect(confirm).toHaveTextContent("30.00");
     fireEvent.click(confirm);
     await waitFor(() => expect(checkoutLivePurchase).toHaveBeenCalledTimes(2));
@@ -329,6 +329,7 @@ test.each(["PRICE_CHANGED", "QUOTE_EXPIRED", "QUOTE_MISMATCH"])(
 
 test("an unconfigured shipping price blocks checkout and shows the server explanation", async () => {
   const dialog = await openQuotedCheckout();
+  fireEvent.click(dialog.getByRole("button", { name: "Modificar entrega" }));
   fireEvent.change(dialog.getByLabelText("Dirección"), { target: { value: "Otra dirección 456" } });
   (quoteLivePurchase as jest.Mock).mockRejectedValue({
     isAxiosError: true,
@@ -340,42 +341,43 @@ test("an unconfigured shipping price blocks checkout and shows the server explan
       },
     },
   });
-  fireEvent.click(dialog.getByRole("button", { name: "Ver total con envío" }));
+  fireEvent.click(dialog.getByRole("button", { name: "Continuar" }));
   expect(
     await dialog.findByText("El negocio aún no configuró el envío a domicilio."),
   ).toBeInTheDocument();
-  expect(dialog.queryByRole("button", { name: /Ver instrucciones Yape/ })).not.toBeInTheDocument();
+  expect(dialog.queryByRole("button", { name: /Continuar con Yape/ })).not.toBeInTheDocument();
   expect(checkoutLivePurchase).not.toHaveBeenCalled();
 });
 
 test("quote requires a selected hierarchy, a real address and a valid DNI before any payment starts", async () => {
   const dialog = await openCheckoutForm();
-  const calculate = dialog.getByRole("button", { name: "Ver total con envío" });
-  expect(calculate).toBeDisabled();
+  const calculate = dialog.getByRole("button", { name: "Continuar" });
+  expect(calculate).toBeEnabled();
   expect(dialog.getByRole("combobox", { name: "Departamento", exact: true })).toHaveValue("");
   expect(dialog.getAllByRole("combobox")[1]).toBeDisabled();
   expect(dialog.getAllByRole("combobox")[2]).toBeDisabled();
   await completeCheckoutDetails(dialog);
   for (const dni of ["", "12345678", "87654321", "00000000", "11111111", "4678912"]) {
     fireEvent.change(dialog.getByLabelText(/^DNI del comprador/), { target: { value: dni } });
-    expect(calculate).toBeDisabled();
+    expect(calculate).toBeEnabled();
     fireEvent.click(calculate);
   }
   fireEvent.change(dialog.getByLabelText(/^DNI del comprador/), { target: { value: "46789123" } });
   fireEvent.change(dialog.getByLabelText("Nombre"), { target: { value: "Al" } });
-  expect(calculate).toBeDisabled();
+  expect(calculate).toBeEnabled();
   expect(quoteLivePurchase).not.toHaveBeenCalled();
   expect(checkoutLivePurchase).not.toHaveBeenCalled();
 });
 
 test("changing a department clears province and district and invalidates the accepted quote", async () => {
   const dialog = await openQuotedCheckout();
+  fireEvent.click(dialog.getByRole("button", { name: "Modificar entrega" }));
   await selectLocation(dialog, 0, "Cusco");
   expect(dialog.getByRole("combobox", { name: "Provincia", exact: true })).toHaveValue("");
   expect(dialog.getByRole("combobox", { name: "Distrito", exact: true })).toHaveValue("");
   expect(dialog.getAllByRole("combobox")[2]).toBeDisabled();
-  expect(dialog.queryByRole("button", { name: /Ver instrucciones Yape/ })).not.toBeInTheDocument();
-  expect(dialog.getByRole("button", { name: "Ver total con envío" })).toBeDisabled();
+  expect(dialog.queryByRole("button", { name: /Continuar con Yape/ })).not.toBeInTheDocument();
+  expect(dialog.getByRole("button", { name: "Continuar" })).toBeEnabled();
   expect(checkoutLivePurchase).not.toHaveBeenCalled();
 });
 
@@ -383,18 +385,18 @@ test("agency delivery requires its branch name and street address and preserves 
   const dialog = await openCheckoutForm({ agencyShipping: 11 });
   await completeCheckoutDetails(dialog);
   fireEvent.click(dialog.getByRole("radio", { name: "Agencia", exact: true }));
-  const calculate = dialog.getByRole("button", { name: "Ver total con envío" });
-  expect(calculate).toBeDisabled();
+  const calculate = dialog.getByRole("button", { name: "Continuar" });
+  expect(calculate).toBeEnabled();
   fireEvent.change(dialog.getByLabelText("Agencia y sucursal"), {
     target: { value: "Shalom Cayma" },
   });
   fireEvent.change(dialog.getByLabelText("Dirección de la agencia"), { target: { value: "" } });
-  expect(calculate).toBeDisabled();
+  expect(calculate).toBeEnabled();
   fireEvent.change(dialog.getByLabelText("Dirección de la agencia"), {
     target: { value: "Av. Ejército 456" },
   });
   fireEvent.click(calculate);
-  await dialog.findByRole("button", { name: /Ver instrucciones Yape/ });
+  await dialog.findByRole("button", { name: /Continuar con Yape/ });
   expect((quoteLivePurchase as jest.Mock).mock.calls[0][2].delivery).toEqual({
     type: "AGENCY",
     department: "Arequipa",
@@ -409,14 +411,14 @@ test("factura requires RUC and business name instead of omitting the buyer docum
   const dialog = await openCheckoutForm();
   await completeCheckoutDetails(dialog);
   fireEvent.click(dialog.getByRole("radio", { name: "Factura (RUC)" }));
-  const calculate = dialog.getByRole("button", { name: "Ver total con envío" });
-  expect(calculate).toBeDisabled();
+  const calculate = dialog.getByRole("button", { name: "Continuar" });
+  expect(calculate).toBeEnabled();
   fireEvent.change(dialog.getByLabelText("RUC"), { target: { value: "20654321987" } });
   fireEvent.change(dialog.getByLabelText("Razón social"), {
     target: { value: "Negocio de prueba SAC" },
   });
   fireEvent.click(calculate);
-  await dialog.findByRole("button", { name: /Ver instrucciones Yape/ });
+  await dialog.findByRole("button", { name: /Continuar con Yape/ });
   expect((quoteLivePurchase as jest.Mock).mock.calls[0][2].receipt).toEqual({
     type: "FACTURA",
     ruc: "20654321987",

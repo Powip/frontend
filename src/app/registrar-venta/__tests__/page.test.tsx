@@ -611,6 +611,45 @@ function mockEditableOrder(orderId = "order-session", client = FOUND_CLIENT) {
 }
 
 describe("RegistrarVentaPage — sesión durante la edición", () => {
+  it.each([
+    { name: "home", type: "HOME", deliveryType: "DOMICILIO", agency: null, replaceClient: false },
+    { name: "agency", type: "AGENCY", deliveryType: "PUNTO_EXTERNO", agency: "Shalom Lima", replaceClient: false },
+    { name: "replacement customer", type: "HOME", deliveryType: "DOMICILIO", agency: null, replaceClient: true },
+  ])("saves a Live $name order destination without patching its shared client", async ({ type, deliveryType, agency, replaceClient }) => {
+    mockEditableOrder("order-delivery");
+    const originalGet = mockedAxiosAuth.get.getMockImplementation();
+    mockedAxiosAuth.get.mockImplementation(async (url: string) => {
+      const response = await originalGet?.(url);
+      if (!url.includes("/order-header/manual/order-delivery")) return response;
+      return { data: { ...response?.data, deliveryType, deliverySnapshot: {
+        version: 1, type, department: "Lima", province: "Lima", district: FOUND_CLIENT.district,
+        address: FOUND_CLIENT.address, agency, reference: null, latitude: null, longitude: null,
+        googleMapsUrl: null, zone: null,
+      } } };
+    });
+    mockedAxiosAuth.put.mockResolvedValue({ data: {} });
+    renderPage();
+    const address = await screen.findByPlaceholderText("Dirección exacta");
+    await waitFor(() => expect(address).toHaveValue(FOUND_CLIENT.address));
+    if (replaceClient) {
+      mockFetchClientByPhone.mockResolvedValue({ ...FOUND_CLIENT, id: "replacement-client", phoneNumber: "987654322" });
+      const search = screen.getByPlaceholderText("Número de teléfono");
+      fireEvent.change(search, { target: { value: "987654322" } });
+      fireEvent.keyDown(search, { key: "Enter" });
+      await screen.findByText(/cliente encontrado/i);
+      await waitFor(() => expect(mockFetchClientByPhone).toHaveBeenCalledWith("company-1", "987654322"));
+    } else fireEvent.change(address, { target: { value: "Av. Solo este pedido 789" } });
+    if (type === "AGENCY") fireEvent.change(screen.getByLabelText("Agencia y sucursal de este pedido"), { target: { value: "Shalom Nueva Sucursal" } });
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
+    await waitFor(() => expect(mockedAxiosAuth.put).toHaveBeenCalled());
+    expect(mockUpdateClient).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.put.mock.calls[0][1]).toMatchObject({
+      customerId: replaceClient ? "replacement-client" : FOUND_CLIENT.id,
+      delivery: { address: replaceClient ? FOUND_CLIENT.address : "Av. Solo este pedido 789", ...(type === "AGENCY" ? { agency: "Shalom Nueva Sucursal" } : {}) },
+    });
+    expect(FOUND_CLIENT.address).toBe("Av. Test 123");
+  });
+
   it("conserva precio y fecha sin recargar el pedido cuando se renueva el token", async () => {
     mockEditableOrder();
     mockedAxiosAuth.put.mockResolvedValue({ data: {} });

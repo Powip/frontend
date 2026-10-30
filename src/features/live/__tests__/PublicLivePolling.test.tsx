@@ -111,8 +111,8 @@ test("pauses public polling for checkout, retains its draft on reopen and refres
   fireEvent.click(screen.getByRole("button", { name: "Comprar ahora" }));
   dialog = within(await screen.findByRole("dialog"));
   expect(dialog.getByLabelText("Dirección")).toHaveValue("Av. Borrador 123");
-  expect(dialog.getByRole("button", { name: "Ver total con envío" })).toBeDisabled();
-  expect(dialog.queryByRole("button", { name: /Ver instrucciones Yape/ })).not.toBeInTheDocument();
+  expect(dialog.getByRole("button", { name: "Continuar" })).toBeEnabled();
+  expect(dialog.queryByRole("button", { name: /Continuar con Yape/ })).not.toBeInTheDocument();
 });
 
 test("a successful background read does not erase a reservation error", async () => {

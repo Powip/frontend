@@ -1,4 +1,4 @@
-import { act, configure, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import LiveManualPaymentDialog from "../LiveManualPaymentDialog";
 import LivePaymentSettings from "../LivePaymentSettings";
 import LiveYapeReviews from "../LiveYapeReviews";
@@ -86,6 +86,68 @@ beforeEach(() => {
   (getLiveYapeConfig as jest.Mock).mockResolvedValue({
     config: { enabled: false, phone: "", holder: "", qrUrl: null, reviewHours: 24 },
   });
+});
+
+test("reopening an owned payment shows step three and its accepted destination and receipt", async () => {
+  const owned: LiveCheckoutSnapshot = {
+    ...snapshot,
+    delivery: {
+      type: "AGENCY",
+      department: "Lima",
+      province: "Lima",
+      district: "Lima",
+      address: "Av. Destino de esta compra 123",
+      agency: "Shalom Centro",
+    },
+    receipt: { type: "BOLETA", dni: "71829364" },
+    quote: {
+      quoteId: id,
+      expiresAt: "2026-10-21T12:00:00Z",
+      subtotal: 69,
+      shipping: 8,
+      total: 77,
+      items: [{ variantId: "variant", name: "Pantalón", sku: "PAN-L", quantity: 1, unitPrice: 69 }],
+    },
+  };
+  (getLiveCheckoutSnapshot as jest.Mock).mockResolvedValue(owned);
+  render(
+    <LiveManualPaymentDialog
+      storeId={id}
+      visitor="owner"
+      checkoutId={id}
+      onClose={jest.fn()}
+      onUpdated={jest.fn()}
+    />,
+  );
+  await screen.findByText("Negocio de prueba");
+  const steps = within(screen.getByRole("navigation", { name: "Pasos de compra" }));
+  expect(steps.getByText("Pagar con Yape").closest("li")).toHaveAttribute("aria-current", "step");
+  fireEvent.click(screen.getByText("Resumen de tu compra"));
+  expect(screen.getByText("Av. Destino de esta compra 123")).toBeVisible();
+  expect(screen.getByText("Shalom Centro")).toBeVisible();
+  expect(screen.getByText("Boleta · DNI 71829364")).toBeVisible();
+  expect(screen.getByText("1 × Pantalón")).toBeVisible();
+  expect(screen.queryByRole("button", { name: /Modificar/ })).not.toBeInTheDocument();
+  expect(uploadLiveYapeProof).not.toHaveBeenCalled();
+});
+
+test("legacy owned snapshots keep payment usable without inventing delivery or receipt data", async () => {
+  render(
+    <LiveManualPaymentDialog
+      storeId={id}
+      visitor="owner"
+      checkoutId={id}
+      onClose={jest.fn()}
+      onUpdated={jest.fn()}
+    />,
+  );
+  await screen.findByText("Negocio de prueba");
+  fireEvent.click(screen.getByText("Resumen de tu compra"));
+  expect(screen.queryByRole("region", { name: "Entrega de esta compra" })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("region", { name: "Comprobante de esta compra" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Número de operación Yape")).toBeEnabled();
 });
 
 test("proof submission remains under review and does not confirm delivery", async () => {
