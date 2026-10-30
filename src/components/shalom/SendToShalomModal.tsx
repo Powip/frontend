@@ -38,6 +38,7 @@ import { printShippingGuide } from "@/utils/printShippingGuide";
 import { printOrderLabelsBatch, type OrderReceipt } from "@/utils/printOrderLabel";
 import { saleReceiptUrl, requiresAuthenticatedSaleMutation } from "@/services/saleTrackingService";
 import type { ShippingGuide } from "@/components/modals/GuideDetailsModal";
+import ShalomShippingLabelsModal from "@/components/modals/ShalomShippingLabelsModal";
 import { buildWhatsAppUrl } from "@/utils/whatsapp/build-whatsapp-url";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 
@@ -111,12 +112,19 @@ interface ShipmentEntry {
 }
 
 interface ShalomRegisteredShipment {
+  orderId?: string;
+  success?: boolean;
   trackingNumber?: string;
   guideNumber?: string;
   numero_guia?: string;
   recipientName?: string;
   shalomChangedToAereo?: boolean;
   aereoVerificado?: boolean;
+}
+
+interface ShalomShipmentTracking {
+  orderNumber?: string;
+  orderCode?: string;
 }
 
 interface ShalomShipmentError {
@@ -356,6 +364,8 @@ export default function SendToShalomModal({
   } | null>(null);
 
   const [registeredShipments, setRegisteredShipments] = useState<ShalomRegisteredShipment[]>([]);
+  const [registeredTrackingData, setRegisteredTrackingData] = useState<Record<string, ShalomShipmentTracking>>({});
+  const [shalomLabelsOpen, setShalomLabelsOpen] = useState(false);
   const [aereoChangedShipments, setAereoChangedShipments] = useState<ShalomRegisteredShipment[]>([]);
   const [aereoUnverifiedShipments, setAereoUnverifiedShipments] = useState<ShalomRegisteredShipment[]>([]);
 
@@ -436,6 +446,8 @@ export default function SendToShalomModal({
     setIsSuccess(false);
     setSuccessSummary(null);
     setRegisteredShipments([]);
+    setRegisteredTrackingData({});
+    setShalomLabelsOpen(false);
     setAereoChangedShipments([]);
     setAereoUnverifiedShipments([]);
     setTotalQuoted(null);
@@ -678,6 +690,7 @@ export default function SendToShalomModal({
 
       const rawResults: ShalomRegisteredShipment[] = res.data.data || [];
       setRegisteredShipments(rawResults);
+      setRegisteredTrackingData(res.data.trackingData || {});
 
       const changedToAereo = rawResults.filter(
         (r) => r.shalomChangedToAereo === true,
@@ -812,11 +825,18 @@ export default function SendToShalomModal({
     return issues;
   }, [originAgency, globalSecurityCode, orders, shipmentsData]);
 
-  // Compartido entre "Imprimir etiquetas" y "Imprimir guía": excluye los
-  // pedidos que fallaron el envío a Shalom (identificados por nombre, único
-  // dato que trae el resumen de errores) del documento impreso.
-  const getSuccessfulOrders = () =>
-    successSummary?.failed === 0
+  // Compartido por los documentos de despacho y los rótulos Shalom:
+  // incluye únicamente los pedidos que se registraron correctamente.
+  const getSuccessfulOrders = () => {
+    // Current responses identify each successful shipment by the Powip order ID.
+    // Names are only a fallback for older responses; recipients can share a name.
+    if (registeredShipments.some((shipment) => shipment.orderId)) {
+      const successfulIds = new Set(registeredShipments
+        .filter((shipment) => shipment.success === true)
+        .map((shipment) => shipment.orderId));
+      return orders.filter((order) => successfulIds.has(order.id));
+    }
+    return successSummary?.failed === 0
       ? orders
       : orders.filter((o) => {
           const failedNames = (successSummary?.errors || []).map(
@@ -824,6 +844,16 @@ export default function SendToShalomModal({
           );
           return !failedNames.includes(o.customer?.fullName);
         });
+  };
+
+  const shalomLabelOrders = getSuccessfulOrders().map((order) => ({
+    ...order,
+    courier: "Shalom",
+    externalTrackingNumber: registeredTrackingData[order.id]?.orderNumber ||
+      order.externalTrackingNumber || order.external_tracking_number,
+    shippingCode: registeredTrackingData[order.id]?.orderCode ||
+      order.shippingCode || order.shipping_code,
+  }));
 
   const handlePrintGuideDeSalida = async () => {
     const successfulOrders = getSuccessfulOrders();
@@ -977,6 +1007,7 @@ export default function SendToShalomModal({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-6xl max-h-[90vh] p-0 bg-white dark:bg-slate-900 overflow-visible">
         {/* Wrapper interno que maneja el layout — DialogContent mantiene su comportamiento nativo de Radix UI */}
@@ -1096,28 +1127,34 @@ export default function SendToShalomModal({
                           Guías registradas en Shalom:
                         </p>
                         <div className="space-y-1 max-h-32 overflow-y-auto">
-                          {registeredShipments.map((s, i: number) => (
-                            <div key={i} className="flex justify-between items-center gap-2 text-xs py-0.5 border-b border-green-100 dark:border-green-900 last:border-0">
-                              <span className="text-green-800 dark:text-green-300 truncate pr-2">
-                                {s.recipientName || orders[i]?.customer?.fullName || `Pedido ${i + 1}`}
-                              </span>
-                              <div className="flex items-center gap-1.5 shrink-0">
-                                <span className="font-mono font-bold text-green-700 dark:text-green-400">
-                                  {s.trackingNumber || s.guideNumber || s.numero_guia || "—"}
+                          {registeredShipments.map((s, i: number) => {
+                            const registeredOrder = s.orderId
+                              ? orders.find((order) => order.id === s.orderId)
+                              : orders[i];
+                            const tracking = s.orderId ? registeredTrackingData[s.orderId] : undefined;
+                            return (
+                              <div key={s.orderId || i} className="flex justify-between items-center gap-2 text-xs py-0.5 border-b border-green-100 dark:border-green-900 last:border-0">
+                                <span className="text-green-800 dark:text-green-300 truncate pr-2">
+                                  {s.recipientName || registeredOrder?.customer?.fullName || `Pedido ${i + 1}`}
                                 </span>
-                                {orders[i] && (
-                                  <button
-                                    type="button"
-                                    title="Enviar seguimiento por WhatsApp"
-                                    onClick={() => handleShareTrackingWhatsApp(orders[i])}
-                                    className="text-[#25D366] hover:text-[#1EBE5A] shrink-0"
-                                  >
-                                    <WhatsAppIcon className="h-3.5 w-3.5" />
-                                  </button>
-                                )}
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="font-mono font-bold text-green-700 dark:text-green-400">
+                                    {tracking?.orderNumber || s.trackingNumber || s.guideNumber || s.numero_guia || "—"}
+                                  </span>
+                                  {registeredOrder && (
+                                    <button
+                                      type="button"
+                                      title="Enviar seguimiento por WhatsApp"
+                                      onClick={() => handleShareTrackingWhatsApp(registeredOrder)}
+                                      className="text-[#25D366] hover:text-[#1EBE5A] shrink-0"
+                                    >
+                                      <WhatsAppIcon className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
@@ -1131,7 +1168,7 @@ export default function SendToShalomModal({
                     </p>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex flex-col sm:flex-row sm:flex-wrap justify-center gap-3">
                     <Button
                       onClick={handlePrintLabels}
                       disabled={printingLabels}
@@ -1139,12 +1176,21 @@ export default function SendToShalomModal({
                       className="gap-2 h-12 px-8 font-bold border-slate-300 dark:border-slate-600 dark:text-slate-200"
                     >
                       <Printer className="h-4 w-4" />
-                      Imprimir etiquetas
+                      Imprimir etiquetas de despacho
                       {successSummary && successSummary.successful > 0 && (
                         <span className="ml-1 text-xs text-muted-foreground">
                           ({successSummary.successful})
                         </span>
                       )}
+                    </Button>
+                    <Button
+                      onClick={() => setShalomLabelsOpen(true)}
+                      disabled={openedPrintOwner.current !== printOwnerKey || !auth?.accessToken || companyId !== auth?.company?.id || !shalomLabelOrders.length}
+                      variant="outline"
+                      className="gap-2 h-12 px-8 font-bold border-slate-300 dark:border-slate-600 dark:text-slate-200"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Etiqueta de envío Shalom
                     </Button>
                     <Button
                       onClick={handlePrintGuideDeSalida}
@@ -1685,5 +1731,11 @@ export default function SendToShalomModal({
         {/* fin relative wrapper */}
       </DialogContent>
     </Dialog>
+    <ShalomShippingLabelsModal
+      open={open && shalomLabelsOpen && companyId === auth?.company?.id && openedPrintOwner.current === printOwnerKey}
+      onClose={() => setShalomLabelsOpen(false)}
+      orders={shalomLabelOrders}
+    />
+    </>
   );
 }

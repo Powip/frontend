@@ -21,6 +21,12 @@ jest.mock("@/components/modals/PaymentVerificationModal", () => ({ __esModule: t
 jest.mock("@/components/shalom/SendToShalomModal", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/aliclik/SendToAliclikGuideModal", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/eva/SendToEvaGuideModal", () => ({ __esModule: true, default: () => null }));
+jest.mock("@/components/modals/ShalomShippingLabelsModal", () => ({
+  __esModule: true,
+  default: ({ open, orders }: { open: boolean; orders: unknown[] }) => open
+    ? <div data-testid="shalom-label-orders">{JSON.stringify(orders)}</div>
+    : null,
+}));
 jest.mock("@/utils/printOrderLabel", () => ({ generateQR: jest.fn().mockResolvedValue("data:image/png;base64,qr"), generateBarcode: () => "" }));
 jest.mock("@/utils/printShippingGuide", () => ({ printShippingGuide: jest.fn().mockResolvedValue(undefined) }));
 
@@ -37,8 +43,8 @@ function setAuth(auth: ReturnType<typeof session> | null) {
   jest.mocked(useAuth).mockReturnValue({ auth } as ReturnType<typeof useAuth>);
 }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-function setup(data = receipt()) {
-  jest.mocked(axios.get).mockImplementation(async (url) => ({ data: String(url).includes("shipping-guides") ? guide : data }));
+function setup(data = receipt(), guideData = guide) {
+  jest.mocked(axios.get).mockImplementation(async (url) => ({ data: String(url).includes("shipping-guides") ? guideData : data }));
   return render(<GuideDetailsModal open guideId="guide-1" onClose={jest.fn()} />);
 }
 function popup() {
@@ -180,5 +186,54 @@ describe("GuideDetailsModal: lectura e impresión con IMEI/series", () => {
     await act(async () => lateLoad?.());
     expect(print.win.close).toHaveBeenCalled();
     expect(print.win.print).not.toHaveBeenCalled();
+  });
+});
+
+describe("GuideDetailsModal: etiqueta oficial de envío Shalom", () => {
+  it.each(["Shalom", " shalom ", "SHALOM"])("abre el documento oficial para courier %s y conserva la etiqueta de despacho", async courierName => {
+    setup({ ...receipt(), externalTrackingNumber: "101818469", shippingCode: "WJPH" }, { ...guide, courierName });
+    fireEvent.click(await screen.findByRole("button", { name: "Etiqueta de envío Shalom" }));
+    expect(JSON.parse(screen.getByTestId("shalom-label-orders").textContent!)).toEqual([
+      expect.objectContaining({ id: "order-1", courier: "Shalom", externalTrackingNumber: "101818469", shippingCode: "WJPH" }),
+    ]);
+    expect(screen.getByRole("button", { name: "Imprimir etiqueta de despacho" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Imprimir etiqueta de envío" })).not.toBeInTheDocument();
+    expect(generateQR).not.toHaveBeenCalled();
+    expect(printShippingGuide).not.toHaveBeenCalled();
+  });
+
+  it("pasa ambos pedidos por ID y normaliza tracking camelCase y snake_case", async () => {
+    const first = { ...receipt(), externalTrackingNumber: "101818469", shippingCode: "ABCD" };
+    const second = { ...receipt(), id: "order-2", orderId: "order-2", orderNumber: "PED-002", external_tracking_number: "202828579", shipping_code: "EFGH" };
+    jest.mocked(axios.get).mockImplementation(async url => ({
+      data: String(url).includes("shipping-guides")
+        ? { ...guide, courierName: "Shalom", orderIds: ["order-1", "order-2"] }
+        : String(url).includes("order-2") ? second : first,
+    }));
+    render(<GuideDetailsModal open guideId="guide-1" onClose={jest.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Etiqueta de envío Shalom" }));
+    expect(JSON.parse(screen.getByTestId("shalom-label-orders").textContent!)).toEqual([
+      expect.objectContaining({ id: "order-1", externalTrackingNumber: "101818469", shippingCode: "ABCD" }),
+      expect.objectContaining({ id: "order-2", externalTrackingNumber: "202828579", shippingCode: "EFGH" }),
+    ]);
+  });
+
+  it.each(["Olva Courier", "EVA", null])("mantiene la impresión actual sin ofrecer Shalom para %s", async courierName => {
+    setup(receipt(), { ...guide, courierName });
+    expect(await screen.findByRole("button", { name: "Imprimir etiqueta de envío" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Etiqueta de envío Shalom" })).not.toBeInTheDocument();
+    expect(screen.queryByTestId("shalom-label-orders")).not.toBeInTheDocument();
+  });
+
+  it.each(["company", "user", "close"])("cierra el rótulo y descarta sus pedidos al cambiar %s", async change => {
+    const view = setup({ ...receipt(), externalTrackingNumber: "101818469", shippingCode: "WJPH" }, { ...guide, courierName: "Shalom" });
+    fireEvent.click(await screen.findByRole("button", { name: "Etiqueta de envío Shalom" }));
+    expect(screen.getByTestId("shalom-label-orders")).toBeInTheDocument();
+    if (change === "company") setAuth(session("company-2"));
+    if (change === "user") setAuth(session("company-1", "user-2"));
+    jest.mocked(axios.get).mockImplementation(() => new Promise(() => undefined));
+    view.rerender(<GuideDetailsModal open={change !== "close"} guideId="guide-1" onClose={jest.fn()} />);
+    expect(screen.queryByTestId("shalom-label-orders")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Etiqueta de envío Shalom" })).not.toBeInTheDocument();
   });
 });
