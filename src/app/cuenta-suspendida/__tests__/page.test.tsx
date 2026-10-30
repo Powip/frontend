@@ -35,7 +35,7 @@ it("explica que la cuenta de la empresa está suspendida y quién la reactiva", 
   expect(screen.getByRole("heading", { name: "Cuenta suspendida" })).toBeInTheDocument();
   expect(
     screen.getByText(
-      "La cuenta de 29 Superfoods está suspendida. Para volver a usar Powip, el dueño tiene que registrar su tarjeta.",
+      "La cuenta de 29 Superfoods está suspendida. Para volver a usar Powip, el dueño tiene que registrar su tarjeta o Yape.",
     ),
   ).toBeInTheDocument();
 });
@@ -45,7 +45,7 @@ it("sin nombre de empresa usa un texto genérico", () => {
 
   expect(
     screen.getByText(
-      "La cuenta de tu empresa está suspendida. Para volver a usar Powip, el dueño tiene que registrar su tarjeta.",
+      "La cuenta de tu empresa está suspendida. Para volver a usar Powip, el dueño tiene que registrar su tarjeta o Yape.",
     ),
   ).toBeInTheDocument();
 });

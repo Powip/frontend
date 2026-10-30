@@ -116,3 +116,14 @@ describe("marca de migración a Flow (FEAT-25)", () => {
     expect(validateStoredOnboardingState({ ...valid, migrate: false })).toEqual(valid);
   });
 });
+
+it("guarda el link https de la página de Flow (tarjeta o Yape) y descarta otros esquemas", () => {
+  saveOnboardingState({ ...checkout, redirectUrl: "https://www.flow.cl/app/web/register.php?token=t" });
+  expect(getStoredOnboardingState("user-a")).toEqual({
+    ...checkout,
+    redirectUrl: "https://www.flow.cl/app/web/register.php?token=t",
+  });
+  expect(
+    validateStoredOnboardingState({ ...checkout, redirectUrl: "javascript:alert(1)" }),
+  ).toEqual(checkout);
+});

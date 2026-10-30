@@ -236,7 +236,7 @@ describe("Plan y facturación", () => {
       expect(medium).toHaveAttribute("href", "/pasate-a-flow");
       expect(screen.queryByRole("link", { name: /Enterprise/ })).not.toBeInTheDocument();
       expect(screen.getByRole("link", { name: "Activar al pasarte a Flow" })).toHaveAttribute("href", "/pasate-a-flow");
-      expect(screen.getByRole("link", { name: "Registrar tarjeta" })).toHaveAttribute("href", "/pasate-a-flow");
+      expect(screen.getByRole("link", { name: "Registrar tarjeta o Yape" })).toHaveAttribute("href", "/pasate-a-flow");
       expect(screen.getByRole("link", { name: "Pasarme a Flow" })).toHaveAttribute("href", "/pasate-a-flow");
     });
 

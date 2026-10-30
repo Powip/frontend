@@ -318,10 +318,10 @@ export default function PlanBillingClient() {
                 <span>{billing.mode === "EXEMPT" ? "Sin cobros" : "Pagas con Flow"}</span>
               ) : (
                 <>
-                  <span className="text-red-600 dark:text-red-400">Sin tarjeta registrada</span>
+                  <span className="text-red-600 dark:text-red-400">Sin medio de pago registrado</span>
                   {billing.isOwner && (
                     <Link href="/pasate-a-flow" className="font-medium text-teal-700 dark:text-teal-300 underline">
-                      Registrar tarjeta
+                      Registrar tarjeta o Yape
                     </Link>
                   )}
                 </>
@@ -697,7 +697,7 @@ export default function PlanBillingClient() {
             <DialogTitle>Cancelar suscripción</DialogTitle>
             <DialogDescription>
               No se te cobra más. Sigues usando Powip hasta el {day(billing.paidUntil)}. Desde el día siguiente la
-              cuenta queda suspendida para todo tu equipo hasta que vuelvas a registrar una tarjeta.
+              cuenta queda suspendida para todo tu equipo hasta que vuelvas a registrar una tarjeta o Yape.
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2">

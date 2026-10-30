@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AxiosError, AxiosHeaders } from "axios";
 import { useAuth } from "@/contexts/AuthContext";
+import { goToExternalPage } from "@/lib/browserNavigation";
 import * as api from "@/services/onboardingService";
 import type { SubscriptionMe } from "@/types/onboarding";
 import OnboardingClient from "../OnboardingClient";
@@ -16,6 +17,7 @@ jest.mock("@/services/onboardingService", () => ({
   confirmFlowCheckout: jest.fn(),
   fetchMySubscription: jest.fn(),
 }));
+jest.mock("@/lib/browserNavigation", () => ({ goToExternalPage: jest.fn() }));
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 const mocked = jest.mocked(api);
 const refreshSession = jest.fn();
@@ -118,4 +120,38 @@ it("no navega con la suscripción anterior si falla la actualización de sesión
   fireEvent.click(await screen.findByRole("button", { name: "Continuar con mi plan actual" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("No pudimos actualizar tu sesión");
   expect(push).not.toHaveBeenCalled();
+});
+
+it("ofrece pagar con Yape y lo manda a la página de Flow, donde está Yape recurrente", async () => {
+  mocked.startFlowCheckout.mockResolvedValue({
+    subscriptionId: "new-subscription",
+    status: "PENDING_PAYMENT",
+    cardToken: "fixture-card-token",
+    redirectUrl: "https://www.flow.cl/fixture",
+  });
+  render(<OnboardingClient planName="Basic" />);
+  const next = await screen.findByRole("button", { name: "Continuar al pago" });
+  await waitFor(() => expect(next).toBeEnabled());
+  fireEvent.click(next);
+  expect(screen.getByRole("button", { name: "Registrar tarjeta" })).toBeInTheDocument();
+
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Pagar con Yape" }));
+  });
+
+  await waitFor(() => expect(goToExternalPage).toHaveBeenCalledWith("https://www.flow.cl/fixture"));
+  expect(screen.queryByText("Cargando widget de pago...")).not.toBeInTheDocument();
+  expect(mocked.confirmFlowCheckout).not.toHaveBeenCalled();
+});
+
+it("en el widget de tarjeta deja pasar a la página de Flow para pagar con Yape", async () => {
+  mocked.startFlowCheckout.mockResolvedValue({
+    subscriptionId: "new-subscription",
+    status: "PENDING_PAYMENT",
+    cardToken: "fixture-card-token",
+    redirectUrl: "https://www.flow.cl/fixture",
+  });
+  await openPayment();
+  const link = await screen.findByRole("link", { name: /Yape/ });
+  expect(link).toHaveAttribute("href", "https://www.flow.cl/fixture");
 });
