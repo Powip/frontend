@@ -15,6 +15,7 @@ import { isJunkDni } from "@/utils/junk-document.util";
 import LiveManualPaymentDialog from "./LiveManualPaymentDialog";
 import {
   checkoutLivePurchase,
+  isLiveCustomerReviewRequired,
   isLiveQuoteConflict,
   liveError,
   liveMoney,
@@ -89,6 +90,8 @@ function LiveCheckoutForm({
     );
   });
   const [manualCheckout, setManualCheckout] = useState<LiveCheckoutSnapshot | null>(null);
+  const [customerReviewRequired, setCustomerReviewRequired] = useState(false);
+  const customerNameRef = useRef<HTMLInputElement>(null);
   const [delivery, setDelivery] = useState<LivePurchaseInput["delivery"]>(
     initialDraft?.delivery ?? {
       type: deliveryMethods[0] ?? "HOME",
@@ -252,6 +255,7 @@ function LiveCheckoutForm({
     lock.current = true;
     setBusy(true);
     setError("");
+    setCustomerReviewRequired(false);
     const selectionKey = inputSelection;
     try {
       const result = await quoteLivePurchase(storeId, visitor, selectionInput());
@@ -261,6 +265,11 @@ function LiveCheckoutForm({
     } catch (cause) {
       if (current.current) {
         setError(liveError(cause));
+        setCustomerReviewRequired(isLiveCustomerReviewRequired(cause));
+        if (isLiveCustomerReviewRequired(cause)) {
+          setQuote(null);
+          setQuoteSelection("");
+        }
         onUpdated();
       }
     } finally {
@@ -277,6 +286,7 @@ function LiveCheckoutForm({
     lock.current = true;
     setBusy(true);
     setError("");
+    setCustomerReviewRequired(false);
     try {
       const result = await checkoutLivePurchase(storeId, visitor, input(currentQuote));
       if (result.manualPayment && result.checkoutId) {
@@ -292,6 +302,11 @@ function LiveCheckoutForm({
       );
     } catch (cause) {
       if (current.current) {
+        if (isLiveCustomerReviewRequired(cause)) {
+          setCustomerReviewRequired(true);
+          setQuote(null);
+          setQuoteSelection("");
+        }
         if (isLiveQuoteConflict(cause)) {
           setQuote(null);
           setQuoteSelection("");
@@ -306,6 +321,8 @@ function LiveCheckoutForm({
             }
           } catch (quoteError) {
             if (current.current) setError(liveError(quoteError));
+            if (current.current)
+              setCustomerReviewRequired(isLiveCustomerReviewRequired(quoteError));
           }
         } else {
           setError(liveError(cause));
@@ -476,6 +493,7 @@ function LiveCheckoutForm({
                   Nombre
                   <input
                     {...feedbackProps("name")}
+                    ref={customerNameRef}
                     className={field}
                     required
                     minLength={3}
@@ -493,6 +511,17 @@ function LiveCheckoutForm({
                   WhatsApp
                   <input
                     {...feedbackProps("phone")}
+                    aria-label="WhatsApp"
+                    aria-describedby={
+                      [
+                        showErrors && issues.phone ? `${formId}-phone-error` : "",
+                        customerReviewRequired && data.customer
+                          ? `${formId}-linked-phone-help`
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ") || undefined
+                    }
                     className={field}
                     required
                     maxLength={9}
@@ -510,6 +539,15 @@ function LiveCheckoutForm({
                     }
                   />
                   {feedback("phone")}
+                  {customerReviewRequired && data.customer ? (
+                    <span
+                      id={`${formId}-linked-phone-help`}
+                      className="mt-1 block text-xs leading-relaxed text-zinc-300"
+                    >
+                      Este WhatsApp está vinculado a tus apartados. Si necesitas corregirlo,
+                      contacta al negocio antes de pagar.
+                    </span>
+                  ) : null}
                 </label>
               </div>
               <label className="block text-xs font-medium">
@@ -800,7 +838,20 @@ function LiveCheckoutForm({
               tabIndex={-1}
               className="rounded-xl border border-[#FE2C55]/40 bg-[#FE2C55]/10 p-3 text-sm text-[#FFB5C4] outline-none focus-visible:ring-2 focus-visible:ring-[#FE2C55]"
             >
-              {error}
+              <p>{error}</p>
+              {customerReviewRequired ? (
+                <button
+                  type="button"
+                  disabled={busy}
+                  className="mt-2 rounded-md py-2 font-semibold text-[#25F4EE] underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE]"
+                  onClick={() => {
+                    customerNameRef.current?.scrollIntoView?.({ block: "center" });
+                    customerNameRef.current?.focus();
+                  }}
+                >
+                  Revisar datos del comprador
+                </button>
+              ) : null}
             </div>
           ) : null}
           {quoteExpired ? (
