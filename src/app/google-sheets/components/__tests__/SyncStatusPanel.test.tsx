@@ -40,6 +40,7 @@ const setup = (over: Partial<React.ComponentProps<typeof SyncStatusPanel>> = {})
     onSyncNow: jest.fn(),
     onDisconnect: jest.fn(),
     onReconfigure: jest.fn(),
+    onChangeFile: jest.fn(),
     onReconnect: jest.fn(),
     ...over,
   };
@@ -143,4 +144,10 @@ it('Reconfigurar llama a onReconfigure', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Reconfigurar' }));
   expect(p.onReconfigure).toHaveBeenCalled();
   await waitFor(() => expect(getTabs).toHaveBeenCalled());
+});
+
+it('Cambiar archivo llama a onChangeFile (I4)', async () => {
+  const props = setup();
+  await userEvent.click(screen.getByRole('button', { name: 'Cambiar archivo' }));
+  expect(props.onChangeFile).toHaveBeenCalled();
 });

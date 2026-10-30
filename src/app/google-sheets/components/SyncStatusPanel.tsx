@@ -25,6 +25,7 @@ interface Props {
   onSyncNow: () => void;
   onDisconnect: () => void;
   onReconfigure: () => void;
+  onChangeFile: () => void;
   onReconnect: () => void;
 }
 
@@ -44,6 +45,7 @@ export function SyncStatusPanel({
   onSyncNow,
   onDisconnect,
   onReconfigure,
+  onChangeFile,
   onReconnect,
 }: Props) {
   const [confirming, setConfirming] = useState(false);
@@ -169,6 +171,9 @@ export function SyncStatusPanel({
           )}
           <Button variant="outline" onClick={onReconfigure} disabled={loading}>
             Reconfigurar
+          </Button>
+          <Button variant="outline" onClick={onChangeFile} disabled={loading}>
+            Cambiar archivo
           </Button>
         </div>
         <Button variant="outline" className="text-destructive" onClick={() => setConfirming(true)} disabled={loading}>

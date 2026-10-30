@@ -32,11 +32,15 @@ function toMessage(error: unknown): string {
 }
 
 /** Paso de pantalla derivado del estado del servidor. */
-function baseStep(config: GoogleConfigView | null, reconfiguring: boolean): SetupStep {
+function baseStep(
+  config: GoogleConfigView | null,
+  reconfiguring: boolean,
+  changingFile: boolean,
+): SetupStep {
   if (!config || !config.connected || config.status === 'NEEDS_RECONNECT') {
     return 'CONNECT_ACCOUNT';
   }
-  if (!config.file) return 'SELECT_FILE';
+  if (!config.file || changingFile) return 'SELECT_FILE';
   if (config.status !== 'READY') return 'CONFIGURE';
   return reconfiguring ? 'CONFIGURE' : 'STATUS';
 }
@@ -49,6 +53,8 @@ export const useGoogleSheets = () => {
   const [config, setConfig] = useState<GoogleConfigView | null>(null);
   const [localStep, setLocalStep] = useState<'MAP_FIELDS' | 'REVIEW' | null>(null);
   const [reconfiguring, setReconfiguring] = useState(false);
+  /** "Cambiar archivo": vuelve al selector sin tocar el servidor hasta elegir otro. */
+  const [changingFile, setChangingFile] = useState(false);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [review, setReview] = useState<ReviewResult | null>(null);
   const [issues, setIssues] = useState<SyncIssue[]>([]);
@@ -130,8 +136,11 @@ export const useGoogleSheets = () => {
   const selectFile = useCallback(
     (file: GoogleFile) =>
       run(async () => {
+        // Con una sincronización en curso el servidor responde 409: se muestra y se sigue en el selector.
         await googleSheetsApi.saveSheet(file.id, file.name);
         setLocalStep(null);
+        setChangingFile(false);
+        setReconfiguring(false);
         // Al cambiar de archivo el servidor reinicia el estado: manda el servidor.
         await refresh();
       }),
@@ -139,6 +148,16 @@ export const useGoogleSheets = () => {
   );
 
   const goConfigure = useCallback(() => setLocalStep(null), []);
+
+  /** Abre el selector de archivos (desde CONFIGURE o STATUS). */
+  const changeFile = useCallback(() => {
+    setLocalStep(null);
+    setError(null);
+    setChangingFile(true);
+  }, []);
+
+  /** Vuelve de "Cambiar archivo" sin elegir otro. */
+  const cancelChangeFile = useCallback(() => setChangingFile(false), []);
 
   /** Desde STATUS (READY): abre la configuración sin cambiar el estado del servidor. */
   const reconfigure = useCallback(() => {
@@ -178,6 +197,15 @@ export const useGoogleSheets = () => {
         await googleSheetsApi.activate(acknowledgeHistory);
         setLocalStep(null);
         setReconfiguring(false);
+        // La primera importación no espera al cron (hasta 15 min). Un 409 (ya hay una
+        // corrida en curso) se ignora; cualquier otro error se muestra.
+        try {
+          await googleSheetsApi.syncNow();
+        } catch (e) {
+          if ((e as { response?: { status?: number } })?.response?.status !== 409) {
+            setError(toMessage(e));
+          }
+        }
         await refresh();
       }),
     [run, refresh],
@@ -198,6 +226,7 @@ export const useGoogleSheets = () => {
         await googleSheetsApi.disconnect();
         setLocalStep(null);
         setReconfiguring(false);
+        setChangingFile(false);
         setPreview(null);
         setReview(null);
         setIssues([]);
@@ -209,7 +238,8 @@ export const useGoogleSheets = () => {
   const getAccessToken = useCallback(() => googleSheetsApi.getAccessToken(), []);
 
   const isReconfiguring = reconfiguring && config?.status === 'READY';
-  const base = baseStep(config, isReconfiguring);
+  const isChangingFile = changingFile && !!config?.file;
+  const base = baseStep(config, isReconfiguring, isChangingFile);
   const step: SetupStep = base === 'CONFIGURE' && localStep ? localStep : base;
 
   return {
@@ -226,6 +256,9 @@ export const useGoogleSheets = () => {
     reconfigure,
     cancelReconfigure,
     reconfiguring: isReconfiguring,
+    changingFile: isChangingFile,
+    changeFile,
+    cancelChangeFile,
     savePreview,
     saveConfig,
     activate,

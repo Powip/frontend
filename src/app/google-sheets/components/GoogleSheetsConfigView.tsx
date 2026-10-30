@@ -37,6 +37,12 @@ export function GoogleSheetsConfigView() {
   const [tabIds, setTabIds] = useState<number[]>([]);
 
   const fileId = config?.file?.id;
+  // Otro archivo: las pestañas y la selección del anterior ya no aplican.
+  useEffect(() => {
+    setAvailableTabs([]);
+    setTabIds([]);
+  }, [fileId]);
+
   useEffect(() => {
     if (step !== 'CONFIGURE' || !fileId) return;
     let cancelled = false;
@@ -105,7 +111,16 @@ export function GoogleSheetsConfigView() {
         )}
 
         {config && step === 'SELECT_FILE' && (
-          <StepFile loading={loading} getAccessToken={g.getAccessToken} onSelectFile={g.selectFile} />
+          <>
+            <StepFile loading={loading} getAccessToken={g.getAccessToken} onSelectFile={g.selectFile} />
+            {g.changingFile && (
+              <div className="px-6 pb-6">
+                <Button variant="outline" className="w-full" onClick={g.cancelChangeFile} disabled={loading}>
+                  Cancelar
+                </Button>
+              </div>
+            )}
+          </>
         )}
 
         {config && step === 'CONFIGURE' && (
@@ -127,13 +142,16 @@ export function GoogleSheetsConfigView() {
                 g.savePreview(ids);
               }}
             />
-            {g.reconfiguring && (
-              <div className="px-6 pb-6">
+            <div className="flex flex-col gap-2 px-6 pb-6 sm:flex-row">
+              <Button variant="outline" className="w-full" onClick={g.changeFile} disabled={loading}>
+                Cambiar archivo
+              </Button>
+              {g.reconfiguring && (
                 <Button variant="outline" className="w-full" onClick={g.cancelReconfigure} disabled={loading}>
                   Cancelar
                 </Button>
-              </div>
-            )}
+              )}
+            </div>
           </>
         )}
 
@@ -162,6 +180,7 @@ export function GoogleSheetsConfigView() {
             onSyncNow={g.syncNow}
             onDisconnect={g.disconnect}
             onReconfigure={g.reconfigure}
+            onChangeFile={g.changeFile}
             onReconnect={g.connectAccount}
           />
         )}

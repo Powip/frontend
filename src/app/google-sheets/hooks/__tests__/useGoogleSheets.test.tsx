@@ -182,6 +182,105 @@ describe('useGoogleSheets', () => {
     expect(result.current.step).toBe('CONFIGURE');
   });
 
+  describe('cambiar archivo (I4)', () => {
+    it('desde STATUS abre el selector y cancelar vuelve a STATUS', async () => {
+      api.getConfig.mockResolvedValue({ ...withFile, status: 'READY' });
+      const { result } = await setup();
+      act(() => result.current.changeFile());
+      expect(result.current.step).toBe('SELECT_FILE');
+      expect(result.current.changingFile).toBe(true);
+      act(() => result.current.cancelChangeFile());
+      expect(result.current.step).toBe('STATUS');
+    });
+
+    it('desde CONFIGURE (también reconfigurando) abre el selector', async () => {
+      api.getConfig.mockResolvedValue({ ...withFile, status: 'READY' });
+      const { result } = await setup();
+      act(() => result.current.reconfigure());
+      expect(result.current.step).toBe('CONFIGURE');
+      act(() => result.current.changeFile());
+      expect(result.current.step).toBe('SELECT_FILE');
+    });
+
+    it('al elegir otro archivo llama a save-sheet, refresca y queda en CONFIGURE', async () => {
+      api.getConfig
+        .mockResolvedValueOnce({ ...withFile, status: 'READY' })
+        .mockResolvedValue({ ...baseConfig, file: { id: 'f2', name: 'Otra' } });
+      api.saveSheet.mockResolvedValue();
+      const { result } = await setup();
+      act(() => result.current.changeFile());
+      await act(async () => {
+        await result.current.selectFile({ id: 'f2', name: 'Otra' });
+      });
+      expect(api.saveSheet).toHaveBeenCalledWith('f2', 'Otra');
+      expect(result.current.changingFile).toBe(false);
+      expect(result.current.step).toBe('CONFIGURE');
+      expect(result.current.config?.file).toEqual({ id: 'f2', name: 'Otra' });
+    });
+
+    it('con una sincronización en curso muestra el 409 y sigue en el selector', async () => {
+      api.getConfig.mockResolvedValue({ ...withFile, status: 'READY' });
+      api.saveSheet.mockRejectedValue({
+        response: {
+          status: 409,
+          data: { message: 'Hay una sincronización en curso; espera a que termine e inténtalo de nuevo' },
+        },
+      });
+      const { result } = await setup();
+      act(() => result.current.changeFile());
+      await act(async () => {
+        await result.current.selectFile({ id: 'f2', name: 'Otra' });
+      });
+      expect(result.current.error).toBe(
+        'Hay una sincronización en curso; espera a que termine e inténtalo de nuevo',
+      );
+      expect(result.current.step).toBe('SELECT_FILE');
+    });
+  });
+
+  describe('activate dispara la primera sincronización (M2)', () => {
+    it('después de activar llama a syncNow', async () => {
+      api.getConfig.mockResolvedValue(withFile);
+      api.activate.mockResolvedValue(undefined as never);
+      api.syncNow.mockResolvedValue({ started: true });
+      const { result } = await setup();
+      api.getConfig.mockResolvedValue({ ...withFile, status: 'READY' });
+      await act(async () => {
+        await result.current.activate(false);
+      });
+      expect(api.activate).toHaveBeenCalledWith(false);
+      expect(api.syncNow).toHaveBeenCalledTimes(1);
+      expect(api.activate.mock.invocationCallOrder[0]).toBeLessThan(
+        api.syncNow.mock.invocationCallOrder[0],
+      );
+      expect(result.current.step).toBe('STATUS');
+      expect(result.current.error).toBeNull();
+    });
+
+    it('un 409 de syncNow se ignora en silencio', async () => {
+      api.getConfig.mockResolvedValue(withFile);
+      api.activate.mockResolvedValue(undefined as never);
+      api.syncNow.mockRejectedValue({ response: { status: 409, data: { message: 'en curso' } } });
+      const { result } = await setup();
+      api.getConfig.mockResolvedValue({ ...withFile, status: 'READY' });
+      await act(async () => {
+        await result.current.activate(false);
+      });
+      expect(result.current.error).toBeNull();
+      expect(result.current.step).toBe('STATUS');
+    });
+
+    it('si activate falla no llama a syncNow', async () => {
+      api.getConfig.mockResolvedValue(withFile);
+      api.activate.mockRejectedValue({ response: { status: 409, data: { message: 'más de 100 filas' } } });
+      const { result } = await setup();
+      await act(async () => {
+        await result.current.activate(false);
+      });
+      expect(api.syncNow).not.toHaveBeenCalled();
+    });
+  });
+
   it('el polling sigue tras una consulta fallida mientras corre la sync', async () => {
     jest.useFakeTimers();
     try {
