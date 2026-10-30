@@ -16,6 +16,7 @@ import LiveManualPaymentDialog from "./LiveManualPaymentDialog";
 import {
   checkoutLivePurchase,
   isLiveCustomerReviewRequired,
+  isLiveDeliveryReviewRequired,
   isLiveQuoteConflict,
   liveError,
   liveMoney,
@@ -91,7 +92,9 @@ function LiveCheckoutForm({
   });
   const [manualCheckout, setManualCheckout] = useState<LiveCheckoutSnapshot | null>(null);
   const [customerReviewRequired, setCustomerReviewRequired] = useState(false);
+  const [deliveryReviewRequired, setDeliveryReviewRequired] = useState(false);
   const customerNameRef = useRef<HTMLInputElement>(null);
+  const addressRef = useRef<HTMLInputElement>(null);
   const [delivery, setDelivery] = useState<LivePurchaseInput["delivery"]>(
     initialDraft?.delivery ?? {
       type: deliveryMethods[0] ?? "HOME",
@@ -112,6 +115,12 @@ function LiveCheckoutForm({
   const [quote, setQuote] = useState<LiveQuote | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const focusError = useRef(true);
+  const [pendingQuoteSelection, setPendingQuoteSelection] = useState("");
+  const [failedQuoteSelection, setFailedQuoteSelection] = useState("");
+  const quoteRequest = useRef(0);
+  const quoteTimer = useRef<number | undefined>(undefined);
+  const activeQuote = useRef<{ selection: string; request: number } | null>(null);
   const [showErrors, setShowErrors] = useState(false);
   const [quoteDeadline, setQuoteDeadline] = useState(0);
   const [expiredQuoteId, setExpiredQuoteId] = useState("");
@@ -126,7 +135,7 @@ function LiveCheckoutForm({
     draftCallback.current?.({ delivery, receipt });
   }, [delivery, receipt]);
   useEffect(() => {
-    if (error) errorRef.current?.focus();
+    if (error && focusError.current) errorRef.current?.focus();
   }, [error]);
   useEffect(() => {
     if (!quote || !quoteDeadline) return;
@@ -151,6 +160,14 @@ function LiveCheckoutForm({
     };
   }, []);
   const inputSelection = JSON.stringify({ ...selection, customer, delivery, receipt, method });
+  const latestSelection = useRef(inputSelection);
+  useEffect(() => {
+    latestSelection.current = inputSelection;
+    setError("");
+    setCustomerReviewRequired(false);
+    setDeliveryReviewRequired(false);
+  }, [inputSelection]);
+  const quoting = pendingQuoteSelection === inputSelection;
   const matchingQuote = quoteSelection === inputSelection ? quote : null;
   const quoteExpired =
     !!matchingQuote && (expiredQuoteId === matchingQuote.quoteId || quoteDeadline <= Date.now());
@@ -250,33 +267,74 @@ function LiveCheckoutForm({
       quoteId: acceptedQuote.quoteId,
     };
   }
-  async function calculate() {
-    if (lock.current || !valid) return;
-    lock.current = true;
-    setBusy(true);
+  async function calculate(shouldFocusError = true) {
+    window.clearTimeout(quoteTimer.current);
+    if (lock.current || !valid || currentQuote || activeQuote.current?.selection === inputSelection)
+      return;
+    focusError.current = shouldFocusError;
+    const request = ++quoteRequest.current;
+    activeQuote.current = { selection: inputSelection, request };
+    setPendingQuoteSelection(inputSelection);
     setError("");
     setCustomerReviewRequired(false);
+    setDeliveryReviewRequired(false);
     const selectionKey = inputSelection;
     try {
       const result = await quoteLivePurchase(storeId, visitor, selectionInput());
-      if (current.current) {
+      if (
+        current.current &&
+        request === quoteRequest.current &&
+        latestSelection.current === selectionKey
+      ) {
+        setFailedQuoteSelection("");
         acceptQuote(result, selectionKey);
       }
     } catch (cause) {
-      if (current.current) {
+      if (
+        current.current &&
+        request === quoteRequest.current &&
+        latestSelection.current === selectionKey
+      ) {
+        setFailedQuoteSelection(selectionKey);
         setError(liveError(cause));
         setCustomerReviewRequired(isLiveCustomerReviewRequired(cause));
-        if (isLiveCustomerReviewRequired(cause)) {
+        setDeliveryReviewRequired(isLiveDeliveryReviewRequired(cause));
+        if (isLiveCustomerReviewRequired(cause) || isLiveDeliveryReviewRequired(cause)) {
           setQuote(null);
           setQuoteSelection("");
         }
         onUpdated();
       }
     } finally {
-      lock.current = false;
-      if (current.current) setBusy(false);
+      if (activeQuote.current?.request === request) activeQuote.current = null;
+      if (current.current && request === quoteRequest.current) setPendingQuoteSelection("");
     }
   }
+  const calculateRef = useRef(calculate);
+  useEffect(() => {
+    calculateRef.current = calculate;
+  });
+  useEffect(() => {
+    if (
+      !valid ||
+      currentQuote ||
+      quoteExpired ||
+      busy ||
+      manualCheckout ||
+      failedQuoteSelection === inputSelection
+    )
+      return;
+    quoteTimer.current = window.setTimeout(() => void calculateRef.current(false), 600);
+    return () => window.clearTimeout(quoteTimer.current);
+  }, [
+    inputSelection,
+    valid,
+    currentQuote,
+    quoteExpired,
+    busy,
+    manualCheckout,
+    failedQuoteSelection,
+  ]);
   async function checkout() {
     if (lock.current || !valid || !currentQuote) return;
     if (quoteDeadline <= Date.now()) {
@@ -284,9 +342,11 @@ function LiveCheckoutForm({
       return;
     }
     lock.current = true;
+    focusError.current = true;
     setBusy(true);
     setError("");
     setCustomerReviewRequired(false);
+    setDeliveryReviewRequired(false);
     try {
       const result = await checkoutLivePurchase(storeId, visitor, input(currentQuote));
       if (result.manualPayment && result.checkoutId) {
@@ -302,8 +362,10 @@ function LiveCheckoutForm({
       );
     } catch (cause) {
       if (current.current) {
-        if (isLiveCustomerReviewRequired(cause)) {
-          setCustomerReviewRequired(true);
+        if (isLiveCustomerReviewRequired(cause) || isLiveDeliveryReviewRequired(cause)) {
+          setCustomerReviewRequired(isLiveCustomerReviewRequired(cause));
+          setDeliveryReviewRequired(isLiveDeliveryReviewRequired(cause));
+          setFailedQuoteSelection(inputSelection);
           setQuote(null);
           setQuoteSelection("");
         }
@@ -323,6 +385,10 @@ function LiveCheckoutForm({
             if (current.current) setError(liveError(quoteError));
             if (current.current)
               setCustomerReviewRequired(isLiveCustomerReviewRequired(quoteError));
+            if (current.current) {
+              setDeliveryReviewRequired(isLiveDeliveryReviewRequired(quoteError));
+              setFailedQuoteSelection(inputSelection);
+            }
           }
         } else {
           setError(liveError(cause));
@@ -396,14 +462,15 @@ function LiveCheckoutForm({
     >
       <DialogContent
         className="flex max-h-[92dvh] flex-col gap-0 overflow-hidden border-white/15 bg-[#16161C] p-0 text-zinc-100 sm:max-w-4xl"
-        aria-busy={busy}
+        aria-busy={busy || quoting}
       >
         <DialogHeader className="shrink-0 border-b border-white/10 px-5 py-4 pr-10 sm:px-6">
           <DialogTitle className="text-lg">
             {selection.reservationIds ? "Pagar tus apartados" : "Comprar ahora"}
           </DialogTitle>
           <DialogDescription className="text-zinc-400">
-            Completa tus datos, revisa el total y continúa con Yape.
+            Completa tus datos. El total con envío se actualiza automáticamente. Revísalo antes de
+            continuar con Yape.
           </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 overflow-y-auto px-5 py-5 sm:px-6">
@@ -469,8 +536,8 @@ function LiveCheckoutForm({
                 </div>
               ) : (
                 <p className="border-t border-white/10 pt-3 text-xs leading-relaxed text-zinc-400">
-                  Precios por confirmar. Calcula el total para incluir el envío y revisar los
-                  precios actuales.
+                  Al completar tus datos confirmaremos los precios y sumaremos el envío
+                  automáticamente. Todavía no se inicia ningún pago.
                 </p>
               )}
             </aside>
@@ -680,6 +747,7 @@ function LiveCheckoutForm({
                   {delivery.type === "HOME" ? "Dirección" : "Dirección de la agencia"}
                   <input
                     {...feedbackProps("address")}
+                    ref={addressRef}
                     className={field}
                     autoComplete="street-address"
                     required
@@ -839,17 +907,22 @@ function LiveCheckoutForm({
               className="rounded-xl border border-[#FE2C55]/40 bg-[#FE2C55]/10 p-3 text-sm text-[#FFB5C4] outline-none focus-visible:ring-2 focus-visible:ring-[#FE2C55]"
             >
               <p>{error}</p>
-              {customerReviewRequired ? (
+              {customerReviewRequired || deliveryReviewRequired ? (
                 <button
                   type="button"
                   disabled={busy}
                   className="mt-2 rounded-md py-2 font-semibold text-[#25F4EE] underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE]"
                   onClick={() => {
-                    customerNameRef.current?.scrollIntoView?.({ block: "center" });
-                    customerNameRef.current?.focus();
+                    const target = deliveryReviewRequired
+                      ? addressRef.current
+                      : customerNameRef.current;
+                    target?.scrollIntoView?.({ block: "center" });
+                    target?.focus();
                   }}
                 >
-                  Revisar datos del comprador
+                  {deliveryReviewRequired
+                    ? "Revisar dirección de entrega"
+                    : "Revisar datos del comprador"}
                 </button>
               ) : null}
             </div>
@@ -860,7 +933,7 @@ function LiveCheckoutForm({
             </p>
           ) : quote && !matchingQuote ? (
             <p role="status" className="text-sm text-zinc-300">
-              Cambiaste los datos. Calcula el total otra vez para continuar.
+              Cambiaste los datos. El total con envío se actualizará automáticamente.
             </p>
           ) : null}
           {!valid ? (
@@ -873,7 +946,7 @@ function LiveCheckoutForm({
                   ? "Falta habilitar una modalidad de entrega."
                   : !method
                     ? "El negocio debe habilitar Yape para continuar."
-                    : `Completa tus datos para calcular el total. ${missingFields[0]}`}
+                    : `Completa tus datos para ver el total con envío. ${missingFields[0]}`}
               </p>
               {missingFields.length ? (
                 <button
@@ -890,7 +963,11 @@ function LiveCheckoutForm({
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-baseline justify-between gap-4 sm:block" aria-live="polite">
               <span className="text-sm text-zinc-400">
-                Total{!currentQuote ? " por calcular" : ""}
+                {currentQuote
+                  ? "Total con envío"
+                  : quoting
+                    ? "Confirmando total con envío…"
+                    : "Total con envío por confirmar"}
               </span>
               <p className="text-xl font-bold text-[#25F4EE]">
                 {currentQuote ? liveMoney(currentQuote.total) : "—"}
@@ -900,21 +977,25 @@ function LiveCheckoutForm({
               type="submit"
               form={formId}
               className={cn(primary, "w-full sm:w-auto")}
-              disabled={busy || !valid}
+              disabled={busy || quoting || !valid}
               aria-describedby={!valid ? `${formId}-requirements` : undefined}
             >
-              {busy ? (
+              {busy || quoting ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               ) : (
                 <CreditCard className="h-4 w-4" aria-hidden="true" />
               )}
               {busy
                 ? "Procesando…"
-                : currentQuote
-                  ? `Ver instrucciones Yape · ${liveMoney(currentQuote.total)}`
-                  : quoteExpired
-                    ? "Actualizar total"
-                    : "Calcular total"}
+                : quoting
+                  ? "Confirmando total…"
+                  : currentQuote
+                    ? `Ver instrucciones Yape · ${liveMoney(currentQuote.total)}`
+                    : quoteExpired
+                      ? "Actualizar total"
+                      : failedQuoteSelection === inputSelection
+                        ? "Reintentar total con envío"
+                        : "Ver total con envío"}
             </button>
           </div>
           <p className="text-center text-[11px] leading-relaxed text-zinc-400">

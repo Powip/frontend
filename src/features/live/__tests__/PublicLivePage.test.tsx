@@ -152,7 +152,7 @@ test("missing shipping configuration explains the unavailable checkout instead o
   fireEvent.click(screen.getByRole("button", { name: "Comprar ahora" }));
   const dialog = within(await screen.findByRole("dialog"));
   expect(dialog.getAllByText(/habilitar una modalidad de entrega/).length).toBeGreaterThan(0);
-  expect(dialog.getByRole("button", { name: "Calcular total" })).toBeDisabled();
+  expect(dialog.getByRole("button", { name: "Ver total con envío" })).toBeDisabled();
   expect(quoteLivePurchase).not.toHaveBeenCalled();
 });
 test("retries a failed reserve with same idempotency key", async () => {
@@ -236,7 +236,7 @@ async function completeCheckoutDetails(dialog: ReturnType<typeof within>) {
 async function openQuotedCheckout() {
   const dialog = await openCheckoutForm();
   await completeCheckoutDetails(dialog);
-  fireEvent.click(dialog.getByRole("button", { name: "Calcular total" }));
+  fireEvent.click(dialog.getByRole("button", { name: "Ver total con envío" }));
   await dialog.findByRole("button", { name: /Ver instrucciones Yape/ });
   return dialog;
 }
@@ -250,11 +250,11 @@ test("invoice accepts only the server's 3–150 character business name contract
   expect(business).toHaveAttribute("minLength", "3");
   expect(business).toHaveAttribute("maxLength", "150");
   fireEvent.change(business, { target: { value: "AB" } });
-  expect(dialog.getByRole("button", { name: "Calcular total" })).toBeDisabled();
+  expect(dialog.getByRole("button", { name: "Ver total con envío" })).toBeDisabled();
   fireEvent.change(business, { target: { value: "A".repeat(151) } });
-  expect(dialog.getByRole("button", { name: "Calcular total" })).toBeDisabled();
+  expect(dialog.getByRole("button", { name: "Ver total con envío" })).toBeDisabled();
   fireEvent.change(business, { target: { value: "Empresa de prueba" } });
-  expect(dialog.getByRole("button", { name: "Calcular total" })).toBeEnabled();
+  expect(dialog.getByRole("button", { name: "Ver total con envío" })).toBeEnabled();
 });
 
 test("customer conflict stops before checkout and shows a safe contact-the-business message", async () => {
@@ -269,7 +269,7 @@ test("customer conflict stops before checkout and shows a safe contact-the-busin
       },
     }),
   );
-  fireEvent.click(dialog.getByRole("button", { name: "Calcular total" }));
+  fireEvent.click(dialog.getByRole("button", { name: "Ver total con envío" }));
   expect(await dialog.findByRole("alert")).toHaveTextContent(/Contacta al negocio antes de pagar/);
   expect(screen.queryByText("private server detail")).not.toBeInTheDocument();
   expect(checkoutLivePurchase).not.toHaveBeenCalled();
@@ -340,7 +340,7 @@ test("an unconfigured shipping price blocks checkout and shows the server explan
       },
     },
   });
-  fireEvent.click(dialog.getByRole("button", { name: "Calcular total" }));
+  fireEvent.click(dialog.getByRole("button", { name: "Ver total con envío" }));
   expect(
     await dialog.findByText("El negocio aún no configuró el envío a domicilio."),
   ).toBeInTheDocument();
@@ -350,7 +350,7 @@ test("an unconfigured shipping price blocks checkout and shows the server explan
 
 test("quote requires a selected hierarchy, a real address and a valid DNI before any payment starts", async () => {
   const dialog = await openCheckoutForm();
-  const calculate = dialog.getByRole("button", { name: "Calcular total" });
+  const calculate = dialog.getByRole("button", { name: "Ver total con envío" });
   expect(calculate).toBeDisabled();
   expect(dialog.getByRole("combobox", { name: "Departamento", exact: true })).toHaveValue("");
   expect(dialog.getAllByRole("combobox")[1]).toBeDisabled();
@@ -375,7 +375,7 @@ test("changing a department clears province and district and invalidates the acc
   expect(dialog.getByRole("combobox", { name: "Distrito", exact: true })).toHaveValue("");
   expect(dialog.getAllByRole("combobox")[2]).toBeDisabled();
   expect(dialog.queryByRole("button", { name: /Ver instrucciones Yape/ })).not.toBeInTheDocument();
-  expect(dialog.getByRole("button", { name: "Calcular total" })).toBeDisabled();
+  expect(dialog.getByRole("button", { name: "Ver total con envío" })).toBeDisabled();
   expect(checkoutLivePurchase).not.toHaveBeenCalled();
 });
 
@@ -383,7 +383,7 @@ test("agency delivery requires its branch name and street address and preserves 
   const dialog = await openCheckoutForm({ agencyShipping: 11 });
   await completeCheckoutDetails(dialog);
   fireEvent.click(dialog.getByRole("radio", { name: "Agencia", exact: true }));
-  const calculate = dialog.getByRole("button", { name: "Calcular total" });
+  const calculate = dialog.getByRole("button", { name: "Ver total con envío" });
   expect(calculate).toBeDisabled();
   fireEvent.change(dialog.getByLabelText("Agencia y sucursal"), {
     target: { value: "Shalom Cayma" },
@@ -409,7 +409,7 @@ test("factura requires RUC and business name instead of omitting the buyer docum
   const dialog = await openCheckoutForm();
   await completeCheckoutDetails(dialog);
   fireEvent.click(dialog.getByRole("radio", { name: "Factura (RUC)" }));
-  const calculate = dialog.getByRole("button", { name: "Calcular total" });
+  const calculate = dialog.getByRole("button", { name: "Ver total con envío" });
   expect(calculate).toBeDisabled();
   fireEvent.change(dialog.getByLabelText("RUC"), { target: { value: "20654321987" } });
   fireEvent.change(dialog.getByLabelText("Razón social"), {

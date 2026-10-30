@@ -7,6 +7,9 @@ import {
   getLiveConsole,
   getLiveYapeReviews,
   getPublicLive,
+  isLiveCustomerReviewRequired,
+  isLiveDeliveryReviewRequired,
+  liveAdminError,
   liveError,
   liveVisitorToken,
   quoteLivePurchase,
@@ -135,6 +138,21 @@ test("checkout preserves caller idempotency command for retries", async () => {
   expect(calls[0][1].quoteId).toBe(id);
   expect(calls[0][1].method).toBe("yape");
 });
+
+test.each(["CUSTOMER_REVIEW_REQUIRED", "DELIVERY_REVIEW_REQUIRED"])(
+  "%s is explained without exposing server or stored customer details",
+  (code) => {
+    const failure = { response: { status: 409, data: { code, message: "PRIVATE_CUSTOMER_DATA" } } };
+    (axios.isAxiosError as unknown as jest.Mock).mockImplementation((value) => value === failure);
+    expect(isLiveCustomerReviewRequired(failure)).toBe(code === "CUSTOMER_REVIEW_REQUIRED");
+    expect(isLiveDeliveryReviewRequired(failure)).toBe(code === "DELIVERY_REVIEW_REQUIRED");
+    expect(liveError(failure)).not.toContain("PRIVATE_CUSTOMER_DATA");
+    expect(liveAdminError(failure)).not.toContain("PRIVATE_CUSTOMER_DATA");
+    expect(liveError(failure)).toMatch(
+      code === "DELIVERY_REVIEW_REQUIRED" ? /dirección de entrega/ : /mismo comprador/,
+    );
+  },
+);
 test("payment and social URLs reject active protocols", () => {
   expect(safeLiveUrl("javascript:alert(1)")).toBeNull();
   expect(safeLiveUrl("http://example.com")).toBeNull();
