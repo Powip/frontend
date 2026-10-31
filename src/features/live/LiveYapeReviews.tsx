@@ -1,4 +1,5 @@
 "use client";
+import { isLiveReadDenied } from "./liveService";
 
 import {
   AlertTriangle,
@@ -21,25 +22,28 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { LiveEmpty, LiveErrorBanner, LivePanel } from "./LiveShared";
-import { createLivePolling, type LivePollingController } from "./livePolling";
 import {
   getLiveYapeReviewProof,
   getLiveYapeReviews,
-  isLiveReadDenied,
-  liveAdminError,
   liveError,
   liveMoney,
+  liveBuyerLabel,
   reviewLiveYapePayment,
   safeLiveUrl,
 } from "./liveService";
+import { createLivePolling, type LivePollingController } from "./livePolling";
 import type { LiveCheckoutSnapshot, LiveYapeReview } from "./types";
 
 export default function LiveYapeReviews({
   storeId,
   canReview,
+  orderId,
+  onUpdated,
 }: {
   storeId: string;
   canReview: boolean;
+  orderId?: string;
+  onUpdated?: () => void;
 }) {
   const [snapshot, setSnapshot] = useState<{
     storeId: string;
@@ -47,11 +51,11 @@ export default function LiveYapeReviews({
     error: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
-  const [notice, setNotice] = useState<{ storeId: string; text: string } | null>(null);
+  const [notice, setScopedNotice] = useState<{ storeId: string; text: string } | null>(null);
   const [selection, setSelection] = useState<{
     storeId: string;
     review: LiveYapeReview;
-    decision: "approve" | "reject";
+    decision: "approve" | "reject" | "cancel";
   } | null>(null);
   const polling = useRef<LivePollingController | null>(null);
   const pollingScope = useRef<string | null>(null);
@@ -70,7 +74,7 @@ export default function LiveYapeReviews({
   useEffect(() => {
     setSelection(null);
     setSnapshot(null);
-    setNotice(null);
+    setScopedNotice(null);
     if (!canReview) {
       setLoading(false);
       return;
@@ -81,7 +85,11 @@ export default function LiveYapeReviews({
       intervalMs: 15000,
       onData: (result) => {
         hasSnapshot = true;
-        setSnapshot({ storeId, reviews: result.reviews, error: "" });
+        setSnapshot({
+          storeId,
+          reviews: orderId ? result.reviews.filter((r) => r.orderId === orderId) : result.reviews,
+          error: "",
+        });
       },
       onError: (cause) => {
         const denied = isLiveReadDenied(cause);
@@ -109,10 +117,14 @@ export default function LiveYapeReviews({
         pollingScope.current = null;
       }
     };
-  }, [storeId, canReview]);
+  }, [storeId, canReview, orderId]);
   useEffect(() => {
     if (pollingScope.current === storeId && canReview) polling.current?.setPaused(selectedOpen);
   }, [storeId, canReview, selectedOpen]);
+  const setSelected = (
+    value: { review: LiveYapeReview; decision: "approve" | "reject" | "cancel" } | null,
+  ) => setSelection(value ? { ...value, storeId } : null);
+  const setNotice = (text: string) => setScopedNotice({ storeId, text });
   if (!canReview)
     return (
       <LiveEmpty>
@@ -122,8 +134,9 @@ export default function LiveYapeReviews({
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-900">
-        Comprueba cada ingreso en la cuenta Yape del negocio. Un comprobante enviado por el cliente
-        permanece pendiente hasta que tu equipo valide o rechace el pago.
+        Esta es la misma cola de pagos de Finanzas, filtrada a POWIP Live y POWIP Link. Comprueba
+        cada ingreso en la cuenta Yape del negocio. Un comprobante enviado por el cliente permanece
+        pendiente hasta que tu equipo valide o rechace el pago.
       </div>
       {error ? <LiveErrorBanner message={error} onRetry={() => void load()} /> : null}
       {noticeText ? (
@@ -136,12 +149,12 @@ export default function LiveYapeReviews({
         description="Los apartados con comprobante esperan una decisión incluso cuando vence el plazo de revisión."
       >
         <div className="mb-4 flex justify-end">
-          <Button size="sm" variant="outline" onClick={() => void load()} disabled={pending}>
-            <RefreshCw className={`h-4 w-4 ${pending ? "animate-spin" : ""}`} />
+          <Button size="sm" variant="outline" onClick={() => void load()} disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Actualizar
           </Button>
         </div>
-        {pending && !reviews.length ? (
+        {loading && !reviews.length ? (
           <p className="flex items-center justify-center gap-2 p-8 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             Cargando pagos…
@@ -163,6 +176,11 @@ export default function LiveYapeReviews({
                   </div>
                   <p className="text-xl font-bold tabular-nums">{liveMoney(review.quote.total)}</p>
                 </div>
+                {review.reviewFlags?.length ? (
+                  <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+                    Datos por revisar: {review.reviewFlags.join(" · ")}
+                  </p>
+                ) : null}
                 {review.manualPayment?.overdue ? (
                   <p className="inline-flex items-center gap-2 rounded-lg bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-900">
                     <AlertTriangle className="h-4 w-4" />
@@ -175,22 +193,54 @@ export default function LiveYapeReviews({
                   </p>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => setSelection({ storeId, review, decision: "approve" })}
-                  >
-                    <CheckCircle2 className="h-4 w-4" />
-                    Revisar y validar
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setSelection({ storeId, review, decision: "reject" })}
-                  >
-                    <XCircle className="h-4 w-4" />
-                    Rechazar comprobante
-                  </Button>
+                  {review.manualPayment?.status === "UNDER_REVIEW" &&
+                  review.buyerStatus !== "CANCELLED" ? (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={() => setSelected({ review, decision: "approve" })}
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Revisar y validar
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setSelected({ review, decision: "reject" })}
+                      >
+                        <XCircle className="h-4 w-4" />
+                        Rechazar comprobante
+                      </Button>
+                    </>
+                  ) : (
+                    <span className="text-sm">
+                      {liveBuyerLabel(review.buyerStatus || review.manualPayment?.status)}
+                    </span>
+                  )}
+                  {review.manualPayment?.status === "REJECTED" &&
+                  review.buyerStatus !== "CANCELLED" ? (
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => setSelected({ review, decision: "cancel" })}
+                    >
+                      Anular pedido y liberar stock
+                    </Button>
+                  ) : null}
                 </div>
+                {review.paymentAttempts?.length ? (
+                  <details className="text-xs">
+                    <summary className="cursor-pointer py-3">
+                      Intentos anteriores ({review.paymentAttempts.length})
+                    </summary>
+                    {review.paymentAttempts.map((p, i) => (
+                      <p key={i} className="py-2">
+                        {p.submittedAt ? new Date(p.submittedAt).toLocaleString("es-PE") : ""} ·
+                        Yape · {p.operationNumber} · {liveBuyerLabel(p.status)} · {p.reason}
+                      </p>
+                    ))}
+                  </details>
+                ) : null}
               </article>
             ))}
           </div>
@@ -204,18 +254,19 @@ export default function LiveYapeReviews({
           storeId={storeId}
           review={selected.review}
           decision={selected.decision}
-          onClose={() => setSelection(null)}
+          onClose={() => setSelected(null)}
           onComplete={(result) => {
-            setSelection(null);
-            setNotice({
-              storeId,
-              text:
-                selected.decision === "approve"
-                  ? result.status === "PAID"
-                    ? "Pago validado. El pedido fue confirmado por el servidor."
-                    : "Revisión registrada. Consulta el estado del pedido."
+            setSelected(null);
+            setNotice(
+              selected.decision === "approve"
+                ? result.status === "PAID" || result.status === "PAGADO"
+                  ? "Pago validado. El pedido fue confirmado por el servidor."
+                  : "Revisión registrada. Consulta el estado del pedido."
+                : selected.decision === "cancel"
+                  ? "Pedido anulado. Se solicitó la liberación de stock."
                   : "Comprobante rechazado. El cliente podrá consultar el motivo.",
-            });
+            );
+            onUpdated?.();
             polling.current?.setPaused(false, { refreshOnResume: false });
             void load(true);
           }}
@@ -234,13 +285,13 @@ function ReviewDialog({
 }: {
   storeId: string;
   review: LiveYapeReview;
-  decision: "approve" | "reject";
+  decision: "approve" | "reject" | "cancel";
   onClose: () => void;
   onComplete: (result: LiveCheckoutSnapshot) => void;
 }) {
   const [proof, setProof] = useState<string | null>(null);
   const [proofLoading, setProofLoading] = useState(true);
-  const [operation, setOperation] = useState("");
+  const [operation, setOperation] = useState(review.manualPayment?.operationNumber || "");
   const [reason, setReason] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -250,31 +301,38 @@ function ReviewDialog({
   const command = useRef<{ selection: string; key: string } | null>(null);
   useEffect(() => {
     active.current = true;
+    let cancelled = false;
     const controller = new AbortController();
+    if (review.manualPayment?.hasProof === false || decision === "cancel") {
+      setProofLoading(false);
+      return () => {
+        active.current = false;
+      };
+    }
     void getLiveYapeReviewProof(storeId, review.checkoutId, controller.signal)
       .then((result) => {
-        if (!controller.signal.aborted) {
+        if (!cancelled) {
           const url = safeLiveUrl(result.url);
           if (!url) throw new Error("No se pudo abrir el comprobante.");
           setProof(url);
         }
       })
       .catch((cause) => {
-        if (!controller.signal.aborted) setError(liveError(cause));
+        if (!cancelled) setError(liveError(cause));
       })
       .finally(() => {
-        if (!controller.signal.aborted) setProofLoading(false);
+        if (!cancelled) setProofLoading(false);
       });
     return () => {
       active.current = false;
+      cancelled = true;
       controller.abort();
     };
-  }, [storeId, review.checkoutId]);
+  }, [storeId, review.checkoutId, review.manualPayment?.hasProof, decision]);
   async function submit() {
     if (
       lock.current ||
       !confirmed ||
-      !proof ||
       (decision === "approve" ? !operation.trim() : reason.trim().length < 3)
     )
       return;
@@ -295,7 +353,7 @@ function ReviewDialog({
       );
       if (active.current) onComplete(result);
     } catch (cause) {
-      if (active.current) setError(liveAdminError(cause));
+      if (active.current) setError(liveError(cause));
     } finally {
       if (active.current) {
         lock.current = false;
@@ -313,7 +371,11 @@ function ReviewDialog({
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {decision === "approve" ? "Validar pago Yape" : "Rechazar comprobante"}
+            {decision === "approve"
+              ? "Validar pago Yape"
+              : decision === "cancel"
+                ? "Anular pedido y liberar stock"
+                : "Rechazar comprobante"}
           </DialogTitle>
           <DialogDescription>
             {review.customer.name} ·{" "}
@@ -372,7 +434,10 @@ function ReviewDialog({
               <Input
                 id="yape-verified-operation"
                 aria-label="Número de operación verificado en Yape"
-                maxLength={50}
+                inputMode="numeric"
+                pattern="[0-9]{4,12}"
+                minLength={4}
+                maxLength={12}
                 disabled={busy}
                 required
                 value={operation}
@@ -406,7 +471,9 @@ function ReviewDialog({
             <span>
               {decision === "approve"
                 ? "Verifiqué el ingreso y confirmo este pago. El pago quedará validado y permitirá continuar con la entrega."
-                : "Confirmo el rechazo del comprobante con el motivo indicado. El cliente deberá contactar al negocio si ya realizó el pago."}
+                : decision === "cancel"
+                  ? "Confirmo la anulación de todo el pedido y la liberación de sus prendas. Solo procede si no tiene pagos validados."
+                  : "Confirmo el rechazo del comprobante con el motivo indicado. El cliente podrá enviar otro comprobante al mismo pedido."}
             </span>
           </label>
           <DialogFooter>
@@ -419,12 +486,15 @@ function ReviewDialog({
               disabled={
                 busy ||
                 !confirmed ||
-                !proof ||
                 (decision === "approve" ? !operation.trim() : reason.trim().length < 3)
               }
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {decision === "approve" ? "Validar pago y confirmar pedido" : "Confirmar rechazo"}
+              {decision === "approve"
+                ? "Validar pago y confirmar pedido"
+                : decision === "cancel"
+                  ? "Anular pedido y liberar stock"
+                  : "Confirmar rechazo"}
             </Button>
           </DialogFooter>
         </form>

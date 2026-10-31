@@ -156,7 +156,10 @@ test("configuration remains editable while purchases are off and enable requires
   const toggle = await screen.findByRole("switch", { name: /^Habilitar compras del live/ });
   expect(toggle).not.toBeChecked();
   expect(toggle).toBeDisabled();
-  expect(screen.getByLabelText("Envío a domicilio")).toBeEnabled();
+  expect(screen.getByRole("link", { name: /Configuración de tienda/ })).toHaveAttribute(
+    "href",
+    "/configuracion/tiendas",
+  );
   expect(screen.getByRole("button", { name: "Guardar configuración" })).toBeEnabled();
   (getLiveConsole as jest.Mock).mockResolvedValue(fullConsole(true));
   fireEvent.click(screen.getByRole("button", { name: "Actualizar live" }));
@@ -235,15 +238,21 @@ test("save shipping, enable purchases and save activation before opening; refres
   const toggle = await screen.findByRole("switch", { name: /^Habilitar compras del live/ });
   fireEvent.click(screen.getByRole("button", { name: "Configurar envío" }));
   await waitFor(() => expect(document.getElementById("live-shipping-settings")).toHaveFocus());
-  fireEvent.change(screen.getByLabelText("Envío a domicilio"), { target: { value: "10" } });
   expect(toggle).toBeDisabled();
-  expect(toggle).toHaveAccessibleDescription(/Primero guarda las tarifas/);
-  fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }));
-  await waitFor(() => expect(toggle).toBeEnabled());
-  expect(updateLiveConfig).toHaveBeenLastCalledWith(
-    "store-a",
-    expect.objectContaining({ enabled: false, homeShipping: 10 }),
+  expect(screen.getByRole("link", { name: /Configuración de tienda/ })).toHaveAttribute(
+    "href",
+    "/configuracion/tiendas",
   );
+  // Shipping is saved in Store settings; a fresh readiness response unlocks activation.
+  saved = {
+    ...saved,
+    readiness: {
+      ready: true,
+      checks: [{ code: "SHIPPING", ready: true, message: "Envío configurado" }],
+    },
+  };
+  fireEvent.click(screen.getByRole("button", { name: "Actualizar live" }));
+  await waitFor(() => expect(toggle).toBeEnabled());
   fireEvent.click(toggle);
   expect(toggle).toBeChecked();
   expect(toggle).toHaveAccessibleDescription(/Activación sin guardar/);
@@ -253,13 +262,13 @@ test("save shipping, enable purchases and save activation before opening; refres
   );
   expect(toggle).toBeChecked();
   expect(toggle).toHaveAccessibleDescription(/Activación sin guardar/);
-  expect(updateLiveConfig).toHaveBeenCalledTimes(1);
+  expect(updateLiveConfig).toHaveBeenCalledTimes(0);
   expect(updateLiveSession).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Guardar y habilitar compras" }));
   await screen.findByRole("button", { name: "Ir a Consola en vivo" });
   expect(updateLiveConfig).toHaveBeenLastCalledWith(
     "store-a",
-    expect.objectContaining({ enabled: true, homeShipping: 10 }),
+    expect.objectContaining({ enabled: true }),
   );
   mockTab = "console";
   view.rerender(<LiveConsolePage />);
@@ -358,7 +367,7 @@ test("a late authorization response from the previous account cannot replace the
   expect(screen.getByText(/rol Administrador vigente/)).toBeInTheDocument();
 });
 
-test("administrator config starts without invented shipping prices and saves the explicit amount", async () => {
+test("administrator config links to centralized delivery settings without inventing fees", async () => {
   const consoleData: LiveConsoleData = {
     config: {
       enabled: true,
@@ -397,30 +406,18 @@ test("administrator config starts without invented shipping prices and saves the
   });
   (updateLiveConfig as jest.Mock).mockResolvedValue({ config: consoleData.config });
   render(<LiveConsolePage />);
-  const home = await screen.findByLabelText("Envío a domicilio");
-  const agency = screen.getByLabelText("Envío a agencia");
-  expect(home).toHaveValue(null);
-  expect(agency).toHaveValue(null);
-  expect(
-    screen.queryByRole("switch", { name: "Juntar compras en un envío" }),
-  ).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole("switch", { name: "Recordatorio por WhatsApp" }),
-  ).not.toBeInTheDocument();
-  expect(screen.queryByRole("switch", { name: "Live de vendedores" })).not.toBeInTheDocument();
-  fireEvent.change(home, { target: { value: "10.125" } });
-  expect(screen.getByRole("button", { name: "Guardar configuración" })).toBeDisabled();
-  fireEvent.change(home, { target: { value: "10.50" } });
+  expect(await screen.findByRole("link", { name: /Configuración de tienda/ })).toHaveAttribute(
+    "href",
+    "/configuracion/tiendas",
+  );
+  expect(screen.queryByLabelText("Envío a domicilio")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Envío a agencia")).not.toBeInTheDocument();
+  expect(screen.getByRole("switch", { name: "Juntar compras en un envío" })).toBeEnabled();
   fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }));
   await waitFor(() =>
     expect(updateLiveConfig).toHaveBeenCalledWith(
       "store-a",
-      expect.objectContaining({
-        homeShipping: 10.5,
-        agencyShipping: null,
-        combineShipping: false,
-        allowAccumulation: false,
-      }),
+      expect.objectContaining({ homeShipping: null, agencyShipping: null }),
     ),
   );
 });

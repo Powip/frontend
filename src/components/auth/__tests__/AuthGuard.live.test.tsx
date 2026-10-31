@@ -32,7 +32,7 @@ test.each([publicCatalog, `${publicCatalog}/`])("anonymous catalog %s loads duri
   expect(mockReplace).not.toHaveBeenCalled();
 });
 
-test.each(["/live", "/live/config", "/live/not-a-uuid", `${publicCatalog}/payments`, "/live-extra"])(
+test.each(["/live", "/live/config", "/live/invalid!slug", "/live/admin", "/live/settings", `${publicCatalog}/payments`, "/live-extra"])(
   "%s remains private", (pathname) => {
     mockPathname = pathname;
     render(<AuthGuard><p>Privado</p></AuthGuard>);

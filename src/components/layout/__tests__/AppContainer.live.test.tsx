@@ -45,9 +45,18 @@ test("catalog excludes private chrome and preserves the buyer form during silent
   expect(screen.getByLabelText("Nombre del comprador")).toHaveValue("");
 });
 
-test.each(["/live", `${publicCatalog}/payments`, "/live/not-a-uuid"])("private chrome stays on %s", (pathname) => {
+test.each(["/live", `${publicCatalog}/payments`, "/live/invalid!slug", "/live/admin", "/live/settings"])("private chrome stays on %s", (pathname) => {
   mockPathname = pathname;
   render(<AppContainer><p>Consola</p></AppContainer>);
   expect(screen.getByText("Panel privado")).toBeInTheDocument();
   expect(screen.getByText("Banner Flow")).toBeInTheDocument();
+});
+
+
+test.each(["/live/kunca", "/catalogo/kunca", `/p/${"a".repeat(43)}`])("public buyer chrome is used on %s", pathname => {
+  mockPathname = pathname;
+  render(<AppContainer><p>Compra pública</p></AppContainer>);
+  expect(screen.getByText("Compra pública")).toBeInTheDocument();
+  expect(screen.queryByText("Panel privado")).not.toBeInTheDocument();
+  expect(screen.queryByText("Banner Flow")).not.toBeInTheDocument();
 });

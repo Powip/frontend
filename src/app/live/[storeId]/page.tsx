@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import PublicLivePage from "@/features/live/PublicLivePage";
+import LiveStorefront from "@/features/live/LiveStorefront";
 
 export const metadata: Metadata = {
   title: "Catálogo del live | POWIP",
@@ -9,5 +9,5 @@ export const metadata: Metadata = {
 
 export default async function Page({ params }: { params: Promise<{ storeId: string }> }) {
   const { storeId } = await params;
-  return <PublicLivePage storeId={storeId} />;
+  return <LiveStorefront slug={storeId} />;
 }

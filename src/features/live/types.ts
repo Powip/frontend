@@ -23,6 +23,11 @@ export interface LiveConfig {
   allowSellerLive: boolean;
   closePolicy: "END_OF_DAY" | "24_HOURS" | "MANUAL";
   liveUrl: string;
+  hideSoldOut?: boolean;
+  slug?: string;
+  advisorId?: string;
+  advisorName?: string;
+  advisors?: { id: string; name: string; code: string; commission?: boolean }[];
 }
 export interface LiveSession {
   id: string;
@@ -40,6 +45,7 @@ export interface LiveProduct {
   sku: string;
   imageUrl?: string | null;
   variantLabel?: string | null;
+  attributes?: Record<string, string>;
   regularPrice: number;
   livePrice: number;
   availableStock: number;
@@ -52,6 +58,8 @@ export interface LiveCustomer {
   name: string;
   phone: string;
   socialUsername?: string;
+  savedDelivery?: LiveDelivery;
+  savedReceipt?: LivePurchaseInput["receipt"];
 }
 export interface LiveReservation {
   id: string;
@@ -62,6 +70,7 @@ export interface LiveReservation {
   productName?: string;
   name?: string;
   variantLabel?: string | null;
+  attributes?: Record<string, string>;
   quantity: number;
   unitPrice: number;
   customer: LiveCustomer;
@@ -76,6 +85,8 @@ export interface LiveTrustedCustomer extends LiveCustomer {
 }
 export interface LiveMetrics {
   totalSales: number;
+  pendingSales?: number;
+  pendingPaymentCount?: number;
   orderCount: number;
   instantOrderCount: number;
   activeReservations: number;
@@ -118,6 +129,7 @@ export interface LiveConsoleData {
   serverNow: string;
 }
 export interface LivePublicOrder {
+  buyerStatus?: string;
   checkoutId?: string;
   method?: LivePaymentMethod;
   manualPayment?: LiveManualPayment | null;
@@ -128,9 +140,16 @@ export interface LivePublicOrder {
   total: number;
   trackingUrl?: string | null;
   createdAt: string;
-  items: { variantId?: string; name: string; quantity: number; unitPrice: number }[];
+  items: {
+    variantId?: string;
+    name: string;
+    quantity: number;
+    unitPrice: number;
+  }[];
 }
 export interface LivePublicData {
+  channel?: "LIVE" | "WHATSAPP";
+  deliveryOptions?: StoreDeliveryOption[];
   deliveryMethods?: LiveDeliveryMethod[];
   store: { id: string; name: string; logoUrl?: string | null };
   config: LiveConfig;
@@ -147,15 +166,13 @@ export interface LiveQuoteInput {
   items: { variantId: string; quantity: number }[];
   reservationIds?: string[];
   customer: LiveCustomer;
-  delivery: {
-    type: "HOME" | "AGENCY";
-    department: string;
-    province: string;
-    district: string;
-    address: string;
-    agency?: string;
+  delivery: LiveDelivery;
+  receipt: {
+    dni?: string;
+    type: "BOLETA" | "FACTURA";
+    ruc?: string;
+    businessName?: string;
   };
-  receipt: { type: "BOLETA"; dni: string } | { type: "FACTURA"; ruc: string; businessName: string };
 }
 export interface LivePurchaseInput extends LiveQuoteInput {
   method: LivePaymentMethod;
@@ -175,6 +192,8 @@ export interface LiveQuote {
   combinedOrderNumber?: string | null;
 }
 export interface LiveCheckout {
+  trackingUrl?: string | null;
+  buyerStatus?: string;
   manualPayment?: LiveManualPayment | null;
   checkoutId?: string;
   quote?: LiveQuote;
@@ -209,10 +228,18 @@ export interface LiveManualPayment {
   reviewDeadlineAt: string | null;
   proofUploadedAt?: string | null;
   overdue?: boolean;
+  hasProof?: boolean;
   rejectionReason?: string | null;
   reason?: string | null;
 }
 export interface LiveCheckoutSnapshot extends LiveCheckout {
+  paymentAttempts?: {
+    status: string;
+    operationNumber?: string;
+    reason?: string;
+    submittedAt?: string;
+    reviewedAt?: string;
+  }[];
   orderStatus?: string | null;
   trackingUrl?: string | null;
   checkoutId: string;
@@ -226,9 +253,31 @@ export interface LiveCheckoutSnapshot extends LiveCheckout {
   canReview?: boolean;
 }
 export interface LiveYapeReview extends LiveCheckoutSnapshot {
+  reviewFlags?: string[];
   quote: LiveQuote;
   customer: LiveCustomer;
   createdAt: string;
+}
+
+export interface LiveDelivery {
+  type: "HOME" | "AGENCY";
+  department?: string;
+  province?: string;
+  district?: string;
+  address?: string;
+  reference?: string;
+  courier?: "MOTORIZADO" | "SHALOM" | "OLVA";
+  agencyId?: string;
+  agency?: string;
+  dni?: string;
+  lat?: number;
+  lng?: number;
+}
+export interface StoreDeliveryOption extends LiveDelivery {
+  id: string;
+  enabled: boolean;
+  price: number;
+  hours?: string;
 }
 
 export type LiveDeliveryMethod = "HOME" | "AGENCY";

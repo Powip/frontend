@@ -91,7 +91,7 @@ export default function LivePaymentSettings({
     config.reviewHours >= 1 &&
     config.reviewHours <= 72;
   return (
-    <div className="space-y-5">
+    <div id="live-yape-settings" tabIndex={-1} className="space-y-5">
       <LivePanel
         title="Yape del negocio"
         description="El cliente envía su comprobante y tu equipo valida el pago antes de confirmar el pedido."

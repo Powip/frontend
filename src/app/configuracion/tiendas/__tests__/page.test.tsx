@@ -15,6 +15,10 @@ jest.mock("@/components/brands/CatalogoMarcas", () => ({
   __esModule: true,
   default: () => null,
 }));
+jest.mock("@/components/forms/StoreDeliverySettings", () => ({
+  __esModule: true,
+  default: (props: any) => <div data-testid={`delivery-${props.storeId}`}>Coberturas: {props.initial.length}</div>,
+}));
 jest.mock("@/components/forms/GestionAlmacenes", () => ({
   __esModule: true,
   default: () => null,
@@ -166,4 +170,12 @@ describe("Configuración de tiendas comerciales", () => {
     await waitFor(() => expect(push).toHaveBeenCalledWith("/dashboard"));
     expect(screen.queryByTestId("channels")).not.toBeInTheDocument();
   });
+});
+
+it("opens delivery coverage for commercial stores without exposing the inherited store", async () => {
+  render(<TiendasPage />);
+  await screen.findByText(shop.name);
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Envíos" }));
+  expect(await screen.findByTestId(`delivery-${shop.id}`)).toHaveTextContent("Coberturas: 0");
+  expect(screen.queryByTestId(`delivery-${legacy.id}`)).not.toBeInTheDocument();
 });

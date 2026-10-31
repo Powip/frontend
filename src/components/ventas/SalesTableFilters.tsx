@@ -21,7 +21,7 @@ export interface SalesFilters {
   courier: string;
   zone: string;
   hasGuide: "" | "yes" | "no";
-  source: "" | "shopify" | "google_sheets" | "manual";
+  source: "" | "shopify" | "google_sheets" | "manual" | "powip_live" | "powip_link";
   status: OrderStatus | "";
   salesChannel: string;
   /** Clave de producto (ver getProductFilterKey) — "" = todos. */
@@ -205,6 +205,8 @@ export const GUIDE_OPTIONS = [
 ];
 
 export const SOURCE_OPTIONS = [
+  { value: "powip_live", label: "POWIP Live" },
+  { value: "powip_link", label: "POWIP Link" },
   { value: "", label: "Todos" },
   { value: "manual", label: "Powip" },
   { value: "shopify", label: "Shopify" },
@@ -592,7 +594,7 @@ export function SalesTableFilters({
                   className="w-full min-w-0 max-w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                   value={filters.source}
                   onChange={(e) =>
-                    updateFilter("source", e.target.value as "" | "shopify" | "google_sheets" | "manual")
+                    updateFilter("source", e.target.value as "" | "shopify" | "google_sheets" | "manual" | "powip_live" | "powip_link")
                   }
                 >
                   {SOURCE_OPTIONS.map((opt) => (

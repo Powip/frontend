@@ -1,4 +1,9 @@
 "use client";
+import { isLiveReadDenied } from "./liveService";
+import { createLivePolling, type LivePollingController } from "./livePolling";
+import { liveAdminError } from "./liveService";
+import LiveAdvisors from "./LiveAdvisors";
+import LiveProductsTable from "./LiveProductsTable";
 
 import {
   Copy,
@@ -30,14 +35,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useAuth } from "@/contexts/AuthContext";
-import LiveCatalogDialog from "./LiveCatalogDialog";
-import LivePaymentSettings from "./LivePaymentSettings";
 import LiveReadinessPanel, {
   getLiveOpeningStatus,
   type LiveConfigTarget,
 } from "./LiveReadinessPanel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/contexts/AuthContext";
+import LivePaymentSettings from "./LivePaymentSettings";
 import {
   LiveEmpty,
   LiveErrorBanner,
@@ -46,12 +50,10 @@ import {
   LiveReservationTimer,
 } from "./LiveShared";
 import LiveYapeReviews from "./LiveYapeReviews";
-import { createLivePolling, type LivePollingController } from "./livePolling";
 import {
   createLivePaymentLink,
+  getLiveCatalog,
   getLiveConsole,
-  isLiveReadDenied,
-  liveAdminError,
   liveError,
   liveMoney,
   platformNames,
@@ -65,10 +67,10 @@ import {
 } from "./liveService";
 import type {
   LiveConfig,
+  LiveReadiness,
   LiveConsoleData,
   LivePlatform,
   LiveProduct,
-  LiveReadiness,
   LiveReservation,
   LiveReviewConsoleData,
   LiveSession,
@@ -110,8 +112,7 @@ function ScopedLiveConsolePage({
   const router = useRouter();
   const search = useSearchParams();
   const rawTab = search.get("tab");
-  const requestedTab: Tab =
-    rawTab && Object.hasOwn(tabLabels, rawTab) ? (rawTab as Tab) : "console";
+  const requestedTab: Tab = rawTab && rawTab in tabLabels ? (rawTab as Tab) : "console";
   const [fullSnapshot, setFullSnapshot] = useState<{
     scope: string;
     value: LiveConsoleData;
@@ -173,7 +174,18 @@ function ScopedLiveConsolePage({
       setSelectedStore(callbackStoreId);
   }, [callbackStoreId, selectedStoreId, auth?.company?.stores, setSelectedStore]);
   const storeId = selectedStoreId;
-  const publicUrl = storeId && origin ? `${origin}/live/${encodeURIComponent(storeId)}` : "";
+  const slug = data?.config.slug;
+  const publicUrl =
+    storeId && origin
+      ? slug
+        ? origin.endsWith(".powip.lat") || origin === "https://powip.lat"
+          ? `https://${slug}.powip.lat/live`
+          : `${origin}/live/${slug}`
+        : `${origin}/live/${encodeURIComponent(storeId)}`
+      : "";
+  const catalogUrl = publicUrl.includes(".powip.lat/live")
+    ? publicUrl.replace(/\/live$/, "/catalogo")
+    : publicUrl.replace("/live/", "/catalogo/");
 
   const refresh = useCallback(
     (quiet = false) =>
@@ -189,7 +201,6 @@ function ScopedLiveConsolePage({
     setError("");
     setProduct(null);
     setCatalogOpen(false);
-    setConfigTarget(null);
     setReleasing([]);
     setPaymentLink(null);
     setOrigin(window.location.origin);
@@ -397,15 +408,17 @@ function ScopedLiveConsolePage({
         </Tabs>
       ) : data ? (
         <>
-          {closed || !readyToOpen ? (
-            <LiveReadinessPanel
-              readiness={data.readiness}
-              purchasesEnabled={data.config.enabled}
-              canManage={canManage}
-              busy={!!busy}
-              onConfigure={navigateToConfig}
-              onProducts={() => navigateToTab("products")}
-            />
+          {!data.paymentMethods?.length ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <b>Configura cómo cobrar.</b> Conecta Mercado Pago o configura el Yape del negocio.
+              Los pedidos se confirman después de validar el pago.
+            </div>
+          ) : null}
+          {!canManage ? (
+            <p className="rounded-xl border bg-muted/50 p-3 text-sm text-muted-foreground">
+              La configuración, los productos y los clientes de confianza requieren permiso para
+              gestionar Live.
+            </p>
           ) : null}
           {data.paymentIssues?.length ? (
             <LivePanel
@@ -436,7 +449,7 @@ function ScopedLiveConsolePage({
           ) : null}
           <Tabs
             value={tab}
-            onValueChange={(value) => navigateToTab(value as Tab)}
+            onValueChange={(value) => router.replace(`/live?tab=${value}`, { scroll: false })}
             className="space-y-5"
           >
             <TabsList className="h-auto max-w-full flex-wrap justify-start gap-1 bg-muted/70 p-1">
@@ -454,6 +467,22 @@ function ScopedLiveConsolePage({
                 ))}
             </TabsList>
             <TabsContent value="console" className="space-y-5">
+              <LiveReadinessPanel
+                readiness={data.readiness}
+                purchasesEnabled={data.config.enabled}
+                canManage={canManage}
+                busy={!!busy}
+                onConfigure={navigateToConfig}
+                onProducts={() => navigateToTab("products")}
+              />
+              <LiveAdvisors
+                config={data.config}
+                disabled={!canManage || !!busy}
+                catalogUrl={catalogUrl}
+                onSave={(config) =>
+                  void run("config", () => updateLiveConfig(storeId, config), "Asesora guardada")
+                }
+              />
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card p-4">
                 <div className="flex items-center gap-3">
                   <span
@@ -479,7 +508,11 @@ function ScopedLiveConsolePage({
                     disabled={!canOperate || !!busy || (!transmitting && !readyToOpen)}
                     aria-describedby={showOpeningStatus ? "live-opening-status" : undefined}
                     variant={transmitting ? "outline" : "default"}
-                    onClick={() => void updateSession({ status: transmitting ? "ENDED" : "LIVE" })}
+                    onClick={() =>
+                      void updateSession({
+                        status: transmitting ? "ENDED" : "LIVE",
+                      })
+                    }
                   >
                     {transmitting ? <Square className="h-4 w-4" /> : <Play className="h-4 w-4" />}
                     {transmitting ? "Terminar live" : "Estoy en vivo"}
@@ -490,7 +523,11 @@ function ScopedLiveConsolePage({
                     aria-describedby={
                       showOpeningStatus && closed ? "live-opening-status" : undefined
                     }
-                    onClick={() => void updateSession({ status: closed ? "ENDED" : "CLOSED" })}
+                    onClick={() =>
+                      void updateSession({
+                        status: closed ? "ENDED" : "CLOSED",
+                      })
+                    }
                   >
                     {closed ? "Abrir catálogo" : "Cerrar catálogo"}
                   </Button>
@@ -531,15 +568,15 @@ function ScopedLiveConsolePage({
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 {[
                   {
-                    label: "Ventas del live",
+                    label: "Ventas validadas",
                     value: liveMoney(data.metrics.totalSales),
                     note: `${data.metrics.orderCount} pedidos`,
                     color: "text-rose-600",
                   },
                   {
-                    label: "Compras directas",
-                    value: data.metrics.instantOrderCount.toString(),
-                    note: "Pagadas sin apartar",
+                    label: "Por validar",
+                    value: liveMoney(data.metrics.pendingSales || 0),
+                    note: `${data.metrics.pendingPaymentCount || 0} pagos pendientes`,
                     color: "text-emerald-600",
                   },
                   {
@@ -577,7 +614,11 @@ function ScopedLiveConsolePage({
                         key={value}
                         variant={data.session?.platform === value ? "default" : "outline"}
                         disabled={!canOperate || !!busy}
-                        onClick={() => void updateSession({ platform: value as LivePlatform })}
+                        onClick={() =>
+                          void updateSession({
+                            platform: value as LivePlatform,
+                          })
+                        }
                       >
                         {label}
                       </Button>
@@ -621,7 +662,15 @@ function ScopedLiveConsolePage({
                   {data.products.filter((item) => item.enabled).length ? (
                     <div className="max-h-[400px] divide-y overflow-y-auto">
                       {data.products
-                        .filter((item) => item.enabled)
+                        .filter(
+                          (item, index, all) =>
+                            item.enabled &&
+                            all.findIndex(
+                              (p) =>
+                                p.enabled &&
+                                (p.productId || p.variantId) === (item.productId || item.variantId),
+                            ) === index,
+                        )
                         .map((item) => (
                           <div
                             key={item.variantId}
@@ -635,7 +684,8 @@ function ScopedLiveConsolePage({
                                 {item.availableStock} disponibles
                               </p>
                             </div>
-                            {item.variantId === pinned?.variantId ? (
+                            {(item.productId || item.variantId) ===
+                            (pinned?.productId || pinned?.variantId) ? (
                               <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700">
                                 <Pin className="h-3 w-3" />
                                 En pantalla
@@ -646,7 +696,9 @@ function ScopedLiveConsolePage({
                                 variant="outline"
                                 disabled={!canOperate || !!busy || item.availableStock <= 0}
                                 onClick={() =>
-                                  void updateSession({ pinnedVariantId: item.variantId })
+                                  void updateSession({
+                                    pinnedVariantId: item.variantId,
+                                  })
                                 }
                               >
                                 Mostrar
@@ -734,77 +786,21 @@ function ScopedLiveConsolePage({
                   </Button>
                 </div>
                 {data.products.length ? (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
-                      <thead>
-                        <tr className="border-b text-xs text-muted-foreground">
-                          <th className="pb-3 pr-4 font-medium">Producto</th>
-                          <th className="pb-3 pr-4 font-medium">Tienda / Live</th>
-                          <th className="pb-3 pr-4 font-medium">Disponible</th>
-                          <th className="pb-3 pr-4 font-medium">Máx. por cliente</th>
-                          <th className="pb-3 pr-4 font-medium">Publicado</th>
-                          <th className="pb-3 font-medium">Acciones</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.products.map((item) => (
-                          <tr key={item.variantId} className="border-b last:border-0">
-                            <td className="py-3 pr-4">
-                              <div className="flex items-center gap-3">
-                                <LiveProductImage product={item} className="h-10 w-10" />
-                                <div>
-                                  <p className="font-semibold">{item.name}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {item.sku}
-                                    {item.variantLabel ? ` · ${item.variantLabel}` : ""}
-                                  </p>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="whitespace-nowrap py-3 pr-4">
-                              <span className="text-xs text-muted-foreground">
-                                {liveMoney(item.regularPrice)}
-                              </span>
-                              <p className="font-semibold text-rose-600">
-                                {liveMoney(item.livePrice)}
-                              </p>
-                            </td>
-                            <td
-                              className={`py-3 pr-4 font-medium ${item.availableStock <= 0 ? "text-red-600" : ""}`}
-                            >
-                              {item.availableStock}
-                            </td>
-                            <td className="py-3 pr-4">{item.maxPerCustomer ?? "Sin límite"}</td>
-                            <td className="py-3 pr-4">
-                              <Switch
-                                aria-label={`Publicar ${item.name} en live`}
-                                checked={item.enabled}
-                                disabled={!canManage || !!busy}
-                                onCheckedChange={(enabled) =>
-                                  void run(
-                                    "product",
-                                    () => updateLiveProduct(storeId, item.variantId, { enabled }),
-                                    enabled ? "Producto publicado" : "Producto retirado",
-                                  )
-                                }
-                              />
-                            </td>
-                            <td className="py-3">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                disabled={!canManage || !!busy}
-                                onClick={() => setProduct(item)}
-                              >
-                                <Settings2 className="h-4 w-4" />
-                                Editar
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <LiveProductsTable
+                    products={data.products}
+                    disabled={!canManage || !!busy}
+                    onEdit={setProduct}
+                    onPublish={(item, enabled) =>
+                      void run(
+                        "product",
+                        () =>
+                          updateLiveProduct(storeId, item.variantId, {
+                            enabled,
+                          }),
+                        enabled ? "Producto publicado" : "Producto retirado",
+                      )
+                    }
+                  />
                 ) : (
                   <LiveEmpty>
                     No hay productos publicados. Agrega una variante de tu catálogo.
@@ -816,21 +812,27 @@ function ScopedLiveConsolePage({
               <LiveYapeReviews key={storeId} storeId={storeId} canReview={canReviewPayments} />
             </TabsContent>
             <TabsContent value="config" className="space-y-5">
-              <div id="live-yape-settings" tabIndex={-1}>
-                <LivePaymentSettings
-                  key={`yape:${storeId}`}
-                  storeId={storeId}
-                  canManage={canManage}
-                  onSaved={() => void refresh(true)}
-                />
-              </div>
-              <LiveConfigPanel
-                key={`config:${storeId}`}
-                config={data.config}
+              <LiveReadinessPanel
                 readiness={data.readiness}
+                purchasesEnabled={data.config.enabled}
                 canManage={canManage}
                 busy={!!busy}
+                onConfigure={navigateToConfig}
+                onProducts={() => navigateToTab("products")}
+              />
+              <LivePaymentSettings
+                key={`yape/${storeId}`}
+                storeId={storeId}
+                canManage={canManage}
+                onSaved={() => void refresh(true)}
+              />
+              <LiveConfigPanel
+                key={`config/${storeId}`}
+                config={data.config}
+                readiness={data.readiness}
                 onConsole={() => navigateToTab("console")}
+                canManage={canManage}
+                busy={!!busy}
                 onSave={(input) =>
                   void run(
                     "config",
@@ -861,20 +863,14 @@ function ScopedLiveConsolePage({
           }}
         />
       ) : null}
-      {catalogOpen && storeId && data ? (
-        <LiveCatalogDialog
+      {catalogOpen && storeId ? (
+        <CatalogDialog
           storeId={storeId}
-          storeName={auth?.company?.stores?.find((store) => store.id === storeId)?.name}
-          configuredVariantIds={data.products.map((item) => item.variantId)}
-          busy={!!busy}
           onClose={() => setCatalogOpen(false)}
-          onSave={(item, input) =>
-            run(
-              "product",
-              () => updateLiveProduct(storeId, item.variantId, input),
-              "Producto guardado en el Live",
-            )
-          }
+          onSelect={(item) => {
+            setCatalogOpen(false);
+            setProduct({ ...item, enabled: true });
+          }}
         />
       ) : null}
       <Dialog
@@ -911,7 +907,8 @@ function ScopedLiveConsolePage({
                   );
               }}
             >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Liberar stock
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Liberar stock
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -970,7 +967,7 @@ function ReservationsPanel({
   onTrust: (id: string, remove?: boolean) => void;
   onPaymentLink: (item: LiveReservation) => void;
 }) {
-  const [filter, setFilter] = useState("TIMED");
+  const [filter, setFilter] = useState("ACCUMULATED");
   const trustedIds = new Set(data.trustedCustomers.map((customer) => customer.id));
   const filtered = data.reservations.filter((reservation) =>
     filter === "PAID"
@@ -989,21 +986,20 @@ function ReservationsPanel({
           ["ACCUMULATED", "Acumulados"],
           ["TIMED", "Con tiempo"],
           ["PAID", "Pagados"],
-        ]
-          .filter(([value]) => value !== "ACCUMULATED" || data.config.allowAccumulation)
-          .map(([value, label]) => (
-            <Button
-              key={value}
-              variant={filter === value ? "default" : "outline"}
-              size="sm"
-              onClick={() => setFilter(value)}
-            >
-              {label}
-            </Button>
-          ))}
+        ].map(([value, label]) => (
+          <Button
+            key={value}
+            variant={filter === value ? "default" : "outline"}
+            size="sm"
+            onClick={() => setFilter(value)}
+          >
+            {label}
+          </Button>
+        ))}
       </div>
       <div className="rounded-xl border border-teal-100 bg-teal-50 p-4 text-sm text-teal-900">
-        Los apartados conservan el stock hasta su vencimiento o hasta que se revise el comprobante.
+        Los clientes de confianza acumulan sin vencimiento. Cada cliente y dueño del live conserva
+        su propio grupo de apartados.
       </div>
       {groups.size ? (
         [...groups.entries()].map(([key, items]) => (
@@ -1066,9 +1062,7 @@ function ReservationsPanel({
                   <Trash2 className="h-4 w-4" />
                   Liberar
                 </Button>
-                {data.config.allowAccumulation &&
-                items[0].customer.id &&
-                !trustedIds.has(items[0].customer.id) ? (
+                {items[0].customer.id && !trustedIds.has(items[0].customer.id) ? (
                   <Button
                     size="sm"
                     variant="outline"
@@ -1091,36 +1085,34 @@ function ReservationsPanel({
           {filter === "PAID" ? "No hay apartados pagados." : "No hay apartados en esta sección."}
         </LiveEmpty>
       )}
-      {data.config.allowAccumulation ? (
-        <LivePanel
-          title="Clientes de confianza"
-          description="Solo estos clientes pueden acumular sin vencimiento. Puedes habilitarlos desde uno de sus apartados."
-        >
-          {data.trustedCustomers.length ? (
-            <div className="divide-y">
-              {data.trustedCustomers.map((customer) => (
-                <div key={customer.id} className="flex items-center gap-3 py-3">
-                  <Star className="h-5 w-5 text-amber-500" />
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{customer.name}</p>
-                    <p className="text-xs text-muted-foreground">{customer.phone}</p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={!canManage || busy}
-                    onClick={() => onTrust(customer.id, true)}
-                  >
-                    Quitar
-                  </Button>
+      <LivePanel
+        title="Clientes de confianza"
+        description="Solo estos clientes pueden acumular sin vencimiento. Puedes habilitarlos desde uno de sus apartados."
+      >
+        {data.trustedCustomers.length ? (
+          <div className="divide-y">
+            {data.trustedCustomers.map((customer) => (
+              <div key={customer.id} className="flex items-center gap-3 py-3">
+                <Star className="h-5 w-5 text-amber-500" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{customer.name}</p>
+                  <p className="text-xs text-muted-foreground">{customer.phone}</p>
                 </div>
-              ))}
-            </div>
-          ) : (
-            <LiveEmpty>Aún no hay clientes de confianza.</LiveEmpty>
-          )}
-        </LivePanel>
-      ) : null}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!canManage || busy}
+                  onClick={() => onTrust(customer.id, true)}
+                >
+                  Quitar
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <LiveEmpty>Aún no hay clientes de confianza.</LiveEmpty>
+        )}
+      </LivePanel>
     </div>
   );
 }
@@ -1203,7 +1195,8 @@ function ProductDialog({
               Cancelar
             </Button>
             <Button type="submit" disabled={busy || !valid}>
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Guardar producto
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Guardar producto
             </Button>
           </DialogFooter>
         </form>
@@ -1211,26 +1204,116 @@ function ProductDialog({
     </Dialog>
   );
 }
+function CatalogDialog({
+  storeId,
+  onClose,
+  onSelect,
+}: {
+  storeId: string;
+  onClose: () => void;
+  onSelect: (item: LiveProduct) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [items, setItems] = useState<LiveProduct[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const result = await getLiveCatalog(storeId, search);
+        if (!cancelled) {
+          setItems(
+            result.products.filter((item) =>
+              `${item.name} ${item.sku} ${item.variantLabel ?? ""}`
+                .toLocaleLowerCase()
+                .includes(search.toLocaleLowerCase()),
+            ),
+          );
+          setError("");
+        }
+      } catch (cause) {
+        if (!cancelled) setError(liveError(cause));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [storeId, search]);
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Agregar al live</DialogTitle>
+          <DialogDescription>
+            Selecciona una variante de tu catálogo y define su precio live.
+          </DialogDescription>
+        </DialogHeader>
+        <Input
+          placeholder="Buscar por nombre o SKU"
+          aria-label="Buscar producto para live"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+        {error ? (
+          <LiveErrorBanner message={error} />
+        ) : loading ? (
+          <div className="flex justify-center p-6">
+            <Loader2 className="animate-spin" />
+          </div>
+        ) : items.length ? (
+          <div className="divide-y">
+            {items.map((item) => (
+              <button
+                key={item.variantId}
+                type="button"
+                onClick={() => onSelect(item)}
+                className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-muted"
+              >
+                <LiveProductImage product={item} className="h-12 w-12" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold">{item.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {item.variantLabel || item.sku} · {liveMoney(item.regularPrice)} ·{" "}
+                    {item.availableStock} disp.
+                  </p>
+                </div>
+                <Plus className="h-4 w-4" />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <LiveEmpty>No se encontraron variantes.</LiveEmpty>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
 function LiveConfigPanel({
   config,
   readiness,
+  onConsole,
   canManage,
   busy,
   onSave,
-  onConsole,
 }: {
   config: LiveConfig;
   readiness?: LiveReadiness;
+  onConsole: () => void;
   canManage: boolean;
   busy: boolean;
   onSave: (config: LiveConfig) => void;
-  onConsole: () => void;
 }) {
-  const [draft, setDraft] = useState({
-    ...config,
-    allowAccumulation: false,
-    combineShipping: false,
-  });
+  const [draft, setDraft] = useState(config);
   const activationPending = draft.enabled && !config.enabled;
   const deactivationPending = !draft.enabled && config.enabled;
   const shippingPending = readiness?.checks.some(
@@ -1242,7 +1325,7 @@ function LiveConfigPanel({
       ? "Desactivación sin guardar. Las compras siguen habilitadas hasta que guardes esta configuración."
       : readiness?.ready !== true
         ? shippingPending
-          ? "Primero guarda las tarifas para comprobar el envío. Después de completar los demás requisitos podrás habilitar las compras."
+          ? "Configura las tarifas en Configuración de tienda → Envíos. Después de completar los demás requisitos podrás habilitar las compras."
           : "Completa los requisitos pendientes de arriba. Puedes guardar esta configuración con las compras desactivadas."
         : config.enabled
           ? "Compras habilitadas. Vuelve a Consola en vivo para gestionar el catálogo."
@@ -1250,7 +1333,7 @@ function LiveConfigPanel({
   const choices: {
     key: keyof Pick<
       LiveConfig,
-      | "allowBuyNow"
+      | "hideSoldOut"
       | "allowReservations"
       | "combineShipping"
       | "reminderEnabled"
@@ -1262,9 +1345,9 @@ function LiveConfigPanel({
     text: string;
   }[] = [
     {
-      key: "allowBuyNow",
-      title: "Comprar ahora",
-      text: "Permite iniciar una compra y pagar con el Yape del negocio.",
+      key: "hideSoldOut",
+      title: "Ocultar variantes agotadas",
+      text: "Solo muestra combinaciones con stock disponible.",
     },
     {
       key: "allowReservations",
@@ -1274,7 +1357,7 @@ function LiveConfigPanel({
     {
       key: "combineShipping",
       title: "Juntar compras en un envío",
-      text: "Suma compras del mismo live al pedido abierto del cliente.",
+      text: "Suma las compras del día al pedido que aún no se despachó.",
     },
     {
       key: "reminderEnabled",
@@ -1304,15 +1387,7 @@ function LiveConfigPanel({
     Number.isInteger(draft.maxReservedUnits) &&
     draft.maxReservedUnits >= 1 &&
     draft.maxReservedUnits <= 1000 &&
-    (!draft.liveUrl || !!safeLiveUrl(draft.liveUrl)) &&
-    [draft.homeShipping, draft.agencyShipping].every(
-      (amount) =>
-        amount == null ||
-        (Number.isFinite(amount) &&
-          amount >= 0 &&
-          amount <= 999999 &&
-          Math.abs(amount * 100 - Math.round(amount * 100)) < 0.000001),
-    );
+    (!draft.liveUrl || !!safeLiveUrl(draft.liveUrl));
   return (
     <LivePanel
       title="Configura tu catálogo del live"
@@ -1353,6 +1428,31 @@ function LiveConfigPanel({
             </Button>
           ) : null}
         </div>
+        <label className="grid gap-2 text-sm font-medium">
+          Nombre del enlace público
+          <Input
+            aria-label="Nombre del enlace público"
+            value={draft.slug || ""}
+            pattern="[a-z0-9][a-z0-9-]{1,48}[a-z0-9]"
+            disabled={!canManage || busy}
+            onChange={(e) =>
+              setDraft((value) => ({
+                ...value,
+                slug: e.target.value.toLowerCase(),
+              }))
+            }
+          />
+          <span className="text-xs font-normal text-muted-foreground">
+            {draft.slug || "tienda"}.powip.lat/live
+          </span>
+        </label>
+        <p id="live-shipping-settings" tabIndex={-1} className="text-sm text-muted-foreground">
+          Los envíos usan las coberturas y tarifas de{" "}
+          <a className="underline" href="/configuracion/tiendas">
+            Configuración de tienda → Envíos
+          </a>
+          .
+        </p>
         <label htmlFor="live-url" className="grid gap-2 text-sm font-medium">
           Link de tu live o perfil
           <Input
@@ -1363,84 +1463,33 @@ function LiveConfigPanel({
             disabled={!canManage || busy}
           />
           <span className="text-xs font-normal text-muted-foreground">
-            Opcional. Usa un enlace HTTPS de tu red social; no necesitas agregarlo para abrir el
-            catálogo.
+            Usa un enlace HTTPS de tu red social.
           </span>
         </label>
-        <fieldset id="live-shipping-settings" tabIndex={-1} className="grid gap-4 sm:grid-cols-2">
-          <legend className="mb-3 text-sm font-semibold">Tarifas de envío del live (S/)</legend>
-          {(
-            [
-              ["homeShipping", "Envío a domicilio"],
-              ["agencyShipping", "Envío a agencia"],
-            ] as const
-          ).map(([key, label]) => (
-            <label key={key} htmlFor={`live-${key}`} className="grid gap-2 text-sm font-medium">
-              {label}
-              <Input
-                id={`live-${key}`}
-                type="number"
-                min="0"
-                max="999999"
-                step="0.01"
-                placeholder="Sin configurar"
-                value={draft[key] ?? ""}
-                disabled={!canManage || busy}
-                onChange={(event) =>
-                  setDraft((value) => ({
-                    ...value,
-                    [key]: event.target.value === "" ? null : Number(event.target.value),
-                  }))
+        <div className="divide-y">
+          {choices.map((choice) => (
+            <label
+              htmlFor={`live-setting-${choice.key}`}
+              key={choice.key}
+              className="flex items-center justify-between gap-4 py-4"
+            >
+              <span>
+                <span className="block text-sm font-semibold">{choice.title}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">{choice.text}</span>
+              </span>
+              <Switch
+                id={`live-setting-${choice.key}`}
+                checked={draft[choice.key]}
+                aria-label={choice.title}
+                disabled={
+                  !canManage || busy || ["reminderEnabled", "allowSellerLive"].includes(choice.key)
+                }
+                onCheckedChange={(checked) =>
+                  setDraft((value) => ({ ...value, [choice.key]: checked }))
                 }
               />
             </label>
           ))}
-          <p className="text-xs text-muted-foreground sm:col-span-2">
-            Deja una tarifa vacía si aún no está definida. Ese tipo de entrega no podrá cotizarse
-            hasta que guardes su importe. Usa 0 solo para envío gratuito.
-          </p>
-        </fieldset>
-        <div className="divide-y">
-          {choices
-            .filter(
-              (choice) =>
-                ![
-                  "combineShipping",
-                  "allowAccumulation",
-                  "reminderEnabled",
-                  "allowSellerLive",
-                ].includes(choice.key),
-            )
-            .map((choice) => (
-              <label
-                htmlFor={`live-setting-${choice.key}`}
-                key={choice.key}
-                className="flex items-center justify-between gap-4 py-4"
-              >
-                <span>
-                  <span className="block text-sm font-semibold">{choice.title}</span>
-                  <span className="mt-1 block text-xs text-muted-foreground">{choice.text}</span>
-                </span>
-                <Switch
-                  id={`live-setting-${choice.key}`}
-                  checked={draft[choice.key]}
-                  aria-label={choice.title}
-                  disabled={
-                    !canManage ||
-                    busy ||
-                    [
-                      "reminderEnabled",
-                      "allowSellerLive",
-                      "combineShipping",
-                      "allowAccumulation",
-                    ].includes(choice.key)
-                  }
-                  onCheckedChange={(checked) =>
-                    setDraft((value) => ({ ...value, [choice.key]: checked }))
-                  }
-                />
-              </label>
-            ))}
         </div>
         <div className="grid gap-4 md:grid-cols-3">
           <label htmlFor="live-reservation-minutes" className="grid gap-2 text-sm font-medium">
@@ -1454,7 +1503,10 @@ function LiveConfigPanel({
               value={draft.reservationMinutes}
               disabled={!canManage || busy}
               onChange={(event) =>
-                setDraft((value) => ({ ...value, reservationMinutes: Number(event.target.value) }))
+                setDraft((value) => ({
+                  ...value,
+                  reservationMinutes: Number(event.target.value),
+                }))
               }
               required
             />
@@ -1470,7 +1522,10 @@ function LiveConfigPanel({
               value={draft.maxReservedUnits}
               disabled={!canManage || busy}
               onChange={(event) =>
-                setDraft((value) => ({ ...value, maxReservedUnits: Number(event.target.value) }))
+                setDraft((value) => ({
+                  ...value,
+                  maxReservedUnits: Number(event.target.value),
+                }))
               }
               required
             />
@@ -1495,7 +1550,8 @@ function LiveConfigPanel({
           </label>
         </div>
         <p className="text-xs text-muted-foreground">
-          El límite por producto se configura en Productos del live.
+          El tope de unidades apartadas no se aplica a clientes de confianza. El límite por producto
+          se configura en Productos del live.
         </p>
         <div className="flex flex-wrap items-center gap-3 border-t pt-4">
           <Button type="submit" disabled={!canManage || busy || !valid}>

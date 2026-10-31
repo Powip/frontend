@@ -1,16 +1,8 @@
 "use client";
-
-import {
-  CheckCircle2,
-  Clock3,
-  Copy,
-  Download,
-  ExternalLink,
-  ImagePlus,
-  Loader2,
-} from "lucide-react";
-import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import { createLivePolling, type LivePollingController } from "./livePolling";
+import { isLiveReadDenied } from "./liveService";
 import {
   Dialog,
   DialogContent,
@@ -18,517 +10,339 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import LiveCheckoutDetails from "./LiveCheckoutDetails";
-import LiveCheckoutSteps from "./LiveCheckoutSteps";
-import { createLivePolling, type LivePollingController } from "./livePolling";
 import {
   getLiveCheckoutSnapshot,
-  isLiveReadDenied,
+  liveBuyerLabel,
   liveError,
   liveMoney,
-  liveOrderLabel,
   safeLiveUrl,
   uploadLiveYapeProof,
   validateLivePaymentImage,
 } from "./liveService";
+import { LiveCountdown } from "./LiveShared";
+import { purchaseField } from "./LiveDeliveryForm";
 import type { LiveCheckoutSnapshot } from "./types";
-
 const action =
-  "inline-flex items-center justify-center gap-2 rounded-xl bg-[#25F4EE] px-4 py-3 text-sm font-bold text-[#0B0B0F] hover:bg-[#78FAF5] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0B0B0F] disabled:cursor-not-allowed disabled:opacity-40";
-const outline =
-  "inline-flex items-center justify-center gap-2 rounded-xl border border-white/20 px-4 py-2.5 text-sm font-semibold text-white hover:border-[#25F4EE]/60 hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE] disabled:opacity-40";
-
-type LiveManualPaymentProps = {
-  storeId: string;
-  visitor: string;
-  checkoutId: string;
-  initial?: LiveCheckoutSnapshot | null;
-  onClose: () => void;
-  onUpdated: () => void;
-};
-
-export default function LiveManualPaymentDialog(props: LiveManualPaymentProps) {
-  return (
-    <LiveManualPaymentForm
-      key={`${props.storeId}/${props.visitor}/${props.checkoutId}`}
-      {...props}
-    />
-  );
-}
-
-function LiveManualPaymentForm({
+  "min-h-11 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 disabled:opacity-40";
+export default function LiveManualPaymentDialog({
   storeId,
   visitor,
   checkoutId,
   initial,
   onClose,
   onUpdated,
-}: LiveManualPaymentProps) {
-  const key = `${storeId}/${visitor}/${checkoutId}`;
-  const [scopedSnapshot, setScopedSnapshot] = useState<{
-    key: string;
-    value: LiveCheckoutSnapshot;
-  } | null>(initial ? { key, value: initial } : null);
-  const snapshot = scopedSnapshot?.key === key ? scopedSnapshot.value : null;
-  const seed = useRef({ key, initial });
-  if (seed.current.key !== key) seed.current = { key, initial };
-  const [loading, setLoading] = useState(!initial);
-  const [submitted, setSubmitted] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [info, setInfo] = useState("");
-  const [file, setFile] = useState<File | null>(null);
-  const [operationNumber, setOperationNumber] = useState(
-    initial?.manualPayment?.operationNumber ?? "",
-  );
-  const attempt = useRef<{ selection: string; id: string } | null>(null);
-  const lock = useRef(false);
-  const mounted = useRef(true);
-  const scope = useRef(key);
-  scope.current = key;
-  const reader = useRef<LivePollingController | null>(null);
-  const latestSnapshot = useRef<LiveCheckoutSnapshot | null>(initial ?? null);
-  const [readError, setReadError] = useState("");
-  const errorNotice = useRef<HTMLParagraphElement>(null);
-  const abort = useRef<AbortController | null>(null);
-  const current = useCallback(() => mounted.current && scope.current === key, [key]);
-  const refresh = useCallback(async () => {
-    return (await reader.current?.refresh({ quiet: true, supersede: true })) ?? false;
-  }, []);
+}: {
+  storeId: string;
+  visitor: string;
+  checkoutId: string;
+  initial?: LiveCheckoutSnapshot | null;
+  onClose: () => void;
+  onUpdated: () => void;
+}) {
+  const [snapshot, setSnapshot] = useState(initial || null),
+    [step, setStep] = useState(2),
+    [showQr, setShowQr] = useState(false),
+    [operation, setOperation] = useState(""),
+    [file, setFile] = useState<File | null>(null),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [notice, setNotice] = useState("");
+  const scope = useRef(0),
+    active = useRef(true),
+    lock = useRef(false),
+    sequence = useRef(0),
+    attempt = useRef<{ selection: string; id: string } | null>(null);
+  const polling = useRef<LivePollingController | null>(null);
   useEffect(() => {
-    mounted.current = true;
-    latestSnapshot.current = seed.current.initial ?? null;
-    setScopedSnapshot(seed.current.initial ? { key, value: seed.current.initial } : null);
-    setLoading(!seed.current.initial);
-    setFile(null);
-    setSubmitted(false);
-    setOperationNumber(seed.current.initial?.manualPayment?.operationNumber ?? "");
-    attempt.current = null;
+    scope.current++;
+    active.current = true;
     lock.current = false;
+    attempt.current = null;
     setBusy(false);
+    setFile(null);
+    setOperation("");
+    setStep(2);
+    setShowQr(false);
     setError("");
-    setReadError("");
-    setInfo("");
-    const polling = createLivePolling({
+    setNotice("");
+    setSnapshot(initial || null);
+    const reader = createLivePolling({
       load: (signal) => getLiveCheckoutSnapshot(storeId, visitor, checkoutId, signal),
-      intervalMs: () => {
-        const value = latestSnapshot.current;
-        if (
-          value &&
-          (["PAID", "FAILED"].includes(value.status ?? "") ||
-            ["APPROVED", "REJECTED", "EXPIRED"].includes(value.manualPayment?.status ?? ""))
-        )
-          return 30000;
-        return value?.manualPayment?.status === "UNDER_REVIEW" ? 5000 : 10000;
+      intervalMs: 5000,
+      onData: (result) => {
+        setSnapshot(result);
       },
-      onData: (value) => {
-        latestSnapshot.current = value;
-        setScopedSnapshot({ key, value });
-        setReadError("");
-      },
-      onError: (cause) => {
-        setReadError(liveError(cause));
-        if (isLiveReadDenied(cause)) {
-          latestSnapshot.current = null;
-          setScopedSnapshot(null);
-        }
-      },
-      onLoading: (pending) => {
-        if (!pending) setLoading(false);
+      onError: (e) => {
+        if (isLiveReadDenied(e)) setSnapshot(null);
+        setError(liveError(e));
       },
     });
-    reader.current = polling;
-    void polling.refresh({ quiet: !!seed.current.initial });
+    polling.current = reader;
+    void reader.refresh({ quiet: false });
     return () => {
-      mounted.current = false;
-      polling.dispose();
-      if (reader.current === polling) reader.current = null;
-      abort.current?.abort();
+      scope.current++;
+      active.current = false;
+      reader.dispose();
+      if (polling.current === reader) polling.current = null;
     };
-  }, [storeId, visitor, checkoutId, key]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: Each scope creates a reader that must inherit the pause state even if busy did not change.
+  }, [storeId, visitor, checkoutId]);
   useEffect(() => {
-    reader.current?.setPaused(busy, { refreshOnResume: false });
-  }, [busy, key]);
-  useEffect(() => {
-    if (!error) return;
-    const frame = requestAnimationFrame(() => {
-      errorNotice.current?.scrollIntoView?.({ block: "nearest" });
-      errorNotice.current?.focus({ preventScroll: true });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [error]);
-  const displayError = error || readError;
-
+    polling.current?.setPaused(busy);
+  }, [busy]);
   const manual = snapshot?.manualPayment;
-  const paid = snapshot?.status === "PAID" && manual?.status !== "REJECTED";
-  const pending =
-    manual?.status === "UNDER_REVIEW" || (submitted && manual?.status === "AWAITING_PROOF");
-  const rejected = manual?.status === "REJECTED";
-  const expired = manual?.status === "EXPIRED" || (snapshot?.status === "FAILED" && !rejected);
-  const paymentTotal = snapshot?.quote?.total;
-  const hasPaymentTotal =
-    typeof paymentTotal === "number" && Number.isFinite(paymentTotal) && paymentTotal > 0;
-  const paymentItems = new Map<string, { name: string; quantity: number; unitPrice: number }>();
-  for (const item of snapshot?.quote?.items ?? []) {
-    const itemKey = `${item.variantId}:${item.unitPrice}`;
-    const previous = paymentItems.get(itemKey);
-    paymentItems.set(itemKey, { ...item, quantity: (previous?.quantity ?? 0) + item.quantity });
+  const status =
+    snapshot?.buyerStatus || (snapshot?.status === "ANULADO" ? "CANCELLED" : manual?.status);
+  const terminal = [
+    "CANCELLED",
+    "APPROVED",
+    "UNDER_REVIEW",
+    "EXPIRED",
+    "REFUNDED",
+    "REFUND_PENDING",
+  ].includes(status || "");
+  const qr = safeLiveUrl(manual?.qrUrl),
+    total = snapshot?.quote?.total;
+  const hasAmount = typeof total === "number" && Number.isFinite(total) && total > 0;
+  async function copy(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setNotice("Copiado.");
+    } catch {
+      setNotice(`Puedes copiarlo manualmente: ${value}`);
+    }
   }
-  const canUpload =
-    hasPaymentTotal &&
-    !!manual &&
-    manual.status === "AWAITING_PROOF" &&
-    snapshot?.status !== "PAID" &&
-    !submitted;
-  const qrUrl = safeLiveUrl(manual?.qrUrl);
   async function submit() {
-    if (!file || !operationNumber.trim() || !canUpload || lock.current) return;
-    const selection = `${key}|${operationNumber.trim()}|${file.name}|${file.size}|${file.lastModified}`;
+    if (lock.current || terminal || !hasAmount || !/^\d{4,12}$/.test(operation)) return;
+    const selection = `${operation}/${file?.name || ""}/${file?.size || 0}/${file?.lastModified || 0}`;
+    const currentScope = scope.current;
     const id = attempt.current?.selection === selection ? attempt.current.id : crypto.randomUUID();
     attempt.current = { selection, id };
     lock.current = true;
     setBusy(true);
     setError("");
-    const controller = new AbortController();
-    abort.current = controller;
     try {
-      await uploadLiveYapeProof(
-        storeId,
-        visitor,
-        checkoutId,
-        { file, operationNumber, idempotencyKey: id },
-        controller.signal,
-      );
-      if (!current()) return;
-      setSubmitted(true);
-      await refresh();
-      if (!current()) return;
+      const result = await uploadLiveYapeProof(storeId, visitor, checkoutId, {
+        file,
+        operationNumber: operation,
+        idempotencyKey: id,
+      });
+      if (!active.current || currentScope !== scope.current) return;
+      sequence.current++;
+      setSnapshot(result);
       setFile(null);
-      setInfo("Comprobante enviado para revisión. El pago aún no está validado.");
       onUpdated();
-    } catch (cause) {
-      if (current() && !controller.signal.aborted) setError(liveError(cause));
+    } catch (e) {
+      if (active.current && currentScope === scope.current) setError(liveError(e));
     } finally {
-      if (current()) {
+      if (currentScope === scope.current) {
         lock.current = false;
-        setBusy(false);
+        if (active.current) setBusy(false);
       }
-    }
-  }
-  async function copyPhone() {
-    try {
-      await navigator.clipboard.writeText(manual?.phone ?? "");
-      if (current()) setInfo("Número Yape copiado.");
-    } catch {
-      if (current()) setError("No se pudo copiar. Selecciona el número y cópialo manualmente.");
-    }
-  }
-  async function downloadQr() {
-    if (!qrUrl) return;
-    try {
-      const response = await fetch(qrUrl, { credentials: "omit" });
-      if (!response.ok)
-        throw new Error("No se pudo descargar el QR. Puedes abrirlo para guardarlo.");
-      const url = URL.createObjectURL(await response.blob());
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = "yape-negocio.png";
-      anchor.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch (cause) {
-      if (current()) setError(liveError(cause));
     }
   }
   return (
     <Dialog
       open
-      onOpenChange={(open) => {
-        if (!open && !busy) onClose();
+      onOpenChange={(o) => {
+        if (!o && !busy) onClose();
       }}
     >
-      <DialogContent className="max-h-[92vh] grid-cols-1 overflow-y-auto border-white/15 bg-[#0B0B0F] text-zinc-100 sm:max-w-lg">
+      <DialogContent className="max-h-[94dvh] overflow-y-auto border-white/15 bg-[#171428] text-white sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Pagar con Yape</DialogTitle>
-          <DialogDescription className="text-zinc-400">
-            {snapshot?.orderNumber || `Compra ${checkoutId.slice(0, 8)}`}
+          <DialogTitle>
+            {terminal
+              ? liveBuyerLabel(status)
+              : `1 Entrega · ${step === 2 ? "2 Paga con Yape" : "3 Confirma"}`}
+          </DialogTitle>
+          <DialogDescription className="text-slate-300">
+            {snapshot?.orderNumber || "Tu pedido"}
           </DialogDescription>
         </DialogHeader>
-        <LiveCheckoutSteps step={3} />
-        {snapshot ? (
-          <details className="rounded-xl border border-white/10 bg-[#16161C] p-4 text-sm">
-            <summary className="cursor-pointer rounded font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE]">
-              Resumen de tu compra
-            </summary>
-            <div className="mt-4 space-y-4">
-              {snapshot.quote?.items?.length ? (
-                <ul className="divide-y divide-white/10">
-                  {[...paymentItems].map(([itemKey, item]) => (
-                    <li key={itemKey} className="flex justify-between gap-3 py-2">
-                      <span className="min-w-0 break-words">
-                        {item.quantity} × {item.name}
-                      </span>
-                      <span className="shrink-0">{liveMoney(item.quantity * item.unitPrice)}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              <LiveCheckoutDetails
-                customer={snapshot.customer}
-                delivery={snapshot.delivery}
-                receipt={snapshot.receipt}
-              />
-              {snapshot.quote ? (
-                <dl className="space-y-2 border-t border-white/10 pt-3">
-                  <div className="flex justify-between gap-3">
-                    <dt>Productos</dt>
-                    <dd>{liveMoney(snapshot.quote.subtotal)}</dd>
-                  </div>
-                  <div className="flex justify-between gap-3">
-                    <dt>Envío</dt>
-                    <dd>{liveMoney(snapshot.quote.shipping)}</dd>
-                  </div>
-                  <div className="flex justify-between gap-3 font-bold">
-                    <dt>Total de la compra</dt>
-                    <dd>{liveMoney(snapshot.quote.total)}</dd>
-                  </div>
-                </dl>
-              ) : null}
-            </div>
-          </details>
-        ) : null}
-        {displayError ? (
-          <p
-            ref={errorNotice}
-            tabIndex={-1}
-            role="alert"
-            className="rounded-xl border border-[#FE2C55]/35 bg-[#FE2C55]/10 p-3 text-sm text-rose-200"
-          >
-            {displayError}
+        {error ? (
+          <p role="alert" className="rounded-xl bg-rose-400/10 p-3 text-sm text-rose-200">
+            {error}
           </p>
         ) : null}
-        {info ? (
-          <p
-            role="status"
-            className="rounded-xl border border-[#25F4EE]/20 bg-[#25F4EE]/10 p-3 text-sm text-[#25F4EE]"
-          >
-            {info}
+        {notice ? (
+          <p role="status" className="text-sm text-emerald-200">
+            {notice}
           </p>
         ) : null}
-        {loading && !snapshot ? (
-          <p className="flex items-center justify-center gap-2 py-8 text-sm text-zinc-400">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Cargando pago…
-          </p>
-        ) : !manual ? (
-          <p className="text-sm text-zinc-400">
-            No se encontraron instrucciones de Yape para este pago.
-          </p>
-        ) : paid ? (
-          <div className="space-y-4 rounded-xl border border-[#25F4EE]/30 bg-[#25F4EE]/10 p-5">
-            <CheckCircle2 className="h-7 w-7 text-[#25F4EE]" />
-            <h2 className="font-bold text-[#25F4EE]">Pago validado por el negocio</h2>
-            <p className="text-sm text-zinc-300">
-              {snapshot?.orderStatus === "ANULADO"
-                ? "Tu pedido fue anulado. Contacta al negocio para coordinar el pago o la entrega."
-                : snapshot?.orderStatus === "ENTREGADO"
-                  ? "Tu pedido ya fue entregado."
-                  : "Tu pedido está confirmado. El negocio continuará con la entrega."}
+        {!snapshot ? (
+          <p>Cargando pago…</p>
+        ) : terminal ? (
+          <div className="space-y-4">
+            <p className="text-3xl font-bold text-emerald-300">{liveMoney(total!)}</p>
+            <p className="text-sm text-slate-300">
+              {status === "UNDER_REVIEW"
+                ? `¡Listo, ${snapshot.customer?.name || "recibimos tu compra"}! El negocio está validando tu pago. Tu pedido y tus prendas están guardados.`
+                : status === "APPROVED"
+                  ? "El negocio confirmó el ingreso de tu pago."
+                  : status === "CANCELLED"
+                    ? "Este pedido fue anulado."
+                    : "Consulta el estado de tu pedido o contacta al negocio."}
             </p>
-            {liveOrderLabel(snapshot?.orderStatus) ? (
-              <p className="text-sm font-semibold">{liveOrderLabel(snapshot?.orderStatus)}</p>
-            ) : null}
-            {safeLiveUrl(snapshot?.trackingUrl) ? (
-              <a
-                href={safeLiveUrl(snapshot?.trackingUrl) ?? undefined}
-                className={outline}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Seguir pedido <ExternalLink className="h-4 w-4" />
+            {snapshot.trackingUrl?.startsWith("/p/") ? (
+              <a href={snapshot.trackingUrl} className={`${action} block text-center`}>
+                Ver mi pedido
               </a>
             ) : null}
             <button
-              type="button"
-              className={action}
-              onClick={() => {
-                onUpdated();
-                onClose();
-              }}
+              className="min-h-11 w-full rounded-xl border border-white/20 p-3"
+              onClick={onClose}
             >
-              Ver mis compras
+              Seguir comprando
             </button>
           </div>
-        ) : rejected ? (
-          <div className="space-y-3 rounded-xl border border-[#FE2C55]/35 bg-[#FE2C55]/10 p-4">
-            <h2 className="font-semibold text-rose-200">Comprobante no validado</h2>
-            <p className="text-sm text-zinc-300">
-              {manual.rejectionReason ||
-                manual.reason ||
-                "Contacta al negocio para revisar tu pago."}
-            </p>
-            <p className="text-sm text-zinc-300">
-              Contacta al negocio antes de realizar otro pago. Este intento ya no admite otro
-              comprobante.
-            </p>
-            <button type="button" className={outline} onClick={onClose}>
-              Volver al catálogo
-            </button>
-          </div>
-        ) : pending ? (
-          <div className="space-y-4 rounded-xl border border-amber-300/25 bg-amber-300/10 p-4">
-            <div className="flex items-center gap-2 text-amber-100">
-              <Clock3 className="h-5 w-5" />
-              <h2 className="font-bold">Comprobante en revisión</h2>
-            </div>
-            <p className="text-sm leading-relaxed text-zinc-300">
-              El negocio verificará el ingreso en su cuenta Yape. Tu pedido estará disponible
-              después de validar el pago.
-            </p>
-            {manual.reviewDeadlineAt ? (
-              <p className="text-xs text-zinc-400">
-                Revisión prevista hasta {new Date(manual.reviewDeadlineAt).toLocaleString("es-PE")}.
-                {manual.overdue ? " El negocio aún debe resolver la revisión." : ""}
-              </p>
-            ) : null}
-            <button type="button" className={outline} onClick={() => void refresh()}>
-              Actualizar estado
-            </button>
-          </div>
-        ) : expired ? (
-          <p className="rounded-xl border border-amber-300/25 bg-amber-300/10 p-4 text-sm text-amber-100">
-            El plazo para enviar el comprobante terminó. Si ya pagaste, contacta al negocio antes de
-            iniciar otra compra.
-          </p>
-        ) : !hasPaymentTotal ? (
-          <p role="alert" className="text-sm text-amber-100">
-            No pudimos confirmar el monto de este pago. Actualiza el estado antes de yapear.
+        ) : !hasAmount ? (
+          <p role="alert">
+            No pudimos confirmar el monto. Actualiza el pedido antes de realizar el Yape.
           </p>
         ) : (
           <>
-            <div className="rounded-xl border border-white/10 bg-[#16161C] p-4">
-              <p className="text-xs text-zinc-400">Monto exacto a yapear</p>
-              <p className="mt-1 text-3xl font-bold text-[#25F4EE]">{liveMoney(paymentTotal)}</p>
-              <p className="mt-3 text-sm font-semibold">{manual.holder}</p>
-              <div className="mt-1 flex items-center gap-3">
-                <span className="select-all text-lg font-bold tabular-nums">{manual.phone}</span>
+            {status === "REJECTED" ? (
+              <div className="rounded-xl border border-rose-400/30 p-3">
+                <h2 className="font-bold">Pago no validado</h2>
+                <p className="mt-1 text-sm">{manual?.reason || manual?.rejectionReason}</p>
+                <p className="mt-2 text-xs text-slate-300">
+                  Revisa la operación y envía otro comprobante para el mismo pedido.
+                </p>
+              </div>
+            ) : null}
+            {manual?.proofDeadlineAt && status === "AWAITING_PROOF" ? (
+              <p className="flex items-center justify-between text-xs">
+                Tus prendas separadas{" "}
+                <LiveCountdown
+                  expiresAt={manual.proofDeadlineAt}
+                  serverNow={snapshot.serverNow || new Date().toISOString()}
+                />
+              </p>
+            ) : null}
+            {step === 2 && status !== "REJECTED" ? (
+              <>
+                <div className="rounded-2xl border border-white/15 bg-white/5 p-5">
+                  <p className="text-sm text-slate-300">Monto exacto a yapear</p>
+                  <p className="my-2 text-4xl font-bold text-emerald-300">{liveMoney(total!)}</p>
+                  <p className="text-lg font-bold">{manual?.phone}</p>
+                  <p className="text-sm text-slate-300">{manual?.holder}</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <button className={action} onClick={() => void copy(manual?.phone || "")}>
+                      Copiar número
+                    </button>
+                    <button className={action} onClick={() => void copy(total!.toFixed(2))}>
+                      Copiar monto
+                    </button>
+                    {qr ? (
+                      <button
+                        className="min-h-11 rounded-xl border border-white/20 px-4"
+                        onClick={() => setShowQr((v) => !v)}
+                      >
+                        Ver QR
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                {showQr && qr ? (
+                  <Image
+                    src={qr}
+                    alt="QR Yape del negocio"
+                    width={240}
+                    height={240}
+                    unoptimized
+                    className="mx-auto rounded-xl bg-white p-3"
+                  />
+                ) : null}
+                <ol className="list-inside list-decimal space-y-2 text-sm text-slate-300">
+                  <li>Yapea el monto al número del negocio.</li>
+                  <li>Guarda el número de operación.</li>
+                  <li>Vuelve y toca «Ya yapeé».</li>
+                </ol>
+                <button className={`${action} w-full`} onClick={() => setStep(3)}>
+                  Ya yapeé →
+                </button>
+              </>
+            ) : (
+              <form
+                className="space-y-4"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void submit();
+                }}
+              >
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 rounded-lg p-2 text-xs text-[#25F4EE] hover:bg-[#25F4EE]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE]"
-                  onClick={() => void copyPhone()}
+                  className="min-h-11 text-sm text-slate-300"
+                  onClick={() => setStep(2)}
                 >
-                  <Copy className="h-3.5 w-3.5" />
-                  Copiar número
+                  ← Ver datos de Yape
                 </button>
-              </div>
-            </div>
-            {qrUrl ? (
-              <div className="space-y-3 text-center">
-                <Image
-                  src={qrUrl}
-                  alt="QR Yape del negocio"
-                  width={220}
-                  height={220}
-                  unoptimized
-                  className="mx-auto h-52 w-52 rounded-xl bg-white p-3 object-contain"
-                />
-                <div className="flex flex-wrap justify-center gap-2">
-                  <button type="button" className={outline} onClick={() => void downloadQr()}>
-                    <Download className="h-4 w-4" />
-                    Descargar QR
-                  </button>
-                  <a href={qrUrl} className={outline} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-4 w-4" />
-                    Abrir QR
-                  </a>
-                </div>
-              </div>
-            ) : null}
-            <p className="text-xs leading-relaxed text-zinc-400">
-              Desde este mismo teléfono puedes copiar el número o guardar el QR y abrirlo en Yape.
-              Luego vuelve aquí para subir el comprobante.
-            </p>
-            {manual.proofDeadlineAt ? (
-              <p className="text-xs text-amber-200">
-                Envía el comprobante antes de{" "}
-                {new Date(manual.proofDeadlineAt).toLocaleString("es-PE")}.
-              </p>
-            ) : null}
-            <form
-              className="space-y-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void submit();
-              }}
-            >
-              <label className="grid min-w-0 gap-2 text-xs font-semibold">
-                Número de operación
-                <input
-                  aria-label="Número de operación Yape"
-                  className="rounded-xl border border-white/15 bg-[#16161C] px-3 py-3 text-sm outline-none focus:border-[#25F4EE] focus:ring-2 focus:ring-[#25F4EE]/20"
-                  maxLength={50}
-                  required
-                  value={operationNumber}
-                  disabled={busy}
-                  onChange={(event) => {
-                    setOperationNumber(event.target.value);
-                    setError("");
-                  }}
-                />
-              </label>
-              <label className="grid min-w-0 gap-2 text-xs font-semibold">
-                Comprobante de Yape
-                <input
-                  key={key}
-                  aria-label="Comprobante de Yape"
-                  className="w-full min-w-0 max-w-full rounded-xl border border-white/15 bg-[#16161C] p-3 text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-[#25F4EE]/10 file:px-3 file:py-2 file:text-[#25F4EE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#25F4EE]/60"
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  disabled={busy}
-                  onChange={(event) => {
-                    const selected = event.target.files?.[0];
-                    setFile(null);
-                    if (!selected) return;
-                    try {
-                      validateLivePaymentImage(selected);
-                      setFile(selected);
-                      setError("");
-                    } catch (cause) {
-                      setError(liveError(cause));
-                      event.target.value = "";
-                    }
-                  }}
-                />
-                <span className="font-normal text-zinc-400">
-                  Imagen JPG, PNG o WebP, hasta 5 MB.
-                </span>
-              </label>
-              <button
-                className={`${action} w-full`}
-                type="submit"
-                disabled={busy || !file || !operationNumber.trim() || !canUpload}
-                aria-describedby="live-yape-upload-help"
-              >
-                {busy ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <ImagePlus className="h-4 w-4" />
-                )}
-                Enviar comprobante para revisión
-              </button>
-              <p id="live-yape-upload-help" className="text-center text-xs text-zinc-400">
-                {!file
-                  ? "Adjunta el comprobante en JPG, PNG o WebP para continuar."
-                  : !operationNumber.trim()
-                    ? "Ingresa el número de operación que aparece en tu comprobante."
-                    : "Tu comprobante será revisado por el negocio; el pago aún no está validado."}
-              </p>
-              <p className="text-center text-[11px] text-zinc-400">
-                Subir el comprobante no confirma el pago.
-              </p>
-            </form>
+                <label className="block text-sm">
+                  Número de operación
+                  <input
+                    aria-label="Número de operación Yape"
+                    className={purchaseField}
+                    inputMode="numeric"
+                    maxLength={12}
+                    minLength={4}
+                    pattern="[0-9]{4,12}"
+                    required
+                    value={operation}
+                    onChange={(e) => setOperation(e.target.value.replace(/\D/g, ""))}
+                    disabled={busy}
+                  />
+                  <span className="mt-1 block text-xs text-slate-300">
+                    De 4 a 12 dígitos, tal como aparece en Yape.
+                  </span>
+                </label>
+                <label className="block text-sm">
+                  Subir captura del Yape (opcional)
+                  <input
+                    aria-label="Comprobante de Yape"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    disabled={busy}
+                    className={`${purchaseField} max-w-full`}
+                    onChange={(e) => {
+                      setFile(null);
+                      const f = e.target.files?.[0];
+                      if (!f) return;
+                      try {
+                        validateLivePaymentImage(f);
+                        setFile(f);
+                        setError("");
+                      } catch (cause) {
+                        setError(liveError(cause));
+                        e.target.value = "";
+                      }
+                    }}
+                  />
+                </label>
+                <button
+                  className={`${action} w-full`}
+                  disabled={busy || !/^\d{4,12}$/.test(operation)}
+                >
+                  {busy
+                    ? "Enviando…"
+                    : status === "REJECTED"
+                      ? "Enviar otro comprobante"
+                      : "Confirmar pago"}
+                </button>
+              </form>
+            )}
           </>
         )}
+        {snapshot && !terminal && hasAmount ? (
+          <footer className="sticky -bottom-6 border-t border-white/15 bg-[#171428] py-4">
+            <p className="flex justify-between text-xs text-slate-300">
+              <span>Productos {liveMoney(snapshot.quote?.subtotal || 0)}</span>
+              <span>Envío {liveMoney(snapshot.quote?.shipping || 0)}</span>
+            </p>
+            <p className="mt-2 flex justify-between text-xl font-bold">
+              <span>Total</span>
+              <span>{liveMoney(total!)}</span>
+            </p>
+          </footer>
+        ) : null}
       </DialogContent>
     </Dialog>
   );
