@@ -2,9 +2,10 @@
 import { useState } from "react";
 import axiosAuth from "@/lib/axiosAuth";
 import ubigeo from "@/utils/json/ubigeos.json";
-import { liveError, liveMoney } from "@/features/live/liveService";
+import { getLiveConsole, liveError, liveMoney } from "@/features/live/liveService";
 import type { StoreDeliveryOption } from "@/features/live/types";
 import { Button } from "@/components/ui/button";
+import { prepareStoreDeliveryImport } from "@/features/live/storeDeliveryImport";
 const field = "min-h-11 w-full rounded-xl border bg-background p-3 text-sm";
 export default function StoreDeliverySettings({
   storeId,
@@ -27,6 +28,9 @@ export default function StoreDeliverySettings({
     }),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [imported, setImported] = useState<ReturnType<typeof prepareStoreDeliveryImport> | null>(
+    null,
+  );
   const provinces = ubigeo[0].departments.find((d) => d.name === draft.department)?.provinces || [];
   const homeAllowed =
     (draft.department === "Lima" && draft.province === "Lima") ||
@@ -49,7 +53,30 @@ export default function StoreDeliverySettings({
         { deliverySettings: { options: next } },
       );
       setOptions(next);
+      setImported(null);
       onSaved();
+    } catch (e) {
+      setError(liveError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function prepareImport() {
+    setBusy(true);
+    setError("");
+    try {
+      const current = await getLiveConsole(storeId);
+      if (!("config" in current))
+        throw new Error("Necesitas permiso de administración para consultar las tarifas de Live.");
+      const agencies =
+        typeof current.config.agencyShipping === "number"
+          ? (await axiosAuth.get(`${process.env.NEXT_PUBLIC_API_INTEGRATIONS}/shalom/agencies`))
+              .data
+          : [];
+      const candidate = prepareStoreDeliveryImport(current.config, agencies);
+      if (!candidate.options.length)
+        throw new Error("No hay tarifas vigentes y coberturas válidas para importar.");
+      setImported(candidate);
     } catch (e) {
       setError(liveError(e));
     } finally {
@@ -68,7 +95,52 @@ export default function StoreDeliverySettings({
           {error}
         </p>
       ) : null}
-      <div className="divide-y">
+      {options.length === 0 ? (
+        <div className="space-y-3 rounded-xl border p-3">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={() => void prepareImport()}
+          >
+            Recuperar tarifas actuales de Live
+          </Button>
+          {imported ? (
+            <div className="space-y-2 text-sm">
+              <p>
+                {imported.options.filter((o) => o.type === "HOME").length} coberturas de domicilio y{" "}
+                {imported.options.filter((o) => o.type === "AGENCY").length} agencias Shalom
+                verificadas.
+              </p>
+              <p>
+                {["HOME", "AGENCY"]
+                  .map((type) => {
+                    const option = imported.options.find((o) => o.type === type);
+                    return option
+                      ? `${type === "HOME" ? "Domicilio" : "Shalom"}: ${liveMoney(option.price)}`
+                      : null;
+                  })
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+              {imported.skipped > 0 ? (
+                <p>
+                  {imported.skipped} agencias omitidas por no estar habilitadas o no coincidir con
+                  el ubigeo de la tienda.
+                </p>
+              ) : null}
+              <p>
+                Se conservan los importes que ya cobra esta tienda. Olva se configura con sus
+                agencias y condiciones propias.
+              </p>
+              <Button type="button" disabled={busy} onClick={() => void save(imported.options)}>
+                Guardar coberturas importadas
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      <div className="max-h-96 divide-y overflow-y-auto">
         {options.map((o) => (
           <div key={o.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
             <div>
