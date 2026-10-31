@@ -173,14 +173,14 @@ test("an open review pauses list polling and preserves a failed action and its d
   fireEvent.click(screen.getByRole("button", { name: "Revisar y validar" }));
   await flush();
   const operation = screen.getByRole("textbox", { name: "Número de operación verificado en Yape" });
-  fireEvent.change(operation, { target: { value: "verificada-123" } });
+  fireEvent.change(operation, { target: { value: "123456" } });
   fireEvent.click(screen.getByRole("checkbox"));
   fireEvent.click(screen.getByRole("button", { name: "Validar pago y confirmar pedido" }));
   await flush();
   expect(screen.getByRole("alert")).toHaveTextContent("No se pudo validar esta operación");
   await tick(60000);
   expect(getLiveYapeReviews).toHaveBeenCalledTimes(1);
-  expect(operation).toHaveValue("verificada-123");
+  expect(operation).toHaveValue("123456");
   expect(screen.getByRole("checkbox")).toBeChecked();
   expect(screen.getByRole("alert")).toHaveTextContent("No se pudo validar esta operación");
   const proofSignal = (getLiveYapeReviewProof as jest.Mock).mock.calls[0][2] as AbortSignal;

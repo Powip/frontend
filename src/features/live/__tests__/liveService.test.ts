@@ -76,9 +76,13 @@ test("scoped Live readers pass abort signals while public reads remain anonymous
   await getPublicLive(id, "visitor-private", controller.signal);
   await getLiveCheckoutSnapshot(id, "visitor-private", id, controller.signal);
   for (const [, options] of (axios.get as jest.Mock).mock.calls) {
-    expect(options).toEqual({
+    expect(options.signal).toBe(controller.signal);
+    expect({
+      timeout: options.timeout,
+      withCredentials: options.withCredentials,
+      headers: options.headers,
+    }).toEqual({
       timeout: 20000,
-      signal: controller.signal,
       withCredentials: false,
       headers: { "X-Live-Visitor": "visitor-private" },
     });

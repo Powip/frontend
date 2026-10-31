@@ -87,6 +87,7 @@ export default function OrderReceiptView({ data }: Props) {
     }))
   );
 
+  const isLive = ["POWIP_LIVE", "POWIP_LINK"].includes(closingChannel);
   const isQuotation = typeof totals.quotationPendingAdvance === "number";
   const { totalPaid, pendingAmount, isPaid: fullyPaid } = receiptFinancialState(data);
 
@@ -310,7 +311,7 @@ export default function OrderReceiptView({ data }: Props) {
                   </p>
                   {discountPerUnit > 0 && (
                     <p className="text-xs text-red-600">
-                      <span className="text-muted-foreground">Descuento: </span>
+                      <span className="text-muted-foreground">{isLive ? "Descuento precio live: " : "Descuento: "}</span>
                       <span className="font-medium">- S/ {discountPerUnit.toFixed(2)}</span>
                     </p>
                   )}
@@ -361,6 +362,7 @@ export default function OrderReceiptView({ data }: Props) {
           </div>
         )}
 
+        {isLive && totals.totalPendingApproval > 0 ? <div className="flex justify-between text-amber-700"><span>Por validar:</span><span>S/ {Number(totals.totalPendingApproval).toFixed(2)}</span></div> : null}
         {isQuotation && totals.quotationPendingAdvance > 0 && (
           <div className="flex justify-between font-medium text-amber-700">
             <span>Adelanto por verificar:</span>

@@ -1,5 +1,4 @@
 "use client";
-import LeadPaymentsTab from "@/components/finanzas/LeadPaymentsTab";
 import { commercialLeadHref } from "@/utils/commercialOrders";
 import { formatSalesMoney } from "@/utils/salesMoney";
 
@@ -58,6 +57,8 @@ import CancellationModal, {
 import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
 import { openPrintWindow, printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
+import LiveYapeReviews from "@/features/live/LiveYapeReviews";
+import LeadPaymentsTab from "@/components/finanzas/LeadPaymentsTab";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
 import { saleReceiptUrl, type UnitAssignmentState } from "@/services/saleTrackingService";
@@ -996,6 +997,7 @@ Estado: ${sale.status}
           ) : (
           <Tabs defaultValue="pagosPendientes" className="w-full">
             <TabsList className="mb-4">
+              <TabsTrigger value="validacionLive">Validación de pagos · POWIP Live</TabsTrigger>
               <TabsTrigger value="pagosPendientes">
                 Pagos Pendientes ({pagosPendientes.length})
               </TabsTrigger>
@@ -1007,6 +1009,7 @@ Estado: ${sale.status}
               </TabsTrigger>
             </TabsList>
 
+            <TabsContent value="validacionLive">{storeIds.length ? storeIds.map(id => <LiveYapeReviews key={id} storeId={id} canReview={auth?.user?.role?.toUpperCase() === "ADMINISTRADOR"} onUpdated={fetchOrders}/>) : <p>Selecciona una tienda.</p>}</TabsContent>
             {/* Tab Pagos Pendientes */}
             <TabsContent value="pagosPendientes">
               <Card>

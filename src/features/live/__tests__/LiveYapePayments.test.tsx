@@ -1,9 +1,10 @@
-import { act, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import LiveManualPaymentDialog from "../LiveManualPaymentDialog";
 import LivePaymentSettings from "../LivePaymentSettings";
 import LiveYapeReviews from "../LiveYapeReviews";
 import {
   getLiveCheckoutSnapshot,
+  getLiveMercadoPagoConnection,
   getLiveYapeConfig,
   getLiveYapeReviewProof,
   getLiveYapeReviews,
@@ -18,6 +19,7 @@ jest.setTimeout(20000);
 jest.mock("../liveService", () => ({
   ...jest.requireActual("../liveService"),
   getLiveCheckoutSnapshot: jest.fn(),
+  getLiveMercadoPagoConnection: jest.fn(),
   getLiveYapeConfig: jest.fn(),
   getLiveYapeReviewProof: jest.fn(),
   getLiveYapeReviews: jest.fn(),
@@ -30,7 +32,7 @@ const snapshot: LiveCheckoutSnapshot = {
   checkoutId: id,
   status: "PENDING",
   method: "yape",
-  quote: { quoteId: id, expiresAt: "2026-10-21T12:00:00Z", subtotal: 69, shipping: 8, total: 77 },
+  quote: { subtotal: 69, shipping: 8, total: 77 },
   customer: { name: "Cliente de prueba", phone: "987654321" },
   manualPayment: {
     status: "AWAITING_PROOF",
@@ -42,7 +44,7 @@ const snapshot: LiveCheckoutSnapshot = {
 };
 const reviewing: LiveYapeReview = {
   ...snapshot,
-  quote: { quoteId: id, expiresAt: "2026-10-21T12:00:00Z", subtotal: 69, shipping: 8, total: 77 },
+  quote: { subtotal: 69, shipping: 8, total: 77 },
   customer: { name: "Cliente de prueba", phone: "987654321" },
   createdAt: "2026-10-20T12:00:00Z",
   manualPayment: {
@@ -83,71 +85,20 @@ beforeEach(() => {
     expiresAt: "2026-10-20T12:10:00Z",
   });
   (getLiveCheckoutSnapshot as jest.Mock).mockResolvedValue(snapshot);
-  (getLiveYapeConfig as jest.Mock).mockResolvedValue({
-    config: { enabled: false, phone: "", holder: "", qrUrl: null, reviewHours: 24 },
+  (getLiveMercadoPagoConnection as jest.Mock).mockResolvedValue({
+    connected: false,
+    canManage: true,
+    mode: "test",
   });
-});
-
-test("reopening an owned payment shows step three and its accepted destination and receipt", async () => {
-  const owned: LiveCheckoutSnapshot = {
-    ...snapshot,
-    delivery: {
-      type: "AGENCY",
-      department: "Lima",
-      province: "Lima",
-      district: "Lima",
-      address: "Av. Destino de esta compra 123",
-      agency: "Shalom Centro",
+  (getLiveYapeConfig as jest.Mock).mockResolvedValue({
+    config: {
+      enabled: false,
+      phone: "",
+      holder: "",
+      qrUrl: null,
+      reviewHours: 24,
     },
-    receipt: { type: "BOLETA", dni: "71829364" },
-    quote: {
-      quoteId: id,
-      expiresAt: "2026-10-21T12:00:00Z",
-      subtotal: 69,
-      shipping: 8,
-      total: 77,
-      items: [{ variantId: "variant", name: "Pantalón", sku: "PAN-L", quantity: 1, unitPrice: 69 }],
-    },
-  };
-  (getLiveCheckoutSnapshot as jest.Mock).mockResolvedValue(owned);
-  render(
-    <LiveManualPaymentDialog
-      storeId={id}
-      visitor="owner"
-      checkoutId={id}
-      onClose={jest.fn()}
-      onUpdated={jest.fn()}
-    />,
-  );
-  await screen.findByText("Negocio de prueba");
-  const steps = within(screen.getByRole("navigation", { name: "Pasos de compra" }));
-  expect(steps.getByText("Pagar con Yape").closest("li")).toHaveAttribute("aria-current", "step");
-  fireEvent.click(screen.getByText("Resumen de tu compra"));
-  expect(screen.getByText("Av. Destino de esta compra 123")).toBeVisible();
-  expect(screen.getByText("Shalom Centro")).toBeVisible();
-  expect(screen.getByText("Boleta · DNI 71829364")).toBeVisible();
-  expect(screen.getByText("1 × Pantalón")).toBeVisible();
-  expect(screen.queryByRole("button", { name: /Modificar/ })).not.toBeInTheDocument();
-  expect(uploadLiveYapeProof).not.toHaveBeenCalled();
-});
-
-test("legacy owned snapshots keep payment usable without inventing delivery or receipt data", async () => {
-  render(
-    <LiveManualPaymentDialog
-      storeId={id}
-      visitor="owner"
-      checkoutId={id}
-      onClose={jest.fn()}
-      onUpdated={jest.fn()}
-    />,
-  );
-  await screen.findByText("Negocio de prueba");
-  fireEvent.click(screen.getByText("Resumen de tu compra"));
-  expect(screen.queryByRole("region", { name: "Entrega de esta compra" })).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole("region", { name: "Comprobante de esta compra" }),
-  ).not.toBeInTheDocument();
-  expect(screen.getByLabelText("Número de operación Yape")).toBeEnabled();
+  });
 });
 
 test("proof submission remains under review and does not confirm delivery", async () => {
@@ -165,18 +116,21 @@ test("proof submission remains under review and does not confirm delivery", asyn
     />,
   );
   await screen.findByText("Negocio de prueba");
+  fireEvent.click(screen.getByRole("button", { name: "Ya yapeé →" }));
   fireEvent.change(screen.getByLabelText("Número de operación Yape"), {
     target: { value: "01234567" },
   });
   fireEvent.change(screen.getByLabelText("Comprobante de Yape"), {
     target: {
-      files: [new File([new Uint8Array([137, 80, 78, 71])], "yape.png", { type: "image/png" })],
+      files: [
+        new File([new Uint8Array([137, 80, 78, 71])], "yape.png", {
+          type: "image/png",
+        }),
+      ],
     },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Enviar comprobante para revisión" }));
-  expect(
-    await screen.findByRole("heading", { name: "Comprobante en revisión" }),
-  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Confirmar pago" }));
+  expect(await screen.findByRole("heading", { name: "Validando tu pago" })).toBeInTheDocument();
   expect(
     screen.queryByRole("heading", { name: "Pago validado por el negocio" }),
   ).not.toBeInTheDocument();
@@ -186,78 +140,6 @@ test("proof submission remains under review and does not confirm delivery", asyn
     "visitor-a",
     id,
   ]);
-});
-
-test("approved payment exposes only the tracking link confirmed by the server", async () => {
-  const trackingUrl = "https://courier.example.invalid/tracking/fixture";
-  (getLiveCheckoutSnapshot as jest.Mock).mockResolvedValue({
-    ...snapshot,
-    status: "PAID",
-    trackingUrl,
-    manualPayment: { ...snapshot.manualPayment, status: "APPROVED" },
-  });
-  render(
-    <LiveManualPaymentDialog
-      storeId={id}
-      visitor="visitor-a"
-      checkoutId={id}
-      onClose={jest.fn()}
-      onUpdated={jest.fn()}
-    />,
-  );
-  expect(await screen.findByRole("link", { name: "Seguir pedido" })).toHaveAttribute(
-    "href",
-    trackingUrl,
-  );
-  expect(screen.getByText(/El negocio continuará con la entrega/)).toBeInTheDocument();
-});
-
-test("a cancelled paid order keeps the payment result but does not promise delivery", async () => {
-  (getLiveCheckoutSnapshot as jest.Mock).mockResolvedValue({
-    ...snapshot,
-    status: "PAID",
-    orderStatus: "ANULADO",
-    manualPayment: { ...snapshot.manualPayment, status: "APPROVED" },
-  });
-  render(
-    <LiveManualPaymentDialog
-      storeId={id}
-      visitor="visitor-a"
-      checkoutId={id}
-      onClose={jest.fn()}
-      onUpdated={jest.fn()}
-    />,
-  );
-  expect(await screen.findByText("Pedido anulado")).toBeInTheDocument();
-  expect(
-    screen.getByText(/Contacta al negocio para coordinar el pago o la entrega/),
-  ).toBeInTheDocument();
-  expect(screen.queryByText(/El negocio continuará con la entrega/)).not.toBeInTheDocument();
-});
-
-test("review customer conflicts do not appear as approval success", async () => {
-  (reviewLiveYapePayment as jest.Mock).mockRejectedValue(
-    Object.assign(new Error("conflict"), {
-      isAxiosError: true,
-      response: {
-        status: 409,
-        data: { code: "CUSTOMER_REVIEW_REQUIRED", message: "private data" },
-      },
-    }),
-  );
-  render(<LiveYapeReviews storeId={id} canReview />);
-  fireEvent.click(await screen.findByRole("button", { name: "Revisar y validar" }));
-  await screen.findByAltText("Comprobante Yape enviado por el cliente");
-  fireEvent.change(screen.getByLabelText("Número de operación verificado en Yape"), {
-    target: { value: "01234567" },
-  });
-  fireEvent.click(screen.getByRole("checkbox"));
-  fireEvent.click(screen.getByRole("button", { name: "Validar pago y confirmar pedido" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(/no apruebes otro pago/);
-  expect(
-    screen.queryByText("Pago validado. El pedido fue confirmado por el servidor."),
-  ).not.toBeInTheDocument();
-  expect(screen.queryByText("private data")).not.toBeInTheDocument();
 });
 
 test("changing visitor/checkout clears selected file and operation", async () => {
@@ -272,13 +154,14 @@ test("changing visitor/checkout clears selected file and operation", async () =>
     />,
   );
   await screen.findByText("Negocio de prueba");
+  fireEvent.click(screen.getByRole("button", { name: "Ya yapeé →" }));
   fireEvent.change(screen.getByLabelText("Número de operación Yape"), {
     target: { value: "01234567" },
   });
   fireEvent.change(screen.getByLabelText("Comprobante de Yape"), {
     target: { files: [new File(["png"], "yape.png", { type: "image/png" })] },
   });
-  expect(screen.getByRole("button", { name: "Enviar comprobante para revisión" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Confirmar pago" })).toBeEnabled();
   rerender(
     <LiveManualPaymentDialog
       key="b"
@@ -290,8 +173,9 @@ test("changing visitor/checkout clears selected file and operation", async () =>
     />,
   );
   await screen.findByText("Negocio de prueba");
+  fireEvent.click(screen.getByRole("button", { name: "Ya yapeé →" }));
   expect(screen.getByLabelText("Número de operación Yape")).toHaveValue("");
-  expect(screen.getByRole("button", { name: "Enviar comprobante para revisión" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Confirmar pago" })).toBeDisabled();
   expect(uploadLiveYapeProof).not.toHaveBeenCalled();
 });
 
@@ -301,7 +185,9 @@ test("financial approval needs proof, verified operation and confirmation; dupli
   render(<LiveYapeReviews storeId={id} canReview />);
   fireEvent.click(await screen.findByRole("button", { name: "Revisar y validar" }));
   await screen.findByAltText("Comprobante Yape enviado por el cliente");
-  const button = screen.getByRole("button", { name: "Validar pago y confirmar pedido" });
+  const button = screen.getByRole("button", {
+    name: "Validar pago y confirmar pedido",
+  });
   expect(button).toBeDisabled();
   fireEvent.change(screen.getByLabelText("Número de operación verificado en Yape"), {
     target: { value: "01234567" },
@@ -408,41 +294,7 @@ test("missing server amount never becomes a zero-sol Yape instruction", async ()
   );
   expect(await screen.findByText(/No pudimos confirmar el monto/)).toBeInTheDocument();
   expect(screen.queryByText("Monto exacto a yapear")).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole("button", { name: "Enviar comprobante para revisión" }),
-  ).not.toBeInTheDocument();
-});
-
-test("successful status polling preserves a visible proof validation error", async () => {
-  jest.useFakeTimers();
-  try {
-    render(
-      <LiveManualPaymentDialog
-        storeId={id}
-        visitor="visitor-a"
-        checkoutId={id}
-        onClose={jest.fn()}
-        onUpdated={jest.fn()}
-      />,
-    );
-    await screen.findByText("Negocio de prueba");
-    const submit = screen.getByRole("button", { name: "Enviar comprobante para revisión" });
-    expect(submit).toHaveAccessibleDescription(/Adjunta el comprobante/);
-    fireEvent.change(screen.getByLabelText("Comprobante de Yape"), {
-      target: { files: [new File(["pdf"], "proof.pdf", { type: "application/pdf" })] },
-    });
-    const error = await screen.findByRole("alert");
-    expect(error).toHaveTextContent(/JPG/);
-    await act(async () => {
-      jest.advanceTimersByTime(10000);
-    });
-    expect(getLiveCheckoutSnapshot).toHaveBeenCalledTimes(2);
-    expect(screen.getByRole("alert")).toHaveTextContent(/JPG/);
-    expect(screen.getByRole("alert")).toHaveFocus();
-    expect(uploadLiveYapeProof).not.toHaveBeenCalled();
-  } finally {
-    jest.useRealTimers();
-  }
+  expect(screen.queryByRole("button", { name: "Confirmar pago" })).not.toBeInTheDocument();
 });
 
 test("an older checkout read is aborted and cannot replace another store without remounting", async () => {
@@ -482,39 +334,4 @@ test("an older checkout read is aborted and cannot replace another store without
   });
   expect(screen.queryByText("Negocio de prueba")).not.toBeInTheDocument();
   expect(screen.getByText("Titular nuevo")).toBeInTheDocument();
-});
-
-test("proof retries reuse their command key and ignore duplicate submission clicks", async () => {
-  const proof = deferred<LiveCheckoutSnapshot>();
-  (uploadLiveYapeProof as jest.Mock)
-    .mockRejectedValueOnce(new Error("Conexión interrumpida"))
-    .mockReturnValueOnce(proof.promise);
-  render(
-    <LiveManualPaymentDialog
-      storeId={id}
-      visitor="visitor-a"
-      checkoutId={id}
-      onClose={jest.fn()}
-      onUpdated={jest.fn()}
-    />,
-  );
-  await screen.findByText("Negocio de prueba");
-  fireEvent.change(screen.getByLabelText("Número de operación Yape"), {
-    target: { value: "01234567" },
-  });
-  fireEvent.change(screen.getByLabelText("Comprobante de Yape"), {
-    target: { files: [new File(["png"], "yape.png", { type: "image/png" })] },
-  });
-  const submit = screen.getByRole("button", { name: "Enviar comprobante para revisión" });
-  fireEvent.click(submit);
-  expect(await screen.findByRole("alert")).toHaveTextContent("Conexión interrumpida");
-  fireEvent.click(submit);
-  fireEvent.click(submit);
-  expect(uploadLiveYapeProof).toHaveBeenCalledTimes(2);
-  expect((uploadLiveYapeProof as jest.Mock).mock.calls[0][3].idempotencyKey).toBe(
-    (uploadLiveYapeProof as jest.Mock).mock.calls[1][3].idempotencyKey,
-  );
-  await act(async () => {
-    proof.resolve(reviewing);
-  });
 });

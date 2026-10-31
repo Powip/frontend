@@ -42,6 +42,7 @@ import { useRouter } from "next/navigation";
 import { isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
 
 interface Store {
+  deliverySettings?: { options: import("@/features/live/types").StoreDeliveryOption[] };
   id: string;
   company_id?: string;
   color?: string | null;
@@ -61,6 +62,7 @@ interface NewStore {
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CatalogoMarcas from "@/components/brands/CatalogoMarcas";
+import StoreDeliverySettings from "@/components/forms/StoreDeliverySettings";
 import GestionAlmacenes from "@/components/forms/GestionAlmacenes";
 import GestionCouriers from "@/components/couriers/GestionCouriers";
 import StoreSalesChannels from "@/components/stores/StoreSalesChannels";
@@ -358,6 +360,7 @@ export default function TiendasPage() {
         >
           <TabsList className="h-auto flex-wrap justify-start bg-muted p-1">
             <TabsTrigger value="tiendas">Tiendas</TabsTrigger>
+            <TabsTrigger value="envios">Envíos</TabsTrigger>
             <TabsTrigger value="almacenes">Almacenes</TabsTrigger>
             <TabsTrigger value="marcas">Marcas</TabsTrigger>
             <TabsTrigger value="canales">Canales de Venta</TabsTrigger>
@@ -845,6 +848,7 @@ export default function TiendasPage() {
             </Card>
           </TabsContent>
 
+          <TabsContent value="envios" className="space-y-5">{stores.filter(store=>store.id).map(store=><div key={store.id}><h2 className="mb-3 font-semibold">{store.name}</h2><StoreDeliverySettings storeId={store.id!} initial={store.deliverySettings?.options || []} onSaved={()=>void fetchStore()}/></div>)}</TabsContent>
           <TabsContent value="almacenes">
             <GestionAlmacenes />
           </TabsContent>

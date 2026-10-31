@@ -224,9 +224,9 @@ function LiveCheckoutForm({
   const department = departments.find((item) => item.name === delivery.department);
   const province = department?.provinces.find((item) => item.name === delivery.province);
   const locationValid =
-    !!province?.districts.includes(delivery.district) &&
+    !!province?.districts.includes(delivery.district || "") &&
     [delivery.department, delivery.province, delivery.district].every(
-      (value) => value.length >= 2 && value.length <= 50,
+      (value) => (value || "").length >= 2 && (value || "").length <= 50,
     );
   const issues = {
     name:
@@ -240,7 +240,7 @@ function LiveCheckoutForm({
     province: !province ? "Selecciona la provincia." : "",
     district: !locationValid ? "Selecciona un distrito válido." : "",
     address:
-      delivery.address.trim().length < 3 || delivery.address.trim().length > 150
+      (delivery.address || "").trim().length < 3 || (delivery.address || "").trim().length > 150
         ? "Ingresa una dirección de 3 a 150 caracteres."
         : "",
     agency:
@@ -249,16 +249,18 @@ function LiveCheckoutForm({
         ? "Ingresa la agencia y sucursal (máximo 150 caracteres)."
         : "",
     dni:
-      receipt.type === "BOLETA" && (!/^\d{8}$/.test(receipt.dni) || isJunkDni(receipt.dni))
+      receipt.type === "BOLETA" &&
+      (!/^\d{8}$/.test(receipt.dni || "") || isJunkDni(receipt.dni || ""))
         ? "Ingresa un DNI válido de 8 dígitos."
         : "",
     ruc:
-      receipt.type === "FACTURA" && !/^(10|20)\d{9}$/.test(receipt.ruc)
+      receipt.type === "FACTURA" && !/^(10|20)\d{9}$/.test(receipt.ruc || "")
         ? "Ingresa un RUC de 11 dígitos que empiece por 10 o 20."
         : "",
     businessName:
       receipt.type === "FACTURA" &&
-      (receipt.businessName.trim().length < 3 || receipt.businessName.trim().length > 150)
+      ((receipt.businessName || "").trim().length < 3 ||
+        (receipt.businessName || "").trim().length > 150)
         ? "Ingresa una razón social de 3 a 150 caracteres."
         : "",
   };

@@ -1,4 +1,5 @@
 "use client";
+import LiveYapeReviews from "@/features/live/LiveYapeReviews";
 import {useAuth} from "@/contexts/AuthContext";
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -59,6 +60,8 @@ interface Payment {
 }
 
 interface OrderData {
+  storeId?: string;
+  externalSource?: string;
   companyId?: string;
   commercialLeadId?: string | null;
   commercialStage?: "LEAD" | "SALE" | null;
@@ -196,6 +199,8 @@ export default function PaymentVerificationModal({
       );
       if (!isCurrentRequest()) return;
       setOrderData({
+        storeId: res.data.storeId,
+        externalSource: res.data.externalSource,
         companyId: res.data.companyId || res.data.customer?.companyId,
         commercialLeadId: res.data.commercialLeadId,
         commercialStage: res.data.commercialStage,
@@ -614,6 +619,7 @@ export default function PaymentVerificationModal({
     onClose();
   };
 
+  if (orderData?.externalSource === "POWIP_LIVE" && orderData.storeId) return <Dialog open={open} onOpenChange={value => { if (!value) handleClose(); }}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>Pagos · {orderNumber}</DialogTitle></DialogHeader><LiveYapeReviews storeId={orderData.storeId} orderId={orderId} canReview={auth?.user?.role?.toUpperCase() === "ADMINISTRADOR"} onUpdated={paymentChanged}/></DialogContent></Dialog>;
   return (
     <Dialog open={open} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="sm:max-w-[550px] max-h-[85vh] flex flex-col">

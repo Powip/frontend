@@ -106,18 +106,24 @@ export async function getPublicLive(storeId: string, visitor: string, signal?: A
     await axios.get<LivePublicData>(publicPath(storeId), {
       ...anonymousOptions(visitor),
       ...(signal ? { signal } : {}),
+      params: { channel: liveEntryContext().channel },
     })
   ).data;
 }
 export async function reserveLiveProduct(
   storeId: string,
   visitor: string,
-  input: { variantId: string; quantity: number; customer: LiveCustomer; idempotencyKey: string },
+  input: {
+    variantId: string;
+    quantity: number;
+    customer: LiveCustomer;
+    idempotencyKey: string;
+  },
 ) {
   return (
     await axios.post<{ reservation: LiveReservation; serverNow: string }>(
       `${publicPath(storeId)}/reservations`,
-      input,
+      { ...input, channel: liveEntryContext().channel },
       anonymousOptions(visitor),
     )
   ).data;
@@ -130,7 +136,8 @@ export async function removePublicLiveReservation(storeId: string, visitor: stri
 }
 export async function quoteLivePurchase(storeId: string, visitor: string, input: LiveQuoteInput) {
   const cleaned = cleanPurchase(input);
-  const quote: LiveQuoteInput = {
+  const quote = {
+    ...liveEntryContext(),
     items: cleaned.items,
     reservationIds: cleaned.reservationIds,
     customer: cleaned.customer,
@@ -246,36 +253,35 @@ export async function createLivePaymentLink(storeId: string, reservationId: stri
 function cleanPurchase<T extends LiveQuoteInput>(input: T): T {
   return {
     ...input,
+    ...liveEntryContext(),
     customer: {
       ...input.customer,
       name: input.customer.name.trim(),
       phone: input.customer.phone.replace(/\D/g, ""),
       socialUsername: input.customer.socialUsername?.trim() || undefined,
     },
-    delivery: {
-      type: input.delivery.type,
-      department: input.delivery.department.trim(),
-      province: input.delivery.province.trim(),
-      district: input.delivery.district.trim(),
-      address: input.delivery.address.trim(),
-      ...(input.delivery.type === "AGENCY" ? { agency: input.delivery.agency?.trim() } : {}),
-    },
+    delivery: Object.fromEntries(
+      Object.entries(input.delivery)
+        .filter(([, value]) => value !== "" && value !== undefined)
+        .map(([key, value]) => [key, typeof value === "string" ? value.trim() : value]),
+    ) as LivePurchaseInput["delivery"],
     receipt:
       input.receipt.type === "BOLETA"
-        ? { type: "BOLETA", dni: input.receipt.dni.trim() }
+        ? { type: "BOLETA", ...(input.receipt.dni ? { dni: input.receipt.dni.trim() } : {}) }
         : {
-            type: "FACTURA",
-            ruc: input.receipt.ruc.trim(),
-            businessName: input.receipt.businessName.trim(),
+            ...input.receipt,
+            ruc: input.receipt.ruc?.trim(),
+            businessName: input.receipt.businessName?.trim(),
           },
   };
 }
 
 export async function getLiveYapeConfig(storeId: string) {
   return (
-    await axiosAuth.get<{ config: import("./types").LiveYapeConfig; serverNow: string }>(
-      `${adminPath(storeId)}/yape`,
-    )
+    await axiosAuth.get<{
+      config: import("./types").LiveYapeConfig;
+      serverNow: string;
+    }>(`${adminPath(storeId)}/yape`)
   ).data;
 }
 export async function updateLiveYapeConfig(
@@ -283,10 +289,10 @@ export async function updateLiveYapeConfig(
   input: Omit<import("./types").LiveYapeConfig, "qrUrl">,
 ) {
   return (
-    await axiosAuth.put<{ config: import("./types").LiveYapeConfig; serverNow: string }>(
-      `${adminPath(storeId)}/yape`,
-      input,
-    )
+    await axiosAuth.put<{
+      config: import("./types").LiveYapeConfig;
+      serverNow: string;
+    }>(`${adminPath(storeId)}/yape`, input)
   ).data;
 }
 export function validateLivePaymentImage(file: File) {
@@ -300,17 +306,18 @@ export async function uploadLiveYapeQr(storeId: string, file: File) {
   const body = new FormData();
   body.append("file", file);
   return (
-    await axiosAuth.post<{ config: import("./types").LiveYapeConfig; serverNow: string }>(
-      `${adminPath(storeId)}/yape/qr`,
-      body,
-    )
+    await axiosAuth.post<{
+      config: import("./types").LiveYapeConfig;
+      serverNow: string;
+    }>(`${adminPath(storeId)}/yape/qr`, body)
   ).data;
 }
 export async function removeLiveYapeQr(storeId: string) {
   return (
-    await axiosAuth.delete<{ config: import("./types").LiveYapeConfig; serverNow: string }>(
-      `${adminPath(storeId)}/yape/qr`,
-    )
+    await axiosAuth.delete<{
+      config: import("./types").LiveYapeConfig;
+      serverNow: string;
+    }>(`${adminPath(storeId)}/yape/qr`)
   ).data;
 }
 export async function getLiveCheckoutSnapshot(
@@ -330,12 +337,16 @@ export async function uploadLiveYapeProof(
   storeId: string,
   visitor: string,
   checkoutId: string,
-  input: { file: File; operationNumber: string; idempotencyKey: string },
+  input: {
+    file?: File | null;
+    operationNumber: string;
+    idempotencyKey: string;
+  },
   signal?: AbortSignal,
 ) {
-  validateLivePaymentImage(input.file);
+  if (input.file) validateLivePaymentImage(input.file);
   const body = new FormData();
-  body.append("file", input.file);
+  if (input.file) body.append("file", input.file);
   body.append("operationNumber", input.operationNumber.trim());
   body.append("idempotencyKey", input.idempotencyKey);
   return (
@@ -369,7 +380,7 @@ export async function getLiveYapeReviewProof(
 export async function reviewLiveYapePayment(
   storeId: string,
   checkoutId: string,
-  decision: "approve" | "reject",
+  decision: "approve" | "reject" | "cancel",
   input: { operationNumber?: string; reason?: string; idempotencyKey: string },
 ) {
   return (
@@ -377,5 +388,73 @@ export async function reviewLiveYapePayment(
       `${adminPath(storeId)}/yape/reviews/${encodeURIComponent(checkoutId)}/${decision}`,
       input,
     )
+  ).data;
+}
+
+export async function identifyLiveCustomer(
+  storeId: string,
+  visitor: string,
+  customer: LiveCustomer,
+) {
+  return (
+    await axios.post<{
+      customer: LiveCustomer;
+      delivery: import("./types").LiveDelivery | null;
+      receipt: LivePurchaseInput["receipt"] | null;
+    }>(`${publicPath(storeId)}/customer`, customer, anonymousOptions(visitor))
+  ).data;
+}
+export async function resizeLiveReservation(
+  storeId: string,
+  visitor: string,
+  id: string,
+  quantity: number,
+  idempotencyKey: string,
+) {
+  return (
+    await axios.patch(
+      `${publicPath(storeId)}/reservations/${encodeURIComponent(id)}`,
+      { quantity, idempotencyKey },
+      anonymousOptions(visitor),
+    )
+  ).data;
+}
+export function liveBuyerLabel(status?: string): string {
+  return (
+    (
+      {
+        CANCELLED: "Anulado",
+        ANULADO: "Anulado",
+        UNDER_REVIEW: "Validando tu pago",
+        APPROVED: "Pago confirmado",
+        REJECTED: "Pago no validado",
+        EXPIRED: "Apartado vencido",
+        REFUNDED: "Pago devuelto",
+        REFUND_PENDING: "Devolución en proceso",
+        CHARGEBACK: "Pago en revisión",
+      } as Record<string, string>
+    )[status || ""] || "Pendiente de pago"
+  );
+}
+
+export function liveEntryContext() {
+  if (typeof window === "undefined") return { channel: "LIVE" as const };
+  const query = new URLSearchParams(window.location.search);
+  return {
+    channel: window.location.pathname.startsWith("/catalogo")
+      ? ("WHATSAPP" as const)
+      : ("LIVE" as const),
+    advisorCode: query.get("a") || undefined,
+    sellerCode: query.get("v") || undefined,
+  };
+}
+
+export async function lookupLiveCustomer(
+  storeId: string,
+  visitor: string,
+  phone: string,
+): Promise<{ known: boolean; name: string | null }> {
+  return (
+    await axios.post(`${publicPath(storeId)}/customer/lookup`, { phone }, anonymousOptions(visitor))
   ).data;
 }

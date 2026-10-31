@@ -49,6 +49,7 @@ function publicData(label: string): LivePublicData {
         enabled: true,
       },
     ],
+    customer: { name: "María Torres", phone: "987654321" },
     reservations: [],
     isTrusted: false,
     paymentMethods: ["yape"],
@@ -95,24 +96,16 @@ test("aborts the old public reader and never displays its late result in the nex
   expect(screen.getByText("Producto B")).toBeInTheDocument();
 });
 
-test("pauses public polling for checkout, retains its draft on reopen and refreshes after close", async () => {
+test("a slow public reader does not overlap and resumes after visibility returns", async () => {
+  const slow = deferred<LivePublicData>();
+  (getPublicLive as jest.Mock).mockReturnValueOnce(slow.promise);
   render(<PublicLivePage storeId="store-A" />);
-  await flush();
-  fireEvent.click(screen.getByRole("button", { name: "Comprar ahora" }));
-  let dialog = within(await screen.findByRole("dialog"));
-  fireEvent.change(dialog.getByLabelText("Dirección"), { target: { value: "Av. Borrador 123" } });
-  await act(async () => jest.advanceTimersByTime(20_000));
-  window.dispatchEvent(new Event("focus"));
-  await flush();
+  await act(async () => jest.advanceTimersByTime(30000));
   expect(getPublicLive).toHaveBeenCalledTimes(1);
-  fireEvent.click(dialog.getByRole("button", { name: "Close" }));
+  await act(async () => slow.resolve(publicData("A")));
+  await act(async () => jest.advanceTimersByTime(5000));
   await flush();
   expect(getPublicLive).toHaveBeenCalledTimes(2);
-  fireEvent.click(screen.getByRole("button", { name: "Comprar ahora" }));
-  dialog = within(await screen.findByRole("dialog"));
-  expect(dialog.getByLabelText("Dirección")).toHaveValue("Av. Borrador 123");
-  expect(dialog.getByRole("button", { name: "Continuar" })).toBeEnabled();
-  expect(dialog.queryByRole("button", { name: /Continuar con Yape/ })).not.toBeInTheDocument();
 });
 
 test("a successful background read does not erase a reservation error", async () => {
@@ -121,12 +114,9 @@ test("a successful background read does not erase a reservation error", async ()
   );
   render(<PublicLivePage storeId="store-A" />);
   await flush();
-  fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "María Torres" } });
-  fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "987654321" } });
-  fireEvent.click(screen.getByRole("button", { name: "Apartar" }));
+  fireEvent.click(screen.getByRole("button", { name: /Separar/ }));
   await flush();
   expect(screen.getByRole("alert")).toHaveTextContent("No se pudo apartar. Reintenta.");
-  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close" }));
   await flush();
   const reads = (getPublicLive as jest.Mock).mock.calls.length;
   await act(async () => jest.advanceTimersByTime(5_000));
@@ -140,12 +130,10 @@ test("a late reservation cannot reset the quantity selected in the next store", 
   (reserveLiveProduct as jest.Mock).mockReturnValueOnce(reserve.promise);
   const view = render(<PublicLivePage storeId="store-A" />);
   await flush();
-  fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "María Torres" } });
-  fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "987654321" } });
-  fireEvent.click(screen.getByRole("button", { name: "Apartar" }));
+  fireEvent.click(screen.getByRole("button", { name: /Separar/ }));
   view.rerender(<PublicLivePage storeId="store-B" />);
   await flush();
-  fireEvent.click(screen.getByRole("button", { name: "Agregar una unidad de Producto B" }));
+  fireEvent.click(screen.getByRole("button", { name: "Sumar cantidad de Producto B" }));
   const article = screen.getByText("Producto B").closest("article");
   if (!article) throw new Error("Missing product card");
   expect(within(article).getByText("2")).toBeInTheDocument();

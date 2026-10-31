@@ -54,7 +54,7 @@ export default function LiveCheckoutDetails({
           {delivery.type === "AGENCY" && delivery.agency ? (
             <p className="mt-1 break-words">{delivery.agency.trim()}</p>
           ) : null}
-          <p className="mt-1 break-words">{delivery.address.trim()}</p>
+          <p className="mt-1 break-words">{(delivery.address || "").trim()}</p>
           <p className="mt-1 break-words text-zinc-300">
             {delivery.district}, {delivery.province}, {delivery.department}
           </p>
@@ -72,7 +72,9 @@ export default function LiveCheckoutDetails({
           {receipt.type === "FACTURA" ? (
             <>
               <p>Factura · RUC {receipt.ruc}</p>
-              <p className="mt-1 break-words text-zinc-300">{receipt.businessName.trim()}</p>
+              <p className="mt-1 break-words text-zinc-300">
+                {(receipt.businessName || "").trim()}
+              </p>
             </>
           ) : (
             <p>Boleta · DNI {receipt.dni}</p>

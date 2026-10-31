@@ -300,7 +300,7 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     shippingOffice: order.shippingOffice || "",
     sellerName: order.sellerName ?? null,
     items: order.items || [],
-    externalSource: order.externalSource ?? null,
+    externalSource: order.externalSource === "POWIP_LIVE" && order.closingChannel === "POWIP_LINK" ? "POWIP_LINK" : order.externalSource ?? null,
     shopifyCancelledAt: order.shopifyCancelledAt ?? null,
     shopifyCancelReason: order.shopifyCancelReason ?? null,
     externalId: order.externalId ?? null,

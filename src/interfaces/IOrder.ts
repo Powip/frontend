@@ -60,6 +60,12 @@ export type ReceiptType = "BOLETA" | "FACTURA";
 export type OrderType = "VENTA" | "RESERVA" | "PREVENTA" | "CAMBIO";
 
 export type SalesChannel =
+  | "POWIP_LIVE"
+  | "POWIP_LINK"
+  | "TIKTOK_LIVE"
+  | "INSTAGRAM_LIVE"
+  | "FACEBOOK_LIVE"
+  | "YOUTUBE_LIVE"
   | "TIENDA_FISICA"
   | "WHATSAPP"
   | "INSTAGRAM"
