@@ -848,7 +848,7 @@ export default function TiendasPage() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="envios" className="space-y-5">{stores.filter(store=>store.id).map(store=><div key={store.id}><h2 className="mb-3 font-semibold">{store.name}</h2><StoreDeliverySettings storeId={store.id!} initial={store.deliverySettings?.options || []} onSaved={()=>void fetchStore()}/></div>)}</TabsContent>
+          <TabsContent value="envios" className="space-y-5">{commercialStores.filter(store=>store.id).map(store=><div key={store.id}><h2 className="mb-3 font-semibold">{store.name}</h2><StoreDeliverySettings storeId={store.id!} initial={store.deliverySettings?.options || []} onSaved={()=>void fetchStore()}/></div>)}</TabsContent>
           <TabsContent value="almacenes">
             <GestionAlmacenes />
           </TabsContent>
