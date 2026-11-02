@@ -34,7 +34,7 @@ const quotation = (overrides: Partial<PublicQuotation> = {}): PublicQuotation =>
 });
 
 const tracking = (overrides: Partial<PublicOrderTracking> = {}): PublicOrderTracking => ({
-  orderNumber: "ORD-000099", status: "EN_ENVIO", deliveryType: "DOMICILIO",
+  orderNumber: "ORD-000099", status: "DESPACHADO", deliveryType: "DOMICILIO",
   createdAt: "2026-10-27T12:00:00.000Z", customerNotes: "Sin ají.\nEntregar por la tarde.",
   customer: { fullName: "María Actualizada", address: "Av. Actualizada 456", district: "Cayma", city: "Arequipa", province: "Arequipa" },
   items: [{ productName: "Pedido actualizado", quantity: 2, unitPrice: 60, subtotal: 120, attributes: { Tamaño: "300 g" } }],
@@ -42,7 +42,8 @@ const tracking = (overrides: Partial<PublicOrderTracking> = {}): PublicOrderTrac
   timeline: [
     { step: "PENDIENTE", label: "Pedido Recibido", completed: true, current: false },
     { step: "PREPARADO", label: "En Preparación", completed: true, current: false },
-    { step: "EN_ENVIO", label: "En Camino", completed: false, current: true },
+    { step: "EN_ENVIO", label: "En Envío", completed: true, current: false },
+    { step: "DESPACHADO", label: "En Camino", completed: false, current: true },
     { step: "ENTREGADO", label: "Entregado", completed: false, current: false },
   ],
   courier: "Shalom", businessName: "Tienda actual", businessPhone: "999111222",
@@ -239,9 +240,12 @@ describe("PublicQuotationPage", () => {
     expect(await screen.findByText("S/125.00")).toBeInTheDocument();
   });
 
-  it("keeps an outstanding shipping balance visible after conversion", async () => {
+  it.each([
+    { trackingStatus: "EN_ENVIO", currentStep: "En preparación" },
+    { trackingStatus: "DESPACHADO", currentStep: "En camino" },
+  ])("keeps an outstanding shipping balance visible after conversion at $trackingStatus", async ({ trackingStatus, currentStep }) => {
     api.getPublicQuotation.mockResolvedValue(quotation({
-      status: "CONVERTIDA", orderNumber: "ORD-000001", trackingStatus: "EN_ENVIO",
+      status: "CONVERTIDA", orderNumber: "ORD-000001", trackingStatus,
       paymentType: "ADELANTO", customerConfirmed: true,
       payments: [payment({ status: "APROBADO" })], approvedDeposit: 100,
       pendingBalance: 20, verifiedBalance: 20,
@@ -250,7 +254,7 @@ describe("PublicQuotationPage", () => {
 
     expect(await screen.findByText("Saldo pendiente contraentrega: S/20.00")).toBeInTheDocument();
     expect(screen.queryByText("Pedido pagado en su totalidad")).not.toBeInTheDocument();
-    expect(screen.getByText("En camino").closest("li")).toHaveAttribute("aria-current", "step");
+    expect(screen.getByText(currentStep).closest("li")).toHaveAttribute("aria-current", "step");
     expect(screen.queryByRole("button", { name: /Confirmar pedido|Pagar|Agregar más productos/ })).not.toBeInTheDocument();
   });
 
@@ -355,7 +359,7 @@ describe("PublicQuotationPage", () => {
     expect(screen.queryByText("Pedido pagado en su totalidad")).not.toBeInTheDocument();
     expect(screen.getByText(/Sin ají/)).toHaveTextContent("Entregar por la tarde.");
     expect(screen.getByText("En Camino").closest("li")).toHaveAttribute("aria-current", "step");
-    expect(screen.getByText("Estado actual: En camino")).toBeInTheDocument();
+    expect(screen.getByText("Estado actual: Despachado")).toBeInTheDocument();
     expect(screen.getByText("Cayma, Arequipa, Arequipa")).toBeInTheDocument();
     expect(screen.getByText("Av. Actualizada 456")).toBeInTheDocument();
     expect(screen.queryByText("Calle anterior 123", { exact: false })).not.toBeInTheDocument();
