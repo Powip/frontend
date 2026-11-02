@@ -6,6 +6,7 @@ import { canPrepareDeferredManualOrder, canShipCommercialOrder, isCommercialLead
 import { formatSalesMoney } from "@/utils/salesMoney";
 import { operationalStatus, receiptFinancialState } from "@/utils/orderState";
 import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
+import { OrderPaymentMethodPanel } from "@/components/registrar-venta/OrderPaymentMethodPanel";
 import { buildPendingOrderDetail } from "./customerServiceOrderDetail";
 import { CcSaleConfirmationPanel } from "@/components/atencion-cliente/cc-v2/CcSaleConfirmationPanel";
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
@@ -3020,6 +3021,7 @@ export default function CustomerServiceModal({
 
                     <div className="rounded-2xl border border-border p-4">
                       <div className="text-sm font-bold mb-2.5">💳 Pagos registrados</div>
+                      <OrderPaymentMethodPanel orderId={orderId} />
                       {receipt.payments.length === 0 && (
                         <div className="text-sm text-muted-foreground">
                           Sin pagos registrados
@@ -3031,7 +3033,7 @@ export default function CustomerServiceModal({
                           className="flex items-center justify-between text-sm py-2 border-b last:border-0 border-dashed border-border"
                         >
                           <div>
-                            <div className="font-medium">{p.paymentMethod}</div>
+                            <div className="font-medium">Método registrado en recaudo: {p.paymentMethod}</div>
                             <div className="text-muted-foreground text-xs">
                               {new Date(p.paymentDate).toLocaleDateString("es-PE")}
                             </div>

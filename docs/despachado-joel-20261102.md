@@ -32,19 +32,21 @@ No se reclasifican automáticamente pedidos históricos En envío: ese estado ya
 
 Se conserva el protocolo actual de inventario: la mercadería reservada sigue reservada durante Despachado y se confirma el movimiento al entregar. Aprobar o despachar no genera una segunda reserva ni un segundo descuento. El sistema ya puede reservar antes de aprobar la guía, al preparar/confirmar una venta; hacer que **todas** las reservas nazcan exclusivamente en la aprobación es otro cambio y no se incluye aquí.
 
-## Otros puntos de Joel que siguen pendientes
+## Puntos financieros preparados en una publicación posterior
 
-1. **Liquidación del courier.** Existe la pantalla de Operaciones, pero sus registros se mantienen en memoria de la sesión. Faltan persistencia, carga real del comprobante, conciliación e historial en backend. Un pedido entregado con saldo no demuestra que el courier haya cobrado. La pantalla debe identificarlo como cobro por verificar, sin inferir liquidación ni mora a partir de la entrega.
-2. **Corrección del método de pago solo en el pedido.** La edición actual modifica pagos pendientes; no permite corregir de forma independiente el método de un pago ya aprobado. Completar ese punto requiere un dato/auditoría propios del pedido para no reescribir el recaudo o cobranza del negocio. No se modifican importes ni pagos aprobados como parte de Despachado.
-3. **Confirmaciones por API.** La etapa de entrega y los estados logísticos se sincronizan. No debe suponerse que un estado de entrega confirma el monto cobrado: falta definir/persistir la evidencia de cobro específica de cada courier y conciliarla en el módulo de liquidaciones.
+Estos puntos se implementan en la rama financiera separada y requieren su propia verificación y publicación. No forman parte del despliegue inicial de Despachado. El contrato y el alcance se documentan en `liquidaciones-y-metodo-pedido-20261102.md`.
+
+1. **Liquidación del courier.** Cobro explícito, depósitos agrupados/parciales, comprobantes privados, revisión versionada e historial persistente. Un pedido entregado no crea un cobro ni una liquidación.
+2. **Corrección del método de pago solo en el pedido.** Corrección por pago con motivo y auditoría, incluso después de aprobación. El método original del recaudo, los importes y la aprobación financiera se conservan.
+3. **Reportes de courier.** La evidencia e importe reportados por EVA quedan por verificar. Finanzas puede vincular un reporte a un cobro explícitamente confirmado, sin convertir una entrega o un webhook en pago aprobado.
 
 ## Publicación
 
-La publicación sigue pendiente de completar y verificar. Orden requerido: aplicar la migración `OrderDispatched1793649600000` de ms-ventas, desplegar ms-ventas y ms-courier compatibles, y después publicar el frontend. No debe publicarse solo el selector del frontend antes de habilitar el estado en backend/base de datos.
+**Despachado ya está publicado y verificado en producción.** Se aplicó primero la migración `OrderDispatched1793649600000` de ms-ventas, luego los backends compatibles y finalmente el frontend. La publicación financiera posterior sigue separada de esta evidencia.
 
-- **Ventas:** se agregó un runner específico de esta versión como `preDeployCommand` en `railway.json`: `node dist/scripts/order-dispatched-release.js`. La migración todavía no está aplicada en producción. El hook valida los cuerpos exactos de las funciones afectadas; después de verificar esta publicación debe retirarse o coordinarse con futuras migraciones para que no rechace cambios posteriores legítimos.
-- **Courier:** PR 27 fusionado en el commit `e2192b34`; el despliegue Railway `90a2d0d2` está pendiente de aprobación. La fusión no acredita que el backend nuevo ya esté activo.
-- **Frontend:** PR 270 sigue pendiente de publicar, después de verificar ambos backends. El commit `6b3423f` pasó todos los checks de GitHub; el preview de Vercel se está verificando por separado.
+- **Ventas:** despliegue Railway `55e945c1` del commit `bcd3eb5` saludable. La verificación remota de solo lectura confirmó `alreadyApplied: true`, `enumPresent: true` y seis protecciones verificadas. El hook específico de `railway.json` debe retirarse o coordinarse con futuras migraciones, porque valida cuerpos exactos de funciones.
+- **Courier:** PR 27 fusionado en `e2192b34`; despliegue Railway `90a2d0d2` aprobado, exitoso y saludable.
+- **Frontend:** PR 270 fusionado en `caf6630278742fde1193ecaacf661977adfb2015`; deployment GitHub `7500867416` y Vercel `DqENJYwCnru9mnLKonyWC6i4jsXy` exitosos a las 19:05:38 UTC del 2 de noviembre. `www.powip.tech` coincide en sus 39 assets estáticos con el deployment de producción `powip-jv5ev7p8c-powipsystems-orgs-projects.vercel.app`.
 
 La validación debe cubrir guía aprobada → En envío, salida física → Despachado, entrega con saldo → Entregado/cobro por verificar, entrega directa desde En envío, protección de claves y devolución de unidades serializadas.
 

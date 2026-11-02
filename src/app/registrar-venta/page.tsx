@@ -1,6 +1,7 @@
 "use client";
 
 import SaleUnitLifecycleActions from "@/components/registrar-venta/SaleUnitLifecycleActions";
+import { OrderPaymentMethodPanel } from "@/components/registrar-venta/OrderPaymentMethodPanel";
 import { AdvertisingAttributionSelect } from "@/components/advertising/v22/AttributionSelect";
 
 import { useQuery } from "@tanstack/react-query";
@@ -2854,6 +2855,7 @@ function RegistrarVentaContent() {
                       {orderId && advancePayment > 0 && <p>Adelantos pendientes: {moneyPrefix} {advancePayment.toFixed(2)}</p>}
                     </div>
                   )}
+                  {orderData?.id && <OrderPaymentMethodPanel orderId={orderData.id} />}
                   <div inert={!!leadId || orderData?.commercialStage === "LEAD"}>
                   {/* Método de pago */}
                   <div className="space-y-1">
@@ -2962,7 +2964,7 @@ function RegistrarVentaContent() {
                           rel="noopener noreferrer"
                           className="block text-sm text-violet-600 underline dark:text-violet-300"
                         >
-                          Ver comprobante guardado · {payment.paymentMethod} · {moneyPrefix} {Number(payment.amount).toFixed(2)}
+                          Ver comprobante guardado · Método registrado en recaudo: {payment.paymentMethod} · {moneyPrefix} {Number(payment.amount).toFixed(2)}
                           {payment.status === "PAID" ? " (aprobado)" : payment.status === "LOST" ? " (rechazado)" : " (pendiente)"}
                         </a>
                       ))}

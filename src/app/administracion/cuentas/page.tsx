@@ -1,44 +1,19 @@
 "use client";
 
-/**
- * Cuentas por Cobrar / por Pagar — §11 doc técnica.
- *
- * CONECTADO A DATOS REALES (solo "Por cobrar"):
- * - "Saldos COD en tránsito": pedidos EN_ENVIO/ASIGNADO_A_GUIA reales, neto
- *   de adelantos ya pagados.
- * - "Liquidación pendiente" por courier: pedidos ENTREGADO reales agrupados
- *   por courier (`agruparPorCourier`), igual criterio que
- *   `operaciones/liquidaciones`. "Confirmar" solo lo saca de la vista en
- *   este dispositivo — no hay endpoint que registre el cobro (mismo BACKEND GAP
- *   documentado ahí).
- *
- * SOLUCIÓN PUENTE (localStorage, sin backend): cuentas manuales, qué "saldo
- * en tránsito" ya confirmaste y el historial de movimientos se guardan en
- * `localStorage` por empresa (`_lib/cuentasStorage.ts`) — sobreviven a
- * recargar la página, pero viven solo en este navegador/dispositivo, no se
- * comparten entre usuarios ni equipos.
- *
- * Qué courier ya se confirmó usa la MISMA clave que Liquidaciones
- * (`useLiquidacionesConfirmadas`, `_lib/liquidacionesStorage.ts`) — antes
- * cada página tenía su propio set de confirmados, así que confirmar un
- * courier acá no lo sacaba de Liquidaciones (ni viceversa): el mismo saldo
- * podía verse "resuelto" en una pantalla y "pendiente" en la otra.
- *
- * SIGUE SIN DATO REAL:
- * - "Por pagar" automático (planilla, proveedores, cuota préstamo): no
- *   existe — `IGastoOperativo` no tiene campo de estado
- *   (Pagado/Pendiente/Vencido), así que no se puede saber qué gasto está
- *   pendiente de pago. Todo lo que aparece en "Por pagar" es manual.
+/** Courier balances come from explicit Finance confirmations and persistent settlements.
+ * Manual accounts remain notes stored on this device, separate from courier accounting.
  */
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, subDays } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { getOrdersByCompany } from "@/api/Ventas";
-import { enTransito, agruparPorCourier, paidAmount } from "../_lib/realData";
-import { useCuentasManualCobrar, useCuentasManualPagar, useCuentasConfirmadas, useCuentasHistorial } from "../_lib/cuentasStorage";
-import { useLiquidacionesConfirmadas, useCutoffPorCourier } from "../_lib/liquidacionesStorage";
+import { enTransito, paidAmount } from "../_lib/realData";
+import { useCuentasManualCobrar, useCuentasManualPagar, useCuentasHistorial } from "../_lib/cuentasStorage";
+import { getCourierSettlements, settlementMoney } from "@/services/courierSettlementsService";
+import { courierSettlementBalances } from "../_lib/courierSettlementBalances";
 import { MESES_LARGOS } from "../_mock/data";
 import { fmtMoney } from "../_lib/format";
 import { NivelPill } from "../_components/nivel";
@@ -88,50 +63,31 @@ export default function CuentasPage() {
 
   const [cobrarManual, setCobrarManual] = useCuentasManualCobrar(companyId);
   const [pagarManual, setPagarManual] = useCuentasManualPagar(companyId);
-  const [transitoConfirmadoArr, setTransitoConfirmadoArr] = useCuentasConfirmadas(companyId);
-  const transitoConfirmado = transitoConfirmadoArr.includes("__transito__");
-  const [courierConfirmadosArr, setCourierConfirmadosArr] = useLiquidacionesConfirmadas(companyId);
-  const cutoffPorCourier = useCutoffPorCourier(courierConfirmadosArr);
   const [historial, setHistorial] = useCuentasHistorial(companyId);
   const [tab, setTab] = useState<"abiertas" | "historial">("abiertas");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogTipo, setDialogTipo] = useState<"cobrar" | "pagar">("cobrar");
   const [form, setForm] = useState({ concepto: "", descripcion: "", monto: 0, vencimiento: "" });
 
+  const settlementQuery = useQuery({
+    queryKey: ["courier-settlements", companyId, auth?.user?.id],
+    queryFn: ({ signal }) => getCourierSettlements(companyId, signal),
+    enabled: !!companyId && !!auth?.user?.id,
+    retry: false,
+  });
+  const courierBalances = useMemo(
+    () => courierSettlementBalances(settlementQuery.data?.collections ?? []),
+    [settlementQuery.data],
+  );
   const cobrarAuto = useMemo((): CuentaLocal[] => {
-    const items: CuentaLocal[] = [];
-    if (!transitoConfirmado) {
-      const transito = enTransito(orders as any[]);
-      if (transito.length > 0) {
-        const monto = transito.reduce((s, o) => s + Math.max(0, Number(o.grandTotal || 0) - paidAmount(o)), 0);
-        if (monto > 0) {
-          items.push({
-            id: "__transito__",
-            icono: "🚚",
-            concepto: "Saldos COD en tránsito",
-            descripcion: `${transito.length} pedidos en camino, aún no entregados`,
-            monto,
-            vencimiento: "En tránsito",
-            urgencia: "azul",
-            auto: true,
-          });
-        }
-      }
-    }
-    for (const c of agruparPorCourier(orders as any[], cutoffPorCourier)) {
-      items.push({
-        id: `courier-${c.nombre}`,
-        icono: "📦",
-        concepto: c.nombre,
-        descripcion: `${c.guias} guías entregadas · recaudado ${fmtMoney(c.recaudado)}`,
-        monto: c.neto,
-        vencimiento: c.diasMax > 15 ? `${c.diasMax} días sin liquidar` : `Entregado hace ${c.diasMax} días`,
-        urgencia: c.diasMax > 15 ? "rojo" : c.diasMax > 7 ? "ambar" : "azul",
-        auto: true,
-      });
-    }
-    return items;
-  }, [orders, transitoConfirmado, cutoffPorCourier]);
+    const transito = enTransito(orders as any[]).filter((o) => !o.currency || o.currency === "PEN");
+    const monto = transito.reduce((sum, order) => sum + Math.max(0, Number(order.grandTotal || 0) - paidAmount(order)), 0);
+    return monto > 0 ? [{
+      id: "__transito__", icono: "🚚", concepto: "Saldos COD en tránsito (PEN)",
+      descripcion: `${transito.length} pedidos pendientes de entrega; cobro por confirmar`,
+      monto, vencimiento: "En tránsito", urgencia: "azul", auto: true,
+    }] : [];
+  }, [orders]);
 
   const cobrar = [...cobrarAuto, ...cobrarManual];
   const pagar = pagarManual;
@@ -144,17 +100,9 @@ export default function CuentasPage() {
   const proximas = [...cobrar, ...pagar].filter((c) => c.urgencia === "ambar");
 
   function confirmar(tipo: "cobrar" | "pagar", item: CuentaLocal) {
-    if (item.auto) {
-      if (item.id === "__transito__") {
-        setTransitoConfirmadoArr((prev) => (prev.includes("__transito__") ? prev : [...prev, "__transito__"]));
-      } else {
-        // item.concepto es el nombre del courier — misma clave y formato (courier + fecha) que usa Liquidaciones.
-        setCourierConfirmadosArr((prev) => [...prev, { courier: item.concepto, confirmadoEn: new Date().toISOString() }]);
-      }
-    } else {
-      if (tipo === "cobrar") setCobrarManual((prev) => prev.filter((c) => c.id !== item.id));
-      else setPagarManual((prev) => prev.filter((c) => c.id !== item.id));
-    }
+    if (item.auto) return;
+    if (tipo === "cobrar") setCobrarManual((prev) => prev.filter((c) => c.id !== item.id));
+    else setPagarManual((prev) => prev.filter((c) => c.id !== item.id));
     setHistorial((prev) => [
       { id: `h-${Date.now()}`, mes: format(hoy, "yyyy-MM"), tipo: tipo === "cobrar" ? "ingreso" : "egreso", concepto: item.concepto, monto: item.monto },
       ...prev,
@@ -197,9 +145,9 @@ export default function CuentasPage() {
       <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-500/10 dark:to-teal-500/10 border-emerald-200 dark:border-emerald-500/30">
         <CardContent className="pt-5 flex items-center justify-between flex-wrap gap-4">
           <div>
-            <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 uppercase">Posición neta hoy</p>
+            <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 uppercase">Cuentas manuales y saldos en tránsito (PEN)</p>
             <p className={cn("text-3xl font-bold font-mono mt-1", neto >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive")}>{neto >= 0 ? "+" : ""}{fmtMoney(neto)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Por cobrar {fmtMoney(totCobrar)} − Por pagar {fmtMoney(totPagar)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Por cobrar {fmtMoney(totCobrar)} − Por pagar {fmtMoney(totPagar)} · excluye liquidaciones de courier</p>
           </div>
           <div className="flex gap-3">
             <div className="bg-emerald-100 dark:bg-emerald-500/15 rounded-xl px-5 py-3 text-center">
@@ -214,8 +162,24 @@ export default function CuentasPage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader><CardTitle className="text-sm">Cobros confirmados pendientes de liquidar</CardTitle></CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">Saldos del courier al negocio, separados por moneda. Los depósitos en revisión siguen pendientes hasta su aprobación.</p>
+          {settlementQuery.isPending ? <p role="status">Consultando liquidaciones…</p> : settlementQuery.isError ? (
+            <div role="alert"><p>No se pudieron verificar los saldos del courier.</p><Button variant="outline" onClick={() => settlementQuery.refetch()}>Reintentar</Button></div>
+          ) : courierBalances.length === 0 ? <p>No hay saldos pendientes entre los cobros confirmados. Los cobros aún por verificar se revisan en Liquidaciones.</p> : courierBalances.map((balance) => (
+            <div key={balance.key} className="flex justify-between gap-4 rounded border p-3">
+              <div><p className="font-medium">{balance.courierName}</p><p className="text-xs text-muted-foreground">{balance.collections} cobros · en revisión {settlementMoney(balance.reservedAmount, balance.currency)}</p></div>
+              <span className="font-mono">{settlementMoney(balance.remainingAmount, balance.currency)}</span>
+            </div>
+          ))}
+          <Button asChild variant="outline"><Link href="/operaciones/liquidaciones">Revisar liquidaciones y comprobantes</Link></Button>
+        </CardContent>
+      </Card>
+
       <div className="rounded-lg border bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 p-3.5 text-xs text-amber-800 dark:text-amber-300">
-        ⚠️ &quot;Por pagar&quot; automático (planilla, proveedores, cuota préstamo) no tiene fuente real — Gastos no guarda si algo ya se pagó. Todo lo que ves ahí es lo que agregues manualmente.
+        Las cuentas manuales y su historial se guardan solo en este dispositivo. No registran pagos ni liquidaciones. Los saldos en tránsito todavía requieren confirmar la entrega y el cobro.
       </div>
 
       {vencidas.length > 0 && (
@@ -322,9 +286,9 @@ function CuentaCard({ item, tono, onConfirmar, accionLabel }: { item: CuentaLoca
       <div className="text-right shrink-0">
         <p className={cn("font-bold font-mono text-sm", tono === "emerald" ? "text-emerald-600" : "text-destructive")}>{fmtMoney(item.monto)}</p>
         <NivelPill nivel={item.urgencia} className="mt-0.5">{item.vencimiento}</NivelPill>
-        <Button size="sm" variant={tono === "emerald" ? "default" : "outline"} className="mt-1.5 h-6 text-[11px] px-2" onClick={onConfirmar}>
+        {item.auto ? <Button asChild size="sm" variant="outline" className="mt-1.5"><Link href="/registrar-venta">Revisar pedidos</Link></Button> : <Button size="sm" variant={tono === "emerald" ? "default" : "outline"} className="mt-1.5 h-6 text-[11px] px-2" onClick={onConfirmar}>
           <Check className="h-3 w-3 mr-1" /> {accionLabel}
-        </Button>
+        </Button>}
       </div>
     </div>
   );

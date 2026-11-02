@@ -1,127 +1,15 @@
 "use client";
 
-import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
-import { useBusinessOrders } from "@/hooks/useBusinessOrders";
-
-import { useCallback, useEffect, useMemo, useState } from "react";
-import axios from "@/lib/axiosAuth";
-import { ShieldAlert } from "lucide-react";
-import { toast } from "sonner";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOperationsRole, OPS_PERMISSIONS } from "@/contexts/OperationsRoleContext";
-import { OrderHeader } from "@/interfaces/IOrder";
-import { PorLiquidarTab } from "./_components/PorLiquidarTab";
-import { PagoLiquidacion } from "./_components/types";
-import { buildGuiasPorLiquidar } from "./_components/utils";
-
-/* -----------------------------------------------------------------------
-   Liquidaciones COD — pantalla admin-only del módulo Operaciones.
-   Único dato real de partida: OrderHeader vía
-   GET /order-header/store/:storeId. El resto de las pestañas que se habían
-   armado con datos de prueba (Saldos clientes, Liquidaciones histórico,
-   Rendición repartidor, Diferencias) se quitaron: no tenían ningún endpoint
-   real detrás, ni siquiera parcial, y mostrar esos números como si fueran
-   reales podía inducir a error. Ver BACKEND GAP en _components/types.ts.
-
-   `liquidaciones` (registros de "Registrar liquidación" desde Por Liquidar)
-   sigue viviendo en estado local de sesión — se pierde al recargar — porque
-   tampoco existe un endpoint para persistirlo todavía, pero a diferencia de
-   las pestañas quitadas, es una acción real que hace el usuario en esta
-   sesión, no un dato inventado.
------------------------------------------------------------------------- */
+import { CourierSettlementWorkspace } from "./_components/CourierSettlementWorkspace";
 
 export default function LiquidacionesPage() {
+  const { auth, hasPermission } = useAuth();
   const { can } = useOperationsRole();
-
-  const hasAccess = can(OPS_PERMISSIONS.MANAGE_LIQUIDACIONES);
-
-  const { orders, loading: loadingOrders, error, retry } = useBusinessOrders(undefined, undefined, { enabled: hasAccess });
-  const [liquidaciones, setLiquidaciones] = useState<PagoLiquidacion[]>([]);
-
-  // orderNumbers ya cubiertos por alguna liquidación registrada en esta sesión.
-  const coveredOrderNumbers = useMemo(() => {
-    const set = new Set<string>();
-    for (const l of liquidaciones) {
-      for (const id of l.pedidosIds) set.add(id);
-    }
-    return set;
-  }, [liquidaciones]);
-
-  const guiasPorLiquidar = useMemo(
-    () => buildGuiasPorLiquidar(orders, coveredOrderNumbers),
-    [orders, coveredOrderNumbers],
-  );
-
-  const handleRegistrarLiquidacion = (pago: PagoLiquidacion) => {
-    setLiquidaciones((prev) => [pago, ...prev]);
-    if (pago.diferencia !== 0) {
-      toast.warning(`Registro local con diferencia de ${pago.diferencia.toFixed(2)}`);
-    } else {
-      toast.success("Registro temporal de esta sesión");
-    }
-  };
-
-  if (!hasAccess) {
-    return (
-      <div className="space-y-4">
-        <PageHeader />
-        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border bg-card py-20 text-center shadow-sm">
-          <ShieldAlert className="h-10 w-10 text-muted-foreground" />
-          <h2 className="text-lg font-bold">No tienes acceso a Liquidaciones</h2>
-          <p className="max-w-sm text-sm text-muted-foreground">
-            Esta pantalla es solo para administradores. Si necesitas ver o registrar
-            liquidaciones de courier, pide que un administrador te dé el permiso
-            correspondiente.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) return <div className="space-y-4"><PageHeader /><OperationsDataError retry={retry} /></div>;
-
-  return (
-    <div className="space-y-4">
-      <PageHeader />
-
-      <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-        Los registros de esta pantalla solo duran esta sesión. No confirman un pago ni modifican el saldo del pedido; verifica el cobro antes de registrar una liquidación.
-      </p>
-
-      {loadingOrders && orders.length === 0 ? (
-        <LoadingGrid />
-      ) : (
-        <PorLiquidarTab
-          guias={guiasPorLiquidar}
-          loading={loadingOrders}
-          onRegistrar={handleRegistrarLiquidacion}
-        />
-      )}
-    </div>
-  );
-}
-
-function PageHeader() {
-  return (
-    <div>
-      <h1 className="text-2xl font-extrabold tracking-tight">Liquidaciones COD</h1>
-      <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-        Pedidos entregados con saldo. Confirma el cobro del courier antes de conciliar su depósito.
-      </p>
-    </div>
-  );
-}
-
-function LoadingGrid() {
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 w-full rounded-xl" />
-        ))}
-      </div>
-      <Skeleton className="h-96 w-full rounded-xl" />
-    </div>
-  );
+  const companyId = auth?.company?.id;
+  const actorId = auth?.user?.id;
+  if (!hasPermission("VIEW_FINANCES") && !can(OPS_PERMISSIONS.MANAGE_LIQUIDACIONES)) return <div className="rounded-xl border p-10 text-center"><h1 className="text-xl font-semibold">No tienes acceso a Liquidaciones</h1><p className="mt-2 text-muted-foreground">Necesitas el permiso de Finanzas de tu empresa para consultar y registrar liquidaciones.</p></div>;
+  if (!companyId || !actorId) return <p role="status">Selecciona una empresa para consultar sus liquidaciones.</p>;
+  return <CourierSettlementWorkspace key={`${companyId}:${actorId}`} companyId={companyId} actorId={actorId} />;
 }
