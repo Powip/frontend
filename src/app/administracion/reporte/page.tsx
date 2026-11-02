@@ -22,14 +22,16 @@ import { AdvertisingBusinessMetricsPanel } from "@/components/advertising/Advert
  * backend de pauta/metas, reemplazar por las queries reales.
  *
  * Alertas: reglas simples calculadas de datos reales (mismo criterio que
- * Cuentas x Cobrar/Pagar) — courier con liquidación vencida o por vencer
- * (`agruparPorCourier`), saldos COD en tránsito (`enTransito`), sin
+ * Cuentas x Cobrar/Pagar) — cobros confirmados pendientes de liquidar
+ * (persistidos y separados por moneda), saldos COD en tránsito (`enTransito`), sin
  * inversión de pauta registrada este mes, y meta mensual ya superada al
  * ritmo actual. NO es el motor de alertas del doc (§17): sigue sin poder
  * avisar por tasa de confirmación (no existe ese estado de pedido) ni por
  * gastos operativos vencidos (`IGastoOperativo` no tiene campo de estado).
  */
 
+import { getCourierSettlements, settlementMoney } from "@/services/courierSettlementsService";
+import { courierSettlementBalances } from "../_lib/courierSettlementBalances";
 import { useQuery } from "@tanstack/react-query";
 import { differenceInCalendarDays, format, getDaysInMonth, startOfMonth, subDays } from "date-fns";
 import { Copy, Share2 } from "lucide-react";
@@ -58,7 +60,6 @@ import { fmtMoney, fmtNum, fmtPct } from "../_lib/format";
 import { useMetasAnuales } from "../_lib/metasStorage";
 import { totalInvertidoEnRango, usePautaEntries } from "../_lib/pautaStorage";
 import {
-  agruparPorCourier,
   enTransito,
   fechaOrden,
   paidAmount,
@@ -112,6 +113,13 @@ export default function ReporteRapidoPage() {
     queryFn: () => getOrdersByCompany(companyId, ordersFrom, ordersTo),
     enabled: !!companyId,
     staleTime: STALE,
+  });
+
+  const settlementQuery = useQuery({
+    queryKey: ["courier-settlements", companyId, auth?.user?.id],
+    queryFn: ({ signal }) => getCourierSettlements(companyId, signal),
+    enabled: !!companyId && !!auth?.user?.id,
+    retry: false,
   });
 
   const { data: gastosMes = [], isLoading: loadingGastos } = useQuery({
@@ -240,16 +248,15 @@ export default function ReporteRapidoPage() {
 
   const alertas = useMemo(() => {
     const list: { nivel: Nivel; texto: string }[] = [];
-    for (const c of agruparPorCourier(orders as any[])) {
-      if (c.diasMax > 15) {
-        list.push({
-          nivel: "rojo",
-          texto: `${c.nombre} lleva hasta ${c.diasMax} días sin liquidar (${fmtMoney(c.neto)}). Revisa Liquidaciones.`,
-        });
-      } else if (c.diasMax > 7) {
+    if (settlementQuery.isPending || settlementQuery.isError) {
+      list.push({ nivel: "ambar", texto: settlementQuery.isError
+        ? "No se pudieron verificar los saldos del courier. Revisa Liquidaciones."
+        : "Consultando los saldos confirmados del courier…" });
+    } else {
+      for (const balance of courierSettlementBalances(settlementQuery.data?.collections ?? [])) {
         list.push({
           nivel: "ambar",
-          texto: `${c.nombre} lleva ${c.diasMax} días sin liquidar (${fmtMoney(c.neto)}).`,
+          texto: `${balance.courierName}: ${settlementMoney(balance.remainingAmount, balance.currency)} de cobros confirmados pendientes de liquidar; ${settlementMoney(balance.reservedAmount, balance.currency)} en revisión. Revisa Liquidaciones.`,
         });
       }
     }
@@ -281,11 +288,11 @@ export default function ReporteRapidoPage() {
     if (list.length === 0) {
       list.push({
         nivel: "verde",
-        texto: "Sin pendientes detectados: couriers al día y sin saldos grandes en tránsito.",
+        texto: "No se detectaron alertas con los datos disponibles. Los cobros sin confirmar requieren revisión en Liquidaciones.",
       });
     }
     return list;
-  }, [orders, publicidadMes, proyeccion.metaPeriodo, proyeccion.estVentas]);
+  }, [orders, publicidadMes, proyeccion.metaPeriodo, proyeccion.estVentas, settlementQuery.data, settlementQuery.isPending, settlementQuery.isError]);
 
   const shareText = `📊 REPORTE ${label.toUpperCase()}\n\nVenta total: ${fmtMoney(data.ventaTotal)}\nProducto: ${fmtMoney(data.producto)}\nPublicidad manual por conciliar: ${fmtMoney(data.publicidad)}\nEnvíos: ${fmtMoney(data.envios)}\nCPA por pedido (manual): ${fmtMoney(cpa, 2)}\nGANANCIA: ${fmtMoney(ganancia)}\n\nUnidades: ${data.unidades} · Pedidos: ${data.pedidos} · Ventas / inversión manual: ${data.publicidad > 0 ? roas.toFixed(1) + "×" : "—"}\n— vía POWIP`;
 

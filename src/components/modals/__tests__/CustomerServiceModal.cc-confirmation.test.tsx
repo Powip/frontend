@@ -351,7 +351,7 @@ it("combines editing an imported DNI, keeping an advance with proof and confirmi
   });
   await waitFor(() => expect(screen.getByRole("button", { name: "Gestionar adelantos y comprobantes" })).toBeEnabled());
   await user.click(screen.getByRole("tab", { name: "Pagos" }));
-  expect(screen.getByText("TRANSFERENCIA")).toBeInTheDocument();
+  expect(screen.getByText("Método registrado en recaudo: TRANSFERENCIA")).toBeInTheDocument();
   expect(screen.getByText("PENDING")).toBeInTheDocument();
   expect(screen.getByText("S/ 20.00")).toBeInTheDocument();
   await user.click(screen.getByRole("tab", { name: "Resumen" }));

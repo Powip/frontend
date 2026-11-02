@@ -1,3 +1,6 @@
+// LEGACY INACTIVO: estos tipos y componentes locales ya no se usan en ninguna ruta.
+// La pantalla actual usa CourierSettlementWorkspace y courierSettlementsService.
+// Se conservan para las regresiones del flujo anterior; no representan el contrato persistente.
 // Modelo de datos local de la pantalla Liquidaciones COD.
 //
 // BACKEND GAP (general): NADA de esto existe hoy en ms-courier. El único
