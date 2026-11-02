@@ -87,6 +87,62 @@ describe("Origen comercial de la venta", () => {
     expect(result.current.storeId).toBe("b");
   });
 
+  describe("almacén por defecto de la tienda en ventas históricas (revisión final R2)", () => {
+    const historical = { editing: true, saved: { storeId: "b", inventoryId: null } };
+
+    it("una tienda sin almacén propio con por defecto compartido elige ese almacén", () => {
+      const { result } = renderHook(() => useSaleOrigin({
+        ...defaults, ...historical,
+        stores: [stores[0], { ...stores[1], defaultInventoryId: "shared" }],
+      }));
+      expect(result.current.catalogInventoryId).toBe("shared");
+      expect(result.current.inventoryId).toBe("");
+      expect(result.current.hasInventory).toBe(true);
+    });
+
+    it("una tienda con almacén propio X y por defecto distinto Y elige el por defecto", () => {
+      const { result } = renderHook(() => useSaleOrigin({
+        ...defaults, ...historical,
+        stores: [stores[0], { ...stores[1], defaultInventoryId: "shared" }],
+        inventories: [...inventories, { id: "own", name: "Almacén propio", storeId: "b" }],
+      }));
+      expect(result.current.catalogInventoryId).toBe("shared");
+    });
+
+    it("la elección explícita gana sobre el por defecto", () => {
+      const { result } = renderHook(() => useSaleOrigin({
+        ...defaults, ...historical,
+        stores: [stores[0], { ...stores[1], defaultInventoryId: "shared" }],
+        inventories: [...inventories, { id: "own", name: "Almacén propio", storeId: "b" }],
+      }));
+      act(() => result.current.chooseInventory("own"));
+      expect(result.current.catalogInventoryId).toBe("own");
+    });
+
+    it("un por defecto que no está en los almacenes disponibles deja la regla de siempre", () => {
+      const ghostStores = [stores[0], { ...stores[1], defaultInventoryId: "ghost" }];
+      const sinPropio = renderHook(() => useSaleOrigin({
+        ...defaults, ...historical, stores: ghostStores,
+      }));
+      expect(sinPropio.result.current.catalogInventoryId).toBe("");
+      const conPropio = renderHook(() => useSaleOrigin({
+        ...defaults, ...historical, stores: ghostStores,
+        inventories: [...inventories, { id: "own", name: "Almacén propio", storeId: "b" }],
+      }));
+      expect(conPropio.result.current.catalogInventoryId).toBe("own");
+    });
+
+    it("no aplica a ventas nuevas ni a ventas con almacén guardado", () => {
+      const withDefault = [{ ...stores[0], defaultInventoryId: "shared" }, stores[1]];
+      const nueva = renderHook(() => useSaleOrigin({ ...defaults, stores: withDefault }));
+      expect(nueva.result.current.catalogInventoryId).toBe("shared"); // único almacén disponible, como siempre
+      const guardada = renderHook(() => useSaleOrigin({
+        ...defaults, editing: true, saved: { storeId: "a", inventoryId: "retired" }, stores: withDefault,
+      }));
+      expect(guardada.result.current.catalogInventoryId).toBe("retired");
+    });
+  });
+
   it("un almacén registrado se conserva aunque ya no esté en el contexto disponible", () => {
     const { result } = renderHook(() => useSaleOrigin({
       ...defaults, editing: true, saved: { storeId: "a", inventoryId: "retired" },
