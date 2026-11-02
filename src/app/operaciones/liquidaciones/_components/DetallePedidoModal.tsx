@@ -39,8 +39,8 @@ export function DetallePedidoModal({
             <div className="rounded-lg border bg-muted/20 p-4">
               <Kv label="Total pedido" value={money(guia.codBruto)} />
               <Kv label="Adelanto del cliente" value={`− ${money(guia.adelantos)}`} tone="pos" />
-              <Kv label="Cobró el courier (saldo COD)" value={money(guia.codNeto)} />
-              <Kv label="Neto a recibir" value={money(guia.saldoPendiente)} big />
+              <Kv label="Cobro del courier por verificar" value={money(guia.codNeto)} />
+              <Kv label="Saldo por verificar" value={money(guia.saldoPendiente)} big />
             </div>
 
             {guia.entregaParcial && (

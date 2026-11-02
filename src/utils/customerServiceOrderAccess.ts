@@ -24,7 +24,7 @@ export function canConfirmCustomerServicePurchase(
 function hasConfirmedOrClosedPurchase(order: Partial<OrderHeader>): boolean {
   return Boolean(order.commercialStage === "SALE" || order.commercialCommittedAt || order.ccConfirmadoAt ||
     order.commercialLead?.confirmedAt || ["PERDIDO", "CONVERTIDO"].includes(order.commercialLead?.status ?? "") ||
-    ["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO", "ENTREGADO", "ANULADO"].includes(order.status ?? ""));
+    ["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO", "DESPACHADO", "ENTREGADO", "ANULADO"].includes(order.status ?? ""));
 }
 
 /** Historical manual CC records also need a purchase confirmation before dispatch. */

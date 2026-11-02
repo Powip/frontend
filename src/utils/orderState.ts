@@ -42,8 +42,9 @@ export function receiptFinancialState(receipt: { totals: { grandTotal: number; t
     : orderFinancialState({ grandTotal: receipt.totals.grandTotal, payments: receipt.payments });
 }
 
-export function deliveryPaymentBlockReason(pendingAmount: number, targetStatus: string): string | null {
-  return targetStatus === "ENTREGADO" && (!Number.isFinite(pendingAmount) || pendingAmount > 0)
-    ? "Verifica y aprueba el pago del saldo pendiente antes de entregar el pedido."
-    : null;
+/** Delivery does not prove collection or courier settlement. */
+export function collectionLabel(pendingAmount: number, status?: string): string {
+  if (pendingAmount === 0) return "Pagado";
+  if (status === "ENTREGADO" || !Number.isFinite(pendingAmount)) return "Cobro por verificar";
+  return "Con saldo";
 }

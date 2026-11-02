@@ -78,7 +78,7 @@ export default function MetricasAtencionClientePage() {
   // Confirmados = PAGADO, ENTREGADO, EN_ENVIO, CON_GUIA, CONFIRMADO...
   const confirmadosCount = useMemo(() => {
     return managedOrders.filter((o) =>
-      ["ENTREGADO", "PAGADO", "EN_ENVIO", "CON_GUIA"].includes(o.status),
+      ["ENTREGADO", "PAGADO", "EN_ENVIO", "DESPACHADO", "CON_GUIA"].includes(o.status),
     ).length;
   }, [managedOrders]);
 
@@ -166,7 +166,7 @@ export default function MetricasAtencionClientePage() {
         map[agent] = { total: 0, confirmed: 0, upsellCount: 0, upsellRev: 0 };
       }
       map[agent].total++;
-      if (["ENTREGADO", "PAGADO", "EN_ENVIO", "CON_GUIA"].includes(o.status)) {
+      if (["ENTREGADO", "PAGADO", "EN_ENVIO", "DESPACHADO", "CON_GUIA"].includes(o.status)) {
         map[agent].confirmed++;
       }
       if (o.items && o.items.length > 1) {

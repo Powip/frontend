@@ -80,6 +80,7 @@ const STATUS_COLORS: Record<string, string> = {
   INGRESADO: "#cbd5e1", // Slate 300
   CONFIRMADO: "#0ea5e9", // Sky 500
   EN_ENVIO: "#f59e0b",   // Amber 500
+  DESPACHADO: "#f59e0b",
   ENTREGADO: "#00f2ad",  // Custom Green
   PAGADO: "#10b981",     // Emerald 500
   RECHAZADO: "#ef4444",  // Red 500
@@ -89,6 +90,7 @@ const STATUS_LABELS: Record<string, string> = {
   INGRESADO: "Ingresados",
   CONFIRMADO: "Confirmados",
   EN_ENVIO: "En Envío",
+  DESPACHADO: "Despachado",
   ENTREGADO: "Entregados",
   PAGADO: "Pagados",
   RECHAZADO: "Rechazados",
@@ -101,6 +103,7 @@ const DISTRIBUTION_STATUS_ORDER = [
   "LLAMADO",
   "ASIGNADO_A_GUIA",
   "EN_ENVIO",
+  "DESPACHADO",
   "ENTREGADO",
   "PAGADO",
 ];
@@ -111,6 +114,7 @@ const DISTRIBUTION_STATUS_LABELS: Record<string, string> = {
   LLAMADO: "Llamado",
   ASIGNADO_A_GUIA: "Con Guía",
   EN_ENVIO: "En Envío",
+  DESPACHADO: "Despachado",
   ENTREGADO: "Entregado",
   PAGADO: "Pagado",
 };
@@ -121,6 +125,7 @@ const DISTRIBUTION_STATUS_COLORS: Record<string, string> = {
   LLAMADO: "#a78bfa",       // Violet 400
   ASIGNADO_A_GUIA: "#3b82f6", // Blue 500
   EN_ENVIO: "#f97316",      // Orange 500
+  DESPACHADO: "#f97316",
   ENTREGADO: "#00f2ad",     // Custom Green
   PAGADO: "#10b981",        // Emerald 500
 };
@@ -274,7 +279,8 @@ const FunnelCOD: React.FC<{
         PREPARADO: 3,
         ASIGNADO_A_GUIA: 4,
         EN_ENVIO: 5,
-        ENTREGADO: 6,
+        DESPACHADO: 6,
+        ENTREGADO: 7,
         PAGADO: 7,
         RECHAZADO: 8,
         ANULADO: 9,

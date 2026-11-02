@@ -41,3 +41,9 @@ describe("computeBulkAvailableStatuses", () => {
     ).toEqual([]);
   });
 });
+
+
+it("offers dispatch and delivery for approved orders, but only delivery for a mixed dispatched selection", () => {
+  expect(computeBulkAvailableStatuses([sale("EN_ENVIO"), sale("EN_ENVIO")])).toEqual(["DESPACHADO", "ENTREGADO"]);
+  expect(computeBulkAvailableStatuses([sale("EN_ENVIO"), sale("DESPACHADO")])).toEqual(["ENTREGADO"]);
+});

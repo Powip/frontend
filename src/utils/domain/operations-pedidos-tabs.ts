@@ -8,6 +8,7 @@ export const SHIPPING_STATUSES: OrderStatus[] = [
   "LLAMADO",
   "ASIGNADO_A_GUIA",
   "EN_ENVIO",
+  "DESPACHADO",
   "ENTREGADO",
 ];
 
@@ -51,7 +52,7 @@ export const PEDIDOS_TABS: PedidosTabDef[] = [
 
 /** Pedido fallido en tránsito: mismo criterio que ya usan Centro de Envíos y Seguimiento hoy. */
 export function isFailedDelivery(order: OrderHeader): boolean {
-  return order.status === "EN_ENVIO" && order.shalomStatus === "DEVUELTO";
+  return ["EN_ENVIO", "DESPACHADO"].includes(order.status) && order.shalomStatus === "DEVUELTO";
 }
 
 export function hasCourierSyncError(order: OrderHeader): boolean {
@@ -88,12 +89,12 @@ export function getPedidosTab(order: OrderHeader): PedidosTabKey {
   if (order.status === "ENTREGADO") return "historial";
   if (operationalStatus(order.status) === "PENDIENTE" || (order.commercialStage === "SALE" && order.commercialStockState === "DEFERRED")) return "pendientes";
 
-  if (order.status === "EN_ENVIO") {
+  if (["EN_ENVIO", "DESPACHADO"].includes(order.status)) {
     if (isFailedDelivery(order) || hasCourierSyncError(order)) return "atencion";
-    return "camino";
+    return order.status === "DESPACHADO" ? "camino" : "despachar";
   }
 
-  // PREPARADO, LLAMADO y ASIGNADO_A_GUIA están listos para despacho.
+  // La aprobación de guía (EN_ENVIO) sigue pendiente de entrega física al courier.
   return "despachar";
 }
 

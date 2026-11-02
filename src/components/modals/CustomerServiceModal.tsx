@@ -4,7 +4,7 @@ import { useCcPurchaseConfirmationAccess } from "@/hooks/useCcPurchaseConfirmati
 import axios from "@/lib/axiosAuth";
 import { canPrepareDeferredManualOrder, canShipCommercialOrder, isCommercialLeadOrder, salesStatusBlockReason, salesPhysicalOperationBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
 import { formatSalesMoney } from "@/utils/salesMoney";
-import { deliveryPaymentBlockReason, operationalStatus, receiptFinancialState } from "@/utils/orderState";
+import { operationalStatus, receiptFinancialState } from "@/utils/orderState";
 import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
 import { buildPendingOrderDetail } from "./customerServiceOrderDetail";
 import { CcSaleConfirmationPanel } from "@/components/atencion-cliente/cc-v2/CcSaleConfirmationPanel";
@@ -402,7 +402,7 @@ export default function CustomerServiceModal({
       throw new Error("Vuelve a cargar el pedido antes de actualizarlo.");
     }
     const targetStatus = typeof data.status === "string" ? data.status : "";
-    const blocked = salesStatusBlockReason(orderHeader, targetStatus) || assignmentBlockReason(orderHeader, targetStatus) || deliveryPaymentBlockReason(receipt ? receiptFinancialState(receipt).pendingAmount : Number.NaN, targetStatus);
+    const blocked = salesStatusBlockReason(orderHeader, targetStatus) || assignmentBlockReason(orderHeader, targetStatus);
     if (blocked) {
       toast.error(blocked);
       return false;
@@ -771,7 +771,7 @@ export default function CustomerServiceModal({
       setCancellationModalOpen(true);
       return;
     }
-    if (newStatus === "EN_ENVIO" && !orderHeader?.courier) {
+    if (["EN_ENVIO", "DESPACHADO"].includes(newStatus) && !orderHeader?.courier) {
       toast.error("Asigna un courier antes de pasar a EN_ENVIO");
       return;
     }
@@ -1030,7 +1030,7 @@ export default function CustomerServiceModal({
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                    <FinancialStatusBadge pendingAmount={financialState?.pendingAmount ?? Number.NaN} />
+                    <FinancialStatusBadge pendingAmount={financialState?.pendingAmount ?? Number.NaN} status={orderHeader?.status} />
                     <Select
                       value={receipt.status}
                       onValueChange={(v) => handleChangeStatus(v as OrderStatus)}
@@ -3065,7 +3065,7 @@ export default function CustomerServiceModal({
                   </TabsContent>
 
                   <TabsContent value="reasignacion" className="pt-3 space-y-3.5">
-                    {orderHeader?.status === "EN_ENVIO" &&
+                    {["EN_ENVIO", "DESPACHADO"].includes(orderHeader?.status ?? "") &&
                     orderHeader?.shalomStatus === "DEVUELTO" ? (
                       <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950 p-4">
                         <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-bold text-sm">
@@ -3087,7 +3087,7 @@ export default function CustomerServiceModal({
                     <Button
                       className="w-full text-sm"
                       variant={
-                        orderHeader?.status === "EN_ENVIO" &&
+                        ["EN_ENVIO", "DESPACHADO"].includes(orderHeader?.status ?? "") &&
                         orderHeader?.shalomStatus === "DEVUELTO"
                           ? "default"
                           : "outline"

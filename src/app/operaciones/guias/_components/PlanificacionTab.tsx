@@ -173,7 +173,7 @@ export default function PlanificacionTab() {
 
     for (const o of orders) {
       if (o.deliveryType !== "DOMICILIO") continue;
-      if (o.status === "ENTREGADO" || o.status === "ANULADO") continue;
+      if (["DESPACHADO", "ENTREGADO", "ANULADO"].includes(o.status)) continue;
       // La preparación se gestiona en Pedidos › Pendientes.
       // La planificación de guías empieza cuando el paquete está preparado.
       if (PRE_FULFILLMENT_STATUSES.includes(o.status)) continue;

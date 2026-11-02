@@ -127,7 +127,7 @@ export default function ScannerSheet({
         });
         return;
       }
-      if (!["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA"].includes(order.status)) {
+      if (order.status !== "EN_ENVIO") {
         pushLog({
           kind: "error",
           title: order.orderNumber,
@@ -156,7 +156,7 @@ export default function ScannerSheet({
     }
 
     // confirmar entrega
-    if (order.status !== "EN_ENVIO") {
+    if (!["EN_ENVIO", "DESPACHADO"].includes(order.status)) {
       pushLog({
         kind: "error",
         title: order.orderNumber,

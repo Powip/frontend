@@ -42,7 +42,7 @@ export function GlobalScanner({
     onOpenChange(next);
   };
 
-  const patchOrder = async (order: OrderHeader, status: "EN_ENVIO" | "ENTREGADO") => {
+  const patchOrder = async (order: OrderHeader, status: "DESPACHADO" | "ENTREGADO") => {
     if (!auth) throw new Error("Inicia sesión para actualizar el pedido.");
     const blocked = assignmentBlockReason(order, status);
     if (blocked) {
@@ -65,7 +65,7 @@ export function GlobalScanner({
   };
 
   const handleDispatch = async (order: OrderHeader) => {
-    await patchOrder(order, "EN_ENVIO");
+    await patchOrder(order, "DESPACHADO");
   };
 
   const handleConfirmDelivery = async (order: OrderHeader) => {

@@ -12,7 +12,7 @@ export type SalesPhysicalOrderProjection = CommercialOrderProjection & {
   stockVersion?: number | null;
 };
 
-const physicalStatuses = new Set(["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO", "ENTREGADO"]);
+const physicalStatuses = new Set(["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO", "DESPACHADO", "ENTREGADO"]);
 
 /** Existing manual sales can register their deferred reservation when warehouse prepares them. */
 export function canPrepareDeferredManualOrder(order: SalesPhysicalOrderProjection): boolean {

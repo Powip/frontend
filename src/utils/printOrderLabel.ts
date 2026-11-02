@@ -100,7 +100,8 @@ const PRINT_STATUS_LABEL: Record<string, { label: string }> = {
   PREPARADO: { label: "POR DESPACHAR" },
   LLAMADO: { label: "POR DESPACHAR" },
   ASIGNADO_A_GUIA: { label: "ASIGNADO A GUÍA" },
-  EN_ENVIO: { label: "EN CAMINO" },
+  EN_ENVIO: { label: "EN ENVÍO" },
+  DESPACHADO: { label: "DESPACHADO" },
   ENTREGADO: { label: "ENTREGADO" },
   ANULADO: { label: "ANULADO" },
 };

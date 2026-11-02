@@ -1,4 +1,4 @@
-import { deliveryPaymentBlockReason, operationalStatus, orderFinancialState, receiptFinancialState } from "../orderState";
+import { collectionLabel, operationalStatus, orderFinancialState, receiptFinancialState } from "../orderState";
 
 it("normalizes legacy payment status without inferring preparation", () => {
   expect(operationalStatus("PAGADO")).toBe("PENDIENTE");
@@ -30,11 +30,16 @@ it.each([
 ])("fails closed for unavailable financial data %#", (order) => {
   const state = orderFinancialState(order);
   expect(state).toMatchObject({ label: "Pago por verificar", isPaid: false });
-  expect(deliveryPaymentBlockReason(state.pendingAmount, "ENTREGADO")).toBeTruthy();
+  expect(collectionLabel(state.pendingAmount, "ENTREGADO")).toBe("Cobro por verificar");
 });
 
-it.each(["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO"])("allows %s with debt, blocking only delivery", (status) => {
-  expect(deliveryPaymentBlockReason(100, status)).toBeNull();
-  expect(deliveryPaymentBlockReason(0.01, "ENTREGADO")).toBeTruthy();
-  expect(deliveryPaymentBlockReason(0, "ENTREGADO")).toBeNull();
+it.each([100, 0.01, Number.NaN])("keeps delivered collection unverified for balance %s", (pending) => {
+  expect(collectionLabel(pending, "ENTREGADO")).toBe("Cobro por verificar");
+});
+
+it("does not infer an approved payment from a physical delivery", () => {
+  const state = orderFinancialState({ grandTotal: "100", payments: [{ status: "PENDING", amount: "100" }] });
+  expect(state.isPaid).toBe(false);
+  expect(collectionLabel(state.pendingAmount, "ENTREGADO")).toBe("Cobro por verificar");
+  expect(collectionLabel(0, "ENTREGADO")).toBe("Pagado");
 });

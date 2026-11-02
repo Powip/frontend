@@ -378,7 +378,7 @@ export function AtencionTab({
                     </TableCell>
                   )}
                   <TableCell className="text-sm tabular-nums">
-                    {money(sale.total)}<div className="mt-1"><FinancialStatusBadge pendingAmount={sale.pendingPayment} /></div>
+                    {money(sale.total)}<div className="mt-1"><FinancialStatusBadge pendingAmount={sale.pendingPayment} status={sale.status} /></div>
                     {sale.pendingPayment > 0 && (
                       <div className="text-xs font-semibold text-red-600">
                         Saldo {money(sale.pendingPayment)}

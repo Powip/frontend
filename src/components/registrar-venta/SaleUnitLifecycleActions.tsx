@@ -17,7 +17,7 @@ export function SaleUnitLifecycleButtons({
   if (!hasKnownUnitTracking(order)) return null;
   return (
     <div className="flex flex-wrap gap-2">
-      {order.status === "EN_ENVIO" && (
+      {["EN_ENVIO", "DESPACHADO"].includes(order.status) && (
         <Button type="button" variant="outline" onClick={() => onAction("return")}>
           Confirmar retorno físico
         </Button>

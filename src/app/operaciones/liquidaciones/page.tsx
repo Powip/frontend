@@ -56,9 +56,9 @@ export default function LiquidacionesPage() {
   const handleRegistrarLiquidacion = (pago: PagoLiquidacion) => {
     setLiquidaciones((prev) => [pago, ...prev]);
     if (pago.diferencia !== 0) {
-      toast.warning(`Liquidación registrada con diferencia de ${pago.diferencia.toFixed(2)}`);
+      toast.warning(`Registro local con diferencia de ${pago.diferencia.toFixed(2)}`);
     } else {
-      toast.success("Liquidación registrada y conciliada");
+      toast.success("Registro temporal de esta sesión");
     }
   };
 
@@ -85,6 +85,10 @@ export default function LiquidacionesPage() {
     <div className="space-y-4">
       <PageHeader />
 
+      <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        Los registros de esta pantalla solo duran esta sesión. No confirman un pago ni modifican el saldo del pedido; verifica el cobro antes de registrar una liquidación.
+      </p>
+
       {loadingOrders && orders.length === 0 ? (
         <LoadingGrid />
       ) : (
@@ -103,7 +107,7 @@ function PageHeader() {
     <div>
       <h1 className="text-2xl font-extrabold tracking-tight">Liquidaciones COD</h1>
       <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-        Plata que los couriers cobraron en la entrega y todavía no depositaron.
+        Pedidos entregados con saldo. Confirma el cobro del courier antes de conciliar su depósito.
       </p>
     </div>
   );

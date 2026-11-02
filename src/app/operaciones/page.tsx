@@ -117,12 +117,12 @@ export default function OperacionesTableroPage() {
 
   const bandeja = useMemo(() => {
     const listosParaEscanear = shippingOrders.filter(
-      (o) => !!o.guideNumber && o.status !== "EN_ENVIO" && o.status !== "ENTREGADO",
+      (o) => !!o.guideNumber && o.status === "EN_ENVIO",
     ).length;
     const erroresAgencia = shippingOrders.filter(hasCourierSyncError).length;
     const agenciaPorVencer = shippingOrders.filter(
       (o) =>
-        o.status === "EN_ENVIO" &&
+        ["EN_ENVIO", "DESPACHADO"].includes(o.status) &&
         o.shalomStatus === "EN_DESTINO" &&
         daysSince(o.updated_at) >= GUIDE_AGE_THRESHOLDS.proximoDias,
     ).length;
@@ -143,7 +143,7 @@ export default function OperacionesTableroPage() {
     >();
     for (const o of shippingOrders) {
       const courier = o.courier?.trim();
-      if (!courier) continue;
+      if (!courier || !["DESPACHADO", "ENTREGADO"].includes(o.status)) continue;
       if (!byCourier.has(courier)) {
         byCourier.set(courier, { despachados: 0, entregados: 0, fallidos: 0, costos: [], dias: [] });
       }
@@ -198,7 +198,7 @@ export default function OperacionesTableroPage() {
       { KPI: "Por despachar", Valor: tabCounts.counts.despachar, Detalle: `${money(tabCounts.porDespacharPendiente)} por cobrar · ${tabCounts.porDespacharProvincia} a provincia` },
       { KPI: "En camino", Valor: tabCounts.counts.camino, Detalle: `${tabCounts.enCaminoMas15} con más de 15 días` },
       { KPI: "Necesita atención", Valor: tabCounts.counts.atencion, Detalle: `${money(tabCounts.atencionEnJuego)} en juego` },
-      { KPI: "Por liquidar (aprox.)", Valor: money(porLiquidar), Detalle: "Cobrado por courier, ver Liquidaciones" },
+      { KPI: "Cobro por verificar", Valor: money(porLiquidar), Detalle: "Entregado con saldo; verificar cobro en Liquidaciones" },
     ]);
     XLSX.utils.book_append_sheet(workbook, kpiSheet, "KPIs");
 
@@ -290,9 +290,9 @@ export default function OperacionesTableroPage() {
         <Kpi
           icon={<Wallet className="h-4 w-4" />}
           color="amber"
-          label="Por liquidar (aprox.)"
+          label="Cobro por verificar"
           value={money(porLiquidar)}
-          sub="Cobrado por courier, ver Liquidaciones"
+          sub="Entregado con saldo; verificar cobro en Liquidaciones"
           onClick={() => router.push("/operaciones/liquidaciones")}
         />
       </div>

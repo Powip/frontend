@@ -53,7 +53,8 @@ const trackingStatusLabels: Record<string, string> = {
   PENDIENTE: "Pedido recibido",
   PREPARADO: "En preparación",
   LLAMADO: "Contactándote",
-  EN_ENVIO: "En camino",
+  EN_ENVIO: "En envío",
+  DESPACHADO: "Despachado",
   ENTREGADO: "Entregado",
   ANULADO: "Anulado",
   LEAD: "Compra pendiente de confirmación",
@@ -359,9 +360,9 @@ export default function PublicQuotationPage({ token }: { token: string }) {
       : quote.pendingBalance <= 0 && !pendingPayment;
   const stage = /ENTREGAD|DELIVERED/i.test(trackingStatus)
     ? 3
-    : /EN_ENVIO|ENVIAD|CAMINO|TRANSIT/i.test(trackingStatus)
+    : /DESPACHADO|ENVIAD|CAMINO|TRANSIT/i.test(trackingStatus)
       ? 2
-      : /PREPAR|CONFIRM/i.test(trackingStatus)
+      : /EN_ENVIO|ASIGNADO_A_GUIA|PREPAR|CONFIRM/i.test(trackingStatus)
         ? 1
         : 0;
   const stages = converted

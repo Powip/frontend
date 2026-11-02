@@ -109,3 +109,17 @@ describe("getAvailableStatuses", () => {
     expect(getAvailableStatuses("ANULADO")).toEqual(["ANULADO"]);
   });
 });
+
+
+describe("Joel dispatch and delivery stages", () => {
+  it("offers both dispatch and delivery after guide approval", () => {
+    expect(getAvailableStatuses("EN_ENVIO")).toEqual(["EN_ENVIO", "DESPACHADO", "ENTREGADO", "ANULADO"]);
+    expect(getAvailableStatuses("DESPACHADO")).toEqual(["DESPACHADO", "ENTREGADO", "ANULADO"]);
+  });
+  it("confirms physical handoff separately and never invents it for direct delivery", () => {
+    expect(getStatusChainSteps("EN_ENVIO", "DESPACHADO")).toEqual(["DESPACHADO"]);
+    expect(getStatusChainSteps("EN_ENVIO", "ENTREGADO")).toEqual(["ENTREGADO"]);
+    expect(getStatusChainSteps("DESPACHADO", "ENTREGADO")).toEqual(["ENTREGADO"]);
+    expect(getStatusChainSteps("DESPACHADO", "EN_ENVIO")).toEqual([]);
+  });
+});

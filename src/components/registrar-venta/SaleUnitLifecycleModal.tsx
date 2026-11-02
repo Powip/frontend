@@ -335,7 +335,7 @@ function LifecycleEditor({
         <p role="status">Consultando las unidades de la venta…</p>
       ) : context && order ? (
         (action === "return"
-          ? context.canReturn && (context.status !== "EN_ENVIO" || context.requiresPhysicalReturnConfirmation === true)
+          ? context.canReturn && (!["EN_ENVIO", "DESPACHADO"].includes(context.status) || context.requiresPhysicalReturnConfirmation === true)
           : context.canReactivate) ? (
           <SaleUnitLifecycleForm
             action={action}

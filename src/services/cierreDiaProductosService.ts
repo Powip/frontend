@@ -26,7 +26,7 @@ import { EMPTY_FUNNEL } from "@/utils/cierreDiaFunnel";
  * → categoría) que no se pudo probar contra el backend real.
  */
 
-const DESPACHO_STATUSES: OrderStatus[] = ["ASIGNADO_A_GUIA", "EN_ENVIO"];
+const DESPACHO_STATUSES: OrderStatus[] = ["ASIGNADO_A_GUIA", "EN_ENVIO", "DESPACHADO"];
 const MAX_PAGES = 20; // resguardo ante paginación mal formada del backend
 
 /**

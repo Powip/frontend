@@ -68,7 +68,8 @@ const PRINT_STATUS_LABEL: Record<string, { label: string; bg: string; color: str
   PREPARADO: { label: "POR DESPACHAR", bg: "#e0e7ff", color: "#3730a3" },
   LLAMADO: { label: "POR DESPACHAR", bg: "#e0e7ff", color: "#3730a3" },
   ASIGNADO_A_GUIA: { label: "ASIGNADO A GUÍA", bg: "#e0e7ff", color: "#3730a3" },
-  EN_ENVIO: { label: "EN CAMINO", bg: "#cffafe", color: "#155e75" },
+  EN_ENVIO: { label: "EN ENVÍO", bg: "#cffafe", color: "#155e75" },
+  DESPACHADO: { label: "DESPACHADO", bg: "#cffafe", color: "#155e75" },
   ENTREGADO: { label: "ENTREGADO", bg: "#dcfce7", color: "#166534" },
   ANULADO: { label: "ANULADO", bg: "#fee2e2", color: "#991b1b" },
 };

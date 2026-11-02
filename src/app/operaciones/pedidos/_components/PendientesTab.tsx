@@ -53,7 +53,7 @@ export function PendientesTab({ sales, actions, initialSearch }: { sales: Sale[]
               <TableCell><div>{sale.clientName}</div><div className="text-xs text-muted-foreground">{sale.phoneNumber}</div></TableCell>
               <TableCell><ProductThumbnails items={sale.items} /></TableCell>
               <TableCell><StatusPill status={sale.status} />{(blocked || deferredManual) && <p className="mt-1 max-w-56 text-xs text-amber-700">{blocked || printBlocked}</p>}{sale.commercialLeadId && sale.commercialStockState === "DEFERRED" && !deferredManual && <Link className="text-xs font-semibold text-violet-700 underline" href={commercialLeadHref(sale.commercialLeadId)}>Preparar reserva de stock</Link>}</TableCell>
-              <TableCell><FinancialStatusBadge pendingAmount={sale.pendingPayment} /></TableCell>
+              <TableCell><FinancialStatusBadge pendingAmount={sale.pendingPayment} status={sale.status} /></TableCell>
               <TableCell className="tabular-nums">{money(sale.pendingPayment)}</TableCell>
               <TableCell><div className="flex items-center justify-end gap-1">
                 <OrderDetailButton orderId={sale.id} orderNumber={sale.orderNumber} />

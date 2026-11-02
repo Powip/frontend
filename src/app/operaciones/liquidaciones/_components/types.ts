@@ -11,7 +11,7 @@
 // desde Por Liquidar (estado local de sesión, se pierde al recargar —
 // BACKEND GAP: debería persistir en ms-courier).
 
-export type CourierLiquidacionEstado = "PENDIENTE" | "VENCIDO" | "LIQUIDADO";
+export type CourierLiquidacionEstado = "POR_VERIFICAR" | "REGISTRO_LOCAL";
 
 /**
  * Una guía/pedido con COD pendiente de que el courier deposite el dinero.
@@ -40,7 +40,7 @@ export interface GuiaPorLiquidar {
   codBruto: number;
   /** Suma de pagos ya registrados con status PAID (adelantos del cliente, no depende del courier). */
   adelantos: number;
-  /** = codBruto - adelantos. Lo que el courier debería haber cobrado en la entrega, y lo que el negocio debería recibir. */
+  /** = codBruto - adelantos. Saldo no cubierto por pagos aprobados; no acredita cobro del courier. */
   codNeto: number;
   /** = codNeto - suma de montos ya cubiertos por liquidaciones registradas en esta sesión. */
   saldoPendiente: number;

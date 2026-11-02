@@ -29,6 +29,7 @@ const STATUS_COLORS: Record<string, string> = {
   LLAMADO: "#3b82f6",
   CON_GUIA: "#2563eb",
   EN_ENVIO: "#f97316",
+  DESPACHADO: "#f97316",
   ENTREGADO: "#10b981",
   PAGADO: "#f59e0b",
   ANULADO: "#ef4444",
@@ -40,6 +41,7 @@ const STATUS_LABELS: Record<string, string> = {
   LLAMADO: "Llamado",
   CON_GUIA: "Con Guía",
   EN_ENVIO: "En Envío",
+  DESPACHADO: "Despachado",
   ENTREGADO: "Entregado",
   PAGADO: "Pagado",
   ANULADO: "Anulado",
@@ -103,20 +105,20 @@ export default function MetricasOperacionesPage() {
 
   const enColaPct = totalActive > 0 ? Math.round((enCola / totalActive) * 100) : 0;
 
-  // Delayed orders (> 20 days in EN_ENVIO)
+  // Delayed orders (> 20 days in DESPACHADO)
   const pedidosRetrasados = useMemo(() => {
     const twentyDaysAgo = new Date();
     twentyDaysAgo.setDate(twentyDaysAgo.getDate() - 20);
     
     return orders.filter((o) => {
-      if (o.status !== "EN_ENVIO") return false;
+      if (o.status !== "DESPACHADO") return false;
       
-      // Find the last log entry where it entered EN_ENVIO
-      const enEnvioLog = o.logs
-        ?.filter((l: any) => l.data?.status === "EN_ENVIO")
+      // Find the last log entry where it entered DESPACHADO
+      const despachoLog = o.logs
+        ?.filter((l: any) => l.data?.status === "DESPACHADO")
         .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
         
-      const entryDate = enEnvioLog ? new Date(enEnvioLog.timestamp) : new Date(o.updated_at || o.created_at);
+      const entryDate = despachoLog ? new Date(despachoLog.timestamp) : new Date(o.updated_at || o.created_at);
       return entryDate < twentyDaysAgo;
     }).length;
   }, [orders]);
@@ -124,14 +126,14 @@ export default function MetricasOperacionesPage() {
   // Average cycle time (days from created to ENTREGADO)
   const tiempoCiclo = useMemo(() => {
     const delivered = orders.filter(
-      (o) => o.status === "ENTREGADO" || o.status === "PAGADO"
+      (o) => o.status === "ENTREGADO"
     );
     if (delivered.length === 0) return 0;
     const totalDays = delivered.reduce((sum: number, o: any) => {
       const created = new Date(o.created_at);
       // Find the first log entry for ENTREGADO or PAGADO
       const deliveredLog = o.logs
-        ?.filter((l: any) => ["ENTREGADO", "PAGADO"].includes(l.data?.status))
+        ?.filter((l: any) => l.data?.status === "ENTREGADO")
         .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())[0];
         
       const finished = deliveredLog ? new Date(deliveredLog.timestamp) : new Date(o.updated_at || o.created_at);
@@ -156,6 +158,7 @@ export default function MetricasOperacionesPage() {
       "LLAMADO",
       "CON_GUIA",
       "EN_ENVIO",
+      "DESPACHADO",
       "ENTREGADO",
       "PAGADO",
     ];
@@ -233,13 +236,13 @@ export default function MetricasOperacionesPage() {
         (o) => o.guideNumber && o.status !== "ANULADO"
       ).length;
 
-      // Delayed logic: > 20 days in EN_ENVIO
+      // Delayed logic: > 20 days in DESPACHADO
       const retrasados = dayOrders.filter((o) => {
-        if (o.status !== "EN_ENVIO") return false;
-        const enEnvioLog = o.logs
-          ?.filter((l: any) => l.data?.status === "EN_ENVIO")
+        if (o.status !== "DESPACHADO") return false;
+        const despachoLog = o.logs
+          ?.filter((l: any) => l.data?.status === "DESPACHADO")
           .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
-        const entryDate = enEnvioLog ? new Date(enEnvioLog.timestamp) : new Date(o.updated_at || o.created_at);
+        const entryDate = despachoLog ? new Date(despachoLog.timestamp) : new Date(o.updated_at || o.created_at);
         return entryDate < twentyDaysAgo;
       }).length;
 
@@ -287,11 +290,11 @@ export default function MetricasOperacionesPage() {
       let dayIdx = d.getDay() - 1;
       if (dayIdx < 0) dayIdx = 6;
 
-      if (["ENTREGADO", "PAGADO"].includes(o.status)) {
+      if (o.status === "ENTREGADO") {
         data[dayIdx].resueltos++;
       }
       // Count orders that went through status changes as "reagendados"
-      if (o.status === "EN_ENVIO" || o.status === "LLAMADO") {
+      if (o.status === "DESPACHADO" || o.status === "LLAMADO") {
         data[dayIdx].reagendados++;
       }
     });
