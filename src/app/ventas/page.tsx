@@ -1550,7 +1550,7 @@ Estado: ${sale.status}
                       }
                       onExtraAction={() => { if (mutationSale(sale.id)) setRescheduleDialogSaleId(sale.id); }}
                     />
-                    {salesPhysicalOperationBlockReason(sale) && <p className="mt-1 text-[10px] text-muted-foreground">{salesPhysicalOperationBlockReason(sale)}{sale.commercialLeadId && sale.commercialStockState === "DEFERRED" && !canPrepareDeferredManualOrder(sale) && <Link className="ml-1 font-semibold text-violet-700 underline" href={commercialLeadHref(sale.commercialLeadId)}>Preparar reserva de stock</Link>}</p>}
+                    {salesPhysicalOperationBlockReason(sale) && <p className="mt-1 max-w-[150px] whitespace-normal text-[10px] text-muted-foreground">{salesPhysicalOperationBlockReason(sale)}{sale.commercialLeadId && sale.commercialStockState === "DEFERRED" && !canPrepareDeferredManualOrder(sale) && <Link className="ml-1 font-semibold text-violet-700 underline" href={commercialLeadHref(sale.commercialLeadId)}>Preparar reserva de stock</Link>}</p>}
                     <ReprogramadoChip sale={sale} />
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-[140px] w-[100px] min-w-[100px] 2xl:z-10 bg-background">
