@@ -1,122 +1,73 @@
-import axios from 'axios';
-import { AuthUrlResponse, SyncStatusResponse, SaveMappingPayload } from '../types';
+import axiosAuth from '@/lib/axiosAuth';
+import type {
+  ActivateResponse,
+  AuthUrlResponse,
+  GoogleConfigView,
+  GoogleTab,
+  PreviewResponse,
+  ReviewResult,
+  SaveConfigPayload,
+  SyncIssue,
+} from '../types';
+
+const API_INTEGRATIONS = process.env.NEXT_PUBLIC_API_INTEGRATIONS || 'http://localhost:3007';
+const BASE = `${API_INTEGRATIONS}/integrations/google`;
 
 /**
- * Cliente HTTP para el microservicio ms-integrations.
- * Envía automáticamente el JWT de Powip en cada request.
+ * Cliente de ms-integrations para Google Sheets. La empresa sale del token
+ * en el backend: ninguna llamada envía companyId.
  */
-const apiClient = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_INTEGRATIONS || 'http://localhost:3007',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-/**
- * Interceptor: adjunta el access token JWT de Powip al header Authorization.
- * El token se lee de localStorage (clave 'accessToken'), que es donde
- * el flujo de login de Powip lo almacena actualmente.
- */
-apiClient.interceptors.request.use((config) => {
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-  }
-  return config;
-});
-
-// ---------------------------------------------------------------------------
-// API de Google Sheets / Google OAuth2
-// ---------------------------------------------------------------------------
-
 export const googleSheetsApi = {
-  /**
-   * Solicita al backend la URL de autorización de Google OAuth2.
-   * El companyId identifica al tenant; el backend lo embebe en el `state`.
-   */
-  getAuthUrl: async (companyId: string): Promise<AuthUrlResponse> => {
-    const response = await apiClient.get('/integrations/google/auth-url', {
-      params: { companyId },
-    });
-    return response.data; // { url: "https://accounts.google.com/o/oauth2/auth?..." }
-  },
+  getConfig: async (): Promise<GoogleConfigView> =>
+    (await axiosAuth.get<GoogleConfigView>(`${BASE}/config`)).data,
+
+  getAuthUrl: async (): Promise<AuthUrlResponse> =>
+    (await axiosAuth.get<AuthUrlResponse>(`${BASE}/auth-url`)).data,
 
   /**
-   * Solicita al backend un access_token fresco usando el refresh_token guardado.
-   * El token se usa para inicializar el Google Picker nativo.
+   * Confirma la vinculación de la cuenta de Google con la sesión (I3). Recibe lo que Google
+   * devolvió al callback; el backend rechaza (403) si el enlace lo inició otra sesión.
    */
-  getAccessToken: async (companyId: string): Promise<string> => {
-    const response = await apiClient.get('/integrations/google/access-token', {
-      params: { companyId },
-    });
-    return response.data.accessToken;
+  connect: async (code: string, state: string): Promise<void> => {
+    await axiosAuth.post(`${BASE}/connect`, { code, state });
   },
 
-  /**
-   * Verifica si la compañía ya tiene Google vinculado.
-   * Útil para decidir en qué step del wizard iniciar.
-   */
-  getStatus: async (companyId: string): Promise<{ connected: boolean }> => {
-    const response = await apiClient.get('/integrations/google/status', {
-      params: { companyId },
-    });
-    return response.data;
+  /** Token corto de Google para el Picker. */
+  getAccessToken: async (): Promise<string> =>
+    (await axiosAuth.get<{ accessToken: string }>(`${BASE}/access-token`)).data.accessToken,
+
+  saveSheet: async (fileId: string, fileName: string): Promise<void> => {
+    await axiosAuth.post(`${BASE}/save-sheet`, { fileId, fileName });
   },
 
-  /**
-   * Persiste el archivo de Google Sheets seleccionado por el usuario.
-   * Se llama inmediatamente después de que el Google Picker devuelve el fileId.
-   *
-   * @param companyId UUID del tenant (viene del hook)
-   * @param fileId    ID del archivo en Google Drive
-   * @param fileName  Nombre del archivo para display
-   */
-  saveSelectedSheet: async (
-    companyId: string,
-    fileId: string,
-    fileName: string,
-  ): Promise<void> => {
-    await apiClient.post('/integrations/google/save-sheet', {
-      companyId,
-      fileId,
-      fileName,
-    });
+  getTabs: async (spreadsheetId: string): Promise<GoogleTab[]> =>
+    (
+      await axiosAuth.get<{ tabs: GoogleTab[] }>(
+        `${BASE}/spreadsheets/${encodeURIComponent(spreadsheetId)}/tabs`,
+      )
+    ).data.tabs,
+
+  preview: async (tabIds: number[]): Promise<PreviewResponse> =>
+    (await axiosAuth.post<PreviewResponse>(`${BASE}/preview`, { tabIds })).data,
+
+  saveConfig: async (payload: SaveConfigPayload): Promise<void> => {
+    await axiosAuth.post(`${BASE}/save-config`, payload);
   },
 
-  /**
-   * Persiste el mapeo de columnas configurado por el usuario en el Paso 3.
-   *
-   * @param payload Incluye companyId, mapping, useExternalOrderNumber y storeId opcional
-   */
-  saveFieldMapping: async (payload: SaveMappingPayload): Promise<void> => {
-    await apiClient.post('/integrations/google/save-mapping', payload);
-  },
+  review: async (): Promise<ReviewResult> =>
+    (await axiosAuth.post<ReviewResult>(`${BASE}/review`)).data,
 
-  /**
-   * Retorna los nombres de todas las hojas (tabs) de un spreadsheet.
-   * El backend usa las credenciales guardadas del tenant — no requiere token extra.
-   *
-   * @param companyId     UUID del tenant
-   * @param spreadsheetId ID del archivo en Google Drive
-   */
-  getSheetNames: async (companyId: string, spreadsheetId: string): Promise<string[]> => {
-    const response = await apiClient.get(
-      `/integrations/google/spreadsheets/${spreadsheetId}/sheets`,
-      { params: { companyId } },
-    );
-    return response.data.sheets as string[];
-  },
+  activate: async (acknowledgeHistory = false): Promise<ActivateResponse> =>
+    (await axiosAuth.post<ActivateResponse>(`${BASE}/activate`, { acknowledgeHistory })).data,
 
-  /**
-   * Dispara una sincronización manual de pedidos desde Google Sheets.
-   * Llama al endpoint real en ms-integrations.
-   *
-   * @param companyId UUID del tenant
-   */
-  triggerSync: async (companyId: string): Promise<SyncStatusResponse> => {
-    const response = await apiClient.post('/integrations/google/sync', { companyId });
-    return response.data;
+  /** 202: la sincronización corre en segundo plano; se consulta con getConfig. */
+  syncNow: async (): Promise<{ started: true }> =>
+    (await axiosAuth.post<{ started: true }>(`${BASE}/sync`)).data,
+
+  getIssues: async (): Promise<SyncIssue[]> =>
+    (await axiosAuth.get<{ issues: SyncIssue[] }>(`${BASE}/issues`)).data.issues,
+
+  disconnect: async (): Promise<void> => {
+    await axiosAuth.post(`${BASE}/disconnect`);
   },
 };

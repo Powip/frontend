@@ -1,198 +1,309 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { SetupStep, GoogleSheetsState, GoogleFile, SaveMappingPayload, SheetPreview } from '../types';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { googleSheetsApi } from '../services/googleSheetsApi';
+import type {
+  GoogleConfigView,
+  GoogleFile,
+  PreviewResponse,
+  ReviewResult,
+  SaveConfigPayload,
+  SetupStep,
+  SyncIssue,
+} from '../types';
+
+const GENERIC_ERROR = 'Algo salió mal. Inténtalo de nuevo en unos minutos.';
+const RECONNECT_MESSAGE =
+  'Tu conexión con Google venció o fue revocada. Reconecta tu cuenta para continuar.';
+const OAUTH_ERROR = 'Error al vincular la cuenta de Google.';
+const POLL_MS = 3000;
+
+/** Convierte un error de axios/Nest en un mensaje legible en español. */
+function toMessage(error: unknown): string {
+  const message = (error as { response?: { data?: { message?: unknown } } })?.response?.data
+    ?.message;
+  if (Array.isArray(message)) {
+    const joined = message.filter((m) => typeof m === 'string' && m).join('. ');
+    if (joined) return joined;
+  } else if (typeof message === 'string' && message) {
+    return message;
+  }
+  return GENERIC_ERROR;
+}
+
+interface OAuthReturn {
+  status: string | null;
+  message: string | null;
+  /** Resuelve con el mensaje de error si el servidor rechazó la vinculación, o null si salió bien o no había nada que confirmar. */
+  confirmation: Promise<string | null>;
+}
 
 /**
- * Hook principal del wizard de Google Sheets.
- *
- * Flujo OAuth completo:
- * 1. connectAccount() → llama a /integrations/google/auth-url
- *    → redirige con window.location.href (full-page redirect a Google)
- * 2. Google hace callback al backend → backend redirige a /google-sheets?status=success
- * 3. useEffect detecta ?status=success en la URL → avanza al step SELECT_SHEET
- * 4. handleOpenPicker() → llama a /integrations/google/access-token → abre Google Picker
+ * Lee el retorno del OAuth y deja la URL limpia. El `code` y el `state` llegan en el fragmento
+ * (#): se sacan de la URL de inmediato y se confirman con el backend, que exige que el usuario
+ * de la sesión sea el que inició la conexión.
  */
-export const useGoogleSheets = (companyId: string) => {
-  const [state, setState] = useState<GoogleSheetsState>({
-    currentStep: 'CONNECT_ACCOUNT',
-    loading: false,
-    error: null,
-    authUrl: null,
-    selectedFile: null,
-    mapping: {},
-    syncResult: null,
-    sheetPreview: null,
-    availableSheets: [],
-  });
+function readOAuthReturn(): OAuthReturn {
+  const search = new URLSearchParams(window.location.search);
+  const status = search.get('status');
+  const message = search.get('message');
+  if (status) window.history.replaceState({}, '', window.location.pathname);
 
-  const setStep = useCallback((step: SetupStep) => {
-    setState((prev) => ({ ...prev, currentStep: step, error: null }));
+  const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const code = fragment.get('code');
+  const state = fragment.get('state');
+  if (!code || !state) return { status, message, confirmation: Promise.resolve(null) };
+
+  window.history.replaceState({}, '', window.location.pathname + window.location.search);
+  const confirmation = googleSheetsApi
+    .connect(code, state)
+    .then(() => null)
+    .catch((e: unknown) => toMessage(e));
+  return { status, message, confirmation };
+}
+
+/** Paso de pantalla derivado del estado del servidor. */
+function baseStep(
+  config: GoogleConfigView | null,
+  reconfiguring: boolean,
+  changingFile: boolean,
+): SetupStep {
+  if (!config || !config.connected || config.status === 'NEEDS_RECONNECT') {
+    return 'CONNECT_ACCOUNT';
+  }
+  if (!config.file || changingFile) return 'SELECT_FILE';
+  if (config.status !== 'READY') return 'CONFIGURE';
+  return reconfiguring ? 'CONFIGURE' : 'STATUS';
+}
+
+/**
+ * Hook del asistente de Google Sheets. El paso sale del estado del servidor
+ * (config); solo MAP_FIELDS y REVIEW son locales, dentro de NEEDS_SETUP.
+ */
+export const useGoogleSheets = () => {
+  const [config, setConfig] = useState<GoogleConfigView | null>(null);
+  const [localStep, setLocalStep] = useState<'MAP_FIELDS' | 'REVIEW' | null>(null);
+  const [reconfiguring, setReconfiguring] = useState(false);
+  /** "Cambiar archivo": vuelve al selector sin tocar el servidor hasta elegir otro. */
+  const [changingFile, setChangingFile] = useState(false);
+  const [preview, setPreview] = useState<PreviewResponse | null>(null);
+  const [review, setReview] = useState<ReviewResult | null>(null);
+  const [issues, setIssues] = useState<SyncIssue[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const next = await googleSheetsApi.getConfig();
+      setConfig(next);
+      // La marca solo vale mientras el servidor sigue en READY.
+      if (next.status !== 'READY') setReconfiguring(false);
+      if (next.status === 'NEEDS_RECONNECT') {
+        setError(next.lastError || RECONNECT_MESSAGE);
+      }
+      if (next.status === 'READY') {
+        setIssues(await googleSheetsApi.getIssues().catch(() => []));
+      }
+    } catch (e) {
+      setError(toMessage(e));
+    }
   }, []);
 
-  // ---------------------------------------------------------------------------
-  // Detectar retorno del callback OAuth2 de Google
-  // ---------------------------------------------------------------------------
+  /**
+   * Lo que trae la URL al volver de Google, leído una sola vez. Se guarda en un ref porque
+   * React StrictMode (dev) corre el efecto dos veces y la URL ya está limpia en la segunda.
+   */
+  const oauthReturn = useRef<OAuthReturn | null>(null);
+
+  // Carga inicial y retorno del callback OAuth: ?status=error del backend, o #code&state
+  // de Google para confirmar la vinculación con la sesión del usuario (I3).
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    let cancelled = false;
+    if (!oauthReturn.current) oauthReturn.current = readOAuthReturn();
+    const { status, message, confirmation } = oauthReturn.current;
 
-    const params = new URLSearchParams(window.location.search);
-    const status = params.get('status');
-    const message = params.get('message');
+    (async () => {
+      // Antes de consultar la config: así la cuenta ya aparece conectada.
+      const confirmError = await confirmation;
+      await refresh();
+      if (cancelled) return;
+      if (confirmError) setError(confirmError);
+      else if (status === 'error') setError(message || OAUTH_ERROR);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [refresh]);
 
-    if (status === 'success') {
-      // Limpiar los query params de la URL sin recargar la página
-      const cleanUrl = window.location.pathname;
-      window.history.replaceState({}, '', cleanUrl);
-      setStep('SELECT_SHEET');
-    } else if (status === 'error') {
-      const cleanUrl = window.location.pathname;
-      window.history.replaceState({}, '', cleanUrl);
-      setState((prev) => ({
-        ...prev,
-        error: message || 'Error al vincular la cuenta de Google.',
-      }));
+  // Mientras corre una sincronización, se vuelve a consultar la config.
+  // pollTick re-arma el temporizador aunque una consulta falle.
+  const running = config?.running === true;
+  const [pollTick, setPollTick] = useState(0);
+  useEffect(() => {
+    if (!running) return;
+    const timer = setTimeout(async () => {
+      await refresh();
+      setPollTick((t) => t + 1);
+    }, POLL_MS);
+    return () => clearTimeout(timer);
+  }, [running, pollTick, refresh]);
+
+  /** Ejecuta una acción mostrando loading y traduciendo errores. */
+  const run = useCallback(async <T,>(action: () => Promise<T>): Promise<T | undefined> => {
+    setLoading(true);
+    setError(null);
+    try {
+      return await action();
+    } catch (e) {
+      setError(toMessage(e));
+      return undefined;
+    } finally {
+      setLoading(false);
     }
-  }, [setStep]);
+  }, []);
 
-  // ---------------------------------------------------------------------------
-  // Verificar si ya está vinculado al cargar (para reanudar sesiones)
-  // ---------------------------------------------------------------------------
-  useEffect(() => {
-    if (!companyId) return;
+  const connectAccount = useCallback(
+    () =>
+      run(async () => {
+        const { url } = await googleSheetsApi.getAuthUrl();
+        window.location.href = url;
+      }),
+    [run],
+  );
 
-    const checkStatus = async () => {
-      try {
-        const { connected } = await googleSheetsApi.getStatus(companyId);
-        if (connected) {
-          // Si ya tiene token guardado y no venimos de un callback, ir a SELECT_SHEET
-          const params = new URLSearchParams(window.location.search);
-          if (!params.get('status')) {
-            setStep('SELECT_SHEET');
+  const selectFile = useCallback(
+    (file: GoogleFile) =>
+      run(async () => {
+        // Con una sincronización en curso el servidor responde 409: se muestra y se sigue en el selector.
+        await googleSheetsApi.saveSheet(file.id, file.name);
+        setLocalStep(null);
+        setChangingFile(false);
+        setReconfiguring(false);
+        // Al cambiar de archivo el servidor reinicia el estado: manda el servidor.
+        await refresh();
+      }),
+    [run, refresh],
+  );
+
+  const goConfigure = useCallback(() => setLocalStep(null), []);
+
+  /** Abre el selector de archivos (desde CONFIGURE o STATUS). */
+  const changeFile = useCallback(() => {
+    setLocalStep(null);
+    setError(null);
+    setChangingFile(true);
+  }, []);
+
+  /** Vuelve de "Cambiar archivo" sin elegir otro. */
+  const cancelChangeFile = useCallback(() => setChangingFile(false), []);
+
+  /** Desde STATUS (READY): abre la configuración sin cambiar el estado del servidor. */
+  const reconfigure = useCallback(() => {
+    setLocalStep(null);
+    setReconfiguring(true);
+  }, []);
+
+  /** Vuelve a STATUS: la integración sigue READY. */
+  const cancelReconfigure = useCallback(() => {
+    setLocalStep(null);
+    setReconfiguring(false);
+  }, []);
+
+  const savePreview = useCallback(
+    (tabIds: number[]) =>
+      run(async () => {
+        setPreview(await googleSheetsApi.preview(tabIds));
+        setLocalStep('MAP_FIELDS');
+      }),
+    [run],
+  );
+
+  const saveConfig = useCallback(
+    (payload: SaveConfigPayload) =>
+      run(async () => {
+        await googleSheetsApi.saveConfig(payload);
+        setReview(await googleSheetsApi.review());
+        setLocalStep('REVIEW');
+        await refresh();
+      }),
+    [run, refresh],
+  );
+
+  const activate = useCallback(
+    (acknowledgeHistory = false) =>
+      run(async () => {
+        await googleSheetsApi.activate(acknowledgeHistory);
+        setLocalStep(null);
+        setReconfiguring(false);
+        // La primera importación no espera al cron (hasta 15 min). Un 409 (ya hay una
+        // corrida en curso) se ignora; cualquier otro error se muestra.
+        try {
+          await googleSheetsApi.syncNow();
+        } catch (e) {
+          if ((e as { response?: { status?: number } })?.response?.status !== 409) {
+            setError(toMessage(e));
           }
         }
-      } catch {
-        // Si falla la verificación, comenzar desde el paso inicial silenciosamente
-      }
-    };
+        await refresh();
+      }),
+    [run, refresh],
+  );
 
-    checkStatus();
-  }, [companyId, setStep]);
+  const syncNow = useCallback(
+    () =>
+      run(async () => {
+        await googleSheetsApi.syncNow();
+        await refresh();
+      }),
+    [run, refresh],
+  );
 
-  // ---------------------------------------------------------------------------
-  // STEP 1 — Conectar cuenta Google
-  // ---------------------------------------------------------------------------
-  const connectAccount = useCallback(async () => {
-    if (!companyId) {
-      setState((prev) => ({
-        ...prev,
-        error: 'No se pudo identificar tu empresa. Intenta recargar la página.',
-      }));
-      return;
-    }
+  const disconnect = useCallback(
+    () =>
+      run(async () => {
+        await googleSheetsApi.disconnect();
+        setLocalStep(null);
+        setReconfiguring(false);
+        setChangingFile(false);
+        setPreview(null);
+        setReview(null);
+        setIssues([]);
+        await refresh();
+      }),
+    [run, refresh],
+  );
 
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    try {
-      const { url } = await googleSheetsApi.getAuthUrl(companyId);
-      // Redirigir a Google para el consentimiento OAuth2.
-      // No usamos window.open() porque Google bloquea popups para OAuth.
-      window.location.href = url;
-    } catch (error: any) {
-      setState((prev) => ({
-        ...prev,
-        loading: false,
-        error:
-          error?.response?.data?.message ||
-          'Error al obtener la URL de autorización. Intenta de nuevo.',
-      }));
-    }
-  }, [companyId]);
+  const getAccessToken = useCallback(() => googleSheetsApi.getAccessToken(), []);
 
-  // ---------------------------------------------------------------------------
-  // STEP 2 — Seleccionar archivo en Google Drive (vía Google Picker)
-  // ---------------------------------------------------------------------------
-  const selectFile = useCallback(async (file: GoogleFile, preview: SheetPreview = { headers: [], sampleRows: [] }) => {
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    try {
-      await googleSheetsApi.saveSelectedSheet(companyId, file.id, file.name);
-      setState((prev) => ({ ...prev, selectedFile: file, sheetPreview: preview, loading: false }));
-      setStep('MAP_FIELDS');
-    } catch (error: any) {
-      setState((prev) => ({
-        ...prev,
-        loading: false,
-        error: 'Error al guardar la selección del archivo.',
-      }));
-    }
-  }, [companyId, setStep]);
-
-  // ---------------------------------------------------------------------------
-  // Obtener access_token para el Google Picker
-  // ---------------------------------------------------------------------------
-  const getAccessToken = useCallback(async (): Promise<string> => {
-    if (!companyId) throw new Error('companyId no disponible');
-    return googleSheetsApi.getAccessToken(companyId);
-  }, [companyId]);
-
-  // ---------------------------------------------------------------------------
-  // STEP 3 — Guardar mapeo de columnas
-  // ---------------------------------------------------------------------------
-  const saveMapping = useCallback(async (payload: Omit<SaveMappingPayload, 'companyId'>) => {
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    try {
-      // Inyectar companyId en el payload antes de enviarlo al backend
-      await googleSheetsApi.saveFieldMapping({ ...payload, companyId });
-      setState((prev) => ({ ...prev, loading: false }));
-      setStep('READY');
-    } catch (error: any) {
-      setState((prev) => ({
-        ...prev,
-        loading: false,
-        error: 'Error al guardar el mapeo de columnas.',
-      }));
-    }
-  }, [companyId, setStep]);
-
-  // ---------------------------------------------------------------------------
-  // Cargar nombres de hojas disponibles en el spreadsheet
-  // ---------------------------------------------------------------------------
-  const loadSheetNames = useCallback(async (spreadsheetId: string) => {
-    if (!companyId || !spreadsheetId) return;
-    try {
-      const sheets = await googleSheetsApi.getSheetNames(companyId, spreadsheetId);
-      setState((prev) => ({ ...prev, availableSheets: sheets }));
-    } catch {
-      // No bloqueante: si falla, el usuario opera con la primera hoja por defecto
-      setState((prev) => ({ ...prev, availableSheets: [] }));
-    }
-  }, [companyId]);
-
-  // ---------------------------------------------------------------------------
-  // STEP 4 — Sincronización manual
-  // ---------------------------------------------------------------------------
-  const syncNow = useCallback(async () => {
-    setState((prev) => ({ ...prev, loading: true, error: null }));
-    try {
-      const result = await googleSheetsApi.triggerSync(companyId);
-      setState((prev) => ({ ...prev, syncResult: result, loading: false }));
-    } catch (error: any) {
-      setState((prev) => ({
-        ...prev,
-        loading: false,
-        error: 'Error al ejecutar la sincronización.',
-      }));
-    }
-  }, [companyId]);
+  const isReconfiguring = reconfiguring && config?.status === 'READY';
+  const isChangingFile = changingFile && !!config?.file;
+  const base = baseStep(config, isReconfiguring, isChangingFile);
+  const step: SetupStep = base === 'CONFIGURE' && localStep ? localStep : base;
 
   return {
-    ...state,
-    setStep,
+    step,
+    config,
+    preview,
+    review,
+    issues,
+    loading,
+    error,
     connectAccount,
     selectFile,
-    saveMapping,
+    goConfigure,
+    reconfigure,
+    cancelReconfigure,
+    reconfiguring: isReconfiguring,
+    changingFile: isChangingFile,
+    changeFile,
+    cancelChangeFile,
+    savePreview,
+    saveConfig,
+    activate,
     syncNow,
+    disconnect,
+    refresh,
     getAccessToken,
-    loadSheetNames,
   };
 };
