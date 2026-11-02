@@ -24,3 +24,5 @@ Desde editar pedido o su detalle, **Corregir método o ver historial** abre la p
 ## Verificación
 
 Pruebas de UI cubren importes explícitos, depósitos parciales, fallo/reintento de comprobantes, revisión versionada y permisos, persistencia al recargar, enlaces de evidencia bajo acción del usuario y corrección de un pago aprobado conservando el método original. El backend debe aplicar y verificar sus migraciones antes de publicar este frontend. No se utilizan pagos o pedidos reales para estas pruebas.
+
+Validación local del 2 de noviembre de 2026: 456 pruebas únicas aprobadas en 40 suites (415 comerciales, 24 nuevas de finanzas y 17 de seguimiento), TypeScript y build de producción aprobados. El build utilizó valores ficticios de Supabase; las advertencias de lint existentes no bloquearon la compilación. La publicación financiera permanece pendiente hasta verificar los backends y el CI remoto de este PR.
