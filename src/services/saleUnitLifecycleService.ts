@@ -121,7 +121,7 @@ export function saleLifecycleTransition(
   target: string,
 ): SaleUnitLifecycleAction | null {
   if (!order || !requiresAuthenticatedSaleMutation(order)) return null;
-  if (["ENTREGADO", "EN_ENVIO"].includes(order.status) && target === "ANULADO") return "return";
+  if (["ENTREGADO", "DESPACHADO", "EN_ENVIO"].includes(order.status) && target === "ANULADO") return "return";
   if (order.status === "ANULADO" && target === "PENDIENTE") return "reactivate";
   return null;
 }
@@ -142,7 +142,7 @@ export async function resolveSaleLifecycleTransition(
 ): Promise<SaleUnitLifecycleAction | null> {
   if (!order) return null;
   const action =
-    ["ENTREGADO", "EN_ENVIO"].includes(order.status) && target === "ANULADO"
+    ["ENTREGADO", "DESPACHADO", "EN_ENVIO"].includes(order.status) && target === "ANULADO"
       ? "return"
       : order.status === "ANULADO" && target === "PENDIENTE"
         ? "reactivate"

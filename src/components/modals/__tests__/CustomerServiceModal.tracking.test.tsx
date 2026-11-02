@@ -110,14 +110,12 @@ describe('CustomerServiceModal: tracked status transitions', () => {
     expect(screen.getByText('Pagado')).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'PAGADO' })).not.toBeInTheDocument();
   });
-  it('allows dispatch with debt but blocks delivery when one cent remains unapproved', async () => {
-    setup({ ...base, status: 'LLAMADO' }, { ...base, status: 'EN_ENVIO' }, 0.01);
-    await changeStatus('EN_ENVIO');
-    expect(axios.patch).toHaveBeenCalledWith('https://ventas.test/order-header/order-1', { status: 'EN_ENVIO' });
-    axios.patch.mockClear();
-    await changeStatus('ENTREGADO');
-    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining('saldo pendiente')));
-    expect(axios.patch).not.toHaveBeenCalled();
+  it.each(['DESPACHADO', 'ENTREGADO'])('allows %s after approval with one cent unapproved, without altering payment', async (status) => {
+    setup({ ...base, status: 'EN_ENVIO' }, { ...base, status }, 0.01);
+    await changeStatus(status);
+    await waitFor(() => expect(axios.patch).toHaveBeenCalledWith('https://ventas.test/order-header/order-1', { status }));
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(axios.patch).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ payments: expect.anything() }));
   });
   it('shows acknowledged quantity hold while blocking preparation without unit assignment', async () => {
     setup({ ...tracked, status: 'PENDIENTE', unitAssignmentStatus: 'PENDING_SELECTION', unitStockState: 'reserved' }, {});

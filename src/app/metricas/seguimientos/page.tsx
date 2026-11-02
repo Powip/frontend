@@ -111,7 +111,7 @@ export default function MetricasSeguimientosPage() {
 
   // En tránsito ahora: orders with EN_ENVIO status
   const enTransito = useMemo(
-    () => periodOrders.filter((o) => o.status === "EN_ENVIO").length,
+    () => periodOrders.filter((o) => o.status === "DESPACHADO").length,
     [periodOrders]
   );
 
@@ -133,7 +133,7 @@ export default function MetricasSeguimientosPage() {
     twoDaysAgoLimit.setDate(twoDaysAgoLimit.getDate() - 2);
     return periodOrders.filter(
       (o) =>
-        o.status === "EN_ENVIO" &&
+        o.status === "DESPACHADO" &&
         new Date(o.updated_at || o.created_at) < twoDaysAgoLimit
     );
   }, [periodOrders]);
@@ -153,7 +153,7 @@ export default function MetricasSeguimientosPage() {
 
   // Tiempo promedio entrega (days from created to delivered)
   const tiempoPromedio = useMemo(() => {
-    const delivered = periodOrders.filter((o) => o.status === "ENTREGADO" || o.status === "PAGADO");
+    const delivered = periodOrders.filter((o) => o.status === "ENTREGADO");
     if (delivered.length === 0) return 0;
     const totalDays = delivered.reduce((sum: number, o: any) => {
       const created = new Date(o.created_at);

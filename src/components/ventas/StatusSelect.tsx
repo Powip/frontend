@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { OrderStatus } from "@/interfaces/IOrder";
-import { getStatusPillClasses } from "@/utils/domain/orders-status-flow";
+import { getStatusPillClasses, getStatusLabel } from "@/utils/domain/orders-status-flow";
 import { cn } from "@/lib/utils";
 
 interface StatusSelectExtraAction {
@@ -59,7 +59,7 @@ export function StatusSelect({
       <SelectContent align="start">
         {options.map((s) => (
           <SelectItem key={s} value={s}>
-            {s}
+            {getStatusLabel(s)}
           </SelectItem>
         ))}
         {extraAction && (

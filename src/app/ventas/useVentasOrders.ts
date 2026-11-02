@@ -15,7 +15,7 @@ const KPI_STATUSES: OrderStatus[] = ["PENDIENTE", "PAGADO", "ANULADO"];
 // Un Record exige cada OrderStatus: si se agrega un estado y no se suma acá, tsc falla.
 const ALL_ORDER_STATUSES: Record<OrderStatus, true> = {
   INCOMPLETE: true, PREVENTA: true, PENDIENTE: true, PREPARADO: true, LLAMADO: true,
-  ASIGNADO_A_GUIA: true, EN_ENVIO: true, ENTREGADO: true, ANULADO: true, PAGADO: true,
+  ASIGNADO_A_GUIA: true, EN_ENVIO: true, DESPACHADO: true, ENTREGADO: true, ANULADO: true, PAGADO: true,
 };
 /** Todos los estados menos INCOMPLETE: lo que muestra la pestaña Todas. */
 export const TODAS_STATUSES: OrderStatus[] = (Object.keys(ALL_ORDER_STATUSES) as OrderStatus[])

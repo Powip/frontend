@@ -82,6 +82,7 @@ const fulfillmentStatuses = new Set([
   "LLAMADO",
   "ASIGNADO_A_GUIA",
   "EN_ENVIO",
+  "DESPACHADO",
   "ENTREGADO",
 ]);
 export function hasUnitAssignment(order: UnitAssignmentState): boolean {

@@ -34,7 +34,6 @@ import { fetchCouriers } from "@/services/courierService";
 import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
 import { reassignSeller } from "@/services/atencionClienteService";
 import { getStatusChainSteps, getStatusLabel } from "@/utils/domain/orders-status-flow";
-import { deliveryPaymentBlockReason } from "@/utils/orderState";
 import { exportSalesToExcel } from "@/utils/exportSalesExcel";
 import { openPrintWindow, printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 
@@ -177,7 +176,7 @@ export function PedidosContent() {
     const orderId = url.split("/").pop() ?? "";
     const sale = salesById.get(orderId);
     const blocked = sale && typeof payload.status === "string"
-      ? salesStatusBlockReason(sale, payload.status) || assignmentBlockReason(sale, payload.status) || deliveryPaymentBlockReason(sale.pendingPayment, payload.status)
+      ? salesStatusBlockReason(sale, payload.status) || assignmentBlockReason(sale, payload.status)
       : null;
     if (blocked) throw new Error(blocked);
     return axios.patch(saleMutationUrl(API_VENTAS || "", orderId, sale), payload);
@@ -193,7 +192,7 @@ export function PedidosContent() {
         if (sale) setCancelSale(sale);
         return;
       }
-      if (newStatus === "EN_ENVIO") {
+      if (["EN_ENVIO", "DESPACHADO"].includes(newStatus)) {
         const isPickup = sale?.deliveryType.toUpperCase().includes("RETIRO");
         if (sale && !sale.courier && !isPickup) {
           toast.error("Debe asignar un courier antes de cambiar a EN_ENVIO");
@@ -277,7 +276,7 @@ export function PedidosContent() {
       for (const id of ids) {
         if (await routeSaleLifecycle(salesById.get(id), newStatus, () => toast.error("Reactiva las ventas con IMEI/series individualmente para seleccionar y confirmar sus unidades."))) return;
       }
-      if (newStatus === "EN_ENVIO") {
+      if (["EN_ENVIO", "DESPACHADO"].includes(newStatus)) {
         const missing = ids.filter((id) => {
           const s = salesById.get(id);
           return s && !s.courier && !s.deliveryType.toUpperCase().includes("RETIRO");
@@ -399,7 +398,7 @@ export function PedidosContent() {
           failed++;
         }
       }
-      if (success > 0) toast.success(`${success} pedido(s) asignados y despachados`);
+      if (success > 0) toast.success(`${success} pedido(s) asignados, pendientes de despacho`);
       if (failed > 0) toast.error(`${failed} pedido(s) no pudieron actualizarse`);
       setIsAssigningCourier(false);
       setCourierAssignSales(null);
@@ -518,16 +517,9 @@ export function PedidosContent() {
         await axios.post(`${API_COURIER}/shipping-guides/${guideId}/orders`, {
           orderIds: selected.map((s) => s.id),
         });
-        // BUG: AddToExistingGuideModal deja elegir guías CREADA, ASIGNADA
-        // *o EN_RUTA* (ya aprobadas y despachadas), pero el botón "Aprobar
-        // Guía" de GuideDetailsModal solo aparece para guías CREADA/
-        // ASIGNADA. Un pedido agregado a una guía ya EN_RUTA quedaba en
-        // ASIGNADO_A_GUIA sin ningún botón que lo pase a EN_ENVIO —
-        // trabado en "Por Despachar" en vez de "En Camino" (reportado: "se
-        // asignó a guía, no aparece en En Camino, hubo que cambiarlo a
-        // mano"). Si la guía ya está despachada, el pedido nuevo se
-        // despacha directo a EN_ENVIO, igual que hace la aprobación normal.
-        const guideAlreadyDispatched = guideStatus !== "CREADA" && guideStatus !== "ASIGNADA";
+          // Agregarlo a una guía aprobada reserva el envío; el despacho físico
+        // se confirma por separado, incluso si otros pedidos ya están en ruta.
+        const guideAlreadyApproved = ["APROBADA", "EN_RUTA"].includes(guideStatus ?? "");
         for (const sale of selected) {
           // Puente genérico: lleva un pedido PREPARADO hasta LLAMADO sin
           // violar el flujo del backend, encadenando un PATCH por paso
@@ -544,21 +536,21 @@ export function PedidosContent() {
           }
           // PATCH final: adjunta la guía y avanza el último salto (válido de
           // un paso desde LLAMADO/ASIGNADO_A_GUIA). Si la guía ya está
-          // despachada, el pedido pasa directo a EN_ENVIO con el courier en el
+          // despachada, el pedido queda EN_ENVIO con el courier en el
           // MISMO PATCH (invariante "courier antes de EN_ENVIO"). Si no, queda
           // en ASIGNADO_A_GUIA hasta que se apruebe la guía.
           await patchOrderWithAssignment(`${API_VENTAS}/order-header/${sale.id}`, {
             guideNumber,
-            status: guideAlreadyDispatched ? "EN_ENVIO" : "ASIGNADO_A_GUIA",
-            ...(guideAlreadyDispatched
+            status: guideAlreadyApproved ? "EN_ENVIO" : "ASIGNADO_A_GUIA",
+            ...(guideAlreadyApproved
               ? { courier: courierName ?? undefined }
               : {}),
             ...getUserInfo(),
           });
         }
         toast.success(
-          guideAlreadyDispatched
-            ? `${selected.length} pedido(s) agregados a la guía ${guideNumber} y despachados`
+          guideAlreadyApproved
+            ? `${selected.length} pedido(s) agregados a la guía ${guideNumber} y listos para despacho`
             : `${selected.length} pedido(s) agregados a la guía ${guideNumber}`,
         );
         setAddToGuideOrders(null);

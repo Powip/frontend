@@ -220,6 +220,7 @@ const ORDER_STATUS_COLORS: Record<string, string> = {
   LLAMADO: "bg-blue-100 text-blue-800",
   ASIGNADO_A_GUIA: "bg-purple-100 text-purple-800",
   EN_ENVIO: "bg-amber-100 text-amber-800",
+  DESPACHADO: "bg-amber-100 text-amber-800",
   ENTREGADO: "bg-green-100 text-green-800",
   ANULADO: "bg-red-100 text-red-800",
 };
@@ -227,6 +228,7 @@ const ORDER_STATUS_COLORS: Record<string, string> = {
 const SHALOM_STATUS_COLORS: Record<string, string> = {
   PENDIENTE: "bg-blue-100 text-blue-800 border-blue-200",
   EN_ENVIO: "bg-amber-100 text-amber-800 border-amber-200",
+  DESPACHADO: "bg-amber-100 text-amber-800 border-amber-200",
   ENTREGADO: "bg-green-100 text-green-800 border-green-200",
   EXITOSO: "bg-green-100 text-green-800 border-green-200",
   FALLIDO: "bg-red-100 text-red-800 border-red-200",
@@ -522,7 +524,7 @@ export default function GuideDetailsModal({
       }
 
       toast.success(
-        `Guía aprobada y ${guide.orderIds.length} pedido(s) despachados`,
+        `Guía aprobada y ${guide.orderIds.length} pedido(s) en envío, pendientes de despacho`,
       );
       fetchGuide();
       void invalidateBusinessData();

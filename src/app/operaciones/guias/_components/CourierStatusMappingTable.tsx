@@ -18,6 +18,7 @@ interface MappingRow {
 }
 
 const ROWS: MappingRow[] = [
+  { estadoOrden: "EN_ENVIO", shalomStatus: "—", badgePowip: "En envío · por despachar", descripcion: "Guía aprobada y stock reservado. Falta confirmar la entrega física al courier." },
   {
     estadoOrden: "PREPARADO / LLAMADO",
     shalomStatus: "—",
@@ -31,25 +32,25 @@ const ROWS: MappingRow[] = [
     descripcion: "Tiene guía creada pero la guía todavía no fue aprobada/enviada.",
   },
   {
-    estadoOrden: "EN_ENVIO",
+    estadoOrden: "DESPACHADO",
     shalomStatus: "(sin dato / EN_TRANSITO)",
     badgePowip: "En tránsito",
     descripcion: "Despachado, sin estado específico reportado por Shalom todavía.",
   },
   {
-    estadoOrden: "EN_ENVIO",
+    estadoOrden: "DESPACHADO",
     shalomStatus: "EN_DESTINO",
     badgePowip: "En agencia",
     descripcion: "Paquete llegó a la agencia de destino, pendiente de recojo/reparto.",
   },
   {
-    estadoOrden: "EN_ENVIO",
+    estadoOrden: "DESPACHADO",
     shalomStatus: "ENTREGADO",
     badgePowip: "Entregado (courier)",
-    descripcion: "Shalom reporta entrega, pero el pedido de Powip sigue en EN_ENVIO hasta confirmarse.",
+    descripcion: "Shalom reporta entrega, pero el pedido de Powip sigue en DESPACHADO hasta confirmarse.",
   },
   {
-    estadoOrden: "EN_ENVIO",
+    estadoOrden: "DESPACHADO",
     shalomStatus: "DEVUELTO",
     badgePowip: "Devuelto ⚠️",
     descripcion: "Entrega fallida — dispara \"Necesita Atención\" en Pedidos y el Tablero.",
@@ -58,7 +59,7 @@ const ROWS: MappingRow[] = [
     estadoOrden: "ENTREGADO",
     shalomStatus: "ENTREGADO / EXITOSO",
     badgePowip: "Entregado ✅",
-    descripcion: "Confirmado en Powip (no solo reportado por el courier).",
+    descripcion: "Recepción del cliente confirmada en Powip. El cobro y la liquidación se verifican por separado.",
   },
 ];
 

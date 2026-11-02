@@ -382,7 +382,7 @@ function RegistrarVentaContent() {
   /* ---------------- Modal ---------------- */
   const [orderData, setOrderData] = useState<OrderHeader | null>(null);
   const [orderPayments, setOrderPayments] = useState<OrderHeader["payments"]>([]);
-  const unitSelectionLocked = Boolean(orderData && ["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO", "ENTREGADO", "ANULADO"].includes(orderData.status));
+  const unitSelectionLocked = Boolean(orderData && ["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO", "DESPACHADO", "ENTREGADO", "ANULADO"].includes(orderData.status));
   const activeProofPayments = orderPayments.filter(
     (payment) => payment.status !== "LOST",
   );

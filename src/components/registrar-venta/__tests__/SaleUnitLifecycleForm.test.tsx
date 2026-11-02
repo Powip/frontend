@@ -63,7 +63,7 @@ const inTransitOrder: OrderHeader = { ...order, status: "EN_ENVIO", items: order
 test("in-transit return requires both physical receipt and a reason, including the fixed NONE quantity", () => {
   const confirm = jest.fn();
   render(<SaleUnitLifecycleForm action="return" companyId="company" order={inTransitOrder} cart={lifecycleCart(inTransitOrder)} onConfirm={confirm} />);
-  expect(screen.getByText(/el pedido seguirá En envío/)).toBeInTheDocument();
+  expect(screen.getByText(/el pedido conservará su estado actual/)).toBeInTheDocument();
   expect(screen.getByText("Cantidad completa: 2")).toBeInTheDocument();
   expect(screen.getByRole("list", { name: "Unidades en envío PHONE" })).toHaveTextContent("001234567890123 · En envío / Reservada");
   expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
@@ -101,4 +101,17 @@ test("a new status clears physical confirmation even when the stock version rema
   rerender(<SaleUnitLifecycleForm {...props} order={order} cart={lifecycleCart(order)} />);
   expect(screen.getByRole("checkbox")).not.toBeChecked();
   expect(screen.getByLabelText("Motivo")).toHaveValue("");
+});
+
+
+test("DESPACHADO retains reserved-unit physical return confirmation", () => {
+  const dispatched = { ...inTransitOrder, status: "DESPACHADO" as const };
+  expect(lifecycleSelectionError("return", dispatched, lifecycleCart(dispatched))).toBeNull();
+  const confirm = jest.fn();
+  render(<SaleUnitLifecycleForm action="return" companyId="company" order={dispatched} cart={lifecycleCart(dispatched)} onConfirm={confirm} />);
+  const button = screen.getByRole("button", { name: "Confirmar retorno físico" });
+  expect(button).toBeDisabled();
+  accept();
+  fireEvent.click(button);
+  expect(confirm).toHaveBeenCalledWith(expect.objectContaining({ physicalReturnConfirmed: true }));
 });

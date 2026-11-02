@@ -106,7 +106,7 @@ export function ventasPorProductoEnCanal(orders: any[], canal: string): VentaPro
 
 /** Pedidos en tránsito (courier ya salió, aún no ENTREGADO) — base real de "Saldos COD en tránsito". */
 export function enTransito(orders: any[]): any[] {
-  return (orders ?? []).filter((o) => isCommercialSale(o) && (o.status === "EN_ENVIO" || o.status === "ASIGNADO_A_GUIA"));
+  return (orders ?? []).filter((o) => isCommercialSale(o) && o.status === "DESPACHADO");
 }
 
 /**

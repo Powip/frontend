@@ -84,6 +84,7 @@ export type OrderStatus =
   | "LLAMADO"
   | "ASIGNADO_A_GUIA"
   | "EN_ENVIO"
+  | "DESPACHADO"
   | "ENTREGADO"
   | "ANULADO"
   | "PAGADO";

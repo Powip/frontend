@@ -1,7 +1,9 @@
+import { orderFinancialState } from "@/utils/orderState";
 import { OrderHeader } from "@/interfaces/IOrder";
 import { COURIER_DIAS_LIMITE, DEFAULT_DIAS_LIMITE, GuiaPorLiquidar } from "./types";
 
 export function money(n: number): string {
+  if (!Number.isFinite(n)) return "Por verificar";
   const sign = n < 0 ? "-" : "";
   return `${sign}S/ ${Math.abs(n).toLocaleString("es-PE", {
     minimumFractionDigits: 2,
@@ -15,11 +17,6 @@ export function daysSince(dateStr?: string | null): number {
   return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
 }
 
-function paidAmount(order: OrderHeader): number {
-  return (order.payments ?? [])
-    .filter((p) => p.status === "PAID")
-    .reduce((sum, p) => sum + Number(p.amount || 0), 0);
-}
 
 /**
  * Heurística best-effort para detectar una entrega parcial ya anotada desde
@@ -43,9 +40,8 @@ function detectEntregaParcial(
 
 /**
  * Construye las filas de "Por Liquidar" a partir de pedidos reales
- * ENTREGADO con courier asignado y saldo pendiente (dinero que el courier
- * cobró en la entrega y todavía no depositó). El resto de los campos
- * (plazo, estado) se calculan localmente — ver BACKEND GAP en types.ts.
+ * ENTREGADO con courier y saldo pendiente de verificar. La entrega no
+ * acredita un cobro ni crea una obligación de liquidación confirmada.
  *
  * @param coveredOrderNumbers orderNumbers ya cubiertos por una liquidación
  *   registrada en esta sesión (estado local, no persiste — ver page.tsx).
@@ -58,13 +54,15 @@ export function buildGuiasPorLiquidar(
     .filter((o) => o.status === "ENTREGADO" && !!o.courier)
     .map((o) => {
       const codBruto = Number(o.grandTotal || 0);
-      const adelantos = paidAmount(o);
-      const codNeto = Math.max(0, codBruto - adelantos);
+      const financial = orderFinancialState(o);
+      const adelantos = financial.totalPaid;
+      const codNeto = financial.pendingAmount;
       const courier = (o.courier ?? "").trim();
       const diasLimite = COURIER_DIAS_LIMITE[courier] ?? DEFAULT_DIAS_LIMITE;
       const saldoPendiente = coveredOrderNumbers.has(o.orderNumber) ? 0 : codNeto;
       const diasTranscurridos = daysSince(o.updated_at ?? o.created_at);
-      const vencido = diasTranscurridos > diasLimite && saldoPendiente > 0;
+      // No se puede calcular mora de liquidación sin confirmar el cobro.
+      const vencido = false;
 
       return {
         id: o.orderNumber,
@@ -84,12 +82,12 @@ export function buildGuiasPorLiquidar(
         adelantos,
         codNeto,
         saldoPendiente,
-        estado: saldoPendiente <= 0 ? "LIQUIDADO" : vencido ? "VENCIDO" : "PENDIENTE",
+        estado: coveredOrderNumbers.has(o.orderNumber) ? "REGISTRO_LOCAL" : "POR_VERIFICAR",
         vencido,
         entregaParcial: detectEntregaParcial(o),
       } satisfies GuiaPorLiquidar;
     })
-    .filter((g) => g.saldoPendiente > 0 || g.estado === "LIQUIDADO");
+    .filter((g) => !Number.isFinite(g.saldoPendiente) || g.saldoPendiente > 0 || g.estado === "REGISTRO_LOCAL");
 }
 
 export function formatDate(dateStr?: string | null): string {

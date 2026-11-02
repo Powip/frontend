@@ -47,7 +47,7 @@ export function RegistrarLiquidacionModal({
   const montoEsperado = guias.reduce((sum, g) => sum + g.saldoPendiente, 0);
   const courier = guias[0]?.courier ?? "—";
 
-  const [montoDepositado, setMontoDepositado] = useState(montoEsperado);
+  const [montoDepositado, setMontoDepositado] = useState(Number.isFinite(montoEsperado) ? montoEsperado : 0);
   const [metodo, setMetodo] = useState<MetodoPago>("transferencia");
   const [numeroOperacion, setNumeroOperacion] = useState("");
   const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
@@ -57,7 +57,7 @@ export function RegistrarLiquidacionModal({
   // Resetea el formulario cada vez que se abre con una selección nueva.
   useEffect(() => {
     if (open) {
-      setMontoDepositado(montoEsperado);
+      setMontoDepositado(Number.isFinite(montoEsperado) ? montoEsperado : 0);
       setMetodo("transferencia");
       setNumeroOperacion("");
       setFecha(new Date().toISOString().slice(0, 10));
@@ -69,7 +69,10 @@ export function RegistrarLiquidacionModal({
 
   const diferencia = Number((montoDepositado - montoEsperado).toFixed(2));
 
+  const canRegister = guias.length > 0 && guias.every((g) => Number.isFinite(g.saldoPendiente) && g.saldoPendiente >= 0) && Number.isFinite(montoEsperado) && Number.isFinite(montoDepositado) && montoDepositado >= 0;
+
   const handleSubmit = () => {
+    if (!canRegister) return;
     const pago: PagoLiquidacion = {
       id: `LQ-${Date.now()}`,
       fecha,
@@ -103,8 +106,7 @@ export function RegistrarLiquidacionModal({
           <DialogTitle>Registrar liquidación — {courier}</DialogTitle>
           <DialogDescription>
             {guias.length} pedido{guias.length === 1 ? "" : "s"} seleccionado
-            {guias.length === 1 ? "" : "s"} · marca esto como cubierto por un depósito del
-            courier.
+            {guias.length === 1 ? "" : "s"} · registro temporal de esta sesión. No confirma pagos ni guarda una liquidación permanente.
           </DialogDescription>
         </DialogHeader>
 
@@ -143,8 +145,8 @@ export function RegistrarLiquidacionModal({
           }`}
         >
           {diferencia === 0
-            ? "Conciliado: el monto coincide exactamente."
-            : `Con diferencia: ${money(diferencia)} (${diferencia > 0 ? "depositó de más" : "depositó de menos"}). Se registrará también en la pestaña Diferencias.`}
+            ? "Los montos coinciden."
+            : `Con diferencia: ${money(diferencia)} (${diferencia > 0 ? "depositó de más" : "depositó de menos"}). Revisa la diferencia antes de registrar.`}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -181,6 +183,7 @@ export function RegistrarLiquidacionModal({
 
         <div className="space-y-1.5">
           <Label htmlFor="comprobante">Comprobante (opcional)</Label>
+          <p className="text-xs text-muted-foreground">Solo se conserva el nombre durante esta sesión. El archivo no se sube ni se guarda.</p>
           <Input
             id="comprobante"
             type="file"
@@ -200,11 +203,12 @@ export function RegistrarLiquidacionModal({
           />
         </div>
 
+        {!Number.isFinite(montoEsperado) && <p role="alert" className="text-sm text-amber-700">Verifica el saldo de todos los pedidos antes de registrar el depósito.</p>}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleSubmit} disabled={guias.length === 0}>
+          <Button onClick={handleSubmit} disabled={!canRegister}>
             Registrar liquidación
           </Button>
         </DialogFooter>

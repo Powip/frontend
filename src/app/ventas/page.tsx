@@ -1,7 +1,7 @@
 "use client";
 import { isCommercialSaleOrder, canPrepareDeferredManualOrder, canShipCommercialOrder, salesPhysicalOperationBlockReason, salesStatusBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
 import { formatSalesMoney } from "@/utils/salesMoney";
-import { deliveryPaymentBlockReason, operationalStatus, orderFinancialState } from "@/utils/orderState";
+import { operationalStatus, orderFinancialState } from "@/utils/orderState";
 import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
 
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
@@ -139,6 +139,7 @@ const ORDER_STATUS = {
   PREPARADO: "PREPARADO",
   LLAMADO: "LLAMADO",
   EN_ENVIO: "EN_ENVIO",
+  DESPACHADO: "DESPACHADO",
   ENTREGADO: "ENTREGADO",
   ANULADO: "ANULADO",
 };
@@ -148,6 +149,7 @@ const ALL_STATUSES: OrderStatus[] = [
   "PREPARADO",
   "LLAMADO",
   "EN_ENVIO",
+  "DESPACHADO",
   "ENTREGADO",
   "ANULADO",
 ];
@@ -632,7 +634,7 @@ function VentasContent() {
     const sale = mutationSale(orderId);
     if (!sale) throw new Error("Vuelve a cargar el pedido antes de actualizarlo.");
     const targetStatus = typeof payload.status === "string" ? payload.status : "";
-    const blocked = salesStatusBlockReason(sale, targetStatus) || assignmentBlockReason(sale, targetStatus) || deliveryPaymentBlockReason(sale.pendingPayment, targetStatus);
+    const blocked = salesStatusBlockReason(sale, targetStatus) || assignmentBlockReason(sale, targetStatus);
     if (blocked) throw new Error(blocked);
     await axiosAuth.patch(
       saleMutationUrl(process.env.NEXT_PUBLIC_API_VENTAS || "", orderId, sale),
@@ -1508,7 +1510,7 @@ Estado: ${sale.status}
                     <div className="text-red-600">
                       Debe: {formatSalesMoney(sale.pendingPayment, sale.currency)}
                     </div>
-                    <FinancialStatusBadge pendingAmount={sale.pendingPayment} />
+                    <FinancialStatusBadge pendingAmount={sale.pendingPayment} status={sale.status} />
                   </TableCell>
                   <TableCell className="text-xs">
                     <span className="inline-flex items-center gap-1">
@@ -1780,7 +1782,7 @@ Estado: ${sale.status}
                     <div className="text-red-600">
                       Debe: {formatSalesMoney(sale.pendingPayment, sale.currency)}
                     </div>
-                    <FinancialStatusBadge pendingAmount={sale.pendingPayment} />
+                    <FinancialStatusBadge pendingAmount={sale.pendingPayment} status={sale.status} />
                   </TableCell>
                   <TableCell className="text-xs">
                     <span className="inline-flex items-center gap-1">

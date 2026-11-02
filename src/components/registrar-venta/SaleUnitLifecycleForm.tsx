@@ -46,9 +46,9 @@ export function lifecycleSelectionError(
   )
     return "No se pudo comprobar el seguimiento de todos los productos de la venta.";
   if (action === "return") {
-    if (!["ENTREGADO", "EN_ENVIO"].includes(order.status))
+    if (!["ENTREGADO", "DESPACHADO", "EN_ENVIO"].includes(order.status))
       return "Actualiza la venta para comprobar si permite el retorno físico de sus productos.";
-    const inTransit = order.status === "EN_ENVIO";
+    const inTransit = ["EN_ENVIO", "DESPACHADO"].includes(order.status);
     const expectedUnitStatus = inTransit ? "RESERVED" : "SOLD";
     const lines = order.items.map((item) => ({
       ...item,
@@ -103,7 +103,7 @@ export default function SaleUnitLifecycleForm({
   selection,
   onConfirm,
 }: Props) {
-  const inTransitReturn = action === "return" && order.status === "EN_ENVIO";
+  const inTransitReturn = action === "return" && ["EN_ENVIO", "DESPACHADO"].includes(order.status);
   const scope = `${companyId}:${order.id}:${order.stockVersion}:${order.status}:${action}`;
   const [review, setReview] = useState({ scope, reason: "", accepted: false });
   useEffect(() => setReview({ scope, reason: "", accepted: false }), [scope]);
@@ -137,7 +137,7 @@ export default function SaleUnitLifecycleForm({
       <p className="text-sm">
         {action === "return"
           ? inTransitReturn
-            ? "Confirma que recibiste físicamente TODOS los productos del pedido: los IMEI/series indicados y las cantidades de productos sin seguimiento. Hasta confirmar el retorno, el pedido seguirá En envío y sus unidades permanecerán reservadas. Al confirmarse la operación, quedará anulado y el stock estará disponible."
+            ? "Confirma que recibiste físicamente TODOS los productos del pedido: los IMEI/series indicados y las cantidades de productos sin seguimiento. Hasta confirmar el retorno, el pedido conservará su estado actual y sus unidades permanecerán reservadas. Al confirmarse la operación, quedará anulado y el stock estará disponible."
             : "Confirma la recepción de todos los productos y códigos de esta entrega. Las cantidades indicadas volverán al mismo almacén cuando se confirme la operación."
           : "Selecciona nuevamente un IMEI o serie por unidad. La venta volverá a Pendiente cuando se confirme la nueva reserva."}
       </p>

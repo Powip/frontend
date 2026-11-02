@@ -248,3 +248,13 @@ describe("GuideDetailsModal: etiqueta oficial de envío Shalom", () => {
     expect(screen.queryByRole("button", { name: "Etiqueta de envío Shalom" })).not.toBeInTheDocument();
   });
 });
+
+
+it("approves the guide without claiming physical dispatch or payment", async () => {
+  jest.mocked(axios.patch).mockResolvedValue({ data: {} });
+  setup(receipt(), { ...guide, courierName: "Shalom" });
+  fireEvent.click(await screen.findByRole("button", { name: /Aprobar Guía/ }));
+  await waitFor(() => expect(axios.patch).toHaveBeenCalledWith("https://ventas.test/order-header/order-1", { status: "EN_ENVIO", courier: "Shalom" }));
+  expect(axios.patch).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ status: "DESPACHADO" }));
+  expect(axios.patch).not.toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ status: "PAID" }));
+});

@@ -35,7 +35,7 @@ describe("operational queues are independent of payment", () => {
 
   it.each([
     ["PREPARADO", "despachar"], ["LLAMADO", "despachar"], ["ASIGNADO_A_GUIA", "despachar"],
-    ["EN_ENVIO", "camino"], ["ENTREGADO", "historial"], ["ANULADO", "anulados"],
+    ["EN_ENVIO", "despachar"], ["DESPACHADO", "camino"], ["ENTREGADO", "historial"], ["ANULADO", "anulados"],
   ] as const)("keeps %s in %s regardless of balance", (status, tab) => {
     expect(isOperationsOrderVisible(order(status))).toBe(true);
     expect(getPedidosTab(order(status))).toBe(tab);
@@ -43,6 +43,6 @@ describe("operational queues are independent of payment", () => {
 
   it("keeps failed deliveries and courier errors in attention", () => {
     expect(getPedidosTab(order("EN_ENVIO", { shalomStatus: "DEVUELTO" }))).toBe("atencion");
-    expect(getPedidosTab(order("EN_ENVIO", { shalomError: "Error" }))).toBe("atencion");
+    expect(getPedidosTab(order("DESPACHADO", { shalomError: "Error" }))).toBe("atencion");
   });
 });

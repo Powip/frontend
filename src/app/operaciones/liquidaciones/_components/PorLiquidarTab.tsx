@@ -83,7 +83,7 @@ export function PorLiquidarTab({
   const [antiguedad, setAntiguedad] = useState<AntiguedadChip>("todos");
   const [page, setPage] = useState(1);
 
-  const pendientes = useMemo(() => guias.filter((g) => g.saldoPendiente > 0), [guias]);
+  const pendientes = useMemo(() => guias.filter((g) => !Number.isFinite(g.saldoPendiente) || g.saldoPendiente > 0), [guias]);
 
   const couriers = useMemo(
     () => Array.from(new Set(pendientes.map((g) => g.courier))).sort(),
@@ -162,6 +162,7 @@ export function PorLiquidarTab({
   }, [selected, pendientes]);
 
   const toggleSelect = (guia: GuiaPorLiquidar) => {
+    if (!Number.isFinite(guia.saldoPendiente)) return;
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(guia.id)) {
@@ -177,7 +178,7 @@ export function PorLiquidarTab({
     });
   };
 
-  const selectedGuias = filtered.filter((g) => selected.has(g.id));
+  const selectedGuias = filtered.filter((g) => Number.isFinite(g.saldoPendiente) && selected.has(g.id));
 
   const byCourier = useMemo(() => {
     const map = new Map<string, GuiaPorLiquidar[]>();
@@ -212,9 +213,9 @@ export function PorLiquidarTab({
       Entregado: formatDate(g.entregadoAt),
       "Días transcurridos": g.diasTranscurridos,
       "Plazo (días)": g.diasLimite,
-      Cobró: g.codNeto,
-      "Neto a recibir": g.saldoPendiente,
-      Vencido: g.vencido ? "Sí" : "No",
+      "Cobro por verificar": g.codNeto,
+      "Saldo por verificar": g.saldoPendiente,
+      Vencido: g.vencido ? "Sí" : "Por verificar",
     }));
 
   return (
@@ -224,23 +225,23 @@ export function PorLiquidarTab({
           <Kpi
             color="amber"
             icon={<Wallet className="h-4 w-4" />}
-            label="Total por liquidar"
+            label="Cobro por verificar"
             value={money(kpis.totalPorLiquidar)}
             sub={`${kpis.cantGuias} pedidos · ${kpis.cantCouriers} couriers`}
           />
           <Kpi
             color="red"
             icon={<AlertTriangle className="h-4 w-4" />}
-            label="Vencido"
-            value={money(kpis.totalVencido)}
-            sub={`${kpis.cantVencidos} pedidos fuera de plazo`}
+            label="Vencimiento por verificar"
+            value="—"
+            sub="Requiere confirmar el cobro"
           />
           <Kpi
             color="blue"
             icon={<Table2 className="h-4 w-4" />}
             label="Couriers con pendiente"
             value={String(kpis.cantCouriers)}
-            sub="Con al menos 1 pedido sin depositar"
+            sub="Con al menos 1 cobro por verificar"
           />
           <Kpi
             color="teal"
@@ -258,8 +259,8 @@ export function PorLiquidarTab({
           {(
             [
               ["todos", `Todos (${pendientes.length})`],
-              ["vencido", `Vencido (${pendientes.filter((g) => g.vencido).length})`],
-              ["enplazo", `En plazo (${pendientes.filter((g) => !g.vencido).length})`],
+              ["vencido", `Vencimiento confirmado (${pendientes.filter((g) => g.vencido).length})`],
+              ["enplazo", `Por verificar (${pendientes.filter((g) => !g.vencido).length})`],
             ] as [AntiguedadChip, string][]
           ).map(([key, label]) => (
             <button
@@ -452,7 +453,7 @@ export function PorLiquidarTab({
               filtered.length === 0 ? (
                 <p className="py-10 text-center text-sm text-muted-foreground">
                   {pendientes.length === 0
-                    ? "No hay pedidos con COD pendiente de depósito 🎉"
+                    ? "No hay pedidos con cobro pendiente de verificar"
                     : "Ningún pedido coincide con los filtros."}
                 </p>
               ) : (
@@ -468,8 +469,8 @@ export function PorLiquidarTab({
                         <TableHead>Entregado</TableHead>
                         <TableHead>Días</TableHead>
                         <TableHead>Courier</TableHead>
-                        <TableHead className="text-right">Cobró</TableHead>
-                        <TableHead className="text-right">Neto a recibir</TableHead>
+                        <TableHead className="text-right">Cobro por verificar</TableHead>
+                        <TableHead className="text-right">Saldo por verificar</TableHead>
                         <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -482,12 +483,12 @@ export function PorLiquidarTab({
                           <TableCell>
                             <Checkbox
                               checked={selected.has(g.id)}
-                              disabled={!!selectedCourier && selectedCourier !== g.courier}
+                              disabled={!Number.isFinite(g.saldoPendiente) || (!!selectedCourier && selectedCourier !== g.courier)}
                               onCheckedChange={() => toggleSelect(g)}
                             />
                           </TableCell>
                           <TableCell className="font-semibold">
-                            {g.id}<OrderOriginLabel {...g} />
+                            {g.id}<OrderOriginLabel {...g} /><div className="text-xs font-normal text-amber-700">Cobro por verificar</div>
                             {g.entregaParcial && (
                               <div className="mt-0.5">
                                 <Badge
@@ -506,7 +507,7 @@ export function PorLiquidarTab({
                             {formatDate(g.entregadoAt)}
                           </TableCell>
                           <TableCell className={g.vencido ? "font-bold text-red-600 dark:text-red-400" : ""}>
-                            {g.diasTranscurridos}d / {g.diasLimite}d
+                            {g.diasTranscurridos}d desde entrega
                           </TableCell>
                           <TableCell>{g.courier}</TableCell>
                           <TableCell className="text-right">{money(g.codNeto)}</TableCell>
@@ -528,6 +529,7 @@ export function PorLiquidarTab({
                                 variant="ghost"
                                 className="h-7 w-7 text-emerald-600 hover:text-emerald-700"
                                 title="Registrar cobro / liquidación de este pedido"
+                                disabled={!Number.isFinite(g.saldoPendiente)}
                                 onClick={() => setModalGuias([g])}
                               >
                                 <Wallet className="h-3.5 w-3.5" />
@@ -564,7 +566,7 @@ export function PorLiquidarTab({
             ) : byCourier.length === 0 ? (
               <p className="py-10 text-center text-sm text-muted-foreground">
                 {pendientes.length === 0
-                  ? "No hay pedidos con COD pendiente de depósito 🎉"
+                  ? "No hay pedidos con cobro pendiente de verificar"
                   : "Ningún pedido coincide con los filtros."}
               </p>
             ) : (
@@ -575,8 +577,8 @@ export function PorLiquidarTab({
                       <TableHead>Courier</TableHead>
                       <TableHead className="text-right">Pedidos</TableHead>
                       <TableHead className="text-right">Vencidos</TableHead>
-                      <TableHead className="text-right">Cobró (neto)</TableHead>
-                      <TableHead className="text-right">Neto a recibir</TableHead>
+                      <TableHead className="text-right">Saldo por verificar</TableHead>
+                      <TableHead className="text-right">Saldo por verificar</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -592,7 +594,7 @@ export function PorLiquidarTab({
                         <TableCell className="text-right font-bold">{money(c.neto)}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
-                            <Button size="sm" onClick={() => setModalGuias(c.items)}>
+                            <Button size="sm" disabled={c.items.some((g) => !Number.isFinite(g.saldoPendiente))} onClick={() => setModalGuias(c.items)}>
                               Registrar
                             </Button>
                             <Button
@@ -635,7 +637,7 @@ export function PorLiquidarTab({
           title={exportKind === "reclamo" ? "Reclamo a courier" : "Exportar"}
           subtitle={
             exportKind === "reclamo"
-              ? "Cuenta por cobrar a courier — respalda el reclamo de depósito."
+              ? "Saldos por verificar: confirma el cobro antes de reclamar un depósito."
               : exportKind === "seleccion"
               ? "Exporta la selección actual."
               : "Exporta lo filtrado en Por Liquidar."

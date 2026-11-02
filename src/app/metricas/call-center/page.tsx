@@ -94,7 +94,7 @@ export default function MetricasCallCenterPage() {
   const confirmed = useMemo(
     () =>
       calledOrders.filter((o) =>
-        ["ENTREGADO", "PAGADO", "EN_ENVIO", "CON_GUIA"].includes(o.status)
+        ["ENTREGADO", "PAGADO", "EN_ENVIO", "DESPACHADO", "CON_GUIA"].includes(o.status)
       ).length,
     [calledOrders]
   );
@@ -126,7 +126,7 @@ export default function MetricasCallCenterPage() {
   // Tiempo Medio de Confirmación (TMC) en horas
   const tmc = useMemo(() => {
     const confirmedOrders = calledOrders.filter((o) =>
-      ["ENTREGADO", "PAGADO", "EN_ENVIO", "CON_GUIA", "PREPARADO"].includes(o.status)
+      ["ENTREGADO", "PAGADO", "EN_ENVIO", "DESPACHADO", "CON_GUIA", "PREPARADO"].includes(o.status)
     );
     if (confirmedOrders.length === 0) return 0;
     
@@ -182,7 +182,7 @@ export default function MetricasCallCenterPage() {
       {
         name: "Confirmado",
         value: todayOrders.filter((o) =>
-          ["ENTREGADO", "PAGADO", "EN_ENVIO", "CON_GUIA", "PREPARADO"].includes(o.status)
+          ["ENTREGADO", "PAGADO", "EN_ENVIO", "DESPACHADO", "CON_GUIA", "PREPARADO"].includes(o.status)
         ).length,
         color: RESULT_COLORS[0],
       },
@@ -218,13 +218,13 @@ export default function MetricasCallCenterPage() {
         sellerMap[seller] = { total: 0, confirmed: 0, upsell: 0, handleTimeSum: 0 };
       }
       sellerMap[seller].total++;
-      if (["ENTREGADO", "PAGADO", "EN_ENVIO", "CON_GUIA"].includes(o.status)) {
+      if (["ENTREGADO", "PAGADO", "EN_ENVIO", "DESPACHADO", "CON_GUIA"].includes(o.status)) {
         sellerMap[seller].confirmed++;
       }
       if ((o.items?.length || 0) > 1) {
         sellerMap[seller].upsell++;
       }
-      if (o.updated_at && ["ENTREGADO", "PAGADO", "EN_ENVIO", "CON_GUIA", "PREPARADO"].includes(o.status)) {
+      if (o.updated_at && ["ENTREGADO", "PAGADO", "EN_ENVIO", "DESPACHADO", "CON_GUIA", "PREPARADO"].includes(o.status)) {
         const diff =
           (new Date(o.updated_at).getTime() - new Date(o.created_at).getTime()) /
           (1000 * 60 * 60);

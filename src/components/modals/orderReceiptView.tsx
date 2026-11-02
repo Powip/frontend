@@ -48,6 +48,11 @@ const STATUS_STYLES: Record<
     text: "text-white",
     label: "En Envío",
   },
+  DESPACHADO: {
+    bg: "bg-cyan-600",
+    text: "text-white",
+    label: "Despachado",
+  },
   ENTREGADO: {
     bg: "bg-green-500",
     text: "text-white",
@@ -191,7 +196,7 @@ export default function OrderReceiptView({ data }: Props) {
           </p>
           {pendingAmount > 0 ? (
             <>
-            <FinancialStatusBadge pendingAmount={pendingAmount} />
+            <FinancialStatusBadge pendingAmount={pendingAmount} status={data.status} />
             <Badge className="bg-red-100 text-red-700">
               Por cobrar S/ {pendingAmount.toFixed(2)}
             </Badge>

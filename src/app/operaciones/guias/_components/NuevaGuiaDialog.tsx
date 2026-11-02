@@ -242,17 +242,9 @@ export default function NuevaGuiaDialog({
         `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guideId}/orders`,
         { orderIds },
       );
-      // BUG: AddToExistingGuideModal deja elegir guías en estado CREADA,
-      // ASIGNADA *o EN_RUTA* (ya aprobadas y despachadas) — pero el botón
-      // "Aprobar Guía" de GuideDetailsModal solo aparece para guías CREADA/
-      // ASIGNADA. Un pedido agregado a una guía que ya está EN_RUTA quedaba
-      // seteado en ASIGNADO_A_GUIA sin ningún botón que lo pase a EN_ENVIO
-      // — trabado para siempre en "Por Despachar" en vez de "En Camino"
-      // (reportado: "se asignó a guía, no aparece en En Camino, hubo que
-      // cambiarlo a mano"). Si la guía ya está despachada, el pedido nuevo
-      // se despacha directo a EN_ENVIO, igual que handleApproveGuide hace
-      // para el resto de pedidos de la guía.
-      const guideAlreadyDispatched = guideStatus !== "CREADA" && guideStatus !== "ASIGNADA";
+      // Agregarlo a una guía aprobada reserva el envío; el despacho físico
+      // se confirma por separado, incluso si otros pedidos ya están en ruta.
+      const guideAlreadyApproved = ["APROBADA", "EN_RUTA"].includes(guideStatus ?? "");
       for (const orderId of orderIds) {
         // Puente genérico desde PREPARADO hasta LLAMADO. getStatusChainSteps
         // no retrocede ni repite estado, así que un pedido ya en
@@ -267,18 +259,18 @@ export default function NuevaGuiaDialog({
           }
         }
         // PATCH final: adjunta la guía y avanza el último salto (válido de un
-        // paso desde LLAMADO/ASIGNADO_A_GUIA). Si la guía ya está despachada,
-        // el pedido pasa directo a EN_ENVIO con el courier en el MISMO PATCH
+        // paso desde LLAMADO/ASIGNADO_A_GUIA). Si la guía ya está aprobada,
+        // el pedido queda EN_ENVIO con el courier en el MISMO PATCH
         // (invariante "courier antes de EN_ENVIO").
         await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`, {
           guideNumber,
-          status: guideAlreadyDispatched ? "EN_ENVIO" : "ASIGNADO_A_GUIA",
-          ...(guideAlreadyDispatched ? { courier: courierName ?? undefined } : {}),
+          status: guideAlreadyApproved ? "EN_ENVIO" : "ASIGNADO_A_GUIA",
+          ...(guideAlreadyApproved ? { courier: courierName ?? undefined } : {}),
         });
       }
       toast.success(
-        guideAlreadyDispatched
-          ? `Pedidos agregados a la guía ${guideNumber} y despachados`
+        guideAlreadyApproved
+          ? `Pedidos agregados a la guía ${guideNumber} y listos para despacho`
           : `Pedidos agregados a la guía ${guideNumber}`,
       );
       setAddModalOpen(false);

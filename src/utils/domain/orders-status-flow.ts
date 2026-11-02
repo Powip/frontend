@@ -14,7 +14,8 @@ export const ORDER_STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
   PREPARADO: ["LLAMADO", "EN_ENVIO", "ANULADO"],
   LLAMADO: ["ASIGNADO_A_GUIA", "EN_ENVIO", "ENTREGADO", "ANULADO"],
   ASIGNADO_A_GUIA: ["EN_ENVIO", "ANULADO"],
-  EN_ENVIO: ["ENTREGADO", "ANULADO"],
+  EN_ENVIO: ["DESPACHADO", "ENTREGADO", "ANULADO"],
+  DESPACHADO: ["ENTREGADO", "ANULADO"],
   ENTREGADO: ["ANULADO"],
   ANULADO: [],
   // Compatibilidad con estados guardados antes de separar el pago.
@@ -31,6 +32,7 @@ export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
   LLAMADO: "Contactado",
   ASIGNADO_A_GUIA: "Asignado a guía",
   EN_ENVIO: "En envío",
+  DESPACHADO: "Despachado",
   ENTREGADO: "Entregado",
   ANULADO: "Anulado",
   PAGADO: "Pendiente",
@@ -43,7 +45,7 @@ export function getStatusLabel(status: OrderStatus): string {
 // Progresión lineal usada solo para calcular los saltos intermedios de los
 // atajos "En envío"/"Contactado" desde PENDIENTE o PREPARADO — no reemplaza
 // ORDER_STATUS_FLOW, es auxiliar de getStatusChainSteps.
-const STATUS_PROGRESSION: OrderStatus[] = ["PENDIENTE", "PREPARADO", "LLAMADO", "EN_ENVIO", "ENTREGADO"];
+const STATUS_PROGRESSION: OrderStatus[] = ["PENDIENTE", "PREPARADO", "LLAMADO", "EN_ENVIO", "DESPACHADO", "ENTREGADO"];
 
 // Rango del flujo de despacho — incluye ASIGNADO_A_GUIA (que no está en
 // STATUS_PROGRESSION porque no es un paso obligado de la cadena) y equipara
@@ -56,7 +58,8 @@ const FULFILLMENT_RANK: Partial<Record<OrderStatus, number>> = {
   LLAMADO: 3,
   ASIGNADO_A_GUIA: 4,
   EN_ENVIO: 5,
-  ENTREGADO: 6,
+  DESPACHADO: 6,
+  ENTREGADO: 7,
 };
 
 /**
@@ -86,7 +89,10 @@ export function getStatusChainSteps(current: OrderStatus, target: OrderStatus): 
   const from = STATUS_PROGRESSION.indexOf(normalizedCurrent);
   const to = STATUS_PROGRESSION.indexOf(target);
   if (from === -1 || to === -1 || to <= from) return [target];
-  return STATUS_PROGRESSION.slice(from + 1, to + 1);
+  // Entregar directamente es válido: no inventar una confirmación de despacho.
+  return STATUS_PROGRESSION.slice(from + 1, to + 1).filter(
+    (step) => step !== "DESPACHADO" || target === "DESPACHADO",
+  );
 }
 
 /**
@@ -118,6 +124,7 @@ const STATUS_PILL_CLASSES: Record<OrderStatus, string> = {
   LLAMADO: "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30",
   ASIGNADO_A_GUIA: "bg-indigo-100 text-indigo-700 border-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:border-indigo-500/30",
   EN_ENVIO: "bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30",
+  DESPACHADO: "bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-500/15 dark:text-cyan-300 dark:border-cyan-500/30",
   ENTREGADO: "bg-green-100 text-green-700 border-green-200 dark:bg-green-500/15 dark:text-green-300 dark:border-green-500/30",
   ANULADO: "bg-red-100 text-red-700 border-red-200 dark:bg-red-500/15 dark:text-red-300 dark:border-red-500/30",
   PAGADO: "bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/30",
@@ -143,6 +150,7 @@ const STATUS_DOT_CLASSES: Record<OrderStatus, string> = {
   LLAMADO: "bg-violet-500",
   ASIGNADO_A_GUIA: "bg-indigo-500",
   EN_ENVIO: "bg-cyan-500",
+  DESPACHADO: "bg-cyan-500",
   ENTREGADO: "bg-green-500",
   ANULADO: "bg-red-500",
   PAGADO: "bg-teal-500",

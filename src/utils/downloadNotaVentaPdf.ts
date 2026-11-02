@@ -23,6 +23,7 @@ const PDF_STATUS_COLOR: Record<string, { bg: string; color: string }> = {
   LLAMADO: { bg: "#ede9fe", color: "#5b21b6" },
   ASIGNADO_A_GUIA: { bg: "#e0e7ff", color: "#3730a3" },
   EN_ENVIO: { bg: "#cffafe", color: "#155e75" },
+  DESPACHADO: { bg: "#cffafe", color: "#155e75" },
   ENTREGADO: { bg: "#dcfce7", color: "#166534" },
   ANULADO: { bg: "#fee2e2", color: "#991b1b" },
   PAGADO: { bg: "#ccfbf1", color: "#115e59" },

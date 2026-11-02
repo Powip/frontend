@@ -167,7 +167,7 @@ describe("useVentasOrders", () => {
 
   it("TODAS_STATUSES tiene todos los estados menos INCOMPLETE", () => {
     expect([...TODAS_STATUSES].sort()).toEqual([
-      "PREVENTA", "PENDIENTE", "PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO", "ENTREGADO", "ANULADO", "PAGADO",
+      "PREVENTA", "PENDIENTE", "PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO", "DESPACHADO", "ENTREGADO", "ANULADO", "PAGADO",
     ].sort());
   });
 

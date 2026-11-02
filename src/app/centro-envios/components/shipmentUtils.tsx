@@ -44,7 +44,7 @@ export function isReassigned(order: OrderHeader): boolean {
 }
 
 export function isFailedDelivery(order: OrderHeader): boolean {
-  return order.status === "EN_ENVIO" && order.shalomStatus === "DEVUELTO";
+  return ["EN_ENVIO", "DESPACHADO"].includes(order.status) && order.shalomStatus === "DEVUELTO";
 }
 
 export function hasSyncError(order: OrderHeader): boolean {
@@ -64,6 +64,9 @@ export function ShipmentBadge({ order }: { order: OrderHeader }) {
     return <Badge className="bg-green-100 text-green-800">✅ Entregado</Badge>;
   }
   if (order.status === "EN_ENVIO") {
+    return <Badge className="bg-cyan-100 text-cyan-800">En envío · por despachar</Badge>;
+  }
+  if (order.status === "DESPACHADO") {
     if (order.shalomStatus === "DEVUELTO") {
       return <Badge className="bg-red-100 text-red-800">⚠️ Devuelto</Badge>;
     }
