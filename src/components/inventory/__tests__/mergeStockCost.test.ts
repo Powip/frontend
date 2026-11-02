@@ -9,6 +9,7 @@ import {
   totalReserved,
   validateMergeStock,
   type MergeStockSides,
+  type MergeWarehouseRow,
 } from '../mergeStockCost';
 import type { VariantStock } from '@/services/inventoryItems.service';
 
@@ -152,6 +153,108 @@ describe('conteo físico y almacenes (FEAT-24 H1-A)', () => {
     });
   });
 
+  describe('tope de 10.000 por fila (FEAT-24 H1-A, revisión final R1)', () => {
+    const TOPE = 'El resultado supera el máximo de 10,000 unidades por variante y almacén.';
+    const row = (
+      inventoryId: string,
+      winnerQuantity: number,
+      loserQuantity: number,
+    ): MergeWarehouseRow => ({
+      inventoryName: inventoryId,
+      inventoryId,
+      winnerQuantity,
+      winnerReserved: 0,
+      loserQuantity,
+      loserReserved: 0,
+    });
+
+    it('6.000 en A y 6.000 en B de la madre: "winner" y "sum" son válidos aunque el agregado pase de 10.000', () => {
+      const rows = [row('inv-a', 6_000, 2_000), row('inv-b', 6_000, 2_000)];
+      const multi: MergeStockSides = {
+        winnerQuantity: 12_000,
+        winnerReserved: 0,
+        loserQuantity: 4_000,
+        loserReserved: 0,
+        warehouseCount: 2,
+      };
+      expect(validateMergeStock('winner', multi, '', rows)).toEqual({ finalQuantity: 12_000, error: null });
+      expect(validateMergeStock('sum', multi, '', rows)).toEqual({ finalQuantity: 16_000, error: null });
+    });
+
+    it('6.000 + 5.000 en el MISMO almacén sigue siendo error', () => {
+      const rows = [row('inv-a', 6_000, 5_000)];
+      const single: MergeStockSides = {
+        winnerQuantity: 6_000,
+        winnerReserved: 0,
+        loserQuantity: 5_000,
+        loserReserved: 0,
+        warehouseCount: 1,
+      };
+      expect(validateMergeStock('sum', single, '', rows)).toEqual({ finalQuantity: 11_000, error: TOPE });
+      // varios almacenes, pero la suma de UNA fila pasa del tope
+      const multi: MergeStockSides = {
+        winnerQuantity: 6_100,
+        winnerReserved: 0,
+        loserQuantity: 5_000,
+        loserReserved: 0,
+        warehouseCount: 2,
+      };
+      const multiRows = [row('inv-a', 6_000, 5_000), row('inv-b', 100, 0)];
+      expect(validateMergeStock('sum', multi, '', multiRows).error).toBe(TOPE);
+      expect(validateMergeStock('winner', multi, '', multiRows).error).toBeNull();
+    });
+
+    it('una fila de 10.001 con varios almacenes es error', () => {
+      const multi: MergeStockSides = {
+        winnerQuantity: 10_006,
+        winnerReserved: 0,
+        loserQuantity: 0,
+        loserReserved: 0,
+        warehouseCount: 2,
+      };
+      const rows = [row('inv-a', 10_001, 0), row('inv-b', 5, 0)];
+      expect(validateMergeStock('winner', multi, '', rows)).toEqual({ finalQuantity: 10_006, error: TOPE });
+    });
+
+    it('con varios almacenes pero sin filas falla cerrado: usa el agregado', () => {
+      const multi: MergeStockSides = {
+        winnerQuantity: 12_000,
+        winnerReserved: 0,
+        loserQuantity: 0,
+        loserReserved: 0,
+        warehouseCount: 2,
+      };
+      expect(validateMergeStock('winner', multi, '').error).toBe(TOPE);
+      expect(validateMergeStock('winner', multi, '', []).error).toBe(TOPE);
+    });
+
+    it('con un solo almacén se compara el agregado, igual que antes (aunque lleguen filas)', () => {
+      const single: MergeStockSides = {
+        winnerQuantity: 6_000,
+        winnerReserved: 0,
+        loserQuantity: 5_000,
+        loserReserved: 0,
+        warehouseCount: 1,
+      };
+      expect(validateMergeStock('sum', single, '', [row('inv-a', 6_000, 5_000)]).error).toBe(TOPE);
+      expect(validateMergeStock('sum', single, '').error).toBe(TOPE);
+    });
+
+    it('el piso de reservas sigue siendo agregado', () => {
+      const multi: MergeStockSides = {
+        winnerQuantity: 6,
+        winnerReserved: 4,
+        loserQuantity: 0,
+        loserReserved: 4,
+        warehouseCount: 2,
+      };
+      const rows = [row('inv-a', 3, 0), row('inv-b', 3, 0)];
+      expect(validateMergeStock('winner', multi, '', rows).error).toBe(
+        'Hay 8 unidades reservadas en pedidos; la cantidad no puede ser menor',
+      );
+    });
+  });
+
   describe('buildMergeWarehouses', () => {
     it('sin variantes o sin filas de almacén no hay almacenes con stock', () => {
       expect(buildMergeWarehouses(undefined, undefined)).toEqual([]);
@@ -204,6 +307,67 @@ describe('conteo físico y almacenes (FEAT-24 H1-A)', () => {
         ]),
       );
       expect(rows.map((row) => row.inventoryId)).toEqual(['inv-1', 'inv-3', 'inv-4']);
+    });
+
+    // Revisión final R3: ms-logistics toma como candidatas a conteo las filas de
+    // la madre (o las de la otra variante si la madre no tiene) cuando no hay stock.
+    it('sin stock en ningún lado devuelve las filas 0/0 de la madre', () => {
+      const rows = buildMergeWarehouses(
+        makeStock('w', [
+          ['inv-1', 'Lima', 0, 0],
+          ['inv-2', 'Arequipa', 0, 0],
+        ]),
+        makeStock('l', [['inv-3', 'Cusco', 0, 0]]),
+      );
+      expect(rows).toEqual([
+        { inventoryId: 'inv-1', inventoryName: 'Lima', winnerQuantity: 0, winnerReserved: 0, loserQuantity: 0, loserReserved: 0 },
+        { inventoryId: 'inv-2', inventoryName: 'Arequipa', winnerQuantity: 0, winnerReserved: 0, loserQuantity: 0, loserReserved: 0 },
+      ]);
+    });
+
+    it('sin stock y con la madre sin filas devuelve las filas 0/0 de la otra variante', () => {
+      const rows = buildMergeWarehouses(
+        makeStock('w', []),
+        makeStock('l', [
+          ['inv-3', 'Cusco', 0, 0],
+          ['inv-4', 'Piura', 0, 0],
+        ]),
+      );
+      expect(rows.map((row) => row.inventoryId)).toEqual(['inv-3', 'inv-4']);
+      expect(buildMergeWarehouses(undefined, makeStock('l', [['inv-3', 'Cusco', 0, 0]])).map((row) => row.inventoryId)).toEqual(['inv-3']);
+    });
+
+    it('sin stock no duplica un inventory_id repetido en las filas de la madre', () => {
+      const rows = buildMergeWarehouses(
+        makeStock('w', [
+          ['inv-1', 'Lima', 0, 0],
+          ['inv-1', 'Lima', 0, 0],
+        ]),
+        makeStock('l', [['inv-1', 'Lima', 0, 0]]),
+      );
+      expect(rows.map((row) => row.inventoryId)).toEqual(['inv-1']);
+    });
+
+    it('con stock en alguna fila no se agregan las filas 0/0 (regla de siempre)', () => {
+      const rows = buildMergeWarehouses(
+        makeStock('w', [
+          ['inv-1', 'Lima', 5, 0],
+          ['inv-2', 'Arequipa', 0, 0],
+        ]),
+        makeStock('l', []),
+      );
+      expect(rows.map((row) => row.inventoryId)).toEqual(['inv-1']);
+    });
+
+    it('countAllowed sobre las filas 0/0 de varios almacenes de la madre es falso', () => {
+      const rows = buildMergeWarehouses(
+        makeStock('w', [
+          ['inv-1', 'Lima', 0, 0],
+          ['inv-2', 'Arequipa', 0, 0],
+        ]),
+        makeStock('l', []),
+      );
+      expect(countAllowed({ ...sides, warehouseCount: rows.length })).toBe(false);
     });
   });
 });

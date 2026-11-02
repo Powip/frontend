@@ -455,7 +455,7 @@ export function ReconciliationMergeDialog({
     hasFullStock && detailsQuery.isSuccess && (!winnerDetail || !loserDetail);
   const pairDataFailed =
     stockQuery.isError || detailsQuery.isError || pairDetailsMissing;
-  const stockValidation = validateMergeStock(stockMode, pairSides, countedRaw);
+  const stockValidation = validateMergeStock(stockMode, pairSides, countedRaw, warehouseRows);
   const costResolution = resolveMergeCost(costChoice, winnerCost, loserCost, customCostRaw);
   const showShopifyNotice = task.items.some((item) => item.source === "shopify");
   const canApplyPair =

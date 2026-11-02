@@ -71,7 +71,7 @@ function Harness(props: {
       onCostChoiceChange={setCostChoice}
       customCostRaw={customCostRaw}
       onCustomCostRawChange={setCustomCostRaw}
-      stockValidation={validateMergeStock(stockMode, sides, countedRaw)}
+      stockValidation={validateMergeStock(stockMode, sides, countedRaw, props.warehouseRows)}
       cost={resolveMergeCost(costChoice, winnerCost, loserCost, customCostRaw)}
       disabled={false}
     />
@@ -169,6 +169,28 @@ describe('ReconciliationMergeStockCostStep', () => {
       expect(within(arequipa).getByRole('cell', { name: /4 físico · 1 reservado/i })).toBeInTheDocument();
       expect(within(table).getByRole('columnheader', { name: /madre/i })).toBeInTheDocument();
       expect(within(table).getByRole('columnheader', { name: /otra variante/i })).toBeInTheDocument();
+    });
+
+    it('con 6.000 en cada almacén de la madre, "Usar stock de la madre" y "Sumar ambos" no dan error de tope (revisión final R1)', async () => {
+      const user = userEvent.setup();
+      const rows: MergeWarehouseRow[] = [
+        { inventoryId: 'inv-1', inventoryName: 'Almacén Lima', winnerQuantity: 6000, winnerReserved: 0, loserQuantity: 2000, loserReserved: 0 },
+        { inventoryId: 'inv-2', inventoryName: 'Almacén Arequipa', winnerQuantity: 6000, winnerReserved: 0, loserQuantity: 2000, loserReserved: 0 },
+      ];
+      const big: MergeStockSides = {
+        winnerQuantity: 12000,
+        winnerReserved: 0,
+        loserQuantity: 4000,
+        loserReserved: 0,
+        warehouseCount: 2,
+      };
+      render(<Harness sides={big} warehouseRows={rows} />);
+      await user.click(screen.getByRole('radio', { name: /usar stock de la madre/i }));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getByTestId('merge-summary')).toHaveTextContent(/stock 12000 → 12000/i);
+      await user.click(screen.getByRole('radio', { name: /sumar ambos/i }));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getByTestId('merge-summary')).toHaveTextContent(/stock 12000 → 16000/i);
     });
 
     it('con dos almacenes "Sumar ambos" se puede elegir y no da error', async () => {

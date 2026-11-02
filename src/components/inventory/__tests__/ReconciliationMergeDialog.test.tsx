@@ -1007,6 +1007,98 @@ describe('ReconciliationMergeDialog', () => {
       );
     });
 
+    // Revisión final R1: el tope de 10.000 es por variante y almacén, no sobre el agregado.
+    it('con 6.000 en cada uno de dos almacenes se puede aplicar "Sumar ambos" y "Usar stock de la madre"', async () => {
+      mockGetStock.mockResolvedValue([
+        {
+          variant_id: 'variant-a',
+          quantity: 4000,
+          reserved_quantity: 0,
+          available: 4000,
+          inventories: [inv('inv-1', 'Almacén Lima', 2000, 0), inv('inv-2', 'Almacén Arequipa', 2000, 0)],
+        },
+        {
+          variant_id: 'variant-b',
+          quantity: 12000,
+          reserved_quantity: 0,
+          available: 12000,
+          inventories: [inv('inv-1', 'Almacén Lima', 6000, 0), inv('inv-2', 'Almacén Arequipa', 6000, 0)],
+        },
+      ]);
+      renderDialog(makePairTask());
+      await screen.findAllByRole('radio');
+      const user = userEvent.setup();
+      await goToFinalStep(user);
+
+      await user.click(await screen.findByRole('radio', { name: /sumar ambos \(16000\)/i }));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /aplicar unificación/i })).toBeEnabled();
+      await user.click(screen.getByRole('radio', { name: /usar stock de la madre \(12000\)/i }));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /aplicar unificación/i }));
+
+      await waitFor(() =>
+        expect(mockResolveMerge).toHaveBeenCalledWith('task-pair-1', 'variant-b', ['variant-a'], {
+          stockMode: 'winner',
+          priceBase: 30,
+        }),
+      );
+    });
+
+    it('con 6.000 + 5.000 en el MISMO almacén "Sumar ambos" sigue dando error de tope', async () => {
+      mockGetStock.mockResolvedValue([
+        {
+          variant_id: 'variant-a',
+          quantity: 5000,
+          reserved_quantity: 0,
+          available: 5000,
+          inventories: [inv('inv-1', 'Almacén Lima', 5000, 0)],
+        },
+        {
+          variant_id: 'variant-b',
+          quantity: 6000,
+          reserved_quantity: 0,
+          available: 6000,
+          inventories: [inv('inv-1', 'Almacén Lima', 6000, 0)],
+        },
+      ]);
+      renderDialog(makePairTask());
+      await screen.findAllByRole('radio');
+      const user = userEvent.setup();
+      await goToFinalStep(user);
+
+      await user.click(await screen.findByRole('radio', { name: /sumar ambos/i }));
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'El resultado supera el máximo de 10,000 unidades por variante y almacén.',
+      );
+      expect(screen.getByRole('button', { name: /aplicar unificación/i })).toBeDisabled();
+    });
+
+    // Revisión final R3: sin stock en ningún lado, los candidatos son las filas 0/0 de la madre.
+    it('sin stock y con la madre en 0/0 en dos almacenes no ofrece el conteo físico y muestra las dos filas', async () => {
+      mockGetStock.mockResolvedValue([
+        { variant_id: 'variant-a', quantity: 0, reserved_quantity: 0, available: 0, inventories: [] },
+        {
+          variant_id: 'variant-b',
+          quantity: 0,
+          reserved_quantity: 0,
+          available: 0,
+          inventories: [inv('inv-1', 'Almacén Lima', 0, 0), inv('inv-2', 'Almacén Arequipa', 0, 0)],
+        },
+      ]);
+      renderDialog(makePairTask());
+      await screen.findAllByRole('radio');
+      const user = userEvent.setup();
+      await goToFinalStep(user);
+
+      expect(await screen.findByRole('radio', { name: /sumar ambos/i })).toBeInTheDocument();
+      expect(screen.queryByRole('radio', { name: /conteo físico/i })).not.toBeInTheDocument();
+      expect(screen.getByText(MULTI_WAREHOUSE_TEXT)).toBeInTheDocument();
+      const table = screen.getByRole('table', { name: /stock por almacén/i });
+      expect(within(table).getByRole('row', { name: /almacén lima/i })).toBeInTheDocument();
+      expect(within(table).getByRole('row', { name: /almacén arequipa/i })).toBeInTheDocument();
+    });
+
     it('si con "Conteo físico" elegido el stock pasa a estar en dos almacenes, la elección se descarta y no se puede aplicar', async () => {
       mockGetStock.mockResolvedValue(SINGLE_WAREHOUSE_STOCK);
       const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
