@@ -108,6 +108,7 @@ export default function LiveCheckoutDelivery({
           if (!canceled) {
             const payload = (e as { response?: { data?: { code?: string; total?: number } } })
               .response?.data;
+            if (payload?.code === "SHIPPING_NOT_CONFIGURED") setSaved(false);
             if (
               payload?.code === "RECEIPT_DNI_REQUIRED" &&
               typeof payload.total === "number" &&
@@ -152,7 +153,16 @@ export default function LiveCheckoutDelivery({
         window.location.assign(url);
       }
     } catch (e) {
-      if (alive.current) setError(liveError(e));
+      if (alive.current) {
+        if (
+          (e as { response?: { data?: { code?: string } } }).response?.data?.code ===
+          "SHIPPING_NOT_CONFIGURED"
+        ) {
+          setSaved(false);
+          setQuote(null);
+        }
+        setError(liveError(e));
+      }
     } finally {
       lock.current = false;
       if (alive.current) setBusy(false);

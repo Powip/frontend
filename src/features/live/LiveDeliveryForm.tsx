@@ -6,9 +6,21 @@ export const purchaseField =
   "mt-1 min-h-11 w-full rounded-xl border border-white/20 bg-slate-900 p-3 text-sm text-white focus:outline-emerald-300";
 const norm = (s = "") =>
   s
+    .trim()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase();
+function availableAgencies(delivery: LiveDelivery, options: StoreDeliveryOption[]) {
+  return options.filter(
+    (option) =>
+      option.enabled &&
+      option.type === "AGENCY" &&
+      norm(option.department) === norm(delivery.department) &&
+      norm(option.province) === norm(delivery.province) &&
+      (!option.district || norm(option.district) === norm(delivery.district)) &&
+      option.courier === delivery.courier,
+  );
+}
 export function isMetro(d: LiveDelivery) {
   return (
     (norm(d.department) === "LIMA" && norm(d.province) === "LIMA") ||
@@ -56,14 +68,8 @@ export default function LiveDeliveryForm({
   const departments = ubigeo[0].departments;
   const provinces = departments.find((d) => d.name === delivery.department)?.provinces || [];
   const districts = provinces.find((p) => p.name === delivery.province)?.districts || [];
-  const agencies = options.filter(
-    (o) =>
-      o.enabled &&
-      o.type === "AGENCY" &&
-      norm(o.department) === norm(delivery.department) &&
-      norm(o.province) === norm(delivery.province) &&
-      o.courier === delivery.courier,
-  );
+  const agencies = availableAgencies(delivery, options);
+  const selectedAgency = agencies.find((agency) => agency.agencyId === delivery.agencyId);
   const set = (patch: Partial<LiveDelivery>) => onDelivery({ ...delivery, ...patch });
   return (
     <div className="space-y-4">
@@ -125,7 +131,7 @@ export default function LiveDeliveryForm({
           className={purchaseField}
           disabled={!delivery.province}
           value={delivery.district || ""}
-          onChange={(e) => set({ district: e.target.value })}
+          onChange={(e) => set({ district: e.target.value, agencyId: "", agency: "" })}
         >
           <option value="">Elige tu distrito</option>
           {districts.map((d) => (
@@ -227,8 +233,8 @@ export default function LiveDeliveryForm({
             <select
               aria-label="Agencia"
               className={purchaseField}
-              disabled={!delivery.province}
-              value={delivery.agencyId || ""}
+              disabled={!delivery.district}
+              value={selectedAgency?.agencyId || ""}
               onChange={(e) => {
                 const a = agencies.find((a) => a.agencyId === e.target.value);
                 set({ agencyId: a?.agencyId || "", agency: a?.agency || "" });
@@ -242,14 +248,13 @@ export default function LiveDeliveryForm({
               ))}
             </select>
           </label>
-          {agencies.find((a) => a.agencyId === delivery.agencyId) ? (
+          {selectedAgency ? (
             <p className="text-sm text-slate-300">
-              {agencies.find((a) => a.agencyId === delivery.agencyId)?.address} ·{" "}
-              {agencies.find((a) => a.agencyId === delivery.agencyId)?.hours}
+              {selectedAgency.address} · {selectedAgency.hours}
             </p>
-          ) : delivery.province && !agencies.length ? (
+          ) : delivery.district && !agencies.length ? (
             <p className="text-sm text-amber-200">
-              La tienda aún no tiene agencias habilitadas de este courier en esta provincia.
+              La tienda aún no tiene agencias habilitadas de este courier en este distrito.
             </p>
           ) : null}
           <label className="block text-sm">
