@@ -896,6 +896,8 @@ describe('YavendioConfigPage', () => {
       expect(
         screen.getByRole('button', { name: /importar productos desde yavendio/i }),
       ).toBeDisabled();
+      // Español neutro, sin voseo (revisión final R6).
+      expect(screen.getByRole('option', { name: 'Elige un almacén' })).toBeInTheDocument();
     });
 
     it('preselecciona el almacén guardado en la config', async () => {

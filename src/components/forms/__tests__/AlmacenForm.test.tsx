@@ -79,7 +79,8 @@ describe("Formulario de almacén", () => {
     await waitFor(() => expect(onClienteSaved).toHaveBeenCalledTimes(1));
     expect(mockCreate).toHaveBeenCalledTimes(1);
     expect(mockCreate).toHaveBeenCalledWith({ name: "Almacén Central", storeId: "store-b", type: "PROPIO" });
-    expect(refreshInventories).toHaveBeenCalled();
+    // El refresco de inventarios lo hace `GestionAlmacenes` vía `onSaved`, no el formulario.
+    expect(refreshInventories).not.toHaveBeenCalled();
     expect(toast.success).toHaveBeenCalledWith("Almacén creado correctamente");
     // El createInventory de antes usaba axios.post sin token: ya no se usa.
     expect(axios.post).not.toHaveBeenCalled();

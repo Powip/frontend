@@ -153,7 +153,6 @@ export default function YavendioConfigPage() {
 
   // Almacenes de TODAS las tiendas de la empresa para el import (el
   // `inventories` del AuthContext solo trae los de la tienda seleccionada).
-  // Mismo llamado por tienda que `GestionAlmacenes`.
   useEffect(() => {
     if (!credential?.isActive || stores.length === 0) return;
     let cancelled = false;
@@ -667,7 +666,7 @@ export default function YavendioConfigPage() {
                   disabled={importing}
                   className="w-full border border-gray-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
-                  <option value="">Elegí un almacén</option>
+                  <option value="">Elige un almacén</option>
                   {inventoryOptions.map((inventory) => (
                     <option key={inventory.id} value={inventory.id}>
                       {inventory.label}

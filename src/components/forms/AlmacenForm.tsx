@@ -15,7 +15,7 @@ export default function AlmacenForm({ onClienteSaved }: Props) {
   const [name, setName] = useState("");
   const [type, setType] = useState<WarehouseType>("PROPIO");
   const [loading, setLoading] = useState(false);
-  const { auth, selectedStoreId, refreshInventories } = useAuth();
+  const { auth, selectedStoreId } = useAuth();
 
   // El almacén es de la empresa; la tienda seleccionada queda como tienda de origen.
   const stores = auth?.company?.stores ?? [];
@@ -40,8 +40,6 @@ export default function AlmacenForm({ onClienteSaved }: Props) {
     try {
       await createWarehouse({ name: trimmedName, storeId, type });
 
-      // Refrescar inventarios en el contexto global
-      await refreshInventories();
       toast.success("Almacén creado correctamente");
       onClienteSaved();
     } catch (err) {
