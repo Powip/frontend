@@ -40,14 +40,18 @@ Se conserva el protocolo actual de inventario: la mercadería reservada sigue re
 
 ## Publicación
 
-Esta revisión prepara código; no constituye una publicación en producción. Orden requerido: aplicar la migración `OrderDispatched1793649600000` de ms-ventas, desplegar ms-ventas y ms-courier compatibles, y después publicar el frontend. El arranque actual de ms-ventas no ejecuta migraciones automáticamente. No debe publicarse solo el selector del frontend antes de habilitar el estado en backend/base de datos.
+La publicación sigue pendiente de completar y verificar. Orden requerido: aplicar la migración `OrderDispatched1793649600000` de ms-ventas, desplegar ms-ventas y ms-courier compatibles, y después publicar el frontend. No debe publicarse solo el selector del frontend antes de habilitar el estado en backend/base de datos.
+
+- **Ventas:** se agregó un runner específico de esta versión como `preDeployCommand` en `railway.json`: `node dist/scripts/order-dispatched-release.js`. La migración todavía no está aplicada en producción. El hook valida los cuerpos exactos de las funciones afectadas; después de verificar esta publicación debe retirarse o coordinarse con futuras migraciones para que no rechace cambios posteriores legítimos.
+- **Courier:** PR 27 fusionado en el commit `e2192b34`; el despliegue Railway `90a2d0d2` está pendiente de aprobación. La fusión no acredita que el backend nuevo ya esté activo.
+- **Frontend:** PR 270 sigue pendiente de publicar, después de verificar ambos backends. El commit `6b3423f` pasó todos los checks de GitHub; el preview de Vercel se está verificando por separado.
 
 La validación debe cubrir guía aprobada → En envío, salida física → Despachado, entrega con saldo → Entregado/cobro por verificar, entrega directa desde En envío, protección de claves y devolución de unidades serializadas.
 
 ## Evidencia de revisión
 
 - Ventas: 2.800 pruebas unitarias aprobadas, 155 pruebas PostgreSQL/HTTP aprobadas y comprobaciones de tipos/compilación correctas. Incluye la ejecución real de la migración en una base local desechable y las protecciones de devolución. PR borrador: https://github.com/Powip/ms-ventas/pull/172.
-- Courier: 169 pruebas aprobadas, comprobaciones de tipos/compilación correctas y revisión independiente. PR borrador: https://github.com/Powip/ms-courier/pull/27.
-- Frontend: suite requerida por el proyecto aprobada (415 pruebas), regresiones específicas de estados, escáner, guías, privacidad, devoluciones y liquidación, y comprobación de tipos correcta.
+- Courier: 169 pruebas aprobadas, comprobaciones de tipos/compilación correctas y revisión independiente. PR fusionado: https://github.com/Powip/ms-courier/pull/27.
+- Frontend: CI del commit `6b3423f` aprobó 552 suites y 6.085 pruebas en los cuatro shards de regresión. La suite comercial también pasó (415 pruebas; no se suman nuevamente al total de regresión). Incluye estados, escáner, guías, privacidad, devoluciones, liquidación y seguimiento público. Comprobación de tipos y build de producción correctos. PR: https://github.com/Powip/frontend/pull/270.
 
 No se utilizaron pedidos ni pagos reales para las pruebas. La base temporal de PostgreSQL se cerró al terminar la verificación.
