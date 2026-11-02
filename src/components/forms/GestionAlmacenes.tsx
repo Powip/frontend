@@ -5,6 +5,16 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Plus, Home } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -18,8 +28,12 @@ import {
 import AlmacenModal from "../modals/AlmacenModal";
 import { WAREHOUSE_TYPE_OPTIONS, warehouseErrorMessage } from "./warehouseUi";
 
+// `aria-disabled` (mientras guarda) en vez de `disabled`: el selector no pierde el foco.
 const SELECT_CLASS =
-  "h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50";
+  "h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50";
+
+// Cachés de otras pantallas que dependen de los almacenes y del por defecto de cada tienda.
+const RELATED_QUERY_PREFIXES = [["business-inventories"], ["sale-context"], ["inventory-metrics"]];
 
 const LOAD_ERROR = "No se pudieron cargar los almacenes. Inténtalo de nuevo.";
 
@@ -28,8 +42,17 @@ interface WarehouseChange {
   success: string;
 }
 
+// Cambio de almacén por defecto a la espera de confirmación.
+interface PendingDefault {
+  storeId: string;
+  storeName: string;
+  inventoryId: string;
+  warehouseName: string;
+}
+
 const GestionAlmacenes = () => {
   const [openModal, setOpenModal] = useState(false);
+  const [pendingDefault, setPendingDefault] = useState<PendingDefault | null>(null);
   const { auth, refreshInventories } = useAuth();
   const queryClient = useQueryClient();
   const companyId = auth?.company?.id;
@@ -52,9 +75,16 @@ const GestionAlmacenes = () => {
     if (loadFailure) toast.error(warehouseErrorMessage(loadFailure, LOAD_ERROR));
   }, [loadFailure, errorUpdatedAt]);
 
+  const invalidateRelatedCaches = () => {
+    for (const relatedKey of RELATED_QUERY_PREFIXES) {
+      void queryClient.invalidateQueries({ queryKey: relatedKey });
+    }
+  };
+
   const change = useMutation({
     mutationFn: ({ run }: WarehouseChange) => run(),
     onSuccess: async (_data, { success }) => {
+      invalidateRelatedCaches();
       await queryClient.invalidateQueries({ queryKey });
       toast.success(success);
     },
@@ -136,7 +166,7 @@ const GestionAlmacenes = () => {
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    {almacen.is_main && <Badge>Principal</Badge>}
+                    {almacen.is_main && almacen.status && <Badge>Principal</Badge>}
                     {!almacen.status && <Badge variant="outline">Inactivo</Badge>}
                   </div>
                 </div>
@@ -150,8 +180,10 @@ const GestionAlmacenes = () => {
                       aria-label={`Tipo de ${almacen.name}`}
                       className={SELECT_CLASS}
                       value={almacen.type}
-                      disabled={busy || !almacen.status}
+                      disabled={!almacen.status}
+                      aria-disabled={busy || undefined}
                       onChange={(e) => {
+                        if (busy) return;
                         const type = e.target.value as WarehouseType;
                         change.mutate({
                           run: () => setWarehouseType(almacen.id, type),
@@ -170,6 +202,7 @@ const GestionAlmacenes = () => {
                     <Button
                       variant="outline"
                       disabled={busy}
+                      aria-label={`Hacer principal: ${almacen.name}`}
                       onClick={() =>
                         change.mutate({
                           run: () => setMainWarehouse(almacen.id),
@@ -199,8 +232,7 @@ const GestionAlmacenes = () => {
           <div>
             <h3 className="text-lg font-medium">Almacén por defecto de cada tienda</h3>
             <p className="text-sm text-muted-foreground">
-              Las ventas de la tienda salen de este almacén, salvo que se elija otro al
-              confirmar el pedido.
+              Los pedidos que llegan sin almacén (canales e integraciones) salen de este almacén.
             </p>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -218,13 +250,19 @@ const GestionAlmacenes = () => {
                     aria-label={`Almacén por defecto de ${store.name}`}
                     className={SELECT_CLASS}
                     value={current}
-                    disabled={busy}
+                    aria-disabled={busy || undefined}
                     onChange={(e) => {
-                      // Se lee ya: el select controlado vuelve a su valor antes de que corra la mutación.
+                      // Un teclado cambia el valor con solo una flecha: se confirma antes de guardar.
+                      // El select controlado vuelve al valor actual hasta que se confirme.
+                      if (busy) return;
                       const inventoryId = e.target.value;
-                      change.mutate({
-                        run: () => setStoreDefaultWarehouse(store.id, inventoryId),
-                        success: "Almacén por defecto actualizado",
+                      const target = warehouses.find((w) => w.id === inventoryId);
+                      if (!target || inventoryId === current) return;
+                      setPendingDefault({
+                        storeId: store.id,
+                        storeName: store.name,
+                        inventoryId,
+                        warehouseName: target.name,
                       });
                     }}
                   >
@@ -246,11 +284,45 @@ const GestionAlmacenes = () => {
         </div>
       )}
 
+      <AlertDialog
+        open={pendingDefault !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDefault(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cambiar el almacén por defecto</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDefault
+                ? `${pendingDefault.storeName} usará ${pendingDefault.warehouseName} como almacén por defecto. Los pedidos que lleguen sin almacén (canales e integraciones) saldrán de ahí.`
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (!pendingDefault || busy) return;
+                const { storeId, inventoryId } = pendingDefault;
+                change.mutate({
+                  run: () => setStoreDefaultWarehouse(storeId, inventoryId),
+                  success: "Almacén por defecto actualizado",
+                });
+              }}
+            >
+              Cambiar almacén
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <AlmacenModal
         open={openModal}
         onClose={() => setOpenModal(false)}
         onSaved={() => {
           setOpenModal(false);
+          invalidateRelatedCaches();
           void queryClient.invalidateQueries({ queryKey });
           void refreshInventories(); // Sincronizar estado global
         }}

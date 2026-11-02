@@ -9,12 +9,16 @@
  * 4. "Hacer principal" llama a `setMainWarehouse`, refresca y la insignia se
  *    mueve; el principal actual no ofrece la acción.
  * 5. Cada tienda tiene su selector "Almacén por defecto" (valor actual desde los
- *    vínculos) y elegir otro llama a `setStoreDefaultWarehouse`.
+ *    vínculos) y elegir otro pide confirmación antes de llamar a
+ *    `setStoreDefaultWarehouse`.
  * 6. Un error 403/503 muestra el mensaje del backend en un toast (cambio y
  *    carga de la lista); tras un cambio fallido el valor vuelve al anterior.
  * 7. No existe el botón "Eliminar" (el DELETE no existe) y el componente no
  *    usa `axios` suelto.
  * 8. "Nuevo Almacén" crea con `createWarehouse` y refresca lista e inventarios.
+ * 9. (Revisión final) Los cambios invalidan también las cachés que dependen de
+ *    los almacenes; mientras guarda, los selectores usan `aria-disabled`; el
+ *    inactivo no muestra "Principal"; los botones llevan el nombre del almacén.
  *
  * Mocks: AuthContext, sonner, `@/services/warehousesService` (sin red) y
  * `axios` (para comprobar que el componente no lo usa).
@@ -96,11 +100,19 @@ const card = (name: string) => {
 
 const renderScreen = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(
+  const invalidate = jest.spyOn(client, "invalidateQueries");
+  const view = render(
     <QueryClientProvider client={client}>
       <GestionAlmacenes />
     </QueryClientProvider>,
   );
+  return { ...view, invalidate };
+};
+
+// Elegir otro almacén por defecto pide confirmación: este helper la acepta.
+const confirmDefaultChange = async (user: ReturnType<typeof userEvent.setup>) => {
+  const dialog = await screen.findByRole("alertdialog");
+  await user.click(within(dialog).getByRole("button", { name: "Cambiar almacén" }));
 };
 
 beforeEach(() => {
@@ -170,7 +182,7 @@ describe("Almacenes de la empresa", () => {
     const viejo = within(card("Almacén Viejo"));
     expect(viejo.getByText("Inactivo")).toBeInTheDocument();
     expect(viejo.getByLabelText("Tipo de Almacén Viejo")).toBeDisabled();
-    expect(viejo.queryByRole("button", { name: "Hacer principal" })).not.toBeInTheDocument();
+    expect(viejo.queryByRole("button", { name: /^Hacer principal/ })).not.toBeInTheDocument();
   });
 
   it("cambiar el tipo llama a setWarehouseType y vuelve a pedir la lista", async () => {
@@ -201,17 +213,17 @@ describe("Almacenes de la empresa", () => {
     await waitForList();
 
     // El principal actual no ofrece la acción; los demás sí.
-    expect(within(card("Almacén Central")).queryByRole("button", { name: "Hacer principal" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Hacer principal" })).toHaveLength(2);
+    expect(within(card("Almacén Central")).queryByRole("button", { name: /^Hacer principal/ })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Hacer principal/ })).toHaveLength(2);
 
-    await user.click(within(card("Almacén Sur")).getByRole("button", { name: "Hacer principal" }));
+    await user.click(within(card("Almacén Sur")).getByRole("button", { name: "Hacer principal: Almacén Sur" }));
 
     expect(mockSetMain).toHaveBeenCalledTimes(1);
     expect(mockSetMain).toHaveBeenCalledWith("w-sur");
     await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(within(card("Almacén Sur")).getByText("Principal")).toBeInTheDocument());
     expect(within(card("Almacén Central")).queryByText("Principal")).not.toBeInTheDocument();
-    expect(within(card("Almacén Central")).getByRole("button", { name: "Hacer principal" })).toBeInTheDocument();
+    expect(within(card("Almacén Central")).getByRole("button", { name: "Hacer principal: Almacén Central" })).toBeInTheDocument();
     expect(screen.getAllByText("Principal")).toHaveLength(1);
     expect(toast.success).toHaveBeenCalledWith("Almacén principal actualizado");
   });
@@ -241,6 +253,7 @@ describe("Almacenes de la empresa", () => {
     ]);
 
     await user.selectOptions(storeB, "w-shalom");
+    await confirmDefaultChange(user);
 
     expect(mockSetDefault).toHaveBeenCalledTimes(1);
     expect(mockSetDefault).toHaveBeenCalledWith(STORE_B, "w-shalom");
@@ -283,10 +296,11 @@ describe("Almacenes de la empresa", () => {
     renderScreen();
     await waitForList();
 
-    await user.click(within(card("Almacén Sur")).getByRole("button", { name: "Hacer principal" }));
+    await user.click(within(card("Almacén Sur")).getByRole("button", { name: "Hacer principal: Almacén Sur" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Solo se puede marcar un almacén activo"));
 
     await user.selectOptions(screen.getByLabelText("Almacén por defecto de Aranni"), "w-shalom");
+    await confirmDefaultChange(user);
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Servicio no disponible. Inténtalo de nuevo"));
     expect(screen.getByLabelText("Almacén por defecto de Aranni")).toHaveDisplayValue("Almacén Sur");
   });
@@ -331,5 +345,153 @@ describe("Almacenes de la empresa", () => {
     await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
     expect(refreshInventories).toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByLabelText("Nombre del almacén")).not.toBeInTheDocument());
+  });
+});
+
+describe("Revisión final de la pantalla de almacenes (FEAT-24 H1-A)", () => {
+  const RELATED_PREFIXES = [["business-inventories"], ["sale-context"], ["inventory-metrics"]];
+
+  it("tras cambiar el tipo se invalidan también las cachés que dependen de los almacenes", async () => {
+    const user = userEvent.setup();
+    const { invalidate } = renderScreen();
+    await waitForList();
+
+    await user.selectOptions(within(card("Almacén Sur")).getByLabelText("Tipo de Almacén Sur"), "COURIER");
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Tipo actualizado"));
+
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["company-warehouses", COMPANY] });
+    for (const queryKey of RELATED_PREFIXES) expect(invalidate).toHaveBeenCalledWith({ queryKey });
+  });
+
+  it("tras cambiar el por defecto de una tienda se invalidan esas cachés", async () => {
+    const user = userEvent.setup();
+    const { invalidate } = renderScreen();
+    await waitForList();
+
+    await user.selectOptions(screen.getByLabelText("Almacén por defecto de Aranni"), "w-shalom");
+    await confirmDefaultChange(user);
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Almacén por defecto actualizado"));
+
+    for (const queryKey of RELATED_PREFIXES) expect(invalidate).toHaveBeenCalledWith({ queryKey });
+  });
+
+  it("tras crear un almacén se invalidan esas cachés", async () => {
+    const user = userEvent.setup();
+    const { invalidate } = renderScreen();
+    await waitForList();
+
+    await user.click(screen.getByRole("button", { name: /Nuevo Almacén/ }));
+    await user.type(await screen.findByLabelText("Nombre del almacén"), "Almacén Nuevo");
+    await user.click(screen.getByRole("button", { name: "Crear Almacén" }));
+    await waitFor(() => expect(mockList).toHaveBeenCalledTimes(2));
+
+    for (const queryKey of RELATED_PREFIXES) expect(invalidate).toHaveBeenCalledWith({ queryKey });
+  });
+
+  it("elegir otro almacén por defecto pide confirmación y no guarda hasta aceptar", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await waitForList();
+
+    const storeB = screen.getByLabelText("Almacén por defecto de Aranni");
+    await user.selectOptions(storeB, "w-shalom");
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText(/Aranni/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Shalom/)).toBeInTheDocument();
+    expect(mockSetDefault).not.toHaveBeenCalled();
+    // El selector controlado no cambia de valor mientras no se confirme.
+    expect(storeB).toHaveDisplayValue("Almacén Sur");
+
+    await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(mockSetDefault).not.toHaveBeenCalled();
+    expect(storeB).toHaveDisplayValue("Almacén Sur");
+
+    await user.selectOptions(storeB, "w-shalom");
+    await confirmDefaultChange(user);
+    await waitFor(() => expect(mockSetDefault).toHaveBeenCalledTimes(1));
+    expect(mockSetDefault).toHaveBeenCalledWith(STORE_B, "w-shalom");
+  });
+
+  it("mientras guarda, los selectores usan aria-disabled (no disabled) y no aceptan otro cambio", async () => {
+    const user = userEvent.setup();
+    let resolveType: () => void = () => {};
+    mockSetType.mockReturnValue(new Promise<void>((resolve) => (resolveType = resolve)));
+    renderScreen();
+    await waitForList();
+
+    const sur = within(card("Almacén Sur")).getByLabelText("Tipo de Almacén Sur");
+    await user.selectOptions(sur, "COURIER");
+
+    await waitFor(() => expect(sur).toHaveAttribute("aria-disabled", "true"));
+    expect(sur).not.toBeDisabled();
+    const storeB = screen.getByLabelText("Almacén por defecto de Aranni");
+    expect(storeB).toHaveAttribute("aria-disabled", "true");
+    expect(storeB).not.toBeDisabled();
+
+    // Otro cambio durante el guardado se ignora en el handler.
+    await user.selectOptions(within(card("Shalom")).getByLabelText("Tipo de Shalom"), "TIENDA");
+    await user.selectOptions(storeB, "w-shalom");
+    expect(mockSetType).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(mockSetDefault).not.toHaveBeenCalled();
+
+    resolveType();
+    await waitFor(() => expect(sur).not.toHaveAttribute("aria-disabled"));
+  });
+
+  it('"Hacer principal" nombra el almacén para los lectores de pantalla', async () => {
+    renderScreen();
+    await waitForList();
+
+    expect(screen.getByRole("button", { name: "Hacer principal: Almacén Sur" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hacer principal: Shalom" })).toBeInTheDocument();
+  });
+
+  it("un almacén inactivo con is_main heredado no muestra la insignia Principal", async () => {
+    const heredado = warehouse({ id: "w-viejo", name: "Almacén Viejo", status: false, is_main: true });
+    mockList.mockResolvedValue(payload({ warehouses: [CENTRAL, SUR, heredado] }));
+    renderScreen();
+    await waitForList();
+
+    expect(within(card("Almacén Viejo")).queryByText("Principal")).not.toBeInTheDocument();
+    expect(within(card("Almacén Viejo")).getByText("Inactivo")).toBeInTheDocument();
+    expect(screen.getAllByText("Principal")).toHaveLength(1);
+  });
+
+  it("un almacén inactivo no se ofrece como por defecto, salvo el actual, que se rotula (inactivo)", async () => {
+    const viejo = warehouse({ id: "w-viejo", name: "Almacén Viejo", status: false });
+    mockList.mockResolvedValue(
+      payload({
+        warehouses: [CENTRAL, SUR, viejo],
+        links: [
+          { store_id: STORE_A, inventory_id: CENTRAL.id, is_default: true },
+          { store_id: STORE_B, inventory_id: viejo.id, is_default: true },
+        ],
+      }),
+    );
+    renderScreen();
+    await waitForList();
+
+    const optionsA = within(screen.getByLabelText("Almacén por defecto de LIVII")).getAllByRole("option");
+    expect(optionsA.map((o) => o.textContent)).toEqual(["Almacén Central", "Almacén Sur"]);
+    const storeB = screen.getByLabelText("Almacén por defecto de Aranni");
+    expect(storeB).toHaveDisplayValue("Almacén Viejo (inactivo)");
+    expect(within(storeB).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Almacén Central",
+      "Almacén Sur",
+      "Almacén Viejo (inactivo)",
+    ]);
+  });
+
+  it("el texto del por defecto no promete ventas manuales, solo pedidos sin almacén", async () => {
+    renderScreen();
+    await waitForList();
+
+    expect(
+      screen.getByText("Los pedidos que llegan sin almacén (canales e integraciones) salen de este almacén."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Las ventas de la tienda salen de este almacén/)).not.toBeInTheDocument();
   });
 });
