@@ -24,6 +24,14 @@ export const googleSheetsApi = {
   getAuthUrl: async (): Promise<AuthUrlResponse> =>
     (await axiosAuth.get<AuthUrlResponse>(`${BASE}/auth-url`)).data,
 
+  /**
+   * Confirma la vinculación de la cuenta de Google con la sesión (I3). Recibe lo que Google
+   * devolvió al callback; el backend rechaza (403) si el enlace lo inició otra sesión.
+   */
+  connect: async (code: string, state: string): Promise<void> => {
+    await axiosAuth.post(`${BASE}/connect`, { code, state });
+  },
+
   /** Token corto de Google para el Picker. */
   getAccessToken: async (): Promise<string> =>
     (await axiosAuth.get<{ accessToken: string }>(`${BASE}/access-token`)).data.accessToken,

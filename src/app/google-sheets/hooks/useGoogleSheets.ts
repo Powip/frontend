@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { googleSheetsApi } from '../services/googleSheetsApi';
 import type {
   GoogleConfigView,
@@ -29,6 +29,37 @@ function toMessage(error: unknown): string {
     return message;
   }
   return GENERIC_ERROR;
+}
+
+interface OAuthReturn {
+  status: string | null;
+  message: string | null;
+  /** Resuelve con el mensaje de error si el servidor rechazó la vinculación, o null si salió bien o no había nada que confirmar. */
+  confirmation: Promise<string | null>;
+}
+
+/**
+ * Lee el retorno del OAuth y deja la URL limpia. El `code` y el `state` llegan en el fragmento
+ * (#): se sacan de la URL de inmediato y se confirman con el backend, que exige que el usuario
+ * de la sesión sea el que inició la conexión.
+ */
+function readOAuthReturn(): OAuthReturn {
+  const search = new URLSearchParams(window.location.search);
+  const status = search.get('status');
+  const message = search.get('message');
+  if (status) window.history.replaceState({}, '', window.location.pathname);
+
+  const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const code = fragment.get('code');
+  const state = fragment.get('state');
+  if (!code || !state) return { status, message, confirmation: Promise.resolve(null) };
+
+  window.history.replaceState({}, '', window.location.pathname + window.location.search);
+  const confirmation = googleSheetsApi
+    .connect(code, state)
+    .then(() => null)
+    .catch((e: unknown) => toMessage(e));
+  return { status, message, confirmation };
 }
 
 /** Paso de pantalla derivado del estado del servidor. */
@@ -78,18 +109,26 @@ export const useGoogleSheets = () => {
     }
   }, []);
 
-  // Carga inicial y retorno del callback OAuth (?status=success|error).
+  /**
+   * Lo que trae la URL al volver de Google, leído una sola vez. Se guarda en un ref porque
+   * React StrictMode (dev) corre el efecto dos veces y la URL ya está limpia en la segunda.
+   */
+  const oauthReturn = useRef<OAuthReturn | null>(null);
+
+  // Carga inicial y retorno del callback OAuth: ?status=error del backend, o #code&state
+  // de Google para confirmar la vinculación con la sesión del usuario (I3).
   useEffect(() => {
     let cancelled = false;
-    const params = new URLSearchParams(window.location.search);
-    const status = params.get('status');
-    const message = params.get('message');
-    if (status) window.history.replaceState({}, '', window.location.pathname);
+    if (!oauthReturn.current) oauthReturn.current = readOAuthReturn();
+    const { status, message, confirmation } = oauthReturn.current;
 
     (async () => {
+      // Antes de consultar la config: así la cuenta ya aparece conectada.
+      const confirmError = await confirmation;
       await refresh();
       if (cancelled) return;
-      if (status === 'error') setError(message || OAUTH_ERROR);
+      if (confirmError) setError(confirmError);
+      else if (status === 'error') setError(message || OAUTH_ERROR);
       setLoading(false);
     })();
     return () => {

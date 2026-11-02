@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useGoogleSheets } from '../useGoogleSheets';
 import { googleSheetsApi } from '../../services/googleSheetsApi';
@@ -7,6 +8,7 @@ jest.mock('../../services/googleSheetsApi', () => ({
   googleSheetsApi: {
     getConfig: jest.fn(),
     getAuthUrl: jest.fn(),
+    connect: jest.fn(),
     getAccessToken: jest.fn(),
     saveSheet: jest.fn(),
     getTabs: jest.fn(),
@@ -96,6 +98,86 @@ describe('useGoogleSheets', () => {
     const { result } = await setup();
     expect(result.current.error).toBe('Acceso denegado');
     expect(result.current.step).toBe('CONNECT_ACCOUNT');
+  });
+
+  describe('retorno de Google: confirma la vinculación con la sesión (I3)', () => {
+    const FRAGMENT = '#code=4%2Fabc&state=payload.firma';
+
+    it('lee code y state del fragmento, los saca de la URL y confirma con connect', async () => {
+      window.history.replaceState({}, '', `/google-sheets${FRAGMENT}`);
+      api.connect.mockResolvedValue();
+      api.getConfig.mockResolvedValue(baseConfig);
+      const { result } = await setup();
+      expect(api.connect).toHaveBeenCalledTimes(1);
+      expect(api.connect).toHaveBeenCalledWith('4/abc', 'payload.firma');
+      expect(window.location.hash).toBe('');
+      expect(result.current.error).toBeNull();
+      expect(result.current.step).toBe('SELECT_FILE');
+    });
+
+    it('confirma ANTES de consultar la config, para que ya aparezca conectada', async () => {
+      window.history.replaceState({}, '', `/google-sheets${FRAGMENT}`);
+      api.connect.mockResolvedValue();
+      api.getConfig.mockResolvedValue(baseConfig);
+      await setup();
+      expect(api.connect.mock.invocationCallOrder[0]).toBeLessThan(
+        api.getConfig.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('si el servidor rechaza la confirmación (403) muestra su mensaje y no deja el code en la URL', async () => {
+      window.history.replaceState({}, '', `/google-sheets${FRAGMENT}`);
+      api.connect.mockRejectedValue({
+        response: { data: { message: 'Este enlace fue iniciado desde otra sesión.' } },
+      });
+      api.getConfig.mockResolvedValue({ ...baseConfig, connected: false });
+      const { result } = await setup();
+      expect(result.current.error).toBe('Este enlace fue iniciado desde otra sesión.');
+      expect(result.current.step).toBe('CONNECT_ACCOUNT');
+      expect(window.location.hash).toBe('');
+    });
+
+    it('si falla sin mensaje usa el texto genérico', async () => {
+      window.history.replaceState({}, '', `/google-sheets${FRAGMENT}`);
+      api.connect.mockRejectedValue(new Error('network'));
+      api.getConfig.mockResolvedValue({ ...baseConfig, connected: false });
+      const { result } = await setup();
+      expect(result.current.error).toMatch(/algo salió mal/i);
+    });
+
+    it('sin fragmento no llama a connect', async () => {
+      api.getConfig.mockResolvedValue(baseConfig);
+      await setup();
+      expect(api.connect).not.toHaveBeenCalled();
+    });
+
+    it('un fragmento ajeno (sin code y state) no llama a connect y no se toca', async () => {
+      window.history.replaceState({}, '', '/google-sheets#otra-seccion');
+      api.getConfig.mockResolvedValue(baseConfig);
+      await setup();
+      expect(api.connect).not.toHaveBeenCalled();
+      expect(window.location.hash).toBe('#otra-seccion');
+    });
+
+    it('en StrictMode (el efecto corre dos veces) confirma una sola vez y muestra el resultado', async () => {
+      window.history.replaceState({}, '', `/google-sheets${FRAGMENT}`);
+      api.connect.mockResolvedValue();
+      api.getConfig.mockResolvedValue(baseConfig);
+      const hook = renderHook(() => useGoogleSheets(), { wrapper: StrictMode });
+      await waitFor(() => expect(hook.result.current.loading).toBe(false));
+      expect(api.connect).toHaveBeenCalledTimes(1);
+      expect(hook.result.current.step).toBe('SELECT_FILE');
+      expect(hook.result.current.error).toBeNull();
+    });
+
+    it('en StrictMode el rechazo también llega a la pantalla', async () => {
+      window.history.replaceState({}, '', `/google-sheets${FRAGMENT}`);
+      api.connect.mockRejectedValue({ response: { data: { message: 'Enlace de otra sesión.' } } });
+      api.getConfig.mockResolvedValue({ ...baseConfig, connected: false });
+      const hook = renderHook(() => useGoogleSheets(), { wrapper: StrictMode });
+      await waitFor(() => expect(hook.result.current.loading).toBe(false));
+      expect(hook.result.current.error).toBe('Enlace de otra sesión.');
+    });
   });
 
   it('selectFile guarda y pasa a CONFIGURE', async () => {

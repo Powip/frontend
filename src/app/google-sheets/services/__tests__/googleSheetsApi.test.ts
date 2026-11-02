@@ -36,6 +36,15 @@ describe('googleSheetsApi', () => {
     expect(mocked.post).toHaveBeenCalledTimes(7);
   });
 
+  it('connect confirma la vinculación mandando code y state con la sesión (I3)', async () => {
+    await googleSheetsApi.connect('4/abc', 'payload.firma');
+    expect(mocked.post).toHaveBeenCalledTimes(1);
+    expect(mocked.post).toHaveBeenCalledWith(
+      expect.stringMatching(/\/integrations\/google\/connect$/),
+      { code: '4/abc', state: 'payload.firma' },
+    );
+  });
+
   it('ninguna llamada manda companyId', async () => {
     await callAll();
     const calls = [...mocked.get.mock.calls, ...mocked.post.mock.calls];
