@@ -161,10 +161,14 @@ export default function EmpresaPage() {
                 <Textarea
                   id="description"
                   value={company.description ?? ""}
+                  maxLength={1000}
                   onChange={(e) =>
                     setCompany({ ...company, description: e.target.value })
                   }
                 />
+                <p className="text-right text-xs text-muted-foreground">
+                  {(company.description ?? "").length}/1000
+                </p>
               </div>
 
               <div className="space-y-2">
