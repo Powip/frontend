@@ -26,7 +26,6 @@ export const EMPTY_DIMENSION_FILTERS: PanelDimensionFilters = {
   entrada: null,
   cobro: null,
   zona: null,
-  turno: null,
   asesorId: null,
 };
 

@@ -77,7 +77,6 @@ const FILTROS: [string, Partial<PanelQuery>][] = [
   ["cobro prepago", { cobro: "pre" }],
   ["asesora", { asesor: "a2" }],
   ["sin asesora", { asesor: "sin_asesor" }],
-  ["turno express", { turno: "express" }],
 ];
 
 describe("Resumen demo · cuadres", () => {

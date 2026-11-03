@@ -4,12 +4,7 @@ import {
   type PanelCatalogo,
   type RolAsesor,
 } from "../../models/panel-catalog.model";
-import type {
-  CobroCanal,
-  EntradaCanal,
-  TurnoPanel,
-  ZonaPanel,
-} from "../../models/panel-filters.model";
+import type { CobroCanal, EntradaCanal, ZonaPanel } from "../../models/panel-filters.model";
 import { addDays, dayKeyToUtcMidnight, toLimaDayKey } from "../../utils/lima-time";
 import { createRandom, hashSeed, type RandomFn, randomInt } from "./seeded-random";
 
@@ -19,6 +14,9 @@ const OFFSET_LIMA = 5 * HORA;
 export const DIAS_UNIVERSO_DEMO = 400;
 export const SIN_MOTIVO = "Sin motivo";
 export const COURIER_SIN_PLAZO = "Courier demo C";
+
+/** Atributo sintético del pedido demo (define cuándo despacha); no es un filtro del panel. */
+export type TurnoDemo = "express" | "general";
 
 export type EstadoOperativo =
   | "pendiente"
@@ -109,7 +107,7 @@ export interface PedidoDemo {
   cobro: CobroCanal;
   usaCourier: boolean;
   zona: ZonaPanel;
-  turno: TurnoPanel | null;
+  turno: TurnoDemo | null;
   departamento: string;
   asesorId: string | null;
   asesorNombre: string | null;
@@ -714,7 +712,7 @@ function generarUniverso(catalogo: PanelCatalogo, hoy: string, now: number): Uni
       let rechazo = false;
       let motivoRechazo: string | null = null;
       let fleteBase = 0;
-      let turno: TurnoPanel | null = null;
+      let turno: TurnoDemo | null = null;
       let primerIntento: boolean | null = false;
 
       if (tConf !== null) {

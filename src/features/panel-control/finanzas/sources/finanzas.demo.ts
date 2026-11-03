@@ -52,14 +52,7 @@ const suma = (items: PedidoConEstado[]) =>
   items.reduce((total, { pedido }) => total + pedido.neto, 0);
 
 export function filtrosSinGastosFijos(query: PanelQuery): boolean {
-  return !!(
-    query.canal ||
-    query.entrada ||
-    query.cobro ||
-    query.zona ||
-    query.turno ||
-    query.asesor
-  );
+  return !!(query.canal || query.entrada || query.cobro || query.zona || query.asesor);
 }
 
 export function gastosFijosMensualesDemo(
@@ -249,7 +242,7 @@ function construirCaja(
       : { concepto, ...acumular(concepto, entroPorDia) },
   );
 
-  const noSeparable = !!(query.zona || query.turno || query.asesor);
+  const noSeparable = !!(query.zona || query.asesor);
   const mensual = gastosFijosMensualesDemo(context, query);
   const salidas: CajaMovimiento<ConceptoEgresoCaja>[] = CONCEPTOS_EGRESO_CAJA.map((concepto) => {
     if (concepto === "publicidad") {

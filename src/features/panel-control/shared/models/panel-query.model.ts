@@ -1,4 +1,4 @@
-import type { CobroCanal, EntradaCanal, TurnoPanel, ZonaPanel } from "./panel-filters.model";
+import type { CobroCanal, EntradaCanal, ZonaPanel } from "./panel-filters.model";
 import type { PanelRole } from "./panel-role.model";
 
 export interface PanelQuery {
@@ -12,7 +12,6 @@ export interface PanelQuery {
   entrada?: EntradaCanal;
   cobro?: CobroCanal;
   zona?: ZonaPanel;
-  turno?: TurnoPanel;
   asesor?: string;
   ver_como?: PanelRole;
 }

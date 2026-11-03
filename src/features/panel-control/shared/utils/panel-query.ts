@@ -20,7 +20,6 @@ export function buildPanelQuery(
   if (filters.entrada) query.entrada = filters.entrada;
   if (filters.cobro) query.cobro = filters.cobro;
   if (filters.zona) query.zona = filters.zona;
-  if (filters.turno) query.turno = filters.turno;
   if (filters.asesorId) query.asesor = filters.asesorId;
   if (verComo) query.ver_como = verComo;
   return query;

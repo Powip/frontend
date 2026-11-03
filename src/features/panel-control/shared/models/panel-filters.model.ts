@@ -18,9 +18,6 @@ export type CobroCanal = (typeof COBROS_CANAL)[number];
 export const ZONAS_PANEL = ["lima", "provincia"] as const;
 export type ZonaPanel = (typeof ZONAS_PANEL)[number];
 
-export const TURNOS_PANEL = ["express", "general"] as const;
-export type TurnoPanel = (typeof TURNOS_PANEL)[number];
-
 export const SIN_ASESOR = "sin_asesor";
 
 export interface PanelDimensionFilters {
@@ -29,7 +26,6 @@ export interface PanelDimensionFilters {
   entrada: EntradaCanal | null;
   cobro: CobroCanal | null;
   zona: ZonaPanel | null;
-  turno: TurnoPanel | null;
   asesorId: string | null;
 }
 

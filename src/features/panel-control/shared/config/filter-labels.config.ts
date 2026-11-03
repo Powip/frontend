@@ -3,7 +3,6 @@ import type {
   DimensionFilterKey,
   EntradaCanal,
   PeriodPreset,
-  TurnoPanel,
   ZonaPanel,
 } from "../models/panel-filters.model";
 
@@ -40,17 +39,11 @@ export const ZONA_LABEL: Record<ZonaPanel, string> = {
   provincia: "Provincia",
 };
 
-export const TURNO_LABEL: Record<TurnoPanel, string> = {
-  express: "Express",
-  general: "General",
-};
-
 export const FILTER_KEY_LABEL: Record<DimensionFilterKey, string> = {
   tiendaId: "Tienda",
   canalId: "Canal",
   entrada: "Entrada",
   cobro: "Cobro",
   zona: "Zona",
-  turno: "Turno",
   asesorId: "Asesor(a)",
 };

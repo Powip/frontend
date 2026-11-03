@@ -12,12 +12,15 @@ import { resumenDemoSource } from "../../resumen/sources/resumen.demo";
 import {
   COBRO_LABEL,
   ENTRADA_CHIP_LABEL,
-  TURNO_LABEL,
   ZONA_LABEL,
 } from "../../shared/config/filter-labels.config";
 import { METAS_ESPECIFICACION } from "../../shared/config/panel-goals.defaults";
 import { mapaProductos, pedidosEnRango } from "../../shared/data/demo/demo-consultas";
-import { costoPedido, obtenerUniversoDemo } from "../../shared/data/demo/demo-universe";
+import {
+  costoPedido,
+  obtenerUniversoDemo,
+  type TurnoDemo,
+} from "../../shared/data/demo/demo-universe";
 import { autorizarContrato } from "../../shared/data/panel-autorizacion";
 import type { PanelSource, PanelSourceContext } from "../../shared/data/panel-source";
 import type { PanelQuery } from "../../shared/models/panel-query.model";
@@ -32,6 +35,8 @@ import type {
   HojaLibroCompleto,
 } from "../models/exportacion.model";
 import { buildLibroWorkbook, libroFileName, workbookBlob } from "../services/export-table.service";
+
+const TURNO_DEMO_LABEL: Record<TurnoDemo, string> = { express: "Express", general: "General" };
 
 const division = (a: number, b: number): number | null => (b > 0 ? a / b : null);
 
@@ -59,7 +64,6 @@ export function describirFiltros(query: PanelQuery, context: PanelSourceContext)
   if (query.entrada) partes.push(`Entrada: ${ENTRADA_CHIP_LABEL[query.entrada]}`);
   if (query.cobro) partes.push(`Cobro: ${COBRO_LABEL[query.cobro]}`);
   if (query.zona) partes.push(`Zona: ${ZONA_LABEL[query.zona]}`);
-  if (query.turno) partes.push(`Turno: ${TURNO_LABEL[query.turno]}`);
   if (query.asesor) {
     partes.push(
       `Asesor(a): ${catalogo.asesores.find((asesor) => asesor.id === query.asesor)?.nombre ?? query.asesor}`,
@@ -201,7 +205,7 @@ export async function construirHojasLibro(
       pedido.clienteNombre,
       pedido.departamento,
       ZONA_LABEL[pedido.zona],
-      pedido.turno ? TURNO_LABEL[pedido.turno] : null,
+      pedido.turno ? TURNO_DEMO_LABEL[pedido.turno] : null,
       pedido.asesorNombre,
       estado.estado,
       estado.cobro,

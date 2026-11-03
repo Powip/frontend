@@ -2,7 +2,6 @@ import {
   COBRO_LABEL,
   ENTRADA_CHIP_LABEL,
   FILTER_KEY_LABEL,
-  TURNO_LABEL,
   ZONA_LABEL,
 } from "../config/filter-labels.config";
 import {
@@ -12,7 +11,6 @@ import {
   type EntradaCanal,
   type PanelDimensionFilters,
   SIN_ASESOR,
-  type TurnoPanel,
   type ZonaPanel,
 } from "../models/panel-filters.model";
 
@@ -28,7 +26,6 @@ const CHIP_ORDER: DimensionFilterKey[] = [
   "entrada",
   "cobro",
   "zona",
-  "turno",
   "asesorId",
 ];
 
@@ -46,8 +43,6 @@ function valueLabel(key: DimensionFilterKey, value: string, resolvers: ChipLabel
       return COBRO_LABEL[value as CobroCanal] ?? value;
     case "zona":
       return ZONA_LABEL[value as ZonaPanel] ?? value;
-    case "turno":
-      return TURNO_LABEL[value as TurnoPanel] ?? value;
     default:
       return value;
   }
@@ -66,10 +61,4 @@ export function getActiveFilterChips(
   }));
 }
 
-export const MORE_FILTER_KEYS: DimensionFilterKey[] = [
-  "entrada",
-  "cobro",
-  "zona",
-  "turno",
-  "asesorId",
-];
+export const MORE_FILTER_KEYS: DimensionFilterKey[] = ["entrada", "cobro", "zona", "asesorId"];

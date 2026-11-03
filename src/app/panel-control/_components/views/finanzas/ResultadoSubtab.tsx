@@ -91,7 +91,7 @@ function lineas(er: EstadoResultados): LineaResultado[] {
       signo: "−",
       nota:
         er.gastosFijos === null
-          ? "Pendiente: los gastos fijos no se reparten por canal, zona, turno ni asesora"
+          ? "Pendiente: los gastos fijos no se reparten por canal, zona ni asesora"
           : `${formatSoles(er.gastosFijosMensuales)} al mes (demo) × días ÷ 30`,
     },
     {

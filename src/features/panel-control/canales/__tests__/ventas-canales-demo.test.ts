@@ -310,7 +310,7 @@ describe("Publicidad", () => {
     expect(actual.kpis.costoPorVenta).toBeNull();
   });
 
-  it("informa que la inversión no se separa por zona, turno o asesor", async () => {
+  it("informa que la inversión no se separa por zona o asesor", async () => {
     expect(
       (await publicidadDemoSource.fetch({ ...MES, zona: "lima" }, ctx())).actual
         .inversionNoSeparable,

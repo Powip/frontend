@@ -6,8 +6,6 @@ import {
   type EntradaCanal,
   PERIOD_PRESETS,
   type PeriodPreset,
-  TURNOS_PANEL,
-  type TurnoPanel,
   ZONAS_PANEL,
   type ZonaPanel,
 } from "../models/panel-filters.model";
@@ -40,7 +38,6 @@ export function parsePanelUrlState(params: URLSearchParams): PanelUiState {
       entrada: pickFrom<EntradaCanal>(ENTRADAS_CANAL, params.get("entrada")),
       cobro: pickFrom<CobroCanal>(COBROS_CANAL, params.get("cobro")),
       zona: pickFrom<ZonaPanel>(ZONAS_PANEL, params.get("zona")),
-      turno: pickFrom<TurnoPanel>(TURNOS_PANEL, params.get("turno")),
       asesorId: params.get("asesor"),
     },
     navigation: {
@@ -76,7 +73,6 @@ export function serializePanelUrlState(state: PanelUiState): URLSearchParams {
   set("entrada", state.filters.entrada);
   set("cobro", state.filters.cobro);
   set("zona", state.filters.zona);
-  set("turno", state.filters.turno);
   set("asesor", state.filters.asesorId);
   if (state.dataMode !== DEFAULT_PANEL_STATE.dataMode) set("datos", state.dataMode);
   set("vercomo", state.preview.role);

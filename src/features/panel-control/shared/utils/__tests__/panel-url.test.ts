@@ -14,7 +14,6 @@ describe("panel-url", () => {
         entrada: "lead",
         cobro: "cod",
         zona: "provincia",
-        turno: "express",
         asesorId: "a1",
       },
       navigation: { tab: "operaciones", subtab: "couriers" },
@@ -22,6 +21,22 @@ describe("panel-url", () => {
       preview: { role: "vendedora", asesorId: "a2" },
     };
     expect(parsePanelUrlState(serializePanelUrlState(state))).toEqual(state);
+  });
+
+  it("ignora ?turno= de marcadores viejos: conserva el resto de filtros y no crea la clave", () => {
+    const parsed = parsePanelUrlState(new URLSearchParams("turno=express&canal=web"));
+    expect(parsed.filters.canalId).toBe("web");
+    expect(parsed.filters).not.toHaveProperty("turno");
+  });
+
+  it("nunca emite turno al serializar", () => {
+    const state = {
+      ...DEFAULT_PANEL_STATE,
+      filters: { ...DEFAULT_PANEL_STATE.filters, turno: "express", canalId: "web" },
+    } as unknown as PanelUiState;
+    const params = serializePanelUrlState(state);
+    expect(params.has("turno")).toBe(false);
+    expect(params.get("canal")).toBe("web");
   });
 
   it("omite valores por defecto", () => {

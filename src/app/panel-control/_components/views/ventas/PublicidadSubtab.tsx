@@ -142,9 +142,9 @@ export function PublicidadSubtab() {
       <OrigenCanalesNota state={state} />
       {state.data?.actual.inversionNoSeparable && (
         <p role="note" className="rounded-xl bg-pc-warn-soft px-3 py-2 text-xs text-pc-warn">
-          La inversión publicitaria no se puede separar por zona, turno o asesora. Las ventas sí
-          respetan esos filtros, pero la inversión es la del periodo completo: el retorno y el costo
-          por venta con esos filtros son orientativos.
+          La inversión publicitaria no se puede separar por zona o asesora. Las ventas sí respetan
+          esos filtros, pero la inversión es la del periodo completo: el retorno y el costo por
+          venta con esos filtros son orientativos.
         </p>
       )}
       <KpiRow

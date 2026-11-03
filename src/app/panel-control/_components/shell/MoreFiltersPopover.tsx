@@ -7,7 +7,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   COBRO_LABEL,
   ENTRADA_LABEL,
-  TURNO_LABEL,
   ZONA_LABEL,
 } from "@/features/panel-control/shared/config/filter-labels.config";
 import { usePanelOptions } from "@/features/panel-control/shared/hooks/use-panel-options";
@@ -16,7 +15,6 @@ import {
   type DimensionFilterKey,
   ENTRADAS_CANAL,
   SIN_ASESOR,
-  TURNOS_PANEL,
   ZONAS_PANEL,
 } from "@/features/panel-control/shared/models/panel-filters.model";
 import { usePanel } from "@/features/panel-control/shared/state/panel-context";
@@ -123,19 +121,6 @@ export function MoreFiltersPopover() {
             {ZONAS_PANEL.map((value) => (
               <option key={value} value={value}>
                 {ZONA_LABEL[value]}
-              </option>
-            ))}
-          </Field>
-          <Field
-            label="Turno de entrega"
-            value={state.filters.turno ?? ""}
-            onChange={set("turno")}
-            help="Pendiente de contrato: el pedido no guarda el turno Express/General"
-          >
-            <option value="">Todos</option>
-            {TURNOS_PANEL.map((value) => (
-              <option key={value} value={value}>
-                {TURNO_LABEL[value]}
               </option>
             ))}
           </Field>

@@ -169,7 +169,6 @@ export function coincideDimensiones(pedido: PedidoDemo, query: PanelQuery): bool
   if (query.entrada && pedido.entrada !== query.entrada) return false;
   if (query.cobro && pedido.cobro !== query.cobro) return false;
   if (query.zona && pedido.zona !== query.zona) return false;
-  if (query.turno && pedido.turno !== query.turno) return false;
   if (query.asesor) {
     if (query.asesor === SIN_ASESOR) return pedido.asesorId === null;
     if (pedido.asesorId !== query.asesor) return false;
@@ -186,7 +185,7 @@ export function canalCoincideFiltros(canal: CanalDemo, query: PanelQuery): boole
 }
 
 export function filtrosNoAtribuiblesAPauta(query: PanelQuery): boolean {
-  return !!(query.zona || query.turno || query.asesor);
+  return !!(query.zona || query.asesor);
 }
 
 export function instanteAnterior(query: PanelQuery, now: number): number {

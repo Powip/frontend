@@ -47,7 +47,6 @@ export type ContractFilterKey =
   | "entrada"
   | "cobro"
   | "zona"
-  | "turno"
   | "asesor"
   | "ver_como";
 
@@ -78,7 +77,6 @@ export const PANEL_FILTROS_GLOBALES: ContractFilterKey[] = [
   "entrada",
   "cobro",
   "zona",
-  "turno",
   "asesor",
   "ver_como",
 ];
