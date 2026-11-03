@@ -394,9 +394,13 @@ export default function NewCompanyPage() {
                     }
                     placeholder="Breve descripción de tu negocio..."
                     rows={3}
+                    maxLength={1000}
                     disabled={isLoading}
                     className="mt-1.5"
                   />
+                  <p className="mt-1 text-right text-xs text-gray-400">
+                    {formData.description.length}/1000
+                  </p>
                 </div>
 
                 {/* Moneda */}
