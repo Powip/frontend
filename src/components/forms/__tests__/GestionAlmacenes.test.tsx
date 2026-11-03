@@ -13,8 +13,9 @@
  *    `setStoreDefaultWarehouse`.
  * 6. Un error 403/503 muestra el mensaje del backend en un toast (cambio y
  *    carga de la lista); tras un cambio fallido el valor vuelve al anterior.
- * 7. No existe el botón "Eliminar" (el DELETE no existe) y el componente no
- *    usa `axios` suelto.
+ * 7. Cada almacén ofrece "Eliminar" (deshabilitado en el principal; el
+ *    flujo con el nombre está en GestionAlmacenes.delete.test.tsx) y el
+ *    componente no usa `axios` suelto.
  * 8. "Nuevo Almacén" crea con `createWarehouse` y refresca lista e inventarios.
  * 9. (Revisión final) Los cambios invalidan también las cachés que dependen de
  *    los almacenes; mientras guarda, los selectores usan `aria-disabled`; el
@@ -52,6 +53,7 @@ jest.mock("@/services/warehousesService", () => ({
   setWarehouseType: jest.fn(),
   setMainWarehouse: jest.fn(),
   setStoreDefaultWarehouse: jest.fn(),
+  deleteWarehouse: jest.fn(),
 }));
 
 const mockList = jest.mocked(listWarehouses);
@@ -320,12 +322,16 @@ describe("Almacenes de la empresa", () => {
     expect(mockList).toHaveBeenCalledTimes(2);
   });
 
-  it("no existe el botón Eliminar y no usa axios suelto", async () => {
+  it("ofrece Eliminar en cada almacén salvo el principal y no usa axios suelto", async () => {
     renderScreen();
     await waitForList();
 
-    expect(screen.queryByRole("button", { name: /eliminar/i })).not.toBeInTheDocument();
-    expect(screen.queryByText(/eliminar/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Eliminar almacén Almacén Sur" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Eliminar almacén Shalom" })).toBeEnabled();
+    const main = screen.getByRole("button", { name: "Eliminar almacén Almacén Central" });
+    expect(main).toBeDisabled();
+    expect(main).toHaveAttribute("title", expect.stringContaining("principal no se puede eliminar"));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
     expect(axios.get).not.toHaveBeenCalled();
     expect(axios.post).not.toHaveBeenCalled();
     expect(axios.put).not.toHaveBeenCalled();

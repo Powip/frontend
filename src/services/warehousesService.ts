@@ -61,3 +61,14 @@ export async function setStoreDefaultWarehouse(storeId: string, inventoryId: str
     `${base()}/stores/${encodeURIComponent(storeId)}/default/${encodeURIComponent(inventoryId)}`,
   );
 }
+
+/**
+ * Elimina un almacén. ms-logistics (no la fachada) valida: solo se borra uno
+ * vacío y sin pedidos, movimientos, productos ni integraciones vinculadas, y
+ * nunca el principal (409 con el motivo). La empresa sale del token.
+ */
+export async function deleteWarehouse(id: string): Promise<void> {
+  await axiosAuth.delete(
+    `${process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics}/inventory/${encodeURIComponent(id)}`,
+  );
+}

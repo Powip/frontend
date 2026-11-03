@@ -2,6 +2,7 @@ import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
 import {
   createWarehouse,
+  deleteWarehouse,
   listWarehouses,
   setMainWarehouse,
   setStoreDefaultWarehouse,
@@ -11,7 +12,7 @@ import {
 
 jest.mock("@/lib/axiosAuth", () => ({
   __esModule: true,
-  default: { get: jest.fn(), post: jest.fn(), put: jest.fn() },
+  default: { get: jest.fn(), post: jest.fn(), put: jest.fn(), delete: jest.fn() },
 }));
 
 const BASE = `${GATEWAY.products}/warehouses`;
@@ -95,6 +96,18 @@ describe("Servicio de almacenes de la empresa (FEAT-24 H1-A)", () => {
     await setStoreDefaultWarehouse(STORE_ID, WAREHOUSE_ID);
     expect(axiosAuth.put).toHaveBeenCalledTimes(1);
     expect(axiosAuth.put).toHaveBeenCalledWith(`${BASE}/stores/${STORE_ID}/default/${WAREHOUSE_ID}`);
+  });
+
+  it("elimina con DELETE /inventory/:id de logistics, sin cuerpo ni empresa", async () => {
+    delete process.env.NEXT_PUBLIC_API_INVENTORY;
+    jest.mocked(axiosAuth.delete).mockResolvedValue({ data: {} });
+    await deleteWarehouse(WAREHOUSE_ID);
+    expect(axiosAuth.delete).toHaveBeenCalledTimes(1);
+    expect(axiosAuth.delete).toHaveBeenCalledWith(`${GATEWAY.logistics}/inventory/${WAREHOUSE_ID}`);
+    process.env.NEXT_PUBLIC_API_INVENTORY = "https://inventory.example.test";
+    await deleteWarehouse(WAREHOUSE_ID);
+    expect(axiosAuth.delete).toHaveBeenLastCalledWith(`https://inventory.example.test/inventory/${WAREHOUSE_ID}`);
+    delete process.env.NEXT_PUBLIC_API_INVENTORY;
   });
 
   it("usa la base de productos configurada, igual que /tracking, cuando existe", async () => {

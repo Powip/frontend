@@ -18,7 +18,10 @@ export function warehouseErrorMessage(error: unknown, fallback: string): string 
   const message = (error as { response?: { data?: { message?: unknown } } } | null)?.response?.data
     ?.message;
   if (Array.isArray(message)) {
-    const parts = message.filter((part): part is string => typeof part === "string" && part.trim() !== "");
+    const parts = message
+      .filter((part): part is string => typeof part === "string")
+      .map((part) => part.trim())
+      .filter((part) => part !== "");
     if (parts.length > 0) return parts.join(". ");
   }
   if (typeof message === "string" && message.trim() !== "") return message;

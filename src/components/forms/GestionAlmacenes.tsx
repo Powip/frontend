@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,10 +17,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Home } from "lucide-react";
+import { Plus, Home, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  deleteWarehouse,
   listWarehouses,
   setMainWarehouse,
   setStoreDefaultWarehouse,
@@ -42,6 +45,12 @@ interface WarehouseChange {
   success: string;
 }
 
+// Almacén que se va a eliminar, a la espera de que se escriba su nombre.
+interface PendingDelete {
+  id: string;
+  name: string;
+}
+
 // Cambio de almacén por defecto a la espera de confirmación.
 interface PendingDefault {
   storeId: string;
@@ -53,6 +62,8 @@ interface PendingDefault {
 const GestionAlmacenes = () => {
   const [openModal, setOpenModal] = useState(false);
   const [pendingDefault, setPendingDefault] = useState<PendingDefault | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [confirmName, setConfirmName] = useState("");
   const { auth, refreshInventories } = useAuth();
   const queryClient = useQueryClient();
   const companyId = auth?.company?.id;
@@ -93,6 +104,26 @@ const GestionAlmacenes = () => {
     },
   });
 
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteWarehouse(id),
+    onSuccess: async () => {
+      setPendingDelete(null);
+      invalidateRelatedCaches();
+      toast.success("Almacén eliminado correctamente");
+      const refreshes = await Promise.allSettled([
+        queryClient.invalidateQueries({ queryKey }),
+        Promise.resolve(refreshInventories()), // Sincronizar estado global
+      ]);
+      if (refreshes.some((result) => result.status === "rejected")) {
+        toast.error("El almacén se eliminó, pero no se pudo actualizar la información. Actualiza la página.");
+      }
+    },
+    onError: (error) => {
+      setPendingDelete(null);
+      toast.error(warehouseErrorMessage(error, "No se pudo eliminar el almacén. Inténtalo nuevamente."));
+    },
+  });
+
   // Activos primero; el orden del backend se conserva dentro de cada grupo.
   const warehouses = useMemo(() => {
     const all = query.data?.warehouses ?? [];
@@ -100,7 +131,10 @@ const GestionAlmacenes = () => {
   }, [query.data]);
   const links = query.data?.links ?? [];
   const storeName = (id: string) => stores.find((store) => store.id === id)?.name ?? "—";
-  const busy = change.isPending;
+  const busy = change.isPending || remove.isPending;
+  // Hay que escribir el nombre exacto (sin contar espacios de los extremos).
+  const deleteConfirmed =
+    pendingDelete !== null && confirmName.trim() === pendingDelete.name.trim();
 
   if (!companyId) return null;
 
@@ -213,6 +247,24 @@ const GestionAlmacenes = () => {
                       Hacer principal
                     </Button>
                   )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={busy || almacen.is_main}
+                    aria-label={`Eliminar almacén ${almacen.name}`}
+                    title={
+                      almacen.is_main
+                        ? "El almacén principal no se puede eliminar. Define otro como principal primero."
+                        : "Eliminar almacén"
+                    }
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => {
+                      setConfirmName("");
+                      setPendingDelete({ id: almacen.id, name: almacen.name });
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -312,6 +364,61 @@ const GestionAlmacenes = () => {
               }}
             >
               Cambiar almacén
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          // No se cierra a mitad de la petición.
+          if (!open && !remove.isPending) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Eliminar almacén
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Vas a eliminar <strong>{pendingDelete?.name}</strong>. Solo se pueden eliminar
+              almacenes vacíos, sin productos, movimientos, pedidos ni integraciones vinculadas.
+              Esta acción no se puede deshacer.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="confirmar-eliminar-almacen">
+              Para confirmar, escribe el nombre del almacén: <strong>{pendingDelete?.name}</strong>
+            </Label>
+            <Input
+              id="confirmar-eliminar-almacen"
+              value={confirmName}
+              autoComplete="off"
+              disabled={remove.isPending}
+              onChange={(e) => setConfirmName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && deleteConfirmed && pendingDelete && !remove.isPending) {
+                  e.preventDefault();
+                  remove.mutate(pendingDelete.id);
+                }
+              }}
+            />
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={remove.isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              disabled={!deleteConfirmed || remove.isPending}
+              onClick={(e) => {
+                // El diálogo se cierra al terminar la petición, no al hacer clic.
+                e.preventDefault();
+                if (!deleteConfirmed || !pendingDelete || remove.isPending) return;
+                remove.mutate(pendingDelete.id);
+              }}
+            >
+              Eliminar
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
