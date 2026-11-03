@@ -53,7 +53,7 @@ import { buildGuideReviewReturnTo, useGuideReviewReturn } from "./guideReviewRet
 import { AtencionTab } from "./AtencionTab";
 import { OperationsTabCards } from "./OperationsTabsHeader";
 import { OperationsTabData, TabQueryState, emptyTabState, patchTabState } from "./tabState";
-import { ITEMS_PER_PAGE, PedidosActions, Sale, buildPedidosExportRows, mapOrderToSale, openWhatsApp, formatSalesForClipboard } from "./types";
+import { ITEMS_PER_PAGE, WHATSAPP_MAX_WINDOWS, PedidosActions, Sale, buildPedidosExportRows, mapOrderToSale, openWhatsApp, formatSalesForClipboard } from "./types";
 
 const API_VENTAS = process.env.NEXT_PUBLIC_API_VENTAS;
 const API_COURIER = process.env.NEXT_PUBLIC_API_COURIER;
@@ -757,12 +757,18 @@ export function PedidosContent() {
       toast.warning("No hay pedidos seleccionados para enviar WhatsApp");
       return;
     }
-    if (selected.length > 5) {
-      toast.info(`Se abrirán ${selected.length} ventanas de WhatsApp. Permití los pop-ups.`);
+    // Más de 50 ventanas por clic no es operable: se atienden los primeros y el resto queda para el siguiente clic.
+    const batch = selected.slice(0, WHATSAPP_MAX_WINDOWS);
+    if (batch.length > 5) {
+      toast.info(`Se abrirán ${batch.length} ventanas de WhatsApp. Permite los pop-ups.`);
     }
-    selected.forEach((sale, index) => {
+    if (selected.length > batch.length) {
+      toast.info(`Se abren ${batch.length} de ${selected.length}: quedan ${selected.length - batch.length} seleccionados para el siguiente clic.`);
+    }
+    batch.forEach((sale, index) => {
       setTimeout(() => openWhatsApp(sale.phoneNumber, sale.orderNumber, sale.clientName), index * 600);
     });
+    return batch.length;
   }, []);
 
   const handleEdit = useCallback(

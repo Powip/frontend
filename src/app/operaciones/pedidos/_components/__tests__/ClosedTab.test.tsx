@@ -17,6 +17,7 @@ import { mapOrderToSale, type PedidosActions, type Sale } from "../types";
 
 jest.mock("@/components/ui/calendar", () => ({ Calendar: () => null }));
 jest.mock("next/image", () => ({ __esModule: true, default: () => null }));
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ storeIds: ["store-a"], canFetch: true }) }));
 jest.mock("@/hooks/useOperationsPedidos", () => ({
   ...jest.requireActual("@/hooks/useOperationsPedidos"),
   useVisibleSelection: () => ({ visibleIds: null, loading: false }),

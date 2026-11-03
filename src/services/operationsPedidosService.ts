@@ -129,3 +129,44 @@ export async function getOperationsPedidosPage(
     )
   ).data;
 }
+
+/** Tope para "Seleccionar los N pedidos del filtro": cambiar estado va en tandas de 10 PATCH. */
+export const OPERATIONS_SELECT_CAP = 2000;
+/** Tope para exportar todo el filtro a Excel. */
+export const OPERATIONS_EXPORT_CAP = 10000;
+
+/** El filtro tiene más pedidos que el tope permitido para la acción pedida. */
+export class OperationsTooManyError extends Error {
+  constructor(
+    readonly total: number,
+    readonly cap: number,
+  ) {
+    super(`El filtro tiene ${total} pedidos y el máximo es ${cap}.`);
+    this.name = "OperationsTooManyError";
+  }
+}
+
+/**
+ * Todos los pedidos que cumplen la pestaña y los filtros, paginando de a 100 por dentro.
+ * Avisa el progreso, se puede cancelar y nunca corta en silencio: si superan `cap` falla con
+ * `OperationsTooManyError` antes de bajar nada más que la primera página.
+ */
+export async function fetchAllOperationsOrders(
+  storeIds: readonly string[],
+  query: OperationsPedidosQuery,
+  options: { cap: number; signal?: AbortSignal; onProgress?: (loaded: number, total: number) => void },
+): Promise<OperationsOrder[]> {
+  const base: OperationsPedidosQuery = { ...query, view: undefined, ids: undefined, page: 1, limit: OPERATIONS_MAX_PAGE_SIZE, includeSummary: false };
+  const first = await getOperationsPedidosPage(storeIds, base, options.signal);
+  if (first.total > options.cap) throw new OperationsTooManyError(first.total, options.cap);
+  // El listado puede moverse mientras se baja (otro usuario cambia un estado): se deduplica por id.
+  const byId = new Map<string, OperationsOrder>(first.data.map((order) => [order.id, order]));
+  options.onProgress?.(byId.size, first.total);
+  for (let page = 2; page <= first.totalPages; page++) {
+    if (options.signal?.aborted) throw options.signal.reason ?? new DOMException("Cancelado", "AbortError");
+    const next = await getOperationsPedidosPage(storeIds, { ...base, page }, options.signal);
+    for (const order of next.data) byId.set(order.id, order);
+    options.onProgress?.(Math.min(byId.size, first.total), first.total);
+  }
+  return [...byId.values()];
+}

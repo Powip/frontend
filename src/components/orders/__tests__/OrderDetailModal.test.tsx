@@ -21,6 +21,7 @@ import {
  */
 const modalSpy = jest.fn();
 
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ storeIds: ["store-a"], canFetch: true }) }));
 jest.mock("@/hooks/useOperationsPedidos", () => ({
   ...jest.requireActual("@/hooks/useOperationsPedidos"),
   useVisibleSelection: () => ({ visibleIds: null, loading: false }),

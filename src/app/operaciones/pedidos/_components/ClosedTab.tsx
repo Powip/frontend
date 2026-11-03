@@ -10,8 +10,8 @@ import { getCancellationReasonLabel } from "@/components/modals/CancellationModa
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
 import type { OrderStatus } from "@/interfaces/IOrder";
 import { OrderOriginLabel } from "../../_shared/OrderOriginLabel";
-import { useVisibleSelection, splitVisibleSelection } from "@/hooks/useOperationsPedidos";
 import { NumberedPagination } from "./NumberedPagination";
+import { useBulkTools } from "./useBulkTools";
 import { OperationsFilterBar } from "./OperationsFilterBar";
 import { OperationsTabHeading } from "./OperationsTabsHeader";
 import { HiddenSelectionNotice, ProductThumbnails, StatusPill, WhatsAppIcon, formatDateTime } from "./shared";
@@ -56,13 +56,7 @@ export function ClosedTab({ variant, data, state, query, onState, actions }: Ope
   const canExport = actions.can(OPS_PERMISSIONS.EXPORT);
   const counts = data.counts;
   const statusOptions: OrderStatus[] = variant === "entregados" ? ["ENTREGADO"] : variant === "anulados" ? ["ANULADO"] : ["ENTREGADO", "ANULADO"];
-  // Exportar respeta los filtros y la ventana actuales: de la selección, solo lo que sigue visible (lo decide el servidor).
-  const { visibleIds } = useVisibleSelection(
-    selection.selected.map((s) => s.id),
-    query,
-  );
-  const exportSelection = splitVisibleSelection(selection.selected, visibleIds);
-  const exportRows = selection.count > 0 ? exportSelection.visible : data.sales;
+  const bulk = useBulkTools({ selection, query, data, actions, tabName: variant });
   const colSpan = variant === "historial" ? 11 : variant === "entregados" ? 10 : 9;
   const dateLabel = variant === "anulados" ? "Anulado" : variant === "entregados" ? "Entregado" : "Fecha de cierre";
 
@@ -128,18 +122,22 @@ export function ClosedTab({ variant, data, state, query, onState, actions }: Ope
                 size="sm"
                 variant="outline"
                 className="h-8 gap-1 text-xs"
-                disabled={exportRows.length === 0}
-                title={selection.count > 0 ? "Exporta los pedidos seleccionados" : "Sin selección: exporta la página visible"}
-                onClick={() => actions.onExportExcel(exportRows, variant, state.filters.product)}
+                disabled={bulk.exportDisabled}
+                title={bulk.exportTitle}
+                onClick={bulk.exportNow}
               >
                 <FileSpreadsheet className="h-3.5 w-3.5" />
-                Exportar Excel ({exportRows.length})
+                Exportar Excel ({bulk.exportCount})
               </Button>
             )}
-            {canExport && selection.count > 0 && <HiddenSelectionNotice count={exportSelection.hiddenCount} />}
+            {canExport && selection.count > 0 && <HiddenSelectionNotice count={bulk.exportSelection.hiddenCount} />}
           </>
         }
       />
+
+      {bulk.bannerNode}
+      {bulk.progressNode}
+      {bulk.exportNotice}
 
       <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
         <Table>
@@ -227,6 +225,8 @@ export function ClosedTab({ variant, data, state, query, onState, actions }: Ope
           </TableBody>
         </Table>
       </div>
+
+      {bulk.confirmDialog}
 
       <NumberedPagination
         currentPage={state.page}

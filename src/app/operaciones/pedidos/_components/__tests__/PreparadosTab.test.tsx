@@ -224,6 +224,7 @@ jest.mock("@/components/ventas/SalesTableFilters", () => {
 
 jest.mock("sonner", () => ({ toast: { info: jest.fn(), error: jest.fn(), success: jest.fn() } }));
 // Qué parte de la selección cumple los filtros lo decide el servidor; aquí no hay filtros activos.
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ storeIds: ["store-a"], canFetch: true }) }));
 jest.mock("@/hooks/useOperationsPedidos", () => ({
   ...jest.requireActual("@/hooks/useOperationsPedidos"),
   useVisibleSelection: () => ({ visibleIds: null, loading: false }),
@@ -326,10 +327,12 @@ function renderTab(
   extra: { guideReturn?: GuideReviewReturn | null; onGuideReturnHandled?: () => void; onState?: jest.Mock; data?: Partial<OperationsTabData>; state?: ReturnType<typeof emptyTabState> } = {},
 ) {
   const onState = extra.onState ?? jest.fn();
+  const state = extra.state ?? emptyTabState();
   const ui = (list: Sale[]) => (
     <PreparadosTab
       data={makeData(list, extra.data)}
-      state={extra.state ?? emptyTabState()}
+      state={state}
+      query={{ tab: "preparados", page: 1, limit: 15, filters: state.filters }}
       onState={onState}
       actions={actions}
       guideReturn={extra.guideReturn}

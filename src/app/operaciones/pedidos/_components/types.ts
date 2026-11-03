@@ -285,6 +285,11 @@ export function money(n: number): string {
 
 export const ITEMS_PER_PAGE = 15;
 
+/** Acciones masivas sobre más pedidos que una página piden confirmación con la cantidad real. */
+export const BULK_CONFIRM_THRESHOLD = ITEMS_PER_PAGE;
+/** Máximo de ventanas de WhatsApp que se abren por clic: más que eso no es operable ni lo permite el navegador. */
+export const WHATSAPP_MAX_WINDOWS = 50;
+
 export type SaleSource = "listos" | "reprogramado" | "vendido";
 
 function dayKey(d: Date): string {
@@ -328,7 +333,8 @@ export interface PedidosActions {
   onOpenAddToGuide: (selected: Sale[]) => void;
   onAssignCourierBulk: (selected: Sale[]) => void;
   onBulkStatusChange: (ids: string[], status: OrderStatus) => void;
-  onBulkWhatsApp: (selected: Sale[]) => void;
+  /** Devuelve cuántos pedidos atendió (máximo `WHATSAPP_MAX_WINDOWS` por clic). */
+  onBulkWhatsApp: (selected: Sale[]) => number | void;
   onBulkPrint: (selected: Sale[]) => void;
   onCopySelected: (selected: Sale[]) => void;
   /** `productFilter` = clave del filtro Producto activo ("" = sin filtro) → agrega la columna de unidades. */

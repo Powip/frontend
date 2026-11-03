@@ -216,6 +216,7 @@ jest.mock("@/components/ui/dropdown-menu", () => {
       R.createElement("button", { onClick, disabled: !!disabled, role: "menuitem" }, children),
   };
 });
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ storeIds: ["store-a"], canFetch: true }) }));
 jest.mock("@/hooks/useOperationsPedidos", () => ({
   ...jest.requireActual("@/hooks/useOperationsPedidos"),
   useVisibleSelection: () => ({ visibleIds: null, loading: false }),

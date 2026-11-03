@@ -59,13 +59,21 @@ export function usePedidosSelection(pageSales: Sale[]) {
     });
   }, []);
 
+  const removeMany = useCallback((ids: readonly string[]) => {
+    setPicked((prev) => {
+      const next = new Map(prev);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+  }, []);
+
   const clear = useCallback(() => setPicked(new Map()), []);
 
   const selected = useMemo(() => Array.from(picked.values()), [picked]);
   const ids = useMemo(() => new Set(picked.keys()), [picked]);
   const pageAllSelected = pageSales.length > 0 && pageSales.every((sale) => picked.has(sale.id));
 
-  return { selected, ids, count: picked.size, pageAllSelected, toggle, togglePage, addMany, clear };
+  return { selected, ids, count: picked.size, pageAllSelected, toggle, togglePage, addMany, removeMany, clear };
 }
 
 export type PedidosSelection = ReturnType<typeof usePedidosSelection>;

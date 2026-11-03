@@ -19,8 +19,8 @@ import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
 import type { OrderStatus } from "@/interfaces/IOrder";
 import type { OperationsGuideGroup } from "@/services/operationsPedidosService";
 import { OrderOriginLabel } from "../../_shared/OrderOriginLabel";
-import { useVisibleSelection, splitVisibleSelection } from "@/hooks/useOperationsPedidos";
 import { NumberedPagination } from "./NumberedPagination";
+import { useBulkTools } from "./useBulkTools";
 import { OperationsFilterBar } from "./OperationsFilterBar";
 import { OperationsTabHeading } from "./OperationsTabsHeader";
 import { DiasBadge, HiddenSelectionNotice, WhatsAppIcon, formatDateTime } from "./shared";
@@ -92,14 +92,7 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
     }
   };
 
-  // Exportar respeta los filtros actuales: de la selección, solo lo que sigue visible (lo decide el servidor).
-  const { visibleIds } = useVisibleSelection(
-    selection.selected.map((s) => s.id),
-    query,
-  );
-  const exportSelection = splitVisibleSelection(selection.selected, visibleIds);
-  const exportRows = selection.count > 0 ? exportSelection.visible : data.sales;
-  const ids = () => selection.selected.map((s) => s.id);
+  const bulk = useBulkTools({ selection, query, data, actions, tabName: isCamino ? "en_camino" : "despachados" });
 
   const renderRowAction = (sale: Sale) => {
     if (!canChangeStatus) return null;
@@ -247,18 +240,26 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
       />
 
       {!guideView && (
+        <>
+          {bulk.bannerNode}
+          {bulk.progressNode}
+          {bulk.exportNotice}
+        </>
+      )}
+
+      {!guideView && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-2" data-testid="bulk-bar">
           <span className="text-xs font-semibold text-muted-foreground">{selection.count} seleccionados</span>
           {canChangeStatus && (
             <BulkStatusSelect
               selectedCount={selection.count}
               availableStatuses={bulkStatuses}
-              onStatusChange={(status) => actions.onBulkStatusChange(ids(), status)}
+              onStatusChange={bulk.bulkStatus}
               isLoading={actions.isBulkLoading}
               disabled={selection.count === 0}
             />
           )}
-          <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" disabled={selection.count === 0} onClick={() => actions.onBulkWhatsApp(selection.selected)}>
+          <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" disabled={selection.count === 0} onClick={bulk.bulkWhatsApp}>
             <WhatsAppIcon className="h-3.5 w-3.5" />
             WhatsApp masivo
           </Button>
@@ -271,15 +272,15 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
               size="sm"
               variant="outline"
               className="h-8 gap-1 text-xs"
-              disabled={exportRows.length === 0}
-              title={selection.count > 0 ? "Exporta los pedidos seleccionados" : "Sin selección: exporta la página visible"}
-              onClick={() => actions.onExportExcel(exportRows, isCamino ? "en_camino" : "despachados", state.filters.product)}
+              disabled={bulk.exportDisabled}
+              title={bulk.exportTitle}
+              onClick={bulk.exportNow}
             >
               <FileSpreadsheet className="h-3.5 w-3.5" />
-              Exportar Excel ({exportRows.length})
+              Exportar Excel ({bulk.exportCount})
             </Button>
           )}
-          {canExport && selection.count > 0 && <HiddenSelectionNotice count={exportSelection.hiddenCount} />}
+          {canExport && selection.count > 0 && <HiddenSelectionNotice count={bulk.exportSelection.hiddenCount} />}
           {selection.count > 0 && (
             <Button size="sm" variant="ghost" className="h-8 text-xs" onClick={selection.clear}>
               Limpiar selección
@@ -478,6 +479,8 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
           </Table>
         </div>
       )}
+
+      {bulk.confirmDialog}
 
       <NumberedPagination
         currentPage={state.page}

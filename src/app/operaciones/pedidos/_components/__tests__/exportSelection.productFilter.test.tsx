@@ -19,6 +19,7 @@ jest.mock("@/components/ui/calendar", () => ({ Calendar: () => null }));
 jest.mock("next/image", () => ({ __esModule: true, default: () => null }));
 
 let mockAllSales: Sale[] = [];
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ storeIds: ["store-a"], canFetch: true }) }));
 jest.mock("@/hooks/useOperationsPedidos", () => {
   const actual = jest.requireActual("@/hooks/useOperationsPedidos");
   const { applyFilters } = jest.requireActual("@/components/ventas/SalesTableFilters");

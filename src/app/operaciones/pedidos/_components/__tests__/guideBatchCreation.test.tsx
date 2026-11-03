@@ -18,7 +18,7 @@ let mockModalProps: {
 };
 
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: { get: jest.fn(), post: jest.fn(), patch: jest.fn() } }));
-jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn() } }));
+jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn(), info: jest.fn() } }));
 // Guías & Courier ("Nueva guía") sigue leyendo los pedidos del negocio completos.
 jest.mock("@/hooks/useBusinessOrders", () => ({
   useBusinessOrders: () => ({ orders: mockOrders, loading: false, error: false, refetch: mockRefetch }),
@@ -327,6 +327,41 @@ describe("Pedidos — despachar en lote solo aplica a pedidos EN_ENVIO", () => {
     await act(async () => { await mockActions.onBulkStatusChange(["order-1"], "ENTREGADO"); });
     expect(axios.patch).toHaveBeenCalledWith(expect.stringContaining("/order-header/order-1"), expect.objectContaining({ status: "ENTREGADO" }));
     expect(axios.patch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Pedidos — WhatsApp masivo", () => {
+  const sales = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `w-${i}`, phoneNumber: "999111222", orderNumber: `ORD-${i}`, clientName: `Cliente ${i}` }) as unknown as Sale);
+
+  it("abre como máximo 50 ventanas por clic, informa cuántos quedan y devuelve cuántos atendió", () => {
+    jest.useFakeTimers();
+    const open = jest.spyOn(window, "open").mockImplementation(() => null);
+    render(<PedidosContent />);
+
+    let attended: unknown;
+    act(() => { attended = mockActions.onBulkWhatsApp(sales(60)); });
+    act(() => { jest.advanceTimersByTime(60 * 600); });
+
+    expect(attended).toBe(50);
+    expect(open).toHaveBeenCalledTimes(50);
+    expect(toast.info).toHaveBeenCalledWith(expect.stringContaining("Se abren 50 de 60: quedan 10 seleccionados"));
+    open.mockRestore();
+    jest.useRealTimers();
+  });
+
+  it("con 50 o menos abre todas y devuelve la cantidad completa", () => {
+    jest.useFakeTimers();
+    const open = jest.spyOn(window, "open").mockImplementation(() => null);
+    render(<PedidosContent />);
+
+    let attended: unknown;
+    act(() => { attended = mockActions.onBulkWhatsApp(sales(8)); });
+    act(() => { jest.advanceTimersByTime(8 * 600); });
+
+    expect(attended).toBe(8);
+    expect(open).toHaveBeenCalledTimes(8);
+    open.mockRestore();
+    jest.useRealTimers();
   });
 });
 
