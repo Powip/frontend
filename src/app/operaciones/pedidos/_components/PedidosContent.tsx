@@ -6,15 +6,16 @@ import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecyc
 import { type SaleUnitLifecycleAction } from "@/services/saleUnitLifecycleService";
 import { assignmentBlockReason, requiresAuthenticatedSaleMutation, saleMutationUrl, saleReceiptUrl } from "@/services/saleTrackingService";
 import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
-import { useBusinessOrders } from "@/hooks/useBusinessOrders";
 import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
+import { useOperationsPedidos } from "@/hooks/useOperationsPedidos";
+import { useBusinessScope } from "@/contexts/BusinessScopeContext";
+import { getOperationsPedidosPage, type OperationsPedidosQuery } from "@/services/operationsPedidosService";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "@/lib/axiosAuth";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Package, Truck, AlertTriangle, Archive, Ban, ScanLine } from "lucide-react";
+import { ScanLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlobalScanner } from "../../_shared/GlobalScanner";
 import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
@@ -22,13 +23,11 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useOperationsRole } from "@/contexts/OperationsRoleContext";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
 import { useUserAuditInfo } from "@/hooks/useUserAuditInfo";
-import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
+import { OrderStatus } from "@/interfaces/IOrder";
 import {
-  PEDIDOS_TABS,
-  PedidosTabKey,
-  isOperationsOrderVisible,
-  countByTab,
-  getPedidosTab,
+  OperationsTabKey,
+  getOperationsTabDef,
+  resolveOperationsTab,
 } from "@/utils/domain/operations-pedidos-tabs";
 import { fetchCouriers } from "@/services/courierService";
 import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
@@ -47,28 +46,17 @@ import CourierAssignmentModal from "@/components/modals/CourierAssignmentModal";
 import ReassignSellerModal from "@/components/modals/ReassignSellerModal";
 import { RescheduleDialog } from "@/components/ventas/RescheduleDialog";
 
-import { PorDespacharTab } from "./PorDespacharTab";
-import { PendientesTab } from "./PendientesTab";
+import { PreparadosTab } from "./PreparadosTab";
+import { TransitTab } from "./TransitTab";
+import { ClosedTab } from "./ClosedTab";
 import { buildGuideReviewReturnTo, useGuideReviewReturn } from "./guideReviewReturn";
-import { EnCaminoTab } from "./EnCaminoTab";
 import { AtencionTab } from "./AtencionTab";
-import { HistorialTab } from "./HistorialTab";
-import { AnuladosTab } from "./AnuladosTab";
-import { PedidosActions, Sale, buildPedidosExportRows, mapOrderToSale, openWhatsApp, formatSalesForClipboard } from "./types";
+import { OperationsTabCards } from "./OperationsTabsHeader";
+import { OperationsTabData, TabQueryState, emptyTabState, patchTabState } from "./tabState";
+import { ITEMS_PER_PAGE, PedidosActions, Sale, buildPedidosExportRows, mapOrderToSale, openWhatsApp, formatSalesForClipboard } from "./types";
 
 const API_VENTAS = process.env.NEXT_PUBLIC_API_VENTAS;
 const API_COURIER = process.env.NEXT_PUBLIC_API_COURIER;
-
-const TAB_KEYS: PedidosTabKey[] = PEDIDOS_TABS.map((t) => t.key);
-
-const TAB_ICON: Record<PedidosTabKey, React.ElementType> = {
-  pendientes: Package,
-  despachar: Package,
-  camino: Truck,
-  atencion: AlertTriangle,
-  historial: Archive,
-  anulados: Ban,
-};
 
 type RescheduleTarget = { saleIds: string[] } | null;
 
@@ -81,16 +69,60 @@ export function PedidosContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const initialTab = useMemo<PedidosTabKey>(() => {
-    const t = searchParams.get("tab") as PedidosTabKey | null;
-    return t && TAB_KEYS.includes(t) ? t : "despachar";
-  }, [searchParams]);
+  const initialResolved = useMemo(
+    () => resolveOperationsTab(searchParams.get("tab"), searchParams.get("qf")),
+    [searchParams],
+  );
   const initialQf = searchParams.get("qf") ?? undefined;
   const initialQ = searchParams.get("q") ?? undefined;
 
-  const [activeTab, setActiveTab] = useState<PedidosTabKey>(initialTab);
-  const { orders: businessOrders, loading, error, retry, refetch: fetchOrders } = useBusinessOrders();
-  const orders = useMemo(() => [...businessOrders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()), [businessOrders]);
+  const [activeTab, setActiveTab] = useState<OperationsTabKey>(initialResolved.tab);
+  // Cada pestaña recuerda sus filtros y su página mientras se navega entre ellas.
+  const [tabStates, setTabStates] = useState<Record<OperationsTabKey, TabQueryState>>(() => {
+    const base = (tab: OperationsTabKey): TabQueryState => {
+      const state = emptyTabState();
+      if (tab === initialResolved.tab) {
+        if (initialQ) state.filters = { ...state.filters, search: initialQ };
+        if (initialResolved.quick) state.quick = initialResolved.quick;
+        if (tab === "camino" && initialQf === "listos-escanear") {
+          state.filters = { ...state.filters, status: "EN_ENVIO", hasGuide: "yes" };
+        }
+      }
+      return state;
+    };
+    return {
+      preparados: base("preparados"),
+      camino: base("camino"),
+      despachados: base("despachados"),
+      entregados: base("entregados"),
+      anulados: base("anulados"),
+      historial: base("historial"),
+      atencion: base("atencion"),
+    };
+  });
+  const state = tabStates[activeTab];
+  const patchActiveTab = useCallback(
+    (patch: Partial<TabQueryState>) =>
+      setTabStates((prev) => ({ ...prev, [activeTab]: patchTabState(prev[activeTab], patch) })),
+    [activeTab],
+  );
+  const { storeIds, canFetch } = useBusinessScope();
+
+  const tabDef = getOperationsTabDef(activeTab);
+  // Necesita atención se muestra completa (sus subvistas y motivos se calculan en el navegador): hasta 100 alertas.
+  const pageSize = activeTab === "atencion" ? 100 : ITEMS_PER_PAGE;
+  const serverQuery: OperationsPedidosQuery = {
+    tab: tabDef.serverTab,
+    sub: activeTab === "preparados" ? state.sub : undefined,
+    view: state.view === "guia" && (activeTab === "camino" || activeTab === "despachados") ? "guia" : undefined,
+    minAgeDays: activeTab === "preparados" || activeTab === "camino" || activeTab === "despachados" ? state.minAgeDays : undefined,
+    quick: activeTab === "despachados" ? state.quick : undefined,
+    page: state.page,
+    limit: pageSize,
+    filters: state.filters,
+  };
+  const { data: page, isLoading: loading, isFetching, isError: error, refetch: retry, invalidate } = useOperationsPedidos(serverQuery);
+  const fetchOrders = invalidate;
   const [apiCouriers, setApiCouriers] = useState<string[]>([]);
   const [isBulkLoading, setIsBulkLoading] = useState(false);
   const printScope = `${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}`;
@@ -110,7 +142,7 @@ export function PedidosContent() {
 
   // ---- Modales ----
   const [paymentSale, setPaymentSale] = useState<Sale | null>(null);
-  const [guideSale, setGuideSale] = useState<Sale | null>(null);
+  const [guideSale, setGuideSale] = useState<Pick<Sale, "id" | "courier"> | null>(null);
   const [createGuideOrders, setCreateGuideOrders] = useState<Sale[] | null>(null);
   const [isCreatingGuide, setIsCreatingGuide] = useState(false);
   const [addToGuideOrders, setAddToGuideOrders] = useState<Sale[] | null>(null);
@@ -130,45 +162,56 @@ export function PedidosContent() {
       .catch(() => toast.error("No se pudieron cargar los couriers"));
   }, [auth?.company?.id]);
 
-  // La cola de preparación incluye compras confirmadas con cualquier saldo.
-  // Los carritos y leads sin confirmar mantienen su barrera comercial.
-  const visibleOrders = useMemo(
-    () =>
-      orders.filter(isOperationsOrderVisible),
-    [orders],
+  // Filas de la página actual y datos de la pestaña, listos para las tablas.
+  const sales = useMemo(() => (page?.data ?? []).map(mapOrderToSale), [page?.data]);
+  const tabData: OperationsTabData = useMemo(
+    () => ({
+      sales,
+      groups: page?.groups,
+      total: page?.total ?? 0,
+      totalOrders: page?.totalOrders,
+      totalPages: page?.totalPages ?? 1,
+      counts: page?.counts,
+      window: page?.window,
+      metadata: page?.metadata,
+      loading,
+      fetching: isFetching,
+    }),
+    [sales, page, loading, isFetching],
   );
 
-  const tabCounts = useMemo(() => countByTab(visibleOrders), [visibleOrders]);
+  // Pedidos vistos en esta visita: las acciones masivas se resuelven por id contra este cache
+  // (la selección cruza páginas y la página visible ya no tiene todos los pedidos).
+  const seenSales = useRef(new Map<string, Sale>());
+  for (const sale of sales) seenSales.current.set(sale.id, sale);
+  const salesById = seenSales.current;
 
-  const salesByTab = useMemo(() => {
-    const grouped: Record<PedidosTabKey, OrderHeader[]> = {
-      pendientes: [],
-      despachar: [],
-      camino: [],
-      atencion: [],
-      historial: [],
-      anulados: [],
-    };
-    for (const order of visibleOrders) grouped[getPedidosTab(order)].push(order);
-    const out = {} as Record<PedidosTabKey, Sale[]>;
-    for (const key of TAB_KEYS) out[key] = grouped[key].map(mapOrderToSale);
-    return out;
-  }, [visibleOrders]);
+  /** Pedidos concretos (máx. 100) de Preparados, pedidos al servidor: restaurar la selección y acciones por guía. */
+  const loadSalesByIds = useCallback(
+    async (ids: string[]): Promise<Sale[]> => {
+      if (!ids.length || !storeIds.length) return [];
+      const out: Sale[] = [];
+      for (let i = 0; i < ids.length; i += 100) {
+        const result = await getOperationsPedidosPage(storeIds, {
+          tab: "preparados", ids: ids.slice(i, i + 100), page: 1, limit: 100, filters: {}, includeSummary: false,
+        });
+        for (const order of result.data) {
+          const sale = mapOrderToSale(order);
+          seenSales.current.set(sale.id, sale);
+          out.push(sale);
+        }
+      }
+      return out;
+    },
+    [storeIds],
+  );
 
-  // Vuelta desde /registrar-venta (editar tipo de entrega): los pedidos se
-  // refetchearon al montar, así que la selección y la elegibilidad se
-  // recalculan con datos frescos. Ver guideReviewReturn.ts.
-  const { pending: guideReturn, clear: clearGuideReturn } =
-    useGuideReviewReturn(!loading, salesByTab.despachar);
+  // Vuelta desde /registrar-venta (editar tipo de entrega): se vuelven a pedir los pedidos de la
+  // selección para recalcular la elegibilidad con datos frescos. Ver guideReviewReturn.ts.
+  const { pending: guideReturn, clear: clearGuideReturn } = useGuideReviewReturn(canFetch && !loading, loadSalesByIds);
   useEffect(() => {
-    if (guideReturn) setActiveTab("despachar");
+    if (guideReturn) setActiveTab("preparados");
   }, [guideReturn]);
-
-  const salesById = useMemo(() => {
-    const map = new Map<string, Sale>();
-    for (const key of TAB_KEYS) for (const s of salesByTab[key]) map.set(s.id, s);
-    return map;
-  }, [salesByTab]);
 
   const [lifecycle, setLifecycle] = useState<{ orderId: string; action: SaleUnitLifecycleAction } | null>(null);
 
@@ -190,6 +233,10 @@ export function PedidosContent() {
       if (await routeSaleLifecycle(sale, newStatus, (action) => setLifecycle({ orderId: saleId, action }))) return;
       if (newStatus === "ANULADO") {
         if (sale) setCancelSale(sale);
+        return;
+      }
+      if (newStatus === "DESPACHADO" && sale && sale.status !== "EN_ENVIO") {
+        toast.error("Solo un pedido En camino con la guía aprobada puede pasar a Despachado. Aprueba la guía primero.");
         return;
       }
       if (["EN_ENVIO", "DESPACHADO"].includes(newStatus)) {
@@ -275,6 +322,15 @@ export function PedidosContent() {
       }
       for (const id of ids) {
         if (await routeSaleLifecycle(salesById.get(id), newStatus, () => toast.error("Reactiva las ventas con IMEI/series individualmente para seleccionar y confirmar sus unidades."))) return;
+      }
+      if (newStatus === "DESPACHADO") {
+        // Despachar es entregar el paquete al courier: solo aplica a pedidos con la guía aprobada (EN_ENVIO,
+        // stock ya reservado). Un ASIGNADO_A_GUIA (guía por aprobar) debe aprobarse primero.
+        const notReady = ids.filter((id) => salesById.get(id)?.status !== "EN_ENVIO");
+        if (notReady.length > 0) {
+          toast.error(`${notReady.length} pedido(s) no están En camino con la guía aprobada. Aprueba la guía antes de despachar.`);
+          return;
+        }
       }
       if (["EN_ENVIO", "DESPACHADO"].includes(newStatus)) {
         const missing = ids.filter((id) => {
@@ -721,10 +777,9 @@ export function PedidosContent() {
   // PATCH comprobado para cambiarlo suelto, así que se reutiliza ese
   // formulario y se vuelve acá al guardar.
   const handleEditDeliveryType = useCallback(
-    (sale: Sale, context: { selectedIds: string[]; dayKey: string }) => {
+    (sale: Sale, context: { selectedIds: string[] }) => {
       const returnTo = buildGuideReviewReturnTo(
         context.selectedIds,
-        context.dayKey,
       );
       router.push(
         `/registrar-venta?orderId=${encodeURIComponent(sale.id)}&returnTo=${encodeURIComponent(returnTo)}`,
@@ -815,6 +870,7 @@ export function PedidosContent() {
     onEdit: handleEdit,
     onEditDeliveryType: handleEditDeliveryType,
     onSyncCourier: handleSyncCourier,
+    loadSalesByIds,
     onReturnToStock: handleReturnToStock,
     onMarkAsLoss: handleMarkAsLoss,
     companyId: auth?.company?.id,
@@ -846,69 +902,36 @@ export function PedidosContent() {
           </Button>
         </div>
 
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PedidosTabKey)}>
-          <TabsList className="h-auto w-full gap-1 bg-muted/60 p-1">
-            {PEDIDOS_TABS.map((tab) => {
-              const Icon = TAB_ICON[tab.key];
-              return (
-              <TabsTrigger
-                key={tab.key}
-                value={tab.key}
-                className={`flex-1 gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium sm:text-sm ${tab.alerta && tabCounts[tab.key] > 0 ? "data-[state=active]:text-red-600" : ""}`}
-              >
-                <Icon className="h-4 w-4" />
-                {tab.label}
-                <span
-                  className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
-                    tab.alerta && tabCounts[tab.key] > 0
-                      ? "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
-                      : "bg-background text-muted-foreground"
-                  }`}
-                >
-                  {tabCounts[tab.key]}
-                </span>
-              </TabsTrigger>
-              );
-            })}
-          </TabsList>
+        <OperationsTabCards counts={page?.counts} active={activeTab} onSelect={setActiveTab} />
 
-          <TabsContent value="pendientes">
-            <PendientesTab sales={salesByTab.pendientes} actions={actions} initialSearch={initialTab === "pendientes" ? initialQ : undefined} />
-          </TabsContent>
-
-          <TabsContent value="despachar">
-            <PorDespacharTab
-              sales={salesByTab.despachar}
+        <div role="tabpanel" aria-label={tabDef.label} className="space-y-3">
+          {activeTab === "preparados" && (
+            <PreparadosTab
+              data={tabData}
+              state={state}
+              query={serverQuery}
+              onState={patchActiveTab}
               actions={actions}
-              initialSearch={initialTab === "despachar" ? initialQ : undefined}
-              initialQf={initialTab === "despachar" ? initialQf : undefined}
               guideReturn={guideReturn}
               onGuideReturnHandled={clearGuideReturn}
             />
-          </TabsContent>
-          <TabsContent value="camino">
-            <EnCaminoTab
-              sales={salesByTab.camino}
-              actions={actions}
-              initialSearch={initialTab === "camino" ? initialQ : undefined}
-              initialQf={initialTab === "camino" ? initialQf : undefined}
-            />
-          </TabsContent>
-          <TabsContent value="atencion">
+          )}
+          {(activeTab === "camino" || activeTab === "despachados") && (
+            <TransitTab variant={activeTab} data={tabData} state={state} query={serverQuery} onState={patchActiveTab} actions={actions} />
+          )}
+          {(activeTab === "entregados" || activeTab === "anulados" || activeTab === "historial") && (
+            <ClosedTab variant={activeTab} data={tabData} state={state} query={serverQuery} onState={patchActiveTab} actions={actions} />
+          )}
+          {activeTab === "atencion" && (
             <AtencionTab
-              sales={salesByTab.atencion}
+              sales={sales}
+              total={page?.total}
               actions={actions}
-              initialSearch={initialTab === "atencion" ? initialQ : undefined}
-              initialQf={initialTab === "atencion" ? initialQf : undefined}
+              initialSearch={initialResolved.tab === "atencion" ? initialQ : undefined}
+              initialQf={initialResolved.tab === "atencion" ? initialQf : undefined}
             />
-          </TabsContent>
-          <TabsContent value="historial">
-            <HistorialTab sales={salesByTab.historial} actions={actions} initialSearch={initialTab === "historial" ? initialQ : undefined} />
-          </TabsContent>
-          <TabsContent value="anulados">
-            <AnuladosTab sales={salesByTab.anulados} actions={actions} initialSearch={initialTab === "anulados" ? initialQ : undefined} />
-          </TabsContent>
-        </Tabs>
+          )}
+        </div>
 
         {/* ------------------------------ Modales ------------------------------ */}
 

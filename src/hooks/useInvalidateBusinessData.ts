@@ -7,6 +7,7 @@ const BUSINESS_DATA_KEYS = [
   "business-orders",
   "business-guides",
   "business-sales",
+  "operations-pedidos",
   "business-finance-cod-leads",
   "cc-pedidos",
   "cc-pedidos-all",

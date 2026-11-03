@@ -4,7 +4,7 @@ import { getStatusLabel } from "@/utils/domain/orders-status-flow";
 import type { Sale } from "./types";
 
 /**
- * Elegibilidad para armar guía desde Por Despachar. La regla es la de
+ * Elegibilidad para armar guía desde Preparados. La regla es la de
  * siempre (sin guía + DOMICILIO + estado permitido); este módulo solo
  * agrega el *motivo* por el que un pedido queda afuera, para que la UI no
  * descarte pedidos en silencio.

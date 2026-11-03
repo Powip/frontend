@@ -8,5 +8,5 @@ import { redirect } from "next/navigation";
 // las páginas nuevas. Los componentes en ./components siguen en uso porque
 // /ventas los importa directamente; no se tocaron.
 export default function CentroEnviosRedirect() {
-  redirect("/operaciones/pedidos?tab=despachar");
+  redirect("/operaciones/pedidos?tab=preparados");
 }

@@ -223,7 +223,7 @@ export default function PlanificacionTab() {
     0,
   );
 
-  const goDespachar = () => router.push("/operaciones/pedidos?tab=despachar");
+  const goDespachar = () => router.push("/operaciones/pedidos?tab=preparados");
 
   const openDayInList = (key: string) => {
     setSelectedDayKey(key);

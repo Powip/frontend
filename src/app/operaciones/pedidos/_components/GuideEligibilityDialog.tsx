@@ -19,7 +19,7 @@ import {
 
 const EDIT_LABEL = "Abrir venta para editar entrega";
 const EDIT_HINT =
-  "Se abre la venta en Registrar venta. Al guardar, volverás a Por Despachar con tu selección para revisar la generación de guía; si volvés sin guardar, no se aplica ningún cambio.";
+  "Se abre la venta en Registrar venta. Al guardar, volverás a Preparados con tu selección para revisar la generación de guía; si volvés sin guardar, no se aplica ningún cambio.";
 
 /**
  * Revisión previa a "Generar guía" cuando la selección tiene pedidos

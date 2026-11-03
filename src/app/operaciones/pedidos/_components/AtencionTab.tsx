@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
 import { OrderDetailButton } from "@/components/orders/OrderDetailModal";
+import { OperationsTabHeading } from "./OperationsTabsHeader";
 import {
   Clock3,
   Copy,
@@ -77,11 +78,14 @@ export function AtencionTab({
   actions,
   initialSearch,
   initialQf,
+  total,
 }: {
   sales: Sale[];
   actions: PedidosActions;
   initialSearch?: string;
   initialQf?: string;
+  /** Alertas que hay en total en el servidor; si superan las cargadas se avisa. */
+  total?: number;
 }) {
   const [filters, setFilters] = useState<SalesFilters>({
     ...emptySalesFilters,
@@ -177,6 +181,12 @@ export function AtencionTab({
 
   return (
     <div className="space-y-3">
+      <OperationsTabHeading tab="atencion" total={total ?? sales.length} />
+      {total !== undefined && total > sales.length && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          Se muestran las {sales.length} alertas más recientes de {total}. Resuelve algunas para ver las siguientes.
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         {SUB_VIEWS.map((v) => {
           const count = sales.filter((s) => classify(s) === v.value).length;

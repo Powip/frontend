@@ -10,6 +10,7 @@ import { saveAs } from "file-saver";
 import { useRouter } from "next/navigation";
 import {
   Package,
+  PackageCheck,
   Truck,
   AlertTriangle,
   Wallet,
@@ -24,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { OrderHeader } from "@/interfaces/IOrder";
 import {
+  getOperationsTab,
   getPedidosTab,
   isFailedDelivery,
   hasCourierSyncError,
@@ -83,21 +85,23 @@ export default function OperacionesTableroPage() {
   );
 
   const tabCounts = useMemo(() => {
-    const counts = { despachar: 0, camino: 0, atencion: 0 };
+    const counts = { preparados: 0, camino: 0, despachados: 0, atencion: 0 };
     let porDespacharPendiente = 0;
     let porDespacharProvincia = 0;
     let enCaminoMas15 = 0;
     let atencionEnJuego = 0;
     for (const o of shippingOrders) {
-      const tab = getPedidosTab(o);
+      const tab = getOperationsTab(o);
       const pending = Number(o.grandTotal || 0) - paidAmount(o);
-      if (tab === "despachar") {
-        counts.despachar++;
+      if (tab === "preparados") {
+        counts.preparados++;
         porDespacharPendiente += pending;
         if (o.salesRegion === "PROVINCIA") porDespacharProvincia++;
       } else if (tab === "camino") {
         counts.camino++;
         if (daysSince(o.updated_at) > 15) enCaminoMas15++;
+      } else if (tab === "despachados") {
+        counts.despachados++;
       } else if (tab === "atencion") {
         counts.atencion++;
         atencionEnJuego += pending;
@@ -122,12 +126,12 @@ export default function OperacionesTableroPage() {
     const erroresAgencia = shippingOrders.filter(hasCourierSyncError).length;
     const agenciaPorVencer = shippingOrders.filter(
       (o) =>
-        ["EN_ENVIO", "DESPACHADO"].includes(o.status) &&
+        o.status === "DESPACHADO" &&
         o.shalomStatus === "EN_DESTINO" &&
         daysSince(o.updated_at) >= GUIDE_AGE_THRESHOLDS.proximoDias,
     ).length;
     const porConfirmar = shippingOrders.filter(
-      (o) => o.shalomStatus === "ENTREGADO" && o.status !== "ENTREGADO",
+      (o) => o.shalomStatus === "ENTREGADO" && o.status === "DESPACHADO",
     ).length;
     const fallidos = shippingOrders.filter(isFailedDelivery).length;
     const sinTracking = orders.filter(
@@ -195,8 +199,9 @@ export default function OperacionesTableroPage() {
 
     const kpiSheet = XLSX.utils.json_to_sheet([
       { KPI: "Pendientes por preparar", Valor: pendingCount, Detalle: "Incluye pedidos pagados y con saldo" },
-      { KPI: "Por despachar", Valor: tabCounts.counts.despachar, Detalle: `${money(tabCounts.porDespacharPendiente)} por cobrar · ${tabCounts.porDespacharProvincia} a provincia` },
+      { KPI: "Preparados", Valor: tabCounts.counts.preparados, Detalle: `${money(tabCounts.porDespacharPendiente)} por cobrar · ${tabCounts.porDespacharProvincia} a provincia` },
       { KPI: "En camino", Valor: tabCounts.counts.camino, Detalle: `${tabCounts.enCaminoMas15} con más de 15 días` },
+      { KPI: "Despachados", Valor: tabCounts.counts.despachados, Detalle: "Ya entregados al courier" },
       { KPI: "Necesita atención", Valor: tabCounts.counts.atencion, Detalle: `${money(tabCounts.atencionEnJuego)} en juego` },
       { KPI: "Cobro por verificar", Valor: money(porLiquidar), Detalle: "Entregado con saldo; verificar cobro en Liquidaciones" },
     ]);
@@ -261,15 +266,15 @@ export default function OperacionesTableroPage() {
       <GlobalScanner open={scannerOpen} onOpenChange={setScannerOpen} />
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <Kpi icon={<Package className="h-4 w-4" />} color="teal" label="Pendientes por preparar" value={pendingCount} sub="Pagados y con saldo" onClick={() => goPedidos("pendientes")} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <Kpi icon={<Package className="h-4 w-4" />} color="teal" label="Pendientes por preparar" value={pendingCount} sub="Se preparan desde Ventas" onClick={() => router.push("/ventas")} />
         <Kpi
           icon={<Package className="h-4 w-4" />}
           color="teal"
-          label="Por despachar"
-          value={tabCounts.counts.despachar}
+          label="Preparados"
+          value={tabCounts.counts.preparados}
           sub={`${money(tabCounts.porDespacharPendiente)} por cobrar · ${tabCounts.porDespacharProvincia} a provincia`}
-          onClick={() => goPedidos("despachar")}
+          onClick={() => goPedidos("preparados")}
         />
         <Kpi
           icon={<Truck className="h-4 w-4" />}
@@ -278,6 +283,14 @@ export default function OperacionesTableroPage() {
           value={tabCounts.counts.camino}
           sub={`${tabCounts.enCaminoMas15} con más de 15 días`}
           onClick={() => goPedidos("camino")}
+        />
+        <Kpi
+          icon={<PackageCheck className="h-4 w-4" />}
+          color="blue"
+          label="Despachados"
+          value={tabCounts.counts.despachados}
+          sub="Con el courier, en reparto"
+          onClick={() => goPedidos("despachados")}
         />
         <Kpi
           icon={<AlertTriangle className="h-4 w-4" />}
@@ -307,7 +320,7 @@ export default function OperacionesTableroPage() {
             title="Listos para escanear"
             desc="Pedidos con guía esperando despacho"
             n={bandeja.listosParaEscanear}
-            onClick={() => goPedidos("despachar", "listos-escanear")}
+            onClick={() => goPedidos("camino", "listos-escanear")}
           />
           <BandejaCard
             icon={<AlertTriangle className="h-4 w-4" />}
@@ -323,7 +336,7 @@ export default function OperacionesTableroPage() {
             title="Agencia por vencer"
             desc={`Pedidos con +${GUIDE_AGE_THRESHOLDS.proximoDias} días en agencia`}
             n={bandeja.agenciaPorVencer}
-            onClick={() => goPedidos("camino", "agencia-por-vencer")}
+            onClick={() => goPedidos("despachados", "agencia-por-vencer")}
           />
           <BandejaCard
             icon={<CheckCircle2 className="h-4 w-4" />}
@@ -331,7 +344,7 @@ export default function OperacionesTableroPage() {
             title="Por confirmar"
             desc="Entregas por confirmar + cobro"
             n={bandeja.porConfirmar}
-            onClick={() => goPedidos("camino", "por-confirmar")}
+            onClick={() => goPedidos("despachados", "por-confirmar")}
           />
           <BandejaCard
             icon={<Ban className="h-4 w-4" />}
