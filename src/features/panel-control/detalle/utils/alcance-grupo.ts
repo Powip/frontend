@@ -9,6 +9,21 @@ export interface TextoAlcance {
 export function textoAlcance(grupo: DetalleGrupo | null, periodo: string): TextoAlcance {
   switch (grupo?.alcance) {
     case "actual":
+      if (grupo.tipo === "reservados") {
+        // El stock es físico: el servidor solo aplica la tienda y no mira canal, entrada, cobro, zona ni asesor.
+        return {
+          periodo: "Estado actual (no depende del periodo)",
+          descripcion:
+            "Estado actual: pedidos que hoy reservan este producto. No depende del periodo y solo respeta la tienda donde está el stock (no canal, zona ni asesor). Si el producto está en varias tiendas se listan los pedidos de todas las tiendas, salvo que filtres una.",
+        };
+      }
+      if (grupo.tipo === "por_liquidar_actual") {
+        return {
+          periodo: "Estado actual (no depende del periodo)",
+          descripcion:
+            "Estado actual: entregados con courier que aún no se liquidan, de los últimos 365 días (hasta 5000 pedidos). No depende del periodo; respeta tienda, canal y demás filtros.",
+        };
+      }
       return {
         periodo: "Estado actual (no depende del periodo)",
         descripcion:

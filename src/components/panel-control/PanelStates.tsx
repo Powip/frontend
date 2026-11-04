@@ -1,9 +1,10 @@
 "use client";
 
-import { AlertTriangle, Lock, PlugZap, SearchX } from "lucide-react";
+import { AlertTriangle, Lock, PlugZap, SearchX, ServerOff } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { mensajeDeError } from "@/features/panel-control/shared/api/panel-errors";
 import type { DataOrigin } from "@/features/panel-control/shared/models/data-origin.model";
 import { cn } from "@/lib/utils";
 
@@ -83,10 +84,41 @@ export function PanelError({ error, onRetry }: { error: Error | null; onRetry?: 
       icon={<AlertTriangle className="size-6" />}
       titulo="No se pudieron cargar los datos"
     >
-      <p role="alert">{error?.message ?? "Error desconocido"}</p>
+      <p role="alert">{mensajeDeError(error)}</p>
       {onRetry && (
         <Button type="button" variant="outline" size="sm" className="mt-2" onClick={onRetry}>
           Reintentar
+        </Button>
+      )}
+    </StateBox>
+  );
+}
+
+/** Un servicio del que depende la vista no responde (HTTP 503): no es un error de la pantalla ni de los datos. */
+export function PanelNoDisponible({
+  titulo,
+  mensaje,
+  onRetry,
+  reintentando = false,
+}: {
+  titulo: string;
+  mensaje?: string;
+  onRetry?: () => void;
+  reintentando?: boolean;
+}) {
+  return (
+    <StateBox tono="error" icon={<ServerOff className="size-6" />} titulo={titulo}>
+      <p role="status">{mensaje ?? "Reintenta en unos minutos."}</p>
+      {onRetry && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-2"
+          disabled={reintentando}
+          onClick={onRetry}
+        >
+          {reintentando ? "Reintentando…" : "Reintentar"}
         </Button>
       )}
     </StateBox>

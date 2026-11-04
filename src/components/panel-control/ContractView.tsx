@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { estadoHttp, MENSAJE_SIN_PERMISO } from "@/features/panel-control/shared/api/panel-errors";
 import type { ContractResult } from "@/features/panel-control/shared/data/panel-contract-map";
 import type { PanelContractState } from "@/features/panel-control/shared/hooks/use-panel-contract";
 import type { DataOrigin } from "@/features/panel-control/shared/models/data-origin.model";
@@ -36,6 +37,8 @@ export function ContractView<K extends PanelContractId>({
     case "cargando":
       return <PanelSkeleton variant={skeleton} label={label} />;
     case "error":
+      // 403 del servidor: es un permiso, no una falla. Se dice con claridad y sin «Reintentar».
+      if (estadoHttp(state.error) === 403) return <RestrictedNotice motivo={MENSAJE_SIN_PERMISO} />;
       return <PanelError error={state.error} onRetry={state.refetch} />;
     default:
       if (state.data === undefined) return <PanelSkeleton variant={skeleton} label={label} />;
