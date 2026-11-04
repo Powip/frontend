@@ -60,11 +60,11 @@ export function destinoAccion(
 ): DestinoAccion | null {
   switch (accion) {
     case "preparar":
-      // LLAMADO y PREPARADO de la base viven en «Por despachar» (ahí se imprime y pasa a PREPARADO);
-      // «Pendientes» es solo lo que aún no se llamó.
-      return { tipo: "enlace", href: conBusqueda("despachar", datos.pedido) };
+      // LLAMADO y PREPARADO de la base viven en «Preparados» (resolveOperationsTab de
+      // /operaciones/pedidos); ahí se imprime, se asigna la guía y se despacha.
+      return { tipo: "enlace", href: conBusqueda("preparados", datos.pedido) };
     case "asignar_guia":
-      return { tipo: "enlace", href: conBusqueda("despachar", datos.pedido) };
+      return { tipo: "enlace", href: conBusqueda("preparados", datos.pedido) };
     case "coordinar_recojo":
       return { tipo: "enlace", href: "/operaciones/guias?tab=agenda" };
     case "llamar":

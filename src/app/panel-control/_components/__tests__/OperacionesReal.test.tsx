@@ -333,7 +333,7 @@ describe("Cola: botones de acción", () => {
     expect(within(tabla).getByRole("button", { name: "Preparar" })).toBeDisabled();
     expect(within(tabla).getByRole("link", { name: /^Asignar guía:/ })).toHaveAttribute(
       "href",
-      "/operaciones/pedidos?tab=despachar",
+      "/operaciones/pedidos?tab=preparados",
     );
     expect(within(tabla).queryByText("Pendiente")).toBeNull();
   });

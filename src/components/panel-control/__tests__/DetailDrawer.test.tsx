@@ -100,7 +100,7 @@ describe("DetailDrawer", () => {
     expect(numero).not.toBe("");
     expect(enlace).toHaveAttribute(
       "href",
-      `/operaciones/pedidos?tab=despachar&q=${encodeURIComponent(numero)}`,
+      `/operaciones/pedidos?tab=preparados&q=${encodeURIComponent(numero)}`,
     );
   });
 

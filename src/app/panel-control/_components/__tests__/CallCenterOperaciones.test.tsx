@@ -216,10 +216,10 @@ describe("Operaciones", () => {
     await user.click(within(dialogo).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     const preparar = within(tabla).getByRole("link", { name: /^Preparar:/ });
-    expect(preparar).toHaveAttribute("href", "/operaciones/pedidos?tab=despachar");
+    expect(preparar).toHaveAttribute("href", "/operaciones/pedidos?tab=preparados");
     expect(within(tabla).getByRole("link", { name: /^Asignar guía:/ })).toHaveAttribute(
       "href",
-      "/operaciones/pedidos?tab=despachar",
+      "/operaciones/pedidos?tab=preparados",
     );
     expect(within(tabla).getByRole("link", { name: /^Coordinar recojo:/ })).toHaveAttribute(
       "href",

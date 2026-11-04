@@ -32,11 +32,11 @@ describe("destinoAccion", () => {
   it("lleva a las pantallas existentes", () => {
     expect(destinoAccion("preparar", { pedido: "V-1" })).toEqual({
       tipo: "enlace",
-      href: "/operaciones/pedidos?tab=despachar&q=V-1",
+      href: "/operaciones/pedidos?tab=preparados&q=V-1",
     });
     expect(destinoAccion("asignar_guia")).toEqual({
       tipo: "enlace",
-      href: "/operaciones/pedidos?tab=despachar",
+      href: "/operaciones/pedidos?tab=preparados",
     });
     expect(destinoAccion("coordinar_recojo")?.href).toBe("/operaciones/guias?tab=agenda");
     expect(destinoAccion("reclamar_courier")?.href).toBe("/operaciones/liquidaciones");
@@ -46,7 +46,7 @@ describe("destinoAccion", () => {
 
   it("codifica el número de pedido en la búsqueda", () => {
     expect(destinoAccion("asignar_guia", { pedido: "A&B 1" })?.href).toBe(
-      "/operaciones/pedidos?tab=despachar&q=A%26B%201",
+      "/operaciones/pedidos?tab=preparados&q=A%26B%201",
     );
   });
 
