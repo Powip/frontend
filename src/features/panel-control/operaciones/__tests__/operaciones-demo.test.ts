@@ -52,6 +52,13 @@ describe("Operaciones · cola y tiempos", () => {
     expect(provincia.kpis.colaActiva).toBeLessThan(mes.kpis.colaActiva);
   });
 
+  it("«Sin guía +24 h» abre exactamente los pedidos de la tarjeta (mismo predicado, grupo propio de la Cola)", async () => {
+    const { kpis } = await cola();
+    expect(kpis.sinGuiaMas24h).toBeGreaterThan(0);
+    const detalle = await abrirGrupo(grupos.sinGuia24h());
+    expect(detalle.pedidos.total).toBe(kpis.sinGuiaMas24h);
+  });
+
   it("cada celda estado × antigüedad abre exactamente esos pedidos con su acción", async () => {
     const { matriz, kpis } = await cola();
     expect(matriz.reduce((suma, fila) => suma + fila.total, 0)).toBe(kpis.colaActiva);

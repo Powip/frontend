@@ -15,7 +15,8 @@ export const OPERACIONES_COLA_CONTRACT = defineContract({
     "Solo Dueño: a otro rol el servidor responde 403. Cada subpestaña es una petición propia (?sub=)",
     "La cola cuenta ventas con courier; el estado ASIGNADO_A_GUIA se muestra como CON_GUIA",
     "Los grupos del drawer (cola_operativa, etapa_lenta, despachados_dia) usan las mismas funciones que la pantalla, así que cada cifra abre exactamente sus pedidos",
-    "PENDIENTE: el drawer «Envíos retrasados» (accion: envios_retrasados) todavía responde 400; envíos retrasados requiere el tiempo normal por courier (panel_courier_config)",
+    "PENDIENTE (Task 15c): los drawers «Envíos retrasados» (accion: envios_retrasados) y «Sin guía +24 h» (accion: sin_guia_24h) todavía responden 400. «Sin guía +24 h» NO usa ventas_sin_guia (el universo del Resumen, sin exigir courier y de 14 días): la tarjeta cuenta ventas con courier en LLAMADO/PREPARADO de hace más de 24 h; envíos retrasados requiere el tiempo normal por courier (panel_courier_config)",
+    "Incidencia, motivos de rechazo y efectividad abren envios {estado: RECHAZADO[, tipo, motivo]}: son rechazos CON courier, que es lo que cuentan las cifras (el grupo rechazados incluye los que no tienen courier)",
     "PENDIENTE: metas por etapa (sin configuración: usa las del contrato) y la comparación con el periodo anterior",
   ],
 });

@@ -72,6 +72,7 @@ const CAMPOS_SENSIBLES = new Set([
   "flete",
   "fleteTotal",
   "fletePromedio",
+  "enviosSinFlete",
   "valorAlCosto",
 ]);
 

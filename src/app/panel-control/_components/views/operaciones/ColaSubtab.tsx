@@ -253,11 +253,7 @@ export function ColaSubtab() {
               meta={metas ? evaluarMeta(k.sinGuiaMas24h, metas.ventas_sin_guia) : undefined}
               metaDemo={metaDemo}
               sub="LLAMADO o PREPARADO hace más de 24 h · estado actual"
-              onDrill={() =>
-                openDrilldown(
-                  grupos.accion("ventas_sin_guia", "Ventas sin guía +24 h", "asignar_guia"),
-                )
-              }
+              onDrill={() => openDrilldown(grupos.sinGuia24h())}
               drillLabel="Asignar guía"
             />,
             <KpiCard
@@ -325,7 +321,12 @@ export function ColaSubtab() {
               meta={metas ? evaluarMeta(k.incidenciaRechazo, metas.incidencia_rechazo) : undefined}
               metaDemo={metaDemo}
               sub={`${formatNumber(k.rechazados)} rechazados ÷ ${formatNumber(k.entregados + k.rechazados)} cerrados con courier`}
-              onDrill={() => openDrilldown(grupos.rechazados())}
+              // La cifra son rechazos CON courier: «rechazados» (todos) puede listar más.
+              onDrill={() =>
+                openDrilldown(
+                  grupos.de("envios", "Rechazados con courier", { estado: "RECHAZADO" }),
+                )
+              }
               drillLabel="Ver rechazados"
             />,
           ];
@@ -399,7 +400,9 @@ export function ColaSubtab() {
                 dotColor: fila.sinMotivo ? "var(--pc-text-soft)" : "var(--pc-bad)",
                 onSelect: () =>
                   openDrilldown(
-                    grupos.de("rechazados", `Rechazos · ${fila.motivo}`, {
+                    // Los motivos salen de los rechazos con courier: `envios` cuadra con la barra.
+                    grupos.de("envios", `Rechazos · ${fila.motivo}`, {
+                      estado: "RECHAZADO",
                       tipo: "rechazado",
                       motivo: fila.motivo,
                     }),

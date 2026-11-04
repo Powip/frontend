@@ -105,17 +105,7 @@ describe("Operaciones: detalle de pedidos real (GET /panel/detalle)", () => {
     expect(detalleOperacionesRealSource.subpestanas).toBeUndefined();
   });
 
-  it.each([
-    ["cola_operativa", { estado: "EN_ENVIO", antiguedad: "mas_5d" }],
-    ["cola_operativa", { estado: "LLAMADO" }],
-    ["etapa_lenta", { etapa: "ciclo_total" }],
-    ["despachados_dia", { dia_despacho: "2026-10-12" }],
-    ["reservados", { producto: "var-1" }],
-    ["envios", { courier: "shalom", estado: "EN_ENVIO" }],
-    ["envios", { departamento: "Lima", estado: "RECHAZADO" }],
-    ["rechazados", { courier: "shalom" }],
-    ["por_liquidar_actual", { courier: "shalom", vencido: "1" }],
-  ] as const)("%s %j viaja tal cual al servidor", async (grupo, params) => {
+  it("manda grupo, parámetros y paginación sin tocarlos; qué parámetros abre cada botón se prueba en OperacionesDrills.test", async () => {
     const respuesta = {
       resumen: {},
       pedidos: { filas: [], total: 0, pagina: 1, tamanoPagina: 100 },
@@ -125,10 +115,11 @@ describe("Operaciones: detalle de pedidos real (GET /panel/detalle)", () => {
     mockGet.mockResolvedValue({ data: respuesta });
     const consulta = {
       ...CONSULTA,
-      grupo,
-      grupo_params: JSON.stringify(params),
-      pagina: 1,
+      grupo: "cola_operativa" as const,
+      grupo_params: JSON.stringify({ estado: "EN_ENVIO", antiguedad: "mas_5d" }),
+      pagina: 2,
       tamano_pagina: 100,
+      buscar: "ana",
     };
     await expect(detalleOperacionesRealSource.fetch(consulta, CONTEXTO)).resolves.toBe(respuesta);
     expect(mockGet).toHaveBeenCalledWith("https://ventas.example.com/panel/detalle", {

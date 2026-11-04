@@ -101,7 +101,10 @@ export function InventarioSubtab() {
               label="Productos"
               value={formatNumber(k.productos)}
               origin={origin}
-              sub={`${formatNumber(k.sinCosto)} sin costo`}
+              // Sin permiso de costos el backend deja el mapa vacío: «sin costo» sería falso (están ocultos).
+              sub={
+                k.valorAlCosto === undefined ? undefined : `${formatNumber(k.sinCosto)} sin costo`
+              }
             />,
             ...(k.valorAlCosto !== undefined
               ? [
@@ -311,7 +314,7 @@ export function InventarioSubtab() {
                 caption="Stock y cobertura"
                 columns={columnas}
                 rows={data.actual.productos}
-                getRowKey={(fila) => fila.productoId}
+                getRowKey={(fila) => `${fila.tiendaId}|${fila.productoId}`}
                 exportar={{ titulo: "Inventario", nombreBase: "inventario", origen: origin.kind }}
                 emptyMessage="Sin productos para esta tienda"
                 maxHeight={560}

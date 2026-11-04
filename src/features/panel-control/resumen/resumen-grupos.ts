@@ -77,6 +77,13 @@ export const grupos = {
       "avisar_cliente",
       "actual",
     ),
+  /**
+   * «Sin guía +24 h» de la Cola de Operaciones. NO es `ventas_sin_guia` (el universo del Resumen:
+   * sin exigir courier y solo los últimos 14 días): la tarjeta cuenta ventas con courier en LLAMADO o
+   * PREPARADO de hace más de 24 h, de cualquier antigüedad. La Task 15c lo implementa con ese predicado.
+   */
+  sinGuia24h: () =>
+    grupo("accion", "Ventas sin guía +24 h", { accion: "sin_guia_24h" }, "asignar_guia", "actual"),
   accion: (
     id: AccionHoyId,
     titulo: string,

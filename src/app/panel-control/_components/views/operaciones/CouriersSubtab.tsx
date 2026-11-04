@@ -63,16 +63,18 @@ function Enlace({
 
 const pendiente = <span className="text-pc-warn">Pendiente</span>;
 
-/** Flete o costo que el servidor no pudo calcular (ningún envío con flete informado): nunca 0 ni NaN. */
-const sinDato = (
-  <span className="text-pc-text-soft" title="Ningún envío tiene el flete informado">
+/** Flete o costo que el servidor no pudo calcular (nada informado): nunca 0 ni NaN. */
+const sinDato = (titulo: string) => (
+  <span className="text-pc-text-soft" title={titulo}>
     Sin dato
   </span>
 );
+const SIN_FLETE = "Ningún envío tiene el flete informado";
+const SIN_FLETE_EN_RECHAZOS = "Ningún rechazo tiene el flete informado";
 
 const fleteSoles = (valor: number | null | undefined, decimales = false) =>
   valor === null || valor === undefined
-    ? sinDato
+    ? sinDato(SIN_FLETE)
     : decimales
       ? formatSolesDecimales(valor)
       : formatSoles(valor);
@@ -81,13 +83,14 @@ const enviosSinFleteTexto = (cantidad: number) =>
   `${formatNumber(cantidad)} ${cantidad === 1 ? "envío sin flete informado" : "envíos sin flete informado"}`;
 
 /** Total del flete y cuántos envíos quedaron fuera por no tener el flete informado. */
-function subFlete(k: Pick<CouriersKpis, "fleteTotal" | "enviosSinFlete">): string {
+function subFlete(k: Pick<CouriersKpis, "envios" | "fleteTotal" | "enviosSinFlete">): string {
   const partes: string[] = [];
   if (k.fleteTotal !== null && k.fleteTotal !== undefined) {
     partes.push(`${formatSoles(k.fleteTotal)} en total`);
   }
   if (k.enviosSinFlete) partes.push(enviosSinFleteTexto(k.enviosSinFlete));
-  else if (k.fleteTotal === null) partes.push("Ningún envío tiene el flete informado");
+  // Sin envíos no hay nada que decir: «ningún envío tiene flete» sería ruido.
+  else if (k.fleteTotal === null && k.envios > 0) partes.push(SIN_FLETE);
   return partes.join(" · ");
 }
 
@@ -251,7 +254,10 @@ export function CouriersSubtab() {
       id: "costo_rechazos",
       header: "Costo rechazos",
       capability: "ver_costos",
-      cell: (fila) => fleteSoles(fila.costoRechazos),
+      cell: (fila) =>
+        fila.costoRechazos === null || fila.costoRechazos === undefined
+          ? sinDato(SIN_FLETE_EN_RECHAZOS)
+          : formatSoles(fila.costoRechazos),
       sortValue: (fila) => fila.costoRechazos ?? null,
       exportValue: (fila) => fila.costoRechazos ?? null,
       exportFormat: "soles",
@@ -473,7 +479,12 @@ export function CouriersSubtab() {
               }
               metaDemo={metaDemo}
               sub="Un prepago cobrado aún en camino no cuenta como entregado"
-              onDrill={() => openDrilldown(grupos.rechazados())}
+              // Entregados ÷ (entregados + rechazados) con courier: los rechazos son `envios` RECHAZADO.
+              onDrill={() =>
+                openDrilldown(
+                  grupos.de("envios", "Rechazados con courier", { estado: "RECHAZADO" }),
+                )
+              }
               drillLabel="Ver rechazados"
             />,
             <KpiCard
@@ -507,7 +518,7 @@ export function CouriersSubtab() {
                     label="Flete promedio"
                     value={
                       k.fletePromedio === null || k.fletePromedio === undefined
-                        ? sinDato
+                        ? sinDato(SIN_FLETE)
                         : formatSolesDecimales(k.fletePromedio)
                     }
                     origin={origin}

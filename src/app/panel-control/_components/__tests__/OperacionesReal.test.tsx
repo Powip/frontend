@@ -1,25 +1,19 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
+import type { DetalleQuery } from "@/features/panel-control/detalle/models/detalle.model";
+import type { PanelSource } from "@/features/panel-control/shared/data/panel-source";
 import {
-  renderWithPanel,
-  TEST_SOURCES,
-} from "@/components/panel-control/__tests__/render-with-panel";
-import type {
-  DetalleQuery,
-  DetalleResponse,
-} from "@/features/panel-control/detalle/models/detalle.model";
-import type { ColaPanel } from "@/features/panel-control/operaciones/models/cola.model";
-import type { CouriersPanel } from "@/features/panel-control/operaciones/models/couriers.model";
-import type { InventarioPanel } from "@/features/panel-control/operaciones/models/inventario.model";
-import type {
-  PanelSource,
-  PanelSourceRegistry,
-} from "@/features/panel-control/shared/data/panel-source";
-import type { PanelEnvelope } from "@/features/panel-control/shared/models/panel-envelope.model";
-import type { PanelSubtabId } from "@/features/panel-control/shared/models/panel-navigation.model";
-import { DEFAULT_PANEL_STATE } from "@/features/panel-control/shared/state/panel-state.model";
-import { PanelShell } from "../shell/PanelShell";
+  COURIERS,
+  DETALLE_VACIO,
+  errorHttp,
+  fuentes,
+  INVENTARIO,
+  INVENTARIO_MULTITIENDA,
+  INVENTARIO_SIN_COSTOS,
+  renderOperaciones,
+  sobre,
+  tarjetaCargada,
+} from "./operaciones-test-utils";
 
 jest.mock("sonner", () => ({ toast: { info: jest.fn(), success: jest.fn(), error: jest.fn() } }));
 jest.mock("next/link", () => ({
@@ -34,249 +28,6 @@ jest.mock("next/link", () => ({
 beforeAll(() => {
   Element.prototype.scrollIntoView = jest.fn();
 });
-
-const sobre = <T,>(actual: T): PanelEnvelope<T> => ({
-  actual,
-  anterior_misma_antiguedad: null,
-  metas: null,
-  generado_en: "2026-09-21T21:00:00Z",
-});
-
-/** Lo que construye axios ante una respuesta HTTP con error. */
-function errorHttp(status: number, message?: string) {
-  return Object.assign(new Error(`Request failed with status code ${status}`), {
-    response: { status, data: message ? { message } : {} },
-  });
-}
-
-const COLA: ColaPanel = {
-  kpis: {
-    colaActiva: 12,
-    sinGuiaMas24h: 3,
-    enviosRetrasados: 1,
-    enviosSinTiempoNormal: 0,
-    diasConfirmadoAEntregado: 2.5,
-    entregasMedidas: 8,
-    entregados: 20,
-    rechazados: 4,
-    incidenciaRechazo: 0.1667,
-  },
-  matriz: [
-    {
-      estado: "LLAMADO",
-      accion: "preparar",
-      porAntiguedad: { menos_24h: 2, "1_2d": 1, "3_5d": 0, mas_5d: 0 },
-      total: 3,
-      sinFecha: 0,
-    },
-  ],
-  tiemposPorEtapa: [
-    {
-      etapa: "ciclo_total",
-      medianaHoras: 50,
-      metaHoras: 96,
-      pedidosMedidos: 8,
-      sobreMeta: 2,
-      sinFechas: 0,
-    },
-  ],
-  despachosPorDia: [{ dia: "2026-09-20", despachados: 2 }],
-  motivosRechazo: [],
-};
-
-const COURIERS: CouriersPanel = {
-  kpis: {
-    envios: 10,
-    entregados: 6,
-    rechazados: 2,
-    enTransito: 2,
-    efectividadEntrega: 0.75,
-    primerIntento: null,
-    entregasSinDatoPrimerIntento: 6,
-    diasEntrega: 3.2,
-    fletePromedio: null,
-    fleteTotal: null,
-    enviosSinFlete: 7,
-    porLiquidar: 800,
-    pedidosPorLiquidar: 4,
-    liquidacionVencida: 120,
-    pedidosVencidos: 1,
-    porLiquidarSinPlazo: 0,
-  },
-  couriers: [
-    {
-      courierId: "shalom",
-      nombre: "Shalom",
-      tipo: null,
-      plazoLiquidacionDias: 7,
-      tiempoNormalDias: null,
-      envios: 7,
-      entregados: 4,
-      rechazados: 2,
-      enTransito: 1,
-      efectividad: 0.67,
-      primerIntento: null,
-      diasPromedio: 3,
-      fletePromedio: null,
-      fleteTotal: null,
-      costoRechazos: null,
-      porLiquidar: 500,
-      vencido: 0,
-      score: "C",
-    },
-    {
-      courierId: "olva",
-      nombre: "Olva",
-      tipo: null,
-      plazoLiquidacionDias: 7,
-      tiempoNormalDias: null,
-      envios: 3,
-      entregados: 2,
-      rechazados: 0,
-      enTransito: 1,
-      efectividad: 1,
-      primerIntento: null,
-      diasPromedio: 4,
-      fletePromedio: 15,
-      fleteTotal: 450,
-      costoRechazos: 0,
-      porLiquidar: 300,
-      vencido: 120,
-      score: "A",
-    },
-  ],
-  departamentos: [
-    {
-      departamento: "Lima",
-      envios: 7,
-      entregados: 4,
-      rechazados: 2,
-      efectividad: 0.67,
-      courierPrincipal: "Shalom",
-      ticket: 120,
-      fletePromedio: null,
-    },
-  ],
-};
-
-const INVENTARIO: InventarioPanel = {
-  kpis: {
-    productos: 4,
-    sinCosto: 1,
-    valorAlCosto: 1500,
-    agotados: 1,
-    criticos: 1,
-    erroresDatos: 0,
-    ventasEsperandoStock: 0,
-  },
-  productos: [
-    {
-      productoId: "var-1",
-      sku: "POLO-1",
-      nombre: "Polo básico",
-      tiendaId: "tienda-1",
-      unidades30Dias: 30,
-      stock: 20,
-      reservado: 5,
-      disponible: 15,
-      ventaDiaria: 1,
-      coberturaDias: 15,
-      estado: "bajo",
-      costoUnitario: 25,
-      valor: 500,
-    },
-  ],
-};
-
-/** Con `mostrarCostos` en false el backend OMITE las claves de costos (no van en null ni en 0). */
-const INVENTARIO_SIN_COSTOS: InventarioPanel = {
-  kpis: {
-    productos: 4,
-    sinCosto: 4,
-    agotados: 1,
-    criticos: 1,
-    erroresDatos: 0,
-    ventasEsperandoStock: 0,
-  },
-  productos: [
-    {
-      productoId: "var-1",
-      sku: "POLO-1",
-      nombre: "Polo básico",
-      tiendaId: "tienda-1",
-      unidades30Dias: 30,
-      stock: 20,
-      reservado: 5,
-      disponible: 15,
-      ventaDiaria: 1,
-      coberturaDias: 15,
-      estado: "bajo",
-    },
-  ],
-};
-
-const DETALLE_VACIO: DetalleResponse = {
-  resumen: { facturacion: 0, ventas: 0, unidades: 0, ticket: null },
-  pedidos: { filas: [], total: 0, pagina: 1, tamanoPagina: 100 },
-  porProducto: [],
-  porEstado: [],
-};
-
-function real<K extends "operaciones-cola" | "operaciones-couriers" | "operaciones-inventario">(
-  contractId: K,
-  fetch: PanelSource<K>["fetch"],
-): PanelSource<K> {
-  return { contractId, kind: "real", descripcion: `Prueba ${contractId}`, fetch };
-}
-
-function fuentes(
-  opciones: {
-    inventario?: PanelSource<"operaciones-inventario">["fetch"];
-    detalle?: PanelSource<"detalle">["fetch"];
-  } = {},
-): PanelSourceRegistry {
-  return {
-    ...TEST_SOURCES,
-    // El estado del periodo también viene del backend: así cualquier «Demo» que aparezca es de Operaciones.
-    "estado-periodo": {
-      ...TEST_SOURCES["estado-periodo"],
-      kind: "real",
-    } as PanelSource<"estado-periodo">,
-    "operaciones-cola": real("operaciones-cola", async () => sobre(COLA)),
-    "operaciones-couriers": real("operaciones-couriers", async () => sobre(COURIERS)),
-    "operaciones-inventario": real(
-      "operaciones-inventario",
-      opciones.inventario ?? (async () => sobre(INVENTARIO)),
-    ),
-    detalle: {
-      contractId: "detalle",
-      kind: "real",
-      descripcion: "Detalle de prueba",
-      fetch: opciones.detalle ?? (async () => DETALLE_VACIO),
-    },
-  };
-}
-
-function renderOperaciones(subtab: PanelSubtabId, sources: PanelSourceRegistry) {
-  const user = userEvent.setup();
-  renderWithPanel(<PanelShell />, {
-    role: "dueno",
-    sources,
-    state: { ...DEFAULT_PANEL_STATE, navigation: { tab: "operaciones", subtab } },
-  });
-  return user;
-}
-
-const region = (nombre: string) => screen.getByRole("region", { name: nombre });
-
-/** La tarjeta de un indicador, ya con sus datos (mientras carga también es una región con ese nombre). */
-async function tarjetaCargada(nombre: string) {
-  await screen.findByRole("region", { name: nombre });
-  await waitFor(() =>
-    expect(screen.queryByRole("status", { name: `Cargando ${nombre}` })).toBeNull(),
-  );
-  return region(nombre);
-}
 
 describe("Operaciones con datos reales: sin rastro de demo", () => {
   it.each([
@@ -321,6 +72,38 @@ describe("Couriers: fletes sin dato", () => {
     expect(filaOlva).toHaveTextContent("S/ 450");
     // Olva no tiene rechazados: su costo de rechazos es un 0 conocido, no «sin dato».
     expect(within(filaOlva).getAllByText("S/ 0")).toHaveLength(1);
+  });
+
+  it("sin ningún envío no dice «Ningún envío tiene el flete informado»", async () => {
+    renderOperaciones(
+      "couriers",
+      fuentes({
+        couriers: async () =>
+          sobre({
+            ...COURIERS,
+            kpis: { ...COURIERS.kpis, envios: 0, enviosSinFlete: 0 },
+            couriers: [],
+            departamentos: [],
+          }),
+      }),
+    );
+    const tarjeta = await tarjetaCargada("Flete promedio");
+    expect(tarjeta).toHaveTextContent("Sin dato");
+    expect(tarjeta.textContent).not.toMatch(/Ningún envío/);
+  });
+
+  it("el tooltip de «Sin dato» habla de rechazos en el costo de rechazos y de envíos en el flete", async () => {
+    renderOperaciones("couriers", fuentes());
+    const tabla = await screen.findByRole("table", { name: "Rendimiento por courier" });
+    const fila = within(tabla)
+      .getByRole("button", { name: /Ver envíos de Shalom/ })
+      .closest("tr");
+    if (!fila) throw new Error("sin fila");
+    const [fletePromedio, fleteTotal, costoRechazos] = within(fila).getAllByText("Sin dato");
+    expect(fletePromedio).toHaveAttribute("title", expect.stringMatching(/envío/));
+    expect(fleteTotal).toHaveAttribute("title", expect.stringMatching(/envío/));
+    expect(costoRechazos).toHaveAttribute("title", expect.stringMatching(/rechazo/));
+    expect(fletePromedio.getAttribute("title")).not.toMatch(/rechazo/);
   });
 
   it("por departamento: el flete promedio null es «Sin dato»", async () => {
@@ -385,13 +168,49 @@ describe("Inventario: costos y tienda", () => {
     expect(screen.queryByRole("region", { name: "Valor al costo" })).toBeNull();
     expect(within(tabla).getByText("Polo básico")).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/NaN|S\/ 0\b/);
-    expect(await tarjetaCargada("Productos")).toHaveTextContent("4 sin costo");
+    // Sin permiso de costos el backend deja el mapa vacío: «4 sin costo» sería falso (los costos están ocultos).
+    expect(await tarjetaCargada("Productos")).not.toHaveTextContent(/sin costo/);
   });
 
   it("aclara que «Tienda» es donde está el stock", async () => {
     renderOperaciones("inventario", fuentes());
     await screen.findByRole("table", { name: "Stock y cobertura" });
     expect(screen.getByText(/Tienda = donde está el stock/)).toBeInTheDocument();
+  });
+});
+
+describe("Inventario multitienda", () => {
+  it("el mismo producto en varias tiendas son filas distintas y ordenar no las duplica ni las pierde", async () => {
+    const errores = jest.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const user = renderOperaciones(
+        "inventario",
+        fuentes({ inventario: async () => sobre(INVENTARIO_MULTITIENDA) }),
+      );
+      const tabla = await screen.findByRole("table", { name: "Stock y cobertura" });
+      const columnas = within(tabla).getAllByRole("columnheader");
+      const encabezado = within(tabla).getByRole("columnheader", { name: /^Stock/ });
+      const posicion = columnas.indexOf(encabezado);
+      const stocks = () =>
+        within(tabla)
+          .getAllByRole("row")
+          .slice(1)
+          .map((fila) => within(fila).getAllByRole("cell")[posicion].textContent);
+
+      expect(stocks()).toEqual(["20", "7", "3", "50"]);
+
+      await user.click(within(encabezado).getByRole("button"));
+      expect(stocks()).toEqual(["50", "20", "7", "3"]);
+      await user.click(within(encabezado).getByRole("button"));
+      expect(stocks()).toEqual(["3", "7", "20", "50"]);
+
+      const avisosDeClave = errores.mock.calls.filter((llamada) =>
+        String(llamada[0]).includes("same key"),
+      );
+      expect(avisosDeClave).toEqual([]);
+    } finally {
+      errores.mockRestore();
+    }
   });
 });
 

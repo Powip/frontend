@@ -505,7 +505,11 @@ export function seleccionarGrupo(
         ({ estado }) => estado.estado === "LLAMADO" || estado.estado === "PREPARADO",
       );
     }
-    const accion = params.accion as Exclude<AccionHoyId, "anulaciones_sin_motivo">;
+    // `sin_guia_24h` es el grupo propio de la Cola de Operaciones: la tarjeta y el drawer comparten
+    // el predicado de «ventas sin guía +24 h» (con courier, desde LLAMADO).
+    const accion = (
+      params.accion === "sin_guia_24h" ? "ventas_sin_guia" : params.accion
+    ) as Exclude<AccionHoyId, "anulaciones_sin_motivo">;
     const agotados = productosAgotados(universo, query);
     return conParametros(actuales).filter((item) => cumpleAccion(accion, item, now, agotados));
   }
