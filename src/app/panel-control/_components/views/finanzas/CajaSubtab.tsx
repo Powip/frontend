@@ -25,11 +25,19 @@ import { CeldaDrill } from "../ventas/CeldaDrill";
 import { ContractBlock, KpiRow } from "../ventas/ContractBlock";
 import { OrigenCanalesNota } from "../ventas/OrigenCanalesNota";
 
-const SIN_PEDIDOS: Partial<Record<FuenteIngresoCaja | ConceptoEgresoCaja, string>> = {
+/** Por qué una fila no tiene cifra o no abre pedidos. Solo se muestra si el monto viene null. */
+const PENDIENTE_ADS = "Pendiente: se conectará con Meta/TikTok Ads";
+const NOTA_SIN_MONTO: Partial<Record<FuenteIngresoCaja | ConceptoEgresoCaja, string>> = {
   adelantos: "Pendiente: falta registrar adelanto_monto y fecha_adelanto por pedido",
-  publicidad:
-    "Pauta registrada por fecha; el desglose por día está en Ventas y canales → Publicidad",
-  gastos_fijos: "Gastos fijos del mes prorrateados por día (valor demo)",
+  publicidad: PENDIENTE_ADS,
+  gastos_fijos:
+    "Pendiente. Carga tus gastos fijos en Configuración (con filtros de canal, zona o asesora no se reparten)",
+  fletes: "Sin dato: ningún envío del periodo tiene flete informado",
+  pasarela: "Sin dato: ningún canal tiene % de pasarela en su ficha",
+  comisiones_aliados: "Sin dato: ningún canal tiene % de comisión en su ficha",
+};
+const NOTA_CON_MONTO: Partial<Record<FuenteIngresoCaja | ConceptoEgresoCaja, string>> = {
+  gastos_fijos: "Gastos fijos del mes prorrateados por día",
 };
 
 export function CajaSubtab() {
@@ -58,9 +66,9 @@ export function CajaSubtab() {
           ) : (
             <span>
               {etiquetas[fila.concepto]}
-              {SIN_PEDIDOS[fila.concepto] && (
+              {(fila.monto === null ? NOTA_SIN_MONTO : NOTA_CON_MONTO)[fila.concepto] && (
                 <span className="block text-[11px] text-pc-text-muted">
-                  {SIN_PEDIDOS[fila.concepto]}
+                  {(fila.monto === null ? NOTA_SIN_MONTO : NOTA_CON_MONTO)[fila.concepto]}
                 </span>
               )}
             </span>
@@ -110,8 +118,7 @@ export function CajaSubtab() {
               value={formatSoles(c.totalEntro)}
               origin={origin}
               delta={a ? calcularDelta(c.totalEntro, a.totalEntro) : undefined}
-              sub="Liquidaciones, caja POS y prepagos cobrados en el periodo"
-              onDrill={() => openDrilldown(grupos.caja("Dinero que entró", {}))}
+              sub="Cobros registrados en el periodo, por fecha de registro del pago"
             />,
             <KpiCard
               key="salio"
@@ -119,7 +126,7 @@ export function CajaSubtab() {
               value={formatSoles(c.totalSalio)}
               origin={origin}
               delta={a ? calcularDelta(c.totalSalio, a.totalSalio, "menos_es_mejor") : undefined}
-              sub="No incluye compras de mercadería"
+              sub="Sin compras de mercadería ni lo que aún está pendiente (publicidad)"
             />,
             <KpiCard
               key="neto"
@@ -147,7 +154,7 @@ export function CajaSubtab() {
         <ContractBlock
           state={state}
           titulo="Entradas por fuente"
-          subtitulo="En la fecha en que el dinero llegó: liquidación del courier o del marketplace, caja POS o pago en línea"
+          subtitulo="Por la fecha en que se registró el pago (no cuando el courier liquidó): contraentrega, marketplace, caja POS o pago en línea. Liquidado por el courier y tiempo hasta liquidar: Pendiente: se conectará con Liquidaciones de courier"
         >
           {(data, origin) => (
             <DataTable
@@ -167,7 +174,7 @@ export function CajaSubtab() {
         <ContractBlock
           state={state}
           titulo="Salidas"
-          subtitulo="Pauta por su fecha, fletes por fecha de envío (retorno de provincia en la fecha del rechazo), pasarela y comisiones al cobrar"
+          subtitulo="Fletes por fecha de envío (un rechazo sin despacho, por la fecha del rechazo), pasarela y comisiones al cobrar. Publicidad pendiente de Meta/TikTok Ads"
         >
           {(data, origin) => (
             <DataTable
@@ -188,7 +195,7 @@ export function CajaSubtab() {
       <ContractBlock
         state={state}
         titulo="Dinero que entró por día"
-        subtitulo="Por fecha del dinero. Clic o Enter abre los pedidos cobrados ese día."
+        subtitulo="Por la fecha en que se registró el pago, sin importar cuándo ingresó el pedido."
         skeleton="grafico"
       >
         {(data) => {
@@ -205,12 +212,6 @@ export function CajaSubtab() {
                 label: dias.length > 2 ? String(Number(dia.dia.slice(8))) : formatDayKey(dia.dia),
                 value: dia.entro,
                 description: `${formatDayKey(dia.dia)}: entró ${formatSoles(dia.entro)} · salió ${formatSoles(dia.salio)}`,
-                onSelect: dia.entro
-                  ? () =>
-                      openDrilldown(
-                        grupos.caja(`Cobrado el ${formatDayKey(dia.dia)}`, { dia_cobro: dia.dia }),
-                      )
-                  : undefined,
               }))}
             />
           );

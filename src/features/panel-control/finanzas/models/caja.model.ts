@@ -41,16 +41,20 @@ export interface CajaPanel {
   incluyeComprasMercaderia: false;
 }
 
+/**
+ * R22: `liquidacion_courier` conserva su nombre de contrato, pero su fecha es la del REGISTRO del pago
+ * (no hay liquidaciones de courier en el backend): el rótulo nunca dice «fecha de liquidación».
+ */
 export const FUENTE_INGRESO_LABEL: Record<FuenteIngresoCaja, string> = {
-  liquidacion_courier: "Liquidación de courier (contraentrega)",
-  liquidacion_marketplace: "Liquidación marketplace (neta de comisión)",
+  liquidacion_courier: "Cobro por contraentrega (fecha de registro del pago)",
+  liquidacion_marketplace: "Cobro de marketplace (neto de comisión)",
   caja_pos: "Caja POS",
   prepago: "Prepago (pasarela)",
   adelantos: "Adelantos (Yape antes del envío)",
 };
 
 export const CONCEPTO_EGRESO_LABEL: Record<ConceptoEgresoCaja, string> = {
-  publicidad: "Publicidad (pauta registrada)",
+  publicidad: "Publicidad",
   fletes: "Fletes pagados",
   pasarela: "Comisión de pasarela",
   comisiones_aliados: "Comisiones de plataformas aliadas",

@@ -4,6 +4,7 @@ import { LineChart } from "@/components/panel-control/charts/LineChart";
 import { ProgressBar } from "@/components/panel-control/charts/ProgressBar";
 import { DataTable, type DataTableColumn } from "@/components/panel-control/DataTable";
 import { KpiCard } from "@/components/panel-control/KpiCard";
+import { SIN_CANAL } from "@/features/panel-control/detalle/models/detalle.model";
 import type {
   EstadoResultados,
   RentabilidadCanalFila,
@@ -49,6 +50,21 @@ interface LineaResultado {
   total?: boolean;
 }
 
+const PENDIENTE_ADS = "Pendiente: se conectará con Meta/TikTok Ads";
+
+const entregas = (n: number, resto: string) =>
+  `${formatNumber(n)} ${n === 1 ? "entrega" : "entregas"} ${resto}`;
+
+function notaGastosFijos(er: EstadoResultados): string {
+  if (er.gastosFijos !== null) {
+    return `${formatSoles(er.gastosFijosMensuales)} al mes × días ÷ 30`;
+  }
+  // Con gastos cargados y aun así null, la causa es un filtro de dimensión.
+  return er.gastosFijosMensuales === null
+    ? "Pendiente. Carga tus gastos fijos en Configuración"
+    : "Pendiente: los gastos fijos no se reparten por canal, zona ni asesora";
+}
+
 function lineas(er: EstadoResultados): LineaResultado[] {
   return [
     { clave: "venta", etiqueta: "Venta entregada", monto: er.ventaEntregada, signo: "+" },
@@ -59,7 +75,7 @@ function lineas(er: EstadoResultados): LineaResultado[] {
       signo: "−",
       nota:
         er.entregasSinCosto > 0
-          ? `${formatNumber(er.entregasSinCosto)} entregas sin costo cargado: el costo real es mayor`
+          ? `${entregas(er.entregasSinCosto, "sin costo cargado")}: el costo real es mayor`
           : undefined,
     },
     {
@@ -67,6 +83,7 @@ function lineas(er: EstadoResultados): LineaResultado[] {
       etiqueta: "Publicidad directa",
       monto: er.publicidadDirecta,
       signo: "−",
+      nota: er.publicidadDirecta === null ? PENDIENTE_ADS : undefined,
     },
     {
       clave: "pauta_general",
@@ -74,12 +91,33 @@ function lineas(er: EstadoResultados): LineaResultado[] {
       monto: er.publicidadGeneralEstimada,
       signo: "−",
       estimado: true,
+      nota: er.publicidadGeneralEstimada === null ? PENDIENTE_ADS : undefined,
     },
-    { clave: "envios", etiqueta: "Envíos (incluye retornos)", monto: er.envios, signo: "−" },
-    { clave: "comisiones", etiqueta: "Comisiones y pasarela", monto: er.comisiones, signo: "−" },
+    {
+      clave: "envios",
+      etiqueta: "Envíos (flete informado)",
+      monto: er.envios,
+      signo: "−",
+      nota:
+        er.entregasSinFlete > 0
+          ? `${entregas(er.entregasSinFlete, "sin flete informado")}: el envío real es mayor`
+          : undefined,
+    },
+    {
+      clave: "comisiones",
+      etiqueta: "Comisiones y pasarela",
+      monto: er.comisiones,
+      signo: "−",
+      nota:
+        er.entregasSinComision > 0
+          ? `${entregas(er.entregasSinComision, "sin comisión calculable")} (canal sin ficha o sin %)`
+          : undefined,
+    },
     {
       clave: "ganancia",
-      etiqueta: er.gananciaParcial ? "Ganancia (parcial, tope)" : "Ganancia",
+      etiqueta: er.gananciaParcial
+        ? "Ganancia antes de publicidad · parcial"
+        : "Ganancia antes de publicidad",
       monto: er.ganancia,
       signo: "=",
       total: true,
@@ -89,10 +127,7 @@ function lineas(er: EstadoResultados): LineaResultado[] {
       etiqueta: "Gastos fijos prorrateados",
       monto: er.gastosFijos,
       signo: "−",
-      nota:
-        er.gastosFijos === null
-          ? "Pendiente: los gastos fijos no se reparten por canal, zona ni asesora"
-          : `${formatSoles(er.gastosFijosMensuales)} al mes (demo) × días ÷ 30`,
+      nota: notaGastosFijos(er),
     },
     {
       clave: "utilidad",
@@ -118,8 +153,15 @@ export function ResultadoSubtab() {
       align: "left",
       cell: (fila) => (
         <CeldaDrill
-          ariaLabel={`Ver ventas de ${fila.canalNombre}`}
-          onSelect={() => openDrilldown(grupos.ventasCanal(fila.canalId, fila.canalNombre))}
+          ariaLabel={`Ver entregas de ${fila.canalNombre}`}
+          onSelect={() =>
+            openDrilldown(
+              grupos.de("ventas_canal", `${fila.canalNombre} · entregado`, {
+                canal: fila.canalId ?? SIN_CANAL,
+                operativo: "entregado",
+              }),
+            )
+          }
         >
           {fila.canalNombre}
         </CeldaDrill>
@@ -137,10 +179,15 @@ export function ResultadoSubtab() {
     },
     {
       id: "ganancia",
-      header: "Ganancia",
+      header: "Ganancia (antes de publicidad)",
       cell: (fila) =>
-        fila.gananciaParcial ? (
-          <span className="text-pc-text-muted" title="Tope: hay entregas sin costo cargado">
+        fila.ganancia === null ? (
+          <span className="text-pc-warn">Pendiente</span>
+        ) : fila.gananciaParcial ? (
+          <span
+            className="text-pc-text-muted"
+            title="Tope: faltan costos, fletes o comisiones, y la publicidad aún no está conectada"
+          >
             ≤ {formatSoles(fila.ganancia)}
           </span>
         ) : (
@@ -215,9 +262,15 @@ export function ResultadoSubtab() {
               value={formatSoles(d.porLiquidar)}
               origin={origin}
               sub={
-                <span className={d.vencido ? "text-pc-bad" : undefined}>
-                  {formatSoles(d.vencido)} vencido
-                </span>
+                <>
+                  <span className={d.vencido ? "text-pc-bad" : undefined}>
+                    Vencido: {d.vencido === null ? "Sin dato" : formatSoles(d.vencido)}
+                  </span>
+                  <span className="block">
+                    Incluye retiro en tienda y POS. Cobranza solo cuenta entregas con courier, por
+                    eso puede diferir.
+                  </span>
+                </>
               }
               onDrill={() => openDrilldown(grupos.porLiquidar())}
             />,
@@ -279,7 +332,7 @@ export function ResultadoSubtab() {
         <ContractBlock
           state={state}
           titulo="Estado de resultados"
-          subtitulo="Por fecha del pedido. La publicidad general es un reparto estimado; los adelantos no entran."
+          subtitulo="Por fecha del pedido y antes de publicidad (aún no conectada). Costo, envíos y comisiones suman solo lo informado; los adelantos no entran."
         >
           {(data) => {
             const er = data.actual.estadoResultados;

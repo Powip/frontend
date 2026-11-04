@@ -162,7 +162,8 @@ export function CobranzaSubtab() {
               origin={origin}
               sub={
                 <>
-                  {formatNumber(k.pedidosPorLiquidar)} entregados sin liquidar · estado actual
+                  {formatNumber(k.pedidosPorLiquidar)} entregados con courier sin liquidar · últimos
+                  365 días · estado actual
                   {k.porLiquidarSinPlazo > 0 && (
                     <span className="block text-pc-warn">
                       {formatSoles(k.porLiquidarSinPlazo)} de couriers sin plazo pactado
@@ -184,18 +185,31 @@ export function CobranzaSubtab() {
             <KpiCard
               key="vencido"
               label="Vencido"
-              value={<span className="text-pc-bad">{formatSoles(k.vencido)}</span>}
-              origin={origin}
-              sub={`${formatNumber(k.pedidosVencidos)} pedidos pasaron el plazo del courier`}
-              onDrill={() =>
-                openDrilldown(
-                  grupos.actual(
-                    "por_liquidar_actual",
-                    "Liquidación vencida",
-                    { vencido: "1" },
-                    "pedir_liquidacion",
-                  ),
+              value={
+                k.vencido === null ? (
+                  <span className="text-pc-warn">Sin dato</span>
+                ) : (
+                  <span className="text-pc-bad">{formatSoles(k.vencido)}</span>
                 )
+              }
+              origin={origin}
+              sub={
+                k.vencido === null
+                  ? "Ningún courier con deuda tiene plazo pactado: no se puede saber si venció"
+                  : `${formatNumber(k.pedidosVencidos)} pedidos pasaron el plazo del courier`
+              }
+              onDrill={
+                k.vencido === null
+                  ? undefined
+                  : () =>
+                      openDrilldown(
+                        grupos.actual(
+                          "por_liquidar_actual",
+                          "Liquidación vencida",
+                          { vencido: "1" },
+                          "pedir_liquidacion",
+                        ),
+                      )
               }
             />,
             <KpiCard
@@ -222,11 +236,24 @@ export function CobranzaSubtab() {
           ];
         }}
       </KpiRow>
+      {state.data && (
+        <div className="space-y-1 rounded-xl border border-pc-border bg-pc-card px-3 py-2 text-xs text-pc-text-muted">
+          <p>
+            Cobranza es la deuda con couriers: entregados con courier sin pago completo, de los
+            últimos 365 días y hasta 5000 pedidos. El «por liquidar» de Resultado también incluye
+            retiro en tienda y POS, así que puede ser mayor.
+          </p>
+          <p>
+            Tiempo hasta liquidar y liquidado por el courier: Pendiente: se conectará con
+            Liquidaciones de courier.
+          </p>
+        </div>
+      )}
       <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[3fr_2fr]">
         <ContractBlock
           state={state}
           titulo="Liquidaciones pendientes por courier"
-          subtitulo="Estado actual, sin importar el periodo. «Pedir» necesita POST /panel/acciones."
+          subtitulo="Entregados con courier, estado actual, sin importar el periodo. «Pedir» necesita POST /panel/acciones."
         >
           {(data, origin) => (
             <DataTable

@@ -123,9 +123,9 @@ describe("Finanzas", () => {
     const user = renderTab("finanzas", "caja");
     const tabla = await screen.findByRole("table", { name: "Entradas de caja por fuente" });
     await user.click(
-      within(tabla).getByRole("button", { name: /Ver pedidos de Liquidación de courier/ }),
+      within(tabla).getByRole("button", { name: /Ver pedidos de Cobro por contraentrega/ }),
     );
-    const dialogo = await screen.findByRole("dialog", { name: /Liquidación de courier/ });
+    const dialogo = await screen.findByRole("dialog", { name: /Cobro por contraentrega/ });
     expect(within(dialogo).getByText(/Por fecha del dinero/)).toBeInTheDocument();
   });
 
