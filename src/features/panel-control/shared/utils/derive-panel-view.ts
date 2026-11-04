@@ -1,3 +1,4 @@
+import { isSubtabOculta, isTabOculta } from "../config/panel-entrega.config";
 import { PANEL_ROLE_POLICIES, resolveAllowedTab } from "../config/panel-roles.config";
 import { getDefaultSubtab, getTabDefinition, isSubtabOf } from "../config/panel-tabs.config";
 import type { PanelDimensionFilters } from "../models/panel-filters.model";
@@ -71,9 +72,13 @@ export function derivePanelView(
         : null,
   };
 
-  const tab = resolveAllowedTab(role, state.navigation.tab);
+  const tabs = policy.pestanas.filter((candidata) => !isTabOculta(candidata));
+  const pedida = state.navigation.tab;
+  const tab = pedida && tabs.includes(pedida) ? pedida : resolveAllowedTab(role, null);
   const subtabs = getTabDefinition(tab).subtabs.filter(
-    (definition) => !definition.capability || capabilities.has(definition.capability),
+    (definition) =>
+      (!definition.capability || capabilities.has(definition.capability)) &&
+      !isSubtabOculta(tab, definition.id),
   );
   const requested = state.navigation.subtab;
   const subtab =
@@ -90,7 +95,7 @@ export function derivePanelView(
     isPreviewing,
     capabilities,
     actualCapabilities: new Set<PanelCapability>(PANEL_ROLE_POLICIES[actualRole].capacidades),
-    tabs: policy.pestanas,
+    tabs,
     tab,
     subtabs,
     subtab,

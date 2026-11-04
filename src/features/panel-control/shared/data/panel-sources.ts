@@ -44,19 +44,43 @@ import {
 import { productosRealSource } from "../../productos/sources/productos.source";
 import { publicidadDemoSource } from "../../publicidad/sources/publicidad.demo";
 import { resumenRealSource } from "../../resumen/sources/resumen.source";
+import { metasOcultas } from "../config/panel-entrega.config";
 import type { PanelContractId } from "../models/panel-contract.model";
 import { conAutorizacion } from "./panel-autorizacion";
 import type { PanelSource, PanelSourceRegistry } from "./panel-source";
 
-function autorizarRegistro(registro: PanelSourceRegistry): PanelSourceRegistry {
+/**
+ * Mientras Metas esté oculta, ningún contrato entrega metas (ni las del backend): las vistas
+ * reciben `metas: null` y muestran su estado «sin meta configurada».
+ */
+export function sinMetasOcultas<K extends PanelContractId>(source: PanelSource<K>): PanelSource<K> {
+  return {
+    ...source,
+    fetch: async (query, context) => {
+      const resultado = await source.fetch(query, context);
+      if (
+        metasOcultas() &&
+        resultado !== null &&
+        typeof resultado === "object" &&
+        "metas" in resultado &&
+        resultado.metas !== null
+      ) {
+        return { ...resultado, metas: null } as typeof resultado;
+      }
+      return resultado;
+    },
+  };
+}
+
+export function autorizarRegistro(registro: PanelSourceRegistry): PanelSourceRegistry {
   const autorizado: PanelSourceRegistry = {};
   for (const [id, entrada] of Object.entries(registro) as [
     PanelContractId,
     PanelSource<PanelContractId> | readonly PanelSource<PanelContractId>[],
   ][]) {
     (autorizado as Record<PanelContractId, unknown>)[id] = Array.isArray(entrada)
-      ? entrada.map((fuente) => conAutorizacion(fuente))
-      : conAutorizacion(entrada as PanelSource<PanelContractId>);
+      ? entrada.map((fuente) => sinMetasOcultas(conAutorizacion(fuente)))
+      : sinMetasOcultas(conAutorizacion(entrada as PanelSource<PanelContractId>));
   }
   return autorizado;
 }

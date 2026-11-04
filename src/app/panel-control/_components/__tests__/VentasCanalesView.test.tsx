@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
+import { mostrarTodasLasSeccionesEnEsteArchivo } from "@/components/panel-control/__tests__/entrega-test-utils";
 import {
   renderWithPanel,
   TEST_SOURCES,
@@ -111,6 +112,8 @@ async function facturacionDelDrawer() {
   const etiqueta = await within(dialogo).findByText("Facturación");
   return { dialogo, facturacion: etiqueta.nextElementSibling?.textContent };
 }
+
+mostrarTodasLasSeccionesEnEsteArchivo();
 
 describe("Ventas y canales · Canales", () => {
   beforeEach(() => toastInfo.mockClear());

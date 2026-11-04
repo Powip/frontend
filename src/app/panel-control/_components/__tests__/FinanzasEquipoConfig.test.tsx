@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
+import { mostrarTodasLasSeccionesEnEsteArchivo } from "@/components/panel-control/__tests__/entrega-test-utils";
 import {
   renderWithPanel,
   TEST_SOURCES,
@@ -99,6 +100,8 @@ function renderTab(tab: PanelTabId, subtab: PanelSubtabId | null, role: PanelRol
   });
   return user;
 }
+
+mostrarTodasLasSeccionesEnEsteArchivo();
 
 describe("Finanzas", () => {
   it("Resultado muestra el cuadre del facturado al dinero y el estado de resultados", async () => {

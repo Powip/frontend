@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
+import { mostrarTodasLasSeccionesEnEsteArchivo } from "@/components/panel-control/__tests__/entrega-test-utils";
 import { renderWithPanel } from "@/components/panel-control/__tests__/render-with-panel";
 import { DEFAULT_PANEL_STATE } from "@/features/panel-control/shared/state/panel-state.model";
 import { PanelShell } from "../shell/PanelShell";
@@ -23,6 +24,8 @@ const tabs = () =>
   within(screen.getByRole("tablist", { name: "Secciones del panel" }))
     .getAllByRole("tab")
     .map((tab) => tab.textContent);
+
+mostrarTodasLasSeccionesEnEsteArchivo();
 
 describe("PanelShell", () => {
   beforeEach(() => toastInfo.mockClear());

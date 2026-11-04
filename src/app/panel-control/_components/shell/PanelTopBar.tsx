@@ -3,6 +3,7 @@
 import { Download, Share2 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { isAccionOculta } from "@/features/panel-control/shared/config/panel-entrega.config";
 import { rolPuedeUsarContrato } from "@/features/panel-control/shared/data/panel-autorizacion";
 import { usePanelOptions } from "@/features/panel-control/shared/hooks/use-panel-options";
 import type { PanelDataMode } from "@/features/panel-control/shared/models/data-origin.model";
@@ -29,6 +30,7 @@ export function PanelTopBar() {
   const canales = (options.canales.data ?? []).filter((canal) => canal.activo);
   const placeholderCanal = canalPlaceholder(options.canales.status);
   const puedeCompartir =
+    !isAccionOculta("compartir") &&
     !!permitido &&
     rolPuedeUsarContrato("compartir-reporte", permitido.role, permitido.capabilities);
   const [compartir, setCompartir] = useState(false);
@@ -111,7 +113,7 @@ export function PanelTopBar() {
                 <span className="hidden min-[1640px]:inline">Compartir</span>
               </Button>
             )}
-            {excel.permitido && (
+            {excel.permitido && !isAccionOculta("exportar") && (
               <Button
                 type="button"
                 size="sm"

@@ -40,7 +40,7 @@ export function PanelTabsNav() {
 
 export function PanelSubtabsNav() {
   const { view, dispatch } = usePanel();
-  if (view.access !== "permitido" || !view.subtabs.length || !view.subtab) return null;
+  if (view.access !== "permitido" || view.subtabs.length < 2 || !view.subtab) return null;
   return (
     <RovingTabList<PanelSubtabId>
       items={view.subtabs.map((subtab) => ({ id: subtab.id, label: subtab.label }))}
