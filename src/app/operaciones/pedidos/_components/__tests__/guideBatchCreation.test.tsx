@@ -18,10 +18,23 @@ let mockModalProps: {
 };
 
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: { get: jest.fn(), post: jest.fn(), patch: jest.fn() } }));
-jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn() } }));
+jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn(), info: jest.fn() } }));
+// Guías & Courier ("Nueva guía") sigue leyendo los pedidos del negocio completos.
 jest.mock("@/hooks/useBusinessOrders", () => ({
   useBusinessOrders: () => ({ orders: mockOrders, loading: false, error: false, refetch: mockRefetch }),
 }));
+jest.mock("@/hooks/useOperationsPedidos", () => ({
+  // La vista pide una página al servidor; aquí devuelve los pedidos de la prueba como esa página.
+  useOperationsPedidos: () => ({
+    data: { data: mockOrders, total: mockOrders.length, page: 1, totalPages: 1, window: { days: 30, from: null, to: null, explicit: false } },
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    refetch: mockRefetch,
+    invalidate: mockRefetch,
+  }),
+}));
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ storeIds: ["store-a", "store-b"], canFetch: true }) }));
 jest.mock("@/hooks/useInvalidateBusinessData", () => ({ useInvalidateBusinessData: () => mockInvalidateBusinessData }));
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: mockAuth }) }));
 jest.mock("@/contexts/OperationsRoleContext", () => ({
@@ -31,16 +44,15 @@ jest.mock("@/contexts/OperationsRoleContext", () => ({
 jest.mock("@/hooks/useUserAuditInfo", () => ({ useUserAuditInfo: () => () => ({ userId: "operator" }) }));
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }), useSearchParams: () => new URLSearchParams() }));
 jest.mock("../guideReviewReturn", () => ({ useGuideReviewReturn: () => ({ pending: null, clear: jest.fn() }) }));
-jest.mock("../PorDespacharTab", () => ({
-  PorDespacharTab: ({ sales, actions }: { sales: Sale[]; actions: PedidosActions }) => {
+jest.mock("../PreparadosTab", () => ({
+  PreparadosTab: ({ data, actions }: { data: { sales: Sale[] }; actions: PedidosActions }) => {
     mockActions = actions;
-    return <button onClick={() => actions.onOpenCreateGuide(sales)}>Armar guías</button>;
+    return <button onClick={() => actions.onOpenCreateGuide(data.sales)}>Armar guías</button>;
   },
 }));
-jest.mock("../EnCaminoTab", () => ({ EnCaminoTab: () => null }));
+jest.mock("../TransitTab", () => ({ TransitTab: () => null }));
+jest.mock("../ClosedTab", () => ({ ClosedTab: () => null }));
 jest.mock("../AtencionTab", () => ({ AtencionTab: () => null }));
-jest.mock("../HistorialTab", () => ({ HistorialTab: () => null }));
-jest.mock("../AnuladosTab", () => ({ AnuladosTab: () => null }));
 jest.mock("@/components/orders/OrderDetailModal", () => ({ OrderDetailModalProvider: ({ children }: { children: ReactNode }) => children }));
 jest.mock("@/app/operaciones/_shared/GlobalScanner", () => ({ GlobalScanner: () => null }));
 jest.mock("@/utils/exportSalesExcel", () => ({ exportSalesToExcel: jest.fn() }));
@@ -275,6 +287,83 @@ test("normal bulk reactivation preserves its status mutation and does not fetch 
   expect(axios.get).not.toHaveBeenCalled();
 });
 
+
+describe("Pedidos — despachar en lote solo aplica a pedidos EN_ENVIO", () => {
+  it("un ASIGNADO_A_GUIA (guía por aprobar, sin stock reservado) no puede pasar a DESPACHADO", async () => {
+    mockOrders[0] = { ...mockOrders[0], status: "ASIGNADO_A_GUIA", guideNumber: "G-1", courier: "Shalom" };
+    render(<PedidosContent />);
+    await act(async () => { await mockActions.onBulkStatusChange(["order-1"], "DESPACHADO"); });
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("Aprueba la guía antes de despachar"));
+    expect(axios.patch).not.toHaveBeenCalled();
+  });
+
+  it("con una selección mixta no se despacha ninguno: el aviso cuenta los que no están listos", async () => {
+    mockOrders[0] = { ...mockOrders[0], status: "EN_ENVIO", guideNumber: "G-1", courier: "Shalom" };
+    mockOrders[1] = { ...mockOrders[1], status: "ASIGNADO_A_GUIA", guideNumber: "G-1", courier: "Shalom" };
+    render(<PedidosContent />);
+    await act(async () => { await mockActions.onBulkStatusChange(["order-1", "order-2"], "DESPACHADO"); });
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("1 pedido(s) no están En camino con la guía aprobada"));
+    expect(axios.patch).not.toHaveBeenCalled();
+  });
+
+  it("tampoco se despacha desde el cambio de estado individual", async () => {
+    mockOrders[0] = { ...mockOrders[0], status: "ASIGNADO_A_GUIA", guideNumber: "G-1", courier: "Shalom" };
+    render(<PedidosContent />);
+    await act(async () => { await mockActions.onChangeStatus("order-1", "DESPACHADO"); });
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("Aprueba la guía primero"));
+    expect(axios.patch).not.toHaveBeenCalled();
+  });
+
+  it("un pedido EN_ENVIO sí pasa a DESPACHADO", async () => {
+    mockOrders[0] = { ...mockOrders[0], status: "EN_ENVIO", guideNumber: "G-1", courier: "Shalom" };
+    render(<PedidosContent />);
+    await act(async () => { await mockActions.onBulkStatusChange(["order-1"], "DESPACHADO"); });
+    expect(axios.patch).toHaveBeenCalledWith(expect.stringContaining("/order-header/order-1"), expect.objectContaining({ status: "DESPACHADO" }));
+  });
+
+  it("un pedido EN_ENVIO también puede pasar directo a ENTREGADO (así llegan casi todos hoy)", async () => {
+    mockOrders[0] = { ...mockOrders[0], status: "EN_ENVIO", guideNumber: "G-1", courier: "Shalom" };
+    render(<PedidosContent />);
+    await act(async () => { await mockActions.onBulkStatusChange(["order-1"], "ENTREGADO"); });
+    expect(axios.patch).toHaveBeenCalledWith(expect.stringContaining("/order-header/order-1"), expect.objectContaining({ status: "ENTREGADO" }));
+    expect(axios.patch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Pedidos — WhatsApp masivo", () => {
+  const sales = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `w-${i}`, phoneNumber: "999111222", orderNumber: `ORD-${i}`, clientName: `Cliente ${i}` }) as unknown as Sale);
+
+  it("abre como máximo 50 ventanas por clic, informa cuántos quedan y devuelve cuántos atendió", () => {
+    jest.useFakeTimers();
+    const open = jest.spyOn(window, "open").mockImplementation(() => null);
+    render(<PedidosContent />);
+
+    let attended: unknown;
+    act(() => { attended = mockActions.onBulkWhatsApp(sales(60)); });
+    act(() => { jest.advanceTimersByTime(60 * 600); });
+
+    expect(attended).toBe(50);
+    expect(open).toHaveBeenCalledTimes(50);
+    expect(toast.info).toHaveBeenCalledWith(expect.stringContaining("Se abren 50 de 60: quedan 10 seleccionados"));
+    open.mockRestore();
+    jest.useRealTimers();
+  });
+
+  it("con 50 o menos abre todas y devuelve la cantidad completa", () => {
+    jest.useFakeTimers();
+    const open = jest.spyOn(window, "open").mockImplementation(() => null);
+    render(<PedidosContent />);
+
+    let attended: unknown;
+    act(() => { attended = mockActions.onBulkWhatsApp(sales(8)); });
+    act(() => { jest.advanceTimersByTime(8 * 600); });
+
+    expect(attended).toBe(8);
+    expect(open).toHaveBeenCalledTimes(8);
+    open.mockRestore();
+    jest.useRealTimers();
+  });
+});
 
 test("Pedidos serialized merma directs to available inventory units without cancelling or writing stock", async () => {
   mockOrders[0] = { ...mockOrders[0], status: "ENTREGADO", unitAssignmentStatus: "CONFIRMED", unitCatalogValidated: true };

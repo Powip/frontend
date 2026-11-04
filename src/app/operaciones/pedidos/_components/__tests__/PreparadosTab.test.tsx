@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 /**
- * Tests: PorDespacharTab — habilitación de "Generar guía".
+ * Tests: PreparadosTab — "Asignar a guía" y su revisión de elegibilidad.
  *
  * Bug corregido: un pedido PAGADO ("PENDIENTE + cobrado al 100%", todavía no
  * empacado por almacén) se trataba como si ya estuviera PREPARADO y podía
@@ -222,10 +222,21 @@ jest.mock("@/components/ventas/SalesTableFilters", () => {
   return { ...actual, SalesTableFilters: () => null };
 });
 
+jest.mock("sonner", () => ({ toast: { info: jest.fn(), error: jest.fn(), success: jest.fn() } }));
+// Qué parte de la selección cumple los filtros lo decide el servidor; aquí no hay filtros activos.
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ storeIds: ["store-a"], canFetch: true }) }));
+jest.mock("@/hooks/useOperationsPedidos", () => ({
+  ...jest.requireActual("@/hooks/useOperationsPedidos"),
+  useVisibleSelection: () => ({ visibleIds: null, loading: false }),
+}));
+
 // ── Imports bajo prueba (después de los mocks) ──────────────────────────────
 
-import { PorDespacharTab } from "../PorDespacharTab";
+import { toast } from "sonner";
+import { PreparadosTab } from "../PreparadosTab";
 import { OrderDetailModalProvider } from "@/components/orders/OrderDetailModal";
+import { emptyTabState, type OperationsTabData } from "../tabState";
+import type { GuideReviewReturn } from "../guideReviewReturn";
 import type { PedidosActions, Sale } from "../types";
 import type { OrderStatus } from "@/interfaces/IOrder";
 
@@ -290,174 +301,150 @@ function makeActions(overrides: Partial<PedidosActions> = {}): PedidosActions {
     onSyncCourier: jest.fn(),
     onReturnToStock: jest.fn(),
     onMarkAsLoss: jest.fn(),
+    loadSalesByIds: jest.fn(),
     ...overrides,
   } as unknown as PedidosActions;
 }
 
+function makeData(sales: Sale[], overrides: Partial<OperationsTabData> = {}): OperationsTabData {
+  return {
+    sales,
+    total: sales.length,
+    totalPages: 1,
+    loading: false,
+    fetching: false,
+    counts: {
+      preparados: 32, preparadosContactados: 24, preparadosNoContactados: 8,
+      enCamino: 0, despachados: 0, entregados: 0, anulados: 0, historial: 0, atencion: 0,
+    },
+    ...overrides,
+  };
+}
+
+function renderTab(
+  sales: Sale[],
+  actions: PedidosActions = makeActions(),
+  extra: { guideReturn?: GuideReviewReturn | null; onGuideReturnHandled?: () => void; onState?: jest.Mock; data?: Partial<OperationsTabData>; state?: ReturnType<typeof emptyTabState> } = {},
+) {
+  const onState = extra.onState ?? jest.fn();
+  const state = extra.state ?? emptyTabState();
+  const ui = (list: Sale[]) => (
+    <PreparadosTab
+      data={makeData(list, extra.data)}
+      state={state}
+      query={{ tab: "preparados", page: 1, limit: 15, filters: state.filters }}
+      onState={onState}
+      actions={actions}
+      guideReturn={extra.guideReturn}
+      onGuideReturnHandled={extra.onGuideReturnHandled}
+    />
+  );
+  const view = render(ui(sales), { wrapper: OrderDetailModalProvider });
+  return { ...view, rerenderWith: (list: Sale[]) => view.rerender(ui(list)), onState };
+}
+
 /** Selecciona el checkbox de la última fila de la tabla (los de fila van
- *  después del "seleccionar todo" de la cabecera). Los checkboxes de la tabla
- *  no tienen nombre accesible, de ahí el acceso por rol + posición. */
+ *  después del "seleccionar toda la página" de la cabecera). */
 async function selectLastRow(user: ReturnType<typeof userEvent.setup>) {
   const checkboxes = screen.getAllByRole("checkbox");
   await user.click(checkboxes[checkboxes.length - 1]);
 }
 
+const bulkGuideButton = (label: string) => screen.getByRole("button", { name: new RegExp(`asignar a guía \\(${label}\\)`, "i") });
+
 // ── Tests ──────────────────────────────────────────────────────────────────
 
-describe("PorDespacharTab — armado de guía", () => {
-  it("un pedido PREPARADO a domicilio y sin guía, al seleccionarlo, habilita 'Generar guía (1)'", async () => {
-    const user = userEvent.setup();
-    const sale = makeSale({
-      id: "sale-preparado-1",
-      orderNumber: "ORD-PREPARADO-1",
-      status: "PREPARADO",
-      deliveryType: "DOMICILIO",
-      guideNumber: null,
-    });
+describe("PreparadosTab — asignar a guía", () => {
+  beforeEach(() => jest.clearAllMocks());
 
-    render(<PorDespacharTab sales={[sale]} actions={makeActions()} />, { wrapper: OrderDetailModalProvider });
+  it("un pedido PREPARADO a domicilio y sin guía, al seleccionarlo, habilita 'Asignar a guía (1)'", async () => {
+    const user = userEvent.setup();
+    renderTab([makeSale({ id: "sale-preparado-1", orderNumber: "ORD-PREPARADO-1", deliveryType: "DOMICILIO", guideNumber: null })]);
 
     expect(screen.getByText("ORD-PREPARADO-1")).toBeInTheDocument();
-
     await selectLastRow(user);
 
-    expect(
-      screen.getByRole("button", { name: /generar guía \(1\)/i }),
-    ).toBeEnabled();
-    expect(
-      screen.queryByText(
-        /pedido\(s\) seleccionados no se pueden incluir en una guía/i,
-      ),
-    ).not.toBeInTheDocument();
+    expect(bulkGuideButton("1")).toBeEnabled();
+    expect(screen.queryByText(/pedido\(s\) seleccionados no se pueden incluir en una guía/i)).not.toBeInTheDocument();
   });
 
-  it("al confirmar 'Generar guía' pasa el pedido PREPARADO a onOpenCreateGuide", async () => {
+  it("al pulsar 'Asignar a guía' pasa el pedido PREPARADO a onOpenCreateGuide", async () => {
     const user = userEvent.setup();
     const actions = makeActions();
-    const sale = makeSale({ id: "sale-preparado-1", status: "PREPARADO" });
-
-    render(<PorDespacharTab sales={[sale]} actions={actions} />, { wrapper: OrderDetailModalProvider });
+    renderTab([makeSale({ id: "sale-preparado-1" })], actions);
     await selectLastRow(user);
 
-    await user.click(
-      screen.getByRole("button", { name: /generar guía \(1\)/i }),
-    );
+    await user.click(bulkGuideButton("1"));
 
     expect(actions.onOpenCreateGuide).toHaveBeenCalledTimes(1);
-    expect(actions.onOpenCreateGuide).toHaveBeenCalledWith([
-      expect.objectContaining({ id: "sale-preparado-1", status: "PREPARADO" }),
-    ]);
+    expect(actions.onOpenCreateGuide).toHaveBeenCalledWith([expect.objectContaining({ id: "sale-preparado-1", status: "PREPARADO" })]);
   });
 
-  it("sin selección, el botón 'Generar Guía' de la cabecera está deshabilitado", () => {
-    render(<PorDespacharTab sales={[makeSale()]} actions={makeActions()} />, { wrapper: OrderDetailModalProvider });
-
-    expect(
-      screen.getByRole("button", { name: /generar guía/i }),
-    ).toBeDisabled();
-  });
-
-  it("un pedido PENDIENTE seleccionado deja 'Generar guía (0 de 1)', muestra el aviso por estado y la revisión no ofrece generar", async () => {
+  it("sin selección el botón masivo queda en (0) deshabilitado, y 'Asignar a guía de salida' solo avisa", async () => {
     const user = userEvent.setup();
     const actions = makeActions();
-    const sale = makeSale({
-      id: "sale-pendiente-1",
-      orderNumber: "ORD-PEND-1",
-      status: "PENDIENTE",
-      deliveryType: "DOMICILIO",
-    });
+    renderTab([makeSale()], actions);
 
-    render(<PorDespacharTab sales={[sale]} actions={actions} />, { wrapper: OrderDetailModalProvider });
-    await selectLastRow(user);
-
-    expect(
-      screen.getByText(
-        /pedido\(s\) seleccionados no se pueden incluir en una guía/i,
-      ),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/1 por su estado actual/i)).toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("button", { name: /generar guía \(0 de 1\)/i }),
-    );
-
-    const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByText("ORD-PEND-1")).toBeInTheDocument();
-    expect(
-      within(dialog).getByText(/estado «.*» no permite generar guía/i),
-    ).toBeInTheDocument();
-    expect(within(dialog).queryByText(/retiro en tienda/i)).not.toBeInTheDocument();
-    expect(
-      within(dialog).queryByRole("button", { name: /generar guía para/i }),
-    ).not.toBeInTheDocument();
+    expect(bulkGuideButton("0")).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: /asignar a guía de salida/i }));
+    expect(toast.info).toHaveBeenCalledWith(expect.stringMatching(/selecciona al menos un pedido/i));
     expect(actions.onOpenCreateGuide).not.toHaveBeenCalled();
   });
 
-  it("un pedido PAGADO seleccionado deja 'Generar guía (0 de 1)' y muestra el aviso de estado no elegible (cobrado no es preparado)", async () => {
+  it("'Asignar guía' de una fila abre la creación de guía solo con ese pedido", async () => {
     const user = userEvent.setup();
-    const sale = makeSale({
-      id: "sale-pagado-1",
-      orderNumber: "ORD-PAGADO-1",
-      status: "PAGADO",
-      deliveryType: "DOMICILIO",
-    });
+    const actions = makeActions();
+    renderTab([makeSale({ id: "a", orderNumber: "ORD-A" }), makeSale({ id: "b", orderNumber: "ORD-B" })], actions);
 
-    render(<PorDespacharTab sales={[sale]} actions={makeActions()} />, { wrapper: OrderDetailModalProvider });
+    await user.click(screen.getAllByRole("button", { name: /^asignar guía$/i })[1]);
+
+    expect(actions.onOpenCreateGuide).toHaveBeenCalledWith([expect.objectContaining({ id: "b" })]);
+  });
+
+  it("un pedido PENDIENTE seleccionado deja 'Asignar a guía (0 de 1)', muestra el aviso por estado y la revisión no ofrece generar", async () => {
+    const user = userEvent.setup();
+    const actions = makeActions();
+    renderTab([makeSale({ id: "sale-pendiente-1", orderNumber: "ORD-PEND-1", status: "PENDIENTE", deliveryType: "DOMICILIO" })], actions);
     await selectLastRow(user);
 
-    expect(
-      screen.getByRole("button", { name: /generar guía \(0 de 1\)/i }),
-    ).toBeEnabled();
-    expect(
-      screen.getByText(
-        /pedido\(s\) seleccionados no se pueden incluir en una guía/i,
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/pedido\(s\) seleccionados no se pueden incluir en una guía/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 por su estado actual/i)).toBeInTheDocument();
+
+    await user.click(bulkGuideButton("0 de 1"));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("ORD-PEND-1")).toBeInTheDocument();
+    expect(within(dialog).getByText(/estado «.*» no permite generar guía/i)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/retiro en tienda/i)).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /generar guía para/i })).not.toBeInTheDocument();
+    expect(actions.onOpenCreateGuide).not.toHaveBeenCalled();
+  });
+
+  it("un pedido PAGADO seleccionado deja 'Asignar a guía (0 de 1)' y muestra el aviso de estado no elegible (cobrado no es preparado)", async () => {
+    const user = userEvent.setup();
+    renderTab([makeSale({ id: "sale-pagado-1", orderNumber: "ORD-PAGADO-1", status: "PAGADO", deliveryType: "DOMICILIO" })]);
+    await selectLastRow(user);
+
+    expect(bulkGuideButton("0 de 1")).toBeEnabled();
+    expect(screen.getByText(/pedido\(s\) seleccionados no se pueden incluir en una guía/i)).toBeInTheDocument();
   });
 
   it("un pedido PREPARADO con retiro en tienda: abre el modal de retiro y deriva la edición sin generar guía", async () => {
     const user = userEvent.setup();
     const actions = makeActions();
-    const sale = makeSale({
-      id: "sale-preparado-retiro",
-      orderNumber: "ORD-RETIRO-1",
-      status: "PREPARADO",
-      deliveryType: "RETIRO TIENDA", // así lo deja mapOrderToSale
-    });
-
-    render(<PorDespacharTab sales={[sale]} actions={actions} />, { wrapper: OrderDetailModalProvider });
+    renderTab([makeSale({ id: "sale-preparado-retiro", orderNumber: "ORD-RETIRO-1", deliveryType: "RETIRO TIENDA" })], actions);
     await selectLastRow(user);
 
-    expect(
-      screen.getByText(/1 configurado\(s\) como retiro en tienda/i),
-    ).toBeInTheDocument();
-
-    await user.click(
-      screen.getByRole("button", { name: /generar guía \(0 de 1\)/i }),
-    );
+    expect(screen.getByText(/1 configurado\(s\) como retiro en tienda/i)).toBeInTheDocument();
+    await user.click(bulkGuideButton("0 de 1"));
 
     const dialog = screen.getByRole("dialog");
-    expect(
-      within(dialog).getByRole("heading", {
-        name: "Este pedido está configurado como retiro en tienda",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).getByText(
-        "El pedido ORD-RETIRO-1 no puede generar una guía porque su tipo de entrega es “Retiro en tienda”. Si necesita un envío, podés editar el tipo de entrega.",
-      ),
-    ).toBeInTheDocument();
-    expect(within(dialog).getByText(/tipo de entrega actual/i)).toHaveTextContent(
-      "Retiro en tienda",
-    );
+    expect(within(dialog).getByRole("heading", { name: "Este pedido está configurado como retiro en tienda" })).toBeInTheDocument();
+    expect(within(dialog).getByText(/tipo de entrega actual/i)).toHaveTextContent("Retiro en tienda");
     expect(within(dialog).getByRole("button", { name: "Cancelar" })).toBeInTheDocument();
-    expect(
-      within(dialog).getByText(/al guardar, volverás a por despachar con tu selección/i),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/al guardar, volverás a preparados con tu selección/i)).toBeInTheDocument();
 
-    await user.click(
-      within(dialog).getByRole("button", { name: "Abrir venta para editar entrega" }),
-    );
+    await user.click(within(dialog).getByRole("button", { name: "Abrir venta para editar entrega" }));
 
     expect(actions.onEditDeliveryType).toHaveBeenCalledWith(
       expect.objectContaining({ id: "sale-preparado-retiro" }),
@@ -467,20 +454,14 @@ describe("PorDespacharTab — armado de guía", () => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
-  it("el botón 'Generar Guía' de la cabecera abre el mismo modal de retiro, y 'Cancelar' lo cierra sin editar ni generar", async () => {
+  it("'Asignar a guía de salida' de la cabecera abre el mismo modal de retiro y 'Cancelar' lo cierra sin editar ni generar", async () => {
     const user = userEvent.setup();
     const actions = makeActions();
-    const sale = makeSale({ deliveryType: "RETIRO TIENDA" });
-
-    render(<PorDespacharTab sales={[sale]} actions={actions} />, { wrapper: OrderDetailModalProvider });
+    renderTab([makeSale({ deliveryType: "RETIRO TIENDA" })], actions);
     await selectLastRow(user);
-    await user.click(screen.getByRole("button", { name: /^generar guía$/i }));
+    await user.click(screen.getByRole("button", { name: /asignar a guía de salida/i }));
 
-    expect(
-      screen.getByRole("heading", {
-        name: "Este pedido está configurado como retiro en tienda",
-      }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Este pedido está configurado como retiro en tienda" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Cancelar" }));
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -490,234 +471,132 @@ describe("PorDespacharTab — armado de guía", () => {
 
   it("un pedido PREPARADO que ya tiene guía no es elegible y la revisión lo atribuye a la guía, no a retiro", async () => {
     const user = userEvent.setup();
-    const sale = makeSale({
-      id: "sale-preparado-conguia",
-      orderNumber: "ORD-CONGUIA-1",
-      status: "PREPARADO",
-      deliveryType: "DOMICILIO",
-      guideNumber: "GUIA-123",
-    });
-
-    render(<PorDespacharTab sales={[sale]} actions={makeActions()} />, { wrapper: OrderDetailModalProvider });
+    renderTab([makeSale({ id: "sale-conguia", orderNumber: "ORD-CONGUIA-1", deliveryType: "DOMICILIO", guideNumber: "GUIA-123" })]);
     await selectLastRow(user);
-    await user.click(
-      screen.getByRole("button", { name: /generar guía \(0 de 1\)/i }),
-    );
+    await user.click(bulkGuideButton("0 de 1"));
 
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText("Ya tiene la guía GUIA-123")).toBeInTheDocument();
-    expect(
-      within(dialog).queryByRole("button", { name: /editar entrega/i }),
-    ).not.toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /editar entrega/i })).not.toBeInTheDocument();
   });
 
   it("un pedido sin tipo de entrega se informa como tal, no como retiro en tienda", async () => {
     const user = userEvent.setup();
-    const sale = makeSale({ orderNumber: "ORD-SINTIPO-1", deliveryType: "" });
-
-    render(<PorDespacharTab sales={[sale]} actions={makeActions()} />, { wrapper: OrderDetailModalProvider });
+    renderTab([makeSale({ orderNumber: "ORD-SINTIPO-1", deliveryType: "" })]);
     await selectLastRow(user);
-    await user.click(
-      screen.getByRole("button", { name: /generar guía \(0 de 1\)/i }),
-    );
+    await user.click(bulkGuideButton("0 de 1"));
 
     const dialog = screen.getByRole("dialog");
-    expect(
-      within(dialog).getByText("No tiene tipo de entrega configurado"),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByText("No tiene tipo de entrega configurado")).toBeInTheDocument();
     expect(within(dialog).queryByText(/retiro en tienda/i)).not.toBeInTheDocument();
   });
 
   it("selección mixta: lista los bloqueados con motivo, permite editar solo el de retiro y genera explícitamente para los elegibles", async () => {
     const user = userEvent.setup();
     const actions = makeActions();
-    const ok = makeSale({ id: "s-ok", orderNumber: "ORD-OK" });
-    const retiro = makeSale({
-      id: "s-retiro",
-      orderNumber: "ORD-RETIRO",
-      deliveryType: "RETIRO TIENDA",
-    });
-    const conGuia = makeSale({
-      id: "s-guia",
-      orderNumber: "ORD-GUIA",
-      guideNumber: "GUIA-9",
-    });
-
-    render(
-      <PorDespacharTab sales={[ok, retiro, conGuia]} actions={actions} />,
-      { wrapper: OrderDetailModalProvider },
-    );
-    // Primer checkbox = "seleccionar toda la página".
-    await user.click(screen.getAllByRole("checkbox")[0]);
-
-    await user.click(
-      screen.getByRole("button", { name: /generar guía \(1 de 3\)/i }),
-    );
+    renderTab([
+      makeSale({ id: "s-ok", orderNumber: "ORD-OK" }),
+      makeSale({ id: "s-retiro", orderNumber: "ORD-RETIRO", deliveryType: "RETIRO TIENDA" }),
+      makeSale({ id: "s-guia", orderNumber: "ORD-GUIA", guideNumber: "GUIA-9" }),
+    ], actions);
+    await user.click(screen.getAllByRole("checkbox")[0]); // toda la página
+    await user.click(bulkGuideButton("1 de 3"));
 
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText(/1 de 3 pedidos pueden generar guía/i)).toBeInTheDocument();
-    expect(within(dialog).getByText("ORD-RETIRO")).toBeInTheDocument();
     expect(within(dialog).getByText("Configurado como retiro en tienda")).toBeInTheDocument();
-    expect(within(dialog).getByText("ORD-GUIA")).toBeInTheDocument();
     expect(within(dialog).getByText("Ya tiene la guía GUIA-9")).toBeInTheDocument();
-    // Solo el de retiro tiene edición individual.
-    const editButtons = within(dialog).getAllByRole("button", {
-      name: /editar entrega/i,
-    });
+    const editButtons = within(dialog).getAllByRole("button", { name: /editar entrega/i });
     expect(editButtons).toHaveLength(1);
-    expect(editButtons[0]).toHaveAccessibleName(
-      "Abrir venta para editar entrega de ORD-RETIRO",
-    );
+    expect(editButtons[0]).toHaveAccessibleName("Abrir venta para editar entrega de ORD-RETIRO");
     expect(actions.onOpenCreateGuide).not.toHaveBeenCalled();
 
-    await user.click(
-      within(dialog).getByRole("button", { name: "Generar guía para 1 pedido" }),
-    );
+    await user.click(within(dialog).getByRole("button", { name: "Generar guía para 1 pedido" }));
 
     expect(actions.onOpenCreateGuide).toHaveBeenCalledTimes(1);
-    expect(actions.onOpenCreateGuide).toHaveBeenCalledWith([
-      expect.objectContaining({ id: "s-ok" }),
-    ]);
+    expect(actions.onOpenCreateGuide).toHaveBeenCalledWith([expect.objectContaining({ id: "s-ok" })]);
     expect(actions.onEditDeliveryType).not.toHaveBeenCalled();
   });
 
-  it("selección mixta: editar un pedido de retiro deriva solo ese pedido, sin cambios en bloque", async () => {
+  it("selección mixta: editar un pedido de retiro deriva solo ese pedido y lleva la selección completa para restaurarla", async () => {
     const user = userEvent.setup();
     const actions = makeActions();
-    const retiroA = makeSale({ id: "s-a", orderNumber: "ORD-A", deliveryType: "RETIRO TIENDA" });
-    const retiroB = makeSale({ id: "s-b", orderNumber: "ORD-B", deliveryType: "RETIRO TIENDA" });
-
-    render(<PorDespacharTab sales={[retiroA, retiroB]} actions={actions} />, {
-      wrapper: OrderDetailModalProvider,
-    });
+    renderTab([
+      makeSale({ id: "s-a", orderNumber: "ORD-A", deliveryType: "RETIRO TIENDA" }),
+      makeSale({ id: "s-b", orderNumber: "ORD-B", deliveryType: "RETIRO TIENDA" }),
+    ], actions);
     await user.click(screen.getAllByRole("checkbox")[0]);
-    await user.click(
-      screen.getByRole("button", { name: /generar guía \(0 de 2\)/i }),
-    );
-
-    await user.click(
-      screen.getByRole("button", { name: "Abrir venta para editar entrega de ORD-B" }),
-    );
+    await user.click(bulkGuideButton("0 de 2"));
+    await user.click(screen.getByRole("button", { name: "Abrir venta para editar entrega de ORD-B" }));
 
     expect(actions.onEditDeliveryType).toHaveBeenCalledTimes(1);
-    // Se edita solo ORD-B, pero se lleva la selección completa para
-    // restaurarla al volver.
     expect(actions.onEditDeliveryType).toHaveBeenCalledWith(
       expect.objectContaining({ id: "s-b" }),
       expect.objectContaining({ selectedIds: ["s-a", "s-b"] }),
     );
     expect(actions.onOpenCreateGuide).not.toHaveBeenCalled();
   });
+});
+
+describe("PreparadosTab — vuelta desde la edición del tipo de entrega", () => {
+  beforeEach(() => jest.clearAllMocks());
 
   it("al volver tras guardar con el pedido ya elegible ofrece 'Continuar con la generación' sin generar automáticamente", async () => {
     const user = userEvent.setup();
     const actions = makeActions();
     const onHandled = jest.fn();
     const sale = makeSale({ id: "s-editado", orderNumber: "ORD-EDITADO", deliveryType: "DOMICILIO" });
-
-    render(
-      <PorDespacharTab
-        sales={[sale]}
-        actions={actions}
-        guideReturn={{ selectedIds: ["s-editado"], updatedId: "s-editado", dayKey: null }}
-        onGuideReturnHandled={onHandled}
-      />,
-      { wrapper: OrderDetailModalProvider },
-    );
+    renderTab([], actions, { guideReturn: { sales: [sale], updatedId: "s-editado" }, onGuideReturnHandled: onHandled });
 
     const dialog = await screen.findByRole("dialog");
-    expect(
-      within(dialog).getByRole("heading", { name: "El pedido ya puede generar guía" }),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "El pedido ya puede generar guía" })).toBeInTheDocument();
     expect(onHandled).toHaveBeenCalledTimes(1);
     expect(actions.onOpenCreateGuide).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: /generar guía \(1\)/i })).toBeEnabled();
+    expect(bulkGuideButton("1")).toBeEnabled();
 
-    await user.click(
-      within(dialog).getByRole("button", { name: "Continuar con la generación" }),
-    );
+    await user.click(within(dialog).getByRole("button", { name: "Continuar con la generación" }));
 
     expect(actions.onOpenCreateGuide).toHaveBeenCalledTimes(1);
-    expect(actions.onOpenCreateGuide).toHaveBeenCalledWith([
-      expect.objectContaining({ id: "s-editado" }),
-    ]);
+    expect(actions.onOpenCreateGuide).toHaveBeenCalledWith([expect.objectContaining({ id: "s-editado" })]);
   });
 
   it("al volver tras guardar si el pedido sigue en retiro no ofrece continuar", async () => {
     const sale = makeSale({ id: "s-sigue", orderNumber: "ORD-SIGUE", deliveryType: "RETIRO TIENDA" });
-
-    render(
-      <PorDespacharTab
-        sales={[sale]}
-        actions={makeActions()}
-        guideReturn={{ selectedIds: ["s-sigue"], updatedId: "s-sigue", dayKey: null }}
-      />,
-      { wrapper: OrderDetailModalProvider },
-    );
+    renderTab([], makeActions(), { guideReturn: { sales: [sale], updatedId: "s-sigue" } });
 
     const dialog = await screen.findByRole("dialog");
-    expect(
-      within(dialog).getByRole("heading", {
-        name: "El pedido sigue configurado como retiro en tienda",
-      }),
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).queryByRole("button", { name: /continuar con la generación/i }),
-    ).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "El pedido sigue configurado como retiro en tienda" })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /continuar con la generación/i })).not.toBeInTheDocument();
   });
 
-  it("al volver tras guardar conserva la selección original y recalcula la elegibilidad con los datos recargados", async () => {
+  it("al volver tras guardar conserva la selección original (aunque no esté en la página) y recalcula la elegibilidad con los datos recargados", async () => {
     const user = userEvent.setup();
     const actions = makeActions();
-    // Datos recargados: ORD-EDITADO ya es DOMICILIO; ORD-B sigue en retiro.
+    // Datos recargados: ORD-EDITADO ya es DOMICILIO; ORD-B sigue en retiro y no figura en la página visible.
     const editado = makeSale({ id: "s-ed", orderNumber: "ORD-EDITADO", deliveryType: "DOMICILIO" });
     const otro = makeSale({ id: "s-b", orderNumber: "ORD-B", deliveryType: "RETIRO TIENDA" });
     const noSeleccionado = makeSale({ id: "s-x", orderNumber: "ORD-X" });
-
-    render(
-      <PorDespacharTab
-        sales={[editado, otro, noSeleccionado]}
-        actions={actions}
-        guideReturn={{ selectedIds: ["s-ed", "s-b"], updatedId: "s-ed", dayKey: null }}
-      />,
-      { wrapper: OrderDetailModalProvider },
-    );
+    renderTab([noSeleccionado], actions, { guideReturn: { sales: [editado, otro], updatedId: "s-ed" } });
 
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(/1 de 2 pedidos pueden generar guía/i)).toBeInTheDocument();
-    expect(within(dialog).getByText(/se guardaron los cambios de/i)).toHaveTextContent(
-      "Se guardaron los cambios de ORD-EDITADO; ya puede generar guía.",
-    );
+    expect(within(dialog).getByText(/se guardaron los cambios de/i)).toHaveTextContent("Se guardaron los cambios de ORD-EDITADO; ya puede generar guía.");
     expect(within(dialog).getByText("ORD-B")).toBeInTheDocument();
     expect(within(dialog).queryByText("ORD-X")).not.toBeInTheDocument();
-    // La selección restaurada es la original (2), no solo el editado.
-    expect(screen.getByRole("button", { name: /generar guía \(1 de 2\)/i })).toBeInTheDocument();
+    expect(bulkGuideButton("1 de 2")).toBeInTheDocument();
 
-    await user.click(
-      within(dialog).getByRole("button", { name: "Generar guía para 1 pedido" }),
-    );
-    expect(actions.onOpenCreateGuide).toHaveBeenCalledWith([
-      expect.objectContaining({ id: "s-ed", deliveryType: "DOMICILIO" }),
-    ]);
+    await user.click(within(dialog).getByRole("button", { name: "Generar guía para 1 pedido" }));
+    expect(actions.onOpenCreateGuide).toHaveBeenCalledWith([expect.objectContaining({ id: "s-ed", deliveryType: "DOMICILIO" })]);
   });
 
-  it("al volver SIN guardar ('Volver'/cancelar) restaura la selección pero no reabre la revisión ni anuncia cambios", async () => {
+  it("al volver SIN guardar restaura la selección pero no reabre la revisión ni anuncia cambios", async () => {
     const actions = makeActions();
     const onHandled = jest.fn();
     const a = makeSale({ id: "s-a", orderNumber: "ORD-A", deliveryType: "RETIRO TIENDA" });
     const b = makeSale({ id: "s-b", orderNumber: "ORD-B" });
+    renderTab([a, b], actions, { guideReturn: { sales: [a, b], updatedId: null }, onGuideReturnHandled: onHandled });
 
-    render(
-      <PorDespacharTab
-        sales={[a, b]}
-        actions={actions}
-        guideReturn={{ selectedIds: ["s-a", "s-b"], updatedId: null, dayKey: null }}
-        onGuideReturnHandled={onHandled}
-      />,
-      { wrapper: OrderDetailModalProvider },
-    );
-
-    expect(await screen.findByRole("button", { name: /generar guía \(1 de 2\)/i })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /asignar a guía \(1 de 2\)/i })).toBeInTheDocument();
     expect(onHandled).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByText(/se guardaron los cambios/i)).not.toBeInTheDocument();
@@ -728,24 +607,98 @@ describe("PorDespacharTab — armado de guía", () => {
     const user = userEvent.setup();
     const actions = makeActions();
     const viejo = makeSale({ id: "s-1", orderNumber: "ORD-1", deliveryType: "RETIRO TIENDA" });
-
-    const { rerender } = render(<PorDespacharTab sales={[viejo]} actions={actions} />, {
-      wrapper: OrderDetailModalProvider,
-    });
+    const { rerenderWith } = renderTab([viejo], actions);
     await selectLastRow(user);
-    await user.click(screen.getByRole("button", { name: /generar guía \(0 de 1\)/i }));
-    expect(
-      screen.getByRole("heading", { name: "Este pedido está configurado como retiro en tienda" }),
-    ).toBeInTheDocument();
+    await user.click(bulkGuideButton("0 de 1"));
+    expect(screen.getByRole("heading", { name: "Este pedido está configurado como retiro en tienda" })).toBeInTheDocument();
 
-    const nuevo = { ...viejo, deliveryType: "DOMICILIO" };
-    rerender(<PorDespacharTab sales={[nuevo]} actions={actions} />);
+    rerenderWith([{ ...viejo, deliveryType: "DOMICILIO" }]);
 
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText(/1 de 1 pedido puede generar guía/i)).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Generar guía para 1 pedido" }));
-    expect(actions.onOpenCreateGuide).toHaveBeenCalledWith([
-      expect.objectContaining({ id: "s-1", deliveryType: "DOMICILIO" }),
+    expect(actions.onOpenCreateGuide).toHaveBeenCalledWith([expect.objectContaining({ id: "s-1", deliveryType: "DOMICILIO" })]);
+  });
+});
+
+describe("PreparadosTab — diseño de la pestaña", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("muestra el encabezado con el total filtrado y los chips de subestado con sus contadores", () => {
+    renderTab([makeSale()], makeActions(), { data: { total: 32 } });
+
+    expect(screen.getByRole("heading", { name: "Preparados" })).toBeInTheDocument();
+    expect(screen.getByTestId("tab-total-badge")).toHaveTextContent("32 pedidos");
+    expect(screen.getByText(/pedidos listos para asignar a una guía de salida/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Todos (32)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Contactado (24)" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "No contactado (8)" })).toBeInTheDocument();
+  });
+
+  it("los chips piden el subestado al servidor (Contactado = LLAMADO, No contactado = PREPARADO)", async () => {
+    const user = userEvent.setup();
+    const { onState } = renderTab([makeSale()]);
+
+    await user.click(screen.getByRole("button", { name: "No contactado (8)" }));
+    expect(onState).toHaveBeenLastCalledWith({ sub: "no_contactado" });
+    await user.click(screen.getByRole("button", { name: "Contactado (24)" }));
+    expect(onState).toHaveBeenLastCalledWith({ sub: "contactado" });
+    await user.click(screen.getByRole("button", { name: "Todos (32)" }));
+    expect(onState).toHaveBeenLastCalledWith({ sub: undefined });
+  });
+
+  it("el subestado de cada fila sale del estado: LLAMADO = Contactado, PREPARADO = No contactado", () => {
+    renderTab([
+      makeSale({ id: "a", orderNumber: "ORD-A", status: "LLAMADO" }),
+      makeSale({ id: "b", orderNumber: "ORD-B", status: "PREPARADO" }),
     ]);
+
+    const rowOf = (orderNumber: string) => screen.getByText(orderNumber).closest("tr") as HTMLElement;
+    expect(within(rowOf("ORD-A")).getByText("Contactado")).toBeInTheDocument();
+    expect(within(rowOf("ORD-B")).getByText("No contactado")).toBeInTheDocument();
+  });
+
+  it("muestra tienda y almacén bajo el N° de orden, y no hay columnas de guía, courier ni días", () => {
+    renderTab([makeSale({ storeName: "LIVII", stockStoreName: "Almacén Kunca COD" })]);
+
+    expect(screen.getByText("LIVII · Almacén Kunca COD")).toBeInTheDocument();
+    for (const header of ["N° Orden", "Fecha de Venta", "Cliente", "Distrito", "Total / Saldo", "Subestado", "Acciones"]) {
+      expect(screen.getByRole("columnheader", { name: header })).toBeInTheDocument();
+    }
+    for (const header of ["Guía", "Courier", "Días"]) {
+      expect(screen.queryByRole("columnheader", { name: header })).not.toBeInTheDocument();
+    }
+  });
+
+  it("la paginación numerada pide la página elegida al servidor", async () => {
+    const user = userEvent.setup();
+    const { onState } = renderTab([makeSale()], makeActions(), { data: { total: 120, totalPages: 8 } });
+
+    expect(screen.getByText(/mostrando 1 – 15 de 120 pedidos/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Página 3" }));
+    expect(onState).toHaveBeenLastCalledWith({ page: 3 });
+    await user.click(screen.getByRole("button", { name: /siguiente/i }));
+    expect(onState).toHaveBeenLastCalledWith({ page: 2 });
+  });
+
+  it("Exportar Excel exporta la selección si la hay y, si no, la página visible", async () => {
+    const user = userEvent.setup();
+    const actions = makeActions();
+    renderTab([makeSale({ id: "a" }), makeSale({ id: "b", orderNumber: "ORD-B" })], actions);
+
+    expect(screen.getByRole("button", { name: /exportar excel \(2\)/i })).toBeEnabled();
+    await selectLastRow(user);
+    await user.click(screen.getByRole("button", { name: /exportar excel \(1\)/i }));
+
+    expect(actions.onExportExcel).toHaveBeenCalledWith([expect.objectContaining({ id: "b" })], "preparados", "");
+  });
+
+  it("no hay chips de courier: el courier es un desplegable y no existe el selector de tienda", () => {
+    renderTab([makeSale()], makeActions({ apiCouriers: ["Shalom", "Olva Courier"] }));
+
+    expect(screen.getByRole("combobox", { name: "Courier" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Todos los couriers" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /todas las tiendas/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /todas las tiendas/i })).not.toBeInTheDocument();
   });
 });

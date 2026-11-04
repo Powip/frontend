@@ -67,6 +67,8 @@ export interface Sale extends UnitAssignmentState, Omit<SalesPhysicalOrderProjec
   syncErrors?: Record<string, string> | null;
   createdAt: string;
   updatedAt: string;
+  /** Cuándo llegó el pedido a su estado actual (historial de estados); respaldo: `updatedAt`. */
+  statusChangedAt?: string | null;
   items: SaleItem[];
 }
 
@@ -162,6 +164,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     syncErrors: order.syncErrors ?? null,
     createdAt: order.created_at,
     updatedAt: order.updated_at,
+    statusChangedAt: (order as { statusChangedAt?: string | null }).statusChangedAt ?? null,
     items: (order.items ?? []).map((it) => ({
       productVariantId: it.productVariantId ?? null,
       trackingMode: it.trackingMode,
@@ -282,6 +285,11 @@ export function money(n: number): string {
 
 export const ITEMS_PER_PAGE = 15;
 
+/** Acciones masivas sobre más pedidos que una página piden confirmación con la cantidad real. */
+export const BULK_CONFIRM_THRESHOLD = ITEMS_PER_PAGE;
+/** Máximo de ventanas de WhatsApp que se abren por clic: más que eso no es operable ni lo permite el navegador. */
+export const WHATSAPP_MAX_WINDOWS = 50;
+
 export type SaleSource = "listos" | "reprogramado" | "vendido";
 
 function dayKey(d: Date): string {
@@ -312,7 +320,8 @@ export interface PedidosActions {
   salesChannels: string[];
   isBulkLoading: boolean;
   onOpenPayment: (sale: Sale) => void;
-  onOpenGuide: (sale: Sale) => void;
+  /** Abre el detalle de la guía del pedido (donde se aprueba). Solo necesita el id y el courier. */
+  onOpenGuide: (sale: Pick<Sale, "id" | "courier">) => void;
   onReassignSeller: (sale: Sale) => void;
   onCancel: (sale: Sale) => void;
   onChangeStatus: (saleId: string, status: OrderStatus) => void | Promise<void>;
@@ -324,7 +333,8 @@ export interface PedidosActions {
   onOpenAddToGuide: (selected: Sale[]) => void;
   onAssignCourierBulk: (selected: Sale[]) => void;
   onBulkStatusChange: (ids: string[], status: OrderStatus) => void;
-  onBulkWhatsApp: (selected: Sale[]) => void;
+  /** Devuelve cuántos pedidos atendió (máximo `WHATSAPP_MAX_WINDOWS` por clic). */
+  onBulkWhatsApp: (selected: Sale[]) => number | void;
   onBulkPrint: (selected: Sale[]) => void;
   onCopySelected: (selected: Sale[]) => void;
   /** `productFilter` = clave del filtro Producto activo ("" = sin filtro) → agrega la columna de unidades. */
@@ -336,11 +346,13 @@ export interface PedidosActions {
    *  guardó, se reabre la revisión de guía. */
   onEditDeliveryType: (
     sale: Sale,
-    context: { selectedIds: string[]; dayKey: string },
+    context: { selectedIds: string[]; dayKey?: string },
   ) => void;
   onSyncCourier: () => void;
   onReturnToStock: (sale: Sale) => void;
   onMarkAsLoss: (sale: Sale) => void;
+  /** Pide al servidor pedidos concretos de Preparados (máx. 100 por llamada): restaurar la selección y acciones por guía. */
+  loadSalesByIds: (ids: string[]) => Promise<Sale[]>;
   companyId?: string;
 }
 

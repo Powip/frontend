@@ -1,7 +1,8 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HistorialTab } from "@/app/operaciones/pedidos/_components/HistorialTab";
+import { ClosedTab } from "@/app/operaciones/pedidos/_components/ClosedTab";
+import { emptyTabState } from "@/app/operaciones/pedidos/_components/tabState";
 import { mapOrderToSale, type PedidosActions } from "@/app/operaciones/pedidos/_components/types";
 import type { ShippingGuideData } from "@/components/modals/CustomerServiceModal";
 import type { OrderHeader } from "@/interfaces/IOrder";
@@ -20,6 +21,11 @@ import {
  */
 const modalSpy = jest.fn();
 
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ storeIds: ["store-a"], canFetch: true }) }));
+jest.mock("@/hooks/useOperationsPedidos", () => ({
+  ...jest.requireActual("@/hooks/useOperationsPedidos"),
+  useVisibleSelection: () => ({ visibleIds: null, loading: false }),
+}));
 jest.mock("@/components/modals/CustomerServiceModal", () => ({
   __esModule: true,
   default: (props: {
@@ -230,7 +236,14 @@ describe("integración con una tabla (Operaciones › Historial)", () => {
 
     render(
       <OrderDetailModalProvider isOperaciones showTracking>
-        <HistorialTab sales={[makeOrder(1), makeOrder(2)].map(mapOrderToSale)} actions={actions} />
+        <ClosedTab
+          variant="historial"
+          data={{ sales: [makeOrder(1), makeOrder(2)].map(mapOrderToSale), total: 2, totalPages: 1, loading: false, fetching: false }}
+          state={emptyTabState()}
+          query={{ tab: "historial", page: 1, limit: 15, filters: emptyTabState().filters }}
+          onState={jest.fn()}
+          actions={actions}
+        />
       </OrderDetailModalProvider>,
     );
 

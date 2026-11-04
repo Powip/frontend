@@ -1,19 +1,43 @@
 /**
- * Por Despachar / En Camino — exportar seleccionados con filtros activos.
+ * Preparados / En camino / Entregados — exportar seleccionados con filtros activos.
  *
  * 1. La selección persiste al cambiar filtros (sigue disponible para acciones masivas).
  * 2. "Exportar Excel" solo manda los seleccionados que cumplen los filtros actuales.
  * 3. Se avisa cuántos seleccionados quedan ocultos por los filtros; el aviso se va al limpiar.
  * 4. Con filtro por producto se pasa su clave para la columna de unidades.
  * 5. buildPedidosExportRows suma las unidades del producto por pedido sin tocar Total ni Productos.
+ *
+ * Con paginación en servidor, qué parte de la selección cumple los filtros lo decide el servidor
+ * (`useVisibleSelection`, parámetro `ids`). Aquí se emula con el mismo `applyFilters` del cliente, que es el
+ * criterio que el endpoint replica; el SQL real se prueba en ms-ventas.
  */
+import { useState } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
+import type { ComponentType } from "react";
 
 jest.mock("@/components/ui/calendar", () => ({ Calendar: () => null }));
 jest.mock("next/image", () => ({ __esModule: true, default: () => null }));
 
-import { PorDespacharTab } from "../PorDespacharTab";
-import { EnCaminoTab } from "../EnCaminoTab";
+let mockAllSales: Sale[] = [];
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ storeIds: ["store-a"], canFetch: true }) }));
+jest.mock("@/hooks/useOperationsPedidos", () => {
+  const actual = jest.requireActual("@/hooks/useOperationsPedidos");
+  const { applyFilters } = jest.requireActual("@/components/ventas/SalesTableFilters");
+  return {
+    ...actual,
+    useVisibleSelection: (ids: string[], query: { filters: Record<string, string> }) => {
+      const narrowed = Object.values(query.filters).some((value) => value !== "");
+      if (!narrowed || ids.length === 0) return { visibleIds: null, loading: false };
+      const picked = mockAllSales.filter((sale) => ids.includes(sale.id));
+      return { visibleIds: new Set(applyFilters(picked, query.filters).map((sale: Sale) => sale.id)), loading: false };
+    },
+  };
+});
+
+import { PreparadosTab } from "../PreparadosTab";
+import { TransitTab } from "../TransitTab";
+import { ClosedTab } from "../ClosedTab";
+import { emptyTabState, patchTabState, type OperationsTabData, type OperationsTabProps } from "../tabState";
 import { OrderDetailModalProvider } from "@/components/orders/OrderDetailModal";
 import { buildPedidosExportRows, type PedidosActions, type Sale, type SaleItem } from "../types";
 import type { OrderStatus } from "@/interfaces/IOrder";
@@ -21,7 +45,6 @@ import type { OrderStatus } from "@/interfaces/IOrder";
 function item(productVariantId: string, productName: string, quantity: number): SaleItem {
   return { productVariantId, productName, sku: productVariantId.toUpperCase(), attributes: {}, quantity, subtotal: 10 * quantity };
 }
-
 const CAFE = (q: number) => item("var-cafe", "Café", q);
 const TE = (q: number) => item("var-te", "Té", q);
 
@@ -63,26 +86,49 @@ function makeActions(onExportExcel = jest.fn()): PedidosActions {
   ) as unknown as PedidosActions;
 }
 
-const exportButton = () => screen.getByRole("button", { name: /Exportar Excel \(/ });
-const hiddenNotice = () => screen.queryByRole("status");
+const PRODUCTS = [
+  { value: "var-cafe", label: "Café" },
+  { value: "var-te", label: "Té" },
+];
 
-function selectAllOnPage() {
-  // El primero es el "seleccionar todo" de la cabecera.
-  fireEvent.click(screen.getAllByRole("checkbox")[0]);
+/** Mantiene el estado de filtros como lo hace PedidosContent. */
+function Harness({ Tab, sales, actions, extra }: { Tab: ComponentType<OperationsTabProps>; sales: Sale[]; actions: PedidosActions; extra?: Record<string, unknown> }) {
+  const [state, setState] = useState(emptyTabState());
+  const data: OperationsTabData = {
+    sales, total: sales.length, totalPages: 1, loading: false, fetching: false,
+    metadata: { couriers: [], channels: [], products: PRODUCTS },
+  };
+  const Component = Tab as ComponentType<OperationsTabProps & Record<string, unknown>>;
+  return (
+    <Component
+      data={data}
+      state={state}
+      query={{ tab: "preparados", page: 1, limit: 15, filters: state.filters }}
+      onState={(patch: Partial<typeof state>) => setState((prev) => patchTabState(prev, patch))}
+      actions={actions}
+      {...extra}
+    />
+  );
 }
 
+const exportButton = () => screen.getByRole("button", { name: /Exportar Excel \(/ });
+const hiddenNotice = () => screen.queryByRole("status");
+function selectAllOnPage() {
+  // El primero es el "seleccionar toda la página" de la cabecera.
+  fireEvent.click(screen.getAllByRole("checkbox")[0]);
+}
 function openFilters() {
   fireEvent.click(screen.getByRole("button", { name: /Filtros/ }));
 }
-
 function chooseProduct(value: string) {
   fireEvent.change(screen.getByLabelText("Producto"), { target: { value } });
 }
 
 describe.each([
-  { name: "PorDespacharTab", Tab: PorDespacharTab, status: "PREPARADO" as OrderStatus, tabKey: "por_despachar" },
-  { name: "EnCaminoTab", Tab: EnCaminoTab, status: "EN_ENVIO" as OrderStatus, tabKey: "en_camino" },
-])("$name — exportar seleccionados", ({ Tab, status, tabKey }) => {
+  { name: "PreparadosTab", Tab: PreparadosTab as unknown as ComponentType<OperationsTabProps>, status: "PREPARADO" as OrderStatus, tabKey: "preparados", extra: {} },
+  { name: "TransitTab (En camino)", Tab: TransitTab as unknown as ComponentType<OperationsTabProps>, status: "EN_ENVIO" as OrderStatus, tabKey: "en_camino", extra: { variant: "camino" } },
+  { name: "ClosedTab (Entregados)", Tab: ClosedTab as unknown as ComponentType<OperationsTabProps>, status: "ENTREGADO" as OrderStatus, tabKey: "entregados", extra: { variant: "entregados" } },
+])("$name — exportar seleccionados", ({ Tab, status, tabKey, extra }) => {
   const SALES = [
     makeSale(1, status, "01/09/2026", [CAFE(2), TE(1)]),
     makeSale(2, status, "02/09/2026", [TE(4)]),
@@ -90,8 +136,9 @@ describe.each([
   ];
 
   function setup() {
+    mockAllSales = SALES;
     const onExportExcel = jest.fn();
-    render(<Tab sales={SALES} actions={makeActions(onExportExcel)} />, { wrapper: OrderDetailModalProvider });
+    render(<Harness Tab={Tab} sales={SALES} actions={makeActions(onExportExcel)} extra={extra} />, { wrapper: OrderDetailModalProvider });
     selectAllOnPage();
     openFilters();
     return onExportExcel;
@@ -99,8 +146,8 @@ describe.each([
 
   it("sin filtros exporta toda la selección y no muestra aviso", () => {
     const onExport = setup();
-    expect(hiddenNotice()).not.toBeInTheDocument();
 
+    expect(hiddenNotice()).not.toBeInTheDocument();
     fireEvent.click(exportButton());
 
     const [rows, tab, product] = onExport.mock.calls[0];
@@ -111,12 +158,12 @@ describe.each([
 
   it("con filtro por producto exporta solo lo visible, avisa lo oculto y conserva la selección", () => {
     const onExport = setup();
+
     chooseProduct("var-cafe");
 
     expect(screen.getByText(/3 seleccionados/)).toBeInTheDocument();
     expect(hiddenNotice()).toHaveTextContent("1 seleccionado(s) oculto(s) por los filtros — no se exportan");
     expect(exportButton()).toHaveTextContent("Exportar Excel (2)");
-
     fireEvent.click(exportButton());
     const [rows, , product] = onExport.mock.calls[0];
     expect(rows.map((s: Sale) => s.id)).toEqual(["s-1", "s-3"]);
@@ -131,6 +178,7 @@ describe.each([
 
   it("producto + fecha: la selección que no cumple ambos queda fuera", () => {
     const onExport = setup();
+
     chooseProduct("var-cafe");
     const [from, to] = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="date"]'));
     fireEvent.change(from, { target: { value: "2026-09-02" } });
@@ -143,6 +191,7 @@ describe.each([
 
   it("si ningún seleccionado cumple los filtros, el export queda deshabilitado", () => {
     const onExport = setup();
+
     fireEvent.change(screen.getByPlaceholderText("Buscar..."), { target: { value: "no-existe" } });
 
     expect(hiddenNotice()).toHaveTextContent("3 seleccionado(s) oculto(s)");
