@@ -31,8 +31,13 @@ export interface CanalFicha {
   entrada: EntradaCanal | null;
   cobro: CobroCanal | null;
   usaCourier: boolean | null;
+  /** Bloque de la ficha (lead, live, presencial…); null = sin cargar. */
+  tipo?: string | null;
+  /** FRACCIÓN (0.125 = 12,5 %); solo Dueño. Al guardar se convierte a 0..100. */
   comisionPct?: number | null;
   pasarelaPct?: number | null;
+  /** Días hasta que la plataforma deposita; null = sin cargar. */
+  plazoDepositoDias?: number | null;
   recibePautaGeneral: boolean | null;
   metaMensual: number | null;
   activo: boolean;

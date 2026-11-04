@@ -17,7 +17,13 @@ export type CanalesSubtabId = "canales" | "productos" | "publicidad" | "clientes
 export type OperacionesSubtabId = "cola" | "couriers" | "inventario";
 export type FinanzasSubtabId = "resultado" | "caja" | "cobranza";
 export type EquipoSubtabId = "vendedoras" | "confirmadoras";
-export type ConfiguracionSubtabId = "canales" | "metas" | "estados" | "cuadres" | "desarrollo";
+export type ConfiguracionSubtabId =
+  | "canales"
+  | "metas"
+  | "costos"
+  | "estados"
+  | "cuadres"
+  | "desarrollo";
 
 export type PanelSubtabId =
   | CanalesSubtabId

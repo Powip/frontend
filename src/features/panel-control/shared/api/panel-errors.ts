@@ -19,6 +19,18 @@ function mensajeDelServidor(error: unknown): string | null {
   return typeof mensaje === "string" && mensaje.trim() ? mensaje : null;
 }
 
+/**
+ * Mensajes de un 400 del backend para mostrarlos en el formulario. Nest manda `message` como
+ * texto o, con class-validator, como lista de textos; ambos casos devuelven una lista.
+ */
+export function mensajesDe400(error: unknown): string[] {
+  if (typeof error !== "object" || error === null) return [];
+  const mensaje = (error as { response?: { data?: { message?: unknown } } }).response?.data
+    ?.message;
+  const lista = Array.isArray(mensaje) ? mensaje : [mensaje];
+  return lista.filter((m): m is string => typeof m === "string" && m.trim() !== "");
+}
+
 export const MENSAJE_SIN_PERMISO = "Tu rol no tiene acceso a esta información.";
 export const MENSAJE_SERVICIO_NO_DISPONIBLE =
   "El servicio no está disponible por ahora. Reintenta en unos minutos.";
@@ -35,8 +47,8 @@ export function mensajeDeError(error: unknown): string {
         mensajeDelServidor(error) ?? "Ya no existe lo que intentas ver. Actualiza la pantalla."
       );
     case 400: {
-      const mensaje = mensajeDelServidor(error);
-      if (mensaje) return mensaje;
+      const mensajes = mensajesDe400(error);
+      if (mensajes.length) return mensajes.join(" · ");
       break;
     }
     default:

@@ -219,18 +219,13 @@ describe("Mis ventas · sin metas configuradas", () => {
 });
 
 describe("Configuración", () => {
-  it("Metas: editar habilita Guardar y avisa que está pendiente; un valor inválido lo bloquea", async () => {
+  it("Metas: editar habilita Guardar y un valor inválido lo bloquea (el guardado real se prueba en ConfigReal)", async () => {
     const user = renderTab("configuracion", "metas");
     const campo = await screen.findByRole("textbox", { name: "Meta de Confirmados" });
     expect(campo).toHaveValue("65");
     await user.clear(campo);
     await user.type(campo, "70");
-    const guardar = screen.getByRole("button", { name: /Guardar \(1\)/ });
-    await user.click(guardar);
-    expect(toastInfo).toHaveBeenCalledWith(
-      "Guardar metas: pendiente de integración",
-      expect.anything(),
-    );
+    expect(screen.getByRole("button", { name: /Guardar \(1\)/ })).toBeEnabled();
     await user.clear(campo);
     await user.type(campo, "150");
     expect(screen.getByRole("alert")).toHaveTextContent("Máximo 100 %");

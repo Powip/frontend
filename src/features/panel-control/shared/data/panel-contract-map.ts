@@ -12,8 +12,11 @@ import type {
 } from "../../canales/models/canales-comparativo.model";
 import type { ClientesZonasPanel } from "../../clientes-zonas/models/clientes-zonas.model";
 import type {
+  ConfigComisiones,
+  ConfigCouriers,
   ConfigCuadres,
   ConfigEstados,
+  ConfigGastosFijos,
   ConfigMetas,
   ConfigMetasGuardar,
 } from "../../configuracion/models/configuracion.model";
@@ -74,10 +77,14 @@ export interface PanelContractMap {
   >;
   "equipo-confirmadoras": Contract<PanelQuery, PanelEnvelope<EquipoConfirmadorasPanel>>;
   "mis-ventas": Contract<PanelQuery, PanelEnvelope<MisVentasPanel>>;
-  "config-metas": Contract<{ empresaId: string }, ConfigMetas>;
+  /** Sin `empresaId`: la empresa sale del token. */
+  "config-metas": Contract<Record<string, never>, ConfigMetas>;
   "config-metas-guardar": Contract<ConfigMetasGuardar, ConfigMetas>;
-  "config-estados": Contract<PanelQuery, ConfigEstados>;
-  "config-cuadres": Contract<PanelQuery, ConfigCuadres>;
+  "config-comisiones": Contract<Record<string, never>, ConfigComisiones>;
+  "config-gastos-fijos": Contract<Record<string, never>, ConfigGastosFijos>;
+  "config-couriers": Contract<Record<string, never>, ConfigCouriers>;
+  "config-estados": Contract<PanelQuery, PanelEnvelope<ConfigEstados>>;
+  "config-cuadres": Contract<PanelQuery, PanelEnvelope<ConfigCuadres>>;
   detalle: Contract<DetalleQuery, DetalleResponse>;
   "acciones-pedido": Contract<AccionPedidoRequest, AccionPedidoResponse>;
   "exportacion-libro": Contract<ExportLibroQuery, ExportLibroResponse>;

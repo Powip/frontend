@@ -4,11 +4,14 @@ import { canalesComparativoRealSource } from "../../canales/sources/canales-comp
 import { canalesDetalleRealSource } from "../../canales/sources/canales-detalle.source";
 import { canalesFichasRealSource } from "../../canales/sources/canales-fichas.source";
 import { clientesZonasRealSource } from "../../clientes-zonas/sources/clientes-zonas.source";
-import { configMetasDemoSource } from "../../configuracion/sources/config-metas.demo";
+import { configCuadresRealSource } from "../../configuracion/sources/config-cuadres.source";
+import { configEstadosRealSource } from "../../configuracion/sources/config-estados.source";
+import { configMetasRealSource } from "../../configuracion/sources/config-metas.source";
 import {
-  configCuadresDemoSource,
-  configEstadosDemoSource,
-} from "../../configuracion/sources/configuracion.demo";
+  configComisionesRealSource,
+  configCouriersRealSource,
+  configGastosFijosRealSource,
+} from "../../configuracion/sources/config-reglas.source";
 import { detalleDemoSource } from "../../detalle/sources/detalle.demo";
 import {
   detalleCallCenterRealSource,
@@ -42,7 +45,6 @@ import {
   operacionesInventarioRealSource,
 } from "../../operaciones/sources/operaciones.source";
 import { productosRealSource } from "../../productos/sources/productos.source";
-import { publicidadDemoSource } from "../../publicidad/sources/publicidad.demo";
 import { resumenRealSource } from "../../resumen/sources/resumen.source";
 import { metasOcultas } from "../config/panel-entrega.config";
 import type { PanelContractId } from "../models/panel-contract.model";
@@ -103,11 +105,13 @@ export const DEFAULT_PANEL_SOURCES: PanelSourceRegistry = autorizarRegistro({
     detalleFinanzasRealSource,
     detalleDemoSource,
   ],
-  "config-metas": configMetasDemoSource,
+  "config-metas": configMetasRealSource,
+  "config-comisiones": configComisionesRealSource,
+  "config-gastos-fijos": configGastosFijosRealSource,
+  "config-couriers": configCouriersRealSource,
   "canales-comparativo": canalesComparativoRealSource,
   "canales-detalle": canalesDetalleRealSource,
   productos: productosRealSource,
-  publicidad: publicidadDemoSource,
   "clientes-zonas": clientesZonasRealSource,
   callcenter: callCenterRealSource,
   "operaciones-cola": operacionesColaRealSource,
@@ -119,8 +123,8 @@ export const DEFAULT_PANEL_SOURCES: PanelSourceRegistry = autorizarRegistro({
   "equipo-vendedoras": equipoVendedorasRealSource,
   "equipo-confirmadoras": equipoConfirmadorasRealSource,
   "mis-ventas": misVentasRealSource,
-  "config-estados": configEstadosDemoSource,
-  "config-cuadres": configCuadresDemoSource,
+  "config-estados": configEstadosRealSource,
+  "config-cuadres": configCuadresRealSource,
   "exportacion-libro": exportacionLibroDemoSource,
   "compartir-reporte": compartirReporteDemoSource,
 });
