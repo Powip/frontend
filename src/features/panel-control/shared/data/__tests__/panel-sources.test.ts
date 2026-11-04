@@ -24,7 +24,7 @@ describe("registro de fuentes", () => {
       "pendiente",
     );
     expect(
-      resolvePanelSource(DEFAULT_PANEL_SOURCES, "operaciones-cola", "solo_real").source,
+      resolvePanelSource(DEFAULT_PANEL_SOURCES, "finanzas-caja", "solo_real").source,
     ).toBeNull();
     expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "publicidad", "mixto").origin.kind).toBe(
       "demo",
@@ -53,6 +53,30 @@ describe("registro de fuentes", () => {
     expect(
       resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", "solo_real", "callcenter"),
     ).toMatchObject({ source: { kind: "real" } });
+  });
+
+  it("Operaciones (cola, couriers, inventario) y su detalle ya se leen del backend, también en solo reales", () => {
+    for (const modo of ["mixto", "solo_real"] as const) {
+      for (const [id, subtab] of [
+        ["operaciones-cola", "cola"],
+        ["operaciones-couriers", "couriers"],
+        ["operaciones-inventario", "inventario"],
+      ] as const) {
+        expect(
+          resolvePanelSource(DEFAULT_PANEL_SOURCES, id, modo, "operaciones", subtab),
+        ).toMatchObject({ source: { kind: "real" }, origin: { kind: "real" } });
+      }
+      expect(
+        resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", modo, "operaciones", "cola"),
+      ).toMatchObject({ source: { kind: "real" }, origin: { kind: "real" } });
+    }
+  });
+
+  it("Operaciones apunta a GET /panel/operaciones?sub=… en el origen que se muestra", () => {
+    expect(
+      resolvePanelSource(DEFAULT_PANEL_SOURCES, "operaciones-inventario", "mixto", "operaciones")
+        .origin.endpoint,
+    ).toContain("/panel/operaciones?sub=inventario (ms-ventas)");
   });
 
   it("el comparativo y el detalle de canal ya se leen del backend, también en solo reales", () => {
@@ -88,7 +112,7 @@ describe("registro de fuentes", () => {
     });
 
     it("en una pestaña aún demo nunca muestra pedidos reales detrás de una cifra demo", () => {
-      for (const pestana of ["canales", "operaciones", "finanzas"] as const) {
+      for (const pestana of ["canales", "finanzas"] as const) {
         expect(
           resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", "mixto", pestana),
         ).toMatchObject({ source: { kind: "demo" }, origin: { kind: "demo" } });

@@ -11,6 +11,11 @@ import {
 } from "../../../equipo/sources/equipo.demo";
 import { estadoPeriodoDemoSource } from "../../../estado-periodo/sources/estado-periodo.demo";
 import { misVentasDemoSource } from "../../../mis-ventas/sources/mis-ventas.demo";
+import {
+  operacionesColaDemoSource,
+  operacionesCouriersDemoSource,
+  operacionesInventarioDemoSource,
+} from "../../../operaciones/sources/operaciones.demo";
 import { productosDemoSource } from "../../../productos/sources/productos.demo";
 import { resumenDemoSource } from "../../../resumen/sources/resumen.demo";
 import { PANEL_ROLE_POLICIES } from "../../config/panel-roles.config";
@@ -41,6 +46,9 @@ const FUENTES = {
   "equipo-vendedoras": conAutorizacion(equipoVendedorasDemoSource),
   "equipo-confirmadoras": conAutorizacion(equipoConfirmadorasDemoSource),
   "mis-ventas": conAutorizacion(misVentasDemoSource),
+  "operaciones-cola": conAutorizacion(operacionesColaDemoSource),
+  "operaciones-couriers": conAutorizacion(operacionesCouriersDemoSource),
+  "operaciones-inventario": conAutorizacion(operacionesInventarioDemoSource),
 };
 
 const CAMPOS_SENSIBLES = new Set([

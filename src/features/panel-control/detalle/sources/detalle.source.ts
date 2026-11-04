@@ -61,3 +61,15 @@ export const detalleClientesRealSource: PanelSource<"detalle"> = {
   descripcion:
     "GET /panel/detalle (ms-ventas): pedidos de una zona, departamento o método de pago, clientes nuevos, recurrentes y lista negra, y el historial completo de un cliente. Solo Publicidad sigue en demo",
 };
+
+/**
+ * El mismo endpoint, para la pestaña Operaciones. Los cuatro grupos propios (`cola_operativa`,
+ * `etapa_lenta`, `despachados_dia`, `reservados`) son solo del Dueño: a otro rol el servidor responde 403.
+ * `primera_llamada_tardia` no se abre desde aquí (es de Call center y sigue sin conectar: 400).
+ */
+export const detalleOperacionesRealSource: PanelSource<"detalle"> = {
+  ...detalleRealSource,
+  pestanas: ["operaciones"],
+  descripcion:
+    "GET /panel/detalle (ms-ventas): pedidos de cada celda de la cola, etapa lenta, día de despacho, reserva de un producto, y los envíos, rechazos y deuda de cada courier o departamento",
+};

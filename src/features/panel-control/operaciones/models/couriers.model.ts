@@ -18,8 +18,11 @@ export interface CouriersKpis {
   primerIntento: number | null;
   entregasSinDatoPrimerIntento: number;
   diasEntrega: number | null;
+  /** Solo Dueño (la clave se omite sin `ver_costos`). `null` = ningún envío tiene flete informado: «Sin dato», nunca 0. */
   fletePromedio?: number | null;
-  fleteTotal?: number;
+  fleteTotal?: number | null;
+  /** Envíos sin flete informado (quedan fuera del promedio y del total). Se omite junto con los demás costos. */
+  enviosSinFlete?: number;
   porLiquidar: number;
   pedidosPorLiquidar: number;
   liquidacionVencida: number;
@@ -41,8 +44,10 @@ export interface CourierFila {
   primerIntento: number | null;
   diasPromedio: number | null;
   fletePromedio?: number | null;
-  fleteTotal?: number;
-  costoRechazos?: number;
+  /** `null` si ninguno de sus envíos tiene flete informado. */
+  fleteTotal?: number | null;
+  /** 0 si no tiene rechazados; `null` si los tiene y ninguno tiene flete informado. */
+  costoRechazos?: number | null;
   porLiquidar: number;
   vencido: number | null;
   score: ScoreCourier | null;
