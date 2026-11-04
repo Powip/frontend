@@ -151,6 +151,8 @@ async function construirResultado(
       ventaEntregada: gane.entregado,
       costoProducto: gane.costoProducto,
       entregasSinCosto: gane.entregasSinCosto,
+      entregasSinFlete: 0,
+      entregasSinComision: 0,
       publicidadDirecta: redondear(directa),
       publicidadGeneralEstimada: redondear(general),
       envios: gane.flete,

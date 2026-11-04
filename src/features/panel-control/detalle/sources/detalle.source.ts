@@ -73,3 +73,15 @@ export const detalleOperacionesRealSource: PanelSource<"detalle"> = {
   descripcion:
     "GET /panel/detalle (ms-ventas): pedidos de cada celda de la cola, etapa lenta, día de despacho, reserva de un producto, y los envíos, rechazos y deuda de cada courier o departamento",
 };
+
+/**
+ * El mismo endpoint, para la pestaña Finanzas (solo Dueño). `movimientos_caja` abre los pedidos detrás
+ * de un concepto o día de Caja (por la fecha del dinero); `por_liquidar_actual` y `por_cobrar_actual`,
+ * lo que muestra Cobranza (estado actual); el resto, los grupos del periodo de Resultado.
+ */
+export const detalleFinanzasRealSource: PanelSource<"detalle"> = {
+  ...detalleRealSource,
+  pestanas: ["finanzas"],
+  descripcion:
+    "GET /panel/detalle (ms-ventas): pedidos detrás de las cifras de Resultado, de cada movimiento de Caja y de la deuda de Cobranza. Solo Dueño",
+};

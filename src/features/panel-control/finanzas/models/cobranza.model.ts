@@ -1,8 +1,9 @@
 export interface CobranzaKpis {
   porLiquidar: number;
   pedidosPorLiquidar: number;
-  vencido: number;
-  pedidosVencidos: number;
+  /** `null` si ningún courier con deuda tiene plazo pactado: no se puede juzgar el vencimiento (R22). */
+  vencido: number | null;
+  pedidosVencidos: number | null;
   enCurso: number;
   pedidosEnCurso: number;
   adelantosDeNoEntregadas: number | null;

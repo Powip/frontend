@@ -10,6 +10,11 @@ import {
   equipoVendedorasDemoSource,
 } from "../../../equipo/sources/equipo.demo";
 import { estadoPeriodoDemoSource } from "../../../estado-periodo/sources/estado-periodo.demo";
+import {
+  finanzasCajaDemoSource,
+  finanzasCobranzaDemoSource,
+  finanzasResultadoDemoSource,
+} from "../../../finanzas/sources/finanzas.demo";
 import { misVentasDemoSource } from "../../../mis-ventas/sources/mis-ventas.demo";
 import {
   operacionesColaDemoSource,
@@ -49,6 +54,9 @@ const FUENTES = {
   "operaciones-cola": conAutorizacion(operacionesColaDemoSource),
   "operaciones-couriers": conAutorizacion(operacionesCouriersDemoSource),
   "operaciones-inventario": conAutorizacion(operacionesInventarioDemoSource),
+  "finanzas-resultado": conAutorizacion(finanzasResultadoDemoSource),
+  "finanzas-caja": conAutorizacion(finanzasCajaDemoSource),
+  "finanzas-cobranza": conAutorizacion(finanzasCobranzaDemoSource),
 };
 
 const CAMPOS_SENSIBLES = new Set([

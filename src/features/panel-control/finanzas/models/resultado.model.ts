@@ -12,13 +12,20 @@ export interface FacturadoAlDinero {
 
 export interface EstadoResultados {
   ventaEntregada: number;
-  costoProducto: number;
+  /** `null` si ninguna entrega tiene costo cargado (no se inventa un 0). */
+  costoProducto: number | null;
   entregasSinCosto: number;
-  publicidadDirecta: number;
-  publicidadGeneralEstimada: number;
-  envios: number;
-  comisiones: number;
-  ganancia: number;
+  /** Entregas con courier sin flete informado: `envios` suma solo las informadas (R24). */
+  entregasSinFlete: number;
+  /** Entregas sin comisión calculable (canal sin ficha o sin %): `comisiones` suma solo las informadas (R24). */
+  entregasSinComision: number;
+  /** `null` mientras no estén conectados Meta/TikTok Ads: se muestra «Pendiente», no 0. */
+  publicidadDirecta: number | null;
+  publicidadGeneralEstimada: number | null;
+  envios: number | null;
+  comisiones: number | null;
+  /** `null` sin costo, envíos o comisiones informados. Hoy siempre es «antes de publicidad». */
+  ganancia: number | null;
   gastosFijos: number | null;
   gastosFijosMensuales: number | null;
   utilidadOperativa: number | null;

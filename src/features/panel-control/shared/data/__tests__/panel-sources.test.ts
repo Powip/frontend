@@ -24,7 +24,7 @@ describe("registro de fuentes", () => {
       "pendiente",
     );
     expect(
-      resolvePanelSource(DEFAULT_PANEL_SOURCES, "finanzas-caja", "solo_real").source,
+      resolvePanelSource(DEFAULT_PANEL_SOURCES, "exportacion-libro", "solo_real").source,
     ).toBeNull();
     expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "publicidad", "mixto").origin.kind).toBe(
       "demo",
@@ -79,6 +79,35 @@ describe("registro de fuentes", () => {
     ).toContain("/panel/operaciones?sub=inventario (ms-ventas)");
   });
 
+  it("Finanzas (resultado, caja, cobranza) y su detalle ya se leen del backend, también en solo reales", () => {
+    for (const modo of ["mixto", "solo_real"] as const) {
+      for (const [id, subtab] of [
+        ["finanzas-resultado", "resultado"],
+        ["finanzas-caja", "caja"],
+        ["finanzas-cobranza", "cobranza"],
+      ] as const) {
+        expect(
+          resolvePanelSource(DEFAULT_PANEL_SOURCES, id, modo, "finanzas", subtab),
+        ).toMatchObject({ source: { kind: "real" }, origin: { kind: "real" } });
+      }
+      expect(
+        resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", modo, "finanzas", "caja"),
+      ).toMatchObject({ source: { kind: "real" }, origin: { kind: "real" } });
+    }
+  });
+
+  it("Finanzas apunta a GET /panel/finanzas?reloj=… en el origen que se muestra", () => {
+    for (const [id, reloj] of [
+      ["finanzas-resultado", "pedido"],
+      ["finanzas-caja", "caja"],
+      ["finanzas-cobranza", "cobranza"],
+    ] as const) {
+      expect(
+        resolvePanelSource(DEFAULT_PANEL_SOURCES, id, "mixto", "finanzas").origin.endpoint,
+      ).toContain(`/panel/finanzas?reloj=${reloj} (ms-ventas)`);
+    }
+  });
+
   it("el comparativo y el detalle de canal ya se leen del backend, también en solo reales", () => {
     for (const id of ["canales-comparativo", "canales-detalle"] as const) {
       expect(
@@ -112,7 +141,7 @@ describe("registro de fuentes", () => {
     });
 
     it("en una pestaña aún demo nunca muestra pedidos reales detrás de una cifra demo", () => {
-      for (const pestana of ["canales", "finanzas"] as const) {
+      for (const pestana of ["canales"] as const) {
         expect(
           resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", "mixto", pestana),
         ).toMatchObject({ source: { kind: "demo" }, origin: { kind: "demo" } });

@@ -15,6 +15,7 @@ import {
   detalleCanalesRealSource,
   detalleClientesRealSource,
   detalleEquipoRealSource,
+  detalleFinanzasRealSource,
   detalleMisVentasRealSource,
   detalleOperacionesRealSource,
   detalleProductosRealSource,
@@ -30,10 +31,10 @@ import {
   exportacionLibroDemoSource,
 } from "../../exportacion/sources/exportacion.demo";
 import {
-  finanzasCajaDemoSource,
-  finanzasCobranzaDemoSource,
-  finanzasResultadoDemoSource,
-} from "../../finanzas/sources/finanzas.demo";
+  finanzasCajaRealSource,
+  finanzasCobranzaRealSource,
+  finanzasResultadoRealSource,
+} from "../../finanzas/sources/finanzas.source";
 import { misVentasRealSource } from "../../mis-ventas/sources/mis-ventas.source";
 import {
   operacionesColaRealSource,
@@ -75,6 +76,7 @@ export const DEFAULT_PANEL_SOURCES: PanelSourceRegistry = autorizarRegistro({
     detalleEquipoRealSource,
     detalleMisVentasRealSource,
     detalleOperacionesRealSource,
+    detalleFinanzasRealSource,
     detalleDemoSource,
   ],
   "config-metas": configMetasDemoSource,
@@ -87,9 +89,9 @@ export const DEFAULT_PANEL_SOURCES: PanelSourceRegistry = autorizarRegistro({
   "operaciones-cola": operacionesColaRealSource,
   "operaciones-couriers": operacionesCouriersRealSource,
   "operaciones-inventario": operacionesInventarioRealSource,
-  "finanzas-resultado": finanzasResultadoDemoSource,
-  "finanzas-caja": finanzasCajaDemoSource,
-  "finanzas-cobranza": finanzasCobranzaDemoSource,
+  "finanzas-resultado": finanzasResultadoRealSource,
+  "finanzas-caja": finanzasCajaRealSource,
+  "finanzas-cobranza": finanzasCobranzaRealSource,
   "equipo-vendedoras": equipoVendedorasRealSource,
   "equipo-confirmadoras": equipoConfirmadorasRealSource,
   "mis-ventas": misVentasRealSource,
