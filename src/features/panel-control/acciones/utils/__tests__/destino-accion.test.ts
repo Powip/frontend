@@ -32,7 +32,7 @@ describe("destinoAccion", () => {
   it("lleva a las pantallas existentes", () => {
     expect(destinoAccion("preparar", { pedido: "V-1" })).toEqual({
       tipo: "enlace",
-      href: "/operaciones/pedidos?tab=pendientes&q=V-1",
+      href: "/operaciones/pedidos?tab=despachar&q=V-1",
     });
     expect(destinoAccion("asignar_guia")).toEqual({
       tipo: "enlace",

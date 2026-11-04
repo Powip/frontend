@@ -15,7 +15,7 @@ export const OPERACIONES_COLA_CONTRACT = defineContract({
     "Solo Dueño: a otro rol el servidor responde 403. Cada subpestaña es una petición propia (?sub=)",
     "La cola cuenta ventas con courier; el estado ASIGNADO_A_GUIA se muestra como CON_GUIA",
     "Los grupos del drawer (cola_operativa, etapa_lenta, despachados_dia) usan las mismas funciones que la pantalla, así que cada cifra abre exactamente sus pedidos",
-    "PENDIENTE (Task 15c): los drawers «Envíos retrasados» (accion: envios_retrasados) y «Sin guía +24 h» (accion: sin_guia_24h) todavía responden 400. «Sin guía +24 h» NO usa ventas_sin_guia (el universo del Resumen, sin exigir courier y de 14 días): la tarjeta cuenta ventas con courier en LLAMADO/PREPARADO de hace más de 24 h; envíos retrasados requiere el tiempo normal por courier (panel_courier_config)",
+    "Los drawers «Envíos retrasados» (accion: envios_retrasados) y «Sin guía +24 h» (accion: sin_guia_24h) usan el mismo predicado que su tarjeta (solo Dueño). «Sin guía +24 h» NO usa ventas_sin_guia (el universo del Resumen, sin exigir courier y de 14 días): la tarjeta cuenta ventas con courier en LLAMADO/PREPARADO de hace más de 24 h; envíos retrasados requiere el tiempo normal por courier (panel_courier_config)",
     "Incidencia, motivos de rechazo y efectividad abren envios {estado: RECHAZADO[, tipo, motivo]}: son rechazos CON courier, que es lo que cuentan las cifras (el grupo rechazados incluye los que no tienen courier)",
     "PENDIENTE: metas por etapa (sin configuración: usa las del contrato) y la comparación con el periodo anterior",
   ],
@@ -72,6 +72,6 @@ export const OPERACIONES_INVENTARIO_CONTRACT = defineContract({
     "«Tienda» es la tienda física del stock (como en logistics), distinta de la tienda de venta que filtran Cola y Couriers",
     "Costos: salen de las ventas de los últimos 180 días, así que valorAlCosto es parcial; sinCosto cuenta los productos sin costo. Sin ver_costos las claves se omiten",
     "reservados {producto}: lista los pedidos de todas las tiendas que tienen ese producto (el parámetro es solo el producto); 404 si ya no está en el inventario, 503 si logistics no responde",
-    "PENDIENTE: el drawer «Ventas esperando stock» (accion: productos_agotados) todavía responde 400",
+    "El drawer «Ventas esperando stock» (accion: productos_agotados) lista exactamente las ventas que cuenta la tarjeta; 503 si logistics no responde",
   ],
 });
