@@ -49,3 +49,23 @@ describe("textoAlcance de los grupos de Operaciones", () => {
     });
   });
 });
+
+describe("textoAlcance de los grupos de Finanzas", () => {
+  it("movimientos_caja dice que cuenta por fecha del dinero y que la cantidad cuadra, no el importe", () => {
+    const texto = textoAlcance(
+      grupos.caja("Cobro por contraentrega", { concepto: "liquidacion_courier" }),
+      PERIODO,
+    );
+    expect(texto.periodo).toBe(`${PERIODO} por fecha del dinero`);
+    expect(texto.descripcion).toMatch(/fecha del dinero/);
+    expect(texto.descripcion).toMatch(/cantidad de pedidos/i);
+    expect(texto.descripcion).toMatch(/puede diferir/i);
+    expect(texto.descripcion).not.toMatch(/fecha de liquidaci[óo]n/i);
+  });
+
+  it("por_cobrar_actual conserva el texto de estado actual", () => {
+    expect(
+      textoAlcance(grupos.actual("por_cobrar_actual", "En curso por cobrar"), PERIODO).periodo,
+    ).toBe("Estado actual (no depende del periodo)");
+  });
+});

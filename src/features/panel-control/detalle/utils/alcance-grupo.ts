@@ -60,7 +60,7 @@ export function textoAlcance(grupo: DetalleGrupo | null, periodo: string): Texto
     case "caja":
       return {
         periodo: `${periodo} por fecha del dinero`,
-        descripcion: `Por fecha del dinero (${periodo}): cuenta el día en que el dinero entró o salió, aunque el pedido haya ingresado antes del periodo.`,
+        descripcion: `Por fecha del dinero (${periodo}): cuenta el día en que se registró el pago o salió el dinero, aunque el pedido haya ingresado antes del periodo. La cantidad de pedidos coincide con la fila; la facturación de arriba es el total de esos pedidos y puede diferir del monto movido (comisiones, pasarela, fletes o pagos parciales).`,
       };
     default:
       return { periodo, descripcion: `Periodo ${periodo}.` };
