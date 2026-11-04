@@ -1,13 +1,14 @@
 "use client";
 
+import { AccionDestinoLink } from "@/components/panel-control/AccionDestinoLink";
 import { BarChart } from "@/components/panel-control/charts/BarChart";
 import { HBarList } from "@/components/panel-control/charts/HBarList";
 import { DataTable, type DataTableColumn } from "@/components/panel-control/DataTable";
 import { EstadoBadge } from "@/components/panel-control/EstadoBadge";
 import { GoalIndicator } from "@/components/panel-control/GoalIndicator";
 import { KpiCard } from "@/components/panel-control/KpiCard";
-import { notifyPendingIntegration } from "@/components/panel-control/pending-integration";
 import { ACCION_PEDIDO_LABEL } from "@/features/panel-control/acciones/models/accion-pedido.model";
+import { destinoAccion } from "@/features/panel-control/acciones/utils/destino-accion";
 import {
   BUCKET_ANTIGUEDAD_LABEL,
   BUCKETS_ANTIGUEDAD,
@@ -126,21 +127,28 @@ export function ColaSubtab() {
     {
       id: "accion",
       header: "Acción",
-      cell: (fila) => (
-        <button
-          type="button"
-          disabled={fila.total === 0}
-          onClick={() =>
-            notifyPendingIntegration(ACCION_PEDIDO_LABEL[fila.accion], "acciones-pedido")
-          }
-          className="rounded-md border border-pc-border px-2 py-0.5 text-xs font-semibold text-pc-text outline-none hover:border-pc-primary focus-visible:ring-2 focus-visible:ring-pc-primary disabled:opacity-50"
-        >
-          {ACCION_PEDIDO_LABEL[fila.accion]}
-          <span className="ml-1 rounded bg-pc-surface-muted px-1 text-[10px] font-bold uppercase text-pc-text-muted">
-            Pendiente
-          </span>
-        </button>
-      ),
+      cell: (fila) => {
+        const etiqueta = ACCION_PEDIDO_LABEL[fila.accion];
+        const destino = fila.total === 0 ? null : destinoAccion(fila.accion);
+        const clase =
+          "rounded-md border border-pc-border px-2 py-0.5 text-xs font-semibold text-pc-text outline-none hover:border-pc-primary focus-visible:ring-2 focus-visible:ring-pc-primary";
+        if (!destino) {
+          return (
+            <button type="button" disabled className={`${clase} opacity-50`}>
+              {etiqueta}
+            </button>
+          );
+        }
+        return (
+          <AccionDestinoLink
+            destino={destino}
+            ariaLabel={`${etiqueta}: ${ESTADOS_PANEL_DEFINICION[fila.estado].etiqueta}, ${formatNumber(fila.total)} pedidos`}
+            className={`inline-block ${clase}`}
+          >
+            {etiqueta}
+          </AccionDestinoLink>
+        );
+      },
     },
   ];
 
@@ -358,7 +366,7 @@ export function ColaSubtab() {
             )}
             <p className="text-xs text-pc-text-muted">
               Las acciones por estado (Preparar, Asignar guía, Coordinar recojo, Reclamar al
-              courier) requieren POST /panel/acciones: por ahora solo avisan y no cambian nada.
+              courier) te llevan a la pantalla donde se hacen; desde aquí no cambian nada.
             </p>
           </div>
         )}

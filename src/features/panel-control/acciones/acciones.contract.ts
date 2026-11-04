@@ -11,8 +11,8 @@ export const ACCIONES_PEDIDO_CONTRACT = defineContract({
   roles: ROLES_TODOS,
   respuesta: "AccionPedidoResponse",
   pendientes: [
-    "Llamar, asignar guía, pedir liquidación, avisar al cliente, reclamar al courier, completar motivo, preparar, coordinar recojo, asignar canal",
-    "Cada acción debe validar permisos del usuario en el backend (OPS_* u otros)",
-    "Alternativa: redirigir a los módulos existentes (Call Center, Pedidos, Liquidaciones) en lugar de un endpoint nuevo",
+    "No se hace POST /panel/acciones (decisión del producto): los botones enlazan a las pantallas existentes (pedidos, guías, liquidaciones, atención al cliente) o abren WhatsApp con el mensaje listo",
+    "Enlaces: preparar y asignar guía → /operaciones/pedidos; coordinar recojo → /operaciones/guias; reclamar al courier y pedir liquidación → /operaciones/liquidaciones; llamar → /atencion-cliente; avisar al cliente → WhatsApp (el detalle no trae teléfono: se elige el contacto)",
+    "Sin destino todavía (siguen como «Pendiente»): completar motivo y asignar canal",
   ],
 });

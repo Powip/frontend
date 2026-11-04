@@ -206,7 +206,7 @@ describe("Call center", () => {
 describe("Operaciones", () => {
   beforeEach(() => toastInfo.mockClear());
 
-  it("cada celda de la matriz abre esos pedidos y la acción avisa que está pendiente", async () => {
+  it("cada celda de la matriz abre esos pedidos y la acción es un enlace a su pantalla", async () => {
     const user = renderTab("operaciones", "cola");
     const tabla = await screen.findByRole("table", { name: "Cola por estado y antigüedad" });
     const celda = within(tabla).getAllByRole("button", { name: /pedidos\. Ver pedidos$/ })[0];
@@ -215,8 +215,22 @@ describe("Operaciones", () => {
     expect(within(dialogo).getByText(/Estado actual/)).toBeInTheDocument();
     await user.click(within(dialogo).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    await user.click(within(tabla).getByRole("button", { name: /^Preparar/ }));
-    expect(toastInfo).toHaveBeenCalledWith("Preparar: pendiente de integración", expect.anything());
+    const preparar = within(tabla).getByRole("link", { name: /^Preparar:/ });
+    expect(preparar).toHaveAttribute("href", "/operaciones/pedidos?tab=pendientes");
+    expect(within(tabla).getByRole("link", { name: /^Asignar guía:/ })).toHaveAttribute(
+      "href",
+      "/operaciones/pedidos?tab=despachar",
+    );
+    expect(within(tabla).getByRole("link", { name: /^Coordinar recojo:/ })).toHaveAttribute(
+      "href",
+      "/operaciones/guias?tab=agenda",
+    );
+    expect(within(tabla).getByRole("link", { name: /^Reclamar al courier:/ })).toHaveAttribute(
+      "href",
+      "/operaciones/liquidaciones",
+    );
+    expect(within(tabla).queryByText("Pendiente")).not.toBeInTheDocument();
+    expect(toastInfo).not.toHaveBeenCalled();
   });
 
   it("los despachos de un día se abren por fecha de despacho", async () => {

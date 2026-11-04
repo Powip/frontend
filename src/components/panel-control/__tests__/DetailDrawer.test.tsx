@@ -83,16 +83,50 @@ describe("DetailDrawer", () => {
     expect(await within(dialogo).findByText(/Ningún pedido coincide/)).toBeInTheDocument();
   });
 
-  it("la acción por pedido avisa que está pendiente de integración", async () => {
+  it("la acción por pedido es un enlace a la pantalla, con el pedido a buscar", async () => {
     const grupo = grupos.porLiquidar();
+    const { dialogo } = await abrir("dueno", grupo);
+    const enlace = within(dialogo).getAllByRole("link", { name: /^Pedir liquidación / })[0];
+    expect(enlace).toHaveAttribute("href", "/operaciones/liquidaciones");
+    expect(within(dialogo).queryByText("(pendiente)")).not.toBeInTheDocument();
+    expect(toastInfo).not.toHaveBeenCalled();
+  });
+
+  it("asignar guía lleva a Por Despachar buscando el número del pedido", async () => {
+    const grupo = grupos.accion("ventas_sin_guia", "Ventas sin guía", "asignar_guia");
+    const { dialogo } = await abrir("dueno", grupo);
+    const enlace = within(dialogo).getAllByRole("link", { name: /^Asignar guía / })[0];
+    const numero = enlace.getAttribute("aria-label")?.replace("Asignar guía ", "") ?? "";
+    expect(numero).not.toBe("");
+    expect(enlace).toHaveAttribute(
+      "href",
+      `/operaciones/pedidos?tab=despachar&q=${encodeURIComponent(numero)}`,
+    );
+  });
+
+  it("avisar al cliente abre WhatsApp en pestaña nueva, sin teléfono inventado", async () => {
+    const grupo = grupos.accion("productos_agotados", "Productos agotados", "avisar_cliente");
+    const { dialogo } = await abrir("dueno", grupo);
+    const enlace = within(dialogo).getAllByRole("link", { name: /^Avisar al cliente / })[0];
+    expect(enlace.getAttribute("href")).toMatch(/^https:\/\/wa\.me\/\?text=/);
+    expect(enlace).toHaveAttribute("target", "_blank");
+    expect(enlace).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("completar motivo sigue pendiente con aviso", async () => {
+    const grupo = grupos.accion(
+      "anulaciones_sin_motivo",
+      "Anulaciones sin motivo",
+      "completar_motivo",
+    );
     const { user, dialogo } = await abrir("dueno", grupo);
     await user.click(
       within(dialogo).getAllByRole("button", {
-        name: /Pedir liquidación .*pendiente de integración/,
+        name: /Completar motivo .*pendiente de integración/,
       })[0],
     );
     expect(toastInfo).toHaveBeenCalledWith(
-      expect.stringContaining("Pedir liquidación"),
+      expect.stringContaining("Completar motivo"),
       expect.objectContaining({ description: expect.stringContaining("/panel/acciones") }),
     );
   });

@@ -129,16 +129,15 @@ describe("Finanzas", () => {
     expect(within(dialogo).getByText(/Por fecha del dinero/)).toBeInTheDocument();
   });
 
-  it("Cobranza: «Pedir» avisa que la acción está pendiente de integración", async () => {
-    const user = renderTab("finanzas", "cobranza");
+  it("Cobranza: «Pedir» lleva a Liquidaciones", async () => {
+    renderTab("finanzas", "cobranza");
     const tabla = await screen.findByRole("table", {
       name: "Liquidaciones pendientes por courier",
     });
-    await user.click(within(tabla).getAllByRole("button", { name: /^Pedir/ })[0]);
-    expect(toastInfo).toHaveBeenCalledWith(
-      "Pedir liquidación: pendiente de integración",
-      expect.anything(),
-    );
+    const enlaces = within(tabla).getAllByRole("link", { name: /^Pedir liquidación a / });
+    expect(enlaces[0]).toHaveAttribute("href", "/operaciones/liquidaciones");
+    expect(within(tabla).queryByRole("button", { name: /^Pedir/ })).not.toBeInTheDocument();
+    expect(toastInfo).not.toHaveBeenCalled();
   });
 });
 

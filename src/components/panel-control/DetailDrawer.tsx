@@ -12,6 +12,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ACCION_PEDIDO_LABEL } from "@/features/panel-control/acciones/models/accion-pedido.model";
+import { destinoAccion } from "@/features/panel-control/acciones/utils/destino-accion";
 import {
   DETALLE_TAMANO_PAGINA,
   type DetallePedidoFila,
@@ -35,6 +36,7 @@ import {
   formatSoles,
   formatSolesDecimales,
 } from "@/features/panel-control/shared/utils/format";
+import { AccionDestinoLink } from "./AccionDestinoLink";
 import { ContractView } from "./ContractView";
 import { HBarList } from "./charts/HBarList";
 import { DataOriginBadge } from "./DataOriginBadge";
@@ -232,24 +234,36 @@ export function DetailDrawer() {
       columns.push({
         id: "accion",
         header: "Acción",
-        cell: (row) => (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-7 px-2 text-[11px]"
-            aria-label={`${ACCION_PEDIDO_LABEL[accion]} ${row.numero}: pendiente de integración`}
-            onClick={() =>
-              notifyPendingIntegration(
-                `${ACCION_PEDIDO_LABEL[accion]} · ${row.numero}`,
-                "acciones-pedido",
-              )
-            }
-          >
-            {ACCION_PEDIDO_LABEL[accion]}
-            <span className="text-[10px] font-normal text-pc-text-soft">(pendiente)</span>
-          </Button>
-        ),
+        cell: (row) => {
+          const etiqueta = ACCION_PEDIDO_LABEL[accion];
+          const destino = destinoAccion(accion, { pedido: row.numero });
+          if (!destino) {
+            return (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-[11px]"
+                aria-label={`${etiqueta} ${row.numero}: pendiente de integración`}
+                onClick={() =>
+                  notifyPendingIntegration(`${etiqueta} · ${row.numero}`, "acciones-pedido")
+                }
+              >
+                {etiqueta}
+                <span className="text-[10px] font-normal text-pc-text-soft">(pendiente)</span>
+              </Button>
+            );
+          }
+          return (
+            <AccionDestinoLink
+              destino={destino}
+              ariaLabel={`${etiqueta} ${row.numero}`}
+              className="inline-flex h-7 items-center rounded-md border border-input px-2 text-[11px] font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-pc-primary"
+            >
+              {etiqueta}
+            </AccionDestinoLink>
+          );
+        },
       });
     }
     return columns;

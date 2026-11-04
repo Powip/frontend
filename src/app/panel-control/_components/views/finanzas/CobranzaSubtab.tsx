@@ -1,9 +1,10 @@
 "use client";
 
+import { AccionDestinoLink } from "@/components/panel-control/AccionDestinoLink";
 import { HBarList } from "@/components/panel-control/charts/HBarList";
 import { DataTable, type DataTableColumn } from "@/components/panel-control/DataTable";
 import { KpiCard } from "@/components/panel-control/KpiCard";
-import { notifyPendingIntegration } from "@/components/panel-control/pending-integration";
+import { destinoAccion } from "@/features/panel-control/acciones/utils/destino-accion";
 import {
   BUCKET_DEUDA_LABEL,
   type LiquidacionPendienteFila,
@@ -127,18 +128,18 @@ export function CobranzaSubtab() {
     {
       id: "accion",
       header: "Acción",
-      cell: () => (
-        <button
-          type="button"
-          onClick={() => notifyPendingIntegration("Pedir liquidación", "acciones-pedido")}
-          className="rounded-md border border-pc-border px-2 py-0.5 text-xs font-semibold text-pc-text outline-none hover:border-pc-primary focus-visible:ring-2 focus-visible:ring-pc-primary"
-        >
-          Pedir
-          <span className="ml-1 rounded bg-pc-surface-muted px-1 text-[10px] font-bold uppercase text-pc-text-muted">
-            Pendiente
-          </span>
-        </button>
-      ),
+      cell: (fila) => {
+        const destino = destinoAccion("pedir_liquidacion", { courier: fila.courier });
+        return destino ? (
+          <AccionDestinoLink
+            destino={destino}
+            ariaLabel={`Pedir liquidación a ${fila.courier}`}
+            className="inline-block rounded-md border border-pc-border px-2 py-0.5 text-xs font-semibold text-pc-text outline-none hover:border-pc-primary focus-visible:ring-2 focus-visible:ring-pc-primary"
+          >
+            Pedir
+          </AccionDestinoLink>
+        ) : null;
+      },
     },
   ];
 

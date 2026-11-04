@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { DetalleQuery } from "@/features/panel-control/detalle/models/detalle.model";
 import type { PanelSource } from "@/features/panel-control/shared/data/panel-source";
 import {
+  COLA,
   COURIERS,
   DETALLE_VACIO,
   errorHttp,
@@ -10,6 +11,7 @@ import {
   INVENTARIO,
   INVENTARIO_MULTITIENDA,
   INVENTARIO_SIN_COSTOS,
+  real,
   renderOperaciones,
   sobre,
   tarjetaCargada,
@@ -304,5 +306,35 @@ describe("Detalle de pedidos de Operaciones: errores del servidor", () => {
         "El servicio no está disponible por ahora. Reintenta en unos minutos.",
       ),
     ).toBeInTheDocument();
+  });
+});
+
+describe("Cola: botones de acción", () => {
+  it("una fila sin pedidos no tiene enlace activo y las demás son enlaces sin «Pendiente»", async () => {
+    const vacia = {
+      ...COLA,
+      matriz: COLA.matriz.map((fila) =>
+        fila.estado === "LLAMADO"
+          ? {
+              ...fila,
+              total: 0,
+              porAntiguedad: { menos_24h: 0, "1_2d": 0, "3_5d": 0, mas_5d: 0 },
+            }
+          : fila,
+      ),
+    };
+    const registro = {
+      ...fuentes(),
+      "operaciones-cola": real("operaciones-cola", async () => sobre(vacia)),
+    };
+    renderOperaciones("cola", registro);
+    const tabla = await screen.findByRole("table", { name: "Cola por estado y antigüedad" });
+    expect(within(tabla).queryByRole("link", { name: /^Preparar/ })).toBeNull();
+    expect(within(tabla).getByRole("button", { name: "Preparar" })).toBeDisabled();
+    expect(within(tabla).getByRole("link", { name: /^Asignar guía:/ })).toHaveAttribute(
+      "href",
+      "/operaciones/pedidos?tab=despachar",
+    );
+    expect(within(tabla).queryByText("Pendiente")).toBeNull();
   });
 });
