@@ -5,6 +5,7 @@ import { DataTable, type DataTableColumn } from "@/components/panel-control/Data
 import { KpiCard } from "@/components/panel-control/KpiCard";
 import {
   type CourierFila,
+  type CouriersKpis,
   type EfectividadDepartamentoFila,
   type ScoreCourier,
   TIPO_COURIER_LABEL,
@@ -61,6 +62,34 @@ function Enlace({
 }
 
 const pendiente = <span className="text-pc-warn">Pendiente</span>;
+
+/** Flete o costo que el servidor no pudo calcular (ningún envío con flete informado): nunca 0 ni NaN. */
+const sinDato = (
+  <span className="text-pc-text-soft" title="Ningún envío tiene el flete informado">
+    Sin dato
+  </span>
+);
+
+const fleteSoles = (valor: number | null | undefined, decimales = false) =>
+  valor === null || valor === undefined
+    ? sinDato
+    : decimales
+      ? formatSolesDecimales(valor)
+      : formatSoles(valor);
+
+const enviosSinFleteTexto = (cantidad: number) =>
+  `${formatNumber(cantidad)} ${cantidad === 1 ? "envío sin flete informado" : "envíos sin flete informado"}`;
+
+/** Total del flete y cuántos envíos quedaron fuera por no tener el flete informado. */
+function subFlete(k: Pick<CouriersKpis, "fleteTotal" | "enviosSinFlete">): string {
+  const partes: string[] = [];
+  if (k.fleteTotal !== null && k.fleteTotal !== undefined) {
+    partes.push(`${formatSoles(k.fleteTotal)} en total`);
+  }
+  if (k.enviosSinFlete) partes.push(enviosSinFleteTexto(k.enviosSinFlete));
+  else if (k.fleteTotal === null) partes.push("Ningún envío tiene el flete informado");
+  return partes.join(" · ");
+}
 
 export function CouriersSubtab() {
   const { view, openDrilldown } = usePanel();
@@ -204,7 +233,7 @@ export function CouriersSubtab() {
       id: "flete_prom",
       header: "Flete prom.",
       capability: "ver_costos",
-      cell: (fila) => formatSolesDecimales(fila.fletePromedio ?? null),
+      cell: (fila) => fleteSoles(fila.fletePromedio, true),
       sortValue: (fila) => fila.fletePromedio ?? null,
       exportValue: (fila) => fila.fletePromedio ?? null,
       exportFormat: "soles",
@@ -213,7 +242,7 @@ export function CouriersSubtab() {
       id: "flete_total",
       header: "Flete total",
       capability: "ver_costos",
-      cell: (fila) => formatSoles(fila.fleteTotal ?? null),
+      cell: (fila) => fleteSoles(fila.fleteTotal),
       sortValue: (fila) => fila.fleteTotal ?? null,
       exportValue: (fila) => fila.fleteTotal ?? null,
       exportFormat: "soles",
@@ -222,7 +251,7 @@ export function CouriersSubtab() {
       id: "costo_rechazos",
       header: "Costo rechazos",
       capability: "ver_costos",
-      cell: (fila) => formatSoles(fila.costoRechazos ?? null),
+      cell: (fila) => fleteSoles(fila.costoRechazos),
       sortValue: (fila) => fila.costoRechazos ?? null,
       exportValue: (fila) => fila.costoRechazos ?? null,
       exportFormat: "soles",
@@ -359,8 +388,11 @@ export function CouriersSubtab() {
             ariaLabel={`Ver ${formatNumber(fila.rechazados)} rechazados en ${fila.departamento}`}
             onSelect={() =>
               openDrilldown(
-                grupos.de("rechazados", `${fila.departamento} · rechazados`, {
+                // «envios» con estado RECHAZADO cuadra exacto con la fila; «rechazados {departamento}»
+                // puede traer más (rechazos sin nombre de courier).
+                grupos.de("envios", `${fila.departamento} · rechazados`, {
                   departamento: fila.departamento,
+                  estado: "RECHAZADO",
                 }),
               )
             }
@@ -394,7 +426,7 @@ export function CouriersSubtab() {
       id: "flete",
       header: "Flete prom.",
       capability: "ver_costos",
-      cell: (fila) => formatSolesDecimales(fila.fletePromedio ?? null),
+      cell: (fila) => fleteSoles(fila.fletePromedio, true),
       sortValue: (fila) => fila.fletePromedio ?? null,
       exportValue: (fila) => fila.fletePromedio ?? null,
       exportFormat: "soles",
@@ -473,9 +505,13 @@ export function CouriersSubtab() {
                   <KpiCard
                     key="flete"
                     label="Flete promedio"
-                    value={formatSolesDecimales(k.fletePromedio ?? null)}
+                    value={
+                      k.fletePromedio === null || k.fletePromedio === undefined
+                        ? sinDato
+                        : formatSolesDecimales(k.fletePromedio)
+                    }
                     origin={origin}
-                    sub={`${formatSoles(k.fleteTotal)} total, incluye retornos de provincia`}
+                    sub={subFlete(k)}
                   />,
                 ]
               : []),
@@ -487,7 +523,8 @@ export function CouriersSubtab() {
               origin={origin}
               sub={
                 <>
-                  {formatNumber(k.pedidosPorLiquidar)} pedidos entregados · estado actual
+                  {formatNumber(k.pedidosPorLiquidar)} pedidos entregados con courier, últimos 365
+                  días · estado actual
                   {k.porLiquidarSinPlazo > 0 && (
                     <span className="block text-pc-warn">
                       {formatSoles(k.porLiquidarSinPlazo)} con courier sin plazo cargado
@@ -529,7 +566,7 @@ export function CouriersSubtab() {
       <ContractBlock
         state={state}
         titulo="Rendimiento por courier"
-        subtitulo="Envíos de pedidos ingresados en el periodo. Por liquidar y vencido son estado actual. Score: A ≥ 90 %, B ≥ meta, C hasta 7 puntos bajo la meta, D por debajo."
+        subtitulo="Envíos de pedidos ingresados en el periodo. Por liquidar y vencido son estado actual (entregas con courier de los últimos 365 días). Score: A ≥ 90 %, B ≥ meta, C hasta 7 puntos bajo la meta, D por debajo."
       >
         {(data, origin) => (
           <DataTable

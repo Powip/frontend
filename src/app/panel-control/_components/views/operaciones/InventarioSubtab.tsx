@@ -2,12 +2,15 @@
 
 import { DataTable, type DataTableColumn } from "@/components/panel-control/DataTable";
 import { KpiCard } from "@/components/panel-control/KpiCard";
+import { PanelNoDisponible } from "@/components/panel-control/PanelStates";
 import {
   ESTADO_STOCK_LABEL,
   type EstadoStock,
   type InventarioFila,
+  type InventarioKpis,
 } from "@/features/panel-control/operaciones/models/inventario.model";
 import { grupos } from "@/features/panel-control/resumen/resumen-grupos";
+import { estadoHttp } from "@/features/panel-control/shared/api/panel-errors";
 import { usePanelContract } from "@/features/panel-control/shared/hooks/use-panel-contract";
 import { usePanelOptions } from "@/features/panel-control/shared/hooks/use-panel-options";
 import { usePanel } from "@/features/panel-control/shared/state/panel-context";
@@ -39,6 +42,15 @@ const ORDEN_ESTADO: Record<EstadoStock, number> = {
   sobrestock: 5,
 };
 
+/**
+ * El valor solo suma los productos con costo, y el costo sale de las ventas de los últimos 180 días:
+ * se dice cuántos entran para que no se lea como el valor total del stock.
+ */
+function valorAlCostoSub(k: InventarioKpis): string {
+  const conCosto = Math.max(0, k.productos - k.sinCosto);
+  return `Sobre ${formatNumber(conCosto)} de ${formatNumber(k.productos)} productos con costo; ${formatNumber(k.sinCosto)} sin costo. No es el total del stock: el costo sale de las ventas de los últimos 180 días.`;
+}
+
 export function InventarioSubtab() {
   const { view, openDrilldown } = usePanel();
   const { tiendaNombre } = usePanelOptions();
@@ -47,6 +59,18 @@ export function InventarioSubtab() {
     "operaciones-inventario",
     view.access === "permitido" ? view.query : null,
   );
+  // El inventario depende de ms-logistics: si no responde (503) solo esta pestaña lo dice.
+  // Cola y Couriers son otras peticiones y no se enteran.
+  if (state.status === "error" && estadoHttp(state.error) === 503) {
+    return (
+      <PanelNoDisponible
+        titulo="Inventario no disponible por ahora"
+        mensaje="No pudimos consultar el stock. La cola y los couriers siguen funcionando."
+        onRetry={state.refetch}
+        reintentando={state.isFetching}
+      />
+    );
+  }
   const labels = [
     "Productos",
     ...(verCostos ? ["Valor al costo"] : []),
@@ -77,7 +101,7 @@ export function InventarioSubtab() {
               label="Productos"
               value={formatNumber(k.productos)}
               origin={origin}
-              sub={`${formatNumber(k.sinCosto)} sin costo cargado`}
+              sub={`${formatNumber(k.sinCosto)} sin costo`}
             />,
             ...(k.valorAlCosto !== undefined
               ? [
@@ -86,7 +110,7 @@ export function InventarioSubtab() {
                     label="Valor al costo"
                     value={formatSoles(k.valorAlCosto)}
                     origin={origin}
-                    sub="Stock × costo unitario; sin costo o con error de datos no suma"
+                    sub={valorAlCostoSub(k)}
                   />,
                 ]
               : []),
@@ -139,7 +163,7 @@ export function InventarioSubtab() {
       <ContractBlock
         state={state}
         titulo="Stock y cobertura"
-        subtitulo="Un solo inventario para todos los canales: respeta el filtro de tienda, no los de canal o zona. Disponible = stock − reservado (LLAMADO, PREPARADO y CON_GUIA). Cobertura = disponible ÷ venta diaria de los últimos 30 días."
+        subtitulo="Un solo inventario para todos los canales: respeta el filtro de tienda, no los de canal o zona. Tienda = donde está el stock (la tienda física); puede ser distinta de la tienda de venta que filtran Cola y Couriers. Disponible = stock − reservado (LLAMADO, PREPARADO y CON_GUIA). Cobertura = disponible ÷ venta diaria de los últimos 30 días."
       >
         {(data, origin) => {
           const variasTiendas =
