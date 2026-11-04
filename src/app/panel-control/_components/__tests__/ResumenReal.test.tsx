@@ -11,6 +11,7 @@ import type {
   PanelSourceRegistry,
 } from "@/features/panel-control/shared/data/panel-source";
 import { PanelShell } from "../shell/PanelShell";
+import { METAS_REALES } from "./config-test-utils";
 
 jest.mock("sonner", () => ({ toast: { info: jest.fn(), success: jest.fn(), error: jest.fn() } }));
 jest.mock("next/link", () => ({
@@ -68,5 +69,19 @@ describe("Resumen con los datos reales de la Fase A", () => {
         name: /periodo anterior/i,
       }),
     ).toBeNull();
+  });
+
+  it("con las metas reales del sobre muestra el semáforo contra la meta cargada, sin llamarla demo", async () => {
+    const conMetas: PanelSource<"resumen"> = {
+      ...resumenDelBackend,
+      fetch: async (query, context) => ({
+        ...(await resumenDelBackend.fetch(query, context)),
+        metas: METAS_REALES,
+      }),
+    };
+    renderWithPanel(<PanelShell />, { sources: { ...SOURCES, resumen: conMetas } });
+    const botones = await screen.findAllByRole("button", { name: /Meta [≥≤]/ });
+    expect(botones.length).toBeGreaterThan(0);
+    for (const boton of botones) expect(boton).not.toHaveTextContent(/demo/i);
   });
 });

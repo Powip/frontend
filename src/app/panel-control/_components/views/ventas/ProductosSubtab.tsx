@@ -32,6 +32,15 @@ const KPI_LABELS = [
   "Anulados y rechazados",
 ];
 
+function tituloSinCosto(lineas: number | undefined): string {
+  if (!lineas) return "Sin costo cargado";
+  return `Sin costo cargado en ${lineas} ${lineas === 1 ? "línea vendida" : "líneas vendidas"}`;
+}
+
+function lineasSinCostoTotal(filas: { lineasSinCosto?: number }[]): number {
+  return filas.reduce((suma, fila) => suma + (fila.lineasSinCosto ?? 0), 0);
+}
+
 export function ProductosSubtab() {
   const { view, openDrilldown } = usePanel();
   const state = usePanelContract("productos", view.access === "permitido" ? view.query : null);
@@ -134,7 +143,7 @@ export function ProductosSubtab() {
       capability: "ver_costos",
       cell: (fila) =>
         fila.costoUnitario === null || fila.costoUnitario === undefined ? (
-          <span className="text-pc-warn" title="Sin costo cargado">
+          <span className="text-pc-warn" title={tituloSinCosto(fila.lineasSinCosto)}>
             {SIN_DATO}
           </span>
         ) : (
@@ -383,6 +392,8 @@ export function ProductosSubtab() {
             {data.actual.productos.some((fila) => fila.costoUnitario === null) && (
               <p role="note" className="text-xs text-pc-text-muted">
                 Productos sin costo cargado muestran margen «{SIN_DATO}»: no se asume 0 % ni 100 %.
+                {lineasSinCostoTotal(data.actual.productos) > 0 &&
+                  ` Líneas vendidas sin costo: ${formatNumber(lineasSinCostoTotal(data.actual.productos))}.`}
               </p>
             )}
           </div>

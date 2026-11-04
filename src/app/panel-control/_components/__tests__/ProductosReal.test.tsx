@@ -69,4 +69,31 @@ describe("Ventas y canales · Productos con los datos reales de la Fase B2", () 
       expect(celdas[indice]).toHaveTextContent("Pendiente");
     }
   });
+
+  it("las líneas vendidas sin costo se informan como señal y no se asume costo 0", async () => {
+    const conLineas: PanelSource<"productos"> = {
+      ...productosDelBackend,
+      fetch: async (query, context) => {
+        const base = await productosDelBackend.fetch(query, context);
+        return {
+          ...base,
+          actual: {
+            ...base.actual,
+            productos: base.actual.productos.map((producto, i) =>
+              i === 0
+                ? { ...producto, costoUnitario: null, margen: null, lineasSinCosto: 3 }
+                : { ...producto, costoUnitario: 10, margen: 0.4, lineasSinCosto: 0 },
+            ),
+          },
+        };
+      },
+    };
+    renderWithPanel(<PanelShell />, {
+      role: "dueno",
+      sources: { ...SOURCES, productos: conLineas },
+      state: { ...DEFAULT_PANEL_STATE, navigation: { tab: "canales", subtab: "productos" } },
+    });
+    expect(await screen.findByTitle("Sin costo cargado en 3 líneas vendidas")).toBeInTheDocument();
+    expect(screen.getByRole("note")).toHaveTextContent("Líneas vendidas sin costo: 3");
+  });
 });

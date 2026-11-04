@@ -190,7 +190,9 @@ describe("Call center", () => {
       within(tarjeta as HTMLElement).queryByRole("button", { name: /Ver pedidos/ }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText("Pendiente: todavía no se registra la hora de la primera llamada"),
+      screen.getByText(
+        "Sin datos: ningún lead del periodo tiene hora de primera llamada registrada",
+      ),
     ).toBeInTheDocument();
   });
 

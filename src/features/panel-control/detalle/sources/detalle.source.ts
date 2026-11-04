@@ -65,7 +65,7 @@ export const detalleClientesRealSource: PanelSource<"detalle"> = {
 /**
  * El mismo endpoint, para la pestaña Operaciones. Los cuatro grupos propios (`cola_operativa`,
  * `etapa_lenta`, `despachados_dia`, `reservados`) son solo del Dueño: a otro rol el servidor responde 403.
- * `primera_llamada_tardia` no se abre desde aquí (es de Call center y sigue sin conectar: 400).
+ * `primera_llamada_tardia` es de Call center (el servidor ya la responde con 200 desde `primer_contacto_at`); desde aquí no se abre.
  */
 export const detalleOperacionesRealSource: PanelSource<"detalle"> = {
   ...detalleRealSource,
