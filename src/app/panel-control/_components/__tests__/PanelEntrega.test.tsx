@@ -39,10 +39,10 @@ describe("entrega: shell sin lo oculto", () => {
     expect(screen.queryByRole("option", { name: "Datos: reales + demo" })).toBeNull();
   });
 
-  it("el subtítulo de Configuración solo nombra lo visible", () => {
+  it("el subtítulo de Configuración nombra lo que ya es real y no «Para desarrollo»", () => {
     renderWithPanel(<PanelShell />, { state: conTab("configuracion", "canales") });
-    expect(screen.queryByText("Canales, metas, reglas y cuadres")).toBeNull();
-    expect(screen.getByText("Ajustes de canales")).toBeInTheDocument();
+    expect(screen.getByText("Canales, metas, comisiones, reglas y cuadres")).toBeInTheDocument();
+    expect(screen.queryByText(/desarrollo/i)).toBeNull();
   });
 
   it("quitar las acciones de la lista las vuelve a mostrar", () => {
@@ -58,30 +58,59 @@ describe("entrega: shell sin lo oculto", () => {
     }
   });
 
-  it("URL directa a Configuración › Metas muestra Canales, sin subpestañas sueltas", async () => {
-    renderWithPanel(<PanelShell />, { state: conTab("configuracion", "metas") });
-    expect(await screen.findByRole("cell", { name: /Canal real 1/ })).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: "Metas" })).toBeNull();
+  it("Configuración muestra sus subpestañas reales y no «Para desarrollo»", async () => {
+    renderWithPanel(<PanelShell />, { state: conTab("configuracion", "canales") });
+    for (const nombre of [
+      "Canales",
+      "Metas",
+      "Comisiones y costos",
+      "Estados y reglas",
+      "Cuadres y calidad",
+    ]) {
+      expect(screen.getByRole("tab", { name: nombre })).toBeInTheDocument();
+    }
     expect(screen.queryByRole("tab", { name: "Para desarrollo" })).toBeNull();
-    expect(screen.queryByRole("tab", { name: "Estados y reglas" })).toBeNull();
-    expect(screen.queryByRole("tab", { name: "Cuadres y calidad" })).toBeNull();
   });
 
-  it("Ventas y canales no ofrece Publicidad y una URL directa cae en Canales", () => {
-    renderWithPanel(<PanelShell />, { state: conTab("canales", "publicidad") });
-    expect(screen.queryByRole("tab", { name: "Publicidad" })).toBeNull();
-    expect(screen.getByRole("tab", { name: "Productos" })).toBeInTheDocument();
+  it("una URL directa a Configuración › Para desarrollo cae en Canales", () => {
+    renderWithPanel(<PanelShell />, { state: conTab("configuracion", "desarrollo") });
+    expect(screen.queryByRole("tab", { name: "Para desarrollo" })).toBeNull();
     expect(screen.getByRole("tab", { name: "Canales" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("Ventas y canales ofrece Publicidad como «Próximamente», sin cifras", async () => {
+    renderWithPanel(<PanelShell />, { state: conTab("canales", "publicidad") });
+    expect(screen.getByRole("tab", { name: "Publicidad" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(
+      await screen.findByText("Próximamente: se conectará con Meta/TikTok Ads"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/S\/|\d+\s?%|\bx\b/)).toBeNull();
+    expect(screen.queryByText(/demo/i)).toBeNull();
   });
 
   it("la navegación móvil conserva sus pestañas y no expone nada oculto", () => {
     renderWithPanel(<MobileBottomNav />);
     expect(screen.getByRole("button", { name: /Ajustes/ })).toBeInTheDocument();
-    expect(screen.queryByText(/Metas|Publicidad|Desarrollo/)).toBeNull();
+    expect(screen.queryByText(/Desarrollo/)).toBeNull();
   });
 });
 
-describe("entrega: vistas sin metas demo", () => {
+describe("entrega: vistas sin metas demo (lista de la rama de entrega)", () => {
+  // La rama de entrega mantiene Metas oculta: se emula agregando su ítem a la lista.
+  beforeAll(() => {
+    PANEL_SECCIONES_OCULTAS.push({
+      id: "Configuración › Metas",
+      tab: "configuracion",
+      subtab: "metas",
+      contratos: ["config-metas", "config-metas-guardar"],
+    });
+  });
+  afterAll(() => {
+    PANEL_SECCIONES_OCULTAS.pop();
+  });
   const registro = autorizarRegistro({ ...TEST_SOURCES, resumen: resumenDemoSource });
 
   it("el Resumen no muestra indicadores de meta aunque la fuente los entregue", async () => {

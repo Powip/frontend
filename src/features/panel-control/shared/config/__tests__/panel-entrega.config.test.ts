@@ -36,27 +36,37 @@ function ready(state: PanelUiState): PanelViewReady {
 }
 
 describe("entrega: navegación sin lo oculto", () => {
-  it("Configuración queda solo con Canales y Ventas y canales sin Publicidad", () => {
+  it("Configuración muestra lo real y deja «Para desarrollo» oculto; Publicidad se ve como Próximamente", () => {
     const config = ready(nav("configuracion", null));
-    expect(config.subtabs.map((s) => s.id)).toEqual(["canales"]);
+    expect(config.subtabs.map((s) => s.id)).toEqual([
+      "canales",
+      "metas",
+      "costos",
+      "estados",
+      "cuadres",
+    ]);
     expect(config.subtab).toBe("canales");
     expect(config.tabs).toContain("configuracion");
     const canales = ready(nav("canales", null));
-    expect(canales.subtabs.map((s) => s.id)).toEqual(["canales", "productos", "clientes"]);
+    expect(canales.subtabs.map((s) => s.id)).toEqual([
+      "canales",
+      "productos",
+      "publicidad",
+      "clientes",
+    ]);
   });
 
-  it.each(["metas", "estados", "cuadres", "desarrollo"])(
-    "una URL directa a configuracion/%s cae en Canales",
+  it.each(["desarrollo"])("una URL directa a configuracion/%s cae en Canales", (sub) => {
+    const v = ready(nav("configuracion", sub));
+    expect(v).toMatchObject({ tab: "configuracion", subtab: "canales" });
+  });
+
+  it.each(["metas", "costos", "estados", "cuadres"])(
+    "configuracion/%s es una vista real y se abre",
     (sub) => {
-      const v = ready(nav("configuracion", sub));
-      expect(v).toMatchObject({ tab: "configuracion", subtab: "canales" });
+      expect(ready(nav("configuracion", sub))).toMatchObject({ subtab: sub });
     },
   );
-
-  it("una URL directa a canales/publicidad cae en una subpestaña visible", () => {
-    const v = ready(nav("canales", "publicidad"));
-    expect(v.subtab).toBe("canales");
-  });
 
   it("una pestaña oculta entera cae en el inicio del rol", () => {
     PANEL_SECCIONES_OCULTAS.push({ id: "t", tab: "equipo", contratos: [] });
@@ -70,21 +80,31 @@ describe("entrega: navegación sin lo oculto", () => {
   });
 
   it("quitar un ítem de la lista lo vuelve a mostrar", () => {
-    const i = PANEL_SECCIONES_OCULTAS.findIndex((s) => s.subtab === "publicidad");
+    const i = PANEL_SECCIONES_OCULTAS.findIndex((s) => s.subtab === "desarrollo");
     const [quitada] = PANEL_SECCIONES_OCULTAS.splice(i, 1);
     try {
-      expect(ready(nav("canales", "publicidad")).subtab).toBe("publicidad");
-      expect(isSubtabOculta("canales", "publicidad")).toBe(false);
+      expect(ready(nav("configuracion", "desarrollo")).subtab).toBe("desarrollo");
+      expect(isSubtabOculta("configuracion", "desarrollo")).toBe(false);
     } finally {
       PANEL_SECCIONES_OCULTAS.splice(i, 0, quitada);
     }
-    expect(isSubtabOculta("canales", "publicidad")).toBe(true);
+    expect(isSubtabOculta("configuracion", "desarrollo")).toBe(true);
   });
 
-  it("lista inicial: acciones y metas ocultas", () => {
+  it("lista inicial: solo Para desarrollo, Exportar, Compartir y el selector siguen ocultos", () => {
+    expect(PANEL_SECCIONES_OCULTAS.map((s) => s.id)).toEqual([
+      "Configuración › Para desarrollo",
+      "Exportar (Excel completo)",
+      "Compartir reporte",
+      "Selector Datos: reales + demo",
+    ]);
     expect(isAccionOculta("exportar")).toBe(true);
     expect(isAccionOculta("compartir")).toBe(true);
-    expect(metasOcultas()).toBe(true);
+    expect(isSubtabOculta("configuracion", "metas")).toBe(false);
+    expect(isSubtabOculta("configuracion", "estados")).toBe(false);
+    expect(isSubtabOculta("configuracion", "cuadres")).toBe(false);
+    expect(isSubtabOculta("canales", "publicidad")).toBe(false);
+    expect(metasOcultas()).toBe(false);
   });
 });
 
@@ -124,7 +144,10 @@ describe("entrega: guardián de fuentes demo", () => {
       }
     }
     // Configuración › Canales no hace drill: su detalle demo es el único que queda.
-    expect(fallos.filter((f) => !f.startsWith("configuracion/"))).toEqual([]);
+    // Publicidad es solo el aviso «Próximamente»: no tiene cifras ni drill.
+    expect(
+      fallos.filter((f) => !f.startsWith("configuracion/") && f !== "canales/publicidad: detalle"),
+    ).toEqual([]);
     expect(Object.keys(VIEW_CONTRACTS).length).toBeGreaterThan(0);
   });
 
@@ -133,6 +156,8 @@ describe("entrega: guardián de fuentes demo", () => {
     for (const tab of usadas) {
       const v = ready(nav(tab, null));
       for (const sub of v.subtabs.length ? v.subtabs.map((s) => s.id) : [null]) {
+        // Publicidad es solo el aviso «Próximamente»: no tiene cifras, así que no hace drill.
+        if (tab === "canales" && sub === "publicidad") continue;
         const { source } = resolvePanelSource(DEFAULT_PANEL_SOURCES, "detalle", "mixto", tab, sub);
         expect({ tab, sub, kind: source?.kind }).toEqual({ tab, sub, kind: "real" });
       }
@@ -154,20 +179,23 @@ describe("entrega: metas ocultas", () => {
   } as unknown as PanelSource<"resumen">;
   const ctx = {} as never;
 
-  it("anula las metas de cualquier sobre mientras Metas esté oculta", async () => {
-    const r = await sinMetasOcultas(fuente).fetch({} as never, ctx);
-    expect((r as { metas: unknown }).metas).toBeNull();
-  });
-
-  it("deja pasar las metas si Metas vuelve a mostrarse", async () => {
-    const quitadas = PANEL_SECCIONES_OCULTAS.filter((s) => s.contratos.includes("config-metas"));
-    const indices = quitadas.map((q) => PANEL_SECCIONES_OCULTAS.indexOf(q));
-    for (const q of quitadas) PANEL_SECCIONES_OCULTAS.splice(PANEL_SECCIONES_OCULTAS.indexOf(q), 1);
+  it("anula las metas de cualquier sobre si Metas se vuelve a ocultar (rama de entrega)", async () => {
+    PANEL_SECCIONES_OCULTAS.push({
+      id: "Configuración › Metas",
+      tab: "configuracion",
+      subtab: "metas",
+      contratos: ["config-metas", "config-metas-guardar"],
+    });
     try {
       const r = await sinMetasOcultas(fuente).fetch({} as never, ctx);
-      expect((r as { metas: unknown }).metas).toEqual(METAS_ESPECIFICACION);
+      expect((r as { metas: unknown }).metas).toBeNull();
     } finally {
-      for (const [n, q] of quitadas.entries()) PANEL_SECCIONES_OCULTAS.splice(indices[n], 0, q);
+      PANEL_SECCIONES_OCULTAS.pop();
     }
+  });
+
+  it("con Metas visible deja pasar las metas del backend en cada sobre", async () => {
+    const r = await sinMetasOcultas(fuente).fetch({} as never, ctx);
+    expect((r as { metas: unknown }).metas).toEqual(METAS_ESPECIFICACION);
   });
 });
