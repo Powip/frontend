@@ -6,7 +6,7 @@ import type { PanelSubtabId, PanelTabId } from "../models/panel-navigation.model
  * oculta desde ESTE archivo, con una lista explícita. Quitar un ítem de la lista lo vuelve a
  * mostrar tal como estaba; no se borra ninguna vista ni fuente.
  */
-export type PanelAccionOculta = "exportar" | "compartir";
+export type PanelAccionOculta = "exportar" | "compartir" | "selector-datos";
 
 export interface PanelSeccionOculta {
   /** Nombre legible, solo para mensajes. */
@@ -54,6 +54,8 @@ export const PANEL_SECCIONES_OCULTAS: PanelSeccionOculta[] = [
   },
   { id: "Exportar (Excel completo)", accion: "exportar", contratos: ["exportacion-libro"] },
   { id: "Compartir reporte", accion: "compartir", contratos: ["compartir-reporte"] },
+  // Sin nada demo visible, el selector «reales + demo / solo reales» no cambia nada.
+  { id: "Selector Datos: reales + demo", accion: "selector-datos", contratos: [] },
 ];
 
 type Lista = readonly PanelSeccionOculta[];
@@ -82,6 +84,14 @@ export function isContratoOculto(
   lista: Lista = PANEL_SECCIONES_OCULTAS,
 ): boolean {
   return lista.some((s) => s.contratos.includes(contractId));
+}
+
+/** ¿La entrega oculta alguna subpestaña de `tab`? */
+export function tieneSubtabsOcultas(
+  tab: PanelTabId,
+  lista: Lista = PANEL_SECCIONES_OCULTAS,
+): boolean {
+  return lista.some((s) => s.tab === tab && !!s.subtab);
 }
 
 /** Metas ocultas: ninguna vista debe mostrar metas (ni demo) mientras no se entregue la sección. */

@@ -90,6 +90,7 @@ export const PANEL_TABS: PanelTabDefinition[] = [
     mobileLabel: "Ajustes",
     titulo: "Configuración",
     subtitulo: "Canales, metas, reglas y cuadres",
+    subtituloConOcultos: "Ajustes de canales",
     moduloRelacionado: null,
     subtabs: [
       { id: "canales", label: "Canales" },

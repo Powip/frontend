@@ -1,17 +1,22 @@
 "use client";
 
 import Link from "next/link";
+import { tieneSubtabsOcultas } from "@/features/panel-control/shared/config/panel-entrega.config";
 import { getTabDefinition } from "@/features/panel-control/shared/config/panel-tabs.config";
 import type { PanelTabId } from "@/features/panel-control/shared/models/panel-navigation.model";
 
 export function ViewHeader({ tab }: { tab: PanelTabId }) {
   const definicion = getTabDefinition(tab);
+  const subtitulo =
+    definicion.subtituloConOcultos && tieneSubtabsOcultas(tab)
+      ? definicion.subtituloConOcultos
+      : definicion.subtitulo;
   return (
     <div className="mb-4 flex flex-wrap items-end gap-2.5">
       <div className="min-w-0">
         <h2 className="text-lg font-extrabold text-pc-text">{definicion.titulo}</h2>
         <p className="mt-0.5 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-pc-text-muted">
-          {definicion.subtitulo}
+          {subtitulo}
         </p>
       </div>
       <div className="grow" />

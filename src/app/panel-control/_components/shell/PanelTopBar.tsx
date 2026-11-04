@@ -89,17 +89,19 @@ export function PanelTopBar() {
             </FilterSelect>
             <MoreFiltersPopover />
             <ViewAsControl />
-            <FilterSelect
-              label="Datos"
-              value={state.dataMode}
-              hint="«Reales + demo» muestra las vistas sin contrato con datos demo marcados"
-              onChange={(value) =>
-                dispatch({ type: "set_data_mode", mode: value as PanelDataMode })
-              }
-            >
-              <option value="mixto">Datos: reales + demo</option>
-              <option value="solo_real">Datos: solo reales</option>
-            </FilterSelect>
+            {!isAccionOculta("selector-datos") && (
+              <FilterSelect
+                label="Datos"
+                value={state.dataMode}
+                hint="«Reales + demo» muestra las vistas sin contrato con datos demo marcados"
+                onChange={(value) =>
+                  dispatch({ type: "set_data_mode", mode: value as PanelDataMode })
+                }
+              >
+                <option value="mixto">Datos: reales + demo</option>
+                <option value="solo_real">Datos: solo reales</option>
+              </FilterSelect>
+            )}
             {puedeCompartir && (
               <Button
                 type="button"

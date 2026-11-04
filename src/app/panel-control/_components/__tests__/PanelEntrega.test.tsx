@@ -34,6 +34,17 @@ describe("entrega: shell sin lo oculto", () => {
     expect(screen.queryByRole("button", { name: "Compartir reporte" })).toBeNull();
   });
 
+  it("no muestra el selector «Datos: reales + demo»", () => {
+    renderWithPanel(<PanelShell />);
+    expect(screen.queryByRole("option", { name: "Datos: reales + demo" })).toBeNull();
+  });
+
+  it("el subtítulo de Configuración solo nombra lo visible", () => {
+    renderWithPanel(<PanelShell />, { state: conTab("configuracion", "canales") });
+    expect(screen.queryByText("Canales, metas, reglas y cuadres")).toBeNull();
+    expect(screen.getByText("Ajustes de canales")).toBeInTheDocument();
+  });
+
   it("quitar las acciones de la lista las vuelve a mostrar", () => {
     const quitadas = PANEL_SECCIONES_OCULTAS.filter((s) => s.accion);
     const indices = quitadas.map((q) => PANEL_SECCIONES_OCULTAS.indexOf(q));
@@ -41,6 +52,7 @@ describe("entrega: shell sin lo oculto", () => {
     try {
       renderWithPanel(<PanelShell />);
       expect(screen.getByRole("button", { name: "Descargar Excel completo" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Datos: reales + demo" })).toBeInTheDocument();
     } finally {
       for (const [n, q] of quitadas.entries()) PANEL_SECCIONES_OCULTAS.splice(indices[n], 0, q);
     }

@@ -38,6 +38,8 @@ export interface PanelTabDefinition {
   mobileLabel: string;
   titulo: string;
   subtitulo: string;
+  /** Subtítulo cuando la entrega oculta alguna subpestaña (no nombra lo oculto). */
+  subtituloConOcultos?: string;
   moduloRelacionado: { label: string; href: string } | null;
   subtabs: PanelSubtabDefinition[];
 }
