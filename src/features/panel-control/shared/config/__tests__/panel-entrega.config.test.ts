@@ -91,15 +91,16 @@ describe("entrega: navegación sin lo oculto", () => {
     expect(isSubtabOculta("configuracion", "desarrollo")).toBe(true);
   });
 
-  it("lista inicial: solo Para desarrollo, Exportar, Compartir y el selector siguen ocultos", () => {
+  it("lista inicial: solo Para desarrollo y el selector Datos siguen ocultos (Exportar y Compartir ya son reales)", () => {
     expect(PANEL_SECCIONES_OCULTAS.map((s) => s.id)).toEqual([
       "Configuración › Para desarrollo",
-      "Exportar (Excel completo)",
-      "Compartir reporte",
       "Selector Datos: reales + demo",
     ]);
-    expect(isAccionOculta("exportar")).toBe(true);
-    expect(isAccionOculta("compartir")).toBe(true);
+    expect(isAccionOculta("exportar")).toBe(false);
+    expect(isAccionOculta("compartir")).toBe(false);
+    expect(isAccionOculta("selector-datos")).toBe(true);
+    expect(isContratoOculto("exportacion-libro")).toBe(false);
+    expect(isContratoOculto("compartir-reporte")).toBe(false);
     expect(isSubtabOculta("configuracion", "metas")).toBe(false);
     expect(isSubtabOculta("configuracion", "estados")).toBe(false);
     expect(isSubtabOculta("configuracion", "cuadres")).toBe(false);

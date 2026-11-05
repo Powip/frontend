@@ -28,8 +28,6 @@ export const PANEL_SECCIONES_OCULTAS: PanelSeccionOculta[] = [
     subtab: "desarrollo",
     contratos: [],
   },
-  { id: "Exportar (Excel completo)", accion: "exportar", contratos: ["exportacion-libro"] },
-  { id: "Compartir reporte", accion: "compartir", contratos: ["compartir-reporte"] },
   // Sin nada demo visible, el selector «reales + demo / solo reales» no cambia nada.
   { id: "Selector Datos: reales + demo", accion: "selector-datos", contratos: [] },
 ];

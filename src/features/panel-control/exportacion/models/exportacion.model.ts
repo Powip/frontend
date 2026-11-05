@@ -1,20 +1,6 @@
 import type { DataOriginKind } from "../../shared/models/data-origin.model";
 import type { PanelQuery } from "../../shared/models/panel-query.model";
 
-export const HOJAS_LIBRO_COMPLETO = [
-  "Resumen",
-  "Canales",
-  "Pedidos",
-  "Productos",
-  "Vendedoras",
-  "Confirmadoras",
-  "Couriers",
-  "Departamentos",
-  "Cuadres",
-] as const;
-
-export type HojaLibroCompleto = (typeof HOJAS_LIBRO_COMPLETO)[number];
-
 export interface ExportLibroQuery extends PanelQuery {
   formato: "xlsx";
 }
@@ -45,19 +31,23 @@ export interface ExportTablaRequest {
   hasta: string;
 }
 
+/**
+ * GET /panel/compartir (objeto plano, sin envelope). Solo llega al Dueño, por eso las cifras de
+ * costo existen siempre; valen `null` cuando no hay dato (R13: nunca 0). No existe una ganancia
+ * sobre venta total: hay una sola, sobre lo entregado.
+ */
 export interface CompartirReporteResponse {
   periodo: string;
   ventaTotal: number;
   pedidos: number;
-  producto?: number;
-  productoIncompleto?: boolean;
+  producto: number | null;
+  productoIncompleto: boolean;
   publicidad: number | null;
-  envios?: number;
+  envios: number | null;
   costoPorVenta: number | null;
-  gananciaSobreVentaTotal?: number;
   entregado: number;
   efectividadEntrega: number | null;
-  gananciaSobreEntregado?: number;
+  gananciaSobreEntregado: number | null;
   meDeben: number;
   vencido: number | null;
   texto: string;

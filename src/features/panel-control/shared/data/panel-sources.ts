@@ -29,10 +29,8 @@ import {
   equipoVendedorasRealSource,
 } from "../../equipo/sources/equipo.source";
 import { estadoPeriodoRealSource } from "../../estado-periodo/sources/estado-periodo.source";
-import {
-  compartirReporteDemoSource,
-  exportacionLibroDemoSource,
-} from "../../exportacion/sources/exportacion.demo";
+import { compartirReporteRealSource } from "../../exportacion/sources/compartir.source";
+import { exportacionLibroRealSource } from "../../exportacion/sources/exportacion.source";
 import {
   finanzasCajaRealSource,
   finanzasCobranzaRealSource,
@@ -125,6 +123,6 @@ export const DEFAULT_PANEL_SOURCES: PanelSourceRegistry = autorizarRegistro({
   "mis-ventas": misVentasRealSource,
   "config-estados": configEstadosRealSource,
   "config-cuadres": configCuadresRealSource,
-  "exportacion-libro": exportacionLibroDemoSource,
-  "compartir-reporte": compartirReporteDemoSource,
+  "exportacion-libro": exportacionLibroRealSource,
+  "compartir-reporte": compartirReporteRealSource,
 });

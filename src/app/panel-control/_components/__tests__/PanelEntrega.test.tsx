@@ -28,10 +28,10 @@ const conTab = (tab: "configuracion" | "canales", subtab: string) => ({
 });
 
 describe("entrega: shell sin lo oculto", () => {
-  it("no muestra Excel ni Compartir", () => {
+  it("el Dueño ve Excel y Compartir (ya son reales)", () => {
     renderWithPanel(<PanelShell />);
-    expect(screen.queryByRole("button", { name: "Descargar Excel completo" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Compartir reporte" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Descargar Excel completo" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Compartir reporte" })).toBeInTheDocument();
   });
 
   it("no muestra el selector «Datos: reales + demo»", () => {
@@ -51,7 +51,6 @@ describe("entrega: shell sin lo oculto", () => {
     for (const q of quitadas) PANEL_SECCIONES_OCULTAS.splice(PANEL_SECCIONES_OCULTAS.indexOf(q), 1);
     try {
       renderWithPanel(<PanelShell />);
-      expect(screen.getByRole("button", { name: "Descargar Excel completo" })).toBeInTheDocument();
       expect(screen.getByRole("option", { name: "Datos: reales + demo" })).toBeInTheDocument();
     } finally {
       for (const [n, q] of quitadas.entries()) PANEL_SECCIONES_OCULTAS.splice(indices[n], 0, q);
