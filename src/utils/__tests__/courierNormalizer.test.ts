@@ -3,6 +3,7 @@ import {
   isShalomCourier,
   isAliclikCourier,
   isEvaCourier,
+  isOlvaCourier,
 } from '../courierNormalizer';
 
 describe('normalizeCourier', () => {
@@ -128,4 +129,20 @@ describe('isEvaCourier', () => {
   it('devuelve false para null', () => {
     expect(isEvaCourier(null)).toBe(false);
   });
+});
+
+describe('isOlvaCourier', () => {
+  it.each(['Olva Courier', 'olva courier', '   OLVA courier  ', '  olva CouRIer  '])(
+    'devuelve true para %p',
+    (input) => {
+      expect(isOlvaCourier(input)).toBe(true);
+    },
+  );
+
+  it.each(['Shalom', 'Aliclik', 'Olvera Express', '', null, undefined])(
+    'devuelve false para %p',
+    (input) => {
+      expect(isOlvaCourier(input)).toBe(false);
+    },
+  );
 });

@@ -46,3 +46,11 @@ bun.lock
 
 *storybook.log
 storybook-static
+
+# e2e (Playwright): secrets, session state and run artifacts never get committed
+/e2e/.env.e2e
+/e2e/.auth/
+/e2e/.ledger/
+/e2e/.artifacts/
+# `.env*` above would also hide the committed template
+!/e2e/.env.e2e.example

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
-import { fn } from "storybook/test";
-import { sunatDocumentSequenceHandlers } from "@/mocks/handlers/identity-lookup.handlers";
+import { fn, screen, userEvent } from "storybook/test";
+import { sunatDocumentSequenceHandlers } from "@/mocks/handlers/sunat-document-sequence.handlers";
 import { DeleteSunatDocumentSequenceDialog } from "./DeleteSunatDocumentSequenceDialog";
 
 const meta = {
@@ -18,6 +18,11 @@ const meta = {
 export default meta;
 
 type Story = StoryObj<typeof meta>;
+
+// The AlertDialog renders in a portal outside the story canvas, so query through `screen`
+async function confirmDelete() {
+  await userEvent.click(await screen.findByRole("button", { name: /eliminar serie/i }));
+}
 
 export const NonDefaultSeries: Story = {
   args: {
@@ -64,9 +69,7 @@ export const ConfirmDeleteSuccess: Story = {
       isDefault: false,
     },
   },
-  play: async ({ canvas, userEvent }) => {
-    await userEvent.click(canvas.getByRole("button", { name: /eliminar serie/i }));
-  },
+  play: confirmDelete,
 };
 
 export const ConfirmDeleteNotFound: Story = {
@@ -84,7 +87,5 @@ export const ConfirmDeleteNotFound: Story = {
   parameters: {
     msw: { handlers: [sunatDocumentSequenceHandlers.deleteNotFound] },
   },
-  play: async ({ canvas, userEvent }) => {
-    await userEvent.click(canvas.getByRole("button", { name: /eliminar serie/i }));
-  },
+  play: confirmDelete,
 };

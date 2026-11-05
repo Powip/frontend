@@ -216,7 +216,7 @@ export function ManageSunatDocumentSequenceModal({
                     <FormItem>
                       <FormLabel>Tipo de documento</FormLabel>
 
-                      <Select onValueChange={field.onChange} value={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value ?? ""}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Selecciona un tipo" />

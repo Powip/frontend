@@ -1,34 +1,35 @@
-'use client';
+"use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { format, startOfMonth } from "date-fns";
-import { useAuth } from "@/contexts/AuthContext";
-import { useAdvertisingSnapshot } from "@/hooks/useAdvertisingSnapshot";
-import type { AdvertisingProviderWire } from "@/services/advertisingService";
-import { HeaderConfig } from "@/components/header/HeaderConfig";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import {
   ArrowRight,
-  Package,
-  ShoppingBag,
-  Truck,
-  Send,
-  MessageCircle,
-  Search,
   Calculator,
-  Ship,
-  Megaphone,
   Check,
   type LucideIcon,
+  Megaphone,
+  MessageCircle,
+  Package,
+  Search,
+  Send,
+  Ship,
+  ShoppingBag,
+  Truck,
 } from "lucide-react";
 import Link from "next/link";
-import { getShalomConfig } from "@/services/shalomService";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { HeaderConfig } from "@/components/header/HeaderConfig";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { useAuth } from "@/contexts/AuthContext";
+import { getOlvaSenderProfiles } from "@/features/olva/olva-sender-profile/services/olva-sender-profile.service";
+import { useAdvertisingSnapshot } from "@/hooks/useAdvertisingSnapshot";
+import type { AdvertisingProviderWire } from "@/services/advertisingService";
 import { getAliclikCredentials } from "@/services/aliclikService";
 import { getEvaCredentials } from "@/services/evaService";
+import { getShalomConfig } from "@/services/shalomService";
 import { getYavendioConfig } from "@/services/yavendioService";
 
 const API_INTEGRATIONS = (
@@ -72,7 +73,8 @@ const INTEGRATIONS: IntegrationDef[] = [
   {
     id: "shalom",
     title: "Shalom Courier",
-    description: "Genera y despacha guías directamente desde el Centro de Envíos, con tracking en cada pedido.",
+    description:
+      "Genera y despacha guías directamente desde el Centro de Envíos, con tracking en cada pedido.",
     icon: Truck,
     href: "/configuracion/integraciones/shalom",
     color: "text-amber-600 dark:text-amber-400",
@@ -83,9 +85,25 @@ const INTEGRATIONS: IntegrationDef[] = [
     methodTag: "Cuenta",
   },
   {
+    id: "olva",
+    title: "Olva Courier",
+    description:
+      "Genera guías con cobertura en más de 1,800 distritos a nivel nacional, con entregas a domicilio y agencias.",
+    icon: Truck,
+    href: "/configuracion/integraciones/olva",
+    color: "text-yellow-600 dark:text-yellow-400",
+    bgColor: "bg-yellow-50 dark:bg-yellow-950/40",
+    logo: "/integrations/olva.png",
+    logoBg: "bg-[#F2AF13]",
+    category: "courier",
+    categoryLabel: "Courier",
+    methodTag: "Cuenta",
+  },
+  {
     id: "aliclik",
     title: "Aliclik",
-    description: "Despacha pedidos y recibí actualizaciones de estado automáticas por webhook en tiempo real.",
+    description:
+      "Despacha pedidos y recibí actualizaciones de estado automáticas por webhook en tiempo real.",
     icon: Package,
     href: "/configuracion/integraciones/aliclik",
     color: "text-purple-600 dark:text-purple-400",
@@ -101,7 +119,8 @@ const INTEGRATIONS: IntegrationDef[] = [
   {
     id: "eva",
     title: "EVA Courier",
-    description: "Conectá tu cuenta de EVA Courier (Fly Express) para despachar y recibir estados por webhook.",
+    description:
+      "Conectá tu cuenta de EVA Courier (Fly Express) para despachar y recibir estados por webhook.",
     icon: Send,
     href: "/configuracion/integraciones/eva",
     color: "text-orange-600 dark:text-orange-400",
@@ -114,7 +133,8 @@ const INTEGRATIONS: IntegrationDef[] = [
   {
     id: "yavendio",
     title: "Yavendio",
-    description: "Vendé tu catálogo por WhatsApp/IA y recibí automáticamente en Powip los pedidos cerrados ahí.",
+    description:
+      "Vendé tu catálogo por WhatsApp/IA y recibí automáticamente en Powip los pedidos cerrados ahí.",
     icon: MessageCircle,
     href: "/configuracion/integraciones/yavendio",
     color: "text-teal-600 dark:text-teal-400",
@@ -127,7 +147,8 @@ const INTEGRATIONS: IntegrationDef[] = [
   {
     id: "shopify",
     title: "Shopify",
-    description: "Sincroniza tus órdenes, inventarios y sucursales. La configuración vive en Tiendas.",
+    description:
+      "Sincroniza tus órdenes, inventarios y sucursales. La configuración vive en Tiendas.",
     icon: ShoppingBag,
     href: "/configuracion/tiendas",
     color: "text-green-600 dark:text-emerald-400",
@@ -168,7 +189,8 @@ const INTEGRATIONS: IntegrationDef[] = [
   {
     id: "grint",
     title: "Grint Solutions",
-    description: "GRINT te ayuda con contabilidad, SUNAT y formalización para que puedas enfocarte en hacer crecer tu negocio.",
+    description:
+      "GRINT te ayuda con contabilidad, SUNAT y formalización para que puedas enfocarte en hacer crecer tu negocio.",
     icon: Calculator,
     color: "text-blue-600 dark:text-blue-400",
     bgColor: "bg-blue-50 dark:bg-blue-950/40",
@@ -182,7 +204,8 @@ const INTEGRATIONS: IntegrationDef[] = [
   {
     id: "nihao",
     title: "Nihao Importaciones",
-    description: "Encuentra proveedores, cotiza tus productos y recibí asesoría para importar a Perú con nuestro partner NIHAO.",
+    description:
+      "Encuentra proveedores, cotiza tus productos y recibí asesoría para importar a Perú con nuestro partner NIHAO.",
     icon: Ship,
     color: "text-red-600 dark:text-red-400",
     bgColor: "bg-red-50 dark:bg-red-950/40",
@@ -196,7 +219,8 @@ const INTEGRATIONS: IntegrationDef[] = [
   {
     id: "jook",
     title: "Jook Agency",
-    description: "JOOK combina tráfico + creativos + ángulos de venta para ayudarte a encontrar qué funciona y escalar tus ventas.",
+    description:
+      "JOOK combina tráfico + creativos + ángulos de venta para ayudarte a encontrar qué funciona y escalar tus ventas.",
     icon: Megaphone,
     color: "text-violet-600 dark:text-violet-400",
     bgColor: "bg-violet-50 dark:bg-violet-950/40",
@@ -292,22 +316,31 @@ export default function IntegracionesHubPage() {
     let cancelled = false;
 
     (async () => {
-      const [shalom, aliclik, eva, yavendio, shopify] = await Promise.allSettled([
-        getShalomConfig(token, companyId),
-        getAliclikCredentials(token, companyId),
-        getEvaCredentials(token, companyId),
-        getYavendioConfig(token, companyId),
-        axios
-          .get(`${API_INTEGRATIONS}/shopify/status/${companyId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          })
-          .then((res) => res.data),
-      ]);
+      const [shalom, olvaSenderProfiles, aliclik, eva, yavendio, shopify] =
+        await Promise.allSettled([
+          getShalomConfig(token, companyId),
+          getOlvaSenderProfiles(),
+          getAliclikCredentials(token, companyId),
+          getEvaCredentials(token, companyId),
+          getYavendioConfig(token, companyId),
+          axios
+            .get(`${API_INTEGRATIONS}/shopify/status/${companyId}`, {
+              headers: { Authorization: `Bearer ${token}` },
+            })
+            .then((res) => res.data),
+        ]);
       if (cancelled) return;
+
+      // Verificamos si la llamada devolvió perfiles de Olva con éxito y tiene elementos
+      const hasOlvaConfigured =
+        olvaSenderProfiles.status === "fulfilled" &&
+        Array.isArray(olvaSenderProfiles.value) &&
+        olvaSenderProfiles.value.length > 0;
 
       setStatusMap({
         shalom: shalom.status === "fulfilled" && !!shalom.value?.isActive,
         aliclik: aliclik.status === "fulfilled" && !!aliclik.value?.isActive,
+        olva: hasOlvaConfigured,
         eva: eva.status === "fulfilled" && !!eva.value?.isActive,
         yavendio: yavendio.status === "fulfilled" && !!yavendio.value?.isActive,
         shopify:
@@ -372,7 +405,9 @@ export default function IntegracionesHubPage() {
           </div>
           <div className="w-px h-7 bg-gray-200 dark:bg-slate-700" />
           <div className="text-center">
-            <b className="block text-xl font-extrabold leading-none dark:text-slate-100">{totalCount}</b>
+            <b className="block text-xl font-extrabold leading-none dark:text-slate-100">
+              {totalCount}
+            </b>
             <small className="text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-slate-500">
               Partners
             </small>
@@ -400,8 +435,7 @@ export default function IntegracionesHubPage() {
                       : "bg-white dark:bg-slate-800 border dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:border-gray-300 dark:hover:border-slate-600"
                   }`}
                 >
-                  {chip.label}{" "}
-                  <span className={active ? "opacity-80" : "opacity-50"}>{count}</span>
+                  {chip.label} <span className={active ? "opacity-80" : "opacity-50"}>{count}</span>
                 </button>
               );
             })}
@@ -428,17 +462,26 @@ export default function IntegracionesHubPage() {
                 const Icon = integration.icon;
                 if (integration.category === "publicidad") {
                   const provider = integration.advertisingProvider;
-                  const state = canReadAdvertising && !advertising.isError && provider
-                    ? advertising.data?.providers[provider]
-                    : undefined;
-                  const statusLabel = !state ? "Consultar disponibilidad"
-                    : !state.available ? "Próximamente"
-                    : state.status === "connected" ? "Conectada"
-                    : state.status === "needs-auth" ? "Reconectar"
-                    : state.status === "paused" ? "Pausada"
-                    : "Disponible";
+                  const state =
+                    canReadAdvertising && !advertising.isError && provider
+                      ? advertising.data?.providers[provider]
+                      : undefined;
+                  const statusLabel = !state
+                    ? "Consultar disponibilidad"
+                    : !state.available
+                      ? "Próximamente"
+                      : state.status === "connected"
+                        ? "Conectada"
+                        : state.status === "needs-auth"
+                          ? "Reconectar"
+                          : state.status === "paused"
+                            ? "Pausada"
+                            : "Disponible";
                   return (
-                    <Card key={integration.id} className="h-full gap-0 py-0 border-border bg-card text-card-foreground">
+                    <Card
+                      key={integration.id}
+                      className="h-full gap-0 py-0 border-border bg-card text-card-foreground"
+                    >
                       <CardContent className="flex h-full flex-col p-6">
                         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                           <div className="rounded-lg bg-primary/10 p-3 text-primary">
@@ -448,10 +491,14 @@ export default function IntegracionesHubPage() {
                         </div>
                         <div className="text-xs font-medium text-muted-foreground">Publicidad</div>
                         <h3 className="mb-2 mt-1 text-lg font-semibold">{integration.title}</h3>
-                        <p className="flex-1 text-sm text-muted-foreground">{integration.description}</p>
+                        <p className="flex-1 text-sm text-muted-foreground">
+                          {integration.description}
+                        </p>
                         <div className="mt-4 border-t border-border pt-4">
                           <Button variant="link" asChild className="h-auto p-0">
-                            <Link href={integration.href ?? "/configuracion/integraciones/publicidad"}>
+                            <Link
+                              href={integration.href ?? "/configuracion/integraciones/publicidad"}
+                            >
                               Ver publicidad
                               <ArrowRight aria-hidden="true" />
                             </Link>
@@ -462,7 +509,9 @@ export default function IntegracionesHubPage() {
                   );
                 }
                 const isManual = !integration.href;
-                const connected = isManual ? !!manualStatus[integration.id] : statusMap[integration.id];
+                const connected = isManual
+                  ? !!manualStatus[integration.id]
+                  : statusMap[integration.id];
 
                 const statusBadge = isManual ? (
                   <button

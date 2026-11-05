@@ -1,31 +1,31 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
 import {
   createContext,
+  type ReactNode,
+  useCallback,
   useContext,
   useEffect,
-  useState,
-  useCallback,
   useRef,
-  type ReactNode,
+  useState,
 } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { decodeToken, isExpired } from "@/lib/jwt";
-import { fetchUserCompany, fetchCompanyById } from "@/services/companyService";
-import { fetchUserSubscription } from "@/services/fetchUserSubscription";
-import { fetchSubscriptionAccess } from "@/services/subscriptionAccess";
-import type { SubscriptionAccess } from "@/types/subscriptionAccess";
-import type { MonthlyOrderVolume } from "@/lib/onboardingQuestions";
-import axios from "axios";
-import { GATEWAY } from "@/lib/gateway";
 import { isSuperadmin } from "@/config/permissions.config";
-import { tokenStore } from "@/lib/tokenStore";
+import { partnersKeys } from "@/features/partners/keys/partners.keys";
+import { GATEWAY } from "@/lib/gateway";
+import { decodeToken, isExpired } from "@/lib/jwt";
+import type { MonthlyOrderVolume } from "@/lib/onboardingQuestions";
 import {
   cancelSessionRefresh,
   registerSessionRefresher,
   requestSessionToken,
 } from "@/lib/sessionRefresh";
-import { partnersKeys } from "@/features/partners/keys/partners.keys";
+import { tokenStore } from "@/lib/tokenStore";
+import { fetchCompanyById, fetchUserCompany } from "@/services/companyService";
+import { fetchUserSubscription } from "@/services/fetchUserSubscription";
+import { fetchSubscriptionAccess } from "@/services/subscriptionAccess";
+import type { SubscriptionAccess } from "@/types/subscriptionAccess";
 
 // Configurar axios para enviar cookies automáticamente (httpOnly cookies)
 axios.defaults.withCredentials = true;
@@ -95,10 +95,7 @@ interface AuthData {
 interface AuthContextType {
   auth: AuthData | null;
   loading: boolean;
-  login: (tokens: {
-    accessToken: string;
-    refreshToken?: string;
-  }) => Promise<AuthData | null>;
+  login: (tokens: { accessToken: string; refreshToken?: string }) => Promise<AuthData | null>;
   logout: () => void;
   updateCompany: (company: Company) => void;
   selectedStoreId: string | null;
@@ -116,7 +113,8 @@ interface AuthContextType {
   refreshSession: () => Promise<boolean>;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+// Exported so Storybook and tests can provide a session without the real provider
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Solo guardamos preferencias no sensibles
 const STORE_PREFERENCE_KEY = "selectedStoreId";
@@ -142,9 +140,7 @@ const resolveSelectedStoreId = (
   stores: Store[] | undefined,
   preferredStoreId: string | null,
 ): string | null =>
-  stores?.find((store) => store.id === preferredStoreId)?.id ||
-  stores?.[0]?.id ||
-  null;
+  stores?.find((store) => store.id === preferredStoreId)?.id || stores?.[0]?.id || null;
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient();
@@ -161,31 +157,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   } | null>(null);
   const inventoryRequestVersion = useRef(0);
 
-  const setSession = useCallback((nextAuth: AuthData | null, clearPartners = false) => {
-    const nextUserId = nextAuth?.user.id ?? null;
-    if (clearPartners || currentUserId.current !== nextUserId) {
-      void queryClient.cancelQueries({ queryKey: partnersKeys.all });
-      queryClient.removeQueries({ queryKey: partnersKeys.all });
-      const mutationCache = queryClient.getMutationCache();
-      mutationCache.findAll({ mutationKey: partnersKeys.all }).forEach((mutation) => {
-        mutationCache.remove(mutation);
-      });
-    }
-    currentUserId.current = nextUserId;
-    // Publish the bearer before any query can render with the new user's key.
-    authRef.current = nextAuth;
-    const scope = nextAuth
-      ? JSON.stringify([nextAuth.user.id, nextAuth.company?.id ?? nextAuth.user.companyId ?? null])
-      : null;
-    tokenStore.set(nextAuth?.accessToken ?? null, scope);
-    setAuth(nextAuth);
-  }, [queryClient]);
+  const setSession = useCallback(
+    (nextAuth: AuthData | null, clearPartners = false) => {
+      const nextUserId = nextAuth?.user.id ?? null;
+      if (clearPartners || currentUserId.current !== nextUserId) {
+        void queryClient.cancelQueries({ queryKey: partnersKeys.all });
+        queryClient.removeQueries({ queryKey: partnersKeys.all });
+        const mutationCache = queryClient.getMutationCache();
+        mutationCache.findAll({ mutationKey: partnersKeys.all }).forEach((mutation) => {
+          mutationCache.remove(mutation);
+        });
+      }
+      currentUserId.current = nextUserId;
+      // Publish the bearer before any query can render with the new user's key.
+      authRef.current = nextAuth;
+      const scope = nextAuth
+        ? JSON.stringify([
+            nextAuth.user.id,
+            nextAuth.company?.id ?? nextAuth.user.companyId ?? null,
+          ])
+        : null;
+      tokenStore.set(nextAuth?.accessToken ?? null, scope);
+      setAuth(nextAuth);
+    },
+    [queryClient],
+  );
 
   // Todos los consumidores consultan la misma tienda válida del negocio actual.
-  const selectedStoreId = resolveSelectedStoreId(
-    auth?.company?.stores,
-    preferredStoreId,
-  );
+  const selectedStoreId = resolveSelectedStoreId(auth?.company?.stores, preferredStoreId);
 
   const setSelectedStore = useCallback(
     (storeId: string) => {
@@ -230,15 +229,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             companyId: decoded.companyId ?? null,
           };
 
-          let company = await fetchUserCompany(
-            decoded.id,
-            accessToken,
-          );
+          let company = await fetchUserCompany(decoded.id, accessToken);
           if (!company && decoded.companyId) {
-            company = await fetchCompanyById(
-              decoded.companyId,
-              accessToken,
-            );
+            company = await fetchCompanyById(decoded.companyId, accessToken);
           }
 
           const [subscription, access] = await Promise.all([
@@ -248,9 +241,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
           const currentBearer = tokenStore.get();
           if (
-            refreshingSession !== sessionVersion.current || !tokenStore.isCurrent(session) ||
+            refreshingSession !== sessionVersion.current ||
+            !tokenStore.isCurrent(session) ||
             (currentBearer !== session.token && currentBearer !== accessToken)
-          ) return false;
+          )
+            return false;
 
           setSession({
             accessToken,
@@ -263,9 +258,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
           // Solo guardamos preferencia de tienda (no sensible)
           const storedStore = readStorePreference();
-          setPreferredStoreId(
-            resolveSelectedStoreId(company?.stores, storedStore),
-          );
+          setPreferredStoreId(resolveSelectedStoreId(company?.stores, storedStore));
 
           return true;
         }
@@ -287,7 +280,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const renewingVersion = sessionVersion.current;
     if (!previous || !session.active || !session.token) return false;
     const accessToken = await requestSessionToken(session);
-    if (!accessToken || !tokenStore.isCurrent(session) || renewingVersion !== sessionVersion.current) {
+    if (
+      !accessToken ||
+      !tokenStore.isCurrent(session) ||
+      renewingVersion !== sessionVersion.current
+    ) {
       return false;
     }
     const decoded = decodeToken(accessToken);
@@ -295,10 +292,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     // Automatic retries must keep the account and company that issued the
     // original request. Explicit public refresh can still adopt onboarding changes.
     if (
-      !decoded || !current || !Number.isFinite(decoded.exp) || isExpired(decoded.exp) ||
+      !decoded ||
+      !current ||
+      !Number.isFinite(decoded.exp) ||
+      isExpired(decoded.exp) ||
       decoded.id !== current.user.id ||
       (decoded.companyId ?? null) !== (current.user.companyId ?? null)
-    ) return false;
+    )
+      return false;
     setSession({
       ...current,
       accessToken,
@@ -329,30 +330,49 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [silentRefresh]);
 
   // ---- INVENTORIES ----
-  const fetchInventories = useCallback(async (signal?: AbortSignal) => {
-    const requestVersion = ++inventoryRequestVersion.current;
-    const requestingSession = sessionVersion.current;
-    if (!auth?.accessToken || !selectedStoreId) {
-      setInventories([]);
-      return;
-    }
-
-    try {
-      const res = await axios.get<InventoryResponse[]>(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics}/inventory/store/${selectedStoreId}`,
-        { headers: { Authorization: `Bearer ${auth.accessToken}` }, signal },
-      );
-      if (requestVersion === inventoryRequestVersion.current && requestingSession === sessionVersion.current && !signal?.aborted) {
-        setInventories(Array.isArray(res.data) ? res.data
-          .map((inventory) => ({ ...inventory, storeId: inventory.storeId ?? inventory.store_id ?? "" }))
-          .filter((inventory) => inventory.storeId === selectedStoreId) : []);
+  const fetchInventories = useCallback(
+    async (signal?: AbortSignal) => {
+      const requestVersion = ++inventoryRequestVersion.current;
+      const requestingSession = sessionVersion.current;
+      if (!auth?.accessToken || !selectedStoreId) {
+        setInventories([]);
+        return;
       }
-    } catch (err) {
-      if (signal?.aborted || requestVersion !== inventoryRequestVersion.current || requestingSession !== sessionVersion.current) return;
-      setInventories([]);
-      console.error("Error loading inventories", err);
-    }
-  }, [auth?.accessToken, selectedStoreId]);
+
+      try {
+        const res = await axios.get<InventoryResponse[]>(
+          `${process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics}/inventory/store/${selectedStoreId}`,
+          { headers: { Authorization: `Bearer ${auth.accessToken}` }, signal },
+        );
+        if (
+          requestVersion === inventoryRequestVersion.current &&
+          requestingSession === sessionVersion.current &&
+          !signal?.aborted
+        ) {
+          setInventories(
+            Array.isArray(res.data)
+              ? res.data
+                  .map((inventory) => ({
+                    ...inventory,
+                    storeId: inventory.storeId ?? inventory.store_id ?? "",
+                  }))
+                  .filter((inventory) => inventory.storeId === selectedStoreId)
+              : [],
+          );
+        }
+      } catch (err) {
+        if (
+          signal?.aborted ||
+          requestVersion !== inventoryRequestVersion.current ||
+          requestingSession !== sessionVersion.current
+        )
+          return;
+        setInventories([]);
+        console.error("Error loading inventories", err);
+      }
+    },
+    [auth?.accessToken, selectedStoreId],
+  );
 
   const refreshInventories = useCallback(async () => {
     await fetchInventories();
@@ -471,15 +491,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       fetchSubscriptionAccess(accessToken),
     ]);
     const prev = authRef.current;
-      // A retained callback or late response must not modify another session.
-      if (
-        refreshingSession !== sessionVersion.current ||
-        tokenStore.get() !== accessToken ||
-        !prev ||
-        prev.user.id !== userId ||
-        prev.accessToken !== accessToken
-      ) return;
-      setSession({ ...prev, subscription, access });
+    // A retained callback or late response must not modify another session.
+    if (
+      refreshingSession !== sessionVersion.current ||
+      tokenStore.get() !== accessToken ||
+      !prev ||
+      prev.user.id !== userId ||
+      prev.accessToken !== accessToken
+    )
+      return;
+    setSession({ ...prev, subscription, access });
   }, [auth?.accessToken, auth?.user.id, setSession]);
 
   // ---- CHECK PERMISSION ----

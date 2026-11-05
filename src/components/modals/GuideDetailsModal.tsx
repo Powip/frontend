@@ -1,77 +1,78 @@
 "use client";
 
-import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
-import { orderFinancialState, receiptFinancialState } from "@/utils/orderState";
-
-import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
+import {
+  Calendar,
+  Camera,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  DollarSign,
+  ExternalLink,
+  FileSpreadsheet,
+  FileText,
+  ImageIcon,
+  Loader2,
+  Lock,
+  MapPin,
+  MessageCircle,
+  MessageSquare,
+  Package,
+  Phone,
+  Printer,
+  ShoppingBag,
+  Trash2,
+  Truck,
+  User,
+  XCircle,
+} from "lucide-react";
 import Image from "next/image";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import SendToAliclikGuideModal from "@/components/aliclik/SendToAliclikGuideModal";
+import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
+import SendToEvaGuideModal from "@/components/eva/SendToEvaGuideModal";
+import SendToShalomModal from "@/components/shalom/SendToShalomModal";
+import { GoogleMapsUrlField } from "@/components/shared/GoogleMapsUrlField";
+import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import type { OrderDeliveryDetails } from "@/interfaces/IOrder";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import {
-  Package,
-  Truck,
-  User,
-  Calendar,
-  MapPin,
-  Loader2,
-  ExternalLink,
-  MessageSquare,
-  MessageCircle,
-  Phone,
-  ChevronDown,
-  ChevronRight,
-  DollarSign,
-  ShoppingBag,
-  Printer,
-  FileText,
-  Camera,
-  ImageIcon,
-  CheckCircle2,
-  XCircle,
-  Lock,
-  Trash2,
-  Copy,
-} from "lucide-react";
-import { GoogleMapsUrlField } from "@/components/shared/GoogleMapsUrlField";
-import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
-import axios from "@/lib/axiosAuth";
-import { toast } from "sonner";
-import { generateQR, generateBarcode } from "@/utils/printOrderLabel";
 import { ZONE_LABELS } from "@/constants/operationsDomain";
-import { printShippingGuide } from "@/utils/printShippingGuide";
-import { useReceiptPrintScope } from "@/hooks/useReceiptPrintScope";
-import {
-  escapePrintHtml,
-  renderPrintableUnitCodesHtml,
-  type PrintableReceiptTracking,
-  type PrintableReceiptItem,
-} from "@/utils/receiptUnitCodes";
-import PaymentVerificationModal from "./PaymentVerificationModal";
-import ShalomShippingLabelsModal from "./ShalomShippingLabelsModal";
-import SendToShalomModal from "@/components/shalom/SendToShalomModal";
-import SendToAliclikGuideModal from "@/components/aliclik/SendToAliclikGuideModal";
-import SendToEvaGuideModal from "@/components/eva/SendToEvaGuideModal";
-import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
-import { FileSpreadsheet } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
+import { useReceiptPrintScope } from "@/hooks/useReceiptPrintScope";
+import type { OrderDeliveryDetails } from "@/interfaces/IOrder";
+import axios from "@/lib/axiosAuth";
 import { shouldDisplayNote } from "@/lib/logFilters";
 import {
-  normalizeCourier,
-  isShalomCourier,
   isAliclikCourier,
   isEvaCourier,
+  isOlvaCourier,
+  isShalomCourier,
+  normalizeCourier,
 } from "@/utils/courierNormalizer";
+import { orderFinancialState, receiptFinancialState } from "@/utils/orderState";
+import { generateBarcode, generateQR } from "@/utils/printOrderLabel";
+import { printShippingGuide } from "@/utils/printShippingGuide";
+import {
+  escapePrintHtml,
+  type PrintableReceiptItem,
+  type PrintableReceiptTracking,
+  renderPrintableUnitCodesHtml,
+} from "@/utils/receiptUnitCodes";
+import SendToOlvaModal from "../olva/send-to-olva/SendToOlvaModal";
+import PaymentVerificationModal from "./PaymentVerificationModal";
+import ShalomShippingLabelsModal from "./ShalomShippingLabelsModal";
 
 export interface ShippingGuide {
   id: string;
@@ -135,14 +136,16 @@ export interface OrderDetail extends PrintableReceiptTracking {
     amount: number;
     status: string;
   }>;
-  items: Array<PrintableReceiptItem & {
-    productName: string;
-    sku: string;
-    quantity: number;
-    unitPrice: number;
-    attributes?: Record<string, string>;
-    productVariantId?: string | null;
-  }>;
+  items: Array<
+    PrintableReceiptItem & {
+      productName: string;
+      sku: string;
+      quantity: number;
+      unitPrice: number;
+      attributes?: Record<string, string>;
+      productVariantId?: string | null;
+    }
+  >;
   totals?: {
     grandTotal: number;
     totalPaid: number;
@@ -213,7 +216,6 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELADA: "bg-red-100 text-red-800",
 };
 
-
 const ORDER_STATUS_COLORS: Record<string, string> = {
   PENDIENTE: "bg-gray-100 text-gray-800",
   PREPARADO: "bg-yellow-100 text-yellow-800",
@@ -274,8 +276,13 @@ export default function GuideDetailsModal({
   const [shalomModalOpen, setShalomModalOpen] = useState(false);
   const [shalomLabelsOpen, setShalomLabelsOpen] = useState(false);
   useEffect(() => setShalomLabelsOpen(false), [open, readScope]);
+
+  // Olva modal
+  const [olvaModalOpen, setOlvaModalOpen] = useState(false);
+
   // Aliclik modal
   const [aliclikModalOpen, setAliclikModalOpen] = useState(false);
+
   // EVA modal
   const [evaModalOpen, setEvaModalOpen] = useState(false);
 
@@ -287,8 +294,18 @@ export default function GuideDetailsModal({
   const loaded = open && loadedScope === readScope;
   const guide = loaded ? storedGuide : null;
   const ordersDetails = loaded ? storedOrders : EMPTY_ORDERS;
-  const printScope = JSON.stringify([readScope, loadedScope, guide?.id, guide?.orderIds,
-    ordersDetails.map((order) => [order.id, order.stockVersion, order.confirmedStockVersion, order.unitAssignmentStatus])]);
+  const printScope = JSON.stringify([
+    readScope,
+    loadedScope,
+    guide?.id,
+    guide?.orderIds,
+    ordersDetails.map((order) => [
+      order.id,
+      order.stockVersion,
+      order.confirmedStockVersion,
+      order.unitAssignmentStatus,
+    ]),
+  ]);
   const beginPrint = useReceiptPrintScope(printScope, loaded);
 
   // FEAT-26: costo de envío de los pedidos que ya están en EVA — el modal de
@@ -306,9 +323,7 @@ export default function GuideDetailsModal({
     id: string;
     number: string;
   } | null>(null);
-  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(
-    new Set(),
-  );
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
 
   // Estado para tracking por pedido (key = orderId)
   const [orderTrackingFields, setOrderTrackingFields] = useState<
@@ -330,7 +345,10 @@ export default function GuideDetailsModal({
     const operation = beginRead();
     const sequence = ++readSequence.current;
     const current = () => operation.isCurrent?.() && sequence === readSequence.current;
-    if (!current()) { operation.release(); return; }
+    if (!current()) {
+      operation.release();
+      return;
+    }
     setLoadedScope(null);
     setLoading(true);
     try {
@@ -351,31 +369,42 @@ export default function GuideDetailsModal({
       };
       const res = await axios.get<ShippingGuide | null>(url, config);
       if (!current()) return;
-      if (res.data && ((guideId && res.data.id !== guideId) ||
-        (orderId && !guideId && !res.data.orderIds.includes(orderId)) ||
-        (authenticated && res.data.companyId && res.data.companyId !== companyId))) {
+      if (
+        res.data &&
+        ((guideId && res.data.id !== guideId) ||
+          (orderId && !guideId && !res.data.orderIds.includes(orderId)) ||
+          (authenticated && res.data.companyId && res.data.companyId !== companyId))
+      ) {
         throw new Error("La guía no corresponde a la consulta");
       }
       const requestedIds = res.data?.orderIds ?? [];
       if (new Set(requestedIds).size !== requestedIds.length) {
         throw new Error("La guía contiene pedidos duplicados");
       }
-      const orders = await Promise.all(requestedIds.map(async (id) => {
-        const route = authenticated ? `manual/${id}/receipt` : `${id}/receipt`;
-        const response = await axios.get<OrderDetail>(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${route}`, config,
-        );
-        if (response.data.orderId !== id || (response.data.id && response.data.id !== id) ||
-          (authenticated && response.data.companyId && response.data.companyId !== companyId)) {
-          throw new Error("El comprobante no corresponde al pedido solicitado");
-        }
-        return {
-          ...response.data,
-          id,
-          // Public courier reads never become a source of private unit identities.
-          items: authenticated ? response.data.items : response.data.items.map(({ unitIds: _ids, units: _units, ...item }) => item),
-        };
-      }));
+      const orders = await Promise.all(
+        requestedIds.map(async (id) => {
+          const route = authenticated ? `manual/${id}/receipt` : `${id}/receipt`;
+          const response = await axios.get<OrderDetail>(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${route}`,
+            config,
+          );
+          if (
+            response.data.orderId !== id ||
+            (response.data.id && response.data.id !== id) ||
+            (authenticated && response.data.companyId && response.data.companyId !== companyId)
+          ) {
+            throw new Error("El comprobante no corresponde al pedido solicitado");
+          }
+          return {
+            ...response.data,
+            id,
+            // Public courier reads never become a source of private unit identities.
+            items: authenticated
+              ? response.data.items
+              : response.data.items.map(({ unitIds: _ids, units: _units, ...item }) => item),
+          };
+        }),
+      );
       if (!current()) return;
       setGuide(res.data);
       setOrdersDetails(orders);
@@ -387,7 +416,12 @@ export default function GuideDetailsModal({
       orders.forEach((order) => {
         trackingByOrder[order.id] = {
           externalTrackingNumber: order.externalTrackingNumber || "",
-          shippingKey: (order.totals ? receiptFinancialState({ totals: order.totals, payments: order.payments }) : orderFinancialState(order)).isPaid ? order.shippingKey || "" : "",
+          shippingKey: (order.totals
+            ? receiptFinancialState({ totals: order.totals, payments: order.payments })
+            : orderFinancialState(order)
+          ).isPaid
+            ? order.shippingKey || ""
+            : "",
           trackingUrl: order.trackingUrl || "",
           shippingOffice: order.shippingOffice || "",
           shippingCode: order.shippingCode || "",
@@ -404,7 +438,17 @@ export default function GuideDetailsModal({
       if (current()) setLoading(false);
       operation.release();
     }
-  }, [guideId, orderId, defaultCourier, companyId, userId, token, authenticated, readScope, beginRead]);
+  }, [
+    guideId,
+    orderId,
+    defaultCourier,
+    companyId,
+    userId,
+    token,
+    authenticated,
+    readScope,
+    beginRead,
+  ]);
 
   useEffect(() => {
     if (open && (orderId || guideId)) {
@@ -417,28 +461,30 @@ export default function GuideDetailsModal({
     const trackingData = orderTrackingFields[orderId];
     if (!trackingData) return;
     const currentOrder = ordersDetails.find((order) => order.id === orderId);
-    const canRevealKey = currentOrder ? (currentOrder.totals ? receiptFinancialState({ totals: currentOrder.totals, payments: currentOrder.payments }) : orderFinancialState(currentOrder)).isPaid : false;
+    const canRevealKey = currentOrder
+      ? (currentOrder.totals
+          ? receiptFinancialState({ totals: currentOrder.totals, payments: currentOrder.payments })
+          : orderFinancialState(currentOrder)
+        ).isPaid
+      : false;
     // Guardar metadata no revela la clave al cliente ni depende del pago.
 
     setSavingOrderId(orderId);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        {
-          externalTrackingNumber: trackingData.externalTrackingNumber || null,
-          ...(trackingData.shippingKey || canRevealKey ? { shippingKey: trackingData.shippingKey || null } : {}),
-          trackingUrl: trackingData.trackingUrl || null,
-          shippingOffice: trackingData.shippingOffice || null,
-          shippingCode: trackingData.shippingCode || null,
-        },
-      );
+      await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`, {
+        externalTrackingNumber: trackingData.externalTrackingNumber || null,
+        ...(trackingData.shippingKey || canRevealKey
+          ? { shippingKey: trackingData.shippingKey || null }
+          : {}),
+        trackingUrl: trackingData.trackingUrl || null,
+        shippingOffice: trackingData.shippingOffice || null,
+        shippingCode: trackingData.shippingCode || null,
+      });
       toast.success("Datos de tracking guardados");
       void invalidateBusinessData();
       onGuideUpdated?.();
     } catch (error: any) {
-      toast.error(
-        error?.response?.data?.message || "Error al guardar tracking",
-      );
+      toast.error(error?.response?.data?.message || "Error al guardar tracking");
     } finally {
       setSavingOrderId(null);
     }
@@ -483,8 +529,7 @@ export default function GuideDetailsModal({
       void invalidateBusinessData();
       onGuideUpdated?.();
     } catch (error: any) {
-      const message =
-        error?.response?.data?.message || "Error asignando courier";
+      const message = error?.response?.data?.message || "Error asignando courier";
       toast.error(message);
     } finally {
       setAssigning(false);
@@ -504,23 +549,17 @@ export default function GuideDetailsModal({
     setAssigning(true);
     try {
       // 1. Aprobar la guía
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}`,
-        {
-          status: "APROBADA",
-          courierName: normalizeCourier(guide.courierName), // ✅ Normalizar antes de guardar
-        },
-      );
+      await axios.patch(`${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}`, {
+        status: "APROBADA",
+        courierName: normalizeCourier(guide.courierName), // ✅ Normalizar antes de guardar
+      });
 
       // 2. Cambiar estado de todas las órdenes a EN_ENVIO
       for (const orderId of guide.orderIds) {
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-          {
-            status: "EN_ENVIO",
-            courier: guide.courierName,
-          },
-        );
+        await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`, {
+          status: "EN_ENVIO",
+          courier: guide.courierName,
+        });
       }
 
       toast.success(
@@ -571,12 +610,9 @@ export default function GuideDetailsModal({
       const proofUrl = uploadRes.data.url;
 
       // 2. Actualizar pedido en ms-ventas
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        {
-          shippingProofUrl: proofUrl,
-        },
-      );
+      await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`, {
+        shippingProofUrl: proofUrl,
+      });
 
       toast.success("Prueba de entrega subida correctamente");
       fetchGuide(); // Recargar datos para mostrar la imagen/link
@@ -607,9 +643,7 @@ export default function GuideDetailsModal({
         onGuideUpdated?.();
       } catch (error: unknown) {
         const axiosError = error as { response?: { data?: { message?: string } } };
-        toast.error(
-          axiosError?.response?.data?.message || "Error al desvincular pedido",
-        );
+        toast.error(axiosError?.response?.data?.message || "Error al desvincular pedido");
       }
     }
   };
@@ -659,16 +693,11 @@ export default function GuideDetailsModal({
       message += `\n\n📌 Tienes un saldo pendiente de: S/ ${pendingPayment.toFixed(2)}`;
     }
 
-    window.open(
-      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
-      "_blank",
-    );
+    window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, "_blank");
   };
 
   const handleBulkWhatsApp = () => {
-    const selectedOrders = ordersDetails.filter((o) =>
-      selectedOrderIds.has(o.id),
-    );
+    const selectedOrders = ordersDetails.filter((o) => selectedOrderIds.has(o.id));
 
     if (selectedOrders.length === 0) {
       toast.warning("No hay pedidos seleccionados para enviar WhatsApp");
@@ -680,9 +709,7 @@ export default function GuideDetailsModal({
         `Se abrirán ${selectedOrders.length} ventanas de WhatsApp. Asegúrate de permitir las ventanas emergentes (pop-ups).`,
       );
     } else {
-      toast.success(
-        `Preparando envío múltiple a ${selectedOrders.length} clientes...`,
-      );
+      toast.success(`Preparando envío múltiple a ${selectedOrders.length} clientes...`);
     }
 
     selectedOrders.forEach((order, index) => {
@@ -707,9 +734,7 @@ export default function GuideDetailsModal({
   };
 
   const handleCopySelected = () => {
-    const selectedOrders = ordersDetails.filter((o) =>
-      selectedOrderIds.has(o.id),
-    );
+    const selectedOrders = ordersDetails.filter((o) => selectedOrderIds.has(o.id));
     if (selectedOrders.length === 0) {
       toast.warning("No hay pedidos seleccionados para copiar");
       return;
@@ -742,9 +767,7 @@ export default function GuideDetailsModal({
           ?.filter((p) => p.status === "PENDING_APPROVAL")
           .reduce((s, p) => s + Number(p.amount), 0) || 0;
       const totalPending =
-        Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) -
-        paid -
-        pendingApproval;
+        Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid - pendingApproval;
 
       return {
         totalPending: acc.totalPending + Math.max(totalPending, 0),
@@ -754,8 +777,7 @@ export default function GuideDetailsModal({
     { totalPending: 0, pendingApproval: 0 },
   );
 
-  const totalCobranza =
-    cobranzaStats.totalPending + cobranzaStats.pendingApproval;
+  const totalCobranza = cobranzaStats.totalPending + cobranzaStats.pendingApproval;
 
   const handleExportExcel = async () => {
     if (!guide) {
@@ -858,9 +880,7 @@ export default function GuideDetailsModal({
     // Filas de datos
     ordersDetails.forEach((order: OrderDetail) => {
       // /receipt endpoint retorna el total bajo totals.grandTotal
-      const grandTotal = Number(
-        order.totals?.grandTotal ?? order.grandTotal ?? 0,
-      );
+      const grandTotal = Number(order.totals?.grandTotal ?? order.grandTotal ?? 0);
       const adelanto =
         order.payments
           ?.filter((p) => p.status === "PAID")
@@ -876,10 +896,7 @@ export default function GuideDetailsModal({
         })
         .join(" | ");
 
-      const cantProductos = (order.items ?? []).reduce(
-        (sum, i) => sum + i.quantity,
-        0,
-      );
+      const cantProductos = (order.items ?? []).reduce((sum, i) => sum + i.quantity, 0);
 
       const dataRow = ws.addRow([
         order.orderNumber,
@@ -952,7 +969,10 @@ export default function GuideDetailsModal({
     }
 
     const operation = beginPrint();
-    if (!operation.isCurrent?.()) { operation.release(); return; }
+    if (!operation.isCurrent?.()) {
+      operation.release();
+      return;
+    }
     // Abrir la ventana ANTES de cualquier `await`: la mayoría de navegadores
     // solo permite `window.open` como respuesta directa y síncrona al click
     // del usuario — si se abre después de esperar el QR (asíncrono), el
@@ -966,11 +986,14 @@ export default function GuideDetailsModal({
       );
       return;
     }
-    const cancel = () => { printWindow.onload = null; printWindow.close(); };
+    const cancel = () => {
+      printWindow.onload = null;
+      printWindow.close();
+    };
     operation.signal?.addEventListener("abort", cancel, { once: true });
     try {
       printWindow.document.write(
-        "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Generando etiquetas…</title></head><body>Generando etiquetas…</body></html>",
+        '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Generando etiquetas…</title></head><body>Generando etiquetas…</body></html>',
       );
 
       const company = auth?.company;
@@ -990,8 +1013,7 @@ export default function GuideDetailsModal({
         : zones.length > 0
           ? "Entrega en Lima"
           : "";
-      const zonaLabel =
-        zones.length > 0 ? (ZONE_LABELS[zones[0]] ?? zones[0]) : "-";
+      const zonaLabel = zones.length > 0 ? (ZONE_LABELS[zones[0]] ?? zones[0]) : "-";
 
       const labelsData = await Promise.all(
         ordersDetails.map(async (order) => {
@@ -1016,22 +1038,34 @@ export default function GuideDetailsModal({
         }),
       );
 
-      if (!operation.isCurrent?.()) { cancel(); return; }
+      if (!operation.isCurrent?.()) {
+        cancel();
+        return;
+      }
 
       // Generar HTML de todas las etiquetas
       const labelsHtml = labelsData
         .map(({ order, qrDataUrl, barcodeDataUrl }, index) => {
           const isLast = index === labelsData.length - 1;
-          const customerAddress = order.delivery?.address ?? (order.shippingOffice
-            ? `${courierName} ${order.shippingOffice}`
-            : order.customer.address || "-");
-          const destination = order.delivery ? {
-            province: order.delivery.province, city: order.delivery.department, district: order.delivery.district,
-          } : order.customer;
+          const customerAddress =
+            order.delivery?.address ??
+            (order.shippingOffice
+              ? `${courierName} ${order.shippingOffice}`
+              : order.customer.address || "-");
+          const destination = order.delivery
+            ? {
+                province: order.delivery.province,
+                city: order.delivery.department,
+                district: order.delivery.district,
+              }
+            : order.customer;
           const itemsCount = order.items?.length ?? 0;
           const unitDetails = order.items
             .filter((item) => item.trackingMode === "SERIAL" || item.trackingMode === "IMEI")
-            .map((item) => `<div class="lc-row lc-unit-item"><b>${escapePrintHtml(item.productName)}</b>${renderPrintableUnitCodesHtml(order, item)}</div>`)
+            .map(
+              (item) =>
+                `<div class="lc-row lc-unit-item"><b>${escapePrintHtml(item.productName)}</b>${renderPrintableUnitCodesHtml(order, item)}</div>`,
+            )
             .join("");
 
           return `
@@ -1046,11 +1080,11 @@ export default function GuideDetailsModal({
                     }</div>
                     <div>
                       <div class="lc-company-name">${escapePrintHtml(companyName)}</div>
-                      <div class="lc-company-meta">${escapePrintHtml([
-                        companyCuit ? `RUC ${companyCuit}` : "",
-                        companyAddress,
-                        companyPhone,
-                      ].filter(Boolean).join(" · "))}</div>
+                      <div class="lc-company-meta">${escapePrintHtml(
+                        [companyCuit ? `RUC ${companyCuit}` : "", companyAddress, companyPhone]
+                          .filter(Boolean)
+                          .join(" · "),
+                      )}</div>
                     </div>
                   </div>
                   <div class="lc-remite">REMITE</div>
@@ -1076,11 +1110,11 @@ export default function GuideDetailsModal({
                     <div><span class="lc-label">DNI</span><span class="lc-label" style="margin-left:32px">Teléfono</span></div>
                     <div class="lc-dest-values"><span>${escapePrintHtml(order.customer.dni || "—")}</span><span>${escapePrintHtml(order.customer.phoneNumber || "—")}</span></div>
                   </div>
-                  <div class="lc-dest-location">${
-                    escapePrintHtml([destination.province, destination.city, destination.district]
+                  <div class="lc-dest-location">${escapePrintHtml(
+                    [destination.province, destination.city, destination.district]
                       .filter(Boolean)
-                      .join(" · ") || "-")
-                  }</div>
+                      .join(" · ") || "-",
+                  )}</div>
                   <div class="lc-dest-address">${escapePrintHtml(customerAddress)}</div>
                   ${order.delivery?.type === "AGENCY" && order.delivery.agency ? `<div class="lc-dest-address">Agencia: ${escapePrintHtml(order.delivery.agency)}</div>` : ""}
                 </div>
@@ -1172,28 +1206,43 @@ export default function GuideDetailsModal({
         </html>
       `;
 
-      if (!operation.isCurrent?.() || printWindow.closed) { cancel(); return; }
+      if (!operation.isCurrent?.() || printWindow.closed) {
+        cancel();
+        return;
+      }
       await new Promise<void>((resolve, reject) => {
-        const aborted = () => { cancel(); resolve(); };
+        const aborted = () => {
+          cancel();
+          resolve();
+        };
         const cleanup = () => operation.signal?.removeEventListener("abort", aborted);
         operation.signal?.addEventListener("abort", aborted, { once: true });
         const printWhenLoaded = () => {
           cleanup();
-          if (!operation.isCurrent?.() || printWindow.closed) { cancel(); resolve(); return; }
+          if (!operation.isCurrent?.() || printWindow.closed) {
+            cancel();
+            resolve();
+            return;
+          }
           try {
             printWindow.focus();
             printWindow.print();
             printWindow.close();
             toast.success(`${ordersDetails.length} etiqueta(s) enviada(s) a imprimir`);
             resolve();
-          } catch (error) { reject(error); }
+          } catch (error) {
+            reject(error);
+          }
         };
         try {
           printWindow.document.open();
           printWindow.document.write(printContent);
           printWindow.onload = printWhenLoaded;
           printWindow.document.close();
-        } catch (error) { cleanup(); reject(error); }
+        } catch (error) {
+          cleanup();
+          reject(error);
+        }
       });
     } catch {
       cancel();
@@ -1226,8 +1275,7 @@ export default function GuideDetailsModal({
                 <div>
                   <p className="text-lg font-semibold">{guide.guideNumber}</p>
                   <p className="text-sm text-muted-foreground">
-                    Creada:{" "}
-                    {new Date(guide.created_at).toLocaleDateString("es-PE")}
+                    Creada: {new Date(guide.created_at).toLocaleDateString("es-PE")}
                   </p>
                 </div>
                 <Badge className={STATUS_COLORS[guide.status]}>
@@ -1251,8 +1299,7 @@ export default function GuideDetailsModal({
                             : "bg-orange-100 text-orange-800"
                         }
                       >
-                        {guide.deliveryType === "MOTO" ? "🏍️" : "📦"}{" "}
-                        {guide.deliveryType}
+                        {guide.deliveryType === "MOTO" ? "🏍️" : "📦"} {guide.deliveryType}
                       </Badge>
                     )}
                     {guide.deliveryZones?.map((zone) => (
@@ -1260,8 +1307,7 @@ export default function GuideDetailsModal({
                         {ZONE_LABELS[zone] || zone}
                       </Badge>
                     ))}
-                    {(!guide.deliveryZones ||
-                      guide.deliveryZones.length === 0) &&
+                    {(!guide.deliveryZones || guide.deliveryZones.length === 0) &&
                       !guide.deliveryType &&
                       "-"}
                   </div>
@@ -1274,9 +1320,7 @@ export default function GuideDetailsModal({
                   </p>
                   <p className="font-medium">
                     {guide.scheduledDate
-                      ? new Date(guide.scheduledDate).toLocaleDateString(
-                          "es-PE",
-                        )
+                      ? new Date(guide.scheduledDate).toLocaleDateString("es-PE")
                       : guide.created_at
                         ? new Date(guide.created_at).toLocaleDateString("es-PE")
                         : "-"}
@@ -1296,9 +1340,7 @@ export default function GuideDetailsModal({
                   <p className="text-xs text-muted-foreground flex items-center gap-1">
                     <DollarSign className="h-3 w-3" /> Cobranza Total
                   </p>
-                  <p className="font-medium text-red-600">
-                    S/{totalCobranza.toFixed(2)}
-                  </p>
+                  <p className="font-medium text-red-600">S/{totalCobranza.toFixed(2)}</p>
                 </div>
 
                 {/* Desglose de cobranza */}
@@ -1329,9 +1371,7 @@ export default function GuideDetailsModal({
               {guide.chargeType && (
                 <div className="flex items-center gap-2 text-sm">
                   <span className="text-muted-foreground">Tipo de cobro:</span>
-                  <Badge variant="outline">
-                    {CHARGE_TYPE_LABELS[guide.chargeType]}
-                  </Badge>
+                  <Badge variant="outline">{CHARGE_TYPE_LABELS[guide.chargeType]}</Badge>
                 </div>
               )}
 
@@ -1357,10 +1397,7 @@ export default function GuideDetailsModal({
                         )}
                       </div>
                     </div>
-                    <Badge
-                      variant="outline"
-                      className="text-green-600 border-green-600"
-                    >
+                    <Badge variant="outline" className="text-green-600 border-green-600">
                       Asignado
                     </Badge>
                   </div>
@@ -1383,11 +1420,7 @@ export default function GuideDetailsModal({
                       disabled={!selectedCourier || assigning}
                       size="sm"
                     >
-                      {assigning ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        "Asignar"
-                      )}
+                      {assigning ? <Loader2 className="h-4 w-4 animate-spin" /> : "Asignar"}
                     </Button>
                   </div>
                 )}
@@ -1398,22 +1431,17 @@ export default function GuideDetailsModal({
                 <div className="bg-muted/50 px-3 py-2 border-b flex items-center justify-between">
                   <h4 className="font-medium flex items-center gap-2">
                     <Package className="h-4 w-4" />
-                    Pedidos ({ordersDetails.length})
-                    {/* ✅ AGREGAR CONTADOR DE ESTADOS */}
+                    Pedidos ({ordersDetails.length}){/* ✅ AGREGAR CONTADOR DE ESTADOS */}
                     {normalizeCourier(guide?.courierName) === "Shalom" && (
                       <div className="flex items-center gap-2 ml-4">
                         {(() => {
                           const registered = ordersDetails.filter(
-                            (o) =>
-                              o.shalomStatus === "PENDIENTE" ||
-                              o.shalomStatus === "EXITOSO",
+                            (o) => o.shalomStatus === "PENDIENTE" || o.shalomStatus === "EXITOSO",
                           ).length;
                           const failed = ordersDetails.filter(
                             (o) => o.shalomStatus === "FALLIDO",
                           ).length;
-                          const pending = ordersDetails.filter(
-                            (o) => !o.shalomStatus,
-                          ).length;
+                          const pending = ordersDetails.filter((o) => !o.shalomStatus).length;
 
                           return (
                             <>
@@ -1446,13 +1474,26 @@ export default function GuideDetailsModal({
                         })()}
                       </div>
                     )}
+                    {guide &&
+                      guide.status === "APROBADA" &&
+                      isOlvaCourier(guide.courierName) &&
+                      ordersDetails.length > 0 && (
+                        <Button
+                          onClick={() => setOlvaModalOpen(true)}
+                          className="bg-orange-500 hover:bg-orange-600 text-white"
+                        >
+                          <Truck className="h-4 w-4 mr-2" />
+                          {selectedOrderIds.size > 0
+                            ? `Enviar a Olva (${selectedOrderIds.size})`
+                            : `Registrar en Olva (${ordersDetails.length})`}
+                        </Button>
+                      )}
                     {isAliclikCourier(guide?.courierName) && (
                       <div className="flex items-center gap-2 ml-4">
                         {(() => {
                           const sent = ordersDetails.filter(
                             (o) =>
-                              o.aliclikDispatchStatus &&
-                              o.aliclikDispatchStatus !== "CANCELED",
+                              o.aliclikDispatchStatus && o.aliclikDispatchStatus !== "CANCELED",
                           ).length;
                           const cancelled = ordersDetails.filter(
                             (o) => o.aliclikDispatchStatus === "CANCELED",
@@ -1498,22 +1539,17 @@ export default function GuideDetailsModal({
                       type="checkbox"
                       className="h-4 w-4 rounded border-gray-300 mr-2"
                       checked={
-                        ordersDetails.length > 0 &&
-                        selectedOrderIds.size === ordersDetails.length
+                        ordersDetails.length > 0 && selectedOrderIds.size === ordersDetails.length
                       }
                       onChange={(e) => {
                         if (e.target.checked) {
-                          setSelectedOrderIds(
-                            new Set(ordersDetails.map((o) => o.id)),
-                          );
+                          setSelectedOrderIds(new Set(ordersDetails.map((o) => o.id)));
                         } else {
                           setSelectedOrderIds(new Set());
                         }
                       }}
                     />
-                    <span className="text-muted-foreground mr-2">
-                      Seleccionar todos
-                    </span>
+                    <span className="text-muted-foreground mr-2">Seleccionar todos</span>
                     <Button
                       variant="outline"
                       size="sm"
@@ -1538,7 +1574,9 @@ export default function GuideDetailsModal({
                 <div className="divide-y max-h-[300px] overflow-y-auto">
                   {ordersDetails.map((order, idx) => {
                     const isExpanded = expandedOrders.has(order.id);
-                    const financial = order.totals ? receiptFinancialState({ totals: order.totals, payments: order.payments }) : orderFinancialState(order);
+                    const financial = order.totals
+                      ? receiptFinancialState({ totals: order.totals, payments: order.payments })
+                      : orderFinancialState(order);
                     const { totalPaid: paid, pendingAmount: pending } = financial;
                     const keyLocked = !financial.isPaid;
 
@@ -1574,8 +1612,7 @@ export default function GuideDetailsModal({
                             >
                               <p className="font-medium">{order.orderNumber}</p>
                               <p className="text-sm text-muted-foreground">
-                                {order.customer.fullName} •{" "}
-                                {order.customer.district || "-"}
+                                {order.customer.fullName} • {order.customer.district || "-"}
                               </p>
                             </div>
                           </div>
@@ -1583,15 +1620,15 @@ export default function GuideDetailsModal({
                             <div className="text-right">
                               <p className="font-medium">
                                 S/
-                                {Number(
-                                  order.totals?.grandTotal ??
-                                    order.grandTotal ??
-                                    0,
-                                ).toFixed(2)}
+                                {Number(order.totals?.grandTotal ?? order.grandTotal ?? 0).toFixed(
+                                  2,
+                                )}
                               </p>
                               {keyLocked && (
                                 <p className="text-xs text-red-600">
-                                  {Number.isFinite(pending) ? `Cobrar: S/${pending.toFixed(2)}` : "Pago por verificar"}
+                                  {Number.isFinite(pending)
+                                    ? `Cobrar: S/${pending.toFixed(2)}`
+                                    : "Pago por verificar"}
                                 </p>
                               )}
                               {Number(order.carrierShippingCost) > 0 && (
@@ -1618,12 +1655,7 @@ export default function GuideDetailsModal({
                               >
                                 <DollarSign className="h-4 w-4" />
                               </Button>
-                              <Badge
-                                className={
-                                  ORDER_STATUS_COLORS[order.status] ||
-                                  "bg-gray-100"
-                                }
-                              >
+                              <Badge className={ORDER_STATUS_COLORS[order.status] || "bg-gray-100"}>
                                 {order.status.replace("_", " ")}
                               </Badge>
 
@@ -1631,10 +1663,7 @@ export default function GuideDetailsModal({
                               <div className="flex items-center gap-2">
                                 {(() => {
                                   // 1. No enviado
-                                  if (
-                                    !order.externalTrackingNumber &&
-                                    !order.shalomStatus
-                                  ) {
+                                  if (!order.externalTrackingNumber && !order.shalomStatus) {
                                     return (
                                       <Badge
                                         variant="outline"
@@ -1652,10 +1681,7 @@ export default function GuideDetailsModal({
                                       <Badge
                                         variant="outline"
                                         className="bg-red-50 text-red-700 border-red-200 text-xs"
-                                        title={
-                                          order.shalomError ||
-                                          "Error al enviar a Shalom"
-                                        }
+                                        title={order.shalomError || "Error al enviar a Shalom"}
                                       >
                                         <XCircle className="h-3 w-3 mr-1" />
                                         Falló Shalom
@@ -1675,8 +1701,7 @@ export default function GuideDetailsModal({
                                         title={`Nro. Guía: ${order.externalTrackingNumber || "-"}`}
                                       >
                                         <CheckCircle2 className="h-3 w-3 mr-1" />
-                                        Shalom OK{" "}
-                                        {/* ⬅️ CAMBIAR de "Enviado" a "Shalom OK" */}
+                                        Shalom OK {/* ⬅️ CAMBIAR de "Enviado" a "Shalom OK" */}
                                       </Badge>
                                     );
                                   }
@@ -1763,9 +1788,7 @@ export default function GuideDetailsModal({
                                 className="flex justify-between items-center text-sm bg-background rounded px-2 py-1.5"
                               >
                                 <div className="flex-1">
-                                  <p className="font-medium">
-                                    {item.productName}
-                                  </p>
+                                  <p className="font-medium">{item.productName}</p>
                                   <p className="text-xs text-muted-foreground">
                                     {item.sku}
                                     {item.attributes &&
@@ -1794,9 +1817,7 @@ export default function GuideDetailsModal({
                                   {order.customer.address}
                                 </p>
                               )}
-                              <GoogleMapsUrlField
-                                url={order.customer.googleMapsUrl}
-                              />
+                              <GoogleMapsUrlField url={order.customer.googleMapsUrl} />
                             </div>
 
                             {/* Tracking del pedido */}
@@ -1808,8 +1829,8 @@ export default function GuideDetailsModal({
                                 <div className="mb-2 flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
                                   <Lock className="h-3 w-3 mt-0.5 shrink-0" />
                                   <span>
-                                    Hay saldo pendiente — la clave de envío
-                                    permanece bloqueada hasta cancelarlo.
+                                    Hay saldo pendiente — la clave de envío permanece bloqueada
+                                    hasta cancelarlo.
                                   </span>
                                 </div>
                               )}
@@ -1823,8 +1844,7 @@ export default function GuideDetailsModal({
                                     className="w-full border rounded px-2 py-1 text-xs bg-background"
                                     placeholder="Ej: OLV-123456"
                                     value={
-                                      orderTrackingFields[order.id]
-                                        ?.externalTrackingNumber || ""
+                                      orderTrackingFields[order.id]?.externalTrackingNumber || ""
                                     }
                                     onChange={(e) =>
                                       updateOrderTrackingField(
@@ -1851,9 +1871,7 @@ export default function GuideDetailsModal({
                                       placeholder={
                                         keyLocked ? "Registrar nueva clave (oculta)" : "Ej: ABC123"
                                       }
-                                      value={
-                                        orderTrackingFields[order.id]?.shippingKey || ""
-                                      }
+                                      value={orderTrackingFields[order.id]?.shippingKey || ""}
                                       title={
                                         keyLocked
                                           ? "Puedes registrar la clave; se revelará al aprobar el pago completo"
@@ -1878,10 +1896,7 @@ export default function GuideDetailsModal({
                                     type="text"
                                     className="w-full border rounded px-2 py-1 text-xs bg-background"
                                     placeholder="https://..."
-                                    value={
-                                      orderTrackingFields[order.id]
-                                        ?.trackingUrl || ""
-                                    }
+                                    value={orderTrackingFields[order.id]?.trackingUrl || ""}
                                     onChange={(e) =>
                                       updateOrderTrackingField(
                                         order.id,
@@ -1900,10 +1915,7 @@ export default function GuideDetailsModal({
                                     type="text"
                                     className="w-full border rounded px-2 py-1 text-xs bg-background"
                                     placeholder="Ej: Olva Lima Centro"
-                                    value={
-                                      orderTrackingFields[order.id]
-                                        ?.shippingOffice || ""
-                                    }
+                                    value={orderTrackingFields[order.id]?.shippingOffice || ""}
                                     onChange={(e) =>
                                       updateOrderTrackingField(
                                         order.id,
@@ -1915,17 +1927,12 @@ export default function GuideDetailsModal({
                                   />
                                 </div>
                                 <div className="space-y-1">
-                                  <label className="text-xs text-muted-foreground">
-                                    Código
-                                  </label>
+                                  <label className="text-xs text-muted-foreground">Código</label>
                                   <input
                                     type="text"
                                     className="w-full border rounded px-2 py-1 text-xs bg-background"
                                     placeholder="Ej: COD-001"
-                                    value={
-                                      orderTrackingFields[order.id]
-                                        ?.shippingCode || ""
-                                    }
+                                    value={orderTrackingFields[order.id]?.shippingCode || ""}
                                     onChange={(e) =>
                                       updateOrderTrackingField(
                                         order.id,
@@ -1998,23 +2005,18 @@ export default function GuideDetailsModal({
                                       ) : (
                                         <Camera className="h-3 w-3" />
                                       )}
-                                      {uploadingOrderId === order.id
-                                        ? "Subiendo..."
-                                        : "Subir Foto"}
+                                      {uploadingOrderId === order.id ? "Subiendo..." : "Subir Foto"}
                                       <input
                                         type="file"
                                         accept="image/*"
                                         className="hidden"
-                                        onChange={(e) =>
-                                          handleUploadOrderProof(order.id, e)
-                                        }
+                                        onChange={(e) => handleUploadOrderProof(order.id, e)}
                                         disabled={!!uploadingOrderId}
                                       />
                                     </label>
                                   ) : (
                                     <p className="text-xs text-muted-foreground italic flex items-center gap-1">
-                                      <ImageIcon className="h-3 w-3" /> Sin
-                                      prueba de entrega
+                                      <ImageIcon className="h-3 w-3" /> Sin prueba de entrega
                                     </p>
                                   )}
                                 </div>
@@ -2049,9 +2051,7 @@ export default function GuideDetailsModal({
                           ) : null;
                         }
 
-                        const notes = rawNotes.filter((n: any) =>
-                          shouldDisplayNote(n.text),
-                        );
+                        const notes = rawNotes.filter((n: any) => shouldDisplayNote(n.text));
 
                         if (notes.length === 0) {
                           return (
@@ -2072,17 +2072,11 @@ export default function GuideDetailsModal({
                               </span>
                               <span className="text-[10px] text-muted-foreground">
                                 {note.date
-                                  ? format(
-                                      new Date(note.date),
-                                      "dd/MM/yy HH:mm",
-                                      { locale: es },
-                                    )
+                                  ? format(new Date(note.date), "dd/MM/yy HH:mm", { locale: es })
                                   : "-"}
                               </span>
                             </div>
-                            <p className="text-sm leading-relaxed">
-                              {note.text}
-                            </p>
+                            <p className="text-sm leading-relaxed">{note.text}</p>
                           </div>
                         ));
                       } catch (e) {
@@ -2120,26 +2114,23 @@ export default function GuideDetailsModal({
               (guide.status === "CREADA" || guide.status === "ASIGNADA") &&
               !guide.courierName && (
                 <p className="text-sm text-amber-600 flex items-center gap-1 w-full justify-center">
-                  ⚠️ Primero asigna un courier usando el botón
-                  &quot;Asignar&quot; antes de aprobar la guía
+                  ⚠️ Primero asigna un courier usando el botón &quot;Asignar&quot; antes de aprobar
+                  la guía
                 </p>
               )}
 
             {/* Botones en fila */}
             <div className="flex flex-wrap gap-2 justify-end w-full">
-              {guide &&
-                (guide.status === "CREADA" || guide.status === "ASIGNADA") && (
-                  <Button
-                    onClick={handleApproveGuide}
-                    disabled={assigning || !guide.courierName}
-                    className="bg-teal-600 hover:bg-teal-700"
-                  >
-                    {assigning ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    ) : null}
-                    ✓ Aprobar Guía
-                  </Button>
-                )}
+              {guide && (guide.status === "CREADA" || guide.status === "ASIGNADA") && (
+                <Button
+                  onClick={handleApproveGuide}
+                  disabled={assigning || !guide.courierName}
+                  className="bg-teal-600 hover:bg-teal-700"
+                >
+                  {assigning ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}✓ Aprobar
+                  Guía
+                </Button>
+              )}
               {guide &&
                 guide.status === "APROBADA" &&
                 normalizeCourier(guide.courierName) === "Shalom" &&
@@ -2160,9 +2151,7 @@ export default function GuideDetailsModal({
                         onClick={() => {
                           // Si no hay seleccionados, seleccionar los que necesitan envío
                           if (selectedOrderIds.size === 0) {
-                            setSelectedOrderIds(
-                              new Set(needsShalom.map((o) => o.id)),
-                            );
+                            setSelectedOrderIds(new Set(needsShalom.map((o) => o.id)));
                           }
                           setShalomModalOpen(true);
                         }}
@@ -2184,9 +2173,7 @@ export default function GuideDetailsModal({
                 guide.status === "APROBADA" &&
                 isAliclikCourier(guide.courierName) &&
                 (() => {
-                  const needsAliclik = ordersDetails.filter(
-                    (o) => !o.aliclikDispatchStatus,
-                  );
+                  const needsAliclik = ordersDetails.filter((o) => !o.aliclikDispatchStatus);
 
                   if (needsAliclik.length === 0) return null;
 
@@ -2195,9 +2182,7 @@ export default function GuideDetailsModal({
                       <Button
                         onClick={() => {
                           if (selectedOrderIds.size === 0) {
-                            setSelectedOrderIds(
-                              new Set(needsAliclik.map((o) => o.id)),
-                            );
+                            setSelectedOrderIds(new Set(needsAliclik.map((o) => o.id)));
                           }
                           setAliclikModalOpen(true);
                         }}
@@ -2228,9 +2213,7 @@ export default function GuideDetailsModal({
                       <Button
                         onClick={() => {
                           if (selectedOrderIds.size === 0) {
-                            setSelectedOrderIds(
-                              new Set(needsEva.map((o) => o.id)),
-                            );
+                            setSelectedOrderIds(new Set(needsEva.map((o) => o.id)));
                           }
                           setEvaModalOpen(true);
                         }}
@@ -2265,7 +2248,11 @@ export default function GuideDetailsModal({
                       : "Imprimir etiqueta de envío"}
                   </Button>
                   {isShalomCourier(guide.courierName) && (
-                    <Button variant="outline" disabled={!token || !companyId} onClick={() => setShalomLabelsOpen(true)}>
+                    <Button
+                      variant="outline"
+                      disabled={!token || !companyId}
+                      onClick={() => setShalomLabelsOpen(true)}
+                    >
                       <FileText className="h-4 w-4 mr-2" />
                       Etiqueta de envío Shalom
                     </Button>
@@ -2312,6 +2299,25 @@ export default function GuideDetailsModal({
         companyId={companyId || ""}
         guide={guide}
         onClose={() => setShalomModalOpen(false)}
+        orders={
+          selectedOrderIds.size > 0
+            ? ordersDetails.filter((o) => selectedOrderIds.has(o.id))
+            : ordersDetails
+        }
+        onSuccess={() => {
+          fetchGuide();
+          void invalidateBusinessData();
+          onGuideUpdated?.();
+        }}
+      />
+
+      {/* Modal de Envío a Olva */}
+      <SendToOlvaModal
+        open={olvaModalOpen}
+        guideId={guideId || guide?.id || ""}
+        companyId={companyId || ""}
+        guide={guide}
+        onClose={() => setOlvaModalOpen(false)}
         orders={
           selectedOrderIds.size > 0
             ? ordersDetails.filter((o) => selectedOrderIds.has(o.id))
