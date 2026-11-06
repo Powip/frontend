@@ -9,8 +9,11 @@ import {
 } from "../../canales/canales.contracts";
 import { CLIENTES_ZONAS_CONTRACT } from "../../clientes-zonas/clientes-zonas.contract";
 import {
+  CONFIG_COMISIONES_CONTRACT,
+  CONFIG_COURIERS_CONTRACT,
   CONFIG_CUADRES_CONTRACT,
   CONFIG_ESTADOS_CONTRACT,
+  CONFIG_GASTOS_FIJOS_CONTRACT,
   CONFIG_METAS_CONTRACT,
   CONFIG_METAS_GUARDAR_CONTRACT,
 } from "../../configuracion/configuracion.contracts";
@@ -63,6 +66,9 @@ export const PANEL_CONTRACTS: Record<PanelContractId, PanelContractDescriptor> =
   "mis-ventas": MIS_VENTAS_CONTRACT,
   "config-metas": CONFIG_METAS_CONTRACT,
   "config-metas-guardar": CONFIG_METAS_GUARDAR_CONTRACT,
+  "config-comisiones": CONFIG_COMISIONES_CONTRACT,
+  "config-gastos-fijos": CONFIG_GASTOS_FIJOS_CONTRACT,
+  "config-couriers": CONFIG_COURIERS_CONTRACT,
   "config-estados": CONFIG_ESTADOS_CONTRACT,
   "config-cuadres": CONFIG_CUADRES_CONTRACT,
   detalle: DETALLE_CONTRACT,

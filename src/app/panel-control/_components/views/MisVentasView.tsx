@@ -84,11 +84,7 @@ export function MisVentasView() {
   return (
     <div className="space-y-3.5">
       <OrigenCanalesNota state={state} />
-      <KpiRow
-        state={state}
-        labels={["Vendí", "Mi meta del periodo", "Pagado", "Mi comisión estimada"]}
-        titulo="Mis ventas"
-      >
+      <KpiRow state={state} labels={["Vendí", "Mi meta del periodo", "Pagado"]} titulo="Mis ventas">
         {(data, origin) => {
           const d = data.actual;
           const a = data.anterior_misma_antiguedad;
@@ -133,17 +129,6 @@ export function MisVentasView() {
               origin={origin}
               sub={`Entrega ${formatPercent(d.pagado.efectividadEntrega)} · perdido ${formatSoles(d.pagado.perdido)}`}
               onDrill={() => openDrilldown(grupos.de("cobrado", "Mis ventas pagadas"))}
-            />,
-            <KpiCard
-              key="comision"
-              label="Mi comisión estimada"
-              value={d.comisionEstimada ? formatSoles(d.comisionEstimada.monto) : "Pendiente"}
-              origin={origin}
-              sub={
-                d.comisionEstimada
-                  ? `${formatPercent(d.comisionEstimada.porcentajePagado)} de lo pagado + ${formatPercent(d.comisionEstimada.porcentajeUpsell)} del upsell`
-                  : "Pendiente de decisión: §6.7 la muestra, pero §14 dice que la vendedora no recibe comisiones"
-              }
             />,
           ];
         }}

@@ -122,7 +122,7 @@ describe("Mis ventas", () => {
 
 describe("Configuración", () => {
   it("sin filtros los 9 cuadres dan ✓ y la línea de estado usa el mismo resultado", async () => {
-    const cuadres = await configCuadresDemoSource.fetch(MES, contexto());
+    const cuadres = (await configCuadresDemoSource.fetch(MES, contexto())).actual;
     expect(cuadres.cuadres).toHaveLength(9);
     for (const cuadre of cuadres.cuadres.filter((item) => item.id !== "pauta_prorrateada")) {
       expect(cuadre.cuadra).toBe(true);
@@ -144,7 +144,7 @@ describe("Configuración", () => {
   });
 
   it("la calidad de datos abre sus pedidos y el conteo por estado suma los ingresados", async () => {
-    const { calidad } = await configCuadresDemoSource.fetch(MES, contexto());
+    const { calidad } = (await configCuadresDemoSource.fetch(MES, contexto())).actual;
     expect((await abrirGrupo(grupos.de("anulaciones_sin_motivo", ""))).pedidos.total).toBe(
       calidad.anulacionesSinMotivo,
     );
@@ -154,8 +154,8 @@ describe("Configuración", () => {
     expect((await abrirGrupo(grupos.de("pedidos", "", { canal: "sin_canal" }))).pedidos.total).toBe(
       calidad.importadosSinCanal,
     );
-    expect(calidad.productosStockNegativo.length).toBeGreaterThan(0);
-    const estados = await configEstadosDemoSource.fetch(MES, contexto());
+    expect(calidad.productosStockNegativo?.length).toBeGreaterThan(0);
+    const estados = (await configEstadosDemoSource.fetch(MES, contexto())).actual;
     const total = estados.conteoActual.reduce((suma, fila) => suma + fila.pedidos, 0);
     expect((await abrirGrupo(grupos.de("pedidos", ""))).pedidos.total).toBe(total);
     for (const fila of estados.conteoActual.filter((item) => item.pedidos)) {

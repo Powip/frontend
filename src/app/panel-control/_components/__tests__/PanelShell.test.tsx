@@ -5,6 +5,7 @@ import { mostrarTodasLasSeccionesEnEsteArchivo } from "@/components/panel-contro
 import { renderWithPanel } from "@/components/panel-control/__tests__/render-with-panel";
 import { DEFAULT_PANEL_STATE } from "@/features/panel-control/shared/state/panel-state.model";
 import { PanelShell } from "../shell/PanelShell";
+import { fuentesConfig } from "./config-test-utils";
 
 const toastInfo = jest.fn();
 jest.mock("sonner", () => ({
@@ -127,6 +128,7 @@ describe("PanelShell", () => {
 
   it("Configuración > Canales muestra fichas reales con campos pendientes", async () => {
     renderWithPanel(<PanelShell />, {
+      sources: fuentesConfig(),
       state: { ...DEFAULT_PANEL_STATE, navigation: { tab: "configuracion", subtab: "canales" } },
     });
     expect(await screen.findByRole("cell", { name: /Canal real 1/ })).toBeInTheDocument();

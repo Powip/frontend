@@ -1,7 +1,7 @@
 "use client";
 
 import { Pencil, Plus } from "lucide-react";
-import { useMemo } from "react";
+import { useState } from "react";
 import { ContractView } from "@/components/panel-control/ContractView";
 import { DataTable, type DataTableColumn } from "@/components/panel-control/DataTable";
 import { PanelCard } from "@/components/panel-control/PanelCard";
@@ -18,6 +18,7 @@ import {
 import { usePanelContract } from "@/features/panel-control/shared/hooks/use-panel-contract";
 import { usePanel } from "@/features/panel-control/shared/state/panel-context";
 import { formatPercent, formatSoles } from "@/features/panel-control/shared/utils/format";
+import { ConfigFichaDialog } from "./configuracion/ConfigFichaDialog";
 
 function Pendiente() {
   return (
@@ -32,12 +33,14 @@ function campo(ficha: CanalFicha, nombre: CampoFichaCanal, contenido: React.Reac
 }
 
 export function ConfigCanalesView() {
-  const { session, view } = usePanel();
-  const query = useMemo(
-    () => (session.empresaId ? { empresaId: session.empresaId } : null),
-    [session.empresaId],
+  const { view } = usePanel();
+  const [editando, setEditando] = useState<string | null>(null);
+  // Las fichas reales vienen del comparativo (misma consulta y caché que Ventas y canales): ahí
+  // están la familia, el tipo, las comisiones, el plazo de depósito y la meta de cada canal.
+  const fichas = usePanelContract(
+    "canales-comparativo",
+    view.access === "permitido" ? { ...view.query, vista: "ventas" } : null,
   );
-  const fichas = usePanelContract("canales-fichas", query);
   const puedeEditar = view.access === "permitido" && view.capabilities.has("editar_configuracion");
 
   const columns: DataTableColumn<CanalFicha>[] = [
@@ -86,6 +89,21 @@ export function ConfigCanalesView() {
         ficha.usaCourier === null ? "Pendiente" : ficha.usaCourier ? "Sí" : "No",
     },
     {
+      id: "tipo",
+      header: "Tipo",
+      align: "left",
+      cell: (ficha) => ficha.tipo ?? <Pendiente />,
+      exportValue: (ficha) => ficha.tipo ?? "Pendiente",
+    },
+    {
+      id: "plazoDeposito",
+      header: "Depósito",
+      cell: (ficha) =>
+        ficha.plazoDepositoDias == null ? <Pendiente /> : `${ficha.plazoDepositoDias} días`,
+      exportValue: (ficha) => ficha.plazoDepositoDias ?? null,
+      exportFormat: "numero",
+    },
+    {
       id: "comision",
       header: "Comisión",
       cell: (ficha) => campo(ficha, "comisionPct", formatPercent(ficha.comisionPct ?? null, 1)),
@@ -126,9 +144,7 @@ export function ConfigCanalesView() {
             size="sm"
             className="h-7 px-2 text-[11px]"
             aria-label={`Editar ficha de ${ficha.nombre}`}
-            onClick={() =>
-              notifyPendingIntegration(`Editar ficha de ${ficha.nombre}`, "canales-fichas-guardar")
-            }
+            onClick={() => setEditando(ficha.id)}
           >
             <Pencil aria-hidden />
             Editar
@@ -139,39 +155,50 @@ export function ConfigCanalesView() {
 
   return (
     <ContractView state={fichas} label="fichas de canal" skeleton="tabla">
-      {(data, origin) => (
-        <PanelCard
-          titulo="Ficha de canales"
-          subtitulo={`${origin.kind === "real" ? "Datos reales de /config/canales." : "Datos demo."} Los campos marcados «Pendiente» todavía no existen en el backend; entrada, cobro y courier se bloquearán cuando el canal tenga pedidos.`}
-          origin={origin}
-          acciones={
-            puedeEditar && (
-              <Button
-                type="button"
-                size="sm"
-                className="bg-pc-primary text-white hover:bg-pc-primary-strong"
-                onClick={() => notifyPendingIntegration("Agregar canal", "canales-fichas-guardar")}
-              >
-                <Plus aria-hidden />
-                Agregar canal
-              </Button>
-            )
-          }
-        >
-          <DataTable
-            caption="Fichas de canal"
-            columns={columns}
-            rows={data}
-            getRowKey={(ficha) => ficha.id}
-            emptyMessage="La empresa no tiene canales configurados"
-            exportar={{
-              titulo: "Ficha de canales",
-              nombreBase: "ficha_canales",
-              origen: origin.kind,
-            }}
-          />
-        </PanelCard>
-      )}
+      {(envelope, origin) => {
+        const data = envelope.actual.canales;
+        return (
+          <>
+            <PanelCard
+              titulo="Ficha de canales"
+              subtitulo="Los campos marcados «Pendiente» todavía no están cargados o no tienen fuente; familia, tipo, comisiones y plazo de depósito se editan con «Editar»."
+              origin={origin}
+              acciones={
+                puedeEditar && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="bg-pc-primary text-white hover:bg-pc-primary-strong"
+                    onClick={() =>
+                      notifyPendingIntegration("Agregar canal", "canales-fichas-guardar")
+                    }
+                  >
+                    <Plus aria-hidden />
+                    Agregar canal
+                  </Button>
+                )
+              }
+            >
+              <DataTable
+                caption="Fichas de canal"
+                columns={columns}
+                rows={data}
+                getRowKey={(ficha) => ficha.id}
+                emptyMessage="La empresa no tiene canales configurados"
+                exportar={{
+                  titulo: "Ficha de canales",
+                  nombreBase: "ficha_canales",
+                  origen: origin.kind,
+                }}
+              />
+            </PanelCard>
+            <ConfigFichaDialog
+              ficha={data.find((ficha) => ficha.id === editando) ?? null}
+              onCerrar={() => setEditando(null)}
+            />
+          </>
+        );
+      }}
     </ContractView>
   );
 }

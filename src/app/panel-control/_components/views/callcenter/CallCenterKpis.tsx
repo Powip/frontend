@@ -156,7 +156,7 @@ export function CallCenterKpis({ state }: { state: CallCenterState }) {
             metaDemo={metaDemo}
             sub={
               k.tiempoPrimeraLlamadaMin === null && k.leadsConPrimeraLlamada === 0
-                ? "Pendiente: todavía no se registra la hora de la primera llamada"
+                ? "Sin datos: ningún lead del periodo tiene hora de primera llamada registrada"
                 : `Mediana de ${formatNumber(k.leadsConPrimeraLlamada)} leads · ${formatNumber(k.llamadasTardias)} sobre la meta`
             }
             onDrill={

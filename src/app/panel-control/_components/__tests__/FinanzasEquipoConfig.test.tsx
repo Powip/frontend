@@ -19,10 +19,6 @@ import {
   equipoVendedorasDemoSource,
 } from "@/features/panel-control/equipo/sources/equipo.demo";
 import {
-  compartirReporteDemoSource,
-  exportacionLibroDemoSource,
-} from "@/features/panel-control/exportacion/sources/exportacion.demo";
-import {
   finanzasCajaDemoSource,
   finanzasCobranzaDemoSource,
   finanzasResultadoDemoSource,
@@ -87,8 +83,6 @@ const DEMO: PanelSourceRegistry = {
   "config-metas": configMetasDemoSource,
   "config-estados": configEstadosDemoSource,
   "config-cuadres": configCuadresDemoSource,
-  "exportacion-libro": exportacionLibroDemoSource,
-  "compartir-reporte": compartirReporteDemoSource,
 };
 
 function renderTab(tab: PanelTabId, subtab: PanelSubtabId | null, role: PanelRole = "dueno") {
@@ -178,15 +172,15 @@ describe("Equipo", () => {
 });
 
 describe("Mis ventas", () => {
-  it("la Vendedora ve sus cifras, su puesto y la comisión como decisión pendiente", async () => {
+  it("la Vendedora ve sus cifras y su puesto, sin tarjeta ni texto de comisión", async () => {
     renderTab("misventas", null, "vendedora");
     expect(await screen.findByRole("region", { name: "Vendí" })).toBeInTheDocument();
-    await waitFor(() =>
-      expect(
-        within(screen.getByRole("region", { name: "Mi comisión estimada" })).getByText("Pendiente"),
-      ).toBeInTheDocument(),
-    );
-    expect(screen.getByRole("table", { name: "Mis pedidos aún no cobrados" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Pagado" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /comisi/i })).toBeNull();
+    expect(screen.queryByText(/comisi/i)).toBeNull();
+    expect(
+      await screen.findByRole("table", { name: "Mis pedidos aún no cobrados" }),
+    ).toBeInTheDocument();
     expect(screen.getByText(/^Puesto [0-9] de 3\./)).toBeInTheDocument();
     expect(
       screen.getByRole("list", { name: "Ranking de vendedoras por facturación" }).textContent,
@@ -219,18 +213,13 @@ describe("Mis ventas · sin metas configuradas", () => {
 });
 
 describe("Configuración", () => {
-  it("Metas: editar habilita Guardar y avisa que está pendiente; un valor inválido lo bloquea", async () => {
+  it("Metas: editar habilita Guardar y un valor inválido lo bloquea (el guardado real se prueba en ConfigReal)", async () => {
     const user = renderTab("configuracion", "metas");
     const campo = await screen.findByRole("textbox", { name: "Meta de Confirmados" });
     expect(campo).toHaveValue("65");
     await user.clear(campo);
     await user.type(campo, "70");
-    const guardar = screen.getByRole("button", { name: /Guardar \(1\)/ });
-    await user.click(guardar);
-    expect(toastInfo).toHaveBeenCalledWith(
-      "Guardar metas: pendiente de integración",
-      expect.anything(),
-    );
+    expect(screen.getByRole("button", { name: /Guardar \(1\)/ })).toBeEnabled();
     await user.clear(campo);
     await user.type(campo, "150");
     expect(screen.getByRole("alert")).toHaveTextContent("Máximo 100 %");
@@ -259,30 +248,5 @@ describe("Configuración", () => {
     });
     await user.click(boton);
     expect(await screen.findByRole("dialog", { name: /Pedidos en Rechazado/ })).toBeInTheDocument();
-  });
-});
-
-describe("Barra superior", () => {
-  it("Excel completo descarga el libro demo de 9 hojas", async () => {
-    const user = renderTab("resumen", null);
-    await user.click(await screen.findByRole("button", { name: "Descargar Excel completo" }));
-    await waitFor(() => expect(saveAs).toHaveBeenCalledTimes(1), { timeout: 15_000 });
-    expect(saveAs.mock.calls[0][1]).toMatch(
-      /^powip_panel_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}_DEMO\.xlsx$/,
-    );
-    expect(toastSuccess).toHaveBeenCalledWith(
-      expect.stringMatching(/_DEMO\.xlsx$/),
-      expect.anything(),
-    );
-  }, 30_000);
-
-  it("Compartir muestra el reporte y permite copiarlo", async () => {
-    const user = renderTab("resumen", null);
-    const writeText = jest.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
-    await user.click(await screen.findByRole("button", { name: "Compartir reporte" }));
-    const dialogo = await screen.findByRole("dialog", { name: /Compartir reporte/ });
-    expect(await within(dialogo).findByText(/Venta total: S\//)).toBeInTheDocument();
-    await user.click(within(dialogo).getByRole("button", { name: /Copiar para WhatsApp/ }));
-    expect(writeText).toHaveBeenCalledWith(expect.stringMatching(/^\*Reporte POWIP/));
   });
 });

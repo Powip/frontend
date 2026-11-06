@@ -44,8 +44,10 @@ export function ConfigEstadosView() {
         subtitulo="Pedidos ingresados en el periodo según su estado actual. Cada número abre esos pedidos."
       >
         {(data) => {
-          const conteo = new Map(data.conteoActual.map((fila) => [fila.estado, fila.pedidos]));
-          const total = data.conteoActual.reduce((suma, fila) => suma + fila.pedidos, 0);
+          const conteo = new Map(
+            data.actual.conteoActual.map((fila) => [fila.estado, fila.pedidos]),
+          );
+          const total = data.actual.conteoActual.reduce((suma, fila) => suma + fila.pedidos, 0);
           return (
             <div className="space-y-3">
               <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">

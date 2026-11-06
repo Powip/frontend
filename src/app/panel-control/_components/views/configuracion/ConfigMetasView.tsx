@@ -1,21 +1,24 @@
 "use client";
 
 import { RotateCcw, Save } from "lucide-react";
-import { useId, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { ContractView } from "@/components/panel-control/ContractView";
 import { PanelCard } from "@/components/panel-control/PanelCard";
-import { notifyPendingIntegration } from "@/components/panel-control/pending-integration";
 import { Button } from "@/components/ui/button";
+import { putConfigMetas } from "@/features/panel-control/configuracion/api/config.api";
+import { cuerpoDeMetas } from "@/features/panel-control/configuracion/api/config-cuerpos";
 import { usePanelContract } from "@/features/panel-control/shared/hooks/use-panel-contract";
 import { usePanelOptions } from "@/features/panel-control/shared/hooks/use-panel-options";
 import type { DataOrigin } from "@/features/panel-control/shared/models/data-origin.model";
 import {
   META_INDICADOR_IDS,
   type MetaIndicador,
+  type MetaIndicadorId,
   type MetasPanel,
 } from "@/features/panel-control/shared/models/goal.model";
 import { usePanel } from "@/features/panel-control/shared/state/panel-context";
 import { formatNumber } from "@/features/panel-control/shared/utils/format";
+import { CampoNumero, ErroresDelServidor, errorNumero, useGuardarConfig } from "./config-form";
 
 type Valores = Record<string, string>;
 
@@ -27,71 +30,50 @@ const UNIDAD: Record<MetaIndicador["unidad"], string> = {
   cantidad: "N°",
 };
 
+type UnidadCampo = MetaIndicador["unidad"] | "soles" | "numero";
+type GrupoMensual = keyof MetasPanel["mensuales"];
+
+const GRUPOS_MENSUALES: GrupoMensual[] = ["porCanal", "porVendedora", "porConfirmadora"];
+
 function valorInicial(meta: MetaIndicador): string {
   return meta.unidad === "porcentaje"
     ? String(Math.round(meta.valor * 1000) / 10)
     : String(meta.valor);
 }
 
-function error(texto: string, unidad: MetaIndicador["unidad"] | "soles" | "numero"): string | null {
-  if (texto.trim() === "") return "Obligatorio";
-  const numero = Number(texto.replace(",", "."));
-  if (!Number.isFinite(numero) || numero < 0) return "Debe ser un número ≥ 0";
-  if (unidad === "porcentaje" && numero > 100) return "Máximo 100 %";
-  return null;
-}
-
-function CampoNumero({
-  etiqueta,
-  valor,
-  unidad,
-  sufijo,
-  editable,
-  onChange,
-}: {
-  etiqueta: string;
-  valor: string;
-  unidad: MetaIndicador["unidad"] | "soles" | "numero";
-  sufijo: string;
-  editable: boolean;
-  onChange: (valor: string) => void;
-}) {
-  const id = useId();
-  const mensaje = error(valor, unidad);
-  return (
-    <div className="flex items-center justify-end gap-1.5">
-      <label htmlFor={id} className="sr-only">
-        {etiqueta}
-      </label>
-      {unidad === "soles" && <span className="text-xs text-pc-text-muted">S/</span>}
-      <input
-        id={id}
-        inputMode="decimal"
-        value={valor}
-        readOnly={!editable}
-        aria-invalid={!!mensaje}
-        aria-describedby={mensaje ? `${id}-error` : undefined}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-8 w-24 rounded-md border border-pc-border bg-pc-card px-2 text-right text-xs tabular-nums text-pc-text outline-none focus-visible:ring-2 focus-visible:ring-pc-primary read-only:bg-pc-surface-muted aria-invalid:border-pc-bad"
-      />
-      <span className="w-8 text-xs text-pc-text-muted">{sufijo}</span>
-      {mensaje && (
-        <span id={`${id}-error`} role="alert" className="text-[11px] text-pc-bad">
-          {mensaje}
-        </span>
-      )}
-    </div>
-  );
-}
-
 function valoresDe(metas: MetasPanel): Valores {
   const valores: Valores = {};
   for (const id of META_INDICADOR_IDS)
     valores[`indicador:${id}`] = valorInicial(metas.indicadores[id]);
-  for (const [grupo, registro] of Object.entries(metas.mensuales)) {
-    for (const [id, valor] of Object.entries(registro)) valores[`${grupo}:${id}`] = String(valor);
+  for (const grupo of GRUPOS_MENSUALES) {
+    for (const [id, valor] of Object.entries(metas.mensuales[grupo])) {
+      valores[`${grupo}:${id}`] = String(valor);
+    }
   }
   return valores;
+}
+
+function separar(clave: string): [string, string] {
+  const corte = clave.indexOf(":");
+  return [clave.slice(0, corte), clave.slice(corte + 1)];
+}
+
+function unidadDe(clave: string, metas: MetasPanel): UnidadCampo {
+  const [grupo, id] = separar(clave);
+  if (grupo === "indicador") return metas.indicadores[id as MetaIndicadorId].unidad;
+  return grupo === "porConfirmadora" ? "numero" : "soles";
+}
+
+/** Una meta mensual que todavía no existe puede quedar vacía (= no se carga). */
+function esNueva(clave: string, iniciales: Valores): boolean {
+  return !(clave in iniciales) && !clave.startsWith("indicador:");
+}
+
+function reglaDe(clave: string, metas: MetasPanel, iniciales: Valores) {
+  return {
+    max: unidadDe(clave, metas) === "porcentaje" ? 100 : undefined,
+    opcional: esNueva(clave, iniciales),
+  };
 }
 
 function Formulario({
@@ -103,27 +85,37 @@ function Formulario({
   editable: boolean;
   origin: DataOrigin;
 }) {
-  const { canalNombre, asesorNombre } = usePanelOptions();
+  const { canales, asesores, canalNombre, asesorNombre } = usePanelOptions();
   const iniciales = useMemo(() => valoresDe(metas), [metas]);
   const [valores, setValores] = useState<Valores>(iniciales);
-  const cambios = Object.keys(valores).filter(
-    (clave) => valores[clave] !== iniciales[clave],
+  const {
+    guardar,
+    guardando,
+    errores: erroresServidor,
+  } = useGuardarConfig(putConfigMetas, "Metas");
+  const valorDe = (clave: string) => valores[clave] ?? iniciales[clave] ?? "";
+  const claves = [...new Set([...Object.keys(iniciales), ...Object.keys(valores)])];
+  const cambios = claves.filter(
+    (clave) => valorDe(clave) !== (iniciales[clave] ?? "") && !(valorDe(clave).trim() === ""),
   ).length;
-  const errores = Object.entries(valores).filter(([clave, valor]) => {
-    const [grupo, id] = clave.split(":");
-    const unidad =
-      grupo === "indicador"
-        ? metas.indicadores[id as (typeof META_INDICADOR_IDS)[number]].unidad
-        : grupo === "porConfirmadora"
-          ? "numero"
-          : "soles";
-    return error(valor, unidad) !== null;
-  }).length;
+  const errores = claves.filter(
+    (clave) => errorNumero(valorDe(clave), reglaDe(clave, metas, iniciales)) !== null,
+  ).length;
   const cambiar = (clave: string) => (valor: string) =>
     setValores((actual) => ({ ...actual, [clave]: valor }));
+  const enviar = () => guardar(cuerpoDeMetas(valores, iniciales, metas));
+
+  const idsDe = (grupo: GrupoMensual): string[] => {
+    const existentes = Object.keys(metas.mensuales[grupo]);
+    const candidatos =
+      grupo === "porCanal"
+        ? (canales.data ?? []).map((canal) => canal.id)
+        : (asesores.data ?? []).map((asesor) => asesor.id);
+    return [...new Set([...existentes, ...candidatos])];
+  };
 
   const mensuales: {
-    grupo: keyof MetasPanel["mensuales"];
+    grupo: GrupoMensual;
     titulo: string;
     unidad: "soles" | "numero";
     nombre: (id: string) => string;
@@ -150,6 +142,7 @@ function Formulario({
 
   return (
     <div className="space-y-3.5">
+      <ErroresDelServidor errores={erroresServidor} />
       <PanelCard
         titulo="Indicadores"
         origin={origin}
@@ -161,7 +154,7 @@ function Formulario({
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={!cambios}
+                disabled={!cambios || guardando}
                 onClick={() => setValores(iniciales)}
               >
                 <RotateCcw aria-hidden />
@@ -170,15 +163,12 @@ function Formulario({
               <Button
                 type="button"
                 size="sm"
-                disabled={!cambios || errores > 0}
-                onClick={() => notifyPendingIntegration("Guardar metas", "config-metas-guardar")}
+                disabled={!cambios || errores > 0 || guardando}
+                onClick={enviar}
                 className="bg-pc-primary text-white hover:bg-pc-primary-strong"
               >
                 <Save aria-hidden />
-                Guardar {cambios ? `(${cambios})` : ""}
-                <span className="rounded bg-white/20 px-1 text-[10px] font-bold uppercase">
-                  Pendiente
-                </span>
+                {guardando ? "Guardando…" : `Guardar ${cambios ? `(${cambios})` : ""}`}
               </Button>
             </>
           )
@@ -206,6 +196,7 @@ function Formulario({
             <tbody>
               {META_INDICADOR_IDS.map((id) => {
                 const meta = metas.indicadores[id];
+                const clave = `indicador:${id}`;
                 return (
                   <tr key={id} className="border-t border-pc-border-soft">
                     <th scope="row" className="px-2.5 py-1.5 text-left font-medium">
@@ -217,11 +208,11 @@ function Formulario({
                     <td className="px-2.5 py-1.5">
                       <CampoNumero
                         etiqueta={`Meta de ${meta.etiqueta}`}
-                        valor={valores[`indicador:${id}`]}
-                        unidad={meta.unidad}
+                        valor={valorDe(clave)}
                         sufijo={UNIDAD[meta.unidad]}
+                        regla={reglaDe(clave, metas, iniciales)}
                         editable={editable}
-                        onChange={cambiar(`indicador:${id}`)}
+                        onChange={cambiar(clave)}
                       />
                     </td>
                     <td className="px-2.5 py-1.5 text-right tabular-nums text-pc-text-muted">
@@ -236,29 +227,36 @@ function Formulario({
       </PanelCard>
       <div className="grid grid-cols-1 gap-3.5 xl:grid-cols-3">
         {mensuales.map(({ grupo, titulo, unidad, nombre }) => {
-          const ids = Object.keys(metas.mensuales[grupo]);
+          const ids = idsDe(grupo);
           return (
             <PanelCard
               key={grupo}
               titulo={titulo}
               origin={origin}
-              subtitulo="Se prorratean por los días del periodo: meta × días ÷ 30"
+              subtitulo="Se prorratean por los días del periodo: meta × días ÷ 30. Vacío = sin meta"
             >
               {ids.length ? (
                 <ul className="divide-y divide-pc-border-soft">
-                  {ids.map((id) => (
-                    <li key={id} className="flex items-center justify-between gap-2 py-1.5 text-xs">
-                      <span className="min-w-0 truncate font-medium">{nombre(id)}</span>
-                      <CampoNumero
-                        etiqueta={`${titulo}: ${nombre(id)}`}
-                        valor={valores[`${grupo}:${id}`]}
-                        unidad={unidad}
-                        sufijo={unidad === "soles" ? "" : "conf."}
-                        editable={editable}
-                        onChange={cambiar(`${grupo}:${id}`)}
-                      />
-                    </li>
-                  ))}
+                  {ids.map((id) => {
+                    const clave = `${grupo}:${id}`;
+                    return (
+                      <li
+                        key={id}
+                        className="flex items-center justify-between gap-2 py-1.5 text-xs"
+                      >
+                        <span className="min-w-0 truncate font-medium">{nombre(id)}</span>
+                        <CampoNumero
+                          etiqueta={`${titulo}: ${nombre(id)}`}
+                          valor={valorDe(clave)}
+                          prefijo={unidad === "soles" ? "S/" : undefined}
+                          sufijo={unidad === "soles" ? "" : "conf."}
+                          regla={reglaDe(clave, metas, iniciales)}
+                          editable={editable}
+                          onChange={cambiar(clave)}
+                        />
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 <p className="text-xs text-pc-text-muted">Sin metas cargadas.</p>
@@ -267,29 +265,15 @@ function Formulario({
           );
         })}
       </div>
-      {origin.kind !== "real" && (
-        <p className="text-xs text-pc-text-muted">
-          Metas demo: GET /config/metas todavía no existe. Los montos mensuales son de ejemplo
-          aunque los nombres de canales y asesores sean reales; no los uses para evaluar a nadie.
-        </p>
-      )}
-      {editable && (
-        <p className="text-xs text-pc-text-muted">
-          Guardar requiere PUT /config/metas: hoy no persiste nada. Mientras no exista, el panel usa
-          las metas por defecto de la especificación y metas mensuales de ejemplo.
-        </p>
-      )}
     </div>
   );
 }
 
+const SIN_CONSULTA = {};
+
 export function ConfigMetasView() {
-  const { session, view } = usePanel();
-  const query = useMemo(
-    () => (session.empresaId ? { empresaId: session.empresaId } : null),
-    [session.empresaId],
-  );
-  const metas = usePanelContract("config-metas", query);
+  const { view } = usePanel();
+  const metas = usePanelContract("config-metas", SIN_CONSULTA);
   const editable = view.access === "permitido" && view.capabilities.has("editar_configuracion");
   return (
     <ContractView state={metas} label="metas" skeleton="tabla">

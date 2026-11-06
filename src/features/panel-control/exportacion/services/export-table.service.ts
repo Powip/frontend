@@ -69,23 +69,11 @@ export function buildTableWorkbook(request: ExportTablaRequest): XLSX.WorkBook {
   return workbook;
 }
 
-export function buildLibroWorkbook(hojas: { nombre: string; request: ExportTablaRequest }[]) {
-  const workbook = XLSX.utils.book_new();
-  for (const hoja of hojas) {
-    XLSX.utils.book_append_sheet(workbook, buildTableSheet(hoja.request), nombreHoja(hoja.nombre));
-  }
-  return workbook;
-}
-
 export function workbookBlob(workbook: XLSX.WorkBook): Blob {
   const buffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
   return new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
-}
-
-export function libroFileName(desde: string, hasta: string, demo: boolean): string {
-  return `powip_panel_${desde}_${hasta}${demo ? "_DEMO" : ""}.xlsx`;
 }
 
 export function tableFileName(request: ExportTablaRequest): string {

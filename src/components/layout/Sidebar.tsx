@@ -164,7 +164,7 @@ export function Sidebar({ className }: SidebarProps) {
         name: "Dashboard",
         icon: LayoutDashboard,
         children: [
-          { name: "Principal", href: "/dashboard", icon: LayoutDashboard },
+          { name: "Principal", href: "/panel-control", icon: LayoutDashboard },
           { name: "Ventas", href: "/metricas/ventas", icon: ShoppingCart },
           ...(canViewCommercialLeads ? [{name: "Leads", href: "/metricas/leads", icon: Users}] : []),
           { name: "Inventario", href: "/metricas/inventario", icon: Package },

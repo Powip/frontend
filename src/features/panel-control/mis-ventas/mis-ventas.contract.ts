@@ -17,7 +17,7 @@ export const MIS_VENTAS_CONTRACT = defineContract({
   pendientes: [
     "CONECTADO: lo vendido, pagado, efectividad y perdido de sus ventas directas y POS, sus pedidos por estado, ranking anónimo («Vendedora N») y no cobrados",
     "Con rol Vendedora el backend impone asesor = usuario del JWT; el Dueño solo la ve con ver_como=vendedora + asesor",
-    "PENDIENTE: meta mensual (sin configuración); la comisión se omite (§14 prohíbe comisiones a la Vendedora)",
+    "La meta viene de Configuración › Metas; no hay comisión en Mis ventas (la Vendedora no recibe comisiones)",
     REGLA_VENTA_PENDIENTE,
     COMPARACION_PENDIENTE,
   ],

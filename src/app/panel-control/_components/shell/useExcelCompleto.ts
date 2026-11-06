@@ -4,6 +4,7 @@ import { saveAs } from "file-saver";
 import { useState } from "react";
 import { toast } from "sonner";
 import { notifyPendingIntegration } from "@/components/panel-control/pending-integration";
+import { mensajeDeError } from "@/features/panel-control/shared/api/panel-errors";
 import { rolPuedeUsarContrato } from "@/features/panel-control/shared/data/panel-autorizacion";
 import { usePanelContractFetcher } from "@/features/panel-control/shared/hooks/use-panel-contract";
 import { usePanel } from "@/features/panel-control/shared/state/panel-context";
@@ -32,13 +33,11 @@ export function useExcelCompleto() {
       saveAs(archivo, nombreArchivo);
       toast.success(`Excel descargado: ${nombreArchivo}`, {
         description:
-          fetcher.origin.kind === "demo"
-            ? "9 hojas con datos de demostración"
-            : "9 hojas: Resumen, Canales, Pedidos, Productos, Vendedoras, Confirmadoras, Couriers, Departamentos y Cuadres",
+          "9 hojas: Resumen, Canales, Pedidos, Productos, Vendedoras, Confirmadoras, Couriers, Departamentos y Cuadres",
       });
     } catch (error) {
       toast.error("No se pudo generar el Excel completo", {
-        description: error instanceof Error ? error.message : undefined,
+        description: mensajeDeError(error),
       });
     } finally {
       setDescargando(false);

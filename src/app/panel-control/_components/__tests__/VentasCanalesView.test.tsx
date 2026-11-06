@@ -13,7 +13,6 @@ import {
 import { clientesZonasDemoSource } from "@/features/panel-control/clientes-zonas/sources/clientes-zonas.demo";
 import { detalleDemoSource } from "@/features/panel-control/detalle/sources/detalle.demo";
 import { productosDemoSource } from "@/features/panel-control/productos/sources/productos.demo";
-import { publicidadDemoSource } from "@/features/panel-control/publicidad/sources/publicidad.demo";
 import type {
   PanelSource,
   PanelSourceRegistry,
@@ -84,7 +83,6 @@ const DEMO: PanelSourceRegistry = {
   "canales-comparativo": canalesComparativoDemoSource,
   "canales-detalle": canalesDetalleDemoSource,
   productos: productosDemoSource,
-  publicidad: publicidadDemoSource,
   "clientes-zonas": clientesZonasDemoSource,
 };
 
@@ -208,57 +206,6 @@ describe("Ventas y canales · Productos", () => {
   });
 });
 
-describe("Ventas y canales · Publicidad", () => {
-  it("separa la pauta general estimada y una sesión Live abre sus ventas", async () => {
-    const user = renderSubtab("publicidad");
-    const tabla = await screen.findByRole("table", { name: "Publicidad por canal" });
-    expect(
-      within(tabla).getByRole("columnheader", { name: /Pauta general \(est\.\)/ }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Pauta general (reparto estimado)")).toBeInTheDocument();
-    const sesiones = screen.getByRole("table", { name: "Sesiones de TikTok Live" });
-    await user.click(
-      within(sesiones).getAllByRole("button", { name: /^Ver pedidos de la sesión/ })[0],
-    );
-    expect(await screen.findByRole("dialog", { name: /^Live / })).toBeInTheDocument();
-  });
-
-  it("sin inversión, retorno y costo por venta muestran «—»", async () => {
-    const sinPauta: PanelSource<"publicidad"> = {
-      ...publicidadDemoSource,
-      fetch: async (query, context) => {
-        const respuesta = await publicidadDemoSource.fetch(query, context);
-        return {
-          ...respuesta,
-          actual: {
-            ...respuesta.actual,
-            kpis: {
-              ...respuesta.actual.kpis,
-              invertido: 0,
-              retornoPublicidad: null,
-              costoPorVenta: null,
-            },
-          },
-        };
-      },
-    };
-    renderSubtab("publicidad", { sources: { ...DEMO, publicidad: sinPauta } });
-    await screen.findByRole("region", { name: "Retorno de publicidad" });
-    await waitFor(() =>
-      expect(
-        within(screen.getByRole("region", { name: "Retorno de publicidad" })).getByText("—", {
-          selector: "p",
-        }),
-      ).toBeInTheDocument(),
-    );
-    expect(
-      within(screen.getByRole("region", { name: "Costo por venta" })).getByText("—", {
-        selector: "p",
-      }),
-    ).toBeInTheDocument();
-  });
-});
-
 describe("Ventas y canales · Clientes y zonas", () => {
   it("un departamento y un cliente abren su grupo; el cliente abre su historial completo", async () => {
     const user = renderSubtab("clientes");
@@ -326,19 +273,5 @@ describe("Ventas y canales · marcas de los gráficos", () => {
     await user.click(puntos[puntos.length - 2]);
     const dialogo = await screen.findByRole("dialog", { name: /semana del/ });
     expect(within(dialogo).getByText(/Rango propio del gráfico/)).toBeInTheDocument();
-  });
-
-  it("un punto de inversión muestra el desglose de pauta sin abrir pedidos; uno de venta abre sus ventas", async () => {
-    const user = renderSubtab("publicidad");
-    await screen.findByRole("table", { name: "Publicidad por canal" });
-    const invertido = screen.getAllByRole("button", {
-      name: /^Invertido, .*Ver desglose de pauta$/,
-    })[0];
-    await user.click(invertido);
-    expect(await screen.findByRole("heading", { name: /Pauta registrada el/ })).toHaveFocus();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    const vendido = screen.getAllByRole("button", { name: /^Vendido, .*Ver ventas$/ })[0];
-    await user.click(vendido);
-    expect(await screen.findByRole("dialog", { name: /en canales con pauta/ })).toBeInTheDocument();
   });
 });

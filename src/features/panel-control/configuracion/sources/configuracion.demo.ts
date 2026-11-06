@@ -15,6 +15,7 @@ import {
 import type { PanelSource } from "../../shared/data/panel-source";
 import { ESTADOS_PANEL } from "../../shared/models/estado-pedido.model";
 import type { MetasPanel } from "../../shared/models/goal.model";
+import type { PanelEnvelope } from "../../shared/models/panel-envelope.model";
 import type { PanelQuery } from "../../shared/models/panel-query.model";
 import { formatSoles } from "../../shared/utils/format";
 import type {
@@ -103,6 +104,7 @@ export function calidadDatosDemo(
     anulacionesSinMotivo: sinMotivo.length,
     importadosSinCanal: sinCanal.length,
     ventasConProductoSinCosto: sinCosto.length,
+    avisos: [],
     productosSinCosto: deTienda
       .filter((producto) => producto.costo === null)
       .map((producto) => ({ productoId: producto.id, nombre: producto.nombre })),
@@ -236,20 +238,32 @@ export function calcularCuadresDemo(
   };
 }
 
+function envolver<T>(actual: T, now: number): PanelEnvelope<T> {
+  return {
+    actual,
+    anterior_misma_antiguedad: null,
+    metas: null,
+    generado_en: new Date(now).toISOString(),
+  };
+}
+
 export const configEstadosDemoSource: PanelSource<"config-estados"> = {
   contractId: "config-estados",
   kind: "demo",
   descripcion:
     "Datos demo deterministas: GET /panel/config/estados no existe todavía. Pedidos ingresados en el periodo por su estado actual",
-  fetch: async (query, context): Promise<ConfigEstados> => {
+  fetch: async (query, context): Promise<PanelEnvelope<ConfigEstados>> => {
     const universo = obtenerUniversoDemo(context.catalogo, context.now);
     const items = pedidosEnRango(universo, query, query.desde, query.hasta, context.now);
-    return {
-      conteoActual: ESTADOS_PANEL.map((estado) => ({
-        estado,
-        pedidos: items.filter((item) => item.estado.estado === estado).length,
-      })),
-    };
+    return envolver(
+      {
+        conteoActual: ESTADOS_PANEL.map((estado) => ({
+          estado,
+          pedidos: items.filter((item) => item.estado.estado === estado).length,
+        })),
+      },
+      context.now,
+    );
   },
 };
 
@@ -259,5 +273,8 @@ export const configCuadresDemoSource: PanelSource<"config-cuadres"> = {
   descripcion:
     "Datos demo deterministas: GET /panel/config/cuadres no existe todavía. Los 9 cuadres de §12 con los mismos filtros del panel",
   fetch: async (query, context) =>
-    calcularCuadresDemo(obtenerUniversoDemo(context.catalogo, context.now), query, context.now),
+    envolver(
+      calcularCuadresDemo(obtenerUniversoDemo(context.catalogo, context.now), query, context.now),
+      context.now,
+    ),
 };

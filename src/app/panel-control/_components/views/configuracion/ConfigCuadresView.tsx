@@ -91,7 +91,7 @@ export function ConfigCuadresView() {
         titulo="Calidad de datos"
       >
         {(data, origin) => {
-          const c = data.calidad;
+          const c = data.actual.calidad;
           return [
             <KpiCard
               key="completo"
@@ -166,7 +166,7 @@ export function ConfigCuadresView() {
           <DataTable
             caption="Cuadres automáticos"
             columns={COLUMNAS}
-            rows={data.cuadres}
+            rows={data.actual.cuadres}
             getRowKey={(fila) => fila.id}
             exportar={{ titulo: "Cuadres", nombreBase: "cuadres", origen: origin.kind }}
           />
@@ -177,40 +177,60 @@ export function ConfigCuadresView() {
         titulo="Productos a corregir"
         subtitulo="Del catálogo de la tienda filtrada"
       >
-        {(data) => (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <section aria-label="Productos sin costo">
-              <h4 className="mb-1 text-xs font-semibold">
-                Sin costo cargado ({data.calidad.productosSinCosto.length})
-              </h4>
-              {data.calidad.productosSinCosto.length ? (
-                <ul className="space-y-1 text-xs text-pc-text-muted">
-                  {data.calidad.productosSinCosto.map((producto) => (
-                    <li key={producto.productoId}>{producto.nombre}</li>
+        {(envelope) => {
+          const calidad = envelope.actual.calidad;
+          const stockNegativo = calidad.productosStockNegativo;
+          return (
+            <div className="space-y-2">
+              {calidad.avisos.length > 0 && (
+                <ul
+                  aria-label="Avisos de calidad"
+                  className="space-y-1 rounded-lg border border-pc-border-soft bg-pc-warn-soft px-3 py-2 text-xs text-pc-warn"
+                >
+                  {calidad.avisos.map((aviso) => (
+                    <li key={aviso}>{aviso}</li>
                   ))}
                 </ul>
-              ) : (
-                <p className="text-xs text-pc-text-muted">Ninguno.</p>
               )}
-            </section>
-            <section aria-label="Productos con stock negativo">
-              <h4 className="mb-1 text-xs font-semibold">
-                Stock negativo ({data.calidad.productosStockNegativo.length})
-              </h4>
-              {data.calidad.productosStockNegativo.length ? (
-                <ul className="space-y-1 text-xs text-pc-bad">
-                  {data.calidad.productosStockNegativo.map((producto) => (
-                    <li key={producto.productoId}>
-                      {producto.nombre}: {formatNumber(producto.stock)} (error de datos)
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-xs text-pc-text-muted">Ninguno.</p>
-              )}
-            </section>
-          </div>
-        )}
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <section aria-label="Productos sin costo">
+                  <h4 className="mb-1 text-xs font-semibold">
+                    Sin costo cargado ({calidad.productosSinCosto.length})
+                  </h4>
+                  {calidad.productosSinCosto.length ? (
+                    <ul className="space-y-1 text-xs text-pc-text-muted">
+                      {calidad.productosSinCosto.map((producto) => (
+                        <li key={producto.productoId}>{producto.nombre}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-pc-text-muted">Ninguno.</p>
+                  )}
+                </section>
+                <section aria-label="Productos con stock negativo">
+                  <h4 className="mb-1 text-xs font-semibold">
+                    Stock negativo ({stockNegativo === null ? "—" : stockNegativo.length})
+                  </h4>
+                  {stockNegativo === null ? (
+                    <p className="text-xs text-pc-text-muted">
+                      Sin dato: no se pudo revisar el stock ahora.
+                    </p>
+                  ) : stockNegativo.length ? (
+                    <ul className="space-y-1 text-xs text-pc-bad">
+                      {stockNegativo.map((producto) => (
+                        <li key={producto.productoId}>
+                          {producto.nombre}: {formatNumber(producto.stock)} (error de datos)
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-pc-text-muted">Ninguno.</p>
+                  )}
+                </section>
+              </div>
+            </div>
+          );
+        }}
       </ContractBlock>
     </div>
   );

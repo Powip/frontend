@@ -3,6 +3,7 @@
 import { usePanel } from "@/features/panel-control/shared/state/panel-context";
 import { ConfigCanalesView } from "./ConfigCanalesView";
 import { CallCenterView } from "./callcenter/CallCenterView";
+import { ConfigCostosView } from "./configuracion/ConfigCostosView";
 import { ConfigCuadresView } from "./configuracion/ConfigCuadresView";
 import { ConfigEstadosView } from "./configuracion/ConfigEstadosView";
 import { ConfigMetasView } from "./configuracion/ConfigMetasView";
@@ -42,6 +43,8 @@ export function TabContent() {
           return <ConfigCanalesView />;
         case "metas":
           return <ConfigMetasView />;
+        case "costos":
+          return <ConfigCostosView />;
         case "estados":
           return <ConfigEstadosView />;
         case "cuadres":

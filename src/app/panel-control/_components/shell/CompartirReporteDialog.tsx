@@ -12,14 +12,55 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import type { CompartirReporteResponse } from "@/features/panel-control/exportacion/models/exportacion.model";
 import { usePanelContract } from "@/features/panel-control/shared/hooks/use-panel-contract";
 import { usePanelExportMeta } from "@/features/panel-control/shared/hooks/use-panel-export-meta";
 import { usePanel } from "@/features/panel-control/shared/state/panel-context";
+import { formatPercent, formatSolesDecimales } from "@/features/panel-control/shared/utils/format";
 import { useExcelCompleto } from "./useExcelCompleto";
 
 interface CompartirReporteDialogProps {
   abierto: boolean;
   onAbiertoChange: (abierto: boolean) => void;
+}
+
+const SIN_DATO_TEXTO = "Sin dato";
+
+function CifrasDelReporte({ data }: { data: CompartirReporteResponse }) {
+  // null es «Sin dato» (R13): nunca 0 ni «S/ null».
+  const soles = (valor: number | null) =>
+    valor === null ? SIN_DATO_TEXTO : formatSolesDecimales(valor);
+  const porcentaje = (valor: number | null) =>
+    valor === null ? SIN_DATO_TEXTO : formatPercent(valor);
+  const filas: [string, string][] = [
+    ["Producto", soles(data.producto)],
+    ["Publicidad", soles(data.publicidad)],
+    ["Envíos", soles(data.envios)],
+    ["Costo por venta (CPA)", soles(data.costoPorVenta)],
+    ["Efectividad de entrega", porcentaje(data.efectividadEntrega)],
+    ["Ganancia real sobre entregado", soles(data.gananciaSobreEntregado)],
+    ["Vencido", soles(data.vencido)],
+  ];
+  return (
+    <div className="space-y-2">
+      <dl
+        aria-label="Cifras del reporte"
+        className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-pc-text-muted"
+      >
+        {filas.map(([nombre, valor]) => (
+          <div key={nombre} className="flex justify-between gap-2">
+            <dt>{nombre}</dt>
+            <dd className="font-medium text-pc-text">{valor}</dd>
+          </div>
+        ))}
+      </dl>
+      {data.productoIncompleto && (
+        <p className="text-xs text-pc-text-muted">
+          Hay entregas sin costo de producto: el costo y la ganancia son parciales.
+        </p>
+      )}
+    </div>
+  );
 }
 
 export function CompartirReporteDialog({ abierto, onAbiertoChange }: CompartirReporteDialogProps) {
@@ -64,16 +105,7 @@ export function CompartirReporteDialog({ abierto, onAbiertoChange }: CompartirRe
               <pre className="whitespace-pre-wrap rounded-xl border border-pc-border bg-pc-surface-muted p-3 font-sans text-[13px] leading-relaxed text-pc-text">
                 {data.texto}
               </pre>
-              {data.gananciaSobreVentaTotal === undefined && (
-                <p className="text-xs text-pc-text-muted">
-                  Tu rol no recibe costo de producto, envíos ni ganancia: el reporte los omite.
-                </p>
-              )}
-              <p className="text-xs text-pc-text-muted">
-                Hay dos ganancias distintas porque la especificación pide ambas (decisión abierta):
-                «sobre venta total» resta producto, publicidad y envíos a todo lo vendido, entregado
-                o no; «real sobre entregado» es la del panel y solo cuenta lo entregado.
-              </p>
+              <CifrasDelReporte data={data} />
               <div className="flex flex-wrap justify-end gap-2">
                 {puedeLibro && (
                   <Button

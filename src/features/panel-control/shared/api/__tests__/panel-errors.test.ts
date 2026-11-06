@@ -1,5 +1,5 @@
 import { PanelAccesoDenegadoError } from "../../data/panel-identidad";
-import { estadoHttp, mensajeDeError } from "../panel-errors";
+import { estadoHttp, mensajeDeError, mensajesDe400 } from "../panel-errors";
 
 /** Lo que construye axios ante una respuesta HTTP con error. */
 function errorHttp(status: number, message?: unknown) {
@@ -46,15 +46,8 @@ describe("mensajeDeError", () => {
       mensajeDeError(errorHttp(404, "Ese producto no está en el inventario de tu empresa.")),
     ).toBe("Ese producto no está en el inventario de tu empresa.");
     expect(
-      mensajeDeError(
-        errorHttp(
-          400,
-          "El grupo «primera_llamada_tardia» todavía no está conectado a datos reales en el backend.",
-        ),
-      ),
-    ).toBe(
-      "El grupo «primera_llamada_tardia» todavía no está conectado a datos reales en el backend.",
-    );
+      mensajeDeError(errorHttp(400, "El grupo «cola_operativa» no admite ese parámetro.")),
+    ).toBe("El grupo «cola_operativa» no admite ese parámetro.");
   });
 
   it("404 sin texto del backend usa un mensaje genérico en español", () => {
@@ -63,10 +56,12 @@ describe("mensajeDeError", () => {
     );
   });
 
-  it("400 con una lista de errores de validación o sin texto cae al mensaje del error", () => {
-    expect(mensajeDeError(errorHttp(400, ["sub must be one of the following values"]))).toBe(
-      "Request failed with status code 400",
+  it("400 con una lista de errores de validación los une; sin texto cae al mensaje del error", () => {
+    expect(mensajeDeError(errorHttp(400, ["sub must be one of the following values", "x"]))).toBe(
+      "sub must be one of the following values · x",
     );
+    expect(mensajesDe400(errorHttp(400, ["a", "b"]))).toEqual(["a", "b"]);
+    expect(mensajesDe400(errorHttp(400, "solo uno"))).toEqual(["solo uno"]);
     expect(mensajeDeError(errorHttp(400))).toBe("Request failed with status code 400");
   });
 

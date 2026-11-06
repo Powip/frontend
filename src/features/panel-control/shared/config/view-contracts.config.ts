@@ -1,7 +1,7 @@
 import type { PanelContractId } from "../models/panel-contract.model";
 import type { PanelSubtabId, PanelTabId } from "../models/panel-navigation.model";
 
-const TRANSVERSALES: PanelContractId[] = ["estado-periodo", "detalle", "config-metas"];
+const TRANSVERSALES: PanelContractId[] = ["estado-periodo", "detalle"];
 
 type SubtabContracts = Partial<Record<PanelSubtabId, PanelContractId[]>>;
 
@@ -62,8 +62,9 @@ export const VIEW_CONTRACTS: Record<
   configuracion: {
     base: ["estado-periodo"],
     subtabs: {
-      canales: ["canales-fichas", "canales-fichas-guardar"],
+      canales: ["canales-fichas", "canales-comparativo", "canales-fichas-guardar"],
       metas: ["config-metas", "config-metas-guardar"],
+      costos: ["config-comisiones", "config-gastos-fijos", "config-couriers"],
       estados: ["config-estados"],
       cuadres: ["config-cuadres"],
       desarrollo: [],

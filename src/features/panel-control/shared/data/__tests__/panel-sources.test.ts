@@ -20,15 +20,18 @@ describe("registro de fuentes", () => {
   });
 
   it("oculta las fuentes demo en modo solo reales y mantiene las reales", () => {
-    expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "publicidad", "solo_real").origin.kind).toBe(
-      "pendiente",
-    );
-    expect(
-      resolvePanelSource(DEFAULT_PANEL_SOURCES, "exportacion-libro", "solo_real").source,
-    ).toBeNull();
-    expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "publicidad", "mixto").origin.kind).toBe(
-      "demo",
-    );
+    // Exportar y Compartir ya son reales: siguen disponibles en «Solo datos reales».
+    for (const id of ["exportacion-libro", "compartir-reporte"] as const) {
+      expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, id, "solo_real")).toMatchObject({
+        source: { kind: "real" },
+        origin: { kind: "real" },
+      });
+    }
+    // Publicidad ya no tiene fuente demo: es el aviso «Próximamente», sin cifras.
+    expect(resolvePanelSource(DEFAULT_PANEL_SOURCES, "publicidad", "mixto")).toMatchObject({
+      source: null,
+      origin: { kind: "pendiente" },
+    });
     expect(
       resolvePanelSource(DEFAULT_PANEL_SOURCES, "canales-fichas", "solo_real").origin.kind,
     ).toBe("real");

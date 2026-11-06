@@ -31,6 +31,8 @@ export interface ProductoFila {
   descuentoPromedio: number | null;
   costoUnitario?: number | null;
   margen?: number | null;
+  /** Solo Dueño: líneas vendidas de este producto sin costo cargado. Un costo 0 cargado NO cuenta. */
+  lineasSinCosto?: number;
   tasaRechazo: number | null;
   stock: number | null;
 }

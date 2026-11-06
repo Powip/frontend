@@ -23,37 +23,11 @@ export interface PanelSeccionOculta {
 
 export const PANEL_SECCIONES_OCULTAS: PanelSeccionOculta[] = [
   {
-    id: "Configuración › Metas",
-    tab: "configuracion",
-    subtab: "metas",
-    contratos: ["config-metas", "config-metas-guardar"],
-  },
-  {
-    id: "Configuración › Estados y reglas",
-    tab: "configuracion",
-    subtab: "estados",
-    contratos: ["config-estados"],
-  },
-  {
-    id: "Configuración › Cuadres y calidad",
-    tab: "configuracion",
-    subtab: "cuadres",
-    contratos: ["config-cuadres"],
-  },
-  {
     id: "Configuración › Para desarrollo",
     tab: "configuracion",
     subtab: "desarrollo",
     contratos: [],
   },
-  {
-    id: "Ventas y canales › Publicidad",
-    tab: "canales",
-    subtab: "publicidad",
-    contratos: ["publicidad"],
-  },
-  { id: "Exportar (Excel completo)", accion: "exportar", contratos: ["exportacion-libro"] },
-  { id: "Compartir reporte", accion: "compartir", contratos: ["compartir-reporte"] },
   // Sin nada demo visible, el selector «reales + demo / solo reales» no cambia nada.
   { id: "Selector Datos: reales + demo", accion: "selector-datos", contratos: [] },
 ];
