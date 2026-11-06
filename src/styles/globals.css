@@ -214,3 +214,86 @@ input[type="number"] {
 .animate-powip-heartbeat {
   animation: powip-heartbeat 1.4s ease-in-out infinite;
 }
+
+:root {
+  --pc-primary: #027778;
+  --pc-primary-strong: #015e5f;
+  --pc-primary-soft: #eef7f7;
+  --pc-primary-line: #b6dcdc;
+  --pc-bg: #f4f7f7;
+  --pc-card: #ffffff;
+  --pc-border: #e4e9ea;
+  --pc-border-soft: #eef1f2;
+  --pc-surface-muted: #f7f9fa;
+  --pc-text: #16202a;
+  --pc-text-muted: #56636f;
+  --pc-text-soft: #6b7785;
+  --pc-ok: #0f9d58;
+  --pc-ok-soft: #e3f5ea;
+  --pc-warn: #b77900;
+  --pc-warn-soft: #fff4d6;
+  --pc-bad: #d23b3b;
+  --pc-bad-soft: #fde8e8;
+  --pc-info: #2f6fd0;
+  --pc-info-soft: #e6effc;
+  --pc-demo: #8a4d0f;
+  --pc-demo-soft: #fff1e0;
+  --pc-series-1: #2a78d6;
+  --pc-series-2: #eb6834;
+  --pc-series-3: #1baf7a;
+  --pc-series-4: #eda100;
+  --pc-series-5: #e87ba4;
+  --pc-series-6: #008300;
+  --pc-series-7: #4a3aa7;
+  --pc-series-8: #e34948;
+}
+
+.dark {
+  --pc-primary: #3fb3b4;
+  --pc-primary-strong: #6fcfd0;
+  --pc-primary-soft: #133033;
+  --pc-primary-line: #1f5558;
+  --pc-bg: #0f1719;
+  --pc-card: #162123;
+  --pc-border: #26363a;
+  --pc-border-soft: #1d2b2e;
+  --pc-surface-muted: #1a2729;
+  --pc-text: #e6eef0;
+  --pc-text-muted: #a3b1b8;
+  --pc-text-soft: #8a99a1;
+  --pc-ok: #3ccf85;
+  --pc-ok-soft: #12321f;
+  --pc-warn: #e6a92e;
+  --pc-warn-soft: #34290f;
+  --pc-bad: #f06b6b;
+  --pc-bad-soft: #3a1818;
+  --pc-info: #6f9ff0;
+  --pc-info-soft: #16243d;
+  --pc-demo: #f0a95a;
+  --pc-demo-soft: #3a2710;
+}
+
+@theme inline {
+  --color-pc-primary: var(--pc-primary);
+  --color-pc-primary-strong: var(--pc-primary-strong);
+  --color-pc-primary-soft: var(--pc-primary-soft);
+  --color-pc-primary-line: var(--pc-primary-line);
+  --color-pc-bg: var(--pc-bg);
+  --color-pc-card: var(--pc-card);
+  --color-pc-border: var(--pc-border);
+  --color-pc-border-soft: var(--pc-border-soft);
+  --color-pc-surface-muted: var(--pc-surface-muted);
+  --color-pc-text: var(--pc-text);
+  --color-pc-text-muted: var(--pc-text-muted);
+  --color-pc-text-soft: var(--pc-text-soft);
+  --color-pc-ok: var(--pc-ok);
+  --color-pc-ok-soft: var(--pc-ok-soft);
+  --color-pc-warn: var(--pc-warn);
+  --color-pc-warn-soft: var(--pc-warn-soft);
+  --color-pc-bad: var(--pc-bad);
+  --color-pc-bad-soft: var(--pc-bad-soft);
+  --color-pc-info: var(--pc-info);
+  --color-pc-info-soft: var(--pc-info-soft);
+  --color-pc-demo: var(--pc-demo);
+  --color-pc-demo-soft: var(--pc-demo-soft);
+}
