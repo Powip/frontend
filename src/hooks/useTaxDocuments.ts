@@ -1,17 +1,21 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useQuery } from "@tanstack/react-query";
 import { useBusinessScope } from "@/contexts/BusinessScopeContext";
-import axiosAuth from "@/lib/axiosAuth";
-import { API } from "@/lib/api";
+import { useBusinessSales } from "@/features/sales/hooks/use-business-sales";
+import {
+  EMPTY_DOCUMENTS,
+  EMPTY_SALES,
+  isTaxDocumentEligibleStatus,
+} from "@/features/sunat/shared/constants/sunat.constants";
 import type { ListSunatDocumentsResponseDto } from "@/features/sunat/sunat-document/dto/list-sunat-documents-response.dto";
 import { toListSunatDocumentsResult } from "@/features/sunat/sunat-document/mappers/to-list-sunat-documents.mapper";
 import type { SunatDocument } from "@/features/sunat/sunat-document/models/sunat-document.model";
-import { useBusinessSales } from "@/features/sales/hooks/use-business-sales";
-import { EMPTY_DOCUMENTS, EMPTY_SALES } from "@/features/sunat/shared/constants/sunat.constants";
-import { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
+import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
+import { API } from "@/lib/api";
+import axiosAuth from "@/lib/axiosAuth";
 
 export function useTaxDocuments() {
   const { auth } = useAuth();
@@ -31,9 +35,14 @@ export function useTaxDocuments() {
       const byId = new Map<string, SunatDocument>();
       let offset = 0;
       while (true) {
-        const response = await axiosAuth.get<ListSunatDocumentsResponseDto>(`${API.sunat}/api/v1/sunat-documents`, { params: { limit: 100, offset }, signal });
+        const response = await axiosAuth.get<ListSunatDocumentsResponseDto>(
+          `${API.sunat}/api/v1/sunat-documents`,
+          { params: { limit: 100, offset }, signal },
+        );
         const page = toListSunatDocumentsResult(response.data);
-        page.documents.forEach((document) => byId.set(document.id, document));
+        for (const document of page.documents) {
+          byId.set(document.id, document);
+        }
         offset += page.documents.length;
         if (offset >= page.total) break;
         if (page.documents.length === 0) throw new Error("Respuesta incompleta de comprobantes");
@@ -41,7 +50,8 @@ export function useTaxDocuments() {
       return [...byId.values()];
     },
     retry: false,
-    refetchInterval: (query) => query.state.data?.some((document) => document.cdrStatus === "PENDING") ? 4000 : false,
+    refetchInterval: (query) =>
+      query.state.data?.some((document) => document.cdrStatus === "PENDING") ? 4000 : false,
   });
   const loadingListDocuments = documentsQuery.isPending;
   const refreshListDocuments = documentsQuery.refetch;
@@ -70,28 +80,28 @@ export function useTaxDocuments() {
   /**
    * Build the rows consumed by the tax-document UI.
    *
-   * Only delivered sales participate in the SUNAT document workflow.
+   * Only sales in an eligible status (`EN_ENVIO` or `ENTREGADO`) participate in the SUNAT
+   * document workflow.
    */
   const rows = useMemo<TaxDocumentRow[]>(() => {
     if (error) return [];
     return sales
-      .filter((sale) => sale.status === "ENTREGADO")
+      .filter((sale) => isTaxDocumentEligibleStatus(sale.status))
       .map((sale) => ({
         sale,
         taxDocument: documentByOrderId.get(sale.id),
       }))
-      .sort(
-        (a, b) =>
-          new Date(b.sale.createdAt).getTime() -
-          new Date(a.sale.createdAt).getTime(),
-      );
+      .sort((a, b) => new Date(b.sale.createdAt).getTime() - new Date(a.sale.createdAt).getTime());
   }, [sales, documentByOrderId, error]);
 
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
-  useEffect(() => { setSelectedIds(new Set()); }, [scopeKey]);
+  // The selection belongs to one business scope: clear it whenever the scope changes. `scopeKey`
+  // is not read inside the effect, it is only the trigger.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scopeKey is the reset trigger
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [scopeKey]);
 
   const toggleSelected = useCallback((id: string, checked: boolean) => {
     setSelectedIds((previous) => {
@@ -114,13 +124,7 @@ export function useTaxDocuments() {
         return;
       }
 
-      setSelectedIds(
-        new Set(
-          rows
-            .filter((row) => !row.taxDocument)
-            .map((row) => row.sale.id),
-        ),
-      );
+      setSelectedIds(new Set(rows.filter((row) => !row.taxDocument).map((row) => row.sale.id)));
     },
     [rows],
   );
@@ -144,10 +148,7 @@ export function useTaxDocuments() {
     const emitidosHoy = rows.filter((row) => {
       const status = row.taxDocument?.cdrStatus;
 
-      if (
-        status !== "ACCEPTED" &&
-        status !== "ACCEPTED_WITH_OBSERVATION"
-      ) {
+      if (status !== "ACCEPTED" && status !== "ACCEPTED_WITH_OBSERVATION") {
         return false;
       }
 
@@ -164,27 +165,19 @@ export function useTaxDocuments() {
       );
     }).length;
 
-    const pendientes = rows.filter(
-      (row) => !row.taxDocument,
-    ).length;
+    const pendientes = rows.filter((row) => !row.taxDocument).length;
 
     const rechazados = rows.filter((row) => {
       const status = row.taxDocument?.cdrStatus;
 
-      return (
-        status === "REJECTED" ||
-        status === "RETRY_EXCEEDED"
-      );
+      return status === "REJECTED" || status === "RETRY_EXCEEDED";
     }).length;
 
     const facturadoMes = rows
       .filter((row) => {
         const status = row.taxDocument?.cdrStatus;
 
-        if (
-          status !== "ACCEPTED" &&
-          status !== "ACCEPTED_WITH_OBSERVATION"
-        ) {
+        if (status !== "ACCEPTED" && status !== "ACCEPTED_WITH_OBSERVATION") {
           return false;
         }
 
@@ -195,13 +188,11 @@ export function useTaxDocuments() {
         const createdAt = new Date(row.taxDocument.createdAt);
 
         return (
-          createdAt.getFullYear() === now.getFullYear() &&
-          createdAt.getMonth() === now.getMonth()
+          createdAt.getFullYear() === now.getFullYear() && createdAt.getMonth() === now.getMonth()
         );
       })
       .reduce((total, row) => {
-        const documentTotal =
-          row.taxDocument?.taxDocumentPayload.totals.grandTotal;
+        const documentTotal = row.taxDocument?.taxDocumentPayload.totals.grandTotal;
 
         return total + Number(documentTotal ?? row.sale.grandTotal);
       }, 0);

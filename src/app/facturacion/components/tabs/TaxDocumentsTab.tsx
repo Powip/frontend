@@ -16,12 +16,12 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import DetalleComprobanteModal from "@/app/facturacion/components/modals/DetalleComprobanteModal";
 import EmitirComprobanteModal from "@/app/facturacion/components/modals/EmitirComprobanteModal";
 import LoteEmisionModal from "@/app/facturacion/components/modals/LoteEmisionModal";
 import RechazadoModal from "@/app/facturacion/components/modals/RechazadoModal";
 import { PdfPreviewDialog } from "@/components/pdf/PdfPreviewDialog";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -542,7 +542,8 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
           <CardHeader>
             <CardTitle className="text-base">Ciclo de vida de un comprobante</CardTitle>
             <CardDescription>
-              Desde que una venta pasa a ENTREGADO hasta que SUNAT confirma su validez.
+              Desde que una venta está en envío (EN_ENVIO) o entregada hasta que SUNAT confirma su
+              validez.
             </CardDescription>
           </CardHeader>
 
@@ -552,10 +553,7 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
                 const meta = TAX_DOCUMENT_STATUSES[status];
 
                 return (
-                  <div
-                    key={status}
-                    className="min-w-[160px] flex-1 rounded-lg border bg-muted/30 p-3"
-                  >
+                  <div key={status} className="min-w-40 flex-1 rounded-lg border bg-muted/30 p-3">
                     <div className="text-[11px] font-bold uppercase tracking-wide">
                       {meta.label}
                     </div>
