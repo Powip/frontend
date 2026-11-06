@@ -33,7 +33,6 @@ import {
   History,
   ChevronDown,
   ChevronUp,
-  Phone,
   Activity,
   FileSpreadsheet,
   Wallet,
@@ -164,20 +163,15 @@ export function Sidebar({ className }: SidebarProps) {
         name: "Dashboard",
         icon: LayoutDashboard,
         children: [
+          // Ventas, Leads, Inventario, Operaciones, Call Center, Courier y Clientes (/metricas/*)
+          // ya están en el Panel de Control: fuera del menú (las rutas siguen existiendo).
           { name: "Principal", href: "/panel-control", icon: LayoutDashboard },
-          { name: "Ventas", href: "/metricas/ventas", icon: ShoppingCart },
-          ...(canViewCommercialLeads ? [{name: "Leads", href: "/metricas/leads", icon: Users}] : []),
-          { name: "Inventario", href: "/metricas/inventario", icon: Package },
-          { name: "Operaciones", href: "/metricas/operaciones", icon: Truck },
           { name: "Seguimiento", href: "/metricas/seguimientos", icon: MapPin },
           {
             name: "Atención Cliente",
             href: "/metricas/atencion-cliente",
             icon: Headphones,
           },
-          { name: "Call Center", href: "/metricas/call-center", icon: Phone },
-          { name: "Courier", href: "/metricas/couriers", icon: Truck },
-          { name: "Clientes", href: "/metricas/clientes", icon: Users },
         ],
       },
       {
