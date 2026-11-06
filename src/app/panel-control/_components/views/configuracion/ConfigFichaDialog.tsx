@@ -60,7 +60,7 @@ function Selector({
         id={id}
         value={valor}
         onChange={(event) => onChange(event.target.value)}
-        className="h-8 w-48 rounded-md border border-pc-border bg-pc-card px-2 text-xs text-pc-text outline-none focus-visible:ring-2 focus-visible:ring-pc-primary"
+        className="h-8 w-48 dark:[color-scheme:dark] rounded-md border border-pc-border bg-pc-card px-2 text-xs text-pc-text outline-none focus-visible:ring-2 focus-visible:ring-pc-primary"
       >
         <option value="">Sin cargar</option>
         {opciones.map((opcion) => (
@@ -161,7 +161,7 @@ function Formulario({ ficha, onGuardado }: { ficha: CanalFicha; onGuardado: () =
           size="sm"
           disabled={!cambios || invalido || guardando}
           onClick={() => guardar(cuerpo)}
-          className="bg-pc-primary text-white hover:bg-pc-primary-strong"
+          className="bg-pc-primary text-pc-on-fill hover:bg-pc-primary-strong"
         >
           {guardando ? "Guardando…" : `Guardar ficha ${cambios ? `(${cambios})` : ""}`}
         </Button>
@@ -179,7 +179,7 @@ export function ConfigFichaDialog({
 }) {
   return (
     <Dialog open={ficha !== null} onOpenChange={(abierto) => !abierto && onCerrar()}>
-      <DialogContent className="max-h-[90vh] overflow-auto sm:max-w-md">
+      <DialogContent className="max-h-[90vh] overflow-auto border-pc-border bg-pc-card text-pc-text sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Ficha de {ficha?.nombre}</DialogTitle>
           <DialogDescription>

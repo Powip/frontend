@@ -76,7 +76,7 @@ export function RovingTabList<T extends string>({
                 : cn(
                     "rounded-full border px-3.5 py-1.5 text-xs",
                     activo
-                      ? "border-pc-primary bg-pc-primary font-semibold text-white"
+                      ? "border-pc-primary bg-pc-primary font-semibold text-pc-on-fill"
                       : "border-pc-border bg-pc-card font-medium text-pc-text-muted hover:text-pc-primary",
                   ),
             )}

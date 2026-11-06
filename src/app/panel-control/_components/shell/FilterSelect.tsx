@@ -48,7 +48,7 @@ export function FilterSelect({
         disabled={disabled}
         title={hint}
         onChange={(event) => onChange(event.target.value)}
-        className="min-w-0 max-w-[170px] cursor-pointer truncate bg-transparent text-xs font-medium text-pc-text outline-none disabled:cursor-not-allowed"
+        className="min-w-0 max-w-[170px] dark:[color-scheme:dark] cursor-pointer truncate bg-transparent text-xs font-medium text-pc-text outline-none disabled:cursor-not-allowed"
       >
         {children}
       </select>

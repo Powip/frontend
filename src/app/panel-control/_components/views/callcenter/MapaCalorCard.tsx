@@ -123,7 +123,9 @@ function MapaCalor({ celdas }: { celdas: CeldaMapaCalor[] }) {
                         className={cn(
                           "grid h-6 w-7 place-items-center rounded tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-pc-text",
                           celda ? "cursor-pointer" : "cursor-default",
-                          intensidad > 0.45 ? "text-white" : "text-pc-text",
+                          // Cruce de contraste: el texto normal pierde contra el relleno a partir de ~0,78 en claro y ~0,6 en oscuro.
+                          intensidad > 0.78 ? "text-pc-on-fill" : "text-pc-text",
+                          intensidad > 0.6 ? "dark:text-pc-on-fill" : "dark:text-pc-text",
                         )}
                         style={{
                           background: celda
