@@ -82,7 +82,7 @@ function Acciones({
         size="sm"
         disabled={!cambios || errores > 0 || guardando}
         onClick={onGuardar}
-        className="bg-pc-primary text-white hover:bg-pc-primary-strong"
+        className="bg-pc-primary text-pc-on-fill hover:bg-pc-primary-strong"
       >
         <Save aria-hidden />
         {guardando ? "Guardando…" : `Guardar ${cambios ? `(${cambios})` : ""}`}

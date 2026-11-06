@@ -246,17 +246,19 @@ input[type="number"] {
   --pc-series-6: #008300;
   --pc-series-7: #4a3aa7;
   --pc-series-8: #e34948;
+  /* Texto sobre un relleno de color (botón primario, pestaña activa, íconos de estado). */
+  --pc-on-fill: #ffffff;
 }
 
 .dark {
   --pc-primary: #3fb3b4;
   --pc-primary-strong: #6fcfd0;
   --pc-primary-soft: #133033;
-  --pc-primary-line: #1f5558;
+  --pc-primary-line: #2a6b6e;
   --pc-bg: #0f1719;
   --pc-card: #162123;
-  --pc-border: #26363a;
-  --pc-border-soft: #1d2b2e;
+  --pc-border: #3a4f54;
+  --pc-border-soft: #2c3d41;
   --pc-surface-muted: #1a2729;
   --pc-text: #e6eef0;
   --pc-text-muted: #a3b1b8;
@@ -271,6 +273,8 @@ input[type="number"] {
   --pc-info-soft: #16243d;
   --pc-demo: #f0a95a;
   --pc-demo-soft: #3a2710;
+  /* En oscuro los rellenos son claros: el texto encima va oscuro (>= 6:1 en todos). */
+  --pc-on-fill: #0b1416;
 }
 
 @theme inline {
@@ -296,4 +300,5 @@ input[type="number"] {
   --color-pc-info-soft: var(--pc-info-soft);
   --color-pc-demo: var(--pc-demo);
   --color-pc-demo-soft: var(--pc-demo-soft);
+  --color-pc-on-fill: var(--pc-on-fill);
 }

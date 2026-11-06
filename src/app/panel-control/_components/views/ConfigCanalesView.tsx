@@ -168,7 +168,7 @@ export function ConfigCanalesView() {
                   <Button
                     type="button"
                     size="sm"
-                    className="bg-pc-primary text-white hover:bg-pc-primary-strong"
+                    className="bg-pc-primary text-pc-on-fill hover:bg-pc-primary-strong"
                     onClick={() =>
                       notifyPendingIntegration("Agregar canal", "canales-fichas-guardar")
                     }

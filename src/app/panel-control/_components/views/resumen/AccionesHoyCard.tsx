@@ -33,7 +33,7 @@ function FilaAccion({ accion }: { accion: AccionHoy }) {
       <span
         aria-hidden
         className={cn(
-          "grid size-6 shrink-0 place-items-center rounded-full text-xs font-extrabold text-white",
+          "grid size-6 shrink-0 place-items-center rounded-full text-xs font-extrabold text-pc-on-fill",
           estilo.icono,
         )}
       >
@@ -50,7 +50,7 @@ function FilaAccion({ accion }: { accion: AccionHoy }) {
         <Button
           type="button"
           size="sm"
-          className="bg-pc-primary text-white hover:bg-pc-primary-strong"
+          className="bg-pc-primary text-pc-on-fill hover:bg-pc-primary-strong"
           aria-label={`${texto.titulo}: ver ${formatNumber(accion.pedidos)} pedidos para ${ACCION_PEDIDO_LABEL[accion.accion].toLowerCase()}`}
           onClick={() => openDrilldown(accion.grupo)}
         >

@@ -34,7 +34,7 @@ export function PreviewAsesorPrompt() {
             onChange={(event) =>
               dispatch({ type: "set_preview_asesor", asesorId: event.target.value || null })
             }
-            className="h-9 rounded-lg border border-pc-border bg-pc-card px-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-pc-primary"
+            className="h-9 rounded-lg border border-pc-border bg-pc-card px-2.5 text-sm text-pc-text outline-none dark:[color-scheme:dark] focus-visible:ring-2 focus-visible:ring-pc-primary"
           >
             <option value="" disabled>
               Selecciona…

@@ -86,7 +86,7 @@ export function CompartirReporteDialog({ abierto, onAbiertoChange }: CompartirRe
 
   return (
     <Dialog open={abierto} onOpenChange={onAbiertoChange}>
-      <DialogContent className="max-h-[90vh] overflow-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-auto border-pc-border bg-pc-card text-pc-text sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             Compartir reporte
@@ -122,7 +122,7 @@ export function CompartirReporteDialog({ abierto, onAbiertoChange }: CompartirRe
                 <Button
                   type="button"
                   size="sm"
-                  className="bg-pc-primary text-white hover:bg-pc-primary-strong"
+                  className="bg-pc-primary text-pc-on-fill hover:bg-pc-primary-strong"
                   onClick={() => void copiar(data.texto)}
                 >
                   <Copy aria-hidden />

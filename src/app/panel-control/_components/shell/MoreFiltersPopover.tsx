@@ -44,7 +44,7 @@ function Field({ label, value, onChange, disabled, children, help }: FieldProps)
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 rounded-lg border border-pc-border bg-pc-card px-2.5 text-xs text-pc-text outline-none focus-visible:ring-2 focus-visible:ring-pc-primary disabled:bg-pc-surface-muted disabled:text-pc-text-soft"
+        className="h-9 rounded-lg dark:[color-scheme:dark] border border-pc-border bg-pc-card px-2.5 text-xs text-pc-text outline-none focus-visible:ring-2 focus-visible:ring-pc-primary disabled:bg-pc-surface-muted disabled:text-pc-text-soft"
       >
         {children}
       </select>
@@ -87,7 +87,7 @@ export function MoreFiltersPopover() {
           <SlidersHorizontal aria-hidden />
           <span>Más filtros</span>
           {activos > 0 && (
-            <span className="rounded-full bg-pc-primary px-1.5 text-[11px] text-white">
+            <span className="rounded-full bg-pc-primary px-1.5 text-[11px] text-pc-on-fill">
               {activos}
               <span className="sr-only"> activos</span>
             </span>

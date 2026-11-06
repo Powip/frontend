@@ -119,7 +119,7 @@ export function PanelTopBar() {
               <Button
                 type="button"
                 size="sm"
-                className="bg-pc-primary text-white hover:bg-pc-primary-strong"
+                className="bg-pc-primary text-pc-on-fill hover:bg-pc-primary-strong"
                 aria-label={
                   excel.descargando ? "Generando Excel completo" : "Descargar Excel completo"
                 }
