@@ -658,18 +658,22 @@ export interface VentaDiariaDemo {
   dia: string;
   facturacion: number;
   ventas: number;
+  unidades: number;
   diaAnterior: string | null;
   facturacionAnterior: number | null;
 }
 
-function porDia(items: PedidoConEstado[]): Map<string, { facturacion: number; ventas: number }> {
-  const mapa = new Map<string, { facturacion: number; ventas: number }>();
+function porDia(
+  items: PedidoConEstado[],
+): Map<string, { facturacion: number; ventas: number; unidades: number }> {
+  const mapa = new Map<string, { facturacion: number; ventas: number; unidades: number }>();
   for (const { pedido, estado } of items) {
     if (!estado.venta) continue;
-    const actual = mapa.get(pedido.dia) ?? { facturacion: 0, ventas: 0 };
+    const actual = mapa.get(pedido.dia) ?? { facturacion: 0, ventas: 0, unidades: 0 };
     mapa.set(pedido.dia, {
       facturacion: actual.facturacion + pedido.neto,
       ventas: actual.ventas + 1,
+      unidades: actual.unidades + pedido.unidades,
     });
   }
   return mapa;
@@ -683,13 +687,14 @@ export function ventasDiariasDemo(
   const actual = porDia(actuales);
   const anterior = anteriores ? porDia(anteriores) : null;
   return diasDelRango(query.desde, query.hasta).map((dia, index) => {
-    const valores = actual.get(dia) ?? { facturacion: 0, ventas: 0 };
+    const valores = actual.get(dia) ?? { facturacion: 0, ventas: 0, unidades: 0 };
     const diaAnterior = anterior ? addDays(query.anterior_desde, index) : null;
     const valido = diaAnterior !== null && diaAnterior <= query.anterior_hasta;
     return {
       dia,
       facturacion: valores.facturacion,
       ventas: valores.ventas,
+      unidades: valores.unidades,
       diaAnterior: valido ? diaAnterior : null,
       facturacionAnterior:
         valido && anterior ? (anterior.get(diaAnterior)?.facturacion ?? 0) : null,

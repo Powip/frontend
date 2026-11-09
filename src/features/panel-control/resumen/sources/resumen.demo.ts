@@ -36,14 +36,15 @@ const sumar = (items: PedidoConEstado[], valor: (item: PedidoConEstado) => numbe
 
 function facturacionPorDia(
   items: PedidoConEstado[],
-): Map<string, { facturacion: number; ventas: number }> {
-  const porDia = new Map<string, { facturacion: number; ventas: number }>();
+): Map<string, { facturacion: number; ventas: number; unidades: number }> {
+  const porDia = new Map<string, { facturacion: number; ventas: number; unidades: number }>();
   for (const { pedido, estado } of items) {
     if (!estado.venta) continue;
-    const actual = porDia.get(pedido.dia) ?? { facturacion: 0, ventas: 0 };
+    const actual = porDia.get(pedido.dia) ?? { facturacion: 0, ventas: 0, unidades: 0 };
     porDia.set(pedido.dia, {
       facturacion: actual.facturacion + pedido.neto,
       ventas: actual.ventas + 1,
+      unidades: actual.unidades + pedido.unidades,
     });
   }
   return porDia;
@@ -200,13 +201,14 @@ function construirResumen(
 
   const porDia = facturacionPorDia(items);
   const ventasDiarias: VentaDiaria[] = diasDelRango(desde, hasta).map((dia, index) => {
-    const actual = porDia.get(dia) ?? { facturacion: 0, ventas: 0 };
+    const actual = porDia.get(dia) ?? { facturacion: 0, ventas: 0, unidades: 0 };
     const diaAnterior = anteriorPorDia ? addDays(query.anterior_desde, index) : null;
     const valido = diaAnterior !== null && diaAnterior <= query.anterior_hasta;
     return {
       dia,
       facturacion: actual.facturacion,
       ventas: actual.ventas,
+      unidades: actual.unidades,
       diaAnterior: valido ? diaAnterior : null,
       facturacionAnterior:
         valido && anteriorPorDia ? (anteriorPorDia.get(diaAnterior)?.facturacion ?? 0) : null,

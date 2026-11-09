@@ -1,7 +1,7 @@
 "use client";
 
-import { BarChart } from "@/components/panel-control/charts/BarChart";
 import { HBarList } from "@/components/panel-control/charts/HBarList";
+import { VentasDiariasChart } from "@/components/panel-control/charts/VentasDiariasChart";
 import { DataTable, type DataTableColumn } from "@/components/panel-control/DataTable";
 import { KpiCard } from "@/components/panel-control/KpiCard";
 import type {
@@ -11,10 +11,9 @@ import type {
 import { grupos } from "@/features/panel-control/resumen/resumen-grupos";
 import { usePanelContract } from "@/features/panel-control/shared/hooks/use-panel-contract";
 import { usePanel } from "@/features/panel-control/shared/state/panel-context";
-import { axisSoles, seriesColor } from "@/features/panel-control/shared/utils/chart";
+import { seriesColor } from "@/features/panel-control/shared/utils/chart";
 import { calcularDelta } from "@/features/panel-control/shared/utils/delta";
 import {
-  formatDayKey,
   formatNumber,
   formatPercent,
   formatSoles,
@@ -318,7 +317,7 @@ export function ProductosSubtab() {
         <ContractBlock
           state={state}
           titulo="Ventas diarias"
-          subtitulo="Facturación neta por día de ingreso (hora Lima). Clic o Enter abre los pedidos del día."
+          subtitulo="Por día de ingreso (hora Lima). Elige la métrica sobre el gráfico; clic o Enter abre los pedidos del día."
           skeleton="grafico"
         >
           {(data) => {
@@ -326,19 +325,12 @@ export function ProductosSubtab() {
             const conComparacion =
               dias.some((dia) => dia.facturacionAnterior !== null) && dias.length > 1;
             return (
-              <BarChart
+              <VentasDiariasChart
+                dias={dias}
                 ariaLabel="Ventas diarias de productos"
-                formatAxis={axisSoles}
+                conComparacion={conComparacion}
                 height={240}
-                width={620}
-                data={dias.map((dia) => ({
-                  key: dia.dia,
-                  label: dias.length > 2 ? String(Number(dia.dia.slice(8))) : formatDayKey(dia.dia),
-                  value: dia.facturacion,
-                  comparison: conComparacion ? dia.facturacionAnterior : null,
-                  description: `${formatDayKey(dia.dia)}: ${formatSoles(dia.facturacion)} · ${formatNumber(dia.ventas)} ventas`,
-                  onSelect: () => openDrilldown(grupos.ventasDia(dia.dia)),
-                }))}
+                onSelectDia={(dia) => openDrilldown(grupos.ventasDia(dia))}
               />
             );
           }}
