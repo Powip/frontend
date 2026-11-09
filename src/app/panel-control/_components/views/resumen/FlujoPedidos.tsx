@@ -116,8 +116,8 @@ export function FlujoPedidos({ state }: { state: ResumenState }) {
                 <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-[1fr_24px_1.1fr_24px_1fr_24px_1fr_24px_1fr] lg:grid-rows-2">
                   <Nodo
                     tono="lead"
-                    titulo="Leads"
-                    estadoPowip="Pendiente"
+                    titulo="Leads (call center)"
+                    estadoPowip="Por confirmar"
                     valor={formatNumber(flujo.leads)}
                     grupo={grupos.leads()}
                     className="lg:col-start-1 lg:row-start-1"
@@ -136,7 +136,7 @@ export function FlujoPedidos({ state }: { state: ResumenState }) {
                   <Nodo
                     tono="directa"
                     titulo="Directas + POS"
-                    estadoPowip="entran en Llamado"
+                    estadoPowip="entran Confirmadas"
                     valor={formatNumber(flujo.directasYPos)}
                     grupo={grupos.directasPos()}
                     className="lg:col-start-1 lg:row-start-2"
@@ -147,7 +147,7 @@ export function FlujoPedidos({ state }: { state: ResumenState }) {
                   <Nodo
                     tono="principal"
                     titulo="Ventas"
-                    estadoPowip="Llamado o más"
+                    estadoPowip="Confirmado o más"
                     valor={formatNumber(flujo.ventas)}
                     grupo={grupos.ventas()}
                     className="lg:col-start-3 lg:row-span-2 lg:row-start-1"
@@ -162,7 +162,7 @@ export function FlujoPedidos({ state }: { state: ResumenState }) {
                   <Nodo
                     tono="principal"
                     titulo="En curso"
-                    estadoPowip="Llamado → En envío"
+                    estadoPowip="Confirmado → En envío"
                     valor={formatNumber(flujo.enCurso.pedidos)}
                     grupo={grupos.enCurso()}
                     className="lg:col-start-5 lg:row-span-2 lg:row-start-1"

@@ -56,7 +56,7 @@ export const grupos = {
   ventasDia: (dia: string) => grupo("ventas_dia", `Ventas del ${formatDayKey(dia)}`, { dia }),
   ventasCanal: (canalId: string | null, nombre: string | null) =>
     grupo("ventas_canal", `${nombre ?? "Sin canal"} · ventas`, { canal: canalId ?? SIN_CANAL }),
-  leads: () => grupo("leads", "Leads"),
+  leads: () => grupo("leads", "Leads (call center)"),
   leadsAbiertos: () => grupo("leads_abiertos", "Leads aún sin cerrar"),
   leadsAnulados: () => grupo("leads_anulados", "Leads anulados"),
   directasPos: () => grupo("directas_pos", "Ventas directas y POS"),

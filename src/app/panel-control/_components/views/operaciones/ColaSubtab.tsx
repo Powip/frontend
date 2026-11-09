@@ -260,7 +260,7 @@ export function ColaSubtab() {
               origin={origin}
               meta={metas ? evaluarMeta(k.sinGuiaMas24h, metas.ventas_sin_guia) : undefined}
               metaDemo={metaDemo}
-              sub="LLAMADO o PREPARADO hace más de 24 h · estado actual"
+              sub="Confirmado o Preparado hace más de 24 h · estado actual"
               onDrill={() => openDrilldown(grupos.sinGuia24h())}
               drillLabel="Asignar guía"
             />,
