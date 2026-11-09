@@ -1,16 +1,17 @@
 import axios from "axios";
+import type { AgenteConKpis, AgentePerformanceKpis } from "@/interfaces/IOrder";
 import axiosAuth from "@/lib/axiosAuth";
-import { AgenteConKpis, AgentePerformanceKpis } from "@/interfaces/IOrder";
 
 const BASE_VENTAS = process.env.NEXT_PUBLIC_API_VENTAS;
 const API_AUTH =
-  process.env.NEXT_PUBLIC_API_USERS?.replace("/api/v1", "") ||
-  "http://localhost:8080";
+  process.env.NEXT_PUBLIC_API_USERS?.replace("/api/v1", "") || "http://localhost:8080";
 
 export interface VendedorOption {
   id: string;
   nombre: string | null;
   email: string | null;
+  /** Solo si se pidió `marcarInactivosDias`. */
+  inactiva?: boolean;
 }
 
 export interface UpdateCcStatusRequest {
@@ -25,14 +26,31 @@ export async function getAgentesCC(
   signal?: AbortSignal,
 ): Promise<AgenteConKpis[]> {
   if (Array.isArray(storeId)) {
-    const results = await Promise.all([...new Set(storeId)].map((id) => getAgentesCC(id, companyId, signal)));
+    const results = await Promise.all(
+      [...new Set(storeId)].map((id) => getAgentesCC(id, companyId, signal)),
+    );
     const agents = new Map<string, AgenteConKpis>();
-    for (const result of results) for (const agent of result) {
-      const previous = agents.get(agent.id);
-      if (!previous) { agents.set(agent.id, { ...agent }); continue; }
-      for (const key of ["pedidosPendientes", "gestionadosHoy", "cierresHoy", "totalAsignados", "totalConfirmados", "productosVendidos"] as const) previous[key] += Number(agent[key] ?? 0);
-      previous.tasaCierre = previous.totalAsignados > 0 ? Math.round(100 * previous.totalConfirmados / previous.totalAsignados) : 0;
-    }
+    for (const result of results)
+      for (const agent of result) {
+        const previous = agents.get(agent.id);
+        if (!previous) {
+          agents.set(agent.id, { ...agent });
+          continue;
+        }
+        for (const key of [
+          "pedidosPendientes",
+          "gestionadosHoy",
+          "cierresHoy",
+          "totalAsignados",
+          "totalConfirmados",
+          "productosVendidos",
+        ] as const)
+          previous[key] += Number(agent[key] ?? 0);
+        previous.tasaCierre =
+          previous.totalAsignados > 0
+            ? Math.round((100 * previous.totalConfirmados) / previous.totalAsignados)
+            : 0;
+      }
     return [...agents.values()];
   }
   const params = new URLSearchParams({ storeId });
@@ -58,11 +76,9 @@ export async function toggleAgenteCcStatus(
   targetId: string,
   body: UpdateCcStatusRequest,
 ): Promise<void> {
-  await axios.patch(
-    `${API_AUTH}/api/v1/auth/users/${targetId}/cc-status`,
-    body,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
-  );
+  await axios.patch(`${API_AUTH}/api/v1/auth/users/${targetId}/cc-status`, body, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
 }
 
 export async function getAgentesPerformance(
@@ -73,28 +89,62 @@ export async function getAgentesPerformance(
   signal?: AbortSignal,
 ): Promise<AgentePerformanceKpis[]> {
   if (Array.isArray(scope)) {
-    const results = await Promise.all([...new Set(scope)].map((storeId) => getAgentesPerformance(storeId, companyId, startDate, endDate, signal)));
+    const results = await Promise.all(
+      [...new Set(scope)].map((storeId) =>
+        getAgentesPerformance(storeId, companyId, startDate, endDate, signal),
+      ),
+    );
     const agents = new Map<string, AgentePerformanceKpis>();
-    for (const result of results) for (const agent of result) {
-      const previous = agents.get(agent.id);
-      if (!previous) { agents.set(agent.id, { ...agent }); continue; }
-      for (const key of ["asignados", "contactados", "confirmados", "entregados", "ventasConfirmadas", "unidades", "facturacionBase", "upsellMonto"] as const) previous[key] += Number(agent[key] ?? 0);
-      previous.ticketPromedio = previous.confirmados > 0 ? previous.ventasConfirmadas / previous.confirmados : 0;
-      previous.pctContactados = previous.asignados > 0 ? 100 * previous.contactados / previous.asignados : 0;
-      previous.pctConfirmados = previous.asignados > 0 ? 100 * previous.confirmados / previous.asignados : 0;
-      previous.pctEntregados = previous.confirmados > 0 ? 100 * previous.entregados / previous.confirmados : 0;
-      previous.ticketFinal = previous.confirmados > 0 ? (previous.facturacionBase + previous.upsellMonto) / previous.confirmados : 0;
-    }
+    for (const result of results)
+      for (const agent of result) {
+        const previous = agents.get(agent.id);
+        if (!previous) {
+          agents.set(agent.id, { ...agent });
+          continue;
+        }
+        for (const key of [
+          "asignados",
+          "contactados",
+          "confirmados",
+          "entregados",
+          "ventasConfirmadas",
+          "unidades",
+          "facturacionBase",
+          "upsellMonto",
+        ] as const)
+          previous[key] += Number(agent[key] ?? 0);
+        previous.ticketPromedio =
+          previous.confirmados > 0 ? previous.ventasConfirmadas / previous.confirmados : 0;
+        previous.pctContactados =
+          previous.asignados > 0 ? (100 * previous.contactados) / previous.asignados : 0;
+        previous.pctConfirmados =
+          previous.asignados > 0 ? (100 * previous.confirmados) / previous.asignados : 0;
+        previous.pctEntregados =
+          previous.confirmados > 0 ? (100 * previous.entregados) / previous.confirmados : 0;
+        previous.ticketFinal =
+          previous.confirmados > 0
+            ? (previous.facturacionBase + previous.upsellMonto) / previous.confirmados
+            : 0;
+      }
     return [...agents.values()].sort((a, b) => b.ventasConfirmadas - a.ventasConfirmadas);
   }
   const params = new URLSearchParams({ storeId: scope, companyId, startDate, endDate });
-  const res = await axiosAuth.get<AgentePerformanceKpis[]>(`${BASE_VENTAS}/atencion-al-cliente/agentes/kpis?${params.toString()}`, { signal });
+  const res = await axiosAuth.get<AgentePerformanceKpis[]>(
+    `${BASE_VENTAS}/atencion-al-cliente/agentes/kpis?${params.toString()}`,
+    { signal },
+  );
   return res.data;
 }
 
-export async function getVendedores(companyId: string): Promise<VendedorOption[]> {
+export async function getVendedores(
+  companyId: string,
+  opciones?: { marcarInactivosDias?: number },
+): Promise<VendedorOption[]> {
+  const marcar = opciones?.marcarInactivosDias
+    ? `&marcarInactivosDias=${opciones.marcarInactivosDias}`
+    : "";
   const res = await axiosAuth.get<VendedorOption[]>(
-    `${BASE_VENTAS}/atencion-al-cliente/agentes/vendedores?companyId=${companyId}`,
+    `${BASE_VENTAS}/atencion-al-cliente/agentes/vendedores?companyId=${companyId}${marcar}`,
   );
   return res.data;
 }

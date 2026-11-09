@@ -5,6 +5,8 @@ export interface AsesorOpcion {
   nombre: string;
   email: string | null;
   rol?: RolAsesor | null;
+  /** Tuvo pedidos antes pero ninguno en los últimos 90 días: el desplegable la oculta. */
+  inactiva?: boolean;
 }
 
 export interface AsesoresQuery {
