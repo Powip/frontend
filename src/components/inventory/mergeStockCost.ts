@@ -23,20 +23,12 @@ export interface MergeCostResolution {
   error: string | null;
 }
 
-export const MAX_COUNTED_QUANTITY = 1_000_000;
+// FEAT-24 H0: máximo de 10.000 por variante y almacén (igual que ms-products y ms-logistics).
+export const MAX_COUNTED_QUANTITY = 10_000;
 export const MAX_PRICE_BASE = 99_999_999.99;
 
-export function formatMoney(value: number | null | undefined): string {
-  const numeric = Number(value);
-  if (value === null || value === undefined || Number.isNaN(numeric)) {
-    return "S/ 0.00";
-  }
-  return new Intl.NumberFormat("es-PE", {
-    style: "currency",
-    currency: "PEN",
-    minimumFractionDigits: 2,
-  }).format(numeric);
-}
+// FEAT-24 H0: el formateador vive en lib/money.ts y se reexporta para no cambiar los imports.
+export { formatMoney } from "@/lib/money";
 
 export function totalReserved(sides: MergeStockSides): number {
   return sides.winnerReserved + sides.loserReserved;
@@ -72,7 +64,7 @@ export function validateMergeStock(
         error:
           countedRaw.trim() === ""
             ? null
-            : "Ingresá un número entero entre 0 y 1.000.000",
+            : "Ingresa un número entero entre 0 y 10,000",
       };
     }
     finalQuantity = counted;
@@ -80,6 +72,13 @@ export function validateMergeStock(
     finalQuantity = sides.winnerQuantity;
   } else {
     finalQuantity = sides.winnerQuantity + sides.loserQuantity;
+  }
+
+  if (finalQuantity > MAX_COUNTED_QUANTITY) {
+    return {
+      finalQuantity,
+      error: "El resultado supera el máximo de 10,000 unidades por variante y almacén.",
+    };
   }
 
   const reserved = totalReserved(sides);
@@ -107,7 +106,7 @@ export function resolveMergeCost(
       error:
         customRaw.trim() === ""
           ? null
-          : "Ingresá un costo válido (número ≥ 0, hasta 2 decimales)",
+          : "Ingresa un costo válido (número ≥ 0, hasta 2 decimales)",
     };
   }
   return { value, error: null };

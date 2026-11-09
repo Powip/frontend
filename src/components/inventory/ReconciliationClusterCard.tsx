@@ -147,7 +147,7 @@ export function ReconciliationClusterCard({
       {allSameSource && (
         <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
           Todas están en {getReconciliationSourceLabel(sources[0])}: es un
-          duplicado dentro del mismo canal. Después de unificar, eliminá el
+          duplicado dentro del mismo canal. Después de unificar, elimina el
           duplicado también en {getReconciliationSourceLabel(sources[0])}.
         </div>
       )}

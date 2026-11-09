@@ -45,4 +45,13 @@ describe("Business stock positions", () => {
     get.mockResolvedValue({ data: { data: [], meta: { page: 1, totalPages: undefined } } });
     await expect(fetchBusinessInventoryItems(request)).rejects.toThrow("interpretar");
   });
+
+  it("FEAT-24 H0: solo pide inactivas cuando se marca el filtro", async () => {
+    get.mockResolvedValue(response([row("item-a")]));
+    await fetchBusinessInventoryItems({ ...request, inventories: [warehouse] });
+    expect(get.mock.calls[0][1]?.params).not.toHaveProperty("includeInactive");
+    get.mockClear();
+    await fetchBusinessInventoryItems({ ...request, inventories: [warehouse], includeInactive: true });
+    expect(get.mock.calls[0][1]?.params).toMatchObject({ includeInactive: true });
+  });
 });

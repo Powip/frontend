@@ -2,13 +2,12 @@ import { useEffect, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import type { BusinessInventory } from "@/services/inventoryCatalogService";
-import { format, parseISO } from "date-fns";
-import { es } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pagination } from "@/components/ui/pagination";
 import { fetchScopedInventoryMovements, filterInventoryMovements } from "@/services/inventoryMovementService";
+import { resolveOrderNumbers } from "@/services/orderNumbersService";
+import { describeMovement, formatPeruDateTime } from "./movementLabels";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -30,41 +29,6 @@ import { Label } from "@/components/ui/label";
 import { Search, X, Calendar as CalendarIcon, Filter } from "lucide-react";
 
 const ITEMS_PER_PAGE = 15;
-
-const TYPE_MAP: Record<string, { label: string; color: string }> = {
-  IN: { label: "Ingreso", color: "green" },
-  OUT: { label: "Egreso", color: "red" },
-  RESERVED: { label: "Reserva", color: "blue" },
-  RELEASED: { label: "Liberado", color: "orange" },
-  COMMITTED: { label: "Confirmado", color: "purple" },
-  ADJUSTMENT: { label: "Ajuste", color: "yellow" },
-  TRANSFER: { label: "Transferencia", color: "cyan" },
-};
-
-const REASON_MAP: Record<string, string> = {
-  MANUAL_ADJUSTMENT: "Ajuste manual de stock",
-  MANUAL_STOCK_ADD: "Stock agregado manualmente",
-  MANUAL_STOCK_REMOVE: "Stock quitado manualmente",
-  ORDER_RESERVE: "Reserva por pedido",
-  ORDER_CANCEL: "Cancelación de pedido",
-  SALE: "Venta de productos",
-  STOCK_ADJUSTMENT: "Ajuste de inventario",
-  STOCK_ADDITION: "Ingreso de stock manualmente",
-  STOCK_REDUCTION: "Egreso de stock manualmente",
-  CREATE_ITEM: "Creación de producto",
-  EXTERNAL_SYNC_CREATE: "Creación por sincronización externa",
-  EXTERNAL_SYNC_ADJUST: "Ajuste por sincronización externa",
-};
-
-const REFERENCE_MAP: Record<string, string> = {
-  MANUAL: "Manual",
-  MANUAL_ADJUSTMENT: "Ajuste Manual",
-  SYSTEM: "Sistema",
-  STOCK_ADDITION: "Ingreso",
-  STOCK_REDUCTION: "Egreso",
-  CREATE_ITEM: "Sistema",
-  EXTERNAL_SYNC: "Sincronización",
-};
 
 interface MovementHistoryTableProps {
   companyId: string | undefined;
@@ -112,27 +76,17 @@ export function MovementHistoryTable({ companyId, scope = "business", inventorie
     setCurrentPage(1);
   };
 
-  const getLocalizedType = (type: string) => TYPE_MAP[type]?.label || type;
-  const getLocalizedReason = (reason: string | null) => {
-    if (!reason) return "-";
-    if (REASON_MAP[reason]) return REASON_MAP[reason];
-    
-    if (reason.startsWith("UNIT_TRANSFER_OUT - ")) return `Transferencia de IMEI/series · Salida (${reason.slice("UNIT_TRANSFER_OUT - ".length)})`;
-    if (reason.startsWith("UNIT_TRANSFER_IN - ")) return `Transferencia de IMEI/series · Ingreso (${reason.slice("UNIT_TRANSFER_IN - ".length)})`;
-    if (reason.startsWith("SHRINKAGE - ")) return `Merma (${reason.slice("SHRINKAGE - ".length)})`;
-
-    // Handle dynamic reasons like PURCHASE - XXX
-    if (reason.startsWith("PURCHASE - ")) return `Compra (${reason.replace("PURCHASE - ", "")})`;
-    if (reason.startsWith("PURCHASE_EDIT_REVERT - ")) return `Reversión edición compra (${reason.replace("PURCHASE_EDIT_REVERT - ", "")})`;
-    if (reason.startsWith("PURCHASE_EDIT - ")) return `Edición compra (${reason.replace("PURCHASE_EDIT - ", "")})`;
-    if (reason.startsWith("PURCHASE_CANCELLED - ")) return `Compra cancelada (${reason.replace("PURCHASE_CANCELLED - ", "")})`;
-    
-    return reason;
-  };
-  const getLocalizedReference = (ref: string | null) => {
-    if (!ref) return "-";
-    return REFERENCE_MAP[ref] || ref;
-  };
+  const orderIds = useMemo(
+    () => [...new Set(movements.map((movement) => describeMovement(movement).orderId).filter((id): id is string => !!id))].sort(),
+    [movements],
+  );
+  const orderNumbers = useQuery({
+    queryKey: ["inventory-movement-order-numbers", companyId, orderIds],
+    queryFn: () => resolveOrderNumbers(orderIds),
+    enabled: orderIds.length > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+  const signed = (value: number | null) => (value === null ? "—" : `${value > 0 ? "+" : ""}${value}`);
 
   return (
     <div className="flex flex-col space-y-4">
@@ -218,13 +172,13 @@ export function MovementHistoryTable({ companyId, scope = "business", inventorie
         <Table>
           <TableHeader>
             <TableRow className="bg-muted/50">
-              <TableHead className="w-[160px]">Fecha y Hora</TableHead>
+              <TableHead className="w-[160px]">Fecha y hora</TableHead>
               <TableHead>Producto / SKU</TableHead>
               <TableHead>Operación</TableHead>
-              <TableHead className="text-right">Cantidad</TableHead>
-              <TableHead>Usuario</TableHead>
+              <TableHead className="text-right">Físico</TableHead>
+              <TableHead className="text-right">Reservado</TableHead>
               <TableHead>Referencia</TableHead>
-              <TableHead>Motivo</TableHead>
+              <TableHead>Usuario</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -248,14 +202,12 @@ export function MovementHistoryTable({ companyId, scope = "business", inventorie
               </TableRow>
             ) : (
               movements.map((movement) => {
-                const typeInfo = TYPE_MAP[movement.type] || { label: movement.type, color: "gray" };
-                const isPositive = movement.type === "IN" || movement.type === "RELEASED";
+                const view = describeMovement(movement);
+                const reference = view.documentNumber ?? (view.orderId ? orderNumbers.data?.[view.orderId] ?? "Pedido" : "—");
 
                 return (
                   <TableRow key={movement.id} className="hover:bg-muted/30 transition-colors">
-                    <TableCell className="text-xs font-medium">
-                      {format(parseISO(movement.created_at), "dd/MM/yy, HH:mm", { locale: es })}
-                    </TableCell>
+                    <TableCell className="text-xs font-medium">{formatPeruDateTime(movement.created_at)}</TableCell>
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="font-semibold text-sm line-clamp-1 max-w-[200px]">
@@ -267,40 +219,27 @@ export function MovementHistoryTable({ companyId, scope = "business", inventorie
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "font-bold text-[10px] px-1.5 h-5 uppercase",
-                          typeInfo.color === "green" && "border-green-200 bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400",
-                          typeInfo.color === "red" && "border-red-200 bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400",
-                          typeInfo.color === "blue" && "border-blue-200 bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400",
-                          typeInfo.color === "yellow" && "border-yellow-200 bg-yellow-50 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400"
-                        )}
-                      >
-                        {typeInfo.label}
-                      </Badge>
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium">{view.label}</span>
+                        {view.detail ? <span className="text-xs text-muted-foreground">{view.detail}</span> : null}
+                      </div>
                     </TableCell>
-                    <TableCell className={cn(
-                      "text-right font-bold text-sm",
-                      isPositive ? "text-green-600" : "text-red-600"
-                    )}>
-                      {isPositive ? "+" : "-"}{movement.quantity}
+                    <TableCell className={cn("text-right font-bold text-sm", view.physicalDelta !== null && (view.physicalDelta >= 0 ? "text-green-600" : "text-red-600"))}>
+                      {signed(view.physicalDelta)}
                     </TableCell>
+                    <TableCell className="text-right text-sm text-blue-700 dark:text-blue-400">{signed(view.reservedDelta)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground truncate max-w-[120px]">{reference}</TableCell>
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="text-xs font-medium truncate max-w-[120px]">
-                          {movement.userName || "Sistema"}
+                          {movement.userName || movement.userEmail || "Sistema"}
                         </span>
-                        <span className="text-[9px] text-muted-foreground truncate max-w-[120px]">
-                          {movement.userEmail || ""}
-                        </span>
+                        {movement.userName && movement.userEmail ? (
+                          <span className="text-[9px] text-muted-foreground truncate max-w-[120px]">
+                            {movement.userEmail}
+                          </span>
+                        ) : null}
                       </div>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground truncate max-w-[100px]">
-                      {getLocalizedReference(movement.referenceId)}
-                    </TableCell>
-                    <TableCell className="text-xs font-medium text-muted-foreground italic">
-                      {getLocalizedReason(movement.reason)}
                     </TableCell>
                   </TableRow>
                 );

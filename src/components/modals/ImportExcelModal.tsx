@@ -33,7 +33,7 @@ export default function ImportExcelModal({
         <DialogHeader>
           <DialogTitle>Importar Productos desde Excel</DialogTitle>
           <DialogDescription>
-            Utilizá el asistente para importar productos de forma masiva.
+            Usa el asistente para importar productos de forma masiva.
           </DialogDescription>
         </DialogHeader>
         <ExcelImportWizard onBack={handleBack} inventoryId={inventoryId || undefined} />

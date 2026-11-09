@@ -5,6 +5,7 @@ import axios from "axios";
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
 import { useBusinessInventories } from "@/hooks/useBusinessInventories";
+import { MAX_ITEM_UNITS, MAX_ITEM_UNITS_MESSAGE, largeQuantityConfirmText, needsQuantityConfirmation } from "@/lib/stockLimits";
 import ExcelJS from "exceljs";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -218,6 +219,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
 
   /* ─── Step 3 state ─── */
   const [isSaving, setIsSaving] = useState(false);
+  const [confirmLargeQuantity, setConfirmLargeQuantity] = useState(false);
 
   /* ─── Computed ─── */
   const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
@@ -332,7 +334,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
         name: "Zapatillas Urbanas",
         description: "Zapatillas blancas de cuero",
         companySku: "",
-        attributes: "Talle:42",
+        attributes: "Talla:42",
         priceBase: 3500,
         priceVta: 8900,
         quantity: 15,
@@ -534,6 +536,8 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
         if (raw.priceBase < 0) error = "Precio Compra inválido";
         if (raw.priceVta < 0) error = "Precio Venta inválido";
         if (raw.quantity < 0) error = "Cantidad inválida";
+        else if (!Number.isInteger(raw.quantity)) error = "La cantidad debe ser un número entero.";
+        else if (raw.quantity > MAX_ITEM_UNITS) error = MAX_ITEM_UNITS_MESSAGE;
         if (raw.min_stock < 0) error = "Stock mínimo inválido";
 
         return {
@@ -545,6 +549,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
       });
 
       setParsedRows(rows);
+      setConfirmLargeQuantity(false);
       if (rows.length === 0) {
         toast.warning("No se encontraron filas de productos válidas");
       } else {
@@ -563,21 +568,28 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
   /* ════════════════════════
      STEP 3: Save to backend
      ════════════════════════ */
-  const handleSave = async () => {
+  const largestQuantity = Math.max(0, ...validRows.map((r) => r.quantity));
+
+  const handleSave = async (confirmed = false) => {
     if (validRows.length === 0) {
       toast.error("No hay productos válidos para guardar");
       return;
     }
     if (!inventories.some((inv) => inv.id === selectedInventoryId)) {
-      toast.error("Seleccioná un almacén antes de guardar");
+      toast.error("Selecciona un almacén antes de guardar");
       return;
     }
 
     const tenantId = auth?.company?.id;
     if (!tenantId) {
-      toast.error("Sesión inválida — recargá la página");
+      toast.error("Sesión inválida — recarga la página");
       return;
     }
+    if (needsQuantityConfirmation(largestQuantity) && !confirmed) {
+      setConfirmLargeQuantity(true);
+      return;
+    }
+    setConfirmLargeQuantity(false);
 
     const payload = {
       tenantId,
@@ -603,7 +615,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
 
       if (res.data.created === 0 && res.data.errors > 0) {
         toast.error(
-          `No se crearon productos. ${res.data.errors} errores — revisá el detalle`,
+          `No se crearon productos. ${res.data.errors} errores — revisa el detalle`,
         );
       } else if (res.data.created > 0) {
         toast.success(
@@ -613,7 +625,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
         onBack();
       } else {
         toast.warning(
-          "La respuesta no indica productos creados. Verificá el resultado de la importación.",
+          "La respuesta no indica productos creados. Verifica el resultado de la importación.",
         );
       }
     } catch (err) {
@@ -686,7 +698,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                   Paso 1 — Obtener Plantilla
                 </CardTitle>
                 <CardDescription>
-                  Descargá el archivo Excel para completar con tus productos.
+                  Descarga el archivo Excel para completar con tus productos.
                 </CardDescription>
               </div>
               <Badge
@@ -709,7 +721,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                     Plantilla Base (Recomendado para nuevos clientes)
                   </h4>
                   <p className="text-xs text-muted-foreground">
-                    Descargá una estructura limpia con ejemplos de cómo llenar
+                    Descarga una estructura limpia con ejemplos de cómo llenar
                     las categorías y subcategorías.
                   </p>
                 </div>
@@ -747,7 +759,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                     onValueChange={setSelectedCategoryId}
                   >
                     <SelectTrigger className="h-10 bg-muted/50 border-none shadow-none ring-0 focus:ring-1">
-                      <SelectValue placeholder="Elegí categoría..." />
+                      <SelectValue placeholder="Elige categoría..." />
                     </SelectTrigger>
                     <SelectContent>
                       {categories.map((c) => (
@@ -769,7 +781,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                     disabled={!selectedCategoryId}
                   >
                     <SelectTrigger className="h-10 bg-muted/50 border-none shadow-none ring-0 focus:ring-1">
-                      <SelectValue placeholder="Elegí subcategoría..." />
+                      <SelectValue placeholder="Elige subcategoría..." />
                     </SelectTrigger>
                     <SelectContent>
                       {subcategories.map((s) => (
@@ -862,7 +874,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
               Paso 2 — Subir Archivo
             </CardTitle>
             <CardDescription>
-              Subí el archivo Excel con tus productos. El sistema leerá
+              Sube el archivo Excel con tus productos. El sistema leerá
               automáticamente la categoría y subcategoría de la plantilla.
             </CardDescription>
           </CardHeader>
@@ -889,7 +901,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                 <>
                   <UploadCloud className="mb-3 h-10 w-10 text-muted-foreground group-hover:text-primary transition" />
                   <span className="text-sm font-medium">
-                    Hacé clic para seleccionar o arrastrá tu archivo aquí
+                    Haz clic para seleccionar o arrastra tu archivo aquí
                   </span>
                   <span className="text-xs text-muted-foreground mt-1">
                     {file ? file.name : "Solo archivos .xlsx"}
@@ -927,8 +939,8 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
               Paso 3 — Vista Previa y Edición
             </CardTitle>
             <CardDescription>
-              Revisá y corregí las categorías de los productos si es necesario.
-              Aseguráte de que todos tengan una subcategoría asignada.
+              Revisa y corrige las categorías de los productos si es necesario.
+              Asegúrate de que todos tengan una subcategoría asignada.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -963,7 +975,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                     disabled={Boolean(inventoryId) || warehouseQuery.isPending || warehouseQuery.isError}
                   >
                     <SelectTrigger className="bg-white dark:bg-background">
-                      <SelectValue placeholder="Seleccioná el almacén..." />
+                      <SelectValue placeholder="Selecciona el almacén..." />
                     </SelectTrigger>
                     <SelectContent>
                       {inventories.map((inv: any) => (
@@ -977,7 +989,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                 {!selectedInventoryId && (
                   <p className="text-xs text-amber-600 flex items-center gap-1 mt-6">
                     <AlertCircle className="h-3.5 w-3.5" />
-                    Seleccioná un almacén
+                    Selecciona un almacén
                   </p>
                 )}
               </div>
@@ -1038,7 +1050,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                                   categoryName: catName,
                                   subcategoryId: "",
                                   subcategoryName: "",
-                                  error: "Seleccioná subcategoría",
+                                  error: "Selecciona subcategoría",
                                 });
                                 fetchSubcategoriesForCategory(newCatId);
                               }}
@@ -1133,12 +1145,18 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
               <div className="flex items-center gap-3">
                 {errorRows.length > 0 && (
                   <p className="text-xs text-red-500 font-medium">
-                    Corregí los errores para continuar
+                    Corrige los errores para continuar
                   </p>
+                )}
+                {confirmLargeQuantity && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <p>{largeQuantityConfirmText(largestQuantity)}</p>
+                    <Button size="sm" variant="outline" onClick={() => void handleSave(true)} disabled={isSaving}>Sí, confirmar</Button>
+                  </div>
                 )}
                 <Button
                   size="lg"
-                  onClick={handleSave}
+                  onClick={() => void handleSave()}
                   disabled={
                     invalidCount > 0 || isSaving || !selectedInventoryId
                   }

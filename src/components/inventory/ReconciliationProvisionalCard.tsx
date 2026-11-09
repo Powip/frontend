@@ -115,7 +115,7 @@ export function ReconciliationProvisionalCard({
         "No se pudieron buscar variantes",
       )
     : !isSearchable
-      ? "Escribí al menos 2 caracteres para buscar"
+      ? "Escribe al menos 2 caracteres para buscar"
       : isSearching
         ? "Buscando..."
         : "No se encontraron variantes";

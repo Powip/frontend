@@ -124,10 +124,10 @@ export const getTrackedPurchase = async <T>(id: string, signal?: AbortSignal): P
   (await axiosAuth.get<T>(`${API}/purchases/${id}`, { signal })).data;
 export const createTrackedPurchase = async <T>(payload: T) =>
   (await axiosAuth.post(`${API}/purchases`, payload)).data;
-export const updateTrackedPurchase = async <T>(id: string, payload: T) =>
-  (await axiosAuth.put(`${API}/purchases/${id}`, payload)).data;
-export const deleteTrackedPurchase = async (id: string) =>
-  (await axiosAuth.delete(`${API}/purchases/${id}`)).data;
+/** FEAT-24 H0: anular (con o sin unidades) va por la fachada autenticada, con motivo obligatorio. */
+export const cancelPurchase = async (id: string, reason: string): Promise<void> => {
+  await axiosAuth.delete(`${API}/purchases/${id}`, { params: { reason } });
+};
 
 export interface PurchaseLineInput {
   variantId: string;

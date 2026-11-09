@@ -561,7 +561,7 @@ describe('ReconciliationMergeDialog', () => {
 
     it('si rechaza con un mensaje puntual del backend, el toast muestra ese mensaje (no el fallback)', async () => {
       const conflictMessage =
-        'No se pueden fusionar variantes con atributos distintos (color/talle/etc.). Revisá el cluster.';
+        'No se pueden fusionar variantes con atributos distintos (color, talla, etc.). Revisa el grupo.';
       mockResolveMerge.mockRejectedValueOnce({
         response: { data: { message: conflictMessage } },
       });

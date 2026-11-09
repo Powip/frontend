@@ -29,32 +29,3 @@ export async function createProductVariant(payload: IProductVariantRequest) {
   }
 }
 
-//Servicio para Eliminar Variantes por ID de Producto
-export async function deleteProductVariants(productId: string) {
-  const res = await fetch(`${API_URL}/product-variants/${productId}`, {
-    method: "DELETE",
-  });
-
-  if (!res.ok) {
-    // Intentamos obtener texto o JSON según lo que haya
-    const contentType = res.headers.get("content-type") || "";
-    let errMsg = `Error al eliminar variantes del producto (${res.status})`;
-
-    try {
-      if (contentType.includes("application/json")) {
-        const errJson = await res.json();
-        errMsg = errJson.message || errMsg;
-      } else {
-        const errText = await res.text();
-        if (errText) errMsg = errText;
-      }
-    } catch {
-      // fallback
-    }
-
-    console.error("Error deleteProductVariants:", res.status, errMsg);
-    throw new Error(errMsg);
-  }
-
-  return;
-}
