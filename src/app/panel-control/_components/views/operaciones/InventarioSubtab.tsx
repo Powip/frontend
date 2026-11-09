@@ -148,7 +148,7 @@ export function InventarioSubtab() {
               label="Ventas esperando stock"
               value={formatNumber(k.ventasEsperandoStock)}
               origin={origin}
-              sub="LLAMADO o PREPARADO con un producto en stock 0 · estado actual"
+              sub="Confirmado o Preparado con un producto en stock 0 · estado actual"
               onDrill={() =>
                 openDrilldown(
                   grupos.accion(
@@ -166,7 +166,7 @@ export function InventarioSubtab() {
       <ContractBlock
         state={state}
         titulo="Stock y cobertura"
-        subtitulo="Un solo inventario para todos los canales: respeta el filtro de tienda, no los de canal o zona. Tienda = donde está el stock (la tienda física); puede ser distinta de la tienda de venta que filtran Cola y Couriers. Disponible = stock − reservado (LLAMADO, PREPARADO y CON_GUIA). Cobertura = disponible ÷ venta diaria de los últimos 30 días."
+        subtitulo="Un solo inventario para todos los canales: respeta el filtro de tienda, no los de canal o zona. Tienda = donde está el stock (la tienda física); puede ser distinta de la tienda de venta que filtran Cola y Couriers. Disponible = stock − reservado (Confirmado, Preparado y Con guía). Cobertura = disponible ÷ venta diaria de los últimos 30 días."
       >
         {(data, origin) => {
           const variasTiendas =

@@ -51,7 +51,7 @@ export const ETAPAS_OPERATIVAS = [
 export type EtapaOperativa = (typeof ETAPAS_OPERATIVAS)[number];
 
 export const ETAPA_OPERATIVA_LABEL: Record<EtapaOperativa, string> = {
-  llamado_preparado: "Llamado → Preparado",
+  llamado_preparado: "Confirmado → Preparado",
   preparado_con_guia: "Preparado → Con guía",
   con_guia_en_envio: "Con guía → En envío",
   en_envio_entregado: "En envío → Entregado",

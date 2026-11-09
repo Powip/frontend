@@ -4,6 +4,7 @@ import { SlidersHorizontal } from "lucide-react";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { asesoresParaDesplegable } from "@/features/panel-control/asesores/utils/asesores-desplegable";
 import {
   COBRO_LABEL,
   ENTRADA_LABEL,
@@ -145,13 +146,14 @@ export function MoreFiltersPopover() {
                   {options.asesorNombre(view.asesorFijo) ?? "Yo"}
                 </option>
               )}
-              {(options.asesores.data ?? [])
-                .filter((asesor) => asesor.id !== view.asesorFijo)
-                .map((asesor) => (
-                  <option key={asesor.id} value={asesor.id}>
-                    {asesor.nombre}
-                  </option>
-                ))}
+              {asesoresParaDesplegable(options.asesores.data ?? [], {
+                seleccionadaId: state.filters.asesorId,
+                fijaId: view.asesorFijo,
+              }).map((asesor) => (
+                <option key={asesor.id} value={asesor.id}>
+                  {asesor.nombre}
+                </option>
+              ))}
             </Field>
           </div>
         </div>

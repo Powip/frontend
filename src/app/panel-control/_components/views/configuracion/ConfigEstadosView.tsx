@@ -26,7 +26,7 @@ const REGLAS = [
   "Venta neta: precio − descuentos − cupones. Nunca margen sobre precio de lista.",
   "Devoluciones restan en el canal de la venta. En prepago, un rechazo es reembolso.",
   "Adelantos: son caja, no ingreso, hasta que el pedido se entrega.",
-  "Stock único para todos los canales: se reserva en LLAMADO y se descuenta al pasar a EN_ENVIO (POS descuenta al cobrar).",
+  "Stock único para todos los canales: se reserva al confirmar (Confirmado) y se descuenta al pasar a En envío (POS descuenta al cobrar).",
   "Pauta general: se reparte entre canales que la reciben según su facturación del periodo y se marca como estimada.",
   "Semáforos: ✓ solo si se cumple la meta configurada. Nunca verde por defecto.",
   "Productos sin costo: margen «—», nunca 0 % ni 100 %.",
@@ -99,8 +99,8 @@ export function ConfigEstadosView() {
               </div>
               <p className="text-xs text-pc-text-muted">
                 Σ pedidos por estado = {formatNumber(total)} pedidos ingresados (cuadre 7). Es venta
-                desde LLAMADO; PENDIENTE y ANULADO no suman a la facturación. RECHAZADO sí fue
-                venta.
+                desde Confirmado; Por confirmar y Anulado no suman a la facturación. Rechazado sí
+                fue venta.
               </p>
             </div>
           );

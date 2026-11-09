@@ -3,16 +3,16 @@ import type { EstadoPanel, EstadoPanelDefinicion } from "../models/estado-pedido
 export const ESTADOS_PANEL_DEFINICION: Record<EstadoPanel, EstadoPanelDefinicion> = {
   PENDIENTE: {
     estado: "PENDIENTE",
-    etiqueta: "Pendiente",
+    etiqueta: "Por confirmar",
     descripcion: "Lead ingresado, aún sin confirmar por llamada",
     tono: "warn",
     esVenta: false,
   },
   LLAMADO: {
     estado: "LLAMADO",
-    etiqueta: "Llamado",
+    etiqueta: "Confirmado",
     descripcion:
-      "Confirmado por la confirmadora (lead) o registrado por la vendedora (venta directa). Desde aquí es venta",
+      "Confirmado por la confirmadora (lead) o registrado por la vendedora (venta directa), aún sin preparar. En /ventas figura como «Pendiente». Desde aquí es venta",
     tono: "info",
     esVenta: true,
   },

@@ -35,17 +35,17 @@ export const GLOSARIO: Record<GlosarioId, GlosarioEntrada> = {
   lead: {
     termino: "Lead",
     definicion:
-      "Pedido de un canal tipo lead (Shopify COD, TikTok Live) en estado PENDIENTE: todavía no es venta.",
+      "Pedido que entra a la bandeja de call center (Shopify COD) y está Por confirmar: todavía no es venta. Las ventas directas (TikTok, Falabella, WEB propia, WhatsApp…) no son leads.",
   },
   venta: {
     termino: "Venta / Facturación",
     definicion:
-      "Pedido que llegó a LLAMADO o más (lead confirmado, venta directa registrada o venta POS). Facturación = suma del precio neto (precio − descuentos − cupones).",
+      "Pedido que llegó a Confirmado o más (lead confirmado, venta directa registrada o venta POS). Facturación = suma del precio neto (precio − descuentos − cupones).",
   },
   confirmacion: {
     termino: "Confirmación",
     definicion:
-      "Llamados ÷ leads cerrados (llamados + anulados). Los que siguen en PENDIENTE no cuentan.",
+      "Confirmados ÷ leads cerrados (confirmados + anulados). Los que siguen Por confirmar no cuentan.",
   },
   contactados: {
     termino: "Contactados",
@@ -99,7 +99,8 @@ export const GLOSARIO: Record<GlosarioId, GlosarioEntrada> = {
   },
   me_deben: {
     termino: "Me deben",
-    definicion: "Ventas aún no cobradas: en curso (Llamado → En envío) + entregadas por liquidar.",
+    definicion:
+      "Ventas aún no cobradas: en curso (Confirmado → En envío) + entregadas por liquidar.",
   },
   periodo_abierto: {
     termino: "Periodo abierto",
@@ -134,11 +135,11 @@ export const GLOSARIO: Record<GlosarioId, GlosarioEntrada> = {
   cobertura_stock: {
     termino: "Cobertura de stock",
     definicion:
-      "(Stock − reservado) ÷ venta diaria de los últimos 30 días. Se reserva en LLAMADO y se descuenta al pasar a EN_ENVIO. Stock negativo es un error de datos.",
+      "(Stock − reservado) ÷ venta diaria de los últimos 30 días. Se reserva al confirmar (Confirmado) y se descuenta al pasar a En envío. Stock negativo es un error de datos.",
   },
   cola_operativa: {
     termino: "Cola activa",
     definicion:
-      "Ventas con courier en LLAMADO, PREPARADO, CON_GUIA o EN_ENVIO ahora mismo. No depende del periodo; respeta tienda, canal y demás filtros.",
+      "Ventas con courier en Confirmado, Preparado, Con guía o En envío ahora mismo. No depende del periodo; respeta tienda, canal y demás filtros.",
   },
 };

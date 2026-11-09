@@ -68,6 +68,8 @@ export interface VentaDiaria {
   dia: string;
   facturacion: number;
   ventas: number;
+  /** Unidades (suma de cantidades) de las ventas del día. */
+  unidades: number;
   diaAnterior: string | null;
   facturacionAnterior: number | null;
 }
