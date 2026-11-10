@@ -422,7 +422,11 @@ export function Sidebar({ className }: SidebarProps) {
       if (item.children) {
         return {
           ...item,
-          children: item.children.filter((child: { name: string }) => {
+          children: item.children.filter((child: { name: string; href?: string }) => {
+            // Finanzas > Resumen: se oculta con el mismo permiso que AuthGuard exige para
+            // la ruta (ROUTE_PERMISSIONS). Se filtra por href y no por nombre porque
+            // "Resumen" también existe en Administración. "Facturación" no se toca.
+            if (child.href === "/finanzas") return hasRouteAccess(child.href, auth?.user);
             // También filtramos sub-ítems que puedan ser de superadmin si existieran
             if (
               child.name.toLowerCase().includes("superadmin") ||

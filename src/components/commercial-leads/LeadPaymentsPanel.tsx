@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
+import { hasRouteAccess } from "@/config/permissions.config";
 import { Button } from "@/components/ui/button";
 import type { LeadDetail } from "@/types/leads";
 import type {
@@ -274,7 +275,8 @@ export default function LeadPaymentsPanel({
           onChanged={changed}
         />
       )}
-      {payments.some((p) => p.status === "PENDING") ? (
+      {/* /finanzas es solo para Administrador: sin ese rol el enlace llevaría a "Acceso Denegado". */}
+      {payments.some((p) => p.status === "PENDING") && hasRouteAccess("/finanzas", auth?.user) ? (
         <Link
           href={`/finanzas?tab=anticiposLeads&leadId=${encodeURIComponent(lead.id)}`}
           className="underline text-sm"

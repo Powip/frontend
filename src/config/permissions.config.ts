@@ -43,7 +43,11 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/operaciones": [],
   "/centro-envios": [],
   "/seguimiento": [],
-  "/finanzas": [],
+  // Finanzas: solo el rol Administrador (decisión de Octa: ni Ventas, ni Operaciones, ni
+  // CALLER). Es por rol y no por VIEW_FINANCES porque CALLER también tiene ese permiso.
+  // AuthGuard lo aplica a /finanzas y a todas sus subrutas, y el sidebar oculta el enlace
+  // con este mismo mapa (hasRouteAccess).
+  "/finanzas": ["__ADMIN_ROLE__"],
   "/clientes": [],
   "/proveedores": [],
   "/usuarios": [],
