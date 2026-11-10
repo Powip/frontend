@@ -102,7 +102,7 @@ describe("Warehouse product actions with business inventory queries", () => {
     jest.clearAllMocks();
     fetchItems.mockReset();
     jest.mocked(useAuth).mockReturnValue({
-      auth: { company: { id: "company-a", stores: [] }, user: { id: "user-a" }, accessToken: "test-token" },
+      auth: { company: { id: "company-a", stores: [] }, user: { id: "user-a", role: "ADMINISTRADOR" }, accessToken: "test-token" },
     } as unknown as ReturnType<typeof useAuth>);
     jest.mocked(useBusinessScope).mockReturnValue({
       scope: "business", storeIds: ["store-a"], canFetch: true,
@@ -267,5 +267,66 @@ describe("Warehouse product actions with business inventory queries", () => {
       setup(); await screen.findByText("Producto unificada");
       expect(screen.queryByTitle("Ajustar stock")).not.toBeInTheDocument();
     });
+  });
+});
+
+// C1 · decisión de Octa: el inventario lo editan Administrador y Operaciones (los únicos con ajustes
+// manuales en prod). El resto (Ventas, CALLER —aunque tenga MANAGE_INVENTORY—, roles personalizados)
+// sigue viendo el stock, pero sin acciones de edición.
+describe("Inventario · acciones de edición según el rol", () => {
+  const EDIT_ACTIONS = ["Importar Excel", "Asociar IMEI/series", "Transferir unidades", "Registrar merma", "Revisar activación"];
+
+  function loginAs(role: string, permissions: string[] = []) {
+    jest.mocked(useAuth).mockReturnValue({
+      auth: { company: { id: "company-a", stores: [] }, user: { id: "user-a", role, permissions }, accessToken: "test-token" },
+    } as unknown as ReturnType<typeof useAuth>);
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    fetchItems.mockReset();
+    jest.mocked(useBusinessScope).mockReturnValue({
+      scope: "business", storeIds: ["store-a"], canFetch: true,
+    } as ReturnType<typeof useBusinessScope>);
+    jest.mocked(useBusinessInventories).mockReturnValue({
+      inventories: warehouses, isPending: false, isSuccess: true, error: null, refetch: jest.fn(),
+    } as unknown as ReturnType<typeof useBusinessInventories>);
+    fetchItems.mockResolvedValue([
+      item("normal", { trackingMode: "NONE" }),
+      item("serial", { trackingMode: "IMEI" }),
+    ]);
+  });
+
+  it.each([["ADMINISTRADOR"], ["OPERACIONES"]])("%s ve todas las acciones de edición", async (role) => {
+    loginAs(role);
+    setup();
+    await screen.findByText("Producto normal");
+    for (const name of EDIT_ACTIONS) expect(screen.getAllByRole("button", { name }).length).toBeGreaterThan(0);
+    expect(screen.getByTitle("Ajustar stock")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Compras/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Reconciliación/i })).toBeInTheDocument();
+  });
+
+  it.each([
+    ["Ventas", "VENTAS", []],
+    ["CALLER (tiene MANAGE_INVENTORY)", "CALLER", ["MANAGE_INVENTORY", "VIEW_FINANCES", "MANAGE_PRODUCTS"]],
+    ["rol personalizado Ventas + Operaciones", "CUSTOM_ventas-operaciones", ["MANAGE_PRODUCTS", "MANAGE_OPERATIONS"]],
+  ])("%s ve el stock pero no puede editarlo", async (_nombre, role, permissions) => {
+    loginAs(role, permissions);
+    setup();
+    await screen.findByText("Producto normal");
+    // Sigue viendo el inventario y la consulta de unidades (solo lectura)
+    expect(screen.getByText("Producto serial")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Stock Actual/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Historial de Movimientos/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Buscar IMEI/serie" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ver unidades" })).toBeInTheDocument();
+    // …pero ninguna acción que cambie stock
+    for (const name of EDIT_ACTIONS.filter((n) => n !== "Ver unidades")) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByTitle("Ajustar stock")).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Compras/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Reconciliación/i })).not.toBeInTheDocument();
   });
 });

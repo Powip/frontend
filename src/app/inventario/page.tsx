@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
+import { canEditInventory } from "@/config/permissions.config";
 
 import {
   Download,
@@ -78,6 +79,9 @@ const ITEMS_PER_PAGE = 10;
 
 export default function AlmacenPage() {
   const { auth } = useAuth();
+  // Editar inventario (ajustes, mermas, transferencias, importar Excel, compras, reconciliación): solo
+  // Administrador y Operaciones. El resto sigue viendo el stock en solo lectura.
+  const canEdit = canEditInventory(auth?.user);
   const queryClient = useQueryClient();
   const { scope, storeIds, canFetch } = useBusinessScope();
   const warehouses = useBusinessInventories({ scope, storeIds });
@@ -254,23 +258,27 @@ export default function AlmacenPage() {
                 <History className="h-4 w-4" />
                 Historial de Movimientos
               </TabsTrigger>
-              <TabsTrigger
-                value="reconciliation"
-                className="flex items-center gap-2"
-              >
-                <GitMerge className="h-4 w-4" />
-                Reconciliación
-              </TabsTrigger>
+              {canEdit && (
+                <TabsTrigger
+                  value="reconciliation"
+                  className="flex items-center gap-2"
+                >
+                  <GitMerge className="h-4 w-4" />
+                  Reconciliación
+                </TabsTrigger>
+              )}
             </TabsList>
 
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={() => setUnitTrace({ companyId, userId: auth.user.id, code: "" })}>Buscar IMEI/serie</Button>
-              <Link href="/compras">
-                <Button variant="outline" size="sm">
-                  <ShoppingCart className="mr-2 h-4 w-4" />
-                  Compras
-                </Button>
-              </Link>
+              {canEdit && (
+                <Link href="/compras">
+                  <Button variant="outline" size="sm">
+                    <ShoppingCart className="mr-2 h-4 w-4" />
+                    Compras
+                  </Button>
+                </Link>
+              )}
               <Button
                 variant="outline"
                 size="sm"
@@ -349,14 +357,16 @@ export default function AlmacenPage() {
                       />
                       Mostrar inactivas
                     </label>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setImportOpen(true)}
-                    >
-                      <Download className="mr-2 h-4 w-4 rotate-180" />
-                      Importar Excel
-                    </Button>
+                    {canEdit && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setImportOpen(true)}
+                      >
+                        <Download className="mr-2 h-4 w-4 rotate-180" />
+                        Importar Excel
+                      </Button>
+                    )}
                     <Button
                       variant="outline"
                       size="sm"
@@ -562,15 +572,17 @@ export default function AlmacenPage() {
                               {formatMoney(prod.priceVta)}
                             </TableCell>
                             <TableCell className="text-right space-x-1">
-                              <Button size="sm" variant="outline" disabled={!prod.productId} onClick={() => setTrackingItem({ item: prod, companyId, action: isTracked(prod.trackingMode) ? "units" : "regularize" })}>
-                                {isTracked(prod.trackingMode) ? "Ver unidades" : "Asociar IMEI/series"}
-                              </Button>
-                              {isTracked(prod.trackingMode) ? <>
+                              {(canEdit || isTracked(prod.trackingMode)) && (
+                                <Button size="sm" variant="outline" disabled={!prod.productId} onClick={() => setTrackingItem({ item: prod, companyId, action: isTracked(prod.trackingMode) ? "units" : "regularize" })}>
+                                  {isTracked(prod.trackingMode) ? "Ver unidades" : "Asociar IMEI/series"}
+                                </Button>
+                              )}
+                              {canEdit && isTracked(prod.trackingMode) ? <>
                                 <Button size="sm" variant="outline" onClick={() => setTrackingItem({ item: prod, companyId, action: "transfer" })}>Transferir unidades</Button>
                                 <Button size="sm" variant="outline" onClick={() => setTrackingItem({ item: prod, companyId, action: "write-off" })}>Registrar merma</Button>
                               </> : null}
-                              {isTracked(prod.trackingMode) ? <Button size="sm" variant="ghost" disabled={!prod.productId} onClick={() => setTrackingItem({ item: prod, companyId, action: "regularize" })}>Revisar activación</Button> : null}
-                              {isTracked(prod.trackingMode) || prod.mergedInto ? null : (
+                              {canEdit && isTracked(prod.trackingMode) ? <Button size="sm" variant="ghost" disabled={!prod.productId} onClick={() => setTrackingItem({ item: prod, companyId, action: "regularize" })}>Revisar activación</Button> : null}
+                              {!canEdit || isTracked(prod.trackingMode) || prod.mergedInto ? null : (
                                 <Button
                                   size="icon"
                                   variant="ghost"
@@ -627,6 +639,7 @@ export default function AlmacenPage() {
             </Card>
           </TabsContent>
 
+          {canEdit && (
           <TabsContent
             value="reconciliation"
             className="flex-1 flex flex-col mt-0"
@@ -638,6 +651,7 @@ export default function AlmacenPage() {
               </CardContent>
             </Card>
           </TabsContent>
+          )}
         </Tabs>
       )}
 

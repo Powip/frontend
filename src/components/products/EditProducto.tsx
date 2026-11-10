@@ -4,6 +4,7 @@ import { useRouter, useParams } from "next/navigation";
 import Image from "next/image";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { canSeeProductCosts } from "@/config/permissions.config";
 
 import Container from "../ui/container";
 import Header from "../ui/header";
@@ -275,7 +276,7 @@ const EditProductoForCompany = () => {
               />
             </div>
 
-            {auth?.user?.role !== 'VENTAS' && (
+            {canSeeProductCosts(auth?.user) && (
               <div>
                 <Label>Precio Compra*</Label>
                 <Input

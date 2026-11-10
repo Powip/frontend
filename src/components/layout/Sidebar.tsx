@@ -65,6 +65,7 @@ import {
   isSuperadmin,
   hasAdminAccess,
   hasRouteAccess,
+  isRoleGatedRoute,
 } from "@/config/permissions.config";
 import {
   DropdownMenu,
@@ -423,10 +424,10 @@ export function Sidebar({ className }: SidebarProps) {
         return {
           ...item,
           children: item.children.filter((child: { name: string; href?: string }) => {
-            // Finanzas > Resumen: se oculta con el mismo permiso que AuthGuard exige para
-            // la ruta (ROUTE_PERMISSIONS). Se filtra por href y no por nombre porque
-            // "Resumen" también existe en Administración. "Facturación" no se toca.
-            if (child.href === "/finanzas") return hasRouteAccess(child.href, auth?.user);
+            // Enlaces que se deciden por rol (Finanzas, Compras, Administración…): se ocultan con la
+            // misma regla que AuthGuard aplica a la ruta (ROUTE_PERMISSIONS). Se filtra por href y no
+            // por nombre porque "Resumen" existe en Finanzas y en Administración.
+            if (child.href && isRoleGatedRoute(child.href)) return hasRouteAccess(child.href, auth?.user);
             // También filtramos sub-ítems que puedan ser de superadmin si existieran
             if (
               child.name.toLowerCase().includes("superadmin") ||
