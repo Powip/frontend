@@ -112,13 +112,18 @@ function createCustomer(
 function toNetLineAmounts(
   quantity: number,
   grossUnitPrice: number,
+  grossDiscount: number,
   taxType: SunatItem["taxType"],
   pricesIncludeTax: boolean,
-): { unitPrice: number; subtotal: number } {
+): { unitPrice: number; subtotal: number; discountAmount: number } {
   const grossSubtotal = quantity * grossUnitPrice;
 
   if (taxType !== SUNAT_TAX_AFFECTATION_TYPES.GRAVADO || !pricesIncludeTax) {
-    return { unitPrice: grossUnitPrice, subtotal: roundCurrency(grossSubtotal) };
+    return {
+      unitPrice: grossUnitPrice,
+      subtotal: roundCurrency(grossSubtotal),
+      discountAmount: grossDiscount,
+    };
   }
 
   // Conservar precisión flotante completa tanto para unitPrice como para subtotal.
@@ -126,19 +131,92 @@ function toNetLineAmounts(
   const netSubtotal = grossSubtotal / (1 + IGV_RATE);
   const unitPrice = quantity > 0 ? netSubtotal / quantity : 0;
 
-  return { unitPrice, subtotal: netSubtotal };
+  // El descuento se cobró con IGV incluido, igual que el precio: SUNAT lo
+  // resta del importe sin IGV, así que se convierte a neto con la misma
+  // precisión completa (el IGV se calcula sobre base - descuento).
+  return { unitPrice, subtotal: netSubtotal, discountAmount: grossDiscount / (1 + IGV_RATE) };
+}
+
+const toCents = (value: unknown): number => {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? Math.round(amount * 100) : 0;
+};
+
+/**
+ * Reparte `totalCents` entre las líneas en proporción a su capacidad
+ * (`capacities`), sin pasarse de la capacidad de ninguna y sin perder
+ * centavos (método del mayor resto). Devuelve centavos por línea.
+ */
+function allocateByCapacity(totalCents: number, capacities: number[]): number[] {
+  const capacityTotal = capacities.reduce((sum, capacity) => sum + capacity, 0);
+  const target = Math.min(Math.max(0, totalCents), capacityTotal);
+
+  if (target === 0 || capacityTotal === 0) {
+    return capacities.map(() => 0);
+  }
+
+  const exact = capacities.map((capacity) => (target * capacity) / capacityTotal);
+  const shares = exact.map((value) => Math.floor(value));
+  let remainder = target - shares.reduce((sum, share) => sum + share, 0);
+
+  const byLargestFraction = exact
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction);
+
+  for (const { index } of byLargestFraction) {
+    if (remainder === 0) break;
+    if (shares[index] < capacities[index]) {
+      shares[index] += 1;
+      remainder -= 1;
+    }
+  }
+
+  return shares;
+}
+
+/**
+ * Descuento que el pedido tiene en su cabecera pero que no quedó asignado a
+ * ninguna línea de producto. Pasa, por ejemplo, con el envío gratis de
+ * Shopify: el descuento es del envío, no de un producto, y Powip lo guarda en
+ * `discountTotal` (el envío se conserva con su precio completo). Sin esto el
+ * comprobante saldría más caro de lo que el cliente pagó.
+ */
+function getUnallocatedDiscountCents(sale: Order, lineDiscountCents: number[]): number {
+  const allocated = lineDiscountCents.reduce((sum, cents) => sum + cents, 0);
+  return Math.max(0, toCents(sale.discountTotal) - allocated);
 }
 
 function createItems(sale: Order): SunatItem[] {
   const pricesIncludeTax = sale.taxMode === "INCLUIDO";
+  const taxType = SUNAT_TAX_AFFECTATION_TYPES.GRAVADO;
 
-  const productItems: SunatItem[] = sale.items.map((item) => {
+  // Importes de la venta, en centavos y en bruto (tal como se cobraron).
+  const grossLineCents = sale.items.map((item) =>
+    toCents((Number(item.quantity) || 0) * (Number(item.unitPrice) || 0)),
+  );
+
+  const ownDiscountCents = sale.items.map((item, index) =>
+    Math.min(Math.max(0, toCents(item.discountAmount)), grossLineCents[index]),
+  );
+
+  const shippingGrossCents = Math.max(0, toCents(sale.shippingTotal));
+
+  // El descuento sin línea propia se aplica primero al envío (envío gratis) y
+  // lo que sobre se reparte entre los productos.
+  const unallocatedCents = getUnallocatedDiscountCents(sale, ownDiscountCents);
+  const shippingDiscountCents = Math.min(unallocatedCents, shippingGrossCents);
+  const sharedDiscountCents = allocateByCapacity(
+    unallocatedCents - shippingDiscountCents,
+    grossLineCents.map((gross, index) => gross - ownDiscountCents[index]),
+  );
+
+  const productItems: SunatItem[] = sale.items.map((item, index) => {
     const quantity = Number(item.quantity) || 0;
-    const taxType = SUNAT_TAX_AFFECTATION_TYPES.GRAVADO;
     const rawUnitPrice = Number(item.unitPrice) || 0;
-    const { unitPrice, subtotal } = toNetLineAmounts(
+    const { unitPrice, subtotal, discountAmount } = toNetLineAmounts(
       quantity,
       rawUnitPrice,
+      (ownDiscountCents[index] + sharedDiscountCents[index]) / 100,
       taxType,
       pricesIncludeTax,
     );
@@ -149,7 +227,7 @@ function createItems(sale: Order): SunatItem[] {
       quantity,
       unitPrice,
       subtotal,
-      discountAmount: 0,
+      discountAmount,
       unitCode: UNIT_CODES.UNIT,
       taxType,
     };
@@ -170,9 +248,14 @@ function createItems(sale: Order): SunatItem[] {
   // Shipping is always quantity 1, so there's no per-unit-vs-line rounding
   // difference to worry about here — but routing it through the same
   // helper keeps the conversion logic in exactly one place.
-  const { unitPrice: shippingUnitPrice, subtotal: shippingSubtotal } = toNetLineAmounts(
+  const {
+    unitPrice: shippingUnitPrice,
+    subtotal: shippingSubtotal,
+    discountAmount: shippingDiscountAmount,
+  } = toNetLineAmounts(
     1,
     shippingRawTotal,
+    shippingDiscountCents / 100,
     shippingTaxType,
     pricesIncludeTax,
   );
@@ -185,7 +268,7 @@ function createItems(sale: Order): SunatItem[] {
       quantity: 1,
       unitPrice: shippingUnitPrice,
       subtotal: shippingSubtotal,
-      discountAmount: 0,
+      discountAmount: shippingDiscountAmount,
       unitCode: UNIT_CODES.UNIT,
       taxType: shippingTaxType,
     },
