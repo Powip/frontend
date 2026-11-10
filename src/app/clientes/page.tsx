@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toWhatsAppDigits } from "@/lib/phone";
 import { useQuery } from "@tanstack/react-query";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Button } from "@/components/ui/button";
@@ -128,8 +129,7 @@ export default function ClientesPage() {
   };
 
   const handleWhatsApp = (phoneNumber: string, clientName?: string) => {
-    const phone = phoneNumber.replace(/\D/g, "");
-    const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
+    const cleanPhone = toWhatsAppDigits(phoneNumber);
 
     const message = `Hola${clientName ? ` ${clientName}` : ""}! Te contactamos de Powip.`;
 

@@ -1,4 +1,5 @@
 import type { Quotation, QuotationLine } from "@/types/quotations";
+import { toWhatsAppDigits } from "@/lib/phone";
 
 export const money = (value: number | string | null | undefined) =>
   `S/${Number(value || 0).toFixed(2)}`;
@@ -41,8 +42,7 @@ export function formatExpiry(quotation: Pick<Quotation, "status" | "expiresAt">)
 export function quotationWhatsAppUrl(
   quotation: Pick<Quotation, "customerPhone" | "customerName" | "publicUrl" | "number">,
 ) {
-  let phone = quotation.customerPhone.replace(/\D/g, "");
-  if (phone.length === 9) phone = `51${phone}`;
+  const phone = toWhatsAppDigits(quotation.customerPhone);
   return `https://wa.me/${phone}?text=${encodeURIComponent(`Hola ${quotation.customerName}, aquí puedes revisar y confirmar tu cotización ${quotation.number}: ${quotation.publicUrl}`)}`;
 }
 

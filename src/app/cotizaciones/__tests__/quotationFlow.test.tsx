@@ -224,7 +224,8 @@ test("creates a quick quotation and preserves the seller's suggested deposit aft
     expect(createQuotation).toHaveBeenCalledWith(
       expect.objectContaining({
         customerName: "Ana",
-        customerPhone: "999 222 333",
+        // B2: el teléfono se guarda canónico, sin separadores (el peruano sigue siendo de 9 dígitos).
+        customerPhone: "999222333",
         storeId: "store-1",
         paymentType: "ADELANTO",
         suggestedDeposit: 45,

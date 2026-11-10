@@ -1,6 +1,7 @@
 import { Client } from "@/interfaces/ICliente";
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
+import { PhoneInput } from "../shared/PhoneInput";
 import {
   Select,
   SelectContent,
@@ -140,10 +141,10 @@ export default function ClienteForm({ cliente, onClienteSaved }: Props) {
 
       <div className="flex flex-col gap-1.5">
         <Label htmlFor="phonenumber">Número de teléfono</Label>
-        <Input
+        <PhoneInput
           id="phonenumber"
           value={state.phoneNumber}
-          onChange={(e) => setState({ ...state, phoneNumber: e.target.value })}
+          onChange={(phoneNumber) => setState({ ...state, phoneNumber })}
           placeholder="912345678"
         />
       </div>

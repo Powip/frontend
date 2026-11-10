@@ -72,6 +72,7 @@ import { GATEWAY } from "@/lib/gateway";
 import { tokenStore } from "@/lib/tokenStore";
 import { cn } from "@/lib/utils";
 import { createClient, fetchClientByPhone, updateClient } from "@/services/clients.service";
+import { PhoneInput } from "@/components/shared/PhoneInput";
 import { searchInventoryItems } from "@/services/inventoryItems.service";
 import { fetchSaleContext } from "@/services/saleContextService";
 import ubigeos from "@/utils/json/ubigeos.json";
@@ -2167,20 +2168,16 @@ function RegistrarVentaContent() {
                   <div className="space-y-1">
                     <Label>Buscar cliente por teléfono</Label>
                     <div className="flex gap-2">
-                      <Input
-                        type="tel"
+                      <PhoneInput
                         placeholder="Número de teléfono"
                         value={clientForm.phoneNumber}
-                        className={cn(
+                        inputClassName={cn(
                           isFound && "border-green-500 focus-visible:ring-green-500",
                           (isNotFound || isSearchError) &&
                             "border-amber-400 focus-visible:ring-amber-400",
                         )}
-                        onChange={(e) => {
-                          setClientForm({
-                            ...clientForm,
-                            phoneNumber: e.target.value,
-                          });
+                        onChange={(phoneNumber) => {
+                          setClientForm({ ...clientForm, phoneNumber });
                           if (!isIdle) setSearchState("idle");
                         }}
                         onKeyDown={(e) => e.key === "Enter" && searchClient()}
@@ -2283,15 +2280,13 @@ function RegistrarVentaContent() {
                     <div className="grid grid-cols-3 gap-3">
                       <div className="space-y-1">
                         <Label>Numero de Telefono</Label>
-                        <Input
+                        <PhoneInput
+                          compact
                           disabled={!formEnabled}
                           placeholder="Numero de telefono"
                           value={clientForm.phoneNumber}
-                          onChange={(e) =>
-                            setClientForm({
-                              ...clientForm,
-                              phoneNumber: e.target.value,
-                            })
+                          onChange={(phoneNumber) =>
+                            setClientForm({ ...clientForm, phoneNumber })
                           }
                         />
                       </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { toWhatsAppDigits } from "@/lib/phone";
 import axios from "axios";
 import { toast } from "sonner";
 import {
@@ -202,8 +203,7 @@ export default function ProvinciaShipmentModal({
   };
 
   const handleWhatsApp = () => {
-    const phone = order.customer?.phoneNumber?.replace(/\D/g, "") || "";
-    const countryCode = phone.startsWith("51") ? "" : "51";
+    const phone = toWhatsAppDigits(order.customer?.phoneNumber);
 
     // Build message with tracking URL
     const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${order.orderNumber}`;
@@ -211,7 +211,7 @@ export default function ProvinciaShipmentModal({
     message += `Tu pedido #${order.orderNumber} está en camino.\n\n`;
     message += `📦 Rastrea tu pedido aquí: ${trackingUrl}`;
 
-    const whatsappUrl = `https://wa.me/${countryCode}${phone}?text=${encodeURIComponent(message)}`;
+    const whatsappUrl = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, "_blank");
   };
 

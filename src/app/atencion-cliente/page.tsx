@@ -1,6 +1,7 @@
 "use client";
 
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
+import { toWhatsAppDigits } from "@/lib/phone";
 import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { DateRange } from "react-day-picker";
@@ -341,8 +342,7 @@ export default function AtencionClientePage() {
   }
 
   function handleWhatsApp(order: OrderHeader) {
-    const phone = (order.customer?.phoneNumber ?? "").replace(/\D/g, "");
-    const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
+    const cleanPhone = toWhatsAppDigits(order.customer?.phoneNumber);
     const msg = `Hola ${order.customer?.fullName ?? ""}! Te contactamos por tu pedido ${order.orderNumber}.`;
     window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`, "_blank");
   }

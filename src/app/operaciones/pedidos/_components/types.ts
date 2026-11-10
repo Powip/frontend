@@ -1,4 +1,5 @@
 import { type UnitAssignmentState } from "@/services/saleTrackingService";
+import { toWhatsAppDigits } from "@/lib/phone";
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import type { OpsPermission } from "@/config/operationsPermissions";
 import { ORDER_STATUS_FLOW, getStatusLabel } from "@/utils/domain/orders-status-flow";
@@ -236,16 +237,12 @@ export function formatProductsShort(items: SaleItem[]): string {
   return items.map((it) => `${it.productName} x${it.quantity}`).join(", ");
 }
 
-/** Normalización de teléfono peruano para WhatsApp (misma regla que el resto de la app). */
+/**
+ * Dígitos para WhatsApp (misma regla que el resto de la app). El nombre quedó por historia: ya no
+ * asume Perú. Un celular peruano recibe el 51; un número con "+" y código de país se respeta.
+ */
 export function normalizePeruPhone(phoneNumber: string): string {
-  let cleanPhone = phoneNumber.replace(/\D/g, "");
-  if (!cleanPhone.startsWith("51")) {
-    if (cleanPhone.startsWith("0")) {
-      cleanPhone = cleanPhone.substring(1);
-    }
-    cleanPhone = `51${cleanPhone}`;
-  }
-  return cleanPhone;
+  return toWhatsAppDigits(phoneNumber);
 }
 
 export function buildTrackingWhatsAppMessage(

@@ -11,7 +11,7 @@ export async function fetchClientByPhone(
 ): Promise<Client | null> {
   try {
     const res = await axiosAuth.get(
-      `${API_VENTAS}/clients/company/${companyId}/phone/${phone}`
+      `${API_VENTAS}/clients/company/${companyId}/phone/${encodeURIComponent(phone)}`
     );
     const data = res.data;
     return {

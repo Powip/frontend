@@ -8,6 +8,7 @@ import FormContainer from "../ui/form-container";
 import FormGrid from "../ui/form-grid";
 import Header from "../ui/header";
 import { Input } from "../ui/input";
+import { PhoneInput } from "../shared/PhoneInput";
 
 import {
   Select,
@@ -226,10 +227,9 @@ export const Clientes = ({ next }: Props) => {
         <FormGrid>
           <div>
             <Label>Nro Telefono (Búsqueda)</Label>
-            <Input
-              type="number"
+            <PhoneInput
               value={form.phoneNumber}
-              onChange={(e) => handleChange("phoneNumber", e.target.value)}
+              onChange={(phoneNumber) => handleChange("phoneNumber", phoneNumber)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && form.phoneNumber.length >= 6)
                   setSearchPhone(form.phoneNumber);
@@ -275,11 +275,11 @@ export const Clientes = ({ next }: Props) => {
         <FormGrid>
           <div>
             <Label>Teléfono*</Label>
-            <Input
+            <PhoneInput
               value={form.phoneNumber}
-              onChange={(e) => handleChange("phoneNumber", e.target.value)}
+              onChange={(phoneNumber) => handleChange("phoneNumber", phoneNumber)}
               disabled={isDisabled}
-              className={inputClassName}
+              inputClassName={inputClassName}
             />
           </div>
           <div>

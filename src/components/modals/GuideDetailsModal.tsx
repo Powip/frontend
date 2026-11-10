@@ -1,6 +1,7 @@
 "use client";
 
 import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
+import { toWhatsAppDigits } from "@/lib/phone";
 import { orderFinancialState, receiptFinancialState } from "@/utils/orderState";
 
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
@@ -646,8 +647,7 @@ export default function GuideDetailsModal({
     clientName?: string,
     pendingPayment?: number,
   ) => {
-    const phone = phoneNumber.replace(/\D/g, "");
-    const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
+    const cleanPhone = toWhatsAppDigits(phoneNumber);
 
     let message = `Hola${clientName ? ` ${clientName}` : ""}! `;
     if (orderNumber) {

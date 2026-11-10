@@ -1,5 +1,6 @@
 ﻿"use client";
 import SaleUnitLifecycleActions from "@/components/registrar-venta/SaleUnitLifecycleActions";
+import { toWhatsAppDigits } from "@/lib/phone";
 import axios from "@/lib/axiosAuth";
 import Link from "next/link";
 import { isCommercialLeadOrder, canOperateCommercialOrder, commercialLeadHref, salesPhysicalOperationBlockReason } from "@/utils/commercialOrders";
@@ -184,8 +185,7 @@ export default function OrderReceiptModal({
   const handleWhatsapp = () => {
     if (!receipt) return;
 
-    const phone = receipt.customer.phoneNumber.replace(/\D/g, "");
-    const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
+    const cleanPhone = toWhatsAppDigits(receipt.customer.phoneNumber);
 
     const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${receipt.orderNumber}`;
     const message = `Hola ${receipt.customer.fullName}, tu pedido N° ${receipt.orderNumber} se está procesando. A la brevedad se te enviará el comprobante de venta por este medio.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
