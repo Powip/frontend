@@ -5,11 +5,31 @@ import axios from "axios";
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
 import { useBusinessInventories } from "@/hooks/useBusinessInventories";
-import { MAX_ITEM_UNITS, MAX_ITEM_UNITS_MESSAGE, largeQuantityConfirmText, needsQuantityConfirmation } from "@/lib/stockLimits";
+import { largeQuantityConfirmText, needsQuantityConfirmation } from "@/lib/stockLimits";
 import ExcelJS from "exceljs";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
+import {
+  LEGACY_TEMPLATE_MESSAGE,
+  REQUIRED_HEADERS,
+  buildColumnIndexMap,
+  buildParsedRow,
+  buildTemplateWorkbook,
+  canonicalProductNames,
+  describeRowError,
+  fold,
+  formatAttributes,
+  isLegacyHeader,
+  productGroupKey,
+  readHeaderTexts,
+  readSheetRows,
+  templateFileName,
+  validateRows,
+  type ParsedRow,
+  type RawSheetRow,
+  type TemplateOptions,
+} from "./importTemplate";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -60,21 +80,6 @@ interface Subcategory {
   id: string;
   name: string;
 }
-interface ParsedRow {
-  categoryName?: string;
-  subcategoryName?: string;
-  subcategoryId?: string;
-  name: string;
-  description: string;
-  companySku: string;
-  attributes: Record<string, string>;
-  priceBase: number;
-  priceVta: number;
-  quantity: number;
-  min_stock: number;
-  error?: string;
-}
-
 interface SubcategoryWithCategory {
   id: string;
   name: string;
@@ -83,82 +88,6 @@ interface SubcategoryWithCategory {
     name: string;
   };
 }
-
-/* ───────── parseo por header (tolerante a orden/espacios/mayúsculas) ───────── */
-type ParsedRowFieldKey =
-  | "categoryName"
-  | "subcategoryName"
-  | "name"
-  | "description"
-  | "companySku"
-  | "rawAttrs"
-  | "priceBase"
-  | "priceVta"
-  | "quantity"
-  | "min_stock";
-
-/** Header exacto (tal cual lo genera handleDownloadTemplate) → campo interno. */
-const HEADER_COLUMN_KEYS: Record<string, ParsedRowFieldKey> = {
-  "categoría": "categoryName",
-  "subcategoría": "subcategoryName",
-  "nombre": "name",
-  "descripción": "description",
-  "sku empresa": "companySku",
-  "atributos (color:rojo,talle:m)": "rawAttrs",
-  "precio compra": "priceBase",
-  "precio venta": "priceVta",
-  "cantidad": "quantity",
-  "stock mínimo": "min_stock",
-};
-
-const REQUIRED_HEADERS: { header: string; key: ParsedRowFieldKey }[] = [
-  { header: "Nombre *", key: "name" },
-  { header: "Categoría *", key: "categoryName" },
-  { header: "Subcategoría *", key: "subcategoryName" },
-  { header: "Precio Compra *", key: "priceBase" },
-  { header: "Precio Venta *", key: "priceVta" },
-  { header: "Cantidad *", key: "quantity" },
-];
-
-const normalizeHeaderText = (value: unknown): string =>
-  (value?.toString() || "")
-    .replace(/\*/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-
-const buildColumnIndexMap = (
-  headerRow: ExcelJS.Row,
-): Partial<Record<ParsedRowFieldKey, number>> => {
-  const map: Partial<Record<ParsedRowFieldKey, number>> = {};
-  headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
-    const fieldKey = HEADER_COLUMN_KEYS[normalizeHeaderText(cell.value)];
-    if (fieldKey) {
-      map[fieldKey] = colNumber;
-    }
-  });
-  return map;
-};
-
-const getCellText = (
-  row: ExcelJS.Row,
-  columnIndexMap: Partial<Record<ParsedRowFieldKey, number>>,
-  key: ParsedRowFieldKey,
-): string => {
-  const colIndex = columnIndexMap[key];
-  if (!colIndex) return "";
-  return row.getCell(colIndex).value?.toString()?.trim() || "";
-};
-
-const getCellNumber = (
-  row: ExcelJS.Row,
-  columnIndexMap: Partial<Record<ParsedRowFieldKey, number>>,
-  key: ParsedRowFieldKey,
-): number => {
-  const colIndex = columnIndexMap[key];
-  if (!colIndex) return 0;
-  return Number(row.getCell(colIndex).value) || 0;
-};
 
 interface ExcelImportWizardProps {
   onBack: () => void;
@@ -184,6 +113,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
   const [file, setFile] = useState<File | null>(null);
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
   const [isParsing, setIsParsing] = useState(false);
+  const [legacyTemplateError, setLegacyTemplateError] = useState(false);
   const [allSubcategories, setAllSubcategories] = useState<
     Record<string, Subcategory[]>
   >({});
@@ -192,13 +122,8 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
     setParsedRows((prev) => {
       const copy = [...prev];
       copy[index] = { ...copy[index], ...updates };
-
-      // Re-validate if subcategoryId changed
-      if (updates.subcategoryId) {
-        copy[index].error = undefined;
-      }
-
-      return copy;
+      // Se vuelve a validar todo: corregir una fila puede cambiar las reglas del producto.
+      return validateRows(copy);
     });
   };
 
@@ -272,130 +197,28 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
      STEP 1: Generate & Download Template
      ════════════════════════════════════ */
   const handleDownloadTemplate = async (isBaseTemplate: boolean = false) => {
-    const workbook = new ExcelJS.Workbook();
-    const workbookName = isBaseTemplate
-      ? "Plantilla_Base_Importacion.xlsx"
-      : `Plantilla_${selectedCategory?.name || "Cat"}_${selectedSubcategory?.name || "Sub"}.xlsx`;
-
-    /* ── Hoja de metadata (oculta) ── */
-    const metaSheet = workbook.addWorksheet("_metadata");
-    metaSheet.state = "hidden";
-    metaSheet.addRow([
-      "inventoryId",
-      isBaseTemplate ? "" : selectedInventoryId,
-    ]);
-
-    /* ── Hoja de productos ── */
-    const sheet = workbook.addWorksheet("Productos");
-    sheet.columns = [
-      { header: "Categoría *", key: "categoryName", width: 25 },
-      { header: "Subcategoría *", key: "subcategoryName", width: 25 },
-      { header: "Nombre *", key: "name", width: 30 },
-      { header: "Descripción", key: "description", width: 40 },
-      { header: "SKU Empresa", key: "companySku", width: 20 },
-      {
-        header: "Atributos (Color:Rojo,Talle:M)",
-        key: "attributes",
-        width: 32,
-      },
-      { header: "Precio Compra *", key: "priceBase", width: 16 },
-      { header: "Precio Venta *", key: "priceVta", width: 16 },
-      { header: "Cantidad *", key: "quantity", width: 14 },
-      { header: "Stock Mínimo", key: "min_stock", width: 14 },
-    ];
-
-    /* Header styling */
-    const headerRow = sheet.getRow(1);
-    headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    headerRow.fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FF1E3A5F" },
+    const options: TemplateOptions = {
+      isBase: isBaseTemplate,
+      inventoryId: selectedInventoryId,
+      categoryName: selectedCategory?.name,
+      subcategoryName: selectedSubcategory?.name,
     };
-    headerRow.alignment = { horizontal: "center" };
 
-    /* Fila de ejemplo base */
-    if (isBaseTemplate) {
-      sheet.addRow({
-        categoryName: "Vestimenta",
-        subcategoryName: "Camperas",
-        name: "Producto Ejemplo",
-        description: "Campera de abrigo térmica",
-        companySku: "",
-        attributes: "Color:Azul,Talle:L",
-        priceBase: 5000,
-        priceVta: 12500,
-        quantity: 20,
-        min_stock: 5,
-      });
-      sheet.addRow({
-        categoryName: "Calzado",
-        subcategoryName: "Zapatillas",
-        name: "Zapatillas Urbanas",
-        description: "Zapatillas blancas de cuero",
-        companySku: "",
-        attributes: "Talla:42",
-        priceBase: 3500,
-        priceVta: 8900,
-        quantity: 15,
-        min_stock: 3,
-      });
-    } else {
-      /* Fila de ejemplo personalizada */
-      const catName = selectedCategory?.name || "Producto";
-      const subName = selectedSubcategory?.name || "";
-      sheet.addRow({
-        categoryName: selectedCategory?.name || "Ropa",
-        subcategoryName: selectedSubcategory?.name || "Camisas",
-        name: `${subName || catName} Ejemplo`,
-        description: `Producto de ejemplo de ${subName || catName}`,
-        companySku: "",
-        attributes: "Color:Blanco",
-        priceBase: 100,
-        priceVta: 250,
-        quantity: 10,
-        min_stock: 2,
-      });
-
-      /* Info banner row */
-      sheet.addRow([]);
-      sheet.addRow([
-        `📋 Categoría: ${selectedCategory?.name}  |  Subcategoría: ${selectedSubcategory?.name}`,
-      ]);
-    }
-
-    /* ── Hoja de referencia: Categorías Válidas ── */
+    /* Referencia de categorías válidas (hoja y listas desplegables). Si falla el fetch, la
+       plantilla se descarga igual: no debe bloquear al usuario. */
     try {
       const res = await axiosAuth.get<SubcategoryWithCategory[]>(
         `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/subcategories`,
       );
-
-      const validSheet = workbook.addWorksheet("Categorías Válidas");
-      validSheet.columns = [
-        { header: "Categoría", key: "category", width: 28 },
-        { header: "Subcategoría", key: "subcategory", width: 28 },
-      ];
-
-      const validHeaderRow = validSheet.getRow(1);
-      validHeaderRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
-      validHeaderRow.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "FF1E3A5F" },
-      };
-      validHeaderRow.alignment = { horizontal: "center" };
-
-      res.data.forEach((sub) => {
-        validSheet.addRow({
-          category: sub.category?.name || "",
-          subcategory: sub.name,
-        });
-      });
+      options.validCategories = res.data.map((sub) => ({
+        category: sub.category?.name || "",
+        subcategory: sub.name,
+      }));
     } catch {
-      // Si falla el fetch de subcategorías, la plantilla se descarga igual,
-      // sin la hoja de referencia — no debe bloquear al usuario.
+      // sin hoja de referencia
     }
 
+    const workbook = buildTemplateWorkbook(options);
     const buf = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buf], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -403,7 +226,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = workbookName;
+    anchor.download = templateFileName(options);
     anchor.click();
     window.URL.revokeObjectURL(url);
 
@@ -415,10 +238,12 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
      STEP 2: Upload & Parse File
      ════════════════════════════ */
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
+    const input = e.target;
+    const f = input.files?.[0];
     if (!f) return;
     setFile(f);
     setIsParsing(true);
+    setLegacyTemplateError(false);
 
     try {
       const workbook = new ExcelJS.Workbook();
@@ -429,6 +254,17 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
       const sheet =
         workbook.getWorksheet("Productos") || workbook.worksheets[0];
       if (!sheet) throw new Error("No se encontró la hoja 'Productos'");
+
+      /* Plantilla anterior: sus tallas y colores iban en una sola columna "Atributos" y se
+         perdían sin avisar. No se carga nada: se pide bajar la plantilla nueva. */
+      if (readHeaderTexts(sheet.getRow(1)).some(isLegacyHeader)) {
+        setLegacyTemplateError(true);
+        setFile(null);
+        toast.error(
+          "Esta plantilla es de una versión anterior y no se puede cargar. Descarga la plantilla nueva.",
+        );
+        return;
+      }
 
       const columnIndexMap = buildColumnIndexMap(sheet.getRow(1));
       const missingHeaders = REQUIRED_HEADERS.filter(
@@ -442,118 +278,60 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
         );
       }
 
-      const rawRows: {
-        categoryName: string;
-        subcategoryName: string;
-        name: string;
-        description: string;
-        companySku: string;
-        rawAttrs: string;
-        priceBase: number;
-        priceVta: number;
-        quantity: number;
-        min_stock: number;
-      }[] = [];
-      const uniqueCategoryNames = new Set<string>();
+      const { rows: rawRows, ignoredExamples } = readSheetRows(sheet, columnIndexMap);
 
-      sheet.eachRow((row, rowNum) => {
-        if (rowNum === 1) return; // skip header
-
-        const categoryName = getCellText(row, columnIndexMap, "categoryName");
-        const subcategoryName = getCellText(
-          row,
-          columnIndexMap,
-          "subcategoryName",
-        );
-        const name = getCellText(row, columnIndexMap, "name");
-        const description = getCellText(row, columnIndexMap, "description");
-        const companySku = getCellText(row, columnIndexMap, "companySku");
-        const rawAttrs = getCellText(row, columnIndexMap, "rawAttrs");
-        const priceBase = getCellNumber(row, columnIndexMap, "priceBase");
-        const priceVta = getCellNumber(row, columnIndexMap, "priceVta");
-        const quantity = getCellNumber(row, columnIndexMap, "quantity");
-        const min_stock = getCellNumber(row, columnIndexMap, "min_stock");
-
-        if (!name && !categoryName) return;
-
-        if (categoryName) uniqueCategoryNames.add(categoryName);
-
-        rawRows.push({
-          categoryName,
-          subcategoryName,
-          name,
-          description,
-          companySku,
-          rawAttrs,
-          priceBase,
-          priceVta,
-          quantity,
-          min_stock,
-        });
-      });
-
-      // Pre-fetch subcategories for all mentioned categories
-      const categoryMap: Record<string, string> = {};
-      for (const catName of Array.from(uniqueCategoryNames)) {
-        const matchingCat = categories.find(
-          (c) => c.name.toLowerCase() === catName.toLowerCase(),
-        );
-        if (matchingCat) {
-          categoryMap[catName.toLowerCase()] = matchingCat.id;
-          await fetchSubcategoriesForCategory(matchingCat.id);
+      // Subcategorías de todas las categorías mencionadas (se guardan en un mapa local: el
+      // estado aún no se actualizó cuando se arman las filas).
+      const subsByCategory: Record<string, Subcategory[]> = {};
+      const mentioned = new Set(rawRows.map((r) => r.categoryName).filter(Boolean));
+      for (const catName of Array.from(mentioned)) {
+        const matchingCat = categories.find((c) => fold(c.name) === fold(catName));
+        if (matchingCat && !subsByCategory[matchingCat.id]) {
+          subsByCategory[matchingCat.id] = await fetchSubcategoriesForCategory(matchingCat.id);
         }
       }
 
-      const rows: ParsedRow[] = rawRows.map((raw) => {
-        let subcategoryId = "";
-        let error: string | undefined;
+      const resolveDestination = (raw: RawSheetRow) => {
+        if (!raw.categoryName) return { problem: "Falta la categoría." };
+        const category = categories.find((c) => fold(c.name) === fold(raw.categoryName));
+        if (!category) return { problem: `Categoría "${raw.categoryName}" no encontrada` };
+        if (!raw.subcategoryName) return { category, problem: "Falta la subcategoría." };
+        const sub = (subsByCategory[category.id] || []).find(
+          (s) => fold(s.name) === fold(raw.subcategoryName),
+        );
+        if (!sub) return { category, problem: `Subcategoría "${raw.subcategoryName}" no encontrada` };
+        return { category, sub };
+      };
 
-        const catId = categoryMap[raw.categoryName.toLowerCase()];
-        if (catId) {
-          const subcats = allSubcategories[catId] || [];
-          const matchingSub = subcats.find(
-            (s) => s.name.toLowerCase() === raw.subcategoryName.toLowerCase(),
-          );
-          if (matchingSub) {
-            subcategoryId = matchingSub.id;
-          } else {
-            error = `Subcategoría "${raw.subcategoryName}" no encontrada`;
-          }
-        } else {
-          error = `Categoría "${raw.categoryName}" no encontrada`;
-        }
-
-        /* Parse attributes */
-        const attributes: Record<string, string> = {};
-        if (raw.rawAttrs) {
-          raw.rawAttrs.split(",").forEach((pair: string) => {
-            const [k, v] = pair.split(":");
-            if (k?.trim() && v?.trim()) attributes[k.trim()] = v.trim();
+      const rows = validateRows(
+        rawRows.map((raw) => {
+          const destination = resolveDestination(raw);
+          const row = buildParsedRow(raw, {
+            subcategoryId: destination.sub?.id,
+            problem: destination.problem,
           });
-        }
-
-        if (!raw.name) error = "Nombre vacío";
-        if (raw.priceBase < 0) error = "Precio Compra inválido";
-        if (raw.priceVta < 0) error = "Precio Venta inválido";
-        if (raw.quantity < 0) error = "Cantidad inválida";
-        else if (!Number.isInteger(raw.quantity)) error = "La cantidad debe ser un número entero.";
-        else if (raw.quantity > MAX_ITEM_UNITS) error = MAX_ITEM_UNITS_MESSAGE;
-        if (raw.min_stock < 0) error = "Stock mínimo inválido";
-
-        return {
-          ...raw,
-          attributes,
-          subcategoryId,
-          error,
-        };
-      });
+          return {
+            ...row,
+            categoryName: destination.category?.name ?? raw.categoryName,
+            subcategoryName: destination.sub?.name ?? raw.subcategoryName,
+          };
+        }),
+      );
 
       setParsedRows(rows);
       setConfirmLargeQuantity(false);
       if (rows.length === 0) {
-        toast.warning("No se encontraron filas de productos válidas");
+        toast.warning(
+          ignoredExamples > 0
+            ? "Solo hay filas de ejemplo ((EJEMPLO)): reemplázalas por tus productos y vuelve a subir el archivo."
+            : "No se encontraron filas de productos válidas",
+        );
       } else {
-        toast.success(`Se encontraron ${rows.length} filas`);
+        toast.success(
+          ignoredExamples > 0
+            ? `Se encontraron ${rows.length} filas (se ignoraron ${ignoredExamples} de ejemplo)`
+            : `Se encontraron ${rows.length} filas`,
+        );
         setStep(3); // Auto-advance to preview
       }
     } catch (err) {
@@ -562,6 +340,11 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
       toast.error(message);
     } finally {
       setIsParsing(false);
+      try {
+        input.value = ""; // permite volver a elegir el mismo archivo tras corregirlo
+      } catch {
+        // algunos entornos no permiten escribir el valor de un input file
+      }
     }
   };
 
@@ -591,11 +374,13 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
     }
     setConfirmLargeQuantity(false);
 
+    // Todas las filas de un producto viajan con el mismo nombre (el servidor agrupa por nombre).
+    const canonicalNames = canonicalProductNames(validRows);
     const payload = {
       tenantId,
       inventoryId: selectedInventoryId,
       rows: validRows.map((r) => ({
-        name: r.name,
+        name: canonicalNames.get(productGroupKey(r.name)) ?? r.name,
         description: r.description,
         companySku: r.companySku,
         attributes: r.attributes,
@@ -721,8 +506,9 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                     Plantilla Base (Recomendado para nuevos clientes)
                   </h4>
                   <p className="text-xs text-muted-foreground">
-                    Descarga una estructura limpia con ejemplos de cómo llenar
-                    las categorías y subcategorías.
+                    Descarga una plantilla con instrucciones y ejemplos (un polo en
+                    S, M, L y XL; zapatillas con talla y color). Una fila por talla
+                    o color, con el mismo nombre para el mismo producto.
                   </p>
                 </div>
               </div>
@@ -886,6 +672,27 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
               </div>
             )}
 
+            {legacyTemplateError && (
+              <div
+                role="alert"
+                className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-800 p-4 text-sm space-y-3"
+              >
+                <p className="flex items-center gap-2 font-semibold text-red-700 dark:text-red-400">
+                  <AlertCircle className="h-4 w-4" />
+                  Plantilla de una versión anterior
+                </p>
+                <p className="text-red-800 dark:text-red-300">{LEGACY_TEMPLATE_MESSAGE}</p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleDownloadTemplate(true)}
+                >
+                  <FileDown className="mr-2 h-4 w-4" />
+                  Descargar plantilla nueva
+                </Button>
+              </div>
+            )}
+
             <Label
               htmlFor="excel-upload"
               className="cursor-pointer group flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-muted-foreground/25 p-10 hover:bg-muted/50 transition-colors text-center"
@@ -995,6 +802,23 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
               </div>
             </div>
 
+            {errorRows.length > 0 && (
+              <div
+                role="alert"
+                className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/30 dark:border-red-800 p-4 space-y-2"
+              >
+                <p className="text-sm font-semibold text-red-700 dark:text-red-400">
+                  No se creó nada todavía. Corrige estas filas en tu Excel y vuelve a subirlo
+                  (la categoría y subcategoría también se pueden elegir en la tabla):
+                </p>
+                <ul className="max-h-48 overflow-auto list-disc pl-5 space-y-1 text-xs text-red-800 dark:text-red-300">
+                  {errorRows.map((row) => (
+                    <li key={row.rowNumber}>{describeRowError(row)}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {/* Table */}
             <div className="rounded-lg border overflow-hidden">
               <div className="overflow-auto max-h-[500px]">
@@ -1003,6 +827,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                     <TableRow>
                       <TableHead className="w-10">#</TableHead>
                       <TableHead className="min-w-[150px]">Nombre</TableHead>
+                      <TableHead className="min-w-[130px]">Variante</TableHead>
                       <TableHead className="min-w-[180px]">Categoría</TableHead>
                       <TableHead className="min-w-[180px]">
                         Subcategoría
@@ -1029,13 +854,16 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                           }
                         >
                           <TableCell className="text-muted-foreground text-xs">
-                            {i + 1}
+                            {row.rowNumber}
                           </TableCell>
                           <TableCell
                             className="font-medium text-xs max-w-[150px] truncate"
                             title={row.name}
                           >
                             {row.name}
+                          </TableCell>
+                          <TableCell className="text-xs" title="Talla, color y otros atributos de esta variante">
+                            {formatAttributes(row.attributes)}
                           </TableCell>
 
                           {/* Categoría Selector */}
@@ -1050,7 +878,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                                   categoryName: catName,
                                   subcategoryId: "",
                                   subcategoryName: "",
-                                  error: "Selecciona subcategoría",
+                                  subcategoryProblem: "Selecciona la subcategoría.",
                                 });
                                 fetchSubcategoriesForCategory(newCatId);
                               }}
