@@ -8,7 +8,7 @@ import type { BusinessInventoryItem } from '@/services/businessInventoryItemsSer
 import { toast } from 'sonner';
 import ExcelJS from 'exceljs';
 import AlmacenPage from '../page';
-jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { accessToken: 'fake-token', user: { id: 'user-1' }, company: { id: 'company-1', stores: [{id:'store-1', name:'Principal'}] } } }) }));
+jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { accessToken: 'fake-token', user: { id: 'user-1', role: 'ADMINISTRADOR' }, company: { id: 'company-1', stores: [{id:'store-1', name:'Principal'}] } } }) }));
 jest.mock('@/contexts/BusinessScopeContext', () => ({ useBusinessScope: () => ({scope:'business',storeIds:['store-1'],canFetch:true}) }));
 jest.mock('@/hooks/useBusinessInventories', () => ({useBusinessInventories: () => ({inventories:[{id:'inv-1',name:'Almacén Principal',storeId:'store-1'}],isSuccess:true,isPending:false,refetch:jest.fn()})}));
 jest.mock('@/services/businessInventoryItemsService', () => ({ ...jest.requireActual('@/services/businessInventoryItemsService'), fetchBusinessInventoryItems: jest.fn() }));

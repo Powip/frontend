@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/card";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { useAuth } from "@/contexts/AuthContext";
+import { canSeeProductCosts } from "@/config/permissions.config";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -105,6 +106,9 @@ export default function ProductCreateForm(props: ProductCreateFormProps) {
 
 function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) {
   const { auth } = useAuth();
+  // El costo (precio base) solo lo ven y lo escriben Administrador y Operaciones. Quien no lo ve crea
+  // variantes con costo 0 (el servidor lo acepta) y las variantes que ya existen conservan el suyo.
+  const canSeeCosts = canSeeProductCosts(auth?.user);
   const warehouseQuery = useBusinessInventories();
   const inventories = warehouseQuery.inventories;
   const companyId = auth?.company?.id ?? "";
@@ -593,9 +597,11 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
 
     // Validar precios (y stock solo en modo creación)
     for (const v of variants) {
-      if (v.priceBase <= 0 || v.priceVta <= 0) {
+      if ((canSeeCosts && v.priceBase <= 0) || v.priceVta <= 0) {
         toast.error(
-          "Todas las variantes deben tener precio base y precio venta mayor a 0.",
+          canSeeCosts
+            ? "Todas las variantes deben tener precio base y precio venta mayor a 0."
+            : "Todas las variantes deben tener precio de venta mayor a 0.",
         );
         return;
       }
@@ -1118,6 +1124,7 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
 
                       {/* Datos de la variante */}
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                        {canSeeCosts && (
                         <div className="space-y-1">
                           <Label htmlFor={`variant-${index}-base-price`} className="text-xs">Precio base</Label>
                           <Input
@@ -1134,6 +1141,7 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                             }
                           />
                         </div>
+                        )}
 
                         <div className="space-y-1">
                           <Label htmlFor={`variant-${index}-sale-price`} className="text-xs">Precio venta</Label>

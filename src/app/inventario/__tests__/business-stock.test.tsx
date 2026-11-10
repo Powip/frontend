@@ -6,7 +6,7 @@ import { fetchBusinessInventoryItems } from "@/services/businessInventoryItemsSe
 jest.mock("exceljs", () => ({ __esModule: true, default: { Workbook: jest.fn() } }));
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 jest.mock("next/image", () => ({ __esModule: true, default: () => <span /> }));
-jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { accessToken: "test-token", company: { id: "company-a", stores: [{ id: "empty-store", name: "Tienda vacía" }] }, user: { id: "user-a" } } }) }));
+jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { accessToken: "test-token", company: { id: "company-a", stores: [{ id: "empty-store", name: "Tienda vacía" }] }, user: { id: "user-a", role: "ADMINISTRADOR" } } }) }));
 jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scope: "business", storeIds: ["empty-store", "stocked-store"], canFetch: true }) }));
 jest.mock("@/hooks/useBusinessInventories", () => ({ useBusinessInventories: () => ({ inventories: [{ id: "warehouse-a", name: "Principal", storeId: "empty-store" }, { id: "warehouse-b", name: "Web", storeId: "stocked-store" }], isSuccess: true, isPending: false, refetch: jest.fn() }) }));
 jest.mock("@/services/businessInventoryItemsService", () => ({ ...jest.requireActual("@/services/businessInventoryItemsService"), fetchBusinessInventoryItems: jest.fn() }));

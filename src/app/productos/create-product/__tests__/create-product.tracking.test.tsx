@@ -4,7 +4,7 @@ import axiosAuth from "@/lib/axiosAuth";
 
 jest.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
-    auth: { company: { id: "company-a" }, user: { id: "user-a" }, accessToken: "token" },
+    auth: { company: { id: "company-a" }, user: { id: "user-a", role: "ADMINISTRADOR" }, accessToken: "token" },
   }),
 }));
 jest.mock("@/hooks/useBusinessInventories", () => {

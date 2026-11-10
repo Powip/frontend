@@ -35,6 +35,10 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/dashboard": [],
   "/productos": [],
   "/inventario": [],
+  // Compras: dan de alta stock con costo, así que van con la edición de inventario (Administrador y
+  // Operaciones, los únicos roles que las registran en prod). El inventario en sí se sigue viendo.
+  "/compras": ["__INVENTORY_ROLE__"],
+  "/registrar-compra": ["__INVENTORY_ROLE__"],
   "/ventas": [],
   "/cotizaciones": [],
   "/leads-comerciales": ["VIEW_LEADS", "MANAGE_LEADS", "MANAGE_LEAD_TYPES"],
@@ -72,13 +76,9 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   // Configuración: accesible para todos los autenticados.
   // Las sub-páginas (tiendas, etc.) manejan su propio guard por rol.
   "/configuracion": [],
-  // Administración financiera: admin/owner only (guardado en sidebar)
-  "/administracion/resumen": [],
-  "/administracion/gastos": [],
-  "/administracion/utilidad": [],
-  "/administracion/canales": [],
-  "/administracion/equilibrio": [],
-  "/administracion/margen-producto": [],
+  // Administración financiera (gastos, utilidad, capital, flujo…): solo el Administrador. Antes solo se
+  // ocultaba en el sidebar y el layout pedía VIEW_FINANCES, que CALLER también tiene.
+  "/administracion": ["__ADMIN_ROLE__"],
   "/superadmin": ["__SUPERADMIN__"],
 };
 
@@ -144,10 +144,30 @@ export interface RouteAccessUser {
   permissions?: string[];
 }
 
+// Rol que edita el inventario además del Administrador. Decisión de Octa (2026-11-10), respaldada con
+// prod (90 días): solo Administrador y Operaciones hicieron ajustes manuales de stock y compras.
+// Es por ROL y no por permiso: CALLER tiene MANAGE_INVENTORY y VIEW_FINANCES y no debe heredarlos.
+const hasInventoryRole = (role?: string): boolean => role?.trim().toUpperCase() === "OPERACIONES";
+
+/** ¿Puede editar el inventario (ajustes, mermas, transferencias, importar Excel, compras)? */
+export const canEditInventory = (user?: RouteAccessUser): boolean =>
+  !!user && (isSuperadmin(user.email) || hasAdminAccess(user.role) || hasInventoryRole(user.role));
+
+/**
+ * ¿Puede ver el costo de los productos (`priceBase`, "Precio Compra")? Los ven Administrador y
+ * Operaciones, que son quienes registran compras. Ventas, CALLER, Agentes, Usuario y los roles
+ * personalizados no. Un solo lugar para cambiar la regla.
+ */
+export const canSeeProductCosts = (user?: RouteAccessUser): boolean => canEditInventory(user);
+
 export const hasRouteAccess = (pathname: string, user: RouteAccessUser | undefined): boolean => {
   if (isSuperadmin(user?.email)) return true;
   const requiredPermissions = getRoutePermissions(pathname);
-  return requiredPermissions.includes("__ADMIN_ROLE__")
-    ? hasAdminAccess(user?.role)
-    : hasAnyPermission(user?.permissions, requiredPermissions);
+  if (requiredPermissions.includes("__ADMIN_ROLE__")) return hasAdminAccess(user?.role);
+  if (requiredPermissions.includes("__INVENTORY_ROLE__")) return canEditInventory(user);
+  return hasAnyPermission(user?.permissions, requiredPermissions);
 };
+
+/** ¿La ruta se decide por el rol del usuario (y no por sus permisos)? Lo usa el sidebar para ocultar enlaces. */
+export const isRoleGatedRoute = (pathname: string): boolean =>
+  getRoutePermissions(pathname).some((p) => p === "__ADMIN_ROLE__" || p === "__INVENTORY_ROLE__");

@@ -3,7 +3,7 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, ReactNode } from "react";
-import { getRoutePermissions, hasAnyPermission, isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
+import { hasRouteAccess, isSuperadmin } from "@/config/permissions.config";
 import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
 import { isPublicLiveRoute } from "@/lib/liveRoutes";
 import { resolveSubscriptionRedirect } from "@/lib/subscriptionGate";
@@ -44,18 +44,9 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   // live /me authorization still apply; a similar prefix is not a Partners route.
   const isPartnersRoute = /^\/partners(?:\/|$)/.test(pathname ?? "");
 
-  // Obtener permisos requeridos para la ruta actual
-  const requiredPermissions = pathname ? getRoutePermissions(pathname) : [];
-
-  // Verificar acceso:
-  // 1. Superadmin siempre tiene acceso
-  // 2. Si requiere __ADMIN_ROLE__, verificar el rol del usuario (ADMIN/OWNER)
-  // 3. Si requiere permisos específicos, verificar permissions[] del JWT
-  // 4. Si no hay requisitos (array vacío), cualquier autenticado puede acceder
-  const hasAccess = isSuperadmin(auth?.user?.email) ||
-    (requiredPermissions.includes("__ADMIN_ROLE__")
-      ? hasAdminAccess(auth?.user?.role)
-      : hasAnyPermission(auth?.user?.permissions, requiredPermissions));
+  // Acceso a la ruta (superadmin, rol Administrador, rol de inventario o permisos del JWT, según el
+  // mapa ROUTE_PERMISSIONS): una sola regla, la misma que usa el sidebar.
+  const hasAccess = pathname ? hasRouteAccess(pathname, auth?.user) : true;
 
   // Sin pago no se entra (FEAT-11): usuarios sin empresa van a elegir/pagar un
   // plan o, si ya pagaron, a crear su empresa. Con empresa, el bloqueo de la
