@@ -5,13 +5,21 @@ import { format, parseISO } from "date-fns";
 
 export interface InventoryMovement {
   id: string;
-  type: "IN" | "OUT" | "RESERVED" | "RELEASED" | "COMMITTED" | "ADJUSTMENT" | "TRANSFER";
+  // SALDO_INICIAL y ANULACION los agrega el libro de stock del backend (FEAT-24 H1-B).
+  type: "IN" | "OUT" | "RESERVED" | "RELEASED" | "COMMITTED" | "ADJUSTMENT" | "TRANSFER" | "SALDO_INICIAL" | "ANULACION";
   quantity: number;
   reason: string | null;
   userEmail: string | null;
   userName: string | null;
   companyId: string | null;
   referenceId: string | null;
+  // Libro de stock (FEAT-24 H1-B). Todos opcionales: las filas viejas los traen en null y un backend
+  // anterior ni los manda; en ese caso el historial calcula el efecto con `type` y `quantity`.
+  physicalDelta?: number | null;
+  reservedDelta?: number | null;
+  physicalAfter?: number | null;
+  reservedAfter?: number | null;
+  referenceNumber?: string | null;
   created_at: string;
   inventoryId?: string;
   inventoryName?: string;
@@ -22,6 +30,8 @@ export interface InventoryMovement {
     product: {
       name: string;
     } | null;
+    // Almacén del movimiento (FEAT-24 H1-B); no viene de un backend anterior.
+    inventory?: { id: string; name: string } | null;
   } | null;
 }
 

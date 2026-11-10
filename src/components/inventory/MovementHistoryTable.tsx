@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import type { BusinessInventory } from "@/services/inventoryCatalogService";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import { Pagination } from "@/components/ui/pagination";
 import { fetchScopedInventoryMovements, filterInventoryMovements } from "@/services/inventoryMovementService";
 import { resolveOrderNumbers } from "@/services/orderNumbersService";
@@ -29,6 +30,8 @@ import { Label } from "@/components/ui/label";
 import { Search, X, Calendar as CalendarIcon, Filter } from "lucide-react";
 
 const ITEMS_PER_PAGE = 15;
+// Columnas del mockup v6 (Historial): el vacío y el error ocupan todas.
+const COLUMNS = 9;
 
 interface MovementHistoryTableProps {
   companyId: string | undefined;
@@ -175,30 +178,34 @@ export function MovementHistoryTable({ companyId, scope = "business", inventorie
           <TableHeader>
             <TableRow className="bg-muted/50">
               <TableHead className="w-[160px]">Fecha y hora</TableHead>
+              <TableHead>Tipo</TableHead>
               <TableHead>Producto / SKU</TableHead>
-              <TableHead>Operación</TableHead>
+              <TableHead>Almacén</TableHead>
               <TableHead className="text-right">Físico</TableHead>
               <TableHead className="text-right">Reservado</TableHead>
               <TableHead>Referencia</TableHead>
               <TableHead>Usuario</TableHead>
+              <TableHead>Motivo</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {error ? <TableRow><TableCell colSpan={7}>Historial no disponible.</TableCell></TableRow> : isLoading ? (
+            {error ? <TableRow><TableCell colSpan={COLUMNS}>Historial no disponible.</TableCell></TableRow> : isLoading ? (
               [...Array(10)].map((_, i) => (
                 <TableRow key={i}>
                   <TableCell><Skeleton className="h-4 w-28" /></TableCell>
+                  <TableCell><Skeleton className="h-6 w-24" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-48" /></TableCell>
-                  <TableCell><Skeleton className="h-6 w-20" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-40" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-12 ml-auto" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                  <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                 </TableRow>
               ))
             ) : movements.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground italic">
+                <TableCell colSpan={COLUMNS} className="h-32 text-center text-muted-foreground italic">
                   No se encontraron movimientos con los filtros aplicados.
                 </TableCell>
               </TableRow>
@@ -206,10 +213,15 @@ export function MovementHistoryTable({ companyId, scope = "business", inventorie
               movements.map((movement) => {
                 const view = describeMovement(movement);
                 const reference = view.documentNumber ?? (view.orderId ? orderNumbers.data?.[view.orderId] ?? "Pedido" : "—");
+                // Almacén del movimiento; en una tienda, sin él en la respuesta, el del almacén validado.
+                const warehouse = movement.inventoryItem?.inventory?.name || movement.inventoryName || "—";
 
                 return (
                   <TableRow key={movement.id} className="hover:bg-muted/30 transition-colors">
                     <TableCell className="text-xs font-medium">{formatPeruDateTime(movement.created_at)}</TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="max-w-[180px] whitespace-normal text-left">{view.label}</Badge>
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="font-semibold text-sm line-clamp-1 max-w-[200px]">
@@ -220,17 +232,20 @@ export function MovementHistoryTable({ companyId, scope = "business", inventorie
                         </span>
                       </div>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-medium">{view.label}</span>
-                        {view.detail ? <span className="text-xs text-muted-foreground">{view.detail}</span> : null}
+                    <TableCell className="text-sm">{warehouse}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex flex-col items-end">
+                        <span className={cn("font-bold text-sm", view.physicalDelta !== null && (view.physicalDelta >= 0 ? "text-green-600" : "text-red-600"))}>{signed(view.physicalDelta)}</span>
+                        {view.physicalAfter !== null ? <span className="text-[10px] font-normal text-muted-foreground">saldo {view.physicalAfter}</span> : null}
                       </div>
                     </TableCell>
-                    <TableCell className={cn("text-right font-bold text-sm", view.physicalDelta !== null && (view.physicalDelta >= 0 ? "text-green-600" : "text-red-600"))}>
-                      {signed(view.physicalDelta)}
+                    <TableCell className="text-right">
+                      <div className="flex flex-col items-end">
+                        <span className="text-sm text-blue-700 dark:text-blue-400">{signed(view.reservedDelta)}</span>
+                        {view.reservedAfter !== null ? <span className="text-[10px] text-muted-foreground">saldo {view.reservedAfter}</span> : null}
+                      </div>
                     </TableCell>
-                    <TableCell className="text-right text-sm text-blue-700 dark:text-blue-400">{signed(view.reservedDelta)}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground truncate max-w-[120px]">{reference}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground truncate max-w-[120px]">{reference}</TableCell>
                     <TableCell>
                       <div className="flex flex-col">
                         <span className="text-xs font-medium truncate max-w-[120px]">
@@ -243,6 +258,7 @@ export function MovementHistoryTable({ companyId, scope = "business", inventorie
                         ) : null}
                       </div>
                     </TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[220px] whitespace-normal break-words">{view.detail || "—"}</TableCell>
                   </TableRow>
                 );
               })

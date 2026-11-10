@@ -36,6 +36,13 @@ describe("describeMovement (FEAT-24 H0)", () => {
     ["IN", "RECONCILE_NEGATIVE_RESET", "Corrección de negativo al unificar", 3, null],
     ["RESERVED", "order.created:2:UNASSIGNED", "Reserva por pedido · sin unidad asignada", null, 3],
     ["RELEASED", "order.updated:3:UNASSIGNED", "Pedido modificado · sin unidad asignada", null, -3],
+    // FEAT-24 H1-B: tipos del libro de stock y el conteo de la unificación.
+    ["SALDO_INICIAL", null, "Saldo inicial", null, null],
+    ["SALDO_INICIAL", "algo raro", "Saldo inicial", null, null],
+    ["ANULACION", null, "Anulación", null, null],
+    ["ANULACION", "PURCHASE_CANCELLED - COM-0007", "Compra anulada", null, null],
+    ["OUT", "RECONCILE_COUNT from=10 to=7", "Unificación · conteo", -3, null],
+    ["IN", "RECONCILE_COUNT from=4 to=9", "Unificación · conteo", 3, null],
     ["IN", "algo raro", "Otro movimiento", 3, null],
     ["IN", null, "Otro movimiento", 3, null],
   ])("%s %p → %s", (type, reason, label, physical, reserved) => {
@@ -65,7 +72,47 @@ describe("describeMovement (FEAT-24 H0)", () => {
     expect(describeMovement(m("RESERVED", "order.created:2:UNASSIGNED", 1, UUID))).toMatchObject({ orderId: UUID });
   });
 
+  it("el conteo de la unificación explica de cuánto a cuánto", () => {
+    expect(describeMovement(m("OUT", "RECONCILE_COUNT from=10 to=7", 3)).detail).toBe("de 10 a 7");
+  });
+
   it("muestra la hora de Perú", () => {
     expect(formatPeruDateTime("2026-10-21T17:47:00.000Z")).toBe("21/10/26, 12:47");
+  });
+});
+
+describe("describeMovement con el libro de stock (FEAT-24 H1-B)", () => {
+  const ledger = (type: string, reason: string | null, fields: Record<string, number | null>, extra: Record<string, unknown> = {}) =>
+    describeMovement({ type, reason, quantity: 3, referenceId: null, ...fields, ...extra } as never);
+
+  it("fila nueva: los deltas salen del libro, con 0 como null, y trae los saldos", () => {
+    expect(ledger("OUT", "SHRINKAGE", { physicalDelta: -2, reservedDelta: 0, physicalAfter: 12, reservedAfter: 3 })).toMatchObject({
+      physicalDelta: -2, reservedDelta: null, physicalAfter: 12, reservedAfter: null,
+    });
+    expect(ledger("RESERVED", "SALE_RESERVATION", { physicalDelta: 0, reservedDelta: 2, physicalAfter: 12, reservedAfter: 5 })).toMatchObject({
+      physicalDelta: null, reservedDelta: 2, physicalAfter: null, reservedAfter: 5,
+    });
+  });
+
+  it("fila nueva: el libro manda sobre type y quantity", () => {
+    // Un ADJUSTMENT por conteo antes salía sin efecto; ahora mueve el físico.
+    expect(ledger("ADJUSTMENT", "ADJUSTMENT_IN - count", { physicalDelta: 5, reservedDelta: 0, physicalAfter: 15, reservedAfter: 0 })).toMatchObject({ physicalDelta: 5, physicalAfter: 15 });
+    // Una merma recortada a 0: quantity pedida 9, delta real -4.
+    expect(ledger("OUT", "SHRINKAGE", { physicalDelta: -4, reservedDelta: 0, physicalAfter: 0, reservedAfter: 0 }, { quantity: 9 })).toMatchObject({ physicalDelta: -4, physicalAfter: 0 });
+  });
+
+  it.each([
+    ["null", { physicalDelta: null, reservedDelta: null, physicalAfter: null, reservedAfter: null }],
+    ["ausentes", {}],
+  ])("fila vieja (%s): conserva el cálculo por type y quantity y no trae saldo", (_name, fields) => {
+    expect(ledger("OUT", "SHRINKAGE", fields)).toMatchObject({ physicalDelta: -3, reservedDelta: null, physicalAfter: null, reservedAfter: null });
+    expect(ledger("RESERVED", "SALE_RESERVATION", fields)).toMatchObject({ physicalDelta: null, reservedDelta: 3, physicalAfter: null, reservedAfter: null });
+  });
+
+  it("referencia legible: referenceNumber manda, nunca un UUID, y reconoce TRA-", () => {
+    expect(ledger("IN", "algo raro", {}, { referenceNumber: "COM-0007", referenceId: UUID }).documentNumber).toBe("COM-0007");
+    expect(ledger("IN", "algo raro", {}, { referenceNumber: UUID, referenceId: null }).documentNumber).toBeNull();
+    expect(ledger("IN", "algo raro", {}, { referenceNumber: null, referenceId: "TRA-0042" }).documentNumber).toBe("TRA-0042");
+    expect(ledger("IN", "algo raro", {}, { referenceNumber: "", referenceId: UUID }).documentNumber).toBeNull();
   });
 });

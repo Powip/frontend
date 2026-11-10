@@ -2,12 +2,18 @@ import type { InventoryMovement } from "@/services/inventoryMovementService";
 import { ADJUSTMENT_REASON_LABELS, type AdjustmentReason } from "@/services/stockAdjustmentService";
 
 // FEAT-24 H0 — historial legible: cada motivo con nombre, el efecto en físico
-// y en reservado por separado, y el documento (ORD-/COM-) en vez del UUID.
+// y en reservado por separado, y el documento (ORD-/COM-/TRA-) en vez del UUID.
+// FEAT-24 H1-B — las filas del libro de stock traen el efecto exacto y el saldo resultante;
+// las viejas (campos en null o ausentes) siguen calculándose con `type` y `quantity`.
 export interface MovementView {
   label: string;
   detail: string | null;
+  /** Efecto en el físico; null cuando el movimiento no lo toca (en filas del libro, delta 0). */
   physicalDelta: number | null;
   reservedDelta: number | null;
+  /** Saldo resultante; solo en filas del libro y solo del saldo que el movimiento cambió. */
+  physicalAfter: number | null;
+  reservedAfter: number | null;
   documentNumber: string | null;
   orderId: string | null;
 }
@@ -41,6 +47,12 @@ const PREFIXED: Array<[string, string]> = [
   ["AUDIT_CORRECTION", "Corrección de cantidad inválida"],
 ];
 
+// Tipos propios del libro de stock (H1-B). Solo valen si el motivo no tiene nombre.
+const TYPE_LABELS: Record<string, string> = {
+  SALDO_INICIAL: "Saldo inicial",
+  ANULACION: "Anulación",
+};
+
 const ORDER_EVENTS: Record<string, string> = {
   "order.created": "Reserva por pedido",
   "order.updated": "Pedido modificado",
@@ -49,7 +61,9 @@ const ORDER_EVENTS: Record<string, string> = {
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DOCUMENT = /^(ORD|COM)-/;
+const DOCUMENT = /^(ORD|COM|TRA)-/;
+
+const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
 function deltasByType(type: string, quantity: number): Pick<MovementView, "physicalDelta" | "reservedDelta"> {
   switch (type) {
@@ -62,17 +76,22 @@ function deltasByType(type: string, quantity: number): Pick<MovementView, "physi
   }
 }
 
-export function describeMovement(movement: Pick<InventoryMovement, "type" | "quantity" | "reason" | "referenceId">): MovementView {
+export function describeMovement(
+  movement: Pick<InventoryMovement, "type" | "quantity" | "reason" | "referenceId" | "physicalDelta" | "reservedDelta" | "physicalAfter" | "reservedAfter" | "referenceNumber">,
+): MovementView {
   const reason = movement.reason ?? "";
   const reference = movement.referenceId;
-  let label = "Otro movimiento";
+  let label: string | null = null;
   let detail: string | null = null;
   let deltas = deltasByType(movement.type, movement.quantity);
-  let documentNumber = reference && DOCUMENT.test(reference) ? reference : null;
+  // El número legible que guarda el libro manda; un UUID nunca se muestra como referencia.
+  const stored = movement.referenceNumber?.trim();
+  let documentNumber = stored && !UUID.test(stored) ? stored : reference && DOCUMENT.test(reference) ? reference : null;
   let orderId: string | null = null;
 
   const adjustment = reason.match(/^ADJUSTMENT_(IN|OUT) - ([a-z_]+)(?: - ([\s\S]*))?$/);
   const reconcile = reason.match(/^RECONCILE_(MERGE|LINK)_(IN|OUT) reserved=(\d+)/);
+  const reconcileCount = reason.match(/^RECONCILE_COUNT from=(-?\d+) to=(-?\d+)$/);
   // ":UNASSIGNED": reserva de IMEI/series que todavía no tiene la unidad elegida.
   const orderEvent = reason.match(/^(order\.[a-z]+):\d+(:UNASSIGNED)?$/);
   const prefixed = PREFIXED.find(([prefix]) => reason.startsWith(prefix));
@@ -85,6 +104,9 @@ export function describeMovement(movement: Pick<InventoryMovement, "type" | "qua
     const reserved = Number(reconcile[3]);
     label = `${reconcile[1] === "MERGE" ? "Unificación" : "Vinculación"} · ${reconcile[2] === "IN" ? "entra" : "sale"}`;
     deltas = { physicalDelta: sign * movement.quantity, reservedDelta: reserved > 0 ? sign * reserved : null };
+  } else if (reconcileCount) {
+    label = "Unificación · conteo";
+    detail = `de ${reconcileCount[1]} a ${reconcileCount[2]}`;
   } else if (orderEvent && ORDER_EVENTS[orderEvent[1]]) {
     label = orderEvent[2] ? `${ORDER_EVENTS[orderEvent[1]]} · sin unidad asignada` : ORDER_EVENTS[orderEvent[1]];
   } else if (EXACT[reason]) {
@@ -104,7 +126,17 @@ export function describeMovement(movement: Pick<InventoryMovement, "type" | "qua
   if (reference && UUID.test(reference) && (orderEvent || reason.startsWith("ORDER_UPDATE_") || reason.startsWith("SALE_"))) {
     orderId = reference;
   }
-  return { label, detail, ...deltas, documentNumber, orderId };
+
+  // Fila del libro: trae los dos deltas exactos (el 0 es «no aplica») y el saldo que quedó.
+  let physicalAfter: number | null = null;
+  let reservedAfter: number | null = null;
+  if (isNumber(movement.physicalDelta) && isNumber(movement.reservedDelta)) {
+    deltas = { physicalDelta: movement.physicalDelta || null, reservedDelta: movement.reservedDelta || null };
+    if (deltas.physicalDelta !== null && isNumber(movement.physicalAfter)) physicalAfter = movement.physicalAfter;
+    if (deltas.reservedDelta !== null && isNumber(movement.reservedAfter)) reservedAfter = movement.reservedAfter;
+  }
+
+  return { label: label ?? TYPE_LABELS[movement.type] ?? "Otro movimiento", detail, ...deltas, physicalAfter, reservedAfter, documentNumber, orderId };
 }
 
 const PERU = new Intl.DateTimeFormat("es-PE", {
