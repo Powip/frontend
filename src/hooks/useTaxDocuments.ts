@@ -80,7 +80,8 @@ export function useTaxDocuments() {
   /**
    * Build the rows consumed by the tax-document UI.
    *
-   * Only sales in an eligible status (`EN_ENVIO` or `ENTREGADO`) participate in the SUNAT
+   * Only sales in an eligible status (from `PREPARADO` onwards, see
+   * `TAX_DOCUMENT_ELIGIBLE_ORDER_STATUSES`) participate in the SUNAT
    * document workflow.
    */
   const rows = useMemo<TaxDocumentRow[]>(() => {
