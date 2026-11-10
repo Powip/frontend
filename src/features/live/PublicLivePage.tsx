@@ -1,5 +1,6 @@
 "use client";
 import { isLiveReadDenied } from "./liveService";
+import { isValidMobilePhone, normalizePhone } from "@/lib/phone";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Dialog,
@@ -133,7 +134,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
   }, [pay, manualId, busy]);
   useEffect(() => {
     let canceled = false;
-    if (!welcome || !visitor || !/^9\d{8}$/.test(customer.phone)) return;
+    if (!welcome || !visitor || !isValidMobilePhone(customer.phone)) return;
     const timer = setTimeout(() => {
       void lookupLiveCustomer(storeId, visitor, customer.phone)
         .then((result) => {
@@ -176,7 +177,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
     }
   }
   async function separate(product: LiveProduct, quantity: number, known = customer) {
-    if (!known.name.trim() || !/^9\d{8}$/.test(known.phone)) {
+    if (!known.name.trim() || !isValidMobilePhone(known.phone)) {
       pendingSelection.current = { product, quantity };
       setWelcome(true);
       return;
@@ -196,7 +197,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
     });
   }
   async function identify() {
-    if (!customer.name.trim() || !/^9\d{8}$/.test(customer.phone) || lock.current) return;
+    if (!customer.name.trim() || !isValidMobilePhone(customer.phone) || lock.current) return;
     const epoch = generation.current;
     const identified = await operate(`customer:${customer.phone}`, async () => {
       const result = await identifyLiveCustomer(storeId, visitor, {
@@ -413,20 +414,22 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                   aria-label="WhatsApp"
                   className={purchaseField}
                   inputMode="tel"
-                  autoComplete="tel-national"
-                  maxLength={9}
+                  autoComplete="tel"
+                  maxLength={20}
+                  placeholder="987654321 o +54 9 11 2345 6789"
                   value={customer.phone}
                   onChange={(e) =>
                     setCustomer((c) => ({
                       ...c,
-                      phone: e.target.value.replace(/\D/g, ""),
+                      // Dígitos y un "+" inicial para números de otros países.
+                      phone: normalizePhone(e.target.value),
                     }))
                   }
                 />
               </label>
               {knownPhone === customer.phone && knownPhone ? (
                 <p className="text-emerald-200">¡Hola de nuevo, {customer.name}!</p>
-              ) : customer.phone.length === 9 ? (
+              ) : isValidMobilePhone(customer.phone) ? (
                 <label className="block text-sm">
                   Nombre
                   <input
@@ -446,7 +449,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
               ) : null}
               <button
                 className={`${action} w-full`}
-                disabled={busy || !customer.name.trim() || !/^9\d{8}$/.test(customer.phone)}
+                disabled={busy || !customer.name.trim() || !isValidMobilePhone(customer.phone)}
               >
                 Entrar a comprar
               </button>

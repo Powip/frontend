@@ -2,9 +2,12 @@ import {
   COUNTRIES,
   DEFAULT_DIAL,
   composePhone,
+  isValidAccountPhone,
+  isValidMobilePhone,
   isValidPhone,
   normalizePhone,
   parsePhone,
+  toInternationalPhone,
   toWhatsAppDigits,
 } from "../phone";
 
@@ -148,4 +151,54 @@ describe("phone · toWhatsAppDigits", () => {
     expect(toWhatsAppDigits(null)).toBe("");
     expect(toWhatsAppDigits(undefined)).toBe("");
   });
+});
+
+describe("phone · teléfono de la cuenta (registro)", () => {
+  it.each([
+    ["987654321"],
+    ["+51987654321"],
+    ["+5491123456789"],
+    ["+14155552671"],
+    ["+34612345678"],
+    ["+573001234567"],
+  ])("acepta %s", (phone) => {
+    expect(isValidAccountPhone(phone)).toBe(true);
+  });
+
+  it.each([[""], ["98765432"], ["9876543210"], ["98765a321"], ["+1234"], ["+1234567890123456"]])(
+    "rechaza %j (sin + exige los 9 dígitos de siempre)",
+    (phone) => {
+      expect(isValidAccountPhone(phone)).toBe(false);
+    },
+  );
+
+  it.each([
+    ["987654321", "+51987654321"],
+    ["+51987654321", "+51987654321"],
+    ["+54 9 11 2345-6789", "+5491123456789"],
+    ["+1 (415) 555-2671", "+14155552671"],
+    ["", ""],
+  ])("toInternationalPhone(%j) = %j", (raw, expected) => {
+    expect(toInternationalPhone(raw)).toBe(expected);
+  });
+});
+
+describe("phone · celular del comprador (Live)", () => {
+  it.each([
+    ["987654321"],
+    ["987 654 321"],
+    ["+51 987 654 321"],
+    ["+54 9 11 2345-6789"],
+    ["+1 (415) 555-2671"],
+    ["+34612345678"],
+  ])("acepta %s", (phone) => {
+    expect(isValidMobilePhone(phone)).toBe(true);
+  });
+
+  it.each([[""], ["abc123"], ["98765432"], ["9876543210"], ["812345678"], ["+1234"], ["+1234567890123456"]])(
+    "rechaza %j (conserva la regla peruana: 9 dígitos que empiezan con 9)",
+    (phone) => {
+      expect(isValidMobilePhone(phone)).toBe(false);
+    },
+  );
 });

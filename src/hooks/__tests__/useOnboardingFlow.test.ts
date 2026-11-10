@@ -102,6 +102,18 @@ describe("useOnboardingFlow", () => {
     expect(result.current.state.step).toBe("ADDONS");
   });
 
+  it("registro con un teléfono extranjero guarda el número internacional sin anteponer +51 (B2)", async () => {
+    mocked.registerAccount.mockResolvedValue({ userId: "u9" });
+    mocked.loginAccount.mockResolvedValue({ accessToken: "jwt" });
+    const { result } = setup(null);
+
+    await act(() => result.current.register({ ...registerData, phone: "+5491123456789" }));
+
+    expect(mocked.registerAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ phoneNumber: "+5491123456789" }),
+    );
+  });
+
   it("registro con email existente muestra el error y no avanza", async () => {
     mocked.registerAccount.mockRejectedValue(apiError(409, "EMAIL_ALREADY_EXISTS"));
     const { result } = setup(null);

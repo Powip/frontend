@@ -128,3 +128,34 @@ export function toWhatsAppDigits(raw: string | null | undefined): string {
   if (!national) return "";
   return national.length <= 9 ? `51${national}` : national;
 }
+
+/**
+ * Teléfono de la cuenta (registro): un celular peruano de 9 dígitos sin prefijo, como siempre,
+ * o un número internacional con "+" y código de país.
+ */
+export function isValidAccountPhone(raw: string | null | undefined): boolean {
+  const value = (raw ?? "").trim();
+  return value.startsWith("+") ? isValidPhone(value) : /^\d{9}$/.test(value);
+}
+
+/**
+ * Valor que se guarda en la cuenta: siempre con "+" y código de país. Un peruano de 9 dígitos sin
+ * prefijo recibe +51 (como antes); un número que ya trae "+" y su código se respeta.
+ */
+export function toInternationalPhone(raw: string | null | undefined): string {
+  const value = (raw ?? "").trim();
+  const digits = digitsOf(value);
+  if (!digits) return "";
+  return value.startsWith("+") ? `+${digits}` : `+51${digits}`;
+}
+
+/** Mismo criterio que ms-ventas (MOBILE_PHONE_RE): peruano de 9 dígitos que empieza con 9, o E.164 con "+". */
+export const MOBILE_PHONE_RE = /^(9\d{8}|\+\d{7,15})$/;
+
+/**
+ * Celular del comprador (POWIP Live). Un peruano sigue necesitando sus 9 dígitos con el 9 inicial;
+ * un número de otro país se escribe con "+" y su código.
+ */
+export function isValidMobilePhone(raw: string | null | undefined): boolean {
+  return isValidPhone(raw) && MOBILE_PHONE_RE.test(normalizePhone(raw));
+}

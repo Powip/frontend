@@ -17,6 +17,7 @@ export interface PhoneInputProps {
   inputClassName?: string;
   onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
   "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
   /** Selector corto ("+51 PE") para celdas angostas. */
   compact?: boolean;
 }
@@ -38,6 +39,7 @@ export function PhoneInput({
   inputClassName,
   onKeyDown,
   "aria-invalid": ariaInvalid,
+  "aria-describedby": ariaDescribedBy,
   compact = false,
 }: PhoneInputProps) {
   const parsed = parsePhone(value);
@@ -89,6 +91,7 @@ export function PhoneInput({
         disabled={disabled}
         value={parsed.national}
         aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedBy}
         className={inputClassName}
         onChange={(e) => handleNumber(e.target.value)}
         onKeyDown={onKeyDown}

@@ -129,6 +129,30 @@ describe("RegisterForm — integración con onboarding", () => {
     expect(document.getElementById("register-confirm-error")).toBeNull();
     expect(onNext).not.toHaveBeenCalled();
   });
+  it.each([
+    ["Argentina", "54", "9 11 2345-6789", "+5491123456789"],
+    ["EE. UU.", "1", "(415) 555-2671", "+14155552671"],
+    ["España", "34", "612 345 678", "+34612345678"],
+  ])("acepta un WhatsApp de %s con su selector de país y lo envía en formato internacional (B2)", async (_pais, dial, typed, expected) => {
+    const onNext = jest.fn<Promise<void>, [RegisterData]>().mockResolvedValue(undefined);
+    render(<RegisterForm isLoading={false} error={null} onNext={onNext} />);
+    fillPersonalData();
+    fireEvent.change(screen.getByLabelText("Código de país"), { target: { value: dial } });
+    change(/^WhatsApp/, typed);
+
+    continueStep();
+
+    // Si el teléfono fuera inválido no avanzaría: llegar al paso Ubicación lo demuestra.
+    expect(screen.getByLabelText(/^Distrito$/)).toBeInTheDocument();
+    change(/^Distrito$/, account.district);
+    change(/^Dirección$/, account.address);
+    continueStep();
+    fillAccountStep();
+    fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
+    await waitFor(() => expect(onNext).toHaveBeenCalledTimes(1));
+    expect(onNext.mock.calls[0][0].phone).toBe(expected);
+  });
+
   it("bloquea el avance con teléfono o documento no numéricos y acepta un DNI de 8 dígitos", () => {
     const onNext = jest.fn<Promise<void>, [RegisterData]>().mockResolvedValue(undefined);
     render(<RegisterForm isLoading={false} error={null} onNext={onNext} />);
