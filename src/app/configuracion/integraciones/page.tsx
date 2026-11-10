@@ -23,6 +23,7 @@ import {
   Ship,
   Megaphone,
   Check,
+  CreditCard,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -69,6 +70,19 @@ interface IntegrationDef {
 }
 
 const INTEGRATIONS: IntegrationDef[] = [
+  {
+    id: "mercadopago",
+    title: "Mercado Pago",
+    description: "Conecta la cuenta de tu negocio para recibir los cobros de cada tienda.",
+    icon: CreditCard,
+    href: "/configuracion/integraciones/mercadopago",
+    color: "text-sky-600 dark:text-sky-400",
+    bgColor: "bg-sky-50 dark:bg-sky-950/40",
+    category: "servicio",
+    categoryLabel: "Pagos",
+    methodTag: "OAuth",
+    ctaLabel: "Configurar cuenta",
+  },
   {
     id: "shalom",
     title: "Shalom Courier",
@@ -553,7 +567,7 @@ export default function IntegracionesHubPage() {
                               : "text-teal-600 dark:text-teal-400"
                           }`}
                         >
-                          {connected ? "Gestionar" : "Conectar"}
+                          {integration.ctaLabel ?? (connected ? "Gestionar" : "Conectar")}
                           <ArrowRight className="h-4 w-4 transform group-hover:translate-x-1 transition-transform" />
                         </span>
                       )}
