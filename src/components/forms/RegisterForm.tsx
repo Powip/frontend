@@ -1,5 +1,7 @@
 "use client";
 import { ArrowLeft, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { PhoneInput } from "@/components/shared/PhoneInput";
+import { isValidAccountPhone } from "@/lib/phone";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { RegisterData } from "@/hooks/useOnboardingFlow";
@@ -101,8 +103,8 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
       }
     }
 
-    if (fields.includes("phone") && values.phone && !/^\d{9}$/.test(values.phone)) {
-      newErrors.phone = "Ingresa 9 dígitos, solo números.";
+    if (fields.includes("phone") && values.phone && !isValidAccountPhone(values.phone)) {
+      newErrors.phone = "Ingresa 9 dígitos (Perú) o elige tu país e ingresa el número completo.";
     }
 
     if (
@@ -317,18 +319,15 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
 
               <div className={styles.field}>
                 <Label htmlFor="register-phone" className={styles.label}>
-                  WhatsApp (+51)
+                  WhatsApp
                 </Label>
-                <Input
+                <PhoneInput
                   id="register-phone"
-                  type="tel"
-                  inputMode="tel"
-                  autoComplete="tel-national"
                   placeholder="987654321"
                   value={registerData.phone}
-                  onChange={(e) => updateField("phone", e.target.value)}
+                  onChange={(phone) => updateField("phone", phone)}
                   disabled={isLoading}
-                  className={styles.input}
+                  inputClassName={styles.input}
                   aria-invalid={Boolean(errors.phone)}
                   aria-describedby={errors.phone ? "register-phone-error" : undefined}
                 />

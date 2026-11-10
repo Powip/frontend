@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
+import { toInternationalPhone } from "@/lib/phone";
 import { toast } from "sonner";
 import { registrationErrorMessage } from "@/lib/authErrors";
 import { notifyAuthError } from "@/lib/authToast";
@@ -304,7 +305,7 @@ export function useOnboardingFlow(
               surname: data.surname.trim(),
               email,
               password: data.password,
-              phoneNumber: `+51${data.phone}`,
+              phoneNumber: toInternationalPhone(data.phone),
               identityDocument: data.identityDocument.trim(),
               address: data.address.trim(),
               district: data.district.trim(),

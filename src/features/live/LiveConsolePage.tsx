@@ -1,5 +1,6 @@
 "use client";
 import { isLiveReadDenied } from "./liveService";
+import { toWhatsAppDigits } from "@/lib/phone";
 import { createLivePolling, type LivePollingController } from "./livePolling";
 import { liveAdminError } from "./liveService";
 import LiveAdvisors from "./LiveAdvisors";
@@ -935,7 +936,7 @@ function ScopedLiveConsolePage({
             </Button>
             <Button asChild>
               <a
-                href={`https://wa.me/${paymentLink?.phone.length === 9 ? `51${paymentLink.phone}` : paymentLink?.phone.replace(/\D/g, "")}?text=${encodeURIComponent(`Hola ${paymentLink?.name}, paga tus apartados aquí: ${paymentLink?.url}`)}`}
+                href={`https://wa.me/${toWhatsAppDigits(paymentLink?.phone)}?text=${encodeURIComponent(`Hola ${paymentLink?.name}, paga tus apartados aquí: ${paymentLink?.url}`)}`}
                 target="_blank"
                 rel="noopener noreferrer"
               >

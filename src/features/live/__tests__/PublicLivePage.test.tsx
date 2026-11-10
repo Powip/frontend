@@ -97,3 +97,25 @@ test("retries a failed reserve with same idempotency key", async () => {
   expect(calls[0][2].idempotencyKey).toBe(calls[1][2].idempotencyKey);
   expect(calls[0][2].customer.phone).toBe("987654321");
 });
+
+test("a foreign WhatsApp identifies the buyer and reserves with the international number (B2)", async () => {
+  (reserveLiveProduct as jest.Mock).mockResolvedValue({ reservation: {} });
+  (identifyLiveCustomer as jest.Mock).mockResolvedValue({
+    customer: { name: "Clara Gómez", phone: "+5491123456789" },
+  });
+  render(<PublicLivePage storeId={storeId} />);
+  await screen.findByText("Crema Centella");
+  // Antes de un número válido no se pide el nombre
+  expect(screen.queryByLabelText("Nombre")).not.toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "+54 9 11 2345-6789" } });
+  expect(screen.getByLabelText("WhatsApp")).toHaveValue("+5491123456789");
+  fireEvent.change(await screen.findByLabelText("Nombre"), { target: { value: "Clara Gómez" } });
+  fireEvent.click(screen.getByRole("button", { name: "Entrar a comprar" }));
+  await waitFor(() =>
+    expect(identifyLiveCustomer).toHaveBeenCalledWith(
+      storeId,
+      expect.anything(),
+      expect.objectContaining({ phone: "+5491123456789" }),
+    ),
+  );
+});

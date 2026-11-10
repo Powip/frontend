@@ -1,5 +1,6 @@
 "use client";
 import { isCommercialSaleOrder, canPrepareDeferredManualOrder, canShipCommercialOrder, salesPhysicalOperationBlockReason, salesStatusBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
+import { toWhatsAppDigits } from "@/lib/phone";
 import { formatSalesMoney } from "@/utils/salesMoney";
 import { operationalStatus, orderFinancialState } from "@/utils/orderState";
 import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
@@ -1188,8 +1189,7 @@ Estado: ${sale.status}
     orderNumber?: string,
     clientName?: string,
   ) => {
-    const phone = phoneNumber.replace(/\D/g, "");
-    const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
+    const cleanPhone = toWhatsAppDigits(phoneNumber);
 
     let message = `Hola${clientName ? ` ${clientName}` : ""}! `;
     if (orderNumber) {

@@ -155,6 +155,32 @@ test("validates a field on blur without marking untouched fields as invalid", ()
   expect(quoteLivePurchase).not.toHaveBeenCalled();
 });
 
+// B2: el WhatsApp del comprador puede ser de otro país (+código), y el peruano sigue igual.
+test.each([
+  ["+54 9 11 2345-6789", "+5491123456789"],
+  ["+1 (415) 555-2671", "+14155552671"],
+  ["+34 612 345 678", "+34612345678"],
+])("accepts the foreign WhatsApp %s as %s", (typed, stored) => {
+  renderCheckout({ buyer: { name: "María Torres", phone: "" } });
+  const phone = screen.getByLabelText("WhatsApp");
+  fireEvent.change(phone, { target: { value: typed } });
+  fireEvent.blur(phone);
+  expect(phone).toHaveValue(stored);
+  expect(phone).not.toHaveAttribute("aria-invalid");
+});
+
+test.each([["812345678"], ["98765432"], ["+1234"], ["+1234567890123456"]])(
+  "still rejects the invalid WhatsApp %s",
+  (typed) => {
+    renderCheckout({ buyer: { name: "María Torres", phone: "" } });
+    const phone = screen.getByLabelText("WhatsApp");
+    fireEvent.change(phone, { target: { value: typed } });
+    fireEvent.blur(phone);
+    expect(phone).toHaveAttribute("aria-invalid", "true");
+    expect(phone).toHaveAccessibleDescription(/9 dígitos que empiece por 9, o con \+ y código de país/);
+  },
+);
+
 test("shows variants and SKU, native option semantics, and a single informational Yape method", () => {
   renderCheckout({ initialDraft: draft });
   expect(screen.getByText("Negro · 41")).toBeInTheDocument();

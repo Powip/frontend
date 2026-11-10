@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, CreditCard, Loader2 } from "lucide-react";
+import { isValidMobilePhone, normalizePhone } from "@/lib/phone";
 import { useEffect, useId, useRef, useState } from "react";
 import {
   Dialog,
@@ -61,7 +62,7 @@ const field =
 const customerValid = (customer: LiveCustomer) =>
   customer.name.trim().length >= 3 &&
   customer.name.trim().length <= 120 &&
-  /^9\d{8}$/.test(customer.phone);
+  isValidMobilePhone(customer.phone);
 
 type LiveCheckoutDialogProps = {
   storeId: string;
@@ -233,8 +234,8 @@ function LiveCheckoutForm({
       customer.name.trim().length < 3 || customer.name.trim().length > 120
         ? "Ingresa un nombre de 3 a 120 caracteres."
         : "",
-    phone: !/^9\d{8}$/.test(customer.phone)
-      ? "Ingresa un WhatsApp de 9 dígitos que empiece por 9."
+    phone: !isValidMobilePhone(customer.phone)
+      ? "Ingresa un WhatsApp de 9 dígitos que empiece por 9, o con + y código de país."
       : "",
     department: !department ? "Selecciona el departamento." : "",
     province: !province ? "Selecciona la provincia." : "",
@@ -719,7 +720,8 @@ function LiveCheckoutForm({
                       }
                       className={field}
                       required
-                      maxLength={9}
+                      maxLength={20}
+                      placeholder="987654321 o +54 9 11 2345 6789"
                       readOnly={!!data.customer}
                       type="tel"
                       inputMode="tel"
@@ -729,7 +731,8 @@ function LiveCheckoutForm({
                       onChange={(event) =>
                         onCustomerChange({
                           ...customer,
-                          phone: event.target.value.replace(/\D/g, ""),
+                          // Dígitos y un "+" inicial (otros países): "+54 9 11…" → "+5491…"
+                          phone: normalizePhone(event.target.value),
                         })
                       }
                     />

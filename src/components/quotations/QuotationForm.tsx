@@ -51,6 +51,7 @@ import {
 import { errorMessage, money } from "./quotationHelpers";
 import { resolveBundleVariant } from "@/utils/resolveBundleVariant";
 import { tokenStore } from "@/lib/tokenStore";
+import { PhoneInput } from "@/components/shared/PhoneInput";
 
 function toCart(line: QuotationLine): CartItem {
   return {
@@ -688,15 +689,13 @@ export default function QuotationForm({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="quote-phone">Teléfono *</Label>
-                  <Input
+                  <PhoneInput
                     id="quote-phone"
-                    type="tel"
                     value={phone}
-                    onChange={(event) => {
+                    onChange={(next) => {
                       editCustomer();
-                      setPhone(event.target.value);
+                      setPhone(next);
                     }}
-                    maxLength={20}
                     placeholder="987 654 321"
                   />
                 </div>

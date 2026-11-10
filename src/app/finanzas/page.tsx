@@ -1,5 +1,6 @@
 "use client";
 import { commercialLeadHref } from "@/utils/commercialOrders";
+import { toWhatsAppDigits } from "@/lib/phone";
 import { formatSalesMoney } from "@/utils/salesMoney";
 
 import Link from "next/link";
@@ -423,8 +424,7 @@ function FinanzasContent() {
     pendingAmount?: number,
     currency?: string | null,
   ) => {
-    const phone = phoneNumber.replace(/\D/g, "");
-    const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
+    const cleanPhone = toWhatsAppDigits(phoneNumber);
 
     let message = `Hola${clientName ? ` ${clientName}` : ""}! `;
     if (orderNumber) {

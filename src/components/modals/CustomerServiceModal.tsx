@@ -1,5 +1,6 @@
 ﻿"use client";
 import { canCompleteCustomerServicePurchaseData, canManageCustomerServiceOrder, isCustomerServicePurchasePending } from "@/utils/customerServiceOrderAccess";
+import { toWhatsAppDigits } from "@/lib/phone";
 import { useCcPurchaseConfirmationAccess } from "@/hooks/useCcPurchaseConfirmationAccess";
 import axios from "@/lib/axiosAuth";
 import { canPrepareDeferredManualOrder, canShipCommercialOrder, isCommercialLeadOrder, salesStatusBlockReason, salesPhysicalOperationBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
@@ -657,8 +658,7 @@ export default function CustomerServiceModal({
 
   const handleWhatsApp = () => {
     if (!receipt) return;
-    const phone = receipt.customer.phoneNumber?.replace(/\D/g, "") || "";
-    const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
+    const cleanPhone = toWhatsAppDigits(receipt.customer.phoneNumber);
 
     const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${receipt.orderNumber}`;
     const greeting = `Hola ${receipt.customer.fullName}! Te contactamos por tu pedido ${receipt.orderNumber}.`;
