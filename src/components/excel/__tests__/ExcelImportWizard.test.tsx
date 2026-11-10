@@ -58,7 +58,7 @@
  *   jsdom / no queremos navegación real al descargar la plantilla).
  */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
@@ -236,6 +236,11 @@ jest.mock('exceljs', () => {
     }
     get columns() {
       return this._columns;
+    }
+
+    private _colDefs: Record<number, { width?: number }> = {};
+    getColumn(index: number) {
+      return (this._colDefs[index] ??= {});
     }
 
     addRow(data: unknown) {
@@ -528,11 +533,11 @@ describe('ExcelImportWizard', () => {
       expect(sheet!.getRow(3).getCell(1).value).toBe('Calzado');
       expect(sheet!.getRow(3).getCell(2).value).toBe('Zapatillas');
 
-      // Bonus: la hoja de productos incluye las columnas nuevas de FEAT-06.
+      // La hoja de productos incluye Cantidad y Stock Mínimo (B3: tras Talla, Color y Otros atributos).
       const productSheet = workbook.getWorksheet('Productos');
       expect(productSheet).toBeDefined();
-      expect(productSheet!.getRow(1).getCell(9).value).toBe('Cantidad *');
-      expect(productSheet!.getRow(1).getCell(10).value).toBe('Stock Mínimo');
+      expect(productSheet!.getRow(1).getCell(11).value).toBe('Cantidad *');
+      expect(productSheet!.getRow(1).getCell(12).value).toBe('Stock Mínimo');
     });
 
     it('si falla el fetch de /subcategories, igual descarga la plantilla sin la hoja de referencia', async () => {
@@ -642,7 +647,8 @@ describe('ExcelImportWizard', () => {
       await goToStep2();
       await uploadRows([['Polo Infinito', 'Vestimenta', 'Camperas', 10, 20, 10001]]);
 
-      expect(screen.getByTitle('La cantidad máxima por variante y almacén es 10,000 unidades.')).toBeInTheDocument();
+      // B3: la fila muestra TODOS sus errores (antes el último pisaba a los demás), así que se busca dentro del título.
+      expect(screen.getByTitle(/La cantidad máxima por variante y almacén es 10,000 unidades\./)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /importar 0 productos/i })).toBeDisabled();
     });
 
@@ -651,7 +657,7 @@ describe('ExcelImportWizard', () => {
       await goToStep2();
       await uploadRows([['Polo Medio', 'Vestimenta', 'Camperas', 10, 20, 2.5]]);
 
-      expect(screen.getByTitle('La cantidad debe ser un número entero.')).toBeInTheDocument();
+      expect(screen.getByTitle(/La cantidad debe ser un número entero\./)).toBeInTheDocument();
     });
 
     it('pide confirmar antes de importar una fila con más de 1,000 unidades', async () => {
@@ -706,6 +712,153 @@ describe('ExcelImportWizard', () => {
       expect(mockAxiosGet).not.toHaveBeenCalledWith(
         expect.stringContaining('/subcategories/category/'),
       );
+    });
+  });
+  // B3 — plantilla v2: tallas/colores en su propia columna y validación antes de cargar.
+  describe('plantilla v2 y validación antes de cargar', () => {
+    const CATALOG = {
+      categories: [{ id: 'cat-1', name: 'Ropa' }],
+      subcategoriesByCategory: { 'cat-1': [{ id: 'sub-1', name: 'Polos' }] },
+    };
+    const HEADERS = ['Categoría *', 'Subcategoría *', 'Nombre *', 'Talla', 'Color', 'Precio Compra *', 'Precio Venta *', 'Cantidad *'];
+
+    async function uploadFixture(headers: string[], rows: (string | number)[][]) {
+      mockExcelJS.__setParseFixture({ headers, rows });
+      const user = userEvent.setup();
+      await user.upload(getFileInput(), buildExcelFile());
+      return user;
+    }
+
+    it('el caso del cliente: un polo en S, M, L y XL se carga de una vez con la talla en cada variante', async () => {
+      mockAxiosGetImplementation(CATALOG);
+      mockAxiosPost.mockResolvedValue({ data: { created: 4, errors: 0, message: 'ok' } });
+      renderWizard();
+      await goToStep2();
+
+      const rows = ['S', 'M', 'L', 'XL'].map((talla) => ['Ropa', 'Polos', 'Polo oversize', talla, '', 18, 49.9, 10]);
+      const user = await uploadFixture(HEADERS, rows);
+      await screen.findByRole('heading', { name: /vista previa y edición/i });
+
+      // La vista previa muestra la variante de cada fila (lo que antes no se veía)
+      for (const talla of ['S', 'M', 'L', 'XL']) {
+        expect(screen.getByText(`Talla: ${talla}`)).toBeInTheDocument();
+      }
+      const save = await screen.findByRole('button', { name: /importar 4 productos/i });
+      expect(save).not.toBeDisabled();
+      await user.click(save);
+
+      await waitFor(() => expect(mockAxiosPost).toHaveBeenCalledTimes(1));
+      const payload = mockAxiosPost.mock.calls[0][1] as { rows: { name: string; attributes: Record<string, string>; subcategoryId: string }[] };
+      expect(payload.rows).toHaveLength(4);
+      expect(new Set(payload.rows.map((r) => r.name))).toEqual(new Set(['Polo oversize']));
+      expect(payload.rows.map((r) => r.attributes)).toEqual([{ Talla: 'S' }, { Talla: 'M' }, { Talla: 'L' }, { Talla: 'XL' }]);
+      expect(new Set(payload.rows.map((r) => r.subcategoryId))).toEqual(new Set(['sub-1']));
+    });
+
+    it('todas las filas de un producto viajan con el mismo nombre aunque se hayan escrito distinto', async () => {
+      mockAxiosGetImplementation(CATALOG);
+      mockAxiosPost.mockResolvedValue({ data: { created: 2, errors: 0, message: 'ok' } });
+      renderWizard();
+      await goToStep2();
+      const user = await uploadFixture(HEADERS, [
+        ['Ropa', 'Polos', 'Polo básico', 'S', '', 15, 35, 5],
+        ['Ropa', 'Polos', '  polo   BASICO ', 'M', '', 15, 35, 5],
+      ]);
+      await user.click(await screen.findByRole('button', { name: /importar 2 productos/i }));
+      await waitFor(() => expect(mockAxiosPost).toHaveBeenCalledTimes(1));
+      const payload = mockAxiosPost.mock.calls[0][1] as { rows: { name: string }[] };
+      expect(payload.rows.map((r) => r.name)).toEqual(['Polo básico', 'Polo básico']);
+    });
+
+    it('un producto con varias filas y sin talla/color NO se carga como "Variante 1, 2, 3, 4": se explica el error', async () => {
+      mockAxiosGetImplementation(CATALOG);
+      renderWizard();
+      await goToStep2();
+      await uploadFixture(HEADERS, [0, 1, 2, 3].map(() => ['Ropa', 'Polos', 'Polo oversize', '', '', 18, 49.9, 10]));
+      await screen.findByRole('heading', { name: /vista previa y edición/i });
+
+      const alert = await screen.findByRole('alert');
+      expect(within(alert).getByText(/No se creó nada todavía/)).toBeInTheDocument();
+      expect(within(alert).getAllByText(/tiene 4 filas: indica Talla, Color u otro atributo/)).toHaveLength(4);
+      expect(within(alert).getByText(/^Fila 2 · Polo oversize:/)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /importar 0 productos/i })).toBeDisabled();
+      expect(mockAxiosPost).not.toHaveBeenCalled();
+    });
+
+    it('lista cada error por fila con su número de fila del Excel', async () => {
+      mockAxiosGetImplementation(CATALOG);
+      renderWizard();
+      await goToStep2();
+      await uploadFixture(HEADERS, [
+        ['Ropa', 'Polos', 'Polo', 'S', '', 'abc', 49.9, 10],
+        ['Ropa', 'Polos', 'Gorra', '', '', 5, 0, 10],
+      ]);
+      await screen.findByRole('heading', { name: /vista previa y edición/i });
+      const alert = await screen.findByRole('alert');
+      expect(within(alert).getByText(/Fila 2 · Polo: Precio Compra no es un número: «abc»/)).toBeInTheDocument();
+      expect(within(alert).getByText(/Fila 3 · Gorra: Precio Venta debe ser mayor a 0\./)).toBeInTheDocument();
+    });
+
+    it('las filas de ejemplo "(EJEMPLO)" se ignoran y se avisa cuántas', async () => {
+      mockAxiosGetImplementation(CATALOG);
+      renderWizard();
+      await goToStep2();
+      await uploadFixture(HEADERS, [
+        ['Ropa', 'Polos', '(EJEMPLO) Polo básico', 'S', '', 15, 35, 10],
+        ['Ropa', 'Polos', '(EJEMPLO) Polo básico', 'M', '', 15, 35, 10],
+        ['Ropa', 'Polos', 'Mi polo', 'L', '', 20, 50, 3],
+      ]);
+      await waitFor(() =>
+        expect(mockToast.success).toHaveBeenCalledWith('Se encontraron 1 filas (se ignoraron 2 de ejemplo)'),
+      );
+    });
+
+    it('si solo hay filas de ejemplo avisa que hay que reemplazarlas y no avanza', async () => {
+      mockAxiosGetImplementation(CATALOG);
+      renderWizard();
+      await goToStep2();
+      await uploadFixture(HEADERS, [['Ropa', 'Polos', '(EJEMPLO) Polo básico', 'S', '', 15, 35, 10]]);
+      await waitFor(() => expect(mockToast.warning).toHaveBeenCalledWith(expect.stringContaining('Solo hay filas de ejemplo')));
+      expect(screen.queryByRole('heading', { name: /vista previa y edición/i })).not.toBeInTheDocument();
+    });
+
+    it('la plantilla anterior (columna "Atributos") se rechaza con un mensaje claro y no carga nada', async () => {
+      mockAxiosGetImplementation(CATALOG);
+      renderWizard();
+      await goToStep2();
+      const LEGACY = ['Categoría *', 'Subcategoría *', 'Nombre *', 'Descripción', 'SKU Empresa', 'Atributos (Color:Rojo,Talle:M)', 'Precio Compra *', 'Precio Venta *', 'Cantidad *', 'Stock Mínimo'];
+      const user = await uploadFixture(LEGACY, [['Ropa', 'Polos', 'Polo', '', '', 'S', 15, 35, 10, 2]]);
+
+      await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining('versión anterior')));
+      const alert = await screen.findByRole('alert');
+      expect(within(alert).getByText(/Plantilla de una versión anterior/)).toBeInTheDocument();
+      expect(within(alert).getByText(/No se cargó ningún producto/)).toBeInTheDocument();
+
+      // Se queda en el Paso 2, no resuelve categorías ni envía nada
+      expect(screen.getByRole('heading', { name: /subir archivo/i })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: /vista previa y edición/i })).not.toBeInTheDocument();
+      expect(mockAxiosGet).not.toHaveBeenCalledWith(expect.stringContaining('/subcategories/category/'));
+      expect(mockAxiosPost).not.toHaveBeenCalled();
+
+      // El aviso ofrece bajar la plantilla nueva
+      await user.click(within(alert).getByRole('button', { name: /descargar plantilla nueva/i }));
+      await waitFor(() => expect(mockToast.success).toHaveBeenCalledWith('Plantilla descargada correctamente'));
+    });
+
+    it('la plantilla descargada trae la versión, las instrucciones y las columnas Talla y Color', async () => {
+      mockAxiosGetImplementation({ categories: [], allSubcategories: [{ id: 's', name: 'Polos', category: { id: 'c', name: 'Ropa' } }] });
+      renderWizard();
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('button', { name: /descargar plantilla base de ejemplo/i }));
+      await waitFor(() => expect(mockToast.success).toHaveBeenCalledWith('Plantilla descargada correctamente'));
+
+      const workbook = mockExcelJS.__getLastWorkbook();
+      expect(workbook.getWorksheet('Instrucciones')).toBeDefined();
+      const meta = workbook.getWorksheet('_metadata')!;
+      expect(meta.getRow(2).getCell(1).value).toBe('templateVersion');
+      expect(meta.getRow(2).getCell(2).value).toBe('2');
+      const header = workbook.getWorksheet('Productos')!.getRow(1);
+      expect([6, 7, 8].map((c) => header.getCell(c).value)).toEqual(['Talla', 'Color', 'Otros atributos']);
     });
   });
 });
