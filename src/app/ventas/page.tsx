@@ -2494,6 +2494,7 @@ Estado: ${sale.status}
             setSaleToCancel(null);
           }}
           orderNumber={saleToCancel?.orderNumber || ""}
+          orderId={saleToCancel?.id}
           onConfirm={handleConfirmCancellation}
           isLoading={isCancelling}
         />

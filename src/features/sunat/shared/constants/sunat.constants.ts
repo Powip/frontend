@@ -5,12 +5,19 @@ import type { SunatDocument } from "../../sunat-document/models/sunat-document.m
 export const IGV_RATE = 0.18;
 
 /**
- * Order statuses from which a tax document (boleta/factura) can be emitted: the guide is
- * approved (`EN_ENVIO`) or the sale is delivered (`ENTREGADO`). Any other status is kept out of
- * the billing list. The Guía de Remisión is a separate flow and does not use this list.
+ * Order statuses from which a tax document (boleta/factura) can be emitted: from the moment the
+ * order is prepared onwards, i.e. once it physically exists and is on its way to the customer.
+ * Never while it is still being sold (`INCOMPLETE`, `PREVENTA`, `PENDIENTE`, `PAGADO`) nor once it
+ * is `ANULADO`. The Guía de Remisión is a separate flow and does not use this list.
+ *
+ * This is the single source of the rule: the billing list, its copy and any tooltip read it from here.
  */
 export const TAX_DOCUMENT_ELIGIBLE_ORDER_STATUSES: readonly OrderStatus[] = [
+  "PREPARADO",
+  "LLAMADO",
+  "ASIGNADO_A_GUIA",
   "EN_ENVIO",
+  "DESPACHADO",
   "ENTREGADO",
 ];
 

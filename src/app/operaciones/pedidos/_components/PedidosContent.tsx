@@ -991,6 +991,7 @@ export function PedidosContent() {
             open={!!cancelSale}
             onClose={() => setCancelSale(null)}
             orderNumber={cancelSale.orderNumber}
+            orderId={cancelSale.id}
             onConfirm={handleConfirmCancellation}
             isLoading={isCancelling}
           />

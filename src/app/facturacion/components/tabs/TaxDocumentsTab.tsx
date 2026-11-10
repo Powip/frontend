@@ -542,8 +542,8 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
           <CardHeader>
             <CardTitle className="text-base">Ciclo de vida de un comprobante</CardTitle>
             <CardDescription>
-              Desde que una venta está en envío (EN_ENVIO) o entregada hasta que SUNAT confirma su
-              validez.
+              Desde que una venta está preparada (PREPARADO) hasta que SUNAT confirma su validez. Se puede
+              emitir con la venta preparada, en camino, despachada o entregada.
             </CardDescription>
           </CardHeader>
 
@@ -639,9 +639,9 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
         <CardHeader>
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
             <div>
-              <CardTitle>Ventas Entregadas</CardTitle>
+              <CardTitle>Ventas para facturar</CardTitle>
               <CardDescription>
-                Mostrando ventas listas para facturar y su estado ante SUNAT.
+                Ventas desde Preparado en adelante (no aparecen las pendientes, pagadas sin preparar ni anuladas) y su estado ante SUNAT.
               </CardDescription>
             </div>
           </div>
