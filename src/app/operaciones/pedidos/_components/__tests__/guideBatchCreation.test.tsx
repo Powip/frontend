@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import axios from "@/lib/axiosAuth";
+import { AxiosError, type AxiosResponse } from "axios";
 import { toast } from "sonner";
 import type { CreateGuideData } from "@/components/modals/CreateGuideModal";
 import type { OrderHeader } from "@/interfaces/IOrder";
@@ -452,5 +453,53 @@ describe("Pedidos — anulación en envío conserva la reserva hasta retorno fí
     expect(axios.patch).toHaveBeenCalledWith(expect.stringMatching(/\/order-header\/order-1$/), { status: "ANULADO", cancellationReason: "OTHER", notes: "Cliente canceló", userId: "operator" });
     expect(axios.get).not.toHaveBeenCalled();
     expect(screen.queryByTestId("lifecycle-flow")).not.toBeInTheDocument();
+  });
+});
+
+describe("Pedidos — motivo del fallo al imprimir etiquetas en lote", () => {
+  const printWindow = { close: jest.fn() } as unknown as Window;
+  const httpError = (status: number) =>
+    new AxiosError(`Request failed with status code ${status}`, "ERR_BAD_RESPONSE", undefined, undefined, { status, data: {} } as AxiosResponse);
+  const receiptFor = (url: string) => ({ data: { orderId: url.match(/order-header\/(?:manual\/)?([^/]+)\/receipt/)![1], orderNumber: "ORD", customer: { fullName: "Cliente" } } });
+
+  beforeEach(() => {
+    mockAuth = { company: { id: "company-1" }, user: { id: "user-1" } };
+    jest.mocked(openPrintWindow).mockReturnValue(printWindow);
+    jest.mocked(printReceipts).mockResolvedValue(undefined);
+    jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => {
+    jest.mocked(axios.get).mockReset();
+    jest.mocked(printReceipts).mockReset();
+    jest.mocked(console.error).mockRestore();
+  });
+
+  it("nombra el pedido y el motivo cuando no se pudo obtener ninguno", async () => {
+    jest.mocked(axios.get).mockRejectedValue(httpError(404));
+    render(<PedidosContent />);
+    await act(async () => { await mockActions.onBulkPrint([mockOrders[0]] as unknown as Sale[]); });
+    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("ORD-1: El pedido no se encontró"));
+    expect(printReceipts).not.toHaveBeenCalled();
+    expect(printWindow.close).toHaveBeenCalled();
+  });
+
+  it("nombra el pedido y el motivo cuando solo algunos fallan e imprime el resto", async () => {
+    jest.mocked(axios.get).mockImplementation(async (url) => {
+      if (url.includes("order-1")) throw httpError(500);
+      return receiptFor(url);
+    });
+    render(<PedidosContent />);
+    await act(async () => { await mockActions.onBulkPrint(mockOrders.slice(0, 2) as unknown as Sale[]); });
+    expect(jest.mocked(printReceipts).mock.calls[0][0].map((receipt) => receipt.orderId)).toEqual(["order-2"]);
+    expect(toast.warning).toHaveBeenCalledWith(expect.stringContaining("Se imprimieron 1 etiqueta(s)."));
+    expect(toast.warning).toHaveBeenCalledWith(expect.stringContaining("ORD-1: El servidor falló (HTTP 500)"));
+  });
+
+  it("incluye el motivo cuando falla la generación de las etiquetas", async () => {
+    jest.mocked(axios.get).mockImplementation(async (url) => receiptFor(url));
+    jest.mocked(printReceipts).mockRejectedValue(new Error("No se pudo cargar el logo"));
+    render(<PedidosContent />);
+    await act(async () => { await mockActions.onBulkPrint([mockOrders[0]] as unknown as Sale[]); });
+    expect(toast.error).toHaveBeenCalledWith("No se pudieron generar las etiquetas: No se pudo cargar el logo");
   });
 });

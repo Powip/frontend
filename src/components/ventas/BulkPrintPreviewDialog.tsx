@@ -25,6 +25,10 @@ import {
   type PrintCompany,
   type ReceiptData,
 } from "@/utils/bulk-receipt-printer";
+import {
+  describeReceiptError,
+  type ReceiptFailure,
+} from "@/utils/receipt-error-message";
 import { cn } from "@/lib/utils";
 
 export interface PrintPreviewOrder {
@@ -44,7 +48,7 @@ interface BulkPrintPreviewDialogProps {
 
 type PreviewState =
   | { status: "loading" }
-  | { status: "error"; failedOrders: string[] }
+  | { status: "error"; failures: ReceiptFailure[]; generationReason?: string }
   | { status: "ready"; html: string };
 
 export function BulkPrintPreviewDialog(props: BulkPrintPreviewDialogProps) {
@@ -84,12 +88,18 @@ function BulkPrintPreviewContent({
     );
     if (isStale()) return;
 
-    const failedOrders = orders
-      .filter((_, index) => results[index].status === "rejected")
-      .map((order) => order.orderNumber);
-    if (failedOrders.length > 0) {
+    const failures: ReceiptFailure[] = [];
+    results.forEach((result, index) => {
+      if (result.status === "rejected") {
+        failures.push({
+          orderNumber: orders[index].orderNumber,
+          reason: describeReceiptError(result.reason),
+        });
+      }
+    });
+    if (failures.length > 0) {
       console.error("Error obteniendo recibos para la vista previa", results);
-      setPreview({ status: "error", failedOrders });
+      setPreview({ status: "error", failures });
       return;
     }
 
@@ -107,7 +117,11 @@ function BulkPrintPreviewContent({
     } catch (error) {
       if (isStale()) return;
       console.error("Error generando la vista previa de etiquetas", error);
-      setPreview({ status: "error", failedOrders: [] });
+      setPreview({
+        status: "error",
+        failures: [],
+        generationReason: describeReceiptError(error),
+      });
     }
   }, [orders]);
 
@@ -244,13 +258,26 @@ function BulkPrintPreviewContent({
               className="flex flex-col items-center justify-center gap-3 rounded-md border border-destructive/30 bg-destructive/5 p-6 text-center text-sm"
             >
               <AlertTriangle className="h-6 w-6 text-destructive" />
-              {preview.failedOrders.length > 0 ? (
-                <p>
-                  No se pudieron obtener los recibos de:{" "}
-                  <strong>{preview.failedOrders.join(", ")}</strong>
-                </p>
+              {preview.failures.length > 0 ? (
+                <div className="w-full space-y-2">
+                  <p>No se pudieron obtener los recibos de:</p>
+                  <ul className="space-y-1 text-left">
+                    {preview.failures.map((failure, index) => (
+                      <li key={`${failure.orderNumber}-${index}`}>
+                        <strong>{failure.orderNumber}</strong> — {failure.reason}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : (
-                <p>No se pudieron generar las etiquetas.</p>
+                <div className="space-y-1">
+                  <p>No se pudieron generar las etiquetas.</p>
+                  {preview.generationReason && (
+                    <p className="text-xs text-muted-foreground">
+                      Motivo: {preview.generationReason}
+                    </p>
+                  )}
+                </div>
               )}
               <Button variant="outline" onClick={() => void loadPreview()}>
                 Reintentar

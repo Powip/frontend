@@ -35,6 +35,7 @@ import { reassignSeller } from "@/services/atencionClienteService";
 import { getStatusChainSteps, getStatusLabel } from "@/utils/domain/orders-status-flow";
 import { exportSalesToExcel } from "@/utils/exportSalesExcel";
 import { openPrintWindow, printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
+import { describeReceiptError, summarizeReceiptFailures, type ReceiptFailure } from "@/utils/receipt-error-message";
 
 import { OrderDetailModalProvider } from "@/components/orders/OrderDetailModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
@@ -692,28 +693,28 @@ export function PedidosContent() {
 
       const receipts: ReceiptData[] = [];
       const printedSales: Sale[] = [];
-      const failed: string[] = [];
+      const failures: ReceiptFailure[] = [];
       results.forEach((result, i) => {
         if (result.status === "fulfilled") {
           receipts.push(result.value.data);
           printedSales.push(selected[i]);
         } else {
-          failed.push(selected[i].orderNumber);
+          failures.push({ orderNumber: selected[i].orderNumber, reason: describeReceiptError(result.reason) });
           console.error(`Error al obtener el comprobante de ${selected[i].orderNumber}`, result.reason);
         }
       });
 
       if (receipts.length === 0) {
         printWindow.close();
-        toast.error("No se pudo obtener ningún pedido seleccionado");
+        toast.error(`No se pudo obtener ningún pedido seleccionado. ${summarizeReceiptFailures(failures)}`);
         return;
       }
 
       await printReceipts(receipts, auth?.company, printWindow, isCurrent);
       if (!isCurrent()) return;
 
-      if (failed.length > 0) {
-        toast.warning(`Se imprimieron ${receipts.length} etiqueta(s). No se pudo generar la de: ${failed.join(", ")}`);
+      if (failures.length > 0) {
+        toast.warning(`Se imprimieron ${receipts.length} etiqueta(s). No se pudo obtener el recibo de ${summarizeReceiptFailures(failures)}`);
       }
 
       // Imprimir la etiqueta de picking es la señal de que el pedido queda
@@ -745,7 +746,7 @@ export function PedidosContent() {
       printWindow.close();
       if (!isCurrent()) return;
       console.error("Error al generar etiquetas en lote", error);
-      toast.error("No se pudieron generar las etiquetas");
+      toast.error(`No se pudieron generar las etiquetas: ${describeReceiptError(error)}`);
     } finally {
       printWindows.current.delete(printWindow);
       if (isCurrent()) setIsBulkLoading(false);

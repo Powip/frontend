@@ -5,6 +5,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import { AxiosError, type AxiosResponse } from "axios";
 
 jest.mock("sonner", () => ({
   toast: {
@@ -38,6 +39,16 @@ const ORDERS: PrintPreviewOrder[] = [
 ];
 
 const COMPANY = { name: "Powip Test" };
+
+function httpError(status: number) {
+  return new AxiosError(
+    `Request failed with status code ${status}`,
+    "ERR_BAD_RESPONSE",
+    undefined,
+    undefined,
+    { status, data: {} } as AxiosResponse,
+  );
+}
 
 function receiptFor(order: PrintPreviewOrder): ReceiptData {
   return {
@@ -112,8 +123,10 @@ describe("BulkPrintPreviewDialog", () => {
         orderId: "another-order",
       })),
     });
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "No se pudieron generar las etiquetas.",
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("No se pudieron generar las etiquetas.");
+    expect(alert).toHaveTextContent(
+      "Motivo: El comprobante no corresponde al pedido solicitado.",
     );
     expect(mockBuild).not.toHaveBeenCalled();
     expect(printButton()).toBeDisabled();
@@ -318,13 +331,14 @@ describe("BulkPrintPreviewDialog", () => {
     const fetchReceipt = jest
       .fn<Promise<ReceiptData>, [PrintPreviewOrder]>()
       .mockImplementation(async (order) => {
-        if (order.id === "o-1") throw new Error("500");
+        if (order.id === "o-1") throw httpError(500);
         return receiptFor(order);
       });
     const { props } = setup({ fetchReceipt });
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("ORD-001");
+    expect(alert).toHaveTextContent("El servidor falló (HTTP 500)");
     expect(alert).not.toHaveTextContent("ORD-002");
     expect(printButton()).toBeDisabled();
     expect(mockBuild).not.toHaveBeenCalled();
@@ -338,14 +352,50 @@ describe("BulkPrintPreviewDialog", () => {
     expect(props.onConfirm).not.toHaveBeenCalled();
   });
 
-  it("muestra error si falla la generación de etiquetas", async () => {
+  it("asocia a cada pedido su propio motivo cuando fallan por causas distintas", async () => {
     jest.spyOn(console, "error").mockImplementation(() => {});
-    mockBuild.mockRejectedValueOnce(new Error("qr"));
+    const fetchReceipt = jest
+      .fn<Promise<ReceiptData>, [PrintPreviewOrder]>()
+      .mockImplementation(async (order) => {
+        if (order.id === "o-1") throw httpError(404);
+        throw new AxiosError("Network Error", "ERR_NETWORK");
+      });
+    setup({ fetchReceipt });
+
+    const alert = await screen.findByRole("alert");
+    const rows = within(alert).getAllByRole("listitem");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent("ORD-002");
+    expect(rows[0]).toHaveTextContent("No hubo conexión con el servidor");
+    expect(rows[1]).toHaveTextContent("ORD-001");
+    expect(rows[1]).toHaveTextContent("El pedido no se encontró");
+  });
+
+  it("muestra el motivo de las validaciones propias de la pantalla", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    const fetchReceipt = jest.fn(async (order: PrintPreviewOrder) => {
+      if (order.id === "o-1") {
+        throw new Error("Vuelve a cargar el pedido antes de imprimirlo.");
+      }
+      return receiptFor(order);
+    });
+    setup({ fetchReceipt });
+
+    const row = within(await screen.findByRole("alert")).getByRole("listitem");
+    expect(row).toHaveTextContent("ORD-001");
+    expect(row).toHaveTextContent(
+      "Vuelve a cargar el pedido antes de imprimirlo.",
+    );
+  });
+
+  it("muestra error y su motivo si falla la generación de etiquetas", async () => {
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    mockBuild.mockRejectedValueOnce(new Error("No se pudo cargar el logo"));
     setup();
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "No se pudieron generar las etiquetas.",
-    );
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("No se pudieron generar las etiquetas.");
+    expect(alert).toHaveTextContent("Motivo: No se pudo cargar el logo");
     expect(printButton()).toBeDisabled();
   });
 
