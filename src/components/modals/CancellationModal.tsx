@@ -11,7 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, FileWarning } from "lucide-react";
+import { useActiveTaxDocumentForOrder } from "@/features/sunat/sunat-document/hooks/use-active-tax-document-for-order";
 
 export type CancellationReason =
   | "CLIENT_REJECTED"
@@ -34,10 +35,43 @@ export function getCancellationReasonLabel(reason?: string | null): string {
   return CANCELLATION_REASONS.find((r) => r.value === reason)?.label ?? reason;
 }
 
+/**
+ * Aviso cuando el pedido ya tiene factura o boleta vigente: anular el pedido NO anula el comprobante ante
+ * SUNAT. Hay que emitir una nota de crédito desde Facturación. Es un aviso, no bloquea la anulación.
+ */
+function TaxDocumentCancelWarning({ orderId, open }: { orderId: string; open: boolean }) {
+  const document = useActiveTaxDocumentForOrder(orderId, open);
+  if (!document) return null;
+
+  const label = document.taxDocumentType === "01" ? "factura" : "boleta";
+  const processing = document.cdrStatus === "PENDING";
+
+  return (
+    <div
+      role="alert"
+      className="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+    >
+      <FileWarning className="mt-0.5 h-4 w-4 shrink-0" />
+      <div>
+        <p className="font-medium">
+          Este pedido tiene la {label} {document.series}-{document.correlative}{" "}
+          {processing ? "en proceso ante SUNAT" : "emitida"}.
+        </p>
+        <p className="mt-1">
+          Anular el pedido no anula el comprobante. Si corresponde, emite una nota de crédito desde
+          Facturación (pestaña Notas de Crédito / Débito).
+        </p>
+      </div>
+    </div>
+  );
+}
+
 interface CancellationModalProps {
   open: boolean;
   onClose: () => void;
   orderNumber: string;
+  /** Si se pasa, se avisa cuando el pedido ya tiene comprobante emitido. */
+  orderId?: string;
   onConfirm: (reason: CancellationReason, notes?: string) => void;
   isLoading?: boolean;
 }
@@ -46,6 +80,7 @@ export default function CancellationModal({
   open,
   onClose,
   orderNumber,
+  orderId,
   onConfirm,
   isLoading = false,
 }: CancellationModalProps) {
@@ -80,6 +115,8 @@ export default function CancellationModal({
               Esta acción no se puede deshacer. Seleccione el motivo de la cancelación.
             </p>
           </div>
+
+          {orderId && <TaxDocumentCancelWarning orderId={orderId} open={open} />}
 
           <div className="space-y-2">
             <Label htmlFor="reason">Motivo de cancelación *</Label>

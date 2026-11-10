@@ -3148,6 +3148,7 @@ export default function CustomerServiceModal({
         open={cancellationModalOpen}
         onClose={() => setCancellationModalOpen(false)}
         orderNumber={receipt?.orderNumber || ""}
+        orderId={orderId}
         onConfirm={handleConfirmCancellation}
         isLoading={isCancelling}
       />

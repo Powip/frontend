@@ -10,12 +10,9 @@ import {
   EMPTY_SALES,
   isTaxDocumentEligibleStatus,
 } from "@/features/sunat/shared/constants/sunat.constants";
-import type { ListSunatDocumentsResponseDto } from "@/features/sunat/sunat-document/dto/list-sunat-documents-response.dto";
-import { toListSunatDocumentsResult } from "@/features/sunat/sunat-document/mappers/to-list-sunat-documents.mapper";
 import type { SunatDocument } from "@/features/sunat/sunat-document/models/sunat-document.model";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
-import { API } from "@/lib/api";
-import axiosAuth from "@/lib/axiosAuth";
+import { fetchAllSunatDocuments } from "@/features/sunat/sunat-document/utils/fetch-all-sunat-documents";
 
 export function useTaxDocuments() {
   const { auth } = useAuth();
@@ -31,24 +28,7 @@ export function useTaxDocuments() {
   const documentsQuery = useQuery({
     queryKey: ["business-tax-documents", auth?.company?.id, auth?.user?.id],
     enabled: canFetch,
-    queryFn: async ({ signal }) => {
-      const byId = new Map<string, SunatDocument>();
-      let offset = 0;
-      while (true) {
-        const response = await axiosAuth.get<ListSunatDocumentsResponseDto>(
-          `${API.sunat}/api/v1/sunat-documents`,
-          { params: { limit: 100, offset }, signal },
-        );
-        const page = toListSunatDocumentsResult(response.data);
-        for (const document of page.documents) {
-          byId.set(document.id, document);
-        }
-        offset += page.documents.length;
-        if (offset >= page.total) break;
-        if (page.documents.length === 0) throw new Error("Respuesta incompleta de comprobantes");
-      }
-      return [...byId.values()];
-    },
+    queryFn: ({ signal }) => fetchAllSunatDocuments(signal),
     retry: false,
     refetchInterval: (query) =>
       query.state.data?.some((document) => document.cdrStatus === "PENDING") ? 4000 : false,
