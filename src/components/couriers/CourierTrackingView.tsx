@@ -7,6 +7,7 @@ import { useBusinessOrders } from "@/hooks/useBusinessOrders";
 import { useBusinessGuides } from "@/hooks/useBusinessGuides";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { DateRange } from "react-day-picker";
@@ -77,6 +78,7 @@ import {
   OrderDetailButton,
   OrderDetailModalProvider,
 } from "@/components/orders/OrderDetailModal";
+import { ShippingCostCell } from "@/components/couriers/ShippingCostCell";
 import ShalomDocumentModal from "@/components/modals/ShalomDocumentModal";
 import ShalomOrderTrackingView from "@/components/tracking/ShalomOrderTrackingView";
 import AliclikOrderTrackingView from "@/components/tracking/AliclikOrderTrackingView";
@@ -370,6 +372,20 @@ export default function CourierTrackingView() {
   const applyTrackingPatch = useCallback((orderId: string, patch: Partial<Record<TrackingFieldKey, string | null>>) => {
     setTrackingPatches((prev) => ({ ...prev, [orderId]: { ...prev[orderId], ...patch } }));
   }, []);
+
+  // Costo de envío cargado a mano: se actualiza el pedido en el caché de la lista
+  // (sin volver a pedirla al servidor, que en cuentas grandes es pesado) para que
+  // lo vean las dos tablas y también el KPI "Costo de envío" de Guías.
+  const queryClient = useQueryClient();
+  const companyId = auth?.company?.id;
+  const applyShippingCostSaved = useCallback(
+    (orderId: string, patch: { carrierShippingCost: number }) => {
+      queryClient.setQueriesData<OrderHeader[]>({ queryKey: ["business-orders", companyId] }, (old) =>
+        Array.isArray(old) ? old.map((o) => (o.id === orderId ? { ...o, ...patch } : o)) : old,
+      );
+    },
+    [queryClient, companyId],
+  );
 
   useEffect(() => {
     if (!auth?.company?.id) return;
@@ -860,6 +876,7 @@ export default function CourierTrackingView() {
                 loading={ordersLoading}
                 onRefresh={fetchOrders}
                 onTrackingSaved={applyTrackingPatch}
+                onShippingCostSaved={applyShippingCostSaved}
                 onViewDoc={setDocOrder}
               />
             </TabsContent>
@@ -1159,11 +1176,7 @@ export default function CourierTrackingView() {
                                   return <CourierStatusBadge order={order} live={live} />;
                                 })()}
                               </TableCell>
-                              <TableCell className="px-4 py-3 text-xs text-right tabular-nums whitespace-nowrap">
-                                {order.carrierShippingCost
-                                  ? money(Number(order.carrierShippingCost))
-                                  : "-"}
-                              </TableCell>
+                              <ShippingCostCell order={order} onSaved={applyShippingCostSaved} />
                               <TrackingInputCells order={order} onSaved={applyTrackingPatch} />
                               <TableCell className={`${STICKY_RIGHT_BODY} right-0 w-28 min-w-28 px-4 py-3 text-right`}>
                                 <div className="flex items-center justify-end gap-1">
@@ -1387,6 +1400,7 @@ function CourierOrdersTab({
   loading,
   onRefresh,
   onTrackingSaved,
+  onShippingCostSaved,
   onViewDoc,
 }: {
   courierName: string;
@@ -1395,6 +1409,7 @@ function CourierOrdersTab({
   loading: boolean;
   onRefresh: () => void;
   onTrackingSaved: (orderId: string, patch: Partial<Record<TrackingFieldKey, string | null>>) => void;
+  onShippingCostSaved: (orderId: string, patch: { carrierShippingCost: number }) => void;
   onViewDoc: (order: OrderHeader) => void;
 }) {
   const [search, setSearch] = useState("");
@@ -1648,9 +1663,7 @@ function CourierOrdersTab({
                       <TableCell className="px-4 py-3 text-xs text-right tabular-nums whitespace-nowrap">
                         {money(getPendingPayment(order))}
                       </TableCell>
-                      <TableCell className="px-4 py-3 text-xs text-right tabular-nums whitespace-nowrap">
-                        {order.carrierShippingCost ? money(Number(order.carrierShippingCost)) : "-"}
-                      </TableCell>
+                      <ShippingCostCell order={order} onSaved={onShippingCostSaved} />
                       <TrackingInputCells order={order} onSaved={onTrackingSaved} />
                       <TableCell className={`${STICKY_RIGHT_BODY} right-0 w-28 min-w-28 px-4 py-3 text-right`}>
                         <div className="flex items-center justify-end gap-1">
