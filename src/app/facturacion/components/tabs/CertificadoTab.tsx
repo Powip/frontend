@@ -1,23 +1,34 @@
 "use client";
 
-import { AlertTriangle, ShieldCheck, ShieldX } from "lucide-react";
+import { AlertTriangle, RefreshCw, ShieldCheck, ShieldX, Trash2 } from "lucide-react";
 import { useState } from "react";
+import CertificadoReplaceModal from "@/app/facturacion/components/modals/CertificadoReplaceModal";
 import CertificadoUploadModal from "@/app/facturacion/components/modals/CertificadoUploadModal";
+import { DeleteSunatProfileDialog } from "@/app/facturacion/components/modals/DeleteSunatProfileDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useSetDefaultSunatProfile } from "@/features/sunat/sunat-profile/hooks/use-set-default-sunat-profie";
 import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
+import type { SunatProfile } from "@/features/sunat/sunat-profile/models/sunat-profile";
 import { getCertificateStatus } from "@/features/sunat/sunat-profile/utils/get-certificate-status";
 import { cn } from "@/lib/utils";
 
 export function CertificadoTab() {
   const [modalOpen, setModalOpen] = useState(false);
+  const [profileToReplace, setProfileToReplace] = useState<SunatProfile | null>(null);
+  const [profileToDelete, setProfileToDelete] = useState<SunatProfile | null>(null);
 
   const { data: profiles = [], isLoading, isError } = useSunatProfiles();
 
   const setDefaultProfile = useSetDefaultSunatProfile();
 
   const sortedProfiles = [...profiles].sort((a, b) => Number(b.isDefault) - Number(a.isDefault));
+
+  // The backend refuses to delete the default profile while the company has
+  // others (409), so the dialog blocks it up front.
+  const deleteBlockedByDefault = Boolean(
+    profileToDelete?.isDefault && profiles.some((profile) => profile.id !== profileToDelete.id),
+  );
 
   return (
     <div className="space-y-5">
@@ -149,7 +160,23 @@ export function CertificadoTab() {
                   </div>
                 </div>
 
-                <div className="mt-6 flex justify-end border-t pt-4">
+                <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={() => setProfileToReplace(profile)}>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Reemplazar certificado
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setProfileToDelete(profile)}
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      Eliminar certificado
+                    </Button>
+                  </div>
+
                   {profile.isDefault ? (
                     <span className="text-sm font-medium text-primary">
                       Certificado predeterminado
@@ -177,6 +204,18 @@ export function CertificadoTab() {
       </Button>
 
       <CertificadoUploadModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
+
+      <CertificadoReplaceModal
+        profile={profileToReplace}
+        onClose={() => setProfileToReplace(null)}
+      />
+
+      <DeleteSunatProfileDialog
+        profile={profileToDelete}
+        blockedByDefault={deleteBlockedByDefault}
+        isOnlyProfile={profiles.length === 1}
+        onClose={() => setProfileToDelete(null)}
+      />
     </div>
   );
 }

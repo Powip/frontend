@@ -1,6 +1,7 @@
 import { API } from "@/lib/api";
 import axiosAuth from "@/lib/axiosAuth";
 import type { CreateSunatProfileRequestDto } from "../dto/create-sunat-profile-request.dto";
+import type { ReplaceSunatProfileCertificateRequestDto } from "../dto/replace-sunat-profile-certificate-request.dto";
 import type { SunatProfileResponseDto } from "../dto/sunat-profile-response.dto";
 
 export async function createSunatProfileApi(
@@ -64,4 +65,25 @@ export async function setDefaultSunatProfileApi(id: string): Promise<SunatProfil
   );
 
   return data;
+}
+
+export async function replaceSunatProfileCertificateApi(
+  id: string,
+  requestDto: ReplaceSunatProfileCertificateRequestDto,
+): Promise<SunatProfileResponseDto> {
+  const formData = new FormData();
+
+  formData.append("certificatePassword", requestDto.certificatePassword);
+  formData.append("certificate", requestDto.certificate);
+
+  const { data } = await axiosAuth.put<SunatProfileResponseDto>(
+    `${API.sunat}/api/v1/sunat-profiles/${id}/certificate`,
+    formData,
+  );
+
+  return data;
+}
+
+export async function deleteSunatProfileApi(id: string): Promise<void> {
+  await axiosAuth.delete<void>(`${API.sunat}/api/v1/sunat-profiles/${id}`);
 }
