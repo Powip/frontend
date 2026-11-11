@@ -78,6 +78,7 @@ export const ERRORES_SUNAT: ErrorSunat[] = [
   { code: "0", desc: "Aceptado sin observaciones", sol: "Ninguna — comprobante válido" },
   { code: "2000", desc: "Aceptado con observaciones", sol: "Válido, pero revisar la observación en el CDR" },
   { code: "0156", desc: "La fecha de emisión está fuera del rango permitido", sol: "Verificar que la fecha no sea mayor a 7 días desde la entrega" },
+  { code: "1033", desc: "El comprobante fue registrado previamente con otros datos", sol: "Ese número ya existe en SUNAT con otros datos: probablemente la serie la usa otro sistema de facturación. Usa una serie nueva o inicia esta serie por encima del último número emitido fuera de Powip" },
   { code: "2335", desc: "El RUC del receptor no es válido o no existe", sol: "Re-verificar el RUC en sunat.gob.pe antes de reenviar" },
   { code: "2800", desc: "El número de DNI del receptor no es válido", sol: "Verificar DNI en RENIEC antes de reenviar" },
   { code: "2801", desc: "El nombre del receptor no coincide con el documento", sol: "Usar el nombre exacto de RENIEC/SUNAT" },

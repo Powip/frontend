@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
-import { ERRORES_SUNAT } from "@/types/facturacion";
+import { findSunatError } from "@/features/sunat/sunat-document/utils/find-sunat-error";
 
 interface RechazadoModalProps {
   isOpen: boolean;
@@ -33,8 +33,9 @@ export default function RechazadoModal({
 
   const { sale, taxDocument } = row;
 
-  const catalogado = ERRORES_SUNAT.find((error) =>
-    taxDocument?.sunatDescription?.includes(error.code),
+  const catalogado = findSunatError(
+    taxDocument?.sunatCode ?? null,
+    taxDocument?.sunatDescription ?? null,
   );
 
   const errorMessage =
