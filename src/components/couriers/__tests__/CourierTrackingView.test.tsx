@@ -109,6 +109,7 @@ import axios from "axios";
 import CourierTrackingView from "../CourierTrackingView";
 
 const mockedGet = (axios as unknown as { get: jest.Mock }).get;
+const mockedPatch = (axios as unknown as { patch: jest.Mock }).patch;
 
 function order(id: string, orderNumber: string, createdAt: string, updatedAt: string) {
   return {
@@ -163,6 +164,8 @@ function renderedOrderNumbers(): string[] {
 }
 
 beforeEach(() => {
+  mockedPatch.mockReset();
+  mockedPatch.mockResolvedValue({ data: {} });
   mockedGet.mockReset();
   mockedGet.mockImplementation((url: string) => {
     if (url.includes("/shipping-guides/store/")) {
@@ -199,6 +202,62 @@ describe("CourierTrackingView — orden por fecha de despacho", () => {
     expect(olvaTab).toHaveAttribute("aria-selected", "true");
 
     expect(renderedOrderNumbers()).toEqual(EXPECTED_ORDER);
+  });
+});
+
+describe("CourierTrackingView — costo de envío editable", () => {
+  const costInput = (orderNumber: string) =>
+    screen.getByRole("textbox", { name: `Costo de envío del pedido ${orderNumber}` }) as HTMLInputElement;
+
+  it("permite cargar el costo desde la tabla «Todos» y lo guarda solo en esa venta", async () => {
+    const user = userEvent.setup();
+    render(<CourierTrackingView />);
+    await waitFor(() => expect(renderedOrderNumbers()).toHaveLength(3));
+
+    await user.type(costInput("PED-VENTA-MEDIA"), "12.5");
+    await user.tab();
+
+    await waitFor(() => expect(mockedPatch).toHaveBeenCalledTimes(1));
+    expect(mockedPatch).toHaveBeenCalledWith(expect.stringMatching(/\/order-header\/o-mid-sale$/), {
+      carrierShippingCost: 12.5,
+    });
+    expect(costInput("PED-VENTA-ANTIGUA").value).toBe("");
+    expect(costInput("PED-VENTA-RECIENTE").value).toBe("");
+  });
+
+  it("el costo cargado en «Todos» aparece también en la pestaña del courier", async () => {
+    const user = userEvent.setup();
+    render(<CourierTrackingView />);
+    await waitFor(() => expect(renderedOrderNumbers()).toHaveLength(3));
+
+    await user.type(costInput("PED-VENTA-MEDIA"), "12.5");
+    await user.tab();
+    await waitFor(() => expect(mockedPatch).toHaveBeenCalledTimes(1));
+
+    await user.click(await screen.findByRole("tab", { name: "Olva" }));
+    await waitFor(() => expect(screen.getByRole("tabpanel")).toHaveTextContent("PED-VENTA-MEDIA"));
+
+    expect(costInput("PED-VENTA-MEDIA").value).toBe("12.50");
+  });
+
+  it("permite cargar el costo desde la pestaña del courier y se ve en «Todos»", async () => {
+    const user = userEvent.setup();
+    render(<CourierTrackingView />);
+
+    await user.click(await screen.findByRole("tab", { name: "Olva" }));
+    await waitFor(() => expect(screen.getByRole("tabpanel")).toHaveTextContent("PED-VENTA-RECIENTE"));
+
+    await user.type(costInput("PED-VENTA-RECIENTE"), "9");
+    await user.tab();
+    await waitFor(() => expect(mockedPatch).toHaveBeenCalledTimes(1));
+    expect(mockedPatch).toHaveBeenCalledWith(expect.stringMatching(/\/order-header\/o-new-sale$/), {
+      carrierShippingCost: 9,
+    });
+
+    await user.click(screen.getByRole("tab", { name: "Todos" }));
+    await waitFor(() => expect(renderedOrderNumbers()).toHaveLength(3));
+
+    expect(costInput("PED-VENTA-RECIENTE").value).toBe("9.00");
   });
 });
 
