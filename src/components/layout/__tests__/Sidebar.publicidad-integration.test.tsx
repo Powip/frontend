@@ -31,10 +31,12 @@ jest.mock("next/link", () => ({
 describe("Publicidad integrated into the existing navigation", () => {
   beforeEach(() => {
     mockView = false;
-    mockPermissions = [];
+    // El administrador del fixture tiene VIEW_FINANCES (el grupo Administración se muestra por ese permiso).
+    mockPermissions = ["VIEW_FINANCES"];
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
   });
   it("uses the live role matrix independently of a finance permission", () => {
+    mockPermissions = [];
     const view = render(<Sidebar />);
     expect(screen.queryByRole("link", { name: "Publicidad" })).not.toBeInTheDocument();
     mockPermissions = ["VIEW_FINANCES"];

@@ -26,14 +26,14 @@ configure({ asyncUtilTimeout: 10000 });
 let mockCompanyId = "company-a",
   mockActorId = "actor-a",
   mockStoreId: string | null = "store-a",
-  mockRole = "ADMINISTRADOR";
+  mockPermissions: string[] = ["VIEW_FINANCES"];
 jest.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
     selectedStoreId: mockStoreId,
     hasPermission: () => true,
     auth: {
       company: { id: mockCompanyId },
-      user: { id: mockActorId, email: "actor@negocio.invalid", role: mockRole, permissions: [] },
+      user: { id: mockActorId, email: "actor@negocio.invalid", role: "ADMINISTRADOR", permissions: mockPermissions },
     },
   }),
 }));
@@ -173,7 +173,7 @@ beforeEach(() => {
   mockCompanyId = "company-a";
   mockActorId = "actor-a";
   mockStoreId = "store-a";
-  mockRole = "ADMINISTRADOR";
+  mockPermissions = ["VIEW_FINANCES"];
   window.history.replaceState({}, "", "/finanzas");
   jest
     .mocked(payments.getLeadPaymentCapabilities)
@@ -312,8 +312,11 @@ it("keeps USD and PEN approval totals separate and never lets a seller approve f
   ).toHaveAttribute("href", "/finanzas?tab=anticiposLeads&leadId=lead-a");
 });
 
-it.each([["VENTAS"], ["CALLER"]])("no ofrece el enlace a Finanzas al rol %s, pero sigue mostrando los pagos", async (role) => {
-  mockRole = role;
+it.each([
+  ["Ventas", ["CREATE_SALE", "VIEW_SALES"]],
+  ["CALLER (sin VIEW_FINANCES)", ["MANAGE_OPERATIONS", "VIEW_SALES"]],
+])("no ofrece el enlace a Finanzas a %s, pero sigue mostrando los pagos", async (_nombre, permissions) => {
+  mockPermissions = permissions;
   jest.mocked(payments.getLeadPayments).mockResolvedValue(
     list([payment({ id: "usd-pending", amount: "5.00" })]),
   );

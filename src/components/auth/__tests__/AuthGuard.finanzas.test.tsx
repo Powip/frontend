@@ -50,7 +50,7 @@ describe.each(["/finanzas", "/finanzas/liquidaciones"])("AuthGuard · %s", (path
   it.each([
     ["Ventas", "VENTAS", ["VIEW_SALES", "CREATE_SALE", "MANAGE_CLIENTS"]],
     ["Operaciones", "OPERACIONES", ["VIEW_SALES", "MANAGE_OPERATIONS", "MANAGE_PRODUCTS", "MANAGE_ALMACEN"]],
-    ["CALLER (tiene VIEW_FINANCES)", "CALLER", ["VIEW_SALES", "MANAGE_OPERATIONS", "VIEW_FINANCES"]],
+    ["CALLER (sin VIEW_FINANCES, como quedó en prod)", "CALLER", ["VIEW_SALES", "MANAGE_OPERATIONS", "MANAGE_INVENTORY"]],
   ])("%s ve Acceso Denegado y no el contenido", (_nombre, role, permissions) => {
     sessionFor(role, permissions);
     renderGuard(pathname);
@@ -63,6 +63,16 @@ describe.each(["/finanzas", "/finanzas/liquidaciones"])("AuthGuard · %s", (path
     renderGuard(pathname);
     expect(screen.getByText("Contenido protegido")).toBeInTheDocument();
     expect(screen.queryByText("Acceso Denegado")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["un caller", "CALLER", ["VIEW_SALES", "MANAGE_OPERATIONS"]],
+    ["Ventas", "VENTAS", ["VIEW_SALES", "CREATE_SALE"]],
+    ["un rol personalizado", "CUSTOM_ventas-operaciones", ["MANAGE_PRODUCTS", "MANAGE_OPERATIONS"]],
+  ])("DELEGACIÓN: %s al que se le da VIEW_FINANCES entra", (_n, role, permissions) => {
+    sessionFor(role, [...permissions, "VIEW_FINANCES"]);
+    renderGuard(pathname);
+    expect(screen.getByText("Contenido protegido")).toBeInTheDocument();
   });
 
   it("el superadmin entra", () => {

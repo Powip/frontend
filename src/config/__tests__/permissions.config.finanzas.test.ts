@@ -1,12 +1,12 @@
 import { getRoutePermissions, hasRouteAccess } from "../permissions.config";
 
 /**
- * B1 · /finanzas es solo para el rol Administrador (decisión de Octa, 2026-11-10: ni Ventas, ni
- * Operaciones, ni CALLER lo ven).
+ * /finanzas y /administracion se abren con el permiso VIEW_FINANCES (no con un rol), para que un
+ * administrador pueda delegarlo: si le da el permiso a un usuario, lo ve.
  *
- * Los conjuntos de permisos replican la matriz real de prod (schema auth_ms, verificada en solo
- * lectura): VIEW_FINANCES lo tienen ADMINISTRADOR y CALLER, así que el permiso no alcanza para
- * dejar fuera a CALLER: la regla es por rol.
+ * Los conjuntos de permisos replican la matriz de prod DESPUÉS de quitarle VIEW_FINANCES al rol
+ * CALLER (2026-11-10): solo ADMINISTRADOR lo tiene. Antes, CALLER también lo tenía por defecto, y por eso
+ * la regla se había hecho por rol; con el dato corregido, el permiso basta.
  */
 const VENTAS = ["VIEW_DASHBOARD", "VIEW_SALES", "CREATE_SALE", "VIEW_TRACKING", "MANAGE_CLIENTS", "VIEW_CUSTOMER_SERVICE"];
 const OPERACIONES = [
@@ -24,31 +24,36 @@ const ROL_VENTAS = user("VENTAS", VENTAS);
 const ROL_OPERACIONES = user("OPERACIONES", OPERACIONES);
 // Rol personalizado que combina Ventas + Operaciones (el caso del cliente).
 const VENTAS_OPERACIONES = user("CUSTOM_ventas-operaciones", [...new Set([...VENTAS, ...OPERACIONES])]);
-const CALLER = user("CALLER", [...OPERACIONES, "VIEW_FINANCES"]);
+// CALLER tal como quedó en prod: sin VIEW_FINANCES.
+const CALLER = user("CALLER", [...OPERACIONES, "MANAGE_INVENTORY", "MANAGE_USERS", "MANAGE_ROLES"]);
 const SUPERADMIN = user("USUARIO", [], "octatoledo7@gmail.com");
 
 const RUTAS_FINANZAS = ["/finanzas", "/finanzas/", "/finanzas/liquidaciones", "/finanzas/cualquier/subruta"];
+const RUTAS_ADMINISTRACION = ["/administracion", "/administracion/resumen", "/administracion/gastos", "/administracion/capital"];
+const TODAS = [...RUTAS_FINANZAS, ...RUTAS_ADMINISTRACION];
 
-describe("hasRouteAccess · /finanzas", () => {
-  it("la ruta exige el rol Administrador", () => {
-    expect(getRoutePermissions("/finanzas")).toEqual(["__ADMIN_ROLE__"]);
-    expect(getRoutePermissions("/finanzas/liquidaciones")).toEqual(["__ADMIN_ROLE__"]);
+describe("hasRouteAccess · /finanzas y /administracion por permiso", () => {
+  it.each(TODAS)("%s exige el permiso VIEW_FINANCES", (pathname) => {
+    expect(getRoutePermissions(pathname)).toEqual(["VIEW_FINANCES"]);
   });
 
-  it.each(RUTAS_FINANZAS)("Administrador entra a %s", (pathname) => {
+  it.each(TODAS)("quien tiene VIEW_FINANCES (Administrador) entra a %s", (pathname) => {
     expect(hasRouteAccess(pathname, ADMIN)).toBe(true);
   });
 
-  it.each(RUTAS_FINANZAS)("Ventas no entra a %s", (pathname) => {
-    expect(hasRouteAccess(pathname, ROL_VENTAS)).toBe(false);
+  it.each(TODAS)("Ventas, Operaciones, CALLER y el rol personalizado no entran a %s", (pathname) => {
+    for (const u of [ROL_VENTAS, ROL_OPERACIONES, VENTAS_OPERACIONES, CALLER]) expect(hasRouteAccess(pathname, u)).toBe(false);
   });
 
-  it.each(RUTAS_FINANZAS)("Operaciones no entra a %s", (pathname) => {
-    expect(hasRouteAccess(pathname, ROL_OPERACIONES)).toBe(false);
+  it.each(TODAS)("DELEGACIÓN: a un caller o a un rol personalizado al que se le da VIEW_FINANCES, %s le abre", (pathname) => {
+    expect(hasRouteAccess(pathname, { ...CALLER, permissions: [...CALLER.permissions!, "VIEW_FINANCES"] })).toBe(true);
+    expect(hasRouteAccess(pathname, { ...VENTAS_OPERACIONES, permissions: [...VENTAS_OPERACIONES.permissions!, "VIEW_FINANCES"] })).toBe(true);
+    expect(hasRouteAccess(pathname, { ...ROL_VENTAS, permissions: ["VIEW_FINANCES"] })).toBe(true);
   });
 
-  it.each(RUTAS_FINANZAS)("un rol personalizado Ventas + Operaciones no entra a %s", (pathname) => {
-    expect(hasRouteAccess(pathname, VENTAS_OPERACIONES)).toBe(false);
+  it("el rol Administrador sin el permiso no entra: manda el permiso, no el nombre del rol", () => {
+    expect(hasRouteAccess("/finanzas", user("ADMINISTRADOR", VENTAS))).toBe(false);
+    expect(hasRouteAccess("/administracion/resumen", user("ADMINISTRADOR", []))).toBe(false);
   });
 
   it("un usuario sin permisos tampoco entra", () => {
@@ -56,17 +61,9 @@ describe("hasRouteAccess · /finanzas", () => {
     expect(hasRouteAccess("/finanzas", { email: undefined, role: undefined, permissions: undefined })).toBe(false);
   });
 
-  it.each(RUTAS_FINANZAS)("CALLER no entra a %s aunque tenga VIEW_FINANCES", (pathname) => {
-    expect(CALLER.permissions).toContain("VIEW_FINANCES");
-    expect(hasRouteAccess(pathname, CALLER)).toBe(false);
-  });
-
-  it("tener VIEW_FINANCES sin el rol Administrador no abre Finanzas", () => {
-    expect(hasRouteAccess("/finanzas", user("FINANZAS", ["VIEW_FINANCES", "APPROVE_PAYMENTS"]))).toBe(false);
-  });
-
   it("superadmin conserva el acceso", () => {
     expect(hasRouteAccess("/finanzas", SUPERADMIN)).toBe(true);
+    expect(hasRouteAccess("/administracion/capital", SUPERADMIN)).toBe(true);
   });
 
   it("no cierra las rutas vecinas que Ventas y Operaciones usan", () => {

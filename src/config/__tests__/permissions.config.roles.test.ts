@@ -5,7 +5,7 @@ import { canEditInventory, canSeeProductCosts, getRoutePermissions, hasRouteAcce
  *  - El costo de los productos lo ven Administrador y Operaciones (los únicos roles que registraron
  *    compras: 32 y 7). CALLER, Ventas, Agentes, Usuario y los roles personalizados no.
  *  - El inventario lo editan Administrador y Operaciones (los únicos con ajustes manuales IN/OUT).
- *  - /administracion (gastos, utilidad, capital…) es solo del Administrador.
+ *  - /administracion se abre con el permiso VIEW_FINANCES (ver permissions.config.finanzas.test.ts).
  * Todo es por ROL, no por permiso: CALLER tiene MANAGE_INVENTORY y VIEW_FINANCES en prod y no debe
  * heredar ninguna de las dos cosas.
  */
@@ -15,9 +15,10 @@ const user = (role: string | undefined, email = `${(role ?? "sin-rol").toLowerCa
   permissions,
 });
 
-const ADMINISTRADOR = user("ADMINISTRADOR");
+const ADMINISTRADOR = user("ADMINISTRADOR", undefined, ["VIEW_FINANCES"]);
 const OPERACIONES = user("OPERACIONES");
-const CALLER = user("CALLER", undefined, ["MANAGE_INVENTORY", "VIEW_FINANCES", "MANAGE_PRODUCTS", "MANAGE_OPERATIONS"]);
+// CALLER tal como quedó en prod (sin VIEW_FINANCES); conserva MANAGE_INVENTORY, que no basta para editar inventario.
+const CALLER = user("CALLER", undefined, ["MANAGE_INVENTORY", "MANAGE_PRODUCTS", "MANAGE_OPERATIONS"]);
 const VENTAS = user("VENTAS");
 const AGENTES = user("AGENTES");
 const USUARIO = user("USUARIO");
@@ -93,20 +94,6 @@ describe("hasRouteAccess · compras (alta de stock con costo)", () => {
 
   it.each(COMPRAS)("CALLER, Ventas y el rol personalizado no entran a %s", (pathname) => {
     for (const u of [CALLER, VENTAS, AGENTES, PERSONALIZADO]) expect(hasRouteAccess(pathname, u)).toBe(false);
-  });
-});
-
-describe("hasRouteAccess · /administracion (solo Administrador)", () => {
-  const RUTAS = ["/administracion", "/administracion/resumen", "/administracion/gastos", "/administracion/capital", "/administracion/flujo"];
-
-  it.each(RUTAS)("%s exige el rol Administrador", (pathname) => {
-    expect(getRoutePermissions(pathname)).toEqual(["__ADMIN_ROLE__"]);
-  });
-
-  it.each(RUTAS)("solo el Administrador entra a %s", (pathname) => {
-    expect(hasRouteAccess(pathname, ADMINISTRADOR)).toBe(true);
-    expect(hasRouteAccess(pathname, SUPERADMIN)).toBe(true);
-    for (const u of [OPERACIONES, CALLER, VENTAS, PERSONALIZADO]) expect(hasRouteAccess(pathname, u)).toBe(false);
   });
 });
 

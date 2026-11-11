@@ -63,9 +63,8 @@ import { useRouter, usePathname } from "next/navigation";
 import {
   SIDEBAR_ITEMS_PERMISSIONS,
   isSuperadmin,
-  hasAdminAccess,
   hasRouteAccess,
-  isRoleGatedRoute,
+  isAccessGatedRoute,
 } from "@/config/permissions.config";
 import {
   DropdownMenu,
@@ -401,11 +400,9 @@ export function Sidebar({ className }: SidebarProps) {
         return isSuperadmin(auth?.user.email);
       }
 
-      // Si es Administración, verificar si es admin o superadmin
+      // Administración: el grupo se muestra a quien puede abrir /administracion (permiso VIEW_FINANCES o superadmin).
       if (item.name === "Administración") {
-        return (
-          isSuperadmin(auth?.user.email) || hasAdminAccess(auth?.user.role)
-        );
+        return hasRouteAccess("/administracion", auth?.user);
       }
 
       if (item.name === "Partners Admin") {
@@ -427,7 +424,7 @@ export function Sidebar({ className }: SidebarProps) {
             // Enlaces que se deciden por rol (Finanzas, Compras, Administración…): se ocultan con la
             // misma regla que AuthGuard aplica a la ruta (ROUTE_PERMISSIONS). Se filtra por href y no
             // por nombre porque "Resumen" existe en Finanzas y en Administración.
-            if (child.href && isRoleGatedRoute(child.href)) return hasRouteAccess(child.href, auth?.user);
+            if (child.href && isAccessGatedRoute(child.href)) return hasRouteAccess(child.href, auth?.user);
             // También filtramos sub-ítems que puedan ser de superadmin si existieran
             if (
               child.name.toLowerCase().includes("superadmin") ||
