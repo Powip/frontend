@@ -64,7 +64,7 @@ describe("Sidebar · acceso a Finanzas", () => {
     ["Ventas", "VENTAS", VENTAS],
     ["Operaciones", "OPERACIONES", OPERACIONES],
     ["un rol personalizado Ventas + Operaciones", "CUSTOM_ventas-operaciones", [...new Set([...VENTAS, ...OPERACIONES])]],
-    ["CALLER (tiene VIEW_FINANCES)", "CALLER", [...OPERACIONES, "VIEW_FINANCES"]],
+    ["CALLER (sin VIEW_FINANCES, como quedó en prod)", "CALLER", [...OPERACIONES, "MANAGE_INVENTORY"]],
   ])("%s no ve el enlace a /finanzas", (_nombre, role, permissions) => {
     const { container } = renderAs(role, permissions);
     expect(container.querySelector('a[href="/finanzas"]')).toBeNull();
@@ -87,5 +87,42 @@ describe("Sidebar · acceso a Finanzas", () => {
   it("el superadmin conserva el enlace aunque su sesión no traiga permisos", () => {
     const { container } = renderAs("USUARIO", [], "octatoledo7@gmail.com");
     expect(container.querySelector('a[href="/finanzas"]')).not.toBeNull();
+  });
+
+  it.each([
+    ["un caller", "CALLER", [...OPERACIONES, "MANAGE_INVENTORY"]],
+    ["Ventas", "VENTAS", VENTAS],
+    ["un rol personalizado", "CUSTOM_ventas-operaciones", [...VENTAS, ...OPERACIONES]],
+  ])("DELEGACIÓN: a %s con VIEW_FINANCES se le muestra Finanzas", (_n, role, permissions) => {
+    const { container } = renderAs(role, [...permissions, "VIEW_FINANCES"]);
+    expect(container.querySelector('a[href="/finanzas"]')).not.toBeNull();
+  });
+});
+
+describe("Sidebar · grupo Administración por permiso", () => {
+  beforeEach(() => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1280 });
+    mockPathname = "/administracion/resumen"; // abre el grupo para poder inspeccionar sus hijos
+  });
+
+  it("se muestra a quien tiene VIEW_FINANCES, sea cual sea su rol", () => {
+    for (const role of ["ADMINISTRADOR", "CALLER", "VENTAS"]) {
+      const { container, unmount } = renderAs(role, ["VIEW_FINANCES"]);
+      expect(container.querySelector('a[href="/administracion/resumen"]')).not.toBeNull();
+      unmount();
+    }
+  });
+
+  it("no se muestra sin VIEW_FINANCES, ni siquiera al rol Administrador", () => {
+    for (const [role, permissions] of [["ADMINISTRADOR", VENTAS], ["CALLER", OPERACIONES], ["OPERACIONES", OPERACIONES]] as const) {
+      const { container, unmount } = renderAs(role, [...permissions]);
+      expect(container.querySelector('a[href="/administracion/resumen"]')).toBeNull();
+      unmount();
+    }
+  });
+
+  it("el superadmin lo conserva", () => {
+    const { container } = renderAs("USUARIO", [], "octatoledo7@gmail.com");
+    expect(container.querySelector('a[href="/administracion/resumen"]')).not.toBeNull();
   });
 });

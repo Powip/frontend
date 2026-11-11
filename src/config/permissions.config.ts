@@ -29,6 +29,8 @@ const ADMIN_ROLES = [
  * Map de rutas a permisos requeridos.
  * Si el array está vacío [], cualquier usuario autenticado puede acceder.
  * "__ADMIN_ROLE__" significa que se verifica el rol del usuario (ADMIN/OWNER).
+ * "__INVENTORY_ROLE__" se verifica contra los roles que editan inventario (Administrador y Operaciones).
+ * Cualquier otro valor es un permiso del JWT: lo tiene quien su rol (o un administrador) se lo dio.
  */
 export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   // Rutas operativas: accesibles para cualquier usuario autenticado
@@ -47,11 +49,11 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/operaciones": [],
   "/centro-envios": [],
   "/seguimiento": [],
-  // Finanzas: solo el rol Administrador (decisión de Octa: ni Ventas, ni Operaciones, ni
-  // CALLER). Es por rol y no por VIEW_FINANCES porque CALLER también tiene ese permiso.
-  // AuthGuard lo aplica a /finanzas y a todas sus subrutas, y el sidebar oculta el enlace
-  // con este mismo mapa (hasRouteAccess).
-  "/finanzas": ["__ADMIN_ROLE__"],
+  // Finanzas: se abre con el permiso VIEW_FINANCES, así un administrador puede delegarlo a quien
+  // quiera. Hoy solo lo tiene el rol Administrador: a CALLER se le quitó en la base de datos
+  // (2026-11-10), que era lo que antes obligaba a decidir esto por rol. AuthGuard lo aplica a
+  // /finanzas y a todas sus subrutas, y el sidebar oculta el enlace con este mismo mapa.
+  "/finanzas": ["VIEW_FINANCES"],
   "/clientes": [],
   "/proveedores": [],
   "/usuarios": [],
@@ -76,9 +78,9 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   // Configuración: accesible para todos los autenticados.
   // Las sub-páginas (tiendas, etc.) manejan su propio guard por rol.
   "/configuracion": [],
-  // Administración financiera (gastos, utilidad, capital, flujo…): solo el Administrador. Antes solo se
-  // ocultaba en el sidebar y el layout pedía VIEW_FINANCES, que CALLER también tiene.
-  "/administracion": ["__ADMIN_ROLE__"],
+  // Administración financiera (gastos, utilidad, capital, flujo…): mismo permiso que Finanzas. Antes solo
+  // se ocultaba en el sidebar y el layout ya pedía VIEW_FINANCES.
+  "/administracion": ["VIEW_FINANCES"],
   "/superadmin": ["__SUPERADMIN__"],
 };
 
@@ -168,6 +170,14 @@ export const hasRouteAccess = (pathname: string, user: RouteAccessUser | undefin
   return hasAnyPermission(user?.permissions, requiredPermissions);
 };
 
-/** ¿La ruta se decide por el rol del usuario (y no por sus permisos)? Lo usa el sidebar para ocultar enlaces. */
-export const isRoleGatedRoute = (pathname: string): boolean =>
-  getRoutePermissions(pathname).some((p) => p === "__ADMIN_ROLE__" || p === "__INVENTORY_ROLE__");
+// Rutas por permiso cuyo enlace del sidebar se oculta a quien no puede abrirlas.
+const SIDEBAR_HIDDEN_WITHOUT_ACCESS = ["/finanzas", "/administracion"];
+
+/**
+ * ¿El sidebar debe ocultar el enlace de esta ruta a quien no puede abrirla? Sí para las que se deciden
+ * por rol y para las de finanzas (por permiso). No se aplica a todas las rutas con permisos a propósito:
+ * Leads y otros enlaces del sidebar ya se deciden con sus propias capacidades.
+ */
+export const isAccessGatedRoute = (pathname: string): boolean =>
+  getRoutePermissions(pathname).some((p) => p === "__ADMIN_ROLE__" || p === "__INVENTORY_ROLE__") ||
+  SIDEBAR_HIDDEN_WITHOUT_ACCESS.some((route) => pathname === route || pathname.startsWith(`${route}/`));

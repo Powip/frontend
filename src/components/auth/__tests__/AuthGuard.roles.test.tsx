@@ -60,7 +60,7 @@ describe.each(["/compras", "/registrar-compra"])("AuthGuard · %s", (pathname) =
   });
 });
 
-describe.each(["/administracion/resumen", "/administracion/capital"])("AuthGuard · %s", (pathname) => {
+describe.each(["/administracion/resumen", "/administracion/capital"])("AuthGuard · %s (permiso VIEW_FINANCES)", (pathname) => {
   it("el Administrador entra", () => {
     sessionFor("ADMINISTRADOR", ["VIEW_FINANCES"]);
     renderGuard(pathname);
@@ -68,12 +68,18 @@ describe.each(["/administracion/resumen", "/administracion/capital"])("AuthGuard
   });
 
   it.each([
-    ["CALLER (tiene VIEW_FINANCES)", "CALLER", ["VIEW_FINANCES", "MANAGE_OPERATIONS"]],
+    ["CALLER (sin VIEW_FINANCES, como quedó en prod)", "CALLER", ["MANAGE_OPERATIONS", "MANAGE_INVENTORY"]],
     ["OPERACIONES", "OPERACIONES", ["MANAGE_OPERATIONS"]],
     ["VENTAS", "VENTAS", []],
   ])("%s ve Acceso Denegado", (_n, role, permissions) => {
     sessionFor(role, permissions);
     renderGuard(pathname);
     expect(screen.getByText("Acceso Denegado")).toBeInTheDocument();
+  });
+
+  it("DELEGACIÓN: un caller al que se le da VIEW_FINANCES entra", () => {
+    sessionFor("CALLER", ["MANAGE_OPERATIONS", "VIEW_FINANCES"]);
+    renderGuard(pathname);
+    expect(screen.getByText("Contenido protegido")).toBeInTheDocument();
   });
 });

@@ -55,7 +55,8 @@ describe("Sidebar · Partners with current main", () => {
       name: "Fixture",
       surname: "User",
       role: "ADMINISTRADOR",
-      permissions: [],
+      // El administrador del fixture tiene VIEW_FINANCES (el grupo Administración se muestra por ese permiso).
+      permissions: ["VIEW_FINANCES"],
     };
   });
 
@@ -124,7 +125,7 @@ describe("Sidebar · Partners with current main", () => {
     expect(screen.getByRole("link", { name: /^Partners Admin$/i }))
       .toBeInTheDocument();
 
-    mockUser = { ...mockUser, permissions: [] };
+    mockUser = { ...mockUser, permissions: ["VIEW_FINANCES"] };
     rerender(<Sidebar />);
 
     expect(screen.queryByRole("link", { name: /^Partners Admin$/i }))
