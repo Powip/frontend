@@ -1,5 +1,7 @@
 "use client";
 
+import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/orders/ExternalOrderNumberColumn";
+import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
 import { OrderOriginLabel } from "@/app/operaciones/_shared/OrderOriginLabel";
 
 import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
@@ -177,6 +179,20 @@ const TRACKING_FIELDS = [
  */
 const STICKY_LEFT_HEAD = "sticky z-20 bg-muted";
 const STICKY_LEFT_BODY = "sticky z-10 bg-background";
+/**
+ * FEAT-31: «N° Externo» (w-28 = 112px) se inserta sticky tras «N° Pedido» solo si algún pedido lo
+ * trae; las columnas fijas siguientes se corren 112px. Clases completas (Tailwind no ve
+ * fragmentos concatenados).
+ */
+const STICKY_LEFT_OFFSET = {
+  fecha: { base: "left-28", withExternal: "left-[224px]" },
+  despacho: { base: "left-[208px]", withExternal: "left-[320px]" },
+  cliente: { base: "left-[304px]", withExternal: "left-[416px]" },
+  telefono: { base: "left-[448px]", withExternal: "left-[560px]" },
+  ciudad: { base: "left-[560px]", withExternal: "left-[672px]" },
+} as const;
+const stickyLeft = (column: keyof typeof STICKY_LEFT_OFFSET, withExternal: boolean) =>
+  STICKY_LEFT_OFFSET[column][withExternal ? "withExternal" : "base"];
 const STICKY_RIGHT_HEAD = "sticky z-20 bg-muted";
 const STICKY_RIGHT_BODY = "sticky z-10 bg-background";
 
@@ -593,6 +609,7 @@ export default function CourierTrackingView() {
         (o) =>
           !q ||
           o.orderNumber?.toLowerCase().includes(q) ||
+          o.externalOrderNumber?.toLowerCase().includes(q) ||
           courierLabel(o).toLowerCase().includes(q) ||
           o.customer?.fullName?.toLowerCase().includes(q),
       )
@@ -630,6 +647,10 @@ export default function CourierTrackingView() {
     () => allOrderRows.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE),
     [allOrderRows, page],
   );
+
+  // FEAT-31: «N° Externo» solo se dibuja si algún pedido de la lista (ya filtrada) lo trae.
+  const showExternalCol = hasExternalOrderNumbers(allOrderRows);
+  const orderColSpan = 16 + (showExternalCol ? 1 : 0);
 
   // Estado en vivo de Shalom solo para la página visible — antes consultaba
   // TODOS los pedidos despachados de Shalom del historial completo en cada
@@ -736,6 +757,7 @@ export default function CourierTrackingView() {
       const despachoAt = dispatchDateFor(o, dispatchDateByOrderId);
       return {
         "N° Pedido": o.orderNumber,
+        "N° Externo": o.externalOrderNumber ?? "",
         Tienda: o.storeName || o.storeId || "",
         Almacén: o.stockStoreName || o.inventoryId || o.stockStoreId || "",
         "Fecha de venta": new Date(o.created_at).toLocaleDateString("es-PE"),
@@ -898,7 +920,7 @@ export default function CourierTrackingView() {
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
-                      placeholder="Buscar por pedido, cliente o courier..."
+                      placeholder="Buscar por pedido, N° externo, cliente o courier..."
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
                       className="pl-9 bg-background"
@@ -1061,11 +1083,14 @@ export default function CourierTrackingView() {
                     <TableHeader className="bg-muted/30">
                       <TableRow>
                         <TableHead className={`${STICKY_LEFT_HEAD} left-0 w-28 min-w-28 font-semibold px-4 h-10 text-xs whitespace-nowrap`}>N° Pedido</TableHead>
-                        <TableHead className={`${STICKY_LEFT_HEAD} left-28 w-24 min-w-24 font-semibold px-4 h-10 text-xs text-center whitespace-nowrap`}>Fecha de venta</TableHead>
-                        <TableHead className={`${STICKY_LEFT_HEAD} left-[208px] w-24 min-w-24 font-semibold px-4 h-10 text-xs text-center whitespace-nowrap`}>Despacho</TableHead>
-                        <TableHead className={`${STICKY_LEFT_HEAD} left-[304px] w-36 min-w-36 font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Cliente</TableHead>
-                        <TableHead className={`${STICKY_LEFT_HEAD} left-[448px] w-28 min-w-28 font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Teléfono</TableHead>
-                        <TableHead className={`${STICKY_LEFT_HEAD} left-[560px] w-24 min-w-24 border-r font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Ciudad</TableHead>
+                {showExternalCol && (
+                  <ExternalOrderNumberHead className={`${STICKY_LEFT_HEAD} left-28 w-28 min-w-28 font-semibold px-4 h-10 text-xs whitespace-nowrap`} />
+                )}
+                        <TableHead className={`${STICKY_LEFT_HEAD} ${stickyLeft("fecha", showExternalCol)} w-24 min-w-24 font-semibold px-4 h-10 text-xs text-center whitespace-nowrap`}>Fecha de venta</TableHead>
+                        <TableHead className={`${STICKY_LEFT_HEAD} ${stickyLeft("despacho", showExternalCol)} w-24 min-w-24 font-semibold px-4 h-10 text-xs text-center whitespace-nowrap`}>Despacho</TableHead>
+                        <TableHead className={`${STICKY_LEFT_HEAD} ${stickyLeft("cliente", showExternalCol)} w-36 min-w-36 font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Cliente</TableHead>
+                        <TableHead className={`${STICKY_LEFT_HEAD} ${stickyLeft("telefono", showExternalCol)} w-28 min-w-28 font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Teléfono</TableHead>
+                        <TableHead className={`${STICKY_LEFT_HEAD} ${stickyLeft("ciudad", showExternalCol)} w-24 min-w-24 border-r font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Ciudad</TableHead>
                         <TableHead className="font-semibold px-4 h-10 text-xs whitespace-nowrap">Distrito</TableHead>
                         <TableHead className="font-semibold px-4 h-10 text-xs text-right whitespace-nowrap">Saldo de deuda</TableHead>
                         <TableHead className="font-semibold px-4 h-10 text-xs text-center whitespace-nowrap">Courier</TableHead>
@@ -1093,7 +1118,7 @@ export default function CourierTrackingView() {
                         <>
                           <TableRow>
                             <TableCell
-                              colSpan={16}
+                              colSpan={orderColSpan}
                               className="h-12 px-4 text-center text-sm text-muted-foreground"
                             >
                               <div className="flex items-center justify-center gap-2">
@@ -1104,7 +1129,7 @@ export default function CourierTrackingView() {
                           </TableRow>
                           {Array.from({ length: 3 }).map((_, i) => (
                             <TableRow key={i}>
-                              <TableCell colSpan={16} className="h-16 animate-pulse bg-muted/10 px-4" />
+                              <TableCell colSpan={orderColSpan} className="h-16 animate-pulse bg-muted/10 px-4" />
                             </TableRow>
                           ))}
                         </>
@@ -1112,7 +1137,7 @@ export default function CourierTrackingView() {
                         loadingShalomFilterLiveStatuses ? (
                         <TableRow>
                           <TableCell
-                            colSpan={16}
+                            colSpan={orderColSpan}
                             className="h-12 px-4 text-center text-sm text-muted-foreground"
                           >
                             <div className="flex items-center justify-center gap-2">
@@ -1123,7 +1148,7 @@ export default function CourierTrackingView() {
                         </TableRow>
                       ) : allOrderRows.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={16} className="h-32 text-center text-muted-foreground text-sm">
+                          <TableCell colSpan={orderColSpan} className="h-32 text-center text-muted-foreground text-sm">
                             No hay pedidos despachados para mostrar.
                           </TableCell>
                         </TableRow>
@@ -1135,19 +1160,25 @@ export default function CourierTrackingView() {
                               <TableCell className={`${STICKY_LEFT_BODY} left-0 w-28 min-w-28 font-medium px-4 py-3 text-xs whitespace-nowrap`}>
                                 <span>{order.orderNumber}</span><OrderOriginLabel {...order} />
                               </TableCell>
-                              <TableCell className={`${STICKY_LEFT_BODY} left-28 w-24 min-w-24 px-4 py-3 text-[10px] text-center whitespace-nowrap`}>
+                              {showExternalCol && (
+                                <ExternalOrderNumberCell
+                                  value={order.externalOrderNumber}
+                                  className={`${STICKY_LEFT_BODY} left-28 w-28 min-w-28 px-4 py-3 whitespace-nowrap`}
+                                />
+                              )}
+                              <TableCell className={`${STICKY_LEFT_BODY} ${stickyLeft("fecha", showExternalCol)} w-24 min-w-24 px-4 py-3 text-[10px] text-center whitespace-nowrap`}>
                                 {new Date(order.created_at).toLocaleDateString("es-PE")}
                               </TableCell>
-                              <TableCell className={`${STICKY_LEFT_BODY} left-[208px] w-24 min-w-24 px-4 py-3 text-[10px] text-center whitespace-nowrap`}>
+                              <TableCell className={`${STICKY_LEFT_BODY} ${stickyLeft("despacho", showExternalCol)} w-24 min-w-24 px-4 py-3 text-[10px] text-center whitespace-nowrap`}>
                                 {despachoAt ? new Date(despachoAt).toLocaleDateString("es-PE") : "-"}
                               </TableCell>
-                              <TableCell className={`${STICKY_LEFT_BODY} left-[304px] w-36 min-w-36 px-4 py-3 text-xs`}>
+                              <TableCell className={`${STICKY_LEFT_BODY} ${stickyLeft("cliente", showExternalCol)} w-36 min-w-36 px-4 py-3 text-xs`}>
                                 {order.customer?.fullName || "-"}
                               </TableCell>
-                              <TableCell className={`${STICKY_LEFT_BODY} left-[448px] w-28 min-w-28 px-4 py-3 text-xs whitespace-nowrap`}>
+                              <TableCell className={`${STICKY_LEFT_BODY} ${stickyLeft("telefono", showExternalCol)} w-28 min-w-28 px-4 py-3 text-xs whitespace-nowrap`}>
                                 {order.customer?.phoneNumber || "-"}
                               </TableCell>
-                              <TableCell className={`${STICKY_LEFT_BODY} left-[560px] w-24 min-w-24 border-r px-4 py-3 text-xs whitespace-nowrap`}>
+                              <TableCell className={`${STICKY_LEFT_BODY} ${stickyLeft("ciudad", showExternalCol)} w-24 min-w-24 border-r px-4 py-3 text-xs whitespace-nowrap`}>
                                 {order.customer?.city || "-"}
                               </TableCell>
                               <TableCell className="px-4 py-3 text-xs whitespace-nowrap">
@@ -1446,6 +1477,7 @@ function CourierOrdersTab({
         (o) =>
           !q ||
           o.orderNumber?.toLowerCase().includes(q) ||
+          o.externalOrderNumber?.toLowerCase().includes(q) ||
           o.customer?.fullName?.toLowerCase().includes(q),
       )
       .sort(
@@ -1465,6 +1497,10 @@ function CourierOrdersTab({
     page * ITEMS_PER_PAGE,
   );
 
+  // FEAT-31: «N° Externo» solo se dibuja si algún pedido de la lista (ya filtrada) lo trae.
+  const showExternalCol = hasExternalOrderNumbers(rows);
+  const tabColSpan = 14 + (showExternalCol ? 1 : 0);
+
   const handleExportExcel = () => {
     if (rows.length === 0) {
       toast.warning("No hay pedidos para exportar con los filtros aplicados");
@@ -1474,6 +1510,7 @@ function CourierOrdersTab({
       const despachoAt = dispatchDateFor(o, dispatchDateByOrderId);
       return {
         "N° Pedido": o.orderNumber,
+        "N° Externo": o.externalOrderNumber ?? "",
         Tienda: o.storeName || o.storeId || "",
         Almacén: o.stockStoreName || o.inventoryId || o.stockStoreId || "",
         "Fecha de venta": new Date(o.created_at).toLocaleDateString("es-PE"),
@@ -1523,7 +1560,7 @@ function CourierOrdersTab({
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar por pedido o cliente..."
+              placeholder="Buscar por pedido, N° externo o cliente..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9 bg-background"
@@ -1596,11 +1633,14 @@ function CourierOrdersTab({
             <TableHeader className="bg-muted/30">
               <TableRow>
                 <TableHead className={`${STICKY_LEFT_HEAD} left-0 w-28 min-w-28 font-semibold px-4 h-10 text-xs whitespace-nowrap`}>N° Pedido</TableHead>
-                <TableHead className={`${STICKY_LEFT_HEAD} left-28 w-24 min-w-24 font-semibold px-4 h-10 text-xs text-center whitespace-nowrap`}>Fecha de venta</TableHead>
-                <TableHead className={`${STICKY_LEFT_HEAD} left-[208px] w-24 min-w-24 font-semibold px-4 h-10 text-xs text-center whitespace-nowrap`}>Despacho</TableHead>
-                <TableHead className={`${STICKY_LEFT_HEAD} left-[304px] w-36 min-w-36 font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Cliente</TableHead>
-                <TableHead className={`${STICKY_LEFT_HEAD} left-[448px] w-28 min-w-28 font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Teléfono</TableHead>
-                <TableHead className={`${STICKY_LEFT_HEAD} left-[560px] w-24 min-w-24 border-r font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Ciudad</TableHead>
+                {showExternalCol && (
+                  <ExternalOrderNumberHead className={`${STICKY_LEFT_HEAD} left-28 w-28 min-w-28 font-semibold px-4 h-10 text-xs whitespace-nowrap`} />
+                )}
+                <TableHead className={`${STICKY_LEFT_HEAD} ${stickyLeft("fecha", showExternalCol)} w-24 min-w-24 font-semibold px-4 h-10 text-xs text-center whitespace-nowrap`}>Fecha de venta</TableHead>
+                <TableHead className={`${STICKY_LEFT_HEAD} ${stickyLeft("despacho", showExternalCol)} w-24 min-w-24 font-semibold px-4 h-10 text-xs text-center whitespace-nowrap`}>Despacho</TableHead>
+                <TableHead className={`${STICKY_LEFT_HEAD} ${stickyLeft("cliente", showExternalCol)} w-36 min-w-36 font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Cliente</TableHead>
+                <TableHead className={`${STICKY_LEFT_HEAD} ${stickyLeft("telefono", showExternalCol)} w-28 min-w-28 font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Teléfono</TableHead>
+                <TableHead className={`${STICKY_LEFT_HEAD} ${stickyLeft("ciudad", showExternalCol)} w-24 min-w-24 border-r font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Ciudad</TableHead>
                 <TableHead className="font-semibold px-4 h-10 text-xs whitespace-nowrap">Distrito</TableHead>
                 <TableHead className="font-semibold px-4 h-10 text-xs text-right whitespace-nowrap">Saldo de deuda</TableHead>
                 <TableHead className="font-semibold px-4 h-10 text-xs text-right whitespace-nowrap">Costo de envío</TableHead>
@@ -1625,12 +1665,12 @@ function CourierOrdersTab({
               {loading ? (
                 Array.from({ length: 3 }).map((_, i) => (
                   <TableRow key={i}>
-                    <TableCell colSpan={14} className="h-16 animate-pulse bg-muted/10 px-4" />
+                    <TableCell colSpan={tabColSpan} className="h-16 animate-pulse bg-muted/10 px-4" />
                   </TableRow>
                 ))
               ) : rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={14} className="h-32 text-center text-muted-foreground text-sm">
+                  <TableCell colSpan={tabColSpan} className="h-32 text-center text-muted-foreground text-sm">
                     No hay pedidos despachados con {courierName}.
                   </TableCell>
                 </TableRow>
@@ -1642,19 +1682,25 @@ function CourierOrdersTab({
                       <TableCell className={`${STICKY_LEFT_BODY} left-0 w-28 min-w-28 font-medium px-4 py-3 text-xs whitespace-nowrap`}>
                         <span>{order.orderNumber}</span><OrderOriginLabel {...order} />
                       </TableCell>
-                      <TableCell className={`${STICKY_LEFT_BODY} left-28 w-24 min-w-24 px-4 py-3 text-[10px] text-center whitespace-nowrap`}>
+                      {showExternalCol && (
+                        <ExternalOrderNumberCell
+                          value={order.externalOrderNumber}
+                          className={`${STICKY_LEFT_BODY} left-28 w-28 min-w-28 px-4 py-3 whitespace-nowrap`}
+                        />
+                      )}
+                      <TableCell className={`${STICKY_LEFT_BODY} ${stickyLeft("fecha", showExternalCol)} w-24 min-w-24 px-4 py-3 text-[10px] text-center whitespace-nowrap`}>
                         {new Date(order.created_at).toLocaleDateString("es-PE")}
                       </TableCell>
-                      <TableCell className={`${STICKY_LEFT_BODY} left-[208px] w-24 min-w-24 px-4 py-3 text-[10px] text-center whitespace-nowrap`}>
+                      <TableCell className={`${STICKY_LEFT_BODY} ${stickyLeft("despacho", showExternalCol)} w-24 min-w-24 px-4 py-3 text-[10px] text-center whitespace-nowrap`}>
                         {despachoAt ? new Date(despachoAt).toLocaleDateString("es-PE") : "-"}
                       </TableCell>
-                      <TableCell className={`${STICKY_LEFT_BODY} left-[304px] w-36 min-w-36 px-4 py-3 text-xs`}>
+                      <TableCell className={`${STICKY_LEFT_BODY} ${stickyLeft("cliente", showExternalCol)} w-36 min-w-36 px-4 py-3 text-xs`}>
                         {order.customer?.fullName || "-"}
                       </TableCell>
-                      <TableCell className={`${STICKY_LEFT_BODY} left-[448px] w-28 min-w-28 px-4 py-3 text-xs whitespace-nowrap`}>
+                      <TableCell className={`${STICKY_LEFT_BODY} ${stickyLeft("telefono", showExternalCol)} w-28 min-w-28 px-4 py-3 text-xs whitespace-nowrap`}>
                         {order.customer?.phoneNumber || "-"}
                       </TableCell>
-                      <TableCell className={`${STICKY_LEFT_BODY} left-[560px] w-24 min-w-24 border-r px-4 py-3 text-xs whitespace-nowrap`}>
+                      <TableCell className={`${STICKY_LEFT_BODY} ${stickyLeft("ciudad", showExternalCol)} w-24 min-w-24 border-r px-4 py-3 text-xs whitespace-nowrap`}>
                         {order.customer?.city || "-"}
                       </TableCell>
                       <TableCell className="px-4 py-3 text-xs whitespace-nowrap">

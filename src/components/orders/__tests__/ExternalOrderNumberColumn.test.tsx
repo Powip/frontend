@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import {
   ExternalOrderNumberCell,
   ExternalOrderNumberHead,
+  ExternalOrderNumberValue,
 } from "../ExternalOrderNumberColumn";
 
 function inTable(head: React.ReactNode, cell: React.ReactNode) {
@@ -45,5 +46,17 @@ describe("ExternalOrderNumberColumn (FEAT-31)", () => {
     );
     expect(screen.getByRole("columnheader")).toHaveClass("sticky-x");
     expect(screen.getByRole("cell")).toHaveClass("sticky-y");
+  });
+});
+
+describe("ExternalOrderNumberValue (FEAT-31, para tablas con <td> planos)", () => {
+  it("muestra el número con su valor completo en el title", () => {
+    render(<ExternalOrderNumberValue value="AGPE923190" />);
+    expect(screen.getByText("AGPE923190")).toHaveAttribute("title", "AGPE923190");
+  });
+
+  it.each([[undefined], [null], [""], ["   "]])("sin número muestra un guion: %p", (value) => {
+    render(<ExternalOrderNumberValue value={value} />);
+    expect(screen.getByText("—")).toBeInTheDocument();
   });
 });

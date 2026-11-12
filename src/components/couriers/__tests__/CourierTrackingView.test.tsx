@@ -261,6 +261,66 @@ describe("CourierTrackingView — costo de envío editable", () => {
   });
 });
 
+describe("CourierTrackingView — N° externo (FEAT-31)", () => {
+  const withExternal = [
+    { ...order("o-ext", "PED-EXT", "2026-09-15T12:00:00", "2026-09-26T12:00:00"), externalOrderNumber: "AGPE923190" },
+    order("o-plain", "PED-PLAIN", "2026-09-10T12:00:00", "2026-09-25T12:00:00"),
+  ];
+
+  function serve(list: unknown[]) {
+    mockedGet.mockImplementation((url: string) => {
+      if (url.includes("/shipping-guides/store/")) return Promise.resolve({ data: [] });
+      if (url.includes("/order-header/store/")) return Promise.resolve({ data: list });
+      return Promise.resolve({ data: [] });
+    });
+  }
+
+  it("con un pedido que trae N° externo muestra la columna junto a N° Pedido", async () => {
+    serve(withExternal);
+    render(<CourierTrackingView />);
+    await waitFor(() => expect(renderedOrderNumbers()).toHaveLength(2));
+
+    const panel = within(screen.getByRole("tabpanel"));
+    const headers = panel.getAllByRole("columnheader").map((h) => h.textContent);
+    expect(headers.slice(0, 2)).toEqual(["N° Pedido", "N° Externo"]);
+    expect(panel.getByText("AGPE923190")).toBeInTheDocument();
+  });
+
+  it("sin ningún N° externo no dibuja la columna", async () => {
+    render(<CourierTrackingView />);
+    await waitFor(() => expect(renderedOrderNumbers()).toHaveLength(3));
+
+    expect(within(screen.getByRole("tabpanel")).queryByRole("columnheader", { name: "N° Externo" })).not.toBeInTheDocument();
+  });
+
+  it("la pestaña de un courier también muestra la columna y busca por N° externo", async () => {
+    const user = userEvent.setup();
+    serve(withExternal);
+    render(<CourierTrackingView />);
+
+    await user.click(await screen.findByRole("tab", { name: "Olva" }));
+    await waitFor(() => expect(screen.getByRole("tabpanel")).toHaveTextContent("PED-EXT"));
+
+    const panel = within(screen.getByRole("tabpanel"));
+    expect(panel.getAllByRole("columnheader").map((h) => h.textContent).slice(0, 2)).toEqual(["N° Pedido", "N° Externo"]);
+    expect(panel.getByText("AGPE923190")).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText("Buscar por pedido, N° externo o cliente..."), "AGPE");
+    await waitFor(() => expect(renderedOrderNumbers()).toEqual(["PED-EXT"]));
+  });
+
+  it("la búsqueda encuentra el pedido por su N° externo", async () => {
+    const user = userEvent.setup();
+    serve(withExternal);
+    render(<CourierTrackingView />);
+    await waitFor(() => expect(renderedOrderNumbers()).toHaveLength(2));
+
+    await user.type(screen.getByPlaceholderText("Buscar por pedido, N° externo, cliente o courier..."), "AGPE");
+
+    await waitFor(() => expect(renderedOrderNumbers()).toEqual(["PED-EXT"]));
+  });
+});
+
 // Exercise the shared business query with an isolated cache per render.
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
