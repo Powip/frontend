@@ -55,6 +55,29 @@ export function resolveStoreName(order: OrderHeader): string | null {
   return null;
 }
 
+export interface PowipStore {
+  id: string;
+  name: string;
+}
+
+/**
+ * Nombre de la TIENDA DE POWIP a la que pertenece el pedido (no la marca del producto).
+ *
+ * `resolveStoreName` devuelve el vendor de Shopify, que es igual para dos tiendas de Powip que
+ * venden la misma marca (p. ej. AMA GREEN): con «Todo el negocio» el agente no podía saber de
+ * cuál era cada pedido. Solo aporta información cuando la empresa tiene 2 o más tiendas; con
+ * una sola sería el mismo texto en todas las filas, así que devuelve null.
+ */
+export function resolvePowipStoreName(
+  order: Pick<OrderHeader, "storeId">,
+  stores: readonly PowipStore[] | null | undefined,
+): string | null {
+  if (!stores || stores.length < 2 || !order.storeId) return null;
+  const id = order.storeId.toLowerCase();
+  const name = stores.find((store) => store.id?.toLowerCase() === id)?.name?.trim();
+  return name || null;
+}
+
 export function getPedidoMontos(order: OrderHeader) {
   const grandTotal = Number(order.grandTotal ?? 0);
   const totalPaid = (order.payments ?? [])
