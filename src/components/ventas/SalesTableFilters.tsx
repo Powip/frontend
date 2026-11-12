@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { OrderStatus } from "@/interfaces/IOrder";
 import { getStatusLabel } from "@/utils/domain/orders-status-flow";
 import { operationalStatus } from "@/utils/orderState";
 import { shiftPeruDate, type DateWindow } from "@/lib/peruDate";
+import { courierOptions, matchCourierOption, normalizeCourierKey } from "@/utils/courierKey";
 
 export interface SalesFilters {
   dateFrom: string;
@@ -231,6 +232,8 @@ export function SalesTableFilters({
   dateWindow,
 }: SalesTableFiltersProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  // Una sola opción por courier aunque los pedidos lo tengan escrito de varias formas.
+  const courierChoices = useMemo(() => courierOptions(availableCouriers), [availableCouriers]);
   const productSelectId = useId();
   const fromDateId = useId();
   const toDateId = useId();
@@ -535,11 +538,11 @@ export function SalesTableFilters({
                 <Label className="text-xs">Courier</Label>
                 <select
                   className="w-full min-w-0 max-w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
-                  value={filters.courier}
+                  value={matchCourierOption(courierChoices, filters.courier)}
                   onChange={(e) => updateFilter("courier", e.target.value)}
                 >
                   <option value="">Todos</option>
-                  {availableCouriers.map((name) => (
+                  {courierChoices.map((name) => (
                     <option key={name} value={name}>
                       {name}
                     </option>
@@ -689,7 +692,7 @@ export function applyFilters<T extends {
     }
 
     // Courier filter
-    if (filters.courier && item.courier !== filters.courier) {
+    if (filters.courier && normalizeCourierKey(item.courier) !== normalizeCourierKey(filters.courier)) {
       return false;
     }
 
