@@ -125,6 +125,30 @@ describe('exportCcPedidosExcel', () => {
     expect(sinCourier).toMatchObject({ eva: 'En ruta', aliclik: '', dni: '12345678', subestado: 'Anulado CC' });
   });
 
+  it('con 2+ tiendas la columna Tienda lleva la tienda de Powip del pedido (igual que la pantalla)', () => {
+    const stores = [{ id: 'store-1', name: 'AMAGREEN' }, { id: 'store-2', name: 'AMAGREEN MINORISTA' }];
+    expect(buildCcPedidoRow(makeOrder({ storeId: 'store-2' }), stores).tienda).toBe('AMAGREEN MINORISTA');
+    expect(buildCcPedidoRow(makeOrder({ storeId: 'store-1' }), stores).tienda).toBe('AMAGREEN');
+  });
+
+  it('con una sola tienda, sin tiendas o con una tienda desconocida conserva el vendor/canal', () => {
+    const una = [{ id: 'store-1', name: 'AMAGREEN' }];
+    const dos = [{ id: 'store-1', name: 'AMAGREEN' }, { id: 'store-2', name: 'AMAGREEN MINORISTA' }];
+    expect(buildCcPedidoRow(makeOrder({ storeId: 'store-1' }), una).tienda).toBe('SHEETS');
+    expect(buildCcPedidoRow(makeOrder({ storeId: 'store-1' })).tienda).toBe('SHEETS');
+    expect(buildCcPedidoRow(makeOrder({ storeId: 'otra' }), dos).tienda).toBe('SHEETS');
+  });
+
+  it('el libro generado usa las tiendas recibidas en la columna Tienda', async () => {
+    const stores = [{ id: 'store-1', name: 'AMAGREEN' }, { id: 'store-2', name: 'AMAGREEN MINORISTA' }];
+    const wb = buildCcPedidosWorkbook([makeOrder({ storeId: 'store-2' })], 'Por confirmar', stores);
+    const reread = new ExcelJS.Workbook();
+    await reread.xlsx.load(await wb.xlsx.writeBuffer());
+    const ws = reread.worksheets[0];
+    const col = (ws.getRow(1).values as string[]).indexOf('Tienda');
+    expect(ws.getRow(2).getCell(col).value).toBe('AMAGREEN MINORISTA');
+  });
+
   it('exporta únicamente los pedidos recibidos, en orden', async () => {
     const ws = await roundTrip([
       makeOrder({ id: 'a', orderNumber: 'A-1' }),

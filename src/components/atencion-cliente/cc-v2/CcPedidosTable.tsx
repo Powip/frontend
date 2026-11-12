@@ -20,7 +20,14 @@ import SendToEvaButton from "@/components/eva/SendToEvaButton";
 import { isEvaCourier } from "@/utils/courierNormalizer";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { resolveStoreName, getPedidoMontos, getUpsellCount, isDniFaltante } from "./ccPedidoFields";
+import {
+  resolveStoreName,
+  resolvePowipStoreName,
+  getPedidoMontos,
+  getUpsellCount,
+  isDniFaltante,
+  type PowipStore,
+} from "./ccPedidoFields";
 
 /* ---------- Sub-estado chip ---------- */
 const SUB_ESTADO_STYLES: Record<SubEstadoCc, { label: string; cls: string }> = {
@@ -78,6 +85,8 @@ interface Props {
   onPageChange?: (page: number) => void;
   /** Contenido de la fila vacía (p. ej. "sin resultados" de una búsqueda). */
   emptyMessage?: ReactNode;
+  /** Tiendas de Powip del negocio: con 2 o más, la columna «Tienda» muestra la tienda de cada pedido. */
+  stores?: readonly PowipStore[];
 }
 
 export function CcPedidosTable({
@@ -96,6 +105,7 @@ export function CcPedidosTable({
   total,
   onPageChange,
   emptyMessage = "No hay pedidos en esta categoría",
+  stores,
 }: Props) {
   const showAdelanto = tipoGestion === "cod";
   const showIntentos = tipoGestion === "cod" || tipoGestion === "carrito";
@@ -192,16 +202,40 @@ export function CcPedidosTable({
 
                 <TableCell className="text-xs">{phone}</TableCell>
 
-                {/* Tienda badge — vendor de Shopify o canal de origen */}
+                {/* Tienda: con 2+ tiendas, la tienda de Powip del pedido (+ marca del producto como dato
+                    secundario); con una sola, como siempre: vendor de Shopify o canal de origen. */}
                 <TableCell>
                   {(() => {
-                    const name = resolveStoreName(order);
-                    return name ? (
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 uppercase tracking-wide">
-                        {name}
-                      </span>
-                    ) : (
-                      <span className="text-gray-300 text-xs">—</span>
+                    const powipStore = resolvePowipStoreName(order, stores);
+                    const label = resolveStoreName(order);
+                    if (!powipStore) {
+                      return label ? (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 uppercase tracking-wide">
+                          {label}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300 text-xs">—</span>
+                      );
+                    }
+                    const secondary = label && label.toLowerCase() !== powipStore.toLowerCase() ? label : null;
+                    return (
+                      <div className="flex flex-col items-start gap-0.5">
+                        <span
+                          data-testid="cc-tienda-powip"
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300 uppercase tracking-wide"
+                        >
+                          {powipStore}
+                        </span>
+                        {secondary && (
+                          <span
+                            data-testid="cc-tienda-vendor"
+                            title="Marca del producto"
+                            className="text-[10px] text-gray-400 dark:text-slate-500 uppercase tracking-wide px-2"
+                          >
+                            {secondary}
+                          </span>
+                        )}
+                      </div>
                     );
                   })()}
                 </TableCell>

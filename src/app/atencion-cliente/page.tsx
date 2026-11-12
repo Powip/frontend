@@ -331,7 +331,7 @@ export default function AtencionClientePage() {
 
     setExportingCc(true);
     try {
-      await exportCcPedidosToExcel(selected, exportTabLabel);
+      await exportCcPedidosToExcel(selected, exportTabLabel, auth?.company?.stores);
       toast.success(`${selected.length} pedido(s) exportados`);
     } catch (err) {
       console.error("Error al exportar pedidos CC:", err);
@@ -523,6 +523,7 @@ export default function AtencionClientePage() {
                     ) : (
                       <CcPedidosTable
                         data={ccRows}
+                        stores={auth.company?.stores}
                         emptyMessage={
                           isSearching ? (
                             <span>

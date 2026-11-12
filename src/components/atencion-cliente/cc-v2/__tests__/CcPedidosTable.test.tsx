@@ -119,7 +119,10 @@ const baseProps = {
 
 function renderTable(
   data: OrderHeader[],
-  extra: Partial<typeof baseProps & { onRecuperar?: (o: OrderHeader) => void }> = {},
+  extra: Partial<typeof baseProps & {
+    onRecuperar?: (o: OrderHeader) => void;
+    stores?: { id: string; name: string }[];
+  }> = {},
 ) {
   return render(
     <CcPedidosTable
@@ -226,5 +229,73 @@ describe('CcPedidosTable — gate del botón "Enviar a EVA" por fila', () => {
     renderTable([makeOrder({ courier: 'EVA', evaStatus: 'ENTREGADO' })]);
     expect(screen.getByText('Entregado')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /enviar/i })).toBeNull();
+  });
+});
+
+/* ---------------------------------------------------------------
+   Columna «Tienda»: con varias tiendas debe mostrar la tienda de POWIP
+   del pedido (no solo el vendor de Shopify, que es igual en ambas).
+--------------------------------------------------------------- */
+describe('CcPedidosTable — columna «Tienda» con varias tiendas', () => {
+  const LEGACY = { id: 'store-legacy', name: 'AMAGREEN' };
+  const COMERCIAL = { id: 'store-comercial', name: 'AMAGREEN MINORISTA' };
+  const shopifyDeAma = (id: string, orderNumber: string, storeId: string) =>
+    makeOrder({
+      id,
+      orderNumber,
+      storeId,
+      externalSource: 'shopify',
+      // Las dos shops de AMA venden con el mismo vendor: la etiqueta vieja no las distingue.
+      externalData: { line_items: [{ vendor: 'Amagreen' }] },
+    });
+
+  beforeEach(() => {
+    jest.mocked(useAuth).mockReturnValue(MOCK_AUTH as unknown as ReturnType<typeof useAuth>);
+    jest.mocked(getEvaCredentials).mockReturnValue(new Promise(() => {}));
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('cada fila muestra el nombre de la tienda de Powip a la que pertenece', () => {
+    renderTable(
+      [shopifyDeAma('o1', 'ORD-001', COMERCIAL.id), shopifyDeAma('o2', 'ORD-002', LEGACY.id)],
+      { stores: [LEGACY, COMERCIAL] },
+    );
+    const badges = screen.getAllByTestId('cc-tienda-powip').map((el) => el.textContent);
+    expect(badges).toEqual(['AMAGREEN MINORISTA', 'AMAGREEN']);
+  });
+
+  it('conserva la marca del producto (vendor) como dato secundario', () => {
+    renderTable([shopifyDeAma('o1', 'ORD-001', COMERCIAL.id)], { stores: [LEGACY, COMERCIAL] });
+    expect(screen.getByTestId('cc-tienda-powip')).toHaveTextContent('AMAGREEN MINORISTA');
+    expect(screen.getByTestId('cc-tienda-vendor')).toHaveTextContent('AMAGREEN');
+  });
+
+  it('no repite la etiqueta secundaria cuando coincide con el nombre de la tienda', () => {
+    renderTable(
+      [shopifyDeAma('o1', 'ORD-001', LEGACY.id)], // vendor «AMAGREEN» == tienda «AMAGREEN»
+      { stores: [LEGACY, COMERCIAL] },
+    );
+    expect(screen.getByTestId('cc-tienda-powip')).toHaveTextContent('AMAGREEN');
+    expect(screen.queryByTestId('cc-tienda-vendor')).toBeNull();
+  });
+
+  it('con una sola tienda la columna queda como antes: solo el vendor, sin badge de tienda', () => {
+    renderTable([shopifyDeAma('o1', 'ORD-001', LEGACY.id)], { stores: [LEGACY] });
+    expect(screen.queryByTestId('cc-tienda-powip')).toBeNull();
+    expect(screen.getByText('AMAGREEN')).toBeInTheDocument();
+  });
+
+  it('sin la prop stores se comporta como antes', () => {
+    renderTable([shopifyDeAma('o1', 'ORD-001', LEGACY.id)]);
+    expect(screen.queryByTestId('cc-tienda-powip')).toBeNull();
+    expect(screen.getByText('AMAGREEN')).toBeInTheDocument();
+  });
+
+  it('un pedido sin vendor ni canal igual muestra su tienda de Powip', () => {
+    renderTable([makeOrder({ storeId: COMERCIAL.id })], { stores: [LEGACY, COMERCIAL] });
+    expect(screen.getByTestId('cc-tienda-powip')).toHaveTextContent('AMAGREEN MINORISTA');
   });
 });

@@ -6,6 +6,8 @@ import {
   SUB_ESTADO_LABEL,
   MAX_INTENTOS_CC,
   resolveStoreName,
+  resolvePowipStoreName,
+  type PowipStore,
   getPedidoMontos,
   getUpsellCount,
   isDniFaltante,
@@ -54,7 +56,11 @@ function toExcelLocalDate(iso?: string | null): Date | null {
   return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours(), d.getMinutes()));
 }
 
-export function buildCcPedidoRow(order: OrderHeader) {
+/**
+ * `stores`: tiendas de Powip del negocio. Con 2 o más, la columna Tienda lleva la tienda de
+ * Powip del pedido (la misma que muestra la tabla); si no, el vendor de Shopify o el canal.
+ */
+export function buildCcPedidoRow(order: OrderHeader, stores?: readonly PowipStore[]) {
   const { grandTotal, totalPaid, porCobrar } = getPedidoMontos(order);
   return {
     orderNumber: String(order.orderNumber ?? ""),
@@ -62,7 +68,7 @@ export function buildCcPedidoRow(order: OrderHeader) {
     cliente: order.customer?.fullName ?? "",
     dni: order.dniCliente ?? (isDniFaltante(order) ? "Faltante" : ""),
     telefono: String(order.customer?.phoneNumber ?? ""),
-    tienda: resolveStoreName(order) ?? "",
+    tienda: resolvePowipStoreName(order, stores) ?? resolveStoreName(order) ?? "",
     canal: order.canalOrigen ?? "",
     subestado: order.subEstadoCc ? SUB_ESTADO_LABEL[order.subEstadoCc] : "",
     aliclik: getAliclikLabel(order),
@@ -78,14 +84,18 @@ export function buildCcPedidoRow(order: OrderHeader) {
   };
 }
 
-export function buildCcPedidosWorkbook(orders: OrderHeader[], sheetName: string): ExcelJS.Workbook {
+export function buildCcPedidosWorkbook(
+  orders: OrderHeader[],
+  sheetName: string,
+  stores?: readonly PowipStore[],
+): ExcelJS.Workbook {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet(sheetName.slice(0, 31), {
     views: [{ state: "frozen", ySplit: 1 }],
   });
 
   worksheet.columns = COLUMNS;
-  worksheet.addRows(orders.map(buildCcPedidoRow));
+  worksheet.addRows(orders.map((order) => buildCcPedidoRow(order, stores)));
 
   const header = worksheet.getRow(1);
   header.font = { bold: true };
@@ -113,8 +123,12 @@ export function ccPedidosFileName(tabLabel: string, date = new Date()): string {
   return `pedidos_cod_${slug}_${format(date, "yyyy-MM-dd")}.xlsx`;
 }
 
-export async function exportCcPedidosToExcel(orders: OrderHeader[], tabLabel: string): Promise<void> {
-  const workbook = buildCcPedidosWorkbook(orders, tabLabel);
+export async function exportCcPedidosToExcel(
+  orders: OrderHeader[],
+  tabLabel: string,
+  stores?: readonly PowipStore[],
+): Promise<void> {
+  const workbook = buildCcPedidosWorkbook(orders, tabLabel, stores);
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
