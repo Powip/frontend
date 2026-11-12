@@ -306,3 +306,38 @@ it("reloads the confirmed receipt and cancels old document work after returning 
     stockVersion: 3,
   });
 });
+
+describe("Lead link for a confirmed sale with deferred stock", () => {
+  const deferred = (status: string) => ({
+    id: "order-1",
+    status,
+    unitAssignmentStatus: "NONE",
+    externalSource: "shopify",
+    commercialStage: "SALE",
+    commercialStockState: "DEFERRED",
+    commercialLeadId: "lead-1",
+  });
+  function loadDeferred(status: string) {
+    const header = deferred(status);
+    jest.mocked(axios.get).mockImplementation(async (url: any) => ({
+      data: String(url).endsWith("/receipt") ? { ...receipt, status } : header,
+    }));
+  }
+
+  it.each(["PENDIENTE", "PAGADO"])(
+    "does not ask to prepare the reservation from the Lead when %s: marking it Preparado registers it",
+    async (status) => {
+      loadDeferred(status);
+      render(<OrderReceiptModal {...props} />);
+      await screen.findByText("NV-001");
+      expect(screen.queryByRole("link", { name: /Preparar reserva de stock/ })).not.toBeInTheDocument();
+    },
+  );
+
+  it("keeps the Lead link for a deferred sale that cannot be prepared by marking Preparado", async () => {
+    loadDeferred("PREVENTA");
+    render(<OrderReceiptModal {...props} />);
+    await screen.findByText("NV-001");
+    expect(screen.getByRole("link", { name: /Preparar reserva de stock/ })).toBeInTheDocument();
+  });
+});

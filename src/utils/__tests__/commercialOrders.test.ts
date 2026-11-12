@@ -141,13 +141,30 @@ describe("preparing an existing manual sale with deferred stock", () => {
     }
   });
 
-  it("includes an absent source without assuming any explicit provider is manual", () => {
-    expect(canPrepareDeferredManualOrder(manual)).toBe(true);
-    for (const externalSource of ["shopify", "live", "aliclik", "yavendio", "manual", ""]) {
+  it("applies to any origin: a seller-confirmed sale needs no separate reservation step", () => {
+    for (const externalSource of [undefined, null, "shopify", "live", "aliclik", "yavendio", "manual", ""]) {
       const order = { ...manual, externalSource };
-      expect(canPrepareDeferredManualOrder(order)).toBe(false);
-      expect(salesStatusBlockReason(order, "PREPARADO")).toEqual(expect.any(String));
+      expect(canPrepareDeferredManualOrder(order)).toBe(true);
+      expect(salesStatusBlockReason(order, "PREPARADO")).toBeNull();
+      expect(salesPhysicalOperationBlockReason(order)).toMatch(/Al marcar Preparado, se registrará la reserva/);
     }
+  });
+
+  it("lets a seller-confirmed Shopify sale (gate on, never committed) go to Preparado — the ORD-156845 case", () => {
+    const shopifySale = { ...manual, externalSource: "shopify", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0 };
+    expect(canPrepareDeferredManualOrder(shopifySale)).toBe(true);
+    expect(salesStatusBlockReason(shopifySale, "PREPARADO")).toBeNull();
+    expect(salesPhysicalOperationBlockReason(shopifySale)).not.toContain("Lead");
+    // Guías, envío y entrega siguen exigiendo la reserva ya registrada.
+    for (const target of ["LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO", "ENTREGADO"]) {
+      expect(salesStatusBlockReason(shopifySale, target)).toEqual(expect.any(String));
+    }
+  });
+
+  it("never prepares an unconfirmed Shopify Lead implicitly", () => {
+    const shopifyLead = { ...manual, commercialStage: "LEAD" as const, externalSource: "shopify", shopifyCommercialGate: true, commercialCommittedAt: null, stockVersion: 0 };
+    expect(canPrepareDeferredManualOrder(shopifyLead)).toBe(false);
+    expect(salesStatusBlockReason(shopifyLead, "PREPARADO")).toEqual(expect.any(String));
   });
 
   it.each([

@@ -51,16 +51,19 @@ test("receipt codes are fetched through the scoped manual route for tracked sale
   expect(saleReceiptUrl("http://ventas", "tracked", { unitAssignmentStatus: "CONFIRMED" })).toBe("http://ventas/order-header/manual/tracked/receipt");
 });
 
-test("deferred manual preparation uses the authenticated status route without changing receipt or unit safeguards", () => {
+test("deferred sale preparation (any origin) uses the authenticated status route without changing receipt or unit safeguards", () => {
   const manual = { status: "PENDIENTE", commercialStage: "SALE" as const, commercialStockState: "DEFERRED" as const, unitAssignmentStatus: "NONE" as const };
   expect(requiresAuthenticatedSaleStatusMutation(manual)).toBe(true);
   expect(saleMutationUrl("http://ventas", "manual", manual)).toBe("http://ventas/order-header/manual/manual/status");
   expect(saleMutationUrl("http://ventas", "manual", { ...manual, status: "PAGADO", externalSource: null })).toBe("http://ventas/order-header/manual/manual/status");
   expect(saleReceiptUrl("http://ventas", "manual", manual)).toBe("http://ventas/order-header/manual/receipt");
+  // Una venta confirmada por un vendedor se prepara igual sea cual sea su origen (p. ej. Shopify): sin paso intermedio.
   for (const externalSource of ["shopify", "live", "manual", ""]) {
-    expect(requiresAuthenticatedSaleStatusMutation({ ...manual, externalSource })).toBe(false);
-    expect(saleMutationUrl("http://ventas", "provider", { ...manual, externalSource })).toBe("http://ventas/order-header/provider");
+    expect(requiresAuthenticatedSaleStatusMutation({ ...manual, externalSource })).toBe(true);
+    expect(saleMutationUrl("http://ventas", "provider", { ...manual, externalSource })).toBe("http://ventas/order-header/manual/provider/status");
   }
+  // Un lead sin confirmar nunca se prepara implícitamente, tampoco el de Shopify.
+  expect(requiresAuthenticatedSaleStatusMutation({ ...manual, commercialStage: "LEAD", externalSource: "shopify" })).toBe(false);
   expect(requiresAuthenticatedSaleStatusMutation({ ...manual, commercialStage: "LEAD" })).toBe(false);
   expect(requiresAuthenticatedSaleStatusMutation({ ...manual, status: "PREPARADO" })).toBe(false);
   expect(assignmentBlockReason({ ...manual, unitAssignmentStatus: "PENDING", hasTrackedUnits: true }, "PREPARADO")).toMatch(/pendiente/);

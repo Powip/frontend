@@ -3,7 +3,7 @@ import SaleUnitLifecycleActions from "@/components/registrar-venta/SaleUnitLifec
 import { toWhatsAppDigits } from "@/lib/phone";
 import axios from "@/lib/axiosAuth";
 import Link from "next/link";
-import { isCommercialLeadOrder, canOperateCommercialOrder, commercialLeadHref, salesPhysicalOperationBlockReason } from "@/utils/commercialOrders";
+import { isCommercialLeadOrder, canOperateCommercialOrder, canPrepareDeferredManualOrder, commercialLeadHref, salesPhysicalOperationBlockReason } from "@/utils/commercialOrders";
 import {
   assignmentBlockReason,
   saleMutationUrl,
@@ -239,7 +239,7 @@ export default function OrderReceiptModal({
           />
         )}
         <div className="flex flex-wrap justify-end gap-2 mt-4">
-          {orderHeader?.commercialLeadId && orderHeader.commercialStockState === "DEFERRED" && <Link className="text-sm font-semibold text-violet-700 underline" href={commercialLeadHref(orderHeader.commercialLeadId)}>Compra confirmada · Preparar reserva de stock</Link>}
+          {orderHeader?.commercialLeadId && orderHeader.commercialStockState === "DEFERRED" && !canPrepareDeferredManualOrder(orderHeader) && <Link className="text-sm font-semibold text-violet-700 underline" href={commercialLeadHref(orderHeader.commercialLeadId)}>Compra confirmada · Preparar reserva de stock</Link>}
           <Button
             variant="outline"
             disabled={!receipt}
