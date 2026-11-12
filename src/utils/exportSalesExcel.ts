@@ -13,6 +13,7 @@ export interface SaleExportData {
   inventoryId?: string | null;
   stockStoreId?: string | null;
   orderNumber: string;
+  externalOrderNumber?: string | null;
   clientName: string;
   phoneNumber: string;
   documentType?: string | null;

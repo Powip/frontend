@@ -172,6 +172,7 @@ export interface Sale extends UnitAssignmentState {
   stockStoreId?: string | null;
   customerId: string;
   orderNumber: string;
+  externalOrderNumber?: string | null;
   clientName: string;
   phoneNumber: string;
   documentType?: string | null;
@@ -269,6 +270,7 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     stockStoreId: order.stockStoreId,
     customerId: order.customer.id,
     orderNumber: order.orderNumber,
+    externalOrderNumber: order.externalOrderNumber ?? null,
     clientName: order.customer.fullName,
     phoneNumber: order.customer.phoneNumber ?? "999",
     documentType: order.customer.documentType ?? null,
@@ -834,6 +836,7 @@ Estado: ${sale.status}
     const exportData: SaleExportData[] = salesList.map((s) => ({
       commercialStage:s.commercialStage, commercialLeadId:s.commercialLeadId, currency:s.currency,
       orderNumber: s.orderNumber,
+      externalOrderNumber: s.externalOrderNumber,
       storeId: s.storeId,
       storeName: auth?.company?.stores?.find((store) => store.id === s.storeId)?.name,
       inventoryId: s.inventoryId,
