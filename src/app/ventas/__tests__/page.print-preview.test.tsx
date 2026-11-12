@@ -530,7 +530,9 @@ describe("Ventas — detalle y acciones solo de ventas confirmadas", () => {
     const row = (await within(panel).findByText("ORD-152728")).closest("tr")!;
     fireEvent.click(within(row).getByRole("button", { name: "Reprogramar PENDIENTE" }));
     fireEvent.click(await screen.findByRole("button", { name: "Confirmar reprogramación" }));
-    await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalledWith("http://ventas/order-header/elisa", expect.objectContaining({ callStatus: "SCHEDULED", callbackAt: "2026-10-24T17:00:00.000Z", userId: "user-1" })));
+    // Una venta confirmada con reserva diferida usa la ruta autenticada (como las manuales); reprogramar no lleva `status`,
+    // así que el backend no registra ninguna reserva.
+    await waitFor(() => expect(mockedAxios.patch).toHaveBeenCalledWith("http://ventas/order-header/manual/elisa/status", expect.objectContaining({ callStatus: "SCHEDULED", callbackAt: "2026-10-24T17:00:00.000Z", userId: "user-1" })));
     expect(mockedAxios.patch.mock.calls.every(([, payload]) => !payload.status)).toBe(true);
   });
 

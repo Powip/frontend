@@ -14,11 +14,16 @@ export type SalesPhysicalOrderProjection = CommercialOrderProjection & {
 
 const physicalStatuses = new Set(["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO", "DESPACHADO", "ENTREGADO"]);
 
-/** Existing manual sales can register their deferred reservation when warehouse prepares them. */
+/**
+ * A sale already confirmed by a seller (stage SALE) with its stock still deferred registers its
+ * reservation by itself when it is marked Preparado — that is how its stock gets deducted, so there
+ * is no separate "prepare the reservation from the Lead" step. It applies to any origin (manual,
+ * Shopify, ...): the commercial confirmation was a human decision. An unconfirmed Lead never
+ * qualifies. (The name is historical: it began as a manual-sales-only exception.)
+ */
 export function canPrepareDeferredManualOrder(order: SalesPhysicalOrderProjection): boolean {
   return order.commercialStage === "SALE" &&
     order.commercialStockState === "DEFERRED" &&
-    order.externalSource == null &&
     (order.status === "PENDIENTE" || order.status === "PAGADO");
 }
 
