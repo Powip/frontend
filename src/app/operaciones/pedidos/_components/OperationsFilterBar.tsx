@@ -7,6 +7,7 @@ import { SalesTableFilters } from "@/components/ventas/SalesTableFilters";
 import type { OrderStatus } from "@/interfaces/IOrder";
 import type { OperationsTabData, TabQueryState } from "./tabState";
 import type { PedidosActions } from "./types";
+import { courierOptions, matchCourierOption } from "@/utils/courierKey";
 
 /** Aviso "Últimos 30 días" de Entregados, Anulados e Historial, con salida a un rango propio. */
 export function WindowNotice({
@@ -73,8 +74,10 @@ export function OperationsFilterBar({
   showGuideFilter?: boolean;
   trailing?: ReactNode;
 }) {
+  // Un mismo courier puede estar guardado con varias grafías (Olva Courier, OLVA, OLVA_COURIER…):
+  // una sola opción por courier, con el nombre configurado en la empresa cuando existe.
   const couriers = useMemo(
-    () => Array.from(new Set([...actions.apiCouriers, ...(data.metadata?.couriers ?? [])])).sort(),
+    () => courierOptions(data.metadata?.couriers ?? [], actions.apiCouriers),
     [actions.apiCouriers, data.metadata?.couriers],
   );
   const channels = useMemo(
@@ -100,7 +103,7 @@ export function OperationsFilterBar({
         {showCourierDropdown && (
           <select
             aria-label="Courier"
-            value={state.filters.courier}
+            value={matchCourierOption(couriers, state.filters.courier)}
             onChange={(e) => onState({ filters: { ...state.filters, courier: e.target.value } })}
             className={selectClass}
           >
