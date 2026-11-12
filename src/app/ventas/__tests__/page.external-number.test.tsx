@@ -119,6 +119,16 @@ describe("VentasPage — columna N° Externo", () => {
     expect(screen.getByText("ORD-002")).toBeInTheDocument();
   });
 
+  it("un N° externo largo se recorta al ancho de la columna fija y no tapa a «Cliente»", async () => {
+    mockPage([pedido({ externalOrderNumber: "PEDIDO-WEB-000123" })]);
+    render(<VentasPage />);
+
+    const valor = await screen.findByText("PEDIDO-WEB-000123");
+    // jsdom no calcula layout: se fijan las clases que lo evitan (el valor completo queda en el title).
+    expect(valor.closest("td")).toHaveClass("truncate", "max-w-[110px]");
+    expect(valor).toHaveAttribute("title", "PEDIDO-WEB-000123");
+  });
+
   it("sin ningún N° externo no dibuja la columna", async () => {
     mockPage([pedido()]);
     render(<VentasPage />);

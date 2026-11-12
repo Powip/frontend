@@ -1163,7 +1163,7 @@ export default function CourierTrackingView() {
                               {showExternalCol && (
                                 <ExternalOrderNumberCell
                                   value={order.externalOrderNumber}
-                                  className={`${STICKY_LEFT_BODY} left-28 w-28 min-w-28 px-4 py-3 whitespace-nowrap`}
+                                  className={`${STICKY_LEFT_BODY} left-28 w-28 min-w-28 max-w-28 px-4 py-3 truncate`}
                                 />
                               )}
                               <TableCell className={`${STICKY_LEFT_BODY} ${stickyLeft("fecha", showExternalCol)} w-24 min-w-24 px-4 py-3 text-[10px] text-center whitespace-nowrap`}>
@@ -1685,7 +1685,7 @@ function CourierOrdersTab({
                       {showExternalCol && (
                         <ExternalOrderNumberCell
                           value={order.externalOrderNumber}
-                          className={`${STICKY_LEFT_BODY} left-28 w-28 min-w-28 px-4 py-3 whitespace-nowrap`}
+                          className={`${STICKY_LEFT_BODY} left-28 w-28 min-w-28 max-w-28 px-4 py-3 truncate`}
                         />
                       )}
                       <TableCell className={`${STICKY_LEFT_BODY} ${stickyLeft("fecha", showExternalCol)} w-24 min-w-24 px-4 py-3 text-[10px] text-center whitespace-nowrap`}>

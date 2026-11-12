@@ -1321,7 +1321,7 @@ Estado: ${sale.status}
   // FEAT-31: la columna «N° Externo» solo se dibuja si algún pedido de la página lo trae.
   // Va sticky junto a «N° Orden»; «Cliente» se corre 110px a la derecha cuando está.
   const showExternalCol = hasExternalOrderNumbers(sales);
-  const EXTERNAL_COL_CLASS = "2xl:sticky 2xl:left-[181px] w-[110px] min-w-[110px]";
+  const EXTERNAL_COL_CLASS = "2xl:sticky 2xl:left-[181px] w-[110px] min-w-[110px] max-w-[110px]";
 
   // Tabla para Pendientes (sin delete)
   const PENDIENTES_COLSPAN = 13 + (showExternalCol ? 1 : 0);
@@ -1444,7 +1444,7 @@ Estado: ${sale.status}
                   {showExternalCol && (
                     <ExternalOrderNumberCell
                       value={sale.externalOrderNumber}
-                      className={`${EXTERNAL_COL_CLASS} 2xl:z-10 bg-background`}
+                      className={`${EXTERNAL_COL_CLASS} 2xl:z-10 bg-background truncate`}
                     />
                   )}
                   <TableCell
@@ -1799,7 +1799,7 @@ Estado: ${sale.status}
                   {showExternalCol && (
                     <ExternalOrderNumberCell
                       value={sale.externalOrderNumber}
-                      className={`${EXTERNAL_COL_CLASS} 2xl:z-10 bg-background`}
+                      className={`${EXTERNAL_COL_CLASS} 2xl:z-10 bg-background truncate`}
                     />
                   )}
                   <TableCell

@@ -286,6 +286,20 @@ describe("CourierTrackingView — N° externo (FEAT-31)", () => {
     expect(panel.getByText("AGPE923190")).toBeInTheDocument();
   });
 
+  it("un N° externo largo se recorta al ancho de la columna fija, en «Todos» y en la pestaña del courier", async () => {
+    const user = userEvent.setup();
+    serve([{ ...order("o-ext", "PED-EXT", "2026-09-15T12:00:00", "2026-09-26T12:00:00"), externalOrderNumber: "PEDIDO-WEB-000123" }]);
+    render(<CourierTrackingView />);
+    await waitFor(() => expect(renderedOrderNumbers()).toHaveLength(1));
+
+    // jsdom no calcula layout: se fijan las clases que evitan correr las columnas fijas siguientes.
+    expect(screen.getByText("PEDIDO-WEB-000123").closest("td")).toHaveClass("truncate", "max-w-28");
+
+    await user.click(await screen.findByRole("tab", { name: "Olva" }));
+    await waitFor(() => expect(screen.getByRole("tabpanel")).toHaveTextContent("PED-EXT"));
+    expect(screen.getByText("PEDIDO-WEB-000123").closest("td")).toHaveClass("truncate", "max-w-28");
+  });
+
   it("sin ningún N° externo no dibuja la columna", async () => {
     render(<CourierTrackingView />);
     await waitFor(() => expect(renderedOrderNumbers()).toHaveLength(3));
