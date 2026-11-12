@@ -1,5 +1,7 @@
 "use client";
 
+import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/orders/ExternalOrderNumberColumn";
+import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
 import { toWhatsAppDigits } from "@/lib/phone";
 import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
@@ -60,6 +62,7 @@ function mapOrderToLegacySale(order: OrderHeader) {
   return {
     id: order.id,
     orderNumber: order.orderNumber,
+    externalOrderNumber: order.externalOrderNumber ?? null,
     clientName: order.customer?.fullName ?? "—",
     phoneNumber: order.customer?.phoneNumber ?? "—",
     date: new Date(order.created_at).toLocaleDateString("es-PE"),
@@ -576,6 +579,7 @@ export default function AtencionClientePage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>N° Pedido</TableHead>
+                          {hasExternalOrderNumbers(pedidosPreVenta) && <ExternalOrderNumberHead />}
                           <TableHead>Cliente</TableHead>
                           <TableHead>Teléfono</TableHead>
                           <TableHead>Total</TableHead>
@@ -587,6 +591,7 @@ export default function AtencionClientePage() {
                         {pedidosPreVenta.map((sale) => (
                           <TableRow key={sale.id}>
                             <TableCell className="font-mono text-sm">{sale.orderNumber}</TableCell>
+                            {hasExternalOrderNumbers(pedidosPreVenta) && <ExternalOrderNumberCell value={sale.externalOrderNumber} />}
                             <TableCell>{sale.clientName}</TableCell>
                             <TableCell>{sale.phoneNumber}</TableCell>
                             <TableCell>S/ {sale.total.toFixed(2)}</TableCell>

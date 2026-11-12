@@ -69,7 +69,7 @@ describe('exportCcPedidosExcel', () => {
     const ws = await roundTrip([makeOrder()]);
     const headers = Object.keys(headerMap(ws));
     expect(headers).toEqual([
-      'N° Orden', 'Fecha', 'Cliente', 'DNI', 'Teléfono', 'Tienda', 'Canal', 'Subestado',
+      'N° Orden', 'N° Externo', 'Fecha', 'Cliente', 'DNI', 'Teléfono', 'Tienda', 'Canal', 'Subestado',
       'Aliclik', 'EVA', 'Adelanto', 'Por cobrar', 'Total', 'Upsell', 'Intentos',
       'Vendedor', 'Región', 'Resumen',
     ]);
@@ -79,7 +79,7 @@ describe('exportCcPedidosExcel', () => {
   it('congela la primera fila y aplica autofiltro sobre el rango de datos', async () => {
     const ws = await roundTrip([makeOrder(), makeOrder({ id: 'order-2' })]);
     expect(ws.views[0]).toMatchObject({ state: 'frozen', ySplit: 1 });
-    expect(ws.autoFilter).toBe('A1:R3');
+    expect(ws.autoFilter).toBe('A1:S3'); // 19 columnas: con «N° Externo» (FEAT-31)
     expect(ws.getColumn(1).width).toBeGreaterThan(8);
   });
 
@@ -164,5 +164,19 @@ describe('exportCcPedidosExcel', () => {
     expect(ccPedidosFileName('Contactado', d)).toBe('pedidos_cod_contactado_2026-09-30.xlsx');
     expect(ccPedidosFileName('No contesta', d)).toBe('pedidos_cod_no_contesta_2026-09-30.xlsx');
     expect(ccPedidosFileName('Anulados', d)).toBe('pedidos_cod_anulados_2026-09-30.xlsx');
+  });
+});
+
+describe('exportCcPedidosExcel — N° externo (FEAT-31)', () => {
+  it('exporta el N° externo como texto, vacío si el pedido no lo tiene', async () => {
+    const ws = await roundTrip([
+      makeOrder({ externalOrderNumber: 'AGPE923190' }),
+      makeOrder({ id: 'order-2', externalOrderNumber: null }),
+    ]);
+    const h = headerMap(ws);
+
+    expect(ws.getRow(2).getCell(h['N° Externo']).value).toBe('AGPE923190');
+    expect(ws.getRow(2).getCell(h['N° Externo']).numFmt).toBe('@');
+    expect(ws.getRow(3).getCell(h['N° Externo']).value ?? '').toBe('');
   });
 });

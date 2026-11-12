@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { EXTERNAL_ORDER_NUMBER_LABEL } from "@/lib/externalOrderNumber";
 import { saveAs } from "file-saver";
 import { format } from "date-fns";
 import type { OrderHeader } from "@/interfaces/IOrder";
@@ -26,6 +27,7 @@ const DATE_FMT = "dd/mm/yyyy hh:mm";
  */
 const COLUMNS: Partial<ExcelJS.Column>[] = [
   { header: "N° Orden", key: "orderNumber", width: 16, style: { numFmt: "@" } },
+  { header: EXTERNAL_ORDER_NUMBER_LABEL, key: "externalOrderNumber", width: 16, style: { numFmt: "@" } },
   { header: "Fecha", key: "fecha", width: 17, style: { numFmt: DATE_FMT } },
   { header: "Cliente", key: "cliente", width: 30 },
   { header: "DNI", key: "dni", width: 14, style: { numFmt: "@" } },
@@ -64,6 +66,7 @@ export function buildCcPedidoRow(order: OrderHeader, stores?: readonly PowipStor
   const { grandTotal, totalPaid, porCobrar } = getPedidoMontos(order);
   return {
     orderNumber: String(order.orderNumber ?? ""),
+    externalOrderNumber: String(order.externalOrderNumber ?? ""),
     fecha: toExcelLocalDate(order.created_at),
     cliente: order.customer?.fullName ?? "",
     dni: order.dniCliente ?? (isDniFaltante(order) ? "Faltante" : ""),

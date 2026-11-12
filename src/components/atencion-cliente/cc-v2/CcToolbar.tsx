@@ -56,7 +56,7 @@ export function CcToolbar({
         <div className="relative w-[240px]">
           <Input
             type="search"
-            placeholder="Buscar cliente, teléfono u orden..."
+            placeholder="Buscar cliente, teléfono, orden o N° externo..."
             aria-label="Buscar pedidos por cliente, teléfono u orden"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}

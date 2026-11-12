@@ -71,3 +71,20 @@ describe('resolvePowipStoreName', () => {
     expect(resolvePowipStoreName(deTienda('a'), sinNombre)).toBeNull();
   });
 });
+
+describe('matchesCcSearch — N° externo (FEAT-31)', () => {
+  const shopify = {
+    id: '3',
+    orderNumber: 'ORD-0043',
+    externalOrderNumber: 'AGPE923190',
+    customer: { fullName: 'Ana Ruiz', phoneNumber: '988777666' },
+  } as unknown as OrderHeader;
+
+  it.each([['agpe923190'], ['AGPE'], ['923190']])('"%s" encuentra el pedido por su N° externo', (term) => {
+    expect(matchesCcSearch(shopify, term)).toBe(true);
+  });
+
+  it('un pedido sin N° externo no coincide con ese texto', () => {
+    expect(matchesCcSearch(order, 'AGPE')).toBe(false);
+  });
+});
