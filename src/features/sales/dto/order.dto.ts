@@ -122,6 +122,7 @@ export interface OrderResponseDto {
   receiptType: ReceiptType;
   orderType: OrderType;
   orderNumber: string;
+  externalOrderNumber?: string | null;
   storeId: string;
 
   customer: CustomerResponseDto;

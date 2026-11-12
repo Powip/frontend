@@ -1,5 +1,7 @@
 "use client";
 
+import { ExternalOrderNumberValue } from "@/components/orders/ExternalOrderNumberColumn";
+import { EXTERNAL_ORDER_NUMBER_LABEL, hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
 import { OrderOriginLabel } from "@/app/operaciones/_shared/OrderOriginLabel";
 
 import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
@@ -214,6 +216,9 @@ export default function PlanificacionTab() {
       (buckets.get(activeDayKey) ?? []).filter((it) => it.source !== "listos"),
     [buckets, activeDayKey],
   );
+
+  // FEAT-31: «N° Externo» solo se dibuja si algún pedido agendado del día lo trae.
+  const showExternalCol = hasExternalOrderNumbers(agendados.map((it) => it.order));
 
   const selectedItems = agendados.filter((it) => selectedIds.has(it.order.id));
   const totalPorCobrar = agendados.reduce(
@@ -544,6 +549,7 @@ export default function PlanificacionTab() {
                         />
                       </th>
                       <th className="px-3 py-2">N° Orden</th>
+                      {showExternalCol && <th className="px-3 py-2">{EXTERNAL_ORDER_NUMBER_LABEL}</th>}
                       <th className="px-3 py-2">Cliente</th>
                       <th className="px-3 py-2">Distrito</th>
                       <th className="px-3 py-2">Zona</th>
@@ -562,7 +568,7 @@ export default function PlanificacionTab() {
                     {agendados.length === 0 ? (
                       <tr>
                         <td
-                          colSpan={14}
+                          colSpan={14 + (showExternalCol ? 1 : 0)}
                           className="py-10 text-center text-muted-foreground"
                         >
                           Nada agendado para este día.
@@ -588,6 +594,11 @@ export default function PlanificacionTab() {
                                 {sale.orderNumber}
                               </div>
                             </td>
+                            {showExternalCol && (
+                              <td className="px-3 py-2">
+                                <ExternalOrderNumberValue value={sale.externalOrderNumber} />
+                              </td>
+                            )}
                             <td className="px-3 py-2">
                               <div className="font-medium">{sale.clientName}</div>
                               <div className="text-xs text-muted-foreground">

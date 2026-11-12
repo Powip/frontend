@@ -1,5 +1,7 @@
 'use client';
 
+import { ExternalOrderNumberCell, ExternalOrderNumberHead } from '@/components/orders/ExternalOrderNumberColumn';
+import { hasExternalOrderNumbers } from '@/lib/externalOrderNumber';
 import { useState } from 'react';
 import { AlertTriangle, Wrench } from 'lucide-react';
 import {
@@ -35,12 +37,16 @@ export function IncompleteOrdersTab({ orders, isLoading, onRepaired }: Props) {
     );
   }
 
+  // FEAT-31: «N° Externo» solo se dibuja si algún pedido con error lo trae.
+  const showExternalCol = hasExternalOrderNumbers(orders);
+
   return (
     <>
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead>N° Pedido</TableHead>
+            {showExternalCol && <ExternalOrderNumberHead />}
             <TableHead>Origen</TableHead>
             <TableHead>Cliente (parcial)</TableHead>
             <TableHead>Errores</TableHead>
@@ -52,6 +58,7 @@ export function IncompleteOrdersTab({ orders, isLoading, onRepaired }: Props) {
           {orders.map((order) => (
             <TableRow key={order.id}>
               <TableCell className="font-mono text-sm">{order.orderNumber}</TableCell>
+              {showExternalCol && <ExternalOrderNumberCell value={order.externalOrderNumber} />}
               <TableCell>
                 <Badge variant="outline">{order.externalSource ?? '-'}</Badge>
               </TableCell>

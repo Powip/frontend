@@ -1,4 +1,6 @@
 "use client";
+import { ExternalOrderNumberValue } from "@/components/orders/ExternalOrderNumberColumn";
+import { EXTERNAL_ORDER_NUMBER_LABEL, hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
 import { canShipCommercialOrder } from "@/utils/commercialOrders";
 
 import { OrderOriginLabel } from "@/app/operaciones/_shared/OrderOriginLabel";
@@ -92,6 +94,9 @@ export default function NuevaGuiaDialog({
     );
   }, [orders]);
 
+  // FEAT-31: «N° Externo» solo se dibuja si algún pedido elegible lo trae (no depende de la búsqueda).
+  const showExternalCol = hasExternalOrderNumbers(eligible);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return eligible.filter((o) => {
@@ -99,6 +104,7 @@ export default function NuevaGuiaDialog({
       if (!q) return true;
       return (
         o.orderNumber?.toLowerCase().includes(q) ||
+        o.externalOrderNumber?.toLowerCase().includes(q) ||
         o.customer?.fullName?.toLowerCase().includes(q) ||
         o.customer?.district?.toLowerCase().includes(q)
       );
@@ -308,7 +314,7 @@ export default function NuevaGuiaDialog({
                 <div className="relative min-w-[220px] flex-1">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Buscar por orden, cliente o distrito…"
+                    placeholder="Buscar por orden, N° externo, cliente o distrito…"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     className="pl-8"
@@ -355,6 +361,7 @@ export default function NuevaGuiaDialog({
                         />
                       </th>
                       <th className="px-3 py-2">Pedido</th>
+                      {showExternalCol && <th className="px-3 py-2">{EXTERNAL_ORDER_NUMBER_LABEL}</th>}
                       <th className="px-3 py-2">Cliente</th>
                       <th className="px-3 py-2">Zona</th>
                       <th className="px-3 py-2">Distrito</th>
@@ -365,7 +372,7 @@ export default function NuevaGuiaDialog({
                   <tbody>
                     {filtered.length === 0 ? (
                       <tr>
-                        <td colSpan={7} className="py-10 text-center text-muted-foreground">
+                        <td colSpan={7 + (showExternalCol ? 1 : 0)} className="py-10 text-center text-muted-foreground">
                           No hay pedidos confirmados esperando guía.
                         </td>
                       </tr>
@@ -385,6 +392,7 @@ export default function NuevaGuiaDialog({
                             />
                           </td>
                           <td className="px-3 py-2 font-semibold"><span>{o.orderNumber}</span><OrderOriginLabel {...o} /></td>
+                          {showExternalCol && <td className="px-3 py-2"><ExternalOrderNumberValue value={o.externalOrderNumber} /></td>}
                           <td className="px-3 py-2">{o.customer?.fullName}</td>
                           <td className="px-3 py-2">
                             {o.customer?.zone ? (

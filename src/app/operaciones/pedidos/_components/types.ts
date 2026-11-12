@@ -25,6 +25,7 @@ export interface Sale extends UnitAssignmentState, Omit<SalesPhysicalOrderProjec
   stockStoreId?: string | null;
   customerId: string;
   orderNumber: string;
+  externalOrderNumber?: string | null;
   clientName: string;
   phoneNumber: string;
   documentType?: string | null;
@@ -112,6 +113,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     stockStoreId: order.stockStoreId,
     customerId: order.customer?.id,
     orderNumber: order.orderNumber,
+    externalOrderNumber: order.externalOrderNumber ?? null,
     clientName: order.customer?.fullName ?? "—",
     phoneNumber: order.customer?.phoneNumber ?? "",
     documentType: order.customer?.documentType ?? null,
@@ -187,6 +189,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
 export function buildPedidosExportRows(sales: Sale[], productFilter?: string): SaleExportData[] {
   return sales.map((s) => ({
     orderNumber: s.orderNumber,
+    externalOrderNumber: s.externalOrderNumber,
     storeId: s.storeId,
     storeName: s.storeName,
     inventoryId: s.inventoryId,

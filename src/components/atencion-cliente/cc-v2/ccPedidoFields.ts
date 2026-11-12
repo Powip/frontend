@@ -136,9 +136,10 @@ export function matchesCcSearch(order: OrderHeader, term: string): boolean {
 
   const name = (order.customer?.fullName ?? "").toLowerCase();
   const orderNumber = (order.orderNumber ?? "").toLowerCase();
+  const externalOrderNumber = (order.externalOrderNumber ?? "").toLowerCase();
   const phone = order.customer?.phoneNumber ?? "";
 
-  if (name.includes(q) || orderNumber.includes(q) || phone.includes(term.trim())) return true;
+  if (name.includes(q) || orderNumber.includes(q) || externalOrderNumber.includes(q) || phone.includes(term.trim())) return true;
 
   const qDigits = q.replace(/\D/g, "");
   return qDigits.length >= 3 && phone.replace(/\D/g, "").includes(qDigits);

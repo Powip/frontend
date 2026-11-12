@@ -22,6 +22,7 @@ export interface Order {
   orderType: OrderType;
 
   orderNumber: string;
+  externalOrderNumber?: string | null;
   storeId: string;
 
   customer: Customer;

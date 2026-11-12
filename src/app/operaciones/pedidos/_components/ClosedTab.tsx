@@ -1,5 +1,7 @@
 "use client";
 
+import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/orders/ExternalOrderNumberColumn";
+import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
 import { Copy, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -57,7 +59,9 @@ export function ClosedTab({ variant, data, state, query, onState, actions }: Ope
   const counts = data.counts;
   const statusOptions: OrderStatus[] = variant === "entregados" ? ["ENTREGADO"] : variant === "anulados" ? ["ANULADO"] : ["ENTREGADO", "ANULADO"];
   const bulk = useBulkTools({ selection, query, data, actions, tabName: variant });
-  const colSpan = variant === "historial" ? 11 : variant === "entregados" ? 10 : 9;
+  // FEAT-31: «N° Externo» solo se dibuja si algún pedido de la pestaña lo trae.
+  const showExternalCol = hasExternalOrderNumbers(data.sales);
+  const colSpan = (variant === "historial" ? 11 : variant === "entregados" ? 10 : 9) + (showExternalCol ? 1 : 0);
   const dateLabel = variant === "anulados" ? "Anulado" : variant === "entregados" ? "Entregado" : "Fecha de cierre";
 
   return (
@@ -147,6 +151,7 @@ export function ClosedTab({ variant, data, state, query, onState, actions }: Ope
                 <Checkbox aria-label="Seleccionar la página" checked={selection.pageAllSelected} onCheckedChange={() => selection.togglePage(data.sales)} />
               </TableHead>
               <TableHead>N° Orden</TableHead>
+              {showExternalCol && <ExternalOrderNumberHead />}
               <TableHead>Fecha de Venta</TableHead>
               <TableHead>{dateLabel}</TableHead>
               <TableHead>Cliente</TableHead>
@@ -178,6 +183,7 @@ export function ClosedTab({ variant, data, state, query, onState, actions }: Ope
                   {sale.orderNumber}
                   <OrderOriginLabel {...sale} />
                 </TableCell>
+                {showExternalCol && <ExternalOrderNumberCell value={sale.externalOrderNumber} />}
                 <TableCell className="text-sm">{formatDateTime(sale.createdAt)}</TableCell>
                 <TableCell className="text-sm">{formatDateTime(sale.statusChangedAt ?? sale.updatedAt)}</TableCell>
                 <TableCell>

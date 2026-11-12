@@ -299,3 +299,32 @@ describe('CcPedidosTable — columna «Tienda» con varias tiendas', () => {
     expect(screen.getByTestId('cc-tienda-powip')).toHaveTextContent('AMAGREEN MINORISTA');
   });
 });
+
+describe('CcPedidosTable — columna N° Externo (FEAT-31)', () => {
+  beforeEach(() => {
+    jest.mocked(useAuth).mockReturnValue(MOCK_AUTH as unknown as ReturnType<typeof useAuth>);
+    jest.mocked(getEvaCredentials).mockReturnValue(new Promise(() => {}));
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('con un pedido que trae N° externo muestra la columna junto a N° Orden y el número', () => {
+    renderTable([
+      makeOrder({ externalOrderNumber: 'AGPE923190' }),
+      makeOrder({ id: 'order-2', orderNumber: 'ORD-002' }),
+    ]);
+
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(headers.slice(1, 3)).toEqual(['N° Orden', 'N° Externo']);
+    expect(screen.getByText('AGPE923190')).toBeInTheDocument();
+  });
+
+  it('sin ningún N° externo no dibuja la columna', () => {
+    renderTable([makeOrder()]);
+
+    expect(screen.getByRole('columnheader', { name: 'N° Orden' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'N° Externo' })).not.toBeInTheDocument();
+  });
+});

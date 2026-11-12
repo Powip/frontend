@@ -203,6 +203,8 @@ export interface OrderHeader extends UnitAssignmentState {
   receiptType: ReceiptType;
   orderType: OrderType;
   orderNumber: string;
+  /** FEAT-31: N° con el que el cliente identifica el pedido fuera de Powip (Shopify, Excel o API). */
+  externalOrderNumber?: string | null;
   storeId: string;
   storeName?: string;
   stockStoreName?: string;

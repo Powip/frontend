@@ -1,4 +1,6 @@
 "use client";
+import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/orders/ExternalOrderNumberColumn";
+import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
 import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
 
 import { OrderOriginLabel } from "../../_shared/OrderOriginLabel";
@@ -101,6 +103,8 @@ export function AtencionTab({
   const [motivoChip, setMotivoChip] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
+  // FEAT-31: «N° Externo» solo se dibuja si algún pedido de la pestaña lo trae.
+  const showExternalCol = hasExternalOrderNumbers(sales);
 
   const bySubView = useMemo(
     () => sales.filter((s) => classify(s) === subView),
@@ -308,6 +312,7 @@ export function AtencionTab({
                 </TableHead>
               )}
               <TableHead>N° Orden</TableHead>
+              {showExternalCol && <ExternalOrderNumberHead />}
               <TableHead>Cliente</TableHead>
               <TableHead>Distrito</TableHead>
               <TableHead>Guía / Courier</TableHead>
@@ -323,7 +328,7 @@ export function AtencionTab({
             {paged.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={8}
+                  colSpan={8 + (showExternalCol ? 1 : 0)}
                   className="py-8 text-center text-sm text-muted-foreground"
                 >
                   Nada pendiente en esta sub-vista
@@ -350,6 +355,7 @@ export function AtencionTab({
                   <TableCell className="font-medium">
                     {sale.orderNumber}<OrderOriginLabel {...sale} />
                   </TableCell>
+                  {showExternalCol && <ExternalOrderNumberCell value={sale.externalOrderNumber} />}
                   <TableCell>
                     <div className="font-medium">{sale.clientName}</div>
                     <div className="text-xs text-muted-foreground">

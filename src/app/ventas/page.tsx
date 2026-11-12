@@ -1,4 +1,6 @@
 "use client";
+import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/orders/ExternalOrderNumberColumn";
+import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
 import { isCommercialSaleOrder, canPrepareDeferredManualOrder, canShipCommercialOrder, salesPhysicalOperationBlockReason, salesStatusBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
 import { toWhatsAppDigits } from "@/lib/phone";
 import { formatSalesMoney } from "@/utils/salesMoney";
@@ -172,6 +174,7 @@ export interface Sale extends UnitAssignmentState {
   stockStoreId?: string | null;
   customerId: string;
   orderNumber: string;
+  externalOrderNumber?: string | null;
   clientName: string;
   phoneNumber: string;
   documentType?: string | null;
@@ -269,6 +272,7 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     stockStoreId: order.stockStoreId,
     customerId: order.customer.id,
     orderNumber: order.orderNumber,
+    externalOrderNumber: order.externalOrderNumber ?? null,
     clientName: order.customer.fullName,
     phoneNumber: order.customer.phoneNumber ?? "999",
     documentType: order.customer.documentType ?? null,
@@ -834,6 +838,7 @@ Estado: ${sale.status}
     const exportData: SaleExportData[] = salesList.map((s) => ({
       commercialStage:s.commercialStage, commercialLeadId:s.commercialLeadId, currency:s.currency,
       orderNumber: s.orderNumber,
+      externalOrderNumber: s.externalOrderNumber,
       storeId: s.storeId,
       storeName: auth?.company?.stores?.find((store) => store.id === s.storeId)?.name,
       inventoryId: s.inventoryId,
@@ -1313,8 +1318,13 @@ Estado: ${sale.status}
     }
   };
 
+  // FEAT-31: la columna «N° Externo» solo se dibuja si algún pedido de la página lo trae.
+  // Va sticky junto a «N° Orden»; «Cliente» se corre 110px a la derecha cuando está.
+  const showExternalCol = hasExternalOrderNumbers(sales);
+  const EXTERNAL_COL_CLASS = "2xl:sticky 2xl:left-[181px] w-[110px] min-w-[110px] max-w-[110px]";
+
   // Tabla para Pendientes (sin delete)
-  const PENDIENTES_COLSPAN = 13;
+  const PENDIENTES_COLSPAN = 13 + (showExternalCol ? 1 : 0);
 
   const renderPendientesTable = (
     data: Sale[],
@@ -1352,7 +1362,16 @@ Estado: ${sale.status}
             <TableHead className="2xl:sticky 2xl:left-[81px] w-[100px] min-w-[100px] 2xl:z-20 bg-muted">
               N° Orden
             </TableHead>
-            <TableHead className="2xl:sticky 2xl:left-[181px] w-[170px] min-w-[170px] 2xl:z-20 bg-muted border-r">
+            {showExternalCol && (
+              <ExternalOrderNumberHead className={`${EXTERNAL_COL_CLASS} 2xl:z-20 bg-muted`} />
+            )}
+            <TableHead
+              className={
+                showExternalCol
+                  ? "2xl:sticky 2xl:left-[291px] w-[170px] min-w-[170px] 2xl:z-20 bg-muted border-r"
+                  : "2xl:sticky 2xl:left-[181px] w-[170px] min-w-[170px] 2xl:z-20 bg-muted border-r"
+              }
+            >
               Cliente
             </TableHead>
             <TableHead className="w-[130px] min-w-[130px]">
@@ -1422,7 +1441,19 @@ Estado: ${sale.status}
                       {sale.orderNumber}
                     </div>
                   </TableCell>
-                  <TableCell className="2xl:sticky 2xl:left-[181px] w-[170px] min-w-[170px] 2xl:z-10 bg-background text-xs truncate max-w-[170px] border-r">
+                  {showExternalCol && (
+                    <ExternalOrderNumberCell
+                      value={sale.externalOrderNumber}
+                      className={`${EXTERNAL_COL_CLASS} 2xl:z-10 bg-background truncate`}
+                    />
+                  )}
+                  <TableCell
+                    className={
+                      showExternalCol
+                        ? "2xl:sticky 2xl:left-[291px] w-[170px] min-w-[170px] 2xl:z-10 bg-background text-xs truncate max-w-[170px] border-r"
+                        : "2xl:sticky 2xl:left-[181px] w-[170px] min-w-[170px] 2xl:z-10 bg-background text-xs truncate max-w-[170px] border-r"
+                    }
+                  >
                     <div className="font-medium truncate">
                       {sale.clientName}
                     </div>
@@ -1664,7 +1695,7 @@ Estado: ${sale.status}
   );
 
   // Tabla para Anulados (con delete)
-  const ANULADOS_COLSPAN = 12;
+  const ANULADOS_COLSPAN = 12 + (showExternalCol ? 1 : 0);
 
   const renderAnuladosTable = (data: Sale[], showTracking: boolean = false, status?: ReactNode) => (
     <div className="overflow-x-auto rounded-xl border border-border/70">
@@ -1697,7 +1728,16 @@ Estado: ${sale.status}
             <TableHead className="2xl:sticky 2xl:left-[81px] w-[100px] min-w-[100px] 2xl:z-20 bg-muted">
               N° Orden
             </TableHead>
-            <TableHead className="2xl:sticky 2xl:left-[181px] w-[170px] min-w-[170px] 2xl:z-20 bg-muted border-r">
+            {showExternalCol && (
+              <ExternalOrderNumberHead className={`${EXTERNAL_COL_CLASS} 2xl:z-20 bg-muted`} />
+            )}
+            <TableHead
+              className={
+                showExternalCol
+                  ? "2xl:sticky 2xl:left-[291px] w-[170px] min-w-[170px] 2xl:z-20 bg-muted border-r"
+                  : "2xl:sticky 2xl:left-[181px] w-[170px] min-w-[170px] 2xl:z-20 bg-muted border-r"
+              }
+            >
               Cliente
             </TableHead>
             {/* Columnas scrolleables */}
@@ -1756,7 +1796,19 @@ Estado: ${sale.status}
                   <TableCell className="font-medium 2xl:sticky 2xl:left-[81px] w-[100px] min-w-[100px] 2xl:z-10 bg-background text-xs">
                     {sale.orderNumber}
                   </TableCell>
-                  <TableCell className="2xl:sticky 2xl:left-[181px] w-[170px] min-w-[170px] 2xl:z-10 bg-background text-xs truncate max-w-[170px] border-r">
+                  {showExternalCol && (
+                    <ExternalOrderNumberCell
+                      value={sale.externalOrderNumber}
+                      className={`${EXTERNAL_COL_CLASS} 2xl:z-10 bg-background truncate`}
+                    />
+                  )}
+                  <TableCell
+                    className={
+                      showExternalCol
+                        ? "2xl:sticky 2xl:left-[291px] w-[170px] min-w-[170px] 2xl:z-10 bg-background text-xs truncate max-w-[170px] border-r"
+                        : "2xl:sticky 2xl:left-[181px] w-[170px] min-w-[170px] 2xl:z-10 bg-background text-xs truncate max-w-[170px] border-r"
+                    }
+                  >
                     <div className="font-medium truncate">
                       {sale.clientName}
                     </div>
@@ -2555,6 +2607,7 @@ Estado: ${sale.status}
                         >
                           <div className="font-bold text-foreground mb-1">
                             Pedido: {sale.orderNumber}
+                            {sale.externalOrderNumber ? ` · ${sale.externalOrderNumber}` : ""}
                           </div>
                           <div className="text-xs text-muted-foreground flex flex-col gap-1">
                             <span className="flex items-center gap-1">

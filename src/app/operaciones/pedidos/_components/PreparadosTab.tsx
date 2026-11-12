@@ -1,5 +1,7 @@
 "use client";
 
+import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/orders/ExternalOrderNumberColumn";
+import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -117,6 +119,8 @@ export function PreparadosTab({
   }, [guideReturn]);
 
   // Los datos de la página (frescos) van al final para que ganen sobre los de la selección (posiblemente viejos).
+  // FEAT-31: «N° Externo» solo se dibuja si algún pedido de la pestaña lo trae.
+  const showExternalCol = hasExternalOrderNumbers(data.sales);
   const known = useMemo(() => new Map([...selection.selected, ...data.sales].map((sale) => [sale.id, sale])), [data.sales, selection.selected]);
   const { eligible, blocked } = splitGuideEligibility(selection.selected);
   const bulkStatuses = useMemo(() => computeBulkAvailableStatuses(selection.selected), [selection.selected]);
@@ -326,6 +330,7 @@ export function PreparadosTab({
                 />
               </TableHead>
               <TableHead>N° Orden</TableHead>
+              {showExternalCol && <ExternalOrderNumberHead />}
               <TableHead>Fecha de Venta</TableHead>
               <TableHead>Cliente</TableHead>
               <TableHead>Distrito</TableHead>
@@ -337,14 +342,14 @@ export function PreparadosTab({
           <TableBody>
             {data.loading && (
               <TableRow>
-                <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={8 + (showExternalCol ? 1 : 0)} className="py-8 text-center text-sm text-muted-foreground">
                   Cargando pedidos…
                 </TableCell>
               </TableRow>
             )}
             {!data.loading && data.sales.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={8 + (showExternalCol ? 1 : 0)} className="py-8 text-center text-sm text-muted-foreground">
                   Sin pedidos preparados
                 </TableCell>
               </TableRow>
@@ -370,6 +375,7 @@ export function PreparadosTab({
                     </div>
                   )}
                 </TableCell>
+                {showExternalCol && <ExternalOrderNumberCell value={sale.externalOrderNumber} />}
                 <TableCell className="text-sm">{formatDateTime(sale.createdAt)}</TableCell>
                 <TableCell>
                   <div className="truncate font-medium">{sale.clientName}</div>

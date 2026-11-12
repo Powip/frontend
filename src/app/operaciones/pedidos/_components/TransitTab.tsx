@@ -1,5 +1,7 @@
 "use client";
 
+import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/orders/ExternalOrderNumberColumn";
+import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
 import { useState } from "react";
 import { CheckCircle2, Copy, Eye, FileSpreadsheet, Loader2, MoreVertical, PackageCheck, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -75,6 +77,8 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
   const canExport = actions.can(OPS_PERMISSIONS.EXPORT);
   const canManageGuides = actions.can(OPS_PERMISSIONS.MANAGE_GUIDES);
   const isCamino = variant === "camino";
+  // FEAT-31: «N° Externo» solo se dibuja si algún pedido de la pestaña lo trae.
+  const showExternalCol = hasExternalOrderNumbers(data.sales);
   const guideView = state.view === "guia";
   const bulkStatuses = computeBulkAvailableStatuses(selection.selected);
   const statusOptions: OrderStatus[] = isCamino ? ["ASIGNADO_A_GUIA", "EN_ENVIO"] : ["DESPACHADO"];
@@ -298,6 +302,7 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
                   <Checkbox aria-label="Seleccionar la página" checked={selection.pageAllSelected} onCheckedChange={() => selection.togglePage(data.sales)} />
                 </TableHead>
                 <TableHead>N° Orden</TableHead>
+                {showExternalCol && <ExternalOrderNumberHead />}
                 <TableHead>Fecha de Venta</TableHead>
                 <TableHead>Fecha de Procesado</TableHead>
                 <TableHead>Cliente</TableHead>
@@ -313,12 +318,12 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
             <TableBody>
               {data.loading && (
                 <TableRow>
-                  <TableCell colSpan={12} className="py-8 text-center text-sm text-muted-foreground">Cargando pedidos…</TableCell>
+                  <TableCell colSpan={12 + (showExternalCol ? 1 : 0)} className="py-8 text-center text-sm text-muted-foreground">Cargando pedidos…</TableCell>
                 </TableRow>
               )}
               {!data.loading && data.sales.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={12} className="py-8 text-center text-sm text-muted-foreground">
+                  <TableCell colSpan={12 + (showExternalCol ? 1 : 0)} className="py-8 text-center text-sm text-muted-foreground">
                     {isCamino ? "Sin pedidos en camino" : "Sin pedidos despachados"}
                   </TableCell>
                 </TableRow>
@@ -335,6 +340,7 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
                       {sale.orderNumber}
                       <OrderOriginLabel {...sale} />
                     </TableCell>
+                    {showExternalCol && <ExternalOrderNumberCell value={sale.externalOrderNumber} />}
                     <TableCell className="text-sm">{formatDateTime(sale.createdAt)}</TableCell>
                     <TableCell className="text-sm">{formatDateTime(sale.statusChangedAt ?? sale.updatedAt)}</TableCell>
                     <TableCell>

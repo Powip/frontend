@@ -1,5 +1,7 @@
 "use client";
 
+import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/orders/ExternalOrderNumberColumn";
+import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
 import { DollarSign, AlertTriangle, UserPen, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -111,6 +113,8 @@ export function CcPedidosTable({
   const showIntentos = tipoGestion === "cod" || tipoGestion === "carrito";
 
   const allSelected = data.length > 0 && data.every((o) => selectedIds.has(o.id));
+  // FEAT-31: «N° Externo» solo se dibuja si algún pedido de la tabla lo trae.
+  const showExternalCol = hasExternalOrderNumbers(data);
 
   const showPagination = onPageChange && totalPages > 1;
 
@@ -128,6 +132,7 @@ export function CcPedidosTable({
               />
             </TableHead>
             <TableHead>N° Orden</TableHead>
+            {showExternalCol && <ExternalOrderNumberHead />}
             <TableHead>Fecha</TableHead>
             <TableHead>Cliente</TableHead>
             <TableHead>Teléfono</TableHead>
@@ -177,6 +182,8 @@ export function CcPedidosTable({
                   {order.orderNumber}
                     {order.commercialStage === "LEAD" && <span className="block text-xs">Lead · compra pendiente</span>}
                 </TableCell>
+
+                {showExternalCol && <ExternalOrderNumberCell value={order.externalOrderNumber} />}
 
                 {/* Fecha de creación */}
                 <TableCell className="text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap">
@@ -390,7 +397,7 @@ export function CcPedidosTable({
           })}
           {data.length === 0 && (
             <TableRow>
-              <TableCell colSpan={19} className="text-center text-gray-400 dark:text-slate-500 py-8 text-sm">
+              <TableCell colSpan={19 + (showExternalCol ? 1 : 0)} className="text-center text-gray-400 dark:text-slate-500 py-8 text-sm">
                 {emptyMessage}
               </TableCell>
             </TableRow>

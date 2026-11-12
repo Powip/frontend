@@ -22,6 +22,7 @@ export function toOrder(dto: OrderResponseDto): Order {
     orderType: dto.orderType,
 
     orderNumber: dto.orderNumber,
+    externalOrderNumber: dto.externalOrderNumber ?? null,
     storeId: dto.storeId,
 
     customer: toCustomer(dto.customer),
