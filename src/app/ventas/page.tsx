@@ -5,6 +5,7 @@ import { isCommercialSaleOrder, canPrepareDeferredManualOrder, canShipCommercial
 import { toWhatsAppDigits } from "@/lib/phone";
 import { formatSalesMoney } from "@/utils/salesMoney";
 import { operationalStatus, orderFinancialState } from "@/utils/orderState";
+import { shouldShowReprogramado } from "@/utils/domain/reprogramado";
 import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
 
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
@@ -239,8 +240,8 @@ function formatCallbackAt(dateStr: string): string {
 }
 
 /** Chip "🔁 fecha" debajo del select de estado — el único lugar donde se ve que un pedido quedó reprogramado. */
-function ReprogramadoChip({ sale }: { sale: Pick<Sale, "callStatus" | "callbackAt"> }) {
-  if (sale.callStatus !== "SCHEDULED" || !sale.callbackAt) return null;
+function ReprogramadoChip({ sale }: { sale: Pick<Sale, "status" | "callStatus" | "callbackAt"> }) {
+  if (!shouldShowReprogramado(sale) || !sale.callbackAt) return null;
   return (
     <span className="mt-1 flex items-center gap-1 text-[9px] font-semibold text-violet-600 dark:text-violet-400">
       🔁 {formatCallbackAt(sale.callbackAt)}
