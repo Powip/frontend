@@ -20,7 +20,12 @@ export const isShalomCourier = (courier?: string | null): boolean => {
 };
 
 export function isAliclikCourier(courierName?: string | null): boolean {
-  return normalizeCourier(courierName) === "Aliclik";
+  if (!courierName) return false;
+  const c = courierName.trim().toLowerCase();
+  // El nombre del courier es texto libre: "aliclik", "Aliclick" (con "ck"), "Ali Click",
+  // "Ali-Click", "Aliclik Courier"… Ancla al inicio y exige fin de palabra para no matchear
+  // otros couriers parecidos (p. ej. "ALIDRIVER", "Alicorp") ni "Aliclikero".
+  return /^ali[\s-]?cli(?:ck|k)\b/.test(c);
 }
 
 export function isEvaCourier(courierName?: string | null): boolean {
