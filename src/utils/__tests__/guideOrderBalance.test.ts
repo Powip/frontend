@@ -1,4 +1,4 @@
-import { guideOrderBalance } from "../guideOrderBalance";
+import { advanceRowsFromSales, advancesAwaitingApproval, guideOrderBalance } from "../guideOrderBalance";
 
 describe("guideOrderBalance", () => {
   it("resta del total solo los adelantos aprobados (PAID)", () => {
@@ -100,5 +100,47 @@ describe("guideOrderBalance", () => {
       pendingAfterApproval: 0,
     });
     expect(guideOrderBalance({ grandTotal: 40, payments: null }).pending).toBe(40);
+  });
+});
+
+describe("advancesAwaitingApproval", () => {
+  const order = (id: string, grandTotal: number, payments: Array<{ amount: number; status: string }>) =>
+    ({ id, orderNumber: `ORD-${id}`, grandTotal, payments });
+
+  it("lista solo los pedidos con un adelanto sin aprobar, con lo que cobraría el courier", () => {
+    const rows = advancesAwaitingApproval([
+      order("1", 179, [{ amount: 20, status: "PENDING" }]),
+      order("2", 100, [{ amount: 100, status: "PAID" }]),
+      order("3", 279, [{ amount: 20, status: "PAID" }, { amount: 30, status: "PENDING" }]),
+      order("4", 50, []),
+    ]);
+
+    expect(rows).toEqual([
+      { id: "1", orderNumber: "ORD-1", awaitingApproval: 20, pending: 179 },
+      { id: "3", orderNumber: "ORD-3", awaitingApproval: 30, pending: 259 },
+    ]);
+  });
+
+  it("devuelve vacío cuando nadie tiene adelantos pendientes", () => {
+    expect(advancesAwaitingApproval([order("1", 50, [{ amount: 50, status: "PAID" }])])).toEqual([]);
+    expect(advancesAwaitingApproval([])).toEqual([]);
+  });
+});
+
+describe("advanceRowsFromSales", () => {
+  it("arma las filas desde los montos que ya trae cada venta y descarta las que no tienen adelanto pendiente", () => {
+    const rows = advanceRowsFromSales([
+      { id: "1", orderNumber: "ORD-1", awaitingApprovalAmount: 20, collectAmount: 179 },
+      { id: "2", orderNumber: "ORD-2", awaitingApprovalAmount: 0, collectAmount: 100 },
+      { id: "3", orderNumber: "ORD-3" },
+    ]);
+
+    expect(rows).toEqual([{ id: "1", orderNumber: "ORD-1", awaitingApproval: 20, pending: 179 }]);
+  });
+
+  it("no inventa montos si falta el cobro: queda en 0 en vez de NaN", () => {
+    const [row] = advanceRowsFromSales([{ id: "1", orderNumber: "ORD-1", awaitingApprovalAmount: 20 }]);
+
+    expect(row.pending).toBe(0);
   });
 });
