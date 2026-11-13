@@ -17,6 +17,18 @@ const documentFormats: Record<DocumentType, { pattern: RegExp; message: string }
   },
 };
 
+/**
+ * El documento solo es obligatorio en ventas de provincia (el courier lo pide para entregar). Al editar
+ * un pedido Shopify COD desde Gestión CC no: el DNI se exige recién al confirmar el despacho, y pedirlo
+ * al guardar obligaba a inventar uno para corregir el cliente de un pedido de provincia.
+ */
+export function isClientDocumentRequired(
+  salesRegion: "LIMA" | "PROVINCIA",
+  isEditingShopifyCodOrder: boolean,
+): boolean {
+  return salesRegion === "PROVINCIA" && !isEditingShopifyCodOrder;
+}
+
 // Mantener los formatos alineados con DocumentNumberValidator de ms-ventas.
 export function validateClientDocument(
   documentType: DocumentType | undefined,
