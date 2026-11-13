@@ -1383,3 +1383,72 @@ describe('SendToShalomModal: etiqueta oficial de envío', () => {
     if (change !== 'close') expect(screen.getByRole('button', { name: 'Etiqueta de envío Shalom' })).toBeDisabled();
   });
 });
+
+describe('SendToShalomModal: adelantos sin aprobar antes de enviar', () => {
+  const SEND_OK = { data: { success: true, summary: { total: 1, successful: 1, failed: 0 }, data: [], errors: [] } };
+  const withPayments = (payments: Array<{ amount: number; status: string }>) =>
+    ({ ...MOCK_ORDER, grandTotal: 179, payments }) as typeof MOCK_ORDER;
+  const sendCalls = () => mockAxiosPost.mock.calls.filter(([url]) => String(url).includes('send-to-shalom'));
+
+  async function openForm(order: typeof MOCK_ORDER) {
+    (axios.get as jest.Mock).mockResolvedValue({ data: { success: true, data: [MOCK_AGENCY] } });
+    mockAxiosPost.mockResolvedValue(SEND_OK);
+    const user = userEvent.setup();
+    await renderModal({ orders: [order] });
+    await fillValidForm(user);
+    return user;
+  }
+  const clickSend = (user: ReturnType<typeof userEvent.setup>) =>
+    user.click(screen.getByRole('button', { name: /confirmar y enviar a shalom/i }));
+
+  it('avisa qué pedidos tienen adelanto sin aprobar y NO envía hasta que se confirme', async () => {
+    const user = await openForm(withPayments([{ amount: 20, status: 'PENDING' }]));
+
+    await clickSend(user);
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveTextContent('adelanto sin aprobar');
+    expect(dialog).toHaveTextContent('ORD-001');
+    expect(dialog).toHaveTextContent('S/ 20.00');
+    expect(dialog).toHaveTextContent('S/ 179.00');
+    expect(sendCalls()).toHaveLength(0);
+  });
+
+  it('"Enviar igual" continúa con el envío a Shalom', async () => {
+    const user = await openForm(withPayments([{ amount: 20, status: 'PENDING' }]));
+    await clickSend(user);
+
+    await user.click(await screen.findByRole('button', { name: /enviar igual/i }));
+
+    await waitFor(() => expect(sendCalls()).toHaveLength(1));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  it('"Cancelar" cierra el aviso sin enviar nada', async () => {
+    const user = await openForm(withPayments([{ amount: 20, status: 'PENDING' }]));
+    await clickSend(user);
+
+    await user.click(await screen.findByRole('button', { name: /cancelar/i }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(sendCalls()).toHaveLength(0);
+  });
+
+  it('envía directo, sin aviso, cuando el adelanto ya está aprobado', async () => {
+    const user = await openForm(withPayments([{ amount: 20, status: 'PAID' }]));
+
+    await clickSend(user);
+
+    await waitFor(() => expect(sendCalls()).toHaveLength(1));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  it('envía directo, sin aviso, cuando el pedido no tiene pagos', async () => {
+    const user = await openForm(MOCK_ORDER);
+
+    await clickSend(user);
+
+    await waitFor(() => expect(sendCalls()).toHaveLength(1));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+});

@@ -7,6 +7,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,6 +45,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { API } from "@/lib/api";
 import { getUserProfile } from "@/services/userService";
 import { printShippingGuide } from "@/utils/printShippingGuide";
+import { guideOrderBalance } from "@/utils/guideOrderBalance";
 import { printOrderLabelsBatch, type OrderReceipt } from "@/utils/printOrderLabel";
 import { saleReceiptUrl, requiresAuthenticatedSaleMutation } from "@/services/saleTrackingService";
 import type { ShippingGuide } from "@/components/modals/GuideDetailsModal";
@@ -321,6 +332,26 @@ export default function SendToShalomModal({
   const [loadingOrigins, setLoadingOrigins] = useState(false);
   const [quoting, setQuoting] = useState(false);
   const [sending, setSending] = useState(false);
+  const [advanceWarningOpen, setAdvanceWarningOpen] = useState(false);
+
+  // Pedidos con un adelanto registrado pero sin aprobar (pago PENDING). Ese
+  // adelanto no resta del cobro: si se despacha así, el courier cobra el total.
+  const advancesAwaitingApproval = useMemo(
+    () =>
+      orders
+        .map((order) => ({ order, ...guideOrderBalance(order) }))
+        .filter((row) => row.awaitingApproval > 0),
+    [orders],
+  );
+  const awaitingApprovalTotal =
+    Math.round(
+      advancesAwaitingApproval.reduce((sum, row) => sum + row.awaitingApproval * 100, 0),
+    ) / 100;
+
+  // Si el modal se cierra con el aviso abierto, no debe reaparecer al reabrirlo.
+  useEffect(() => {
+    if (!open) setAdvanceWarningOpen(false);
+  }, [open]);
   const [totalQuoted, setTotalQuoted] = useState<number | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
   const [printingLabels, setPrintingLabels] = useState(false);
@@ -919,6 +950,16 @@ export default function SendToShalomModal({
         printAbort.current = null;
       }
     }
+  };
+
+  // "Confirmar y enviar": si algún pedido tiene un adelanto sin aprobar, pide
+  // confirmación explícita antes de despachar (ver advancesAwaitingApproval).
+  const handleSendClick = () => {
+    if (advancesAwaitingApproval.length > 0) {
+      setAdvanceWarningOpen(true);
+      return;
+    }
+    void handleSend();
   };
 
   const handleShareTrackingWhatsApp = (order: any) => {
@@ -1713,7 +1754,7 @@ export default function SendToShalomModal({
                         )}
                       </Button>
                       <Button
-                        onClick={handleSend}
+                        onClick={handleSendClick}
                         disabled={!allDestinationsSet || sending || quoting}
                         className="h-12 bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 text-white font-bold"
                       >
@@ -1737,6 +1778,47 @@ export default function SendToShalomModal({
         {/* fin relative wrapper */}
       </DialogContent>
     </Dialog>
+    <AlertDialog
+      open={open && advanceWarningOpen}
+      onOpenChange={setAdvanceWarningOpen}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Hay adelantos sin aprobar</AlertDialogTitle>
+          <AlertDialogDescription>
+            {advancesAwaitingApproval.length === 1
+              ? "1 pedido tiene un adelanto sin aprobar"
+              : `${advancesAwaitingApproval.length} pedidos tienen un adelanto sin aprobar`}{" "}
+            (S/ {awaitingApprovalTotal.toFixed(2)}). Si envías ahora, el courier
+            cobrará el total del pedido, no el saldo. Apruébalos antes de
+            despachar para que la guía salga con el monto correcto.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <ul className="max-h-48 space-y-1 overflow-y-auto text-sm">
+          {advancesAwaitingApproval.slice(0, 8).map((row) => (
+            <li key={row.order.id}>
+              <b>{row.order.orderNumber}</b> · adelanto S/{" "}
+              {row.awaitingApproval.toFixed(2)} · el courier cobrará S/{" "}
+              {row.pending.toFixed(2)}
+            </li>
+          ))}
+          {advancesAwaitingApproval.length > 8 && (
+            <li>y {advancesAwaitingApproval.length - 8} más</li>
+          )}
+        </ul>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              setAdvanceWarningOpen(false);
+              void handleSend();
+            }}
+          >
+            Enviar igual
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     <ShalomShippingLabelsModal
       open={open && shalomLabelsOpen && companyId === auth?.company?.id && openedPrintOwner.current === printOwnerKey}
       onClose={() => setShalomLabelsOpen(false)}

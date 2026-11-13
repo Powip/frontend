@@ -10,7 +10,7 @@ const longCode = "0" + "X".repeat(99);
 const order = (): OrderDetail => ({
   id: "order-1", orderId: "order-1", orderNumber: "PED-001", status: "EN_ENVIO", grandTotal: 100,
   customer: { fullName: "Cliente", phoneNumber: "999999999", address: "Dirección" },
-  payments: [{ amount: 20, status: "PAID" }, { amount: 10, status: "PENDING_APPROVAL" }],
+  payments: [{ amount: 20, status: "PAID" }, { amount: 10, status: "PENDING" }],
   unitCatalogValidated: true, unitAssignmentStatus: "CONFIRMED", stockVersion: 2, confirmedStockVersion: 2,
   items: [{ productName: "Equipo", sku: "E", quantity: 2, unitPrice: 40, trackingMode: "SERIAL", unitIds: [id(1), id(2)],
     units: [{ id: id(1), code: longCode, status: "RESERVED" }, { id: id(2), code: "SERIE-2", status: "RESERVED" }] },
@@ -43,7 +43,7 @@ describe("printShippingGuide: códigos confirmados y alcance de impresión", () 
     const rows = [...doc.querySelectorAll("tbody tr")];
     expect(rows).toHaveLength(2);
     expect([...doc.querySelectorAll(".unit-code")].map(node => node.textContent)).toEqual([`Serie: ${longCode}`, "Serie: SERIE-2"]);
-    expect(rows.find(row => row.textContent?.includes("PED-001"))?.textContent).toContain("S/ 70.00");
+    expect(rows.find(row => row.textContent?.includes("PED-001"))?.textContent).toContain("S/ 80.00");
     expect(rows.find(row => row.textContent?.includes("PED-002"))?.querySelector(".unit-codes")).toBeNull();
     expect(doc.body.textContent).toContain("Accesorio");
     expect(popup.written[0]).toContain("overflow-wrap:anywhere");
