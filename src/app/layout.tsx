@@ -21,6 +21,7 @@ const poppins = Poppins({
   variable: "--font-poppins",
   display: "swap",
 });
+import { GoogleTagManager } from "@next/third-parties/google";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
 import AppContainer from "@/components/layout/AppContainer";
@@ -56,6 +57,7 @@ export default function RootLayout({
   return (
     <html lang="es" suppressHydrationWarning>
       <body suppressHydrationWarning className={`${poppins.variable} ${montserrat.variable} ${manrope.variable} antialiased`}>
+        <GoogleTagManager gtmId="GTM-M83R94SC" />
         <ThemeProvider>
           <QueryProvider>
             <AuthProvider>

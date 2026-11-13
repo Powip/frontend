@@ -262,6 +262,11 @@ try {
       evidence.stubbedStaticAssets.push(url.href);
       return route.fulfill({ status: 200, contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><circle cx="12" cy="12" r="10" fill="#ddd"/></svg>' });
     }
+    if (url.hostname === "www.googletagmanager.com") {
+      // Google Tag Manager is loaded by the root layout; stub it like the other static assets.
+      evidence.stubbedStaticAssets.push(url.href);
+      return route.fulfill({ status: 200, contentType: "application/javascript", body: "" });
+    }
     if (!["127.0.0.1", "localhost"].includes(url.hostname)) {
       evidence.blockedExternalRequests.push(`${url.origin}${url.pathname}`);
       return route.abort();
