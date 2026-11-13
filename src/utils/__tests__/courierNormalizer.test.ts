@@ -67,6 +67,37 @@ describe('isAliclikCourier', () => {
   it('devuelve false para string vacío', () => {
     expect(isAliclikCourier('')).toBe(false);
   });
+
+  // El nombre del courier es texto libre: AMA lo creó como "Aliclick" (con "ck") y por eso
+  // nunca le apareció el botón "Enviar a Aliclik". Cualquier grafía razonable debe contar.
+  it.each([
+    'Aliclick',
+    'ALICLICK',
+    'aliclick',
+    'Aliclick ',
+    '  aliclik  ',
+    'Ali Click',
+    'Ali-Click',
+    'Ali clik',
+    'Aliclik Courier',
+    'Aliclick Express',
+  ])('devuelve true para la grafía %p', (input) => {
+    expect(isAliclikCourier(input)).toBe(true);
+  });
+
+  // Nombres que empiezan parecido o contienen "click" pero NO son Aliclik
+  // (ALIDRIVER es un courier real de otra empresa).
+  it.each([
+    'ALIDRIVER',
+    'Alicorp',
+    'Alibaba Express',
+    'Click',
+    'Quick Click',
+    'Aliclikero',
+    'Olva Courier',
+  ])('devuelve false para %p', (input) => {
+    expect(isAliclikCourier(input)).toBe(false);
+  });
 });
 
 describe('isShalomCourier', () => {
