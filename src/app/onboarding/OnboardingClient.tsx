@@ -1142,6 +1142,22 @@ export default function OnboardingClient({
   const displayPrice = completedPlan?.price ?? flowState.price;
   const displayAnnual = completedPlan ? completedPlan.durationInDays >= 300 : isAnnual;
 
+  // Evento de conversión para GTM/GA4: solo cuando el onboarding termina OK
+  // (no al hacer clic). Sin datos personales: plan, value y currency.
+  const signUpTrackedRef = useRef(false);
+  useEffect(() => {
+    if (isMigration || flowState.step !== "DONE" || signUpTrackedRef.current) return;
+    signUpTrackedRef.current = true;
+    const w = window as unknown as { dataLayer?: Record<string, unknown>[] };
+    w.dataLayer = w.dataLayer || [];
+    w.dataLayer.push({
+      event: "sign_up",
+      plan: displayPlanName || "sin_plan",
+      value: Number(displayPrice) || 0,
+      currency: "PEN",
+    });
+  }, [isMigration, flowState.step, displayPlanName, displayPrice]);
+
   const loadDevDemo = () => {
     setPlans(DEMO_PLANS);
     setAddOns(DEMO_ADD_ONS);
