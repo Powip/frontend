@@ -4,6 +4,7 @@ import { generateBarcode } from "./printOrderLabel";
 import { GUIDE_STATUS_LABEL, ZONE_LABELS } from "@/constants/operationsDomain";
 import type { OrderDetail, ShippingGuide } from "@/components/modals/GuideDetailsModal";
 import { getGoogleMapsUrl } from "@/components/shared/MapsLink";
+import { guideOrderBalance } from "./guideOrderBalance";
 
 import {
   escapePrintHtml,
@@ -39,9 +40,13 @@ type PrintableGuide = Pick<
  * de "Enviar a Shalom" (SendToShalomModal.tsx) sin duplicar la plantilla.
  *
  * Separa los pedidos en PREPAGO/PAGADO vs POR COBRAR según su saldo
- * pendiente real (payments con status PAID/PENDING_APPROVAL), no un campo
+ * pendiente real (total − payments PAID; ver guideOrderBalance), no un campo
  * inventado. El total de cobranza a rendir es la suma de esos saldos
  * pendientes reales — no depende de ningún estado externo del caller.
+ *
+ * Un adelanto PENDING (registrado pero sin aprobar) no resta del cobro, pero
+ * se marca en la fila y en el resumen para que nadie despache sin saber que
+ * el courier cobrará el total.
  */
 export function printShippingGuide(
   guide: PrintableGuide,
@@ -69,16 +74,7 @@ export function printShippingGuide(
   const hora = format(new Date(guide.created_at), "HH:mm");
 
   const rows = ordersDetails.map((order) => {
-    const paid =
-      order.payments
-        ?.filter((p) => p.status === "PAID")
-        .reduce((s, p) => s + Number(p.amount), 0) || 0;
-    const pendingApproval =
-      order.payments
-        ?.filter((p) => p.status === "PENDING_APPROVAL")
-        .reduce((s, p) => s + Number(p.amount), 0) || 0;
-    const total = Number(order.totals?.grandTotal ?? order.grandTotal ?? 0);
-    const pending = Math.max(total - paid - pendingApproval, 0);
+    const { pending, awaitingApproval } = guideOrderBalance(order);
     // Sin displayValue: el N° de pedido ya se ve en texto arriba del
     // código — repetirlo bajo las barras solo suma línea por fila, y con
     // guías de 50+ pedidos eso empuja el documento a varias páginas extra.
@@ -92,12 +88,14 @@ export function printShippingGuide(
       order.items
         ?.map((it) => `<span class="q">${escapePrintHtml(it.quantity)}×</span> ${escapePrintHtml(it.productName)}${renderPrintableUnitCodesHtml(order, it)}`)
         .join("<br/>") || "-";
-    return { order, pending, barcode, contenido };
+    return { order, pending, awaitingApproval, barcode, contenido };
   });
 
   const prepagoRows = rows.filter((r) => r.pending <= 0);
   const codRows = rows.filter((r) => r.pending > 0);
   const codTotal = codRows.reduce((s, r) => s + r.pending, 0);
+  const awaitingRows = rows.filter((r) => r.awaitingApproval > 0);
+  const awaitingTotal = awaitingRows.reduce((s, r) => s + r.awaitingApproval, 0);
 
   const renderRow = (r: (typeof rows)[number], index: number) => `
     <tr>
@@ -121,7 +119,11 @@ export function printShippingGuide(
       <td class="r">
         ${
           r.pending > 0
-            ? `<span class="cobrar-cod">S/ ${r.pending.toFixed(2)}</span>`
+            ? `<span class="cobrar-cod">S/ ${r.pending.toFixed(2)}</span>${
+                r.awaitingApproval > 0
+                  ? `<br/><span class="cobrar-warn">⚠ Adelanto S/ ${r.awaitingApproval.toFixed(2)} por aprobar</span>`
+                  : ""
+              }`
             : `<span class="cobrar-pre">PREPAGO</span><br/><span class="mono" style="font-weight:700">S/ 0.00</span>`
         }
       </td>
@@ -194,6 +196,7 @@ export function printShippingGuide(
         .cont .q{font-weight:800;}
         .cobrar-pre{font-weight:800; color:var(--pre); font-size:2.3mm;}
         .cobrar-cod{font-weight:900; color:var(--cod); font-size:2.9mm;}
+        .cobrar-warn{display:inline-block; margin-top:.8mm; font-weight:800; color:var(--cod); font-size:2mm; line-height:1.25;}
 
         .empty{padding:3.2mm; text-align:center; font-weight:700; font-size:2.5mm; border:1.2px dashed var(--ink); border-top:none; border-radius:0 0 1.6mm 1.6mm;}
 
@@ -336,6 +339,11 @@ export function printShippingGuide(
           <div class="tline"><span>Pedidos · Paquetes</span><b class="mono">${ordersDetails.length} · ${ordersDetails.length}</b></div>
           <div class="tline"><span>Pedidos prepago</span><b class="mono">${prepagoRows.length}</b></div>
           <div class="tline"><span>Pedidos por cobrar</span><b class="mono">${codRows.length}</b></div>
+          ${
+            awaitingRows.length > 0
+              ? `<div class="tline"><span>Adelantos por aprobar (no restan del cobro)</span><b class="mono">S/ ${awaitingTotal.toFixed(2)} · ${awaitingRows.length} pedido${awaitingRows.length === 1 ? "" : "s"}</b></div>`
+              : ""
+          }
           <div class="tline total"><span>Cobranza a rendir</span><b class="mono">S/ ${codTotal.toFixed(2)}</b></div>
         </div>
       </div>

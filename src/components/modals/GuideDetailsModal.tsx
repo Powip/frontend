@@ -51,6 +51,7 @@ import { toast } from "sonner";
 import { generateQR, generateBarcode } from "@/utils/printOrderLabel";
 import { ZONE_LABELS } from "@/constants/operationsDomain";
 import { printShippingGuide } from "@/utils/printShippingGuide";
+import { guideOrderBalance } from "@/utils/guideOrderBalance";
 import { useReceiptPrintScope } from "@/hooks/useReceiptPrintScope";
 import {
   escapePrintHtml,
@@ -687,14 +688,7 @@ export default function GuideDetailsModal({
 
     selectedOrders.forEach((order, index) => {
       setTimeout(() => {
-        const paid =
-          order.payments
-            ?.filter((p) => p.status === "PAID")
-            .reduce((s, p) => s + Number(p.amount), 0) || 0;
-        const pending = Math.max(
-          Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid,
-          0,
-        );
+        const { pending } = guideOrderBalance(order);
 
         handleWhatsApp(
           order.customer.phoneNumber,
@@ -716,12 +710,7 @@ export default function GuideDetailsModal({
     }
     const text = selectedOrders
       .map((order) => {
-        const paid =
-          order.payments
-            ?.filter((p) => p.status === "PAID")
-            .reduce((s, p) => s + Number(p.amount), 0) || 0;
-        const total = Number(order.totals?.grandTotal ?? order.grandTotal ?? 0);
-        const pending = Math.max(total - paid, 0);
+        const { total, paid, pending } = guideOrderBalance(order);
         const mapsLine = formatGoogleMapsClipboardLine(order.customer.googleMapsUrl);
         return `Venta ${order.orderNumber}\nCliente: ${order.customer.fullName}\nTeléfono: ${order.customer.phoneNumber}\nDistrito: ${order.customer.district || "-"}\nDirección: ${order.customer.address || "-"}${mapsLine ? `\n${mapsLine}` : ""}\nTotal: S/ ${total.toFixed(2)}\nAdelanto: S/ ${paid.toFixed(2)}\nPor Cobrar: S/ ${pending.toFixed(2)}\nEstado: ${order.status.replace("_", " ")}`;
       })
@@ -731,31 +720,29 @@ export default function GuideDetailsModal({
   };
 
   // Calcular totales
-  const cobranzaStats = ordersDetails.reduce(
+  // "Cobranza Total" = lo que cobra el courier (total − aprobado). Se desglosa en
+  // lo que seguiría por cobrar aun si se aprueban los adelantos pendientes y en
+  // lo cubierto por adelantos todavía sin aprobar (pagos PENDING).
+  const rawCobranza = ordersDetails.reduce(
     (acc, order) => {
-      const paid =
-        order.payments
-          ?.filter((p) => p.status === "PAID")
-          .reduce((s, p) => s + Number(p.amount), 0) || 0;
-      const pendingApproval =
-        order.payments
-          ?.filter((p) => p.status === "PENDING_APPROVAL")
-          .reduce((s, p) => s + Number(p.amount), 0) || 0;
-      const totalPending =
-        Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) -
-        paid -
-        pendingApproval;
-
+      const { pending, pendingAfterApproval, awaitingApproval } =
+        guideOrderBalance(order);
       return {
-        totalPending: acc.totalPending + Math.max(totalPending, 0),
-        pendingApproval: acc.pendingApproval + pendingApproval,
+        totalCobranza: acc.totalCobranza + pending,
+        totalPending: acc.totalPending + pendingAfterApproval,
+        pendingApproval: acc.pendingApproval + awaitingApproval,
       };
     },
-    { totalPending: 0, pendingApproval: 0 },
+    { totalCobranza: 0, totalPending: 0, pendingApproval: 0 },
   );
-
-  const totalCobranza =
-    cobranzaStats.totalPending + cobranzaStats.pendingApproval;
+  // Suma de importes ya redondeados a centavos: se vuelve a redondear para que
+  // los condicionales `> 0` del panel no vean residuos de coma flotante.
+  const roundCents = (value: number) => Math.round(value * 100) / 100;
+  const totalCobranza = roundCents(rawCobranza.totalCobranza);
+  const cobranzaStats = {
+    totalPending: roundCents(rawCobranza.totalPending),
+    pendingApproval: roundCents(rawCobranza.pendingApproval),
+  };
 
   const handleExportExcel = async () => {
     if (!guide) {
@@ -858,14 +845,11 @@ export default function GuideDetailsModal({
     // Filas de datos
     ordersDetails.forEach((order: OrderDetail) => {
       // /receipt endpoint retorna el total bajo totals.grandTotal
-      const grandTotal = Number(
-        order.totals?.grandTotal ?? order.grandTotal ?? 0,
-      );
-      const adelanto =
-        order.payments
-          ?.filter((p) => p.status === "PAID")
-          .reduce((s, p) => s + Number(p.amount), 0) ?? 0;
-      const saldo = Math.max(grandTotal - adelanto, 0);
+      const {
+        total: grandTotal,
+        paid: adelanto,
+        pending: saldo,
+      } = guideOrderBalance(order);
 
       const productosStr = (order.items ?? [])
         .map((item) => {
