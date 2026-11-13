@@ -1111,3 +1111,89 @@ describe('SendToEvaModal', () => {
     });
   });
 });
+
+// ── Adelanto sin aprobar antes de crear el pedido ────────────────────────────
+//
+// El monto que se crea en EVA es lo que el courier cobrará. Un adelanto sin aprobar (PENDING) no
+// resta, así que EVA cobraría el total; aprobar el pago después ya no corrige su sistema.
+
+describe('SendToEvaModal: adelanto sin aprobar antes de crear el pedido', () => {
+  function renderWithAdvance(extra: Partial<React.ComponentProps<typeof SendToEvaModal>> = {}) {
+    return render(
+      <SendToEvaModal
+        {...BASE_PROPS}
+        amount={179}
+        orderNumber="ORD-001"
+        awaitingApprovalAmount={20}
+        {...extra}
+      />,
+    );
+  }
+  async function fillRecojo() {
+    const productInput = await screen.findByLabelText(/producto/i);
+    const user = userEvent.setup();
+    await user.type(productInput, 'Caja mediana');
+    const btn = screen.getByRole('button', { name: /crear pedido en eva/i });
+    await waitFor(() => expect(btn).not.toBeDisabled());
+    return { user, btn };
+  }
+
+  it('avisa del adelanto y NO crea el pedido en EVA hasta confirmar', async () => {
+    renderWithAdvance();
+    const { user, btn } = await fillRecojo();
+
+    await user.click(btn);
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveTextContent('1 pedido tiene un adelanto sin aprobar');
+    expect(dialog).toHaveTextContent('Si lo envías ahora');
+    expect(dialog).toHaveTextContent('ORD-001');
+    expect(dialog).toHaveTextContent('adelanto S/ 20.00');
+    expect(dialog).toHaveTextContent('cobrará S/ 179.00');
+    expect(mockCreateOrder).not.toHaveBeenCalled();
+  });
+
+  it('"Enviar igual" crea el pedido en EVA con el monto que mostraba el aviso', async () => {
+    renderWithAdvance();
+    const { user, btn } = await fillRecojo();
+    await user.click(btn);
+
+    await user.click(await screen.findByRole('button', { name: 'Enviar igual' }));
+
+    await waitFor(() => expect(mockCreateOrder).toHaveBeenCalledTimes(1));
+    expect(mockCreateOrder.mock.calls[0][1]).toEqual(expect.objectContaining({ orderId: 'order-1', amount: 179 }));
+  });
+
+  it('"Cancelar" cierra el aviso y no crea nada en EVA', async () => {
+    renderWithAdvance();
+    const { user, btn } = await fillRecojo();
+    await user.click(btn);
+
+    await user.click(await screen.findByRole('button', { name: 'Cancelar' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(mockCreateOrder).not.toHaveBeenCalled();
+  });
+
+  it('si el operador bajó el monto a cobrar, el aviso muestra el monto que realmente se enviará', async () => {
+    renderWithAdvance();
+    const { user, btn } = await fillRecojo();
+    const amountInput = screen.getByLabelText(/monto/i);
+    await user.clear(amountInput);
+    await user.type(amountInput, '159');
+
+    await user.click(btn);
+
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent('cobrará S/ 159.00');
+  });
+
+  it.each([0, undefined])('con adelanto sin aprobar = %s crea el pedido directo, sin aviso', async (awaiting) => {
+    renderWithAdvance({ awaitingApprovalAmount: awaiting });
+    const { user, btn } = await fillRecojo();
+
+    await user.click(btn);
+
+    await waitFor(() => expect(mockCreateOrder).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+});

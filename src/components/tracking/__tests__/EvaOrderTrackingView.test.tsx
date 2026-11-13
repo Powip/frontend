@@ -69,15 +69,25 @@ jest.mock('@/components/eva/SendToEvaButton', () => ({
     label,
     orderId,
     amount,
+    orderNumber,
+    awaitingApprovalAmount,
   }: {
     label?: string;
     orderId: string;
     amount?: number;
+    orderNumber?: string;
+    awaitingApprovalAmount?: number;
   }) => {
     const R = require('react');
     return R.createElement(
       'button',
-      { type: 'button', 'data-order-id': orderId, 'data-amount': amount },
+      {
+        type: 'button',
+        'data-order-id': orderId,
+        'data-amount': amount,
+        'data-order-number': orderNumber,
+        'data-awaiting': awaitingApprovalAmount,
+      },
       label ?? 'Enviar a EVA',
     );
   },
@@ -442,6 +452,37 @@ describe('EvaOrderTrackingView', () => {
       renderView();
       await screen.findByText('ORD-005');
       expect(screen.getByRole('button', { name: /enviar a eva/i })).toBeInTheDocument();
+    });
+
+    it('le pasa al botón el adelanto sin aprobar (un Yape PENDING no resta del cobro) y el N° de pedido', async () => {
+      mockAxiosGet.mockResolvedValue({
+        data: [{
+          ...ORDER_EVA_PENDIENTE,
+          grandTotal: '179.00',
+          payments: [{ id: 'p1', amount: '20.00', status: 'PENDING', paymentMethod: 'YAPE' }],
+        }],
+      });
+      renderView();
+      await screen.findByText('ORD-005');
+      const boton = screen.getByRole('button', { name: /enviar a eva/i });
+      expect(boton).toHaveAttribute('data-awaiting', '20');
+      expect(boton).toHaveAttribute('data-order-number', 'ORD-005');
+      expect(boton).toHaveAttribute('data-amount', '179');
+    });
+
+    it('con el adelanto ya aprobado no hay nada por aprobar y el cobro baja', async () => {
+      mockAxiosGet.mockResolvedValue({
+        data: [{
+          ...ORDER_EVA_PENDIENTE,
+          grandTotal: '179.00',
+          payments: [{ id: 'p1', amount: '20.00', status: 'PAID', paymentMethod: 'YAPE' }],
+        }],
+      });
+      renderView();
+      await screen.findByText('ORD-005');
+      const boton = screen.getByRole('button', { name: /enviar a eva/i });
+      expect(boton).toHaveAttribute('data-awaiting', '0');
+      expect(boton).toHaveAttribute('data-amount', '159');
     });
 
     it('NO aparece en la fila de un pedido que ya tiene evaStatus', async () => {

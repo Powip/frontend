@@ -7,6 +7,7 @@ import { formatProductsForExport, type SaleExportData } from "@/utils/exportSale
 import { countProductUnits } from "@/components/ventas/SalesTableFilters";
 import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import { operationalStatus, orderFinancialState } from "@/utils/orderState";
+import { guideOrderBalance } from "@/utils/guideOrderBalance";
 import type { SalesPhysicalOrderProjection } from "@/utils/commercialOrders";
 
 /* -----------------------------------------------------------------------
@@ -54,6 +55,10 @@ export interface Sale extends UnitAssignmentState, Omit<SalesPhysicalOrderProjec
   callbackAt?: string | null;
   cancellationReason?: string | null;
   hasPendingApprovalPayments: boolean;
+  /** Adelanto registrado pero sin aprobar (pagos PENDING): no resta del cobro. Alimenta el aviso previo al despacho. */
+  awaitingApprovalAmount?: number;
+  /** Lo que cobraría el courier hoy (total − aprobado). */
+  collectAmount?: number;
   sellerName: string | null;
   salesChannel?: string | null;
   externalSource?: string | null;
@@ -98,6 +103,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
   const hasPendingApprovalPayments = (order.payments ?? []).some(
     (p) => p.status === "PENDING",
   );
+  const guideBalance = guideOrderBalance(order);
 
   return {
     id: order.id,
@@ -152,6 +158,8 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     callbackAt: order.callbackAt ?? null,
     cancellationReason: order.cancellationReason ?? null,
     hasPendingApprovalPayments,
+    awaitingApprovalAmount: guideBalance.awaitingApproval,
+    collectAmount: guideBalance.pending,
     sellerName: order.sellerName ?? null,
     salesChannel: order.salesChannel ?? null,
     externalSource: order.externalSource ?? null,

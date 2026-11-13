@@ -50,3 +50,46 @@ export function guideOrderBalance(order: GuideBalanceOrder): GuideOrderBalance {
     pendingAfterApproval: (pending - awaitingApproval) / 100,
   };
 }
+
+/** Un pedido con adelanto sin aprobar, listo para mostrarse en el aviso previo al despacho. */
+export interface AdvanceRow {
+  id: string;
+  orderNumber: string;
+  /** Adelanto registrado pero aún sin aprobar (pago PENDING). */
+  awaitingApproval: number;
+  /** Lo que cobraría el courier hoy: el adelanto sin aprobar no resta. */
+  pending: number;
+}
+
+/** Pedidos con pagos completos (recibos o listas del backend): filas solo de los que tienen un adelanto sin aprobar. */
+export function advancesAwaitingApproval(
+  orders: ReadonlyArray<GuideBalanceOrder & { id: string; orderNumber?: string | null }>,
+): AdvanceRow[] {
+  return orders.flatMap((order) => {
+    const { awaitingApproval, pending } = guideOrderBalance(order);
+    return awaitingApproval > 0
+      ? [{ id: order.id, orderNumber: order.orderNumber ?? order.id, awaitingApproval, pending }]
+      : [];
+  });
+}
+
+/** Ventas de las pantallas de Ventas y Pedidos: ya traen los montos calculados con guideOrderBalance. */
+export function advanceRowsFromSales(
+  sales: ReadonlyArray<{
+    id: string;
+    orderNumber?: string | null;
+    awaitingApprovalAmount?: number;
+    collectAmount?: number;
+  }>,
+): AdvanceRow[] {
+  return sales.flatMap((sale) =>
+    (sale.awaitingApprovalAmount ?? 0) > 0
+      ? [{
+          id: sale.id,
+          orderNumber: sale.orderNumber ?? sale.id,
+          awaitingApproval: sale.awaitingApprovalAmount ?? 0,
+          pending: sale.collectAmount ?? 0,
+        }]
+      : [],
+  );
+}

@@ -61,6 +61,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { OrderHeader, OrderStatus, OrderItem, type SubEstadoCc } from "@/interfaces/IOrder";
+import { getStatusLabel } from "@/utils/domain/orders-status-flow";
+import { advanceRowsFromSales, guideOrderBalance } from "@/utils/guideOrderBalance";
+import { isDispatchStatus, usePendingAdvanceGuard } from "@/components/shared/PendingAdvanceDialog";
 import { useAuth } from "@/contexts/AuthContext";
 import axiosAuth from "@/lib/axiosAuth";
 import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
@@ -196,6 +199,10 @@ export interface Sale extends UnitAssignmentState {
   pendingPayment: number;
   hasStockIssue?: boolean;
   hasPendingApprovalPayments: boolean;
+  /** Adelanto registrado pero sin aprobar (pagos PENDING): no resta del cobro. Alimenta el aviso previo al despacho. */
+  awaitingApprovalAmount?: number;
+  /** Lo que cobraría el courier hoy (total − aprobado). */
+  collectAmount?: number;
   externalTrackingNumber: string;
   shippingCode: string;
   shippingKey: string;
@@ -259,6 +266,7 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
   const hasPendingApprovalPayments = order.payments.some(
     (p) => p.status === "PENDING",
   );
+  const guideBalance = guideOrderBalance(order);
 
   return {
     id: order.id,
@@ -302,6 +310,8 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     confirmedStockVersion: order.confirmedStockVersion,
     stockVersion: order.stockVersion,
     hasPendingApprovalPayments,
+    awaitingApprovalAmount: guideBalance.awaitingApproval,
+    collectAmount: guideBalance.pending,
     externalTrackingNumber: order.externalTrackingNumber || "",
     shippingCode: order.shippingCode || "",
     shippingKey: order.shippingKey || "",
@@ -690,7 +700,9 @@ function VentasContent() {
     }
   };
 
-  const handleChangeStatus = async (
+  const { guard: guardAdvance, dialog: advanceDialog } = usePendingAdvanceGuard();
+
+  const changeStatusNow = async (
     saleId: string,
     newStatus: OrderStatus,
     cancellationReason?: CancellationReason,
@@ -1026,7 +1038,7 @@ Estado: ${sale.status}
     }
   };
 
-  const handleBulkStatusChange = async (newStatus: OrderStatus) => {
+  const bulkStatusChangeNow = async (newStatus: OrderStatus) => {
     if (!canMutateBulkSelection()) return;
     const selectedIds = Array.from(selectedSaleIds);
     if (selectedIds.length === 0) return;
@@ -1096,6 +1108,26 @@ Estado: ${sale.status}
       setIsBulkLoading(false);
     }
   };
+
+  // Pasar pedidos a «Asignado a guía» / «En envío» con un adelanto sin aprobar: el courier cobraría el
+  // total. Se avisa y, si se confirma, corre el manejador de siempre.
+  const guardDispatchChange = (ids: string[], status: OrderStatus, run: () => void | Promise<void>) => {
+    const rows = isDispatchStatus(status)
+      ? advanceRowsFromSales(ids.flatMap((id) => {
+          const sale = mutationSale(id);
+          return sale ? [sale] : [];
+        }))
+      : [];
+    const label = getStatusLabel(status);
+    return guardAdvance(
+      { rows, action: `Si ${ids.length === 1 ? "lo" : "los"} pasas a «${label}»`, confirmLabel: `Pasar a ${label} igual` },
+      run,
+    );
+  };
+  const handleChangeStatus = (saleId: string, newStatus: OrderStatus, cancellationReason?: CancellationReason) =>
+    guardDispatchChange([saleId], newStatus, () => changeStatusNow(saleId, newStatus, cancellationReason));
+  const handleBulkStatusChange = (newStatus: OrderStatus) =>
+    guardDispatchChange(Array.from(selectedSaleIds), newStatus, () => bulkStatusChangeNow(newStatus));
 
   const handleBulkReprogramar = async (callbackAtDate: Date) => {
     if (!canMutateBulkSelection()) return;
@@ -2585,6 +2617,8 @@ Estado: ${sale.status}
           onClose={handleClosePrintPreview}
         />
         {/* Modal de alerta de stock insuficiente */}
+        {advanceDialog}
+
         <AlertDialog open={stockAlertOpen} onOpenChange={setStockAlertOpen}>
           <AlertDialogContent className="max-w-lg">
             <AlertDialogHeader>

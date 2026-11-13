@@ -19,6 +19,7 @@ import { OrderHeader, SubEstadoCc, TipoGestionCC } from "@/interfaces/IOrder";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
 import SendToEvaButton from "@/components/eva/SendToEvaButton";
+import { guideOrderBalance } from "@/utils/guideOrderBalance";
 import { isEvaCourier } from "@/utils/courierNormalizer";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -292,6 +293,8 @@ export function CcPedidosTable({
                         district={order.customer?.district ?? ""}
                         address={order.customer?.address ?? ""}
                         amount={porCobrar}
+                        orderNumber={order.orderNumber}
+                        awaitingApprovalAmount={guideOrderBalance(order).awaitingApproval}
                         items={order.items}
                         onSuccess={() => onEvaSent?.(order)}
                         variant="outline"

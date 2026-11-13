@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import axios from "@/lib/axiosAuth";
 import { AxiosError, type AxiosResponse } from "axios";
 import { toast } from "sonner";
 import type { CreateGuideData } from "@/components/modals/CreateGuideModal";
 import type { OrderHeader } from "@/interfaces/IOrder";
-import type { PedidosActions, Sale } from "../types";
+import { mapOrderToSale, type PedidosActions, type Sale } from "../types";
 
 const mockRefetch = jest.fn();
 const mockInvalidateBusinessData = jest.fn();
@@ -66,7 +66,11 @@ jest.mock("@/components/modals/CreateGuideModal", () => ({
   },
 }));
 jest.mock("@/components/modals/GuideDetailsModal", () => ({ __esModule: true, default: () => null }));
-jest.mock("@/components/modals/AddToExistingGuideModal", () => ({ __esModule: true, default: () => null }));
+jest.mock("@/components/modals/AddToExistingGuideModal", () => ({
+  __esModule: true,
+  default: ({ open, selectedOrders }: { open: boolean; selectedOrders: { id: string }[] }) =>
+    open ? <div data-testid="add-selection">{selectedOrders.map((order) => order.id).join(",")}</div> : null,
+}));
 jest.mock("@/components/modals/PaymentVerificationModal", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/modals/CancellationModal", () => ({ __esModule: true, default: ({ open, onConfirm }: { open: boolean; onConfirm: (reason: string, notes: string) => void }) => open ? <button onClick={() => onConfirm("OTHER", "Cliente canceló")}>Confirmar anulación normal</button> : null }));
 jest.mock("@/components/modals/CourierAssignmentModal", () => ({ __esModule: true, default: () => null }));
@@ -501,5 +505,159 @@ describe("Pedidos — motivo del fallo al imprimir etiquetas en lote", () => {
     render(<PedidosContent />);
     await act(async () => { await mockActions.onBulkPrint([mockOrders[0]] as unknown as Sale[]); });
     expect(toast.error).toHaveBeenCalledWith("No se pudieron generar las etiquetas: No se pudo cargar el logo");
+  });
+});
+
+describe("Pedidos — aviso de adelantos sin aprobar antes de despachar", () => {
+  // order-1 tiene un Yape de S/ 20 sin aprobar sobre S/ 100; order-2 y order-3 no tienen pagos.
+  beforeEach(() => {
+    mockOrders[0].payments = [{ id: "p1", amount: "20.00", status: "PENDING", paymentMethod: "YAPE" }] as unknown as OrderHeader["payments"];
+    for (const order of mockOrders) order.courier = "Shalom";
+  });
+  const patchCalls = () => jest.mocked(axios.patch).mock.calls;
+
+  it("al generar guía avisa del adelanto y NO abre la selección hasta confirmar", async () => {
+    render(<PedidosContent />);
+    fireEvent.click(screen.getByRole("button", { name: "Armar guías" }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("1 pedido tiene un adelanto sin aprobar");
+    expect(dialog).toHaveTextContent("ORD-1");
+    expect(dialog).toHaveTextContent("Si generas la guía ahora");
+    expect(screen.queryByTestId("guide-selection")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generar guía igual" }));
+
+    expect(await screen.findByTestId("guide-selection")).toHaveTextContent("order-1,order-2,order-3");
+  });
+
+  it("cancelar el aviso deja la creación de guía sin abrir", async () => {
+    render(<PedidosContent />);
+    fireEvent.click(screen.getByRole("button", { name: "Armar guías" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Cancelar" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.queryByTestId("guide-selection")).not.toBeInTheDocument();
+  });
+
+  it("sin adelantos pendientes la guía se abre directo, sin aviso", async () => {
+    mockOrders[0].payments = [];
+    render(<PedidosContent />);
+    fireEvent.click(screen.getByRole("button", { name: "Armar guías" }));
+
+    expect(await screen.findByTestId("guide-selection")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("al agregar a una guía existente también avisa y recién abre al confirmar", async () => {
+    render(<PedidosContent />);
+    await act(async () => { void mockActions.onOpenAddToGuide(mockOrders.map(mapOrderToSale)); });
+
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Si los agregas a la guía ahora");
+    expect(screen.queryByTestId("add-selection")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Agregar igual" }));
+    expect(await screen.findByTestId("add-selection")).toBeInTheDocument();
+  });
+
+  it("al pasar UN pedido a «En envío» avisa y no cambia el estado hasta confirmar", async () => {
+    render(<PedidosContent />);
+    await act(async () => { void mockActions.onChangeStatus("order-1", "EN_ENVIO"); });
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("Si lo pasas a «En envío»");
+    expect(patchCalls()).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /Pasar a En envío igual/ }));
+
+    await waitFor(() => expect(patchCalls().length).toBeGreaterThan(0));
+    expect(patchCalls().every(([url]) => String(url).endsWith("/order-1"))).toBe(true);
+  });
+
+  it("en el cambio masivo solo lista los pedidos con adelanto pendiente y ejecuta al confirmar", async () => {
+    render(<PedidosContent />);
+    await act(async () => { void mockActions.onBulkStatusChange(["order-1", "order-2"], "EN_ENVIO"); });
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("ORD-1");
+    expect(dialog).not.toHaveTextContent("ORD-2");
+    expect(patchCalls()).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /Pasar a En envío igual/ }));
+
+    await waitFor(() => expect(patchCalls().length).toBeGreaterThan(0));
+  });
+
+  it("un estado que no entrega al courier (Llamado) no avisa aunque haya adelanto pendiente", async () => {
+    render(<PedidosContent />);
+    await act(async () => { void mockActions.onChangeStatus("order-1", "LLAMADO"); });
+
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(patchCalls().length).toBeGreaterThan(0));
+  });
+});
+
+describe("Nueva guía — aviso de adelantos sin aprobar antes de asignar", () => {
+  beforeEach(() => {
+    mockOrders[0].payments = [{ id: "p1", amount: "20.00", status: "PENDING", paymentMethod: "YAPE" }] as unknown as OrderHeader["payments"];
+  });
+  function openSelection() {
+    render(<NuevaGuiaDialog open onOpenChange={jest.fn()} />);
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+  }
+
+  it("«Generar guía» avisa del adelanto y recién abre la selección al confirmar", async () => {
+    openSelection();
+    fireEvent.click(screen.getByRole("button", { name: "Generar guía (3)" }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("1 pedido tiene un adelanto sin aprobar");
+    expect(dialog).toHaveTextContent("ORD-1");
+    expect(screen.queryByTestId("guide-selection")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generar guía igual" }));
+
+    expect(await screen.findByTestId("guide-selection")).toHaveTextContent("order-1,order-2,order-3");
+  });
+
+  it("«Agregar a guía existente» también avisa antes de abrir", async () => {
+    openSelection();
+    fireEvent.click(screen.getByRole("button", { name: /Agregar a guía existente/ }));
+
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Si los agregas a la guía ahora");
+    expect(screen.queryByTestId("add-selection")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Agregar igual" }));
+
+    expect(await screen.findByTestId("add-selection")).toBeInTheDocument();
+  });
+
+  it("cancelar el aviso no abre nada", async () => {
+    openSelection();
+    fireEvent.click(screen.getByRole("button", { name: "Generar guía (3)" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Cancelar" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(screen.queryByTestId("guide-selection")).not.toBeInTheDocument();
+  });
+
+  it("solo cuenta los pedidos seleccionados: si el que tiene adelanto pendiente no está elegido, no avisa", async () => {
+    render(<NuevaGuiaDialog open onOpenChange={jest.fn()} />);
+    const boxes = screen.getAllByRole("checkbox");
+    fireEvent.click(boxes[boxes.length - 1]);
+    fireEvent.click(screen.getByRole("button", { name: "Generar guía (1)" }));
+
+    expect(await screen.findByTestId("guide-selection")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  });
+
+  it("sin adelantos pendientes abre directo", async () => {
+    mockOrders[0].payments = [];
+    openSelection();
+    fireEvent.click(screen.getByRole("button", { name: "Generar guía (3)" }));
+
+    expect(await screen.findByTestId("guide-selection")).toBeInTheDocument();
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   });
 });

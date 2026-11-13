@@ -33,6 +33,8 @@ import { fetchCouriers } from "@/services/courierService";
 import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
 import { reassignSeller } from "@/services/atencionClienteService";
 import { getStatusChainSteps, getStatusLabel } from "@/utils/domain/orders-status-flow";
+import { advanceRowsFromSales } from "@/utils/guideOrderBalance";
+import { isDispatchStatus, usePendingAdvanceGuard } from "@/components/shared/PendingAdvanceDialog";
 import { exportSalesToExcel } from "@/utils/exportSalesExcel";
 import { openPrintWindow, printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 import { describeReceiptError, summarizeReceiptFailures, type ReceiptFailure } from "@/utils/receipt-error-message";
@@ -148,6 +150,7 @@ export function PedidosContent() {
   const [isCreatingGuide, setIsCreatingGuide] = useState(false);
   const [addToGuideOrders, setAddToGuideOrders] = useState<Sale[] | null>(null);
   const [isAddingToGuide, setIsAddingToGuide] = useState(false);
+  const { guard: guardAdvance, dialog: advanceDialog } = usePendingAdvanceGuard();
   const [cancelSale, setCancelSale] = useState<Sale | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [courierAssignSales, setCourierAssignSales] = useState<Sale[] | null>(null);
@@ -851,6 +854,22 @@ export function PedidosContent() {
     ? auth.company.sales_channels
     : DEFAULT_SALES_CHANNELS;
 
+  // Pasar pedidos a un estado de despacho (Asignado a guía / En envío) con un adelanto sin aprobar:
+  // el courier cobraría el total. Se avisa y, si se confirma, corre el manejador de siempre.
+  const guardStatusChange = (ids: string[], status: OrderStatus, run: () => void | Promise<void>) => {
+    const rows = isDispatchStatus(status)
+      ? advanceRowsFromSales(ids.flatMap((id) => {
+          const sale = salesById.get(id);
+          return sale ? [sale] : [];
+        }))
+      : [];
+    const label = getStatusLabel(status);
+    return guardAdvance(
+      { rows, action: `Si ${ids.length === 1 ? "lo" : "los"} pasas a «${label}»`, confirmLabel: `Pasar a ${label} igual` },
+      run,
+    );
+  };
+
   const actions: PedidosActions = {
     can,
     apiCouriers,
@@ -860,15 +879,25 @@ export function PedidosContent() {
     onOpenGuide: setGuideSale,
     onReassignSeller: setReassignSale,
     onCancel: (sale) => { void handleChangeStatus(sale.id, "ANULADO"); },
-    onChangeStatus: handleChangeStatus,
+    onChangeStatus: (saleId, status) => guardStatusChange([saleId], status, () => handleChangeStatus(saleId, status)),
     onMarkNoAnswer: handleMarkNoAnswer,
     onBulkMarkNoAnswer: handleBulkMarkNoAnswer,
     onDeliveryReschedule: (sale) => setRescheduleTarget({ saleIds: [sale.id] }),
     onBulkDeliveryReschedule: (ids) => setRescheduleTarget({ saleIds: ids }),
-    onOpenCreateGuide: setCreateGuideOrders,
-    onOpenAddToGuide: setAddToGuideOrders,
+    onOpenCreateGuide: (selected) => {
+      void guardAdvance(
+        { rows: advanceRowsFromSales(selected), action: "Si generas la guía ahora", confirmLabel: "Generar guía igual" },
+        () => setCreateGuideOrders(selected),
+      );
+    },
+    onOpenAddToGuide: (selected) => {
+      void guardAdvance(
+        { rows: advanceRowsFromSales(selected), action: "Si los agregas a la guía ahora", confirmLabel: "Agregar igual" },
+        () => setAddToGuideOrders(selected),
+      );
+    },
     onAssignCourierBulk: setCourierAssignSales,
-    onBulkStatusChange: handleBulkStatusChange,
+    onBulkStatusChange: (ids, status) => guardStatusChange(ids, status, () => handleBulkStatusChange(ids, status)),
     onBulkWhatsApp: handleBulkWhatsApp,
     onBulkPrint: handleBulkPrint,
     onCopySelected: handleCopySelected,
@@ -974,6 +1003,8 @@ export function PedidosContent() {
             isLoading={isCreatingGuide}
           />
         )}
+
+        {advanceDialog}
 
         {addToGuideOrders && (
           <AddToExistingGuideModal

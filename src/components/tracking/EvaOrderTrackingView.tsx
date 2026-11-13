@@ -46,6 +46,7 @@ import EvaStatusBadge, {
   GROUP_CLS,
 } from "@/components/eva/EvaStatusBadge";
 import SendToEvaButton from "@/components/eva/SendToEvaButton";
+import { guideOrderBalance } from "@/utils/guideOrderBalance";
 import {
   OrderDetailButton,
   OrderDetailModalProvider,
@@ -468,6 +469,8 @@ export default function EvaOrderTrackingView() {
                             district={order.customer?.district ?? ""}
                             address={order.customer?.address ?? ""}
                             amount={getPendingPayment(order)}
+                            orderNumber={order.orderNumber}
+                            awaitingApprovalAmount={guideOrderBalance(order).awaitingApproval}
                             items={order.items}
                             onSuccess={fetchOrders}
                             variant="outline"

@@ -27,11 +27,26 @@ jest.mock('@/services/evaService', () => ({
    así que se reemplaza por un placeholder que expone su label y el orderId. */
 jest.mock('@/components/eva/SendToEvaButton', () => ({
   __esModule: true,
-  default: ({ label, orderId }: { label?: string; orderId: string }) => {
+  default: ({
+    label,
+    orderId,
+    orderNumber,
+    awaitingApprovalAmount,
+  }: {
+    label?: string;
+    orderId: string;
+    orderNumber?: string;
+    awaitingApprovalAmount?: number;
+  }) => {
     const React = require('react');
     return React.createElement(
       'button',
-      { type: 'button', 'data-order-id': orderId },
+      {
+        type: 'button',
+        'data-order-id': orderId,
+        'data-order-number': orderNumber,
+        'data-awaiting': awaitingApprovalAmount,
+      },
       label ?? 'Enviar a EVA',
     );
   },
@@ -223,6 +238,32 @@ describe('CcPedidosTable — gate del botón "Enviar a EVA" por fila', () => {
   it('NO muestra el botón cuando el pedido ya fue enviado (tiene evaStatus)', () => {
     renderTable([makeOrder({ courier: 'EVA', evaStatus: 'REGISTRADO' })]);
     expect(screen.queryByRole('button', { name: /enviar/i })).toBeNull();
+  });
+
+  it('le pasa al botón el adelanto sin aprobar (un Yape PENDING no resta del cobro) y el N° de pedido', () => {
+    renderTable([
+      makeOrder({
+        courier: 'EVA',
+        evaStatus: null,
+        grandTotal: '179.00',
+        payments: [{ id: 'p1', amount: '20.00', status: 'PENDING', paymentMethod: 'YAPE' }] as unknown as OrderHeader['payments'],
+      }),
+    ]);
+    const button = screen.getByRole('button', { name: /enviar/i });
+    expect(button).toHaveAttribute('data-awaiting', '20');
+    expect(button).toHaveAttribute('data-order-number', 'ORD-001');
+  });
+
+  it('con el adelanto ya aprobado no hay nada por aprobar', () => {
+    renderTable([
+      makeOrder({
+        courier: 'EVA',
+        evaStatus: null,
+        grandTotal: '179.00',
+        payments: [{ id: 'p1', amount: '20.00', status: 'PAID', paymentMethod: 'YAPE' }] as unknown as OrderHeader['payments'],
+      }),
+    ]);
+    expect(screen.getByRole('button', { name: /enviar/i })).toHaveAttribute('data-awaiting', '0');
   });
 
   it('mantiene el badge de estado EVA aunque el botón no se muestre', () => {

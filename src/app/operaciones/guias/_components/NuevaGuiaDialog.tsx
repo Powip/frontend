@@ -15,6 +15,8 @@ import { toast } from "sonner";
 import { Loader2, PackagePlus, FolderInput, Search, Lock } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { advancesAwaitingApproval } from "@/utils/guideOrderBalance";
+import { usePendingAdvanceGuard } from "@/components/shared/PendingAdvanceDialog";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -74,6 +76,14 @@ export default function NuevaGuiaDialog({
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [detailsGuideId, setDetailsGuideId] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const { guard: guardAdvance, dialog: advanceDialog } = usePendingAdvanceGuard();
+
+  // Asignar a una guía deja al courier cobrando el total de los pedidos con un adelanto sin aprobar: se avisa antes.
+  const guardGuideAssignment = (action: string, confirmLabel: string, run: () => void) =>
+    guardAdvance(
+      { rows: advancesAwaitingApproval(orders.filter((o) => selectedIds.has(o.id))), action, confirmLabel },
+      run,
+    );
 
   // Elegibles para armar guía: preparados o ya confirmados por llamada (o
   // con guía previa sin courier), con entrega a domicilio y sin guía
@@ -417,7 +427,7 @@ export default function NuevaGuiaDialog({
                 <Button
                   variant="outline"
                   disabled={selectedIds.size === 0 || !canDispatch}
-                  onClick={() => setAddModalOpen(true)}
+                  onClick={() => void guardGuideAssignment("Si los agregas a la guía ahora", "Agregar igual", () => setAddModalOpen(true))}
                   className="gap-1.5"
                 >
                   <FolderInput className="h-4 w-4" />
@@ -425,7 +435,7 @@ export default function NuevaGuiaDialog({
                 </Button>
                 <Button
                   disabled={selectedIds.size === 0 || !canDispatch}
-                  onClick={() => setCreateModalOpen(true)}
+                  onClick={() => void guardGuideAssignment("Si generas la guía ahora", "Generar guía igual", () => setCreateModalOpen(true))}
                   className="gap-1.5 bg-teal-600 hover:bg-teal-700"
                 >
                   <PackagePlus className="h-4 w-4" />
@@ -436,6 +446,8 @@ export default function NuevaGuiaDialog({
           )}
         </DialogContent>
       </Dialog>
+
+      {advanceDialog}
 
       <CreateGuideModal
         open={createModalOpen}
