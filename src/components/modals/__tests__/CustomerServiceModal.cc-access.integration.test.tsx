@@ -185,7 +185,7 @@ it("allows an explicit order editor to edit customer data while keeping commerci
   expect(getCcOrderConfirmationCapabilities).not.toHaveBeenCalled();
 });
 
-it("lets a seller complete the missing DNI and confirm the same legacy manual CC order after reloading its revision", async () => {
+it("lets a seller complete the missing DNI before confirming the same legacy manual CC order, using its reloaded revision", async () => {
   const { setOrder } = renderOrder(
     ["CONFIRM_SALE", "CREATE_SALE", "MANAGE_CLIENTS", "MANAGE_LEADS", "VIEW_CUSTOMER_SERVICE", "VIEW_LEADS", "VIEW_SALES"],
     "manual", "VENTAS", {
@@ -200,7 +200,8 @@ it("lets a seller complete the missing DNI and confirm the same legacy manual CC
     return {} as Awaited<ReturnType<typeof updateDatosClienteCC>>;
   });
   const user = userEvent.setup();
-  expect(await screen.findByRole("button", { name: "Confirmar venta" }, { timeout: 5000 })).toBeDisabled();
+  // Sin DNI pero con dirección completa la venta ya se puede confirmar: el DNI se exige al despachar.
+  expect(await screen.findByRole("button", { name: "Confirmar venta" }, { timeout: 5000 })).toBeEnabled();
   expect(screen.getByTitle("Editar Pedido")).toBeDisabled();
   expect(screen.queryByRole("button", { name: "Confirmar entrega Lima" })).not.toBeInTheDocument();
   await user.type(screen.getByRole("textbox", { name: "DNI del cliente" }), "45678912");

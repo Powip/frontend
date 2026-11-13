@@ -25,6 +25,11 @@ interface Props {
   canalOrigen?: string | null;
   orderUpdatedAt?: string;
   datosCompletos: boolean;
+  /**
+   * Dirección de entrega completa SIN contar el DNI. La venta se puede aceptar sin DNI (se exige al
+   * confirmar el despacho), pero no sin dirección. Si no se informa, rige `datosCompletos`.
+   */
+  deliveryDataComplete?: boolean;
   embedded?: boolean;
   onUpdated: () => void;
 }
@@ -35,6 +40,7 @@ export function CcSaleConfirmationPanel({
   canalOrigen,
   orderUpdatedAt,
   datosCompletos,
+  deliveryDataComplete,
   embedded = false,
   onUpdated,
 }: Props) {
@@ -42,6 +48,7 @@ export function CcSaleConfirmationPanel({
   const companyId = auth?.company?.id;
   const userId = auth?.user?.id;
   const isShopifyCod = canalOrigen === "shopify_cod";
+  const canAcceptSale = deliveryDataComplete ?? datosCompletos;
   const queryClient = useQueryClient();
   const { capabilities, canRequestConfirmation, canConfirm } = useCcPurchaseConfirmationAccess(orderId, canalOrigen);
   const scope = JSON.stringify([
@@ -81,7 +88,7 @@ export function CcSaleConfirmationPanel({
   }, []);
 
   function startReview() {
-    if (!canConfirm || !datosCompletos || !orderUpdatedAt || mutationLock.current) return;
+    if (!canConfirm || !canAcceptSale || !orderUpdatedAt || mutationLock.current) return;
     if (command.current?.scope !== scope) {
       command.current = {
         scope,
@@ -100,7 +107,7 @@ export function CcSaleConfirmationPanel({
     if (
       mutationLock.current ||
       !canConfirm ||
-      !datosCompletos ||
+      !canAcceptSale ||
       !orderUpdatedAt ||
       !reviewing ||
       !review?.accepted ||
@@ -168,9 +175,14 @@ export function CcSaleConfirmationPanel({
           {failure.message}
         </p>
       ) : null}
-      {canConfirm && !datosCompletos ? (
+      {canConfirm && !canAcceptSale ? (
         <p className="text-amber-700 dark:text-amber-400">
           Completa y guarda los datos del cliente antes de confirmar la venta.
+        </p>
+      ) : null}
+      {canConfirm && canAcceptSale && !datosCompletos ? (
+        <p className="text-muted-foreground">
+          Falta el DNI del cliente: no hace falta para confirmar la venta, pero sí para confirmar el despacho.
         </p>
       ) : null}
       {canConfirm && !orderUpdatedAt ? (
@@ -198,7 +210,7 @@ export function CcSaleConfirmationPanel({
           <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
-              disabled={!review.accepted || !datosCompletos || pending}
+              disabled={!review.accepted || !canAcceptSale || pending}
               onClick={() => void confirmSale()}
             >
               {pending ? "Confirmando…" : "Confirmar y continuar aquí"}
@@ -212,7 +224,7 @@ export function CcSaleConfirmationPanel({
         <Button
           size="sm"
           className="bg-green-600 hover:bg-green-700"
-          disabled={!datosCompletos || !orderUpdatedAt || pending}
+          disabled={!canAcceptSale || !orderUpdatedAt || pending}
           onClick={startReview}
         >
           <Check className="mr-1 h-3 w-3" />

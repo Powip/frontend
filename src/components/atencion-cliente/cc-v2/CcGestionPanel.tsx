@@ -22,6 +22,8 @@ interface Props {
   subEstadoCc: SubEstadoCc;
   callAttempts: number;
   datosCompletos: boolean;
+  /** Dirección completa sin contar el DNI: permite aceptar la venta sin DNI (se exige al despachar). */
+  deliveryDataComplete?: boolean;
   onUpdated: () => void;
   beforeCancellation?: () => Promise<boolean>;
   aliclikDispatchStatus?: string | null;
@@ -71,6 +73,7 @@ export function CcGestionPanel({
   subEstadoCc,
   callAttempts,
   datosCompletos,
+  deliveryDataComplete,
   onUpdated,
   beforeCancellation,
   aliclikDispatchStatus,
@@ -161,6 +164,7 @@ export function CcGestionPanel({
         canalOrigen={canalOrigen}
         orderUpdatedAt={orderUpdatedAt}
         datosCompletos={datosCompletos}
+        deliveryDataComplete={deliveryDataComplete}
         onUpdated={onUpdated}
       />
     ) : (
@@ -234,6 +238,7 @@ export function CcGestionPanel({
           canalOrigen={canalOrigen}
           orderUpdatedAt={orderUpdatedAt}
           datosCompletos={datosCompletos}
+          deliveryDataComplete={deliveryDataComplete}
           onUpdated={onUpdated}
         />
       ) : commercialStockState === "DEFERRED" ? (

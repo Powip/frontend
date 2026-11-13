@@ -88,3 +88,44 @@ test("permite ingresar un DNI sin campos de dirección cuando no hay cliente car
     dniCliente: "46789123",
   }));
 });
+
+describe("DNI faltante: no bloquea aceptar la venta, solo el despacho", () => {
+  const RED_WARNING = "Datos incompletos o corruptos — corregir antes de continuar";
+  const DNI_NOTICE = "Falta el DNI del cliente: no hace falta para confirmar la venta, pero sí para confirmar el despacho.";
+
+  test.each([null, "", "   "])("con DNI vacío (%p) y dirección completa muestra un aviso informativo, no el cartel rojo", (dniCliente) => {
+    render(<DatosIncompletosBlock {...baseProps} dniCliente={dniCliente} />);
+
+    expect(screen.getByText(DNI_NOTICE)).toBeInTheDocument();
+    expect(screen.queryByText(RED_WARNING)).not.toBeInTheDocument();
+    // sigue pudiendo cargarse el DNI desde acá
+    expect(screen.getByLabelText("DNI del cliente")).toBeInTheDocument();
+  });
+
+  test("un DNI genérico cargado (00000000) sigue siendo dato corrupto: cartel rojo", () => {
+    render(<DatosIncompletosBlock {...baseProps} dniCliente="00000000" />);
+
+    expect(screen.getByText(RED_WARNING)).toBeInTheDocument();
+    expect(screen.queryByText(DNI_NOTICE)).not.toBeInTheDocument();
+  });
+
+  test("si además la dirección es basura, el problema es real: cartel rojo", () => {
+    render(
+      <DatosIncompletosBlock
+        {...baseProps}
+        dniCliente={null}
+        customer={{ ...customer, address: "POR COMPLETAR" }}
+      />,
+    );
+
+    expect(screen.getByText(RED_WARNING)).toBeInTheDocument();
+    expect(screen.queryByText(DNI_NOTICE)).not.toBeInTheDocument();
+  });
+
+  test("con DNI y dirección correctos no muestra ningún aviso", () => {
+    render(<DatosIncompletosBlock {...baseProps} />);
+
+    expect(screen.queryByText(DNI_NOTICE)).not.toBeInTheDocument();
+    expect(screen.queryByText(RED_WARNING)).not.toBeInTheDocument();
+  });
+});

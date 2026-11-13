@@ -61,6 +61,7 @@ interface RenderProps {
   beforeCancellation?: () => Promise<boolean>;
   callAttempts?: number;
   datosCompletos?: boolean;
+  deliveryDataComplete?: boolean;
   commercialStage?: "LEAD" | "SALE" | null;
   commercialLeadId?: string | null;
   canalOrigen?: string | null;
@@ -163,6 +164,40 @@ test("Shopify COD keeps calling and confirmation in CC without a Leads link", as
   await userEvent.click(screen.getByRole("button", { name: "Confirmar y continuar aquí" }));
   await waitFor(() => expect(confirmarVentaCc).toHaveBeenCalledWith("order-1", expect.objectContaining({ leadId: "lead-1" })));
   expect(screen.queryByRole("link", { name: "Gestionar y confirmar Lead" })).not.toBeInTheDocument();
+  expect(confirmarDespacho).not.toHaveBeenCalled();
+});
+
+test("a Shopify COD order without DNI but with a complete address can be confirmed as a sale from CC", async () => {
+  jest.mocked(getCcOrderConfirmationCapabilities).mockResolvedValue({ enabled: true, canConfirm: true });
+  jest.mocked(confirmarVentaCc).mockResolvedValue({ lead: { id: "lead-1" } } as Awaited<ReturnType<typeof confirmarVentaCc>>);
+  renderPanel({
+    subEstadoCc: "por_confirmar",
+    commercialStage: "LEAD",
+    commercialLeadId: "lead-1",
+    canalOrigen: "shopify_cod",
+    orderUpdatedAt: "2026-10-22T22:00:00.000Z",
+    commercialStockState: "DEFERRED",
+    datosCompletos: false,
+    deliveryDataComplete: true,
+  });
+  expect(await screen.findByRole("button", { name: "Confirmar venta" })).toBeEnabled();
+  await userEvent.click(screen.getByRole("button", { name: "Confirmar venta" }));
+  await userEvent.click(screen.getByRole("checkbox", { name: "El cliente aceptó los productos y el total del pedido" }));
+  await userEvent.click(screen.getByRole("button", { name: "Confirmar y continuar aquí" }));
+  await waitFor(() => expect(confirmarVentaCc).toHaveBeenCalledWith("order-1", expect.objectContaining({ leadId: "lead-1" })));
+});
+
+test("a confirmed sale without DNI still cannot confirm the dispatch: the DNI is required there", () => {
+  renderPanel({
+    subEstadoCc: "por_confirmar",
+    commercialStage: "SALE",
+    commercialStockState: "DEFERRED",
+    datosCompletos: false,
+    deliveryDataComplete: true,
+  });
+  const dispatch = screen.getByRole("button", { name: "Confirmar despacho" });
+  expect(dispatch).toBeDisabled();
+  expect(dispatch).toHaveAttribute("title", "Completá los datos requeridos antes de confirmar");
   expect(confirmarDespacho).not.toHaveBeenCalled();
 });
 
