@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo } from "react";
 import { AlertTriangle, Loader2, Check, Pencil } from "lucide-react";
 import { updateDatosClienteCC } from "@/services/atencionClienteService";
 import { isJunkDni } from "@/utils/junk-document.util";
+import { isJunkLocationValue as isJunk } from "./ccDeliveryData";
 import { toast } from "sonner";
 
 interface CustomerData {
@@ -20,18 +21,6 @@ interface Props {
   dniCliente: string | null | undefined;
   customer: CustomerData | null | undefined;
   onDatosCompletos: () => void;
-}
-
-const JUNK_VALUES = new Set([
-  "", "por completar", "-", "0", "s/d", "n/a", "na", "sd", "n/d", "nd",
-  "none", "null", "no data", "sin dato", "sin datos",
-  "lima_norte", "lima_centro", "lima_sur", "lima_este", "lima_oeste",
-  "zonas_aledanas", "provincias",
-]);
-
-function isJunk(v: string | null | undefined): boolean {
-  if (!v || !v.trim()) return true;
-  return JUNK_VALUES.has(v.trim().toLowerCase());
 }
 
 interface FieldDef {
@@ -212,17 +201,35 @@ export function DatosIncompletosBlock({ orderId, dniCliente, customer, onDatosCo
     }
   }
 
+  // Solo falta el DNI (vacío): no es un dato corrupto ni impide aceptar la venta; se exige al despachar.
+  const soloFaltaDni =
+    !forceEdit && !!dniActivo && locationConProblemas.length === 0 && !(dniCliente ?? "").trim();
+
   // Modo advertencia (datos realmente corruptos) vs modo edición silenciosa
-  const isWarning = hasProblemas;
+  const isWarning = hasProblemas && !soloFaltaDni;
 
   return (
     <div className={`rounded-xl p-4 mb-4 border-2 ${
       isWarning
         ? "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
-        : "bg-slate-50 dark:bg-slate-900/30 border-slate-200 dark:border-slate-700"
+        : soloFaltaDni
+          ? "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800"
+          : "bg-slate-50 dark:bg-slate-900/30 border-slate-200 dark:border-slate-700"
     }`}>
       {/* Header */}
-      {isWarning ? (
+      {soloFaltaDni ? (
+        <>
+          <div className="flex items-center gap-2 mb-1">
+            <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />
+            <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+              Falta el DNI del cliente: no hace falta para confirmar la venta, pero sí para confirmar el despacho.
+            </p>
+          </div>
+          <p className="text-xs text-amber-700 dark:text-amber-300 mb-4">
+            Cuando lo tengas, ingresa los 8 dígitos y haz clic en <strong>Actualizar Datos</strong>.
+          </p>
+        </>
+      ) : isWarning ? (
         <>
           <div className="flex items-center gap-2 mb-1">
             <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0" />

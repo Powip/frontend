@@ -145,6 +145,42 @@ it("keeps the visible confirmation button disabled until the customer data is sa
   expect(screen.getByRole("button", { name: "Confirmar venta" })).toBeEnabled();
 });
 
+const DNI_AT_DISPATCH_NOTE =
+  "Falta el DNI del cliente: no hace falta para confirmar la venta, pero sí para confirmar el despacho.";
+
+it("lets the sale be confirmed without a DNI when the delivery address is complete, and says the DNI is asked at dispatch", async () => {
+  const { onUpdated } = renderPanel({ datosCompletos: false, deliveryDataComplete: true });
+
+  expect(await screen.findByRole("button", { name: "Confirmar venta" })).toBeEnabled();
+  expect(screen.getByText(DNI_AT_DISPATCH_NOTE)).toBeInTheDocument();
+  expect(
+    screen.queryByText("Completa y guarda los datos del cliente antes de confirmar la venta."),
+  ).not.toBeInTheDocument();
+
+  const user = await reviewAndAccept();
+  await user.click(screen.getByRole("button", { name: "Confirmar y continuar aquí" }));
+
+  await waitFor(() => expect(onUpdated).toHaveBeenCalledTimes(1));
+  expect(confirmCommercialOrderPurchase).toHaveBeenCalledTimes(1);
+});
+
+it("keeps blocking the sale when the delivery address is incomplete, even if the DNI is not required", async () => {
+  renderPanel({ datosCompletos: false, deliveryDataComplete: false });
+
+  expect(await screen.findByRole("button", { name: "Confirmar venta" })).toBeDisabled();
+  expect(
+    screen.getByText("Completa y guarda los datos del cliente antes de confirmar la venta."),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(DNI_AT_DISPATCH_NOTE)).not.toBeInTheDocument();
+});
+
+it("shows no DNI note when the customer data is already complete", async () => {
+  renderPanel({ datosCompletos: true, deliveryDataComplete: true });
+
+  expect(await screen.findByRole("button", { name: "Confirmar venta" })).toBeEnabled();
+  expect(screen.queryByText(DNI_AT_DISPATCH_NOTE)).not.toBeInTheDocument();
+});
+
 it("does not allow confirming an order whose reviewed timestamp is missing", async () => {
   renderPanel({ orderUpdatedAt: undefined });
 

@@ -200,7 +200,25 @@ it("reviews and confirms the Lead from CC without requesting a sale receipt", as
   expect(jest.mocked(axiosAuth.get).mock.calls.every(([url]) => !String(url).endsWith("/receipt"))).toBe(true);
 });
 
-it("saves the missing DNI and confirms only after reloading the updated order", async () => {
+it("confirms the sale without a DNI when the delivery address is complete: the DNI is asked at dispatch", async () => {
+  currentOrder = order({ dniCliente: null, datosCompletos: false });
+  const { onOrderUpdated } = renderModal();
+  const user = userEvent.setup();
+
+  expect(await screen.findByRole("button", { name: "Confirmar venta" })).toBeEnabled();
+  expect(screen.getAllByText(/no hace falta para confirmar la venta, pero sí para confirmar el despacho/).length).toBeGreaterThan(0);
+  await user.click(screen.getByRole("button", { name: "Confirmar venta" }));
+  await user.click(screen.getByRole("checkbox", { name: "El cliente aceptó los productos y el total del pedido" }));
+  await user.click(screen.getByRole("button", { name: "Confirmar y continuar aquí" }));
+
+  await waitFor(() => expect(onOrderUpdated).toHaveBeenCalledTimes(1));
+  expect(confirmCommercialOrderPurchase).toHaveBeenCalledWith("order-cc-1", {
+    commandId: expect.any(String), leadId: "lead-cc-1", expectedOrderUpdatedAt: ORDER_UPDATED_AT,
+  });
+  expect(updateDatosClienteCC).not.toHaveBeenCalled();
+});
+
+it("saves the DNI before confirming and confirms with the reloaded order", async () => {
   currentOrder = order({ dniCliente: null, datosCompletos: false });
   jest.mocked(updateDatosClienteCC).mockImplementation(async () => {
     currentOrder = order({ dniCliente: "45678912", datosCompletos: true, updated_at: SAVED_UPDATED_AT });
@@ -209,7 +227,7 @@ it("saves the missing DNI and confirms only after reloading the updated order", 
   const { onOrderUpdated } = renderModal();
   const user = userEvent.setup();
 
-  expect(await screen.findByRole("button", { name: "Confirmar venta" })).toBeDisabled();
+  expect(await screen.findByRole("button", { name: "Confirmar venta" })).toBeEnabled();
   await user.type(screen.getByRole("textbox", { name: "DNI del cliente" }), "45678912");
   await user.click(screen.getByRole("button", { name: "Actualizar Datos" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "Confirmar venta" })).toBeEnabled());
@@ -223,6 +241,35 @@ it("saves the missing DNI and confirms only after reloading the updated order", 
     commandId: expect.any(String), leadId: "lead-cc-1", expectedOrderUpdatedAt: SAVED_UPDATED_AT,
   });
   expect(jest.mocked(axiosAuth.get).mock.calls.every(([url]) => !String(url).endsWith("/receipt"))).toBe(true);
+});
+
+it("keeps blocking the sale without DNI when the delivery address is incomplete", async () => {
+  currentOrder = order({
+    dniCliente: null,
+    datosCompletos: false,
+    customer: { ...order().customer, address: "POR COMPLETAR" },
+  });
+  renderModal();
+
+  expect(await screen.findByRole("button", { name: "Confirmar venta" })).toBeDisabled();
+  expect(screen.getByText("Completa y guarda los datos del cliente antes de confirmar la venta.")).toBeInTheDocument();
+  expect(confirmCommercialOrderPurchase).not.toHaveBeenCalled();
+});
+
+it("judges the address by the delivery snapshot, like the backend, not by the customer record", async () => {
+  currentOrder = order({
+    dniCliente: null,
+    datosCompletos: false,
+    customer: { ...order().customer, province: "", city: "", district: "", address: "" },
+    deliverySnapshot: {
+      version: 1, type: "HOME", department: "Lima", province: "Lima", district: "Surco",
+      address: "Av. Caminos del Inca 100", agency: null, reference: null,
+      latitude: null, longitude: null, googleMapsUrl: null, zone: null,
+    },
+  });
+  renderModal();
+
+  expect(await screen.findByRole("button", { name: "Confirmar venta" })).toBeEnabled();
 });
 
 it("shows a readonly Lead without CC editor or confirmation action", async () => {

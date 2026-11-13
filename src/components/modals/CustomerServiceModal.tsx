@@ -102,6 +102,7 @@ import ScheduledDeliverySection from "./ScheduledDeliverySection";
 import { trackShalomGuide } from "@/services/shalomService";
 import { DatosIncompletosBlock } from "@/components/atencion-cliente/cc-v2/DatosIncompletosBlock";
 import { CcGestionPanel } from "@/components/atencion-cliente/cc-v2/CcGestionPanel";
+import { hasCompleteDeliveryLocation } from "@/components/atencion-cliente/cc-v2/ccDeliveryData";
 import { CcScriptPanel } from "@/components/atencion-cliente/cc-v2/CcScriptPanel";
 import { OrderHeader, OrderStatus, SubEstadoCc } from "@/interfaces/IOrder";
 import { getAvailableStatuses, getStatusChainSteps, getStatusLabel } from "@/utils/domain/orders-status-flow";
@@ -285,6 +286,8 @@ export default function CustomerServiceModal({
 
   // CC v2 — datos incompletos y gestión
   const [datosCompletos, setDatosCompletos] = useState<boolean>(true);
+  // La venta se puede aceptar sin DNI (se exige al confirmar el despacho), no sin dirección de entrega.
+  const deliveryDataComplete = orderHeader ? hasCompleteDeliveryLocation(orderHeader) : undefined;
   const [dniCliente, setDniCliente] = useState<string | null>(null);
   const [referenciaEntrega, setReferenciaEntrega] = useState<string | null>(null);
   const [canalOrigen, setCanalOrigen] = useState<string | null>(null);
@@ -1723,6 +1726,7 @@ export default function CustomerServiceModal({
                         subEstadoCc={ccSubEstado}
                         callAttempts={receipt.callAttempts ?? 0}
                         datosCompletos={datosCompletos}
+                        deliveryDataComplete={deliveryDataComplete}
                         beforeCancellation={() => routeSaleLifecycle(orderHeader, "ANULADO", setLifecycleAction)}
                         aliclikDispatchStatus={aliclikDispatchStatus}
                         aliclikSyncedAt={aliclikSyncedAt}
@@ -1742,6 +1746,7 @@ export default function CustomerServiceModal({
                         canalOrigen={orderHeader?.canalOrigen}
                         orderUpdatedAt={orderHeader?.updated_at}
                         datosCompletos={datosCompletos}
+                        deliveryDataComplete={deliveryDataComplete}
                         onUpdated={() => {
                           void fetchReceipt();
                           void fetchLogs();

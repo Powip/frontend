@@ -80,7 +80,7 @@ import { bumpProductFrequency, getProductFrequencies } from "@/utils/productFreq
 import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
 import { resolveBundleVariant } from "@/utils/resolveBundleVariant";
 import { buildOrderItem, getOrderItemPricing } from "./orderItemPricing";
-import { validateClientDocument } from "./clientDocumentValidation";
+import { isClientDocumentRequired, validateClientDocument } from "./clientDocumentValidation";
 import { buildClientUpdatePayload, clientToFormFields, splitOrderClientChanges } from "./clientForm";
 import { clientSaveErrorMessage } from "./clientSaveError";
 import {
@@ -1082,10 +1082,11 @@ function RegistrarVentaContent() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productQuery, selectedInventory]);
 
+  const isDocumentRequired = isClientDocumentRequired(salesRegion, isEditingShopifyCodOrder);
   const clientDocumentErrors = validateClientDocument(
     clientForm.documentType,
     clientForm.documentNumber,
-    salesRegion === "PROVINCIA",
+    isDocumentRequired,
   );
   const hasValidClientDistrict = !!clientForm.district.trim();
   const districtError = clientErrors.district ?? (
@@ -2294,7 +2295,7 @@ function RegistrarVentaContent() {
                       <div className="space-y-1">
                         <Label className={clientErrors.documentType ? "text-destructive" : ""}>
                           Tipo de documento
-                          {salesRegion === "PROVINCIA" && (
+                          {isDocumentRequired && (
                             <span className="text-destructive"> *</span>
                           )}
                         </Label>
@@ -2344,7 +2345,7 @@ function RegistrarVentaContent() {
                       <div className="space-y-1">
                         <Label className={clientErrors.documentNumber ? "text-destructive" : ""}>
                           N° Documento
-                          {salesRegion === "PROVINCIA" && (
+                          {isDocumentRequired && (
                             <span className="text-destructive"> *</span>
                           )}
                         </Label>
