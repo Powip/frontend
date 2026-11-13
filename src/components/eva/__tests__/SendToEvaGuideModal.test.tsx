@@ -1360,3 +1360,99 @@ describe('SendToEvaGuideModal', () => {
     });
   });
 });
+
+// ── Adelantos sin aprobar antes de enviar ────────────────────────────────────
+//
+// EVA recibe `amount` como lo que el courier debe cobrar: total − pagos PAID. Un adelanto
+// PENDING (registrado pero sin aprobar) no resta, así que EVA recibiría el total completo y,
+// como el monto queda en el sistema del courier, aprobar el pago después no lo corrige.
+
+describe('SendToEvaGuideModal: adelantos sin aprobar antes de enviar', () => {
+  const ORDER_WITH_PENDING_ADVANCE: EvaGuideOrderItem = {
+    ...ORDER_1,
+    grandTotal: 179,
+    payments: [{ id: 'pay-pending', amount: 20, status: 'PENDING' }],
+  };
+  const sendButton = () => screen.getByRole('button', { name: /enviar guía a eva/i });
+
+  it('avisa qué pedido tiene adelanto sin aprobar y NO envía a EVA hasta confirmar', async () => {
+    renderModal({ orders: [ORDER_WITH_PENDING_ADVANCE, ORDER_2] });
+    await waitForTableReady();
+    const user = userEvent.setup();
+
+    await user.click(sendButton());
+
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog).toHaveTextContent('1 pedido tiene un adelanto sin aprobar');
+    expect(dialog).toHaveTextContent('ORD-001');
+    expect(dialog).toHaveTextContent('adelanto S/ 20.00');
+    expect(dialog).toHaveTextContent('cobrará S/ 179.00');
+    expect(dialog).not.toHaveTextContent('ORD-002');
+    expect(mockCreateOrdersBulk).not.toHaveBeenCalled();
+  });
+
+  it('"Enviar igual" envía la guía con el mismo monto que mostraba el aviso', async () => {
+    mockCreateOrdersBulk.mockResolvedValue([makeBulkResult('order-1', 'created', { trackingId: 'TRK-1' })]);
+    renderModal({ orders: [ORDER_WITH_PENDING_ADVANCE] });
+    await waitForTableReady();
+    const user = userEvent.setup();
+    await user.click(sendButton());
+
+    await user.click(await screen.findByRole('button', { name: 'Enviar igual' }));
+
+    await waitFor(() => expect(mockCreateOrdersBulk).toHaveBeenCalledTimes(1));
+    const [, payloads] = mockCreateOrdersBulk.mock.calls[0];
+    expect(payloads[0]).toEqual(expect.objectContaining({ orderId: 'order-1', amount: 179 }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  it('"Cancelar" cierra el aviso y no envía nada a EVA', async () => {
+    renderModal({ orders: [ORDER_WITH_PENDING_ADVANCE] });
+    await waitForTableReady();
+    const user = userEvent.setup();
+    await user.click(sendButton());
+
+    await user.click(await screen.findByRole('button', { name: 'Cancelar' }));
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    expect(mockCreateOrdersBulk).not.toHaveBeenCalled();
+  });
+
+  it('si el operador ya bajó el monto a cobrar, el aviso muestra el monto que realmente se enviará', async () => {
+    renderModal({ orders: [ORDER_WITH_PENDING_ADVANCE] });
+    await waitForTableReady();
+    const user = userEvent.setup();
+    const amountInput = within(getCardByOrderId('order-1')).getByDisplayValue('179');
+    await user.clear(amountInput);
+    await user.type(amountInput, '159');
+
+    await user.click(sendButton());
+
+    expect(await screen.findByRole('alertdialog')).toHaveTextContent('cobrará S/ 159.00');
+  });
+
+  it('un pedido con adelanto sin aprobar que NO está tildado no dispara el aviso', async () => {
+    mockCreateOrdersBulk.mockResolvedValue([makeBulkResult('order-2', 'created', { trackingId: 'TRK-2' })]);
+    renderModal({ orders: [ORDER_WITH_PENDING_ADVANCE, ORDER_2] });
+    await waitForTableReady();
+    const user = userEvent.setup();
+    await user.click(getCardCheckbox(getCardByOrderId('order-1')));
+
+    await user.click(sendButton());
+
+    await waitFor(() => expect(mockCreateOrdersBulk).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+
+  it('sin adelantos pendientes envía directo, sin aviso', async () => {
+    mockCreateOrdersBulk.mockResolvedValue([makeBulkResult('order-2', 'created', { trackingId: 'TRK-2' })]);
+    renderModal({ orders: [ORDER_2] });
+    await waitForTableReady();
+    const user = userEvent.setup();
+
+    await user.click(sendButton());
+
+    await waitFor(() => expect(mockCreateOrdersBulk).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+});

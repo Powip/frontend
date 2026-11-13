@@ -50,6 +50,8 @@ import {
 } from "@/services/evaService";
 import EvaLinkProductsStep from "./EvaLinkProductsStep";
 import EvaSkuItemsEditor from "./EvaSkuItemsEditor";
+import { advancesAwaitingApproval, type AdvanceRow } from "@/utils/guideOrderBalance";
+import { usePendingAdvanceGuard } from "@/components/shared/PendingAdvanceDialog";
 import {
   buildEvaItemsPayload,
   codesFromMappings,
@@ -337,6 +339,16 @@ export default function SendToEvaGuideModal({
 
   // Envío
   const [sending, setSending] = useState(false);
+  const {
+    guard: guardAdvance,
+    dismiss: dismissAdvanceWarning,
+    dialog: advanceDialog,
+  } = usePendingAdvanceGuard();
+
+  // Si el modal se cierra con el aviso abierto, no debe reaparecer al reabrirlo.
+  useEffect(() => {
+    if (!open) dismissAdvanceWarning();
+  }, [open, dismissAdvanceWarning]);
   const [isSuccess, setIsSuccess] = useState(false);
   const [results, setResults] = useState<EvaGuideResultRow[]>([]);
 
@@ -657,7 +669,22 @@ export default function SendToEvaGuideModal({
 
   // ─── RENDER ───────────────────────────────────────────
 
+  // EVA recibe `amount` como lo que el courier debe cobrar y ese monto queda en su sistema: un adelanto
+  // sin aprobar no resta, y aprobarlo después ya no lo corrige. Se avisa antes de enviar. Como el monto es
+  // editable por fila, el aviso muestra el que realmente se va a enviar.
+  const advanceRows = (): AdvanceRow[] =>
+    advancesAwaitingApproval(selectedValidOrders).map((row) => {
+      const state = rows[row.id];
+      return state ? { ...row, pending: state.prepaid ? 0 : Number(state.amount) || 0 } : row;
+    });
+  const handleSendClick = () =>
+    guardAdvance(
+      { rows: advanceRows(), action: "Si envías ahora", confirmLabel: "Enviar igual" },
+      handleSendAll,
+    );
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-6xl max-h-[90vh] p-0 bg-white dark:bg-slate-900 overflow-visible">
         <div
@@ -1294,7 +1321,7 @@ export default function SendToEvaGuideModal({
                       </div>
 
                       <Button
-                        onClick={handleSendAll}
+                        onClick={handleSendClick}
                         disabled={!canSubmit}
                         className="w-full h-12 bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 text-white font-bold"
                       >
@@ -1316,5 +1343,7 @@ export default function SendToEvaGuideModal({
         </div>
       </DialogContent>
     </Dialog>
+    {advanceDialog}
+    </>
   );
 }

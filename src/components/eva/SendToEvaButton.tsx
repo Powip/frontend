@@ -19,6 +19,10 @@ interface SendToEvaButtonProps {
   district: string;
   address: string;
   amount: number;
+  /** N° de pedido, solo para nombrarlo en el aviso de adelanto sin aprobar. */
+  orderNumber?: string;
+  /** Adelanto registrado pero sin aprobar (pagos PENDING): no resta de `amount`; el modal avisa antes de crear el pedido. */
+  awaitingApprovalAmount?: number;
   /** Ítems del pedido (FEAT-26) — si no llegan, el modal los carga solo. */
   items?: EvaLinkableItem[];
   onSuccess?: () => void;
@@ -36,6 +40,8 @@ export default function SendToEvaButton({
   district,
   address,
   amount,
+  orderNumber,
+  awaitingApprovalAmount,
   items,
   onSuccess,
   variant = "outline",
@@ -68,6 +74,8 @@ export default function SendToEvaButton({
         district={district}
         address={address}
         amount={amount}
+        orderNumber={orderNumber}
+        awaitingApprovalAmount={awaitingApprovalAmount}
         items={items}
         onSuccess={onSuccess}
       />

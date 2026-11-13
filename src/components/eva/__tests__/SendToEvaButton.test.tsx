@@ -383,5 +383,36 @@ describe('SendToEvaButton', () => {
         expect(onSuccess).toHaveBeenCalled();
       });
     });
+
+    it('pasa el adelanto sin aprobar y el N° de pedido al modal: avisa antes de crear el pedido en EVA', async () => {
+      jest.mocked(getEvaCredentials).mockResolvedValue(MOCK_CREDENTIAL_RECOJO);
+      const mockCreateOrder = jest.mocked(createEvaOrder);
+      mockCreateOrder.mockClear();
+      mockCreateOrder.mockResolvedValue(MOCK_CREATE_RESULT);
+
+      const user = userEvent.setup();
+      render(
+        <SendToEvaButton
+          orderId="order-1"
+          companyId="company-1"
+          {...BASE_ORDER_DATA}
+          amount={179}
+          orderNumber="ORD-777"
+          awaitingApprovalAmount={20}
+        />,
+      );
+      await user.click(screen.getByRole('button', { name: /enviar a eva/i }));
+      await user.type(await screen.findByLabelText(/producto/i), 'Caja mediana');
+      const createBtn = screen.getByRole('button', { name: /crear pedido en eva/i });
+      await waitFor(() => expect(createBtn).not.toBeDisabled());
+
+      await user.click(createBtn);
+
+      const dialog = await screen.findByRole('alertdialog');
+      expect(dialog).toHaveTextContent('ORD-777');
+      expect(dialog).toHaveTextContent('adelanto S/ 20.00');
+      expect(dialog).toHaveTextContent('cobrará S/ 179.00');
+      expect(mockCreateOrder).not.toHaveBeenCalled();
+    });
   });
 });

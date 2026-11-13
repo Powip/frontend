@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { usePendingAdvanceGuard } from "@/components/shared/PendingAdvanceDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -106,6 +107,13 @@ interface SendToEvaModalProps {
   district: string;
   address: string;
   amount: number;
+  /** N° de pedido, solo para nombrarlo en el aviso de adelanto sin aprobar. */
+  orderNumber?: string;
+  /**
+   * Adelanto registrado pero sin aprobar (pagos PENDING). No resta de `amount`: EVA cobraría el total y
+   * el monto queda en su sistema, así que se avisa antes de crear el pedido.
+   */
+  awaitingApprovalAmount?: number;
   /**
    * Ítems del pedido (FEAT-26). Si no llegan, el modal los carga del recibo
    * de ms-ventas para armar el SKU EVA (ALMACEN) o el producto (RECOJO).
@@ -126,6 +134,8 @@ export default function SendToEvaModal({
   district,
   address,
   amount,
+  orderNumber,
+  awaitingApprovalAmount = 0,
   items,
   onSuccess,
 }: SendToEvaModalProps) {
@@ -345,6 +355,17 @@ export default function SendToEvaModal({
   // ─── VALIDACIÓN ───────────────────────────────────────
 
   const parsedAmount = parseFloat(localAmount);
+
+  const {
+    guard: guardAdvance,
+    dismiss: dismissAdvanceWarning,
+    dialog: advanceDialog,
+  } = usePendingAdvanceGuard();
+
+  // Si el modal se cierra con el aviso abierto, no debe reaparecer al reabrirlo.
+  useEffect(() => {
+    if (!open) dismissAdvanceWarning();
+  }, [open, dismissAdvanceWarning]);
   const parsedPackages = parseInt(packages, 10);
 
   /** Opciones del Combobox de distrito — exclusivamente el maestro ya cargado. */
@@ -448,7 +469,28 @@ export default function SendToEvaModal({
 
   // ─── RENDER ───────────────────────────────────────────
 
+  // Aviso previo: el monto que se cree en EVA es el que cobrará el courier. Se muestra el monto que
+  // realmente se enviará (es editable), no el calculado.
+  const handleCreateClick = () =>
+    guardAdvance(
+      {
+        rows:
+          awaitingApprovalAmount > 0
+            ? [{
+                id: orderId,
+                orderNumber: orderNumber ?? orderId,
+                awaitingApproval: awaitingApprovalAmount,
+                pending: Number.isNaN(parsedAmount) ? 0 : parsedAmount,
+              }]
+            : [],
+        action: "Si lo envías ahora",
+        confirmLabel: "Enviar igual",
+      },
+      handleCreate,
+    );
+
   return (
+    <>
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] p-0 bg-white dark:bg-slate-900 overflow-visible">
         <div
@@ -886,7 +928,7 @@ export default function SendToEvaModal({
                   {/* Botón de acción */}
                   <div className="pt-2 border-t dark:border-slate-700">
                     <Button
-                      onClick={handleCreate}
+                      onClick={handleCreateClick}
                       disabled={!canSubmit}
                       className="w-full h-12 bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700 text-white font-bold"
                     >
@@ -907,5 +949,7 @@ export default function SendToEvaModal({
         </div>
       </DialogContent>
     </Dialog>
+    {advanceDialog}
+    </>
   );
 }
