@@ -22,6 +22,9 @@ import {
 import { useSetDefaultSunatDocumentSequence } from "@/features/sunat/sunat-document-sequence/hooks/use-set-default-sunat-document-sequence";
 import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
 import type { SunatDocumentSequence } from "@/features/sunat/sunat-document-sequence/models/sunat-document-sequence";
+import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
+import { getActiveIssuers, getDefaultIssuer } from "@/features/sunat/sunat-profile/utils/issuers";
+import { ALL_ISSUERS } from "../IssuerBar";
 import { DeleteSunatDocumentSequenceDialog } from "../modals/DeleteSunatDocumentSequenceDialog";
 import { ManageSunatDocumentSequenceModal } from "../modals/ManageSunatDocumentSequenceModal";
 
@@ -80,12 +83,25 @@ function buildRows(sequences: SunatDocumentSequence[]): SeriesRow[] {
   return [...canonicalRows, ...extraRows];
 }
 
-export function SeriesTab() {
+interface SeriesTabProps {
+  /** Multi-RUC: RUC picked in the facturación bar (`ALL_ISSUERS` = the default one). */
+  issuerFilter?: string;
+}
+
+export function SeriesTab({ issuerFilter = ALL_ISSUERS }: SeriesTabProps = {}) {
   const [selectedDefinition, setSelectedDefinition] = useState<SeriesRowDefinition | null>(null);
   const [isAddingSeries, setIsAddingSeries] = useState(false);
   const [sequenceToDelete, setSequenceToDelete] = useState<SunatDocumentSequence | null>(null);
 
-  const { data: sequences = [], isLoading, isError } = useSunatDocumentSequences();
+  // Each RUC has its own series and counters: show the RUC picked in the
+  // bar, or the default one when "Todos" is selected.
+  const { data: sunatProfiles = [] } = useSunatProfiles();
+  const issuers = getActiveIssuers(sunatProfiles);
+  const issuer =
+    issuers.find((profile) => profile.id === issuerFilter) ?? getDefaultIssuer(sunatProfiles);
+  const sunatProfileId = issuer?.id;
+
+  const { data: sequences = [], isLoading, isError } = useSunatDocumentSequences(sunatProfileId);
 
   const setDefaultSequence = useSetDefaultSunatDocumentSequence();
 
@@ -112,6 +128,16 @@ export function SeriesTab() {
         <p className="text-sm text-muted-foreground">
           Mantén actualizado el último correlativo utilizado para cada serie.
         </p>
+
+        {issuers.length > 1 && issuer && (
+          <p className="mt-1 text-sm">
+            Series de <span className="font-semibold">{issuer.razonSocial}</span> · RUC {issuer.ruc}
+            .{" "}
+            <span className="text-muted-foreground">
+              Cada RUC tiene sus propias series; cámbialo en la barra de emisores.
+            </span>
+          </p>
+        )}
       </div>
 
       <BetaBanner>
@@ -200,6 +226,7 @@ export function SeriesTab() {
                                 setDefaultSequence.mutate({
                                   taxDocumentType: definition.taxDocumentType,
                                   series: definition.series,
+                                  ...(sunatProfileId ? { sunatProfileId } : {}),
                                 })
                               }
                             >
@@ -261,6 +288,7 @@ export function SeriesTab() {
         sequence={isAddingSeries ? null : selectedSequence}
         definition={isAddingSeries ? null : selectedDefinition}
         existingSequences={sequences}
+        sunatProfileId={sunatProfileId}
       />
 
       <DeleteSunatDocumentSequenceDialog
@@ -270,6 +298,7 @@ export function SeriesTab() {
         documentTypeLabel={
           sequenceToDelete ? getDocumentTypeLabel(sequenceToDelete.taxDocumentType) : ""
         }
+        sunatProfileId={sunatProfileId}
       />
     </div>
   );

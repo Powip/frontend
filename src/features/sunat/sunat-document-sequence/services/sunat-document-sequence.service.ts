@@ -38,8 +38,10 @@ export async function getSunatDocumentSequence(
   }
 }
 
-export async function getSunatDocumentSequences(): Promise<SunatDocumentSequence[]> {
-  const response = await getSunatDocumentSequencesApi();
+export async function getSunatDocumentSequences(
+  sunatProfileId?: string,
+): Promise<SunatDocumentSequence[]> {
+  const response = await getSunatDocumentSequencesApi(sunatProfileId);
 
   return response.map(toSunatDocumentSequence);
 }

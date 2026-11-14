@@ -55,6 +55,11 @@ const sunatDocumentSchema = z
       .string({ error: "Series is required" })
       .trim()
       .regex(/^[A-Z0-9]{1,4}$/, "Series must contain only uppercase letters and numbers"),
+    /**
+     * Issuer SUNAT profile (RUC) for multi-RUC companies. Omitted = the
+     * company's default profile.
+     */
+    sunatProfileId: z.string().trim().min(1).optional(),
     customer: sunatDocumentCustomerSchema,
     totals: sunatDocumentTotalsSchema,
     items: z.array(sunatDocumentLineItemSchema).min(1, "At least one invoice item is required"),

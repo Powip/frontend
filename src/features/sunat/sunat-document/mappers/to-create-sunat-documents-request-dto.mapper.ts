@@ -43,6 +43,7 @@ export function toCreateSunatDocumentsRequestDto(
       orderId: document.orderId,
       taxDocumentType: document.taxDocumentType,
       series: document.series,
+      ...(document.sunatProfileId ? { sunatProfileId: document.sunatProfileId } : {}),
 
       customer:
         document.customer || document.taxDocumentType === SUNAT_DOCUMENT_TYPES.SALES_RECEIPT

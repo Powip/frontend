@@ -26,6 +26,8 @@ interface DeleteSunatDocumentSequenceDialogProps {
    */
   sequence: SunatDocumentSequence | null;
   documentTypeLabel: string;
+  /** Multi-RUC: issuer the series belongs to. Default profile when omitted. */
+  sunatProfileId?: string;
 }
 
 export function DeleteSunatDocumentSequenceDialog({
@@ -33,6 +35,7 @@ export function DeleteSunatDocumentSequenceDialog({
   onClose,
   sequence,
   documentTypeLabel,
+  sunatProfileId,
 }: DeleteSunatDocumentSequenceDialogProps) {
   const deleteSequence = useDeleteSunatDocumentSequence();
 
@@ -49,6 +52,7 @@ export function DeleteSunatDocumentSequenceDialog({
       {
         taxDocumentType: sequence.taxDocumentType,
         series: sequence.series,
+        ...(sunatProfileId ? { sunatProfileId } : {}),
       },
       {
         onSuccess: onClose,

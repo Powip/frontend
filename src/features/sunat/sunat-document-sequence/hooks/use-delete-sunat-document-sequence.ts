@@ -27,7 +27,11 @@ export function useDeleteSunatDocumentSequence(): UseMutationResult<
       });
 
       queryClient.removeQueries({
-        queryKey: sunatDocumentSequenceKeys.detail(variables.taxDocumentType, variables.series),
+        queryKey: sunatDocumentSequenceKeys.detail(
+          variables.taxDocumentType,
+          variables.series,
+          variables.sunatProfileId,
+        ),
       });
 
       toast.success("Serie eliminada correctamente.");

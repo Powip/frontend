@@ -16,9 +16,13 @@ export function useSetDefaultSunatDocumentSequence(): UseMutationResult<
   return useMutation({
     mutationFn: setDefaultSunatDocumentSequence,
 
-    onSuccess: (sequence) => {
+    onSuccess: (sequence, variables) => {
       queryClient.setQueryData(
-        sunatDocumentSequenceKeys.detail(sequence.taxDocumentType, sequence.series),
+        sunatDocumentSequenceKeys.detail(
+          sequence.taxDocumentType,
+          sequence.series,
+          variables.sunatProfileId,
+        ),
         sequence,
       );
 

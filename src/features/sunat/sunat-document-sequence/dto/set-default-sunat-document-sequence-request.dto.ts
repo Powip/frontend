@@ -9,4 +9,9 @@ import type { SunatDocumentType } from "../../sunat-document/enums/sunat-documen
 export interface SetDefaultSunatDocumentSequenceRequestDto {
   taxDocumentType: SunatDocumentType;
   series: string;
+
+  /**
+   * Issuer SUNAT profile (RUC). Omitted = the company's default profile.
+   */
+  sunatProfileId?: string;
 }
