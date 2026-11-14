@@ -32,7 +32,7 @@ export function IssuerFilterSelect({ profiles, value, onChange }: IssuerFilterSe
 
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="w-full md:w-64" aria-label="RUC emisor">
+      <SelectTrigger className="w-full md:w-80" aria-label="RUC emisor">
         <SelectValue placeholder="Todos los RUC" />
       </SelectTrigger>
 

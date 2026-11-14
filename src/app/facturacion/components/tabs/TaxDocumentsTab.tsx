@@ -16,8 +16,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { IssuerChip } from "@/app/facturacion/components/IssuerChip";
 import { ALL_ISSUERS } from "@/app/facturacion/components/IssuerFilterSelect";
+import { IssuerLabel } from "@/app/facturacion/components/IssuerLabel";
 import DetalleComprobanteModal from "@/app/facturacion/components/modals/DetalleComprobanteModal";
 import EmitirComprobanteModal from "@/app/facturacion/components/modals/EmitirComprobanteModal";
 import LoteEmisionModal from "@/app/facturacion/components/modals/LoteEmisionModal";
@@ -741,7 +741,6 @@ export function TaxDocumentsTab({
                   <TableHead>Fecha</TableHead>
                   <TableHead>Venta / ID</TableHead>
                   <TableHead>Cliente</TableHead>
-                  {isMultiRuc && <TableHead>Emisor</TableHead>}
                   <TableHead>Tipo</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead className="text-center">Estado SUNAT</TableHead>
@@ -753,10 +752,7 @@ export function TaxDocumentsTab({
               <TableBody>
                 {filteredRows.length === 0 ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={isMultiRuc ? 10 : 9}
-                      className="h-40 text-center text-muted-foreground"
-                    >
+                    <TableCell colSpan={9} className="h-40 text-center text-muted-foreground">
                       {loading
                         ? "Cargando ventas..."
                         : "No hay comprobantes que coincidan con el filtro"}
@@ -800,13 +796,12 @@ export function TaxDocumentsTab({
                           </div>
                         </TableCell>
 
-                        {isMultiRuc && (
-                          <TableCell>
-                            <IssuerChip profiles={sunatProfiles} ruc={taxDocument?.rucIssuer} />
-                          </TableCell>
-                        )}
-
-                        <TableCell>{getDocumentTypeBadge(taxDocument)}</TableCell>
+                        <TableCell>
+                          {getDocumentTypeBadge(taxDocument)}
+                          {isMultiRuc && taxDocument && (
+                            <IssuerLabel profiles={sunatProfiles} ruc={taxDocument.rucIssuer} />
+                          )}
+                        </TableCell>
 
                         <TableCell className="text-right font-bold">
                           S/ {displayedTotal.toFixed(2)}
