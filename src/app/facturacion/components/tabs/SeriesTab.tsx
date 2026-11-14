@@ -24,7 +24,7 @@ import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-seque
 import type { SunatDocumentSequence } from "@/features/sunat/sunat-document-sequence/models/sunat-document-sequence";
 import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
 import { getActiveIssuers, getDefaultIssuer } from "@/features/sunat/sunat-profile/utils/issuers";
-import { ALL_ISSUERS } from "../IssuerBar";
+import { ALL_ISSUERS } from "../IssuerFilterSelect";
 import { DeleteSunatDocumentSequenceDialog } from "../modals/DeleteSunatDocumentSequenceDialog";
 import { ManageSunatDocumentSequenceModal } from "../modals/ManageSunatDocumentSequenceModal";
 
@@ -134,7 +134,7 @@ export function SeriesTab({ issuerFilter = ALL_ISSUERS }: SeriesTabProps = {}) {
             Series de <span className="font-semibold">{issuer.razonSocial}</span> · RUC {issuer.ruc}
             .{" "}
             <span className="text-muted-foreground">
-              Cada RUC tiene sus propias series; cámbialo en la barra de emisores.
+              Cada RUC tiene sus propias series; cámbialo en el filtro &quot;RUC emisor&quot;.
             </span>
           </p>
         )}

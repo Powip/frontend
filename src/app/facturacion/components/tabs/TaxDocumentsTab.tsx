@@ -16,8 +16,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ALL_ISSUERS } from "@/app/facturacion/components/IssuerBar";
 import { IssuerChip } from "@/app/facturacion/components/IssuerChip";
+import { ALL_ISSUERS } from "@/app/facturacion/components/IssuerFilterSelect";
 import DetalleComprobanteModal from "@/app/facturacion/components/modals/DetalleComprobanteModal";
 import EmitirComprobanteModal from "@/app/facturacion/components/modals/EmitirComprobanteModal";
 import LoteEmisionModal from "@/app/facturacion/components/modals/LoteEmisionModal";

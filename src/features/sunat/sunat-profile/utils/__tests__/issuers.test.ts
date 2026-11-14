@@ -4,9 +4,7 @@ import {
   getActiveIssuers,
   getDefaultIssuer,
   getIssuerBlockReason,
-  getIssuerColor,
   getIssuerShortName,
-  ISSUER_COLORS,
 } from "../issuers";
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -77,11 +75,6 @@ describe("issuers (multi-RUC)", () => {
   it("quita la forma societaria del nombre corto", () => {
     expect(getIssuerShortName(aranni)).toBe("CORPORACIÓN ARANNI");
     expect(getIssuerShortName(kunca)).toBe("KUNCA BEAUTY");
-  });
-
-  it("asigna un color estable por orden de creación", () => {
-    expect(getIssuerColor([kunca, aranni], "a")).toBe(ISSUER_COLORS[0]);
-    expect(getIssuerColor([kunca, aranni], "k")).toBe(ISSUER_COLORS[1]);
   });
 
   it("bloquea RUC inactivos o con certificado vencido", () => {

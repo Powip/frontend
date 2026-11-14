@@ -9,10 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { IssuerSelection } from "@/features/sunat/sunat-profile/hooks/use-issuer-selection";
-import {
-  getIssuerColor,
-  ISSUER_BLOCK_MESSAGES,
-} from "@/features/sunat/sunat-profile/utils/issuers";
+import { ISSUER_BLOCK_MESSAGES } from "@/features/sunat/sunat-profile/utils/issuers";
 
 interface IssuerSelectFieldProps {
   selection: IssuerSelection;
@@ -26,7 +23,7 @@ interface IssuerSelectFieldProps {
  * RUC; single-RUC companies just see which RUC will be used.
  */
 export function IssuerSelectField({ selection, hint, disabled }: IssuerSelectFieldProps) {
-  const { issuers, selected, selectIssuer, blockReason, isMultiRuc, profiles } = selection;
+  const { issuers, selected, selectIssuer, blockReason, isMultiRuc } = selection;
 
   if (issuers.length === 0) {
     return null;
@@ -45,13 +42,7 @@ export function IssuerSelectField({ selection, hint, disabled }: IssuerSelectFie
           <SelectContent>
             {issuers.map((issuer) => (
               <SelectItem key={issuer.id} value={issuer.id}>
-                <span className="flex items-center gap-2">
-                  <span
-                    className="h-2 w-2 shrink-0 rounded-full"
-                    style={{ backgroundColor: getIssuerColor(profiles, issuer.id) }}
-                  />
-                  {issuer.razonSocial} · RUC {issuer.ruc}
-                </span>
+                {issuer.razonSocial} · RUC {issuer.ruc}
               </SelectItem>
             ))}
           </SelectContent>

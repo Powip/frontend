@@ -6,10 +6,6 @@ import { getCertificateStatus } from "./get-certificate-status";
  * own certificate, SOL credentials and numbering series.
  */
 
-// Palette from the facturación mockup; assigned by creation order so a RUC
-// keeps the same color across reloads and filters.
-export const ISSUER_COLORS = ["#027778", "#0891B2", "#7C3AED", "#C65E17", "#2563D9", "#0A7A54"];
-
 const LEGAL_SUFFIX = /\s+(S\.?A\.?C\.?|E\.?I\.?R\.?L\.?|S\.?R\.?L\.?|S\.?A\.?A\.?|S\.?A\.?)$/i;
 
 /** Active profiles, default first, then by razón social. */
@@ -39,13 +35,6 @@ export function findIssuerByRuc(
 
 export function getIssuerShortName(profile: Pick<SunatProfile, "razonSocial">): string {
   return profile.razonSocial.trim().replace(LEGAL_SUFFIX, "");
-}
-
-export function getIssuerColor(profiles: SunatProfile[], profileId: string): string {
-  const ordered = [...profiles].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-  const index = ordered.findIndex((profile) => profile.id === profileId);
-
-  return ISSUER_COLORS[Math.max(index, 0) % ISSUER_COLORS.length];
 }
 
 export type IssuerBlockReason = "inactive" | "certificate-expired";

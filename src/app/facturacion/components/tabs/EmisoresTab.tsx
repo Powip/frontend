@@ -20,7 +20,6 @@ import { useSetDefaultSunatProfile } from "@/features/sunat/sunat-profile/hooks/
 import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
 import type { SunatProfile } from "@/features/sunat/sunat-profile/models/sunat-profile";
 import { getCertificateStatus } from "@/features/sunat/sunat-profile/utils/get-certificate-status";
-import { getIssuerColor } from "@/features/sunat/sunat-profile/utils/issuers";
 
 interface EmisoresTabProps {
   comprobanteRows: TaxDocumentRow[];
@@ -96,7 +95,6 @@ export function EmisoresTab({ comprobanteRows, onOpenIssuer }: EmisoresTabProps)
                   <EmisorRow
                     key={profile.id}
                     profile={profile}
-                    color={getIssuerColor(profiles, profile.id)}
                     rows={comprobanteRows.filter(
                       (row) => row.taxDocument?.rucIssuer === profile.ruc,
                     )}
@@ -111,7 +109,7 @@ export function EmisoresTab({ comprobanteRows, onOpenIssuer }: EmisoresTabProps)
         </CardContent>
       </Card>
 
-      <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary">
+      <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
         Los comprobantes ya emitidos conservan su RUC original. Toda nota de crédito o débito se
         emite con el RUC del comprobante que corrige.
       </div>
@@ -123,13 +121,12 @@ export function EmisoresTab({ comprobanteRows, onOpenIssuer }: EmisoresTabProps)
 
 function EmisorRow(props: {
   profile: SunatProfile;
-  color: string;
   rows: TaxDocumentRow[];
   onOpenIssuer: EmisoresTabProps["onOpenIssuer"];
   onMakeDefault: () => void;
   isMakingDefault: boolean;
 }) {
-  const { profile, color, rows } = props;
+  const { profile, rows } = props;
   const { data: sequences = [] } = useSunatDocumentSequences(profile.id, {
     enabled: profile.isActive,
   });
@@ -149,7 +146,6 @@ function EmisorRow(props: {
     <TableRow>
       <TableCell>
         <div className="flex items-center gap-2 font-semibold">
-          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
           {profile.razonSocial}
           {profile.isDefault && <Badge variant="secondary">Predeterminado</Badge>}
           {!profile.isActive && <Badge variant="outline">Inactivo</Badge>}

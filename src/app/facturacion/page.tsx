@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { ALL_ISSUERS, IssuerBar } from "@/app/facturacion/components/IssuerBar";
+import { ALL_ISSUERS, IssuerFilterSelect } from "@/app/facturacion/components/IssuerFilterSelect";
 import NotaCreditoModal from "@/app/facturacion/components/modals/NotaCreditoModal";
 import { AyudaTab } from "@/app/facturacion/components/tabs/AyudaTab";
 import { CertificadoTab } from "@/app/facturacion/components/tabs/CertificadoTab";
@@ -106,10 +106,18 @@ export default function FacturacionPage() {
           </p>
         </div>
 
-        <Button onClick={refreshAll} variant="outline" className="gap-2" disabled={isRefreshing}>
-          <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
-          Actualizar Lista
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <IssuerFilterSelect
+            profiles={sunatProfiles}
+            value={issuerFilter}
+            onChange={setIssuerSelection}
+          />
+
+          <Button onClick={refreshAll} variant="outline" className="gap-2" disabled={isRefreshing}>
+            <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+            Actualizar Lista
+          </Button>
+        </div>
       </div>
 
       {taxDocuments.error && (
@@ -160,8 +168,6 @@ export default function FacturacionPage() {
           </div>
         </div>
       ))}
-
-      <IssuerBar profiles={sunatProfiles} value={issuerFilter} onChange={setIssuerSelection} />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="h-auto flex-wrap gap-1 bg-transparent p-0">
