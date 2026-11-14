@@ -68,6 +68,8 @@ interface ManageSunatDocumentSequenceModalProps {
    * creating a second one.
    */
   existingSequences: SunatDocumentSequence[];
+  /** Multi-RUC: issuer whose series is created/edited. Default profile when omitted. */
+  sunatProfileId?: string;
 }
 
 export function ManageSunatDocumentSequenceModal({
@@ -76,6 +78,7 @@ export function ManageSunatDocumentSequenceModal({
   sequence,
   definition,
   existingSequences,
+  sunatProfileId,
 }: ManageSunatDocumentSequenceModalProps) {
   const isAddingNewSeries = definition === null;
 
@@ -145,12 +148,15 @@ export function ManageSunatDocumentSequenceModal({
       : null;
 
   function handleSubmit(values: InitializeSunatDocumentSequenceFormValues) {
-    initializeSequence.mutate(values, {
-      onSuccess: () => {
-        form.reset();
-        onClose();
+    initializeSequence.mutate(
+      { ...values, ...(sunatProfileId ? { sunatProfileId } : {}) },
+      {
+        onSuccess: () => {
+          form.reset();
+          onClose();
+        },
       },
-    });
+    );
   }
 
   function handleClose() {

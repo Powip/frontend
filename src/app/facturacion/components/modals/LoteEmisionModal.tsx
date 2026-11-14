@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, FileText, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { EmisionPipeline } from "@/app/facturacion/components/EmisionPipeline";
+import { IssuerSelectField } from "@/app/facturacion/components/IssuerSelectField";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,6 +23,8 @@ import {
   createSunatDocumentsSchema,
 } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { buildSunatDocumentFromSale } from "@/features/sunat/sunat-document/utils/build-sunat-document-from-sale";
+import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
+import { useIssuerSelection } from "@/features/sunat/sunat-profile/hooks/use-issuer-selection";
 
 const PIPELINE_STEPS = [
   "Generando XML UBL 2.1",
@@ -35,6 +38,8 @@ interface LoteEmisionModalProps {
   onClose: () => void;
   sales: Order[];
   onEmissionFinished?: (response: unknown) => void;
+  /** Multi-RUC: RUC preselected in the facturación bar. Default profile otherwise. */
+  issuerProfileId?: string;
 }
 
 type Step = "review" | "pipeline" | "ok" | "bad";
@@ -44,8 +49,17 @@ export default function LoteEmisionModal({
   onClose,
   sales,
   onEmissionFinished,
+  issuerProfileId,
 }: LoteEmisionModalProps) {
   const createSunatDocuments = useCreateSunatDocuments();
+
+  // Multi-RUC: every document of the batch is signed, numbered and sent with
+  // this RUC, using that RUC's default series.
+  const issuer = useIssuerSelection(issuerProfileId, isOpen);
+  const { data: sequences = [], isLoading: isLoadingSequences } = useSunatDocumentSequences(
+    issuer.selected?.id,
+    { enabled: isOpen && !issuer.isLoading },
+  );
 
   const [step, setStep] = useState<Step>("review");
   const [pipelineIndex, setPipelineIndex] = useState(0);
@@ -57,7 +71,31 @@ export default function LoteEmisionModal({
    *
    * The same builder is used by the single-emission modal.
    */
-  const documents = sales.map(buildSunatDocumentFromSale);
+  const documents = sales.map((sale) => {
+    const document = buildSunatDocumentFromSale(sale);
+    const defaultSequence = sequences.find(
+      (sequence) => sequence.taxDocumentType === document.taxDocumentType && sequence.isDefault,
+    );
+
+    return {
+      ...document,
+      // Same rule as the single-emission modal: the RUC's default series,
+      // falling back to the builder's canonical series (F001/B001).
+      series: defaultSequence?.series ?? document.series,
+      sunatProfileId: issuer.selected?.id,
+    };
+  });
+
+  // A second RUC has no series until they're configured for it: block
+  // instead of letting every document fail on the backend.
+  const missingSeriesTypes = issuer.isMultiRuc
+    ? [...new Set(documents.map((document) => document.taxDocumentType))].filter(
+        (type) =>
+          !sequences.some((sequence) => sequence.taxDocumentType === type && sequence.isDefault),
+      )
+    : [];
+  const isMissingSeries = !isLoadingSequences && missingSeriesTypes.length > 0;
+  const isIssuerBlocked = issuer.blockReason !== null;
 
   const invoiceCount = documents.filter(
     (document) => document.taxDocumentType === SUNAT_DOCUMENT_TYPES.INVOICE,
@@ -208,6 +246,34 @@ export default function LoteEmisionModal({
 
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
               <div className="grid gap-5">
+                <IssuerSelectField
+                  selection={issuer}
+                  disabled={isPending}
+                  hint={
+                    issuer.isMultiRuc
+                      ? "Todos los comprobantes del lote se emitirán con este RUC."
+                      : undefined
+                  }
+                />
+
+                {isMissingSeries && (
+                  <div
+                    role="alert"
+                    className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/40"
+                  >
+                    <span className="font-semibold">
+                      El RUC {issuer.selected?.ruc} no tiene serie predeterminada para{" "}
+                      {missingSeriesTypes
+                        .map((type) =>
+                          type === SUNAT_DOCUMENT_TYPES.INVOICE ? "Factura" : "Boleta",
+                        )
+                        .join(" y ")}
+                      .{" "}
+                    </span>
+                    Configúrala en la pestaña &quot;Series y Correlativos&quot; antes de emitir.
+                  </div>
+                )}
+
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="rounded-md border bg-muted/30 px-4 py-3">
                     <div className="text-sm text-muted-foreground">Total</div>
@@ -286,7 +352,7 @@ export default function LoteEmisionModal({
               <Button
                 type="button"
                 onClick={handleSubmit}
-                disabled={isPending || documents.length === 0}
+                disabled={isPending || documents.length === 0 || isMissingSeries || isIssuerBlocked}
               >
                 {isPending ? (
                   <>

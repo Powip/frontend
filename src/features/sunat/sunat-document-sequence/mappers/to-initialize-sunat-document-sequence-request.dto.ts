@@ -3,8 +3,10 @@ import type { InitializeSunatDocumentSequenceFormValues } from "../schemas/initi
 
 export function toInitializeSunatDocumentSequenceRequestDto(
   values: InitializeSunatDocumentSequenceFormValues,
+  sunatProfileId?: string,
 ): InitializeSunatDocumentSequenceRequestDto {
   return {
+    ...(sunatProfileId ? { sunatProfileId } : {}),
     taxDocumentType: values.taxDocumentType,
     series: values.series.trim(),
     lastCorrelative: values.lastCorrelative,

@@ -5,6 +5,7 @@ import { AlertCircle, AlertTriangle, CheckCircle2, FileText, Loader2 } from "luc
 import { useEffect, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { EmisionPipeline } from "@/app/facturacion/components/EmisionPipeline";
+import { IssuerSelectField } from "@/app/facturacion/components/IssuerSelectField";
 import { ItemsEditTable } from "@/app/facturacion/components/ItemsEditTable";
 import { VerifyIdentityButton } from "@/app/facturacion/components/VerifyIdentityButton";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,7 @@ import { createSunatDocumentsSchema } from "@/features/sunat/sunat-document/sche
 import { buildSunatDocumentFromSale } from "@/features/sunat/sunat-document/utils/build-sunat-document-from-sale";
 import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
 import type { SunatDocumentSequence } from "@/features/sunat/sunat-document-sequence/models/sunat-document-sequence";
+import { useIssuerSelection } from "@/features/sunat/sunat-profile/hooks/use-issuer-selection";
 
 const PIPELINE_STEPS = [
   "Generando XML UBL 2.1",
@@ -63,6 +65,8 @@ interface EmitirComprobanteModalProps {
   onClose: () => void;
   sale: Order;
   onEmissionFinished?: (response: unknown) => void;
+  /** Multi-RUC: RUC preselected in the facturación bar. Default profile otherwise. */
+  issuerProfileId?: string;
 }
 
 type Step = "form" | "pipeline" | "ok" | "bad";
@@ -129,8 +133,18 @@ export default function EmitirComprobanteModal({
   onClose,
   sale,
   onEmissionFinished,
+  issuerProfileId,
 }: EmitirComprobanteModalProps) {
   const createSunatDocuments = useCreateSunatDocuments();
+
+  // Multi-RUC: which RUC signs and numbers this document. Series below are
+  // read from that RUC, never from another issuer.
+  const issuer = useIssuerSelection(issuerProfileId, isOpen);
+  const issuerProfileIdSelected = issuer.selected?.id;
+  // Read by the reset effect without re-running it: changing the RUC must
+  // not wipe what the user already edited in the form.
+  const issuerProfileIdRef = useRef(issuerProfileIdSelected);
+  issuerProfileIdRef.current = issuerProfileIdSelected;
 
   // Powers the series auto-fill and the missing-correlativo warning below:
   // whichever sequence is marked `isDefault` for the selected tax document
@@ -138,7 +152,10 @@ export default function EmitirComprobanteModal({
   // document, instead of the hardcoded F001/B001 canonical series. Applies
   // the same way to both selectable types here (Boleta and Factura) — the
   // modal doesn't special-case either one.
-  const { data: sequences = [], isLoading: isLoadingSequences } = useSunatDocumentSequences();
+  const { data: sequences = [], isLoading: isLoadingSequences } = useSunatDocumentSequences(
+    issuerProfileIdSelected,
+    { enabled: !issuer.isLoading },
+  );
 
   const form = useForm<CreateSunatDocumentsFormValues>({
     resolver: zodResolver(createSunatDocumentsSchema),
@@ -184,6 +201,13 @@ export default function EmitirComprobanteModal({
   const isMissingDefaultSequence =
     !isLoadingSequences && Boolean(documentType) && !getDefaultSequence(documentType, sequences);
 
+  const defaultSequence = documentType ? getDefaultSequence(documentType, sequences) : undefined;
+  const isIssuerBlocked = issuer.blockReason !== null;
+
+  useEffect(() => {
+    form.setValue("documents.0.sunatProfileId", issuerProfileIdSelected);
+  }, [form, issuerProfileIdSelected]);
+
   useEffect(() => {
     if (!isOpen) {
       return;
@@ -192,7 +216,7 @@ export default function EmitirComprobanteModal({
     const document = buildSunatDocumentFromSale(sale);
 
     form.reset({
-      documents: [document],
+      documents: [{ ...document, sunatProfileId: issuerProfileIdRef.current }],
     });
 
     setStep("form");
@@ -350,6 +374,22 @@ export default function EmitirComprobanteModal({
               >
                 <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
                   <div className="grid gap-5">
+                    <IssuerSelectField
+                      selection={issuer}
+                      disabled={isPending}
+                      hint={
+                        defaultSequence ? (
+                          <>
+                            Se emitirá con la serie <b>{defaultSequence.series}</b> · próximo N°{" "}
+                            <b>
+                              {defaultSequence.series}-
+                              {String(defaultSequence.nextCorrelative).padStart(8, "0")}
+                            </b>
+                          </>
+                        ) : undefined
+                      }
+                    />
+
                     <FormField
                       control={form.control}
                       name="documents.0.taxDocumentType"
@@ -411,8 +451,12 @@ export default function EmitirComprobanteModal({
                             No hay un correlativo configurado para{" "}
                             {SUNAT_DOCUMENT_TYPE_LABELS[documentType]}.{" "}
                           </span>
-                          Configura una serie predeterminada en la pestaña &quot;Series y
-                          Correlativos&quot; antes de emitir este comprobante.
+                          Configura una serie predeterminada
+                          {issuer.isMultiRuc && issuer.selected
+                            ? ` para el RUC ${issuer.selected.ruc}`
+                            : ""}{" "}
+                          en la pestaña &quot;Series y Correlativos&quot; antes de emitir este
+                          comprobante.
                         </div>
                       </div>
                     )}
@@ -612,7 +656,10 @@ export default function EmitirComprobanteModal({
                     Cancelar
                   </Button>
 
-                  <Button type="submit" disabled={isPending || isMissingDefaultSequence}>
+                  <Button
+                    type="submit"
+                    disabled={isPending || isMissingDefaultSequence || isIssuerBlocked}
+                  >
                     {isPending ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />

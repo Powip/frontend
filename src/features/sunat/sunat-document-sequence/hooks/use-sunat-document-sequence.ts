@@ -6,7 +6,11 @@ import { getSunatDocumentSequence } from "../services/sunat-document-sequence.se
 
 export function useSunatDocumentSequence(query: GetSunatDocumentSequenceQuery) {
   return useQuery<SunatDocumentSequence | null, Error>({
-    queryKey: sunatDocumentSequenceKeys.detail(query.taxDocumentType, query.series),
+    queryKey: sunatDocumentSequenceKeys.detail(
+      query.taxDocumentType,
+      query.series,
+      query.sunatProfileId,
+    ),
     queryFn: () => getSunatDocumentSequence(query),
   });
 }
