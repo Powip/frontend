@@ -1,7 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import Inventory from "../page";
+import Inventory from "../_components/InventarioView";
 import { fetchBusinessInventoryItems } from "@/services/businessInventoryItemsService";
 jest.mock("exceljs", () => ({ __esModule: true, default: { Workbook: jest.fn() } }));
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));

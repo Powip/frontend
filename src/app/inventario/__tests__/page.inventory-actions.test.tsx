@@ -9,7 +9,7 @@ import {
 } from "@/services/businessInventoryItemsService";
 import axiosAuth from "@/lib/axiosAuth";
 import { toast } from "sonner";
-import AlmacenPage from "../page";
+import AlmacenPage from "../_components/InventarioView";
 
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: jest.fn() }));
 jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: jest.fn() }));
@@ -27,7 +27,7 @@ jest.mock("next/image", () => ({
 }));
 jest.mock("exceljs", () => ({ Workbook: jest.fn() }));
 jest.mock("@/components/header/HeaderConfig", () => ({ HeaderConfig: () => null }));
-jest.mock("../../productos/shopify-sync-wizard", () => ({ __esModule: true, default: () => null }));
+jest.mock("@/app/productos/shopify-sync-wizard", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/inventory/MovementHistoryTable", () => ({ MovementHistoryTable: () => null }));
 jest.mock("@/components/inventory/InventoryUnitMovementModal", () => ({
   __esModule: true, default: ({ action, source, onSaved }: any) => <div role="dialog" aria-label={`Movimiento ${action}`}><span>{source.inventoryItemId}:{source.inventoryId}</span><button onClick={onSaved}>Guardar movimiento de prueba</button></div>,
@@ -304,7 +304,7 @@ describe("Inventario · acciones de edición según el rol", () => {
     for (const name of EDIT_ACTIONS) expect(screen.getAllByRole("button", { name }).length).toBeGreaterThan(0);
     expect(screen.getByTitle("Ajustar stock")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Compras/ })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Reconciliación/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Unificación/i })).toBeInTheDocument();
   });
 
   it.each([
@@ -317,8 +317,8 @@ describe("Inventario · acciones de edición según el rol", () => {
     await screen.findByText("Producto normal");
     // Sigue viendo el inventario y la consulta de unidades (solo lectura)
     expect(screen.getByText("Producto serial")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Stock Actual/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Historial de Movimientos/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /^Stock$/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /^Movimientos$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Buscar IMEI/serie" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ver unidades" })).toBeInTheDocument();
     // …pero ninguna acción que cambie stock
@@ -327,6 +327,6 @@ describe("Inventario · acciones de edición según el rol", () => {
     }
     expect(screen.queryByTitle("Ajustar stock")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Compras/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: /Reconciliación/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Unificación/i })).not.toBeInTheDocument();
   });
 });

@@ -47,25 +47,26 @@ import { ReconciliationRejectDialog } from "./ReconciliationRejectDialog";
 export const RECONCILIATION_PAGE_SIZE = 10;
 export const BULK_CONFIRM_MAX = 10;
 
+// Orden y nombres del mockup uni.html. «En progreso» e «Historial» no tienen backend todavía: quedan ocultas.
 const TAB_ORDER: ReconciliationTabKey[] = [
   "por_unificar",
   "aplicadas",
-  "provisionales",
   "cola_manual",
+  "provisionales",
 ];
 
 const TAB_LABELS: Record<ReconciliationTabKey, string> = {
   por_unificar: "Por unificar",
   aplicadas: "Aplicadas",
-  provisionales: "Provisionales pendientes",
-  cola_manual: "Cola manual",
+  provisionales: "Nuevos por revisar",
+  cola_manual: "Ventas sin producto",
 };
 
 const EMPTY_MESSAGES: Record<ReconciliationTabKey, string> = {
   por_unificar: "No hay posibles duplicados para unificar.",
-  aplicadas: "Todavía no hay reconciliaciones aplicadas.",
-  provisionales: "No hay provisionales pendientes.",
-  cola_manual: "No hay líneas de venta sin resolver.",
+  aplicadas: "Todavía no hay unificaciones aplicadas.",
+  provisionales: "No hay productos nuevos por revisar.",
+  cola_manual: "No hay ventas sin producto.",
 };
 
 const EMPTY_COUNTS: ReconciliationTaskCounts = {
@@ -369,11 +370,11 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
     <div className="flex flex-col space-y-6">
       <div className="flex flex-col space-y-1">
         <h3 className="text-lg font-semibold tracking-tight">
-          Reconciliación de productos
+          Unificación de productos
         </h3>
         <p className="text-sm text-muted-foreground">
-          Revisa y resuelve posibles duplicados, productos provisionales y
-          líneas de venta sin resolver.
+          Revisa y resuelve posibles duplicados, productos nuevos por revisar y
+          ventas sin producto.
         </p>
       </div>
 

@@ -19,7 +19,7 @@ interface ReconciliationManualTableProps {
   onReject: (task: ReconciliationTask) => void;
 }
 
-// FEAT-17 Anexo D — tabla de la tab "Cola manual", extraída de
+// FEAT-17 Anexo D — tabla de la tab «Ventas sin producto» (antes "Cola manual"), extraída de
 // `ReconciliationTab`; el origen ahora usa el chip de canal.
 export function ReconciliationManualTable({
   tasks,
@@ -45,7 +45,7 @@ export function ReconciliationManualTable({
                 colSpan={5}
                 className="h-24 text-center italic text-muted-foreground"
               >
-                No hay líneas de venta sin resolver.
+                No hay ventas sin producto.
               </TableCell>
             </TableRow>
           ) : (
