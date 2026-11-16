@@ -146,7 +146,7 @@ function EmisorRow(props: {
     <TableRow>
       {/* The name may wrap, and "make default" lives next to the RUC, so the
           actions column always fits on one line. */}
-      <TableCell className="min-w-[12rem] whitespace-normal">
+      <TableCell className="min-w-[10rem] whitespace-normal">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-semibold">
           {profile.razonSocial}
           {profile.isDefault && <Badge variant="secondary">Predeterminado</Badge>}
