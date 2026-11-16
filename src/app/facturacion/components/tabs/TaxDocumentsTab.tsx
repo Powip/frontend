@@ -63,6 +63,8 @@ import {
   computeTaxDocumentKpis,
   filterRowsByIssuerRuc,
 } from "@/features/sunat/sunat-document/utils/tax-document-kpis";
+import { useSunatIssuerAccessBlocks } from "@/features/sunat/sunat-issuer-access/hooks/use-sunat-issuer-access-blocks";
+import { getIssuerAccessState } from "@/features/sunat/sunat-issuer-access/utils/issuer-access-status";
 import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
 import { getActiveIssuers } from "@/features/sunat/sunat-profile/utils/issuers";
 import type { useTaxDocuments } from "@/hooks/useTaxDocuments";
@@ -204,6 +206,8 @@ export function TaxDocumentsTab({
   } = comprobantes;
 
   const { data: sunatProfiles = [] } = useSunatProfiles();
+  // RUC and document types SUNAT is refusing: their documents wait unsent.
+  const { data: issuerAccessBlocks = [] } = useSunatIssuerAccessBlocks();
   const isMultiRuc = getActiveIssuers(sunatProfiles).length > 1;
   const selectedIssuer =
     issuerFilter === ALL_ISSUERS
@@ -480,6 +484,15 @@ export function TaxDocumentsTab({
         );
 
       case "PENDING":
+        // Not being processed: it waits until SUNAT authorizes the issuer.
+        if (getIssuerAccessState(issuerAccessBlocks, row.taxDocument)) {
+          return (
+            <Button size="sm" variant="destructive" onClick={() => setRechazadoRow(row)}>
+              Ver motivo
+            </Button>
+          );
+        }
+
         return (
           <Button size="sm" disabled variant="secondary">
             Procesando
@@ -820,7 +833,15 @@ export function TaxDocumentsTab({
                           S/ {displayedTotal.toFixed(2)}
                         </TableCell>
 
-                        <TableCell className="text-center">{getStatusBadge(status)}</TableCell>
+                        <TableCell className="text-center">
+                          {getIssuerAccessState(issuerAccessBlocks, taxDocument) ? (
+                            <Badge className="bg-red-100 text-red-700 hover:bg-red-100 dark:bg-red-950 dark:text-red-300">
+                              Requiere acción en SUNAT
+                            </Badge>
+                          ) : (
+                            getStatusBadge(status)
+                          )}
+                        </TableCell>
 
                         <TableCell className="text-center">{getDistributionIcons(row)}</TableCell>
 

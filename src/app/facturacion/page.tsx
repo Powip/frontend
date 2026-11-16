@@ -4,7 +4,7 @@ import { AlertTriangle, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-
+import { IssuerAccessAlerts } from "@/app/facturacion/components/IssuerAccessAlerts";
 import { ALL_ISSUERS, IssuerFilterSelect } from "@/app/facturacion/components/IssuerFilterSelect";
 import NotaCreditoModal from "@/app/facturacion/components/modals/NotaCreditoModal";
 import { AyudaTab } from "@/app/facturacion/components/tabs/AyudaTab";
@@ -138,6 +138,9 @@ export default function FacturacionPage() {
           </div>
         </div>
       )}
+
+      {/* SUNAT refusing a RUC for a document type (SOL credentials / permissions) */}
+      <IssuerAccessAlerts rows={taxDocuments.rows} />
 
       {/* Expiring certificates */}
       {expiringCertificates.map(({ profile, daysToExpire, status }) => (
