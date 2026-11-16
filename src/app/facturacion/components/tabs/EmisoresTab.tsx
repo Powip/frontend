@@ -144,16 +144,31 @@ function EmisorRow(props: {
 
   return (
     <TableRow>
-      <TableCell>
-        <div className="flex items-center gap-2 font-semibold">
+      {/* The name may wrap, and "make default" lives next to the RUC, so the
+          actions column always fits on one line. */}
+      <TableCell className="min-w-[12rem] whitespace-normal">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-semibold">
           {profile.razonSocial}
           {profile.isDefault && <Badge variant="secondary">Predeterminado</Badge>}
           {!profile.isActive && <Badge variant="outline">Inactivo</Badge>}
         </div>
-        <div className="text-xs text-muted-foreground">RUC {profile.ruc}</div>
+        <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+          <span>RUC {profile.ruc}</span>
+          {!profile.isDefault && profile.isActive && (
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs"
+              disabled={props.isMakingDefault}
+              onClick={props.onMakeDefault}
+            >
+              Hacer predeterminado
+            </Button>
+          )}
+        </div>
       </TableCell>
 
-      <TableCell>
+      <TableCell className="whitespace-normal">
         <span
           className={
             certificate.status === "bad"
@@ -189,16 +204,6 @@ function EmisorRow(props: {
           >
             Series
           </Button>
-          {!profile.isDefault && profile.isActive && (
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={props.isMakingDefault}
-              onClick={props.onMakeDefault}
-            >
-              Hacer predeterminado
-            </Button>
-          )}
         </div>
       </TableCell>
     </TableRow>
