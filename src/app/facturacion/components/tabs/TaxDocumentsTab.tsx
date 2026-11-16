@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { ALL_ISSUERS } from "@/app/facturacion/components/IssuerFilterSelect";
+import { IssuerLabel } from "@/app/facturacion/components/IssuerLabel";
 import DetalleComprobanteModal from "@/app/facturacion/components/modals/DetalleComprobanteModal";
 import EmitirComprobanteModal from "@/app/facturacion/components/modals/EmitirComprobanteModal";
 import LoteEmisionModal from "@/app/facturacion/components/modals/LoteEmisionModal";
@@ -57,6 +59,14 @@ import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-s
 import { useSunatDocumentsBulkPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-documents-bulk-pdf";
 import { useSunatDocumentsBulkPdfZip } from "@/features/sunat/sunat-document/hooks/use-sunat-documents-bulk-pdf-zip";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
+import {
+  computeTaxDocumentKpis,
+  filterRowsByIssuerRuc,
+} from "@/features/sunat/sunat-document/utils/tax-document-kpis";
+import { useSunatIssuerAccessBlocks } from "@/features/sunat/sunat-issuer-access/hooks/use-sunat-issuer-access-blocks";
+import { getIssuerAccessState } from "@/features/sunat/sunat-issuer-access/utils/issuer-access-status";
+import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
+import { getActiveIssuers } from "@/features/sunat/sunat-profile/utils/issuers";
 import type { useTaxDocuments } from "@/hooks/useTaxDocuments";
 import { cn } from "@/lib/utils";
 import type { DownloadFileResult } from "@/types/download-file.types";
@@ -78,6 +88,12 @@ const ITEMS_PER_PAGE = 10;
 interface TaxDocumentsTabProps {
   comprobantes: ReturnType<typeof useTaxDocuments>;
   onGenerarNota: (row: TaxDocumentRow) => void;
+  /**
+   * Multi-RUC: `ALL_ISSUERS` or a SUNAT profile id. Emitted documents are
+   * filtered by their issuer RUC; sales not emitted yet stay visible and are
+   * emitted with this RUC preselected.
+   */
+  issuerFilter?: string;
 }
 
 function getRowStatus(row: TaxDocumentRow): TaxDocumentStatus {
@@ -173,17 +189,39 @@ function buildWhatsAppUrl(phone: string | null | undefined, message?: string): s
   return message ? `${baseUrl}&text=${encodeURIComponent(message)}` : baseUrl;
 }
 
-export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTabProps) {
+export function TaxDocumentsTab({
+  comprobantes,
+  onGenerarNota,
+  issuerFilter = ALL_ISSUERS,
+}: TaxDocumentsTabProps) {
   const {
     rows,
     loading,
-    kpis,
+    kpis: allIssuersKpis,
     selectedIds,
     selectedRows,
     refreshListDocuments,
     toggleSelected,
     clearSelection,
   } = comprobantes;
+
+  const { data: sunatProfiles = [] } = useSunatProfiles();
+  // RUC and document types SUNAT is refusing: their documents wait unsent.
+  const { data: issuerAccessBlocks = [] } = useSunatIssuerAccessBlocks();
+  const isMultiRuc = getActiveIssuers(sunatProfiles).length > 1;
+  const selectedIssuer =
+    issuerFilter === ALL_ISSUERS
+      ? undefined
+      : sunatProfiles.find((profile) => profile.id === issuerFilter);
+
+  // The summary cards follow the "RUC emisor" filter, like the table below.
+  const kpis = useMemo(
+    () =>
+      selectedIssuer
+        ? computeTaxDocumentKpis(filterRowsByIssuerRuc(rows, selectedIssuer.ruc))
+        : allIssuersKpis,
+    [allIssuersKpis, rows, selectedIssuer],
+  );
 
   const { mutateAsync: fetchTaxDocumentPdf } = useSunatDocumentPdf();
   const { mutateAsync: fetchBulkPdf, isPending: isBulkPdfLoading } = useSunatDocumentsBulkPdf();
@@ -219,6 +257,10 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
         return false;
       }
 
+      if (selectedIssuer && taxDocument && taxDocument.rucIssuer !== selectedIssuer.ruc) {
+        return false;
+      }
+
       if (query) {
         const searchable = [
           row.sale.customer.fullName,
@@ -239,7 +281,7 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
 
       return true;
     });
-  }, [rows, search, filterEstado, filterTipo]);
+  }, [rows, search, filterEstado, filterTipo, selectedIssuer]);
 
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / ITEMS_PER_PAGE));
 
@@ -442,6 +484,15 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
         );
 
       case "PENDING":
+        // Not being processed: it waits until SUNAT authorizes the issuer.
+        if (getIssuerAccessState(issuerAccessBlocks, row.taxDocument)) {
+          return (
+            <Button size="sm" variant="destructive" onClick={() => setRechazadoRow(row)}>
+              Ver motivo
+            </Button>
+          );
+        }
+
         return (
           <Button size="sm" disabled variant="secondary">
             Procesando
@@ -542,8 +593,8 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
           <CardHeader>
             <CardTitle className="text-base">Ciclo de vida de un comprobante</CardTitle>
             <CardDescription>
-              Desde que una venta está preparada (PREPARADO) hasta que SUNAT confirma su validez. Se puede
-              emitir con la venta preparada, en camino, despachada o entregada.
+              Desde que una venta está preparada (PREPARADO) hasta que SUNAT confirma su validez. Se
+              puede emitir con la venta preparada, en camino, despachada o entregada.
             </CardDescription>
           </CardHeader>
 
@@ -641,7 +692,8 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
             <div>
               <CardTitle>Ventas para facturar</CardTitle>
               <CardDescription>
-                Ventas desde Preparado en adelante (no aparecen las pendientes, pagadas sin preparar ni anuladas) y su estado ante SUNAT.
+                Ventas desde Preparado en adelante (no aparecen las pendientes, pagadas sin preparar
+                ni anuladas) y su estado ante SUNAT.
               </CardDescription>
             </div>
           </div>
@@ -770,13 +822,26 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
                           </div>
                         </TableCell>
 
-                        <TableCell>{getDocumentTypeBadge(taxDocument)}</TableCell>
+                        <TableCell>
+                          {getDocumentTypeBadge(taxDocument)}
+                          {isMultiRuc && taxDocument && (
+                            <IssuerLabel profiles={sunatProfiles} ruc={taxDocument.rucIssuer} />
+                          )}
+                        </TableCell>
 
                         <TableCell className="text-right font-bold">
                           S/ {displayedTotal.toFixed(2)}
                         </TableCell>
 
-                        <TableCell className="text-center">{getStatusBadge(status)}</TableCell>
+                        <TableCell className="text-center">
+                          {getIssuerAccessState(issuerAccessBlocks, taxDocument) ? (
+                            <Badge className="bg-red-100 text-red-700 hover:bg-red-100 dark:bg-red-950 dark:text-red-300">
+                              Requiere acción en SUNAT
+                            </Badge>
+                          ) : (
+                            getStatusBadge(status)
+                          )}
+                        </TableCell>
 
                         <TableCell className="text-center">{getDistributionIcons(row)}</TableCell>
 
@@ -806,6 +871,7 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
           isOpen={!!emitirRow}
           onClose={() => setEmitirRow(null)}
           sale={emitirRow.sale}
+          issuerProfileId={selectedIssuer?.id}
           onEmissionFinished={() => refreshListDocuments()}
         />
       )}
@@ -855,6 +921,7 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
         isOpen={loteOpen}
         onClose={() => setLoteOpen(false)}
         sales={selectedPendientes.map((row) => row.sale)}
+        issuerProfileId={selectedIssuer?.id}
         onEmissionFinished={() => {
           clearSelection();
           refreshListDocuments();

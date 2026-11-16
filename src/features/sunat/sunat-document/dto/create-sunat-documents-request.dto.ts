@@ -39,6 +39,8 @@ export interface SunatDocumentRequestDto {
   orderId: string;
   taxDocumentType: SunatDocumentType;
   series: string;
+  /** Issuer SUNAT profile (RUC). Omitted = the company's default profile. */
+  sunatProfileId?: string;
   customer?: SunatDocumentCustomerRequestDto;
   totals: SunatDocumentTotalsRequestDto;
   items: SunatDocumentLineItemRequestDto[];

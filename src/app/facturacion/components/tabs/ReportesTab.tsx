@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/table";
 import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-document-pdf";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
+import { filterRowsByIssuerRuc } from "@/features/sunat/sunat-document/utils/tax-document-kpis";
+import type { SunatProfile } from "@/features/sunat/sunat-profile/models/sunat-profile";
 import type { Guia, Nota } from "@/types/facturacion";
 import { downloadFile } from "@/utils/http/download-file";
 
@@ -159,6 +161,16 @@ interface ReportesTabProps {
   comprobanteRows: TaxDocumentRow[];
   notas: Nota[];
   guias: Guia[];
+  /**
+   * Multi-RUC: RUC picked in the "RUC emisor" filter. When set, every sales
+   * report only contains that issuer, as an accounting book must.
+   */
+  issuer?: Pick<SunatProfile, "ruc" | "razonSocial">;
+  /**
+   * Multi-RUC: the company has more than one RUC. Two RUC can share the
+   * same series and number, so each row states its issuer.
+   */
+  showIssuerColumn?: boolean;
 }
 
 function getFullNumber(row: TaxDocumentRow): string | null {
@@ -176,14 +188,20 @@ function getEstadoLabel(row: TaxDocumentRow): "ACEPTADO" | "ACEPTADO_CON_OBS" {
     : "ACEPTADO";
 }
 
-export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps) {
+export function ReportesTab({
+  comprobanteRows,
+  notas,
+  guias,
+  issuer,
+  showIssuerColumn = false,
+}: ReportesTabProps) {
   const {
     mutate: downloadSunatDocumentPdf,
     isPending: isDownloadingPdf,
     variables: downloadingDocumentId,
   } = useSunatDocumentPdf();
 
-  const aceptados = comprobanteRows.filter(
+  const aceptados = filterRowsByIssuerRuc(comprobanteRows, issuer?.ruc).filter(
     (row) =>
       row.taxDocument?.cdrStatus === "ACCEPTED" ||
       row.taxDocument?.cdrStatus === "ACCEPTED_WITH_OBSERVATION",
@@ -200,12 +218,21 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
     });
   };
 
+  // Issuer scope shared by the sales reports: title and file name say which
+  // RUC the book belongs to, and each row carries its RUC when there are several.
+  const issuerTitle = issuer ? ` — ${issuer.razonSocial} (RUC ${issuer.ruc})` : "";
+  const issuerFilename = issuer ? `_${issuer.ruc}` : "";
+  const issuerHeader = showIssuerColumn ? ["RUC Emisor"] : [];
+  const issuerCell = (row: TaxDocumentRow) =>
+    showIssuerColumn ? [row.taxDocument?.rucIssuer ?? ""] : [];
+
   const getReporte = (key: ReporteKey): ReporteData => {
     if (key === "ventas") {
       return {
-        title: "Registro de Ventas",
-        filename: "powip_registro_ventas",
+        title: `Registro de Ventas${issuerTitle}`,
+        filename: `powip_registro_ventas${issuerFilename}`,
         headers: [
+          ...issuerHeader,
           "Fecha",
           "Tipo",
           "Serie-Correlativo",
@@ -222,6 +249,7 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
           const igv = total - baseImponible;
 
           return [
+            ...issuerCell(row),
             new Date(row.sale.createdAt).toLocaleDateString("es-PE"),
             row.taxDocument?.taxDocumentType === "01" ? "Factura" : "Boleta",
             getFullNumber(row) || "",
@@ -238,9 +266,10 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
 
     if (key === "sire") {
       return {
-        title: "Registro de Ventas e Ingresos (formato SIRE)",
-        filename: "powip_sire_rvie",
+        title: `Registro de Ventas e Ingresos (formato SIRE)${issuerTitle}`,
+        filename: `powip_sire_rvie${issuerFilename}`,
         headers: [
+          ...issuerHeader,
           "Fecha Emisión",
           "Tipo CPE",
           "Serie",
@@ -260,6 +289,7 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
           const tipo = row.taxDocument?.taxDocumentType || "03";
 
           return [
+            ...issuerCell(row),
             new Date(row.sale.createdAt).toLocaleDateString("es-PE"),
             tipo,
             serie,
@@ -375,6 +405,22 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
         <p className="text-sm text-muted-foreground">
           Descarga en Excel, CSV o PDF todo lo que tu contador necesita, sin salir de Powip.
         </p>
+
+        {showIssuerColumn && (
+          <p className="text-sm">
+            {issuer ? (
+              <>
+                Reportes de <span className="font-semibold">{issuer.razonSocial}</span> · RUC{" "}
+                {issuer.ruc}. Cambia de RUC en el filtro &quot;RUC emisor&quot;.
+              </>
+            ) : (
+              <>
+                Incluyen todos tus RUC: cada fila indica su RUC emisor. Para el libro de un solo
+                RUC, elígelo en el filtro &quot;RUC emisor&quot;.
+              </>
+            )}
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
