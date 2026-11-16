@@ -1,5 +1,6 @@
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
+import type { SaleStore } from "@/services/saleContextService";
 
 export interface BusinessInventory {
   id: string;
@@ -15,8 +16,15 @@ export interface InventoryScopeRequest {
   signal?: AbortSignal;
 }
 
+interface Catalog {
+  inventories: BusinessInventory[];
+  storeIds: string[];
+  /** Default warehouse of each store, when sale-context reports it (old backends omit the field). */
+  defaultInventoryIds: Map<string, string>;
+}
+
 /** The sale catalog includes physical owners, including warehouses shared by sales channels. */
-async function fetchCatalog({ companyId, accessToken, signal }: InventoryScopeRequest): Promise<{ inventories: BusinessInventory[]; storeIds: string[] }> {
+async function fetchCatalog({ companyId, accessToken, signal }: InventoryScopeRequest): Promise<Catalog> {
   if (!companyId || !accessToken) throw new Error("Selecciona un negocio para consultar los almacenes.");
   const { data: catalog } = await axiosAuth.get(
     `${process.env.NEXT_PUBLIC_API_VENTAS || GATEWAY.ventas}/order-header/sale-context`,
@@ -35,7 +43,11 @@ async function fetchCatalog({ companyId, accessToken, signal }: InventoryScopeRe
     if (previous && previous.storeId !== inv.storeId) throw new Error("El almacén tiene una asociación de tienda inválida.");
     inventories.set(inv.id, { ...inv, storeName: storeNames.get(inv.storeId) || inv.storeName });
   }
-  return { inventories: [...inventories.values()], storeIds: ownerIds };
+  const defaultInventoryIds = new Map<string, string>();
+  for (const store of (Array.isArray(catalog.stores) ? catalog.stores : []) as Pick<SaleStore, "id" | "defaultInventoryId">[]) {
+    if (typeof store.defaultInventoryId === "string" && store.defaultInventoryId) defaultInventoryIds.set(store.id, store.defaultInventoryId);
+  }
+  return { inventories: [...inventories.values()], storeIds: ownerIds, defaultInventoryIds };
 }
 
 export async function fetchBusinessInventories(request: InventoryScopeRequest): Promise<BusinessInventory[]> {
@@ -50,6 +62,9 @@ export async function fetchScopeInventories(request: InventoryScopeRequest): Pro
   const storeId = request.storeIds[0];
   if (!catalog.storeIds.includes(storeId)) throw new Error("La tienda no corresponde al negocio activo.");
   const selected = new Set(warehouses.filter((inv) => inv.storeId === storeId).map((inv) => inv.id));
+  // The store's default warehouse may belong to another store; it counts only if it is in the active catalog.
+  const defaultInventoryId = catalog.defaultInventoryIds.get(storeId);
+  if (defaultInventoryId && warehouses.some((inv) => inv.id === defaultInventoryId)) selected.add(defaultInventoryId);
   const { data: shops } = await axiosAuth.get(
     `${process.env.NEXT_PUBLIC_API_INTEGRATIONS || GATEWAY.integrations}/shopify/status/${request.companyId}`,
     { headers: { Authorization: `Bearer ${request.accessToken}` }, signal: request.signal },

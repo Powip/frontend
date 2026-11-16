@@ -6,12 +6,15 @@ export interface SaleStore {
   name: string;
   color?: string | null;
   is_legacy?: boolean;
+  defaultInventoryId?: string | null;
 }
 
 export interface SaleInventory {
   id: string;
   name: string;
   storeId: string;
+  type?: string;
+  isMain?: boolean;
 }
 
 export interface SaleContext {

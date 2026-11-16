@@ -34,8 +34,16 @@ export function useSaleOrigin({ scope, editing, saved, stores, inventories }: Op
   const historicalStoreInventories = browsingHistoricalSale
     ? inventories.filter((inventory) => inventory.storeId === saved?.storeId)
     : [];
+  // Mismo orden que ms-ventas: elegido, almacén por defecto de la tienda, único propio.
+  const historicalDefaultInventoryId = browsingHistoricalSale
+    ? inventories.find(
+        (inventory) =>
+          inventory.id === stores.find((store) => store.id === saved?.storeId)?.defaultInventoryId,
+      )?.id
+    : undefined;
   const catalogInventoryId = browsingHistoricalSale
     ? inventories.find((inventory) => inventory.id === current?.inventoryId)?.id ??
+      historicalDefaultInventoryId ??
       (historicalStoreInventories.length === 1 ? historicalStoreInventories[0].id : "")
     : inventoryId;
 

@@ -3,12 +3,15 @@
 import { Input } from "@/components/ui/input";
 import type { MergeStockMode } from "@/services/reconciliationTask.service";
 import {
+  COUNT_MULTI_WAREHOUSE_MESSAGE,
+  countAllowed,
   formatMoney,
   totalReserved,
   type MergeCostChoice,
   type MergeCostResolution,
   type MergeStockSides,
   type MergeStockValidation,
+  type MergeWarehouseRow,
 } from "./mergeStockCost";
 
 // FEAT-17 Anexo E — paso 3 del modal de Unificar (solo pares). Componente
@@ -19,6 +22,8 @@ const SHOPIFY_NOTICE =
 
 export interface ReconciliationMergeStockCostStepProps {
   sides: MergeStockSides;
+  // FEAT-24 H1-A: desglose por almacén; solo se muestra si el conteo físico no se ofrece.
+  warehouseRows?: MergeWarehouseRow[];
   winnerCost: number;
   loserCost: number;
   showShopifyNotice: boolean;
@@ -63,8 +68,13 @@ function RadioRow({
   );
 }
 
+function stockText(quantity: number, reserved: number): string {
+  return `${quantity} físico · ${reserved} reservado`;
+}
+
 export function ReconciliationMergeStockCostStep({
   sides,
+  warehouseRows = [],
   winnerCost,
   loserCost,
   showShopifyNotice,
@@ -82,6 +92,7 @@ export function ReconciliationMergeStockCostStep({
 }: ReconciliationMergeStockCostStepProps) {
   const reserved = totalReserved(sides);
   const sameCost = winnerCost === loserCost;
+  const canCount = countAllowed(sides);
 
   return (
     <div className="space-y-4">
@@ -101,14 +112,16 @@ export function ReconciliationMergeStockCostStep({
           disabled={disabled}
           onChange={() => onStockModeChange("sum")}
         />
-        <RadioRow
-          name="merge-stock-mode"
-          label="Conteo físico"
-          checked={stockMode === "count"}
-          disabled={disabled}
-          onChange={() => onStockModeChange("count")}
-        />
-        {stockMode === "count" && (
+        {canCount && (
+          <RadioRow
+            name="merge-stock-mode"
+            label="Conteo físico"
+            checked={stockMode === "count"}
+            disabled={disabled}
+            onChange={() => onStockModeChange("count")}
+          />
+        )}
+        {canCount && stockMode === "count" && (
           <div className="pl-6">
             <label className="text-xs text-muted-foreground" htmlFor="merge-counted-quantity">
               Cantidad contada
@@ -121,6 +134,29 @@ export function ReconciliationMergeStockCostStep({
               disabled={disabled}
               onChange={(event) => onCountedRawChange(event.target.value)}
             />
+          </div>
+        )}
+        {!canCount && (
+          <div className="space-y-2 text-xs">
+            <p className="text-muted-foreground">{COUNT_MULTI_WAREHOUSE_MESSAGE}</p>
+            <table aria-label="Stock por almacén" className="w-full text-left">
+              <thead>
+                <tr className="text-muted-foreground">
+                  <th scope="col" className="py-1 pr-3 font-medium">Almacén</th>
+                  <th scope="col" className="py-1 pr-3 font-medium">Madre</th>
+                  <th scope="col" className="py-1 font-medium">Otra variante</th>
+                </tr>
+              </thead>
+              <tbody>
+                {warehouseRows.map((row) => (
+                  <tr key={row.inventoryId} className="border-t">
+                    <th scope="row" className="py-1 pr-3 font-medium">{row.inventoryName}</th>
+                    <td className="py-1 pr-3">{stockText(row.winnerQuantity, row.winnerReserved)}</td>
+                    <td className="py-1">{stockText(row.loserQuantity, row.loserReserved)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
         <p className="text-xs text-muted-foreground">
