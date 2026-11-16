@@ -59,6 +59,10 @@ import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-s
 import { useSunatDocumentsBulkPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-documents-bulk-pdf";
 import { useSunatDocumentsBulkPdfZip } from "@/features/sunat/sunat-document/hooks/use-sunat-documents-bulk-pdf-zip";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
+import {
+  computeTaxDocumentKpis,
+  filterRowsByIssuerRuc,
+} from "@/features/sunat/sunat-document/utils/tax-document-kpis";
 import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
 import { getActiveIssuers } from "@/features/sunat/sunat-profile/utils/issuers";
 import type { useTaxDocuments } from "@/hooks/useTaxDocuments";
@@ -191,7 +195,7 @@ export function TaxDocumentsTab({
   const {
     rows,
     loading,
-    kpis,
+    kpis: allIssuersKpis,
     selectedIds,
     selectedRows,
     refreshListDocuments,
@@ -205,6 +209,15 @@ export function TaxDocumentsTab({
     issuerFilter === ALL_ISSUERS
       ? undefined
       : sunatProfiles.find((profile) => profile.id === issuerFilter);
+
+  // The summary cards follow the "RUC emisor" filter, like the table below.
+  const kpis = useMemo(
+    () =>
+      selectedIssuer
+        ? computeTaxDocumentKpis(filterRowsByIssuerRuc(rows, selectedIssuer.ruc))
+        : allIssuersKpis,
+    [allIssuersKpis, rows, selectedIssuer],
+  );
 
   const { mutateAsync: fetchTaxDocumentPdf } = useSunatDocumentPdf();
   const { mutateAsync: fetchBulkPdf, isPending: isBulkPdfLoading } = useSunatDocumentsBulkPdf();

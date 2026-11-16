@@ -64,8 +64,9 @@ export function DeleteSunatProfileDialog({
                 Se eliminará de forma definitiva el certificado de{" "}
                 <span className="font-semibold">{profile?.razonSocial}</span> (RUC {profile?.ruc}),
                 junto con el usuario y la clave SOL guardados en este perfil. No se puede deshacer.
-                Los comprobantes ya emitidos no se ven afectados, pero mientras no subas otro
-                certificado para este RUC no se podrán emitir ni enviar comprobantes con él.
+                Los comprobantes ya emitidos se conservan, pero mientras no vuelvas a registrar este
+                RUC no se podrán emitir comprobantes con él ni descargar el PDF de los que ya
+                emitió.
               </p>
 
               {blockedByDefault && (

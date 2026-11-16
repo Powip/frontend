@@ -174,7 +174,7 @@ function EmisorRow(props: {
       </TableCell>
 
       <TableCell>
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex items-center justify-end gap-2 whitespace-nowrap">
           <Button
             variant="outline"
             size="sm"

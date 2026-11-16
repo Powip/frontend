@@ -49,6 +49,7 @@ import { toCreateSunatDocumentsRequestDto } from "@/features/sunat/sunat-documen
 import type { CreateSunatDocumentsFormValues } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { createSunatDocumentsSchema } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { buildSunatDocumentFromSale } from "@/features/sunat/sunat-document/utils/build-sunat-document-from-sale";
+import { getEmissionErrorMessage } from "@/features/sunat/sunat-document/utils/get-emission-error-message";
 import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
 import type { SunatDocumentSequence } from "@/features/sunat/sunat-document-sequence/models/sunat-document-sequence";
 import { useIssuerSelection } from "@/features/sunat/sunat-profile/hooks/use-issuer-selection";
@@ -167,6 +168,8 @@ export default function EmitirComprobanteModal({
 
   const [step, setStep] = useState<Step>("form");
   const [pipelineIndex, setPipelineIndex] = useState(0);
+  // Why the backend refused to create the document, when it says so.
+  const [emissionError, setEmissionError] = useState<string | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -249,6 +252,18 @@ export default function EmitirComprobanteModal({
         shouldValidate: true,
       });
     }
+
+    // An invoice only admits a customer identified by RUC. A sale whose
+    // customer came with a DNI would otherwise be sent as "DNI" and SUNAT
+    // rejects it (2801) after the correlative is already spent.
+    if (
+      documentType === SUNAT_DOCUMENT_TYPES.INVOICE &&
+      form.getValues("documents.0.customer.identityDocumentType") !== IDENTITY_DOCUMENT_TYPES.RUC
+    ) {
+      form.setValue("documents.0.customer.identityDocumentType", IDENTITY_DOCUMENT_TYPES.RUC, {
+        shouldValidate: true,
+      });
+    }
   }, [documentType, form, sale, sequences]);
 
   function runPipelineAnimation() {
@@ -287,6 +302,17 @@ export default function EmitirComprobanteModal({
         clearInterval(timerRef.current);
       }
 
+      // The endpoint answers 201 even when the document was not created:
+      // the reason comes inside the response, not as an HTTP error.
+      const [failure] = response.errors;
+
+      if (failure) {
+        setEmissionError(getEmissionErrorMessage(failure));
+        setStep("bad");
+        onEmissionFinished?.(response);
+        return;
+      }
+
       setPipelineIndex(PIPELINE_STEPS.length);
       setStep("ok");
 
@@ -297,6 +323,7 @@ export default function EmitirComprobanteModal({
         clearInterval(timerRef.current);
       }
 
+      setEmissionError(null);
       setStep("bad");
     }
   }
@@ -318,6 +345,7 @@ export default function EmitirComprobanteModal({
   }
 
   function handleRetry() {
+    setEmissionError(null);
     setStep("form");
     setPipelineIndex(0);
   }
@@ -731,7 +759,7 @@ export default function EmitirComprobanteModal({
               <h3 className="text-lg font-bold">No se pudo emitir el comprobante</h3>
 
               <p className="mt-3 text-sm text-red-600">
-                SUNAT/OSE rechazó o no pudo procesar la solicitud.
+                {emissionError ?? "SUNAT/OSE rechazó o no pudo procesar la solicitud."}
               </p>
             </div>
 

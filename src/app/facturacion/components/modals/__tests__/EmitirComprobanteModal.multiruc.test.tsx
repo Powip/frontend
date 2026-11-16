@@ -73,10 +73,13 @@ const sale = {
   ],
 } as unknown as Order;
 
-const mutateAsync = jest.fn().mockResolvedValue({ results: [] });
+// Shape returned by the emission hook: created documents and, apart, the
+// documents the backend refused (it still answers 201 for those).
+const mutateAsync = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mutateAsync.mockResolvedValue({ documents: [{ id: "doc-1" }], errors: [] });
   (useSunatProfiles as jest.Mock).mockReturnValue({
     data: [
       profile({ id: "p1", ruc: "20111111111", isDefault: true }),
@@ -123,5 +126,34 @@ describe("EmitirComprobanteModal — multi-RUC", () => {
     renderModal();
 
     expect(await screen.findByText("B001-00000005")).toBeInTheDocument();
+  });
+
+  it("si el backend rechaza el comprobante, muestra el motivo y no un falso éxito", async () => {
+    mutateAsync.mockResolvedValue({
+      documents: [],
+      errors: [
+        {
+          orderId: "order-1",
+          error: { code: "SUNAT_DOCUMENT_SEQUENCE_NOT_INITIALIZED", message: "not initialized" },
+        },
+      ],
+    });
+    renderModal("p2");
+
+    await screen.findByText("B002-00000041");
+    await userEvent.click(screen.getByRole("button", { name: /Emitir a SUNAT/i }));
+
+    expect(await screen.findByText(/no tiene esa serie configurada/i)).toBeInTheDocument();
+    expect(screen.getByText("No se pudo emitir el comprobante")).toBeInTheDocument();
+    expect(screen.queryByText(/enviado correctamente/i)).not.toBeInTheDocument();
+  });
+
+  it("si el backend lo crea, muestra el éxito", async () => {
+    renderModal("p2");
+
+    await screen.findByText("B002-00000041");
+    await userEvent.click(screen.getByRole("button", { name: /Emitir a SUNAT/i }));
+
+    expect(await screen.findByText(/enviado correctamente/i)).toBeInTheDocument();
   });
 });

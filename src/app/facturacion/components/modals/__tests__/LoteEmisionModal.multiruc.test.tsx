@@ -72,7 +72,7 @@ const sale = {
   ],
 } as unknown as Order;
 
-const mutateAsync = jest.fn().mockResolvedValue({ results: [] });
+const mutateAsync = jest.fn();
 
 function given(
   profiles: SunatProfile[],
@@ -95,7 +95,10 @@ const principal = profile({
 const segunda = profile({ id: "p2", ruc: "20222222222", razonSocial: "SEGUNDA E.I.R.L." });
 
 describe("LoteEmisionModal — multi-RUC", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mutateAsync.mockResolvedValue({ documents: [{ id: "doc-1" }], errors: [] });
+  });
 
   it("emite el lote con el RUC elegido y su serie predeterminada", async () => {
     given([principal, segunda], {
@@ -155,5 +158,71 @@ describe("LoteEmisionModal — multi-RUC", () => {
       series: "B001",
       sunatProfileId: "p1",
     });
+  });
+});
+
+describe("LoteEmisionModal — resultado de la emisión", () => {
+  const sale2 = { ...sale, id: "order-2", orderNumber: "ORD-2" } as unknown as Order;
+  const sequences = {
+    p1: [boletaSequence("20111111111", "B001")],
+    p2: [boletaSequence("20222222222", "B002")],
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    given([principal, segunda], sequences);
+  });
+
+  it("cuenta los comprobantes realmente creados, aunque la selección se limpie después", async () => {
+    mutateAsync.mockResolvedValue({ documents: [{ id: "d1" }, { id: "d2" }], errors: [] });
+    const { rerender } = render(
+      <LoteEmisionModal isOpen onClose={jest.fn()} sales={[sale, sale2]} issuerProfileId="p2" />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /Emitir 2 comprobantes/i }));
+    expect(await screen.findByText("Se enviaron 2 comprobantes a SUNAT.")).toBeInTheDocument();
+
+    // The parent clears the selection when the emission finishes.
+    rerender(<LoteEmisionModal isOpen onClose={jest.fn()} sales={[]} issuerProfileId="p2" />);
+    expect(screen.getByText("Se enviaron 2 comprobantes a SUNAT.")).toBeInTheDocument();
+  });
+
+  it("si una venta falla, dice cuántas salieron y por qué falló la otra", async () => {
+    mutateAsync.mockResolvedValue({
+      documents: [{ id: "d1" }],
+      errors: [
+        {
+          orderId: "order-2",
+          error: { code: "SUNAT_ORDER_ALREADY_HAS_DOCUMENT", message: "already" },
+        },
+      ],
+    });
+    render(
+      <LoteEmisionModal isOpen onClose={jest.fn()} sales={[sale, sale2]} issuerProfileId="p2" />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: /Emitir 2 comprobantes/i }));
+
+    expect(await screen.findByText("Se envió 1 comprobante a SUNAT.")).toBeInTheDocument();
+    expect(screen.getByText("1 venta no se pudo emitir:")).toBeInTheDocument();
+    expect(
+      screen.getByText(/ORD-2: Esta venta ya tiene un comprobante emitido/),
+    ).toBeInTheDocument();
+  });
+
+  it("si todas fallan, no muestra éxito y explica el motivo", async () => {
+    mutateAsync.mockResolvedValue({
+      documents: [],
+      errors: [
+        { orderId: "order-1", error: { code: "SUNAT_PROFILE_INACTIVE", message: "inactive" } },
+      ],
+    });
+    render(<LoteEmisionModal isOpen onClose={jest.fn()} sales={[sale]} issuerProfileId="p2" />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Emitir 1 comprobantes/i }));
+
+    expect(await screen.findByText("No se pudo procesar la emisión")).toBeInTheDocument();
+    expect(screen.getByText(/ORD-1: El RUC elegido está inactivo/)).toBeInTheDocument();
+    expect(screen.queryByText("Emisión masiva procesada")).not.toBeInTheDocument();
   });
 });

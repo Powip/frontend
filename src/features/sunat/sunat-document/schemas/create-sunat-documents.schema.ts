@@ -96,6 +96,27 @@ const sunatDocumentSchema = z
         });
       }
 
+      // SUNAT rejects an invoice whose customer is not identified by RUC
+      // (error 2801) and the correlative is already spent by then.
+      if (isInvoice && document.customer?.identityDocumentType) {
+        if (document.customer.identityDocumentType !== IDENTITY_DOCUMENT_TYPES.RUC) {
+          ctx.addIssue({
+            code: "custom",
+            message: "La factura requiere el RUC del cliente",
+            path: ["customer", "identityDocumentType"],
+          });
+        } else if (
+          document.customer.identityDocumentNumber?.trim() &&
+          !/^\d{11}$/.test(document.customer.identityDocumentNumber.trim())
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            message: "El RUC debe tener 11 dígitos",
+            path: ["customer", "identityDocumentNumber"],
+          });
+        }
+      }
+
       if (isInvoice && !document.customer?.address?.trim()) {
         ctx.addIssue({
           code: "custom",

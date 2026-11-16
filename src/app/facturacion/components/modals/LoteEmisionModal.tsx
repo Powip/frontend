@@ -23,6 +23,7 @@ import {
   createSunatDocumentsSchema,
 } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { buildSunatDocumentFromSale } from "@/features/sunat/sunat-document/utils/build-sunat-document-from-sale";
+import { getEmissionErrorMessage } from "@/features/sunat/sunat-document/utils/get-emission-error-message";
 import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
 import { useIssuerSelection } from "@/features/sunat/sunat-profile/hooks/use-issuer-selection";
 
@@ -63,6 +64,12 @@ export default function LoteEmisionModal({
 
   const [step, setStep] = useState<Step>("review");
   const [pipelineIndex, setPipelineIndex] = useState(0);
+  // Outcome of the last submission. It is kept apart from `sales` because
+  // the parent clears the selection as soon as the emission finishes.
+  const [outcome, setOutcome] = useState<{ issued: number; failures: string[] }>({
+    issued: 0,
+    failures: [],
+  });
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -173,8 +180,17 @@ export default function LoteEmisionModal({
         clearInterval(timerRef.current);
       }
 
+      // The endpoint answers 201 even when some documents were not created:
+      // each failure travels inside the response with its own reason.
+      const failures = response.errors.map((failure) => {
+        const sale = sales.find((candidate) => candidate.id === failure.orderId);
+
+        return `${sale?.orderNumber ?? failure.orderId}: ${getEmissionErrorMessage(failure)}`;
+      });
+
+      setOutcome({ issued: response.documents.length, failures });
       setPipelineIndex(PIPELINE_STEPS.length);
-      setStep("ok");
+      setStep(response.documents.length > 0 ? "ok" : "bad");
 
       /*
        * The API response is already the bulk response:
@@ -194,6 +210,7 @@ export default function LoteEmisionModal({
         clearInterval(timerRef.current);
       }
 
+      setOutcome({ issued: 0, failures: [] });
       setStep("bad");
     }
   }
@@ -399,8 +416,25 @@ export default function LoteEmisionModal({
               <h3 className="text-lg font-bold">Emisión masiva procesada</h3>
 
               <p className="mt-2 text-sm text-muted-foreground">
-                SUNAT/OSE procesó la solicitud de emisión de {documents.length} comprobantes.
+                {outcome.issued === 1
+                  ? "Se envió 1 comprobante a SUNAT."
+                  : `Se enviaron ${outcome.issued} comprobantes a SUNAT.`}
               </p>
+
+              {outcome.failures.length > 0 && (
+                <div className="mt-4 text-left text-sm text-red-600">
+                  <p className="font-medium">
+                    {outcome.failures.length === 1
+                      ? "1 venta no se pudo emitir:"
+                      : `${outcome.failures.length} ventas no se pudieron emitir:`}
+                  </p>
+                  <ul className="mt-1 list-disc space-y-1 pl-5">
+                    {outcome.failures.map((failure) => (
+                      <li key={failure}>{failure}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             <DialogFooter className="border-t px-6 py-4">
@@ -418,9 +452,17 @@ export default function LoteEmisionModal({
 
               <h3 className="text-lg font-bold">No se pudo procesar la emisión</h3>
 
-              <p className="mt-3 text-sm text-red-600">
-                Revisa los datos de las ventas seleccionadas e intenta nuevamente.
-              </p>
+              {outcome.failures.length > 0 ? (
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-left text-sm text-red-600">
+                  {outcome.failures.map((failure) => (
+                    <li key={failure}>{failure}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 text-sm text-red-600">
+                  Revisa los datos de las ventas seleccionadas e intenta nuevamente.
+                </p>
+              )}
             </div>
 
             <DialogFooter className="border-t px-6 py-4">

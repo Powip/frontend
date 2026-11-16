@@ -252,7 +252,13 @@ export default function FacturacionPage() {
         </TabsContent>
 
         <TabsContent value="reportes" className="pt-4">
-          <ReportesTab comprobanteRows={taxDocuments.rows} notas={mock.notas} guias={mock.guias} />
+          <ReportesTab
+            comprobanteRows={taxDocuments.rows}
+            notas={mock.notas}
+            guias={mock.guias}
+            issuer={activeProfiles.find((profile) => profile.id === issuerFilter)}
+            showIssuerColumn={activeProfiles.length > 1}
+          />
         </TabsContent>
 
         <TabsContent value="emisores" className="pt-4">
