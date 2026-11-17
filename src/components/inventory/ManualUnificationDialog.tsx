@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { AlertTriangle, ArrowLeft, ArrowRight, Loader2, Search } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,10 +11,8 @@ import { getReconciliationTaskErrorMessage } from "@/services/reconciliationTask
 import type { VariantStock } from "@/services/inventoryItems.service";
 import {
   createUnification,
-  getVariantPreview,
   type UnificationHistoryItem,
   type UnificationStockMode,
-  type VariantPreview,
 } from "@/services/unification.service";
 import { ChannelBadge, KindBadge, ProductThumb } from "@/components/catalog/CatalogBadges";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +38,7 @@ import {
 } from "./mergeStockCost";
 import {
   isSerializedTracking,
-  pickNeedsDetails,
+  pickFromSearch,
   unificationWarnings,
   validateUnificationStock,
   variantDisplayLabel,
@@ -52,6 +49,8 @@ import {
 // variantes cualesquiera de la empresa con `POST /unifications`. Tres pasos:
 // elegir (buscador seguro, nunca un UUID pegado) con la vista previa lado a
 // lado, elegir qué pasa con el stock y confirmar sabiendo que no se deshace.
+// La vista previa sale del mismo buscador (`variant-search` trae foto, tipo,
+// canal e IMEI/serie desde H11); no se pide `GET /product-variant/:id`.
 
 type Step = "elegir" | "stock" | "confirmar";
 
@@ -66,33 +65,9 @@ const asKind = (type: string | null | undefined): ProductKind | null =>
 
 const skuOf = (pick: UnificationPick) => pick.company_sku || pick.sku || "Sin SKU";
 
-function withDetails(pick: UnificationPick | null, details: VariantPreview | undefined): UnificationPick | null {
-  if (!pick || !details) return pick;
-  return {
-    ...pick,
-    product_id: details.product_id,
-    product_type: details.product_type,
-    image_url: details.image_url,
-    external_source: details.external_source,
-    tracking_mode: details.tracking_mode,
-    is_active: details.is_active,
-    merged_into: details.merged_into,
-    cost: details.cost,
-  };
-}
-
-/** Completa foto, tipo, canal e IMEI/serie de una variante elegida en el buscador. */
-function useVariantDetails(pick: UnificationPick | null) {
-  const { auth } = useAuth();
-  const companyId = auth?.company?.id ?? "";
-  const variantId = pick?.variant_id ?? "";
-  return useQuery<VariantPreview, Error>({
-    queryKey: ["unification-variant-preview", companyId, auth?.user?.id, variantId],
-    queryFn: ({ signal }) => getVariantPreview(variantId, companyId, signal),
-    enabled: Boolean(pick && pickNeedsDetails(pick) && companyId && auth?.accessToken),
-    retry: false,
-    staleTime: 30 * 1000,
-  });
+/** Dato que el buscador no mandó (backend anterior a H11). */
+function Unknown({ label }: { label: string }) {
+  return <span className="text-xs text-muted-foreground">{label} —</span>;
 }
 
 function StepTitle({ n, children }: { n: number; children: ReactNode }) {
@@ -139,7 +114,7 @@ function VariantSearchList({ title, onPick }: { title: string; onPick: (pick: Un
               key={result.variant_id}
               type="button"
               className="flex w-full flex-col items-start gap-0.5 border-b px-3 py-2 text-left last:border-b-0 hover:bg-primary/5"
-              onClick={() => onPick({ ...result, company_sku: result.company_sku ?? null })}
+              onClick={() => onPick(pickFromSearch(result))}
             >
               <span className="text-sm font-medium">{result.product_name}</span>
               <span className="font-mono text-[11px] text-muted-foreground">SKU: {result.company_sku || result.sku || "Sin SKU"}</span>
@@ -154,15 +129,11 @@ function VariantSearchList({ title, onPick }: { title: string; onPick: (pick: Un
 
 function VariantCard({
   pick,
-  loadingDetails,
-  detailsFailed,
   stock,
   stockLoaded,
   showCost,
 }: {
   pick: UnificationPick;
-  loadingDetails: boolean;
-  detailsFailed: boolean;
   stock: VariantStock | undefined;
   stockLoaded: boolean;
   showCost: boolean;
@@ -176,11 +147,11 @@ function VariantCard({
         <p className="font-mono text-xs text-muted-foreground">SKU: {skuOf(pick)}</p>
         <p className="text-xs text-muted-foreground">{variantDisplayLabel(pick.attribute_values)}</p>
         <div className="flex flex-wrap items-center gap-1.5">
-          {loadingDetails ? <span className="text-xs text-muted-foreground">Cargando datos…</span> : null}
-          {detailsFailed ? <span className="text-xs text-muted-foreground">No se pudieron leer la foto, el tipo y el canal.</span> : null}
-          {kind ? <KindBadge kind={kind} /> : null}
-          {!loadingDetails && pick.product_type !== undefined ? <ChannelBadge source={pick.external_source} /> : null}
-          {isSerializedTracking(pick.tracking_mode) ? (
+          {kind ? <KindBadge kind={kind} /> : <Unknown label="Tipo" />}
+          {pick.external_source === undefined ? <Unknown label="Canal" /> : <ChannelBadge source={pick.external_source} />}
+          {pick.tracking_mode === undefined ? (
+            <Unknown label="Seguimiento" />
+          ) : isSerializedTracking(pick.tracking_mode) ? (
             <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">IMEI o serie</Badge>
           ) : null}
           {pick.is_active === false ? <Badge variant="outline">Desactivada</Badge> : null}
@@ -259,11 +230,6 @@ export function ManualUnificationDialog({ open, initialOrigin = null, onClose, o
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const targetDetails = useVariantDetails(target);
-  const originDetails = useVariantDetails(origin);
-  const targetFull = withDetails(target, targetDetails.data);
-  const originFull = withDetails(origin, originDetails.data);
-
   const bothPicked = Boolean(target && origin);
   const stockQuery = useReconciliationStockByVariants(bothPicked ? [target!.variant_id, origin!.variant_id] : []);
   const stockById = new Map((stockQuery.data ?? []).map((row) => [row.variant_id, row]));
@@ -285,7 +251,7 @@ export function ManualUnificationDialog({ open, initialOrigin = null, onClose, o
     setCountedRaw("");
   }
   const check = validateUnificationStock(stockMode, countedRaw, stockLoaded ? { sides, rows: warehouseRows } : null);
-  const warnings = unificationWarnings(originFull, targetFull);
+  const warnings = unificationWarnings(origin, target);
 
   const resetStock = () => {
     setStockMode(null);
@@ -344,7 +310,6 @@ export function ManualUnificationDialog({ open, initialOrigin = null, onClose, o
     n: number,
     title: string,
     pick: UnificationPick | null,
-    details: { isFetching: boolean; isError: boolean },
     stock: VariantStock | undefined,
     setPick: (pick: UnificationPick | null) => void,
   ) => (
@@ -352,7 +317,7 @@ export function ManualUnificationDialog({ open, initialOrigin = null, onClose, o
       <StepTitle n={n}>{title}</StepTitle>
       {pick ? (
         <div className="space-y-2">
-          <VariantCard pick={pick} loadingDetails={details.isFetching} detailsFailed={details.isError} stock={stock} stockLoaded={stockLoaded} showCost={showCost} />
+          <VariantCard pick={pick} stock={stock} stockLoaded={stockLoaded} showCost={showCost} />
           <Button type="button" variant="ghost" size="sm" aria-label={`Cambiar ${title}`} onClick={() => { setPick(null); resetStock(); }}>
             Cambiar
           </Button>
@@ -378,22 +343,22 @@ export function ManualUnificationDialog({ open, initialOrigin = null, onClose, o
           {step === "elegir" ? (
             <>
               <div className="grid gap-4 md:grid-cols-2">
-                {column(1, "Variante madre (se queda)", targetFull, targetDetails, targetStock, setTarget)}
-                {column(2, "Variante que se une", originFull, originDetails, originStock, setOrigin)}
+                {column(1, "Variante madre (se queda)", target, targetStock, setTarget)}
+                {column(2, "Variante que se une", origin, originStock, setOrigin)}
               </div>
               <p className="rounded-md bg-primary/5 px-3 py-2 text-xs text-foreground">
-                {targetFull && originFull
-                  ? `«${originFull.product_name}» (${skuOf(originFull)}) se unirá a «${targetFull.product_name}» (${skuOf(targetFull)}). En el siguiente paso eliges qué pasa con el stock.`
+                {target && origin
+                  ? `«${origin.product_name}» (${skuOf(origin)}) se unirá a «${target.product_name}» (${skuOf(target)}). En el siguiente paso eliges qué pasa con el stock.`
                   : "Elige las dos variantes. Pueden tener nombre y SKU distintos, pero la talla, el color y las demás opciones tienen que coincidir."}
               </p>
               {warningList}
             </>
           ) : null}
 
-          {step === "stock" && targetFull && originFull ? (
+          {step === "stock" && target && origin ? (
             <div className="space-y-3">
               <p className="text-sm">
-                «{originFull.product_name}» se une a «{targetFull.product_name}». Elige con qué stock queda la variante madre.
+                «{origin.product_name}» se une a «{target.product_name}». Elige con qué stock queda la variante madre.
               </p>
               {stockQuery.isError ? (
                 <p className="text-xs text-muted-foreground">No se pudo leer el stock de las dos variantes; igual puedes elegir y el servidor lo valida.</p>
@@ -442,14 +407,14 @@ export function ManualUnificationDialog({ open, initialOrigin = null, onClose, o
             </div>
           ) : null}
 
-          {step === "confirmar" && targetFull && originFull && stockMode ? (
+          {step === "confirmar" && target && origin && stockMode ? (
             <div className="space-y-3 text-sm">
               <div className="rounded-md border p-3">
                 <p>
-                  <span className="font-semibold">«{originFull.product_name}»</span>{" "}
-                  <span className="font-mono text-xs text-muted-foreground">({skuOf(originFull)})</span> se une a{" "}
-                  <span className="font-semibold">«{targetFull.product_name}»</span>{" "}
-                  <span className="font-mono text-xs text-muted-foreground">({skuOf(targetFull)})</span>.
+                  <span className="font-semibold">«{origin.product_name}»</span>{" "}
+                  <span className="font-mono text-xs text-muted-foreground">({skuOf(origin)})</span> se une a{" "}
+                  <span className="font-semibold">«{target.product_name}»</span>{" "}
+                  <span className="font-mono text-xs text-muted-foreground">({skuOf(target)})</span>.
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Stock de la madre: {stockLoaded ? sides.winnerQuantity : "—"} → <span className="font-semibold text-foreground">{finalText}</span>

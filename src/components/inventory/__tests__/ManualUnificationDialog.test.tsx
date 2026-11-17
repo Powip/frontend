@@ -2,7 +2,8 @@
  * Tests: ManualUnificationDialog (FEAT-24 H11 — «Unificar manualmente»)
  *
  * 1. Elegir con el buscador seguro (nunca un UUID), vista previa lado a lado
- *    con foto, tipo y canal (completados con `getVariantPreview`).
+ *    con foto, tipo y canal que trae el mismo buscador (sin pedir
+ *    `GET /product-variant/:id`); si un backend viejo no los manda, «—».
  * 2. «Contar ahora» exige la cantidad; con otro modo no se manda.
  * 3. La confirmación dice que no se puede deshacer.
  * 4. El 400/409 del backend se muestra tal cual.
@@ -26,43 +27,30 @@ jest.mock("@/services/reconciliationTask.service", () => ({
   searchReconciliationVariants: jest.fn(),
 }));
 jest.mock("@/services/inventoryItems.service", () => ({ getStockByVariants: jest.fn() }));
-jest.mock("@/services/unification.service", () => ({
-  createUnification: jest.fn(),
-  getVariantPreview: jest.fn(),
-}));
+jest.mock("@/services/unification.service", () => ({ createUnification: jest.fn() }));
+jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: { get: jest.fn(), post: jest.fn() } }));
 
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { searchReconciliationVariants, type VariantSearchResult } from "@/services/reconciliationTask.service";
 import { getStockByVariants } from "@/services/inventoryItems.service";
-import { createUnification, getVariantPreview, type VariantPreview } from "@/services/unification.service";
+import { createUnification } from "@/services/unification.service";
+import axiosAuth from "@/lib/axiosAuth";
 import { ManualUnificationDialog } from "../ManualUnificationDialog";
 import type { UnificationPick } from "../unificationRules";
 
 const mockSearch = jest.mocked(searchReconciliationVariants);
-const mockPreview = jest.mocked(getVariantPreview);
 const mockCreate = jest.mocked(createUnification);
 const mockStock = jest.mocked(getStockByVariants);
 
-const MADRE: VariantSearchResult = { variant_id: "v-madre", product_name: "Polo Azul", sku: "INT-1", company_sku: "POL-M", attribute_values: { Talla: "M" } };
-const OTRA: VariantSearchResult = { variant_id: "v-otra", product_name: "Polo azul Shopify", sku: "SHP-1", company_sku: "SHP-M", attribute_values: { Talla: "M" } };
-
-const preview = (result: VariantSearchResult, overrides: Partial<VariantPreview> = {}): VariantPreview => ({
-  variant_id: result.variant_id,
-  product_id: `p-${result.variant_id}`,
-  product_name: result.product_name,
-  product_type: "variantes",
-  sku: result.sku,
-  company_sku: result.company_sku,
-  attribute_values: result.attribute_values,
-  image_url: `https://img.test/${result.variant_id}.png`,
-  external_source: result.variant_id === "v-otra" ? "shopify" : null,
-  tracking_mode: "NONE",
-  is_active: true,
-  merged_into: null,
-  cost: 12.5,
-  ...overrides,
-});
+const MADRE: VariantSearchResult = {
+  variant_id: "v-madre", product_name: "Polo Azul", sku: "INT-1", company_sku: "POL-M", attribute_values: { Talla: "M" },
+  image_url: "https://img.test/v-madre.png", product_type: "variantes", external_source: null, tracking_mode: "NONE", is_active: true,
+};
+const OTRA: VariantSearchResult = {
+  variant_id: "v-otra", product_name: "Polo azul Shopify", sku: "SHP-1", company_sku: "SHP-M", attribute_values: { Talla: "M" },
+  image_url: "https://img.test/v-otra.png", product_type: "variantes", external_source: "shopify", tracking_mode: "NONE", is_active: true,
+};
 
 function mockAuth(role = "ADMINISTRADOR") {
   jest.mocked(useAuth).mockReturnValue({
@@ -95,7 +83,6 @@ async function pickBoth(user: ReturnType<typeof userEvent.setup>, otra: VariantS
 beforeEach(() => {
   jest.clearAllMocks();
   mockAuth();
-  mockPreview.mockImplementation(async (id) => preview(id === "v-otra" ? OTRA : MADRE));
   mockStock.mockResolvedValue([
     { variant_id: "v-madre", quantity: 5, reserved_quantity: 0, available: 5, inventories: [{ inventory_id: "inv-1", inventory_name: "Principal", store_id: null, quantity: 5, reserved_quantity: 0 }] },
     { variant_id: "v-otra", quantity: 2, reserved_quantity: 0, available: 2, inventories: [{ inventory_id: "inv-1", inventory_name: "Principal", store_id: null, quantity: 2, reserved_quantity: 0 }] },
@@ -111,8 +98,8 @@ describe("ManualUnificationDialog (FEAT-24 H11)", () => {
     await pickBoth(user);
 
     expect(mockSearch).toHaveBeenCalledWith("polo");
-    await waitFor(() => expect(mockPreview).toHaveBeenCalledWith("v-otra", "c-1", expect.anything()));
     expect(await screen.findByLabelText("Polo azul Shopify")).toHaveAttribute("data-src", "https://img.test/v-otra.png");
+    expect(screen.getByLabelText("Polo Azul")).toHaveAttribute("data-src", "https://img.test/v-madre.png");
     expect(screen.getByText("SKU: POL-M")).toBeInTheDocument();
     expect(screen.getByText("SKU: SHP-M")).toBeInTheDocument();
     expect(screen.getAllByText("Con variantes")).toHaveLength(2);
@@ -121,6 +108,31 @@ describe("ManualUnificationDialog (FEAT-24 H11)", () => {
     expect(await screen.findByText("5 (0 reservado)")).toBeInTheDocument();
     expect(screen.getByText(/«Polo azul Shopify» \(SHP-M\) se unirá a «Polo Azul» \(POL-M\)/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Continuar/ })).toBeEnabled();
+    expect(screen.queryByText(/—$/, { selector: "span" })).not.toBeInTheDocument();
+    // La vista previa sale del buscador: no se pide GET /product-variant/:id.
+    expect(axiosAuth.get).not.toHaveBeenCalled();
+  });
+
+  it("si el buscador no trae foto, tipo, canal ni seguimiento (backend viejo) muestra «—» y no avisa por eso", async () => {
+    const old = (result: VariantSearchResult): VariantSearchResult => ({
+      variant_id: result.variant_id, product_name: result.product_name, sku: result.sku, company_sku: result.company_sku, attribute_values: result.attribute_values,
+    });
+    mockSearch.mockImplementation(async (q) => (q.toLowerCase().includes("shop") ? [old(OTRA)] : [old(MADRE)]));
+    const user = userEvent.setup();
+    renderDialog();
+    await user.type(screen.getByLabelText("Buscar Variante madre (se queda)"), "polo");
+    await user.click(await screen.findByRole("button", { name: /Polo Azul/ }));
+    await user.type(screen.getByLabelText("Buscar Variante que se une"), "shop");
+    await user.click(await screen.findByRole("button", { name: /Polo azul Shopify/ }));
+
+    expect(screen.getAllByText("Tipo —")).toHaveLength(2);
+    expect(screen.getAllByText("Canal —")).toHaveLength(2);
+    expect(screen.getAllByText("Seguimiento —")).toHaveLength(2);
+    expect(screen.queryByText("Shopify")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(await screen.findByText("5 (0 reservado)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Continuar/ })).toBeEnabled();
+    expect(axiosAuth.get).not.toHaveBeenCalled();
   });
 
   it("«Contar ahora» sin cantidad no deja seguir; con la cantidad manda countedQuantity y avisa que no se deshace", async () => {
@@ -185,9 +197,7 @@ describe("ManualUnificationDialog (FEAT-24 H11)", () => {
   });
 
   it("avisa antes de mandar si los atributos difieren o hay IMEI o serie, sin bloquear", async () => {
-    const otraTallaL = { ...OTRA, attribute_values: { Talla: "L" } };
-    mockPreview.mockImplementation(async (id) =>
-      id === "v-otra" ? preview(otraTallaL, { tracking_mode: "IMEI" }) : preview(MADRE));
+    const otraTallaL = { ...OTRA, attribute_values: { Talla: "L" }, tracking_mode: "IMEI" };
     const user = userEvent.setup();
     renderDialog();
     await pickBoth(user, otraTallaL);
@@ -223,7 +233,7 @@ describe("ManualUnificationDialog (FEAT-24 H11)", () => {
     expect(screen.getByLabelText("Buscar Variante madre (se queda)")).toBeInTheDocument();
     expect(screen.getByText("Aliclik")).toBeInTheDocument();
     expect(screen.getByText(/4\.00/)).toBeInTheDocument();
-    expect(mockPreview).not.toHaveBeenCalled();
+    expect(axiosAuth.get).not.toHaveBeenCalled();
   });
 
   it("el costo de cada variante solo lo ve quien ve costos", async () => {

@@ -1,4 +1,5 @@
 import { formatVariantLabel, isDefaultTitleValue } from "@/lib/variantAttributes";
+import type { VariantSearchResult } from "@/services/reconciliationTask.service";
 import type {
   SkuConflictVariant,
   UnificationAction,
@@ -16,15 +17,16 @@ import {
 // poder testearlas solas. El backend vuelve a validar todo: estos avisos solo
 // adelantan lo que va a responder (y su mensaje se muestra igual, tal cual).
 
-/** Variante elegida para la unión manual: lo mínimo del buscador seguro más lo que se sepa de su producto. */
+/** Variante elegida para la unión manual: lo del buscador seguro o de «Por unificar». */
 export interface UnificationPick {
   variant_id: string;
   product_name: string;
   sku: string | null;
   company_sku: string | null;
   attribute_values: Record<string, string>;
-  // Lo que sigue falta cuando la variante sale del buscador (`variant-search`);
-  // la vista previa lo completa con `getVariantPreview`.
+  // `undefined` = no se sabe (un backend anterior a H11 no los manda en
+  // `variant-search`): la vista previa muestra «—» y no avisa por eso.
+  // El costo solo llega desde «Por unificar» (el buscador no lo trae).
   product_id?: string | null;
   product_type?: string | null;
   image_url?: string | null;
@@ -35,8 +37,26 @@ export interface UnificationPick {
   cost?: number | null;
 }
 
-/** ¿Faltan datos del producto (foto, tipo, canal, IMEI/serie) para la vista previa? */
-export const pickNeedsDetails = (pick: UnificationPick): boolean => pick.product_type === undefined;
+/**
+ * Variante elegida en el buscador seguro (`variant-search`). Trae foto, tipo,
+ * canal, IMEI/serie y estado; si faltan (backend viejo) quedan sin definir. El
+ * buscador ya excluye las unificadas.
+ */
+export function pickFromSearch(result: VariantSearchResult): UnificationPick {
+  return {
+    variant_id: result.variant_id,
+    product_name: result.product_name,
+    sku: result.sku ?? null,
+    company_sku: result.company_sku ?? null,
+    attribute_values: result.attribute_values ?? {},
+    product_type: result.product_type,
+    image_url: result.image_url,
+    external_source: result.external_source,
+    tracking_mode: result.tracking_mode,
+    is_active: result.is_active,
+    merged_into: null,
+  };
+}
 
 /** «Unir a…» desde un grupo de SKU repetido: la fila ya trae todo (activa y sin unificar por definición). */
 export function pickFromSkuConflict(variant: SkuConflictVariant): UnificationPick {

@@ -72,7 +72,6 @@ jest.mock('@/services/unification.service', () => ({
   listSkuConflictGroups: jest.fn(),
   listUnificationHistory: jest.fn(),
   createUnification: jest.fn(),
-  getVariantPreview: jest.fn(),
 }));
 
 jest.mock('next/image', () => ({ __esModule: true, default: () => null }));
@@ -787,7 +786,7 @@ describe('ReconciliationTab', () => {
       await waitFor(() => expect(mockListPage).toHaveBeenCalledTimes(1));
       await openTab(/historial/i);
       expect(await screen.findByText(/no hay unificaciones en el historial/i)).toBeInTheDocument();
-      expect(mockListHistory).toHaveBeenCalledWith({ page: 1, limit: 10, status: undefined });
+      expect(mockListHistory).toHaveBeenCalledWith({ page: 1, limit: 10 });
       expect(mockListPage).toHaveBeenCalledTimes(1);
     });
   });
