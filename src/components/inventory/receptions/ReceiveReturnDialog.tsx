@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { ScanBarcode } from "lucide-react";
 import { toast } from "sonner";
@@ -18,6 +18,8 @@ import { Label } from "@/components/ui/label";
 import { warehouseErrorMessage } from "@/components/forms/warehouseUi";
 import { formatPeruDateTime } from "@/components/inventory/movementLabels";
 import { playErrorBeep } from "@/lib/errorBeep";
+import type { WriteResult } from "@/lib/offlineQueue";
+import { isNetworkError } from "@/lib/offlineStore";
 import {
   applyScan,
   buildReceiveBody,
@@ -36,6 +38,7 @@ import { lookupVariantsByCodes, type VariantCodeMatch } from "@/services/variant
 import {
   receiveReturnReception,
   type CompanyWarehouse,
+  type ReceiveReturnBody,
   type ReturnReception,
 } from "@/services/warehousesService";
 import { orderLabel, type VariantLabeler } from "./receptionLabels";
@@ -44,6 +47,14 @@ import { orderLabel, type VariantLabeler } from "./receptionLabels";
 // unidades vuelven a stock (reingreso) y cuántas van a merma (con motivo).
 // Acepta el lector USB (entra como teclado y termina con Enter): cada escaneo
 // suma 1 al reingreso de la línea que coincide.
+//
+// FEAT-24 H6-D — el modo almacén (/almacen) usa este mismo diálogo en el
+// celular: `submit` manda la recepción por la cola sin conexión (puede quedar
+// guardada para enviar después), `renderScanner` pone el escáner con cámara,
+// `localLookup` resuelve los códigos sin señal con los datos ya descargados y
+// `onFeedback` suena y vibra. Sin esas props se comporta como siempre.
+
+export type ReceptionFeedbackKind = "ok" | "error";
 
 const SELECT_CLASS =
   "h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50";
@@ -58,9 +69,26 @@ interface Props {
   onReceived: () => void;
   /** 409: alguien la recibió distinto; refrescar la bandeja. */
   onConflict: () => void;
+  submit?: (body: ReceiveReturnBody) => Promise<WriteResult<ReturnReception>>;
+  renderScanner?: (scan: (code: string) => void) => ReactNode;
+  /** Sin señal: buscar el código entre los productos ya descargados de la devolución. */
+  localLookup?: (code: string) => VariantCodeMatch[];
+  onFeedback?: (kind: ReceptionFeedbackKind) => void;
 }
 
-export default function ReceiveReturnDialog({ reception, companyId, warehouses, label, onClose, onReceived, onConflict }: Props) {
+export default function ReceiveReturnDialog({
+  reception,
+  companyId,
+  warehouses,
+  label,
+  onClose,
+  onReceived,
+  onConflict,
+  submit,
+  renderScanner,
+  localLookup,
+  onFeedback,
+}: Props) {
   const [lines, setLinesState] = useState<ReceptionLineDraft[]>(() => draftFromReception(reception));
   // El escaneo es asíncrono: lee siempre las líneas más nuevas.
   const linesRef = useRef(lines);
@@ -79,7 +107,8 @@ export default function ReceiveReturnDialog({ reception, companyId, warehouses, 
   const fail = (message: string) => {
     setScanInfo(null);
     setScanError(message);
-    playErrorBeep();
+    if (onFeedback) onFeedback("error");
+    else playErrorBeep();
   };
 
   const processScan = async (code: string) => {
@@ -89,8 +118,12 @@ export default function ReceiveReturnDialog({ reception, companyId, warehouses, 
         matches = await lookupVariantsByCodes([code], companyId);
         lookups.current.set(code, matches);
       } catch (error) {
-        fail(`No se pudo revisar el código ${code}. ${warehouseErrorMessage(error, "Inténtalo de nuevo.")}`);
-        return;
+        if (!localLookup || !isNetworkError(error)) {
+          fail(`No se pudo revisar el código ${code}. ${warehouseErrorMessage(error, "Inténtalo de nuevo.")}`);
+          return;
+        }
+        // Sin señal: con los códigos ya descargados de los productos de esta devolución.
+        matches = localLookup(code);
       }
     }
     const outcome = resolveScan(matches, linesRef.current);
@@ -103,6 +136,7 @@ export default function ReceiveReturnDialog({ reception, companyId, warehouses, 
     const line = next.find((candidate) => candidate.variantId === outcome.variantId);
     setScanError(null);
     setScanInfo(`+1 a stock: ${label(outcome.variantId).name} (${line?.reingreso ?? 0} de ${line?.quantity ?? 0})`);
+    onFeedback?.("ok");
   };
 
   const scan = (raw: string) => {
@@ -114,9 +148,14 @@ export default function ReceiveReturnDialog({ reception, companyId, warehouses, 
   };
 
   const receive = useMutation({
-    mutationFn: () => receiveReturnReception(reception.id, buildReceiveBody(linesRef.current, destination, reception.inventoryId)),
-    onSuccess: (result) => {
-      if (result?.duplicate) toast.info(`La devolución ${orderLabel(reception)} ya estaba recibida.`);
+    mutationFn: async (): Promise<WriteResult<ReturnReception>> => {
+      const body = buildReceiveBody(linesRef.current, destination, reception.inventoryId);
+      if (submit) return submit(body);
+      return { status: "done", result: await receiveReturnReception(reception.id, body) };
+    },
+    onSuccess: (written) => {
+      if (written.status === "queued") toast.info(written.message);
+      else if (written.result?.duplicate) toast.info(`La devolución ${orderLabel(reception)} ya estaba recibida.`);
       else toast.success(`Devolución ${orderLabel(reception)} recibida`);
       onReceived();
     },
@@ -155,25 +194,31 @@ export default function ReceiveReturnDialog({ reception, companyId, warehouses, 
         </DialogHeader>
 
         <div className="space-y-2">
-          <Label htmlFor="reception-scan" className="flex items-center gap-2">
-            <ScanBarcode className="h-4 w-4" aria-hidden="true" />
-            Escanear código
-          </Label>
-          <Input
-            id="reception-scan"
-            autoFocus
-            autoComplete="off"
-            placeholder="Escanea (o escribe el código y pulsa Enter): suma 1 a stock"
-            value={scanCode}
-            disabled={busy}
-            onChange={(e) => setScanCode(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key !== "Enter") return;
-              e.preventDefault();
-              scan(scanCode);
-              setScanCode("");
-            }}
-          />
+          {renderScanner ? (
+            renderScanner(scan)
+          ) : (
+            <>
+              <Label htmlFor="reception-scan" className="flex items-center gap-2">
+                <ScanBarcode className="h-4 w-4" aria-hidden="true" />
+                Escanear código
+              </Label>
+              <Input
+                id="reception-scan"
+                autoFocus
+                autoComplete="off"
+                placeholder="Escanea (o escribe el código y pulsa Enter): suma 1 a stock"
+                value={scanCode}
+                disabled={busy}
+                onChange={(e) => setScanCode(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return;
+                  e.preventDefault();
+                  scan(scanCode);
+                  setScanCode("");
+                }}
+              />
+            </>
+          )}
           {scanError ? (
             <p role="alert" className="rounded-md border border-destructive/50 bg-destructive/5 p-2 text-sm text-destructive">
               {scanError}
