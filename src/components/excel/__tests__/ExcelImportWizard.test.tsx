@@ -19,7 +19,11 @@
  *    toast de error nombrando la columna faltante, el wizard se queda en el
  *    Paso 2 (no avanza a la vista previa) y no se dispara el pre-fetch de
  *    subcategorías por fila (no llega a parsear filas).
- * 5. Infra: axios y `process.env.NEXT_PUBLIC_API_PRODUCTOS` están
+ * 5. FEAT-24 H4-D9: el Paso 3 ya no importa: «Revisar antes de importar» manda
+ *    `bulk-import?dryRun=true` y el Paso 4 muestra la vista previa del servidor
+ *    (estado, errores y avisos por fila). «Importar» manda el mismo cuerpo sin
+ *    dryRun, solo si la vista previa no tiene errores.
+ * 6. Infra: axios y `process.env.NEXT_PUBLIC_API_PRODUCTOS` están
  *    completamente mockeados — ningún test dispara una llamada HTTP real.
  *
  * Nota sobre el flujo de "doble subida" (tests 3): `handleFileChange` resuelve
@@ -412,6 +416,37 @@ function mockAxiosGetImplementation(overrides: {
   });
 }
 
+type PreviewStatus = 'crear' | 'actualizar' | 'error';
+interface PreviewRowFixture { status: PreviewStatus; errors?: string[]; warnings?: string[]; productName?: string; variantSku?: string }
+
+/** Respuesta de ms-products H4 a `bulk-import` (con o sin dryRun). */
+function bulkResponse(dryRun: boolean, rows: PreviewRowFixture[]) {
+  const count = (status: PreviewStatus) => rows.filter((r) => r.status === status).length;
+  return {
+    data: {
+      dryRun,
+      success: count('error') === 0,
+      message: dryRun ? 'Vista previa' : 'Importación completada',
+      created: dryRun ? 0 : count('crear'),
+      updated: dryRun ? 0 : count('actualizar'),
+      errors: count('error'),
+      errorDetails: [],
+      rows: rows.map((r, index) => ({
+        index, status: r.status, errors: r.errors ?? [], warnings: r.warnings ?? [],
+        productName: r.productName ?? null, productSku: null, variantSku: r.variantSku ?? null,
+      })),
+      summary: { total: rows.length, crear: count('crear'), actualizar: count('actualizar'), error: count('error'), productosNuevos: 1, marcasNuevas: [] },
+    },
+  };
+}
+
+/** La vista previa y la importación devuelven lo mismo (`rows`) según el `?dryRun=true` de la URL. */
+function mockBulkImport(rows: PreviewRowFixture[]) {
+  mockAxiosPost.mockImplementation((url: string) => Promise.resolve(bulkResponse(url.includes('dryRun=true'), rows)));
+}
+
+const crear = (n: number): PreviewRowFixture[] => Array.from({ length: n }, () => ({ status: 'crear' }));
+
 function renderWizard(onBack = jest.fn()) {
   render(<ExcelImportWizard onBack={onBack} />);
   return { onBack };
@@ -572,9 +607,7 @@ describe('ExcelImportWizard', () => {
         categories: CATEGORIES,
         subcategoriesByCategory: { 'cat-1': SUBCATS_CAT1 },
       });
-      mockAxiosPost.mockResolvedValue({
-        data: { created: 1, errors: 0, message: 'Importación completada: 1 productos creados' },
-      });
+      mockBulkImport(crear(1));
 
       const HEADERS = [
         'Cantidad *',
@@ -603,12 +636,20 @@ describe('ExcelImportWizard', () => {
       mockExcelJS.__setParseFixture({ headers: HEADERS, rows: [ROW] });
       await user.upload(getFileInput(), buildExcelFile());
 
-      const saveButton = await screen.findByRole('button', { name: /importar \d+ productos/i });
-      expect(saveButton).not.toBeDisabled();
-      await user.click(saveButton);
+      const reviewButton = await screen.findByRole('button', { name: /revisar antes de importar \(1 filas\)/i });
+      expect(reviewButton).not.toBeDisabled();
+      await user.click(reviewButton);
 
-      await waitFor(() => expect(mockAxiosPost).toHaveBeenCalledTimes(1));
-      expect(mockAxiosPost).toHaveBeenCalledWith(
+      // H4-D9: primero la vista previa del servidor (no escribe)…
+      await screen.findByRole('heading', { name: /revisión del servidor/i });
+      expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+      expect(mockAxiosPost.mock.calls[0][0]).toContain('/products/bulk-import?dryRun=true');
+      // …y después la importación real con el mismo cuerpo.
+      await user.click(screen.getByRole('button', { name: /^importar \(1 filas\)/i }));
+      await waitFor(() => expect(mockAxiosPost).toHaveBeenCalledTimes(2));
+      expect(mockAxiosPost.mock.calls[1][0]).toMatch(/\/products\/bulk-import$/);
+      expect(mockAxiosPost.mock.calls[1][1]).toEqual(mockAxiosPost.mock.calls[0][1]);
+      expect(mockAxiosPost).toHaveBeenLastCalledWith(
         expect.stringContaining('/products/bulk-import'),
         expect.objectContaining({
           tenantId: 'company-1',
@@ -649,7 +690,7 @@ describe('ExcelImportWizard', () => {
 
       // B3: la fila muestra TODOS sus errores (antes el último pisaba a los demás), así que se busca dentro del título.
       expect(screen.getByTitle(/La cantidad máxima por variante y almacén es 10,000 unidades\./)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /importar 0 productos/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /revisar antes de importar \(0 filas\)/i })).toBeDisabled();
     });
 
     it('marca con error la fila con cantidad decimal', async () => {
@@ -665,7 +706,7 @@ describe('ExcelImportWizard', () => {
         categories: [{ id: 'cat-1', name: 'Vestimenta' }],
         subcategoriesByCategory: { 'cat-1': [{ id: 'sub-1', name: 'Camperas' }] },
       });
-      mockAxiosPost.mockResolvedValue({ data: { created: 1, errors: 0, message: 'ok' } });
+      mockBulkImport(crear(1));
       renderWizard();
       await goToStep2();
 
@@ -675,12 +716,14 @@ describe('ExcelImportWizard', () => {
       await user.click(screen.getByRole('button', { name: /cambiar archivo/i }));
       await uploadRows([ROW]);
 
-      await user.click(await screen.findByRole('button', { name: /importar 1 productos/i }));
+      await user.click(await screen.findByRole('button', { name: /revisar antes de importar \(1 filas\)/i }));
+      // La vista previa no escribe: la confirmación se pide al importar de verdad.
+      await user.click(await screen.findByRole('button', { name: /^importar \(1 filas\)/i }));
       expect(await screen.findByText('Estás cargando 1,500 unidades. ¿Confirmas la cantidad?')).toBeInTheDocument();
-      expect(mockAxiosPost).not.toHaveBeenCalled();
+      expect(mockAxiosPost).toHaveBeenCalledTimes(1);
 
       await user.click(screen.getByRole('button', { name: /sí, confirmar/i }));
-      await waitFor(() => expect(mockAxiosPost).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(mockAxiosPost).toHaveBeenCalledTimes(2));
     });
   });
 
@@ -731,7 +774,7 @@ describe('ExcelImportWizard', () => {
 
     it('el caso del cliente: un polo en S, M, L y XL se carga de una vez con la talla en cada variante', async () => {
       mockAxiosGetImplementation(CATALOG);
-      mockAxiosPost.mockResolvedValue({ data: { created: 4, errors: 0, message: 'ok' } });
+      mockBulkImport(crear(4));
       renderWizard();
       await goToStep2();
 
@@ -743,7 +786,7 @@ describe('ExcelImportWizard', () => {
       for (const talla of ['S', 'M', 'L', 'XL']) {
         expect(screen.getByText(`Talla: ${talla}`)).toBeInTheDocument();
       }
-      const save = await screen.findByRole('button', { name: /importar 4 productos/i });
+      const save = await screen.findByRole('button', { name: /revisar antes de importar \(4 filas\)/i });
       expect(save).not.toBeDisabled();
       await user.click(save);
 
@@ -757,14 +800,14 @@ describe('ExcelImportWizard', () => {
 
     it('todas las filas de un producto viajan con el mismo nombre aunque se hayan escrito distinto', async () => {
       mockAxiosGetImplementation(CATALOG);
-      mockAxiosPost.mockResolvedValue({ data: { created: 2, errors: 0, message: 'ok' } });
+      mockBulkImport(crear(2));
       renderWizard();
       await goToStep2();
       const user = await uploadFixture(HEADERS, [
         ['Ropa', 'Polos', 'Polo básico', 'S', '', 15, 35, 5],
         ['Ropa', 'Polos', '  polo   BASICO ', 'M', '', 15, 35, 5],
       ]);
-      await user.click(await screen.findByRole('button', { name: /importar 2 productos/i }));
+      await user.click(await screen.findByRole('button', { name: /revisar antes de importar \(2 filas\)/i }));
       await waitFor(() => expect(mockAxiosPost).toHaveBeenCalledTimes(1));
       const payload = mockAxiosPost.mock.calls[0][1] as { rows: { name: string }[] };
       expect(payload.rows.map((r) => r.name)).toEqual(['Polo básico', 'Polo básico']);
@@ -781,7 +824,7 @@ describe('ExcelImportWizard', () => {
       expect(within(alert).getByText(/No se creó nada todavía/)).toBeInTheDocument();
       expect(within(alert).getAllByText(/tiene 4 filas: indica Talla, Color u otro atributo/)).toHaveLength(4);
       expect(within(alert).getByText(/^Fila 2 · Polo oversize:/)).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /importar 0 productos/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /revisar antes de importar \(0 filas\)/i })).toBeDisabled();
       expect(mockAxiosPost).not.toHaveBeenCalled();
     });
 
@@ -856,9 +899,92 @@ describe('ExcelImportWizard', () => {
       expect(workbook.getWorksheet('Instrucciones')).toBeDefined();
       const meta = workbook.getWorksheet('_metadata')!;
       expect(meta.getRow(2).getCell(1).value).toBe('templateVersion');
-      expect(meta.getRow(2).getCell(2).value).toBe('2');
+      expect(meta.getRow(2).getCell(2).value).toBe('3');
       const header = workbook.getWorksheet('Productos')!.getRow(1);
       expect([6, 7, 8].map((c) => header.getCell(c).value)).toEqual(['Talla', 'Color', 'Otros atributos']);
+      // FEAT-24 H4: columnas nuevas al final
+      expect([13, 14, 15, 16, 17].map((c) => header.getCell(c).value)).toEqual(['Marca', 'SKU de variante', 'Código de barras', 'Unidad de compra', 'Factor']);
+    });
+  });
+
+  // FEAT-24 H4-D9 — Excel v2 con vista previa del servidor.
+  describe('vista previa del servidor (dryRun)', () => {
+    const CATALOG = {
+      categories: [{ id: 'cat-1', name: 'Ropa' }],
+      subcategoriesByCategory: { 'cat-1': [{ id: 'sub-1', name: 'Polos' }] },
+    };
+    const HEADERS = [
+      'Categoría *', 'Subcategoría *', 'Nombre *', 'SKU base', 'Talla', 'Precio Compra *', 'Precio Venta *', 'Cantidad *',
+      'Marca', 'SKU de variante', 'Código de barras', 'Unidad de compra', 'Factor',
+    ];
+    const ROWS: (string | number)[][] = [
+      ['Ropa', 'Polos', 'Polo', 'POL', 'S', 10, 30, 5, 'Nike', 'POL-S', '775 0001', 'Caja', 12],
+      ['Ropa', 'Polos', 'Polo', 'POL', 'M', 10, 30, 5, '', '', '', '', ''],
+    ];
+
+    async function reachServerPreview() {
+      mockAxiosGetImplementation(CATALOG);
+      const { onBack } = renderWizard();
+      await goToStep2();
+      mockExcelJS.__setParseFixture({ headers: HEADERS, rows: ROWS });
+      const user = userEvent.setup();
+      await user.upload(getFileInput(), buildExcelFile());
+      await user.click(await screen.findByRole('button', { name: /revisar antes de importar \(2 filas\)/i }));
+      return { user, onBack };
+    }
+
+    it('manda las columnas nuevas solo si vienen y muestra el estado, los errores y los avisos de cada fila', async () => {
+      mockBulkImport([
+        { status: 'actualizar', productName: 'Polo', variantSku: 'POL-S', warnings: ['La cantidad no se aplica a una variante que ya existe: ajustá el stock desde Inventario.'] },
+        { status: 'error', productName: 'Polo', errors: ['El SKU POL-M ya existe en tu empresa (producto «Polo viejo»)'] },
+      ]);
+      const { onBack } = await reachServerPreview();
+
+      expect(await screen.findByRole('heading', { name: /revisión del servidor/i })).toBeInTheDocument();
+      const [url, body] = mockAxiosPost.mock.calls[0] as [string, { rows: Record<string, unknown>[] }];
+      expect(url).toContain('/products/bulk-import?dryRun=true');
+      expect(body.rows[0]).toMatchObject({ companySku: 'POL', variantSku: 'POL-S', barcode: '7750001', brand: 'Nike', purchaseUnit: 'Caja', purchaseFactor: 12 });
+      for (const key of ['variantSku', 'barcode', 'brand', 'purchaseUnit', 'purchaseFactor']) expect(body.rows[1]).not.toHaveProperty(key);
+
+      expect(screen.getByText('0 para crear · 1 para actualizar · 1 con errores · 1 productos nuevos')).toBeInTheDocument();
+      const table = screen.getAllByRole('table').at(-1)!;
+      const [, first, second] = within(table).getAllByRole('row');
+      expect(within(first).getByText('2')).toBeInTheDocument(); // fila del Excel
+      expect(within(first).getByText('Actualizar')).toBeInTheDocument();
+      expect(within(first).getByText(/Aviso: La cantidad no se aplica/)).toBeInTheDocument();
+      expect(within(second).getByText('3')).toBeInTheDocument();
+      expect(within(second).getByText('Error')).toBeInTheDocument();
+      expect(within(second).getByText('El SKU POL-M ya existe en tu empresa (producto «Polo viejo»)')).toBeInTheDocument();
+      expect(screen.getByRole('alert')).toHaveTextContent('Hay 1 filas con errores');
+
+      // Con errores no se importa
+      expect(screen.getByRole('button', { name: /^importar \(1 filas\)/i })).toBeDisabled();
+      expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+      expect(onBack).not.toHaveBeenCalled();
+    });
+
+    it('sin errores importa y avisa el resultado', async () => {
+      mockBulkImport([{ status: 'crear' }, { status: 'crear' }]);
+      const { user, onBack } = await reachServerPreview();
+      await user.click(await screen.findByRole('button', { name: /^importar \(2 filas\)/i }));
+      await waitFor(() => expect(mockAxiosPost).toHaveBeenCalledTimes(2));
+      expect(mockToast.success).toHaveBeenCalledWith('Importación completada: 2 variantes creadas, 0 actualizadas.');
+      expect(onBack).toHaveBeenCalled();
+    });
+
+    it('«Volver» descarta la vista previa y deja corregir', async () => {
+      mockBulkImport([{ status: 'crear' }, { status: 'crear' }]);
+      const { user } = await reachServerPreview();
+      await user.click(await screen.findByRole('button', { name: /^volver$/i }));
+      expect(screen.getByRole('heading', { name: /vista previa y edición/i })).toBeInTheDocument();
+      expect(mockAxiosPost).toHaveBeenCalledTimes(1);
+    });
+
+    it('un servidor viejo sin vista previa no deja seguir', async () => {
+      mockAxiosPost.mockResolvedValue({ data: { created: 2, errors: 0, message: 'ok' } });
+      await reachServerPreview();
+      await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining('no devolvió la vista previa')));
+      expect(screen.queryByRole('heading', { name: /revisión del servidor/i })).not.toBeInTheDocument();
     });
   });
 });
