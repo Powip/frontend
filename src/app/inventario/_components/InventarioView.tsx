@@ -37,6 +37,7 @@ import { useBusinessScope } from "@/contexts/BusinessScopeContext";
 import { useBusinessInventories } from "@/hooks/useBusinessInventories";
 import { fetchBusinessInventoryItems, type BusinessInventoryItem } from "@/services/businessInventoryItemsService";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
+import { listWarehouses } from "@/services/warehousesService";
 
 import RegularizeProductModal from "@/components/inventory/RegularizeProductModal";
 import InventoryUnitTraceModal from "@/components/inventory/InventoryUnitTraceModal";
@@ -90,6 +91,15 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
     enabled: canFetch && warehouses.isSuccess,
     retry: false,
   });
+  // Tipo y «Principal» de cada almacén (pantalla de almacenes de la empresa). Es un adorno: si falla, no se muestra.
+  const warehouseMetaQuery = useQuery({
+    queryKey: ["company-warehouses", companyId],
+    queryFn: () => listWarehouses(),
+    enabled: Boolean(companyId && auth?.accessToken),
+    retry: false,
+    staleTime: 60_000,
+  });
+  const warehouseMeta = useMemo(() => new Map((warehouseMetaQuery.data?.warehouses ?? []).map((w) => [w.id, { type: w.type, isMain: w.is_main }])), [warehouseMetaQuery.data]);
   const stockFilters = useMemo(() => ({ search: searchQuery, storeId: selectedStoreId, inventoryId: selectedInventoryId, status: statusFilter }), [searchQuery, selectedStoreId, selectedInventoryId, statusFilter]);
   // Variantes (con sus posiciones por almacén) agrupadas por producto: la paginación cuenta productos.
   const variantRows = useMemo(() => filterStockVariants(inventoryQuery.data ?? [], stockFilters), [inventoryQuery.data, stockFilters]);
@@ -429,6 +439,7 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                     <StockByProduct
                       groups={pagedGroups}
                       inventories={warehouseColumns}
+                      meta={warehouseMeta}
                       isLoading={isLoading}
                       emptyText={loadError ? "No se pudo consultar el stock" : "No hay productos con estos filtros"}
                       actions={stockActions}
@@ -447,7 +458,7 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                     )}
                   </>
                 ) : (
-                  <StockByWarehouse variants={variantRows} inventories={warehouseColumns} isLoading={isLoading} />
+                  <StockByWarehouse variants={variantRows} inventories={warehouseColumns} isLoading={isLoading} meta={warehouseMeta} />
                 )}
               </CardContent>
             </Card>

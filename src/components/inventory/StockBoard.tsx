@@ -13,6 +13,11 @@ import type { BusinessInventoryItem } from "@/services/businessInventoryItemsSer
 import type { BusinessInventory } from "@/services/inventoryCatalogService";
 import { STOCK_STATUS_LABEL, type StockProductGroup, type StockStatus, type StockTotals, type StockVariantRow } from "./stockView";
 
+/** Datos de la pantalla de almacenes de la empresa; pueden faltar (la pantalla funciona igual). */
+export type WarehouseMeta = Map<string, { type: "PROPIO" | "TIENDA" | "COURIER"; isMain: boolean }>;
+const TYPE_LABEL = { PROPIO: "Propio", TIENDA: "Tienda física", COURIER: "Courier" } as const;
+const NO_META: WarehouseMeta = new Map();
+
 export type StockTrackingAction = "regularize" | "units" | "transfer" | "write-off";
 
 export interface StockBoardActions {
@@ -154,10 +159,11 @@ interface ProductViewProps {
   isLoading: boolean;
   emptyText: string;
   actions: StockBoardActions;
+  meta?: WarehouseMeta;
 }
 
 /** Vista «Por producto»: filas por variante agrupadas por producto, una columna por almacén. */
-export function StockByProduct({ groups, inventories, isLoading, emptyText, actions }: ProductViewProps) {
+export function StockByProduct({ groups, inventories, isLoading, emptyText, actions, meta = NO_META }: ProductViewProps) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const cols = inventories.length + 4;
   return (
@@ -169,7 +175,11 @@ export function StockByProduct({ groups, inventories, isLoading, emptyText, acti
             {inventories.map((inv) => (
               <TableHead key={inv.id} className="text-center">
                 {inv.name}
-                {inv.storeName ? <div className="text-[11px] font-normal text-muted-foreground">{inv.storeName}</div> : null}
+                {meta.get(inv.id) || inv.storeName ? (
+                  <div className="text-[11px] font-normal text-muted-foreground">
+                    {[meta.get(inv.id) ? TYPE_LABEL[meta.get(inv.id)!.type] : null, inv.storeName].filter(Boolean).join(" · ")}
+                  </div>
+                ) : null}
               </TableHead>
             ))}
             <TableHead className="text-right">Disponible total</TableHead>
@@ -264,10 +274,11 @@ interface WarehouseViewProps {
   variants: StockVariantRow[];
   inventories: BusinessInventory[];
   isLoading: boolean;
+  meta?: WarehouseMeta;
 }
 
 /** Vista «Por almacén»: una tarjeta por almacén con sus posiciones. */
-export function StockByWarehouse({ variants, inventories, isLoading }: WarehouseViewProps) {
+export function StockByWarehouse({ variants, inventories, isLoading, meta = NO_META }: WarehouseViewProps) {
   if (isLoading) return <div className="space-y-3"><Skeleton className="h-32 w-full" /><Skeleton className="h-32 w-full" /></div>;
   if (inventories.length === 0) return <p className="rounded-md border py-6 text-center text-muted-foreground">No hay almacenes en este alcance</p>;
   return (
@@ -282,7 +293,11 @@ export function StockByWarehouse({ variants, inventories, isLoading }: Warehouse
             <header className="flex flex-wrap items-center gap-3 border-b p-4">
               <div className="rounded-md bg-muted p-2 text-muted-foreground"><Warehouse className="h-5 w-5" /></div>
               <div className="min-w-0">
-                <h3 className="font-semibold">{inv.name}</h3>
+                <h3 className="flex flex-wrap items-center gap-2 font-semibold">
+                  {inv.name}
+                  {meta.get(inv.id)?.isMain ? <span className="rounded border border-teal-300 bg-teal-50 px-1.5 py-0.5 text-xs font-medium text-teal-700 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-400">Principal</span> : null}
+                  {meta.get(inv.id) ? <span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">{TYPE_LABEL[meta.get(inv.id)!.type]}</span> : null}
+                </h3>
                 <p className="text-xs text-muted-foreground">{rows.length} SKU · {physical} físico · {reserved} reservado · {available} disponible</p>
               </div>
               {inv.storeName ? <span className="ml-auto rounded border px-2 py-0.5 text-xs text-muted-foreground">{inv.storeName}</span> : null}

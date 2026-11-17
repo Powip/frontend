@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Inventory from "../_components/InventarioView";
 import { fetchBusinessInventoryItems } from "@/services/businessInventoryItemsService";
@@ -16,6 +16,7 @@ jest.mock("@/components/inventory/ReconciliationTab", () => ({ ReconciliationTab
 jest.mock("@/components/modals/ImportExcelModal", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/modals/AdjustStockModal", () => ({ __esModule: true, default: ({ item, open }: { item?: { inventoryItemId: string }; open: boolean }) => open ? <div data-testid="adjust-target">{item?.inventoryItemId}</div> : null }));
 jest.mock("@/app/productos/shopify-sync-wizard", () => ({ __esModule: true, default: () => null }));
+jest.mock("@/services/warehousesService", () => ({ listWarehouses: jest.fn().mockResolvedValue({ warehouses: [{ id: "warehouse-b", name: "Web", status: true, store_id: "stocked-store", company_id: "company-a", type: "COURIER", is_main: true }], links: [] }) }));
 const fetch = jest.mocked(fetchBusinessInventoryItems);
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -32,7 +33,7 @@ it("renders the business union with totals and real pagination despite the selec
   expect(screen.getByText("Producto 00")).toBeInTheDocument();
   expect(screen.queryByText("Producto 10")).not.toBeInTheDocument();
   // una columna por almacén: cada variante de la página muestra su disponible y debajo físico y reservado
-  for (const name of ["Principal", "Web"]) expect(screen.getByRole("columnheader", { name })).toBeInTheDocument();
+  for (const name of [/^Principal/, /^Web/]) expect(screen.getByRole("columnheader", { name })).toBeInTheDocument();
   expect(screen.getAllByText("4 fís · 0 res")).toHaveLength(10);
   fireEvent.change(screen.getByPlaceholderText("Buscar por SKU, nombre o variante..."), { target: { value: "SKU-11" } });
   await waitFor(() => expect(screen.getByText("Producto 11")).toBeInTheDocument());
@@ -52,5 +53,8 @@ it("la vista por almacén muestra una tarjeta por almacén con sus totales", asy
   fireEvent.click(screen.getByRole("button", { name: "Por almacén" }));
   expect(screen.getByRole("region", { name: "Almacén Web" })).toHaveTextContent("12 SKU · 48 físico · 0 reservado · 36 disponible");
   expect(screen.getByRole("region", { name: "Almacén Principal" })).toHaveTextContent("Sin stock en este almacén.");
+  // tipo y «Principal» vienen de la pantalla de almacenes; el almacén que no figura ahí se muestra sin etiquetas
+  await waitFor(() => expect(within(screen.getByRole("region", { name: "Almacén Web" })).getByRole("heading")).toHaveTextContent("WebPrincipalCourier"));
+  expect(within(screen.getByRole("region", { name: "Almacén Principal" })).getByRole("heading")).toHaveTextContent(/^Principal$/);
   expect(screen.getByText("Producto 11")).toBeInTheDocument(); // sin paginar: el almacén se ve entero
 });
