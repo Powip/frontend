@@ -12,14 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
 import { canEditInventory } from "@/config/permissions.config";
 
@@ -27,45 +19,30 @@ import {
   Download,
   Loader2,
   Search,
-  Pencil,
   ShoppingCart,
   ShoppingBag,
   History,
   LayoutList,
-  PackagePlus,
-  HelpCircle,
   GitMerge,
-  Camera,
 } from "lucide-react";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 
 import { useEffect, useState, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 
-import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import Image from "next/image";
 import { isAxiosError } from "axios";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useBusinessScope } from "@/contexts/BusinessScopeContext";
 import { useBusinessInventories } from "@/hooks/useBusinessInventories";
-import { fetchBusinessInventoryItems, filterBusinessInventoryItems, type BusinessInventoryItem } from "@/services/businessInventoryItemsService";
+import { fetchBusinessInventoryItems, type BusinessInventoryItem } from "@/services/businessInventoryItemsService";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 
 import RegularizeProductModal from "@/components/inventory/RegularizeProductModal";
 import InventoryUnitTraceModal from "@/components/inventory/InventoryUnitTraceModal";
 import InventoryUnitMovementModal from "@/components/inventory/InventoryUnitMovementModal";
 import InventoryUnitsModal from "@/components/inventory/InventoryUnitsModal";
-import { isTracked } from "@/services/inventoryTrackingService";
 import AdjustStockModal from "@/components/modals/AdjustStockModal";
-import { formatMoney } from "@/lib/money";
 import { formatVariantLabel } from "@/lib/variantAttributes";
 import EditProductImageModal from "@/components/modals/EditProductImageModal";
 import ImportExcelModal from "@/components/modals/ImportExcelModal";
@@ -74,6 +51,8 @@ import ShopifySyncWizard from "@/app/productos/shopify-sync-wizard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MovementHistoryTable } from "@/components/inventory/MovementHistoryTable";
 import { ReconciliationTab } from "@/components/inventory/ReconciliationTab";
+import { StockByProduct, StockByWarehouse, StockKpis, type StockBoardActions } from "@/components/inventory/StockBoard";
+import { filterStockVariants, groupByProduct, stockTotals, storesOf, variantPositionsFlat, visibleInventories, STOCK_STATUS_LABEL, type StockMode, type StockStatusFilter } from "@/components/inventory/stockView";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -85,7 +64,7 @@ export const INVENTARIO_TAB_ROUTES: Record<InventarioTab, string> = {
   unificacion: "/inventario/unificacion",
 };
 
-export default function InventarioView({ tab = "stock" }: { tab?: InventarioTab }) {
+export default function InventarioView({ tab = "stock", initialMovementSearch = "" }: { tab?: InventarioTab; initialMovementSearch?: string }) {
   const { auth } = useAuth();
   // Editar inventario (ajustes, mermas, transferencias, importar Excel, compras, reconciliación): solo
   // Administrador y Operaciones. El resto sigue viendo el stock en solo lectura.
@@ -96,6 +75,9 @@ export default function InventarioView({ tab = "stock" }: { tab?: InventarioTab 
   const storeInventories = warehouses.inventories;
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedInventoryId, setSelectedInventoryId] = useState("all");
+  const [selectedStoreId, setSelectedStoreId] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<StockStatusFilter>("all");
+  const [stockMode, setStockMode] = useState<StockMode>("producto");
   const [isExporting, setIsExporting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
@@ -108,10 +90,16 @@ export default function InventarioView({ tab = "stock" }: { tab?: InventarioTab 
     enabled: canFetch && warehouses.isSuccess,
     retry: false,
   });
-  const filteredItems = useMemo(() => filterBusinessInventoryItems(inventoryQuery.data ?? [], selectedInventoryId, searchQuery), [inventoryQuery.data, selectedInventoryId, searchQuery]);
-  const totalItems = filteredItems.length;
+  const stockFilters = useMemo(() => ({ search: searchQuery, storeId: selectedStoreId, inventoryId: selectedInventoryId, status: statusFilter }), [searchQuery, selectedStoreId, selectedInventoryId, statusFilter]);
+  // Variantes (con sus posiciones por almacén) agrupadas por producto: la paginación cuenta productos.
+  const variantRows = useMemo(() => filterStockVariants(inventoryQuery.data ?? [], stockFilters), [inventoryQuery.data, stockFilters]);
+  const productGroups = useMemo(() => groupByProduct(variantRows), [variantRows]);
+  const stores = useMemo(() => storesOf(storeInventories), [storeInventories]);
+  const warehouseColumns = useMemo(() => visibleInventories(storeInventories, stockFilters), [storeInventories, stockFilters]);
+  const warehouseOptions = useMemo(() => visibleInventories(storeInventories, { storeId: selectedStoreId, inventoryId: "all" }), [storeInventories, selectedStoreId]);
+  const totalItems = productGroups.length;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
-  const productsWithDetails = filteredItems.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const pagedGroups = productGroups.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const isLoadingInventories = warehouses.isPending;
   const isLoading = warehouses.isPending || (warehouses.isSuccess && inventoryQuery.isPending);
   const loadError = warehouses.error || inventoryQuery.error;
@@ -121,7 +109,7 @@ export default function InventarioView({ tab = "stock" }: { tab?: InventarioTab 
       toast.warning("Los cambios se guardaron, pero no se pudo actualizar el almacén. Recarga la página.");
     });
   };
-  const totals = filteredItems.reduce((sum, row) => ({ physical: sum.physical + row.physicalStock, available: sum.available + row.availableStock }), { physical: 0, available: 0 });
+  const totals = useMemo(() => stockTotals(variantRows), [variantRows]);
 
   const router = useRouter();
 
@@ -137,13 +125,16 @@ export default function InventarioView({ tab = "stock" }: { tab?: InventarioTab 
   const imageTriggerRef = useRef<HTMLButtonElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedInventoryId]);
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedInventoryId, selectedStoreId, statusFilter]);
   useEffect(() => {
     setCurrentPage((page) => Math.min(page, Math.max(totalPages, 1)));
   }, [totalPages]);
   useEffect(() => {
-    if (selectedInventoryId !== "all" && warehouses.isSuccess && !storeInventories.some((inv) => inv.id === selectedInventoryId)) setSelectedInventoryId("all");
-  }, [selectedInventoryId, storeInventories, warehouses.isSuccess]);
+    if (selectedInventoryId !== "all" && warehouses.isSuccess && !warehouseOptions.some((inv) => inv.id === selectedInventoryId)) setSelectedInventoryId("all");
+  }, [selectedInventoryId, warehouseOptions, warehouses.isSuccess]);
+  useEffect(() => {
+    if (selectedStoreId !== "all" && warehouses.isSuccess && !stores.some((store) => store.id === selectedStoreId)) setSelectedStoreId("all");
+  }, [selectedStoreId, stores, warehouses.isSuccess]);
 
   // La unificación es de quienes editan inventario: el resto vuelve al stock.
   useEffect(() => {
@@ -151,6 +142,14 @@ export default function InventarioView({ tab = "stock" }: { tab?: InventarioTab 
   }, [auth, tab, canEdit, router]);
 
   if (!auth) return null;
+  const stockActions: StockBoardActions = {
+    canEdit,
+    onImage: (item, trigger) => { imageTriggerRef.current = trigger; setImageItem(item); },
+    onTracking: (item, action) => setTrackingItem({ item, companyId, action }),
+    onAdjust: (item) => { setSelectedItem(item); setAdjustOpen(true); },
+    onEdit: (variantId) => router.push(`/productos?edit=${variantId}`),
+    onKardex: (sku) => router.push(`${INVENTARIO_TAB_ROUTES.movimientos}?q=${encodeURIComponent(sku)}`),
+  };
   const activeTab: InventarioTab = tab === "unificacion" && !canEdit ? "stock" : tab;
 
   const handleExportExcel = async () => {
@@ -160,7 +159,7 @@ export default function InventarioView({ tab = "stock" }: { tab?: InventarioTab 
 
     try {
       const fresh = await fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth.accessToken, includeInactive });
-      const items = filterBusinessInventoryItems(fresh, selectedInventoryId, searchQuery);
+      const items = variantPositionsFlat(filterStockVariants(fresh, stockFilters));
 
       if (items.length === 0) {
         toast.warning("No hay productos para exportar");
@@ -308,50 +307,10 @@ export default function InventarioView({ tab = "stock" }: { tab?: InventarioTab 
           <TabsContent value="stock" className="flex-1 flex flex-col mt-0">
             <Card className="flex-1 flex flex-col">
               <CardContent className="p-6 flex-1 flex flex-col">
-                <div className="mb-6 flex flex-col gap-4 sm:flex-row">
-                  <div className="flex-1 sm:max-w-xs">
-                    <Label className="mb-2 block">Seleccionar Almacén</Label>
+                <StockKpis totals={totals} variantCount={variantRows.length} />
 
-                    {isLoadingInventories ? (
-                      <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted">
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">
-                          Cargando almacenes...
-                        </span>
-                      </div>
-                    ) : (
-                      <Select
-                        value={selectedInventoryId || undefined}
-                        onValueChange={(value) => setSelectedInventoryId(value)}
-                        disabled={storeInventories.length === 0}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar almacén" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">Todos los almacenes del alcance</SelectItem>
-                          {storeInventories.map((inv) => (
-                            <SelectItem key={inv.id} value={inv.id}>
-                              {inv.name} {inv.storeName ? `· ${inv.storeName}` : ""}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-
-                  <div className="flex items-end">
-                    <div>
-                      <p className="text-sm text-muted-foreground">Tienda:</p>
-                      <p className="font-medium">
-                        {scope === "business" ? "Todo el negocio" : auth.company?.stores?.find((store) => store.id === storeIds[0])?.name || "Tienda seleccionada"}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="relative flex-1 sm:max-w-md">
+                <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
+                  <div className="relative flex-1 lg:min-w-[260px] lg:max-w-md">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       ref={searchInputRef}
@@ -362,6 +321,62 @@ export default function InventarioView({ tab = "stock" }: { tab?: InventarioTab 
                     />
                   </div>
 
+                  {scope === "business" && stores.length > 1 ? (
+                    <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+                      <SelectTrigger className="lg:w-[200px]" aria-label="Tienda"><SelectValue placeholder="Tienda" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todas las tiendas</SelectItem>
+                        {stores.map((store) => <SelectItem key={store.id} value={store.id}>{store.name}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      Tienda: <span className="font-medium text-foreground">{scope === "business" ? "Todo el negocio" : auth.company?.stores?.find((store) => store.id === storeIds[0])?.name || "Tienda seleccionada"}</span>
+                    </p>
+                  )}
+
+                  {isLoadingInventories ? (
+                    <div className="flex h-9 items-center gap-2 rounded-md border bg-muted px-3">
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Cargando almacenes...</span>
+                    </div>
+                  ) : (
+                    <Select value={selectedInventoryId || undefined} onValueChange={setSelectedInventoryId} disabled={storeInventories.length === 0}>
+                      <SelectTrigger className="lg:w-[240px]" aria-label="Almacén"><SelectValue placeholder="Seleccionar almacén" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos mis almacenes</SelectItem>
+                        {warehouseOptions.map((inv) => (
+                          <SelectItem key={inv.id} value={inv.id}>
+                            {inv.name} {inv.storeName ? `· ${inv.storeName}` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+
+                  <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StockStatusFilter)}>
+                    <SelectTrigger className="lg:w-[170px]" aria-label="Estado"><SelectValue placeholder="Estado" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos los estados</SelectItem>
+                      <SelectItem value="agotado">{STOCK_STATUS_LABEL.agotado}</SelectItem>
+                      <SelectItem value="bajo">{STOCK_STATUS_LABEL.bajo}</SelectItem>
+                      <SelectItem value="normal">{STOCK_STATUS_LABEL.normal}</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <div className="inline-flex rounded-md border p-0.5" role="group" aria-label="Vista del stock">
+                    {(["producto", "almacen"] as const).map((value) => (
+                      <Button key={value} type="button" size="sm" variant={stockMode === value ? "default" : "ghost"} aria-pressed={stockMode === value} onClick={() => setStockMode(value)}>
+                        {value === "producto" ? "Por producto" : "Por almacén"}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm text-muted-foreground">
+                    {!isLoading && !loadError ? `${totalItems} producto(s) · ${variantRows.length} variante(s)` : ""}
+                  </p>
                   <div className="flex items-center gap-2">
                     <label className="flex items-center gap-2 text-sm text-muted-foreground">
                       <input
@@ -407,239 +422,32 @@ export default function InventarioView({ tab = "stock" }: { tab?: InventarioTab 
                     No se pudo cargar el inventario. {loadError instanceof Error ? loadError.message : "Verifica la sesión."}
                     <Button variant="outline" className="ml-3" onClick={() => { void warehouses.refetch(); if (warehouses.isSuccess) void inventoryQuery.refetch(); }}>Reintentar</Button>
                   </div>
-                ) : !isLoading ? <p className="mb-3 text-sm text-muted-foreground">{totalItems} posiciones · Stock físico: {totals.physical} · Disponible: {totals.available}</p> : null}
-                <div className="rounded-md border flex-1 overflow-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/50">
-                        <TableHead className="border-r w-[80px]">Foto</TableHead>
-                        <TableHead className="border-r w-[130px]">SKU</TableHead>
-                        <TableHead className="border-r min-w-[200px] max-w-[250px]">Nombre</TableHead>
-                        <TableHead className="border-r">Variantes</TableHead>
-                        <TableHead className="border-r">
-                          <TooltipProvider delayDuration={200}>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="flex items-center gap-1 cursor-default">
-                                  Stock
-                                  <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-[220px] text-xs">
-                                Stock real en almacén. Solo disminuye cuando una venta llega al estado <strong>Entregado</strong>.
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </TableHead>
-                        <TableHead className="border-r">
-                          <TooltipProvider delayDuration={200}>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="flex items-center gap-1 cursor-default">
-                                  Reservado
-                                  <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-[220px] text-xs">
-                                Unidades comprometidas en ventas activas (Pendiente, Preparado, Llamado, En envío). Aún no descontadas del stock real.
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </TableHead>
-                        <TableHead className="border-r">
-                          <TooltipProvider delayDuration={200}>
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="flex items-center gap-1 cursor-default">
-                                  Disponible
-                                  <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-[220px] text-xs">
-                                Stock − Reservado. Lo que puedes vender sin afectar pedidos en curso.
-                              </TooltipContent>
-                            </Tooltip>
-                          </TooltipProvider>
-                        </TableHead>
-                        <TableHead className="border-r">Precio venta</TableHead>
-                        <TableHead className="text-right">Acciones</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                ) : null}
 
-                    <TableBody>
-                      {isLoading ? (
-                        [...Array(5)].map((_, i) => (
-                          <TableRow key={i}>
-                            <TableCell className="border-r">
-                              <Skeleton className="h-16 w-16 rounded-md" />
-                            </TableCell>
-                            <TableCell className="border-r">
-                              <Skeleton className="h-4 w-24" />
-                            </TableCell>
-                            <TableCell className="border-r">
-                              <Skeleton className="h-4 w-48" />
-                            </TableCell>
-                            <TableCell className="border-r">
-                              <Skeleton className="h-4 w-24" />
-                            </TableCell>
-                            <TableCell className="border-r">
-                              <Skeleton className="h-4 w-12" />
-                            </TableCell>
-                            <TableCell className="border-r">
-                              <Skeleton className="h-4 w-12" />
-                            </TableCell>
-                            <TableCell className="border-r">
-                              <Skeleton className="h-4 w-12" />
-                            </TableCell>
-                            <TableCell className="border-r">
-                              <Skeleton className="h-4 w-16" />
-                            </TableCell>
-                            <TableCell className="border-r">
-                              <Skeleton className="h-4 w-16" />
-                            </TableCell>
-                            <TableCell>
-                              <Skeleton className="h-4 w-24" />
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      ) : productsWithDetails.length === 0 ? (
-                        <TableRow>
-                          <TableCell
-                            colSpan={10}
-                            className="text-center py-6 text-muted-foreground"
-                          >
-                            {loadError ? "No se pudo consultar el stock" : "No hay productos en este alcance"}
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        productsWithDetails.map((prod) => (
-                          <TableRow key={prod.inventoryItemId} className="hover:bg-muted/30 transition-colors">
-                            <TableCell className="border-r">
-                              <button
-                                type="button"
-                                className="group relative block rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                aria-label={`Cambiar imagen de ${prod.productName}`}
-                                title="Cambiar imagen"
-                                onClick={(event) => {
-                                  imageTriggerRef.current = event.currentTarget;
-                                  setImageItem(prod);
-                                }}
-                              >
-                              {prod.imageUrl ? (
-                                <Image 
-                                  src={prod.imageUrl} 
-                                  alt={prod.productName || "Producto"} 
-                                  width={64}
-                                  height={64}
-                                  className="h-16 w-16 rounded-md object-cover border"
-                                />
-                              ) : (
-                                <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center text-muted-foreground">
-                                  <ShoppingBag className="h-8 w-8" />
-                                </div>
-                              )}
-                                <span className="absolute -bottom-1 -right-1 rounded-full border bg-background p-1 text-muted-foreground group-hover:text-primary">
-                                  <Camera className="h-3 w-3" aria-hidden="true" />
-                                </span>
-                              </button>
-                            </TableCell>
-                            <TableCell className="border-r font-medium text-xs max-w-[130px]" title={prod.companySku ? `${prod.companySku} (POWIP: ${prod.sku})` : prod.sku}>
-                              {prod.companySku ? (
-                                <div className="flex flex-col">
-                                  <span className="font-semibold truncate">{prod.companySku}</span>
-                                  <span className="text-[10px] text-muted-foreground truncate">{prod.sku}</span>
-                                </div>
-                              ) : (
-                                <span className="truncate block">{prod.sku}</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="border-r text-sm max-w-[250px] truncate" title={prod.productName}>
-                              <div>{prod.productName}</div>
-                              <div className="text-xs text-muted-foreground">{prod.storeName || "Tienda"} · {prod.inventoryName}</div>
-                            </TableCell>
-                            <TableCell className="border-r text-sm">
-                              {formatVariantLabel(prod.attributes)}
-                              {prod.isActive === false ? (
-                                <span className="ml-2 rounded border px-1.5 py-0.5 text-xs text-muted-foreground">
-                                  {prod.mergedInto ? "Unificada" : "Inactiva"}
-                                </span>
-                              ) : null}
-                            </TableCell>
-                            <TableCell className="border-r font-semibold text-center">
-                              {prod.physicalStock}
-                            </TableCell>
-                            <TableCell className="border-r text-center">
-                              {(prod.reservedStock ?? 0) > 0 ? (
-                                <span className="text-amber-600 dark:text-amber-400 font-medium">
-                                  {prod.reservedStock}
-                                </span>
-                              ) : (
-                                <span className="text-muted-foreground">0</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="border-r text-center">
-                              <span className={prod.availableStock <= 0 ? "text-destructive font-semibold" : prod.availableStock <= (prod.min_stock ?? 0) ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-emerald-600 dark:text-emerald-400 font-semibold"}>
-                                {prod.availableStock}
-                              </span>
-                            </TableCell>
-                            <TableCell className="border-r text-sm">
-                              {formatMoney(prod.priceVta)}
-                            </TableCell>
-                            <TableCell className="text-right space-x-1">
-                              {(canEdit || isTracked(prod.trackingMode)) && (
-                                <Button size="sm" variant="outline" disabled={!prod.productId} onClick={() => setTrackingItem({ item: prod, companyId, action: isTracked(prod.trackingMode) ? "units" : "regularize" })}>
-                                  {isTracked(prod.trackingMode) ? "Ver unidades" : "Asociar IMEI/series"}
-                                </Button>
-                              )}
-                              {canEdit && isTracked(prod.trackingMode) ? <>
-                                <Button size="sm" variant="outline" onClick={() => setTrackingItem({ item: prod, companyId, action: "transfer" })}>Transferir unidades</Button>
-                                <Button size="sm" variant="outline" onClick={() => setTrackingItem({ item: prod, companyId, action: "write-off" })}>Registrar merma</Button>
-                              </> : null}
-                              {canEdit && isTracked(prod.trackingMode) ? <Button size="sm" variant="ghost" disabled={!prod.productId} onClick={() => setTrackingItem({ item: prod, companyId, action: "regularize" })}>Revisar activación</Button> : null}
-                              {!canEdit || isTracked(prod.trackingMode) || prod.mergedInto ? null : (
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-8 w-8 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
-                                  title="Ajustar stock"
-                                  onClick={() => {
-                                    setSelectedItem(prod);
-                                    setAdjustOpen(true);
-                                  }}
-                                >
-                                  <PackagePlus className="h-4 w-4" />
-                                </Button>
-                              )}
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8"
-                                title="Editar Producto"
-                                onClick={() => {
-                                  router.push(`/productos?edit=${prod.variantId}`);
-                                }}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-                
-                {!isLoading && (
-                  <div className="mt-4">
-                    <Pagination
-                      currentPage={currentPage}
-                      totalPages={totalPages}
-                      totalItems={totalItems}
-                      itemsPerPage={ITEMS_PER_PAGE}
-                      onPageChange={setCurrentPage}
-                      itemName="productos"
+                {stockMode === "producto" ? (
+                  <>
+                    <StockByProduct
+                      groups={pagedGroups}
+                      inventories={warehouseColumns}
+                      isLoading={isLoading}
+                      emptyText={loadError ? "No se pudo consultar el stock" : "No hay productos con estos filtros"}
+                      actions={stockActions}
                     />
-                  </div>
+                    {!isLoading && (
+                      <div className="mt-4">
+                        <Pagination
+                          currentPage={currentPage}
+                          totalPages={totalPages}
+                          totalItems={totalItems}
+                          itemsPerPage={ITEMS_PER_PAGE}
+                          onPageChange={setCurrentPage}
+                          itemName="productos"
+                        />
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <StockByWarehouse variants={variantRows} inventories={warehouseColumns} isLoading={isLoading} />
                 )}
               </CardContent>
             </Card>
@@ -648,7 +456,7 @@ export default function InventarioView({ tab = "stock" }: { tab?: InventarioTab 
           <TabsContent value="movimientos" className="flex-1 flex flex-col mt-0">
             <Card className="flex-1 flex flex-col">
               <CardContent className="p-6 overflow-auto">
-                <MovementHistoryTable companyId={auth?.company?.id} scope={scope} inventories={storeInventories} scopeReady={warehouses.isSuccess} scopeError={scope === "store" ? warehouses.error : undefined} onRetryScope={() => void warehouses.refetch()} />
+                <MovementHistoryTable initialSearch={initialMovementSearch} companyId={auth?.company?.id} scope={scope} inventories={storeInventories} scopeReady={warehouses.isSuccess} scopeError={scope === "store" ? warehouses.error : undefined} onRetryScope={() => void warehouses.refetch()} />
               </CardContent>
             </Card>
           </TabsContent>
