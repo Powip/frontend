@@ -38,3 +38,16 @@ it("fails store history if its raw position response cannot identify origin", as
   get.mockResolvedValue({ data: { data: [] } });
   await expect(fetchScopedInventoryMovements({ ...request, scope: "store" })).rejects.toThrow("origen");
 });
+it("F2: filtra por almacén (el resuelto por el alcance o el del ítem) y busca por número de referencia", () => {
+  const base = { type: "IN", quantity: 1, reason: null, userEmail: null, userName: null, companyId: "c", referenceId: null, created_at: "2026-10-12T10:00:00.000Z" };
+  const rows = [
+    { ...base, id: "a", inventoryId: "warehouse-a", referenceNumber: "ORD-100", inventoryItem: { id: "i1", sku: "SKU-1", product: { name: "Camisa" } } },
+    { ...base, id: "b", referenceNumber: "COM-7", inventoryItem: { id: "i2", sku: "SKU-2", product: { name: "Gorra" }, inventory: { id: "warehouse-b", name: "Lince" } } },
+    { ...base, id: "c", inventoryItem: { id: "i3", sku: "SKU-3", product: { name: "Polo" } } },
+  ] as unknown as InventoryMovement[];
+  expect(filterInventoryMovements(rows, { inventoryId: "warehouse-a" }).map((m) => m.id)).toEqual(["a"]);
+  expect(filterInventoryMovements(rows, { inventoryId: "warehouse-b" }).map((m) => m.id)).toEqual(["b"]);
+  expect(filterInventoryMovements(rows, { search: "ord-100" }).map((m) => m.id)).toEqual(["a"]);
+  expect(filterInventoryMovements(rows, { search: "com-" }).map((m) => m.id)).toEqual(["b"]);
+  expect(filterInventoryMovements(rows, {}).map((m) => m.id)).toEqual(["a", "b", "c"]);
+});

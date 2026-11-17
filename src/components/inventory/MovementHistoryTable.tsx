@@ -33,6 +33,19 @@ const ITEMS_PER_PAGE = 15;
 // Columnas del mockup v6 (Historial): el vacío y el error ocupan todas.
 const COLUMNS = 9;
 
+/** Tipos que hoy escribe el backend (libro de stock de H1-B incluido), con el nombre del mockup. */
+const MOVEMENT_TYPE_OPTIONS: Array<[string, string]> = [
+  ["IN", "Ingreso"],
+  ["OUT", "Egreso"],
+  ["RESERVED", "Reserva"],
+  ["RELEASED", "Liberación"],
+  ["COMMITTED", "Venta entregada"],
+  ["ADJUSTMENT", "Ajuste"],
+  ["TRANSFER", "Traslado"],
+  ["SALDO_INICIAL", "Saldo inicial"],
+  ["ANULACION", "Anulación"],
+];
+
 interface MovementHistoryTableProps {
   companyId: string | undefined;
   scope?: "business" | "store";
@@ -53,6 +66,7 @@ export function MovementHistoryTable({ companyId, scope = "business", inventorie
   // Filter states
   const [search, setSearch] = useState(initialSearch);
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
+  const [inventoryFilter, setInventoryFilter] = useState<string>("ALL");
   const [userEmailFilter, setUserEmailFilter] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -63,18 +77,19 @@ export function MovementHistoryTable({ companyId, scope = "business", inventorie
     enabled: Boolean(companyId && auth?.company?.id === companyId && auth?.accessToken && auth?.user?.id && (scope === "business" || scopeReady)) && !scopeError,
     retry: false,
   });
-  const filtered = useMemo(() => filterInventoryMovements(query.data ?? [], { search, type: typeFilter !== "ALL" ? typeFilter : undefined, userEmail: userEmailFilter, startDate, endDate }), [query.data, search, typeFilter, userEmailFilter, startDate, endDate]);
+  const filtered = useMemo(() => filterInventoryMovements(query.data ?? [], { search, type: typeFilter !== "ALL" ? typeFilter : undefined, userEmail: userEmailFilter, startDate, endDate, inventoryId: inventoryFilter !== "ALL" ? inventoryFilter : undefined }), [inventoryFilter, query.data, search, typeFilter, userEmailFilter, startDate, endDate]);
   const movements = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const totalItems = filtered.length;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
   const error = scopeError || query.error;
   const isLoading = !error && (query.isFetching || (scope === "store" && !scopeReady));
-  useEffect(() => { setCurrentPage(1); }, [search, typeFilter, userEmailFilter, startDate, endDate]);
+  useEffect(() => { setCurrentPage(1); }, [search, typeFilter, inventoryFilter, userEmailFilter, startDate, endDate]);
   const handleSearch = (event: React.FormEvent) => { event.preventDefault(); setCurrentPage(1); };
 
   const clearFilters = () => {
     setSearch("");
     setTypeFilter("ALL");
+    setInventoryFilter("ALL");
     setUserEmailFilter("");
     setStartDate("");
     setEndDate("");
@@ -101,14 +116,14 @@ export function MovementHistoryTable({ companyId, scope = "business", inventorie
       </div>
 
       <div className="bg-muted/40 p-4 rounded-lg border border-border/50">
-        <form onSubmit={handleSearch} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-start">
+        <form onSubmit={handleSearch} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-start">
           <div className="flex flex-col space-y-2">
             <Label htmlFor="search" className="text-xs font-semibold uppercase text-muted-foreground/70">Buscar</Label>
             <div className="relative group">
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
               <Input
                 id="search"
-                placeholder="Nombre o SKU..."
+                placeholder="Producto, SKU o referencia (ORD-, COM-)…"
                 className="pl-9 h-9"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -124,10 +139,20 @@ export function MovementHistoryTable({ companyId, scope = "business", inventorie
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Todos los tipos</SelectItem>
-                <SelectItem value="IN">Ingreso</SelectItem>
-                <SelectItem value="OUT">Egreso</SelectItem>
-                <SelectItem value="ADJUSTMENT">Ajuste</SelectItem>
-                <SelectItem value="RESERVED">Reserva</SelectItem>
+                {MOVEMENT_TYPE_OPTIONS.map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="flex flex-col space-y-2">
+            <Label htmlFor="warehouse" className="text-xs font-semibold uppercase text-muted-foreground/70">Almacén</Label>
+            <Select value={inventoryFilter} onValueChange={setInventoryFilter} disabled={inventories.length === 0}>
+              <SelectTrigger id="warehouse" className="h-9">
+                <SelectValue placeholder="Almacén" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos mis almacenes</SelectItem>
+                {inventories.map((inv) => <SelectItem key={inv.id} value={inv.id}>{inv.name}{inv.storeName ? ` · ${inv.storeName}` : ""}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>

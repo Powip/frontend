@@ -15,7 +15,7 @@ beforeEach(() => { fetch.mockReset(); fetch.mockResolvedValue(rows); });
 it("paginates complete history and searches later pages without dropping same-day records", async () => {
   setup(); await screen.findByText("Producto 0");
   expect(screen.queryByText("Producto 16")).not.toBeInTheDocument();
-  fireEvent.change(screen.getByPlaceholderText("Nombre o SKU..."), { target: { value: "SKU-16" } });
+  fireEvent.change(screen.getByPlaceholderText(/Producto, SKU o referencia/), { target: { value: "SKU-16" } });
   await screen.findByText("Producto 16");
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(screen.getByText(/incluidos registros históricos/)).toBeInTheDocument();
