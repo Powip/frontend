@@ -72,6 +72,14 @@ describe("Unificación › SKU repetido (FEAT-24 H4-D)", () => {
     expect(updateCatalogProduct).toHaveBeenCalledWith("p1", { companySku: "POL2" });
   });
 
+  it("en la Unificación muestra solo el SKU base: las variantes van agrupadas en «Por unificar» (FEAT-24 H11)", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><SkuConflictsPanel companyId="c1" kinds={["product"]} /></QueryClientProvider>);
+    expect(await screen.findByRole("heading", { name: "SKU base repetido (1)" })).toBeInTheDocument();
+    expect(screen.getByLabelText("SKU nuevo de Polo · SKU base")).toBeInTheDocument();
+    expect(screen.queryByLabelText("SKU nuevo de Polo · Talla: M")).not.toBeInTheDocument();
+  });
+
   it("sin SKU repetidos no muestra nada", async () => {
     jest.mocked(fetchBusinessProducts).mockResolvedValue([product({ id: "p2", name: "Gorra" })]);
     const { container } = renderPanel();
