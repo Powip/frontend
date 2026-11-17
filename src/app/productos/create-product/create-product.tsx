@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import BrandSelect from "@/components/products/BrandSelect";
 import VariantStatusControl from "@/components/products/VariantStatusControl";
+import VariantCodes from "@/components/products/VariantCodes";
 import { MAX_ITEM_UNITS, MAX_ITEM_UNITS_MESSAGE, largeQuantityConfirmText, needsQuantityConfirmation } from "@/lib/stockLimits";
 import { formatVariantLabel } from "@/lib/variantAttributes";
 
@@ -82,6 +83,10 @@ interface VariantForm {
   mergedInto?: string | null;
   mergedIntoSku?: string | null;
   linkedSources?: string[];
+  // FEAT-24 H2-F: códigos de la variante guardada (solo lectura).
+  sku?: string | null;
+  barcode?: string | null;
+  powipEan?: string | null;
 }
 
 // ---------- util: cartesian product ----------
@@ -273,6 +278,9 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
           mergedInto: v.mergedInto ?? null,
           mergedIntoSku: v.mergedIntoSku ?? null,
           linkedSources: v.linkedSources ?? [],
+          sku: v.sku ?? null,
+          barcode: v.barcode ?? null,
+          powipEan: v.powipEan ?? null,
         }));
         setVariants(variantForms);
 
@@ -1121,6 +1129,10 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                       <p className="text-s text-muted-foreground">
                         {formatVariantLabel(variant.attributes, " | ")}
                       </p>
+
+                      {variant.id ? (
+                        <VariantCodes sku={variant.sku} barcode={variant.barcode} powipEan={variant.powipEan} />
+                      ) : null}
 
                       {/* Datos de la variante */}
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
