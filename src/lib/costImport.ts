@@ -161,6 +161,20 @@ export function buildCostPreview(rows: CostSheetRow[], matches: VariantCodeMatch
   });
 }
 
+/** Tope de códigos por consulta de `lookup-by-codes`. */
+export const LOOKUP_CHUNK = 200;
+
+/** Resuelve los códigos del archivo contra el catálogo, de a 200 (sin repetir). */
+export async function lookupCostCodes(
+  rows: CostSheetRow[],
+  lookup: (codes: string[]) => Promise<VariantCodeMatch[]>,
+): Promise<VariantCodeMatch[]> {
+  const codes = [...new Set(rows.map((row) => row.code).filter((code) => code !== ""))];
+  const result: VariantCodeMatch[] = [];
+  for (let index = 0; index < codes.length; index += LOOKUP_CHUNK) result.push(...(await lookup(codes.slice(index, index + LOOKUP_CHUNK))));
+  return result;
+}
+
 /** Lo que se envía (solo las filas válidas). */
 export function costItems(preview: CostPreviewRow[]): Array<{ variantId: string; averageCost: number }> {
   return preview

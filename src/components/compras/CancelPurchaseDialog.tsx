@@ -9,11 +9,13 @@ import { Loader2 } from "lucide-react";
 import { trackingError } from "@/services/inventoryTrackingService";
 
 /** FEAT-24 H0 — anular una compra recibida exige motivo; si el backend la rechaza, el diálogo queda abierto con el motivo. */
-export default function CancelPurchaseDialog({ open, purchaseNumber, onConfirm, onClose }: {
+export default function CancelPurchaseDialog({ open, purchaseNumber, onConfirm, onClose, description }: {
   open: boolean;
   purchaseNumber: string;
   onConfirm: (reason: string) => Promise<void>;
   onClose: () => void;
+  /** FEAT-24 H3: texto propio (p. ej. una orden de compra sin recibir no genera salidas). */
+  description?: string;
 }) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
@@ -48,7 +50,8 @@ export default function CancelPurchaseDialog({ open, purchaseNumber, onConfirm, 
         <DialogHeader>
           <DialogTitle>Anular compra {purchaseNumber}</DialogTitle>
           <DialogDescription>
-            Se registran las salidas inversas y la compra queda anulada con su motivo. Si alguna variante ya no tiene stock suficiente, no se anula.
+            {description ??
+              "Se registran las salidas inversas y la compra queda anulada con su motivo. Si alguna variante ya no tiene stock suficiente, no se anula."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
