@@ -254,6 +254,7 @@ export function Sidebar({ className }: SidebarProps) {
         icon: Package,
         children: [
           { name: "Lista de productos", href: "/productos", icon: Tags },
+          { name: "Categorías", href: "/productos/categorias", icon: LayoutList },
           { name: "Inventario", href: "/inventario", icon: Package },
           { name: "Compras", href: "/compras", icon: PackagePlus },
           { name: "Proveedores", href: "/proveedores", icon: Building2 },

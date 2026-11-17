@@ -21,7 +21,7 @@ export function useCatalogCategories() {
     retry: false,
   });
   const invalidate = () => queryClient.invalidateQueries({ queryKey });
-  const create = useMutation({ mutationFn: createCatalogCategory, onSuccess: invalidate });
+  const create = useMutation({ mutationFn: (body: { name: string; parentId?: string | null }) => createCatalogCategory(body), onSuccess: invalidate });
   const update = useMutation({
     mutationFn: ({ id, ...body }: { id: string; name?: string; parentId?: string | null; active?: boolean }) => updateCatalogCategory(id, body),
     onSuccess: invalidate,
