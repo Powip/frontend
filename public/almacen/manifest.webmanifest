@@ -1,0 +1,18 @@
+{
+  "id": "/almacen",
+  "name": "Powip Almacén",
+  "short_name": "Almacén",
+  "description": "Consultar stock, recibir devoluciones y hacer picking desde el celular, también sin señal.",
+  "lang": "es",
+  "start_url": "/almacen",
+  "scope": "/almacen",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#0a647c",
+  "icons": [
+    { "src": "/almacen/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/almacen/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/almacen/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -37,6 +37,9 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/dashboard": [],
   "/productos": [],
   "/inventario": [],
+  // Modo almacén (FEAT-24 H6): entra cualquiera con sesión, como Inventario. Cada pantalla pide lo suyo:
+  // picking con los permisos de Operaciones y recibir con el rol que edita inventario o el rol Almacén.
+  "/almacen": [],
   // Compras: dan de alta stock con costo, así que van con la edición de inventario (Administrador y
   // Operaciones, los únicos roles que las registran en prod). El inventario en sí se sigue viendo.
   "/compras": ["__INVENTORY_ROLE__"],
