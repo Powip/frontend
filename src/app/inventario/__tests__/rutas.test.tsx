@@ -27,10 +27,17 @@ jest.mock("@/components/inventory/receptions/ReceptionsTab", () => ({
     <div>bandeja de recepciones · edita: {String(props.canEdit)} · alcance: {props.scopeInventoryIds === null ? "negocio" : props.scopeInventoryIds.join(",")}</div>
   ),
 }));
+jest.mock("@/components/inventory/out-of-stock/OutOfStockTab", () => ({
+  __esModule: true,
+  default: (props: { access: { customer: boolean; sinReserva: boolean } }) => (
+    <div>bandeja sin stock · atención: {String(props.access.customer)} · sin reserva: {String(props.access.sinReserva)}</div>
+  ),
+}));
 
-function loginAs(role: string) {
+function loginAs(role: string, permissions: string[] = ["MANAGE_OPERATIONS"]) {
   (useAuth as jest.Mock).mockReturnValue({
-    auth: { accessToken: "t", company: { id: "c-1" }, user: { id: "u-1", role, permissions: [] } },
+    auth: { accessToken: "t", company: { id: "c-1" }, user: { id: "u-1", role, permissions } },
+    hasPermission: (permission: string) => permissions.includes(permission),
   });
 }
 function renderTab(tab?: InventarioTab) {
@@ -51,6 +58,7 @@ describe("rutas del módulo de inventario (FEAT-24 F1)", () => {
       stock: "/inventario/stock",
       movimientos: "/inventario/movimientos",
       recepciones: "/inventario/recepciones",
+      "pedidos-sin-stock": "/inventario/pedidos-sin-stock",
       unificacion: "/inventario/unificacion",
     });
   });
@@ -59,6 +67,7 @@ describe("rutas del módulo de inventario (FEAT-24 F1)", () => {
     ["stock", /^Stock$/],
     ["movimientos", /^Movimientos$/],
     ["recepciones", /^Recepciones$/],
+    ["pedidos-sin-stock", /Pedidos sin stock/],
     ["unificacion", /Unificación/],
   ] as const)("la ruta %s abre su pestaña seleccionada", async (tab, name) => {
     loginAs("ADMINISTRADOR");
@@ -88,6 +97,22 @@ describe("rutas del módulo de inventario (FEAT-24 F1)", () => {
     renderTab("recepciones");
     expect(await screen.findByText("bandeja de recepciones · edita: true · alcance: w-1")).toBeInTheDocument();
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("Pedidos sin stock es de Atención al cliente y Operaciones; sin permiso vuelve al stock (FEAT-24 H2-F)", async () => {
+    loginAs("ATENCION", ["MANAGE_CUSTOMER_SERVICE"]);
+    const { unmount } = renderTab("pedidos-sin-stock");
+    expect(await screen.findByText("bandeja sin stock · atención: true · sin reserva: true")).toBeInTheDocument();
+    unmount();
+    loginAs("REPARTO", ["UPDATE_DELIVERY_STATUS"]);
+    const second = renderTab("pedidos-sin-stock");
+    expect(await screen.findByText("bandeja sin stock · atención: false · sin reserva: true")).toBeInTheDocument();
+    second.unmount();
+    expect(replace).not.toHaveBeenCalled();
+    loginAs("VENTAS", ["VIEW_SALES"]);
+    renderTab("pedidos-sin-stock");
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/inventario/stock"));
+    expect(screen.queryByRole("tab", { name: /Pedidos sin stock/ })).not.toBeInTheDocument();
   });
 
   it("quien no edita inventario no ve Unificación y, si entra por la URL, vuelve al stock", async () => {

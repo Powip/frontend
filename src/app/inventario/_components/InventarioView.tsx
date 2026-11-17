@@ -25,6 +25,7 @@ import {
   LayoutList,
   GitMerge,
   PackageOpen,
+  PackageX,
 } from "lucide-react";
 
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -54,22 +55,27 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MovementHistoryTable } from "@/components/inventory/MovementHistoryTable";
 import { ReconciliationTab } from "@/components/inventory/ReconciliationTab";
 import ReceptionsTab from "@/components/inventory/receptions/ReceptionsTab";
+import OutOfStockTab from "@/components/inventory/out-of-stock/OutOfStockTab";
+import { orderStockAccess } from "@/lib/orderStock";
 import { StockByProduct, StockByWarehouse, StockKpis, type StockBoardActions } from "@/components/inventory/StockBoard";
 import { filterStockVariants, groupByProduct, stockTotals, storesOf, variantPositionsFlat, visibleInventories, STOCK_STATUS_LABEL, type StockMode, type StockStatusFilter } from "@/components/inventory/stockView";
 
 const ITEMS_PER_PAGE = 10;
 
 /** Pestañas del módulo (mockup vistainv.html, grupo «Almacén»). Cada una vive en su propia ruta. */
-export type InventarioTab = "stock" | "movimientos" | "recepciones" | "unificacion";
+export type InventarioTab = "stock" | "movimientos" | "recepciones" | "pedidos-sin-stock" | "unificacion";
 export const INVENTARIO_TAB_ROUTES: Record<InventarioTab, string> = {
   stock: "/inventario/stock",
   movimientos: "/inventario/movimientos",
   recepciones: "/inventario/recepciones",
+  "pedidos-sin-stock": "/inventario/pedidos-sin-stock",
   unificacion: "/inventario/unificacion",
 };
 
 export default function InventarioView({ tab = "stock", initialMovementSearch = "" }: { tab?: InventarioTab; initialMovementSearch?: string }) {
-  const { auth } = useAuth();
+  const { auth, hasPermission } = useAuth();
+  // Pedidos sin stock / sin reserva: Atención al cliente y Operaciones (los mismos permisos que ms-ventas).
+  const stockAccess = orderStockAccess((permission) => hasPermission?.(permission) ?? false);
   // Editar inventario (ajustes, mermas, transferencias, importar Excel, compras, reconciliación): solo
   // Administrador y Operaciones. El resto sigue viendo el stock en solo lectura.
   const canEdit = canEditInventory(auth?.user);
@@ -152,7 +158,8 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
   // La unificación es de quienes editan inventario: el resto vuelve al stock.
   useEffect(() => {
     if (auth && tab === "unificacion" && !canEdit) router.replace(INVENTARIO_TAB_ROUTES.stock);
-  }, [auth, tab, canEdit, router]);
+    if (auth && tab === "pedidos-sin-stock" && !stockAccess.sinReserva) router.replace(INVENTARIO_TAB_ROUTES.stock);
+  }, [auth, tab, canEdit, stockAccess.sinReserva, router]);
 
   if (!auth) return null;
   const stockActions: StockBoardActions = {
@@ -163,7 +170,8 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
     onEdit: (variantId) => router.push(`/productos?edit=${variantId}`),
     onKardex: (sku) => router.push(`${INVENTARIO_TAB_ROUTES.movimientos}?q=${encodeURIComponent(sku)}`),
   };
-  const activeTab: InventarioTab = tab === "unificacion" && !canEdit ? "stock" : tab;
+  const activeTab: InventarioTab =
+    (tab === "unificacion" && !canEdit) || (tab === "pedidos-sin-stock" && !stockAccess.sinReserva) ? "stock" : tab;
 
   const handleExportExcel = async () => {
     if (loadError || isLoading) { toast.error("Espera a que el inventario termine de cargar correctamente."); return; }
@@ -288,6 +296,12 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                 <PackageOpen className="h-4 w-4" />
                 Recepciones
               </TabsTrigger>
+              {stockAccess.sinReserva && (
+                <TabsTrigger value="pedidos-sin-stock" className="flex items-center gap-2">
+                  <PackageX className="h-4 w-4" />
+                  Pedidos sin stock
+                </TabsTrigger>
+              )}
               {canEdit && (
                 <TabsTrigger
                   value="unificacion"
@@ -490,6 +504,16 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
               </CardContent>
             </Card>
           </TabsContent>
+
+          {stockAccess.sinReserva && (
+            <TabsContent value="pedidos-sin-stock" className="flex-1 flex flex-col mt-0">
+              <Card className="flex-1 flex flex-col">
+                <CardContent className="p-6 overflow-auto">
+                  <OutOfStockTab companyId={companyId} access={stockAccess} />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
 
           {canEdit && (
           <TabsContent
