@@ -24,6 +24,7 @@ import {
   History,
   LayoutList,
   GitMerge,
+  PackageOpen,
 } from "lucide-react";
 
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -52,16 +53,18 @@ import ShopifySyncWizard from "@/app/productos/shopify-sync-wizard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MovementHistoryTable } from "@/components/inventory/MovementHistoryTable";
 import { ReconciliationTab } from "@/components/inventory/ReconciliationTab";
+import ReceptionsTab from "@/components/inventory/receptions/ReceptionsTab";
 import { StockByProduct, StockByWarehouse, StockKpis, type StockBoardActions } from "@/components/inventory/StockBoard";
 import { filterStockVariants, groupByProduct, stockTotals, storesOf, variantPositionsFlat, visibleInventories, STOCK_STATUS_LABEL, type StockMode, type StockStatusFilter } from "@/components/inventory/stockView";
 
 const ITEMS_PER_PAGE = 10;
 
 /** Pestañas del módulo (mockup vistainv.html, grupo «Almacén»). Cada una vive en su propia ruta. */
-export type InventarioTab = "stock" | "movimientos" | "unificacion";
+export type InventarioTab = "stock" | "movimientos" | "recepciones" | "unificacion";
 export const INVENTARIO_TAB_ROUTES: Record<InventarioTab, string> = {
   stock: "/inventario/stock",
   movimientos: "/inventario/movimientos",
+  recepciones: "/inventario/recepciones",
   unificacion: "/inventario/unificacion",
 };
 
@@ -281,6 +284,10 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                 <History className="h-4 w-4" />
                 Movimientos
               </TabsTrigger>
+              <TabsTrigger value="recepciones" className="flex items-center gap-2">
+                <PackageOpen className="h-4 w-4" />
+                Recepciones
+              </TabsTrigger>
               {canEdit && (
                 <TabsTrigger
                   value="unificacion"
@@ -468,6 +475,18 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
             <Card className="flex-1 flex flex-col">
               <CardContent className="p-6 overflow-auto">
                 <MovementHistoryTable initialSearch={initialMovementSearch} companyId={auth?.company?.id} scope={scope} inventories={storeInventories} scopeReady={warehouses.isSuccess} scopeError={scope === "store" ? warehouses.error : undefined} onRetryScope={() => void warehouses.refetch()} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="recepciones" className="flex-1 flex flex-col mt-0">
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 overflow-auto">
+                <ReceptionsTab
+                  companyId={companyId}
+                  canEdit={canEdit}
+                  scopeInventoryIds={scope === "store" ? (warehouses.isSuccess ? storeInventories.map((inv) => inv.id) : []) : null}
+                />
               </CardContent>
             </Card>
           </TabsContent>

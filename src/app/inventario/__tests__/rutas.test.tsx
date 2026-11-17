@@ -21,6 +21,12 @@ jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), warn
 jest.mock("@/app/productos/shopify-sync-wizard", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/inventory/ReconciliationTab", () => ({ ReconciliationTab: () => <div>bandeja de unificación</div> }));
 jest.mock("@/components/inventory/MovementHistoryTable", () => ({ MovementHistoryTable: () => <div>tabla de movimientos</div> }));
+jest.mock("@/components/inventory/receptions/ReceptionsTab", () => ({
+  __esModule: true,
+  default: (props: { canEdit: boolean; scopeInventoryIds: string[] | null }) => (
+    <div>bandeja de recepciones · edita: {String(props.canEdit)} · alcance: {props.scopeInventoryIds === null ? "negocio" : props.scopeInventoryIds.join(",")}</div>
+  ),
+}));
 
 function loginAs(role: string) {
   (useAuth as jest.Mock).mockReturnValue({
@@ -44,6 +50,7 @@ describe("rutas del módulo de inventario (FEAT-24 F1)", () => {
     expect(INVENTARIO_TAB_ROUTES).toEqual({
       stock: "/inventario/stock",
       movimientos: "/inventario/movimientos",
+      recepciones: "/inventario/recepciones",
       unificacion: "/inventario/unificacion",
     });
   });
@@ -51,6 +58,7 @@ describe("rutas del módulo de inventario (FEAT-24 F1)", () => {
   it.each([
     ["stock", /^Stock$/],
     ["movimientos", /^Movimientos$/],
+    ["recepciones", /^Recepciones$/],
     ["unificacion", /Unificación/],
   ] as const)("la ruta %s abre su pestaña seleccionada", async (tab, name) => {
     loginAs("ADMINISTRADOR");
@@ -67,6 +75,19 @@ describe("rutas del módulo de inventario (FEAT-24 F1)", () => {
     unmount();
     renderTab("unificacion");
     expect(await screen.findByText("bandeja de unificación")).toBeInTheDocument();
+  });
+
+  it("Recepciones la ven todos; recibir es de quien edita inventario y en una tienda se acota a sus almacenes (FEAT-24 H2-F)", async () => {
+    loginAs("VENTAS");
+    const { unmount } = renderTab("recepciones");
+    expect(await screen.findByText("bandeja de recepciones · edita: false · alcance: negocio")).toBeInTheDocument();
+    unmount();
+    loginAs("OPERACIONES");
+    (useBusinessScope as jest.Mock).mockReturnValue({ scope: "store", storeIds: ["s-1"], canFetch: true });
+    (useBusinessInventories as jest.Mock).mockReturnValue({ inventories: [{ id: "w-1", name: "Central", storeId: "s-1" }], isSuccess: true, isPending: false, error: null });
+    renderTab("recepciones");
+    expect(await screen.findByText("bandeja de recepciones · edita: true · alcance: w-1")).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
   });
 
   it("quien no edita inventario no ve Unificación y, si entra por la URL, vuelve al stock", async () => {
