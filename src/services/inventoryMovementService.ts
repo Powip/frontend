@@ -109,12 +109,14 @@ export async function fetchScopedInventoryMovements({ companyId, accessToken, sc
 /** Almacén de un movimiento: el que resolvió el alcance o, si no, el de su ítem. */
 export const movementInventoryId = (movement: InventoryMovement) => movement.inventoryId ?? movement.inventoryItem?.inventory?.id ?? null;
 
-export function filterInventoryMovements(movements: InventoryMovement[], filters: { search?: string; type?: string; userEmail?: string; startDate?: string; endDate?: string; inventoryId?: string }) {
+export function filterInventoryMovements(movements: InventoryMovement[], filters: { search?: string; type?: string; userEmail?: string; startDate?: string; endDate?: string; inventoryId?: string; inventoryItemIds?: ReadonlySet<string> }) {
   const query = filters.search?.trim().toLocaleLowerCase("es") ?? "";
   return movements.filter((movement) => {
     const date = format(parseISO(movement.created_at), "yyyy-MM-dd");
     return (!filters.type || movement.type === filters.type) && (!filters.userEmail || movement.userEmail === filters.userEmail) &&
       (!filters.inventoryId || movementInventoryId(movement) === filters.inventoryId) &&
+      // FEAT-24 H4: historial de la ficha del producto (solo los ítems de sus variantes).
+      (!filters.inventoryItemIds || (!!movement.inventoryItem?.id && filters.inventoryItemIds.has(movement.inventoryItem.id))) &&
       (!filters.startDate || date >= filters.startDate) && (!filters.endDate || date <= filters.endDate) &&
       (!query || [movement.inventoryItem?.product?.name, movement.inventoryItem?.sku, movement.referenceNumber].some((value) => String(value ?? "").toLocaleLowerCase("es").includes(query)));
   });

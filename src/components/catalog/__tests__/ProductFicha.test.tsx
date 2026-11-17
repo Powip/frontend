@@ -1,0 +1,176 @@
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { AxiosError, AxiosHeaders } from "axios";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import ProductFicha from "@/components/catalog/ficha/ProductFicha";
+import {
+  getCatalogProduct,
+  getProductVariants,
+  updateCatalogProduct,
+  updateCatalogVariant,
+  type CatalogProductDetail,
+  type CatalogVariantDetail,
+} from "@/services/catalogProductService";
+import { fetchBusinessInventoryItems, type BusinessInventoryItem } from "@/services/businessInventoryItemsService";
+
+jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn(), back: jest.fn() }), usePathname: () => "/productos/p1" }));
+jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn() } }));
+jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { accessToken: "t", user: { id: "u1", role: "ADMINISTRADOR" }, company: { id: "c1" } } }) }));
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scope: "business", storeIds: ["s1"], canFetch: true }) }));
+jest.mock("@/hooks/useBusinessInventories", () => ({ useBusinessInventories: () => ({ inventories: [{ id: "inv-1", name: "Principal", storeId: "s1" }], isSuccess: true, isPending: false, error: null, refetch: jest.fn() }) }));
+jest.mock("@/hooks/useCompanyBrands", () => ({ useCompanyBrands: () => ({ brands: [{ id: "nike", name: "Nike" }], isLoading: false, createBrand: jest.fn() }) }));
+jest.mock("@/hooks/useCatalogCategories", () => ({
+  useCatalogCategories: () => ({
+    tree: [{ id: "ropa", name: "Ropa", parentId: null, active: true, level: 1, children: [{ id: "pol", name: "Polos", parentId: "ropa", active: true, level: 2, children: [] }] }],
+    isLoading: false, error: null,
+  }),
+}));
+jest.mock("@/services/catalogProductService", () => ({
+  getCatalogProduct: jest.fn(), getProductVariants: jest.fn(), updateCatalogProduct: jest.fn(), updateCatalogVariant: jest.fn(),
+}));
+jest.mock("@/services/businessInventoryItemsService", () => ({ fetchBusinessInventoryItems: jest.fn() }));
+jest.mock("@/services/uploadService", () => ({ uploadImage: jest.fn() }));
+jest.mock("@/components/inventory/MovementHistoryTable", () => ({
+  MovementHistoryTable: ({ inventoryItemIds, title }: { inventoryItemIds?: string[]; title?: string }) => <div data-testid="kardex">{title}: {inventoryItemIds?.join(",")}</div>,
+}));
+
+const conflict409 = (message: string) =>
+  new AxiosError("409", "ERR", undefined, undefined, { status: 409, statusText: "Conflict", headers: {}, config: { headers: new AxiosHeaders() }, data: { message } });
+
+const POLO: CatalogProductDetail = {
+  id: "p1", companyId: "c1", name: "Polo básico", sku: "ROPPOL-1", companySku: "POL0001", status: true, type: "variantes",
+  brandId: "nike", categoryId: "pol", imageUrl: null, purchaseUnit: null, purchaseFactor: 1, externalSource: "shopify", externalId: "998",
+};
+const POLO_VARIANTS: CatalogVariantDetail[] = [
+  { id: "v1", sku: "INT-1", companySku: "POL0001-S", attributeValues: { Talla: "S" }, isActive: true, barcode: null, powipEan: "2000000000017", linkedSources: ["shopify"], shopifySku: "SH-S" },
+  { id: "v2", sku: "INT-2", companySku: "POL0001-M", attributeValues: { Talla: "M" }, isActive: true, skuConflict: true, linkedSources: [] },
+];
+const item = (variantId: string, physical: number, reserved: number): BusinessInventoryItem => ({
+  inventoryItemId: `ii-${variantId}`, productId: "p1", variantId, productName: "Polo básico", sku: "x", price: 0,
+  physicalStock: physical, reservedStock: reserved, availableStock: physical - reserved, inventoryId: "inv-1", inventoryName: "Principal", storeId: "s1",
+});
+
+function renderFicha() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}><ProductFicha productId="p1" /></QueryClientProvider>);
+}
+
+describe("Ficha del producto en pestañas (FEAT-24 H4-D)", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(getCatalogProduct).mockResolvedValue(POLO);
+    jest.mocked(getProductVariants).mockResolvedValue(POLO_VARIANTS);
+    jest.mocked(fetchBusinessInventoryItems).mockResolvedValue([item("v1", 10, 2), item("v2", 5, 0)]);
+    jest.mocked(updateCatalogProduct).mockResolvedValue({});
+    jest.mocked(updateCatalogVariant).mockResolvedValue({});
+  });
+
+  it("muestra la cabecera y las cinco pestañas de un producto con variantes", async () => {
+    renderFicha();
+    expect(await screen.findByRole("heading", { name: "Polo básico" })).toBeInTheDocument();
+    expect(screen.getByText("Ropa › Polos")).toBeInTheDocument();
+    expect(screen.getAllByText("SKU repetido").length).toBeGreaterThan(0);
+    for (const name of ["General", "Variantes (2)", "Stock por almacén", "Canales", "Historial"]) {
+      expect(screen.getByRole("tab", { name })).toBeInTheDocument();
+    }
+    expect(screen.getByRole("link", { name: "Editar opciones y precios" })).toHaveAttribute("href", "/productos?edit=v1");
+  });
+
+  it("General: guarda solo lo que cambió (categoría, unidad de compra y factor)", async () => {
+    const user = userEvent.setup();
+    renderFicha();
+    await screen.findByRole("heading", { name: "Polo básico" });
+    await user.selectOptions(screen.getByLabelText("Categoría"), "ropa");
+    await user.type(screen.getByLabelText("Unidad de compra"), "Caja");
+    await user.clear(screen.getByLabelText("Factor"));
+    await user.type(screen.getByLabelText("Factor"), "12");
+    await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await waitFor(() => expect(updateCatalogProduct).toHaveBeenCalledWith("p1", { categoryId: "ropa", purchaseUnit: "Caja", purchaseFactor: 12 }));
+    expect(updateCatalogVariant).not.toHaveBeenCalled();
+  });
+
+  it("General: el 409 del SKU base se muestra debajo del campo", async () => {
+    jest.mocked(updateCatalogProduct).mockRejectedValue(conflict409("El SKU GOR0001 ya existe en tu empresa (producto «Gorra»)"));
+    const user = userEvent.setup();
+    renderFicha();
+    await screen.findByRole("heading", { name: "Polo básico" });
+    await user.clear(screen.getByLabelText("SKU base"));
+    await user.type(screen.getByLabelText("SKU base"), "GOR0001");
+    await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("El SKU GOR0001 ya existe en tu empresa (producto «Gorra»)");
+  });
+
+  it("Variantes: renombra el SKU, muestra el 409 en la fila y avisa del SKU repetido", async () => {
+    jest.mocked(updateCatalogVariant).mockRejectedValueOnce(conflict409("El SKU POL0001-S ya existe en tu empresa (producto «Polo básico»)"));
+    const user = userEvent.setup();
+    renderFicha();
+    await user.click(await screen.findByRole("tab", { name: "Variantes (2)" }));
+    const rowM = screen.getByText("Talla: M").closest("tr")!;
+    expect(within(rowM).getByText("SKU repetido")).toBeInTheDocument();
+    expect(screen.queryByText(/Default Title/)).not.toBeInTheDocument();
+
+    const sku = within(rowM).getByLabelText("SKU de Talla: M");
+    await user.clear(sku);
+    await user.type(sku, "POL0001-S2");
+    await user.click(within(rowM).getByRole("button", { name: "Guardar" }));
+    expect(await within(rowM).findByRole("alert")).toHaveTextContent("ya existe en tu empresa");
+    expect(updateCatalogVariant).toHaveBeenCalledWith("v2", { companySku: "POL0001-S2" });
+
+    await user.type(within(rowM).getByLabelText("Código de barras de Talla: M"), "7750000000012");
+    await user.click(within(rowM).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(updateCatalogVariant).toHaveBeenLastCalledWith("v2", { companySku: "POL0001-S2", barcode: "7750000000012" }));
+  });
+
+  it("Variantes: no manda dos variantes del producto con el mismo SKU", async () => {
+    const user = userEvent.setup();
+    renderFicha();
+    await user.click(await screen.findByRole("tab", { name: "Variantes (2)" }));
+    const rowM = screen.getByText("Talla: M").closest("tr")!;
+    const sku = within(rowM).getByLabelText("SKU de Talla: M");
+    await user.clear(sku);
+    await user.type(sku, "pol0001-s");
+    await user.click(within(rowM).getByRole("button", { name: "Guardar" }));
+    expect(await within(rowM).findByRole("alert")).toHaveTextContent("Otra variante de este producto tiene el mismo SKU.");
+    expect(updateCatalogVariant).not.toHaveBeenCalled();
+  });
+
+  it("Stock por almacén: físico, reservado y disponible, sin tránsito si no llega", async () => {
+    const user = userEvent.setup();
+    renderFicha();
+    await user.click(await screen.findByRole("tab", { name: "Stock por almacén" }));
+    const row = (await screen.findByText("Talla: S")).closest("tr")!;
+    expect(within(row).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["Talla: S", "POL0001-S", "Principal", "10", "2", "8"]);
+    expect(screen.queryByText("En tránsito")).not.toBeInTheDocument();
+    expect(screen.getByText("Total").closest("tr")).toHaveTextContent("1521");
+  });
+
+  it("Canales: origen Shopify y canal unido por variante", async () => {
+    const user = userEvent.setup();
+    renderFicha();
+    await user.click(await screen.findByRole("tab", { name: "Canales" }));
+    expect(await screen.findByText(/Importado desde Shopify \(ID 998\)/)).toBeInTheDocument();
+    expect(screen.getByText("SH-S")).toBeInTheDocument();
+    expect(screen.getByText("Sin canal (solo POWIP)")).toBeInTheDocument();
+  });
+
+  it("Historial: el kardex se filtra por los ítems de inventario del producto", async () => {
+    const user = userEvent.setup();
+    renderFicha();
+    await user.click(await screen.findByRole("tab", { name: "Historial" }));
+    expect(await screen.findByTestId("kardex")).toHaveTextContent("Historial (kardex): ii-v1,ii-v2");
+  });
+
+  it("producto simple: sin pestaña Variantes; su SKU y su código de barras están en General", async () => {
+    jest.mocked(getCatalogProduct).mockResolvedValue({ ...POLO, name: "Taza", type: "simple", externalSource: null });
+    jest.mocked(getProductVariants).mockResolvedValue([{ id: "t1", sku: "INT-T", companySku: "TAZ0001", barcode: "", attributeValues: { Title: "Default Title" }, isActive: true }]);
+    const user = userEvent.setup();
+    renderFicha();
+    await screen.findByRole("heading", { name: "Taza" });
+    expect(screen.queryByRole("tab", { name: /Variantes/ })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("SKU")).toHaveValue("TAZ0001");
+    await user.type(screen.getByLabelText("Código de barras"), "7751234567890");
+    await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
+    await waitFor(() => expect(updateCatalogVariant).toHaveBeenCalledWith("t1", { barcode: "7751234567890" }));
+    expect(updateCatalogProduct).not.toHaveBeenCalled();
+  });
+});
