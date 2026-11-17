@@ -4,17 +4,30 @@ import RechazadoModal from "@/app/facturacion/components/modals/RechazadoModal";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { useReleaseSunatIssuerAccessBlock } from "@/features/sunat/sunat-issuer-access/hooks/use-release-sunat-issuer-access-block";
 import { useSunatIssuerAccessBlocks } from "@/features/sunat/sunat-issuer-access/hooks/use-sunat-issuer-access-blocks";
+import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
+import { useUpdateSunatProfileEstablishmentCode } from "@/features/sunat/sunat-profile/hooks/use-update-sunat-profile-establishment-code";
 
 jest.mock("@/features/sunat/sunat-issuer-access/hooks/use-sunat-issuer-access-blocks");
 jest.mock("@/features/sunat/sunat-issuer-access/hooks/use-release-sunat-issuer-access-block");
+jest.mock("@/features/sunat/sunat-profile/hooks/use-sunat-profiles");
+jest.mock("@/features/sunat/sunat-profile/hooks/use-update-sunat-profile-establishment-code");
 
 const releaseMutate = jest.fn();
+const updateMutate = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
   (useSunatIssuerAccessBlocks as jest.Mock).mockReturnValue({ data: [] });
   (useReleaseSunatIssuerAccessBlock as jest.Mock).mockReturnValue({
     mutate: releaseMutate,
+    isPending: false,
+  });
+  (useSunatProfiles as jest.Mock).mockReturnValue({
+    isLoading: false,
+    data: [{ id: "profile-1", ruc: "20123456789", establishmentCode: "" }],
+  });
+  (useUpdateSunatProfileEstablishmentCode as jest.Mock).mockReturnValue({
+    mutate: updateMutate,
     isPending: false,
   });
 });
@@ -38,6 +51,7 @@ function buildRow(sunat: {
       correlative: "00001501",
       cdrStatus: "REJECTED",
       observations: null,
+      rucIssuer: "20123456789",
       ...sunat,
     },
   } as unknown as TaxDocumentRow;
@@ -74,6 +88,60 @@ describe("RechazadoModal: solución sugerida", () => {
     renderModal(buildRow({ sunatCode: "2335", sunatDescription: "El RUC del receptor no existe" }));
 
     expect(screen.getByText(/re-verificar el ruc/i)).toBeInTheDocument();
+  });
+
+  it("para el 3030 (código solo en el detalle) muestra el mensaje claro, la solución y el detalle decodificado", () => {
+    renderModal(
+      buildRow({
+        sunatCode: null,
+        sunatDescription:
+          'El XML no contiene el tag o no existe informaci&#243;n del c&#243;digo de local anexo del emisor - Detalle: xxx.xxx.xxx value=\'ticket: 202622558884729 error: INFO: 3030 (nodo: "cac:RegistrationAddress/cbc:AddressTypeCode" valor: "")\'',
+      }),
+    );
+
+    expect(screen.getByText("Falta el código de local anexo del emisor")).toBeInTheDocument();
+    expect(screen.getByText(/usa 0000 si es la casa matriz/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Detalle de SUNAT:.*no existe información del código/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/&#243;/)).not.toBeInTheDocument();
+  });
+
+  it("3030: deja corregir el código de establecimiento en el mismo modal y guarda 0000 con el emisor", async () => {
+    renderModal(
+      buildRow({
+        sunatCode: null,
+        sunatDescription:
+          'valor: error: INFO: 3030 (nodo: "cac:RegistrationAddress/cbc:AddressTypeCode")',
+      }),
+    );
+
+    const input = screen.getByLabelText(/código de establecimiento del emisor/i);
+    expect(input).toHaveValue("0000");
+
+    await userEvent.click(screen.getByRole("button", { name: /Guardar código y volver a emitir/ }));
+
+    expect(updateMutate).toHaveBeenCalledWith(
+      { id: "profile-1", establishmentCode: "0000" },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+  });
+
+  it("3030: no deja guardar un código de menos de 4 dígitos", async () => {
+    renderModal(
+      buildRow({
+        sunatCode: null,
+        sunatDescription: 'error: INFO: 3030 (nodo: "cac:RegistrationAddress/cbc:AddressTypeCode")',
+      }),
+    );
+
+    const input = screen.getByLabelText(/código de establecimiento del emisor/i);
+    await userEvent.clear(input);
+    await userEvent.type(input, "7");
+    await userEvent.click(screen.getByRole("button", { name: /Guardar código y volver a emitir/ }));
+
+    expect(screen.getByText(/debe tener 4 dígitos/i)).toBeInTheDocument();
+    expect(updateMutate).not.toHaveBeenCalled();
   });
 });
 

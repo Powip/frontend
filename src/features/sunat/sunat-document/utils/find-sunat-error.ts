@@ -26,6 +26,19 @@ function codeFromDescription(sunatDescription: string | null): number | null {
 }
 
 /**
+ * Último respaldo: SUNAT a veces pone el código solo dentro del detalle,
+ * después de "error: INFO:" ("... error: INFO: 3030 (nodo: ...)"). Solo vale
+ * un número de 4 dígitos justo detrás de esa marca.
+ */
+function codeFromInfoDetail(sunatDescription: string | null): number | null {
+  const digits = sunatDescription
+    ? /error:\s*INFO:\s*(\d{4})\b/.exec(sunatDescription)?.[1]
+    : undefined;
+
+  return digits === undefined ? null : Number.parseInt(digits, 10);
+}
+
+/**
  * Busca en el catálogo el error de SUNAT que corresponde a un comprobante.
  *
  * Compara el código EXACTO. Antes se usaba `descripcion.includes(codigo)`, y
@@ -38,7 +51,11 @@ export function findSunatError(
   sunatDescription: string | null,
   catalog: ErrorSunat[] = ERRORES_SUNAT,
 ): ErrorSunat | undefined {
-  const candidates = [codeFromSunatCode(sunatCode), codeFromDescription(sunatDescription)];
+  const candidates = [
+    codeFromSunatCode(sunatCode),
+    codeFromDescription(sunatDescription),
+    codeFromInfoDetail(sunatDescription),
+  ];
 
   for (const candidate of candidates) {
     if (candidate === null) {

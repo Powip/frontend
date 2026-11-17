@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { COUNTRY_CODES } from "../../shared/enums/sunat.enums";
+import { ESTABLISHMENT_CODE_ERROR, ESTABLISHMENT_CODE_PATTERN } from "../utils/establishment-code";
 
 export const createSunatProfileSchema = z.object({
   name: z
@@ -31,9 +32,12 @@ export const createSunatProfileSchema = z.object({
     error: "Address is required",
   }),
 
-  establishmentCode: z.string({
-    error: "Establishment code is required",
-  }),
+  establishmentCode: z
+    .string({
+      error: "Establishment code is required",
+    })
+    .trim()
+    .regex(ESTABLISHMENT_CODE_PATTERN, ESTABLISHMENT_CODE_ERROR),
 
   solUser: z.string({
     error: "SOL user is required",
