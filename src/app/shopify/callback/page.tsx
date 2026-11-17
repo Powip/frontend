@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle2, XCircle, Settings2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ShopifySyncConfigModal } from "../components/shopify-sync-config-modal";
+import { isConnectedCallback } from "@/lib/shopifyCallback";
 
 function CallbackContent() {
   const searchParams = useSearchParams();
@@ -21,7 +22,6 @@ function CallbackContent() {
 
   useEffect(() => {
     const shop = searchParams.get("shop");
-    const token = searchParams.get("token");
     const error = searchParams.get("error");
 
     if (error) {
@@ -30,7 +30,7 @@ function CallbackContent() {
       return;
     }
 
-    if (shop && token) {
+    if (shop && isConnectedCallback(searchParams)) {
       handleSuccess(shop);
     } else {
       setStatus("error");
