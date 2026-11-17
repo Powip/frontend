@@ -126,14 +126,31 @@ export async function listSkuConflictGroups(params: { page: number; limit?: numb
   return data;
 }
 
-/** Historial (H11-D5): confirmadas y rechazadas, la más reciente primero. */
-export async function listUnificationHistory(params: {
-  page: number;
-  limit?: number;
+/** Tope de filas para exportar el historial a CSV (el backend acepta `limit` hasta 500). */
+export const UNIFICATION_HISTORY_EXPORT_LIMIT = 500;
+
+/** Filtros del historial. Se combinan (todos tienen que cumplirse). */
+export interface UnificationHistoryFilters {
   status?: UnificationHistoryStatus;
-}): Promise<UnificationHistoryPage> {
-  const { data } = await axiosAuth.get<UnificationHistoryPage>(`${base()}/reconciliation-tasks/history`, {
-    params: { page: params.page, limit: params.limit ?? 10, ...(params.status ? { status: params.status } : {}) },
-  });
+  /** Instante ISO (incluido) sobre la fecha en que se resolvió. */
+  from?: string;
+  /** Instante ISO (incluido). */
+  to?: string;
+  /** Correo de quien resolvió: exacto, sin distinguir mayúsculas. */
+  resolvedBy?: string;
+  /** `bandeja` incluye las tareas viejas sin detalle. */
+  via?: UnificationVia;
+}
+
+/** Historial (H11-D5): confirmadas y rechazadas, la más reciente primero. Solo manda los filtros con valor. */
+export async function listUnificationHistory(
+  params: { page: number; limit?: number } & UnificationHistoryFilters,
+): Promise<UnificationHistoryPage> {
+  const { page, limit, ...filters } = params;
+  const query: Record<string, string | number> = { page, limit: limit ?? 10 };
+  for (const [key, value] of Object.entries(filters)) {
+    if (typeof value === "string" && value.trim() !== "") query[key] = value.trim();
+  }
+  const { data } = await axiosAuth.get<UnificationHistoryPage>(`${base()}/reconciliation-tasks/history`, { params: query });
   return data;
 }

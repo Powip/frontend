@@ -4,16 +4,21 @@
  * Tabla paginada de `GET /reconciliation-tasks/history`: quién, cuándo, vía,
  * ganadora, perdedoras y modo de stock; filtro por estado; marca «Detalle
  * reconstruido» para las tareas anteriores a H11; sin «deshacer»; el costo
- * solo para quien ve costos.
+ * solo para quien ve costos. Filtros por fecha (días de Lima), correo y vía, y
+ * «Exportar CSV» con los mismos filtros (hasta 500 filas, avisa si hay más).
  */
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: jest.fn() }));
-jest.mock("@/services/unification.service", () => ({ listUnificationHistory: jest.fn() }));
+jest.mock("@/services/unification.service", () => ({ listUnificationHistory: jest.fn(), UNIFICATION_HISTORY_EXPORT_LIMIT: 500 }));
+jest.mock("@/utils/http/download-file", () => ({ downloadFile: jest.fn() }));
+jest.mock("sonner", () => ({ toast: { success: jest.fn(), warning: jest.fn(), info: jest.fn(), error: jest.fn() } }));
 
+import { toast } from "sonner";
+import { downloadFile } from "@/utils/http/download-file";
 import { useAuth } from "@/contexts/AuthContext";
 import { listUnificationHistory, type UnificationHistoryItem, type UnificationHistoryPage } from "@/services/unification.service";
 import { UnificationHistoryTable } from "../UnificationHistoryTable";
@@ -73,7 +78,7 @@ describe("UnificationHistoryTable (FEAT-24 H11)", () => {
   it("muestra quién, cuándo, vía, la madre, las que se unieron y el modo de stock, sin «deshacer»", async () => {
     renderTable();
     const row = await screen.findByTestId("history-row-t-1");
-    expect(mockList).toHaveBeenCalledWith({ page: 1, limit: 10, status: undefined });
+    expect(mockList).toHaveBeenCalledWith({ page: 1, limit: 10 });
     expect(within(row).getByText("ana@fixture.invalid")).toBeInTheDocument();
     expect(within(row).getByText("Unificación")).toBeInTheDocument();
     expect(within(row).getByText("Unión manual")).toBeInTheDocument();
@@ -108,7 +113,7 @@ describe("UnificationHistoryTable (FEAT-24 H11)", () => {
     renderTable();
     await screen.findByTestId("history-row-t-1");
     await user.click(screen.getByRole("button", { name: /^2$/ }));
-    await waitFor(() => expect(mockList).toHaveBeenLastCalledWith({ page: 2, limit: 10, status: undefined }));
+    await waitFor(() => expect(mockList).toHaveBeenLastCalledWith({ page: 2, limit: 10 }));
     await user.click(screen.getByRole("button", { name: "Rechazadas" }));
     await waitFor(() => expect(mockList).toHaveBeenLastCalledWith({ page: 1, limit: 10, status: "rejected" }));
     expect(screen.getByRole("button", { name: "Rechazadas" })).toHaveAttribute("aria-pressed", "true");
@@ -125,5 +130,89 @@ describe("UnificationHistoryTable (FEAT-24 H11)", () => {
     renderTable();
     await screen.findByTestId("history-row-t-1");
     expect(screen.queryByText(/Costo/)).not.toBeInTheDocument();
+  });
+
+  it("filtra por vía, por correo (al dejar de escribir) y por un rango de días de Lima, y vuelve a la página 1", async () => {
+    const user = userEvent.setup();
+    renderTable();
+    await screen.findByTestId("history-row-t-1");
+    await user.click(screen.getByRole("button", { name: /^2$/ }));
+    await waitFor(() => expect(mockList).toHaveBeenLastCalledWith({ page: 2, limit: 10 }));
+
+    await user.selectOptions(screen.getByLabelText("Vía"), "union_manual");
+    await waitFor(() => expect(mockList).toHaveBeenLastCalledWith({ page: 1, limit: 10, via: "union_manual" }));
+
+    await user.type(screen.getByLabelText("Correo del usuario"), " Ana@Fixture.invalid ");
+    await waitFor(() =>
+      expect(mockList).toHaveBeenLastCalledWith({ page: 1, limit: 10, via: "union_manual", resolvedBy: "Ana@Fixture.invalid" }),
+    );
+
+    await user.selectOptions(screen.getByLabelText("Fecha"), "range");
+    fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-11-01" } });
+    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-11-17" } });
+    await waitFor(() =>
+      expect(mockList).toHaveBeenLastCalledWith({
+        page: 1,
+        limit: 10,
+        via: "union_manual",
+        resolvedBy: "Ana@Fixture.invalid",
+        from: "2026-11-01T05:00:00.000Z",
+        to: "2026-11-18T04:59:59.999Z",
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Limpiar filtros" }));
+    await waitFor(() => expect(mockList).toHaveBeenLastCalledWith({ page: 1, limit: 10 }));
+    expect(screen.getByLabelText("Correo del usuario")).toHaveValue("");
+  });
+
+  it("un rango con «desde» después de «hasta» no consulta y no deja exportar", async () => {
+    const user = userEvent.setup();
+    renderTable();
+    await screen.findByTestId("history-row-t-1");
+    await user.selectOptions(screen.getByLabelText("Fecha"), "range");
+    fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2026-11-17" } });
+    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2026-11-01" } });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("La fecha «desde» es posterior a la fecha «hasta».");
+    expect(screen.queryByTestId("history-row-t-1")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Exportar CSV/ })).toBeDisabled();
+    for (const [params] of mockList.mock.calls) expect(params).not.toHaveProperty("to");
+  });
+
+  it("«Exportar CSV» pide hasta 500 filas con los filtros actuales, descarga el archivo y avisa si hay más", async () => {
+    const user = userEvent.setup();
+    renderTable();
+    await screen.findByTestId("history-row-t-1");
+    await user.click(screen.getByRole("button", { name: "Rechazadas" }));
+    await user.selectOptions(screen.getByLabelText("Vía"), "bandeja");
+    await waitFor(() => expect(mockList).toHaveBeenLastCalledWith({ page: 1, limit: 10, status: "rejected", via: "bandeja" }));
+
+    await user.click(screen.getByRole("button", { name: /Exportar CSV/ }));
+
+    await waitFor(() => expect(downloadFile).toHaveBeenCalledTimes(1));
+    expect(mockList).toHaveBeenLastCalledWith({ page: 1, limit: 500, status: "rejected", via: "bandeja" });
+    const [{ blob, filename }] = jest.mocked(downloadFile).mock.calls[0];
+    expect(filename).toMatch(/^powip_historial_unificacion_\d{4}-\d{2}-\d{2}\.csv$/);
+    expect(blob.type).toBe("text/csv;charset=utf-8");
+    const notice = await screen.findByRole("status");
+    expect(notice).toHaveTextContent("Se exportaron los 3 registros más recientes de 23. Acota las fechas para exportar el resto.");
+    expect(toast.warning).toHaveBeenCalledWith(expect.stringContaining("de 23"));
+  });
+
+  it("«Exportar CSV» con todo dentro del tope no avisa; sin filas no descarga", async () => {
+    const user = userEvent.setup();
+    renderTable();
+    await screen.findByTestId("history-row-t-1");
+    mockList.mockResolvedValueOnce({ ...PAGE, meta: { page: 1, limit: 500, total: 3, totalPages: 1 } });
+    await user.click(screen.getByRole("button", { name: /Exportar CSV/ }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Se exportaron 3 registros."));
+    expect(downloadFile).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    mockList.mockResolvedValueOnce({ data: [], meta: { page: 1, limit: 500, total: 0, totalPages: 0 } });
+    await user.click(screen.getByRole("button", { name: /Exportar CSV/ }));
+    expect(await screen.findByRole("status")).toHaveTextContent("No hay registros para exportar con estos filtros.");
+    expect(downloadFile).toHaveBeenCalledTimes(1);
   });
 });
