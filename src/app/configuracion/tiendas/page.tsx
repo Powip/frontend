@@ -65,6 +65,8 @@ import CatalogoMarcas from "@/components/brands/CatalogoMarcas";
 import StoreDeliverySettings from "@/components/forms/StoreDeliverySettings";
 import GestionAlmacenes from "@/components/forms/GestionAlmacenes";
 import ShopifyStockSection from "@/components/shopify-stock/ShopifyStockSection";
+import ReservationRulesSection from "@/components/stock-rules/ReservationRulesSection";
+import InventoryRulesSection from "@/components/stock-rules/InventoryRulesSection";
 import GestionCouriers from "@/components/couriers/GestionCouriers";
 import StoreSalesChannels from "@/components/stores/StoreSalesChannels";
 
@@ -852,6 +854,8 @@ export default function TiendasPage() {
           <TabsContent value="envios" className="space-y-5">{commercialStores.filter(store=>store.id).map(store=><div key={store.id}><h2 className="mb-3 font-semibold">{store.name}</h2><StoreDeliverySettings storeId={store.id!} initial={store.deliverySettings?.options || []} onSaved={()=>void fetchStore()}/></div>)}</TabsContent>
           <TabsContent value="almacenes" className="space-y-6">
             <GestionAlmacenes />
+            <ReservationRulesSection />
+            <InventoryRulesSection />
             <ShopifyStockSection />
           </TabsContent>
 

@@ -23,6 +23,19 @@ jest.mock("@/components/forms/GestionAlmacenes", () => ({
   __esModule: true,
   default: () => null,
 }));
+// Las secciones de la pestaña Almacenes usan axiosAuth (axios está simulado acá).
+jest.mock("@/components/shopify-stock/ShopifyStockSection", () => ({
+  __esModule: true,
+  default: () => null,
+}));
+jest.mock("@/components/stock-rules/ReservationRulesSection", () => ({
+  __esModule: true,
+  default: () => null,
+}));
+jest.mock("@/components/stock-rules/InventoryRulesSection", () => ({
+  __esModule: true,
+  default: () => null,
+}));
 jest.mock("@/components/couriers/GestionCouriers", () => ({
   __esModule: true,
   default: () => null,
