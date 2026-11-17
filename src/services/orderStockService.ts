@@ -1,4 +1,5 @@
 import axiosAuth from "@/lib/axiosAuth";
+import { writeConfigArgs, type WriteOptions } from "@/lib/idempotency";
 import type { OrderStockState } from "@/lib/orderStock";
 
 // FEAT-24 H2-F — stock de los pedidos en ms-ventas (contrato H2-C): bandejas
@@ -119,17 +120,23 @@ export async function getPicking(orderId: string): Promise<PickingView> {
   return data;
 }
 
-export async function scanPicking(orderId: string, code: string): Promise<PickingView> {
-  const { data } = await axiosAuth.post<PickingView>(orderUrl(orderId, "picking/scan"), { code });
+// `options` (FEAT-24 H6-D): clave de idempotencia y timeout de la cola del modo almacén.
+
+export async function scanPicking(orderId: string, code: string, options?: WriteOptions): Promise<PickingView> {
+  const { data } = await axiosAuth.post<PickingView>(orderUrl(orderId, "picking/scan"), { code }, ...writeConfigArgs(options));
   return data;
 }
 
-export async function confirmPickingLine(orderId: string, itemId: string): Promise<PickingView> {
-  const { data } = await axiosAuth.post<PickingView>(orderUrl(orderId, "picking/confirm-line"), { itemId });
+export async function confirmPickingLine(orderId: string, itemId: string, options?: WriteOptions): Promise<PickingView> {
+  const { data } = await axiosAuth.post<PickingView>(
+    orderUrl(orderId, "picking/confirm-line"),
+    { itemId },
+    ...writeConfigArgs(options),
+  );
   return data;
 }
 
-export async function completePicking(orderId: string): Promise<PickingCompletion> {
-  const { data } = await axiosAuth.post<PickingCompletion>(orderUrl(orderId, "picking/complete"), {});
+export async function completePicking(orderId: string, options?: WriteOptions): Promise<PickingCompletion> {
+  const { data } = await axiosAuth.post<PickingCompletion>(orderUrl(orderId, "picking/complete"), {}, ...writeConfigArgs(options));
   return data;
 }

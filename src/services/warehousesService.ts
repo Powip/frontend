@@ -1,5 +1,6 @@
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
+import { writeConfigArgs, type WriteOptions } from "@/lib/idempotency";
 
 // FEAT-24 H1-A — almacenes de la empresa. Van por la fachada autenticada de
 // ms-products (/warehouses), que toma la empresa del token: este servicio
@@ -165,12 +166,18 @@ export async function listReturnReceptions(status: ReturnReceptionStatus): Promi
 
 /**
  * Recibe TODA la devolución de una vez. Repetir lo mismo responde la recepción
- * con `duplicate: true`; algo distinto, 409 con el motivo.
+ * con `duplicate: true`; algo distinto, 409 con el motivo. `options` (FEAT-24
+ * H6-D): clave de idempotencia y timeout de la cola del modo almacén.
  */
-export async function receiveReturnReception(id: string, body: ReceiveReturnBody): Promise<ReturnReception> {
+export async function receiveReturnReception(
+  id: string,
+  body: ReceiveReturnBody,
+  options?: WriteOptions,
+): Promise<ReturnReception> {
   const { data } = await axiosAuth.post<ReturnReception>(
     `${base()}/return-receptions/${encodeURIComponent(id)}/receive`,
     body,
+    ...writeConfigArgs(options),
   );
   return data;
 }

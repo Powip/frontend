@@ -39,6 +39,28 @@ export function playErrorBeep(): void {
   }
 }
 
+/** FEAT-24 H6-D — un pitido agudo y corto (~0,08 s) cuando el escaneo entró bien. */
+export function playSuccessBeep(): void {
+  try {
+    const ctx = audioContext();
+    if (!ctx) return;
+    if (ctx.state === "suspended") void ctx.resume().catch(() => undefined);
+    const start = ctx.currentTime;
+    const oscillator = ctx.createOscillator();
+    const gain = ctx.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(1320, start);
+    gain.gain.setValueAtTime(0.12, start);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + 0.08);
+    oscillator.connect(gain);
+    gain.connect(ctx.destination);
+    oscillator.start(start);
+    oscillator.stop(start + 0.08);
+  } catch {
+    // Sin audio: el aviso en pantalla alcanza.
+  }
+}
+
 /** Solo para tests: olvida el contexto compartido. */
 export function resetErrorBeepForTests(): void {
   shared = null;
