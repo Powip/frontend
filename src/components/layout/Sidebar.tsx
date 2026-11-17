@@ -47,6 +47,7 @@ import {
   LayoutList,
   Plug,
   Radio,
+  ScanLine,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -236,6 +237,11 @@ export function Sidebar({ className }: SidebarProps) {
             name: "Pedidos",
             href: "/operaciones/pedidos",
             icon: Package,
+          },
+          {
+            name: "Picking",
+            href: "/operaciones/picking",
+            icon: ScanLine,
           },
           {
             name: "Guías & Courier",

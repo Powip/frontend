@@ -142,6 +142,21 @@ export function canConfirmWithoutScan(view: PickingViewLike, forbidden: boolean)
   return view.pickingRequired !== true && !forbidden;
 }
 
+/**
+ * El escaneo y el completar devuelven `pickingRequired: null` (no vuelven a leer la regla): se conserva la que
+ * trajo la vista inicial para no volver a ofrecer «Confirmar sin escanear» a quien la empresa se lo prohíbe.
+ */
+export function mergePickingView<T extends PickingViewLike>(previous: T | undefined, next: T): T {
+  if (next.pickingRequired !== null || !previous) return next;
+  return { ...next, pickingRequired: previous.pickingRequired };
+}
+
+/** Línea que sumó unidades entre dos vistas (la que acaba de tomar el escaneo). */
+export function pickedLine<L extends PickingLineLike>(previous: { lines: L[] } | undefined, next: { lines: L[] }): L | null {
+  const before = new Map((previous?.lines ?? []).map((line) => [line.itemId, line.picked]));
+  return next.lines.find((line) => line.picked > (before.get(line.itemId) ?? 0)) ?? null;
+}
+
 /** Estados en los que el servidor acepta picking (antes del despacho). */
 export const PICKABLE_ORDER_STATUSES = ["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA", "EN_ENVIO"] as const;
 

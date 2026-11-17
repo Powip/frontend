@@ -4,7 +4,9 @@ import {
   daysWaiting,
   daysWaitingLabel,
   DISPATCH_PENDING_MESSAGE,
+  mergePickingView,
   orderStockAccess,
+  pickedLine,
   pickingCompleteErrorMessage,
   pickingProgress,
   stockStateInfo,
@@ -67,6 +69,16 @@ describe("picking", () => {
   it("suma el avance de todas las líneas", () => {
     expect(pickingProgress({ pickingRequired: false, complete: false, lines: [line(2, 1), line(3, 0)] })).toEqual({ done: 4, total: 5 });
     expect(pickingProgress({ pickingRequired: false, complete: true, lines: [] })).toEqual({ done: 0, total: 0 });
+  });
+
+  it("conserva la regla de la vista inicial cuando el servidor devuelve null y detecta la línea escaneada", () => {
+    const first = { pickingRequired: true, complete: false, lines: [line(2, 2), line(1, 1)] };
+    const afterScan = { pickingRequired: null, complete: false, lines: [{ ...line(2, 2), picked: 1, pending: 1 }, line(1, 1)] };
+    expect(mergePickingView(first, afterScan).pickingRequired).toBe(true);
+    expect(mergePickingView(first, { ...afterScan, pickingRequired: false }).pickingRequired).toBe(false);
+    expect(mergePickingView(undefined, afterScan).pickingRequired).toBeNull();
+    expect(pickedLine(first, afterScan)?.itemId).toBe(line(2, 2).itemId);
+    expect(pickedLine(first, first)).toBeNull();
   });
 
   it("confirmar sin escanear solo si la empresa no lo exige y el servidor no lo prohibió", () => {
