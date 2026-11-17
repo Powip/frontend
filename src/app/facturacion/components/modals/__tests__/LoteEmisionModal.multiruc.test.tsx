@@ -226,3 +226,52 @@ describe("LoteEmisionModal — resultado de la emisión", () => {
     expect(screen.queryByText("Emisión masiva procesada")).not.toBeInTheDocument();
   });
 });
+
+describe("LoteEmisionModal — ventas con una línea en S/ 0.00", () => {
+  const gift = {
+    id: "i0",
+    sku: "REG",
+    productName: "Muestra de regalo",
+    quantity: 1,
+    unitPrice: 0,
+    discountAmount: 0,
+  };
+  const saleWithGift = {
+    ...sale,
+    id: "order-2",
+    orderNumber: "ORD-2",
+    items: [gift, ...(sale as unknown as { items: unknown[] }).items],
+  } as unknown as Order;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mutateAsync.mockResolvedValue({ documents: [{ id: "doc-1" }], errors: [] });
+    given([principal], { p1: [boletaSequence("20111111111", "B001")] });
+  });
+
+  it("deja fuera la venta que SUNAT rechazaría, dice cuál y por qué, y emite el resto", async () => {
+    render(<LoteEmisionModal isOpen onClose={jest.fn()} sales={[sale, saleWithGift]} />);
+
+    const alert = screen.getByRole("alert");
+
+    expect(alert).toHaveTextContent(
+      "1 venta no se emitirá en este lote porque tiene una línea en S/ 0.00:",
+    );
+    expect(alert).toHaveTextContent("ORD-2: «Muestra de regalo»");
+
+    await userEvent.click(screen.getByRole("button", { name: /Emitir 1 comprobantes/i }));
+
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+    expect(
+      mutateAsync.mock.calls[0][0].documents.map(
+        (document: { orderId: string }) => document.orderId,
+      ),
+    ).toEqual(["order-1"]);
+  });
+
+  it("si todas las ventas tienen una línea en cero no deja emitir nada", () => {
+    render(<LoteEmisionModal isOpen onClose={jest.fn()} sales={[saleWithGift]} />);
+
+    expect(screen.getByRole("button", { name: /Emitir 0 comprobantes/i })).toBeDisabled();
+  });
+});

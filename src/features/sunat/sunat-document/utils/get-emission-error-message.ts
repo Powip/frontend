@@ -7,6 +7,10 @@ import type { SunatDocumentBulkErrorResponseDto } from "../dto/sunat-documents-r
  */
 const EMISSION_ERROR_MESSAGES: Record<string, string> = {
   SUNAT_ORDER_ALREADY_HAS_DOCUMENT: "Esta venta ya tiene un comprobante emitido.",
+  SUNAT_DOCUMENT_LINE_WITHOUT_VALUE:
+    "Una línea del comprobante queda en S/ 0.00 y SUNAT lo rechazaría (error 3105). No se usó ningún número.",
+  SUNAT_DOCUMENT_TAX_TYPE_NOT_SUPPORTED:
+    "Por ahora solo se pueden emitir productos gravados con IGV. No se usó ningún número.",
   SUNAT_PROFILE_INACTIVE: "El RUC elegido está inactivo y no puede emitir.",
   SUNAT_PROFILE_NOT_FOUND: "El RUC elegido ya no existe. Actualiza la página y vuelve a elegirlo.",
   SUNAT_DEFAULT_PROFILE_NOT_FOUND:

@@ -45,13 +45,20 @@ import {
  *
  * The input therefore displays 2 decimal places when it is not being edited,
  * while the underlying form value keeps its full precision.
+ *
+ * The line discount needs the same treatment: a discount charged with IGV
+ * included is converted to net (10 / 1.18 = 8.474576...). Shown raw in a
+ * `step="0.01"` number input, the browser refuses to submit the form ("Please
+ * enter a valid value"), so no sale with a discount could be issued.
  */
-function PriceInput({
+function AmountInput({
   name,
   control,
+  label,
 }: {
-  name: `documents.0.items.${number}.unitPrice`;
+  name: `documents.0.items.${number}.unitPrice` | `documents.0.items.${number}.discountAmount`;
   control: Control<CreateSunatDocumentsFormValues>;
+  label: string;
 }) {
   const { field } = useController({ name, control });
 
@@ -70,6 +77,7 @@ function PriceInput({
       type="number"
       min={0}
       step="0.01"
+      aria-label={label}
       value={displayValue}
       onFocus={() => setIsFocused(true)}
       onChange={(event) => {
@@ -279,19 +287,18 @@ export function ItemsEditTable() {
                   </TableCell>
 
                   <TableCell>
-                    <PriceInput name={`documents.0.items.${index}.unitPrice`} control={control} />
+                    <AmountInput
+                      name={`documents.0.items.${index}.unitPrice`}
+                      control={control}
+                      label={`Precio unitario de ${item.productName}`}
+                    />
                   </TableCell>
 
                   <TableCell>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      {...register(`documents.0.items.${index}.discountAmount`, {
-                        valueAsNumber: true,
-                        setValueAs: (v) => (v === "" || Number.isNaN(v) ? 0 : Number(v)),
-                      })}
-                      className="h-8 text-xs"
+                    <AmountInput
+                      name={`documents.0.items.${index}.discountAmount`}
+                      control={control}
+                      label={`Descuento de ${item.productName}`}
                     />
                   </TableCell>
 

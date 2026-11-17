@@ -23,6 +23,10 @@ import {
   createSunatDocumentsSchema,
 } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { buildSunatDocumentFromSale } from "@/features/sunat/sunat-document/utils/build-sunat-document-from-sale";
+import {
+  describeLinesWithoutValue,
+  findLinesWithoutValue,
+} from "@/features/sunat/sunat-document/utils/find-lines-without-value";
 import { getEmissionErrorMessage } from "@/features/sunat/sunat-document/utils/get-emission-error-message";
 import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
 import { useIssuerSelection } from "@/features/sunat/sunat-profile/hooks/use-issuer-selection";
@@ -78,7 +82,7 @@ export default function LoteEmisionModal({
    *
    * The same builder is used by the single-emission modal.
    */
-  const documents = sales.map((sale) => {
+  const allDocuments = sales.map((sale) => {
     const document = buildSunatDocumentFromSale(sale);
     const defaultSequence = sequences.find(
       (sequence) => sequence.taxDocumentType === document.taxDocumentType && sequence.isDefault,
@@ -92,6 +96,29 @@ export default function LoteEmisionModal({
       sunatProfileId: issuer.selected?.id,
     };
   });
+
+  /*
+   * Sales SUNAT would reject for a line worth S/ 0.00 (error 3105) are left
+   * out of the batch instead of blocking it: the rest is issued, and these
+   * are listed with their reason. Sending them would spend a number each.
+   */
+  const skippedSales = allDocuments.flatMap((document) => {
+    const lines = findLinesWithoutValue(document.items);
+
+    if (lines.length === 0) {
+      return [];
+    }
+
+    const sale = sales.find((candidate) => candidate.id === document.orderId);
+
+    return [
+      { orderId: document.orderId, orderNumber: sale?.orderNumber ?? document.orderId, lines },
+    ];
+  });
+
+  const documents = allDocuments.filter(
+    (document) => !skippedSales.some((skipped) => skipped.orderId === document.orderId),
+  );
 
   // A second RUC has no series until they're configured for it: block
   // instead of letting every document fail on the backend.
@@ -272,6 +299,32 @@ export default function LoteEmisionModal({
                       : undefined
                   }
                 />
+
+                {skippedSales.length > 0 && (
+                  <div
+                    role="alert"
+                    className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm dark:border-red-900 dark:bg-red-950/40"
+                  >
+                    <p className="font-semibold">
+                      {skippedSales.length === 1
+                        ? "1 venta no se emitirá en este lote porque tiene una línea en S/ 0.00:"
+                        : `${skippedSales.length} ventas no se emitirán en este lote porque tienen una línea en S/ 0.00:`}
+                    </p>
+
+                    <ul className="mt-1 list-disc space-y-1 pl-5">
+                      {skippedSales.map((skipped) => (
+                        <li key={skipped.orderId}>
+                          {skipped.orderNumber}: {describeLinesWithoutValue(skipped.lines)}
+                        </li>
+                      ))}
+                    </ul>
+
+                    <p className="mt-1">
+                      SUNAT rechaza el comprobante completo cuando una línea no tiene valor (error
+                      3105) y el número se pierde. Emítelas una por una para corregir esa línea.
+                    </p>
+                  </div>
+                )}
 
                 {isMissingSeries && (
                   <div
