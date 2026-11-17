@@ -7,6 +7,8 @@ import { canPrepareDeferredManualOrder, canShipCommercialOrder, isCommercialLead
 import { formatSalesMoney } from "@/utils/salesMoney";
 import { operationalStatus, receiptFinancialState } from "@/utils/orderState";
 import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
+import { ReservationWarehouseControl } from "@/components/orders/ReservationWarehouseControl";
+import { STOCK_WAREHOUSE_PERMISSION } from "@/lib/orderStock";
 import { OrderPaymentMethodPanel } from "@/components/registrar-venta/OrderPaymentMethodPanel";
 import { buildPendingOrderDetail } from "./customerServiceOrderDetail";
 import { CcSaleConfirmationPanel } from "@/components/atencion-cliente/cc-v2/CcSaleConfirmationPanel";
@@ -1086,6 +1088,17 @@ export default function CustomerServiceModal({
                 {/* flex-col + Resumen de Pagos flex-1: el borde inferior queda
                     alineado con la card de Cliente (columna derecha). */}
                 <div className="flex flex-col gap-4">
+                  {/* FEAT-24 H2-F: almacén de la reserva (antes del despacho, permiso de Operaciones) */}
+                  {orderHeader && orderHeader.id === orderId && hasPermission(STOCK_WAREHOUSE_PERMISSION) && auth?.company?.id ? (
+                    <ReservationWarehouseControl
+                      companyId={auth.company.id}
+                      order={orderHeader}
+                      onChanged={() => {
+                        void fetchReceipt();
+                        onOrderUpdated?.();
+                      }}
+                    />
+                  ) : null}
                   {/* Productos */}
                   <div className="border border-border rounded-lg p-4">
                     <h3 className="font-semibold mb-3 text-lg">Productos</h3>
