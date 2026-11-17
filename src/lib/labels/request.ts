@@ -1,5 +1,4 @@
-import { labelCount } from "./pdf";
-import { MAX_LABELS_PER_PRINT, type LabelLine } from "./types";
+import { labelCount, MAX_LABELS_PER_PRINT, type LabelLine } from "./types";
 
 // FEAT-24 H7-D5 — de dónde salen las etiquetas del diálogo «Imprimir etiquetas».
 

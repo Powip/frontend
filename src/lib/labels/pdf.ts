@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 import { barRuns, cachedBarcodeModules, cachedQrMatrix } from "./codes";
 import { a4Slot, computeA4Grid, thermalSlot } from "./grid";
 import { barcodeRects, planLabel, qrRects, type LabelElement, type LabelRect } from "./layout";
-import { MAX_LABELS_PER_PRINT, type LabelFormatShape, type LabelLine } from "./types";
+import { labelCount, MAX_LABELS_PER_PRINT, type LabelFormatShape, type LabelLine } from "./types";
 
 // FEAT-24 H7-D1/D6 — el PDF de etiquetas se arma en el navegador con jsPDF. Térmica: una etiqueta por página
 // del tamaño del formato. A4: grilla con márgenes de 5 mm y guías de corte. Códigos y QR van en vector.
@@ -42,7 +42,7 @@ export interface LabelsPdfInput {
   logoDataUrl?: string | null;
 }
 
-export const labelCount = (quantity: number) => (Number.isFinite(quantity) ? Math.max(0, Math.floor(quantity)) : 0);
+export { labelCount };
 
 export function totalLabels(lines: Array<Pick<LabelLine, "quantity">>): number {
   return lines.reduce((sum, line) => sum + labelCount(line.quantity), 0);

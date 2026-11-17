@@ -103,4 +103,7 @@ export const SAMPLE_LABEL_LINE: LabelLine = {
 export const isLabelSize = (widthMm: number, heightMm: number) =>
   LABEL_SIZES.some(([w, h]) => w === widthMm && h === heightMm);
 
+/** Copias de una línea: entero ≥ 0 (lo que no es número cuenta 0). */
+export const labelCount = (quantity: number) => (Number.isFinite(quantity) ? Math.max(0, Math.floor(quantity)) : 0);
+
 export const hasScanField = (fields: readonly LabelField[]) => fields.includes("barcode") || fields.includes("qr");
