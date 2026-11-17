@@ -83,6 +83,7 @@ export const ERRORES_SUNAT: ErrorSunat[] = [
   { code: "2800", desc: "El número de DNI del receptor no es válido", sol: "Verificar DNI en RENIEC antes de reenviar" },
   { code: "2801", desc: "El nombre del receptor no coincide con el documento", sol: "Usar el nombre exacto de RENIEC/SUNAT" },
   { code: "3010", desc: "El monto del IGV no cuadra con el subtotal", sol: "Recalcular con exactamente 18% y 2 decimales" },
+  { code: "3030", desc: "Falta el código de local anexo del emisor", sol: "En Emisores (RUC), pulsa «Editar código» del emisor, completa el código de establecimiento (usa 0000 si es la casa matriz) y vuelve a emitir" },
   { code: "3100", desc: "El XML no tiene firma digital o la firma no es válida", sol: "El certificado P12 puede haber expirado o la contraseña es incorrecta" },
   { code: "3101", desc: "El certificado digital ha expirado", sol: "Renovar el certificado en la entidad certificadora" },
 ];

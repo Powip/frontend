@@ -67,6 +67,18 @@ export async function setDefaultSunatProfileApi(id: string): Promise<SunatProfil
   return data;
 }
 
+export async function updateSunatProfileEstablishmentCodeApi(
+  id: string,
+  establishmentCode: string,
+): Promise<SunatProfileResponseDto> {
+  const { data } = await axiosAuth.patch<SunatProfileResponseDto>(
+    `${API.sunat}/api/v1/sunat-profiles/${id}`,
+    { establishmentCode },
+  );
+
+  return data;
+}
+
 export async function replaceSunatProfileCertificateApi(
   id: string,
   requestDto: ReplaceSunatProfileCertificateRequestDto,
