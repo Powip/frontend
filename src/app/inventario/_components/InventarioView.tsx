@@ -52,6 +52,7 @@ import ShopifySyncWizard from "@/app/productos/shopify-sync-wizard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MovementHistoryTable } from "@/components/inventory/MovementHistoryTable";
 import { ReconciliationTab } from "@/components/inventory/ReconciliationTab";
+import SkuConflictsPanel from "@/components/catalog/SkuConflictsPanel";
 import { StockByProduct, StockByWarehouse, StockKpis, type StockBoardActions } from "@/components/inventory/StockBoard";
 import { filterStockVariants, groupByProduct, stockTotals, storesOf, variantPositionsFlat, visibleInventories, STOCK_STATUS_LABEL, type StockMode, type StockStatusFilter } from "@/components/inventory/stockView";
 
@@ -480,6 +481,8 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
             <Card className="flex-1 flex flex-col">
               <CardContent className="p-6 overflow-auto">
                 <p className="mb-3 text-sm text-muted-foreground">Unificación del catálogo de todo el negocio.</p>
+                {/* FEAT-24 H4: variantes con «SKU repetido» (sku_conflict) para renombrar. */}
+                <SkuConflictsPanel companyId={auth?.company?.id} />
                 <ReconciliationTab companyId={auth?.company?.id} />
               </CardContent>
             </Card>

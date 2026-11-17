@@ -43,6 +43,8 @@ export interface CatalogProductLike {
   category?: { id: string; name: string } | null;
   type?: string | null;
   externalSource?: string | null;
+  /** H4-D2: el SKU base chocó con el de otro producto de la empresa (cuarentena). */
+  skuConflict?: boolean;
   variants?: CatalogVariantLike[];
 }
 
@@ -79,7 +81,8 @@ export const isSimpleProduct = (product: CatalogProductLike) => productKind(prod
 export const visibleProductSku = (product: Pick<CatalogProductLike, "companySku" | "sku">) =>
   product.companySku?.trim() || product.sku || "";
 
-export const hasSkuConflict = (product: CatalogProductLike) => liveVariants(product.variants).some((variant) => variant.skuConflict);
+export const hasSkuConflict = (product: CatalogProductLike) =>
+  Boolean(product.skuConflict) || liveVariants(product.variants).some((variant) => variant.skuConflict);
 
 export interface CatalogFilters {
   search: string;
