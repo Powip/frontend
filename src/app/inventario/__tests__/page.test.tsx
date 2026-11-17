@@ -65,7 +65,7 @@ jest.mock('exceljs', () => {
 const fetch = jest.mocked(fetchBusinessInventoryItems);
 const mockToast = toast as jest.Mocked<typeof toast>;
 const mockExcelJS = ExcelJS as unknown as { __getAddRowCalls: () => Array<Record<string, unknown>>; __resetAddRowCalls: () => void; __getWorksheets: () => Array<{ columns: Array<{ header: string; key: string; style?: { numFmt?: string } }> }> };
-const makeItem = (id: string, name: string): BusinessInventoryItem => ({ inventoryItemId:id,productId:'product',variantId:`variant-${id}`,productName:name,sku:`SKU-${id}`,price:100,priceVta:100,availableStock:10,physicalStock:12,reservedStock:2, inventoryId:'inv-1', inventoryName:'Almacén Principal',storeId:'store-1',storeName:'Principal' });
+const makeItem = (id: string, name: string): BusinessInventoryItem => ({ inventoryItemId:id,productId:`product-${id}`,variantId:`variant-${id}`,productName:name,sku:`SKU-${id}`,price:100,priceVta:100,availableStock:10,physicalStock:12,reservedStock:2, inventoryId:'inv-1', inventoryName:'Almacén Principal',storeId:'store-1',storeName:'Principal' });
 const DEFAULT_ITEMS = [makeItem('item-1','Producto Uno'),makeItem('item-2','Producto Dos')];
 function renderPage() { const client = new QueryClient({defaultOptions:{queries:{retry:false}}}); return render(<QueryClientProvider client={client}><AlmacenPage /></QueryClientProvider>); }
 async function loaded() { await screen.findByText('Producto Uno'); }

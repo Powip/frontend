@@ -244,7 +244,10 @@ describe("Warehouse product actions with business inventory queries", () => {
     it("muestra el precio en soles y oculta Default Title", async () => {
       fetchItems.mockResolvedValue([item("simple", { priceVta: 49.9, attributes: { Title: "Default Title" } }), item("polo", { attributes: { Color: "Rojo", Talla: "M" } })]);
       setup(); await screen.findByText("Producto simple");
-      expect(screen.getByText("S/ 49.90")).toBeInTheDocument();
+      // el precio vive en el detalle de la fila (mockup): se abre al tocarla
+      expect(screen.queryByText(/S\/ 49\.90/)).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /Ver detalle de Producto simple/ }));
+      expect(screen.getByText(/Precio venta S\/ 49\.90/)).toBeInTheDocument();
       expect(screen.queryByText(/Default Title/)).not.toBeInTheDocument();
       expect(screen.getByText("Color: Rojo · Talla: M")).toBeInTheDocument();
     });
@@ -259,6 +262,19 @@ describe("Warehouse product actions with business inventory queries", () => {
       expect(fetchItems).toHaveBeenLastCalledWith(expect.objectContaining({ includeInactive: true }));
       expect(screen.getByText("Inactiva")).toBeInTheDocument();
       expect(screen.getByText("Unificada")).toBeInTheDocument();
+    });
+
+    // F2: tras M2 una variante puede tener fila en varios almacenes; las acciones son de cada posición.
+    it("una variante en dos almacenes ofrece sus acciones por almacén en el detalle", async () => {
+      fetchItems.mockResolvedValue([
+        item("multi", { trackingMode: "NONE", variantId: "v-multi", productId: "p-multi", physicalStock: 5, availableStock: 5 }),
+        item("multi-b", { trackingMode: "NONE", variantId: "v-multi", productId: "p-multi", productName: "Producto multi", inventoryId: "warehouse-b", inventoryName: "Almacén B", physicalStock: 2, availableStock: 2 }),
+      ]);
+      setup(); await screen.findByText("Producto multi");
+      expect(screen.queryByTitle("Ajustar stock")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "2 almacenes" }));
+      expect(screen.getAllByTitle("Ajustar stock")).toHaveLength(2);
+      expect(screen.getByTestId("kpi-disponible")).toHaveTextContent("7");
     });
 
     // F4: el stock de una unificada vive en la madre; ms-products rechaza el ajuste.

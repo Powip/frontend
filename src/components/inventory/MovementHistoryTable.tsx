@@ -37,16 +37,18 @@ interface MovementHistoryTableProps {
   scopeReady?: boolean;
   scopeError?: Error | null;
   onRetryScope?: () => void;
+  /** Texto con el que arranca el buscador (p. ej. el SKU al venir desde Stock). */
+  initialSearch?: string;
 }
 
 const NO_INVENTORIES: BusinessInventory[] = [];
 
-export function MovementHistoryTable({ companyId, scope = "business", inventories = NO_INVENTORIES, scopeReady = true, scopeError, onRetryScope }: MovementHistoryTableProps) {
+export function MovementHistoryTable({ companyId, scope = "business", inventories = NO_INVENTORIES, scopeReady = true, scopeError, onRetryScope, initialSearch = "" }: MovementHistoryTableProps) {
   const { auth } = useAuth();
   const [currentPage, setCurrentPage] = useState(1);
 
   // Filter states
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
   const [userEmailFilter, setUserEmailFilter] = useState("");
   const [startDate, setStartDate] = useState("");
