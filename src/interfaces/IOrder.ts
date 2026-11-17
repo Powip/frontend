@@ -211,6 +211,10 @@ export interface OrderHeader extends UnitAssignmentState {
   inventoryId?: string | null;
   stockStoreId?: string | null;
   stockVersion?: number;
+  /** FEAT-24 H2: estado de stock del pedido (columna `stock_state`, la escribe logística). */
+  stockState?: string | null;
+  /** FEAT-24 H2: desde cuándo está sin stock. */
+  outOfStockSince?: string | null;
   customer: Client;
   salesChannel: SalesChannel;
   salesChannelId?: string | null;

@@ -7,6 +7,7 @@ import { formatSalesMoney } from "@/utils/salesMoney";
 import { operationalStatus, orderFinancialState } from "@/utils/orderState";
 import { shouldShowReprogramado } from "@/utils/domain/reprogramado";
 import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
+import { StockStateBadge } from "@/components/orders/StockStateBadge";
 
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
 import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
@@ -171,6 +172,8 @@ export interface Sale extends UnitAssignmentState {
   commercialStage?: "LEAD" | "SALE" | null;
   commercialLeadId?: string | null;
   commercialStockState?: "DEFERRED" | "QUEUED" | "PRESERVED" | "NOT_REQUIRED" | null;
+  /** FEAT-24 H2: estado de stock del pedido (si el servidor lo manda). */
+  stockState?: string | null;
 
   id: string;
   storeId: string;
@@ -276,6 +279,7 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     subEstadoCc: order.subEstadoCc,
     canalOrigen: order.canalOrigen,
     currency: order.currency, commercialStage: order.commercialStage, commercialLeadId: order.commercialLeadId, commercialStockState: order.commercialStockState,
+    stockState: order.stockState ?? null,
     storeId: order.storeId,
     inventoryId: order.inventoryId,
     stockStoreId: order.stockStoreId,
@@ -1616,6 +1620,7 @@ Estado: ${sale.status}
                     />
                     {salesPhysicalOperationBlockReason(sale) && <p className="mt-1 max-w-[150px] whitespace-normal text-[10px] text-muted-foreground">{salesPhysicalOperationBlockReason(sale)}{sale.commercialLeadId && sale.commercialStockState === "DEFERRED" && !canPrepareDeferredManualOrder(sale) && <Link className="ml-1 font-semibold text-violet-700 underline" href={commercialLeadHref(sale.commercialLeadId)}>Preparar reserva de stock</Link>}</p>}
                     <ReprogramadoChip sale={sale} />
+                    <StockStateBadge state={sale.stockState} className="mt-1" />
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-[140px] w-[100px] min-w-[100px] 2xl:z-10 bg-background">
                       <Button

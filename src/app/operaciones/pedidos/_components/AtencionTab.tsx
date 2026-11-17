@@ -2,6 +2,7 @@
 import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/orders/ExternalOrderNumberColumn";
 import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
 import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
+import { StockStateBadge } from "@/components/orders/StockStateBadge";
 
 import { OrderOriginLabel } from "../../_shared/OrderOriginLabel";
 
@@ -354,6 +355,7 @@ export function AtencionTab({
                   )}
                   <TableCell className="font-medium">
                     {sale.orderNumber}<OrderOriginLabel {...sale} />
+                    <StockStateBadge state={sale.stockState} className="mt-1 flex w-fit" />
                   </TableCell>
                   {showExternalCol && <ExternalOrderNumberCell value={sale.externalOrderNumber} />}
                   <TableCell>

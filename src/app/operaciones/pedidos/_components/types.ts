@@ -24,6 +24,8 @@ export interface Sale extends UnitAssignmentState, Omit<SalesPhysicalOrderProjec
   stockStoreName?: string;
   inventoryId?: string | null;
   stockStoreId?: string | null;
+  /** FEAT-24 H2: estado de stock del pedido (si el servidor lo manda). */
+  stockState?: string | null;
   customerId: string;
   orderNumber: string;
   externalOrderNumber?: string | null;
@@ -117,6 +119,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     stockStoreName: order.stockStoreName,
     inventoryId: order.inventoryId,
     stockStoreId: order.stockStoreId,
+    stockState: order.stockState ?? null,
     customerId: order.customer?.id,
     orderNumber: order.orderNumber,
     externalOrderNumber: order.externalOrderNumber ?? null,

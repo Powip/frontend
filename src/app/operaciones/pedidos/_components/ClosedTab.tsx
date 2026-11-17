@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
+import { StockStateBadge } from "@/components/orders/StockStateBadge";
 import { OrderDetailButton } from "@/components/orders/OrderDetailModal";
 import { getCancellationReasonLabel } from "@/components/modals/CancellationModal";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
@@ -182,6 +183,7 @@ export function ClosedTab({ variant, data, state, query, onState, actions }: Ope
                 <TableCell className="font-medium">
                   {sale.orderNumber}
                   <OrderOriginLabel {...sale} />
+                  <StockStateBadge state={sale.stockState} className="mt-1 flex w-fit" />
                 </TableCell>
                 {showExternalCol && <ExternalOrderNumberCell value={sale.externalOrderNumber} />}
                 <TableCell className="text-sm">{formatDateTime(sale.createdAt)}</TableCell>
