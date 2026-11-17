@@ -3,6 +3,9 @@ import { memoryStore } from "../offlineStore";
 import {
   buildConsultResult,
   describeQueuedAction,
+  fetchConsultResult,
+  matchCodeLocally,
+  toPickingListRows,
   formatSavedAt,
   pendingForOrder,
   pendingForReception,
@@ -15,6 +18,8 @@ import {
 } from "../warehouseMode";
 import { completePicking, confirmPickingLine, getPicking, scanPicking, type PickingView } from "@/services/orderStockService";
 import { listReturnReceptions, receiveReturnReception, type ReturnReception } from "@/services/warehousesService";
+import { fetchVariantsByIds, lookupVariantsByCodes, type CatalogVariant } from "@/services/variantCodesService";
+import { getStockByVariants } from "@/services/inventoryItems.service";
 
 // FEAT-24 H6-D — modo almacén: acceso, acciones de la cola (envío y
 // verificación tras un envío sin respuesta) y la consulta por código.
@@ -29,6 +34,11 @@ jest.mock("@/services/warehousesService", () => ({
   listReturnReceptions: jest.fn(),
   receiveReturnReception: jest.fn(),
 }));
+jest.mock("@/services/variantCodesService", () => ({
+  lookupVariantsByCodes: jest.fn(),
+  fetchVariantsByIds: jest.fn(),
+}));
+jest.mock("@/services/inventoryItems.service", () => ({ getStockByVariants: jest.fn() }));
 
 const networkError = () => Object.assign(new Error("Network Error"), { isAxiosError: true, code: "ERR_NETWORK" });
 
@@ -330,6 +340,59 @@ describe("buildConsultResult", () => {
   it("sin stock ni datos de la variante, muestra lo que trajo el código", () => {
     const result = buildConsultResult("X", [{ code: "X", variantId: "v-9", sku: "S9", companySku: null, productId: "p", productName: "Gorra" }], [], []);
     expect(result.variants[0]).toMatchObject({ productName: "Gorra", sku: "S9", warehouses: [], totals: { physical: 0, reserved: 0, available: 0 } });
+  });
+});
+
+describe("fetchConsultResult", () => {
+  it("resuelve el código (con códigos de barras), la variante y el stock", async () => {
+    jest.mocked(lookupVariantsByCodes).mockResolvedValue([
+      { code: "775", variantId: "v-1", sku: "S", companySku: null, productId: "p", productName: "Polo", matchedBy: "powipEan" },
+    ]);
+    jest.mocked(fetchVariantsByIds).mockRejectedValue(new Error("caído"));
+    jest.mocked(getStockByVariants).mockResolvedValue([
+      { variant_id: "v-1", quantity: 3, reserved_quantity: 1, available: 2, inventories: [{ inventory_id: "a", inventory_name: "Central", store_id: null, quantity: 3, reserved_quantity: 1 }] },
+    ]);
+    const result = await fetchConsultResult("775", "c-1");
+    expect(lookupVariantsByCodes).toHaveBeenCalledWith(["775"], "c-1");
+    expect(getStockByVariants).toHaveBeenCalledWith(["v-1"]);
+    expect(result.variants[0]).toMatchObject({ productName: "Polo", totals: { physical: 3, reserved: 1, available: 2 } });
+  });
+
+  it("un código que no es de la empresa vuelve sin variantes y sin pedir stock", async () => {
+    jest.mocked(lookupVariantsByCodes).mockResolvedValue([]);
+    await expect(fetchConsultResult("X", "c-1")).resolves.toEqual({ code: "X", variants: [] });
+    expect(getStockByVariants).not.toHaveBeenCalled();
+  });
+});
+
+describe("matchCodeLocally", () => {
+  const variant = (overrides: Partial<CatalogVariant>): CatalogVariant => ({
+    id: "v-1",
+    sku: "POL-M",
+    companySku: null,
+    barcode: null,
+    powipEan: null,
+    attributeValues: {},
+    productName: "Polo",
+    ...overrides,
+  });
+
+  it("busca por SKU, SKU de la empresa, código de fábrica y EAN de POWIP (sin distinguir mayúsculas)", () => {
+    const variants = [variant({}), variant({ id: "v-2", sku: "GOR", barcode: "7790001", powipEan: "2000000000015", companySku: "emp-9" })];
+    expect(matchCodeLocally("pol-m", variants).map((match) => [match.variantId, match.matchedBy])).toEqual([["v-1", "sku"]]);
+    expect(matchCodeLocally("7790001", variants)[0]).toMatchObject({ variantId: "v-2", matchedBy: "barcode" });
+    expect(matchCodeLocally("2000000000015", variants)[0]).toMatchObject({ matchedBy: "powipEan" });
+    expect(matchCodeLocally("EMP-9", variants)[0]).toMatchObject({ matchedBy: "companySku" });
+    expect(matchCodeLocally("nada", variants)).toEqual([]);
+    expect(matchCodeLocally("  ", variants)).toEqual([]);
+  });
+});
+
+describe("toPickingListRows", () => {
+  it("guarda solo lo que muestra la lista", () => {
+    expect(
+      toPickingListRows([{ id: "o-1", orderNumber: "ORD-1", status: "EN_ENVIO", stockState: "reserved", customer: { fullName: "Ana" } }]),
+    ).toEqual([{ id: "o-1", orderNumber: "ORD-1", customerName: "Ana", status: "EN_ENVIO", stockState: "reserved" }]);
   });
 });
 

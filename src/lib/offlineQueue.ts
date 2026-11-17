@@ -115,13 +115,21 @@ export class QueueRejectedError extends Error {
   }
 }
 
-export type SettledOutcome<R> = { status: "done"; result?: R; message?: string } | { status: "queued" };
+/** Lo que recibe una pantalla al escribir: hecho (con la respuesta, si la hubo) o guardado para después. */
+export type WriteResult<R> = { status: "done"; result?: R; message?: string } | { status: "queued"; message: string };
 
-/** Para las pantallas: «hecho» o «guardado»; un rechazo se lanza como error. */
-export function settleOutcome<R>(outcome: EnqueueOutcome<R>): SettledOutcome<R> {
+/** Aviso para lo que quedó guardado. `subject`: «el escaneo 775», «la recepción»… */
+export function queuedMessage(reason: "offline" | "no_response" | "waiting", subject: string): string {
+  if (reason === "offline") return `Sin señal: ${subject} quedó guardado y se envía al volver la conexión.`;
+  if (reason === "no_response") return `El servidor no respondió: ${subject} quedó guardado y se verifica antes de reenviarlo.`;
+  return `${subject.charAt(0).toUpperCase()}${subject.slice(1)} quedó en cola detrás de otras acciones sin enviar.`;
+}
+
+/** Para las pantallas: «hecho» o «guardado»; un rechazo se lanza como error (con la forma de axios). */
+export function toWriteResult<R>(outcome: EnqueueOutcome<R>, subject: string): WriteResult<R> {
   if (outcome.status === "rejected") throw new QueueRejectedError(outcome.message, outcome.httpStatus);
-  if (outcome.status === "queued") return { status: "queued" };
-  return { status: "done", result: outcome.result, message: outcome.message };
+  if (outcome.status === "queued") return { status: "queued", message: queuedMessage(outcome.reason, subject) };
+  return { status: "done", result: outcome.result, ...(outcome.message ? { message: outcome.message } : {}) };
 }
 
 export interface FlushReport {

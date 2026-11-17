@@ -1,5 +1,5 @@
 import { canEditInventory, type RouteAccessUser } from "@/config/permissions.config";
-import type { VariantStock } from "@/services/inventoryItems.service";
+import { getStockByVariants, type VariantStock } from "@/services/inventoryItems.service";
 import {
   completePicking,
   confirmPickingLine,
@@ -8,7 +8,12 @@ import {
   type PickingCompletion,
   type PickingView,
 } from "@/services/orderStockService";
-import type { CatalogVariant, VariantCodeMatch } from "@/services/variantCodesService";
+import {
+  fetchVariantsByIds,
+  lookupVariantsByCodes,
+  type CatalogVariant,
+  type VariantCodeMatch,
+} from "@/services/variantCodesService";
 import {
   listReturnReceptions,
   receiveReturnReception,
@@ -326,6 +331,73 @@ export function buildConsultResult(
     });
   }
   return { code, variants: result };
+}
+
+/**
+ * Consultar un código: lo resuelve igual que la Recepción de H2-F (`lookup-by-codes` con `includeBarcodes`:
+ * SKU, código de fábrica o EAN de POWIP), trae la variante y su stock por almacén. Los atributos son un
+ * adorno: si fallan, se muestra igual.
+ */
+export async function fetchConsultResult(code: string, companyId: string): Promise<ConsultResult> {
+  const matches = await lookupVariantsByCodes([code], companyId);
+  if (matches.length === 0) return { code, variants: [] };
+  const ids = [...new Set(matches.map((match) => match.variantId))];
+  const [variants, stock] = await Promise.all([fetchVariantsByIds(ids, companyId).catch(() => []), getStockByVariants(ids)]);
+  return buildConsultResult(code, matches, variants, stock);
+}
+
+/**
+ * Sin señal, en Recibir: busca el código entre los productos ya descargados de las devoluciones (mismos
+ * campos que `lookup-by-codes`: SKU, SKU de la empresa, código de fábrica y EAN de POWIP).
+ */
+export function matchCodeLocally(code: string, variants: CatalogVariant[]): VariantCodeMatch[] {
+  const wanted = code.trim().toLowerCase();
+  if (!wanted) return [];
+  const fields: Array<[NonNullable<VariantCodeMatch["matchedBy"]>, (variant: CatalogVariant) => string | null]> = [
+    ["sku", (variant) => variant.sku],
+    ["companySku", (variant) => variant.companySku],
+    ["barcode", (variant) => variant.barcode],
+    ["powipEan", (variant) => variant.powipEan],
+  ];
+  const result: VariantCodeMatch[] = [];
+  for (const variant of variants) {
+    const hit = fields.find(([, read]) => (read(variant) ?? "").trim().toLowerCase() === wanted);
+    if (!hit) continue;
+    result.push({
+      code,
+      variantId: variant.id,
+      sku: variant.sku,
+      companySku: variant.companySku,
+      productId: "",
+      productName: variant.productName,
+      matchedBy: hit[0],
+    });
+  }
+  return result;
+}
+
+/* ---------------------------------------------------------------------------
+   Picking: la lista de pedidos (lo que se guarda para verla sin señal)
+--------------------------------------------------------------------------- */
+
+export interface PickingListRow {
+  id: string;
+  orderNumber: string;
+  customerName: string | null;
+  status: string;
+  stockState: string | null;
+}
+
+export function toPickingListRows(
+  orders: Array<{ id: string; orderNumber: string; status?: string | null; stockState?: string | null; customer?: { fullName?: string | null } | null }>,
+): PickingListRow[] {
+  return orders.map((order) => ({
+    id: order.id,
+    orderNumber: order.orderNumber,
+    customerName: order.customer?.fullName ?? null,
+    status: order.status ?? "",
+    stockState: order.stockState ?? null,
+  }));
 }
 
 export const MATCHED_BY_LABEL: Record<NonNullable<VariantCodeMatch["matchedBy"]>, string> = {

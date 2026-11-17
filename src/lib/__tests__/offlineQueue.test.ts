@@ -1,8 +1,9 @@
 import {
   classifyFailure,
   createOfflineQueue,
+  queuedMessage,
   QueueRejectedError,
-  settleOutcome,
+  toWriteResult,
   type ActionHandler,
   type QueuedAction,
   type QueueSession,
@@ -155,7 +156,7 @@ describe("cola sin conexión del modo almacén (FEAT-24 H6-D)", () => {
       message: "El código no corresponde a ningún producto de este pedido.",
     });
     expect(await queue.list()).toEqual([]);
-    expect(() => settleOutcome(outcome)).toThrow(QueueRejectedError);
+    expect(() => toWriteResult(outcome, "el escaneo X")).toThrow(QueueRejectedError);
   });
 
   it("sobrevive a recargar: lo guardado se envía desde otra instancia sobre el mismo almacenamiento", async () => {
@@ -345,5 +346,30 @@ describe("classifyFailure", () => {
   it("toma el mensaje del servidor (texto o lista)", () => {
     expect(classifyFailure(httpError(409, ["Falta stock", "Revisa"] as unknown as string)).message).toBe("Falta stock. Revisa");
     expect(classifyFailure(httpError(404)).message).toBe("El servidor rechazó la acción.");
+  });
+});
+
+describe("toWriteResult y queuedMessage", () => {
+  it("hecho: devuelve la respuesta y el mensaje", () => {
+    expect(toWriteResult({ status: "done", id: "k", result: 1, message: "ok" }, "x")).toEqual({ status: "done", result: 1, message: "ok" });
+  });
+
+  it("guardado: arma el aviso según el motivo", () => {
+    expect(toWriteResult({ status: "queued", id: "k", reason: "offline" }, "el escaneo 775")).toEqual({
+      status: "queued",
+      message: "Sin señal: el escaneo 775 quedó guardado y se envía al volver la conexión.",
+    });
+    expect(queuedMessage("no_response", "la recepción")).toMatch(/se verifica antes de reenviarlo/);
+    expect(queuedMessage("waiting", "la recepción")).toBe("La recepción quedó en cola detrás de otras acciones sin enviar.");
+  });
+
+  it("rechazado: lanza un error con la forma de axios (status y mensaje)", () => {
+    try {
+      toWriteResult({ status: "rejected", id: "k", message: "No", httpStatus: 409 }, "x");
+      throw new Error("no lanzó");
+    } catch (error) {
+      expect(error).toBeInstanceOf(QueueRejectedError);
+      expect((error as QueueRejectedError).response).toEqual({ status: 409, data: { message: "No" } });
+    }
   });
 });
