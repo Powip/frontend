@@ -2,6 +2,7 @@
 
 import { AlertTriangle, Plus, Printer, Truck } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import { BetaBanner } from "@/app/facturacion/components/BetaBanner";
 import GuiaRemisionModal from "@/app/facturacion/components/modals/GuiaRemisionModal";
 import { type GuiaIssuer, imprimirGuiaPdf } from "@/app/facturacion/lib/imprimir-guia-pdf";
@@ -198,7 +199,13 @@ export function GuiasTab({ mock, comprobanteRows, issuer }: GuiasTabProps) {
                             variant="outline"
                             size="sm"
                             className="gap-1.5"
-                            onClick={() => imprimirGuiaPdf(g, alm, issuer)}
+                            onClick={() => {
+                              if (!issuer) {
+                                toast.error("Selecciona un emisor (RUC) antes de imprimir la guía");
+                                return;
+                              }
+                              imprimirGuiaPdf(g, alm, issuer);
+                            }}
                             title={`Imprimir PDF de ${g.fullNumber || g.pedido}`}
                           >
                             <Printer className="h-3.5 w-3.5" />
