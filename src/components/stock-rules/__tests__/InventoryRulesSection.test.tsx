@@ -6,6 +6,7 @@
  * 3. Días fuera de 1..365 no se guardan.
  * 4. Un 400 del servidor se muestra.
  * 5. Quien no es admin solo lee.
+ * 6. FEAT-24 H3: las reglas de compras (afecta al IGV y compra directa a courier).
  */
 
 import { render, screen, waitFor } from "@testing-library/react";
@@ -43,7 +44,7 @@ function renderSection() {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockGet.mockResolvedValue({ releaseAfterDays: 7, pickingRequired: false });
+  mockGet.mockResolvedValue({ releaseAfterDays: 7, pickingRequired: false, igvAffected: true, allowPurchaseToCourier: false });
 });
 
 describe("Reglas de inventario (FEAT-24 H2-F)", () => {
@@ -59,13 +60,20 @@ describe("Reglas de inventario (FEAT-24 H2-F)", () => {
   it("un admin deja la liberación en «nunca», prende el picking y guarda", async () => {
     loginAs("OWNER");
     const user = userEvent.setup();
-    mockSave.mockResolvedValue({ releaseAfterDays: null, pickingRequired: true });
+    mockSave.mockResolvedValue({ releaseAfterDays: null, pickingRequired: true, igvAffected: true, allowPurchaseToCourier: false });
     renderSection();
     const days = await screen.findByLabelText("Liberar reservas sin despachar después de");
     await user.clear(days);
     await user.click(screen.getByRole("switch", { name: "Exigir picking con escaneo" }));
     await user.click(screen.getByRole("button", { name: "Guardar reglas de inventario" }));
-    await waitFor(() => expect(mockSave).toHaveBeenCalledWith({ releaseAfterDays: null, pickingRequired: true }));
+    await waitFor(() =>
+      expect(mockSave).toHaveBeenCalledWith({
+        releaseAfterDays: null,
+        pickingRequired: true,
+        igvAffected: true,
+        allowPurchaseToCourier: false,
+      }),
+    );
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Reglas de inventario guardadas"));
     expect(screen.getByLabelText("Liberar reservas sin despachar después de")).toHaveValue("");
     expect(screen.getByRole("switch", { name: "Exigir picking con escaneo" })).toBeChecked();
@@ -100,13 +108,16 @@ describe("Reglas de inventario (FEAT-24 H2-F)", () => {
 
   it("quien no es admin solo lee", async () => {
     loginAs("OPERACIONES");
-    mockGet.mockResolvedValue({ releaseAfterDays: null, pickingRequired: true });
+    mockGet.mockResolvedValue({ releaseAfterDays: null, pickingRequired: true, igvAffected: false, allowPurchaseToCourier: true });
     renderSection();
     const days = await screen.findByLabelText("Liberar reservas sin despachar después de");
     expect(days).toBeDisabled();
     expect(days).toHaveValue("");
     expect(screen.getByRole("switch", { name: "Exigir picking con escaneo" })).toBeDisabled();
     expect(screen.getByRole("switch", { name: "Exigir picking con escaneo" })).toBeChecked();
+    expect(screen.getByRole("switch", { name: "La empresa está afecta al IGV" })).toBeDisabled();
+    expect(screen.getByRole("switch", { name: "La empresa está afecta al IGV" })).not.toBeChecked();
+    expect(screen.getByRole("switch", { name: "Permitir compras directas a un almacén courier" })).toBeChecked();
     expect(screen.getByText("Solo un administrador puede cambiar estas reglas.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Guardar reglas de inventario" })).not.toBeInTheDocument();
   });
@@ -119,5 +130,25 @@ describe("Reglas de inventario (FEAT-24 H2-F)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Servicio no disponible");
     await user.click(screen.getByRole("button", { name: "Reintentar" }));
     expect(await screen.findByLabelText("Liberar reservas sin despachar después de")).toHaveValue("7");
+  });
+
+  it("un admin apaga el IGV y permite comprar directo a courier (FEAT-24 H3)", async () => {
+    loginAs("ADMINISTRADOR");
+    const user = userEvent.setup();
+    mockSave.mockResolvedValue({ releaseAfterDays: 7, pickingRequired: false, igvAffected: false, allowPurchaseToCourier: true });
+    renderSection();
+    const igv = await screen.findByRole("switch", { name: "La empresa está afecta al IGV" });
+    expect(igv).toBeChecked();
+    await user.click(igv);
+    await user.click(screen.getByRole("switch", { name: "Permitir compras directas a un almacén courier" }));
+    await user.click(screen.getByRole("button", { name: "Guardar reglas de inventario" }));
+    await waitFor(() =>
+      expect(mockSave).toHaveBeenCalledWith({
+        releaseAfterDays: 7,
+        pickingRequired: false,
+        igvAffected: false,
+        allowPurchaseToCourier: true,
+      }),
+    );
   });
 });

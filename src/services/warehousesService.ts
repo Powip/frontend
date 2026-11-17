@@ -91,6 +91,23 @@ export interface InventoryRules {
   /** Días sin despachar para liberar la reserva; `null` = nunca. */
   releaseAfterDays: number | null;
   pickingRequired: boolean;
+  /**
+   * FEAT-24 H3: la empresa está afecta al IGV (por defecto sí). Si no, las órdenes de compra no separan IGV y
+   * el costo es lo pagado. Al guardar, si falta, queda como estaba.
+   */
+  igvAffected?: boolean;
+  /** FEAT-24 H3: se puede comprar directo a un almacén courier (por defecto no). */
+  allowPurchaseToCourier?: boolean;
+}
+
+/** Lo que devolvió ms-logistics, con los valores por defecto de cada regla. */
+function inventoryRulesFrom(data: Partial<InventoryRules> | undefined): Required<InventoryRules> {
+  return {
+    releaseAfterDays: data?.releaseAfterDays ?? null,
+    pickingRequired: data?.pickingRequired === true,
+    igvAffected: data?.igvAffected !== false,
+    allowPurchaseToCourier: data?.allowPurchaseToCourier === true,
+  };
 }
 
 export type ReturnReceptionStatus = "por_recibir" | "recibida";
@@ -144,17 +161,20 @@ export async function saveReservationRules(rules: ReservationRuleInput[]): Promi
   return Array.isArray(data?.rules) ? data.rules : [];
 }
 
-export async function getInventoryRules(): Promise<InventoryRules> {
+export async function getInventoryRules(): Promise<Required<InventoryRules>> {
   const { data } = await axiosAuth.get<InventoryRules>(`${base()}/inventory-rules`);
-  return { releaseAfterDays: data?.releaseAfterDays ?? null, pickingRequired: data?.pickingRequired === true };
+  return inventoryRulesFrom(data);
 }
 
-export async function saveInventoryRules(rules: InventoryRules): Promise<InventoryRules> {
+/** Solo Administrador (403 al resto). Las dos reglas de compras se mandan solo si vienen. */
+export async function saveInventoryRules(rules: InventoryRules): Promise<Required<InventoryRules>> {
   const { data } = await axiosAuth.put<InventoryRules>(`${base()}/inventory-rules`, {
     releaseAfterDays: rules.releaseAfterDays,
     pickingRequired: rules.pickingRequired,
+    ...(rules.igvAffected !== undefined ? { igvAffected: rules.igvAffected } : {}),
+    ...(rules.allowPurchaseToCourier !== undefined ? { allowPurchaseToCourier: rules.allowPurchaseToCourier } : {}),
   });
-  return { releaseAfterDays: data?.releaseAfterDays ?? null, pickingRequired: data?.pickingRequired === true };
+  return inventoryRulesFrom(data);
 }
 
 export async function listReturnReceptions(status: ReturnReceptionStatus): Promise<ReturnReception[]> {

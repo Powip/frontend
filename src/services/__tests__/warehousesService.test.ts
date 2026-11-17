@@ -160,12 +160,38 @@ describe("Reglas de stock y recepciones en /warehouses (FEAT-24 H2-F)", () => {
 
   it("lee y guarda las reglas de inventario", async () => {
     jest.mocked(axiosAuth.get).mockResolvedValue({ data: { releaseAfterDays: null, pickingRequired: false } });
-    await expect(getInventoryRules()).resolves.toEqual({ releaseAfterDays: null, pickingRequired: false });
+    // FEAT-24 H3: sin las reglas de compras, IGV afecto y sin compra directa a courier.
+    await expect(getInventoryRules()).resolves.toEqual({
+      releaseAfterDays: null,
+      pickingRequired: false,
+      igvAffected: true,
+      allowPurchaseToCourier: false,
+    });
     expect(axiosAuth.get).toHaveBeenCalledWith(`${BASE}/inventory-rules`);
 
     jest.mocked(axiosAuth.put).mockResolvedValue({ data: { releaseAfterDays: 7, pickingRequired: true } });
-    await expect(saveInventoryRules({ releaseAfterDays: 7, pickingRequired: true })).resolves.toEqual({ releaseAfterDays: 7, pickingRequired: true });
+    await expect(saveInventoryRules({ releaseAfterDays: 7, pickingRequired: true })).resolves.toEqual({
+      releaseAfterDays: 7,
+      pickingRequired: true,
+      igvAffected: true,
+      allowPurchaseToCourier: false,
+    });
     expect(axiosAuth.put).toHaveBeenCalledWith(`${BASE}/inventory-rules`, { releaseAfterDays: 7, pickingRequired: true });
+  });
+
+  it("guarda las reglas de compras solo si vienen (FEAT-24 H3)", async () => {
+    jest.mocked(axiosAuth.put).mockResolvedValue({
+      data: { releaseAfterDays: null, pickingRequired: false, igvAffected: false, allowPurchaseToCourier: true },
+    });
+    await expect(
+      saveInventoryRules({ releaseAfterDays: null, pickingRequired: false, igvAffected: false, allowPurchaseToCourier: true }),
+    ).resolves.toEqual({ releaseAfterDays: null, pickingRequired: false, igvAffected: false, allowPurchaseToCourier: true });
+    expect(axiosAuth.put).toHaveBeenCalledWith(`${BASE}/inventory-rules`, {
+      releaseAfterDays: null,
+      pickingRequired: false,
+      igvAffected: false,
+      allowPurchaseToCourier: true,
+    });
   });
 
   it("lista las recepciones por estado y recibe una con POST .../receive", async () => {

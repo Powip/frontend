@@ -16,10 +16,14 @@ import { getInventoryRules, saveInventoryRules, type InventoryRules } from "@/se
 
 // FEAT-24 H2-F — Configuración › Tiendas y almacenes › «Reglas de inventario»:
 // liberar reservas viejas y exigir el picking con escaneo. Solo un administrador edita.
+// FEAT-24 H3 — suma las dos reglas de compras: si la empresa está afecta al IGV
+// y si se puede comprar directo a un almacén courier.
 
 interface Form {
   releaseDays: string;
   pickingRequired: boolean;
+  igvAffected: boolean;
+  allowPurchaseToCourier: boolean;
 }
 
 export default function InventoryRulesSection() {
@@ -36,10 +40,19 @@ export default function InventoryRulesSection() {
   // `null` = sin cambios en pantalla: se muestra lo guardado.
   const [edited, setEdited] = useState<Form | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
-  const form: Form =
-    edited ?? { releaseDays: releaseDaysToText(saved?.releaseAfterDays ?? null), pickingRequired: saved?.pickingRequired ?? false };
+  const form: Form = edited ?? {
+    releaseDays: releaseDaysToText(saved?.releaseAfterDays ?? null),
+    pickingRequired: saved?.pickingRequired ?? false,
+    igvAffected: saved?.igvAffected ?? true,
+    allowPurchaseToCourier: saved?.allowPurchaseToCourier ?? false,
+  };
   const parsed = parseReleaseDays(form.releaseDays);
-  const dirty = saved !== undefined && edited !== null && inventoryRulesChanged(edited, saved);
+  const dirty =
+    saved !== undefined &&
+    edited !== null &&
+    (inventoryRulesChanged(edited, saved) ||
+      edited.igvAffected !== saved.igvAffected ||
+      edited.allowPurchaseToCourier !== saved.allowPurchaseToCourier);
 
   const save = useMutation({
     mutationFn: (rules: InventoryRules) => saveInventoryRules(rules),
@@ -70,7 +83,7 @@ export default function InventoryRulesSection() {
         <h3 id="inventory-rules-title" className="text-lg font-medium">
           Reglas de inventario
         </h3>
-        <p className="text-sm text-muted-foreground">Cómo se cuidan las reservas y el despacho de los pedidos.</p>
+        <p className="text-sm text-muted-foreground">Cómo se cuidan las reservas y el despacho de los pedidos, y cómo se registran las compras.</p>
         {!isAdmin ? <p className="mt-1 text-xs text-muted-foreground">Solo un administrador puede cambiar estas reglas.</p> : null}
       </div>
 
@@ -138,6 +151,40 @@ export default function InventoryRulesSection() {
             </div>
           </div>
 
+          <div className="grid gap-6 border-t pt-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <Switch
+                  id="igv-affected"
+                  checked={form.igvAffected}
+                  disabled={disabled}
+                  onCheckedChange={(igvAffected) => change({ igvAffected })}
+                />
+                <Label htmlFor="igv-affected">La empresa está afecta al IGV</Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Prendido, las órdenes de compra separan el IGV (18 %) y el costo se guarda sin IGV. Apagado (RUS o sin
+                crédito fiscal), la compra no separa IGV y el costo es lo que pagas.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-3">
+                <Switch
+                  id="allow-purchase-to-courier"
+                  checked={form.allowPurchaseToCourier}
+                  disabled={disabled}
+                  onCheckedChange={(allowPurchaseToCourier) => change({ allowPurchaseToCourier })}
+                />
+                <Label htmlFor="allow-purchase-to-courier">Permitir compras directas a un almacén courier</Label>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Prendido, una orden de compra puede llegar directo al almacén de un courier. Apagado, solo a almacenes
+                propios o tiendas.
+              </p>
+            </div>
+          </div>
+
           {serverError ? (
             <div role="alert" className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
               {serverError}
@@ -166,7 +213,12 @@ export default function InventoryRulesSection() {
                 disabled={!dirty || !parsed.ok || save.isPending}
                 onClick={() => {
                   if (!parsed.ok) return;
-                  save.mutate({ releaseAfterDays: parsed.value, pickingRequired: form.pickingRequired });
+                  save.mutate({
+                    releaseAfterDays: parsed.value,
+                    pickingRequired: form.pickingRequired,
+                    igvAffected: form.igvAffected,
+                    allowPurchaseToCourier: form.allowPurchaseToCourier,
+                  });
                 }}
               >
                 {save.isPending ? "Guardando…" : "Guardar reglas de inventario"}
