@@ -95,13 +95,13 @@ beforeEach(() => {
   (useCreateSunatDocuments as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
 });
 
-function renderModal(issuerProfileId?: string) {
+function renderModal(issuerProfileId?: string, saleToEmit: Order = sale) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <EmitirComprobanteModal
         isOpen
         onClose={jest.fn()}
-        sale={sale}
+        sale={saleToEmit}
         issuerProfileId={issuerProfileId}
       />
     </QueryClientProvider>,
@@ -155,5 +155,82 @@ describe("EmitirComprobanteModal — multi-RUC", () => {
     await userEvent.click(screen.getByRole("button", { name: /Emitir a SUNAT/i }));
 
     expect(await screen.findByText(/enviado correctamente/i)).toBeInTheDocument();
+  });
+});
+
+describe("EmitirComprobanteModal — validar antes de enviar a SUNAT", () => {
+  const withItems = (items: unknown[], extra: Record<string, unknown> = {}) =>
+    ({ ...sale, items, ...extra }) as unknown as Order;
+  const product = {
+    id: "i1",
+    sku: "SKU-1",
+    productName: "Kit",
+    quantity: 1,
+    unitPrice: 118,
+    discountAmount: 0,
+  };
+
+  it("una venta con un regalo a precio 0 no se puede emitir: avisa cuál línea y por qué", async () => {
+    renderModal(
+      "p1",
+      withItems([
+        { ...product, id: "i0", sku: "REG", productName: "Muestra de regalo", unitPrice: 0 },
+        product,
+      ]),
+    );
+
+    const alert = await screen.findByRole("alert");
+
+    expect(alert).toHaveTextContent("No se puede emitir: «Muestra de regalo» queda en S/ 0.00.");
+    expect(alert).toHaveTextContent("error 3105");
+    expect(screen.getByText("Hay una línea en S/ 0.00: revisa los ítems.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Emitir a SUNAT/i })).toBeDisabled();
+    expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("el envío gratis (envío con descuento igual a su precio) tampoco se puede emitir", async () => {
+    renderModal("p1", withItems([product], { shippingTotal: 10, discountTotal: 10 }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /«Servicio de entrega» queda en S\/ 0.00/,
+    );
+    expect(screen.getByRole("button", { name: /Emitir a SUNAT/i })).toBeDisabled();
+  });
+
+  it("al quitar la línea en cero se puede emitir", async () => {
+    renderModal(
+      "p1",
+      withItems([
+        { ...product, id: "i0", sku: "REG", productName: "Muestra de regalo", unitPrice: 0 },
+        product,
+      ]),
+    );
+
+    await userEvent.click(await screen.findByRole("button", { name: "Quitar Muestra de regalo" }));
+
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Emitir a SUNAT/i })).toBeEnabled();
+  });
+
+  it("una venta con descuento muestra el descuento con 2 decimales y el navegador deja enviar", async () => {
+    renderModal("p1", withItems([{ ...product, unitPrice: 199, discountAmount: 10 }]));
+
+    const discount = (await screen.findByLabelText("Descuento de Kit")) as HTMLInputElement;
+
+    // 10 con IGV incluido = 8.474576... sin IGV: se ve redondeado y es un valor válido.
+    expect(discount.value).toBe("8.47");
+    expect(discount.checkValidity()).toBe(true);
+    expect(
+      (screen.getByLabelText("Precio unitario de Kit") as HTMLInputElement).checkValidity(),
+    ).toBe(true);
+
+    await userEvent.click(screen.getByRole("button", { name: /Emitir a SUNAT/i }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+    // Por dentro conserva la precisión completa, para no descuadrar centavos.
+    expect(mutateAsync.mock.calls[0][0].documents[0].items[0].discountAmount).toBeCloseTo(
+      10 / 1.18,
+      6,
+    );
   });
 });

@@ -49,6 +49,10 @@ import { toCreateSunatDocumentsRequestDto } from "@/features/sunat/sunat-documen
 import type { CreateSunatDocumentsFormValues } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { createSunatDocumentsSchema } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { buildSunatDocumentFromSale } from "@/features/sunat/sunat-document/utils/build-sunat-document-from-sale";
+import {
+  describeLinesWithoutValue,
+  findLinesWithoutValue,
+} from "@/features/sunat/sunat-document/utils/find-lines-without-value";
 import { getEmissionErrorMessage } from "@/features/sunat/sunat-document/utils/get-emission-error-message";
 import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
 import type { SunatDocumentSequence } from "@/features/sunat/sunat-document-sequence/models/sunat-document-sequence";
@@ -182,6 +186,15 @@ export default function EmitirComprobanteModal({
     control: form.control,
     name: "documents.0.totals",
   });
+
+  const watchedItems = useWatch({
+    control: form.control,
+    name: "documents.0.items",
+  });
+
+  // SUNAT rejects the whole document when a line is worth S/ 0.00 (error
+  // 3105), and the rejection spends the number: stop it before sending.
+  const linesWithoutValue = findLinesWithoutValue(watchedItems ?? []);
 
   const customerIdentityDocumentType = useWatch({
     control: form.control,
@@ -631,6 +644,21 @@ export default function EmitirComprobanteModal({
                       )}
                     />
 
+                    {linesWithoutValue.length > 0 && (
+                      <div
+                        role="alert"
+                        className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm dark:border-red-900 dark:bg-red-950/40"
+                      >
+                        <span className="font-semibold">
+                          No se puede emitir: {describeLinesWithoutValue(linesWithoutValue)}{" "}
+                          {linesWithoutValue.length === 1 ? "queda" : "quedan"} en S/ 0.00.{" "}
+                        </span>
+                        SUNAT rechaza el comprobante completo cuando una línea no tiene valor (error
+                        3105) y el número se pierde. Ponle su valor a esa línea o quítala con el
+                        ícono de papelera.
+                      </div>
+                    )}
+
                     <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm">
                       <div className="flex justify-between text-muted-foreground">
                         <span>Subtotal</span>
@@ -680,13 +708,26 @@ export default function EmitirComprobanteModal({
                 </div>
 
                 <DialogFooter className="shrink-0 border-t px-6 py-4">
+                  {linesWithoutValue.length > 0 && (
+                    // The full explanation sits under the items, which may be
+                    // scrolled out of view: keep the reason next to the button.
+                    <span className="text-sm font-medium text-red-600 sm:mr-auto">
+                      Hay una línea en S/ 0.00: revisa los ítems.
+                    </span>
+                  )}
+
                   <Button type="button" variant="ghost" onClick={handleClose} disabled={isPending}>
                     Cancelar
                   </Button>
 
                   <Button
                     type="submit"
-                    disabled={isPending || isMissingDefaultSequence || isIssuerBlocked}
+                    disabled={
+                      isPending ||
+                      isMissingDefaultSequence ||
+                      isIssuerBlocked ||
+                      linesWithoutValue.length > 0
+                    }
                   >
                     {isPending ? (
                       <>
