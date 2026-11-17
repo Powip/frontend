@@ -47,6 +47,7 @@ import {
   LayoutList,
   Plug,
   Radio,
+  Barcode,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -254,6 +255,7 @@ export function Sidebar({ className }: SidebarProps) {
         icon: Package,
         children: [
           { name: "Lista de productos", href: "/productos", icon: Tags },
+          { name: "Etiquetas", href: "/productos/etiquetas", icon: Barcode },
           { name: "Inventario", href: "/inventario", icon: Package },
           { name: "Compras", href: "/compras", icon: PackagePlus },
           { name: "Proveedores", href: "/proveedores", icon: Building2 },
