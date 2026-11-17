@@ -247,8 +247,7 @@ export default function FacturacionPage() {
             mock={mock}
             comprobanteRows={taxDocuments.rows}
             issuer={(() => {
-              const profile =
-                activeProfiles.find((item) => item.id === issuerFilter) ?? activeProfiles[0];
+              const profile = activeProfiles.find((item) => item.id === issuerFilter);
               return profile
                 ? { ruc: profile.ruc, razonSocial: profile.razonSocial, direccion: profile.address }
                 : undefined;
