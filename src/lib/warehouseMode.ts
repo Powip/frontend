@@ -9,6 +9,12 @@ import {
   type PickingView,
 } from "@/services/orderStockService";
 import {
+  getPurchaseOrder,
+  receivePurchaseOrder,
+  type ReceivePurchaseOrderBody,
+  type ReceivePurchaseOrderResult,
+} from "@/services/purchasesService";
+import {
   fetchVariantsByIds,
   lookupVariantsByCodes,
   type CatalogVariant,
@@ -23,6 +29,7 @@ import {
 } from "@/services/warehousesService";
 import type { ActionHandler, QueuedAction, QueueSession, QueueStatus } from "./offlineQueue";
 import { apiErrorStatus, DISPATCH_PENDING_MESSAGE, orderStockAccess, pickingProgress } from "./orderStock";
+import { canReceiveOrder, PURCHASE_STATUS_LABEL } from "./purchaseOrders";
 import { formatVariantLabel } from "./variantAttributes";
 
 // FEAT-24 H6-D — modo almacén (/almacen): quién usa cada pantalla, las acciones
@@ -46,13 +53,17 @@ export interface WarehouseAccess {
   picking: boolean;
   /** Recibir devoluciones: quienes editan inventario (Administrador, Operaciones) y el rol Almacén. */
   receiveReturns: boolean;
+  /** FEAT-24 H3: recibir órdenes de compra, con la misma regla que las devoluciones. */
+  receivePurchases: boolean;
 }
 
 export function warehouseAccess(user: RouteAccessUser | undefined, hasPermission: (permission: string) => boolean): WarehouseAccess {
+  const receives = canEditInventory(user) || isWarehouseRole(user?.role);
   return {
     consult: Boolean(user),
     picking: orderStockAccess(hasPermission).operations,
-    receiveReturns: canEditInventory(user) || isWarehouseRole(user?.role),
+    receiveReturns: receives,
+    receivePurchases: receives,
   };
 }
 
@@ -65,6 +76,7 @@ export const WAREHOUSE_ACTION = {
   pickingConfirmLine: "picking.confirm-line",
   pickingComplete: "picking.complete",
   returnReceive: "return.receive",
+  purchaseReceive: "purchase.receive",
 } as const;
 
 export interface PickingScanPayload {
@@ -89,6 +101,13 @@ export interface ReturnReceivePayload {
   receptionId: string;
   orderLabel: string;
   body: ReceiveReturnBody;
+}
+
+export interface PurchaseReceivePayload {
+  orderId: string;
+  orderNumber: string;
+  /** Lleva el `operationId` de la recepción: el servidor no la duplica si se reenvía. */
+  body: ReceivePurchaseOrderBody;
 }
 
 /** Sin respuesta en este tiempo, la acción queda «sin respuesta» y se verifica antes de reenviarla. */
@@ -204,12 +223,53 @@ const receiveHandler: ActionHandler<ReturnReceivePayload, ReturnReception> = {
   },
 };
 
+interface PurchaseReceiveCheckpoint {
+  /** Lo recibido por línea antes del primer envío. */
+  received: Record<string, number>;
+}
+
+/**
+ * Recibir una orden de compra (FEAT-24 H3). Antes del primer envío se guarda lo recibido por línea. Tras un
+ * envío sin respuesta se lee la OC: si tiene una recepción con nuestro `operationId`, se aplicó; si ya no se
+ * puede recibir (anulada o completa) o lo que queda pendiente ya no alcanza porque otra persona recibió en el
+ * medio, va a revisar; si no, se reenvía (con el mismo `operationId`, así que tampoco duplica).
+ */
+const purchaseReceiveHandler: ActionHandler<PurchaseReceivePayload, ReceivePurchaseOrderResult> = {
+  async prepare({ orderId }) {
+    const order = await getPurchaseOrder(orderId);
+    return { received: Object.fromEntries(order.lines.map((line) => [line.id, line.receivedQuantity])) } satisfies PurchaseReceiveCheckpoint;
+  },
+  send: ({ orderId, body }, { idempotencyKey }) => receivePurchaseOrder(orderId, body, { idempotencyKey, timeoutMs: WRITE_TIMEOUT_MS }),
+  async verify({ orderId, orderNumber, body }, { checkpoint }) {
+    const order = await getPurchaseOrder(orderId);
+    const reception = body.operationId ? order.receptions?.find((candidate) => candidate.operationId === body.operationId) : undefined;
+    if (reception) return { applied: true, result: { reception, purchaseOrder: order, duplicate: true } };
+    if (!canReceiveOrder(order))
+      return { conflict: `${orderNumber} ya no se puede recibir (${PURCHASE_STATUS_LABEL[order.status] ?? order.status}). Revísala en Compras.` };
+    const before = (checkpoint as PurchaseReceiveCheckpoint | null)?.received ?? {};
+    const short = body.lines.find((line) => {
+      const current = order.lines.find((candidate) => candidate.id === line.itemId);
+      return !current || line.quantity > current.pendingQuantity;
+    });
+    if (short) {
+      const changed = order.lines.some((line) => before[line.id] !== undefined && before[line.id] !== line.receivedQuantity);
+      return {
+        conflict: changed
+          ? `Otra persona recibió parte de ${orderNumber} mientras tanto: lo que guardaste pasa lo pendiente. Revisa la compra.`
+          : `Lo que guardaste de ${orderNumber} pasa lo pendiente. Revisa la compra.`,
+      };
+    }
+    return { applied: false };
+  },
+};
+
 export function warehouseActionHandlers(): Record<string, ActionHandler<never, unknown>> {
   return {
     [WAREHOUSE_ACTION.pickingScan]: scanHandler as ActionHandler<never, unknown>,
     [WAREHOUSE_ACTION.pickingConfirmLine]: confirmLineHandler as ActionHandler<never, unknown>,
     [WAREHOUSE_ACTION.pickingComplete]: completeHandler as ActionHandler<never, unknown>,
     [WAREHOUSE_ACTION.returnReceive]: receiveHandler as ActionHandler<never, unknown>,
+    [WAREHOUSE_ACTION.purchaseReceive]: purchaseReceiveHandler as ActionHandler<never, unknown>,
   };
 }
 
@@ -226,6 +286,8 @@ export function describeQueuedAction(action: Pick<QueuedAction, "kind" | "payloa
       return `Completar picking${order}`;
     case WAREHOUSE_ACTION.returnReceive:
       return `Recibir devolución ${payload.orderLabel ?? ""}`.trim();
+    case WAREHOUSE_ACTION.purchaseReceive:
+      return `Recibir compra${order}`;
     default:
       return action.kind;
   }
@@ -257,6 +319,13 @@ export function pendingForReception(outbox: QueuedAction[], receptionId: string)
   return outbox.some(
     (action) =>
       action.kind === WAREHOUSE_ACTION.returnReceive && (action.payload as { receptionId?: string } | null)?.receptionId === receptionId,
+  );
+}
+
+/** ¿Hay una recepción guardada sin enviar de esta orden de compra? */
+export function pendingForPurchaseOrder(outbox: QueuedAction[], orderId: string): boolean {
+  return outbox.some(
+    (action) => action.kind === WAREHOUSE_ACTION.purchaseReceive && (action.payload as { orderId?: string } | null)?.orderId === orderId,
   );
 }
 
@@ -347,8 +416,8 @@ export async function fetchConsultResult(code: string, companyId: string): Promi
 }
 
 /**
- * Sin señal, en Recibir: busca el código entre los productos ya descargados de las devoluciones (mismos
- * campos que `lookup-by-codes`: SKU, SKU de la empresa, código de fábrica y EAN de POWIP).
+ * Sin señal, en Recibir: busca el código entre los productos ya descargados de las devoluciones o de las compras
+ * (mismos campos que `lookup-by-codes`: SKU, SKU de la empresa, código de fábrica y EAN de POWIP).
  */
 export function matchCodeLocally(code: string, variants: CatalogVariant[]): VariantCodeMatch[] {
   const wanted = code.trim().toLowerCase();

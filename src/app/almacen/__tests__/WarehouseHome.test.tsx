@@ -4,8 +4,8 @@ import ReceiveMenu from "../_components/ReceiveMenu";
 import { hasRouteAccess } from "@/config/permissions.config";
 
 // FEAT-24 H6-D (H6-D3) — inicio y «Recibir» del modo almacén: los 4 accesos,
-// Contar y Recibir OC/traslados deshabilitados («Próximamente»), y cada uno
-// según los permisos.
+// Contar y Recibir traslados deshabilitados («Próximamente»), y cada uno según
+// los permisos. FEAT-24 H3: Recibir órdenes de compra ya está habilitado.
 
 const mockAuth = { user: { id: "u-1", role: "ALMACEN", permissions: ["UPDATE_DELIVERY_STATUS"] }, company: { id: "c-1" } };
 jest.mock("@/contexts/AuthContext", () => ({
@@ -41,12 +41,12 @@ describe("Inicio del modo almacén (FEAT-24 H6-D)", () => {
     }
   });
 
-  it("Recibir: devoluciones habilitado; órdenes de compra y traslados, próximamente", () => {
+  it("Recibir: devoluciones y órdenes de compra habilitados; traslados, próximamente", () => {
     render(<ReceiveMenu />);
     expect(screen.getByRole("link", { name: /Devoluciones/ })).toHaveAttribute("href", "/almacen/recibir/devoluciones");
-    expect(screen.queryByRole("link", { name: /Órdenes de compra/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Órdenes de compra/ })).toHaveAttribute("href", "/almacen/recibir/compras");
     expect(screen.queryByRole("link", { name: /Traslados/ })).not.toBeInTheDocument();
-    expect(screen.getAllByText("Próximamente")).toHaveLength(2);
+    expect(screen.getAllByText("Próximamente")).toHaveLength(1);
   });
 
   it("/almacen se abre con cualquier sesión", () => {

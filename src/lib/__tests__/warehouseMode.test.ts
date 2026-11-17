@@ -34,6 +34,10 @@ jest.mock("@/services/warehousesService", () => ({
   listReturnReceptions: jest.fn(),
   receiveReturnReception: jest.fn(),
 }));
+jest.mock("@/services/purchasesService", () => ({
+  getPurchaseOrder: jest.fn(),
+  receivePurchaseOrder: jest.fn(),
+}));
 jest.mock("@/services/variantCodesService", () => ({
   lookupVariantsByCodes: jest.fn(),
   fetchVariantsByIds: jest.fn(),
@@ -87,11 +91,17 @@ describe("warehouseAccess", () => {
       consult: true,
       picking: true,
       receiveReturns: true,
+      receivePurchases: true,
     });
   });
 
   it("Ventas solo consulta", () => {
-    expect(warehouseAccess({ role: "VENTAS" }, can(["VIEW_SALES"]))).toEqual({ consult: true, picking: false, receiveReturns: false });
+    expect(warehouseAccess({ role: "VENTAS" }, can(["VIEW_SALES"]))).toEqual({
+      consult: true,
+      picking: false,
+      receiveReturns: false,
+      receivePurchases: false,
+    });
   });
 
   it("Operaciones y Administrador reciben (como en Inventario › Recepciones)", () => {

@@ -5,12 +5,12 @@ import { ArrowRightLeft, ChevronRight, ClipboardCheck, Undo2 } from "lucide-reac
 import { useAuth } from "@/contexts/AuthContext";
 import { warehouseAccess } from "@/lib/warehouseMode";
 
-// FEAT-24 H6-D (H6-D3) — Recibir: hoy solo devoluciones (H2). Las órdenes de
-// compra llegan con H3 y los traslados con H5: se ven pero deshabilitados.
+// FEAT-24 H6-D (H6-D3) — Recibir: devoluciones (H2) y órdenes de compra (H3).
+// Los traslados llegan con H5: se ven pero deshabilitados.
 
 const OPTIONS = [
   { title: "Devoluciones", description: "Lo que volvió del courier", href: "/almacen/recibir/devoluciones", icon: Undo2 },
-  { title: "Órdenes de compra", description: "Próximamente", icon: ClipboardCheck },
+  { title: "Órdenes de compra", description: "Lo que llega del proveedor", href: "/almacen/recibir/compras", icon: ClipboardCheck },
   { title: "Traslados", description: "Próximamente", icon: ArrowRightLeft },
 ] as const;
 
@@ -29,7 +29,7 @@ export default function ReceiveMenu() {
       <ul className="space-y-2">
         {OPTIONS.map((option) => {
           const Icon = option.icon;
-          const enabled = "href" in option && access.receiveReturns;
+          const enabled = "href" in option && (option.href.endsWith("/compras") ? access.receivePurchases : access.receiveReturns);
           const content = (
             <>
               <Icon className="h-6 w-6 shrink-0" aria-hidden="true" />
