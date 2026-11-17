@@ -299,8 +299,7 @@ function makeActions(overrides: Partial<PedidosActions> = {}): PedidosActions {
     onEdit: jest.fn(),
     onEditDeliveryType: jest.fn(),
     onSyncCourier: jest.fn(),
-    onReturnToStock: jest.fn(),
-    onMarkAsLoss: jest.fn(),
+    onCourierReturn: jest.fn(),
     loadSalesByIds: jest.fn(),
     ...overrides,
   } as unknown as PedidosActions;

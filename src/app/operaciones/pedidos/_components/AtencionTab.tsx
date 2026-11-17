@@ -23,8 +23,7 @@ import { OperationsTabHeading } from "./OperationsTabsHeader";
 import {
   Clock3,
   Copy,
-  PackageCheck,
-  TrendingDown,
+  PackageX,
 } from "lucide-react";
 import {
   SalesTableFilters,
@@ -406,26 +405,16 @@ export function AtencionTab({
                   <TableCell className="sticky right-0 z-10 bg-gray-100 dark:bg-gray-900 border-l">
                     <div className="flex items-center justify-end gap-1">
                       {subView === "devoluciones" ? (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 gap-1 text-xs"
-                            onClick={() => actions.onReturnToStock(sale)}
-                          >
-                            <PackageCheck className="h-3 w-3" />
-                            Reingresar a stock
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 gap-1 text-xs text-amber-700 hover:text-amber-800"
-                            onClick={() => actions.onMarkAsLoss(sale)}
-                          >
-                            <TrendingDown className="h-3 w-3" />
-                            Marcar merma
-                          </Button>
-                        </>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1 text-xs"
+                          title="La devolución queda por recibir en Inventario › Recepciones"
+                          onClick={() => actions.onCourierReturn(sale)}
+                        >
+                          <PackageX className="h-3 w-3" />
+                          Devuelto por courier
+                        </Button>
                       ) : (
                         <Button
                           size="sm"
