@@ -1,9 +1,10 @@
 "use client";
 
-import { AlertTriangle, Plus, Truck } from "lucide-react";
+import { AlertTriangle, Plus, Printer, Truck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { BetaBanner } from "@/app/facturacion/components/BetaBanner";
 import GuiaRemisionModal from "@/app/facturacion/components/modals/GuiaRemisionModal";
+import { type GuiaIssuer, imprimirGuiaPdf } from "@/app/facturacion/lib/imprimir-guia-pdf";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,6 +23,7 @@ import { ESTADOS_GUIA, MOTIVOS_TRASLADO } from "@/types/facturacion";
 interface GuiasTabProps {
   mock: ReturnType<typeof useFacturacionMock>;
   comprobanteRows: TaxDocumentRow[];
+  issuer?: GuiaIssuer;
 }
 
 function getFullNumber(row: TaxDocumentRow): string | null {
@@ -32,7 +34,7 @@ function getFullNumber(row: TaxDocumentRow): string | null {
   return `${row.taxDocument.series}-${row.taxDocument.correlative}`;
 }
 
-export function GuiasTab({ mock, comprobanteRows }: GuiasTabProps) {
+export function GuiasTab({ mock, comprobanteRows, issuer }: GuiasTabProps) {
   const { guias, almacenes, emitirGuia } = mock;
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -146,12 +148,13 @@ export function GuiasTab({ mock, comprobanteRows }: GuiasTabProps) {
                   <TableHead>Modalidad</TableHead>
                   <TableHead>Doc. relacionado</TableHead>
                   <TableHead>Estado</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {guias.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center h-40 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center h-40 text-muted-foreground">
                       <Truck className="h-6 w-6 mx-auto mb-2 opacity-40" />
                       Aún no has emitido guías de remisión
                     </TableCell>
@@ -189,6 +192,18 @@ export function GuiasTab({ mock, comprobanteRows }: GuiasTabProps) {
                           >
                             {estado.label}
                           </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={() => imprimirGuiaPdf(g, alm, issuer)}
+                            title={`Imprimir PDF de ${g.fullNumber || g.pedido}`}
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                            Imprimir PDF
+                          </Button>
                         </TableCell>
                       </TableRow>
                     );

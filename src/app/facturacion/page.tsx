@@ -243,7 +243,17 @@ export default function FacturacionPage() {
         {/* Legacy tabs: no backend yet for guías/notas emission (mock only),
             but they read real comprobante data from taxDocuments. */}
         <TabsContent value="guias" className="pt-4">
-          <GuiasTab mock={mock} comprobanteRows={taxDocuments.rows} />
+          <GuiasTab
+            mock={mock}
+            comprobanteRows={taxDocuments.rows}
+            issuer={(() => {
+              const profile =
+                activeProfiles.find((item) => item.id === issuerFilter) ?? activeProfiles[0];
+              return profile
+                ? { ruc: profile.ruc, razonSocial: profile.razonSocial, direccion: profile.address }
+                : undefined;
+            })()}
+          />
         </TabsContent>
 
         <TabsContent value="nc" className="pt-4">
