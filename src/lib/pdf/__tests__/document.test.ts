@@ -107,6 +107,14 @@ describe("renderPdf (encabezado y pie comunes)", () => {
     ]);
   });
 
+  it("FEAT-24 H12: dibuja la imagen del pie (el QR de la guía) con su texto al lado", () => {
+    const { deps, images, texts } = fakeDeps();
+    renderPdf({ ...SPEC, image: { dataUrl: "data:image/png;base64,QR", caption: "Consulta esta guía en SUNAT" } }, { ...CTX, company: { name: "KUNCA SAC" } }, deps);
+    expect(images).toHaveLength(1);
+    expect(images[0].slice(0, 2)).toEqual(["data:image/png;base64,QR", "PNG"]);
+    expect(texts.map((item) => item.text)).toContain("Consulta esta guía en SUNAT");
+  });
+
   it("sin logo escribe solo el nombre de la empresa; una tabla vacía dice «Sin datos.»", () => {
     const { deps, images, tables } = fakeDeps();
     renderPdf({ ...SPEC, tables: [{ head: ["A", "B"], rows: [] }] }, { ...CTX, company: { name: "KUNCA SAC" } }, deps);

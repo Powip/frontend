@@ -27,6 +27,8 @@ import {
 import { resolveGuideOrigin } from "./guideOrigin";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCompanyCouriers } from "@/hooks/useCompanyCouriers";
+import { GuideOrderWarehouseSwitch } from "@/components/orders/GuideOrderWarehouseSwitch";
+import { STOCK_WAREHOUSE_PERMISSION } from "@/lib/orderStock";
 
 interface SelectedOrder {
   id: string;
@@ -40,6 +42,10 @@ interface SelectedOrder {
   total: number;
   pendingPayment: number;
   zone?: string;
+  /** FEAT-24 H12-D3: con estos datos se ofrece cambiar el almacén antes del despacho. */
+  status?: string | null;
+  stockState?: string | null;
+  externalSource?: string | null;
 }
 
 interface CreateGuideModalProps {
@@ -112,8 +118,12 @@ export default function CreateGuideModal({
   defaultCourierName,
 }: CreateGuideModalProps) {
   const invalidateBusinessData = useInvalidateBusinessData();
-  const { auth } = useAuth();
+  const { auth, hasPermission } = useAuth();
   const stores = auth?.company?.stores;
+  // FEAT-24 H12-D3: cambiar el almacén del pedido desde la guía (permiso de Operaciones, antes del despacho).
+  const companyId = auth?.company?.id ?? "";
+  const canSwitchWarehouse = Boolean(companyId) && hasPermission(STOCK_WAREHOUSE_PERMISSION);
+  const [warehouseOverrides, setWarehouseOverrides] = useState<Record<string, string>>({});
   const origin = useMemo(
     () => resolveGuideOrigin(selectedOrders, stores?.map((store) => store.id) ?? []),
     [selectedOrders, stores],
@@ -299,6 +309,17 @@ export default function CreateGuideModal({
                         order.zone ||
                         "Sin Zona"}
                     </Badge>
+                    {canSwitchWarehouse && order.status ? (
+                      <GuideOrderWarehouseSwitch
+                        key={`${order.id}:${warehouseOverrides[order.id] ?? order.inventoryId ?? ""}`}
+                        companyId={companyId}
+                        order={{ ...order, inventoryId: warehouseOverrides[order.id] ?? order.inventoryId }}
+                        onChanged={(inventoryId) => {
+                          setWarehouseOverrides((prev) => ({ ...prev, [order.id]: inventoryId }));
+                          void invalidateBusinessData();
+                        }}
+                      />
+                    ) : null}
                   </div>
                   <div className="text-right">
                     <span className="text-muted-foreground text-xs block">

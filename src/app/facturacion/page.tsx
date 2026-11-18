@@ -28,9 +28,8 @@ export default function FacturacionPage() {
   const router = useRouter();
 
   // Single source of truth for comprobantes: real sales + SUNAT documents.
-  // The remaining legacy tabs (Guías, Notas, Reportes) reuse this same
-  // real data — only their own local, not-yet-implemented state (guías,
-  // notas) still comes from useFacturacionMock.
+  // Guías de remisión are real since FEAT-24 H12 (ms-sunat GRE); only the
+  // notas still come from the in-memory useFacturacionMock.
   const taxDocuments = useTaxDocuments();
 
   const mock = useFacturacionMock();
@@ -203,11 +202,12 @@ export default function FacturacionPage() {
           <TaxDocumentsTab comprobantes={taxDocuments} onGenerarNota={openNotaCredito} />
         </TabsContent>
 
-        {/* Legacy tabs: no backend yet for guías/notas emission (mock only),
-            but they read real comprobante data from taxDocuments. */}
+        {/* FEAT-24 H12: real GRE remitente (ms-sunat). The order picker reuses the real sales. */}
         <TabsContent value="guias" className="pt-4">
-          <GuiasTab mock={mock} comprobanteRows={taxDocuments.rows} />
+          <GuiasTab comprobanteRows={taxDocuments.rows} />
         </TabsContent>
+
+        {/* Legacy tab: no backend yet for notas emission (mock only). */}
 
         <TabsContent value="nc" className="pt-4">
           <NotasTab
@@ -218,7 +218,7 @@ export default function FacturacionPage() {
         </TabsContent>
 
         <TabsContent value="reportes" className="pt-4">
-          <ReportesTab comprobanteRows={taxDocuments.rows} notas={mock.notas} guias={mock.guias} />
+          <ReportesTab comprobanteRows={taxDocuments.rows} notas={mock.notas} />
         </TabsContent>
 
         <TabsContent value="cert" className="pt-4">

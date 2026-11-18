@@ -8,6 +8,8 @@
  * 4. Recibir con 403 muestra «No tienes acceso a este almacén.».
  * 5. Recepción parcial: se reciben las líneas marcadas; lo que falta lleva su decisión.
  * 6. Sin rol de costos, el valor de las líneas sale como «••••».
+ * 7. FEAT-24 H12: el detalle de un traslado sin recibir ofrece emitir la guía de remisión (motivo 04)
+ *    a quien opera el origen.
  */
 
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -37,6 +39,14 @@ jest.mock("@/services/warehousesService", () => ({ listWarehouses: jest.fn() }))
 jest.mock("@/services/variantCodesService", () => ({ lookupVariantsByCodes: jest.fn() }));
 jest.mock("@/services/purchasesService", () => ({ listPurchasableProducts: jest.fn().mockResolvedValue([]), listProductVariants: jest.fn() }));
 jest.mock("@/services/inventoryItems.service", () => ({ getStockByVariants: jest.fn().mockResolvedValue([]) }));
+jest.mock("@/components/gre/GreIssueDialog", () => ({
+  __esModule: true,
+  default: ({ source }: { source: { transfer?: { number: string }; originName?: string } }) => (
+    <div data-testid="gre-issue-dialog">
+      {source.transfer?.number} desde {source.originName}
+    </div>
+  ),
+}));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { __setMyWarehouses } = require("@/hooks/useMyWarehouses") as typeof import("@/hooks/__mocks__/useMyWarehouses");
@@ -162,5 +172,34 @@ describe("Traslados", () => {
     await user.click(within(await row("TR-0001")).getByRole("button", { name: "Ver TR-0001" }));
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getAllByLabelText("Costo oculto").length).toBeGreaterThan(0);
+  });
+
+  it("el detalle de un traslado sin recibir ofrece emitir la guía de remisión a quien opera el origen", async () => {
+    mockUser.role = "ALMACEN";
+    __setMyWarehouses({ all: false, inventoryIds: ["w-1", "w-2", "w-3"], operableIds: ["w-1"] });
+    jest.mocked(listTransfers).mockResolvedValue([draft, onTheWay, incoming, transfer({ id: "t-4", number: "TR-0004", status: "recibido" })]);
+    const user = userEvent.setup();
+    setup();
+
+    expect(within(await row("TR-0002")).queryByRole("button", { name: /Emitir guía de remisión/ })).not.toBeInTheDocument();
+    await user.click(within(await row("TR-0002")).getByRole("button", { name: "Ver TR-0002" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: /Emitir guía de remisión/ }));
+    expect(await screen.findByTestId("gre-issue-dialog")).toHaveTextContent("TR-0002 desde Central");
+  });
+
+  it("no ofrece la guía en traslados recibidos ni en los que salen de un almacén que no opera", async () => {
+    mockUser.role = "ALMACEN";
+    __setMyWarehouses({ all: false, inventoryIds: ["w-1", "w-2", "w-3"], operableIds: ["w-1"] });
+    jest.mocked(listTransfers).mockResolvedValue([draft, onTheWay, incoming, transfer({ id: "t-4", number: "TR-0004", status: "recibido" })]);
+    const user = userEvent.setup();
+    setup();
+
+    await user.click(within(await row("TR-0004")).getByRole("button", { name: "Ver TR-0004" }));
+    expect(within(await screen.findByRole("dialog")).queryByRole("button", { name: /Emitir guía de remisión/ })).not.toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+    await user.click(within(await row("TR-0003")).getByRole("button", { name: "Ver TR-0003" }));
+    expect(within(await screen.findByRole("dialog")).queryByRole("button", { name: /Emitir guía de remisión/ })).not.toBeInTheDocument();
   });
 });

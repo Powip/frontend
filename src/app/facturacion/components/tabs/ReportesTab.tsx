@@ -15,7 +15,10 @@ import {
 } from "@/components/ui/table";
 import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-document-pdf";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
-import type { Guia, Nota } from "@/types/facturacion";
+import { useDespatchAdvicesReport } from "@/features/sunat/despatch-advice/hooks/use-despatch-advices";
+import type { DespatchAdvice } from "@/features/sunat/despatch-advice/types/despatch-advice.types";
+import { GRE_REASON_LABEL, GRE_STATUS_LABEL } from "@/features/sunat/despatch-advice/utils/gre-form";
+import type { Nota } from "@/types/facturacion";
 import { downloadFile } from "@/utils/http/download-file";
 
 interface ReporteData {
@@ -158,7 +161,6 @@ function abrirImpresionPDF(title: string, headers: string[], rows: (string | num
 interface ReportesTabProps {
   comprobanteRows: TaxDocumentRow[];
   notas: Nota[];
-  guias: Guia[];
 }
 
 function getFullNumber(row: TaxDocumentRow): string | null {
@@ -176,7 +178,34 @@ function getEstadoLabel(row: TaxDocumentRow): "ACEPTADO" | "ACEPTADO_CON_OBS" {
     : "ACEPTADO";
 }
 
-export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps) {
+const isoDay = (value: string) => {
+  const [year, month, date] = value.split("-");
+  return year && month && date ? `${date}/${month}/${year}` : value;
+};
+
+/** FEAT-24 H12 — registro de guías de remisión con las GRE reales de ms-sunat (antes, las del mock en memoria). */
+function getReporteGuias(guias: DespatchAdvice[]): ReporteData {
+  return {
+    title: "Registro de Guías de Remisión",
+    filename: "powip_guias_remision",
+    headers: ["Fecha", "N° Guía", "RUC emisor", "Motivo", "Referencia", "Destinatario", "Destino", "Ubigeo destino", "Estado SUNAT", "Código SUNAT"],
+    rows: guias.map((guia) => [
+      isoDay(guia.issueDate),
+      guia.number,
+      guia.rucIssuer,
+      `${guia.transferReason} ${GRE_REASON_LABEL[guia.transferReason] ?? ""}`.trim(),
+      guia.externalReference ?? "",
+      guia.payload.recipient?.name ?? "",
+      guia.payload.destination?.address ?? "",
+      guia.payload.destination?.ubigeo ?? "",
+      GRE_STATUS_LABEL[guia.status] ?? guia.status,
+      guia.sunatCode ?? "",
+    ]),
+  };
+}
+
+export function ReportesTab({ comprobanteRows, notas }: ReportesTabProps) {
+  const guiasReport = useDespatchAdvicesReport();
   const {
     mutate: downloadSunatDocumentPdf,
     isPending: isDownloadingPdf,
@@ -200,7 +229,7 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
     });
   };
 
-  const getReporte = (key: ReporteKey): ReporteData => {
+  const getReporte = (key: Exclude<ReporteKey, "guias">): ReporteData => {
     if (key === "ventas") {
       return {
         title: "Registro de Ventas",
@@ -275,47 +304,37 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
       };
     }
 
-    if (key === "notas") {
-      return {
-        title: "Registro de Notas de Crédito y Débito",
-        filename: "powip_notas_credito",
-        headers: [
-          "Fecha",
-          "N° Nota",
-          "Comprobante Original",
-          "Cliente",
-          "Motivo",
-          "Monto",
-          "Estado",
-        ],
-        rows: notas.map((nota) => [
-          nota.fecha,
-          nota.num,
-          nota.original,
-          nota.cliente,
-          nota.motivo,
-          nota.monto.toFixed(2),
-          nota.estado,
-        ]),
-      };
-    }
-
     return {
-      title: "Registro de Guías de Remisión",
-      filename: "powip_guias_remision",
-      headers: ["Fecha", "N° Guía", "Pedido", "Destino", "Estado"],
-      rows: guias.map((guia) => [
-        guia.fecha,
-        guia.fullNumber || "—",
-        guia.pedido,
-        guia.destino,
-        guia.estado,
+      title: "Registro de Notas de Crédito y Débito",
+      filename: "powip_notas_credito",
+      headers: [
+        "Fecha",
+        "N° Nota",
+        "Comprobante Original",
+        "Cliente",
+        "Motivo",
+        "Monto",
+        "Estado",
+      ],
+      rows: notas.map((nota) => [
+        nota.fecha,
+        nota.num,
+        nota.original,
+        nota.cliente,
+        nota.motivo,
+        nota.monto.toFixed(2),
+        nota.estado,
       ]),
     };
   };
 
   const handleDescargar = (key: ReporteKey, tipo: DownloadType) => {
-    const reporte = getReporte(key);
+    if (key === "guias" && !guiasReport.data) {
+      toast.error(guiasReport.isError ? "No se pudieron cargar las guías de remisión. Inténtalo de nuevo." : "Todavía se están cargando las guías de remisión.");
+      if (guiasReport.isError) void guiasReport.refetch();
+      return;
+    }
+    const reporte = key === "guias" ? getReporteGuias(guiasReport.data ?? []) : getReporte(key);
 
     if (!reporte.rows.length) {
       toast.error("No hay datos disponibles para este reporte todavía");
@@ -362,8 +381,7 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
     {
       key: "guias",
       title: "Guías de Remisión",
-      desc: "Trazabilidad de los traslados emitidos en esta sesión de vista previa.",
-      beta: true,
+      desc: "Las guías de remisión electrónicas (GRE) emitidas, con su estado en SUNAT.",
     },
   ];
 

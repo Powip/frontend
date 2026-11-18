@@ -2581,6 +2581,9 @@ Estado: ${sale.status}
                 total: Number(createGuideOrder.grandTotal),
                 pendingPayment: orderFinancialState(createGuideOrder).pendingAmount,
                 zone: createGuideOrder.customer.zone,
+                status: createGuideOrder.status,
+                stockState: createGuideOrder.stockState,
+                externalSource: createGuideOrder.externalSource,
               },
             ]}
             onConfirm={handleCreateGuide}
