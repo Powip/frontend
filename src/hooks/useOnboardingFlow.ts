@@ -317,7 +317,7 @@ export function useOnboardingFlow(
             registeredAccountsRef.current.set(email, userId);
           } catch (err: unknown) {
             if (!isCurrent()) return;
-            const message = registrationErrorMessage(err);
+            const message = registrationErrorMessage(err, email);
             notifyAuthError("No pudimos completar el registro", message);
             dispatch({ type: "SET_INLINE_ERROR", error: message });
             return;
