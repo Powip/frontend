@@ -66,7 +66,9 @@ jest.mock('@/services/userService', () => ({
   getUserProfile: jest.fn(),
 }));
 
-jest.mock('@/lib/axiosAuth', () => ({ default: {} }));
+// FEAT-24 SEC: el costo cotizado se guarda con `PATCH order-header/:id` autenticado.
+const mockAuthPatch = jest.fn();
+jest.mock('@/lib/axiosAuth', () => ({ __esModule: true, default: { patch: (...args: unknown[]) => mockAuthPatch(...args) } }));
 jest.mock('@/utils/printOrderLabel', () => ({
   printOrderLabelsBatch: jest.fn().mockResolvedValue(undefined),
   generateBarcode: jest.fn().mockReturnValue(''),
@@ -912,6 +914,21 @@ describe('SendToShalomModal', () => {
         const [, payload] = sendCall as [unknown, { declaracionJurada?: string; packageDetails?: Record<string, { aereo?: boolean }> }];
         expect(payload.packageDetails![MOCK_ORDER.id].aereo).toBe(true);
       });
+    });
+
+    it('guarda el costo cotizado en ms-ventas con la sesión (axiosAuth), nunca con axios sin token', async () => {
+      mockAuthPatch.mockResolvedValue({ data: {} });
+      mockAxiosPost.mockImplementation(async (url: string) => String(url).includes('shalom/quote')
+        ? { data: { success: true, data: { total_amount: 30 } } }
+        : { data: { success: true, summary: { total: 1, successful: 1, failed: 0 }, data: [], errors: [] } });
+
+      const { user } = await setupValidForm();
+      await user.click(screen.getByRole('button', { name: /confirmar y enviar a shalom/i }));
+
+      await waitFor(() => {
+        expect(mockAuthPatch).toHaveBeenCalledWith(`http://ventas/order-header/${MOCK_ORDER.id}`, { carrierShippingCost: 30 });
+      });
+      expect((axios as unknown as { patch?: jest.Mock }).patch).toBeUndefined();
     });
   });
 

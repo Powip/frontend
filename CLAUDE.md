@@ -42,6 +42,8 @@ Llama via HTTP:
 - ms-subscription — planes y suscripción activa
 - ms-integrations — estado de integraciones
 
+**FEAT-24 SEC — `order-header` de ms-ventas pide sesión:** toda llamada a `${NEXT_PUBLIC_API_VENTAS}/order-header/...` va con `axiosAuth` (`@/lib/axiosAuth`, que agrega el `Bearer` y lo renueva ante un 401), nunca con `axios` pelado: ms-ventas toma la empresa y el usuario del token (404 si el pedido es de otra empresa, 403 si la tienda o la empresa de la URL no son de tu sesión) e ignora `userId`/`requestingUserId` del cuerpo. Los que mandaban sin token (`src/api/Ventas.ts`, `bulkStatusUtils.ts` en `bulk-status` y su respaldo por pedido, `ScheduledDeliverySection.tsx`, el costo cotizado de `SendToShalomModal.tsx`) se pasaron a `axiosAuth`. Este cambio tiene que estar en producción ANTES de la rama de cierre de ms-ventas (`feat/feat24-sec1-ventas-cierre`).
+
 ## Puertos expuestos
 
 - HTTP: 3000 (desarrollo)

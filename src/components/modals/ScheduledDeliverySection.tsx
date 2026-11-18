@@ -2,7 +2,8 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import axios from "axios";
+// FEAT-24 SEC: `PATCH order-header/:id` pide el JWT de la empresa.
+import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";

@@ -9,12 +9,28 @@ const authPatch = jest.mocked(axiosAuth.patch);
 beforeEach(() => jest.clearAllMocks());
 
 test("mixed bulk leaves normal IDs on the original endpoint and sends tracked IDs individually with auth", async () => {
-  publicPatch.mockResolvedValue({ data: { updated: ["normal"], skipped: [] } });
-  authPatch.mockResolvedValue({ data: {} });
+  authPatch.mockImplementation(async (url: string) => String(url).endsWith("/bulk-status")
+    ? { data: { updated: ["normal"], skipped: [] } }
+    : { data: {} });
   const result = await processBulkStatusChange(["normal", "tracked"], "PREPARADO", "http://ventas", undefined, 10, undefined, undefined, undefined, new Set(["tracked"]));
-  expect(publicPatch).toHaveBeenCalledWith("http://ventas/order-header/bulk-status", { ids: ["normal"], status: "PREPARADO" });
+  expect(authPatch).toHaveBeenCalledWith("http://ventas/order-header/bulk-status", { ids: ["normal"], status: "PREPARADO" });
   expect(authPatch).toHaveBeenCalledWith("http://ventas/order-header/manual/tracked/status", { status: "PREPARADO" });
+  expect(publicPatch).not.toHaveBeenCalled();
   expect(result).toEqual({ success: ["normal", "tracked"], failed: [] });
+});
+
+// FEAT-24 SEC: ms-ventas pide el JWT de la empresa en `bulk-status` y en `PATCH order-header/:id`.
+test("bulk-status and its per-order fallback go with the session (axiosAuth), never with tokenless axios", async () => {
+  authPatch.mockImplementation(async (url: string) => {
+    if (String(url).endsWith("/bulk-status")) throw { response: { status: 404 } };
+    return { data: {} };
+  });
+  const result = await processBulkStatusChange(["a", "b"], "ENTREGADO", "http://ventas");
+  expect(authPatch).toHaveBeenCalledWith("http://ventas/order-header/bulk-status", { ids: ["a", "b"], status: "ENTREGADO" });
+  expect(authPatch).toHaveBeenCalledWith("http://ventas/order-header/a", { status: "ENTREGADO" });
+  expect(authPatch).toHaveBeenCalledWith("http://ventas/order-header/b", { status: "ENTREGADO" });
+  expect(publicPatch).not.toHaveBeenCalled();
+  expect(result).toEqual({ success: ["a", "b"], failed: [] });
 });
 
 test("a rejected tracked transition remains failed and never falls back to the public endpoint", async () => {
