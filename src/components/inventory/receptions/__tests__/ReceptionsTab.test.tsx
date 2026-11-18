@@ -24,6 +24,8 @@ import {
   type ReturnReception,
 } from "@/services/warehousesService";
 import ReceptionsTab from "../ReceptionsTab";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { __setMyWarehouses } = require("@/hooks/useMyWarehouses") as typeof import("@/hooks/__mocks__/useMyWarehouses");
 
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), info: jest.fn() } }));
 jest.mock("@/lib/errorBeep", () => ({ playErrorBeep: jest.fn() }));
@@ -31,6 +33,7 @@ jest.mock("@/services/variantCodesService", () => ({
   fetchVariantsByIds: jest.fn(),
   lookupVariantsByCodes: jest.fn(),
 }));
+jest.mock("@/hooks/useMyWarehouses");
 jest.mock("@/services/warehousesService", () => ({
   listReturnReceptions: jest.fn(),
   listWarehouses: jest.fn(),
@@ -110,6 +113,7 @@ async function openReceive(user: ReturnType<typeof userEvent.setup>) {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  __setMyWarehouses(null);
   mockList.mockImplementation(async (status) => (status === "por_recibir" ? [pending] : [received]));
   jest.mocked(listWarehouses).mockResolvedValue({ warehouses: [warehouse(CENTRAL, "Central"), warehouse(SUR, "Almacén Sur")], links: [] });
   jest.mocked(fetchVariantsByIds).mockResolvedValue([
@@ -274,6 +278,19 @@ describe("Recepciones de devoluciones (FEAT-24 H2-F)", () => {
     await screen.findByTestId("reception-rec-1");
     expect(screen.queryByRole("button", { name: /Recibir/ })).not.toBeInTheDocument();
     expect(screen.getByText("Recibir devoluciones es de Administración y Operaciones.")).toBeInTheDocument();
+  });
+
+  it("con almacenes asignados: oculta lo que no ve y recibe solo donde opera (FEAT-24 H6)", async () => {
+    const enSur: ReturnReception = { ...pending, id: "rec-2", orderNumber: "ORD-157002", inventoryId: SUR };
+    const ajeno: ReturnReception = { ...pending, id: "rec-3", orderNumber: "ORD-157003", inventoryId: AJENO };
+    mockList.mockImplementation(async (status) => (status === "por_recibir" ? [pending, enSur, ajeno] : []));
+    __setMyWarehouses({ all: false, inventoryIds: [CENTRAL, SUR], operableIds: [SUR] });
+    renderTab();
+    await screen.findByTestId("reception-rec-2");
+    expect(screen.getByTestId("reception-rec-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("reception-rec-3")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Recibir ORD-157002" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Recibir ORD-157001" })).not.toBeInTheDocument();
   });
 
   it("si la bandeja no carga, avisa y deja reintentar", async () => {

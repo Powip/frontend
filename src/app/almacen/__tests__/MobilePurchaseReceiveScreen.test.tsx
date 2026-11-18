@@ -130,7 +130,8 @@ describe("Recibir órdenes de compra (modo almacén)", () => {
     expect(orderId).toBe("oc-1");
     expect(body.lines).toEqual([{ itemId: "item-1", quantity: 1 }]);
     expect(body.operationId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(options).toMatchObject({ timeoutMs: 15_000 });
+    // FEAT-24 H5: el header es el mismo operationId del cuerpo (la fachada da 400 si difieren).
+    expect(options).toMatchObject({ idempotencyKey: body.operationId, timeoutMs: 15_000 });
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("OC-0001 · Recibida", expect.anything()));
   });
 

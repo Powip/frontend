@@ -15,6 +15,9 @@ jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), info
 jest.mock("@/lib/errorBeep", () => ({ playErrorBeep: jest.fn() }));
 jest.mock("@/services/variantCodesService", () => ({ lookupVariantsByCodes: jest.fn() }));
 jest.mock("@/services/warehousesService", () => ({ receiveReturnReception: jest.fn() }));
+jest.mock("@/hooks/useMyWarehouses");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { __setMyWarehouses } = require("@/hooks/useMyWarehouses") as typeof import("@/hooks/__mocks__/useMyWarehouses");
 
 const POLO = "11111111-1111-4111-8111-111111111111";
 const CENTRAL = "22222222-2222-4222-8222-222222222222";
@@ -64,9 +67,25 @@ function renderDialog(props: Partial<ComponentProps<typeof ReceiveReturnDialog>>
   return { onReceived, onFeedback };
 }
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  __setMyWarehouses(null);
+});
 
 describe("Recepción en el modo almacén (FEAT-24 H6-D)", () => {
+  it("«Reingresa a» ofrece el almacén del pedido y solo los otros que el usuario opera (FEAT-24 H6)", () => {
+    __setMyWarehouses({ all: false, inventoryIds: [CENTRAL, "w-sur", "w-lima"], operableIds: ["w-sur"] });
+    renderDialog({
+      warehouses: [
+        { id: CENTRAL, name: "Central", status: true, store_id: "s", company_id: "c-1", type: "PROPIO", is_main: true },
+        { id: "w-sur", name: "Sur", status: true, store_id: "s", company_id: "c-1", type: "PROPIO", is_main: false },
+        { id: "w-lima", name: "Lima", status: true, store_id: "s", company_id: "c-1", type: "PROPIO", is_main: false },
+      ],
+    });
+    const options = within(screen.getByLabelText("Reingresa a")).getAllByRole("option").map((option) => option.textContent);
+    expect(options).toEqual(["Central (almacén del pedido)", "Sur"]);
+  });
+
   it("sin señal resuelve el código con los productos ya descargados", async () => {
     jest.mocked(lookupVariantsByCodes).mockRejectedValue(networkError());
     const localLookup = jest.fn(() => [{ code: "775", variantId: POLO, sku: "S", companySku: null, productId: "", productName: "Polo" }]);

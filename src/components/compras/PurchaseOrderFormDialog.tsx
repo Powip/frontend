@@ -45,6 +45,7 @@ import {
   type PurchaseOrder,
 } from "@/services/purchasesService";
 import { getInventoryRules, listWarehouses } from "@/services/warehousesService";
+import { useMyWarehouses } from "@/hooks/useMyWarehouses";
 import { Money, SELECT_CLASS } from "./PurchaseBits";
 
 // FEAT-24 H3-E — nueva orden de compra o edición de un BORRADOR (mockup mOC).
@@ -90,6 +91,8 @@ export default function PurchaseOrderFormDialog({ companyId, order, canSeeCosts,
   const [addInfo, setAddInfo] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
+  // FEAT-24 H6: la OC llega solo a un almacén que el usuario opera (el borrador conserva el suyo).
+  const myWarehouses = useMyWarehouses();
 
   const suppliersQuery = useQuery({
     queryKey: ["purchase-suppliers", companyId, "active"],
@@ -126,9 +129,12 @@ export default function PurchaseOrderFormDialog({ companyId, order, canSeeCosts,
   const warehouses = useMemo(
     () =>
       (warehousesQuery.data?.warehouses ?? []).filter(
-        (warehouse) => (warehouse.status || warehouse.id === order?.inventoryId) && (warehouse.type !== "COURIER" || allowCourier || warehouse.id === order?.inventoryId),
+        (warehouse) =>
+          (warehouse.status || warehouse.id === order?.inventoryId) &&
+          (warehouse.type !== "COURIER" || allowCourier || warehouse.id === order?.inventoryId) &&
+          (myWarehouses.canOperate(warehouse.id) || warehouse.id === order?.inventoryId),
       ),
-    [warehousesQuery.data, allowCourier, order],
+    [warehousesQuery.data, allowCourier, order, myWarehouses],
   );
   const products = useMemo(() => (productsQuery.data ?? []).filter((product) => product.status), [productsQuery.data]);
   const matches = useMemo(() => {

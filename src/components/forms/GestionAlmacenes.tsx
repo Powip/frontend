@@ -16,7 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Plus, Home, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Home, Trash2, AlertTriangle, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -28,6 +28,8 @@ import {
   type WarehouseType,
 } from "@/services/warehousesService";
 import AlmacenModal from "../modals/AlmacenModal";
+import WarehouseDetailsDialog from "../warehouse-ops/structure/WarehouseDetailsDialog";
+import { canEditInventory } from "@/config/permissions.config";
 import { WAREHOUSE_TYPE_OPTIONS, warehouseErrorMessage } from "./warehouseUi";
 
 // `aria-disabled` (mientras guarda) en vez de `disabled`: el selector no pierde el foco.
@@ -63,6 +65,8 @@ const GestionAlmacenes = () => {
   const [pendingDefault, setPendingDefault] = useState<PendingDefault | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [confirmName, setConfirmName] = useState("");
+  // FEAT-24 H5: ficha del almacén (datos, ubicaciones, activar/desactivar).
+  const [detailsFor, setDetailsFor] = useState<{ id: string; name: string; is_main: boolean; status: boolean } | null>(null);
   const { auth, refreshInventories } = useAuth();
   const queryClient = useQueryClient();
   const companyId = auth?.company?.id;
@@ -311,6 +315,15 @@ const GestionAlmacenes = () => {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    aria-label={`Datos y ubicaciones: ${almacen.name}`}
+                    onClick={() => setDetailsFor({ id: almacen.id, name: almacen.name, is_main: almacen.is_main, status: almacen.status })}
+                  >
+                    <Settings2 className="mr-1 h-4 w-4" />
+                    Detalle
+                  </Button>
                   {almacen.status && !almacen.is_main && (
                     <Button
                       variant="outline"
@@ -454,6 +467,20 @@ const GestionAlmacenes = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {detailsFor && companyId ? (
+        <WarehouseDetailsDialog
+          companyId={companyId}
+          warehouse={detailsFor}
+          canEdit={canEditInventory(auth?.user)}
+          onClose={() => setDetailsFor(null)}
+          onActiveChanged={() => {
+            invalidateRelatedCaches();
+            void queryClient.invalidateQueries({ queryKey });
+            void refreshInventories();
+          }}
+        />
+      ) : null}
 
       <AlmacenModal
         open={openModal}

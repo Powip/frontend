@@ -27,7 +27,14 @@ import {
   type ReceiveReturnBody,
   type ReturnReception,
 } from "@/services/warehousesService";
-import type { ActionHandler, QueuedAction, QueueSession, QueueStatus } from "./offlineQueue";
+import {
+  addCountEntries,
+  receiveTransfer,
+  type CountEntriesResult,
+  type ReceiveTransferBody,
+  type TransferOperationResult,
+} from "@/services/warehouseOpsService";
+import { QueueRejectedError, type ActionHandler, type QueuedAction, type QueueSession, type QueueStatus } from "./offlineQueue";
 import { apiErrorStatus, DISPATCH_PENDING_MESSAGE, orderStockAccess, pickingProgress } from "./orderStock";
 import { canReceiveOrder, PURCHASE_STATUS_LABEL } from "./purchaseOrders";
 import { formatVariantLabel } from "./variantAttributes";
@@ -55,6 +62,10 @@ export interface WarehouseAccess {
   receiveReturns: boolean;
   /** FEAT-24 H3: recibir órdenes de compra, con la misma regla que las devoluciones. */
   receivePurchases: boolean;
+  /** FEAT-24 H5: recibir traslados (Administrador, Operaciones y Almacén; el almacén de destino lo valida el servidor). */
+  receiveTransfers: boolean;
+  /** FEAT-24 H5: cargar lo contado y cerrar una toma de inventario. */
+  count: boolean;
 }
 
 export function warehouseAccess(user: RouteAccessUser | undefined, hasPermission: (permission: string) => boolean): WarehouseAccess {
@@ -64,6 +75,8 @@ export function warehouseAccess(user: RouteAccessUser | undefined, hasPermission
     picking: orderStockAccess(hasPermission).operations,
     receiveReturns: receives,
     receivePurchases: receives,
+    receiveTransfers: receives,
+    count: receives,
   };
 }
 
@@ -77,6 +90,8 @@ export const WAREHOUSE_ACTION = {
   pickingComplete: "picking.complete",
   returnReceive: "return.receive",
   purchaseReceive: "purchase.receive",
+  transferReceive: "transfer.receive",
+  countEntry: "count.entry",
 } as const;
 
 export interface PickingScanPayload {
@@ -108,6 +123,21 @@ export interface PurchaseReceivePayload {
   orderNumber: string;
   /** Lleva el `operationId` de la recepción: el servidor no la duplica si se reenvía. */
   body: ReceivePurchaseOrderBody;
+}
+
+/** FEAT-24 H5: recibir un traslado desde el celular. */
+export interface TransferReceivePayload {
+  transferId: string;
+  transferNumber: string;
+  /** Lleva el `operationId` de la recepción: el servidor no la duplica si se reenvía. */
+  body: ReceiveTransferBody;
+}
+
+/** FEAT-24 H5: un escaneo de una toma de inventario (suma 1 al contado). */
+export interface CountEntryPayload {
+  countId: string;
+  countNumber: string;
+  code: string;
 }
 
 /** Sin respuesta en este tiempo, la acción queda «sin respuesta» y se verifica antes de reenviarla. */
@@ -239,7 +269,9 @@ const purchaseReceiveHandler: ActionHandler<PurchaseReceivePayload, ReceivePurch
     const order = await getPurchaseOrder(orderId);
     return { received: Object.fromEntries(order.lines.map((line) => [line.id, line.receivedQuantity])) } satisfies PurchaseReceiveCheckpoint;
   },
-  send: ({ orderId, body }, { idempotencyKey }) => receivePurchaseOrder(orderId, body, { idempotencyKey, timeoutMs: WRITE_TIMEOUT_MS }),
+  // El header tiene que ser el mismo `operationId` del cuerpo: la fachada rechaza (400) si difieren.
+  send: ({ orderId, body }, { idempotencyKey }) =>
+    receivePurchaseOrder(orderId, body, { idempotencyKey: body.operationId ?? idempotencyKey, timeoutMs: WRITE_TIMEOUT_MS }),
   async verify({ orderId, orderNumber, body }, { checkpoint }) {
     const order = await getPurchaseOrder(orderId);
     const reception = body.operationId ? order.receptions?.find((candidate) => candidate.operationId === body.operationId) : undefined;
@@ -263,6 +295,37 @@ const purchaseReceiveHandler: ActionHandler<PurchaseReceivePayload, ReceivePurch
   },
 };
 
+/**
+ * Recibir un traslado (FEAT-24 H5). El cuerpo lleva el `operationId` de la recepción y el servicio lo manda
+ * también como `Idempotency-Key`: logistics no lo aplica dos veces, así que tras un envío sin respuesta se
+ * reenvía sin verificar. Si otra persona lo recibió con otros datos, el servidor responde 409 y va a revisar.
+ */
+const transferReceiveHandler: ActionHandler<TransferReceivePayload, TransferOperationResult> = {
+  send: ({ transferId, body }) => receiveTransfer(transferId, body, WRITE_TIMEOUT_MS),
+};
+
+/** Por qué el servidor no tomó un escaneo del conteo. */
+const COUNT_UNRESOLVED_MESSAGE: Record<string, string> = {
+  no_encontrado: "no es de ningún producto de tu catálogo",
+  ambiguo: "es de más de un producto: cuenta ese producto a mano",
+  fuera_del_conteo: "no es parte de este conteo",
+};
+
+/**
+ * Un escaneo de conteo (FEAT-24 H5): suma 1 con la clave de la acción como `operationId`, así un reenvío no
+ * cuenta dos veces. Un código que el servidor no pudo resolver no sumó nada: se rechaza (va a revisar si
+ * estaba guardado sin señal) con el motivo.
+ */
+const countEntryHandler: ActionHandler<CountEntryPayload, CountEntriesResult> = {
+  async send({ countId, countNumber, code }, { idempotencyKey }) {
+    const result = await addCountEntries(countId, { mode: "add", entries: [{ code, quantity: 1 }], operationId: idempotencyKey }, WRITE_TIMEOUT_MS);
+    const missing = result.unresolved[0];
+    if (result.applied.length === 0 && missing)
+      throw new QueueRejectedError(`El código ${code} ${COUNT_UNRESOLVED_MESSAGE[missing.reason] ?? "no se pudo leer"} (${countNumber}).`, 422);
+    return result;
+  },
+};
+
 export function warehouseActionHandlers(): Record<string, ActionHandler<never, unknown>> {
   return {
     [WAREHOUSE_ACTION.pickingScan]: scanHandler as ActionHandler<never, unknown>,
@@ -270,12 +333,16 @@ export function warehouseActionHandlers(): Record<string, ActionHandler<never, u
     [WAREHOUSE_ACTION.pickingComplete]: completeHandler as ActionHandler<never, unknown>,
     [WAREHOUSE_ACTION.returnReceive]: receiveHandler as ActionHandler<never, unknown>,
     [WAREHOUSE_ACTION.purchaseReceive]: purchaseReceiveHandler as ActionHandler<never, unknown>,
+    [WAREHOUSE_ACTION.transferReceive]: transferReceiveHandler as ActionHandler<never, unknown>,
+    [WAREHOUSE_ACTION.countEntry]: countEntryHandler as ActionHandler<never, unknown>,
   };
 }
 
 /** Qué es cada acción, para la bandeja «Para revisar». */
 export function describeQueuedAction(action: Pick<QueuedAction, "kind" | "payload">): string {
-  const payload = (action.payload ?? {}) as Partial<PickingScanPayload & PickingLinePayload & ReturnReceivePayload>;
+  const payload = (action.payload ?? {}) as Partial<
+    PickingScanPayload & PickingLinePayload & ReturnReceivePayload & Omit<TransferReceivePayload, "body"> & Omit<CountEntryPayload, "code">
+  >;
   const order = payload.orderNumber ? ` · ${payload.orderNumber}` : "";
   switch (action.kind) {
     case WAREHOUSE_ACTION.pickingScan:
@@ -288,6 +355,10 @@ export function describeQueuedAction(action: Pick<QueuedAction, "kind" | "payloa
       return `Recibir devolución ${payload.orderLabel ?? ""}`.trim();
     case WAREHOUSE_ACTION.purchaseReceive:
       return `Recibir compra${order}`;
+    case WAREHOUSE_ACTION.transferReceive:
+      return `Recibir traslado ${payload.transferNumber ?? ""}`.trim();
+    case WAREHOUSE_ACTION.countEntry:
+      return `Escaneo ${payload.code ?? ""} · conteo ${payload.countNumber ?? ""}`.trim();
     default:
       return action.kind;
   }
@@ -327,6 +398,20 @@ export function pendingForPurchaseOrder(outbox: QueuedAction[], orderId: string)
   return outbox.some(
     (action) => action.kind === WAREHOUSE_ACTION.purchaseReceive && (action.payload as { orderId?: string } | null)?.orderId === orderId,
   );
+}
+
+/** ¿Hay una recepción guardada sin enviar de este traslado? (FEAT-24 H5) */
+export function pendingForTransfer(outbox: QueuedAction[], transferId: string): boolean {
+  return outbox.some(
+    (action) => action.kind === WAREHOUSE_ACTION.transferReceive && (action.payload as { transferId?: string } | null)?.transferId === transferId,
+  );
+}
+
+/** Escaneos de esta toma de inventario guardados sin enviar (FEAT-24 H5). */
+export function pendingCountScans(outbox: QueuedAction[], countId: string): CountEntryPayload[] {
+  return outbox
+    .filter((action) => action.kind === WAREHOUSE_ACTION.countEntry && (action.payload as { countId?: string } | null)?.countId === countId)
+    .map((action) => action.payload as CountEntryPayload);
 }
 
 /* ---------------------------------------------------------------------------

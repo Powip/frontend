@@ -8,8 +8,8 @@ import { useWarehouseQueue } from "@/components/almacen/WarehouseQueueContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { warehouseAccess } from "@/lib/warehouseMode";
 
-// FEAT-24 H6-D (H6-D3) — inicio del modo almacén: los 4 accesos. Contar llega
-// con H5: se ve pero deshabilitado.
+// FEAT-24 H6-D (H6-D3) — inicio del modo almacén: los 4 accesos. Contar y
+// recibir traslados llegaron con H5.
 
 interface TileProps {
   href?: string;
@@ -89,11 +89,17 @@ export default function WarehouseHome() {
         <Tile
           href="/almacen/recibir"
           title="Recibir"
-          description="Devoluciones (OC y traslados, próximamente)"
+          description="Devoluciones, compras y traslados"
           icon={PackageCheck}
           disabledReason={access.receiveReturns ? undefined : "Tu rol no recibe mercadería"}
         />
-        <Tile title="Contar" description="" icon={ClipboardList} disabledReason="Próximamente" />
+        <Tile
+          href="/almacen/contar"
+          title="Contar"
+          description="Tomas de inventario en curso"
+          icon={ClipboardList}
+          disabledReason={access.count ? undefined : "Tu rol no cuenta inventario"}
+        />
         <Tile
           href="/almacen/picking"
           title="Picking"

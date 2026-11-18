@@ -62,11 +62,18 @@ import OutOfStockTab from "@/components/inventory/out-of-stock/OutOfStockTab";
 import { orderStockAccess } from "@/lib/orderStock";
 import SkuConflictsPanel from "@/components/catalog/SkuConflictsPanel";
 import { StockByProduct, StockByWarehouse, StockKpis, type StockBoardActions } from "@/components/inventory/StockBoard";
+// FEAT-24 H10: Reporte general, Alertas y Cierre mensual.
 import StockReportTab from "@/components/inventory/reports/StockReportTab";
 import AlertsTab from "@/components/inventory/reports/AlertsTab";
 import PeriodCloseTab from "@/components/inventory/reports/PeriodCloseTab";
 import { useInventoryAlerts } from "@/hooks/useInventoryAlerts";
 import { alertBadgeText } from "@/lib/reports/alerts";
+// FEAT-24 H5-C: operación de almacén (traslados, conteos, ajustes y mermas) y alcance de almacenes del usuario (H6).
+import { ArrowLeftRight, ClipboardCheck, SlidersHorizontal } from "lucide-react";
+import TransfersTab from "@/components/warehouse-ops/transfers/TransfersTab";
+import CountsTab from "@/components/warehouse-ops/counts/CountsTab";
+import AdjustmentsTab from "@/components/warehouse-ops/adjustments/AdjustmentsTab";
+import { useMyWarehouses } from "@/hooks/useMyWarehouses";
 import { filterStockVariants, groupByProduct, stockTotals, storesOf, variantPositionsFlat, visibleInventories, STOCK_STATUS_LABEL, type StockMode, type StockStatusFilter } from "@/components/inventory/stockView";
 
 const ITEMS_PER_PAGE = 10;
@@ -74,13 +81,27 @@ const ITEMS_PER_PAGE = 10;
 const PRODUCT_SKU_CONFLICTS: Array<"product"> = ["product"];
 
 /** Pestañas del módulo (mockup vistainv.html, grupo «Almacén»). Cada una vive en su propia ruta. */
-export type InventarioTab = "stock" | "reporte" | "movimientos" | "recepciones" | "pedidos-sin-stock" | "alertas" | "unificacion" | "cierre";
+export type InventarioTab =
+  | "stock"
+  | "reporte" // FEAT-24 H10
+  | "movimientos"
+  | "traslados" // FEAT-24 H5-C
+  | "recepciones"
+  | "conteos" // FEAT-24 H5-C
+  | "ajustes" // FEAT-24 H5-C
+  | "pedidos-sin-stock"
+  | "alertas" // FEAT-24 H10
+  | "unificacion"
+  | "cierre"; // FEAT-24 H10
 export const INVENTARIO_TAB_ROUTES: Record<InventarioTab, string> = {
+  // Mismo orden que las pestañas del mockup. FEAT-24 H10: reporte, alertas y cierre; H5-C: traslados, conteos y ajustes.
   stock: "/inventario/stock",
-  // FEAT-24 H10: Reporte general, Alertas y Cierre mensual.
   reporte: "/inventario/reporte",
   movimientos: "/inventario/movimientos",
+  traslados: "/inventario/traslados",
   recepciones: "/inventario/recepciones",
+  conteos: "/inventario/conteos",
+  ajustes: "/inventario/ajustes",
   "pedidos-sin-stock": "/inventario/pedidos-sin-stock",
   alertas: "/inventario/alertas",
   unificacion: "/inventario/unificacion",
@@ -100,7 +121,9 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
   const queryClient = useQueryClient();
   const { scope, storeIds, canFetch } = useBusinessScope();
   const warehouses = useBusinessInventories({ scope, storeIds });
-  const storeInventories = warehouses.inventories;
+  // FEAT-24 H6: solo los almacenes que el usuario ve (sin restricciones o si /me/warehouses falla, todos).
+  const myWarehouses = useMyWarehouses();
+  const storeInventories = useMemo(() => myWarehouses.visible(warehouses.inventories), [myWarehouses, warehouses.inventories]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedInventoryId, setSelectedInventoryId] = useState("all");
   const [selectedStoreId, setSelectedStoreId] = useState("all");
@@ -115,7 +138,7 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
   const inventoryQuery = useQuery({
     queryKey: ["business-inventory-items", companyId, auth?.user?.id, scope, storeIds, storeInventories.map((inv) => inv.id).sort(), includeInactive],
     queryFn: ({ signal }) => fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth?.accessToken ?? "", signal, includeInactive }),
-    enabled: canFetch && warehouses.isSuccess,
+    enabled: canFetch && warehouses.isSuccess && !myWarehouses.isLoading,
     retry: false,
   });
   // Tipo y «Principal» de cada almacén (pantalla de almacenes de la empresa). Es un adorno: si falla, no se muestra.
@@ -314,9 +337,21 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                 <History className="h-4 w-4" />
                 Movimientos
               </TabsTrigger>
+              <TabsTrigger value="traslados" className="flex items-center gap-2">
+                <ArrowLeftRight className="h-4 w-4" />
+                Traslados
+              </TabsTrigger>
               <TabsTrigger value="recepciones" className="flex items-center gap-2">
                 <PackageOpen className="h-4 w-4" />
                 Recepciones
+              </TabsTrigger>
+              <TabsTrigger value="conteos" className="flex items-center gap-2">
+                <ClipboardCheck className="h-4 w-4" />
+                Conteos
+              </TabsTrigger>
+              <TabsTrigger value="ajustes" className="flex items-center gap-2">
+                <SlidersHorizontal className="h-4 w-4" />
+                Ajustes y mermas
               </TabsTrigger>
               {stockAccess.sinReserva && (
                 <TabsTrigger value="pedidos-sin-stock" className="flex items-center gap-2">
@@ -550,6 +585,14 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
             </Card>
           </TabsContent>
 
+          <TabsContent value="traslados" className="flex-1 flex flex-col mt-0">
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 overflow-auto">
+                {activeTab === "traslados" ? <TransfersTab companyId={companyId} /> : null}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           <TabsContent value="recepciones" className="flex-1 flex flex-col mt-0">
             <Card className="flex-1 flex flex-col">
               <CardContent className="p-6 overflow-auto">
@@ -558,6 +601,22 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                   canEdit={canEdit}
                   scopeInventoryIds={scope === "store" ? (warehouses.isSuccess ? storeInventories.map((inv) => inv.id) : []) : null}
                 />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="conteos" className="flex-1 flex flex-col mt-0">
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 overflow-auto">
+                {activeTab === "conteos" ? <CountsTab companyId={companyId} /> : null}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="ajustes" className="flex-1 flex flex-col mt-0">
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 overflow-auto">
+                {activeTab === "ajustes" ? <AdjustmentsTab companyId={companyId} /> : null}
               </CardContent>
             </Card>
           </TabsContent>
