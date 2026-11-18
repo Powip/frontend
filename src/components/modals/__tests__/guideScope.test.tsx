@@ -7,7 +7,7 @@ import AddToExistingGuideModal from '../AddToExistingGuideModal';
 import { useBusinessGuides } from '@/hooks/useBusinessGuides';
 import { fetchCouriers } from '@/services/courierService';
 
-jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { company: { id: 'company', stores: [{ id: 'web' }, { id: 'livii' }, { id: 'kunca' }] }, accessToken: 'token' } }) }));
+jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { company: { id: 'company', stores: [{ id: 'web' }, { id: 'livii' }, { id: 'kunca' }] }, accessToken: 'token' }, hasPermission: () => false }) }));
 jest.mock('@/services/courierService', () => ({ fetchCouriers: jest.fn().mockResolvedValue([{ id: 'courier-one', name: 'Courier One' }]) }));
 jest.mock('@/hooks/useBusinessGuides', () => ({ useBusinessGuides: jest.fn() }));
 const selected = { id: 'selected-web-order', storeId: 'web', inventoryId: 'shared-inventory', stockStoreId: 'kunca', orderNumber: 'WEB-ONE', clientName: 'Cliente', address: 'Dirección', district: 'Distrito', total: 20, pendingPayment: 20, zone: 'PROVINCIAS' };
