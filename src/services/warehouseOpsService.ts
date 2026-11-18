@@ -1,6 +1,7 @@
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
 import { writeConfigArgs } from "@/lib/idempotency";
+import type { CourierProvider, CourierSyncMode } from "./sharedCourierService";
 
 // FEAT-24 H5-C — operación de almacén: traslados, ajustes y mermas, conteos,
 // pendientes de investigación, ubicaciones y datos del almacén. Todo va por la
@@ -512,12 +513,20 @@ export interface WarehouseDetails {
   contactName: string | null;
   contactPhone: string | null;
   sunatEstablishmentCode: string | null;
+  // FEAT-24 H8-D1: datos del courier (solo en almacenes COURIER). Sin rol de costos `storageCostMonth` no viene.
+  courierProvider?: CourierProvider | null;
+  syncMode?: CourierSyncMode | null;
+  storageCostMonth?: number | null;
   counters?: { physical: number; reserved: number; inTransit: number; pendingReturn: number; incomingTransfer: number };
 }
 
 export type WarehouseDetailsPatch = Partial<
   Record<"code" | "ubigeo" | "address" | "contactName" | "contactPhone" | "sunatEstablishmentCode", string | null>
->;
+> & {
+  courierProvider?: CourierProvider | null;
+  syncMode?: CourierSyncMode | null;
+  storageCostMonth?: number | null;
+};
 
 const warehouses = () => `${products()}/warehouses`;
 

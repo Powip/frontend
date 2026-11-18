@@ -41,6 +41,7 @@ import {
 } from "@/services/warehouseOpsService";
 import { ErrorBox, SELECT_CLASS } from "../OpsBits";
 import VariantLinePicker from "../VariantLinePicker";
+import CourierWarehouseSection from "./CourierWarehouseSection";
 
 // FEAT-24 H5-C (H5-D7/D8) — ficha de un almacén (mockup vEstructura): los datos
 // para la guía de remisión y SUNAT, lo que tiene hoy (físico, reservado, en
@@ -239,6 +240,17 @@ export default function WarehouseDetailsDialog({ companyId, warehouse, canEdit, 
             </div>
           ) : null}
         </section>
+
+        {/* FEAT-24 H8-D1: courier, sincronización, almacenaje y, con Aliclik, su mapa de almacenes. */}
+        {details?.type === "COURIER" ? (
+          <CourierWarehouseSection
+            warehouseId={warehouse.id}
+            details={details}
+            canEdit={canEdit}
+            disabled={detailsQuery.isPending}
+            onSaved={(saved) => queryClient.setQueryData(detailsKey, { ...details, ...saved })}
+          />
+        ) : null}
 
         <section className="space-y-3" aria-label="Ubicaciones">
           <h3 className="text-sm font-semibold">Ubicaciones</h3>
