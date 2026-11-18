@@ -11,13 +11,17 @@
  *   exacto): aquí se normaliza para que "Polo básico" y "polo  basico" sean el mismo producto.
  * - Un producto con varias filas exige atributos en todas y no admite variantes repetidas.
  * - Los números mal escritos ya no se convierten en 0 en silencio.
+ *
+ * FEAT-24 H4 (H4-D9) — plantilla v3: columnas nuevas al final (Marca, SKU de variante, Código de
+ * barras, Unidad de compra y Factor) y «SKU Empresa» pasa a llamarse «SKU base» (se sigue leyendo el
+ * nombre viejo). Después de esta revisión local, el servidor hace su propia vista previa (dryRun).
  */
 import ExcelJS from "exceljs";
 import { MAX_ITEM_UNITS, MAX_ITEM_UNITS_MESSAGE } from "@/lib/stockLimits";
 
 /* ───────────────────────── constantes ───────────────────────── */
 
-export const TEMPLATE_VERSION = "2";
+export const TEMPLATE_VERSION = "3";
 /** Las filas cuyo Nombre empieza así son de ejemplo y no se cargan. */
 export const EXAMPLE_MARKER = "(EJEMPLO)";
 /** Cuántas filas de la hoja "Productos" llevan listas desplegables y validaciones. */
@@ -40,7 +44,12 @@ export type ParsedRowFieldKey =
   | "priceBase"
   | "priceVta"
   | "quantity"
-  | "min_stock";
+  | "min_stock"
+  | "brand"
+  | "variantSku"
+  | "barcode"
+  | "purchaseUnit"
+  | "purchaseFactor";
 
 /** Quita tildes y pasa a minúsculas: "Categoría" y "categoria" son la misma columna. */
 export const fold = (value: unknown): string =>
@@ -58,6 +67,7 @@ export const HEADER_COLUMN_KEYS: Record<string, ParsedRowFieldKey> = {
   nombre: "name",
   descripcion: "description",
   "sku empresa": "companySku",
+  "sku base": "companySku",
   talla: "size",
   color: "color",
   "otros atributos": "otherAttrs",
@@ -65,7 +75,24 @@ export const HEADER_COLUMN_KEYS: Record<string, ParsedRowFieldKey> = {
   "precio venta": "priceVta",
   cantidad: "quantity",
   "stock minimo": "min_stock",
+  // FEAT-24 H4 (plantilla v3)
+  marca: "brand",
+  "sku de variante": "variantSku",
+  "sku variante": "variantSku",
+  "codigo de barras": "barcode",
+  ean: "barcode",
+  "unidad de compra": "purchaseUnit",
+  factor: "purchaseFactor",
+  "factor de compra": "purchaseFactor",
+  "factor de la unidad de compra": "purchaseFactor",
 };
+
+/** Límites de las columnas v3 (los mismos que valida ms-products). */
+export const VARIANT_SKU_MAX = 60;
+export const BARCODE_MAX = 64;
+export const BRAND_MAX = 100;
+export const PURCHASE_UNIT_MAX = 30;
+export const PURCHASE_FACTOR_MAX = 10000;
 
 export const REQUIRED_HEADERS: { header: string; key: ParsedRowFieldKey }[] = [
   { header: "Nombre *", key: "name" },
@@ -201,6 +228,12 @@ export interface ParsedRow {
   priceVta: number;
   quantity: number;
   min_stock: number;
+  /** FEAT-24 H4 (plantilla v3): opcionales; vacío = no informado. */
+  brand?: string;
+  variantSku?: string;
+  barcode?: string;
+  purchaseUnit?: string;
+  purchaseFactor?: number | null;
   /** Problemas de la propia fila (nombre, números, atributos), calculados al leer. */
   rowProblems: string[];
   /** Resultado final de validar: problemas de la fila + los del producto al que pertenece. */
@@ -221,6 +254,11 @@ export interface RawSheetRow {
   priceVta: CellNum;
   quantity: CellNum;
   min_stock: CellNum;
+  brand?: string;
+  variantSku?: string;
+  barcode?: string;
+  purchaseUnit?: string;
+  purchaseFactor?: CellNum;
 }
 
 export const isExampleName = (name: string): boolean => name.trim().toUpperCase().startsWith(EXAMPLE_MARKER);
@@ -272,6 +310,27 @@ export function buildParsedRow(
     if (min_stock < 0) problems.push("Stock mínimo inválido.");
   }
 
+  // FEAT-24 H4 (plantilla v3): columnas opcionales.
+  const brand = collapse(raw.brand ?? "");
+  const variantSku = collapse(raw.variantSku ?? "");
+  const barcode = (raw.barcode ?? "").replace(/\s+/g, "");
+  const purchaseUnit = collapse(raw.purchaseUnit ?? "");
+  const tooLong = (label: string, value: string, max: number) => {
+    if (value.length > max) problems.push(`${label} tiene más de ${max} caracteres.`);
+  };
+  tooLong("La marca", brand, BRAND_MAX);
+  tooLong("El SKU de variante", variantSku, VARIANT_SKU_MAX);
+  tooLong("El código de barras", barcode, BARCODE_MAX);
+  tooLong("La unidad de compra", purchaseUnit, PURCHASE_UNIT_MAX);
+  let purchaseFactor: number | null = null;
+  const factor = raw.purchaseFactor ?? { kind: "empty" };
+  if (factor.kind === "invalid") problems.push(`El factor no es un número: «${factor.text}».`);
+  else if (factor.kind === "number") {
+    if (!Number.isInteger(factor.value) || factor.value < 1 || factor.value > PURCHASE_FACTOR_MAX) {
+      problems.push(`El factor de la unidad de compra debe ser un entero entre 1 y ${PURCHASE_FACTOR_MAX}.`);
+    } else purchaseFactor = factor.value;
+  }
+
   return {
     rowNumber: raw.rowNumber,
     categoryName: raw.categoryName,
@@ -289,6 +348,11 @@ export function buildParsedRow(
     priceVta,
     quantity,
     min_stock,
+    brand,
+    variantSku,
+    barcode,
+    purchaseUnit,
+    purchaseFactor,
     rowProblems: problems,
   };
 }
@@ -312,6 +376,15 @@ export function validateRows(rows: ParsedRow[]): ParsedRow[] {
   });
 
   const skuOwner = new Map<string, number>();
+  // FEAT-24 H4: el SKU de variante es único en la empresa; dentro del archivo, no se repite.
+  const variantSkuOwner = new Map<string, number>();
+  rows.forEach((row, i) => {
+    const sku = (row.variantSku ?? "").trim().toLowerCase();
+    if (!sku) return;
+    const owner = variantSkuOwner.get(sku);
+    if (owner === undefined) variantSkuOwner.set(sku, i);
+    else issues[i].push(`El SKU de variante «${row.variantSku}» ya está en la fila ${rows[owner].rowNumber}: cada variante necesita el suyo.`);
+  });
 
   groups.forEach((indexes) => {
     const first = rows[indexes[0]];
@@ -349,7 +422,7 @@ export function validateRows(rows: ParsedRow[]): ParsedRow[] {
       }
     }
 
-    // El servidor busca el producto primero por SKU Empresa: dos productos con el mismo SKU se fusionarían.
+    // El servidor busca el producto primero por SKU base: dos productos con el mismo SKU se fusionarían.
     for (const i of indexes) {
       const sku = rows[i].companySku.trim().toLowerCase();
       if (!sku) continue;
@@ -357,7 +430,7 @@ export function validateRows(rows: ParsedRow[]): ParsedRow[] {
       if (owner === undefined) skuOwner.set(sku, i);
       else if (productGroupKey(rows[owner].name) !== productGroupKey(rows[i].name)) {
         issues[i].push(
-          `El SKU Empresa «${rows[i].companySku}» ya lo usa otro producto («${rows[owner].name}», fila ${rows[owner].rowNumber}): cada producto necesita el suyo.`,
+          `El SKU base «${rows[i].companySku}» ya lo usa otro producto («${rows[owner].name}», fila ${rows[owner].rowNumber}): cada producto necesita el suyo.`,
         );
       }
     }
@@ -430,6 +503,11 @@ export function readSheetRows(
       priceVta: num(row, "priceVta"),
       quantity: num(row, "quantity"),
       min_stock: num(row, "min_stock"),
+      brand: text(row, "brand"),
+      variantSku: text(row, "variantSku"),
+      barcode: text(row, "barcode"),
+      purchaseUnit: text(row, "purchaseUnit"),
+      purchaseFactor: num(row, "purchaseFactor"),
     };
     if (isExampleName(raw.name)) {
       ignoredExamples += 1;
@@ -450,7 +528,7 @@ export const PRODUCT_COLUMNS: { header: string; key: ParsedRowFieldKey; width: n
   { header: "Subcategoría *", key: "subcategoryName", width: 22 },
   { header: "Nombre *", key: "name", width: 32 },
   { header: "Descripción", key: "description", width: 34 },
-  { header: "SKU Empresa", key: "companySku", width: 16 },
+  { header: "SKU base", key: "companySku", width: 16 },
   { header: "Talla", key: "size", width: 11 },
   { header: "Color", key: "color", width: 13 },
   { header: "Otros atributos", key: "otherAttrs", width: 28 },
@@ -458,6 +536,12 @@ export const PRODUCT_COLUMNS: { header: string; key: ParsedRowFieldKey; width: n
   { header: "Precio Venta *", key: "priceVta", width: 15 },
   { header: "Cantidad *", key: "quantity", width: 12 },
   { header: "Stock Mínimo", key: "min_stock", width: 13 },
+  // FEAT-24 H4 (plantilla v3): al final, para no mover las columnas que el cliente ya conoce.
+  { header: "Marca", key: "brand", width: 16 },
+  { header: "SKU de variante", key: "variantSku", width: 18 },
+  { header: "Código de barras", key: "barcode", width: 18 },
+  { header: "Unidad de compra", key: "purchaseUnit", width: 16 },
+  { header: "Factor", key: "purchaseFactor", width: 9 },
 ];
 
 export const INSTRUCTIONS: string[] = [
@@ -474,6 +558,12 @@ export const INSTRUCTIONS: string[] = [
   "9. El stock se carga en el almacén que elijas en el Paso 3 (un almacén por archivo).",
   "10. Las filas cuyo Nombre empieza con (EJEMPLO) se ignoran al cargar: puedes borrarlas o dejarlas.",
   "11. Antes de crear nada, el sistema revisa todas las filas y te dice cuál corregir. No se crea ningún producto hasta que todas estén bien.",
+  "12. SKU base (opcional): el código del producto. Si lo dejas vacío, POWIP lo genera solo. Es único en tu empresa.",
+  "13. SKU de variante (opcional): el código de cada fila. Vacío = POWIP lo arma con el SKU base y la talla/color. Si ya existe en el producto, la fila actualiza esa variante en vez de crear otra.",
+  "14. Código de barras (opcional): el EAN de fábrica. Si no tiene, POWIP le asigna el suyo.",
+  "15. Marca (opcional): si no existe en tu empresa, se crea al importar.",
+  "16. Unidad de compra y Factor (opcional): cómo lo compras al proveedor. Ejemplo: Caja y 12 = una caja trae 12 unidades.",
+  "17. Al subir el archivo verás la vista previa del servidor (qué se crea, qué se actualiza y qué tiene error) antes de importar.",
   "",
   `Plantilla versión ${TEMPLATE_VERSION}`,
 ];
@@ -484,6 +574,7 @@ interface ExampleRow {
   color?: string;
   other?: string;
   sku?: string;
+  brand?: string;
   priceBase: number;
   priceVta: number;
   quantity: number;
@@ -495,9 +586,9 @@ const EXAMPLES: ExampleRow[] = [
   { name: `${EXAMPLE_MARKER} Polo básico`, size: "M", priceBase: 15, priceVta: 35, quantity: 12, min_stock: 2 },
   { name: `${EXAMPLE_MARKER} Polo básico`, size: "L", priceBase: 15, priceVta: 35, quantity: 8, min_stock: 2 },
   { name: `${EXAMPLE_MARKER} Polo básico`, size: "XL", priceBase: 15, priceVta: 35, quantity: 5, min_stock: 2 },
-  { name: `${EXAMPLE_MARKER} Zapatillas urbanas`, size: "40", color: "Negro", other: "Material:Cuero", priceBase: 60, priceVta: 120, quantity: 6, min_stock: 1 },
-  { name: `${EXAMPLE_MARKER} Zapatillas urbanas`, size: "40", color: "Blanco", other: "Material:Cuero", priceBase: 60, priceVta: 120, quantity: 4, min_stock: 1 },
-  { name: `${EXAMPLE_MARKER} Zapatillas urbanas`, size: "41", color: "Negro", other: "Material:Cuero", priceBase: 60, priceVta: 120, quantity: 3, min_stock: 1 },
+  { name: `${EXAMPLE_MARKER} Zapatillas urbanas`, size: "40", color: "Negro", other: "Material:Cuero", brand: "Urbana", priceBase: 60, priceVta: 120, quantity: 6, min_stock: 1 },
+  { name: `${EXAMPLE_MARKER} Zapatillas urbanas`, size: "40", color: "Blanco", other: "Material:Cuero", brand: "Urbana", priceBase: 60, priceVta: 120, quantity: 4, min_stock: 1 },
+  { name: `${EXAMPLE_MARKER} Zapatillas urbanas`, size: "41", color: "Negro", other: "Material:Cuero", brand: "Urbana", priceBase: 60, priceVta: 120, quantity: 3, min_stock: 1 },
 ];
 
 export interface TemplateOptions {
@@ -562,6 +653,7 @@ export function buildTemplateWorkbook(opts: TemplateOptions): ExcelJS.Workbook {
       priceVta: example.priceVta,
       quantity: example.quantity,
       min_stock: example.min_stock,
+      brand: example.brand ?? "",
     });
     row.font = { italic: true, color: { argb: "FF7A7A7A" } };
   });
@@ -608,6 +700,10 @@ export function buildTemplateWorkbook(opts: TemplateOptions): ExcelJS.Workbook {
     row.getCell(colOf("quantity")).dataValidation = {
       type: "whole", operator: "between", allowBlank: true, formulae: [0, MAX_ITEM_UNITS], showErrorMessage: true,
       errorTitle: "Cantidad", error: `La cantidad es un número entero entre 0 y ${MAX_ITEM_UNITS.toLocaleString("en-US")}.`,
+    };
+    row.getCell(colOf("purchaseFactor")).dataValidation = {
+      type: "whole", operator: "between", allowBlank: true, formulae: [1, PURCHASE_FACTOR_MAX], showErrorMessage: true,
+      errorTitle: "Factor", error: `El factor es un número entero entre 1 y ${PURCHASE_FACTOR_MAX}.`,
     };
   }
 

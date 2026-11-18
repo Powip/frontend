@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CheckCheck, GitMerge, Loader2 } from "lucide-react";
+import { CheckCheck, GitMerge, Info, Loader2, Plus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -40,6 +41,11 @@ import { ReconciliationManualTable } from "./ReconciliationManualTable";
 import { ReconciliationMergeDialog } from "./ReconciliationMergeDialog";
 import { ReconciliationProvisionalCard } from "./ReconciliationProvisionalCard";
 import { ReconciliationRejectDialog } from "./ReconciliationRejectDialog";
+import { ManualUnificationDialog } from "./ManualUnificationDialog";
+import { SkuConflictGroups } from "./SkuConflictGroups";
+import { UNIFICATION_HISTORY_QUERY_KEY, UnificationHistoryTable } from "./UnificationHistoryTable";
+import { pickFromSkuConflict, type UnificationPick } from "./unificationRules";
+import { SKU_CONFLICTS_QUERY_KEY, useSkuConflictGroups } from "@/hooks/useSkuConflictGroups";
 
 // FEAT-17 Anexo D — bandeja en tabs paginadas (spec-anexo-D). Las rechazadas
 // no se muestran. La aceptación masiva es solo para provisionales (los
@@ -47,20 +53,27 @@ import { ReconciliationRejectDialog } from "./ReconciliationRejectDialog";
 export const RECONCILIATION_PAGE_SIZE = 10;
 export const BULK_CONFIRM_MAX = 10;
 
-// Orden y nombres del mockup uni.html. «En progreso» e «Historial» no tienen backend todavía: quedan ocultas.
-const TAB_ORDER: ReconciliationTabKey[] = [
+// Orden y nombres del mockup uni.html. FEAT-24 H11 (H11-D5): «En progreso»
+// (borradores) se quitó y «Historial» ya tiene backend.
+type UnificationViewKey = ReconciliationTabKey | "historial";
+
+const TAB_ORDER: UnificationViewKey[] = [
   "por_unificar",
   "aplicadas",
   "cola_manual",
   "provisionales",
+  "historial",
 ];
 
-const TAB_LABELS: Record<ReconciliationTabKey, string> = {
+const TAB_LABELS: Record<UnificationViewKey, string> = {
   por_unificar: "Por unificar",
   aplicadas: "Aplicadas",
   provisionales: "Nuevos por revisar",
   cola_manual: "Ventas sin producto",
+  historial: "Historial",
 };
+
+const isBandejaTab = (tab: UnificationViewKey): tab is ReconciliationTabKey => tab !== "historial";
 
 const EMPTY_MESSAGES: Record<ReconciliationTabKey, string> = {
   por_unificar: "No hay posibles duplicados para unificar.",
@@ -84,8 +97,9 @@ interface ReconciliationTabProps {
 }
 
 export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] =
-    useState<ReconciliationTabKey>("por_unificar");
+    useState<UnificationViewKey>("por_unificar");
   const [page, setPage] = useState(1);
   const [tasks, setTasks] = useState<ReconciliationTask[]>([]);
   const [counts, setCounts] = useState<ReconciliationTaskCounts>(EMPTY_COUNTS);
@@ -110,6 +124,15 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
   const [rejectTask, setRejectTask] = useState<ReconciliationTask | null>(
     null,
   );
+  // FEAT-24 H11 — unión manual; `key` reinicia el diálogo en cada apertura.
+  const [manual, setManual] = useState<{
+    key: number;
+    origin: UnificationPick | null;
+  } | null>(null);
+  const manualKey = useRef(0);
+  // Página 1 sin búsqueda: misma clave que la lista de «SKU repetido», un solo pedido.
+  const skuSummary = useSkuConflictGroups({ companyId, page: 1, q: "" });
+  const skuTotal = skuSummary.data?.meta.total ?? 0;
 
   // Cada carga se numera: solo la última puede tocar el estado. Evita que
   // una respuesta lenta de otra tab/página pise la que se está viendo.
@@ -124,6 +147,11 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
       // acá para no dejar isLoading en true para siempre.
       setTasks([]);
       setCounts(EMPTY_COUNTS);
+      setIsLoading(false);
+      return;
+    }
+    // El Historial se carga solo (react-query) y conserva los contadores de la bandeja.
+    if (!isBandejaTab(activeTab)) {
       setIsLoading(false);
       return;
     }
@@ -181,8 +209,25 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
   }, [tasks]);
 
   const handleTabChange = (value: string) => {
-    setActiveTab(value as ReconciliationTabKey);
+    setActiveTab(value as UnificationViewKey);
     setPage(1);
+  };
+
+  const openManual = (origin: UnificationPick | null) => {
+    manualKey.current += 1;
+    setManual({ key: manualKey.current, origin });
+  };
+
+  // Después de unir: los SKU repetidos, el historial, el stock y el catálogo cambian.
+  const handleUnified = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: [SKU_CONFLICTS_QUERY_KEY] }),
+      queryClient.invalidateQueries({ queryKey: [UNIFICATION_HISTORY_QUERY_KEY] }),
+      queryClient.invalidateQueries({ queryKey: ["business-product-catalog"] }),
+      queryClient.invalidateQueries({ queryKey: ["business-inventory-items"] }),
+      queryClient.invalidateQueries({ queryKey: ["reconciliation-stock-by-variants"] }),
+    ]);
+    await loadTasks();
   };
 
   const toggleSelected = (taskId: string, checked: boolean) => {
@@ -288,7 +333,11 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
       return (
         <div className="flex flex-col items-center justify-center rounded-md border bg-card py-16 text-muted-foreground shadow-sm">
           <GitMerge className="mb-3 h-10 w-10 opacity-40" />
-          <p className="text-sm italic">{EMPTY_MESSAGES[tab]}</p>
+          <p className="text-sm italic">
+            {tab === "por_unificar" && skuTotal > 0
+              ? "No hay otros posibles duplicados."
+              : EMPTY_MESSAGES[tab]}
+          </p>
         </div>
       );
     }
@@ -368,13 +417,32 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
 
   return (
     <div className="flex flex-col space-y-6">
-      <div className="flex flex-col space-y-1">
-        <h3 className="text-lg font-semibold tracking-tight">
-          Unificación de productos
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          Revisa y resuelve posibles duplicados, productos nuevos por revisar y
-          ventas sin producto.
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col space-y-1">
+          <h3 className="text-lg font-semibold tracking-tight">
+            Unificación de productos
+          </h3>
+          <p className="text-sm text-muted-foreground">
+            Une los SKU que cada canal usa para un mismo producto bajo un SKU
+            madre de POWIP. Así todas las ventas descuentan del mismo stock.
+          </p>
+        </div>
+        <Button onClick={() => openManual(null)}>
+          <Plus className="mr-1 h-4 w-4" />
+          Unificar manualmente
+        </Button>
+      </div>
+
+      <div className="flex items-start gap-2 rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-sm">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <p>
+          <span className="font-semibold">Cómo funciona:</span> un producto
+          nuevo que no existe se crea solo como madre. Si se parece a uno
+          existente, espera aquí tu decisión. <span className="font-semibold">Nada se une solo</span>:
+          POWIP sugiere y tú confirmas. También puedes unir dos variantes que
+          no se parecen con <span className="font-semibold">Unificar manualmente</span>.
+          Una unificación <span className="font-semibold">no se puede deshacer</span>:
+          si algo quedó mal, se corrige con un ajuste de stock.
         </p>
       </div>
 
@@ -383,7 +451,11 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
           {TAB_ORDER.map((tab) => (
             <TabsTrigger key={tab} value={tab} className="gap-2">
               {TAB_LABELS[tab]}
-              <Badge variant="secondary">{counts[tab]}</Badge>
+              {isBandejaTab(tab) ? (
+                <Badge variant="secondary">
+                  {tab === "por_unificar" ? counts[tab] + skuTotal : counts[tab]}
+                </Badge>
+              ) : null}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -394,8 +466,18 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
             value={tab}
             className="flex flex-col space-y-4"
           >
-            {tab === activeTab && renderTabBody(tab)}
+            {tab === activeTab && tab === "por_unificar" ? (
+              <SkuConflictGroups
+                companyId={companyId}
+                onUnite={(variant) => openManual(pickFromSkuConflict(variant))}
+              />
+            ) : null}
+            {tab === activeTab && tab === "historial" ? (
+              <UnificationHistoryTable companyId={companyId} />
+            ) : null}
+            {tab === activeTab && isBandejaTab(tab) && renderTabBody(tab)}
             {tab === activeTab &&
+              isBandejaTab(tab) &&
               !isLoading &&
               !loadError &&
               totalPages > 1 && (
@@ -429,6 +511,16 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
         onClose={() => setRejectTask(null)}
         onSuccess={loadTasks}
       />
+
+      {manual ? (
+        <ManualUnificationDialog
+          key={manual.key}
+          open
+          initialOrigin={manual.origin}
+          onClose={() => setManual(null)}
+          onUnified={handleUnified}
+        />
+      ) : null}
 
       <AlertDialog
         open={bulkConfirmOpen}

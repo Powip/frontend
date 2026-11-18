@@ -57,10 +57,13 @@ import { ReconciliationTab } from "@/components/inventory/ReconciliationTab";
 import ReceptionsTab from "@/components/inventory/receptions/ReceptionsTab";
 import OutOfStockTab from "@/components/inventory/out-of-stock/OutOfStockTab";
 import { orderStockAccess } from "@/lib/orderStock";
+import SkuConflictsPanel from "@/components/catalog/SkuConflictsPanel";
 import { StockByProduct, StockByWarehouse, StockKpis, type StockBoardActions } from "@/components/inventory/StockBoard";
 import { filterStockVariants, groupByProduct, stockTotals, storesOf, variantPositionsFlat, visibleInventories, STOCK_STATUS_LABEL, type StockMode, type StockStatusFilter } from "@/components/inventory/stockView";
 
 const ITEMS_PER_PAGE = 10;
+// FEAT-24 H11: las variantes con SKU repetido salen agrupadas en «Por unificar»; arriba queda solo el SKU base.
+const PRODUCT_SKU_CONFLICTS: Array<"product"> = ["product"];
 
 /** Pestañas del módulo (mockup vistainv.html, grupo «Almacén»). Cada una vive en su propia ruta. */
 export type InventarioTab = "stock" | "movimientos" | "recepciones" | "pedidos-sin-stock" | "unificacion";
@@ -523,6 +526,8 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
             <Card className="flex-1 flex flex-col">
               <CardContent className="p-6 overflow-auto">
                 <p className="mb-3 text-sm text-muted-foreground">Unificación del catálogo de todo el negocio.</p>
+                {/* FEAT-24 H4: productos con «SKU base repetido» (sku_conflict) para renombrar; las variantes van en «Por unificar» (H11). */}
+                <SkuConflictsPanel companyId={auth?.company?.id} kinds={PRODUCT_SKU_CONFLICTS} />
                 <ReconciliationTab companyId={auth?.company?.id} />
               </CardContent>
             </Card>

@@ -10,6 +10,16 @@ import ExcelJS from "exceljs";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
+import BulkImportPreviewTable from "@/components/catalog/BulkImportPreviewTable";
+import { bulkImportProducts } from "@/services/catalogProductService";
+import { formatMoney } from "@/lib/money";
+import {
+  buildBulkImportRow,
+  canImportPreview,
+  importResultText,
+  previewRows,
+  type BulkImportResponse,
+} from "@/lib/catalog/bulkImportPreview";
 import {
   LEGACY_TEMPLATE_MESSAGE,
   REQUIRED_HEADERS,
@@ -145,6 +155,11 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
   /* ─── Step 3 state ─── */
   const [isSaving, setIsSaving] = useState(false);
   const [confirmLargeQuantity, setConfirmLargeQuantity] = useState(false);
+
+  /* ─── Step 4 state (FEAT-24 H4-D9: vista previa del servidor) ─── */
+  const [serverPreview, setServerPreview] = useState<BulkImportResponse | null>(null);
+  const [previewRowNumbers, setPreviewRowNumbers] = useState<number[]>([]);
+  const [isChecking, setIsChecking] = useState(false);
 
   /* ─── Computed ─── */
   const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
@@ -348,83 +363,98 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
     }
   };
 
-  /* ════════════════════════
-     STEP 3: Save to backend
-     ════════════════════════ */
+  /* ═══════════════════════════════════════════════════════════
+     STEP 3 → 4: vista previa del servidor (dryRun) y luego importar
+     ═══════════════════════════════════════════════════════════ */
   const largestQuantity = Math.max(0, ...validRows.map((r) => r.quantity));
 
-  const handleSave = async (confirmed = false) => {
+  const httpMessage = (err: unknown, fallback: string) =>
+    axios.isAxiosError(err)
+      ? `Error (${err.response?.status || "red"}): ${err.response?.data?.message || err.message}`
+      : err instanceof Error ? err.message : fallback;
+
+  /** Cuerpo de bulk-import: el mismo en la vista previa y en la importación. */
+  const buildPayload = () => {
+    // Todas las filas de un producto viajan con el mismo nombre (el servidor agrupa por nombre).
+    const canonicalNames = canonicalProductNames(validRows);
+    return {
+      // Ignorado por ms-products desde H4 (la empresa sale del token); se manda por compatibilidad.
+      tenantId: auth?.company?.id,
+      inventoryId: selectedInventoryId,
+      rows: validRows.map((r) => buildBulkImportRow(r, canonicalNames.get(productGroupKey(r.name)) ?? r.name)),
+    };
+  };
+
+  const canSend = () => {
     if (validRows.length === 0) {
       toast.error("No hay productos válidos para guardar");
-      return;
+      return false;
     }
     if (!inventories.some((inv) => inv.id === selectedInventoryId)) {
       toast.error("Selecciona un almacén antes de guardar");
-      return;
+      return false;
     }
-
-    const tenantId = auth?.company?.id;
-    if (!tenantId) {
+    if (!auth?.company?.id) {
       toast.error("Sesión inválida — recarga la página");
-      return;
+      return false;
     }
+    return true;
+  };
+
+  /** Paso 3 → 4: el servidor revisa todo (SKU repetidos, marcas, variantes existentes) sin escribir. */
+  const handleReview = async () => {
+    if (!canSend()) return;
+    setIsChecking(true);
+    try {
+      const preview = await bulkImportProducts(buildPayload(), { dryRun: true });
+      setServerPreview(preview);
+      setPreviewRowNumbers(validRows.map((r) => r.rowNumber));
+      setConfirmLargeQuantity(false);
+      setStep(4);
+    } catch (err) {
+      toast.error(httpMessage(err, "No se pudo revisar el archivo"));
+    } finally {
+      setIsChecking(false);
+    }
+  };
+
+  /** Paso 4: importación real, solo si la vista previa no tiene errores. */
+  const handleSave = async (confirmed = false) => {
+    if (!canImportPreview(serverPreview) || !canSend()) return;
     if (needsQuantityConfirmation(largestQuantity) && !confirmed) {
       setConfirmLargeQuantity(true);
       return;
     }
     setConfirmLargeQuantity(false);
 
-    // Todas las filas de un producto viajan con el mismo nombre (el servidor agrupa por nombre).
-    const canonicalNames = canonicalProductNames(validRows);
-    const payload = {
-      tenantId,
-      inventoryId: selectedInventoryId,
-      rows: validRows.map((r) => ({
-        name: canonicalNames.get(productGroupKey(r.name)) ?? r.name,
-        description: r.description,
-        companySku: r.companySku,
-        attributes: r.attributes,
-        priceBase: r.priceBase,
-        priceVta: r.priceVta,
-        quantity: r.quantity,
-        min_stock: r.min_stock,
-        subcategoryId: r.subcategoryId, // Enviamos el ID resuelto
-      })),
-    };
-
-    const apiUrl = `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/products/bulk-import`;
-
     setIsSaving(true);
     try {
-      const res = await axiosAuth.post(apiUrl, payload);
-
-      if (res.data.created === 0 && res.data.errors > 0) {
-        toast.error(
-          `No se crearon productos. ${res.data.errors} errores — revisa el detalle`,
-        );
-      } else if (res.data.created > 0) {
-        toast.success(
-          res.data.message ||
-            `Importación completada: ${res.data.created} productos creados`,
-        );
-        onBack();
-      } else {
-        toast.warning(
-          "La respuesta no indica productos creados. Verifica el resultado de la importación.",
-        );
+      const result = await bulkImportProducts(buildPayload(), { dryRun: false });
+      const { ok, text } = importResultText(result);
+      if (result.created + result.updated === 0) {
+        // Algo cambió entre la vista previa y la importación: se muestran los errores nuevos.
+        setServerPreview(result);
+        toast.error(text);
+        return;
       }
+      if (ok) toast.success(text);
+      else toast.warning(text);
+      onBack();
     } catch (err) {
-      const message = axios.isAxiosError(err)
-        ? `Error (${err.response?.status || "red"}): ${err.response?.data?.message || err.message}`
-        : "Error al importar productos";
-      toast.error(message);
+      toast.error(httpMessage(err, "Error al importar productos"));
     } finally {
       setIsSaving(false);
     }
   };
 
+  const backToLocalPreview = () => {
+    setServerPreview(null);
+    setConfirmLargeQuantity(false);
+    setStep(3);
+  };
+
   /* ═══════════ RENDER ═══════════ */
-  const stepLabels = ["Generar Plantilla", "Subir Archivo", "Vista Previa"];
+  const stepLabels = ["Generar Plantilla", "Subir Archivo", "Vista Previa", "Revisión"];
 
   return (
     <div className="w-full px-6 pb-6">
@@ -832,7 +862,9 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                       <TableHead className="min-w-[180px]">
                         Subcategoría
                       </TableHead>
-                      <TableHead>SKU</TableHead>
+                      <TableHead>SKU base</TableHead>
+                      <TableHead>SKU de variante</TableHead>
+                      <TableHead>Marca</TableHead>
                       <TableHead className="text-right">Venta</TableHead>
                       <TableHead className="w-24">Estado</TableHead>
                     </TableRow>
@@ -934,8 +966,14 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                           <TableCell className="text-xs text-muted-foreground">
                             {row.companySku || "—"}
                           </TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground">
+                            {row.variantSku || "—"}
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {row.brand || "—"}
+                          </TableCell>
                           <TableCell className="text-right text-xs">
-                            ${row.priceVta.toLocaleString()}
+                            {formatMoney(row.priceVta)}
                           </TableCell>
                           <TableCell>
                             {row.error ? (
@@ -964,7 +1002,7 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
               <Button
                 variant="ghost"
                 onClick={() => setStep(2)}
-                disabled={isSaving}
+                disabled={isChecking}
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Cambiar archivo
@@ -976,6 +1014,63 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                     Corrige los errores para continuar
                   </p>
                 )}
+                <Button
+                  size="lg"
+                  onClick={() => void handleReview()}
+                  disabled={
+                    invalidCount > 0 || isChecking || validRows.length === 0 || !selectedInventoryId
+                  }
+                  className="min-w-[180px]"
+                >
+                  {isChecking ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Revisando...
+                    </>
+                  ) : (
+                    <>
+                      <ArrowRight className="mr-2 h-4 w-4" />
+                      Revisar antes de importar ({validRows.length} filas)
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ═══════════════════════════════════════════
+           STEP 4: vista previa del servidor + Importar
+         ═══════════════════════════════════════════ */}
+      {step === 4 && serverPreview && (
+        <Card className="max-w-[95vw] lg:max-w-7xl mx-auto">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5" />
+              Paso 4 — Revisión del servidor
+            </CardTitle>
+            <CardDescription>
+              Así quedaría tu catálogo: qué se crea, qué se actualiza y qué tiene error. Todavía no se guardó nada.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {serverPreview.summary.error > 0 ? (
+              <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
+                Hay {serverPreview.summary.error} filas con errores. Corrígelas en tu Excel y vuelve a subirlo: no se importó nada.
+              </div>
+            ) : serverPreview.summary.crear + serverPreview.summary.actualizar === 0 ? (
+              <p role="status" className="text-sm text-muted-foreground">No hay nada para importar.</p>
+            ) : null}
+
+            <BulkImportPreviewTable rows={previewRows(serverPreview, previewRowNumbers)} summary={serverPreview.summary} />
+
+            <div className="flex justify-between items-center pt-4">
+              <Button variant="ghost" onClick={backToLocalPreview} disabled={isSaving}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Volver
+              </Button>
+              <div className="flex items-center gap-3">
                 {confirmLargeQuantity && (
                   <div className="flex items-center gap-2 text-xs">
                     <p>{largeQuantityConfirmText(largestQuantity)}</p>
@@ -985,20 +1080,18 @@ export default function ExcelImportWizard({ onBack, inventoryId }: ExcelImportWi
                 <Button
                   size="lg"
                   onClick={() => void handleSave()}
-                  disabled={
-                    invalidCount > 0 || isSaving || !selectedInventoryId
-                  }
+                  disabled={!canImportPreview(serverPreview) || isSaving || !selectedInventoryId}
                   className="min-w-[180px]"
                 >
                   {isSaving ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Guardando...
+                      Importando...
                     </>
                   ) : (
                     <>
                       <Save className="mr-2 h-4 w-4" />
-                      Importar {validRows.length} productos
+                      Importar ({serverPreview.summary.crear + serverPreview.summary.actualizar} filas)
                     </>
                   )}
                 </Button>

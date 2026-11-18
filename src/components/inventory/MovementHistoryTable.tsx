@@ -55,11 +55,16 @@ interface MovementHistoryTableProps {
   onRetryScope?: () => void;
   /** Texto con el que arranca el buscador (p. ej. el SKU al venir desde Stock). */
   initialSearch?: string;
+  /** FEAT-24 H4: solo los movimientos de estos ítems de inventario (ficha del producto). */
+  inventoryItemIds?: string[];
+  /** FEAT-24 H4: título y bajada propios (la ficha dice «Historial (kardex)»). */
+  title?: string;
+  description?: string;
 }
 
 const NO_INVENTORIES: BusinessInventory[] = [];
 
-export function MovementHistoryTable({ companyId, scope = "business", inventories = NO_INVENTORIES, scopeReady = true, scopeError, onRetryScope, initialSearch = "" }: MovementHistoryTableProps) {
+export function MovementHistoryTable({ companyId, scope = "business", inventories = NO_INVENTORIES, scopeReady = true, scopeError, onRetryScope, initialSearch = "", inventoryItemIds, title, description }: MovementHistoryTableProps) {
   const { auth } = useAuth();
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -77,7 +82,9 @@ export function MovementHistoryTable({ companyId, scope = "business", inventorie
     enabled: Boolean(companyId && auth?.company?.id === companyId && auth?.accessToken && auth?.user?.id && (scope === "business" || scopeReady)) && !scopeError,
     retry: false,
   });
-  const filtered = useMemo(() => filterInventoryMovements(query.data ?? [], { search, type: typeFilter !== "ALL" ? typeFilter : undefined, userEmail: userEmailFilter, startDate, endDate, inventoryId: inventoryFilter !== "ALL" ? inventoryFilter : undefined }), [inventoryFilter, query.data, search, typeFilter, userEmailFilter, startDate, endDate]);
+  const itemIdsKey = inventoryItemIds ? [...inventoryItemIds].sort().join(",") : null;
+  const itemIdSet = useMemo(() => (itemIdsKey === null ? undefined : new Set(itemIdsKey ? itemIdsKey.split(",") : [])), [itemIdsKey]);
+  const filtered = useMemo(() => filterInventoryMovements(query.data ?? [], { search, type: typeFilter !== "ALL" ? typeFilter : undefined, userEmail: userEmailFilter, startDate, endDate, inventoryId: inventoryFilter !== "ALL" ? inventoryFilter : undefined, inventoryItemIds: itemIdSet }), [inventoryFilter, query.data, search, typeFilter, userEmailFilter, startDate, endDate, itemIdSet]);
   const movements = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const totalItems = filtered.length;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
@@ -111,8 +118,8 @@ export function MovementHistoryTable({ companyId, scope = "business", inventorie
   return (
     <div className="flex flex-col space-y-4">
       <div className="flex flex-col space-y-1">
-        <h3 className="text-lg font-semibold tracking-tight">Historial de Movimientos</h3>
-        <p className="text-sm text-muted-foreground">{scope === "business" ? "Todos los movimientos del negocio, incluidos registros históricos" : "Movimientos de los almacenes de la tienda seleccionada"}</p>
+        <h3 className="text-lg font-semibold tracking-tight">{title ?? "Historial de Movimientos"}</h3>
+        <p className="text-sm text-muted-foreground">{description ?? (scope === "business" ? "Todos los movimientos del negocio, incluidos registros históricos" : "Movimientos de los almacenes de la tienda seleccionada")}</p>
       </div>
 
       <div className="bg-muted/40 p-4 rounded-lg border border-border/50">

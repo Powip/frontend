@@ -261,6 +261,7 @@ export function Sidebar({ className }: SidebarProps) {
         icon: Package,
         children: [
           { name: "Lista de productos", href: "/productos", icon: Tags },
+          { name: "Categorías", href: "/productos/categorias", icon: LayoutList },
           { name: "Inventario", href: "/inventario", icon: Package },
           // FEAT-24 H6: la app del celular para el almacén (PWA instalable).
           { name: "Modo almacén", href: "/almacen", icon: Smartphone },
