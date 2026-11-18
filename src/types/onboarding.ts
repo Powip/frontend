@@ -116,6 +116,8 @@ export interface OnboardingState {
   firstChargeDate?: string | null;
   /** Email corregido para Flow tras un INVALID_EMAIL; no cambia el email de la cuenta. */
   billingEmail?: string | null;
+  /** El email que Flow rechazó por última vez; null = el de la cuenta. */
+  rejectedEmail?: string | null;
 }
 
 /** Lo que sobrevive a la redirección a Flow (localStorage). */

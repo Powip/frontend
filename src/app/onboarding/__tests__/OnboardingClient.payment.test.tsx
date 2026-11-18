@@ -209,3 +209,51 @@ it("si Flow rechaza el email, se corrige en el mismo paso y se reintenta el pago
   });
   await screen.findByText("Cargando widget de pago...");
 });
+
+it("mientras se reintenta con el email corregido, el aviso sigue nombrando el email que Flow rechazó", async () => {
+  jest.mocked(useAuth).mockReturnValue({
+    auth: {
+      accessToken: "fixture-token",
+      user: { id: "fixture-user", email: "ana@verach.com" },
+      company: null,
+    },
+    login: jest.fn(),
+    refreshSession,
+  } as unknown as ReturnType<typeof useAuth>);
+  let resolveRetry: (value: Awaited<ReturnType<typeof api.startFlowCheckout>>) => void = () => {};
+  mocked.startFlowCheckout
+    .mockRejectedValueOnce(
+      new AxiosError("Unprocessable", "INVALID_EMAIL", undefined, undefined, {
+        status: 422,
+        data: { code: "INVALID_EMAIL" },
+        statusText: "Unprocessable",
+        headers: {},
+        config: { headers: new AxiosHeaders() },
+      }),
+    )
+    .mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRetry = resolve;
+      }),
+    );
+  await openPayment();
+  const input = await screen.findByLabelText("Email para el pago");
+
+  fireEvent.change(input, { target: { value: "ana@gmail.com" } });
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Continuar con el pago" }));
+  });
+
+  expect(screen.getByText(/no aceptó el email "ana@verach.com"/)).toBeInTheDocument();
+  expect(screen.queryByText(/no aceptó el email "ana@gmail.com"/)).not.toBeInTheDocument();
+
+  await act(async () => {
+    resolveRetry({
+      subscriptionId: "new-subscription",
+      status: "PENDING_PAYMENT",
+      cardToken: "fixture-card-token",
+      redirectUrl: "https://www.flow.cl/fixture",
+    });
+  });
+  await screen.findByText("Cargando widget de pago...");
+});

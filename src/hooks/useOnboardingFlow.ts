@@ -39,6 +39,7 @@ type OnboardingAction =
   | { type: "SET_ERROR"; error: string }
   | { type: "SET_INLINE_ERROR"; error: string }
   | { type: "SET_BILLING_EMAIL"; billingEmail: string }
+  | { type: "SET_INVALID_EMAIL"; rejectedEmail: string | null }
   | { type: "RESTORE"; state: Partial<OnboardingState> };
 
 export interface RegisterData {
@@ -115,6 +116,14 @@ function reducer(state: OnboardingState, action: OnboardingAction): OnboardingSt
       return { ...state, isLoading: false, error: action.error };
     case "SET_BILLING_EMAIL":
       return { ...state, billingEmail: action.billingEmail };
+    case "SET_INVALID_EMAIL":
+      return {
+        ...state,
+        step: "INVALID_EMAIL",
+        rejectedEmail: action.rejectedEmail,
+        isLoading: false,
+        error: null,
+      };
     case "RESTORE":
       return { ...state, ...action.state };
     default:
@@ -166,6 +175,7 @@ export function useOnboardingFlow(
     migrate: initial.migrate === true,
     firstChargeDate: null,
     billingEmail: null,
+    rejectedEmail: null,
   };
 
   const [state, dispatch] = useReducer(reducer, initialState, (value) => {
@@ -540,7 +550,7 @@ export function useOnboardingFlow(
       const code = apiErrorCode(err);
       if (code === "INVALID_EMAIL") {
         // FIX-flow-email-invalido: el cliente corrige el email en el mismo paso y reintenta.
-        dispatch({ type: "SET_STEP", step: "INVALID_EMAIL" });
+        dispatch({ type: "SET_INVALID_EMAIL", rejectedEmail: emailForFlow ?? null });
         return;
       }
       if (code === "ALREADY_SUBSCRIBED" || code === "PAYMENT_IN_PROGRESS") {

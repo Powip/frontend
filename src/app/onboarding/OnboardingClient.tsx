@@ -650,8 +650,8 @@ interface Step3Props {
   firstChargeNotice?: string | null;
   /** Email de la cuenta: el que Flow rechazó si todavía no se corrigió (FIX-flow-email-invalido). */
   accountEmail?: string | null;
-  /** Último email corregido para Flow. */
-  billingEmail?: string | null;
+  /** El email que Flow rechazó por última vez (null = el de la cuenta). */
+  rejectedEmail?: string | null;
   onSubmitBillingEmail: (email: string) => void;
 }
 
@@ -673,7 +673,7 @@ function Step3({
   onError,
   firstChargeNotice,
   accountEmail,
-  billingEmail,
+  rejectedEmail: lastRejectedEmail,
   onSubmitBillingEmail,
 }: Step3Props) {
   const period = isAnnual ? "año" : "mes";
@@ -715,7 +715,7 @@ function Step3({
   }
 
   if (step === "INVALID_EMAIL") {
-    const rejectedEmail = billingEmail ?? accountEmail ?? "";
+    const rejectedEmail = lastRejectedEmail ?? accountEmail ?? "";
     return (
       <InvalidEmailStep
         key={rejectedEmail}
@@ -1516,7 +1516,7 @@ export default function OnboardingClient({
                 onError={setError}
                 firstChargeNotice={firstChargeNotice}
                 accountEmail={auth?.user?.email}
-                billingEmail={flowState.billingEmail}
+                rejectedEmail={flowState.rejectedEmail}
                 onSubmitBillingEmail={(email) => void submitBillingEmail(email)}
               />
             )}

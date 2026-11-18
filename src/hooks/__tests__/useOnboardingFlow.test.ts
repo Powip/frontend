@@ -429,6 +429,7 @@ describe("useOnboardingFlow", () => {
 
     expect(result.current.state.step).toBe("INVALID_EMAIL");
     expect(result.current.state.billingEmail).toBe("ana@gmail.com");
+    expect(result.current.state.rejectedEmail).toBe("ana@gmail.com");
     expect(toast.error).not.toHaveBeenCalled();
   });
 
