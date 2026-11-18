@@ -47,6 +47,15 @@ jest.mock("@/contexts/AuthContext", () => ({ useAuth: jest.fn() }));
 jest.mock("sonner", () => ({
   toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn() },
 }));
+// FEAT-24 H5: la ficha del almacén tiene sus propios tests (WarehouseDetailsDialog.test).
+jest.mock("../../warehouse-ops/structure/WarehouseDetailsDialog", () => ({
+  __esModule: true,
+  default: (props: { warehouse: { name: string }; canEdit: boolean }) => (
+    <div>
+      ficha de {props.warehouse.name} · edita: {String(props.canEdit)}
+    </div>
+  ),
+}));
 jest.mock("@/services/warehousesService", () => ({
   listWarehouses: jest.fn(),
   createWarehouse: jest.fn(),
@@ -513,5 +522,13 @@ describe("Revisión final de la pantalla de almacenes (FEAT-24 H1-A)", () => {
     }
     const rows = screen.getAllByTestId(/^warehouse-/);
     expect(rows.every((row) => row.tagName === "TR")).toBe(true);
+  });
+
+  it("«Detalle» abre la ficha del almacén con sus datos y ubicaciones (FEAT-24 H5)", async () => {
+    const user = userEvent.setup();
+    renderScreen();
+    await waitForList();
+    await user.click(screen.getByRole("button", { name: "Datos y ubicaciones: Almacén Sur" }));
+    expect(screen.getByText("ficha de Almacén Sur · edita: false")).toBeInTheDocument();
   });
 });
