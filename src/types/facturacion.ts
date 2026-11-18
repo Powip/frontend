@@ -2,8 +2,9 @@
  * Dominio de Facturación SUNAT (comprobantes, guías de remisión, notas de
  * crédito/débito, certificado digital y series).
  *
- * Los catálogos de códigos (ERRORES_SUNAT, ERRORES_GRE, MOTIVOS_TRASLADO,
- * MODALIDAD_TRANSPORTE) son códigos oficiales SUNAT y no dependen del backend.
+ * Los catálogos de códigos (ERRORES_SUNAT, ERRORES_GRE) son códigos oficiales
+ * SUNAT y no dependen del backend. Los de la guía de remisión real (motivos,
+ * modalidades, estados) están en features/sunat/despatch-advice (FEAT-24 H12).
  */
 
 export type EstadoComprobante =
