@@ -146,6 +146,26 @@ describe("registrationErrorMessage", () => {
     );
   });
 
+  // FIX-flow-email-invalido: ms-auth rechaza dominios que no reciben correo (Flow los rechaza al pagar).
+  it("explica que el dominio no recibe correos usando el email ingresado, no el texto del servidor", () => {
+    expect(
+      registrationErrorMessage(
+        buildAxiosError(400, { code: "EMAIL_DOMAIN_NO_MAIL", message: "private detail" }),
+        "Ana@VERACH.com",
+      ),
+    ).toBe(
+      'El dominio "verach.com" no recibe correos. Revisa que esté bien escrito o usa otro email (por ejemplo, uno de Gmail).',
+    );
+  });
+
+  it("sin email usable explica el dominio sin nombrarlo", () => {
+    expect(
+      registrationErrorMessage(buildAxiosError(400, { code: "EMAIL_DOMAIN_NO_MAIL", message: "x" })),
+    ).toBe(
+      "El dominio de tu email no recibe correos. Revisa que esté bien escrito o usa otro email (por ejemplo, uno de Gmail).",
+    );
+  });
+
   it("conserva documento duplicado sin atribuirlo al email", () => {
     expect(
       registrationErrorMessage(buildAxiosError(409, { code: "IDENTITY_DOCUMENT_ALREADY_EXISTS" })),
