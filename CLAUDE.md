@@ -69,3 +69,11 @@ NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY
 
 - **Lógica** (App Router, Server/Client Components, hooks, services HTTP, react-query): skill `nextjs-server-components`
 - **Tests** (React Testing Library, renderHook): skill `nextjs-testing-rtl`
+
+## FEAT-24 RMV — «Quitar del almacén» en /inventario
+
+- Papelera en la vista «Por producto» de Stock: una por fila de variante (título «Quitar del almacén») y una en la cabecera del producto («Quitar producto»). Solo con `canEditInventory` (Administrador u Operaciones) y con **un solo almacén en la vista** (el elegido en el filtro o el único que ve el usuario); con varios, una pista pide elegir el almacén. No se ofrece con IMEI/serie ni en «Por almacén».
+- `RemoveFromWarehouseDialog` (`src/components/inventory/`): doble confirmación (paso 1: qué se quita, de qué almacén, que sigue en el catálogo y en los demás almacenes, que el historial queda y que vuelve a aparecer cuando entra stock; paso 2: «Sí, quitar»). El 409/403 del servidor se muestra tal cual dentro del diálogo; tras un 409 la lista se refresca en silencio.
+- `removeFromWarehouse(inventoryId, { variantId } | { productId })` en `warehouseOpsService.ts` → `POST {products}/warehouses/:id/remove-items` (fachada JWT; nunca manda empresa ni usuario).
+- `fetchBusinessInventoryItems({ excludeRemoved: true })` es opcional a propósito: solo lo pide /inventario (lista y Excel). El catálogo y la ficha siguen viendo las filas quitadas.
+- Deploy: después de ms-logistics (que acepta `excludeRemoved` en `/inventory-item/search`) y de ms-products (la ruta nueva). Si el front sale antes, la búsqueda de /inventario puede dar 400 por el parámetro desconocido.

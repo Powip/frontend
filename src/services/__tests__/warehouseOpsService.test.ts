@@ -1,5 +1,5 @@
 import axiosAuth from "@/lib/axiosAuth";
-import { addCountEntries, applyCount, approveAdjustment, dispatchTransfer, receiveTransfer } from "../warehouseOpsService";
+import { addCountEntries, applyCount, approveAdjustment, dispatchTransfer, receiveTransfer, removeFromWarehouse } from "../warehouseOpsService";
 
 // FEAT-24 H5 — con NEXT_PUBLIC_IDEMPOTENCY_HEADER=on, el header Idempotency-Key
 // es SIEMPRE el operationId del cuerpo (la fachada rechaza con 400 si difieren).
@@ -36,5 +36,17 @@ describe("Idempotency-Key de la operación de almacén", () => {
     await dispatchTransfer("t-1", { operationId: "op-1" });
     expect((post.mock.calls[0][2] as { headers?: unknown } | undefined)?.headers).toBeUndefined();
     expect(post.mock.calls[0][1]).toEqual({ operationId: "op-1" });
+  });
+});
+
+describe("Quitar del almacén (FEAT-24 RMV)", () => {
+  it("va a la fachada con la variante o el producto, sin empresa ni usuario, y con timeout", async () => {
+    post.mockResolvedValue({ data: { inventoryId: "inv 1", removed: [], alreadyRemoved: [], notInWarehouse: [] } });
+    await removeFromWarehouse("inv 1", { variantId: "v-1" });
+    await removeFromWarehouse("inv 1", { productId: "p-1" });
+    expect(post.mock.calls[0][0]).toMatch(/\/warehouses\/inv%201\/remove-items$/);
+    expect(post.mock.calls[0][1]).toEqual({ variantId: "v-1" });
+    expect(post.mock.calls[1][1]).toEqual({ productId: "p-1" });
+    expect(post.mock.calls[0][2]).toMatchObject({ timeout: 30_000 });
   });
 });

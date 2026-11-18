@@ -62,6 +62,9 @@ import OutOfStockTab from "@/components/inventory/out-of-stock/OutOfStockTab";
 import { orderStockAccess } from "@/lib/orderStock";
 import SkuConflictsPanel from "@/components/catalog/SkuConflictsPanel";
 import { StockByProduct, StockByWarehouse, StockKpis, type StockBoardActions } from "@/components/inventory/StockBoard";
+// FEAT-24 RMV: «Quitar del almacén» (baja lógica por almacén, con doble confirmación).
+import { RemoveFromWarehouseDialog, type RemoveFromWarehouseItem } from "@/components/inventory/RemoveFromWarehouseDialog";
+import type { BusinessInventory } from "@/services/inventoryCatalogService";
 // FEAT-24 H10: Reporte general, Alertas y Cierre mensual.
 import StockReportTab from "@/components/inventory/reports/StockReportTab";
 import AlertsTab from "@/components/inventory/reports/AlertsTab";
@@ -152,7 +155,8 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
   const companyId = auth?.company?.id ?? "";
   const inventoryQuery = useQuery({
     queryKey: ["business-inventory-items", companyId, auth?.user?.id, scope, storeIds, storeInventories.map((inv) => inv.id).sort(), includeInactive],
-    queryFn: ({ signal }) => fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth?.accessToken ?? "", signal, includeInactive }),
+    // FEAT-24 RMV: lo quitado de un almacén no se lista aquí (vuelve a aparecer cuando entra stock).
+    queryFn: ({ signal }) => fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth?.accessToken ?? "", signal, includeInactive, excludeRemoved: true }),
     enabled: canFetch && warehouses.isSuccess && !myWarehouses.isLoading,
     retry: false,
   });
@@ -208,7 +212,9 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
 
   const [unitTrace, setUnitTrace] = useState<{ companyId: string; userId: string; code: string } | null>(null);
   const [trackingItem, setTrackingItem] = useState<{ item: BusinessInventoryItem; companyId: string; action: "regularize" | "units" | "transfer" | "write-off" } | null>(null);
-  useEffect(() => { setTrackingItem(null); setUnitTrace(null); }, [companyId, auth?.user?.id]);
+  // FEAT-24 RMV: lo que se está por quitar y de qué almacén (el único de la vista).
+  const [removing, setRemoving] = useState<{ item: RemoveFromWarehouseItem; warehouse: BusinessInventory; companyId: string } | null>(null);
+  useEffect(() => { setTrackingItem(null); setUnitTrace(null); setRemoving(null); }, [companyId, auth?.user?.id]);
 
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItemForSale | null>(
@@ -237,6 +243,8 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
   }, [auth, tab, canEdit, stockAccess.sinReserva, canSeeCouriers, router]);
 
   if (!auth) return null;
+  // FEAT-24 RMV: la papelera es de quien edita inventario y solo con UN almacén en la vista (si no, ¿de cuál?).
+  const removeWarehouse = canEdit && warehouseColumns.length === 1 ? warehouseColumns[0] : null;
   const stockActions: StockBoardActions = {
     canEdit,
     onImage: (item, trigger) => { imageTriggerRef.current = trigger; setImageItem(item); },
@@ -244,6 +252,15 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
     onAdjust: (item) => { setSelectedItem(item); setAdjustOpen(true); },
     onEdit: (variantId) => router.push(`/productos?edit=${variantId}`),
     onKardex: (variantId, label) => router.push(`${INVENTARIO_TAB_ROUTES.movimientos}?variantId=${encodeURIComponent(variantId)}&q=${encodeURIComponent(label)}`),
+    onRemove: removeWarehouse
+      ? (target) => setRemoving({
+        warehouse: removeWarehouse,
+        companyId,
+        item: target.kind === "product"
+          ? { kind: "product", productId: target.productId, name: target.productName }
+          : { kind: "variant", variantId: target.item.variantId, name: [target.item.productName, formatVariantLabel(target.item.attributes)].filter(Boolean).join(" · "), sku: target.item.companySku || target.item.sku },
+      })
+      : undefined,
   };
 
   const handleExportExcel = async () => {
@@ -254,7 +271,7 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
     try {
       // FEAT-24 H9: los packs se piden frescos junto con el stock; si fallan, se usa lo que ya está en pantalla.
       const [fresh, freshPacks] = await Promise.all([
-        fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth.accessToken, includeInactive }),
+        fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth.accessToken, includeInactive, excludeRemoved: true }),
         listAllPacks({ active: true }).catch(() => packsQuery.data ?? null),
       ]);
       const items = variantPositionsFlat(filterStockVariants(fresh, stockFilters));
@@ -375,6 +392,16 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
         void queryClient.invalidateQueries({ queryKey: ["admin-shrinkage-summary", companyId] });
         void queryClient.invalidateQueries({ queryKey: ["inventory-kardex", companyId] });
       }} /> : null}
+      {removing?.companyId === companyId ? (
+        <RemoveFromWarehouseDialog
+          key={`${removing.warehouse.id}:${removing.item.kind === "product" ? removing.item.productId : removing.item.variantId}`}
+          item={removing.item}
+          warehouse={{ id: removing.warehouse.id, name: removing.warehouse.name, storeName: removing.warehouse.storeName }}
+          onClose={() => setRemoving(null)}
+          // Tras un rechazo (409) se refresca en silencio: no se guardó nada.
+          onChanged={(saved) => { if (saved) handleStockRefresh(); else void refreshItems().catch(() => undefined); }}
+        />
+      ) : null}
       {unitTrace?.companyId === companyId && unitTrace.userId === auth.user.id ? <InventoryUnitTraceModal companyId={companyId} initialCode={unitTrace.code} onClose={() => setUnitTrace(null)} /> : null}
       <HeaderConfig
         title="Almacén"
@@ -543,9 +570,12 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                 </div>
 
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm text-muted-foreground">
-                    {!isLoading && !loadError ? `${totalItems} producto(s) · ${variantRows.length} variante(s)` : ""}
-                  </p>
+                  <div className="text-sm text-muted-foreground">
+                    <p>{!isLoading && !loadError ? `${totalItems} producto(s) · ${variantRows.length} variante(s)` : ""}</p>
+                    {canEdit && stockMode === "producto" && warehouseColumns.length > 1 ? (
+                      <p className="text-xs" data-testid="hint-quitar-del-almacen">Para quitar un producto de un almacén, elige ese almacén en el filtro «Almacén».</p>
+                    ) : null}
+                  </div>
                   <div className="flex items-center gap-2">
                     <label className="flex items-center gap-2 text-sm text-muted-foreground">
                       <input

@@ -552,3 +552,32 @@ export async function updateWarehouseDetails(inventoryId: string, patch: Warehou
 export async function setWarehouseActive(inventoryId: string, active: boolean): Promise<void> {
   await axiosAuth.post(`${warehouses()}/${id(inventoryId)}/${active ? "activate" : "deactivate"}`, {});
 }
+
+/* ---------------------------------------------------------------------------
+   Quitar del almacén (FEAT-24 RMV)
+--------------------------------------------------------------------------- */
+
+/** Una variante o el producto entero (todas sus variantes en ese almacén). */
+export type RemoveFromWarehouseTarget = { variantId: string } | { productId: string };
+
+export interface RemoveFromWarehouseResult {
+  inventoryId: string;
+  /** Variantes que se quitaron ahora. */
+  removed: Array<{ variantId: string; inventoryItemId: string }>;
+  /** Ya estaban quitadas de este almacén (repetir no hace nada). */
+  alreadyRemoved: string[];
+  /** Del producto, pero sin fila en este almacén. */
+  notInWarehouse: string[];
+}
+
+/**
+ * Baja lógica: deja de verse en /inventario de ESE almacén; sigue en el catálogo, en los demás almacenes y en el
+ * historial, y vuelve a aparecer cuando entra stock. Solo Administrador u Operaciones (403 al resto). 409
+ * `QUITAR_DEL_ALMACEN_BLOQUEADO` con el motivo concreto en `message` si queda stock, reservas, un traslado en
+ * camino, un ajuste o conteo pendiente o pedidos; con un producto es todo o nada.
+ */
+export async function removeFromWarehouse(inventoryId: string, target: RemoveFromWarehouseTarget): Promise<RemoveFromWarehouseResult> {
+  const body = "variantId" in target ? { variantId: target.variantId } : { productId: target.productId };
+  const { data } = await axiosAuth.post<RemoveFromWarehouseResult>(`${warehouses()}/${id(inventoryId)}/remove-items`, body, { timeout: WRITE_TIMEOUT_MS });
+  return data;
+}
