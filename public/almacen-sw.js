@@ -10,7 +10,7 @@
  * Se registra con scope "/almacen" (ver WarehouseShell), así que no controla
  * el resto de POWIP. No es public/mockServiceWorker.js (ese es de MSW).
  */
-const VERSION = "v1";
+const VERSION = "v2";
 const SHELL_CACHE = `powip-almacen-shell-${VERSION}`;
 const STATIC_CACHE = `powip-almacen-static-${VERSION}`;
 const SCOPE_PATH = "/almacen";
@@ -20,6 +20,9 @@ const PAGES = [
   "/almacen/picking",
   "/almacen/recibir",
   "/almacen/recibir/devoluciones",
+  "/almacen/recibir/compras",
+  "/almacen/recibir/traslados",
+  "/almacen/contar",
   "/almacen/revisar",
 ];
 const FILES = [
