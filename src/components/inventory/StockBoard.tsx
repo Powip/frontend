@@ -26,7 +26,8 @@ export interface StockBoardActions {
   onTracking: (item: BusinessInventoryItem, action: StockTrackingAction) => void;
   onAdjust: (item: BusinessInventoryItem) => void;
   onEdit: (variantId: string) => void;
-  onKardex: (sku: string) => void;
+  /** FEAT-24 H10: abre Movimientos filtrado por la variante (`label` = su nombre y SKU). */
+  onKardex: (variantId: string, label: string) => void;
 }
 
 const STATUS_CLASS: Record<StockStatus, string> = {
@@ -245,7 +246,7 @@ export function StockByProduct({ groups, inventories, isLoading, emptyText, acti
                             {variant.positions.length} almacenes
                           </Button>
                         )}
-                        <Button size="icon" variant="ghost" className="h-8 w-8" title="Ver movimientos" onClick={() => actions.onKardex(first.sku)}>
+                        <Button size="icon" variant="ghost" className="h-8 w-8" title="Ver movimientos" onClick={() => actions.onKardex(variant.variantId, `${[first.productName, label].filter(Boolean).join(" · ")}${first.sku ? ` (${first.sku})` : ""}`)}>
                           <History className="h-4 w-4" />
                         </Button>
                         <Button size="icon" variant="ghost" className="h-8 w-8" title="Editar Producto" onClick={() => actions.onEdit(variant.variantId)}>

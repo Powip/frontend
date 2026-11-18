@@ -34,7 +34,9 @@ jest.mock("@/components/labels/PrintLabelsDialog", () => ({
   PrintLabelsDialog: ({ source }: { source: { productIds: string[]; title?: string } }) => <div>etiquetas de {source.productIds.join(",")} · {source.title}</div>,
 }));
 jest.mock("@/components/inventory/MovementHistoryTable", () => ({
-  MovementHistoryTable: ({ inventoryItemIds, title }: { inventoryItemIds?: string[]; title?: string }) => <div data-testid="kardex">{title}: {inventoryItemIds?.join(",")}</div>,
+  MovementHistoryTable: ({ variants, title }: { variants?: Array<{ id: string; label: string }>; title?: string }) => (
+    <div data-testid="kardex">{title}: {variants?.map((variant) => `${variant.id}=${variant.label}`).join(", ")}</div>
+  ),
 }));
 
 const conflict409 = (message: string) =>
@@ -156,11 +158,11 @@ describe("Ficha del producto en pestañas (FEAT-24 H4-D)", () => {
     expect(screen.getByText("Sin canal (solo POWIP)")).toBeInTheDocument();
   });
 
-  it("Historial: el kardex se filtra por los ítems de inventario del producto", async () => {
+  it("Historial: el kardex de la fachada se elige por variante del producto (FEAT-24 H10)", async () => {
     const user = userEvent.setup();
     renderFicha();
     await user.click(await screen.findByRole("tab", { name: "Historial" }));
-    expect(await screen.findByTestId("kardex")).toHaveTextContent("Historial (kardex): ii-v1,ii-v2");
+    expect(await screen.findByTestId("kardex")).toHaveTextContent("Historial (kardex): v1=Talla: S (POL0001-S), v2=Talla: M (POL0001-M)");
   });
 
   it("producto simple: sin pestaña Variantes; su SKU y su código de barras están en General", async () => {

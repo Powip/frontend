@@ -79,7 +79,7 @@ export default function ReceptionsTab({ companyId, canEdit, scopeInventoryIds }:
   const refreshAll = () => {
     void queryClient.invalidateQueries({ queryKey: ["return-receptions", companyId] });
     void queryClient.invalidateQueries({ queryKey: ["business-inventory-items"] });
-    void queryClient.invalidateQueries({ queryKey: ["inventory-movement-history", companyId] });
+    void queryClient.invalidateQueries({ queryKey: ["inventory-kardex", companyId] });
   };
 
   const errorBox = (error: unknown, retry: () => void) => (
