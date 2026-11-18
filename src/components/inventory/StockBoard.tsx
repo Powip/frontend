@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatMoney } from "@/lib/money";
+import { COVERAGE_TONE_CLASS, coverageText, coverageTone } from "@/lib/suggestedPurchase";
+import type { VariantCoverage } from "@/hooks/useStockCoverage";
 import { formatVariantLabel } from "@/lib/variantAttributes";
 import { isTracked } from "@/services/inventoryTrackingService";
 import type { BusinessInventoryItem } from "@/services/businessInventoryItemsService";
@@ -161,12 +163,29 @@ interface ProductViewProps {
   emptyText: string;
   actions: StockBoardActions;
   meta?: WarehouseMeta;
+  /** FEAT-24 H13-D2: columna «Cobertura» (sin esto, no se muestra). */
+  coverage?: { byVariant: Map<string, VariantCoverage>; targetDays: number };
+}
+
+/** «N días» o «—» (sin ventas); ámbar bajo los días objetivo y rojo en 0. */
+function CoverageCell({ variantId, coverage }: { variantId: string; coverage: NonNullable<ProductViewProps["coverage"]> }) {
+  const days = coverage.byVariant.get(variantId)?.coverageDays ?? null;
+  const tone = coverageTone(days, coverage.targetDays);
+  return (
+    <TableCell
+      className={`whitespace-nowrap text-right tabular-nums ${COVERAGE_TONE_CLASS[tone]}`}
+      data-testid={`coverage-${variantId}`}
+      title={days === null ? "Sin ventas en la ventana" : tone === "low" || tone === "out" ? `Menos de ${coverage.targetDays} días de venta` : undefined}
+    >
+      {coverageText(days)}
+    </TableCell>
+  );
 }
 
 /** Vista «Por producto»: filas por variante agrupadas por producto, una columna por almacén. */
-export function StockByProduct({ groups, inventories, isLoading, emptyText, actions, meta = NO_META }: ProductViewProps) {
+export function StockByProduct({ groups, inventories, isLoading, emptyText, actions, meta = NO_META, coverage }: ProductViewProps) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
-  const cols = inventories.length + 4;
+  const cols = inventories.length + 4 + (coverage ? 1 : 0);
   return (
     <div className="flex-1 overflow-auto rounded-md border">
       <Table>
@@ -185,6 +204,7 @@ export function StockByProduct({ groups, inventories, isLoading, emptyText, acti
             ))}
             <TableHead className="text-right">Disponible total</TableHead>
             <TableHead>Estado</TableHead>
+            {coverage ? <TableHead className="text-right" title={`Días que dura el disponible a la venta diaria. Objetivo: ${coverage.targetDays} días`}>Cobertura</TableHead> : null}
             <TableHead className="text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>
@@ -196,6 +216,7 @@ export function StockByProduct({ groups, inventories, isLoading, emptyText, acti
                 {inventories.map((inv) => <TableCell key={inv.id}><Skeleton className="mx-auto h-4 w-12" /></TableCell>)}
                 <TableCell><Skeleton className="ml-auto h-4 w-12" /></TableCell>
                 <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                {coverage ? <TableCell><Skeleton className="ml-auto h-4 w-12" /></TableCell> : null}
                 <TableCell><Skeleton className="ml-auto h-4 w-24" /></TableCell>
               </TableRow>
             ))
@@ -240,6 +261,7 @@ export function StockByProduct({ groups, inventories, isLoading, emptyText, acti
                       })}
                       <TableCell className={`text-right tabular-nums ${availableClass(variant.available)}`}>{variant.available}</TableCell>
                       <TableCell><StatusBadge status={variant.status} /></TableCell>
+                      {coverage ? <CoverageCell variantId={variant.variantId} coverage={coverage} /> : null}
                       <TableCell className="space-x-1 whitespace-nowrap text-right" onClick={(event) => event.stopPropagation()}>
                         {single ? <PositionActions item={single} actions={actions} /> : (
                           <Button size="sm" variant="outline" onClick={() => setOpen((state) => ({ ...state, [variant.variantId]: true }))}>
