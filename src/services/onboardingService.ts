@@ -59,15 +59,23 @@ export async function fetchAddOns(signal?: AbortSignal): Promise<BackendAddOn[]>
   return Array.isArray(data) ? data : [];
 }
 
-/** options.migrate: lo manda solo "Pasate a Flow" (FEAT-25); sin él, un plan no-Flow vigente da 409. */
+/**
+ * options.migrate: lo manda solo "Pasate a Flow" (FEAT-25); sin él, un plan no-Flow vigente da 409.
+ * options.billingEmail: email corregido para Flow cuando rechazó el de la cuenta (FIX-flow-email-invalido).
+ */
 export async function startFlowCheckout(
   planId: string,
   addOnIds: string[],
-  options?: { migrate?: boolean },
+  options?: { migrate?: boolean; billingEmail?: string },
 ): Promise<FlowCheckoutResponse> {
   const { data } = await axiosAuth.post<FlowCheckoutResponse>(
     `${GATEWAY.subscription}/subscriptions/flow/checkout`,
-    options?.migrate ? { planId, addOnIds, migrate: true } : { planId, addOnIds },
+    {
+      planId,
+      addOnIds,
+      ...(options?.migrate ? { migrate: true } : {}),
+      ...(options?.billingEmail ? { billingEmail: options.billingEmail } : {}),
+    },
   );
   return data;
 }

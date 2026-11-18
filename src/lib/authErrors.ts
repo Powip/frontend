@@ -132,7 +132,15 @@ function registrationValidationMessage(message: string): string | undefined {
 }
 
 /** Keeps registration guidance actionable without displaying untrusted server details. */
-export function registrationErrorMessage(error: unknown): string {
+/** Copy de ms-auth EMAIL_DOMAIN_NO_MAIL: el dominio no tiene MX y Flow rechazaría el email al pagar. */
+function emailDomainNoMailMessage(email?: string): string {
+  const at = email?.trim().lastIndexOf("@") ?? -1;
+  const domain = at >= 0 ? (email ?? "").trim().slice(at + 1).toLowerCase() : "";
+  const subject = domain ? `El dominio "${domain}"` : "El dominio de tu email";
+  return `${subject} no recibe correos. Revisa que esté bien escrito o usa otro email (por ejemplo, uno de Gmail).`;
+}
+
+export function registrationErrorMessage(error: unknown, email?: string): string {
   const fallback = "No pudimos crear tu cuenta. Intenta nuevamente.";
   const record = asRecord(error);
   if (!record) return fallback;
@@ -158,6 +166,9 @@ export function registrationErrorMessage(error: unknown): string {
   const payload = response?.data;
   const messages = payloadMessages(payload).map(normalize);
   const payloadRecord = asRecord(payload);
+  if (status === 400 && payloadRecord?.code === "EMAIL_DOMAIN_NO_MAIL") {
+    return emailDomainNoMailMessage(email);
+  }
   const details = [
     ...messages,
     ...payloadMessages(payloadRecord?.code),

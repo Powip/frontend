@@ -389,14 +389,67 @@ describe("useOnboardingFlow", () => {
     expect(onActivated).not.toHaveBeenCalled();
   });
 
-  it("checkout con email rechazado por Flow explica que el email tiene que ser real", async () => {
+  // FIX-flow-email-invalido: el cliente corrige el email en el mismo paso, sin contactar a soporte.
+  it("checkout con email rechazado por Flow pasa al paso para corregir el email, sin toast", async () => {
     mocked.startFlowCheckout.mockRejectedValue(apiError(422, "INVALID_EMAIL"));
     const { result } = setup();
 
     await act(() => result.current.initiateCardRegistration());
 
-    expect(result.current.state.error).toMatch(/email/i);
-    expect(result.current.state.step).not.toBe("CARD_WIDGET");
+    expect(result.current.state.step).toBe("INVALID_EMAIL");
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("submitBillingEmail reintenta el checkout con el email corregido y sigue al widget", async () => {
+    mocked.startFlowCheckout
+      .mockRejectedValueOnce(apiError(422, "INVALID_EMAIL"))
+      .mockResolvedValueOnce({
+        subscriptionId: "s1",
+        status: "PENDING_PAYMENT",
+        cardToken: "tk1",
+        redirectUrl: "https://flow.example/tk1",
+      });
+    const { result } = setup();
+    await act(() => result.current.initiateCardRegistration());
+
+    await act(() => result.current.submitBillingEmail(" Ana@Gmail.com "));
+
+    expect(mocked.startFlowCheckout).toHaveBeenLastCalledWith("p1", [], {
+      billingEmail: "ana@gmail.com",
+    });
+    expect(result.current.state.step).toBe("CARD_WIDGET");
+  });
+
+  it("si Flow rechaza también el email corregido, vuelve al mismo paso con ese email", async () => {
+    mocked.startFlowCheckout.mockRejectedValue(apiError(422, "INVALID_EMAIL"));
+    const { result } = setup();
+    await act(() => result.current.initiateCardRegistration());
+
+    await act(() => result.current.submitBillingEmail("ana@gmail.com"));
+
+    expect(result.current.state.step).toBe("INVALID_EMAIL");
+    expect(result.current.state.billingEmail).toBe("ana@gmail.com");
+    expect(result.current.state.rejectedEmail).toBe("ana@gmail.com");
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("en la migración a Flow el reintento con el email corregido conserva migrate", async () => {
+    mocked.startFlowCheckout.mockRejectedValue(apiError(422, "INVALID_EMAIL"));
+    const { result } = renderHook(() =>
+      useOnboardingFlow(
+        { planId: "p1", planName: "Basic", price: 99, initialUserId: "u1", migrate: true },
+        jest.fn().mockResolvedValue({}),
+        jest.fn(),
+      ),
+    );
+    await act(() => result.current.initiateCardRegistration());
+
+    await act(() => result.current.submitBillingEmail("ana@gmail.com"));
+
+    expect(mocked.startFlowCheckout).toHaveBeenLastCalledWith("p1", [], {
+      migrate: true,
+      billingEmail: "ana@gmail.com",
+    });
   });
 
   it("redirect: crea el checkout y lleva a la página de Flow (tarjeta o Yape) en vez del widget", async () => {
