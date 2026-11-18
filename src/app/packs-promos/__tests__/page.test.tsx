@@ -150,7 +150,7 @@ import { searchInventoryItems } from '@/services/inventoryItems.service';
 import type { IGetProducts } from '@/api/Interfaces';
 import type { BundlePack, GiftPack } from '@/interfaces/IPack';
 import type { InventoryItemForSale } from '@/interfaces/IProduct';
-import PacksPromosPage from '../page';
+import PacksPromosPage from '../_components/LegacyPacksPromos';
 
 // ── Casts ───────────────────────────────────────────────────────────────────
 

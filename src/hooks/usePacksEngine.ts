@@ -3,6 +3,19 @@ import { CartItem } from "@/interfaces/IOrder";
 import { AppliedPack, GiftOption, Pack, VolumePack, BundlePack, BundleProductRef } from "@/interfaces/IPack";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 import { bundleItemKey, hasValidBundleItems, matchesBundleItem } from "@/utils/bundleVariants";
+import { channelMatches, normalizeOrderChannel } from "@/lib/promotions/orderChannels";
+
+/**
+ * FEAT-24 H9 (H9-D5): una promo de Volumen del backend aplica en la tienda y el canal del pedido (vacío =
+ * todas/todos; SHOPIFY cuenta como WEB) y dentro de su vigencia (`startsAt` incluido, `endsAt` excluido).
+ */
+export function volumeApplies(p: VolumePack, channel: string | undefined, storeId: string | undefined, now: number = Date.now()): boolean {
+  if (channel && !channelMatches(p.channels, normalizeOrderChannel(channel))) return false;
+  if (storeId && p.storeIds?.length && !p.storeIds.includes(storeId)) return false;
+  if (p.startsAt && Date.parse(p.startsAt) > now) return false;
+  if (p.endsAt && Date.parse(p.endsAt) <= now) return false;
+  return true;
+}
 
 export function packNetUnit(p: VolumePack): number {
   return p.packPrice / p.minQty;
@@ -40,6 +53,8 @@ interface PvsState {
 interface UsePacksEngineArgs {
   packs: Pack[];
   channel?: string;
+  /** Tienda del pedido (FEAT-24 H9): filtra las promos de Volumen por `storeIds`. */
+  storeId?: string;
   cart: CartItem[];
   setCart: React.Dispatch<React.SetStateAction<CartItem[]>>;
   getVariantsForProduct: (productName: string) => Promise<InventoryItemForSale[]>;
@@ -48,6 +63,7 @@ interface UsePacksEngineArgs {
 export function usePacksEngine({
   packs,
   channel,
+  storeId,
   cart,
   setCart,
   getVariantsForProduct,
@@ -106,8 +122,11 @@ export function usePacksEngine({
 
   const activePacksForChannel = useMemo(
     () =>
-      packs.filter((p) => p.active && (!channel || p.channels.includes(channel))),
-    [packs, channel],
+      packs.filter((p) =>
+        p.active &&
+        (p.type === "VOLUME" ? volumeApplies(p, channel, storeId) : !channel || p.channels.includes(channel)),
+      ),
+    [packs, channel, storeId],
   );
 
   const activePacksForProduct = useCallback(
