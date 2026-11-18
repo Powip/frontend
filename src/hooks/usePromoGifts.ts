@@ -4,10 +4,13 @@ import type { CartItem } from "@/interfaces/IOrder";
 import { evaluatePromotions, type EvaluateItem, type EvaluatedGift } from "@/services/promotionsService";
 import { getOrderItemPricing } from "@/app/registrar-venta/orderItemPricing";
 
-/** Ítems del carrito tal como los ve `/promos/evaluate` (precio bruto y descuento de la línea). */
+/**
+ * Ítems del carrito tal como los ve `/promos/evaluate` (precio bruto y descuento de la línea). Las líneas
+ * sin variante (las manuales de una cotización) no van: el backend exige la variante.
+ */
 export function cartToEvaluateItems(cart: CartItem[]): EvaluateItem[] {
   return cart
-    .filter((line) => line.quantity > 0 && !line.isGift)
+    .filter((line) => line.quantity > 0 && !line.isGift && !!line.variantId)
     .map((line) => {
       const { unitPrice, discountAmount } = getOrderItemPricing(line);
       return { productVariantId: line.variantId, quantity: line.quantity, unitPrice, discountAmount };
@@ -17,7 +20,8 @@ export function cartToEvaluateItems(cart: CartItem[]): EvaluateItem[] {
 /**
  * FEAT-24 H9 (H9-D5) — regalos que el backend va a sumar al guardar la venta manual (`/promos/evaluate`,
  * con la tienda y el canal del pedido). Solo se muestran: el backend agrega las líneas al crear la venta.
- * Al editar un pedido no se evalúa (el backend solo suma regalos al crear).
+ * Al editar un pedido no se evalúa (el backend solo suma regalos al crear). Cotizaciones lo usa sin canal
+ * (el canal se elige al convertir), así que solo ve las promos sin canales.
  */
 export function usePromoGifts({
   cart,

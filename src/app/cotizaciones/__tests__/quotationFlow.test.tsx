@@ -37,6 +37,10 @@ import { getLeadPaymentCapabilities } from "@/services/leadPaymentsService";
 jest.mock("@/contexts/PacksContext", () => ({
   usePacks: () => ({ packs: [] }),
 }));
+// FEAT-24 H9: los regalos los evalúa el backend con react-query; acá no se renderiza su proveedor.
+jest.mock("@/hooks/usePromoGifts", () => ({
+  usePromoGifts: () => ({ gifts: [], loading: false, failed: false }),
+}));
 jest.mock("@/components/registrar-venta/SuggestionsPanel", () => ({
   __esModule: true,
   default: () => null,

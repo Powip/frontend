@@ -28,6 +28,8 @@ import {
 import { usePacks } from "@/contexts/PacksContext";
 import { usePacksEngine } from "@/hooks/usePacksEngine";
 import SuggestionsPanel from "@/components/registrar-venta/SuggestionsPanel";
+import PromoGiftsPanel from "@/components/registrar-venta/PromoGiftsPanel";
+import { usePromoGifts } from "@/hooks/usePromoGifts";
 import type { CartItem } from "@/interfaces/IOrder";
 import type { InventoryItemForSale } from "@/interfaces/IProduct";
 import type { BundleProductRef, Pack } from "@/interfaces/IPack";
@@ -141,7 +143,9 @@ export default function QuotationForm({
   const [note, setNote] = useState(quotation?.internalNote || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const { packs } = usePacks();
+  const { packs: localPacks } = usePacks();
+  // FEAT-24 H9: los regalos (GIFT) ya no salen del navegador; los evalúa el backend (usePromoGifts).
+  const packs = useMemo(() => localPacks.filter((pack) => pack.type !== "GIFT"), [localPacks]);
   const bundleScope = useRef({ storeId, inventoryId, active: true });
   bundleScope.current.storeId = storeId;
   bundleScope.current.inventoryId = inventoryId;
@@ -361,10 +365,9 @@ export default function QuotationForm({
     }),
     [cart, engine.appliedPacks],
   );
-  const pendingHints = engine.pendingHints.filter(
-    (pack) => pack.type !== "GIFT" && !appliedPacks[pack.id],
-  );
-  const giftHints = engine.pendingHints.filter((pack) => pack.type === "GIFT");
+  const pendingHints = engine.pendingHints.filter((pack) => !appliedPacks[pack.id]);
+  // Sin canal: se elige al convertir la cotización, así que solo aplican las promos sin canales.
+  const promoGifts = usePromoGifts({ cart, storeId, channel: null, enabled: true });
   const quantities = cart.reduce<Record<string, number>>((result, line) => {
     if (line.variantId) result[line.variantId] = (result[line.variantId] || 0) + line.quantity;
     return result;
@@ -1172,17 +1175,13 @@ export default function QuotationForm({
                 }}
                 onAutoAddBundleItem={(item) => void autoAddBundle(item)}
               />
-              {giftHints.map((pack) => (
-                <div
-                  key={pack.id}
-                  className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm dark:bg-amber-500/10"
-                >
-                  <strong>Regalo desbloqueado: {pack.name}</strong>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Ofrece este incentivo al cliente. El regalo se define al registrar la venta.
-                  </p>
-                </div>
-              ))}
+              <PromoGiftsPanel
+                gifts={promoGifts.gifts}
+                failed={promoGifts.failed}
+                title="Regalos de promociones que aplican"
+                note="Ofrécelos al cliente. La cotización no los suma: el regalo se define al registrar la venta."
+                failedText="No se pudieron revisar los regalos de las promociones."
+              />
               {Object.keys(appliedPacks).map((id) => (
                 <Button
                   type="button"
