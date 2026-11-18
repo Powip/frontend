@@ -8,6 +8,7 @@
  * 5. Quien no es admin solo lee.
  * 6. FEAT-24 H3: las reglas de compras (afecta al IGV y compra directa a courier).
  * 7. FEAT-24 H13: días de cobertura objetivo (1..365, 30 por defecto; solo se mandan si cambiaron).
+ * 8. FEAT-24 H5-L: días de aviso de vencimiento (igual: 1..365, 30 por defecto; solo el Administrador).
  */
 
 import { render, screen, waitFor } from "@testing-library/react";
@@ -178,6 +179,34 @@ describe("Reglas de inventario (FEAT-24 H2-F)", () => {
       }),
     );
     await waitFor(() => expect(screen.getByLabelText("Días de cobertura objetivo")).toHaveValue("45"));
+  });
+
+  it("días de aviso de vencimiento: valida 1..365 y lo manda solo si cambió (FEAT-24 H5-L)", async () => {
+    loginAs("ADMINISTRADOR");
+    const user = userEvent.setup();
+    mockGet.mockResolvedValue({ releaseAfterDays: 7, pickingRequired: false, igvAffected: true, allowPurchaseToCourier: false, expiryAlertDays: 45 });
+    mockSave.mockResolvedValue({ releaseAfterDays: 7, pickingRequired: false, igvAffected: true, allowPurchaseToCourier: false, expiryAlertDays: 60 });
+    renderSection();
+    const alertDays = await screen.findByLabelText("Días de aviso de vencimiento");
+    expect(alertDays).toHaveValue("45");
+    await user.clear(alertDays);
+    await user.type(alertDays, "0");
+    expect(screen.getByText("Escribe un número entero de 1 a 365.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Guardar reglas de inventario" })).toBeDisabled();
+    await user.clear(alertDays);
+    await user.type(alertDays, "60");
+    await user.click(screen.getByRole("button", { name: "Guardar reglas de inventario" }));
+    await waitFor(() =>
+      expect(mockSave).toHaveBeenCalledWith({ releaseAfterDays: 7, pickingRequired: false, igvAffected: true, allowPurchaseToCourier: false, expiryAlertDays: 60 }),
+    );
+  });
+
+  it("los días de aviso de vencimiento: 30 por defecto y Operaciones no los edita (FEAT-24 H5-L)", async () => {
+    loginAs("OPERACIONES");
+    renderSection();
+    const alertDays = await screen.findByLabelText("Días de aviso de vencimiento");
+    expect(alertDays).toHaveValue("30");
+    expect(alertDays).toBeDisabled();
   });
 
   it("sin el dato en el servidor muestra 30 y quien no es admin no lo edita (FEAT-24 H13)", async () => {
