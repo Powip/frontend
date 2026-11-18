@@ -116,3 +116,40 @@ describe("describeMovement con el libro de stock (FEAT-24 H1-B)", () => {
     expect(ledger("IN", "algo raro", {}, { referenceNumber: "", referenceId: UUID }).documentNumber).toBeNull();
   });
 });
+
+describe("describeMovement con los tipos nuevos del kardex (FEAT-24 H10)", () => {
+  const row = (type: string, reason: string | null, extra: Record<string, unknown> = {}) =>
+    describeMovement({ type, reason, quantity: 2, referenceId: null, physicalDelta: -2, reservedDelta: 0, physicalAfter: 5, reservedAfter: 0, ...extra } as never);
+
+  it.each([
+    ["ENTRADA_COMPRA", "PURCHASE_RECEPTION - OC-0001 - REC-0001", "Entrada por compra"],
+    ["DEVOLUCION_PROVEEDOR", null, "Devolución a proveedor"],
+    ["DESPACHO", "order.dispatched:3", "Salida por despacho"],
+    ["ENTREGA", "order.delivered:4", "Entrega del pedido"],
+    ["DEVOLUCION_EN_CAMINO", "order.cancelled:5", "Devolución en camino"],
+    ["DEVOLUCION_REINGRESO", null, "Reingreso por devolución"],
+    ["DEVOLUCION_MERMA", null, "Merma de devolución"],
+    ["TRASLADO_SALIDA", "TRANSFER_OUT - TRA-0004", "Traslado · salida"],
+    ["TRASLADO_EN_CAMINO", null, "Traslado · en camino"],
+    ["TRASLADO_ENTRADA", null, "Traslado · entrada"],
+    ["TRASLADO_DIFERENCIA", null, "Traslado · diferencia"],
+    ["AJUSTE_POSITIVO", null, "Ajuste +"],
+    ["AJUSTE_NEGATIVO", null, "Ajuste −"],
+    ["MERMA", null, "Merma"],
+    ["CAMBIO_ENTRADA", null, "Cambio · entra"],
+    ["CAMBIO_SALIDA", null, "Cambio · sale"],
+  ])("%s se llama «%s» aunque el motivo diga otra cosa", (type, reason, label) => {
+    expect(row(type, reason).label).toBe(label);
+  });
+
+  it("el motivo con nombre pasa al detalle; el evento del pedido no", () => {
+    expect(row("MERMA", "SHRINKAGE - Dañado")).toMatchObject({ label: "Merma", detail: "Merma (Dañado)" });
+    expect(row("AJUSTE_NEGATIVO", "ADJUSTMENT_OUT - otro - caja rota")).toMatchObject({ label: "Ajuste −", detail: "Ajuste · Otro · caja rota" });
+    expect(row("DEVOLUCION_EN_CAMINO", "order.cancelled:5")).toMatchObject({ detail: null });
+  });
+
+  it("reconoce OC-, REC- y DEV- como documento", () => {
+    expect(row("ENTRADA_COMPRA", null, { referenceId: "OC-0001", referenceNumber: null }).documentNumber).toBe("OC-0001");
+    expect(row("DEVOLUCION_PROVEEDOR", null, { referenceId: "DEV-0002" }).documentNumber).toBe("DEV-0002");
+  });
+});
