@@ -480,6 +480,18 @@ export function parseAuthUrlError(error: unknown): string {
   return detail ?? "No se pudo abrir la autorización de Shopify. Inténtalo de nuevo.";
 }
 
+/**
+ * Mensaje del rechazo de una sincronización manual con Shopify (`POST /shopify/sync/:tienda`, `POST /shopify/sync`,
+ * `POST /shopify/confirm-sync/:tienda`). FEAT-24 SEC: piden la sesión de un administrador de la empresa de la tienda.
+ */
+export function parseShopifySyncError(error: unknown, fallback: string): string {
+  const status = httpStatus(error);
+  if (status === 401) return "Tu sesión venció. Vuelve a iniciar sesión.";
+  if (status === 403) return "Solo un administrador de la empresa puede sincronizar con Shopify.";
+  if (status === 404) return "Esa tienda de Shopify no está conectada a tu empresa.";
+  return fallback;
+}
+
 /** Clave numérica de una ubicación de Shopify (gid o número); null si no es una ubicación. */
 export function locationKey(id: string | null | undefined): string | null {
   if (typeof id !== "string") return null;

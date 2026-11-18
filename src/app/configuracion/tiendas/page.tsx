@@ -14,6 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { parseShopifySyncError } from "@/lib/shopifyStock";
 import {
   Edit2,
   Plus,
@@ -180,11 +182,9 @@ export default function TiendasPage() {
       const integrationApiUrl =
         process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3007";
 
-      // Sincronizar todas las tiendas en paralelo
+      // Sincronizar todas las tiendas en paralelo. FEAT-24 SEC: con la sesión (admin de la empresa de la tienda).
       const syncPromises = shopifyConnectedShops.map((shop) =>
-        axios.post(`${integrationApiUrl}/shopify/sync/${shop.shop_url}`, {
-          accessToken: "dynamic",
-        }),
+        axiosAuth.post(`${integrationApiUrl}/shopify/sync/${shop.shop_url}`, {}),
       );
 
       const results = await Promise.all(syncPromises);
@@ -206,7 +206,7 @@ export default function TiendasPage() {
       }
     } catch (error) {
       console.error("Error en sincronización global:", error);
-      toast.error("Error al sincronizar tiendas Shopify");
+      toast.error(parseShopifySyncError(error, "Error al sincronizar tiendas Shopify"));
     } finally {
       setSyncingGlobal(false);
     }
@@ -250,7 +250,8 @@ export default function TiendasPage() {
       if (!companyId) return;
       const integrationApiUrl =
         process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3007";
-      const response = await axios.get(
+      // FEAT-24 SEC: con la sesión; ms-integrations exige que la empresa de la ruta sea la del token.
+      const response = await axiosAuth.get(
         `${integrationApiUrl}/shopify/status/${companyId}`,
       );
       if (currentCompanyId.current === companyId)
@@ -683,12 +684,10 @@ export default function TiendasPage() {
                               const integrationApiUrl =
                                 process.env.NEXT_PUBLIC_API_INTEGRATIONS ||
                                 "http://localhost:3007";
-                              axios
+                              axiosAuth
                                 .post(
                                   `${integrationApiUrl}/shopify/sync/${shopInfo.shop_url}`,
-                                  {
-                                    accessToken: "dynamic",
-                                  },
+                                  {},
                                 )
                                 .then((response) => {
                                   const { total_found, orders_synced } =
@@ -703,8 +702,13 @@ export default function TiendasPage() {
                                     );
                                   }
                                 })
-                                .catch(() =>
-                                  toast.error("Error sincronizando"),
+                                .catch((error) =>
+                                  toast.error(
+                                    parseShopifySyncError(
+                                      error,
+                                      "Error sincronizando",
+                                    ),
+                                  ),
                                 );
                             }}
                           >
