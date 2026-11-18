@@ -33,6 +33,9 @@ import {
 import BrandSelect from "@/components/products/BrandSelect";
 import VariantStatusControl from "@/components/products/VariantStatusControl";
 import VariantCodes from "@/components/products/VariantCodes";
+import VariantCostField from "@/components/products/VariantCostField";
+import { isCompanyAdminRole, MAX_PURCHASE_FACTOR, MAX_PURCHASE_UNIT_LENGTH, parseWhole } from "@/lib/purchaseOrders";
+import { getVariantCosts } from "@/services/purchasesService";
 import { MAX_ITEM_UNITS, MAX_ITEM_UNITS_MESSAGE, largeQuantityConfirmText, needsQuantityConfirmation } from "@/lib/stockLimits";
 import { formatVariantLabel } from "@/lib/variantAttributes";
 
@@ -154,6 +157,13 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
   const [variants, setVariants] = useState<VariantForm[]>([]);
   const [trackingMode, setTrackingMode] = useState<TrackingMode>("NONE");
   const [companySku, setCompanySku] = useState("");
+  // FEAT-24 H3: unidad de compra del producto («Caja» × 12). Vacía = se compra por unidad.
+  const [purchaseUnit, setPurchaseUnit] = useState("");
+  const [purchaseFactor, setPurchaseFactor] = useState("1");
+  const loadedPurchase = useRef<{ unit: string; factor: string }>({ unit: "", factor: "1" });
+  // FEAT-24 H3 (H3-D17): costo promedio de las variantes guardadas (Map) o "error" si no se pudo leer.
+  const [variantCosts, setCostsByVariant] = useState<Map<string, number | null> | "error" | undefined>(undefined);
+  const canEditCosts = canSeeCosts && isCompanyAdminRole(auth?.user?.role);
   const [message, setMessage] = useState("");
   const [confirmLargeStock, setConfirmLargeStock] = useState(false);
 
@@ -259,6 +269,13 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
 
         // Cargar companySku si existe
         setCompanySku(product.companySku || "");
+
+        // FEAT-24 H3: unidad de compra del producto.
+        const unit = String(productDetails.purchaseUnit ?? product.purchaseUnit ?? "");
+        const factor = String(Number(productDetails.purchaseFactor ?? product.purchaseFactor) || 1);
+        loadedPurchase.current = { unit, factor };
+        setPurchaseUnit(unit);
+        setPurchaseFactor(factor);
 
         // Obtener TODAS las variantes del producto para mostrarlas
         const { data: allVariants } = await axiosAuth.get(
@@ -563,6 +580,8 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
     setCustomAttributes([]);
     setVariants([]);
     setCompanySku("");
+    setPurchaseUnit("");
+    setPurchaseFactor("1");
     setTrackingMode("NONE");
     setMessage("");
   };
@@ -578,6 +597,26 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
   const handleRemoveVariant = (index: number) => {
     setVariants((prev) => prev.filter((_, i) => i !== index));
   };
+
+  // FEAT-24 H3 (H3-D17): el costo promedio de las variantes guardadas (solo roles con costos).
+  const savedVariantIds = variants
+    .filter((variant) => variant.id && !variant.mergedInto)
+    .map((variant) => variant.id as string)
+    .join(",");
+  useEffect(() => {
+    if (!canSeeCosts || !isEditMode || !savedVariantIds) return;
+    let cancelled = false;
+    getVariantCosts(savedVariantIds.split(","))
+      .then((rows) => {
+        if (!cancelled) setCostsByVariant(new Map(rows.map((row) => [row.variantId, row.averageCost])));
+      })
+      .catch(() => {
+        if (!cancelled) setCostsByVariant("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canSeeCosts, isEditMode, savedVariantIds]);
 
   // =========================
   // Submit
@@ -623,6 +662,26 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
         return;
       }
     }
+
+    // FEAT-24 H3: unidad de compra.
+    const factorValue = parseWhole(purchaseFactor, 1, MAX_PURCHASE_FACTOR);
+    if (factorValue === null) {
+      toast.error(`Las unidades por unidad de compra van de 1 a ${MAX_PURCHASE_FACTOR.toLocaleString("es-PE")}.`);
+      return;
+    }
+    if (purchaseUnit.trim().length > MAX_PURCHASE_UNIT_LENGTH) {
+      toast.error(`La unidad de compra tiene hasta ${MAX_PURCHASE_UNIT_LENGTH} caracteres.`);
+      return;
+    }
+    const unitValue = purchaseUnit.trim() || null;
+    if (!unitValue && factorValue > 1) {
+      toast.error("Escribe la unidad de compra (ej. Caja) o deja 1 unidad por unidad de compra.");
+      return;
+    }
+    // Solo se manda si cambió (o, al crear, si no es «por unidad»): un servidor anterior a H3 no la conoce.
+    const purchaseChanged =
+      (unitValue ?? "") !== loadedPurchase.current.unit || String(factorValue) !== loadedPurchase.current.factor;
+    const purchasePayload = purchaseChanged ? { purchaseUnit: unitValue, purchaseFactor: factorValue } : {};
 
     // FEAT-24 H0: una carga grande pide confirmar antes de enviar.
     const largestStock = isEditMode || isTracked(trackingMode) ? 0 : Math.max(0, ...variants.map((v) => Number(v.stock) || 0));
@@ -678,6 +737,7 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
       subcategoryId: form.subcategoryId,
       inventory_id: form.inventory_id,
       brandId: form.brandId || null,
+      ...purchasePayload,
       attributes: attributesPayload,
       variants: variantsPayload,
       imageUrl: form.mainImageUrl,
@@ -702,6 +762,7 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
           name: form.name,
           description: form.description,
           brandId: form.brandId || null,
+          ...purchasePayload,
         };
 
         await axiosAuth.patch(
@@ -893,6 +954,32 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                 value={form.brandId}
                 onChange={(brandId) => setForm((prev) => ({ ...prev, brandId }))}
               />
+
+              {/* FEAT-24 H3: unidad de compra (las órdenes de compra la proponen) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="purchase-unit">Unidad de compra (opcional)</Label>
+                  <Input
+                    id="purchase-unit"
+                    maxLength={MAX_PURCHASE_UNIT_LENGTH}
+                    placeholder="Ej: Caja"
+                    value={purchaseUnit}
+                    onChange={(e) => setPurchaseUnit(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="purchase-factor">Unidades por unidad de compra</Label>
+                  <Input
+                    id="purchase-factor"
+                    inputMode="numeric"
+                    value={purchaseFactor}
+                    onChange={(e) => setPurchaseFactor(e.target.value)}
+                  />
+                </div>
+                <p className="col-span-2 text-xs text-muted-foreground">
+                  Cómo lo compras (ej. Caja × 12): la orden de compra lo propone y se puede cambiar en cada compra.
+                </p>
+              </div>
 
               {/* Nombre */}
               <div className="space-y-2">
@@ -1132,6 +1219,26 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
 
                       {variant.id ? (
                         <VariantCodes sku={variant.sku} barcode={variant.barcode} powipEan={variant.powipEan} />
+                      ) : null}
+
+                      {/* FEAT-24 H3 (H3-D17): costo promedio; solo el Administrador lo carga a mano */}
+                      {variant.id && canSeeCosts && !variant.mergedInto ? (
+                        variantCosts === "error" ? (
+                          <p className="text-xs text-muted-foreground">No se pudo leer el costo promedio.</p>
+                        ) : (
+                          <VariantCostField
+                            variantId={variant.id}
+                            cost={variantCosts === undefined ? undefined : (variantCosts.get(variant.id) ?? null)}
+                            canEdit={canEditCosts}
+                            onSaved={(cost) =>
+                              setCostsByVariant((current) => {
+                                const next = new Map(current instanceof Map ? current : []);
+                                next.set(variant.id as string, cost);
+                                return next;
+                              })
+                            }
+                          />
+                        )
                       ) : null}
 
                       {/* Datos de la variante */}
