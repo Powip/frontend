@@ -1,3 +1,4 @@
+import { suggestedPurchaseHref } from "@/lib/suggestedPurchase";
 import { formatVariantLabel } from "@/lib/variantAttributes";
 import type {
   InventoryAlert,
@@ -45,6 +46,12 @@ export const ALERT_META: Record<string, AlertMeta> = {
 
 const metaOf = (type: string): AlertMeta => ALERT_META[type] ?? { title: type, tone: "slate", href: "/inventario/stock", action: "Ver" };
 
+/** Adónde lleva el botón: el atajo que trae la alerta (H13: «Bajo mínimo» → pedido sugerido) o la pantalla de su tipo. */
+export function alertHref(alert: Pick<InventoryAlert, "type" | "action">): string {
+  if (alert.action?.type === "suggested_purchase") return suggestedPurchaseHref(alert.action.params);
+  return metaOf(alert.type).href;
+}
+
 const days = (value: number | null | undefined) => (value === null || value === undefined ? "" : value === 1 ? "1 día" : `${value} días`);
 
 /** Número legible del pedido: el que resolvió ventas o «Pedido». */
@@ -52,13 +59,14 @@ const orderText = (orderId: string, orderNumbers: Record<string, string>) => ord
 
 function rowsOf(alert: InventoryAlert, ctx: { orderNumbers: Record<string, string>; warehouseName: (id: string) => string }): AlertRow[] {
   const meta = metaOf(alert.type);
+  const href = alertHref(alert);
   const base = (key: string, description: string, overrides: Partial<AlertRow> = {}): AlertRow => ({
     key: `${alert.type}:${key}`,
     type: alert.type,
     tone: meta.tone,
     title: meta.title,
     description,
-    href: meta.href,
+    href,
     action: meta.action,
     ...overrides,
   });
@@ -116,7 +124,7 @@ export function alertRows(data: InventoryAlerts, ctx: { orderNumbers?: Record<st
       const missing = alert.type === "sku_por_vincular" ? 0 : alert.count - rows.length;
       if (missing > 0) {
         const meta = metaOf(alert.type);
-        rows.push({ key: `${alert.type}:more`, type: alert.type, tone: meta.tone, title: meta.title, description: `Y ${missing} más.`, href: meta.href, action: meta.action });
+        rows.push({ key: `${alert.type}:more`, type: alert.type, tone: meta.tone, title: meta.title, description: `Y ${missing} más.`, href: alertHref(alert), action: meta.action });
       }
       return rows;
     });

@@ -65,3 +65,13 @@ it("el contador del menú muestra el total y se oculta en cero", async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(container).toBeEmptyDOMElement();
 });
+
+it("«Crear compra» de «Bajo mínimo» abre el pedido sugerido con los parámetros de su acción (FEAT-24 H13)", async () => {
+  jest.mocked(getInventoryAlerts).mockResolvedValue({
+    ...DATA,
+    alerts: DATA.alerts.map((alert) => (alert.type === "bajo_minimo" ? { ...alert, action: { type: "suggested_purchase", params: { includeWithoutSales: true } } } : alert)),
+  });
+  renderWith(<AlertsTab />);
+  const items = await screen.findAllByRole("listitem");
+  expect(within(items[0]).getByRole("link", { name: "Crear compra" })).toHaveAttribute("href", "/compras/sugerido?includeWithoutSales=true");
+});
