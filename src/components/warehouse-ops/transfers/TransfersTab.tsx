@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Eye, Plus } from "lucide-react";
+import { Eye, FileText, Plus } from "lucide-react";
 import { toast } from "sonner";
+import GreIssueDialog from "@/components/gre/GreIssueDialog";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
@@ -15,6 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/AuthContext";
+import { isGreEligibleTransferStatus } from "@/features/sunat/despatch-advice/utils/gre-form";
 import { useMyWarehouses } from "@/hooks/useMyWarehouses";
 import { useOperationKeys } from "@/hooks/useOperationKeys";
 import { formatDay, formatMoney } from "@/lib/purchaseOrders";
@@ -50,6 +52,7 @@ type DialogState =
   | { kind: "receive"; transfer: Transfer }
   | { kind: "dispatch"; transfer: Transfer }
   | { kind: "cancel"; transfer: Transfer }
+  | { kind: "gre"; transfer: Transfer }
   | null;
 
 export default function TransfersTab({ companyId }: { companyId: string }) {
@@ -103,6 +106,8 @@ export default function TransfersTab({ companyId }: { companyId: string }) {
   const canReceive = (transfer: Transfer) => access.operate && transfer.status === "en_camino" && scope.canOperate(transfer.destinationInventoryId);
   const canEdit = (transfer: Transfer) => access.operate && transfer.status === "borrador" && scope.canOperate(transfer.originInventoryId);
   const canCancel = (transfer: Transfer) => access.manage && canCancelTransfer(transfer);
+  // FEAT-24 H12: la guía de remisión (motivo 04) la emite quien despacha, mientras la mercadería no llegó.
+  const canIssueGre = (transfer: Transfer) => access.operate && isGreEligibleTransferStatus(transfer.status) && scope.canOperate(transfer.originInventoryId);
 
   const actionButtons = (transfer: Transfer, inDetail = false) => (
     <>
@@ -131,6 +136,12 @@ export default function TransfersTab({ companyId }: { companyId: string }) {
       {canReceive(transfer) ? (
         <Button type="button" size="sm" onClick={() => setDialog({ kind: "receive", transfer })}>
           Recibir
+        </Button>
+      ) : null}
+      {inDetail && canIssueGre(transfer) ? (
+        <Button type="button" size="sm" variant="outline" onClick={() => setDialog({ kind: "gre", transfer })}>
+          <FileText className="mr-1.5 h-4 w-4" aria-hidden="true" />
+          Emitir guía de remisión
         </Button>
       ) : null}
       {inDetail ? null : (
@@ -283,6 +294,18 @@ export default function TransfersTab({ companyId }: { companyId: string }) {
             refresh();
           }}
           onConflict={refresh}
+        />
+      ) : null}
+
+      {dialog?.kind === "gre" ? (
+        <GreIssueDialog
+          source={{
+            kind: "transfer",
+            transfer: dialog.transfer,
+            originName: nameOf(dialog.transfer.originInventoryId),
+            destinationName: nameOf(dialog.transfer.destinationInventoryId),
+          }}
+          onClose={() => setDialog(null)}
         />
       ) : null}
 

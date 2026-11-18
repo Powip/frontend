@@ -9,6 +9,8 @@ import { operationalStatus, receiptFinancialState } from "@/utils/orderState";
 import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
 import { ReservationWarehouseControl } from "@/components/orders/ReservationWarehouseControl";
 import { STOCK_WAREHOUSE_PERMISSION } from "@/lib/orderStock";
+import GreIssueDialog from "@/components/gre/GreIssueDialog";
+import { isGreEligibleOrderStatus } from "@/features/sunat/despatch-advice/utils/gre-form";
 import { OrderPaymentMethodPanel } from "@/components/registrar-venta/OrderPaymentMethodPanel";
 import { buildPendingOrderDetail } from "./customerServiceOrderDetail";
 import { CcSaleConfirmationPanel } from "@/components/atencion-cliente/cc-v2/CcSaleConfirmationPanel";
@@ -271,6 +273,8 @@ export default function CustomerServiceModal({
   // selector de estado, y como `order` de ReassignDeliveryModal).
   const [tab, setTab] = useState("resumen");
   const [orderHeader, setOrderHeader] = useState<OrderHeader | null>(null);
+  // FEAT-24 H12: guía de remisión remitente (SUNAT) del pedido.
+  const [greOpen, setGreOpen] = useState(false);
   const canManageCc = canManageCustomerServiceOrder(hasPermission, orderHeader?.canalOrigen);
   const canEditOrder = hasPermission("EDIT_SALE");
   const isPendingPurchase = isCommercialLeadOrder(orderHeader ?? {}) ||
@@ -1098,6 +1102,19 @@ export default function CustomerServiceModal({
                         onOrderUpdated?.();
                       }}
                     />
+                  ) : null}
+                  {/* FEAT-24 H12: guía de remisión electrónica remitente (motivo 01) antes de que salga del almacén */}
+                  {orderHeader && orderHeader.id === orderId && isGreEligibleOrderStatus(orderHeader.status) ? (
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border p-3">
+                      <div className="text-sm">
+                        <div className="font-semibold">Guía de remisión (SUNAT)</div>
+                        <div className="text-xs text-muted-foreground">Se emite antes de que el paquete salga del almacén.</div>
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => setGreOpen(true)}>
+                        <FileText className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                        Emitir guía de remisión
+                      </Button>
+                    </div>
                   ) : null}
                   {/* Productos */}
                   <div className="border border-border rounded-lg p-4">
@@ -3220,6 +3237,9 @@ export default function CustomerServiceModal({
         />
       )}
 
+      {greOpen && orderHeader ? (
+        <GreIssueDialog source={{ kind: "order", orderId: orderHeader.id }} onClose={() => setGreOpen(false)} />
+      ) : null}
     </>
   );
 }
