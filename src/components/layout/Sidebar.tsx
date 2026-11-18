@@ -54,6 +54,7 @@ import {
 
 import { Button } from "../ui/button";
 import { Badge } from "@/components/ui/badge";
+import { InventoryAlertsBadge } from "@/components/inventory/reports/InventoryAlertsBadge";
 import { isBadgeActive } from "@/utils/navBadge";
 import {
   Avatar,
@@ -601,6 +602,7 @@ export function Sidebar({ className }: SidebarProps) {
                               child={child}
                               isCurrentPage={isChildActive(pathname, child.href)}
                             />
+                            {child.href === "/inventario" ? <InventoryAlertsBadge /> : null}
                           </Link>
                         </DropdownMenuItem>
                       ))}
@@ -680,6 +682,7 @@ export function Sidebar({ className }: SidebarProps) {
                                   child={child}
                                   isCurrentPage={isChildActive(pathname, child.href)}
                                 />
+                                {child.href === "/inventario" ? <InventoryAlertsBadge /> : null}
                               </Button>
                             </Link>
                           </div>
