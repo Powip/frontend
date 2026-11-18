@@ -17,7 +17,7 @@ import FichaLotsTab from "../FichaLotsTab";
 let role = "ADMINISTRADOR";
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { accessToken: "t", user: { id: "u1", role }, company: { id: "c1" } } }) }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), info: jest.fn() } }));
-jest.mock("@/services/lotsService", () => ({ listLots: jest.fn(), updateLot: jest.fn(), assignLot: jest.fn() }));
+jest.mock("@/services/lotsService", () => ({ LOTS_QUERY_KEY: "lots", listLots: jest.fn(), updateLot: jest.fn(), assignLot: jest.fn() }));
 jest.mock("@/hooks/useExpiryAlertDays", () => ({ useExpiryAlertDays: () => 30 }));
 jest.mock("@/hooks/useMyWarehouses");
 jest.mock("@/hooks/useCompanyWarehouses", () => ({
