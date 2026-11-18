@@ -95,3 +95,30 @@ it.each(["NONE", "IMEI"])("creates %s with compatible stock and tracking payload
   if (mode === "IMEI") expect(payload).toHaveProperty("trackingMode", "IMEI");
   else expect(payload).not.toHaveProperty("trackingMode");
 });
+
+it("FEAT-24 H5-L: «Maneja lotes» viaja en el alta y no se puede con IMEI", async () => {
+  render(<ProductCreateForm />);
+  const category = await screen.findByRole("option", { name: "Categoría A" });
+  fireEvent.change(category.closest("select")!, { target: { value: "category" } });
+  const subcategory = await screen.findByRole("option", { name: "Subcategoría A" });
+  fireEvent.change(subcategory.closest("select")!, { target: { value: "subcategory" } });
+  fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Crema" } });
+  fireEvent.click(screen.getByRole("button", { name: "Agregar atributo" }));
+  fireEvent.change(screen.getByText("Nombre del atributo").parentElement!.querySelector("input")!, { target: { value: "Tamaño" } });
+  fireEvent.change(screen.getByPlaceholderText("Ej: S, M, L, XL"), { target: { value: "50 ml" } });
+  fireEvent.click(screen.getByRole("button", { name: "Generar variantes" }));
+  fireEvent.change(screen.getByLabelText("Precio base"), { target: { value: "10" } });
+  fireEvent.change(screen.getByLabelText("Precio venta"), { target: { value: "15" } });
+  const lots = screen.getByLabelText("Este producto maneja lotes (lote y vencimiento)");
+  fireEvent.click(lots);
+  expect(lots).toBeChecked();
+  fireEvent.change(screen.getByLabelText("Control de unidades"), { target: { value: "IMEI" } });
+  expect(lots).toBeDisabled();
+  expect(lots).not.toBeChecked();
+  expect(screen.getByText("Un producto con IMEI o serie no maneja lotes.")).toBeInTheDocument();
+  fireEvent.change(screen.getByLabelText("Control de unidades"), { target: { value: "NONE" } });
+  expect(lots).toBeChecked();
+  fireEvent.click(screen.getByRole("button", { name: "Crear Producto" }));
+  await waitFor(() => expect(axiosAuth.post).toHaveBeenCalledTimes(1));
+  expect(jest.mocked(axiosAuth.post).mock.calls[0][1]).toHaveProperty("tracksLots", true);
+});

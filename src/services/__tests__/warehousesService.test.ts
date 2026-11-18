@@ -166,6 +166,9 @@ describe("Reglas de stock y recepciones en /warehouses (FEAT-24 H2-F)", () => {
       pickingRequired: false,
       igvAffected: true,
       allowPurchaseToCourier: false,
+      // FEAT-24 H13 y H5-L: días de cobertura y de aviso de vencimiento, 30 por defecto.
+      defaultCoverageDays: 30,
+      expiryAlertDays: 30,
     });
     expect(axiosAuth.get).toHaveBeenCalledWith(`${BASE}/inventory-rules`);
 
@@ -175,6 +178,8 @@ describe("Reglas de stock y recepciones en /warehouses (FEAT-24 H2-F)", () => {
       pickingRequired: true,
       igvAffected: true,
       allowPurchaseToCourier: false,
+      defaultCoverageDays: 30,
+      expiryAlertDays: 30,
     });
     expect(axiosAuth.put).toHaveBeenCalledWith(`${BASE}/inventory-rules`, { releaseAfterDays: 7, pickingRequired: true });
   });
@@ -185,13 +190,21 @@ describe("Reglas de stock y recepciones en /warehouses (FEAT-24 H2-F)", () => {
     });
     await expect(
       saveInventoryRules({ releaseAfterDays: null, pickingRequired: false, igvAffected: false, allowPurchaseToCourier: true }),
-    ).resolves.toEqual({ releaseAfterDays: null, pickingRequired: false, igvAffected: false, allowPurchaseToCourier: true });
+    ).resolves.toEqual({ releaseAfterDays: null, pickingRequired: false, igvAffected: false, allowPurchaseToCourier: true, defaultCoverageDays: 30, expiryAlertDays: 30 });
     expect(axiosAuth.put).toHaveBeenCalledWith(`${BASE}/inventory-rules`, {
       releaseAfterDays: null,
       pickingRequired: false,
       igvAffected: false,
       allowPurchaseToCourier: true,
     });
+  });
+
+  it("FEAT-24 H5-L: lee los días de aviso de vencimiento y los manda solo si vienen", async () => {
+    jest.mocked(axiosAuth.get).mockResolvedValue({ data: { releaseAfterDays: null, pickingRequired: false, expiryAlertDays: 45 } });
+    await expect(getInventoryRules()).resolves.toMatchObject({ expiryAlertDays: 45 });
+    jest.mocked(axiosAuth.put).mockResolvedValue({ data: { releaseAfterDays: null, pickingRequired: false, expiryAlertDays: 60 } });
+    await expect(saveInventoryRules({ releaseAfterDays: null, pickingRequired: false, expiryAlertDays: 60 })).resolves.toMatchObject({ expiryAlertDays: 60 });
+    expect(axiosAuth.put).toHaveBeenLastCalledWith(`${BASE}/inventory-rules`, { releaseAfterDays: null, pickingRequired: false, expiryAlertDays: 60 });
   });
 
   it("lista las recepciones por estado y recibe una con POST .../receive", async () => {

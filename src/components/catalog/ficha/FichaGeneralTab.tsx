@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ImagePlus, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -33,7 +34,16 @@ export const formFromProduct = (product: CatalogProductDetail): ProductGeneralFo
   purchaseUnit: product.purchaseUnit ?? "",
   purchaseFactor: String(product.purchaseFactor ?? 1),
   imageUrl: product.imageUrl ?? "",
+  tracksLots: product.tracksLots === true,
 });
+
+/** FEAT-24 H5-L: por qué el producto no puede manejar lotes (o `null`). Lo mismo valida ms-products (400). */
+export function lotTrackingBlockReason(product: Pick<CatalogProductDetail, "trackingMode" | "type">): string | null {
+  const mode = String(product.trackingMode ?? "NONE").toUpperCase();
+  if (mode === "IMEI" || mode === "SERIAL") return "Un producto con IMEI o serie no maneja lotes.";
+  if (product.type === "pack") return "Un pack no maneja lotes: los lotes van en sus componentes.";
+  return null;
+}
 
 export const codesFromVariant = (variant: CatalogVariantDetail | null | undefined): VariantCodesForm => ({
   companySku: variant?.companySku ?? "",
@@ -136,11 +146,14 @@ export default function FichaGeneralTab({
         void queryClient.invalidateQueries({ queryKey: ["catalog-product", product.companyId, product.id] });
         void queryClient.invalidateQueries({ queryKey: ["catalog-product-variants", product.id] });
         void queryClient.invalidateQueries({ queryKey: ["business-product-catalog"] });
+        // FEAT-24 H5-L: la recepción de OC y los traslados leen «Maneja lotes» de aquí.
+        void queryClient.invalidateQueries({ queryKey: ["lot-tracked-variants"] });
       }
     }
   };
 
   const disabled = !canEdit || saving;
+  const lotsBlocked = lotTrackingBlockReason(product);
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start gap-4">
@@ -190,6 +203,29 @@ export default function FichaGeneralTab({
             <Input id="ficha-purchase-factor" inputMode="numeric" value={form.purchaseFactor} disabled={disabled} onChange={(event) => set("purchaseFactor", event.target.value)} />
           </div>
           <p className="col-span-2 text-xs text-muted-foreground">Ej.: Caja × 12. Vacío = se compra por unidad.</p>
+        </div>
+        <div className="space-y-2">
+          <p className="text-sm font-medium leading-none">Lote y vencimiento</p>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="ficha-tracks-lots"
+              checked={Boolean(form.tracksLots)}
+              disabled={disabled || (lotsBlocked !== null && !form.tracksLots)}
+              aria-describedby="ficha-tracks-lots-help"
+              onCheckedChange={(checked) => set("tracksLots", checked === true)}
+            />
+            <Label htmlFor="ficha-tracks-lots" className="font-normal">Este producto maneja lotes</Label>
+          </div>
+          <p id="ficha-tracks-lots-help" className="text-xs text-muted-foreground">
+            {lotsBlocked && !form.tracksLots
+              ? lotsBlocked
+              : form.tracksLots
+                ? "Al recibir una compra se pide el lote y la fecha de vencimiento. Al despachar sale primero el que vence antes."
+                : "Actívalo en productos con fecha de vencimiento (cremas, suplementos, alimentos)."}
+          </p>
+          {product.tracksLots && !form.tracksLots ? (
+            <p className="text-xs text-amber-700 dark:text-amber-300">Apagarlo no borra los lotes que ya tiene el stock: solo deja de pedirlos al recibir.</p>
+          ) : null}
         </div>
         {simpleVariant ? (
           <>

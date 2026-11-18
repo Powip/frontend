@@ -39,6 +39,8 @@ export interface ProductGeneralForm {
   /** Texto del input: se valida como entero 1..10000. */
   purchaseFactor: string;
   imageUrl: string;
+  /** FEAT-24 H5-L: «Maneja lotes». */
+  tracksLots?: boolean;
 }
 
 export type ProductPatch = Partial<{
@@ -50,6 +52,7 @@ export type ProductPatch = Partial<{
   purchaseUnit: string | null;
   purchaseFactor: number;
   imageUrl: string | null;
+  tracksLots: boolean;
 }>;
 
 /** Solo los campos que cambiaron, ya normalizados; con errores no se manda nada. */
@@ -81,6 +84,7 @@ export function buildProductPatch(original: ProductGeneralForm, next: ProductGen
   } else if (factor !== (Number(clean(original.purchaseFactor)) || 1)) patch.purchaseFactor = factor;
 
   if (orNull(next.imageUrl) !== orNull(original.imageUrl)) patch.imageUrl = orNull(next.imageUrl);
+  if (Boolean(next.tracksLots) !== Boolean(original.tracksLots)) patch.tracksLots = Boolean(next.tracksLots);
 
   return errors.length ? { patch: {}, errors } : { patch, errors };
 }

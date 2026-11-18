@@ -104,10 +104,16 @@ export interface InventoryRules {
    * (con su valor por defecto); al guardar, si falta, queda como estaba.
    */
   defaultCoverageDays?: number;
+  /**
+   * FEAT-24 H5-L: días de aviso de «lotes por vencer» (1..365, 30 por defecto). Al leer siempre viene; al guardar,
+   * si falta, queda como estaba. Solo el Administrador lo cambia.
+   */
+  expiryAlertDays?: number;
 }
 
 /** Lo que devuelve el GET: todas las reglas con su valor por defecto. */
-export type InventoryRulesView = Required<Omit<InventoryRules, "defaultCoverageDays">> & Pick<InventoryRules, "defaultCoverageDays">;
+export type InventoryRulesView = Required<Omit<InventoryRules, "defaultCoverageDays" | "expiryAlertDays">> &
+  Pick<InventoryRules, "defaultCoverageDays" | "expiryAlertDays">;
 
 const coverageDays = (value: unknown): number => {
   const days = Number(value);
@@ -122,6 +128,7 @@ function inventoryRulesFrom(data: Partial<InventoryRules> | undefined): Inventor
     igvAffected: data?.igvAffected !== false,
     allowPurchaseToCourier: data?.allowPurchaseToCourier === true,
     defaultCoverageDays: coverageDays(data?.defaultCoverageDays),
+    expiryAlertDays: coverageDays(data?.expiryAlertDays),
   };
 }
 
@@ -189,6 +196,7 @@ export async function saveInventoryRules(rules: InventoryRules): Promise<Invento
     ...(rules.igvAffected !== undefined ? { igvAffected: rules.igvAffected } : {}),
     ...(rules.allowPurchaseToCourier !== undefined ? { allowPurchaseToCourier: rules.allowPurchaseToCourier } : {}),
     ...(rules.defaultCoverageDays !== undefined ? { defaultCoverageDays: rules.defaultCoverageDays } : {}),
+    ...(rules.expiryAlertDays !== undefined ? { expiryAlertDays: rules.expiryAlertDays } : {}),
   });
   return inventoryRulesFrom(data);
 }
