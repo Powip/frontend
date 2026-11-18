@@ -48,6 +48,8 @@ export interface PdfDocSpec {
   /** Totales a la derecha, el último en negrita. */
   foot?: Array<[string, string]>;
   note?: string;
+  /** Imagen al pie (p. ej. el QR de una guía de remisión), con un texto al lado. PNG o JPEG. */
+  image?: { dataUrl: string; caption?: string; sizeMm?: number };
   signatures?: string[];
   landscape?: boolean;
   fileName: string;
@@ -263,6 +265,28 @@ function drawClosing(doc: PdfDoc, spec: PdfDocSpec, startY: number): void {
     const lines = doc.splitTextToSize(pdfText(spec.note), width - MARGIN * 2);
     doc.text(lines, MARGIN, y + 2);
     y += 4 + lines.length * 4;
+  }
+  if (spec.image) {
+    const size = spec.image.sizeMm ?? 28;
+    const format = imageFormat(spec.image.dataUrl);
+    if (format) {
+      if (y + size > height - 18) {
+        doc.addPage();
+        y = MARGIN + 4;
+      }
+      try {
+        doc.addImage(spec.image.dataUrl, format, MARGIN, y + 2, size, size);
+      } catch {
+        // Sin imagen: el resto del documento sigue igual.
+      }
+      if (spec.image.caption) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(8);
+        doc.setTextColor(80, 80, 80);
+        doc.text(doc.splitTextToSize(pdfText(spec.image.caption), width - MARGIN * 2 - size - 6), MARGIN + size + 4, y + 8);
+      }
+      y += size + 6;
+    }
   }
   if (spec.signatures?.length) {
     let signY = Math.max(y + 22, height - 34);
