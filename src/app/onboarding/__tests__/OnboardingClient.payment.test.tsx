@@ -155,3 +155,57 @@ it("en el widget de tarjeta deja pasar a la página de Flow para pagar con Yape"
   const link = await screen.findByRole("link", { name: /Yape/ });
   expect(link).toHaveAttribute("href", "https://www.flow.cl/fixture");
 });
+
+// FIX-flow-email-invalido: Flow rechaza el email de la cuenta y el cliente lo corrige ahí mismo.
+it("si Flow rechaza el email, se corrige en el mismo paso y se reintenta el pago con el email nuevo", async () => {
+  jest.mocked(useAuth).mockReturnValue({
+    auth: {
+      accessToken: "fixture-token",
+      user: { id: "fixture-user", email: "ana@verach.com" },
+      company: null,
+    },
+    login: jest.fn(),
+    refreshSession,
+  } as unknown as ReturnType<typeof useAuth>);
+  mocked.startFlowCheckout
+    .mockRejectedValueOnce(
+      new AxiosError("Unprocessable", "INVALID_EMAIL", undefined, undefined, {
+        status: 422,
+        data: { code: "INVALID_EMAIL" },
+        statusText: "Unprocessable",
+        headers: {},
+        config: { headers: new AxiosHeaders() },
+      }),
+    )
+    .mockResolvedValueOnce({
+      subscriptionId: "new-subscription",
+      status: "PENDING_PAYMENT",
+      cardToken: "fixture-card-token",
+      redirectUrl: "https://www.flow.cl/fixture",
+    });
+
+  await openPayment();
+
+  expect(
+    await screen.findByText(
+      'Flow, nuestra pasarela de pago, no aceptó el email "ana@verach.com". Ingresa otro email para el pago. Te recomendamos uno de Gmail (@gmail.com).',
+    ),
+  ).toBeInTheDocument();
+  expect(screen.queryByText(/contacta a soporte/i)).not.toBeInTheDocument();
+  const input = screen.getByLabelText("Email para el pago");
+  expect(input).toHaveValue("ana@verach.com");
+  const submit = screen.getByRole("button", { name: "Continuar con el pago" });
+
+  fireEvent.change(input, { target: { value: "" } });
+  expect(submit).toBeDisabled();
+
+  fireEvent.change(input, { target: { value: "ana@gmail.com" } });
+  await act(async () => {
+    fireEvent.click(submit);
+  });
+
+  expect(mocked.startFlowCheckout).toHaveBeenLastCalledWith("basic", [], {
+    billingEmail: "ana@gmail.com",
+  });
+  await screen.findByText("Cargando widget de pago...");
+});

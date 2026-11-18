@@ -38,6 +38,7 @@ type OnboardingAction =
   | { type: "SET_SUBSCRIPTION"; subscription: SubscriptionMe }
   | { type: "SET_ERROR"; error: string }
   | { type: "SET_INLINE_ERROR"; error: string }
+  | { type: "SET_BILLING_EMAIL"; billingEmail: string }
   | { type: "RESTORE"; state: Partial<OnboardingState> };
 
 export interface RegisterData {
@@ -72,7 +73,9 @@ export interface UseOnboardingFlowReturn {
   selectAddOns: (ids: string[]) => void;
   register: (data: RegisterData) => Promise<void>;
   resumeSession: (userId: string) => void;
-  initiateCardRegistration: (via?: CardRegistrationVia) => Promise<void>;
+  initiateCardRegistration: (via?: CardRegistrationVia, billingEmail?: string) => Promise<void>;
+  /** Flow rechazó el email: reintenta el checkout con el email que corrigió el cliente. */
+  submitBillingEmail: (email: string) => Promise<void>;
   confirmPayment: () => Promise<void>;
   checkPaymentAgain: () => Promise<void>;
   restoreFromStorage: (stored: StoredOnboardingState) => void;
@@ -110,6 +113,8 @@ function reducer(state: OnboardingState, action: OnboardingAction): OnboardingSt
       return { ...state, step: "ERROR", isLoading: false, error: action.error };
     case "SET_INLINE_ERROR":
       return { ...state, isLoading: false, error: action.error };
+    case "SET_BILLING_EMAIL":
+      return { ...state, billingEmail: action.billingEmail };
     case "RESTORE":
       return { ...state, ...action.state };
     default:
@@ -160,6 +165,7 @@ export function useOnboardingFlow(
     isLoading: false,
     migrate: initial.migrate === true,
     firstChargeDate: null,
+    billingEmail: null,
   };
 
   const [state, dispatch] = useReducer(reducer, initialState, (value) => {
@@ -182,6 +188,8 @@ export function useOnboardingFlow(
   const paymentRevisionRef = useRef(0);
   const paymentInFlightRef = useRef<number | null>(null);
   const verifyExistingPaymentRef = useRef(false);
+  /** Cómo eligió registrar el medio de pago, para reintentar igual tras corregir el email. */
+  const lastViaRef = useRef<CardRegistrationVia>("widget");
   const existingSubscriptionIdRef = useRef<string | null>(null);
   const registeredAccountsRef = useRef(new Map<string, string>());
   const registrationInFlightRef = useRef(false);
@@ -458,10 +466,12 @@ export function useOnboardingFlow(
     [isCurrentPayment, showExistingSubscription],
   );
 
-  const initiateCardRegistration = useCallback(async (via: CardRegistrationVia = "widget") => {
+  const initiateCardRegistration = useCallback(async (via: CardRegistrationVia = "widget", billingEmail?: string) => {
     const revision = beginPayment();
     if (revision === null) return;
+    lastViaRef.current = via;
     const snapshot = stateRef.current;
+    const emailForFlow = billingEmail ?? snapshot.billingEmail ?? undefined;
     dispatch({ type: "SET_LOADING", isLoading: true });
     try {
       if (!snapshot.userId || !snapshot.planId) {
@@ -486,9 +496,14 @@ export function useOnboardingFlow(
         dispatch({ type: "SET_STEP", step: "CARD_WIDGET" });
         return;
       }
-      const checkout = snapshot.migrate
-        ? await startFlowCheckout(snapshot.planId, snapshot.addOnIds, { migrate: true })
-        : await startFlowCheckout(snapshot.planId, snapshot.addOnIds);
+      const checkoutOptions = {
+        ...(snapshot.migrate ? { migrate: true } : {}),
+        ...(emailForFlow ? { billingEmail: emailForFlow } : {}),
+      };
+      const checkout =
+        Object.keys(checkoutOptions).length > 0
+          ? await startFlowCheckout(snapshot.planId, snapshot.addOnIds, checkoutOptions)
+          : await startFlowCheckout(snapshot.planId, snapshot.addOnIds);
       if (!isCurrentPayment(revision)) return;
       if (
         !checkout.cardToken ||
@@ -523,6 +538,11 @@ export function useOnboardingFlow(
     } catch (err: unknown) {
       if (!isCurrentPayment(revision)) return;
       const code = apiErrorCode(err);
+      if (code === "INVALID_EMAIL") {
+        // FIX-flow-email-invalido: el cliente corrige el email en el mismo paso y reintenta.
+        dispatch({ type: "SET_STEP", step: "INVALID_EMAIL" });
+        return;
+      }
       if (code === "ALREADY_SUBSCRIBED" || code === "PAYMENT_IN_PROGRESS") {
         verifyExistingPaymentRef.current = true;
         const subscription = await fetchMySubscription().catch(() => null);
@@ -547,15 +567,22 @@ export function useOnboardingFlow(
           ? "Ya hay un pago en proceso para tu cuenta. Espera unos minutos y vuelve a verificar."
           : code === "PLAN_NOT_AVAILABLE_IN_FLOW"
             ? "Este plan todavía no está disponible para pago online. Contacta a soporte."
-            : code === "INVALID_EMAIL"
-              ? "Flow no aceptó el email de tu cuenta: tiene que ser un email real que recibas. Contacta a soporte para corregirlo."
-              : "No pudimos iniciar el registro del medio de pago. Intenta nuevamente.";
+            : "No pudimos iniciar el registro del medio de pago. Intenta nuevamente.";
       toast.error(message);
       dispatch({ type: "SET_ERROR", error: message });
     } finally {
       endPayment(revision);
     }
   }, [beginPayment, endPayment, isCurrentPayment, showExistingSubscription, completeScheduledMigration]);
+
+  const submitBillingEmail = useCallback(
+    async (email: string) => {
+      const billingEmail = email.trim().toLowerCase();
+      dispatch({ type: "SET_BILLING_EMAIL", billingEmail });
+      await initiateCardRegistration(lastViaRef.current, billingEmail);
+    },
+    [initiateCardRegistration],
+  );
 
   const confirmPayment = useCallback(async () => {
     const revision = beginPayment();
@@ -794,6 +821,7 @@ export function useOnboardingFlow(
     register,
     resumeSession,
     initiateCardRegistration,
+    submitBillingEmail,
     confirmPayment,
     checkPaymentAgain,
     restoreFromStorage,

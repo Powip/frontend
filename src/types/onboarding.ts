@@ -8,6 +8,8 @@ export type OnboardingStep =
   | "EXISTING_SUBSCRIPTION"
   /** Migración a Flow programada (FEAT-25): Flow cobra por primera vez al vencer lo ya pagado. */
   | "MIGRATION_SCHEDULED"
+  /** Flow rechazó el email (FIX-flow-email-invalido): el cliente lo corrige en el mismo paso. */
+  | "INVALID_EMAIL"
   | "DONE"
   | "ERROR";
 
@@ -112,6 +114,8 @@ export interface OnboardingState {
   migrate?: boolean;
   /** Primer cobro de la migración programada (yyyy-MM-dd). */
   firstChargeDate?: string | null;
+  /** Email corregido para Flow tras un INVALID_EMAIL; no cambia el email de la cuenta. */
+  billingEmail?: string | null;
 }
 
 /** Lo que sobrevive a la redirección a Flow (localStorage). */

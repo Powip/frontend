@@ -574,6 +574,62 @@ function Step2({
 // Step3
 // ---------------------------------------------------------------------------
 
+const EMAIL_FORMAT = /\S+@\S+\.\S+/;
+
+/**
+ * Flow rechazó el email (FIX-flow-email-invalido): el cliente escribe otro en el mismo paso y
+ * reintenta. Solo cambia el email que recibe Flow, no el de la cuenta de Powip.
+ */
+function InvalidEmailStep({
+  rejectedEmail,
+  isLoading,
+  onSubmit,
+}: {
+  rejectedEmail: string;
+  isLoading: boolean;
+  onSubmit: (email: string) => void;
+}) {
+  const [email, setEmail] = useState(rejectedEmail);
+  const canSubmit = !isLoading && EMAIL_FORMAT.test(email.trim());
+
+  return (
+    <form
+      className="flex flex-col items-center gap-4 py-8 text-center"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (canSubmit) onSubmit(email.trim());
+      }}
+    >
+      <div className="text-4xl">⚠️</div>
+      <p className="text-sm text-gray-700">
+        {`Flow, nuestra pasarela de pago, no aceptó el email "${rejectedEmail}". Ingresa otro email para el pago. Te recomendamos uno de Gmail (@gmail.com).`}
+      </p>
+      <div className="flex w-full max-w-sm flex-col gap-1 text-left">
+        <label htmlFor="billing-email" className="text-xs font-semibold text-gray-700">
+          Email para el pago
+        </label>
+        <input
+          id="billing-email"
+          type="email"
+          autoComplete="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          className="rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={!canSubmit}
+        className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white flex items-center gap-2 disabled:opacity-70"
+        style={{ background: "#4F3A96" }}
+      >
+        {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+        Continuar con el pago
+      </button>
+    </form>
+  );
+}
+
 interface Step3Props {
   planName: string;
   price: number;
@@ -592,6 +648,11 @@ interface Step3Props {
   onError: (msg: string) => void;
   /** Migración a Flow (FEAT-25): cuándo se cobra, en lugar de "Acceso inmediato al activar". */
   firstChargeNotice?: string | null;
+  /** Email de la cuenta: el que Flow rechazó si todavía no se corrigió (FIX-flow-email-invalido). */
+  accountEmail?: string | null;
+  /** Último email corregido para Flow. */
+  billingEmail?: string | null;
+  onSubmitBillingEmail: (email: string) => void;
 }
 
 function Step3({
@@ -611,6 +672,9 @@ function Step3({
   onRetry,
   onError,
   firstChargeNotice,
+  accountEmail,
+  billingEmail,
+  onSubmitBillingEmail,
 }: Step3Props) {
   const period = isAnnual ? "año" : "mes";
 
@@ -647,6 +711,18 @@ function Step3({
           Volver a verificar
         </button>
       </div>
+    );
+  }
+
+  if (step === "INVALID_EMAIL") {
+    const rejectedEmail = billingEmail ?? accountEmail ?? "";
+    return (
+      <InvalidEmailStep
+        key={rejectedEmail}
+        rejectedEmail={rejectedEmail}
+        isLoading={isLoading}
+        onSubmit={onSubmitBillingEmail}
+      />
     );
   }
 
@@ -1070,6 +1146,7 @@ export default function OnboardingClient({
     register,
     selectAddOns,
     initiateCardRegistration,
+    submitBillingEmail,
     confirmPayment,
     checkPaymentAgain,
     retry,
@@ -1438,6 +1515,9 @@ export default function OnboardingClient({
                 onRetry={retry}
                 onError={setError}
                 firstChargeNotice={firstChargeNotice}
+                accountEmail={auth?.user?.email}
+                billingEmail={flowState.billingEmail}
+                onSubmitBillingEmail={(email) => void submitBillingEmail(email)}
               />
             )}
 
