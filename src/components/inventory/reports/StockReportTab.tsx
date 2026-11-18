@@ -6,6 +6,7 @@ import { Download, FileText, Search } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { canSeeProductCosts } from "@/config/permissions.config";
 import { useCompanyWarehouses } from "@/hooks/useCompanyWarehouses";
+import { useMyWarehouses } from "@/hooks/useMyWarehouses";
 import { usePdfDownload, useReportAuthor } from "@/hooks/usePdfDownload";
 import { getStockReport, getValuation, type StockReportData, type ValuationData } from "@/services/inventoryReportsService";
 import { formatMoney, MASK, todayInLima } from "@/lib/purchaseOrders";
@@ -116,6 +117,9 @@ export default function StockReportTab() {
   const author = useReportAuthor();
   const downloadPdf = usePdfDownload();
   const { warehouses, nameOf } = useCompanyWarehouses();
+  // FEAT-24 H6: el filtro ofrece solo los almacenes que el usuario ve (el backend igual acota el reporte).
+  const myWarehouses = useMyWarehouses();
+  const warehouseOptions = useMemo(() => myWarehouses.visible(warehouses), [myWarehouses, warehouses]);
   const today = todayInLima();
 
   const [date, setDate] = useState("");
@@ -208,7 +212,7 @@ export default function StockReportTab() {
           <Label htmlFor="report-warehouse" className="text-xs font-semibold uppercase text-muted-foreground/70">Almacén</Label>
           <select id="report-warehouse" className={SELECT_CLASS} value={inventoryId} onChange={(event) => setInventoryId(event.target.value)}>
             <option value="">Todos los almacenes</option>
-            {warehouses.map((warehouse) => (
+            {warehouseOptions.map((warehouse) => (
               <option key={warehouse.id} value={warehouse.id}>{warehouse.name}{warehouse.status === false ? " (inactivo)" : ""}</option>
             ))}
           </select>

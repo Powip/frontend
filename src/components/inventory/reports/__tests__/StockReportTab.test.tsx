@@ -18,6 +18,10 @@ jest.mock("@/hooks/useCompanyWarehouses", () => ({
     nameOf: (id: string) => ({ w1: "Central", w2: "Olva" })[id] ?? "su almacén",
   }),
 }));
+// FEAT-24 H6: el filtro de almacén ofrece solo los que el usuario ve.
+jest.mock("@/hooks/useMyWarehouses");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { __setMyWarehouses } = require("@/hooks/useMyWarehouses") as typeof import("@/hooks/__mocks__/useMyWarehouses");
 const pdfDownload = jest.fn();
 jest.mock("@/hooks/usePdfDownload", () => ({ usePdfDownload: () => pdfDownload, useReportAuthor: () => "Ana" }));
 jest.mock("@/lib/reports/excel", () => ({ ...jest.requireActual("@/lib/reports/excel"), buildReportWorkbook: jest.fn(() => ({})), downloadWorkbook: jest.fn().mockResolvedValue(undefined) }));
@@ -59,6 +63,7 @@ const norm = (text: string | null | undefined) => (text ?? "").replace(/\s/g, " 
 beforeEach(() => {
   role = "ADMINISTRADOR";
   jest.clearAllMocks();
+  __setMyWarehouses(null);
   stock.mockResolvedValue(REPORT);
   valuation.mockResolvedValue(VALUATION);
 });
@@ -126,6 +131,14 @@ it("manda los filtros a la API y el Excel lleva los mismos en la hoja «Filtros�
   await waitFor(() => expect(downloadWorkbook).toHaveBeenCalled());
   expect(stock).toHaveBeenLastCalledWith({ date: undefined, inventoryId: "w2", q: "polo", onlyWithStock: true, all: true });
   expect(jest.mocked(buildReportWorkbook).mock.calls[0][0].filters).toEqual([["Fecha", "Hoy"], ["Almacén", "Olva"], ["Búsqueda", "polo"], ["Solo con stock", "Sí"]]);
+});
+
+it("el filtro de almacén ofrece solo los almacenes que el usuario ve (FEAT-24 H6)", async () => {
+  __setMyWarehouses({ all: false, inventoryIds: ["w2"], operableIds: [] });
+  renderTab();
+  await screen.findByText("Polo · Talla: M");
+  const options = within(screen.getByLabelText("Almacén")).getAllByRole("option").map((option) => option.textContent);
+  expect(options).toEqual(["Todos los almacenes", "Olva"]);
 });
 
 it("el PDF usa el helper con el encabezado común", async () => {
