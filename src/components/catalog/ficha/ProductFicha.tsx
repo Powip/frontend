@@ -20,6 +20,8 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MovementHistoryTable } from "@/components/inventory/MovementHistoryTable";
 import { PrintLabelsDialog } from "@/components/labels/PrintLabelsDialog";
+// FEAT-24 H13-D4: precio de compra por proveedor de cada variante.
+import FichaSupplierPrices from "@/components/compras/supplier-prices/FichaSupplierPrices";
 import { ChannelBadge, KindBadge, ProductThumb, SkuConflictBadge, StatusBadge } from "@/components/catalog/CatalogBadges";
 import { liveVariants, productKind } from "@/lib/catalog/catalogProducts";
 import { categoryPath } from "@/lib/catalog/categoryTree";
@@ -184,6 +186,12 @@ export default function ProductFicha({ productId, actions }: { productId: string
           </Tabs>
         </CardContent>
       </Card>
+      <FichaSupplierPrices
+        variants={variants
+          .filter((variant) => !variant.mergedInto)
+          .map((variant) => ({ id: variant.id, label: kardexVariants.find((candidate) => candidate.id === variant.id)?.label ?? variant.id }))}
+        linkOrders={canSeeCosts}
+      />
       {printingLabels ? (
         <PrintLabelsDialog open source={{ kind: "products", productIds: [product.id], title: product.name }} onOpenChange={setPrintingLabels} />
       ) : null}
