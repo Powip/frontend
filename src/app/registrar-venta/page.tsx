@@ -2776,6 +2776,7 @@ function RegistrarVentaContent() {
               <SuggestionsPanel
                 packs={packs}
                 channel={orderDetails.salesChannel}
+                storeId={origin.storeId}
                 appliedPacks={packsEngine.appliedPacks}
                 pendingHints={packsEngine.pendingHints}
                 modelQtyInCart={packsEngine.modelQtyInCart}

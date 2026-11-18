@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Gift, Sparkles, PackageCheck, Lightbulb } from "lucide-react";
 import { BundleProductRef, Pack } from "@/interfaces/IPack";
-import { packNetUnit } from "@/hooks/usePacksEngine";
+import { packNetUnit, volumeApplies } from "@/hooks/usePacksEngine";
 import { bundleItemKey, bundleItemLabel, hasValidBundleItems } from "@/utils/bundleVariants";
 
 const fmt = (n: number) => `S/ ${n.toFixed(2)}`;
@@ -11,6 +11,8 @@ const fmt = (n: number) => `S/ ${n.toFixed(2)}`;
 interface SuggestionsPanelProps {
   packs: Pack[];
   channel?: string;
+  /** Tienda del pedido (FEAT-24 H9): las promos de Volumen se filtran por tienda, canal y vigencia. */
+  storeId?: string;
   appliedPacks: Record<string, unknown>;
   /** Packs que ya cumplen su condición y están listos para aplicarse (usePacksEngine.pendingHints) */
   pendingHints: Pack[];
@@ -27,6 +29,7 @@ interface SuggestionsPanelProps {
 export default function SuggestionsPanel({
   packs,
   channel,
+  storeId,
   appliedPacks,
   pendingHints,
   modelQtyInCart,
@@ -38,7 +41,8 @@ export default function SuggestionsPanel({
   onAutoFillVolume,
   onAutoAddBundleItem,
 }: SuggestionsPanelProps) {
-  const active = packs.filter((p) => p.active && (!channel || p.channels.includes(channel)) &&
+  const active = packs.filter((p) => p.active &&
+    (p.type === "VOLUME" ? volumeApplies(p, channel, storeId) : !channel || p.channels.includes(channel)) &&
     (p.type !== "BUNDLE" || hasValidBundleItems(p)));
   const ready = pendingHints.filter((p) => p.type !== "BUNDLE" ||
     (hasValidBundleItems(p) && p.items.every((item) => bundleQtyInCart(item) > 0)));
