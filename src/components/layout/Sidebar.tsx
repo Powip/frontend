@@ -49,6 +49,7 @@ import {
   Radio,
   ScanLine,
   Smartphone,
+  Barcode,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -262,6 +263,7 @@ export function Sidebar({ className }: SidebarProps) {
         children: [
           { name: "Lista de productos", href: "/productos", icon: Tags },
           { name: "Categorías", href: "/productos/categorias", icon: LayoutList },
+          { name: "Etiquetas", href: "/productos/etiquetas", icon: Barcode },
           { name: "Inventario", href: "/inventario", icon: Package },
           // FEAT-24 H6: la app del celular para el almacén (PWA instalable).
           { name: "Modo almacén", href: "/almacen", icon: Smartphone },

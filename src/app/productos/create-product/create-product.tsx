@@ -36,6 +36,7 @@ import VariantCodes from "@/components/products/VariantCodes";
 import VariantCostField from "@/components/products/VariantCostField";
 import { isCompanyAdminRole, MAX_PURCHASE_FACTOR, MAX_PURCHASE_UNIT_LENGTH, parseWhole } from "@/lib/purchaseOrders";
 import { getVariantCosts } from "@/services/purchasesService";
+import { PrintLabelsDialog } from "@/components/labels/PrintLabelsDialog";
 import { MAX_ITEM_UNITS, MAX_ITEM_UNITS_MESSAGE, largeQuantityConfirmText, needsQuantityConfirmation } from "@/lib/stockLimits";
 import { formatVariantLabel } from "@/lib/variantAttributes";
 import CategoryTreeSelect from "@/components/catalog/CategoryTreeSelect";
@@ -189,6 +190,8 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
   const catalogCategories = useCatalogCategories();
   const [message, setMessage] = useState("");
   const [confirmLargeStock, setConfirmLargeStock] = useState(false);
+  // FEAT-24 H7 — etiquetas de las variantes del producto (solo en edición).
+  const [printingLabels, setPrintingLabels] = useState(false);
 
   // =========================
   // Cargar categorías
@@ -880,7 +883,20 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
       <HeaderConfig
         title="Productos"
         description={isEditMode ? "Editar producto" : "Crear nuevo producto"}
-      />
+      >
+        {isEditMode && editProductId && !isLoadingProduct ? (
+          <Button type="button" variant="outline" onClick={() => setPrintingLabels(true)}>
+            Imprimir etiquetas
+          </Button>
+        ) : null}
+      </HeaderConfig>
+      {printingLabels && editProductId ? (
+        <PrintLabelsDialog
+          open
+          source={{ kind: "products", productIds: [editProductId], title: form.name || undefined }}
+          onOpenChange={setPrintingLabels}
+        />
+      ) : null}
 
       {isLoadingProduct ? (
         <div className="flex items-center justify-center py-20">
