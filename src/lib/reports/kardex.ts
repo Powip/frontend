@@ -1,4 +1,5 @@
 import { describeMovement, formatPeruDateTime } from "@/components/inventory/movementLabels";
+import { kardexLotsOf, kardexLotsText } from "@/lib/lots";
 import type { PdfDocSpec } from "@/lib/pdf/document";
 import type { KardexRow } from "@/services/inventoryReportsService";
 import { buildReportWorkbook, COST_FMT, MONEY_FMT, QTY_FMT, type SheetColumn } from "./excel";
@@ -42,6 +43,8 @@ export function kardexWorkbook(
   options: { filters: Array<[string, string]>; canSeeCosts: boolean; orderNumbers?: Record<string, string>; generatedBy?: string; truncated?: boolean; now?: Date },
 ) {
   const costs = options.canSeeCosts && rows.some((row) => "unitCost" in row);
+  // FEAT-24 H5-L: columna «Lotes» si algún movimiento tiene lotes.
+  const lots = rows.some((row) => kardexLotsOf(row) !== null);
   const columns: SheetColumn[] = [
     { header: "Fecha y hora", key: "date", width: 18 },
     { header: "Tipo", key: "type", width: 24 },
@@ -49,6 +52,7 @@ export function kardexWorkbook(
     { header: "SKU", key: "sku", width: 18 },
     { header: "Producto", key: "product", width: 36 },
     { header: "Almacén", key: "warehouse", width: 20 },
+    ...(lots ? [{ header: "Lotes", key: "lots", width: 28 }] : []),
     { header: "Físico", key: "physical", numFmt: QTY_FMT },
     { header: "Saldo físico", key: "physicalAfter", numFmt: QTY_FMT },
     { header: "Reservado", key: "reserved", numFmt: QTY_FMT },
@@ -83,6 +87,7 @@ export function kardexWorkbook(
             sku: reportSku(row),
             product: reportVariantLabel(row),
             warehouse: row.inventoryName ?? "",
+            lots: kardexLotsText(kardexLotsOf(row)),
             physical: view.physicalDelta,
             physicalAfter: view.physicalAfter,
             reserved: view.reservedDelta,
@@ -116,7 +121,8 @@ export function kardexPdfSpec(rows: KardexRow[], options: { filters: Array<[stri
             formatPeruDateTime(row.createdAt),
             view.label,
             reportSku(row),
-            reportVariantLabel(row),
+            // FEAT-24 H5-L: los lotes van debajo del producto.
+            [reportVariantLabel(row), kardexLotsText(kardexLotsOf(row))].filter(Boolean).join("\n"),
             row.inventoryName ?? "",
             signed(view.physicalDelta),
             signed(view.reservedDelta),
