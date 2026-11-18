@@ -71,6 +71,7 @@ import {
   isSuperadmin,
   hasRouteAccess,
   isAccessGatedRoute,
+  isCourierRole,
 } from "@/config/permissions.config";
 import {
   DropdownMenu,
@@ -416,9 +417,14 @@ export function Sidebar({ className }: SidebarProps) {
     }));
   };
 
+  // FEAT-24 H8-D5: al rol COURIER solo le queda su portal (Modo almacén); el resto del menú se le cierra.
+  const courierOnly = isCourierRole(auth?.user.role);
+
   // Filtrar navegación por permisos y mostrar Superadmin solo a autorizados
   const filteredNavigation = navigation
     .filter((item: NavigationItem) => {
+      if (courierOnly)
+        return item.href ? hasRouteAccess(item.href, auth?.user) : (item.children ?? []).some((child) => hasRouteAccess(child.href, auth?.user));
       if (item.name === "Publicidad")
         return !advertisingAccess.isError && advertisingAccess.data?.capabilities.view === true;
       // Si es Super Admin, verificar específicamente por email
@@ -447,6 +453,7 @@ export function Sidebar({ className }: SidebarProps) {
         return {
           ...item,
           children: item.children.filter((child: { name: string; href?: string }) => {
+            if (courierOnly) return !!child.href && hasRouteAccess(child.href, auth?.user);
             // Enlaces que se deciden por rol (Finanzas, Compras, Administración…): se ocultan con la
             // misma regla que AuthGuard aplica a la ruta (ROUTE_PERMISSIONS). Se filtra por href y no
             // por nombre porque "Resumen" existe en Finanzas y en Administración.

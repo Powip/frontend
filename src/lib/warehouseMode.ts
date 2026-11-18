@@ -1,4 +1,4 @@
-import { canEditInventory, type RouteAccessUser } from "@/config/permissions.config";
+import { canEditInventory, isCourierRole, type RouteAccessUser } from "@/config/permissions.config";
 import { getStockByVariants, type VariantStock } from "@/services/inventoryItems.service";
 import {
   completePicking,
@@ -69,6 +69,10 @@ export interface WarehouseAccess {
 }
 
 export function warehouseAccess(user: RouteAccessUser | undefined, hasPermission: (permission: string) => boolean): WarehouseAccess {
+  // FEAT-24 H8-D5: el courier, en su almacén, solo cuenta y recibe traslados (su stock y la conciliación van
+  // aparte). Sin consultar el catálogo entero ni picking, aunque tenga algún permiso suelto.
+  if (isCourierRole(user?.role))
+    return { consult: false, picking: false, receiveReturns: false, receivePurchases: false, receiveTransfers: true, count: true };
   const receives = canEditInventory(user) || isWarehouseRole(user?.role);
   return {
     consult: Boolean(user),
