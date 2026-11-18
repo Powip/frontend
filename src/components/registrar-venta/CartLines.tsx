@@ -11,6 +11,7 @@ import { AppliedPack, BundlePack, GiftOption, GiftPack, Pack, VolumePack } from 
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 import { initials } from "@/utils/productGrouping";
 import Thumb from "./Thumb";
+import { PackLineContents } from "@/components/packs/PackLineContents";
 
 const fmt = (n: number) => `S/ ${n.toFixed(2)}`;
 
@@ -314,6 +315,7 @@ function LineRow({
               ))}
             <span>{line.sku}</span>
           </div>
+          <PackLineContents components={line.packComponents} lineQuantity={line.quantity} />
         </div>
 
         <button

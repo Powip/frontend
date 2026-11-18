@@ -8,7 +8,10 @@ import { formatSalesMoney } from "@/utils/salesMoney";
 import { operationalStatus, receiptFinancialState } from "@/utils/orderState";
 import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
 import { ReservationWarehouseControl } from "@/components/orders/ReservationWarehouseControl";
-import { STOCK_WAREHOUSE_PERMISSION } from "@/lib/orderStock";
+import { STOCK_WAREHOUSE_PERMISSION, orderStockAccess } from "@/lib/orderStock";
+import { PackLineContents, packComponentsForReceiptItem } from "@/components/packs/PackLineContents";
+import { ExchangeOrderTag } from "@/components/orders/exchange/ExchangeOrderTag";
+import { OrderExchangeSection } from "@/components/orders/exchange/OrderExchangeSection";
 import { OrderPaymentMethodPanel } from "@/components/registrar-venta/OrderPaymentMethodPanel";
 import { buildPendingOrderDetail } from "./customerServiceOrderDetail";
 import { CcSaleConfirmationPanel } from "@/components/atencion-cliente/cc-v2/CcSaleConfirmationPanel";
@@ -1027,6 +1030,7 @@ export default function CustomerServiceModal({
                       <DialogTitle className="text-lg">
                         Pedido {receipt.orderNumber} · {receipt.customer.fullName}
                       </DialogTitle>
+                      {orderHeader?.id === orderId ? <ExchangeOrderTag order={orderHeader} className="mt-1" /> : null}
                       <div className="text-sm text-muted-foreground mt-1">
                         Vendedor: {orderHeader?.sellerName || "—"}
                       </div>
@@ -1123,6 +1127,10 @@ export default function CustomerServiceModal({
                               IMEI / series: {item.units.map((unit) => unit.code).join(", ")}
                             </p>
                           ) : null}
+                          <PackLineContents
+                            components={packComponentsForReceiptItem(item, i, orderHeader?.id === orderId ? orderHeader?.items : undefined)}
+                            lineQuantity={item.quantity}
+                          />
                           {item.attributes &&
                             Object.keys(item.attributes).length > 0 && (
                               <div className="text-xs text-muted-foreground mt-1">
@@ -1157,6 +1165,18 @@ export default function CustomerServiceModal({
                       ))}
                     </div>
                   </div>
+
+                  {/* FEAT-24 H12: cambio de producto (despachado o entregado) e historial de cambios */}
+                  {orderHeader && orderHeader.id === orderId && !isPendingPurchase ? (
+                    <OrderExchangeSection
+                      order={orderHeader}
+                      canManage={orderStockAccess(hasPermission).customer}
+                      onChanged={() => {
+                        void fetchReceipt();
+                        onOrderUpdated?.();
+                      }}
+                    />
+                  ) : null}
 
                   {orderNotes?.trim() ? (
                     <section

@@ -29,8 +29,9 @@ import FichaGeneralTab, { type FichaCosts } from "./FichaGeneralTab";
 import FichaVariantsTab from "./FichaVariantsTab";
 import FichaStockTab from "./FichaStockTab";
 import FichaChannelsTab from "./FichaChannelsTab";
+import PackFichaTab from "@/components/packs/PackFichaTab";
 
-export type FichaTab = "general" | "variantes" | "stock" | "canales" | "historial";
+export type FichaTab = "general" | "pack" | "variantes" | "stock" | "canales" | "historial";
 
 /**
  * FEAT-24 H4 (H4-D11) — ficha del producto en pestañas (spec §6.1, mockup `vFicha`): General, Variantes,
@@ -72,6 +73,8 @@ export default function ProductFicha({ productId, actions }: { productId: string
   const live = liveVariants(variants);
   const kind = product ? productKind({ ...product, variants }) : "variantes";
   const isSimple = kind === "simple";
+  // FEAT-24 H9: un pack tiene su pestaña con componentes, margen y disponible calculado.
+  const isPack = kind === "pack";
   const stockView = useMemo(() => buildFichaStock(stockQuery.data ?? [], productId, variants), [stockQuery.data, productId, variants]);
   // FEAT-24 H10: el historial es el kardex de la fachada, que se lee por variante (todas, también las inactivas).
   // FEAT-24 H10: costo promedio por variante (Administrador y Operaciones lo ven; solo el Administrador lo carga).
@@ -119,7 +122,7 @@ export default function ProductFicha({ productId, actions }: { productId: string
   const category = categoryPath(categories.tree, product.categoryId ?? product.category?.id) ?? product.category?.name;
   const conflict = Boolean(product.skuConflict) || live.some((variant) => variant.skuConflict);
   const editHref = live[0] ? `/productos?edit=${encodeURIComponent(live[0].id)}` : null;
-  const activeTab: FichaTab = isSimple && tab === "variantes" ? "general" : tab;
+  const activeTab: FichaTab = (isSimple && tab === "variantes") || (!isPack && tab === "pack") ? "general" : tab;
 
   return (
     <div className="space-y-4 p-6">
@@ -154,6 +157,7 @@ export default function ProductFicha({ productId, actions }: { productId: string
           <Tabs value={activeTab} onValueChange={(next) => setTab(next as FichaTab)}>
             <TabsList className="mb-4 h-auto flex-wrap">
               <TabsTrigger value="general">General</TabsTrigger>
+              {isPack ? <TabsTrigger value="pack">Pack</TabsTrigger> : null}
               {!isSimple ? <TabsTrigger value="variantes">Variantes ({live.length})</TabsTrigger> : null}
               <TabsTrigger value="stock">Stock por almacén</TabsTrigger>
               <TabsTrigger value="canales">Canales</TabsTrigger>
@@ -162,6 +166,11 @@ export default function ProductFicha({ productId, actions }: { productId: string
             <TabsContent value="general">
               <FichaGeneralTab key={product.id} product={product} simpleVariant={isSimple ? live[0] ?? null : null} categoryTree={categories.tree} canEdit costs={costs} />
             </TabsContent>
+            {isPack ? (
+              <TabsContent value="pack">
+                <PackFichaTab productId={product.id} />
+              </TabsContent>
+            ) : null}
             {!isSimple ? (
               <TabsContent value="variantes">
                 <FichaVariantsTab productId={product.id} productImage={product.imageUrl} variants={variants} canEdit costs={costs} />

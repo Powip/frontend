@@ -50,6 +50,8 @@ import {
   ScanLine,
   Smartphone,
   Barcode,
+  Boxes,
+  BadgeDollarSign,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -208,7 +210,8 @@ export function Sidebar({ className }: SidebarProps) {
             icon: FileText,
           },
           {
-            name: "Packs & Promos",
+            // FEAT-24 H9: los packs pasan a Productos › Packs; acá quedan las promociones.
+            name: "Promociones",
             href: "/packs-promos",
             icon: PackagePlus,
           },
@@ -265,6 +268,9 @@ export function Sidebar({ className }: SidebarProps) {
           { name: "Lista de productos", href: "/productos", icon: Tags },
           { name: "Categorías", href: "/productos/categorias", icon: LayoutList },
           { name: "Etiquetas", href: "/productos/etiquetas", icon: Barcode },
+          // FEAT-24 H9: packs y listas de precios.
+          { name: "Packs", href: "/productos/packs", icon: Boxes },
+          { name: "Listas de precios", href: "/productos/listas-precios", icon: BadgeDollarSign },
           { name: "Inventario", href: "/inventario", icon: Package },
           // FEAT-24 H6: la app del celular para el almacén (PWA instalable).
           { name: "Modo almacén", href: "/almacen", icon: Smartphone },

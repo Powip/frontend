@@ -27,6 +27,11 @@ jest.mock("@/services/clients.service", () => ({
 jest.mock("@/services/promos.service", () => ({
   listVolumePromos: jest.fn().mockResolvedValue([]), createVolumePromo: jest.fn(), updatePromo: jest.fn(), deletePromo: jest.fn(),
 }));
+// FEAT-24 H9: precio sugerido y regalos del backend; no forman parte de lo que se prueba aquí.
+jest.mock("@/services/promotionsService", () => ({
+  resolvePrices: async () => [],
+  evaluatePromotions: async () => ({ gifts: [] }),
+}));
 jest.mock("@/services/inventoryItems.service", () => ({
   searchInventoryItems: jest.fn(),
 }));

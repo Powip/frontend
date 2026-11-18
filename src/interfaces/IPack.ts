@@ -57,6 +57,11 @@ export interface VolumePack {
   minQty: number;
   maxQty?: number | null;
   packPrice: number;
+  /** FEAT-24 H9: tiendas donde aplica (vacío o ausente = todas). */
+  storeIds?: string[];
+  /** FEAT-24 H9: vigencia ISO (`startsAt` incluido, `endsAt` excluido); null = sin límite. */
+  startsAt?: string | null;
+  endsAt?: string | null;
   createdAt?: string;
   updatedAt?: string;
   /** true = viene del backend real (Promos API); false/undefined = todavía solo local */

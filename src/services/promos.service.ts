@@ -22,6 +22,9 @@ interface ApiPromo {
   maxQty?: number | null;
   packPrice?: number;
   channels?: string[];
+  storeIds?: string[];
+  startsAt?: string | null;
+  endsAt?: string | null;
   isActive: boolean;
   createdAt?: string;
   updatedAt?: string;
@@ -131,6 +134,9 @@ function mapToVolumePack(
     minQty: Number(p.minQty ?? 2),
     maxQty: p.maxQty != null ? Number(p.maxQty) : null,
     packPrice: Number.isFinite(Number(p.packPrice)) ? Number(p.packPrice) : 0,
+    storeIds: p.storeIds ?? [],
+    startsAt: p.startsAt ?? null,
+    endsAt: p.endsAt ?? null,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
     synced: true,
