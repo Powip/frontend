@@ -109,7 +109,8 @@ describe("Ajustes y mermas", () => {
 
   it("sin rol de costos los montos salen ocultos y no hay botones de aprobación", async () => {
     mockUser.role = "ALMACEN";
-    const { totalValue: _omit, ...withoutValue } = pending;
+    const withoutValue = { ...pending } as Record<string, unknown>;
+    delete withoutValue.totalValue;
     const line = { ...pending.lines[0] } as Record<string, unknown>;
     delete line.unitCost;
     delete line.lineValue;
