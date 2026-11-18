@@ -5,6 +5,7 @@
  *    la paginación no cambia y el Excel suma «Cobertura (días)».
  * 2. Pide la cobertura del almacén elegido (o del único de la vista).
  * 3. Si la cobertura no llegó (falla o servidor anterior), no hay columna y el Excel queda igual.
+ * 4. Los packs al final de Stock (FEAT-24 H9) mantienen la columna con «—» y el encabezado PACKS la abarca.
  */
 
 import React from "react";
@@ -14,6 +15,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { fetchBusinessInventoryItems, type BusinessInventoryItem } from "@/services/businessInventoryItemsService";
 import { useStockCoverage, type StockCoverage } from "@/hooks/useStockCoverage";
+import { listAllPacks, type PackView } from "@/services/packsService";
 import InventarioView from "../_components/InventarioView";
 
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { accessToken: "t", user: { id: "user-1", role: "ADMINISTRADOR" }, company: { id: "company-1", stores: [{ id: "store-1", name: "Principal" }] } } }) }));
@@ -24,6 +26,7 @@ jest.mock("@/services/userWarehousesService", () => ({ getMyWarehouses: jest.fn(
 jest.mock("@/hooks/useInventoryAlerts", () => ({ useInventoryAlerts: () => ({ data: { generatedAt: "", total: 0, alerts: [] } }) }));
 jest.mock("@/services/warehousesService", () => ({ listWarehouses: jest.fn().mockResolvedValue({ warehouses: [], links: [] }) }));
 jest.mock("@/hooks/useStockCoverage", () => ({ useStockCoverage: jest.fn() }));
+jest.mock("@/services/packsService", () => ({ listAllPacks: jest.fn() })); // FEAT-24 H9
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn() } }));
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn(), replace: jest.fn() }), usePathname: () => "/inventario/stock" }));
 jest.mock("next/image", () => ({ __esModule: true, default: () => <span /> }));
@@ -85,6 +88,7 @@ beforeAll(() => {
 beforeEach(() => {
   jest.clearAllMocks();
   rowsOf().length = 0;
+  jest.mocked(listAllPacks).mockResolvedValue([]);
   jest.mocked(fetchBusinessInventoryItems).mockResolvedValue([item("a", "Polo", 40), item("b", "Gorra", 3), item("c", "Media", 0), item("d", "Bufanda", 8)]);
 });
 
@@ -129,4 +133,22 @@ it("sin cobertura (falló o servidor anterior) no hay columna y el Excel queda i
   await waitFor(() => expect(toast.success).toHaveBeenCalled());
   expect(sheetsOf().at(-1)!.columns.map((column) => column.header)).not.toContain("Cobertura (días)");
   expect(rowsOf().every((row) => !("cobertura" in row))).toBe(true);
+});
+
+it("la fila de cada pack tiene la celda de Cobertura con «—» y el encabezado PACKS abarca la columna", async () => {
+  coverage({ byVariant: new Map([["v-a", { vd: 1, coverageDays: 40 }]]), targetDays: 30 });
+  jest.mocked(listAllPacks).mockResolvedValue([
+    {
+      id: "pack-1", variantId: "pack-1-v", name: "Pack Verano", description: null, sku: "PK-VER", productSku: null, powipEan: null, barcode: null,
+      imageUrl: null, price: 50, active: true, categoryId: null, brandId: null, components: [],
+      available: { total: 2, byWarehouse: [{ inventoryId: "inv-1", inventoryName: "Almacén Principal", storeId: "store-1", available: 2 }] },
+    } as PackView,
+  ]);
+  renderView();
+  const row = await screen.findByTestId("pack-stock-pack-1");
+  expect(within(row).getByTestId("pack-coverage-pack-1")).toHaveTextContent("—");
+  const headers = within(screen.getByRole("table")).getAllByRole("columnheader");
+  expect(within(row).getAllByRole("cell")).toHaveLength(headers.length);
+  const groupHeader = screen.getByText(/Packs · su stock es el de sus componentes/i).closest("td") as HTMLTableCellElement;
+  expect(groupHeader.colSpan).toBe(headers.length);
 });
