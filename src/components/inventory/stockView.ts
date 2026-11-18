@@ -124,11 +124,16 @@ export function storesOf(inventories: BusinessInventory[]) {
 
 export const variantPositionsFlat = (variants: StockVariantRow[]) => variants.flatMap((variant) => variant.positions);
 
-/** FEAT-24 H9: un pack al final de «Por producto». No tiene stock propio: su disponible es el de sus componentes. */
+/**
+ * FEAT-24 H9: un pack al final de «Por producto», en cada almacén de «Por almacén» y en el Excel. No tiene
+ * stock propio: su disponible es el de sus componentes.
+ */
 export interface PackStockRow {
   id: string;
   name: string;
   sku: string | null;
+  /** Precio de venta del pack (`priceVta`). */
+  price: number;
   /** Disponible por almacén visible; un almacén sin todos los componentes no figura. */
   byInventory: Map<string, number>;
   /** Suma de los almacenes visibles; `null` si ms-products no pudo calcularlo (logística caída). */
@@ -155,7 +160,39 @@ export function packStockRows(packs: PackView[], columns: BusinessInventory[], f
       const status: StockStatus | null = total === null ? null : total <= 0 ? "agotado" : "normal";
       if (status !== filters.status) continue;
     }
-    rows.push({ id: pack.id, name: pack.name, sku: pack.sku ?? pack.productSku, byInventory, total });
+    rows.push({ id: pack.id, name: pack.name, sku: pack.sku ?? pack.productSku, price: Number(pack.price) || 0, byInventory, total });
   }
   return rows;
+}
+
+/** Packs con disponible calculado en un almacén (para su tarjeta en «Por almacén»). */
+export function packsInInventory(packs: PackStockRow[], inventoryId: string): Array<{ pack: PackStockRow; available: number }> {
+  return packs.flatMap((pack) => (pack.byInventory.has(inventoryId) ? [{ pack, available: pack.byInventory.get(inventoryId)! }] : []));
+}
+
+/** Fila de la sección «Packs» del Excel de Stock (mismas columnas que las variantes; físico y reservado no aplican). */
+export interface PackExcelRow {
+  companySku: string;
+  name: string;
+  store: string;
+  inventory: string;
+  /** Disponible calculado o «Sin dato» si ms-products no pudo calcularlo. */
+  available: number | "Sin dato";
+  price: number;
+}
+
+/**
+ * Sección «Packs» del Excel: una fila por pack y almacén visible (como las variantes), en el orden de las
+ * columnas. Un pack sin datos (logística caída) sale una vez con «Sin dato».
+ */
+export function packExcelRows(packs: PackStockRow[], columns: BusinessInventory[]): PackExcelRow[] {
+  return packs.flatMap((pack): PackExcelRow[] => {
+    const base = { companySku: pack.sku ?? "", name: pack.name, price: pack.price };
+    if (pack.total === null) return [{ ...base, store: "", inventory: "", available: "Sin dato" as const }];
+    return columns.flatMap((inv) =>
+      pack.byInventory.has(inv.id)
+        ? [{ ...base, store: inv.storeName || inv.storeId, inventory: inv.name, available: pack.byInventory.get(inv.id)! }]
+        : [],
+    );
+  });
 }

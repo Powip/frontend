@@ -14,7 +14,7 @@ import { formatVariantLabel } from "@/lib/variantAttributes";
 import { isTracked } from "@/services/inventoryTrackingService";
 import type { BusinessInventoryItem } from "@/services/businessInventoryItemsService";
 import type { BusinessInventory } from "@/services/inventoryCatalogService";
-import { STOCK_STATUS_LABEL, type PackStockRow, type StockProductGroup, type StockStatus, type StockTotals, type StockVariantRow } from "./stockView";
+import { packsInInventory, STOCK_STATUS_LABEL, type PackStockRow, type StockProductGroup, type StockStatus, type StockTotals, type StockVariantRow } from "./stockView";
 
 /** Datos de la pantalla de almacenes de la empresa; pueden faltar (la pantalla funciona igual). */
 export type WarehouseMeta = Map<string, { type: "PROPIO" | "TIENDA" | "COURIER"; isMain: boolean }>;
@@ -340,10 +340,12 @@ interface WarehouseViewProps {
   inventories: BusinessInventory[];
   isLoading: boolean;
   meta?: WarehouseMeta;
+  /** FEAT-24 H9: packs con el disponible de sus componentes; cada tarjeta muestra los de su almacén. */
+  packs?: PackStockRow[];
 }
 
-/** Vista «Por almacén»: una tarjeta por almacén con sus posiciones. */
-export function StockByWarehouse({ variants, inventories, isLoading, meta = NO_META }: WarehouseViewProps) {
+/** Vista «Por almacén»: una tarjeta por almacén con sus posiciones (y, al final, sus packs). */
+export function StockByWarehouse({ variants, inventories, isLoading, meta = NO_META, packs = [] }: WarehouseViewProps) {
   if (isLoading) return <div className="space-y-3"><Skeleton className="h-32 w-full" /><Skeleton className="h-32 w-full" /></div>;
   if (inventories.length === 0) return <p className="rounded-md border py-6 text-center text-muted-foreground">No hay almacenes en este alcance</p>;
   return (
@@ -353,6 +355,8 @@ export function StockByWarehouse({ variants, inventories, isLoading, meta = NO_M
         const physical = rows.reduce((sum, row) => sum + row.physicalStock, 0);
         const reserved = rows.reduce((sum, row) => sum + reservedOf(row), 0);
         const available = rows.reduce((sum, row) => sum + row.availableStock, 0);
+        // Los packs no suman al resumen del almacén: su stock es el de sus componentes, que ya está en las filas.
+        const packRows = packsInInventory(packs, inv.id);
         return (
           <section key={inv.id} className="rounded-md border" aria-label={`Almacén ${inv.name}`}>
             <header className="flex flex-wrap items-center gap-3 border-b p-4">
@@ -363,7 +367,10 @@ export function StockByWarehouse({ variants, inventories, isLoading, meta = NO_M
                   {meta.get(inv.id)?.isMain ? <span className="rounded border border-teal-300 bg-teal-50 px-1.5 py-0.5 text-xs font-medium text-teal-700 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-400">Principal</span> : null}
                   {meta.get(inv.id) ? <span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">{TYPE_LABEL[meta.get(inv.id)!.type]}</span> : null}
                 </h3>
-                <p className="text-xs text-muted-foreground">{rows.length} SKU · {physical} físico · {reserved} reservado · {available} disponible</p>
+                <p className="text-xs text-muted-foreground">
+                  {rows.length} SKU · {physical} físico · {reserved} reservado · {available} disponible
+                  {packRows.length > 0 ? ` · ${packRows.length} pack${packRows.length === 1 ? "" : "s"}` : ""}
+                </p>
               </div>
               {inv.storeName ? <span className="ml-auto rounded border px-2 py-0.5 text-xs text-muted-foreground">{inv.storeName}</span> : null}
             </header>
@@ -392,6 +399,25 @@ export function StockByWarehouse({ variants, inventories, isLoading, meta = NO_M
                     </TableRow>
                   );
                 })}
+                {packRows.length > 0 ? (
+                  <>
+                    <TableRow className="bg-muted/30 hover:bg-muted/30">
+                      <TableCell colSpan={5} className="py-2 text-xs font-semibold uppercase tracking-wide">Packs · su stock es el de sus componentes</TableCell>
+                    </TableRow>
+                    {packRows.map(({ pack, available: packAvailable }) => (
+                      <TableRow key={pack.id} data-testid={`pack-warehouse-${inv.id}-${pack.id}`}>
+                        <TableCell className="text-sm">
+                          <Link href={`/productos/${pack.id}`} className="hover:underline">{pack.name}</Link>
+                          <span className="ml-2 inline-block whitespace-nowrap rounded border border-teal-300 bg-teal-50 px-1.5 py-0.5 text-[11px] font-medium text-teal-700 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-400">Calculado</span>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{pack.sku ?? "—"}</TableCell>
+                        <TableCell className="text-right text-muted-foreground" title="Un pack no tiene stock propio">—</TableCell>
+                        <TableCell className="text-right text-muted-foreground" title="Un pack no tiene stock propio">—</TableCell>
+                        <TableCell className={`text-right tabular-nums ${availableClass(packAvailable)}`} title="Disponible del componente con menos stock">{packAvailable}</TableCell>
+                      </TableRow>
+                    ))}
+                  </>
+                ) : null}
               </TableBody>
             </Table>
           </section>

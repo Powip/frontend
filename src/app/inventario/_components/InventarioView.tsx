@@ -74,8 +74,8 @@ import TransfersTab from "@/components/warehouse-ops/transfers/TransfersTab";
 import CountsTab from "@/components/warehouse-ops/counts/CountsTab";
 import AdjustmentsTab from "@/components/warehouse-ops/adjustments/AdjustmentsTab";
 import { useMyWarehouses } from "@/hooks/useMyWarehouses";
-import { filterStockVariants, groupByProduct, packStockRows, stockTotals, storesOf, variantPositionsFlat, visibleInventories, STOCK_STATUS_LABEL, type StockMode, type StockStatusFilter } from "@/components/inventory/stockView";
-// FEAT-24 H9: los packs se listan al final de la tabla de Stock con el disponible de sus componentes.
+import { filterStockVariants, groupByProduct, packExcelRows, packStockRows, stockTotals, storesOf, variantPositionsFlat, visibleInventories, STOCK_STATUS_LABEL, type StockMode, type StockStatusFilter } from "@/components/inventory/stockView";
+// FEAT-24 H9: los packs se listan en Stock (por producto y por almacén) y en su Excel con el disponible de sus componentes.
 import { listAllPacks } from "@/services/packsService";
 // FEAT-24 H13-D2: columna «Cobertura» de Stock.
 import { useStockCoverage } from "@/hooks/useStockCoverage";
@@ -161,7 +161,7 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
   const packsQuery = useQuery({
     queryKey: ["inventory-packs-stock", companyId],
     queryFn: ({ signal }) => listAllPacks({ active: true }, signal),
-    enabled: Boolean(companyId && auth?.accessToken) && activeTab === "stock" && stockMode === "producto",
+    enabled: Boolean(companyId && auth?.accessToken) && activeTab === "stock",
     retry: false,
     staleTime: 60_000,
   });
@@ -242,8 +242,14 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
     setIsExporting(true);
 
     try {
-      const fresh = await fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth.accessToken, includeInactive });
+      // FEAT-24 H9: los packs se piden frescos junto con el stock; si fallan, se usa lo que ya está en pantalla.
+      const [fresh, freshPacks] = await Promise.all([
+        fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth.accessToken, includeInactive }),
+        listAllPacks({ active: true }).catch(() => packsQuery.data ?? null),
+      ]);
       const items = variantPositionsFlat(filterStockVariants(fresh, stockFilters));
+      const exportPacks = packStockRows(freshPacks ?? [], warehouseColumns, stockFilters);
+      const packLines = packExcelRows(exportPacks, warehouseColumns);
 
       if (items.length === 0) {
         toast.warning("No hay productos para exportar");
@@ -292,6 +298,28 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
         });
       });
 
+      // FEAT-24 H9: sección «Packs» al final, con el disponible calculado de sus componentes (sin físico ni reservado propios).
+      if (packLines.length > 0) {
+        worksheet.addRow({});
+        const title = worksheet.addRow({ companySku: "Packs · su stock es el de sus componentes" });
+        title.font = { bold: true };
+        packLines.forEach((pack) => {
+          worksheet.addRow({
+            companySku: pack.companySku,
+            sku: "",
+            name: pack.name,
+            variante: "Pack",
+            store: pack.store,
+            inventory: pack.inventory,
+            stock: "",
+            reservado: "",
+            disponible: pack.available,
+            precio: pack.price,
+            ...(coverageMap ? { cobertura: "—" } : {}),
+          });
+        });
+      }
+
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -303,7 +331,8 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
       a.click();
       window.URL.revokeObjectURL(url);
 
-      toast.success(`Exportados ${items.length} producto(s)`);
+      toast.success(`Exportados ${items.length} producto(s)${packLines.length > 0 ? ` y ${exportPacks.length} pack(s)` : ""}`);
+      if (!freshPacks) toast.warning("El Excel salió sin packs: no se pudo leer su stock calculado.");
     } catch (err) {
       console.error("Error al exportar el inventario:", err);
 
@@ -574,7 +603,7 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                     )}
                   </>
                 ) : (
-                  <StockByWarehouse variants={variantRows} inventories={warehouseColumns} isLoading={isLoading} meta={warehouseMeta} />
+                  <StockByWarehouse variants={variantRows} inventories={warehouseColumns} isLoading={isLoading} meta={warehouseMeta} packs={packRows} />
                 )}
               </CardContent>
             </Card>

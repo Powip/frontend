@@ -1,6 +1,6 @@
 import type { BusinessInventoryItem } from "@/services/businessInventoryItemsService";
 import type { PackView } from "@/services/packsService";
-import { filterStockVariants, groupByProduct, packStockRows, stockStatus, stockTotals, storesOf, variantPositionsFlat, visibleInventories } from "../stockView";
+import { filterStockVariants, groupByProduct, packExcelRows, packsInInventory, packStockRows, stockStatus, stockTotals, storesOf, variantPositionsFlat, visibleInventories } from "../stockView";
 
 const pos = (id: string, over: Partial<BusinessInventoryItem> = {}): BusinessInventoryItem => ({
   inventoryItemId: id, productId: "p1", variantId: "v1", productName: "Polo", sku: "SKU-1", price: 10,
@@ -92,5 +92,24 @@ describe("packs en la tabla de Stock (FEAT-24 H9)", () => {
     expect(packStockRows(packs, columns, { ...ALL, status: "agotado" }).map((row) => row.id)).toEqual(["k2"]);
     expect(packStockRows(packs, columns, { ...ALL, status: "normal" }).map((row) => row.id)).toEqual(["k1"]);
     expect(packStockRows(packs, columns, { ...ALL, status: "bajo" })).toEqual([]);
+  });
+
+  it("lleva el precio del pack", () => {
+    expect(packStockRows([pack("k1")], columns, ALL)[0].price).toBe(50);
+  });
+
+  it("«Por almacén»: cada almacén lista solo los packs con disponible calculado ahí", () => {
+    const rows = packStockRows([pack("k1"), pack("k2", { available: { total: 4, byWarehouse: [{ inventoryId: "b", inventoryName: "Lince", storeId: "s2", available: 4 }] } }), pack("k3", { available: null })], columns, ALL);
+    expect(packsInInventory(rows, "a").map(({ pack: row, available }) => [row.id, available])).toEqual([["k1", 3]]);
+    expect(packsInInventory(rows, "b").map(({ pack: row, available }) => [row.id, available])).toEqual([["k1", 0], ["k2", 4]]);
+  });
+
+  it("Excel: una fila por pack y almacén visible, y «Sin dato» una vez si logística no respondió", () => {
+    const rows = packStockRows([pack("k1"), pack("k3", { name: "Combo", sku: null, productSku: "CB", available: null })], columns, ALL);
+    expect(packExcelRows(rows, columns)).toEqual([
+      { companySku: "PK-1", name: "Pack Verano", price: 50, store: "Tienda Uno", inventory: "Principal", available: 3 },
+      { companySku: "PK-1", name: "Pack Verano", price: 50, store: "Tienda Dos", inventory: "Lince", available: 0 },
+      { companySku: "CB", name: "Combo", price: 50, store: "", inventory: "", available: "Sin dato" },
+    ]);
   });
 });
