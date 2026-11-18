@@ -19,6 +19,7 @@ jest.mock("@/services/businessInventoryItemsService", () => ({
   fetchBusinessInventoryItems: jest.fn(),
 }));
 jest.mock("@/services/userWarehousesService", () => ({ getMyWarehouses: jest.fn() }));
+jest.mock("@/services/packsService", () => ({ listAllPacks: jest.fn().mockResolvedValue([]) })); // FEAT-24 H9: packs al final de Stock
 jest.mock("@/components/warehouse-ops/transfers/TransfersTab", () => ({ __esModule: true, default: () => <div>bandeja de traslados</div> }));
 jest.mock("@/components/warehouse-ops/counts/CountsTab", () => ({ __esModule: true, default: () => <div>bandeja de conteos</div> }));
 jest.mock("@/components/warehouse-ops/adjustments/AdjustmentsTab", () => ({ __esModule: true, default: () => <div>bandeja de ajustes</div> }));

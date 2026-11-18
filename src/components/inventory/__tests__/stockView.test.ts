@@ -1,5 +1,6 @@
 import type { BusinessInventoryItem } from "@/services/businessInventoryItemsService";
-import { filterStockVariants, groupByProduct, stockStatus, stockTotals, storesOf, variantPositionsFlat, visibleInventories } from "../stockView";
+import type { PackView } from "@/services/packsService";
+import { filterStockVariants, groupByProduct, packStockRows, stockStatus, stockTotals, storesOf, variantPositionsFlat, visibleInventories } from "../stockView";
 
 const pos = (id: string, over: Partial<BusinessInventoryItem> = {}): BusinessInventoryItem => ({
   inventoryItemId: id, productId: "p1", variantId: "v1", productName: "Polo", sku: "SKU-1", price: 10,
@@ -50,5 +51,46 @@ describe("stockView", () => {
     expect(storesOf(inventories)).toEqual([{ id: "s2", name: "Tienda Dos" }, { id: "s1", name: "Tienda Uno" }]);
     expect(visibleInventories(inventories, { storeId: "s1", inventoryId: "all" }).map((inv) => inv.id)).toEqual(["a", "c"]);
     expect(visibleInventories(inventories, { storeId: "all", inventoryId: "b" }).map((inv) => inv.id)).toEqual(["b"]);
+  });
+});
+
+describe("packs en la tabla de Stock (FEAT-24 H9)", () => {
+  const columns = [{ id: "a", name: "Principal", storeId: "s1", storeName: "Tienda Uno" }, { id: "b", name: "Lince", storeId: "s2", storeName: "Tienda Dos" }];
+  const pack = (id: string, over: Partial<PackView> = {}): PackView => ({
+    id, variantId: `${id}-v`, name: "Pack Verano", description: null, sku: "PK-1", productSku: null, powipEan: null, barcode: null,
+    imageUrl: null, price: 50, active: true, categoryId: null, brandId: null, components: [],
+    available: { total: 9, byWarehouse: [
+      { inventoryId: "a", inventoryName: "Principal", storeId: "s1", available: 3 },
+      { inventoryId: "b", inventoryName: "Lince", storeId: "s2", available: 0 },
+      { inventoryId: "ajeno", inventoryName: "Otro", storeId: "s9", available: 6 },
+    ] },
+    ...over,
+  });
+
+  it("toma el disponible por almacén de ms-products y suma solo los almacenes visibles", () => {
+    const [row] = packStockRows([pack("k1")], columns, ALL);
+    expect([...row.byInventory.entries()]).toEqual([["a", 3], ["b", 0]]);
+    expect(row.total).toBe(3); // el almacén que el usuario no ve no entra
+    expect(row.sku).toBe("PK-1");
+    expect(packStockRows([pack("k1")], [columns[1]], ALL)[0].total).toBe(0);
+  });
+
+  it("deja afuera los inactivos, los que no matchean la búsqueda y los que no tienen componentes en los almacenes visibles", () => {
+    const packs = [pack("k1"), pack("k2", { active: false }), pack("k3", { name: "Combo Gorra", sku: "CG-2" }), pack("k4", { available: { total: 6, byWarehouse: [{ inventoryId: "ajeno", inventoryName: null, storeId: null, available: 6 }] } })];
+    expect(packStockRows(packs, columns, ALL).map((row) => row.id)).toEqual(["k1", "k3"]);
+    expect(packStockRows(packs, columns, { ...ALL, search: "cg-2" }).map((row) => row.id)).toEqual(["k3"]);
+  });
+
+  it("sin datos de logística el pack se muestra igual con el total desconocido", () => {
+    const [row] = packStockRows([pack("k1", { available: null })], columns, ALL);
+    expect(row.byInventory.size).toBe(0);
+    expect(row.total).toBeNull();
+  });
+
+  it("con filtro de estado: «Agotado» si no alcanza para ninguno, «Normal» si alcanza; nunca «Bajo mínimo»", () => {
+    const packs = [pack("k1"), pack("k2", { available: { total: 0, byWarehouse: [{ inventoryId: "a", inventoryName: null, storeId: null, available: 0 }] } }), pack("k3", { available: null })];
+    expect(packStockRows(packs, columns, { ...ALL, status: "agotado" }).map((row) => row.id)).toEqual(["k2"]);
+    expect(packStockRows(packs, columns, { ...ALL, status: "normal" }).map((row) => row.id)).toEqual(["k1"]);
+    expect(packStockRows(packs, columns, { ...ALL, status: "bajo" })).toEqual([]);
   });
 });

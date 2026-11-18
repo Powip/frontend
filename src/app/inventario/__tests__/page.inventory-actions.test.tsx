@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import AlmacenPage from "../_components/InventarioView";
 
 jest.mock("@/services/userWarehousesService", () => ({ getMyWarehouses: jest.fn().mockResolvedValue({ all: true, inventoryIds: [], operableIds: [] }) })); // FEAT-24 H6
+jest.mock("@/services/packsService", () => ({ listAllPacks: jest.fn().mockResolvedValue([]) })); // FEAT-24 H9: packs al final de Stock
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: jest.fn() }));
 jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: jest.fn() }));
 jest.mock("@/hooks/useBusinessInventories", () => ({ useBusinessInventories: jest.fn() }));

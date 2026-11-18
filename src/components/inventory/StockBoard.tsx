@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { Camera, ChevronDown, ChevronRight, History, PackagePlus, Pencil, ShoppingBag, Warehouse } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,7 +12,7 @@ import { formatVariantLabel } from "@/lib/variantAttributes";
 import { isTracked } from "@/services/inventoryTrackingService";
 import type { BusinessInventoryItem } from "@/services/businessInventoryItemsService";
 import type { BusinessInventory } from "@/services/inventoryCatalogService";
-import { STOCK_STATUS_LABEL, type StockProductGroup, type StockStatus, type StockTotals, type StockVariantRow } from "./stockView";
+import { STOCK_STATUS_LABEL, type PackStockRow, type StockProductGroup, type StockStatus, type StockTotals, type StockVariantRow } from "./stockView";
 
 /** Datos de la pantalla de almacenes de la empresa; pueden faltar (la pantalla funciona igual). */
 export type WarehouseMeta = Map<string, { type: "PROPIO" | "TIENDA" | "COURIER"; isMain: boolean }>;
@@ -154,6 +155,42 @@ function VariantDetail({ variant, actions, colSpan }: { variant: StockVariantRow
   );
 }
 
+/** FEAT-24 H9 (mockup vistainv.html): packs al final de la tabla, con el disponible calculado de sus componentes. */
+function PackRows({ packs, inventories, colSpan }: { packs: PackStockRow[]; inventories: BusinessInventory[]; colSpan: number }) {
+  return (
+    <>
+      <TableRow className="bg-muted/30 hover:bg-muted/30">
+        <TableCell colSpan={colSpan} className="py-2 text-xs font-semibold uppercase tracking-wide">Packs · su stock es el de sus componentes</TableCell>
+      </TableRow>
+      {packs.map((pack) => (
+        <TableRow key={pack.id} data-testid={`pack-stock-${pack.id}`}>
+          <TableCell>
+            <div className="flex items-center gap-3">
+              <span className="w-4 shrink-0" aria-hidden="true" />
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-primary/30 bg-primary/10 text-xs font-semibold text-primary" aria-hidden="true">PK</div>
+              <div className="min-w-0">
+                <Link href={`/productos/${pack.id}`} className="text-sm font-medium hover:underline">{pack.name}</Link>
+                {pack.sku ? <div className="font-mono text-xs text-muted-foreground">{pack.sku}</div> : null}
+              </div>
+            </div>
+          </TableCell>
+          {inventories.map((inv) => {
+            const available = pack.byInventory.get(inv.id);
+            return available === undefined
+              ? <TableCell key={inv.id} className="text-center text-muted-foreground">—</TableCell>
+              : <TableCell key={inv.id} className={`text-center tabular-nums ${availableClass(available)}`}>{available}</TableCell>;
+          })}
+          <TableCell className={`text-right tabular-nums ${pack.total === null ? "text-muted-foreground" : availableClass(pack.total)}`}>{pack.total ?? "—"}</TableCell>
+          <TableCell><span className="inline-block whitespace-nowrap rounded border border-teal-300 bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-400">Calculado</span></TableCell>
+          <TableCell className="text-right text-xs text-muted-foreground">
+            {pack.total === null ? "No se pudo calcular el stock" : "Disponible del componente con menos stock"}
+          </TableCell>
+        </TableRow>
+      ))}
+    </>
+  );
+}
+
 interface ProductViewProps {
   groups: StockProductGroup[];
   inventories: BusinessInventory[];
@@ -161,10 +198,12 @@ interface ProductViewProps {
   emptyText: string;
   actions: StockBoardActions;
   meta?: WarehouseMeta;
+  /** FEAT-24 H9: packs que se listan al final (la pantalla los pasa solo en la última página). */
+  packs?: PackStockRow[];
 }
 
 /** Vista «Por producto»: filas por variante agrupadas por producto, una columna por almacén. */
-export function StockByProduct({ groups, inventories, isLoading, emptyText, actions, meta = NO_META }: ProductViewProps) {
+export function StockByProduct({ groups, inventories, isLoading, emptyText, actions, meta = NO_META, packs = [] }: ProductViewProps) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const cols = inventories.length + 4;
   return (
@@ -260,6 +299,7 @@ export function StockByProduct({ groups, inventories, isLoading, emptyText, acti
               })}
             </Fragment>
           ))}
+          {!isLoading && packs.length > 0 ? <PackRows packs={packs} inventories={inventories} colSpan={cols} /> : null}
         </TableBody>
       </Table>
       {!isLoading && groups.length > 0 ? (

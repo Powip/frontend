@@ -133,20 +133,24 @@ export async function updatePackBasics(pack: Pick<PackView, "id" | "variantId">,
   }
 }
 
-/**
- * Ids de producto y de variante de todos los packs de la empresa (para ocultarlos donde no se venden,
- * p. ej. Live). Recorre las páginas de 100 con un tope de 20 (2000 packs).
- */
-export async function listPackProductIds(signal?: AbortSignal): Promise<Set<string>> {
-  const ids = new Set<string>();
+/** Todos los packs de la empresa: recorre las páginas de 100 con un tope de 20 (2000 packs). */
+export async function listAllPacks(params: { active?: boolean } = {}, signal?: AbortSignal): Promise<PackView[]> {
+  const packs: PackView[] = [];
   for (let page = 1; page <= 20; page += 1) {
-    const result = await listPacks({ page, limit: 100 }, signal);
-    result.data.forEach((pack) => {
-      ids.add(pack.id);
-      if (pack.variantId) ids.add(pack.variantId);
-    });
+    const result = await listPacks({ ...params, page, limit: 100 }, signal);
+    packs.push(...result.data);
     if (page >= result.meta.totalPages || result.data.length === 0) break;
   }
+  return packs;
+}
+
+/** Ids de producto y de variante de todos los packs de la empresa (para ocultarlos donde no se venden, p. ej. Live). */
+export async function listPackProductIds(signal?: AbortSignal): Promise<Set<string>> {
+  const ids = new Set<string>();
+  (await listAllPacks({}, signal)).forEach((pack) => {
+    ids.add(pack.id);
+    if (pack.variantId) ids.add(pack.variantId);
+  });
   return ids;
 }
 

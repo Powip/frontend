@@ -1,5 +1,6 @@
 import type { BusinessInventoryItem } from "@/services/businessInventoryItemsService";
 import type { BusinessInventory } from "@/services/inventoryCatalogService";
+import type { PackView } from "@/services/packsService";
 
 /** Estado de una variante en la pantalla de Stock (mockup vistainv.html). */
 export type StockStatus = "agotado" | "bajo" | "normal";
@@ -122,3 +123,39 @@ export function storesOf(inventories: BusinessInventory[]) {
 }
 
 export const variantPositionsFlat = (variants: StockVariantRow[]) => variants.flatMap((variant) => variant.positions);
+
+/** FEAT-24 H9: un pack al final de «Por producto». No tiene stock propio: su disponible es el de sus componentes. */
+export interface PackStockRow {
+  id: string;
+  name: string;
+  sku: string | null;
+  /** Disponible por almacén visible; un almacén sin todos los componentes no figura. */
+  byInventory: Map<string, number>;
+  /** Suma de los almacenes visibles; `null` si ms-products no pudo calcularlo (logística caída). */
+  total: number | null;
+}
+
+/**
+ * Filas de packs para la tabla de Stock. ms-products ya calcula el disponible por almacén
+ * (mín. de ⌊disponible del componente ÷ cantidad⌋); acá solo se queda con las columnas visibles, así el total
+ * suma lo mismo que el de las variantes. Sin mínimo propio, un pack solo puede estar «Agotado» o «Normal».
+ */
+export function packStockRows(packs: PackView[], columns: BusinessInventory[], filters: StockFilters): PackStockRow[] {
+  const query = filters.search.trim().toLocaleLowerCase("es");
+  const rows: PackStockRow[] = [];
+  for (const pack of packs) {
+    if (!pack.active) continue;
+    if (query && ![pack.name, pack.sku, pack.productSku].some((value) => String(value ?? "").toLocaleLowerCase("es").includes(query))) continue;
+    const byWarehouse = new Map((pack.available?.byWarehouse ?? []).map((entry) => [entry.inventoryId, Number(entry.available) || 0]));
+    const byInventory = new Map(columns.flatMap((inv) => (byWarehouse.has(inv.id) ? [[inv.id, byWarehouse.get(inv.id)!] as const] : [])));
+    // Sin datos (`available: null`) se muestra igual; con datos, solo si algún almacén visible tiene sus componentes.
+    if (pack.available && byInventory.size === 0) continue;
+    const total = pack.available ? [...byInventory.values()].reduce((sum, value) => sum + value, 0) : null;
+    if (filters.status !== "all") {
+      const status: StockStatus | null = total === null ? null : total <= 0 ? "agotado" : "normal";
+      if (status !== filters.status) continue;
+    }
+    rows.push({ id: pack.id, name: pack.name, sku: pack.sku ?? pack.productSku, byInventory, total });
+  }
+  return rows;
+}

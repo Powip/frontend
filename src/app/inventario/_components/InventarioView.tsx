@@ -74,7 +74,9 @@ import TransfersTab from "@/components/warehouse-ops/transfers/TransfersTab";
 import CountsTab from "@/components/warehouse-ops/counts/CountsTab";
 import AdjustmentsTab from "@/components/warehouse-ops/adjustments/AdjustmentsTab";
 import { useMyWarehouses } from "@/hooks/useMyWarehouses";
-import { filterStockVariants, groupByProduct, stockTotals, storesOf, variantPositionsFlat, visibleInventories, STOCK_STATUS_LABEL, type StockMode, type StockStatusFilter } from "@/components/inventory/stockView";
+import { filterStockVariants, groupByProduct, packStockRows, stockTotals, storesOf, variantPositionsFlat, visibleInventories, STOCK_STATUS_LABEL, type StockMode, type StockStatusFilter } from "@/components/inventory/stockView";
+// FEAT-24 H9: los packs se listan al final de la tabla de Stock con el disponible de sus componentes.
+import { listAllPacks } from "@/services/packsService";
 
 const ITEMS_PER_PAGE = 10;
 // FEAT-24 H11: las variantes con SKU repetido salen agrupadas en «Por unificar»; arriba queda solo el SKU base.
@@ -115,6 +117,8 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
   // Editar inventario (ajustes, mermas, transferencias, importar Excel, compras, reconciliación): solo
   // Administrador y Operaciones. El resto sigue viendo el stock en solo lectura.
   const canEdit = canEditInventory(auth?.user);
+  const activeTab: InventarioTab =
+    (tab === "unificacion" && !canEdit) || (tab === "pedidos-sin-stock" && !stockAccess.sinReserva) ? "stock" : tab;
   // FEAT-24 H10-D8: contador de la pestaña Alertas (misma consulta que el menú lateral).
   const alerts = useInventoryAlerts();
   const alertTotal = alerts.data?.total ?? 0;
@@ -150,6 +154,15 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
     staleTime: 60_000,
   });
   const warehouseMeta = useMemo(() => new Map((warehouseMetaQuery.data?.warehouses ?? []).map((w) => [w.id, { type: w.type, isMain: w.is_main }])), [warehouseMetaQuery.data]);
+  // FEAT-24 H9: packs activos con su disponible por almacén (lo calcula ms-products). Como el tipo de almacén, es
+  // un agregado: si falla, la tabla sale sin el bloque de packs.
+  const packsQuery = useQuery({
+    queryKey: ["inventory-packs-stock", companyId],
+    queryFn: ({ signal }) => listAllPacks({ active: true }, signal),
+    enabled: Boolean(companyId && auth?.accessToken) && activeTab === "stock" && stockMode === "producto",
+    retry: false,
+    staleTime: 60_000,
+  });
   const stockFilters = useMemo(() => ({ search: searchQuery, storeId: selectedStoreId, inventoryId: selectedInventoryId, status: statusFilter }), [searchQuery, selectedStoreId, selectedInventoryId, statusFilter]);
   // Variantes (con sus posiciones por almacén) agrupadas por producto: la paginación cuenta productos.
   const variantRows = useMemo(() => filterStockVariants(inventoryQuery.data ?? [], stockFilters), [inventoryQuery.data, stockFilters]);
@@ -157,13 +170,18 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
   const stores = useMemo(() => storesOf(storeInventories), [storeInventories]);
   const warehouseColumns = useMemo(() => visibleInventories(storeInventories, stockFilters), [storeInventories, stockFilters]);
   const warehouseOptions = useMemo(() => visibleInventories(storeInventories, { storeId: selectedStoreId, inventoryId: "all" }), [storeInventories, selectedStoreId]);
+  const packRows = useMemo(() => packStockRows(packsQuery.data ?? [], warehouseColumns, stockFilters), [packsQuery.data, warehouseColumns, stockFilters]);
   const totalItems = productGroups.length;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
   const pagedGroups = productGroups.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const isLoadingInventories = warehouses.isPending;
   const isLoading = warehouses.isPending || (warehouses.isSuccess && inventoryQuery.isPending);
   const loadError = warehouses.error || inventoryQuery.error;
-  const refreshItems = async () => { await inventoryQuery.refetch({ throwOnError: true }); };
+  const refreshItems = async () => {
+    // El disponible de los packs depende del de sus componentes: se refresca aparte y sin bloquear.
+    if (packsQuery.isFetched) void packsQuery.refetch();
+    await inventoryQuery.refetch({ throwOnError: true });
+  };
   const handleStockRefresh = () => {
     void refreshItems().catch(() => {
       toast.warning("Los cambios se guardaron, pero no se pudo actualizar el almacén. Recarga la página.");
@@ -211,8 +229,6 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
     onEdit: (variantId) => router.push(`/productos?edit=${variantId}`),
     onKardex: (variantId, label) => router.push(`${INVENTARIO_TAB_ROUTES.movimientos}?variantId=${encodeURIComponent(variantId)}&q=${encodeURIComponent(label)}`),
   };
-  const activeTab: InventarioTab =
-    (tab === "unificacion" && !canEdit) || (tab === "pedidos-sin-stock" && !stockAccess.sinReserva) ? "stock" : tab;
 
   const handleExportExcel = async () => {
     if (loadError || isLoading) { toast.error("Espera a que el inventario termine de cargar correctamente."); return; }
@@ -532,6 +548,7 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                       isLoading={isLoading}
                       emptyText={loadError ? "No se pudo consultar el stock" : "No hay productos con estos filtros"}
                       actions={stockActions}
+                      packs={currentPage >= totalPages ? packRows : []}
                     />
                     {!isLoading && (
                       <div className="mt-4">
