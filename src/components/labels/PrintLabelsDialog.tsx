@@ -12,8 +12,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessInventories } from "@/hooks/useBusinessInventories";
 import { useCompanyBrands } from "@/hooks/useCompanyBrands";
 import { useLabelFormats } from "@/hooks/useLabelFormats";
-import axiosAuth from "@/lib/axiosAuth";
-import { GATEWAY } from "@/lib/gateway";
+import { flattenCategoryTree } from "@/lib/catalog/categoryTree";
 import { loadImageAsDataUrl } from "@/lib/labels/logo";
 import {
   applyQuantities,
@@ -24,6 +23,7 @@ import {
   type LabelsSource,
 } from "@/lib/labels/request";
 import { LABEL_OUTPUT_NAMES, labelCount, MAX_LABELS_PER_PRINT } from "@/lib/labels/types";
+import { listCatalogCategories } from "@/services/catalogCategoriesService";
 import { fetchLabelLines, labelsErrorMessage } from "@/services/labelsService";
 import { LabelPreview } from "./LabelPreview";
 
@@ -33,15 +33,11 @@ interface PrintLabelsDialogProps {
   source: LabelsSource;
 }
 
-interface CategoryOption {
-  id: string;
-  name: string;
-}
-
 /**
  * FEAT-24 H7 — «Imprimir etiquetas»: desde la ficha (las variantes del producto), desde el listado (los
- * productos elegidos) o desde Etiquetas (el catálogo, por categoría o marca). La cantidad por variante es 1 o
- * lo disponible en el almacén elegido, y se puede cambiar línea por línea. El PDF se arma en el navegador.
+ * productos elegidos), desde Etiquetas (el catálogo, por categoría propia o marca) o desde una compra
+ * recibida (H3: lo que entró en la recepción). La cantidad por variante es 1, lo disponible en el almacén
+ * elegido o lo recibido, y se puede cambiar línea por línea. El PDF se arma en el navegador.
  */
 export function PrintLabelsDialog({ open, onOpenChange, source }: PrintLabelsDialogProps) {
   const { auth } = useAuth();
@@ -49,14 +45,16 @@ export function PrintLabelsDialog({ open, onOpenChange, source }: PrintLabelsDia
   const formats = useLabelFormats();
   const warehouses = useBusinessInventories();
   const { brands } = useCompanyBrands();
+  // FEAT-24 H4: categorías propias de la empresa (misma caché que el catálogo, useCatalogCategories).
   const categories = useQuery({
-    queryKey: ["label-categories", companyId],
-    queryFn: async () =>
-      (await axiosAuth.get<CategoryOption[]>(`${process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products}/categories`)).data,
+    queryKey: ["catalog-categories", companyId],
+    queryFn: ({ signal }) => listCatalogCategories({ signal }),
     enabled: open && source.kind === "catalog" && Boolean(companyId),
     retry: false,
-    staleTime: 5 * 60_000,
+    staleTime: 60_000,
   });
+  const categoryOptions = useMemo(() => flattenCategoryTree(categories.data ?? [], { activeOnly: true }), [categories.data]);
+  const fromPurchase = source.kind === "purchase_order";
   const stores = auth?.company?.stores ?? [];
 
   const [formatId, setFormatId] = useState("");
@@ -118,7 +116,9 @@ export function PrintLabelsDialog({ open, onOpenChange, source }: PrintLabelsDia
   const title =
     source.kind === "products"
       ? source.title ?? `${source.productIds.length} producto${source.productIds.length === 1 ? "" : "s"}`
-      : "Catálogo";
+      : source.kind === "purchase_order"
+        ? source.title ?? "Compra recibida"
+        : "Catálogo";
 
   return (
     <Dialog open={open} onOpenChange={(next) => !generating && onOpenChange(next)}>
@@ -184,9 +184,9 @@ export function PrintLabelsDialog({ open, onOpenChange, source }: PrintLabelsDia
                       onChange={(event) => setFilter((f) => ({ ...f, categoryId: event.target.value || undefined }))}
                     >
                       <option value="">Todas las categorías</option>
-                      {(categories.data ?? []).map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
+                      {categoryOptions.map((category) => (
+                        <option key={category.id} value={category.id} title={category.path}>
+                          {`${"\u00a0\u00a0\u00a0".repeat(category.level - 1)}${category.name}`}
                         </option>
                       ))}
                     </select>
@@ -210,34 +210,40 @@ export function PrintLabelsDialog({ open, onOpenChange, source }: PrintLabelsDia
                 </div>
               ) : null}
 
-              <fieldset className="space-y-2">
-                <legend className="text-sm font-medium">Cantidad por variante</legend>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="radio" name="labels-mode" checked={mode === "fixed"} onChange={() => setMode("fixed")} />1 de cada
-                  una
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="radio" name="labels-mode" checked={mode === "stock"} onChange={() => setMode("stock")} />
-                  Según el stock disponible del almacén
-                </label>
-                {mode === "stock" ? (
-                  <select
-                    aria-label="Almacén"
-                    className="w-full rounded-md border p-2 text-sm"
-                    value={inventoryId}
-                    onChange={(event) => setInventoryId(event.target.value)}
-                  >
-                    <option value="">Elige el almacén</option>
-                    {warehouses.inventories.map((warehouse) => (
-                      <option key={warehouse.id} value={warehouse.id}>
-                        {warehouse.name}
-                        {warehouse.storeName ? ` · ${warehouse.storeName}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                <p className="text-xs text-muted-foreground">Luego puedes cambiar la cantidad de cada variante en la lista.</p>
-              </fieldset>
+              {fromPurchase ? (
+                <p className="text-sm text-muted-foreground">
+                  Una etiqueta por unidad recibida. Puedes cambiar la cantidad de cada variante en la lista.
+                </p>
+              ) : (
+                <fieldset className="space-y-2">
+                  <legend className="text-sm font-medium">Cantidad por variante</legend>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="radio" name="labels-mode" checked={mode === "fixed"} onChange={() => setMode("fixed")} />1 de cada
+                    una
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="radio" name="labels-mode" checked={mode === "stock"} onChange={() => setMode("stock")} />
+                    Según el stock disponible del almacén
+                  </label>
+                  {mode === "stock" ? (
+                    <select
+                      aria-label="Almacén"
+                      className="w-full rounded-md border p-2 text-sm"
+                      value={inventoryId}
+                      onChange={(event) => setInventoryId(event.target.value)}
+                    >
+                      <option value="">Elige el almacén</option>
+                      {warehouses.inventories.map((warehouse) => (
+                        <option key={warehouse.id} value={warehouse.id}>
+                          {warehouse.name}
+                          {warehouse.storeName ? ` · ${warehouse.storeName}` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
+                  <p className="text-xs text-muted-foreground">Luego puedes cambiar la cantidad de cada variante en la lista.</p>
+                </fieldset>
+              )}
 
               {!request ? (
                 <p className="text-sm text-muted-foreground">Elige el almacén para traer su stock.</p>

@@ -161,6 +161,18 @@ describe("labels request", () => {
     });
   });
 
+  it("prints what a purchase order received: one reception, or all of it (FEAT-24 H3)", () => {
+    const reception = { kind: "purchase_order" as const, purchaseOrderId: "oc-1", receiptId: "rec-1" };
+    expect(buildLabelsRequest(reception, "fixed")).toEqual({ origin: "purchase_order", purchaseOrderId: "oc-1", receiptId: "rec-1" });
+    // El modo no cambia nada: la cantidad la pone lo recibido.
+    expect(buildLabelsRequest(reception, "stock")).toEqual({ origin: "purchase_order", purchaseOrderId: "oc-1", receiptId: "rec-1" });
+    expect(buildLabelsRequest({ kind: "purchase_order", purchaseOrderId: "oc-1" }, "fixed")).toEqual({
+      origin: "purchase_order",
+      purchaseOrderId: "oc-1",
+    });
+    expect(buildLabelsRequest({ kind: "purchase_order", purchaseOrderId: "" }, "fixed")).toBeNull();
+  });
+
   it("applies the edited quantities and blocks 0 or more than 2000", () => {
     const lines = [line({ variantId: "a", quantity: 1 }), line({ variantId: "b", quantity: 4 })];
     expect(applyQuantities(lines, { b: 2.9 }).map((l) => l.quantity)).toEqual([1, 2]);

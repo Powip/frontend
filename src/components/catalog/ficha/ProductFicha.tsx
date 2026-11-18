@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Printer } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessScope } from "@/contexts/BusinessScopeContext";
 import { useBusinessInventories } from "@/hooks/useBusinessInventories";
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MovementHistoryTable } from "@/components/inventory/MovementHistoryTable";
+import { PrintLabelsDialog } from "@/components/labels/PrintLabelsDialog";
 import { ChannelBadge, KindBadge, ProductThumb, SkuConflictBadge, StatusBadge } from "@/components/catalog/CatalogBadges";
 import { liveVariants, productKind } from "@/lib/catalog/catalogProducts";
 import { categoryPath } from "@/lib/catalog/categoryTree";
@@ -41,6 +42,8 @@ export default function ProductFicha({ productId, actions }: { productId: string
   const { brands } = useCompanyBrands();
   const categories = useCatalogCategories();
   const [tab, setTab] = useState<FichaTab>("general");
+  // FEAT-24 H7: etiquetas de las variantes del producto.
+  const [printingLabels, setPrintingLabels] = useState(false);
   const enabled = Boolean(companyId && accessToken && productId);
 
   const productQuery = useQuery({
@@ -108,6 +111,12 @@ export default function ProductFicha({ productId, actions }: { productId: string
           </div>
           <div className="flex flex-wrap gap-2">
             {actions}
+            {live.length > 0 ? (
+              <Button variant="outline" onClick={() => setPrintingLabels(true)}>
+                <Printer className="mr-2 h-4 w-4" />
+                Imprimir etiquetas
+              </Button>
+            ) : null}
             {editHref ? <Button variant="outline" asChild><Link href={editHref}>Editar opciones y precios</Link></Button> : null}
           </div>
         </CardHeader>
@@ -146,6 +155,9 @@ export default function ProductFicha({ productId, actions }: { productId: string
           </Tabs>
         </CardContent>
       </Card>
+      {printingLabels ? (
+        <PrintLabelsDialog open source={{ kind: "products", productIds: [product.id], title: product.name }} onOpenChange={setPrintingLabels} />
+      ) : null}
     </div>
   );
 }

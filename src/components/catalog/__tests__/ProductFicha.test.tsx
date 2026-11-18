@@ -30,6 +30,9 @@ jest.mock("@/services/catalogProductService", () => ({
 }));
 jest.mock("@/services/businessInventoryItemsService", () => ({ fetchBusinessInventoryItems: jest.fn() }));
 jest.mock("@/services/uploadService", () => ({ uploadImage: jest.fn() }));
+jest.mock("@/components/labels/PrintLabelsDialog", () => ({
+  PrintLabelsDialog: ({ source }: { source: { productIds: string[]; title?: string } }) => <div>etiquetas de {source.productIds.join(",")} · {source.title}</div>,
+}));
 jest.mock("@/components/inventory/MovementHistoryTable", () => ({
   MovementHistoryTable: ({ inventoryItemIds, title }: { inventoryItemIds?: string[]; title?: string }) => <div data-testid="kardex">{title}: {inventoryItemIds?.join(",")}</div>,
 }));
@@ -172,5 +175,14 @@ describe("Ficha del producto en pestañas (FEAT-24 H4-D)", () => {
     await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await waitFor(() => expect(updateCatalogVariant).toHaveBeenCalledWith("t1", { barcode: "7751234567890" }));
     expect(updateCatalogProduct).not.toHaveBeenCalled();
+  });
+
+  it("Imprimir etiquetas: las variantes del producto (FEAT-24 H7)", async () => {
+    const user = userEvent.setup();
+    renderFicha();
+    await screen.findByRole("heading", { name: "Polo básico" });
+    expect(screen.queryByText(/etiquetas de/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Imprimir etiquetas" }));
+    expect(screen.getByText("etiquetas de p1 · Polo básico")).toBeInTheDocument();
   });
 });

@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AxiosError, AxiosHeaders } from "axios";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import axiosAuth from "@/lib/axiosAuth";
 import { downloadLabelsPdf } from "@/lib/labels/pdf";
 import type { LabelsSource } from "@/lib/labels/request";
 import { SAMPLE_LABEL_LINE, type LabelFormat, type LabelLine } from "@/lib/labels/types";
@@ -25,9 +26,26 @@ jest.mock("@/hooks/useBusinessInventories", () => ({
   }),
 }));
 jest.mock("@/hooks/useCompanyBrands", () => ({ useCompanyBrands: () => ({ brands: [{ id: "b1", name: "Mi marca" }] }) }));
+// FEAT-24 H4: las categorías del filtro son las propias de la empresa (árbol de GET /catalog-categories).
 jest.mock("@/lib/axiosAuth", () => ({
   __esModule: true,
-  default: { get: jest.fn().mockResolvedValue({ data: [{ id: "c1", name: "Ropa" }] }) },
+  default: {
+    get: jest.fn().mockResolvedValue({
+      data: [
+        {
+          id: "c1",
+          name: "Ropa",
+          parentId: null,
+          active: true,
+          level: 1,
+          children: [
+            { id: "c2", name: "Polos", parentId: "c1", active: true, level: 2, children: [] },
+            { id: "c3", name: "Vieja", parentId: "c1", active: false, level: 2, children: [] },
+          ],
+        },
+      ],
+    }),
+  },
 }));
 jest.mock("@/lib/labels/pdf", () => ({ downloadLabelsPdf: jest.fn(() => 3) }));
 
@@ -144,17 +162,35 @@ describe("Imprimir etiquetas (FEAT-24 H7)", () => {
     expect((downloadLabelsPdf as jest.Mock).mock.calls[0][0]).toMatchObject({ format: formats[1], storeName: "Tienda Norte" });
   });
 
-  it("from the catalog: filters by category and brand", async () => {
+  it("from the catalog: filters by the company's own category (H4) and brand", async () => {
     renderDialog({ kind: "catalog" });
     await screen.findByLabelText("Etiquetas de POLO-M-NEG");
     expect(fetchLabelLines).toHaveBeenCalledWith({ origin: "products" }, expect.anything());
     expect(screen.getByRole("heading", { name: "Imprimir etiquetas · Catálogo" })).toBeInTheDocument();
     await screen.findByRole("option", { name: "Ropa" });
-    fireEvent.change(screen.getByLabelText("Categoría"), { target: { value: "c1" } });
+    expect(axiosAuth.get).toHaveBeenCalledWith(expect.stringMatching(/\/catalog-categories$/), expect.anything());
+    expect(screen.getByRole("option", { name: "Polos" })).toHaveAttribute("title", "Ropa › Polos");
+    expect(screen.queryByRole("option", { name: "Vieja" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Categoría"), { target: { value: "c2" } });
     fireEvent.change(screen.getByLabelText("Marca"), { target: { value: "b1" } });
     await waitFor(() =>
-      expect(fetchLabelLines).toHaveBeenLastCalledWith({ origin: "products", categoryId: "c1", brandId: "b1" }, expect.anything()),
+      expect(fetchLabelLines).toHaveBeenLastCalledWith({ origin: "products", categoryId: "c2", brandId: "b1" }, expect.anything()),
     );
+  });
+
+  it("from a received purchase order: what came in that reception, without the quantity mode (H3)", async () => {
+    (fetchLabelLines as jest.Mock).mockResolvedValue([line("v1", "POLO-M-NEG", 4), line("v2", "POLO-L-NEG", 2)]);
+    renderDialog({ kind: "purchase_order", purchaseOrderId: "oc-1", receiptId: "rec-1", title: "OC-0001 · REC-0001" });
+    expect(await screen.findByLabelText("Etiquetas de POLO-M-NEG")).toHaveValue(4);
+    expect(fetchLabelLines).toHaveBeenCalledWith(
+      { origin: "purchase_order", purchaseOrderId: "oc-1", receiptId: "rec-1" },
+      expect.anything(),
+    );
+    expect(screen.getByRole("heading", { name: "Imprimir etiquetas · OC-0001 · REC-0001" })).toBeInTheDocument();
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Categoría")).not.toBeInTheDocument();
+    expect(axiosAuth.get).not.toHaveBeenCalled();
+    expect(downloadButton()).toHaveTextContent("Descargar PDF · 6 etiquetas");
   });
 
   it("shows the backend message when the lines cannot be loaded", async () => {

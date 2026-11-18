@@ -2,13 +2,20 @@ import { labelCount, MAX_LABELS_PER_PRINT, type LabelLine } from "./types";
 
 // FEAT-24 H7-D5 — de dónde salen las etiquetas del diálogo «Imprimir etiquetas».
 
-/** Productos elegidos (ficha o selección del listado) o el catálogo entero (acotable por categoría o marca). */
-export type LabelsSource = { kind: "products"; productIds: string[]; title?: string } | { kind: "catalog" };
+/**
+ * Productos elegidos (ficha o selección del listado), el catálogo entero (acotable por categoría propia o
+ * marca) o lo recibido de una orden de compra (FEAT-24 H3: una recepción, o todo lo recibido si no viene).
+ */
+export type LabelsSource =
+  | { kind: "products"; productIds: string[]; title?: string }
+  | { kind: "catalog" }
+  | { kind: "purchase_order"; purchaseOrderId: string; receiptId?: string; title?: string };
 
 /** `fixed`: N por variante; `stock`: lo disponible en el almacén elegido. */
 export type LabelsQuantityMode = "fixed" | "stock";
 
 export interface LabelsCatalogFilter {
+  /** Categoría propia de la empresa (FEAT-24 H4, `GET /catalog-categories`). */
   categoryId?: string;
   brandId?: string;
 }
@@ -24,6 +31,8 @@ export interface LabelsDataRequest {
   brandId?: string;
   quantity?: number;
   purchaseOrderId?: string;
+  /** Recepción de la OC; sin ella, todo lo recibido de la OC. */
+  receiptId?: string;
 }
 
 /** El pedido para el backend, o `null` si falta algo (el almacén con «según stock», o no hay productos). */
@@ -32,6 +41,15 @@ export function buildLabelsRequest(
   mode: LabelsQuantityMode,
   options: { inventoryId?: string; filter?: LabelsCatalogFilter } = {},
 ): LabelsDataRequest | null {
+  // Lo recibido de la OC: la cantidad la pone la recepción, no el modo.
+  if (source.kind === "purchase_order") {
+    if (!source.purchaseOrderId) return null;
+    return {
+      origin: "purchase_order",
+      purchaseOrderId: source.purchaseOrderId,
+      ...(source.receiptId ? { receiptId: source.receiptId } : {}),
+    };
+  }
   const scope =
     source.kind === "products"
       ? source.productIds.length

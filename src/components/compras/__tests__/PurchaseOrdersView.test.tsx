@@ -6,6 +6,7 @@
  * 3. Anular pide motivo; si el servidor lo rechaza, el diálogo queda abierto con su mensaje (H0).
  * 4. El detalle de una compra con IMEI/serie muestra los códigos (H0).
  * 5. Un 403 que llegue igual se muestra con el mensaje del servidor.
+ * 6. Cada recepción imprime las etiquetas de lo recibido (FEAT-24 H7, origen purchase_order).
  */
 
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -40,6 +41,13 @@ jest.mock("@/services/warehousesService", () => ({ listWarehouses: jest.fn() }))
 jest.mock("@/services/inventoryTrackingService", () => ({
   ...jest.requireActual("@/services/inventoryTrackingService"),
   getTrackedPurchase: jest.fn(),
+}));
+jest.mock("@/components/labels/PrintLabelsDialog", () => ({
+  PrintLabelsDialog: ({ source }: { source: { kind: string; purchaseOrderId?: string; receiptId?: string; title?: string } }) => (
+    <div>
+      etiquetas {source.kind} {source.purchaseOrderId} {source.receiptId} · {source.title}
+    </div>
+  ),
 }));
 
 function order(overrides: Partial<PurchaseOrder> = {}): PurchaseOrder {
@@ -223,6 +231,49 @@ describe("detalle", () => {
     fireEvent.click(await screen.findByTitle("Ver detalles"));
     expect(await screen.findByText("001234567890123")).toBeInTheDocument();
     expect(getTrackedPurchase).toHaveBeenCalledWith("p", expect.anything());
+  });
+
+  it("cada recepción imprime las etiquetas de lo que entró (FEAT-24 H7)", async () => {
+    loginAs("OPERACIONES");
+    const received = order({ status: "RECIBIDA_PARCIAL" });
+    listing([received]);
+    const reception = (id: string, number: string, quantity: number) => ({
+      id,
+      number,
+      inventoryId: "w-1",
+      operationId: null,
+      notes: null,
+      userEmail: null,
+      userName: "Ana",
+      createdAt: "2026-11-17T16:00:00Z",
+      lines: [{ id: `${id}-l`, itemId: "item-1", variantId: "v-1", quantity, movementId: null }],
+    });
+    jest.mocked(getPurchaseOrder).mockResolvedValue({
+      ...received,
+      receptions: [reception("rec-1", "REC-0001", 4), reception("rec-2", "REC-0002", 2)],
+      supplierReturns: [],
+    });
+    setup();
+    fireEvent.click(await screen.findByTitle("Ver detalles"));
+    fireEvent.click(await screen.findByRole("button", { name: "Imprimir etiquetas de REC-0002" }));
+    expect(screen.getByText("etiquetas purchase_order oc-1 rec-2 · OC-0001 · REC-0002")).toBeInTheDocument();
+  });
+
+  it("una compra anulada no ofrece imprimir etiquetas de sus recepciones", async () => {
+    loginAs("ADMIN");
+    const cancelled = order({ status: "ANULADA" });
+    listing([cancelled]);
+    jest.mocked(getPurchaseOrder).mockResolvedValue({
+      ...cancelled,
+      receptions: [
+        { id: "rec-1", number: "REC-0001", inventoryId: "w-1", operationId: null, notes: null, userEmail: null, userName: null, createdAt: "2026-11-17T16:00:00Z", lines: [] },
+      ],
+      supplierReturns: [],
+    });
+    setup();
+    fireEvent.click(await screen.findByTitle("Ver detalles"));
+    expect(await screen.findByText("REC-0001")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Imprimir etiquetas/ })).not.toBeInTheDocument();
   });
 
   it("anulada muestra el motivo, quién y cuándo, o «Sin motivo registrado»", async () => {

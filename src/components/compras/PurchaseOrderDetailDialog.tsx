@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
+import { Loader2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { warehouseErrorMessage } from "@/components/forms/warehouseUi";
+import { PrintLabelsDialog } from "@/components/labels/PrintLabelsDialog";
 import { formatPeruDateTime } from "@/components/inventory/movementLabels";
 import {
   canCancelOrder,
@@ -30,13 +32,15 @@ import {
   type PurchaseAccess,
 } from "@/lib/purchaseOrders";
 import { getTrackedPurchase } from "@/services/inventoryTrackingService";
-import { getPurchaseOrder, type PurchaseOrder, type PurchaseOrderLine } from "@/services/purchasesService";
+import { getPurchaseOrder, type PurchaseOrder, type PurchaseOrderLine, type PurchaseReception } from "@/services/purchasesService";
 import { Money, PurchaseStatusBadge, ReturnStatusBadge } from "./PurchaseBits";
 
 // FEAT-24 H3-E — detalle de una orden de compra (mockup mVerOC): proveedor,
 // comprobante, destino, total y pago; líneas con lo pedido, recibido y devuelto
 // y su costo; recepciones, devoluciones a proveedor y, en las compras con
 // IMEI/serie, los códigos. Las acciones dependen del estado y del rol.
+// FEAT-24 H7: cada recepción imprime las etiquetas de lo que entró (origen
+// `purchase_order` de POST /labels/data, con la OC y la recepción).
 
 export type PurchaseOrderAction = "edit" | "place" | "receive" | "return" | "payment" | "cancel";
 
@@ -85,6 +89,7 @@ export default function PurchaseOrderDetailDialog({ order: summary, access, ware
     return codes.length ? { mode: item.trackingMode, codes } : null;
   };
   const receptions = detailQuery.data?.receptions ?? [];
+  const [labelsFor, setLabelsFor] = useState<PurchaseReception | null>(null);
   const returns = detailQuery.data?.supplierReturns ?? [];
 
   const actions: Array<{ action: PurchaseOrderAction; label: string; variant?: "outline" | "destructive" | "default" }> = [];
@@ -253,13 +258,25 @@ export default function PurchaseOrderDetailDialog({ order: summary, access, ware
             <h3 className="text-sm font-semibold">Recepciones</h3>
             <ul className="space-y-1 text-sm">
               {receptions.map((reception) => (
-                <li key={reception.id} className="flex flex-wrap justify-between gap-2 rounded-md border px-3 py-2">
+                <li key={reception.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2">
                   <span className="font-mono">{reception.number}</span>
                   <span className="text-muted-foreground">
                     {formatPeruDateTime(reception.createdAt)}
                     {reception.userName || reception.userEmail ? ` · ${reception.userName || reception.userEmail}` : ""}
                   </span>
                   <span className="tabular-nums">{reception.lines.reduce((sum, line) => sum + line.quantity, 0)} und</span>
+                  {order.status !== "ANULADA" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      aria-label={`Imprimir etiquetas de ${reception.number}`}
+                      onClick={() => setLabelsFor(reception)}
+                    >
+                      <Printer className="mr-2 h-4 w-4" />
+                      Imprimir etiquetas
+                    </Button>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -283,6 +300,19 @@ export default function PurchaseOrderDetailDialog({ order: summary, access, ware
         ) : null}
 
         {order.notes ? <p className="text-sm text-muted-foreground">Notas: {order.notes}</p> : null}
+
+        {labelsFor ? (
+          <PrintLabelsDialog
+            open
+            source={{
+              kind: "purchase_order",
+              purchaseOrderId: order.id,
+              receiptId: labelsFor.id,
+              title: `${order.number} · ${labelsFor.number}`,
+            }}
+            onOpenChange={(next) => (!next ? setLabelsFor(null) : undefined)}
+          />
+        ) : null}
 
         <DialogFooter className="flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={onClose}>
