@@ -195,12 +195,15 @@ export default function ProductFicha({ productId, actions }: { productId: string
           </Tabs>
         </CardContent>
       </Card>
-      <FichaSupplierPrices
-        variants={variants
-          .filter((variant) => !variant.mergedInto)
-          .map((variant) => ({ id: variant.id, label: kardexVariants.find((candidate) => candidate.id === variant.id)?.label ?? variant.id }))}
-        linkOrders={canSeeCosts}
-      />
+      {/* FEAT-24 H9 + H13: un pack no se compra (su costo y su stock salen de los componentes, pestaña Pack). */}
+      {!isPack ? (
+        <FichaSupplierPrices
+          variants={variants
+            .filter((variant) => !variant.mergedInto)
+            .map((variant) => ({ id: variant.id, label: kardexVariants.find((candidate) => candidate.id === variant.id)?.label ?? variant.id }))}
+          linkOrders={canSeeCosts}
+        />
+      ) : null}
       {printingLabels ? (
         <PrintLabelsDialog open source={{ kind: "products", productIds: [product.id], title: product.name }} onOpenChange={setPrintingLabels} />
       ) : null}

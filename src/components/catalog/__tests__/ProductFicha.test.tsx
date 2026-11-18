@@ -43,6 +43,8 @@ jest.mock("@/components/compras/supplier-prices/FichaSupplierPrices", () => ({
     <div data-testid="supplier-prices">{variants.map((variant) => `${variant.id}=${variant.label}`).join(", ")}{linkOrders ? " · con enlaces" : ""}</div>
   ),
 }));
+// FEAT-24 H9: la pestaña Pack tiene su propio test.
+jest.mock("@/components/packs/PackFichaTab", () => ({ __esModule: true, default: () => <div data-testid="pack-tab">componentes del pack</div> }));
 jest.mock("@/components/inventory/MovementHistoryTable", () => ({
   MovementHistoryTable: ({ variants, title }: { variants?: Array<{ id: string; label: string }>; title?: string }) => (
     <div data-testid="kardex">{title}: {variants?.map((variant) => `${variant.id}=${variant.label}`).join(", ")}</div>
@@ -96,6 +98,15 @@ describe("Ficha del producto en pestañas (FEAT-24 H4-D)", () => {
   it("precio de compra por proveedor: recibe las variantes del producto (FEAT-24 H13-D4)", async () => {
     renderFicha();
     expect(await screen.findByTestId("supplier-prices")).toHaveTextContent("v1=Talla: S (POL0001-S), v2=Talla: M (POL0001-M) · con enlaces");
+  });
+
+  it("un pack tiene su pestaña Pack y no muestra el precio de compra por proveedor (FEAT-24 H9 + H13)", async () => {
+    jest.mocked(getCatalogProduct).mockResolvedValue({ ...POLO, name: "Pack Verano", type: "pack", externalSource: null });
+    jest.mocked(getProductVariants).mockResolvedValue([{ id: "pk1", sku: "INT-PK", companySku: "PK-VER", barcode: "", attributeValues: { Title: "Default Title" }, isActive: true }]);
+    renderFicha();
+    expect(await screen.findByRole("heading", { name: "Pack Verano" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Pack" })).toBeInTheDocument();
+    expect(screen.queryByTestId("supplier-prices")).not.toBeInTheDocument();
   });
 
   it("General: guarda solo lo que cambió (categoría, unidad de compra y factor)", async () => {
