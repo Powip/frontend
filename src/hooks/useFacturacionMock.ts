@@ -2,26 +2,19 @@
 
 /**
  * Estado local (no persistido) para los módulos de Facturación SUNAT que aún
- * no tienen backend en ms-integrations: Guías de Remisión, Notas de
- * Crédito/Débito, Certificado Digital y Series y Correlativos.
+ * no tienen backend: Notas de Crédito/Débito (las Guías de Remisión son reales
+ * desde FEAT-24 H12, en ms-sunat).
  *
  * Todo lo que gestiona este hook vive solo en memoria del navegador y se
  * pierde al recargar la página — por eso cada pestaña que lo consume muestra
  * un aviso "Beta" explicando que todavía no está conectado a SUNAT.
  *
- * TODO(integraciones): reemplazar por llamadas reales cuando ms-integrations
- * exponga endpoints de guías, notas y certificado.
+ * TODO(integraciones): reemplazar por llamadas reales cuando exista el
+ * backend de notas.
  */
 
 import { useCallback, useState } from "react";
-import {
-  Almacen,
-  Certificado,
-  ERRORES_GRE,
-  Guia,
-  Nota,
-  Serie,
-} from "@/types/facturacion";
+import { Certificado, Nota, Serie } from "@/types/facturacion";
 
 const SEED_SERIES: Serie[] = [
   { serie: "B001", tipo: "Boleta electrónica (03)", ultimo: 0, activa: true },
@@ -31,11 +24,6 @@ const SEED_SERIES: Serie[] = [
   { serie: "BD01", tipo: "Nota de débito sobre boletas (08)", ultimo: 0, activa: false },
   { serie: "FD01", tipo: "Nota de débito sobre facturas (08)", ultimo: 0, activa: false },
   { serie: "T001", tipo: "Guía de remisión remitente electrónica (09)", ultimo: 0, activa: true },
-];
-
-export const ALMACENES: Almacen[] = [
-  { id: "alm1", nombre: "Almacén Central", tienda: "Tienda principal", direccion: "Av. Argentina 2145, Cercado de Lima" },
-  { id: "alm2", nombre: "Almacén Secundario", tienda: "Tienda principal", direccion: "Jr. Puno 890, La Victoria, Lima" },
 ];
 
 const SEED_CERT: Certificado = {
@@ -49,7 +37,6 @@ const SEED_CERT: Certificado = {
 
 export function useFacturacionMock() {
   const [series, setSeries] = useState<Serie[]>(SEED_SERIES);
-  const [guias, setGuias] = useState<Guia[]>([]);
   const [notas, setNotas] = useState<Nota[]>([]);
   const [cert, setCert] = useState<Certificado>(SEED_CERT);
 
@@ -70,43 +57,6 @@ export function useFacturacionMock() {
       })
     );
     return fullNumber;
-  }, []);
-
-  const emitirGuia = useCallback(
-    async (input: Omit<Guia, "id" | "estado" | "fullNumber" | "cdrCode" | "cdrDesc">) => {
-      const guia: Guia = {
-        ...input,
-        id: guias.length ? Math.max(...guias.map((g) => g.id)) + 1 : 1,
-        estado: "GENERADA",
-      };
-      setGuias((prev) => [guia, ...prev]);
-
-      // Simulación de envío a SUNAT (XML -> firma -> envío) solo para feedback visual.
-      await new Promise((r) => setTimeout(r, 1500));
-
-      const reject = guia.id % 5 === 0;
-      if (!reject) {
-        const fullNumber = bumpSerie("T001");
-        setGuias((prev) =>
-          prev.map((g) => (g.id === guia.id ? { ...g, estado: "ACEPTADA", fullNumber } : g))
-        );
-        return { ok: true, guia: { ...guia, estado: "ACEPTADA" as const, fullNumber } };
-      }
-      const err = ERRORES_GRE[1 + (guia.id % (ERRORES_GRE.length - 1))];
-      setGuias((prev) =>
-        prev.map((g) =>
-          g.id === guia.id ? { ...g, estado: "RECHAZADA", cdrCode: err.code, cdrDesc: err.desc } : g
-        )
-      );
-      return { ok: false, guia, error: err };
-    },
-    [guias, bumpSerie]
-  );
-
-  const anularGuia = useCallback((id: number, motivo: string) => {
-    setGuias((prev) =>
-      prev.map((g) => (g.id === id ? { ...g, estado: "ANULADA", motivoAnulacion: motivo } : g))
-    );
   }, []);
 
   const crearNota = useCallback(
@@ -137,14 +87,10 @@ export function useFacturacionMock() {
 
   return {
     series,
-    guias,
     notas,
     cert,
-    almacenes: ALMACENES,
     toggleSerie,
     bumpSerie,
-    emitirGuia,
-    anularGuia,
     crearNota,
     subirCertificado,
   };
