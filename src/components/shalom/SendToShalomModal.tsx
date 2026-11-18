@@ -31,6 +31,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 import { useAuth } from "@/contexts/AuthContext";
 import { API } from "@/lib/api";
 import { getUserProfile } from "@/services/userService";
@@ -775,7 +776,8 @@ export default function SendToShalomModal({
             const costPerOrder = quotedTotal / successfulOrders.length;
             await Promise.all(
               successfulOrders.map((o) =>
-                axios
+                // FEAT-24 SEC: `PATCH order-header/:id` pide el JWT de la empresa.
+                axiosAuth
                   .patch(`${API.ventas}/order-header/${o.id}`, {
                     carrierShippingCost: costPerOrder,
                   })

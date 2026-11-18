@@ -1,4 +1,5 @@
-import axios from "axios";
+// FEAT-24 SEC: ms-ventas pide el JWT de la empresa en `order-header` (axiosAuth lo agrega y lo renueva).
+import axios from "@/lib/axiosAuth";
 import { API } from "@/lib/api";
 import {
   ICreateOrderHeader,
