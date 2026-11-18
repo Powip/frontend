@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { LiveErrorBanner, LiveProductImage } from "./LiveShared";
 import { getLiveCatalog, liveError, liveMoney } from "./liveService";
+import { listPackProductIds, withoutPacks } from "@/services/packsService";
 import type { LiveProduct } from "./types";
 
 type SaveInput = { livePrice: number; maxPerCustomer: number | null; enabled: boolean };
@@ -85,9 +86,13 @@ export default function LiveCatalogDialog({
     request.current = controller;
     setSnapshot({ storeId, products: [], loading: true, error: "" });
     try {
-      const result = await getLiveCatalog(storeId, "", controller.signal);
+      // FEAT-24 H9 (H9-D2): los packs no se venden en Live (no tienen stock propio).
+      const [result, packIds] = await Promise.all([
+        getLiveCatalog(storeId, "", controller.signal),
+        listPackProductIds(controller.signal).catch(() => new Set<string>()),
+      ]);
       if (!controller.signal.aborted)
-        setSnapshot({ storeId, products: result.products, loading: false, error: "" });
+        setSnapshot({ storeId, products: withoutPacks(result.products, packIds), loading: false, error: "" });
     } catch (cause) {
       if (!controller.signal.aborted)
         setSnapshot({ storeId, products: [], loading: false, error: liveError(cause) });

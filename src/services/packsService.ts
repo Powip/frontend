@@ -134,17 +134,26 @@ export async function updatePackBasics(pack: Pick<PackView, "id" | "variantId">,
 }
 
 /**
- * Ids de producto de todos los packs de la empresa (para ocultarlos donde no se venden, p. ej. Live).
- * Recorre las páginas de 100 con un tope de 20 (2000 packs).
+ * Ids de producto y de variante de todos los packs de la empresa (para ocultarlos donde no se venden,
+ * p. ej. Live). Recorre las páginas de 100 con un tope de 20 (2000 packs).
  */
 export async function listPackProductIds(signal?: AbortSignal): Promise<Set<string>> {
   const ids = new Set<string>();
   for (let page = 1; page <= 20; page += 1) {
     const result = await listPacks({ page, limit: 100 }, signal);
-    result.data.forEach((pack) => ids.add(pack.id));
+    result.data.forEach((pack) => {
+      ids.add(pack.id);
+      if (pack.variantId) ids.add(pack.variantId);
+    });
     if (page >= result.meta.totalPages || result.data.length === 0) break;
   }
   return ids;
+}
+
+/** Saca los packs de una lista de productos (por producto o, si falta, por variante). */
+export function withoutPacks<T extends { productId?: string | null; variantId?: string | null }>(products: readonly T[], packIds: ReadonlySet<string>): T[] {
+  if (packIds.size === 0) return [...products];
+  return products.filter((product) => !(product.productId && packIds.has(product.productId)) && !(product.variantId && packIds.has(product.variantId)));
 }
 
 /** Reglas de inventario que usa el margen del pack (`GET /warehouses/inventory-rules`). */

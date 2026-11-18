@@ -2,11 +2,16 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import LiveCatalogDialog from "../LiveCatalogDialog";
 import { getLiveCatalog } from "../liveService";
 import type { LiveProduct } from "../types";
+import { listPackProductIds } from "@/services/packsService";
 
 jest.mock("../liveService", () => ({
   getLiveCatalog: jest.fn(),
   liveError: (error: Error) => error.message,
   liveMoney: (amount: number) => `S/ ${amount.toFixed(2)}`,
+}));
+jest.mock("@/services/packsService", () => ({
+  listPackProductIds: jest.fn(),
+  withoutPacks: jest.requireActual("@/services/packsService").withoutPacks,
 }));
 const product = (
   variantId: string,
@@ -56,6 +61,7 @@ async function selectPolo() {
 }
 beforeEach(() => {
   (getLiveCatalog as jest.Mock).mockReset().mockResolvedValue(response());
+  jest.mocked(listPackProductIds).mockReset().mockResolvedValue(new Set());
   props.onSave.mockReset().mockResolvedValue(true);
   props.onClose.mockReset();
 });
@@ -335,4 +341,18 @@ test("a save from another store cannot overwrite or unlock the current save", as
   expect(screen.queryByText(/Polo algodón/)).not.toBeInTheDocument();
   await act(async () => next.resolve(true));
   expect(screen.getByText(/Tienda B.*agregado al Live/)).toBeInTheDocument();
+});
+
+test("FEAT-24 H9: no ofrece packs en el catálogo de Live y, si no se pueden consultar, muestra el catálogo igual", async () => {
+  (getLiveCatalog as jest.Mock).mockResolvedValue(response([...products, product("k", "Kit verano", "KIT-1", "Único")]));
+  jest.mocked(listPackProductIds).mockResolvedValue(new Set(["product-k"]));
+  const view = render(<LiveCatalogDialog {...props} />);
+  await screen.findByText("Polo algodón");
+  expect(screen.queryByText("Kit verano")).not.toBeInTheDocument();
+  expect(listPackProductIds).toHaveBeenCalledTimes(1);
+  view.unmount();
+
+  jest.mocked(listPackProductIds).mockRejectedValue(new Error("Network Error"));
+  render(<LiveCatalogDialog {...props} storeId="store-c" />);
+  expect(await screen.findByText("Kit verano")).toBeInTheDocument();
 });
