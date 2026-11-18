@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { ArrowLeft, CloudOff, Inbox, RefreshCw, Wifi } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { WarehouseQueueProvider, useWarehouseQueue } from "./WarehouseQueueContext";
+import CourierScopeGate from "./CourierScopeGate";
 
 // FEAT-24 H6-D (H6-D1) — el marco del modo almacén: cabecera móvil con la
 // señal, lo que falta enviar y la bandeja «Para revisar», y el registro del
@@ -86,7 +87,9 @@ export default function WarehouseShell({ children }: { children: ReactNode }) {
     <WarehouseQueueProvider>
       <div className="min-h-full bg-background">
         <Header />
-        <div className="mx-auto max-w-lg px-4 pb-10 pt-4">{children}</div>
+        <div className="mx-auto max-w-lg px-4 pb-10 pt-4">
+          <CourierScopeGate>{children}</CourierScopeGate>
+        </div>
       </div>
     </WarehouseQueueProvider>
   );

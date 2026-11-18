@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRightLeft, ChevronRight, ClipboardCheck, Undo2 } from "lucide-react";
+import { isCourierRole } from "@/config/permissions.config";
 import { useAuth } from "@/contexts/AuthContext";
 import { warehouseAccess } from "@/lib/warehouseMode";
 
@@ -17,17 +18,19 @@ const OPTIONS = [
 export default function ReceiveMenu() {
   const { auth, hasPermission } = useAuth();
   const access = warehouseAccess(auth?.user, (permission) => hasPermission?.(permission) ?? false);
+  // FEAT-24 H8-D5: el courier solo recibe traslados en su almacén; no se le ofrece lo demás.
+  const courier = isCourierRole(auth?.user?.role);
 
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-extrabold tracking-tight">Recibir</h1>
-      {!access.receiveReturns ? (
+      {!access.receiveReturns && !courier ? (
         <p role="alert" className="rounded-md border p-4 text-sm">
           Tu rol no recibe mercadería. Lo hacen Administrador, Operaciones y Almacén.
         </p>
       ) : null}
       <ul className="space-y-2">
-        {OPTIONS.map((option) => {
+        {OPTIONS.filter((option) => !courier || option.href.endsWith("/traslados")).map((option) => {
           const Icon = option.icon;
           const enabled =
             "href" in option &&

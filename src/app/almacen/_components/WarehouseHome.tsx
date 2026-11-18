@@ -2,8 +2,9 @@
 
 import { useEffect, useState, type ComponentType, type ReactNode } from "react";
 import Link from "next/link";
-import { ClipboardList, Download, Inbox, PackageCheck, ScanLine, Search } from "lucide-react";
+import { Boxes, ClipboardList, Download, Inbox, PackageCheck, Scale, ScanLine, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { isCourierRole } from "@/config/permissions.config";
 import { useWarehouseQueue } from "@/components/almacen/WarehouseQueueContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { warehouseAccess } from "@/lib/warehouseMode";
@@ -76,14 +77,24 @@ export default function WarehouseHome() {
   const { auth, hasPermission } = useAuth();
   const { outbox, review, persistent, otherSessions } = useWarehouseQueue();
   const access = warehouseAccess(auth?.user, (permission) => hasPermission?.(permission) ?? false);
+  // FEAT-24 H8-D5: el personal del courier ve su portal (stock, recibir traslados, contar y la conciliación).
+  const courier = isCourierRole(auth?.user?.role);
 
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-extrabold tracking-tight">Modo almacén</h1>
+        <h1 className="text-xl font-extrabold tracking-tight">{courier ? "Portal del courier" : "Modo almacén"}</h1>
         <p className="text-sm text-muted-foreground">Escanea con la cámara o con el lector. Sin señal, lo que hagas se guarda y se envía después.</p>
       </div>
 
+      {courier ? (
+        <div className="grid grid-cols-2 gap-3">
+          <Tile href="/almacen/stock" title="Stock" description="Tu almacén: POWIP y lo que reportas" icon={Boxes} />
+          <Tile href="/almacen/recibir/traslados" title="Recibir" description="Traslados que llegan a tu almacén" icon={PackageCheck} />
+          <Tile href="/almacen/contar" title="Contar" description="Tomas de inventario en curso" icon={ClipboardList} />
+          <Tile href="/almacen/conciliacion" title="Conciliación" description="Diferencias con POWIP" icon={Scale} />
+        </div>
+      ) : (
       <div className="grid grid-cols-2 gap-3">
         <Tile href="/almacen/consultar" title="Consultar" description="Producto y stock por almacén" icon={Search} />
         <Tile
@@ -108,6 +119,7 @@ export default function WarehouseHome() {
           disabledReason={access.picking ? undefined : "Necesitas permiso de Operaciones"}
         />
       </div>
+      )}
 
       {outbox.length > 0 || review.length > 0 ? (
         <Link href="/almacen/revisar" className="flex items-center gap-3 rounded-xl border p-4 hover:bg-muted/50">

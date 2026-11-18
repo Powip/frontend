@@ -31,6 +31,13 @@ jest.mock("@/components/inventory/MovementHistoryTable", () => ({ MovementHistor
 jest.mock("@/components/inventory/reports/StockReportTab", () => ({ __esModule: true, default: () => <div>reporte general</div> }));
 jest.mock("@/components/inventory/reports/AlertsTab", () => ({ __esModule: true, default: () => <div>lista de alertas</div> }));
 jest.mock("@/components/inventory/reports/PeriodCloseTab", () => ({ __esModule: true, default: () => <div>cierres del mes</div> }));
+// FEAT-24 H8: Couriers.
+jest.mock("@/components/inventory/couriers/CouriersTab", () => ({
+  __esModule: true,
+  default: (props: { initialInventoryId?: string; initialClaimId?: string }) => (
+    <div>bandeja de couriers · almacén: {props.initialInventoryId ?? "-"} · reclamo: {props.initialClaimId ?? "-"}</div>
+  ),
+}));
 let alertTotal = 0;
 jest.mock("@/hooks/useInventoryAlerts", () => ({ useInventoryAlerts: () => ({ data: { generatedAt: "", total: alertTotal, alerts: [] } }) }));
 jest.mock("@/components/inventory/receptions/ReceptionsTab", () => ({
@@ -76,6 +83,7 @@ describe("rutas del módulo de inventario (FEAT-24 F1)", () => {
       conteos: "/inventario/conteos",
       ajustes: "/inventario/ajustes",
       "pedidos-sin-stock": "/inventario/pedidos-sin-stock",
+      couriers: "/inventario/couriers",
       alertas: "/inventario/alertas",
       unificacion: "/inventario/unificacion",
       cierre: "/inventario/cierre",
@@ -87,7 +95,7 @@ describe("rutas del módulo de inventario (FEAT-24 F1)", () => {
     renderTab("stock");
     await waitFor(() => expect(screen.getByRole("tab", { name: /^Stock$/ })).toHaveAttribute("aria-selected", "true"));
     const names = screen.getAllByRole("tab").map((tab) => tab.textContent);
-    expect(names).toEqual(["Stock", "Reporte general", "Movimientos", "Traslados", "Recepciones", "Conteos", "Ajustes y mermas", "Pedidos sin stock", "Alertas", "Unificación", "Cierre mensual"]);
+    expect(names).toEqual(["Stock", "Reporte general", "Movimientos", "Traslados", "Recepciones", "Conteos", "Ajustes y mermas", "Pedidos sin stock", "Couriers", "Alertas", "Unificación", "Cierre mensual"]);
   });
 
   it.each([
@@ -102,6 +110,7 @@ describe("rutas del módulo de inventario (FEAT-24 F1)", () => {
     ["traslados", /^Traslados$/],
     ["conteos", /^Conteos$/],
     ["ajustes", /^Ajustes y mermas$/],
+    ["couriers", /^Couriers$/],
   ] as const)("la ruta %s abre su pestaña seleccionada", async (tab, name) => {
     loginAs("ADMINISTRADOR");
     renderTab(tab);
@@ -164,6 +173,30 @@ describe("rutas del módulo de inventario (FEAT-24 F1)", () => {
     renderTab("pedidos-sin-stock");
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/inventario/stock"));
     expect(screen.queryByRole("tab", { name: /Pedidos sin stock/ })).not.toBeInTheDocument();
+  });
+
+  it("Couriers lo ven Administrador, Operaciones y Almacén; el resto (y el courier) vuelve al stock (FEAT-24 H8)", async () => {
+    for (const role of ["OPERACIONES", "ALMACEN"]) {
+      loginAs(role, []);
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const { unmount } = render(
+        <QueryClientProvider client={client}>
+          <InventarioView tab="couriers" initialCourier={{ inventoryId: "w-3", claimId: "cl-1" }} />
+        </QueryClientProvider>,
+      );
+      expect(await screen.findByText("bandeja de couriers · almacén: w-3 · reclamo: cl-1")).toBeInTheDocument();
+      unmount();
+    }
+    expect(replace).not.toHaveBeenCalled();
+    for (const role of ["VENTAS", "COURIER"]) {
+      loginAs(role, ["VIEW_SALES"]);
+      const { unmount } = renderTab("couriers");
+      await waitFor(() => expect(replace).toHaveBeenCalledWith("/inventario/stock"));
+      expect(screen.queryByRole("tab", { name: /Couriers/ })).not.toBeInTheDocument();
+      expect(screen.queryByText(/bandeja de couriers/)).not.toBeInTheDocument();
+      unmount();
+      replace.mockClear();
+    }
   });
 
   it("quien no edita inventario no ve Unificación y, si entra por la URL, vuelve al stock", async () => {
