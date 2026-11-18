@@ -26,6 +26,8 @@ jest.mock("@/contexts/AuthContext", () => ({
     },
   }),
 }));
+// FEAT-24 H4: la categoría propia sale de react-query; acá no hace falta.
+jest.mock("@/hooks/useCatalogCategories", () => ({ useCatalogCategories: () => ({ tree: [], isLoading: false, error: null }) }));
 jest.mock("@/hooks/useBusinessInventories", () => {
   const inventories = [{ id: "warehouse", name: "Central", storeId: "store" }];
   return { useBusinessInventories: () => ({ inventories }) };
