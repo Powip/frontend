@@ -1,10 +1,25 @@
-import type { InventoryMovement } from "@/services/inventoryMovementService";
 import { ADJUSTMENT_REASON_LABELS, type AdjustmentReason } from "@/services/stockAdjustmentService";
+import { KARDEX_TYPE_LABELS, LEDGER_FIRST_TYPES } from "@/lib/reports/kardexTypes";
 
 // FEAT-24 H0 — historial legible: cada motivo con nombre, el efecto en físico
 // y en reservado por separado, y el documento (ORD-/COM-/TRA-) en vez del UUID.
 // FEAT-24 H1-B — las filas del libro de stock traen el efecto exacto y el saldo resultante;
 // las viejas (campos en null o ausentes) siguen calculándose con `type` y `quantity`.
+// FEAT-24 H10 — las filas vienen del kardex de la fachada (`GET /inventory-reports/kardex`); los tipos
+// nuevos del libro (compra, despacho, traslado, ajuste, merma, cambio…) se nombran por su tipo.
+
+/** Lo que el historial necesita de un movimiento (fila del kardex o fila vieja). */
+export interface MovementLike {
+  type: string;
+  quantity: number;
+  reason: string | null;
+  referenceId: string | null;
+  physicalDelta?: number | null;
+  reservedDelta?: number | null;
+  physicalAfter?: number | null;
+  reservedAfter?: number | null;
+  referenceNumber?: string | null;
+}
 export interface MovementView {
   label: string;
   detail: string | null;
@@ -47,10 +62,11 @@ const PREFIXED: Array<[string, string]> = [
   ["AUDIT_CORRECTION", "Corrección de cantidad inválida"],
 ];
 
-// Tipos propios del libro de stock (H1-B). Solo valen si el motivo no tiene nombre.
+// Tipos propios del libro de stock. SALDO_INICIAL y ANULACION (H1-B) solo valen si el motivo no tiene
+// nombre; los de LEDGER_FIRST_TYPES (H2 en adelante) mandan sobre el motivo.
 const TYPE_LABELS: Record<string, string> = {
-  SALDO_INICIAL: "Saldo inicial",
-  ANULACION: "Anulación",
+  SALDO_INICIAL: KARDEX_TYPE_LABELS.SALDO_INICIAL,
+  ANULACION: KARDEX_TYPE_LABELS.ANULACION,
 };
 
 const ORDER_EVENTS: Record<string, string> = {
@@ -61,7 +77,8 @@ const ORDER_EVENTS: Record<string, string> = {
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DOCUMENT = /^(ORD|COM|TRA)-/;
+// FEAT-24 H10: también OC-, REC- y DEV- (compras, recepciones y devoluciones a proveedor de H3).
+const DOCUMENT = /^(ORD|COM|TRA|OC|REC|DEV)-/;
 
 const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
@@ -76,9 +93,7 @@ function deltasByType(type: string, quantity: number): Pick<MovementView, "physi
   }
 }
 
-export function describeMovement(
-  movement: Pick<InventoryMovement, "type" | "quantity" | "reason" | "referenceId" | "physicalDelta" | "reservedDelta" | "physicalAfter" | "reservedAfter" | "referenceNumber">,
-): MovementView {
+export function describeMovement(movement: MovementLike): MovementView {
   const reason = movement.reason ?? "";
   const reference = movement.referenceId;
   let label: string | null = null;
@@ -136,6 +151,19 @@ export function describeMovement(
     if (deltas.reservedDelta !== null && isNumber(movement.reservedAfter)) reservedAfter = movement.reservedAfter;
   }
 
+  if (LEDGER_FIRST_TYPES.has(movement.type)) {
+    // El evento del pedido (order.cancelled, …) no describe una fila del libro: se omite del detalle.
+    const fromReason = orderEvent ? null : label;
+    return {
+      label: KARDEX_TYPE_LABELS[movement.type],
+      detail: [fromReason, detail].filter(Boolean).join(" · ") || null,
+      ...deltas,
+      physicalAfter,
+      reservedAfter,
+      documentNumber,
+      orderId,
+    };
+  }
   return { label: label ?? TYPE_LABELS[movement.type] ?? "Otro movimiento", detail, ...deltas, physicalAfter, reservedAfter, documentNumber, orderId };
 }
 

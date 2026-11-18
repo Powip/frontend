@@ -38,6 +38,8 @@ jest.mock("@/services/purchasesService", () => ({
   cancelPurchaseOrder: jest.fn(),
 }));
 jest.mock("@/services/warehousesService", () => ({ listWarehouses: jest.fn() }));
+const pdfDownload = jest.fn().mockResolvedValue(undefined);
+jest.mock("@/hooks/usePdfDownload", () => ({ usePdfDownload: () => pdfDownload }));
 jest.mock("@/services/inventoryTrackingService", () => ({
   ...jest.requireActual("@/services/inventoryTrackingService"),
   getTrackedPurchase: jest.fn(),
@@ -220,6 +222,21 @@ describe("anular (H0 + H3)", () => {
 });
 
 describe("detalle", () => {
+  it("descarga el PDF de la orden con el encabezado común y las firmas (FEAT-24 H10)", async () => {
+    loginAs("ADMIN");
+    listing([order({ status: "RECIBIDA" })]);
+    setup();
+    fireEvent.click(await screen.findByTitle("Ver detalles"));
+    const button = await screen.findByRole("button", { name: "PDF de la orden" });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    await waitFor(() => expect(pdfDownload).toHaveBeenCalled());
+    const spec = pdfDownload.mock.calls[0][0];
+    expect(spec).toMatchObject({ title: "Orden de compra", number: "OC-0001", signatures: ["Elaborado por", "Aprobado por", "Proveedor (conformidad)"] });
+    expect(spec.meta).toEqual(expect.arrayContaining([["Proveedor", "Textiles SAC"], ["Entregar en", "Almacén central"]]));
+    expect(spec.tables[0].rows[0].slice(0, 3)).toEqual(["POLO-M", "Polo · Talla: M", "10"]);
+  });
+
   it("una compra con IMEI/serie muestra los códigos de unidad", async () => {
     loginAs("ADMIN");
     const tracked = order({ id: "p", number: "COM-1", origin: "direct", status: "RECIBIDA", hasTrackedUnits: true });

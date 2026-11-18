@@ -10,6 +10,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  cancelSupplierReturn,
   createSupplierReturn,
   listPurchaseOrders,
   listSupplierReturns,
@@ -31,6 +32,9 @@ jest.mock("@/services/purchasesService", () => ({
   registerCreditNote: jest.fn(),
   cancelSupplierReturn: jest.fn(),
 }));
+const pdfDownload = jest.fn().mockResolvedValue(undefined);
+jest.mock("@/hooks/usePdfDownload", () => ({ usePdfDownload: () => pdfDownload }));
+jest.mock("@/hooks/useCompanyWarehouses", () => ({ useCompanyWarehouses: () => ({ warehouses: [], nameOf: () => "Almacén central" }) }));
 
 const base = {
   companyId: "c-1",
@@ -146,5 +150,30 @@ describe("Devoluciones a proveedor", () => {
         lines: [{ itemId: "item-1", quantity: 3 }],
       }),
     );
+  });
+
+  it("cada devolución descarga su PDF con el encabezado común (FEAT-24 H10)", async () => {
+    loginAs("VENTAS");
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: "PDF de la devolución DEV-0002" }));
+    await waitFor(() =>
+      expect(pdfDownload).toHaveBeenCalledWith(expect.objectContaining({ title: "Devolución a proveedor", number: "DEV-0002", signatures: ["Entrega", "Recibe (proveedor)"] })),
+    );
+    const spec = pdfDownload.mock.calls[0][0];
+    expect(spec.meta).toEqual(expect.arrayContaining([["Sale de", "Almacén central"], ["Compra", "OC-0001"]]));
+    // Ventas no ve costos: la API no los manda y el PDF imprime «••••».
+    expect(spec.tables[0].rows[0]).toEqual(["POLO-M", "Polo", "2", "••••", "••••"]);
+  });
+
+  it("anular una devolución de un mes cerrado muestra el 423 claro (FEAT-24 H10)", async () => {
+    loginAs("ADMIN");
+    jest.mocked(cancelSupplierReturn).mockRejectedValue({ response: { status: 423, data: { code: "PERIODO_CERRADO", period: "2026-10", message: "El periodo 2026-10 está cerrado." } } });
+    setup();
+    const sentRow = (await screen.findByText("DEV-0002")).closest("tr")!;
+    fireEvent.click(within(sentRow).getByRole("button", { name: "Anular" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Motivo (opcional)"), { target: { value: "Se envió por error" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Anular devolución" }));
+    expect(await within(dialog).findByText(/Octubre 2026 está cerrado\./)).toBeInTheDocument();
   });
 });

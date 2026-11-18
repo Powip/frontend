@@ -13,7 +13,8 @@ import { uploadImage } from "@/services/uploadService";
 import { updateCatalogVariant, type CatalogVariantDetail } from "@/services/catalogProductService";
 import { apiErrorInfo, buildVariantPatch, duplicateSkuKeys, isEmptyPatch, skuKey, type VariantCodesForm } from "@/lib/catalog/catalogPayloads";
 import { formatVariantLabel } from "@/lib/variantAttributes";
-import { codesFromVariant } from "./FichaGeneralTab";
+import VariantCostField from "@/components/products/VariantCostField";
+import { codesFromVariant, type FichaCosts } from "./FichaGeneralTab";
 
 /**
  * FEAT-24 H4 (H4-D11) — pestaña Variantes: SKU editable (el 409 se muestra en la fila), código de barras,
@@ -24,11 +25,14 @@ export default function FichaVariantsTab({
   productImage,
   variants,
   canEdit,
+  costs,
 }: {
   productId: string;
   productImage?: string | null;
   variants: CatalogVariantDetail[];
   canEdit: boolean;
+  /** FEAT-24 H10: costo promedio por variante; sin rol de costos no viene y la columna no se muestra. */
+  costs?: FichaCosts;
 }) {
   const queryClient = useQueryClient();
   const visible = variants.filter((variant) => !variant.mergedInto);
@@ -95,6 +99,7 @@ export default function FichaVariantsTab({
               <TableHead>SKU</TableHead>
               <TableHead>Código de barras</TableHead>
               <TableHead>Estado</TableHead>
+              {costs ? <TableHead>Costo prom.</TableHead> : null}
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
@@ -147,6 +152,13 @@ export default function FichaVariantsTab({
                     {variant.powipEan ? <p className="mt-1 text-[11px] text-muted-foreground">POWIP: <span className="font-mono">{variant.powipEan}</span></p> : null}
                   </TableCell>
                   <TableCell>{variant.isActive === false ? <Badge variant="outline">Inactiva</Badge> : <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">Activa</Badge>}</TableCell>
+                  {costs ? (
+                    <TableCell className="min-w-[11rem]">
+                      {costs.byVariant === "error" ? <span className="text-xs text-muted-foreground">No se pudo leer</span> : (
+                        <VariantCostField variantId={variant.id} cost={costs.byVariant === undefined ? undefined : costs.byVariant.get(variant.id) ?? null} canEdit={costs.canEdit} onSaved={(cost) => costs.onSaved(variant.id, cost)} />
+                      )}
+                    </TableCell>
+                  ) : null}
                   <TableCell className="text-right">
                     {canEdit ? (
                       <Button type="button" size="sm" variant="outline" disabled={!editable || !changed} onClick={() => void save(variant)}>

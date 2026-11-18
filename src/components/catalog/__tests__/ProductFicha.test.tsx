@@ -12,10 +12,13 @@ import {
   type CatalogVariantDetail,
 } from "@/services/catalogProductService";
 import { fetchBusinessInventoryItems, type BusinessInventoryItem } from "@/services/businessInventoryItemsService";
+import { getVariantCosts, setVariantCosts } from "@/services/purchasesService";
 
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn(), back: jest.fn() }), usePathname: () => "/productos/p1" }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn() } }));
-jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { accessToken: "t", user: { id: "u1", role: "ADMINISTRADOR" }, company: { id: "c1" } } }) }));
+let role = "ADMINISTRADOR";
+jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { accessToken: "t", user: { id: "u1", role }, company: { id: "c1" } } }) }));
+jest.mock("@/services/purchasesService", () => ({ getVariantCosts: jest.fn(), setVariantCosts: jest.fn() }));
 jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scope: "business", storeIds: ["s1"], canFetch: true }) }));
 jest.mock("@/hooks/useBusinessInventories", () => ({ useBusinessInventories: () => ({ inventories: [{ id: "inv-1", name: "Principal", storeId: "s1" }], isSuccess: true, isPending: false, error: null, refetch: jest.fn() }) }));
 jest.mock("@/hooks/useCompanyBrands", () => ({ useCompanyBrands: () => ({ brands: [{ id: "nike", name: "Nike" }], isLoading: false, createBrand: jest.fn() }) }));
@@ -34,7 +37,9 @@ jest.mock("@/components/labels/PrintLabelsDialog", () => ({
   PrintLabelsDialog: ({ source }: { source: { productIds: string[]; title?: string } }) => <div>etiquetas de {source.productIds.join(",")} · {source.title}</div>,
 }));
 jest.mock("@/components/inventory/MovementHistoryTable", () => ({
-  MovementHistoryTable: ({ inventoryItemIds, title }: { inventoryItemIds?: string[]; title?: string }) => <div data-testid="kardex">{title}: {inventoryItemIds?.join(",")}</div>,
+  MovementHistoryTable: ({ variants, title }: { variants?: Array<{ id: string; label: string }>; title?: string }) => (
+    <div data-testid="kardex">{title}: {variants?.map((variant) => `${variant.id}=${variant.label}`).join(", ")}</div>
+  ),
 }));
 
 const conflict409 = (message: string) =>
@@ -61,6 +66,8 @@ function renderFicha() {
 describe("Ficha del producto en pestañas (FEAT-24 H4-D)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    role = "ADMINISTRADOR";
+    jest.mocked(getVariantCosts).mockResolvedValue([{ variantId: "v1", averageCost: 12.5 }, { variantId: "v2", averageCost: null }]);
     jest.mocked(getCatalogProduct).mockResolvedValue(POLO);
     jest.mocked(getProductVariants).mockResolvedValue(POLO_VARIANTS);
     jest.mocked(fetchBusinessInventoryItems).mockResolvedValue([item("v1", 10, 2), item("v2", 5, 0)]);
@@ -156,11 +163,57 @@ describe("Ficha del producto en pestañas (FEAT-24 H4-D)", () => {
     expect(screen.getByText("Sin canal (solo POWIP)")).toBeInTheDocument();
   });
 
-  it("Historial: el kardex se filtra por los ítems de inventario del producto", async () => {
+  it("Historial: el kardex de la fachada se elige por variante del producto (FEAT-24 H10)", async () => {
     const user = userEvent.setup();
     renderFicha();
     await user.click(await screen.findByRole("tab", { name: "Historial" }));
-    expect(await screen.findByTestId("kardex")).toHaveTextContent("Historial (kardex): ii-v1,ii-v2");
+    expect(await screen.findByTestId("kardex")).toHaveTextContent("Historial (kardex): v1=Talla: S (POL0001-S), v2=Talla: M (POL0001-M)");
+  });
+
+  describe("costo manual en la ficha (FEAT-24 H10)", () => {
+    it("el Administrador ve el costo promedio y carga el que falta con operationId", async () => {
+      jest.mocked(setVariantCosts).mockResolvedValue({ items: [{ variantId: "v2", averageCost: 9.9 } as never], duplicate: false });
+      const user = userEvent.setup();
+      renderFicha();
+      await user.click(await screen.findByRole("tab", { name: "Variantes (2)" }));
+      expect(screen.getByRole("columnheader", { name: "Costo prom." })).toBeInTheDocument();
+      expect(await screen.findByText("S/ 12.50")).toBeInTheDocument();
+      const rowM = screen.getByText("Talla: M").closest("tr")!;
+      expect(within(rowM).getByText("Sin costo")).toBeInTheDocument();
+      await user.click(within(rowM).getByRole("button", { name: "Cargar costo promedio" }));
+      await user.type(within(rowM).getByLabelText("Costo promedio sin IGV"), "9.9");
+      await user.click(within(rowM).getByRole("button", { name: "Guardar costo" }));
+      await waitFor(() => expect(setVariantCosts).toHaveBeenCalledWith({ items: [{ variantId: "v2", averageCost: 9.9 }], reason: "Carga manual desde la ficha", operationId: expect.any(String) }));
+      expect(await within(rowM).findByText("S/ 9.90")).toBeInTheDocument();
+      expect(getVariantCosts).toHaveBeenCalledWith(["v1", "v2"]);
+    });
+
+    it("Operaciones lo ve sin poder cambiarlo", async () => {
+      role = "OPERACIONES";
+      const user = userEvent.setup();
+      renderFicha();
+      await user.click(await screen.findByRole("tab", { name: "Variantes (2)" }));
+      expect(await screen.findByText("S/ 12.50")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Cargar costo promedio" })).not.toBeInTheDocument();
+    });
+
+    it("sin rol de costos no se pide ni se muestra", async () => {
+      role = "VENTAS";
+      const user = userEvent.setup();
+      renderFicha();
+      await user.click(await screen.findByRole("tab", { name: "Variantes (2)" }));
+      expect(screen.queryByRole("columnheader", { name: "Costo prom." })).not.toBeInTheDocument();
+      expect(getVariantCosts).not.toHaveBeenCalled();
+    });
+
+    it("producto simple: el costo va en General", async () => {
+      jest.mocked(getCatalogProduct).mockResolvedValue({ ...POLO, name: "Taza", type: "simple", externalSource: null });
+      jest.mocked(getProductVariants).mockResolvedValue([{ id: "t1", sku: "INT-T", companySku: "TAZ0001", barcode: "", attributeValues: { Title: "Default Title" }, isActive: true }]);
+      jest.mocked(getVariantCosts).mockResolvedValue([{ variantId: "t1", averageCost: 3 }]);
+      renderFicha();
+      await screen.findByRole("heading", { name: "Taza" });
+      expect(await screen.findByTestId("variant-cost-t1")).toHaveTextContent("Costo promedio:S/ 3.00");
+    });
   });
 
   it("producto simple: sin pestaña Variantes; su SKU y su código de barras están en General", async () => {

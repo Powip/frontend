@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Printer } from "lucide-react";
+import { FileText, Loader2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -33,6 +33,8 @@ import {
 } from "@/lib/purchaseOrders";
 import { getTrackedPurchase } from "@/services/inventoryTrackingService";
 import { getPurchaseOrder, type PurchaseOrder, type PurchaseOrderLine, type PurchaseReception } from "@/services/purchasesService";
+import { usePdfDownload } from "@/hooks/usePdfDownload";
+import { purchaseOrderPdfSpec } from "@/lib/pdf/documents";
 import { Money, PurchaseStatusBadge, ReturnStatusBadge } from "./PurchaseBits";
 
 // FEAT-24 H3-E — detalle de una orden de compra (mockup mVerOC): proveedor,
@@ -91,6 +93,13 @@ export default function PurchaseOrderDetailDialog({ order: summary, access, ware
   const receptions = detailQuery.data?.receptions ?? [];
   const [labelsFor, setLabelsFor] = useState<PurchaseReception | null>(null);
   const returns = detailQuery.data?.supplierReturns ?? [];
+  // FEAT-24 H10-D4: PDF de la orden con el encabezado común (empresa, logo, usuario y página).
+  const downloadPdf = usePdfDownload();
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const printOrder = () => {
+    setPdfError(null);
+    downloadPdf(purchaseOrderPdfSpec(order, { warehouseName })).catch(() => setPdfError("No se pudo generar el PDF de la orden."));
+  };
 
   const actions: Array<{ action: PurchaseOrderAction; label: string; variant?: "outline" | "destructive" | "default" }> = [];
   if (access.canWrite && canEditOrder(order)) actions.push({ action: "edit", label: "Editar", variant: "outline" });
@@ -314,9 +323,15 @@ export default function PurchaseOrderDetailDialog({ order: summary, access, ware
           />
         ) : null}
 
+        {pdfError ? <p role="alert" className="text-sm text-destructive">{pdfError}</p> : null}
+
         <DialogFooter className="flex-wrap gap-2">
           <Button type="button" variant="outline" onClick={onClose}>
             Cerrar
+          </Button>
+          <Button type="button" variant="outline" disabled={!detailQuery.data} onClick={printOrder}>
+            <FileText className="mr-2 h-4 w-4" />
+            PDF de la orden
           </Button>
           {actions.map(({ action, label, variant }) => (
             <Button

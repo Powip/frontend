@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Info, Loader2, Plus, Undo2 } from "lucide-react";
+import { FileText, Info, Loader2, Plus, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { warehouseErrorMessage } from "@/components/forms/warehouseUi";
+import { useCompanyWarehouses } from "@/hooks/useCompanyWarehouses";
+import { usePdfDownload } from "@/hooks/usePdfDownload";
+import { supplierReturnPdfSpec } from "@/lib/pdf/documents";
+import { periodLockedMessage } from "@/lib/reports/periods";
 import { canReturnOrder, formatDay, purchaseAccess, RETURN_STATUS_LABEL } from "@/lib/purchaseOrders";
 import {
   cancelSupplierReturn,
@@ -58,6 +62,12 @@ export default function SupplierReturnsView() {
   const [pickOrder, setPickOrder] = useState(false);
   const [newFor, setNewFor] = useState<PurchaseOrder | null>(null);
   const [action, setAction] = useState<{ kind: ReturnAction; item: SupplierReturn } | null>(null);
+  // FEAT-24 H10-D4: PDF de la devolución con el encabezado común.
+  const downloadPdf = usePdfDownload();
+  const { nameOf } = useCompanyWarehouses();
+  const printReturn = (item: SupplierReturn) => {
+    downloadPdf(supplierReturnPdfSpec(item, { warehouseName: nameOf(item.inventoryId) })).catch(() => toast.error("No se pudo generar el PDF de la devolución."));
+  };
 
   const returnsQuery = useQuery({
     queryKey: ["supplier-returns", companyId, status],
@@ -173,6 +183,9 @@ export default function SupplierReturnsView() {
                       </td>
                       <td className="whitespace-nowrap p-2 text-right">
                         <div className="flex justify-end gap-1">
+                          <Button type="button" size="sm" variant="outline" aria-label={`PDF de la devolución ${item.number}`} title="PDF de la devolución" onClick={() => printReturn(item)}>
+                            <FileText className="h-4 w-4" />
+                          </Button>
                           {access.canWrite && item.status === "borrador" ? (
                             <Button type="button" size="sm" onClick={() => setAction({ kind: "send", item })}>
                               Marcar enviada
@@ -342,7 +355,8 @@ function ReturnActionDialog({
       toast.success(`${item.number} ${copy.done}`);
       onDone();
     },
-    onError: (failure) => setError(warehouseErrorMessage(failure, "No se pudo completar. Inténtalo de nuevo.")),
+    // FEAT-24 H10-D6: 423 si la devolución tiene fecha en un mes cerrado.
+    onError: (failure) => setError(periodLockedMessage(failure) ?? warehouseErrorMessage(failure, "No se pudo completar. Inténtalo de nuevo.")),
   });
   const busy = run.isPending;
   const valid = kind !== "credit-note" || (text.trim().length > 0 && text.trim().length <= 50);

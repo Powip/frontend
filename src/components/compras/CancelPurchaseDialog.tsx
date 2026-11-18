@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2 } from "lucide-react";
 import { trackingError } from "@/services/inventoryTrackingService";
+import { periodLockedMessage } from "@/lib/reports/periods";
 
 /** FEAT-24 H0 — anular una compra recibida exige motivo; si el backend la rechaza, el diálogo queda abierto con el motivo. */
 export default function CancelPurchaseDialog({ open, purchaseNumber, onConfirm, onClose, description }: {
@@ -38,7 +39,8 @@ export default function CancelPurchaseDialog({ open, purchaseNumber, onConfirm, 
       await onConfirm(trimmed);
       setReason("");
     } catch (failure) {
-      setError(trackingError(failure, "No se pudo anular la compra."));
+      // FEAT-24 H10-D6: 423 si la compra tiene fecha en un mes cerrado.
+      setError(periodLockedMessage(failure) ?? trackingError(failure, "No se pudo anular la compra."));
     } finally {
       setSaving(false);
     }

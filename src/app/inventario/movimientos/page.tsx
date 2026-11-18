@@ -1,7 +1,12 @@
 import InventarioView from "../_components/InventarioView";
 
-/** `?q=` llega desde Stock («Ver movimientos» de una variante) y precarga el buscador. */
-export default async function InventarioMovimientosPage({ searchParams }: { searchParams: Promise<{ q?: string | string[] }> }) {
-  const { q } = await searchParams;
-  return <InventarioView tab="movimientos" initialMovementSearch={typeof q === "string" ? q : ""} />;
+const one = (value: string | string[] | undefined) => (typeof value === "string" ? value : "");
+
+/**
+ * Desde Stock («Ver movimientos» de una variante) llegan `?variantId=` y su nombre en `?q=`; un `?q=` solo con
+ * un documento (ORD-, OC-…) precarga el filtro «Documento».
+ */
+export default async function InventarioMovimientosPage({ searchParams }: { searchParams: Promise<{ q?: string | string[]; variantId?: string | string[] }> }) {
+  const { q, variantId } = await searchParams;
+  return <InventarioView tab="movimientos" initialMovementSearch={one(q)} initialMovementVariantId={one(variantId) || undefined} />;
 }
