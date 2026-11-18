@@ -20,6 +20,8 @@ let role = "ADMINISTRADOR";
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { accessToken: "t", user: { id: "u1", role }, company: { id: "c1" } } }) }));
 jest.mock("@/services/purchasesService", () => ({ getVariantCosts: jest.fn(), setVariantCosts: jest.fn() }));
 jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scope: "business", storeIds: ["s1"], canFetch: true }) }));
+// FEAT-24 H6: mock manual (sin filtro por defecto); el filtro por almacén tiene su propio test.
+jest.mock("@/hooks/useMyWarehouses");
 jest.mock("@/hooks/useBusinessInventories", () => ({ useBusinessInventories: () => ({ inventories: [{ id: "inv-1", name: "Principal", storeId: "s1" }], isSuccess: true, isPending: false, error: null, refetch: jest.fn() }) }));
 jest.mock("@/hooks/useCompanyBrands", () => ({ useCompanyBrands: () => ({ brands: [{ id: "nike", name: "Nike" }], isLoading: false, createBrand: jest.fn() }) }));
 jest.mock("@/hooks/useCatalogCategories", () => ({

@@ -7,6 +7,7 @@ import { ArrowLeft, Printer } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessScope } from "@/contexts/BusinessScopeContext";
 import { useBusinessInventories } from "@/hooks/useBusinessInventories";
+import { useMyWarehouses } from "@/hooks/useMyWarehouses";
 import { useCompanyBrands } from "@/hooks/useCompanyBrands";
 import { useCatalogCategories } from "@/hooks/useCatalogCategories";
 import { getCatalogProduct, getProductVariants } from "@/services/catalogProductService";
@@ -46,6 +47,10 @@ export default function ProductFicha({ productId, actions }: { productId: string
   const accessToken = auth?.accessToken ?? "";
   const { scope, storeIds, canFetch } = useBusinessScope();
   const warehouses = useBusinessInventories({ scope, storeIds });
+  // FEAT-24 H6: stock e historial solo de los almacenes que el usuario ve (el backend igual filtra), como en Stock.
+  const myWarehouses = useMyWarehouses();
+  const myInventories = useMemo(() => myWarehouses.visible(warehouses.inventories), [myWarehouses, warehouses.inventories]);
+  const scopeReady = warehouses.isSuccess && !myWarehouses.isLoading;
   const { brands } = useCompanyBrands();
   const categories = useCatalogCategories();
   const [tab, setTab] = useState<FichaTab>("general");
@@ -65,9 +70,9 @@ export default function ProductFicha({ productId, actions }: { productId: string
   });
   // Misma consulta (y misma caché) que el listado del catálogo.
   const stockQuery = useQuery({
-    queryKey: ["business-inventory-items", companyId, auth?.user?.id, scope, storeIds, warehouses.inventories.map((inv) => inv.id).sort()],
-    queryFn: ({ signal }) => fetchBusinessInventoryItems({ inventories: warehouses.inventories, companyId, accessToken, signal }),
-    enabled: canFetch && warehouses.isSuccess, retry: false,
+    queryKey: ["business-inventory-items", companyId, auth?.user?.id, scope, storeIds, myInventories.map((inv) => inv.id).sort()],
+    queryFn: ({ signal }) => fetchBusinessInventoryItems({ inventories: myInventories, companyId, accessToken, signal }),
+    enabled: canFetch && scopeReady, retry: false,
   });
 
   const product = productQuery.data;
@@ -77,7 +82,10 @@ export default function ProductFicha({ productId, actions }: { productId: string
   const isSimple = kind === "simple";
   // FEAT-24 H9: un pack tiene su pestaña con componentes, margen y disponible calculado.
   const isPack = kind === "pack";
-  const stockView = useMemo(() => buildFichaStock(stockQuery.data ?? [], productId, variants), [stockQuery.data, productId, variants]);
+  const stockView = useMemo(
+    () => buildFichaStock((stockQuery.data ?? []).filter((row) => myWarehouses.canSee(row.inventoryId)), productId, variants),
+    [stockQuery.data, productId, variants, myWarehouses],
+  );
   // FEAT-24 H10: el historial es el kardex de la fachada, que se lee por variante (todas, también las inactivas).
   // FEAT-24 H10: costo promedio por variante (Administrador y Operaciones lo ven; solo el Administrador lo carga).
   const canSeeCosts = canSeeProductCosts(auth?.user);
@@ -189,7 +197,7 @@ export default function ProductFicha({ productId, actions }: { productId: string
             <TabsContent value="historial">
               {activeTab === "historial" ? (
                 kardexVariants.length === 0 ? <p className="text-sm text-muted-foreground">Este producto todavía no tiene variantes.</p>
-                  : <MovementHistoryTable companyId={companyId} scope={scope} inventories={warehouses.inventories} scopeReady={warehouses.isSuccess} variants={kardexVariants} title="Historial (kardex)" description="Movimientos de stock de la variante elegida, con su saldo." />
+                  : <MovementHistoryTable companyId={companyId} scope={scope} inventories={myInventories} scopeReady={scopeReady} variants={kardexVariants} title="Historial (kardex)" description="Movimientos de stock de la variante elegida, con su saldo." />
               ) : null}
             </TabsContent>
           </Tabs>

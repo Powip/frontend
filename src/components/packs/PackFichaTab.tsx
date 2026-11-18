@@ -1,17 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { canSeeProductCosts } from "@/config/permissions.config";
-import { getPack } from "@/services/packsService";
+import { useMyWarehouses } from "@/hooks/useMyWarehouses";
+import { getPack, type PackView } from "@/services/packsService";
 import { apiErrorInfo } from "@/lib/catalog/catalogPayloads";
 import { marginAlert, needsMarginConfirmation, soles, variantLabel } from "@/lib/packs/packMath";
 import { PackAvailability, PackMarginCell } from "./PacksView";
 import { PackFormDialog } from "./PackFormDialog";
 
 const MASK = "••••";
+
+/** Disponible del pack solo en los almacenes que el usuario ve; el total se vuelve a sumar con esos. */
+export function visiblePackAvailability(available: PackView["available"], canSee: (inventoryId: string) => boolean): PackView["available"] {
+  if (!available) return available;
+  const byWarehouse = available.byWarehouse.filter((row) => canSee(row.inventoryId));
+  if (byWarehouse.length === available.byWarehouse.length) return available;
+  return { total: byWarehouse.reduce((sum, row) => sum + (Number(row.available) || 0), 0), byWarehouse };
+}
 
 /**
  * FEAT-24 H9 — pestaña «Pack» de la ficha (H4) para un producto `type = 'pack'`: componentes, disponible
@@ -21,12 +30,19 @@ export default function PackFichaTab({ productId }: { productId: string }) {
   const { auth } = useAuth();
   const seeCosts = canSeeProductCosts(auth?.user);
   const [editing, setEditing] = useState(false);
+  // FEAT-24 H6: como el stock de la ficha, solo los almacenes que el usuario ve.
+  const myWarehouses = useMyWarehouses();
   const pack = useQuery({
     queryKey: ["pack", auth?.company?.id, productId],
     queryFn: ({ signal }) => getPack(productId, signal),
     enabled: Boolean(auth?.company?.id && productId),
     retry: false,
   });
+
+  const available = useMemo(
+    () => (pack.data ? visiblePackAvailability(pack.data.available, myWarehouses.canSee) : null),
+    [pack.data, myWarehouses],
+  );
 
   if (pack.isError) {
     return (
@@ -46,7 +62,7 @@ export default function PackFichaTab({ productId }: { productId: string }) {
         <span>Precio: <b>{soles(data.price)}</b></span>
         <span>Costo: <b>{seeCosts ? soles(data.cost ?? null) : MASK}</b></span>
         <span>Margen: <PackMarginCell pack={data} seeCosts={seeCosts} /></span>
-        <span>Disponible: <PackAvailability pack={data} /></span>
+        <span>Disponible: <PackAvailability pack={{ available }} /></span>
         {seeCosts ? <Button size="sm" variant="outline" className="ml-auto" onClick={() => setEditing(true)}>Editar pack</Button> : null}
       </div>
       {alert ? <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-sm text-destructive"><b>Margen bajo.</b> {alert}</p> : null}
@@ -72,11 +88,11 @@ export default function PackFichaTab({ productId }: { productId: string }) {
           </tbody>
         </table>
       </div>
-      {data.available && data.available.byWarehouse.length > 0 ? (
+      {available && available.byWarehouse.length > 0 ? (
         <div className="text-sm">
           <p className="mb-1 font-medium">Disponible por almacén</p>
           <ul className="space-y-0.5 text-muted-foreground">
-            {data.available.byWarehouse.map((row) => (
+            {available.byWarehouse.map((row) => (
               <li key={row.inventoryId}>{row.inventoryName ?? "Almacén"}: <b className="text-foreground">{row.available}</b></li>
             ))}
           </ul>
