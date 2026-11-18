@@ -26,6 +26,9 @@ import {
   GitMerge,
   PackageOpen,
   PackageX,
+  FileBarChart,
+  Bell,
+  Lock,
 } from "lucide-react";
 
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -59,6 +62,11 @@ import OutOfStockTab from "@/components/inventory/out-of-stock/OutOfStockTab";
 import { orderStockAccess } from "@/lib/orderStock";
 import SkuConflictsPanel from "@/components/catalog/SkuConflictsPanel";
 import { StockByProduct, StockByWarehouse, StockKpis, type StockBoardActions } from "@/components/inventory/StockBoard";
+import StockReportTab from "@/components/inventory/reports/StockReportTab";
+import AlertsTab from "@/components/inventory/reports/AlertsTab";
+import PeriodCloseTab from "@/components/inventory/reports/PeriodCloseTab";
+import { useInventoryAlerts } from "@/hooks/useInventoryAlerts";
+import { alertBadgeText } from "@/lib/reports/alerts";
 import { filterStockVariants, groupByProduct, stockTotals, storesOf, variantPositionsFlat, visibleInventories, STOCK_STATUS_LABEL, type StockMode, type StockStatusFilter } from "@/components/inventory/stockView";
 
 const ITEMS_PER_PAGE = 10;
@@ -66,22 +74,29 @@ const ITEMS_PER_PAGE = 10;
 const PRODUCT_SKU_CONFLICTS: Array<"product"> = ["product"];
 
 /** Pestañas del módulo (mockup vistainv.html, grupo «Almacén»). Cada una vive en su propia ruta. */
-export type InventarioTab = "stock" | "movimientos" | "recepciones" | "pedidos-sin-stock" | "unificacion";
+export type InventarioTab = "stock" | "reporte" | "movimientos" | "recepciones" | "pedidos-sin-stock" | "alertas" | "unificacion" | "cierre";
 export const INVENTARIO_TAB_ROUTES: Record<InventarioTab, string> = {
   stock: "/inventario/stock",
+  // FEAT-24 H10: Reporte general, Alertas y Cierre mensual.
+  reporte: "/inventario/reporte",
   movimientos: "/inventario/movimientos",
   recepciones: "/inventario/recepciones",
   "pedidos-sin-stock": "/inventario/pedidos-sin-stock",
+  alertas: "/inventario/alertas",
   unificacion: "/inventario/unificacion",
+  cierre: "/inventario/cierre",
 };
 
-export default function InventarioView({ tab = "stock", initialMovementSearch = "" }: { tab?: InventarioTab; initialMovementSearch?: string }) {
+export default function InventarioView({ tab = "stock", initialMovementSearch = "", initialMovementVariantId }: { tab?: InventarioTab; initialMovementSearch?: string; initialMovementVariantId?: string }) {
   const { auth, hasPermission } = useAuth();
   // Pedidos sin stock / sin reserva: Atención al cliente y Operaciones (los mismos permisos que ms-ventas).
   const stockAccess = orderStockAccess((permission) => hasPermission?.(permission) ?? false);
   // Editar inventario (ajustes, mermas, transferencias, importar Excel, compras, reconciliación): solo
   // Administrador y Operaciones. El resto sigue viendo el stock en solo lectura.
   const canEdit = canEditInventory(auth?.user);
+  // FEAT-24 H10-D8: contador de la pestaña Alertas (misma consulta que el menú lateral).
+  const alerts = useInventoryAlerts();
+  const alertTotal = alerts.data?.total ?? 0;
   const queryClient = useQueryClient();
   const { scope, storeIds, canFetch } = useBusinessScope();
   const warehouses = useBusinessInventories({ scope, storeIds });
@@ -171,7 +186,7 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
     onTracking: (item, action) => setTrackingItem({ item, companyId, action }),
     onAdjust: (item) => { setSelectedItem(item); setAdjustOpen(true); },
     onEdit: (variantId) => router.push(`/productos?edit=${variantId}`),
-    onKardex: (sku) => router.push(`${INVENTARIO_TAB_ROUTES.movimientos}?q=${encodeURIComponent(sku)}`),
+    onKardex: (variantId, label) => router.push(`${INVENTARIO_TAB_ROUTES.movimientos}?variantId=${encodeURIComponent(variantId)}&q=${encodeURIComponent(label)}`),
   };
   const activeTab: InventarioTab =
     (tab === "unificacion" && !canEdit) || (tab === "pedidos-sin-stock" && !stockAccess.sinReserva) ? "stock" : tab;
@@ -271,7 +286,7 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
         handleStockRefresh();
         void queryClient.invalidateQueries({ queryKey: ["admin-shrinkage-list", companyId] });
         void queryClient.invalidateQueries({ queryKey: ["admin-shrinkage-summary", companyId] });
-        void queryClient.invalidateQueries({ queryKey: ["inventory-movement-history", companyId] });
+        void queryClient.invalidateQueries({ queryKey: ["inventory-kardex", companyId] });
       }} /> : null}
       {unitTrace?.companyId === companyId && unitTrace.userId === auth.user.id ? <InventoryUnitTraceModal companyId={companyId} initialCode={unitTrace.code} onClose={() => setUnitTrace(null)} /> : null}
       <HeaderConfig
@@ -285,11 +300,15 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
         </div>
       ) : (
         <Tabs value={activeTab} onValueChange={(next) => router.push(INVENTARIO_TAB_ROUTES[next as InventarioTab])} className="flex-1 flex flex-col">
-          <div className="mb-4 flex items-center justify-between">
-            <TabsList>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <TabsList className="h-auto flex-wrap">
               <TabsTrigger value="stock" className="flex items-center gap-2">
                 <LayoutList className="h-4 w-4" />
                 Stock
+              </TabsTrigger>
+              <TabsTrigger value="reporte" className="flex items-center gap-2">
+                <FileBarChart className="h-4 w-4" />
+                Reporte general
               </TabsTrigger>
               <TabsTrigger value="movimientos" className="flex items-center gap-2">
                 <History className="h-4 w-4" />
@@ -305,6 +324,13 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                   Pedidos sin stock
                 </TabsTrigger>
               )}
+              <TabsTrigger value="alertas" className="flex items-center gap-2">
+                <Bell className="h-4 w-4" />
+                Alertas
+                {alertTotal > 0 ? (
+                  <span aria-label={`${alertTotal} alertas`} className="rounded-full bg-red-500 px-1.5 text-[11px] font-semibold leading-5 text-white">{alertBadgeText(alertTotal)}</span>
+                ) : null}
+              </TabsTrigger>
               {canEdit && (
                 <TabsTrigger
                   value="unificacion"
@@ -314,6 +340,10 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                   Unificación
                 </TabsTrigger>
               )}
+              <TabsTrigger value="cierre" className="flex items-center gap-2">
+                <Lock className="h-4 w-4" />
+                Cierre mensual
+              </TabsTrigger>
             </TabsList>
 
             <div className="flex gap-2">
@@ -491,7 +521,31 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
           <TabsContent value="movimientos" className="flex-1 flex flex-col mt-0">
             <Card className="flex-1 flex flex-col">
               <CardContent className="p-6 overflow-auto">
-                <MovementHistoryTable initialSearch={initialMovementSearch} companyId={auth?.company?.id} scope={scope} inventories={storeInventories} scopeReady={warehouses.isSuccess} scopeError={scope === "store" ? warehouses.error : undefined} onRetryScope={() => void warehouses.refetch()} />
+                <MovementHistoryTable initialSearch={initialMovementSearch} initialVariantId={initialMovementVariantId} companyId={auth?.company?.id} scope={scope} inventories={storeInventories} scopeReady={warehouses.isSuccess} scopeError={scope === "store" ? warehouses.error : undefined} onRetryScope={() => void warehouses.refetch()} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="reporte" className="flex-1 flex flex-col mt-0">
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 overflow-auto">
+                {activeTab === "reporte" ? <StockReportTab /> : null}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="alertas" className="flex-1 flex flex-col mt-0">
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 overflow-auto">
+                {activeTab === "alertas" ? <AlertsTab /> : null}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="cierre" className="flex-1 flex flex-col mt-0">
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 overflow-auto">
+                {activeTab === "cierre" ? <PeriodCloseTab /> : null}
               </CardContent>
             </Card>
           </TabsContent>

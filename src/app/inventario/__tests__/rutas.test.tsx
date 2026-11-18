@@ -21,6 +21,12 @@ jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), warn
 jest.mock("@/app/productos/shopify-sync-wizard", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/inventory/ReconciliationTab", () => ({ ReconciliationTab: () => <div>bandeja de unificación</div> }));
 jest.mock("@/components/inventory/MovementHistoryTable", () => ({ MovementHistoryTable: () => <div>tabla de movimientos</div> }));
+// FEAT-24 H10: Reporte general, Alertas (con su contador) y Cierre mensual.
+jest.mock("@/components/inventory/reports/StockReportTab", () => ({ __esModule: true, default: () => <div>reporte general</div> }));
+jest.mock("@/components/inventory/reports/AlertsTab", () => ({ __esModule: true, default: () => <div>lista de alertas</div> }));
+jest.mock("@/components/inventory/reports/PeriodCloseTab", () => ({ __esModule: true, default: () => <div>cierres del mes</div> }));
+let alertTotal = 0;
+jest.mock("@/hooks/useInventoryAlerts", () => ({ useInventoryAlerts: () => ({ data: { generatedAt: "", total: alertTotal, alerts: [] } }) }));
 jest.mock("@/components/inventory/receptions/ReceptionsTab", () => ({
   __esModule: true,
   default: (props: { canEdit: boolean; scopeInventoryIds: string[] | null }) => (
@@ -56,10 +62,13 @@ describe("rutas del módulo de inventario (FEAT-24 F1)", () => {
   it("cada pestaña tiene su ruta", () => {
     expect(INVENTARIO_TAB_ROUTES).toEqual({
       stock: "/inventario/stock",
+      reporte: "/inventario/reporte",
       movimientos: "/inventario/movimientos",
       recepciones: "/inventario/recepciones",
       "pedidos-sin-stock": "/inventario/pedidos-sin-stock",
+      alertas: "/inventario/alertas",
       unificacion: "/inventario/unificacion",
+      cierre: "/inventario/cierre",
     });
   });
 
@@ -69,11 +78,32 @@ describe("rutas del módulo de inventario (FEAT-24 F1)", () => {
     ["recepciones", /^Recepciones$/],
     ["pedidos-sin-stock", /Pedidos sin stock/],
     ["unificacion", /Unificación/],
+    ["reporte", /Reporte general/],
+    ["alertas", /Alertas/],
+    ["cierre", /Cierre mensual/],
   ] as const)("la ruta %s abre su pestaña seleccionada", async (tab, name) => {
     loginAs("ADMINISTRADOR");
     renderTab(tab);
     await waitFor(() => expect(screen.getByRole("tab", { name })).toHaveAttribute("aria-selected", "true"));
     expect(screen.getAllByRole("tab", { selected: true })).toHaveLength(1);
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("Reporte general, Alertas y Cierre mensual los ven todos; Alertas lleva el contador (FEAT-24 H10)", async () => {
+    loginAs("VENTAS", ["VIEW_SALES"]);
+    alertTotal = 7;
+    const { unmount } = renderTab("alertas");
+    expect(await screen.findByText("lista de alertas")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Alertas/ })).toHaveTextContent("Alertas7");
+    expect(screen.getByLabelText("7 alertas")).toBeInTheDocument();
+    unmount();
+    alertTotal = 0;
+    const second = renderTab("reporte");
+    expect(await screen.findByText("reporte general")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/alertas$/)).not.toBeInTheDocument();
+    second.unmount();
+    renderTab("cierre");
+    expect(await screen.findByText("cierres del mes")).toBeInTheDocument();
     expect(replace).not.toHaveBeenCalled();
   });
 
