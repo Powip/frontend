@@ -1,5 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import type { AdsProduct } from "@/services/advertisingV22Service";
 import type { AdsSummaryV23, AdsSalesV23, SalesRowV23 } from "@/services/advertisingV23Service";
@@ -230,9 +231,9 @@ export function ProductsV23({
                   {canProfit && row.noCost && (
                     <span className="block text-xs" title={row.reason}>
                       {row.catalogCostKnown ? "— sin costo histórico" : "— sin costo"} ·{" "}
-                      <a className="text-primary underline" href="/productos">
+                      <Link className="text-primary underline" href="/productos">
                         Carga el costo
-                      </a>
+                      </Link>
                     </span>
                   )}
                   {canProfit && row.missingCosts > 0 && (
