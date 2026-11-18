@@ -70,8 +70,6 @@ jest.mock("@/components/tracking/useShalomLiveStatus", () => ({
 
 jest.mock("@/services/shalomService", () => ({
   getShalomConfig: jest.fn(() => Promise.resolve(null)),
-  getShalomLabelPdfUrl: jest.fn(),
-  getShalomTicketPdfUrl: jest.fn(),
   quoteShalom: jest.fn(),
   trackShalomGuide: jest.fn(),
   updateGuideQuote: jest.fn(),
