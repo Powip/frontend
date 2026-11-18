@@ -389,8 +389,39 @@ export type InventoryAlertType =
   | "sku_por_vincular"
   | "lotes_por_vencer"
   | "investigacion_vencida"
-  | "conciliacion_con_diferencia"
+  // FEAT-24 H8: reemplazan a la apagada `conciliacion_con_diferencia`, que ya no sale.
+  | "conciliacion_courier_pendiente"
+  | "reclamos_abiertos_viejos"
   | "packs_bajo_margen";
+
+/** FEAT-24 H8: conciliación de courier abierta con alguna línea sin explicar (la más vieja primero). */
+export interface CourierReconciliationAlertItem {
+  id: string;
+  number: string;
+  inventoryId: string;
+  courierProvider: string | null;
+  createdAt: string | null;
+  ageDays: number | null;
+  unexplainedLines: number;
+  shortageUnits: number;
+  /** Sin rol de costos no viene. */
+  shortageValue?: number | null;
+  surplusUnits: number;
+}
+
+/** FEAT-24 H8: reclamo al courier abierto o aceptado de más de `thresholdDays` días. */
+export interface OldCourierClaimAlertItem {
+  id: string;
+  number: string;
+  inventoryId: string;
+  courierProvider: string | null;
+  status: string;
+  units: number;
+  /** El monto; sin rol de costos no viene. */
+  value?: number | null;
+  createdAt: string | null;
+  ageDays: number | null;
+}
 
 export interface LowStockAlertItem {
   inventoryId: string;

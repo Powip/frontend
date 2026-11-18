@@ -1,6 +1,9 @@
+import { formatMoney } from "@/lib/purchaseOrders";
 import { suggestedPurchaseHref } from "@/lib/suggestedPurchase";
 import { formatVariantLabel } from "@/lib/variantAttributes";
 import type {
+  CourierReconciliationAlertItem,
+  OldCourierClaimAlertItem,
   InventoryAlert,
   InventoryAlerts,
   LowStockAlertItem,
@@ -32,6 +35,16 @@ interface AlertMeta {
   action: string;
 }
 
+/** FEAT-24 H8: Inventario › Couriers; con `almacen` abre ese almacén y con `reclamo`, el detalle del reclamo. */
+export const COURIERS_HREF = "/inventario/couriers";
+export function couriersHref(params: { inventoryId?: string | null; claimId?: string | null } = {}): string {
+  const query = new URLSearchParams();
+  if (params.inventoryId) query.set("almacen", params.inventoryId);
+  if (params.claimId) query.set("reclamo", params.claimId);
+  const text = query.toString();
+  return text ? `${COURIERS_HREF}?${text}` : COURIERS_HREF;
+}
+
 export const ALERT_META: Record<string, AlertMeta> = {
   bajo_minimo: { title: "Bajo mínimo", tone: "amber", href: "/compras", action: "Crear compra" },
   sin_stock_con_pedidos: { title: "Pedido sin stock", tone: "red", href: "/inventario/pedidos-sin-stock", action: "Gestionar" },
@@ -40,7 +53,9 @@ export const ALERT_META: Record<string, AlertMeta> = {
   sku_por_vincular: { title: "SKU por vincular", tone: "slate", href: "/inventario/unificacion", action: "Vincular" },
   lotes_por_vencer: { title: "Lotes por vencer", tone: "amber", href: "/inventario/stock", action: "Ver stock" },
   investigacion_vencida: { title: "Investigación vencida", tone: "slate", href: "/inventario/stock", action: "Revisar" },
-  conciliacion_con_diferencia: { title: "Courier no cuadra", tone: "amber", href: "/inventario/stock", action: "Conciliar" },
+  // FEAT-24 H8: conciliaciones con el courier y reclamos viejos, con enlace a Inventario › Couriers.
+  conciliacion_courier_pendiente: { title: "Courier no cuadra", tone: "amber", href: COURIERS_HREF, action: "Conciliar" },
+  reclamos_abiertos_viejos: { title: "Reclamo al courier sin cobrar", tone: "amber", href: COURIERS_HREF, action: "Ver reclamo" },
   packs_bajo_margen: { title: "Pack bajo margen", tone: "slate", href: "/productos", action: "Revisar pack" },
 };
 
@@ -98,6 +113,26 @@ function rowsOf(alert: InventoryAlert, ctx: { orderNumbers: Record<string, strin
       return (alert.items as PendingReturnAlertItem[]).map((item) => {
         const age = days(item.ageDays);
         return base(item.id, `${item.orderNumber || orderText(item.orderId, ctx.orderNumbers)} · ${item.units} und por recibir en ${ctx.warehouseName(item.inventoryId)}${age ? ` hace ${age}` : ""}.`);
+      });
+    case "conciliacion_courier_pendiente":
+      return (alert.items as CourierReconciliationAlertItem[]).map((item) => {
+        const age = days(item.ageDays);
+        const surplus = item.surplusUnits > 0 ? `, sobran ${item.surplusUnits}` : "";
+        return base(
+          item.id,
+          `${item.number} en ${ctx.warehouseName(item.inventoryId)}: ${item.unexplainedLines} SKU sin explicar (faltan ${item.shortageUnits} und${surplus})${age ? `, abierta hace ${age}` : ""}.`,
+          { href: couriersHref({ inventoryId: item.inventoryId }) },
+        );
+      });
+    case "reclamos_abiertos_viejos":
+      return (alert.items as OldCourierClaimAlertItem[]).map((item) => {
+        const age = days(item.ageDays);
+        const amount = typeof item.value === "number" ? ` por ${formatMoney(item.value)}` : "";
+        return base(
+          item.id,
+          `${item.number} (${item.status === "aceptado" ? "aceptado" : "abierto"}) en ${ctx.warehouseName(item.inventoryId)}: ${item.units} und${amount} sin cobrar${age ? ` hace ${age}` : ""}.`,
+          { href: couriersHref({ inventoryId: item.inventoryId, claimId: item.id }) },
+        );
       });
     case "sku_por_vincular":
       return [
