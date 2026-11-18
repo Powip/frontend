@@ -22,6 +22,7 @@ import {
   type VariantCodesForm,
 } from "@/lib/catalog/catalogPayloads";
 import type { CatalogCategoryNode } from "@/lib/catalog/categoryTree";
+import VariantCostField from "@/components/products/VariantCostField";
 
 export const formFromProduct = (product: CatalogProductDetail): ProductGeneralForm => ({
   name: product.name ?? "",
@@ -44,17 +45,30 @@ export const codesFromVariant = (variant: CatalogVariantDetail | null | undefine
  * unidad de compra y factor, descripción y foto principal. Un producto simple muestra acá su SKU y su
  * código de barras (no tiene tabla de variantes).
  */
+/**
+ * FEAT-24 H10 — costo promedio en la ficha: lo ven Administrador y Operaciones; solo el Administrador lo carga
+ * a mano (`PUT /variant-costs` con `operationId`). `byVariant`: `undefined` = cargando, `"error"` = no se pudo leer.
+ */
+export interface FichaCosts {
+  byVariant: Map<string, number | null> | undefined | "error";
+  canEdit: boolean;
+  onSaved: (variantId: string, cost: number) => void;
+}
+
 export default function FichaGeneralTab({
   product,
   simpleVariant,
   categoryTree,
   canEdit,
+  costs,
 }: {
   product: CatalogProductDetail;
   /** La única variante de un producto simple (null si tiene variantes). */
   simpleVariant: CatalogVariantDetail | null;
   categoryTree: CatalogCategoryNode[];
   canEdit: boolean;
+  /** Sin rol de costos no viene. */
+  costs?: FichaCosts;
 }) {
   const queryClient = useQueryClient();
   const original = formFromProduct(product);
@@ -190,6 +204,13 @@ export default function FichaGeneralTab({
               <Input id="ficha-barcode" className="font-mono" value={codes.barcode} disabled={disabled} maxLength={64} onChange={(event) => setCodes((prev) => ({ ...prev, barcode: event.target.value }))} />
               <p className="text-xs text-muted-foreground">{simpleVariant.powipEan ? `EAN de fábrica. Si no tiene, se usa el de POWIP: ${simpleVariant.powipEan}.` : "EAN de fábrica (opcional)."}</p>
             </div>
+            {costs ? (
+              <div className="space-y-2 md:col-span-2">
+                {costs.byVariant === "error" ? <p className="text-xs text-muted-foreground">No se pudo leer el costo promedio.</p> : (
+                  <VariantCostField variantId={simpleVariant.id} cost={costs.byVariant === undefined ? undefined : costs.byVariant.get(simpleVariant.id) ?? null} canEdit={costs.canEdit} onSaved={(cost) => costs.onSaved(simpleVariant.id, cost)} />
+                )}
+              </div>
+            ) : null}
           </>
         ) : null}
         <div className="space-y-2 md:col-span-2">

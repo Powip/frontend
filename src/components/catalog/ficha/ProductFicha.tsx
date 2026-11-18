@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Printer } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessScope } from "@/contexts/BusinessScopeContext";
@@ -11,6 +11,9 @@ import { useCompanyBrands } from "@/hooks/useCompanyBrands";
 import { useCatalogCategories } from "@/hooks/useCatalogCategories";
 import { getCatalogProduct, getProductVariants } from "@/services/catalogProductService";
 import { fetchBusinessInventoryItems } from "@/services/businessInventoryItemsService";
+import { getVariantCosts } from "@/services/purchasesService";
+import { canSeeProductCosts } from "@/config/permissions.config";
+import { isCompanyAdminRole } from "@/lib/purchaseOrders";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -22,7 +25,7 @@ import { liveVariants, productKind } from "@/lib/catalog/catalogProducts";
 import { categoryPath } from "@/lib/catalog/categoryTree";
 import { buildFichaStock } from "@/lib/catalog/fichaStock";
 import { formatVariantLabel } from "@/lib/variantAttributes";
-import FichaGeneralTab from "./FichaGeneralTab";
+import FichaGeneralTab, { type FichaCosts } from "./FichaGeneralTab";
 import FichaVariantsTab from "./FichaVariantsTab";
 import FichaStockTab from "./FichaStockTab";
 import FichaChannelsTab from "./FichaChannelsTab";
@@ -71,6 +74,24 @@ export default function ProductFicha({ productId, actions }: { productId: string
   const isSimple = kind === "simple";
   const stockView = useMemo(() => buildFichaStock(stockQuery.data ?? [], productId, variants), [stockQuery.data, productId, variants]);
   // FEAT-24 H10: el historial es el kardex de la fachada, que se lee por variante (todas, también las inactivas).
+  // FEAT-24 H10: costo promedio por variante (Administrador y Operaciones lo ven; solo el Administrador lo carga).
+  const canSeeCosts = canSeeProductCosts(auth?.user);
+  const variantIds = useMemo(() => variants.filter((variant) => !variant.mergedInto).map((variant) => variant.id).sort(), [variants]);
+  const costsQuery = useQuery({
+    queryKey: ["variant-costs", companyId, variantIds],
+    queryFn: async () => new Map((await getVariantCosts(variantIds)).map((cost) => [cost.variantId, cost.averageCost] as const)),
+    enabled: canSeeCosts && variantIds.length > 0,
+    retry: false,
+  });
+  const queryClient = useQueryClient();
+  const costs: FichaCosts | undefined = canSeeCosts
+    ? {
+        byVariant: costsQuery.error ? "error" : costsQuery.data,
+        canEdit: isCompanyAdminRole(auth?.user?.role),
+        onSaved: (variantId, cost) =>
+          queryClient.setQueryData<Map<string, number | null>>(["variant-costs", companyId, variantIds], (current) => new Map(current ?? []).set(variantId, cost)),
+      }
+    : undefined;
   const kardexVariants = useMemo(
     () => variants.map((variant) => {
       const attributes = formatVariantLabel(variant.attributeValues);
@@ -139,11 +160,11 @@ export default function ProductFicha({ productId, actions }: { productId: string
               <TabsTrigger value="historial">Historial</TabsTrigger>
             </TabsList>
             <TabsContent value="general">
-              <FichaGeneralTab key={product.id} product={product} simpleVariant={isSimple ? live[0] ?? null : null} categoryTree={categories.tree} canEdit />
+              <FichaGeneralTab key={product.id} product={product} simpleVariant={isSimple ? live[0] ?? null : null} categoryTree={categories.tree} canEdit costs={costs} />
             </TabsContent>
             {!isSimple ? (
               <TabsContent value="variantes">
-                <FichaVariantsTab productId={product.id} productImage={product.imageUrl} variants={variants} canEdit />
+                <FichaVariantsTab productId={product.id} productImage={product.imageUrl} variants={variants} canEdit costs={costs} />
               </TabsContent>
             ) : null}
             <TabsContent value="stock">
