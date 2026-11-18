@@ -13,6 +13,7 @@ import {
 import type { SunatDocument } from "@/features/sunat/sunat-document/models/sunat-document.model";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { fetchAllSunatDocuments } from "@/features/sunat/sunat-document/utils/fetch-all-sunat-documents";
+import { computeTaxDocumentKpis } from "@/features/sunat/sunat-document/utils/tax-document-kpis";
 
 export function useTaxDocuments() {
   const { auth } = useAuth();
@@ -119,72 +120,7 @@ export function useTaxDocuments() {
     [rows, selectedIds],
   );
 
-  /**
-   * KPI calculations intentionally use the SUNAT document itself as the
-   * source of truth.
-   */
-  const kpis = useMemo(() => {
-    const now = new Date();
-
-    const emitidosHoy = rows.filter((row) => {
-      const status = row.taxDocument?.cdrStatus;
-
-      if (status !== "ACCEPTED" && status !== "ACCEPTED_WITH_OBSERVATION") {
-        return false;
-      }
-
-      if (!row.taxDocument) {
-        return false;
-      }
-
-      const createdAt = new Date(row.taxDocument.createdAt);
-
-      return (
-        createdAt.getFullYear() === now.getFullYear() &&
-        createdAt.getMonth() === now.getMonth() &&
-        createdAt.getDate() === now.getDate()
-      );
-    }).length;
-
-    const pendientes = rows.filter((row) => !row.taxDocument).length;
-
-    const rechazados = rows.filter((row) => {
-      const status = row.taxDocument?.cdrStatus;
-
-      return status === "REJECTED" || status === "RETRY_EXCEEDED";
-    }).length;
-
-    const facturadoMes = rows
-      .filter((row) => {
-        const status = row.taxDocument?.cdrStatus;
-
-        if (status !== "ACCEPTED" && status !== "ACCEPTED_WITH_OBSERVATION") {
-          return false;
-        }
-
-        if (!row.taxDocument) {
-          return false;
-        }
-
-        const createdAt = new Date(row.taxDocument.createdAt);
-
-        return (
-          createdAt.getFullYear() === now.getFullYear() && createdAt.getMonth() === now.getMonth()
-        );
-      })
-      .reduce((total, row) => {
-        const documentTotal = row.taxDocument?.taxDocumentPayload.totals.grandTotal;
-
-        return total + Number(documentTotal ?? row.sale.grandTotal);
-      }, 0);
-
-    return {
-      emitidosHoy,
-      pendientes,
-      rechazados,
-      facturadoMes,
-    };
-  }, [rows]);
+  const kpis = useMemo(() => computeTaxDocumentKpis(rows), [rows]);
 
   return {
     rows,

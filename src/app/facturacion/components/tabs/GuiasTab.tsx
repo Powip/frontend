@@ -48,8 +48,17 @@ const PAGE_SIZE = 20;
 const STATUSES: DespatchAdviceStatus[] = ["PENDING", "SENT", "ACCEPTED", "ACCEPTED_WITH_OBSERVATION", "REJECTED"];
 const SELECT_CLASS = "h-9 rounded-md border border-input bg-background px-2 text-sm";
 
+/** Emisor de la guía impresa: el RUC elegido en la barra «RUC emisor» (con un solo RUC, ese RUC). */
+export interface GuiaIssuer {
+  ruc: string;
+  razonSocial: string;
+  direccion?: string;
+}
+
 interface GuiasTabProps {
   comprobanteRows: TaxDocumentRow[];
+  /** Sin emisor no se imprime la guía (multi-RUC, «Todos los RUC»). */
+  issuer?: GuiaIssuer;
 }
 
 const day = (value: string) => {
@@ -57,7 +66,7 @@ const day = (value: string) => {
   return year && month && date ? `${date}/${month}/${year}` : value;
 };
 
-export function GuiasTab({ comprobanteRows }: GuiasTabProps) {
+export function GuiasTab({ comprobanteRows, issuer }: GuiasTabProps) {
   const queryClient = useQueryClient();
   const downloadPdf = usePdfDownload();
   const settingsQuery = useGreSettings();
@@ -86,7 +95,6 @@ export function GuiasTab({ comprobanteRows }: GuiasTabProps) {
   const rows = query.data?.items ?? [];
   const totalPages = Math.max(1, Math.ceil((query.data?.total ?? 0) / PAGE_SIZE));
   const blockReason = greEmissionBlockReason(settings);
-  const issuerName = (ruc: string) => settings?.profiles.find((profile) => profile.ruc === ruc)?.razonSocial ?? null;
 
   const resetPage = <T,>(setter: (value: T) => void) => (value: T) => {
     setter(value);
@@ -129,13 +137,23 @@ export function GuiasTab({ comprobanteRows }: GuiasTabProps) {
   };
 
   const downloadGrePdf = async (advice: DespatchAdvice) => {
+    // Sin emisor elegido no se imprime (#310): el PDF no adivina el RUC.
+    if (!issuer) {
+      toast.error("Selecciona un emisor (RUC) antes de imprimir la guía");
+      return;
+    }
+    // Multi-RUC: el encabezado no puede ser de otro RUC que el de la guía.
+    if (issuer.ruc !== advice.rucIssuer) {
+      toast.error(`La guía ${advice.number} es del RUC ${advice.rucIssuer}. Para imprimirla, elige ese RUC en el filtro «RUC emisor».`);
+      return;
+    }
     try {
       let qrDataUrl: string | null = null;
       if (advice.qrUrl) {
         const QRCode = await import("qrcode");
         qrDataUrl = await QRCode.toDataURL(advice.qrUrl, { margin: 1, width: 256 });
       }
-      await downloadPdf(despatchAdvicePdfSpec(advice, { issuerName: issuerName(advice.rucIssuer), qrDataUrl }));
+      await downloadPdf(despatchAdvicePdfSpec(advice, { issuerName: issuer.razonSocial, qrDataUrl }));
     } catch {
       toast.error("No se pudo generar el PDF de la guía.");
     }

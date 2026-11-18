@@ -124,11 +124,14 @@ const ROWS = [
   { sale: { id: "o-2", orderNumber: "ORD-1002", status: "PENDIENTE", customer: { fullName: "Luis Rojas", district: "Surco" } } },
 ] as unknown as TaxDocumentRow[];
 
-function setup() {
+/** Emisor que la página pasa: el RUC elegido en «RUC emisor» (o el único RUC). */
+const ISSUER = { ruc: "20111111111", razonSocial: "ACME S.A.C.", direccion: "Av. Arequipa 100, Lima" };
+
+function setup(props: { issuer?: typeof ISSUER } = { issuer: ISSUER }) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <GuiasTab comprobanteRows={ROWS} />
+      <GuiasTab comprobanteRows={ROWS} issuer={props.issuer} />
     </QueryClientProvider>,
   );
   return userEvent.setup();

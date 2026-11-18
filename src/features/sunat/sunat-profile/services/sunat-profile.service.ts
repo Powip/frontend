@@ -4,6 +4,7 @@ import {
   getSunatProfilesApi,
   replaceSunatProfileCertificateApi,
   setDefaultSunatProfileApi,
+  updateSunatProfileEstablishmentCodeApi,
 } from "../api/sunat-profile.api";
 import type { CreateSunatProfileRequestDto } from "../dto/create-sunat-profile-request.dto";
 import type { ReplaceSunatProfileCertificateInput } from "../dto/replace-sunat-profile-certificate-request.dto";
@@ -26,6 +27,18 @@ export async function getSunatProfiles(): Promise<SunatProfile[]> {
 
 export async function setDefaultSunatProfile(id: string): Promise<SunatProfile> {
   const responseDto = await setDefaultSunatProfileApi(id);
+
+  return toSunatProfile(responseDto);
+}
+
+export async function updateSunatProfileEstablishmentCode({
+  id,
+  establishmentCode,
+}: {
+  id: string;
+  establishmentCode: string;
+}): Promise<SunatProfile> {
+  const responseDto = await updateSunatProfileEstablishmentCodeApi(id, establishmentCode);
 
   return toSunatProfile(responseDto);
 }

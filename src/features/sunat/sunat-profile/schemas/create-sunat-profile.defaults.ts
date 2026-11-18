@@ -10,7 +10,7 @@ export const createSunatProfileDefaultValues: DefaultValues<CreateSunatProfileFo
   countryCode: COUNTRY_CODES.PERU,
   ubigeo: "",
   address: "",
-  establishmentCode: "",
+  establishmentCode: "0000",
   solUser: "",
   solPassword: "",
   certificatePassword: "",

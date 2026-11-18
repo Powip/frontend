@@ -33,8 +33,9 @@ export async function getSunatDocumentSequenceApi(
 }
 
 /**
- * Lists every sequence (any tax document type/series) configured for the
- * authenticated company's default SUNAT issuer.
+ * Lists every sequence (any tax document type/series) configured for one
+ * SUNAT issuer of the authenticated company: `sunatProfileId`, or the
+ * default profile when omitted.
  *
  * NOTE: this previously pointed at `/sunat-document-sequences/default`,
  * which doesn't exist on the backend (the controller exposes this as
@@ -43,9 +44,13 @@ export async function getSunatDocumentSequenceApi(
  * because nothing called this function yet; fixed here as part of wiring
  * up the list/delete/set-default UI in SeriesTab.
  */
-export async function getSunatDocumentSequencesApi(): Promise<SunatDocumentSequenceResponseDto[]> {
+export async function getSunatDocumentSequencesApi(
+  sunatProfileId?: string,
+): Promise<SunatDocumentSequenceResponseDto[]> {
   const { data } = await axiosAuth.get<SunatDocumentSequenceResponseDto[]>(
     `${SUNAT_DOCUMENT_SEQUENCES_BASE}/company`,
+    // Multi-RUC: without sunatProfileId the backend lists the default profile's sequences.
+    sunatProfileId ? { params: { sunatProfileId } } : undefined,
   );
 
   return data;

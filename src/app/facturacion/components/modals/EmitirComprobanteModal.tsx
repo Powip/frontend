@@ -5,6 +5,7 @@ import { AlertCircle, AlertTriangle, CheckCircle2, FileText, Loader2 } from "luc
 import { useEffect, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { EmisionPipeline } from "@/app/facturacion/components/EmisionPipeline";
+import { IssuerSelectField } from "@/app/facturacion/components/IssuerSelectField";
 import { ItemsEditTable } from "@/app/facturacion/components/ItemsEditTable";
 import { VerifyIdentityButton } from "@/app/facturacion/components/VerifyIdentityButton";
 import { Button } from "@/components/ui/button";
@@ -48,8 +49,14 @@ import { toCreateSunatDocumentsRequestDto } from "@/features/sunat/sunat-documen
 import type { CreateSunatDocumentsFormValues } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { createSunatDocumentsSchema } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { buildSunatDocumentFromSale } from "@/features/sunat/sunat-document/utils/build-sunat-document-from-sale";
+import {
+  describeLinesWithoutValue,
+  findLinesWithoutValue,
+} from "@/features/sunat/sunat-document/utils/find-lines-without-value";
+import { getEmissionErrorMessage } from "@/features/sunat/sunat-document/utils/get-emission-error-message";
 import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
 import type { SunatDocumentSequence } from "@/features/sunat/sunat-document-sequence/models/sunat-document-sequence";
+import { useIssuerSelection } from "@/features/sunat/sunat-profile/hooks/use-issuer-selection";
 
 const PIPELINE_STEPS = [
   "Generando XML UBL 2.1",
@@ -63,6 +70,8 @@ interface EmitirComprobanteModalProps {
   onClose: () => void;
   sale: Order;
   onEmissionFinished?: (response: unknown) => void;
+  /** Multi-RUC: RUC preselected in the facturación bar. Default profile otherwise. */
+  issuerProfileId?: string;
 }
 
 type Step = "form" | "pipeline" | "ok" | "bad";
@@ -129,8 +138,18 @@ export default function EmitirComprobanteModal({
   onClose,
   sale,
   onEmissionFinished,
+  issuerProfileId,
 }: EmitirComprobanteModalProps) {
   const createSunatDocuments = useCreateSunatDocuments();
+
+  // Multi-RUC: which RUC signs and numbers this document. Series below are
+  // read from that RUC, never from another issuer.
+  const issuer = useIssuerSelection(issuerProfileId, isOpen);
+  const issuerProfileIdSelected = issuer.selected?.id;
+  // Read by the reset effect without re-running it: changing the RUC must
+  // not wipe what the user already edited in the form.
+  const issuerProfileIdRef = useRef(issuerProfileIdSelected);
+  issuerProfileIdRef.current = issuerProfileIdSelected;
 
   // Powers the series auto-fill and the missing-correlativo warning below:
   // whichever sequence is marked `isDefault` for the selected tax document
@@ -138,7 +157,10 @@ export default function EmitirComprobanteModal({
   // document, instead of the hardcoded F001/B001 canonical series. Applies
   // the same way to both selectable types here (Boleta and Factura) — the
   // modal doesn't special-case either one.
-  const { data: sequences = [], isLoading: isLoadingSequences } = useSunatDocumentSequences();
+  const { data: sequences = [], isLoading: isLoadingSequences } = useSunatDocumentSequences(
+    issuerProfileIdSelected,
+    { enabled: !issuer.isLoading },
+  );
 
   const form = useForm<CreateSunatDocumentsFormValues>({
     resolver: zodResolver(createSunatDocumentsSchema),
@@ -150,6 +172,8 @@ export default function EmitirComprobanteModal({
 
   const [step, setStep] = useState<Step>("form");
   const [pipelineIndex, setPipelineIndex] = useState(0);
+  // Why the backend refused to create the document, when it says so.
+  const [emissionError, setEmissionError] = useState<string | null>(null);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -162,6 +186,15 @@ export default function EmitirComprobanteModal({
     control: form.control,
     name: "documents.0.totals",
   });
+
+  const watchedItems = useWatch({
+    control: form.control,
+    name: "documents.0.items",
+  });
+
+  // SUNAT rejects the whole document when a line is worth S/ 0.00 (error
+  // 3105), and the rejection spends the number: stop it before sending.
+  const linesWithoutValue = findLinesWithoutValue(watchedItems ?? []);
 
   const customerIdentityDocumentType = useWatch({
     control: form.control,
@@ -184,6 +217,13 @@ export default function EmitirComprobanteModal({
   const isMissingDefaultSequence =
     !isLoadingSequences && Boolean(documentType) && !getDefaultSequence(documentType, sequences);
 
+  const defaultSequence = documentType ? getDefaultSequence(documentType, sequences) : undefined;
+  const isIssuerBlocked = issuer.blockReason !== null;
+
+  useEffect(() => {
+    form.setValue("documents.0.sunatProfileId", issuerProfileIdSelected);
+  }, [form, issuerProfileIdSelected]);
+
   useEffect(() => {
     if (!isOpen) {
       return;
@@ -192,7 +232,7 @@ export default function EmitirComprobanteModal({
     const document = buildSunatDocumentFromSale(sale);
 
     form.reset({
-      documents: [document],
+      documents: [{ ...document, sunatProfileId: issuerProfileIdRef.current }],
     });
 
     setStep("form");
@@ -222,6 +262,18 @@ export default function EmitirComprobanteModal({
       (documentType === SUNAT_DOCUMENT_TYPES.INVOICE || sale.customer?.documentNumber)
     ) {
       form.setValue("documents.0.customer", getCustomerFormValues(sale), {
+        shouldValidate: true,
+      });
+    }
+
+    // An invoice only admits a customer identified by RUC. A sale whose
+    // customer came with a DNI would otherwise be sent as "DNI" and SUNAT
+    // rejects it (2801) after the correlative is already spent.
+    if (
+      documentType === SUNAT_DOCUMENT_TYPES.INVOICE &&
+      form.getValues("documents.0.customer.identityDocumentType") !== IDENTITY_DOCUMENT_TYPES.RUC
+    ) {
+      form.setValue("documents.0.customer.identityDocumentType", IDENTITY_DOCUMENT_TYPES.RUC, {
         shouldValidate: true,
       });
     }
@@ -263,6 +315,17 @@ export default function EmitirComprobanteModal({
         clearInterval(timerRef.current);
       }
 
+      // The endpoint answers 201 even when the document was not created:
+      // the reason comes inside the response, not as an HTTP error.
+      const [failure] = response.errors;
+
+      if (failure) {
+        setEmissionError(getEmissionErrorMessage(failure));
+        setStep("bad");
+        onEmissionFinished?.(response);
+        return;
+      }
+
       setPipelineIndex(PIPELINE_STEPS.length);
       setStep("ok");
 
@@ -273,6 +336,7 @@ export default function EmitirComprobanteModal({
         clearInterval(timerRef.current);
       }
 
+      setEmissionError(null);
       setStep("bad");
     }
   }
@@ -294,6 +358,7 @@ export default function EmitirComprobanteModal({
   }
 
   function handleRetry() {
+    setEmissionError(null);
     setStep("form");
     setPipelineIndex(0);
   }
@@ -350,6 +415,22 @@ export default function EmitirComprobanteModal({
               >
                 <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
                   <div className="grid gap-5">
+                    <IssuerSelectField
+                      selection={issuer}
+                      disabled={isPending}
+                      hint={
+                        defaultSequence ? (
+                          <>
+                            Se emitirá con la serie <b>{defaultSequence.series}</b> · próximo N°{" "}
+                            <b>
+                              {defaultSequence.series}-
+                              {String(defaultSequence.nextCorrelative).padStart(8, "0")}
+                            </b>
+                          </>
+                        ) : undefined
+                      }
+                    />
+
                     <FormField
                       control={form.control}
                       name="documents.0.taxDocumentType"
@@ -411,8 +492,12 @@ export default function EmitirComprobanteModal({
                             No hay un correlativo configurado para{" "}
                             {SUNAT_DOCUMENT_TYPE_LABELS[documentType]}.{" "}
                           </span>
-                          Configura una serie predeterminada en la pestaña &quot;Series y
-                          Correlativos&quot; antes de emitir este comprobante.
+                          Configura una serie predeterminada
+                          {issuer.isMultiRuc && issuer.selected
+                            ? ` para el RUC ${issuer.selected.ruc}`
+                            : ""}{" "}
+                          en la pestaña &quot;Series y Correlativos&quot; antes de emitir este
+                          comprobante.
                         </div>
                       </div>
                     )}
@@ -559,6 +644,21 @@ export default function EmitirComprobanteModal({
                       )}
                     />
 
+                    {linesWithoutValue.length > 0 && (
+                      <div
+                        role="alert"
+                        className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm dark:border-red-900 dark:bg-red-950/40"
+                      >
+                        <span className="font-semibold">
+                          No se puede emitir: {describeLinesWithoutValue(linesWithoutValue)}{" "}
+                          {linesWithoutValue.length === 1 ? "queda" : "quedan"} en S/ 0.00.{" "}
+                        </span>
+                        SUNAT rechaza el comprobante completo cuando una línea no tiene valor (error
+                        3105) y el número se pierde. Ponle su valor a esa línea o quítala con el
+                        ícono de papelera.
+                      </div>
+                    )}
+
                     <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm">
                       <div className="flex justify-between text-muted-foreground">
                         <span>Subtotal</span>
@@ -608,11 +708,27 @@ export default function EmitirComprobanteModal({
                 </div>
 
                 <DialogFooter className="shrink-0 border-t px-6 py-4">
+                  {linesWithoutValue.length > 0 && (
+                    // The full explanation sits under the items, which may be
+                    // scrolled out of view: keep the reason next to the button.
+                    <span className="text-sm font-medium text-red-600 sm:mr-auto">
+                      Hay una línea en S/ 0.00: revisa los ítems.
+                    </span>
+                  )}
+
                   <Button type="button" variant="ghost" onClick={handleClose} disabled={isPending}>
                     Cancelar
                   </Button>
 
-                  <Button type="submit" disabled={isPending || isMissingDefaultSequence}>
+                  <Button
+                    type="submit"
+                    disabled={
+                      isPending ||
+                      isMissingDefaultSequence ||
+                      isIssuerBlocked ||
+                      linesWithoutValue.length > 0
+                    }
+                  >
                     {isPending ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -684,7 +800,7 @@ export default function EmitirComprobanteModal({
               <h3 className="text-lg font-bold">No se pudo emitir el comprobante</h3>
 
               <p className="mt-3 text-sm text-red-600">
-                SUNAT/OSE rechazó o no pudo procesar la solicitud.
+                {emissionError ?? "SUNAT/OSE rechazó o no pudo procesar la solicitud."}
               </p>
             </div>
 

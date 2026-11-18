@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/table";
 import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-document-pdf";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
+import { filterRowsByIssuerRuc } from "@/features/sunat/sunat-document/utils/tax-document-kpis";
+import type { SunatProfile } from "@/features/sunat/sunat-profile/models/sunat-profile";
 import { useDespatchAdvicesReport } from "@/features/sunat/despatch-advice/hooks/use-despatch-advices";
 import type { DespatchAdvice } from "@/features/sunat/despatch-advice/types/despatch-advice.types";
 import { GRE_REASON_LABEL, GRE_STATUS_LABEL } from "@/features/sunat/despatch-advice/utils/gre-form";
@@ -161,6 +163,16 @@ function abrirImpresionPDF(title: string, headers: string[], rows: (string | num
 interface ReportesTabProps {
   comprobanteRows: TaxDocumentRow[];
   notas: Nota[];
+  /**
+   * Multi-RUC: RUC picked in the "RUC emisor" filter. When set, every sales
+   * report only contains that issuer, as an accounting book must.
+   */
+  issuer?: Pick<SunatProfile, "ruc" | "razonSocial">;
+  /**
+   * Multi-RUC: the company has more than one RUC. Two RUC can share the
+   * same series and number, so each row states its issuer.
+   */
+  showIssuerColumn?: boolean;
 }
 
 function getFullNumber(row: TaxDocumentRow): string | null {
@@ -183,11 +195,22 @@ const isoDay = (value: string) => {
   return year && month && date ? `${date}/${month}/${year}` : value;
 };
 
-/** FEAT-24 H12 — registro de guías de remisión con las GRE reales de ms-sunat (antes, las del mock en memoria). */
-function getReporteGuias(guias: DespatchAdvice[]): ReporteData {
+/** RUC elegido en el filtro «RUC emisor» y cómo lo dicen el título y el nombre del archivo. */
+interface IssuerScope {
+  ruc?: string;
+  title: string;
+  filename: string;
+}
+
+/**
+ * FEAT-24 H12 — registro de guías de remisión con las GRE reales de ms-sunat (antes, las del mock en memoria).
+ * Multi-RUC: con un RUC elegido solo trae sus guías, igual que los registros de ventas.
+ */
+function getReporteGuias(allGuias: DespatchAdvice[], scope: IssuerScope): ReporteData {
+  const guias = scope.ruc ? allGuias.filter((guia) => guia.rucIssuer === scope.ruc) : allGuias;
   return {
-    title: "Registro de Guías de Remisión",
-    filename: "powip_guias_remision",
+    title: `Registro de Guías de Remisión${scope.title}`,
+    filename: `powip_guias_remision${scope.filename}`,
     headers: ["Fecha", "N° Guía", "RUC emisor", "Motivo", "Referencia", "Destinatario", "Destino", "Ubigeo destino", "Estado SUNAT", "Código SUNAT"],
     rows: guias.map((guia) => [
       isoDay(guia.issueDate),
@@ -204,7 +227,12 @@ function getReporteGuias(guias: DespatchAdvice[]): ReporteData {
   };
 }
 
-export function ReportesTab({ comprobanteRows, notas }: ReportesTabProps) {
+export function ReportesTab({
+  comprobanteRows,
+  notas,
+  issuer,
+  showIssuerColumn = false,
+}: ReportesTabProps) {
   const guiasReport = useDespatchAdvicesReport();
   const {
     mutate: downloadSunatDocumentPdf,
@@ -212,7 +240,7 @@ export function ReportesTab({ comprobanteRows, notas }: ReportesTabProps) {
     variables: downloadingDocumentId,
   } = useSunatDocumentPdf();
 
-  const aceptados = comprobanteRows.filter(
+  const aceptados = filterRowsByIssuerRuc(comprobanteRows, issuer?.ruc).filter(
     (row) =>
       row.taxDocument?.cdrStatus === "ACCEPTED" ||
       row.taxDocument?.cdrStatus === "ACCEPTED_WITH_OBSERVATION",
@@ -229,12 +257,21 @@ export function ReportesTab({ comprobanteRows, notas }: ReportesTabProps) {
     });
   };
 
+  // Issuer scope shared by the sales reports: title and file name say which
+  // RUC the book belongs to, and each row carries its RUC when there are several.
+  const issuerTitle = issuer ? ` — ${issuer.razonSocial} (RUC ${issuer.ruc})` : "";
+  const issuerFilename = issuer ? `_${issuer.ruc}` : "";
+  const issuerHeader = showIssuerColumn ? ["RUC Emisor"] : [];
+  const issuerCell = (row: TaxDocumentRow) =>
+    showIssuerColumn ? [row.taxDocument?.rucIssuer ?? ""] : [];
+
   const getReporte = (key: Exclude<ReporteKey, "guias">): ReporteData => {
     if (key === "ventas") {
       return {
-        title: "Registro de Ventas",
-        filename: "powip_registro_ventas",
+        title: `Registro de Ventas${issuerTitle}`,
+        filename: `powip_registro_ventas${issuerFilename}`,
         headers: [
+          ...issuerHeader,
           "Fecha",
           "Tipo",
           "Serie-Correlativo",
@@ -251,6 +288,7 @@ export function ReportesTab({ comprobanteRows, notas }: ReportesTabProps) {
           const igv = total - baseImponible;
 
           return [
+            ...issuerCell(row),
             new Date(row.sale.createdAt).toLocaleDateString("es-PE"),
             row.taxDocument?.taxDocumentType === "01" ? "Factura" : "Boleta",
             getFullNumber(row) || "",
@@ -267,9 +305,10 @@ export function ReportesTab({ comprobanteRows, notas }: ReportesTabProps) {
 
     if (key === "sire") {
       return {
-        title: "Registro de Ventas e Ingresos (formato SIRE)",
-        filename: "powip_sire_rvie",
+        title: `Registro de Ventas e Ingresos (formato SIRE)${issuerTitle}`,
+        filename: `powip_sire_rvie${issuerFilename}`,
         headers: [
+          ...issuerHeader,
           "Fecha Emisión",
           "Tipo CPE",
           "Serie",
@@ -289,6 +328,7 @@ export function ReportesTab({ comprobanteRows, notas }: ReportesTabProps) {
           const tipo = row.taxDocument?.taxDocumentType || "03";
 
           return [
+            ...issuerCell(row),
             new Date(row.sale.createdAt).toLocaleDateString("es-PE"),
             tipo,
             serie,
@@ -334,7 +374,10 @@ export function ReportesTab({ comprobanteRows, notas }: ReportesTabProps) {
       if (guiasReport.isError) void guiasReport.refetch();
       return;
     }
-    const reporte = key === "guias" ? getReporteGuias(guiasReport.data ?? []) : getReporte(key);
+    const reporte =
+      key === "guias"
+        ? getReporteGuias(guiasReport.data ?? [], { ruc: issuer?.ruc, title: issuerTitle, filename: issuerFilename })
+        : getReporte(key);
 
     if (!reporte.rows.length) {
       toast.error("No hay datos disponibles para este reporte todavía");
@@ -393,6 +436,22 @@ export function ReportesTab({ comprobanteRows, notas }: ReportesTabProps) {
         <p className="text-sm text-muted-foreground">
           Descarga en Excel, CSV o PDF todo lo que tu contador necesita, sin salir de Powip.
         </p>
+
+        {showIssuerColumn && (
+          <p className="text-sm">
+            {issuer ? (
+              <>
+                Reportes de <span className="font-semibold">{issuer.razonSocial}</span> · RUC{" "}
+                {issuer.ruc}. Cambia de RUC en el filtro &quot;RUC emisor&quot;.
+              </>
+            ) : (
+              <>
+                Incluyen todos tus RUC: cada fila indica su RUC emisor. Para el libro de un solo
+                RUC, elígelo en el filtro &quot;RUC emisor&quot;.
+              </>
+            )}
+          </p>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

@@ -55,6 +55,11 @@ const sunatDocumentSchema = z
       .string({ error: "Series is required" })
       .trim()
       .regex(/^[A-Z0-9]{1,4}$/, "Series must contain only uppercase letters and numbers"),
+    /**
+     * Issuer SUNAT profile (RUC) for multi-RUC companies. Omitted = the
+     * company's default profile.
+     */
+    sunatProfileId: z.string().trim().min(1).optional(),
     customer: sunatDocumentCustomerSchema,
     totals: sunatDocumentTotalsSchema,
     items: z.array(sunatDocumentLineItemSchema).min(1, "At least one invoice item is required"),
@@ -89,6 +94,27 @@ const sunatDocumentSchema = z
           message: "Customer name is required",
           path: ["customer", "name"],
         });
+      }
+
+      // SUNAT rejects an invoice whose customer is not identified by RUC
+      // (error 2801) and the correlative is already spent by then.
+      if (isInvoice && document.customer?.identityDocumentType) {
+        if (document.customer.identityDocumentType !== IDENTITY_DOCUMENT_TYPES.RUC) {
+          ctx.addIssue({
+            code: "custom",
+            message: "La factura requiere el RUC del cliente",
+            path: ["customer", "identityDocumentType"],
+          });
+        } else if (
+          document.customer.identityDocumentNumber?.trim() &&
+          !/^\d{11}$/.test(document.customer.identityDocumentNumber.trim())
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            message: "El RUC debe tener 11 dígitos",
+            path: ["customer", "identityDocumentNumber"],
+          });
+        }
       }
 
       if (isInvoice && !document.customer?.address?.trim()) {

@@ -4,10 +4,12 @@ import { AlertTriangle, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-
+import { IssuerAccessAlerts } from "@/app/facturacion/components/IssuerAccessAlerts";
+import { ALL_ISSUERS, IssuerFilterSelect } from "@/app/facturacion/components/IssuerFilterSelect";
 import NotaCreditoModal from "@/app/facturacion/components/modals/NotaCreditoModal";
 import { AyudaTab } from "@/app/facturacion/components/tabs/AyudaTab";
 import { CertificadoTab } from "@/app/facturacion/components/tabs/CertificadoTab";
+import { EmisoresTab } from "@/app/facturacion/components/tabs/EmisoresTab";
 import { GuiasTab } from "@/app/facturacion/components/tabs/GuiasTab";
 import { NotasTab } from "@/app/facturacion/components/tabs/NotasTab";
 import { ReportesTab } from "@/app/facturacion/components/tabs/ReportesTab";
@@ -46,6 +48,14 @@ export default function FacturacionPage() {
       ...getCertificateStatus(profile),
     }))
     .filter(({ status }) => status === "bad" || status === "warn");
+
+  // Multi-RUC: RUC selected in the bar (ALL_ISSUERS = every RUC). A RUC that
+  // was deleted or deactivated falls back to "all".
+  const [issuerSelection, setIssuerSelection] = useState<string>(ALL_ISSUERS);
+  const issuerFilter = activeProfiles.some((profile) => profile.id === issuerSelection)
+    ? issuerSelection
+    : ALL_ISSUERS;
+  const [activeTab, setActiveTab] = useState("comprobantes");
 
   const [ncOpen, setNcOpen] = useState(false);
   const [ncPreselectId, setNcPreselectId] = useState<string | undefined>();
@@ -95,13 +105,26 @@ export default function FacturacionPage() {
           </p>
         </div>
 
-        <Button onClick={refreshAll} variant="outline" className="gap-2" disabled={isRefreshing}>
-          <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
-          Actualizar Lista
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <IssuerFilterSelect
+            profiles={sunatProfiles}
+            value={issuerFilter}
+            onChange={setIssuerSelection}
+          />
+
+          <Button onClick={refreshAll} variant="outline" className="gap-2" disabled={isRefreshing}>
+            <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+            Actualizar Lista
+          </Button>
+        </div>
       </div>
 
-      {taxDocuments.error && <div role="alert" className="rounded border border-red-200 p-4 space-y-2"><p>No se pudieron cargar las ventas o sus comprobantes. Reintenta antes de emitir.</p><Button onClick={refreshAll}>Reintentar</Button></div>}
+      {taxDocuments.error && (
+        <div role="alert" className="rounded border border-red-200 p-4 space-y-2">
+          <p>No se pudieron cargar las ventas o sus comprobantes. Reintenta antes de emitir.</p>
+          <Button onClick={refreshAll}>Reintentar</Button>
+        </div>
+      )}
       {/* SUNAT profile / certificate warning */}
       {!profilesLoading && !hasCertificate && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
@@ -114,6 +137,9 @@ export default function FacturacionPage() {
           </div>
         </div>
       )}
+
+      {/* SUNAT refusing a RUC for a document type (SOL credentials / permissions) */}
+      <IssuerAccessAlerts rows={taxDocuments.rows} />
 
       {/* Expiring certificates */}
       {expiringCertificates.map(({ profile, daysToExpire, status }) => (
@@ -145,7 +171,7 @@ export default function FacturacionPage() {
         </div>
       ))}
 
-      <Tabs defaultValue="comprobantes">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="h-auto flex-wrap gap-1 bg-transparent p-0">
           <TabsTrigger
             value="comprobantes"
@@ -176,6 +202,13 @@ export default function FacturacionPage() {
           </TabsTrigger>
 
           <TabsTrigger
+            value="emisores"
+            className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+          >
+            Emisores (RUC)
+          </TabsTrigger>
+
+          <TabsTrigger
             value="cert"
             className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
           >
@@ -199,12 +232,28 @@ export default function FacturacionPage() {
 
         {/* NEW Tax Documents implementation */}
         <TabsContent value="comprobantes" className="pt-4">
-          <TaxDocumentsTab comprobantes={taxDocuments} onGenerarNota={openNotaCredito} />
+          <TaxDocumentsTab
+            comprobantes={taxDocuments}
+            onGenerarNota={openNotaCredito}
+            issuerFilter={issuerFilter}
+          />
         </TabsContent>
 
         {/* FEAT-24 H12: real GRE remitente (ms-sunat). The order picker reuses the real sales. */}
         <TabsContent value="guias" className="pt-4">
-          <GuiasTab comprobanteRows={taxDocuments.rows} />
+          <GuiasTab
+            comprobanteRows={taxDocuments.rows}
+            issuer={(() => {
+              // The RUC picked in the "RUC emisor" bar. With a single RUC the bar
+              // is hidden and that RUC is the issuer: there is nothing to pick.
+              const profile =
+                activeProfiles.find((item) => item.id === issuerFilter) ??
+                (activeProfiles.length === 1 ? activeProfiles[0] : undefined);
+              return profile
+                ? { ruc: profile.ruc, razonSocial: profile.razonSocial, direccion: profile.address }
+                : undefined;
+            })()}
+          />
         </TabsContent>
 
         {/* Legacy tab: no backend yet for notas emission (mock only). */}
@@ -218,7 +267,22 @@ export default function FacturacionPage() {
         </TabsContent>
 
         <TabsContent value="reportes" className="pt-4">
-          <ReportesTab comprobanteRows={taxDocuments.rows} notas={mock.notas} />
+          <ReportesTab
+            comprobanteRows={taxDocuments.rows}
+            notas={mock.notas}
+            issuer={activeProfiles.find((profile) => profile.id === issuerFilter)}
+            showIssuerColumn={activeProfiles.length > 1}
+          />
+        </TabsContent>
+
+        <TabsContent value="emisores" className="pt-4">
+          <EmisoresTab
+            comprobanteRows={taxDocuments.rows}
+            onOpenIssuer={(profileId, tab) => {
+              setIssuerSelection(profileId);
+              setActiveTab(tab);
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="cert" className="pt-4">
@@ -226,7 +290,7 @@ export default function FacturacionPage() {
         </TabsContent>
 
         <TabsContent value="series" className="pt-4">
-          <SeriesTab />
+          <SeriesTab issuerFilter={issuerFilter} />
         </TabsContent>
 
         <TabsContent value="ayuda" className="pt-4">

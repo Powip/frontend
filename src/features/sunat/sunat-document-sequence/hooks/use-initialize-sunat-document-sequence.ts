@@ -12,9 +12,13 @@ export function useInitializeSunatDocumentSequence() {
   return useMutation<SunatDocumentSequence, Error, InitializeSunatDocumentSequenceRequestDto>({
     mutationFn: initializeSunatDocumentSequence,
 
-    onSuccess: (sequence) => {
+    onSuccess: (sequence, variables) => {
       queryClient.setQueryData(
-        sunatDocumentSequenceKeys.detail(sequence.taxDocumentType, sequence.series),
+        sunatDocumentSequenceKeys.detail(
+          sequence.taxDocumentType,
+          sequence.series,
+          variables.sunatProfileId,
+        ),
         sequence,
       );
 

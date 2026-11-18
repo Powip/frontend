@@ -4,6 +4,7 @@ import { AlertCircle, CheckCircle2, FileText, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { EmisionPipeline } from "@/app/facturacion/components/EmisionPipeline";
+import { IssuerSelectField } from "@/app/facturacion/components/IssuerSelectField";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,6 +23,13 @@ import {
   createSunatDocumentsSchema,
 } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { buildSunatDocumentFromSale } from "@/features/sunat/sunat-document/utils/build-sunat-document-from-sale";
+import {
+  describeLinesWithoutValue,
+  findLinesWithoutValue,
+} from "@/features/sunat/sunat-document/utils/find-lines-without-value";
+import { getEmissionErrorMessage } from "@/features/sunat/sunat-document/utils/get-emission-error-message";
+import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
+import { useIssuerSelection } from "@/features/sunat/sunat-profile/hooks/use-issuer-selection";
 
 const PIPELINE_STEPS = [
   "Generando XML UBL 2.1",
@@ -35,6 +43,8 @@ interface LoteEmisionModalProps {
   onClose: () => void;
   sales: Order[];
   onEmissionFinished?: (response: unknown) => void;
+  /** Multi-RUC: RUC preselected in the facturación bar. Default profile otherwise. */
+  issuerProfileId?: string;
 }
 
 type Step = "review" | "pipeline" | "ok" | "bad";
@@ -44,11 +54,26 @@ export default function LoteEmisionModal({
   onClose,
   sales,
   onEmissionFinished,
+  issuerProfileId,
 }: LoteEmisionModalProps) {
   const createSunatDocuments = useCreateSunatDocuments();
 
+  // Multi-RUC: every document of the batch is signed, numbered and sent with
+  // this RUC, using that RUC's default series.
+  const issuer = useIssuerSelection(issuerProfileId, isOpen);
+  const { data: sequences = [], isLoading: isLoadingSequences } = useSunatDocumentSequences(
+    issuer.selected?.id,
+    { enabled: isOpen && !issuer.isLoading },
+  );
+
   const [step, setStep] = useState<Step>("review");
   const [pipelineIndex, setPipelineIndex] = useState(0);
+  // Outcome of the last submission. It is kept apart from `sales` because
+  // the parent clears the selection as soon as the emission finishes.
+  const [outcome, setOutcome] = useState<{ issued: number; failures: string[] }>({
+    issued: 0,
+    failures: [],
+  });
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -57,7 +82,54 @@ export default function LoteEmisionModal({
    *
    * The same builder is used by the single-emission modal.
    */
-  const documents = sales.map(buildSunatDocumentFromSale);
+  const allDocuments = sales.map((sale) => {
+    const document = buildSunatDocumentFromSale(sale);
+    const defaultSequence = sequences.find(
+      (sequence) => sequence.taxDocumentType === document.taxDocumentType && sequence.isDefault,
+    );
+
+    return {
+      ...document,
+      // Same rule as the single-emission modal: the RUC's default series,
+      // falling back to the builder's canonical series (F001/B001).
+      series: defaultSequence?.series ?? document.series,
+      sunatProfileId: issuer.selected?.id,
+    };
+  });
+
+  /*
+   * Sales SUNAT would reject for a line worth S/ 0.00 (error 3105) are left
+   * out of the batch instead of blocking it: the rest is issued, and these
+   * are listed with their reason. Sending them would spend a number each.
+   */
+  const skippedSales = allDocuments.flatMap((document) => {
+    const lines = findLinesWithoutValue(document.items);
+
+    if (lines.length === 0) {
+      return [];
+    }
+
+    const sale = sales.find((candidate) => candidate.id === document.orderId);
+
+    return [
+      { orderId: document.orderId, orderNumber: sale?.orderNumber ?? document.orderId, lines },
+    ];
+  });
+
+  const documents = allDocuments.filter(
+    (document) => !skippedSales.some((skipped) => skipped.orderId === document.orderId),
+  );
+
+  // A second RUC has no series until they're configured for it: block
+  // instead of letting every document fail on the backend.
+  const missingSeriesTypes = issuer.isMultiRuc
+    ? [...new Set(documents.map((document) => document.taxDocumentType))].filter(
+        (type) =>
+          !sequences.some((sequence) => sequence.taxDocumentType === type && sequence.isDefault),
+      )
+    : [];
+  const isMissingSeries = !isLoadingSequences && missingSeriesTypes.length > 0;
+  const isIssuerBlocked = issuer.blockReason !== null;
 
   const invoiceCount = documents.filter(
     (document) => document.taxDocumentType === SUNAT_DOCUMENT_TYPES.INVOICE,
@@ -135,8 +207,17 @@ export default function LoteEmisionModal({
         clearInterval(timerRef.current);
       }
 
+      // The endpoint answers 201 even when some documents were not created:
+      // each failure travels inside the response with its own reason.
+      const failures = response.errors.map((failure) => {
+        const sale = sales.find((candidate) => candidate.id === failure.orderId);
+
+        return `${sale?.orderNumber ?? failure.orderId}: ${getEmissionErrorMessage(failure)}`;
+      });
+
+      setOutcome({ issued: response.documents.length, failures });
       setPipelineIndex(PIPELINE_STEPS.length);
-      setStep("ok");
+      setStep(response.documents.length > 0 ? "ok" : "bad");
 
       /*
        * The API response is already the bulk response:
@@ -156,6 +237,7 @@ export default function LoteEmisionModal({
         clearInterval(timerRef.current);
       }
 
+      setOutcome({ issued: 0, failures: [] });
       setStep("bad");
     }
   }
@@ -208,6 +290,60 @@ export default function LoteEmisionModal({
 
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
               <div className="grid gap-5">
+                <IssuerSelectField
+                  selection={issuer}
+                  disabled={isPending}
+                  hint={
+                    issuer.isMultiRuc
+                      ? "Todos los comprobantes del lote se emitirán con este RUC."
+                      : undefined
+                  }
+                />
+
+                {skippedSales.length > 0 && (
+                  <div
+                    role="alert"
+                    className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm dark:border-red-900 dark:bg-red-950/40"
+                  >
+                    <p className="font-semibold">
+                      {skippedSales.length === 1
+                        ? "1 venta no se emitirá en este lote porque tiene una línea en S/ 0.00:"
+                        : `${skippedSales.length} ventas no se emitirán en este lote porque tienen una línea en S/ 0.00:`}
+                    </p>
+
+                    <ul className="mt-1 list-disc space-y-1 pl-5">
+                      {skippedSales.map((skipped) => (
+                        <li key={skipped.orderId}>
+                          {skipped.orderNumber}: {describeLinesWithoutValue(skipped.lines)}
+                        </li>
+                      ))}
+                    </ul>
+
+                    <p className="mt-1">
+                      SUNAT rechaza el comprobante completo cuando una línea no tiene valor (error
+                      3105) y el número se pierde. Emítelas una por una para corregir esa línea.
+                    </p>
+                  </div>
+                )}
+
+                {isMissingSeries && (
+                  <div
+                    role="alert"
+                    className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/40"
+                  >
+                    <span className="font-semibold">
+                      El RUC {issuer.selected?.ruc} no tiene serie predeterminada para{" "}
+                      {missingSeriesTypes
+                        .map((type) =>
+                          type === SUNAT_DOCUMENT_TYPES.INVOICE ? "Factura" : "Boleta",
+                        )
+                        .join(" y ")}
+                      .{" "}
+                    </span>
+                    Configúrala en la pestaña &quot;Series y Correlativos&quot; antes de emitir.
+                  </div>
+                )}
+
                 <div className="grid gap-3 sm:grid-cols-3">
                   <div className="rounded-md border bg-muted/30 px-4 py-3">
                     <div className="text-sm text-muted-foreground">Total</div>
@@ -286,7 +422,7 @@ export default function LoteEmisionModal({
               <Button
                 type="button"
                 onClick={handleSubmit}
-                disabled={isPending || documents.length === 0}
+                disabled={isPending || documents.length === 0 || isMissingSeries || isIssuerBlocked}
               >
                 {isPending ? (
                   <>
@@ -333,8 +469,25 @@ export default function LoteEmisionModal({
               <h3 className="text-lg font-bold">Emisión masiva procesada</h3>
 
               <p className="mt-2 text-sm text-muted-foreground">
-                SUNAT/OSE procesó la solicitud de emisión de {documents.length} comprobantes.
+                {outcome.issued === 1
+                  ? "Se envió 1 comprobante a SUNAT."
+                  : `Se enviaron ${outcome.issued} comprobantes a SUNAT.`}
               </p>
+
+              {outcome.failures.length > 0 && (
+                <div className="mt-4 text-left text-sm text-red-600">
+                  <p className="font-medium">
+                    {outcome.failures.length === 1
+                      ? "1 venta no se pudo emitir:"
+                      : `${outcome.failures.length} ventas no se pudieron emitir:`}
+                  </p>
+                  <ul className="mt-1 list-disc space-y-1 pl-5">
+                    {outcome.failures.map((failure) => (
+                      <li key={failure}>{failure}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
 
             <DialogFooter className="border-t px-6 py-4">
@@ -352,9 +505,17 @@ export default function LoteEmisionModal({
 
               <h3 className="text-lg font-bold">No se pudo procesar la emisión</h3>
 
-              <p className="mt-3 text-sm text-red-600">
-                Revisa los datos de las ventas seleccionadas e intenta nuevamente.
-              </p>
+              {outcome.failures.length > 0 ? (
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-left text-sm text-red-600">
+                  {outcome.failures.map((failure) => (
+                    <li key={failure}>{failure}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-3 text-sm text-red-600">
+                  Revisa los datos de las ventas seleccionadas e intenta nuevamente.
+                </p>
+              )}
             </div>
 
             <DialogFooter className="border-t px-6 py-4">
