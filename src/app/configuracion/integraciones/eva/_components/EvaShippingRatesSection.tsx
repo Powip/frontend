@@ -19,13 +19,18 @@ function isInvalidCost(value: string): boolean {
   return !isValidShippingCostInput(value);
 }
 
-/** Tarifa de envío EVA: precio por defecto + precios por distrito (FEAT-26). */
+/**
+ * Tarifa de envío EVA: precio por defecto + precios por distrito (FEAT-26).
+ * FEAT-24 SEC (sec6b): guardarla es solo de un administrador (`canEdit`); el resto la ve sin poder cambiarla.
+ */
 export default function EvaShippingRatesSection({
   companyId,
   token,
+  canEdit = true,
 }: {
   companyId: string;
   token: string;
+  canEdit?: boolean;
 }) {
   const [defaultCost, setDefaultCost] = useState("");
   const [rows, setRows] = useState<Array<{ district: string; cost: string }>>(
@@ -129,6 +134,7 @@ export default function EvaShippingRatesSection({
               step={0.01}
               value={defaultCost}
               onChange={(e) => setDefaultCost(e.target.value)}
+              disabled={!canEdit}
               className="mt-1 w-full rounded-lg border px-3 py-2 text-xs dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
             />
           </label>
@@ -144,6 +150,7 @@ export default function EvaShippingRatesSection({
                   min={0}
                   step={0.01}
                   value={row.cost}
+                  disabled={!canEdit}
                   onChange={(e) =>
                     setRows((p) =>
                       p.map((r, i) =>
@@ -153,18 +160,24 @@ export default function EvaShippingRatesSection({
                   }
                   className={`w-28 rounded border px-2 py-1 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 ${row.cost.trim() === "" || isInvalidCost(row.cost) ? "border-red-400" : ""}`}
                 />
-                <button
-                  type="button"
-                  aria-label={`Quitar ${row.district}`}
-                  onClick={() => setRows((p) => p.filter((_, i) => i !== index))}
-                  className="text-gray-400 hover:text-red-500"
-                >
-                  ✕
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    aria-label={`Quitar ${row.district}`}
+                    onClick={() => setRows((p) => p.filter((_, i) => i !== index))}
+                    className="text-gray-400 hover:text-red-500"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
             ))}
           </div>
-          {adding ? (
+          {!canEdit ? (
+            <p className="text-xs text-gray-500 dark:text-slate-400">
+              Solo un administrador de la empresa puede cambiar las tarifas.
+            </p>
+          ) : adding ? (
             <Combobox
               value=""
               onValueChange={(district) => {
@@ -185,14 +198,16 @@ export default function EvaShippingRatesSection({
               + Agregar distrito
             </button>
           )}
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || invalid}
-            className="w-full rounded-lg bg-indigo-600 py-2 text-xs font-semibold text-white disabled:opacity-50"
-          >
-            {saving ? "Guardando..." : "Guardar tarifas"}
-          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || invalid}
+              className="w-full rounded-lg bg-indigo-600 py-2 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              {saving ? "Guardando..." : "Guardar tarifas"}
+            </button>
+          )}
         </>
       )}
     </div>

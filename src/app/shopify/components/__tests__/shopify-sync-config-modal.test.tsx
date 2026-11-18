@@ -48,4 +48,77 @@ describe("ShopifySyncConfigModal", () => {
       expect(toast.error).toHaveBeenCalledWith("Solo un administrador de la empresa puede sincronizar con Shopify."),
     );
   });
+
+  // FEAT-24 SEC (sec6b): antes iba siempre la primera tienda de la empresa. Ahora va la vinculada a la tienda de
+  // Shopify y, si no hay vínculo, la que elige el usuario entre las de su empresa.
+  describe("tienda de Powip", () => {
+    const STORES = [
+      { id: "store-a", name: "Tienda A" },
+      { id: "store-b", name: "Tienda B" },
+    ];
+    const renderUnlinked = (storeOptions: { id: string; name: string }[]) =>
+      render(
+        <ShopifySyncConfigModal
+          isOpen
+          onClose={jest.fn()}
+          shopUrl="uno.myshopify.com"
+          companyId="company-a"
+          storeId=""
+          storeOptions={storeOptions}
+        />,
+      );
+    const startButton = () => screen.getByRole("button", { name: "Iniciar sincronizacion" });
+
+    it("con tienda vinculada no pide elegir y manda esa", async () => {
+      jest.mocked(axiosAuth.post).mockResolvedValue({ data: {} });
+      render(
+        <ShopifySyncConfigModal
+          isOpen
+          onClose={jest.fn()}
+          shopUrl="uno.myshopify.com"
+          companyId="company-a"
+          storeId="store-b"
+          storeOptions={STORES}
+        />,
+      );
+
+      expect(screen.queryByLabelText("Tienda de Powip")).not.toBeInTheDocument();
+      await userEvent.setup().click(startButton());
+
+      await waitFor(() => expect(axiosAuth.post).toHaveBeenCalled());
+      expect(jest.mocked(axiosAuth.post).mock.calls[0][1]).toEqual(expect.objectContaining({ storeId: "store-b" }));
+    });
+
+    it("sin vínculo y con varias tiendas, hay que elegir una (no va la primera)", async () => {
+      jest.mocked(axiosAuth.post).mockResolvedValue({ data: {} });
+      renderUnlinked(STORES);
+      const user = userEvent.setup();
+
+      expect(startButton()).toBeDisabled();
+      await user.selectOptions(screen.getByLabelText("Tienda de Powip"), "store-b");
+      await user.click(startButton());
+
+      await waitFor(() => expect(axiosAuth.post).toHaveBeenCalled());
+      expect(jest.mocked(axiosAuth.post).mock.calls[0][1]).toEqual(expect.objectContaining({ storeId: "store-b" }));
+    });
+
+    it("sin vínculo y con una sola tienda, queda elegida", async () => {
+      jest.mocked(axiosAuth.post).mockResolvedValue({ data: {} });
+      renderUnlinked([STORES[0]]);
+
+      expect(screen.getByLabelText("Tienda de Powip")).toHaveValue("store-a");
+      await userEvent.setup().click(startButton());
+
+      await waitFor(() => expect(axiosAuth.post).toHaveBeenCalled());
+      expect(jest.mocked(axiosAuth.post).mock.calls[0][1]).toEqual(expect.objectContaining({ storeId: "store-a" }));
+    });
+
+    it("sin vínculo y sin tiendas en la empresa, no se puede sincronizar", () => {
+      renderUnlinked([]);
+
+      expect(screen.getByText(/tu empresa no tiene tiendas en powip/i)).toBeInTheDocument();
+      expect(startButton()).toBeDisabled();
+      expect(axiosAuth.post).not.toHaveBeenCalled();
+    });
+  });
 });

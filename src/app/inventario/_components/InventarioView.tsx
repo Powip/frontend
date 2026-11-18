@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
-import { canEditInventory } from "@/config/permissions.config";
+import { canEditInventory, hasAdminAccess } from "@/config/permissions.config";
 
 import {
   Download,
@@ -488,15 +488,18 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                   </Button>
                 </Link>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-teal-100 dark:border-teal-900/30 text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/20"
-                onClick={() => setMode("shopify")}
-              >
-                <ShoppingBag className="mr-2 h-4 w-4" />
-                Sincronizar Shopify
-              </Button>
+              {/* FEAT-24 SEC (sec6b): sincronizar con Shopify es solo de un administrador (ms-integrations da 403). */}
+              {hasAdminAccess(auth?.user?.role) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-teal-100 dark:border-teal-900/30 text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/20"
+                  onClick={() => setMode("shopify")}
+                >
+                  <ShoppingBag className="mr-2 h-4 w-4" />
+                  Sincronizar Shopify
+                </Button>
+              )}
             </div>
           </div>
 

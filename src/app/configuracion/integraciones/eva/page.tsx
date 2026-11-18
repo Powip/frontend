@@ -11,6 +11,7 @@ import {
 } from "@/services/evaService";
 import EvaShippingRatesSection from "./_components/EvaShippingRatesSection";
 import EvaSkuMapSection from "./_components/EvaSkuMapSection";
+import { hasAdminAccess } from "@/config/permissions.config";
 
 const API_INTEGRATIONS = (
   process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3004"
@@ -40,6 +41,10 @@ export default function EvaConfigPage() {
   const { auth } = useAuth();
   const companyId = auth?.company?.id;
   const token = auth?.accessToken;
+  // FEAT-24 SEC (sec6b): credenciales, prueba de conexión y tarifas son solo de un administrador de la empresa
+  // (ms-integrations responde 403 al resto). Los vínculos de SKU los puede guardar cualquiera (también se guardan
+  // desde el modal de envío).
+  const isAdmin = hasAdminAccess(auth?.user?.role);
 
   const [credential, setCredential] = useState<EvaCredentialSafe | null>(null);
   const [loading, setLoading] = useState(true);
@@ -367,28 +372,39 @@ export default function EvaConfigPage() {
             Operaciones y CC.
           </p>
 
-          <button
-            type="button"
-            onClick={handleReconfigure}
-            className="text-xs text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition"
-          >
-            Actualizar credenciales →
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={handleReconfigure}
+              className="text-xs text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition"
+            >
+              Actualizar credenciales →
+            </button>
+          )}
         </div>
       )}
 
       {/* FEAT-26: tarifa de envío (todas) y vínculo de SKU (cuentas ALMACEN) */}
       {!saving && credential?.isActive && companyId && token && (
         <>
-          <EvaShippingRatesSection companyId={companyId} token={token} />
+          <EvaShippingRatesSection companyId={companyId} token={token} canEdit={isAdmin} />
           {credential.clientType === "ALMACEN" && (
             <EvaSkuMapSection companyId={companyId} token={token} />
           )}
         </>
       )}
 
+      {/* Estado NO CONFIGURADO, quien no es admin: no puede cargar credenciales */}
+      {!saving && !credential && !isAdmin && (
+        <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl p-5">
+          <p className="text-sm text-gray-600 dark:text-slate-300">
+            Solo un administrador de la empresa puede conectar EVA. Pídele que lo configure.
+          </p>
+        </div>
+      )}
+
       {/* Estado NO CONFIGURADO — formulario */}
-      {!saving && !credential && (
+      {!saving && !credential && isAdmin && (
         <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl p-5 space-y-4">
           <form onSubmit={handleSave} className="space-y-4">
             <h2 className="text-sm font-semibold dark:text-slate-100">Credenciales EVA</h2>

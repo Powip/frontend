@@ -8,7 +8,8 @@ import type { BusinessInventoryItem } from '@/services/businessInventoryItemsSer
 import { toast } from 'sonner';
 import ExcelJS from 'exceljs';
 import AlmacenPage from '../_components/InventarioView';
-jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { accessToken: 'fake-token', user: { id: 'user-1', role: 'ADMINISTRADOR' }, company: { id: 'company-1', stores: [{id:'store-1', name:'Principal'}] } } }) }));
+let mockAuthRole = 'ADMINISTRADOR'; // FEAT-24 SEC (sec6b): el botón de Shopify depende del rol
+jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { accessToken: 'fake-token', user: { id: 'user-1', role: mockAuthRole }, company: { id: 'company-1', stores: [{id:'store-1', name:'Principal'}] } } }) }));
 jest.mock('@/contexts/BusinessScopeContext', () => ({ useBusinessScope: () => ({scope:'business',storeIds:['store-1'],canFetch:true}) }));
 jest.mock('@/hooks/useBusinessInventories', () => ({useBusinessInventories: () => ({inventories:[{id:'inv-1',name:'Almacén Principal',storeId:'store-1'}],isSuccess:true,isPending:false,refetch:jest.fn()})}));
 jest.mock('@/services/businessInventoryItemsService', () => ({ ...jest.requireActual('@/services/businessInventoryItemsService'), fetchBusinessInventoryItems: jest.fn() }));
@@ -72,7 +73,7 @@ const DEFAULT_ITEMS = [makeItem('item-1','Producto Uno'),makeItem('item-2','Prod
 function renderPage() { const client = new QueryClient({defaultOptions:{queries:{retry:false}}}); return render(<QueryClientProvider client={client}><AlmacenPage /></QueryClientProvider>); }
 async function loaded() { await screen.findByText('Producto Uno'); }
 beforeAll(() => { window.URL.createObjectURL = jest.fn(()=>'blob:mock'); window.URL.revokeObjectURL=jest.fn(); jest.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{}); });
-beforeEach(() => { jest.clearAllMocks(); fetch.mockReset(); fetch.mockResolvedValue(DEFAULT_ITEMS); mockExcelJS.__resetAddRowCalls(); });
+beforeEach(() => { mockAuthRole = 'ADMINISTRADOR'; jest.clearAllMocks(); fetch.mockReset(); fetch.mockResolvedValue(DEFAULT_ITEMS); mockExcelJS.__resetAddRowCalls(); });
 it('exports a fresh full physical scope with authenticated company context', async () => {
  renderPage(); await loaded(); const user=userEvent.setup(); await user.click(screen.getByRole('button',{name:/exportar en excel/i}));
  await waitFor(()=>expect(mockToast.success).toHaveBeenCalledWith('Exportados 2 producto(s)'));
@@ -119,4 +120,15 @@ it('FEAT-24 H0: el Excel trae variante, físico y precio en soles', async () => 
  expect(sheet.columns.map((column) => column.header)).toEqual(['SKU Empresa','SKU POWIP','Nombre','Variante','Tienda','Almacén','Físico','Reservado','Disponible','Precio venta']);
  expect(sheet.columns.find((column) => column.header === 'Precio venta')?.style?.numFmt).toBe('"S/" #,##0.00');
  expect(mockExcelJS.__getAddRowCalls().at(-1)).toMatchObject({ variante: 'Color: Rojo' });
+});
+
+// FEAT-24 SEC (sec6b): sincronizar con Shopify es solo de un administrador (ms-integrations responde 403 al resto).
+it('«Sincronizar Shopify» solo lo ve un administrador de la empresa', async () => {
+ const { unmount } = renderPage(); await loaded();
+ expect(screen.getByRole('button',{name:/sincronizar shopify/i})).toBeInTheDocument();
+ unmount();
+
+ mockAuthRole = 'VENTAS';
+ renderPage(); await loaded();
+ expect(screen.queryByRole('button',{name:/sincronizar shopify/i})).not.toBeInTheDocument();
 });
