@@ -40,6 +40,7 @@ import {
 } from "@/services/warehouseOpsService";
 import { ErrorBox, Money, ReasonDialog, RuleNote, SELECT_CLASS, StatusPill } from "../OpsBits";
 import { useCompanyWarehouses } from "@/hooks/useCompanyWarehouses";
+import { invalidateInventoryAlerts } from "@/hooks/useInventoryAlerts";
 import AdjustmentFormDialog from "./AdjustmentFormDialog";
 
 // FEAT-24 H5-C (H5-D4) — Inventario › Ajustes y mermas (mockup vAjustes): pedir
@@ -92,6 +93,7 @@ export default function AdjustmentsTab({ companyId }: { companyId: string }) {
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: [ADJUSTMENTS_KEY, companyId] });
     void queryClient.invalidateQueries({ queryKey: ["business-inventory-items"] });
+    void invalidateInventoryAlerts(queryClient);
   };
 
   const approve = useMutation({

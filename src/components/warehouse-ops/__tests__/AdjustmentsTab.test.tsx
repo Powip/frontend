@@ -41,6 +41,10 @@ const networkError = () => Object.assign(new Error("Network Error"), { isAxiosEr
 const pending = adjustment();
 const applied = adjustment({ id: "a-2", number: "AJ-0002", kind: "ajuste", status: "aplicado", reason: "error_registro", note: null });
 
+// FEAT-24 H10: cada operación que mueve stock refresca el badge de Alertas.
+const invalidate = jest.spyOn(QueryClient.prototype, "invalidateQueries");
+const alertsRefreshed = () => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["inventory-alerts"] });
+
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
@@ -73,6 +77,7 @@ describe("Ajustes y mermas", () => {
     expect(first[0]).toBe("a-1");
     expect(second[1].operationId).toBe(first[1].operationId);
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("AJ-0001 aprobado y aplicado"));
+    alertsRefreshed();
   });
 
   it("rechazar lleva el motivo", async () => {
@@ -83,6 +88,7 @@ describe("Ajustes y mermas", () => {
     await user.type(await screen.findByLabelText(/Motivo/), "No hay foto");
     await user.click(screen.getByRole("button", { name: "Rechazar" }));
     await waitFor(() => expect(rejectAdjustment).toHaveBeenCalledWith("a-1", { reason: "No hay foto", operationId: expect.any(String) }));
+    await waitFor(alertsRefreshed);
   });
 
   it("Operaciones no aprueba ni rechaza; anula el pendiente pero no el aplicado", async () => {
@@ -105,6 +111,7 @@ describe("Ajustes y mermas", () => {
     expect(within(dialog).getByText(/movimientos inversos/)).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Anular" }));
     await waitFor(() => expect(cancelAdjustment).toHaveBeenCalledWith("a-2", { operationId: expect.any(String) }));
+    await waitFor(alertsRefreshed);
   });
 
   it("sin rol de costos los montos salen ocultos y no hay botones de aprobación", async () => {

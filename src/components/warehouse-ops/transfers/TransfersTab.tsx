@@ -33,6 +33,7 @@ import {
 import { cancelTransfer, dispatchTransfer, listTransfers, type Transfer, type TransferStatus } from "@/services/warehouseOpsService";
 import { ErrorBox, ReasonDialog, RuleNote, SELECT_CLASS, StatusPill } from "../OpsBits";
 import { useCompanyWarehouses } from "@/hooks/useCompanyWarehouses";
+import { invalidateInventoryAlerts } from "@/hooks/useInventoryAlerts";
 import ReceiveTransferDialog from "./ReceiveTransferDialog";
 import TransferDetailDialog from "./TransferDetailDialog";
 import TransferFormDialog from "./TransferFormDialog";
@@ -87,6 +88,7 @@ export default function TransfersTab({ companyId }: { companyId: string }) {
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: [TRANSFERS_KEY, companyId] });
     void queryClient.invalidateQueries({ queryKey: ["business-inventory-items"] });
+    void invalidateInventoryAlerts(queryClient);
   };
 
   const dispatch = useMutation({

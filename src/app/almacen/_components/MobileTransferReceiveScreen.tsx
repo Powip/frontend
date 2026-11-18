@@ -25,6 +25,7 @@ import { opsErrorMessage, transferUnits } from "@/lib/warehouseOps";
 import { fetchVariantsByIds } from "@/services/variantCodesService";
 import { listTransfers, type Transfer, type TransferOperationResult } from "@/services/warehouseOpsService";
 import { listWarehouses } from "@/services/warehousesService";
+import { invalidateInventoryAlerts } from "@/hooks/useInventoryAlerts";
 
 // FEAT-24 H5-C — Recibir › Traslados en el celular (modo almacén, mockup vMovil
 // «Recibir»): los traslados en camino hacia un almacén que el usuario opera y el
@@ -85,10 +86,15 @@ export default function MobileTransferReceiveScreen() {
   const warehouses = warehousesQuery.data?.data.warehouses ?? [];
   const warehouseName = (id: string) => warehouses.find((warehouse) => warehouse.id === id)?.name ?? "Almacén";
 
-  const refresh = () => void queryClient.invalidateQueries({ queryKey: [TRANSFERS_KEY, companyId] });
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: [TRANSFERS_KEY, companyId] });
+    void invalidateInventoryAlerts(queryClient);
+  };
 
   useEffect(() => {
-    if (syncedVersion > 0) void queryClient.invalidateQueries({ queryKey: [TRANSFERS_KEY, companyId] });
+    if (syncedVersion <= 0) return;
+    void queryClient.invalidateQueries({ queryKey: [TRANSFERS_KEY, companyId] });
+    void invalidateInventoryAlerts(queryClient);
   }, [syncedVersion, companyId, queryClient]);
 
   if (!access.receiveTransfers) {

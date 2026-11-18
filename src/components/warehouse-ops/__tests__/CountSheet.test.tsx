@@ -46,6 +46,10 @@ const toValidate = count({
   ],
 });
 
+// FEAT-24 H10: cada operación que mueve stock refresca el badge de Alertas.
+const invalidate = jest.spyOn(QueryClient.prototype, "invalidateQueries");
+const alertsRefreshed = () => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["inventory-alerts"] });
+
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   return render(
@@ -128,6 +132,7 @@ describe("Toma de inventario", () => {
     await waitFor(() => expect(applyCount).toHaveBeenCalledTimes(2));
     const [first, second] = jest.mocked(applyCount).mock.calls;
     expect(second[1].operationId).toBe(first[1].operationId);
+    await waitFor(alertsRefreshed);
   });
 
   it("«Pendiente de investigar» pide responsable y fecha antes de aplicar", async () => {

@@ -45,6 +45,7 @@ import {
   type CountLine,
   type StockCount,
 } from "@/services/warehouseOpsService";
+import { invalidateInventoryAlerts } from "@/hooks/useInventoryAlerts";
 import { ErrorBox, Money, ReasonDialog, SELECT_CLASS, StatusPill } from "../OpsBits";
 
 // FEAT-24 H5-C (H5-D5) — una toma de inventario (mockup vConteo):
@@ -245,6 +246,7 @@ export default function CountSheet({ companyId, countId, warehouseName, courierW
       keys.release(`apply:${countId}`);
       after(result.count?.lines ? result.count : undefined, result.duplicate ? "Ese conteo ya estaba aplicado." : `${count?.number ?? "Conteo"} aplicado`);
       void queryClient.invalidateQueries({ queryKey: ["business-inventory-items"] });
+      void invalidateInventoryAlerts(queryClient);
     },
     onError: (error) => setActionError(opsErrorMessage(error, "No se pudo aplicar el conteo.")),
   });

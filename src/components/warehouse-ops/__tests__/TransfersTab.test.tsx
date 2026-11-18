@@ -73,6 +73,9 @@ function setup() {
 }
 
 const row = (number: string) => screen.findByTestId(`transfer-${number}`);
+// FEAT-24 H10: cada operación que mueve stock refresca el badge de Alertas.
+const invalidate = jest.spyOn(QueryClient.prototype, "invalidateQueries");
+const alertsRefreshed = () => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["inventory-alerts"] });
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -121,6 +124,7 @@ describe("Traslados", () => {
     expect(first[0]).toBe("t-1");
     expect(second[1].operationId).toBe(first[1].operationId);
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("TR-0001 en camino", expect.anything()));
+    alertsRefreshed();
   });
 
   it("recibir sin acceso al almacén muestra el 403 del servidor", async () => {
@@ -152,6 +156,7 @@ describe("Traslados", () => {
     expect(id).toBe("t-2");
     expect(body.lines).toEqual([{ itemId: "i-1", quantityReceived: 1, decision: "reclamo" }]);
     expect(body.operationId).toMatch(/^[0-9a-f-]{36}$/);
+    await waitFor(alertsRefreshed);
   });
 
   it("Operaciones anula con motivo y su propia clave", async () => {

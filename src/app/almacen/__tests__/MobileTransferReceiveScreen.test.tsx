@@ -28,6 +28,7 @@ jest.mock("@/lib/barcodeScanner", () => ({ ...jest.requireActual("@/lib/barcodeS
 jest.mock("@/lib/errorBeep", () => ({ playErrorBeep: jest.fn(), playSuccessBeep: jest.fn() }));
 jest.mock("@/services/warehouseOpsService", () => ({ listTransfers: jest.fn(), receiveTransfer: jest.fn(), addCountEntries: jest.fn() }));
 jest.mock("@/services/variantCodesService", () => ({ fetchVariantsByIds: jest.fn(), lookupVariantsByCodes: jest.fn() }));
+const invalidate = jest.spyOn(QueryClient.prototype, "invalidateQueries");
 jest.mock("@/services/warehousesService", () => ({ listWarehouses: jest.fn(), listReturnReceptions: jest.fn(), receiveReturnReception: jest.fn() }));
 jest.mock("@/services/purchasesService", () => ({}));
 jest.mock("@/services/orderStockService", () => ({}));
@@ -146,6 +147,8 @@ describe("Recibir traslados (modo almacén)", () => {
     expect(body.operationId).toMatch(/^[0-9a-f-]{36}$/);
     expect(timeoutMs).toBe(15_000);
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    // FEAT-24 H10: lo recibido refresca el badge de Alertas.
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["inventory-alerts"] }));
   });
 
   it("sin señal: guarda la recepción y la envía al volver con el mismo operationId", async () => {
