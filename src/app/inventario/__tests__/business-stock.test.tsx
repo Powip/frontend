@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Inventory from "../_components/InventarioView";
 import { fetchBusinessInventoryItems } from "@/services/businessInventoryItemsService";
+jest.mock("@/services/userWarehousesService", () => ({ getMyWarehouses: jest.fn().mockResolvedValue({ all: true, inventoryIds: [], operableIds: [] }) })); // FEAT-24 H6
 jest.mock("exceljs", () => ({ __esModule: true, default: { Workbook: jest.fn() } }));
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 jest.mock("next/image", () => ({ __esModule: true, default: () => <span /> }));

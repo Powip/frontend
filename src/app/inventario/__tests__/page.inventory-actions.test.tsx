@@ -11,6 +11,7 @@ import axiosAuth from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import AlmacenPage from "../_components/InventarioView";
 
+jest.mock("@/services/userWarehousesService", () => ({ getMyWarehouses: jest.fn().mockResolvedValue({ all: true, inventoryIds: [], operableIds: [] }) })); // FEAT-24 H6
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: jest.fn() }));
 jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: jest.fn() }));
 jest.mock("@/hooks/useBusinessInventories", () => ({ useBusinessInventories: jest.fn() }));

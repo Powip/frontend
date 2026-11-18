@@ -12,6 +12,7 @@ jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { accessTok
 jest.mock('@/contexts/BusinessScopeContext', () => ({ useBusinessScope: () => ({scope:'business',storeIds:['store-1'],canFetch:true}) }));
 jest.mock('@/hooks/useBusinessInventories', () => ({useBusinessInventories: () => ({inventories:[{id:'inv-1',name:'Almacén Principal',storeId:'store-1'}],isSuccess:true,isPending:false,refetch:jest.fn()})}));
 jest.mock('@/services/businessInventoryItemsService', () => ({ ...jest.requireActual('@/services/businessInventoryItemsService'), fetchBusinessInventoryItems: jest.fn() }));
+jest.mock("@/services/userWarehousesService", () => ({ getMyWarehouses: jest.fn().mockResolvedValue({ all: true, inventoryIds: [], operableIds: [] }) })); // FEAT-24 H6
 jest.mock('sonner', () => ({ toast: { success:jest.fn(),error:jest.fn(),warning:jest.fn() } }));
 jest.mock('next/navigation', () => ({ useRouter: () => ({push:jest.fn(),replace:jest.fn()}),usePathname:()=>'/inventario' }));
 jest.mock('exceljs', () => {
