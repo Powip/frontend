@@ -148,6 +148,16 @@ export const lotErrorCode = (error: unknown): string | undefined => {
 };
 
 /**
+ * ¿La recepción falló por el lote (409 `LOTE_VENCIMIENTO_DISTINTO`: el número ya existe con otra fecha)? Se corrige el
+ * lote, no hace falta refrescar la OC. Desde la cola del celular llega solo el mensaje (sin `code`).
+ */
+export function isLotReceiveConflict(error: unknown): boolean {
+  if (statusOf(error) !== 409) return false;
+  if (lotErrorCode(error) === "LOTE_VENCIMIENTO_DISTINTO") return true;
+  return /ya existe con vencimiento/i.test(messageOf(error) ?? "");
+}
+
+/**
  * ¿El despacho falló porque solo quedan lotes vencidos o bloqueados? ms-logistics responde 409 `LOTE_VENCIDO`; ms-ventas
  * reenvía solo el mensaje (sin `code`), así que también se reconoce por el texto.
  */

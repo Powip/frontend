@@ -91,6 +91,10 @@ export interface PurchaseReceptionLine {
   quantity: number;
   entryCost?: number | null;
   movementId: string | null;
+  /** FEAT-24 H5-L: lote en que entró (null en productos sin lotes). */
+  lotId?: string | null;
+  lotNumber?: string | null;
+  expiresAt?: string | null;
 }
 
 export interface PurchaseReception {
@@ -159,9 +163,21 @@ export interface SavePurchaseOrderBody {
   lines: PurchaseOrderLineInput[];
 }
 
+/** `itemId` = id de la línea de la OC; `quantity` en unidades de stock. */
+export interface ReceivePurchaseOrderLineInput {
+  itemId: string;
+  quantity: number;
+  /**
+   * FEAT-24 H5-L: lote (≤40), vencimiento (YYYY-MM-DD) y comentario (≤300). Obligatorios si el producto maneja lotes
+   * (si no, 400). La misma línea puede venir varias veces con lotes distintos.
+   */
+  lotNumber?: string;
+  expiresAt?: string;
+  lotComment?: string;
+}
+
 export interface ReceivePurchaseOrderBody {
-  /** `itemId` = id de la línea de la OC; `quantity` en unidades de stock. */
-  lines: Array<{ itemId: string; quantity: number }>;
+  lines: ReceivePurchaseOrderLineInput[];
   /** Idempotencia: repetir la misma recepción devuelve la registrada (`duplicate: true`). */
   operationId?: string;
   notes?: string | null;

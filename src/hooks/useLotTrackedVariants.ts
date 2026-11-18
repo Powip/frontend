@@ -2,7 +2,6 @@
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useAuth } from "@/contexts/AuthContext";
 import { fetchVariantsByIds } from "@/services/variantCodesService";
 
 // FEAT-24 H5-L — qué variantes son de un producto que maneja lotes (`product.tracksLots`
@@ -16,9 +15,7 @@ export type LotTracking =
 
 const NONE: ReadonlySet<string> = new Set();
 
-export function useLotTrackedVariants(variantIds: readonly string[], options: { enabled?: boolean } = {}): LotTracking {
-  const { auth } = useAuth();
-  const companyId = auth?.company?.id ?? auth?.user?.companyId ?? "";
+export function useLotTrackedVariants(variantIds: readonly string[], companyId: string, options: { enabled?: boolean } = {}): LotTracking {
   const ids = useMemo(() => [...new Set(variantIds)].sort(), [variantIds]);
   const enabled = (options.enabled ?? true) && Boolean(companyId) && ids.length > 0;
   const query = useQuery({
@@ -30,9 +27,10 @@ export function useLotTrackedVariants(variantIds: readonly string[], options: { 
   });
   const { data, isError, refetch } = query;
   return useMemo<LotTracking>(() => {
-    if (ids.length === 0) return { status: "ready", variantIds: NONE };
+    // Sin empresa no hay a quién preguntar: no se bloquea (el servidor valida igual).
+    if (ids.length === 0 || !companyId) return { status: "ready", variantIds: NONE };
     if (data) return { status: "ready", variantIds: data };
     if (isError) return { status: "error", retry: () => void refetch() };
     return { status: "loading" };
-  }, [ids.length, data, isError, refetch]);
+  }, [ids.length, companyId, data, isError, refetch]);
 }

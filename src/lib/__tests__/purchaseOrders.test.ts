@@ -1,6 +1,8 @@
 import {
   addFormLines,
   addOneToLine,
+  addReceiveLot,
+  applyLotTracking,
   buildOrderBody,
   buildReceiveLines,
   canReturnOrder,
@@ -19,7 +21,10 @@ import {
   receiveDraft,
   receiveDraftValid,
   receiveLineProblem,
+  receiveQuantity,
+  removeReceiveLot,
   resolveReceiveScan,
+  setReceiveLot,
   setReceiveQuantity,
   type OrderFormLine,
 } from "../purchaseOrders";
@@ -279,6 +284,71 @@ describe("recepción parcial (H3-D11)", () => {
       draft = addOneToLine(draft, "item-1");
     }
     expect(resolveReceiveScan([{ variantId: "var-1" }], draft)).toEqual({ kind: "line_complete", itemId: "item-1" });
+  });
+});
+
+describe("recepción con lotes (FEAT-24 H5-L)", () => {
+  const partial = order({
+    status: "RECIBIDA_PARCIAL",
+    lines: [line({ receivedQuantity: 20, pendingQuantity: 4 }), line({ id: "item-2", variantId: "var-2", quantity: 10, receivedQuantity: 0, pendingQuantity: 10 })],
+  });
+  const tracked = new Set(["var-2"]);
+
+  it("solo las líneas de productos con lotes llevan lote, con lo que ya se iba a recibir; es idempotente", () => {
+    const draft = applyLotTracking(receiveDraft(partial, "pending"), tracked);
+    expect(draft[0].lots).toBeUndefined();
+    expect(draft[1].lots).toHaveLength(1);
+    expect(draft[1].lots?.[0]).toMatchObject({ lotNumber: "", expiresAt: "", quantity: "10" });
+    expect(applyLotTracking(draft, tracked)).toBe(draft);
+    expect(applyLotTracking(draft, new Set())[1]).toMatchObject({ quantity: "10" });
+    expect(applyLotTracking(draft, new Set())[1].lots).toBeUndefined();
+  });
+
+  it("lote y vencimiento son obligatorios en el lote con unidades", () => {
+    let draft = applyLotTracking(receiveDraft(partial, "pending"), tracked);
+    const key = draft[1].lots![0].key;
+    expect(receiveLineProblem(draft[1])).toBe("Escribe el número de lote.");
+    draft = setReceiveLot(draft, "item-2", key, { lotNumber: "L2410" });
+    expect(receiveLineProblem(draft[1])).toBe("Elige la fecha de vencimiento.");
+    draft = setReceiveLot(draft, "item-2", key, { expiresAt: "2027-10-31", comment: "  Caja dañada " });
+    expect(receiveLineProblem(draft[1])).toBeNull();
+    expect(buildReceiveLines(draft)).toEqual([
+      { itemId: "item-1", quantity: 4 },
+      { itemId: "item-2", quantity: 10, lotNumber: "L2410", expiresAt: "2027-10-31", lotComment: "Caja dañada" },
+    ]);
+    // Sin unidades, el lote vacío no estorba.
+    expect(receiveLineProblem(setReceiveQuantity(applyLotTracking(receiveDraft(partial, "zero"), tracked), "item-2", "0")[1])).toBeNull();
+  });
+
+  it("partir la línea: el lote nuevo completa lo pendiente, la suma no pasa lo pendiente y el mismo número no cambia de fecha", () => {
+    let draft = applyLotTracking(receiveDraft(partial, "pending"), tracked);
+    const first = draft[1].lots![0].key;
+    draft = setReceiveLot(draft, "item-2", first, { lotNumber: "L1", expiresAt: "2027-01-31", quantity: "6" });
+    draft = addReceiveLot(draft, "item-2");
+    const second = draft[1].lots![1];
+    expect(second.quantity).toBe("4");
+    expect(receiveQuantity(draft[1])).toBe(10);
+    draft = setReceiveLot(draft, "item-2", second.key, { lotNumber: "l1 ", expiresAt: "2027-02-28" });
+    expect(receiveLineProblem(draft[1])).toBe("El lote l1 está dos veces con fechas de vencimiento distintas.");
+    draft = setReceiveLot(draft, "item-2", second.key, { lotNumber: "L2", quantity: "5" });
+    expect(receiveLineProblem(draft[1])).toBe("No puedes recibir más de lo pendiente (10).");
+    draft = setReceiveLot(draft, "item-2", second.key, { quantity: "4" });
+    expect(buildReceiveLines(draft).filter((item) => item.itemId === "item-2")).toEqual([
+      { itemId: "item-2", quantity: 6, lotNumber: "L1", expiresAt: "2027-01-31" },
+      { itemId: "item-2", quantity: 4, lotNumber: "L2", expiresAt: "2027-02-28" },
+    ]);
+    draft = removeReceiveLot(draft, "item-2", second.key);
+    expect(draft[1].lots).toHaveLength(1);
+    expect(removeReceiveLot(draft, "item-2", first)[1].lots).toHaveLength(1);
+  });
+
+  it("el escaneo suma al último lote y «todo lo pendiente» completa en el último", () => {
+    let draft = applyLotTracking(receiveDraft(partial, "zero"), tracked);
+    draft = setReceiveLot(draft, "item-2", draft[1].lots![0].key, { quantity: "3" });
+    draft = addReceiveLot(draft, "item-2");
+    draft = addOneToLine(draft, "item-2");
+    expect(draft[1].lots!.map((lot) => lot.quantity)).toEqual(["3", "8"]);
+    expect(fillPending(setReceiveLot(draft, "item-2", draft[1].lots![1].key, { quantity: "0" }))[1].lots!.map((lot) => lot.quantity)).toEqual(["3", "7"]);
   });
 });
 

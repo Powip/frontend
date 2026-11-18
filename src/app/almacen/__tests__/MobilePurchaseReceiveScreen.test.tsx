@@ -6,9 +6,10 @@
  * 3. Sin señal, el código se lee con los productos descargados, la recepción queda guardada (la OC se marca)
  *    y se envía sola al volver la conexión.
  * 4. Quien no recibe mercadería no entra.
+ * 5. FEAT-24 H5-L: un producto con lotes pide lote y vencimiento también sin señal (sale de lo descargado) y la cola los envía.
  */
 
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -162,6 +163,36 @@ describe("Recibir órdenes de compra (modo almacén)", () => {
     await waitFor(() => expect(receivePurchaseOrder).toHaveBeenCalledTimes(1));
     expect(getPurchaseOrder).toHaveBeenCalledWith("oc-1");
     expect(jest.mocked(receivePurchaseOrder).mock.calls[0][1].lines).toEqual([{ itemId: "item-1", quantity: 2 }]);
+  });
+
+  it("FEAT-24 H5-L: sin señal, un producto con lotes pide lote y vencimiento y la cola los envía", async () => {
+    const user = userEvent.setup();
+    jest.mocked(fetchVariantsByIds).mockResolvedValue([
+      { id: "v-1", sku: "POLO-M", companySku: null, barcode: "7750001", powipEan: null, attributeValues: { Talla: "M" }, productName: "Polo", tracksLots: true },
+    ]);
+    jest.mocked(lookupVariantsByCodes).mockRejectedValue(networkError());
+    jest.mocked(receivePurchaseOrder).mockResolvedValue({ duplicate: false, reception: {} as never, purchaseOrder: order });
+    setup();
+    await user.click(await screen.findByRole("button", { name: "Recibir compra OC-0001" }));
+    const lots = await screen.findByRole("group", { name: "Lotes: Polo · Talla: M" });
+    setOnline(false);
+    const units = within(lots).getByLabelText("Unidades: Polo · Talla: M");
+    expect(units).toHaveValue(0);
+    await user.type(screen.getByLabelText("Escanear (suma 1 a lo recibido)"), "7750001{Enter}");
+    await waitFor(() => expect(units).toHaveValue(1));
+    expect(screen.getByRole("button", { name: "Confirmar recepción (1)" })).toBeDisabled();
+    await user.type(within(lots).getByLabelText("Lote: Polo · Talla: M"), "L2410");
+    fireEvent.change(within(lots).getByLabelText("Vencimiento: Polo · Talla: M"), { target: { value: "2027-10-31" } });
+    await user.click(screen.getByRole("button", { name: "Confirmar recepción (1)" }));
+    await waitFor(() => expect(toast.info).toHaveBeenCalledWith(expect.stringMatching(/^Sin señal: la recepción quedó/)));
+    expect(receivePurchaseOrder).not.toHaveBeenCalled();
+
+    setOnline(true);
+    act(() => {
+      window.dispatchEvent(new Event("online"));
+    });
+    await waitFor(() => expect(receivePurchaseOrder).toHaveBeenCalledTimes(1));
+    expect(jest.mocked(receivePurchaseOrder).mock.calls[0][1].lines).toEqual([{ itemId: "item-1", quantity: 1, lotNumber: "L2410", expiresAt: "2027-10-31" }]);
   });
 
   it("quien no recibe mercadería no entra", async () => {

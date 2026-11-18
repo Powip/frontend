@@ -1,9 +1,11 @@
 import { canEditInventory, canSeeProductCosts, type RouteAccessUser } from "@/config/permissions.config";
 import { formatVariantLabel } from "@/lib/variantAttributes";
+import { lotKey, newLotProblem } from "@/lib/lots";
 import type {
   PurchaseOrder,
   PurchaseOrderLine,
   PurchaseOrderLineInput,
+  ReceivePurchaseOrderLineInput,
   PurchaseOrderStatus,
   SavePurchaseOrderBody,
   SupplierPaymentTerms,
@@ -459,8 +461,38 @@ export interface ReceiveDraftLine {
   ordered: number;
   received: number;
   pending: number;
-  /** Lo que se recibe ahora, como texto (lo que tipea el usuario). */
+  /** Lo que se recibe ahora, como texto (lo que tipea el usuario). Con `lots`, manda la suma de los lotes. */
   quantity: string;
+  /**
+   * FEAT-24 H5-L: el producto maneja lotes. Cada lote lleva número, vencimiento, comentario y unidades; la línea se
+   * puede partir en varios lotes (al menos uno). Sin la clave, la línea no lleva lote.
+   */
+  lots?: ReceiveLotDraft[];
+}
+
+/** FEAT-24 H5-L: un lote de lo que se recibe en una línea de la OC. */
+export interface ReceiveLotDraft {
+  key: string;
+  lotNumber: string;
+  expiresAt: string;
+  comment: string;
+  /** Unidades de este lote, como texto. */
+  quantity: string;
+}
+
+let receiveLotSeq = 0;
+/** Lote vacío (clave local para la lista). */
+export function newReceiveLot(quantity = ""): ReceiveLotDraft {
+  receiveLotSeq += 1;
+  return { key: `lote-${receiveLotSeq}`, lotNumber: "", expiresAt: "", comment: "", quantity };
+}
+
+/** Entero ≥ 0 de lo que se tipea (vacío = 0; `null` si no es un entero). */
+function wholeOrZero(text: string): number | null {
+  const clean = text.trim();
+  if (clean === "") return 0;
+  if (!/^\d+$/.test(clean)) return null;
+  return Number(clean);
 }
 
 /** `fill: "pending"` (escritorio) empieza con todo lo pendiente; `"zero"` (escaneando) empieza en 0. */
@@ -481,26 +513,101 @@ export function receiveDraft(order: Pick<PurchaseOrder, "lines">, fill: "pending
 }
 
 export function setReceiveQuantity(draft: ReceiveDraftLine[], itemId: string, quantity: string): ReceiveDraftLine[] {
-  return draft.map((line) => (line.itemId === itemId ? { ...line, quantity } : line));
+  return draft.map((line) => {
+    if (line.itemId !== itemId) return line;
+    // Con un solo lote, la cantidad de la línea es la de ese lote; partida en varios, se edita cada lote.
+    if (line.lots) return line.lots.length === 1 ? { ...line, lots: [{ ...line.lots[0], quantity }] } : line;
+    return { ...line, quantity };
+  });
 }
 
+/** Todo lo pendiente; en una línea partida en lotes, el último lote completa lo que falta. */
 export const fillPending = (draft: ReceiveDraftLine[]): ReceiveDraftLine[] =>
-  draft.map((line) => ({ ...line, quantity: String(line.pending) }));
+  draft.map((line) => {
+    if (!line.lots) return { ...line, quantity: String(line.pending) };
+    const others = line.lots.slice(0, -1).reduce((sum, lot) => sum + (wholeOrZero(lot.quantity) ?? 0), 0);
+    const last = line.lots[line.lots.length - 1];
+    return { ...line, lots: [...line.lots.slice(0, -1), { ...last, quantity: String(Math.max(0, line.pending - others)) }] };
+  });
 
-/** Lo que se recibe ahora en una línea (`null` si el texto no es un entero ≥ 0). */
+/** Lo que se recibe ahora en una línea (`null` si el texto no es un entero ≥ 0). Con lotes, la suma de los lotes. */
 export function receiveQuantity(line: ReceiveDraftLine): number | null {
-  const clean = line.quantity.trim();
-  if (clean === "") return 0;
-  if (!/^\d+$/.test(clean)) return null;
-  return Number(clean);
+  if (line.lots) {
+    let total = 0;
+    for (const lot of line.lots) {
+      const quantity = wholeOrZero(lot.quantity);
+      if (quantity === null) return null;
+      total += quantity;
+    }
+    return total;
+  }
+  return wholeOrZero(line.quantity);
 }
 
-/** Por qué la línea no se puede enviar; `null` si está bien. */
+/** Por qué la línea no se puede enviar; `null` si está bien. Con lotes: número y vencimiento de cada lote con unidades. */
 export function receiveLineProblem(line: ReceiveDraftLine): string | null {
   const quantity = receiveQuantity(line);
   if (quantity === null) return "Escribe un número entero.";
   if (quantity > line.pending) return `No puedes recibir más de lo pendiente (${line.pending}).`;
+  if (line.lots) {
+    const dates = new Map<string, string>();
+    for (const lot of line.lots) {
+      if (!wholeOrZero(lot.quantity)) continue;
+      const problem = newLotProblem(lot);
+      if (problem) return problem;
+      const key = lotKey(lot.lotNumber);
+      const seen = dates.get(key);
+      if (seen !== undefined && seen !== lot.expiresAt) return `El lote ${lot.lotNumber.trim()} está dos veces con fechas de vencimiento distintas.`;
+      dates.set(key, lot.expiresAt);
+    }
+  }
   return null;
+}
+
+/**
+ * FEAT-24 H5-L: con lo que dice el catálogo (`product.tracksLots`), las líneas de productos con lotes pasan a llevar un
+ * lote con lo que ya se iba a recibir; las que no, lo pierden. Idempotente.
+ */
+export function applyLotTracking(draft: ReceiveDraftLine[], tracked: ReadonlySet<string>): ReceiveDraftLine[] {
+  let changed = false;
+  const next = draft.map((line) => {
+    const tracks = tracked.has(line.variantId);
+    if (tracks && !line.lots) {
+      changed = true;
+      return { ...line, lots: [newReceiveLot(line.quantity)] };
+    }
+    if (!tracks && line.lots) {
+      changed = true;
+      const plain: ReceiveDraftLine = { ...line, quantity: String(receiveQuantity(line) ?? 0) };
+      delete plain.lots;
+      return plain;
+    }
+    return line;
+  });
+  return changed ? next : draft;
+}
+
+/** Cambia un campo de un lote de la línea. */
+export function setReceiveLot(draft: ReceiveDraftLine[], itemId: string, key: string, patch: Partial<Omit<ReceiveLotDraft, "key">>): ReceiveDraftLine[] {
+  return draft.map((line) =>
+    line.itemId === itemId && line.lots ? { ...line, lots: line.lots.map((lot) => (lot.key === key ? { ...lot, ...patch } : lot)) } : line,
+  );
+}
+
+/** Parte la línea: otro lote, con lo que falta para completar lo pendiente. */
+export function addReceiveLot(draft: ReceiveDraftLine[], itemId: string): ReceiveDraftLine[] {
+  return draft.map((line) => {
+    if (line.itemId !== itemId || !line.lots) return line;
+    const left = Math.max(0, line.pending - (receiveQuantity(line) ?? line.pending));
+    return { ...line, lots: [...line.lots, newReceiveLot(left > 0 ? String(left) : "")] };
+  });
+}
+
+/** Quita un lote de la línea (siempre queda uno). */
+export function removeReceiveLot(draft: ReceiveDraftLine[], itemId: string, key: string): ReceiveDraftLine[] {
+  return draft.map((line) =>
+    line.itemId === itemId && line.lots && line.lots.length > 1 ? { ...line, lots: line.lots.filter((lot) => lot.key !== key) } : line,
+  );
 }
 
 export const receiveTotal = (draft: ReceiveDraftLine[]): number =>
@@ -509,11 +616,18 @@ export const receiveTotal = (draft: ReceiveDraftLine[]): number =>
 export const receiveDraftValid = (draft: ReceiveDraftLine[]): boolean =>
   draft.every((line) => receiveLineProblem(line) === null) && receiveTotal(draft) > 0;
 
-/** Solo las líneas con algo por recibir ahora. */
-export function buildReceiveLines(draft: ReceiveDraftLine[]): Array<{ itemId: string; quantity: number }> {
-  return draft
-    .map((line) => ({ itemId: line.itemId, quantity: receiveQuantity(line) ?? 0 }))
-    .filter((line) => line.quantity > 0);
+/** Solo las líneas con algo por recibir ahora. FEAT-24 H5-L: una línea por lote (la misma línea de la OC puede repetirse). */
+export function buildReceiveLines(draft: ReceiveDraftLine[]): ReceivePurchaseOrderLineInput[] {
+  return draft.flatMap((line) => {
+    if (!line.lots) return [{ itemId: line.itemId, quantity: receiveQuantity(line) ?? 0 }];
+    return line.lots.map((lot) => ({
+      itemId: line.itemId,
+      quantity: wholeOrZero(lot.quantity) ?? 0,
+      lotNumber: lot.lotNumber.trim(),
+      expiresAt: lot.expiresAt,
+      ...(lot.comment.trim() ? { lotComment: lot.comment.trim() } : {}),
+    }));
+  }).filter((line) => line.quantity > 0);
 }
 
 export type ReceiveScanOutcome =
@@ -534,7 +648,15 @@ export function resolveReceiveScan(matches: Pick<VariantCodeMatch, "variantId">[
 }
 
 export function addOneToLine(draft: ReceiveDraftLine[], itemId: string): ReceiveDraftLine[] {
-  return draft.map((line) => (line.itemId === itemId ? { ...line, quantity: String((receiveQuantity(line) ?? 0) + 1) } : line));
+  return draft.map((line) => {
+    if (line.itemId !== itemId) return line;
+    // FEAT-24 H5-L: con lotes, el escaneo suma al último lote (el que se está cargando).
+    if (line.lots) {
+      const last = line.lots[line.lots.length - 1];
+      return { ...line, lots: [...line.lots.slice(0, -1), { ...last, quantity: String((wholeOrZero(last.quantity) ?? 0) + 1) }] };
+    }
+    return { ...line, quantity: String((receiveQuantity(line) ?? 0) + 1) };
+  });
 }
 
 export function receiveScanMessage(outcome: ReceiveScanOutcome, code: string, line?: ReceiveDraftLine): string {

@@ -279,9 +279,12 @@ const purchaseReceiveHandler: ActionHandler<PurchaseReceivePayload, ReceivePurch
     if (!canReceiveOrder(order))
       return { conflict: `${orderNumber} ya no se puede recibir (${PURCHASE_STATUS_LABEL[order.status] ?? order.status}). Revísala en Compras.` };
     const before = (checkpoint as PurchaseReceiveCheckpoint | null)?.received ?? {};
-    const short = body.lines.find((line) => {
-      const current = order.lines.find((candidate) => candidate.id === line.itemId);
-      return !current || line.quantity > current.pendingQuantity;
+    // FEAT-24 H5-L: una línea de la OC puede venir partida en lotes; se compara la suma con lo pendiente.
+    const wanted = new Map<string, number>();
+    for (const line of body.lines) wanted.set(line.itemId, (wanted.get(line.itemId) ?? 0) + line.quantity);
+    const short = [...wanted].find(([itemId, quantity]) => {
+      const current = order.lines.find((candidate) => candidate.id === itemId);
+      return !current || quantity > current.pendingQuantity;
     });
     if (short) {
       const changed = order.lines.some((line) => before[line.id] !== undefined && before[line.id] !== line.receivedQuantity);
