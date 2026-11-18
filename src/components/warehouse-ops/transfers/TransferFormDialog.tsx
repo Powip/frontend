@@ -30,7 +30,8 @@ import {
 } from "@/lib/warehouseOps";
 import { getStockByVariants } from "@/services/inventoryItems.service";
 import { createTransfer, dispatchTransfer, updateTransfer, type Transfer } from "@/services/warehouseOpsService";
-import { ErrorBox, SELECT_CLASS, useCompanyWarehouses } from "../OpsBits";
+import { ErrorBox, SELECT_CLASS } from "../OpsBits";
+import { useCompanyWarehouses } from "@/hooks/useCompanyWarehouses";
 import VariantLinePicker from "../VariantLinePicker";
 
 // FEAT-24 H5-C — nuevo traslado o edición de un borrador (mockup mTraslado):

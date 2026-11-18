@@ -31,7 +31,8 @@ import {
   whoDid,
 } from "@/lib/warehouseOps";
 import { cancelTransfer, dispatchTransfer, listTransfers, type Transfer, type TransferStatus } from "@/services/warehouseOpsService";
-import { ErrorBox, ReasonDialog, RuleNote, SELECT_CLASS, StatusPill, useCompanyWarehouses } from "../OpsBits";
+import { ErrorBox, ReasonDialog, RuleNote, SELECT_CLASS, StatusPill } from "../OpsBits";
+import { useCompanyWarehouses } from "@/hooks/useCompanyWarehouses";
 import ReceiveTransferDialog from "./ReceiveTransferDialog";
 import TransferDetailDialog from "./TransferDetailDialog";
 import TransferFormDialog from "./TransferFormDialog";

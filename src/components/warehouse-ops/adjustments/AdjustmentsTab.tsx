@@ -38,7 +38,8 @@ import {
   type AdjustmentStatus,
   type StockAdjustmentDoc,
 } from "@/services/warehouseOpsService";
-import { ErrorBox, Money, ReasonDialog, RuleNote, SELECT_CLASS, StatusPill, useCompanyWarehouses } from "../OpsBits";
+import { ErrorBox, Money, ReasonDialog, RuleNote, SELECT_CLASS, StatusPill } from "../OpsBits";
+import { useCompanyWarehouses } from "@/hooks/useCompanyWarehouses";
 import AdjustmentFormDialog from "./AdjustmentFormDialog";
 
 // FEAT-24 H5-C (H5-D4) — Inventario › Ajustes y mermas (mockup vAjustes): pedir

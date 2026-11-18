@@ -18,7 +18,8 @@ import {
   whoDid,
 } from "@/lib/warehouseOps";
 import { listCounts, type StockCount } from "@/services/warehouseOpsService";
-import { ErrorBox, RuleNote, SELECT_CLASS, StatusPill, useCompanyWarehouses } from "../OpsBits";
+import { ErrorBox, RuleNote, SELECT_CLASS, StatusPill } from "../OpsBits";
+import { useCompanyWarehouses } from "@/hooks/useCompanyWarehouses";
 import CountFormDialog from "./CountFormDialog";
 import CountSheet from "./CountSheet";
 import InvestigationsPanel, { INVESTIGATIONS_KEY } from "./InvestigationsPanel";

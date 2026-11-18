@@ -10,7 +10,7 @@ import { resolveOrderNumbers } from "@/services/orderNumbersService";
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { accessToken: "t", company: { id: "c1" }, user: { id: "u1", role: "VENTAS" } } }) }));
 jest.mock("@/services/inventoryReportsService", () => ({ getInventoryAlerts: jest.fn() }));
 jest.mock("@/services/orderNumbersService", () => ({ resolveOrderNumbers: jest.fn() }));
-jest.mock("@/hooks/useCompanyWarehouses", () => ({ useCompanyWarehouses: () => ({ warehouses: [], nameOf: (id: string) => ({ w1: "Central", w2: "Olva" })[id] ?? "su almacén" }) }));
+jest.mock("@/hooks/useCompanyWarehouses", () => ({ useCompanyWarehouses: () => ({ warehouses: [], nameOf: (id: string) => ({ w1: "Central", w2: "Olva" })[id] ?? "Almacén" }) }));
 
 const DATA: InventoryAlerts = {
   generatedAt: "2026-11-18T15:00:00Z",

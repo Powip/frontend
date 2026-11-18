@@ -34,7 +34,8 @@ import {
 } from "@/lib/warehouseOps";
 import { getVariantCosts } from "@/services/purchasesService";
 import { createAdjustment, type AdjustmentReasonCode, type StockAdjustmentDoc } from "@/services/warehouseOpsService";
-import { ErrorBox, SELECT_CLASS, useCompanyWarehouses } from "../OpsBits";
+import { ErrorBox, SELECT_CLASS } from "../OpsBits";
+import { useCompanyWarehouses } from "@/hooks/useCompanyWarehouses";
 import VariantLinePicker from "../VariantLinePicker";
 
 // FEAT-24 H5-C (H5-D4) — pedir un ajuste o una merma (mockup mAjuste): almacén

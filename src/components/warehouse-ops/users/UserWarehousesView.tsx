@@ -23,7 +23,8 @@ import {
 import { opsErrorMessage } from "@/lib/warehouseOps";
 import { getUsersByCompany } from "@/services/userService";
 import { listUserWarehouses, saveUserWarehouses } from "@/services/userWarehousesService";
-import { ErrorBox, RuleNote, SELECT_CLASS, useCompanyWarehouses } from "../OpsBits";
+import { ErrorBox, RuleNote, SELECT_CLASS } from "../OpsBits";
+import { useCompanyWarehouses } from "@/hooks/useCompanyWarehouses";
 
 // FEAT-24 H6 (H6-D5) — Configuración › Usuarios y almacenes (mockup vUsuarios):
 // por usuario, qué almacenes ve y en cuáles mueve stock. Sin restricciones

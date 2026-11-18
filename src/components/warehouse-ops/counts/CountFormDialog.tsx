@@ -22,7 +22,8 @@ import { flattenCategoryTree } from "@/lib/catalog/categoryTree";
 import { addDraftLines, COUNT_SCOPE_LABEL, opsErrorMessage, type DraftLine } from "@/lib/warehouseOps";
 import { listCatalogCategories } from "@/services/catalogCategoriesService";
 import { createCount, listLocations, type CountScope, type CreateCountBody, type StockCount } from "@/services/warehouseOpsService";
-import { ErrorBox, SELECT_CLASS, useCompanyWarehouses } from "../OpsBits";
+import { ErrorBox, SELECT_CLASS } from "../OpsBits";
+import { useCompanyWarehouses } from "@/hooks/useCompanyWarehouses";
 import VariantLinePicker from "../VariantLinePicker";
 
 // FEAT-24 H5-C (H5-D5) — nueva toma de inventario (mockup mNuevoConteo). No

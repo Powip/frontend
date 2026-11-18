@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,10 +13,8 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { useAuth } from "@/contexts/AuthContext";
 import { opsErrorMessage } from "@/lib/warehouseOps";
 import { cn } from "@/lib/utils";
-import { listWarehouses, type CompanyWarehouse } from "@/services/warehousesService";
 
 // FEAT-24 H5-C — piezas comunes de las pantallas de operación de almacén.
 
@@ -44,23 +41,6 @@ export function RuleNote({ children }: { children: ReactNode }) {
       <div>{children}</div>
     </div>
   );
-}
-
-/** Almacenes de la empresa (la misma caché que Compras y Tiendas y almacenes). */
-export function useCompanyWarehouses() {
-  const { auth } = useAuth();
-  const companyId = auth?.company?.id ?? "";
-  const query = useQuery({
-    queryKey: ["company-warehouses", companyId],
-    queryFn: () => listWarehouses(),
-    enabled: Boolean(companyId && auth?.accessToken),
-    retry: false,
-    staleTime: 60_000,
-  });
-  const warehouses: CompanyWarehouse[] = query.data?.warehouses ?? [];
-  const nameOf = (inventoryId: string | null | undefined) =>
-    inventoryId ? (warehouses.find((warehouse) => warehouse.id === inventoryId)?.name ?? "Almacén") : "—";
-  return { query, warehouses, nameOf };
 }
 
 interface ReasonDialogProps {

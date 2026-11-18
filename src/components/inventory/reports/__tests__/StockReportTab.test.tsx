@@ -15,7 +15,7 @@ jest.mock("@/services/inventoryReportsService", () => ({ getStockReport: jest.fn
 jest.mock("@/hooks/useCompanyWarehouses", () => ({
   useCompanyWarehouses: () => ({
     warehouses: [{ id: "w1", name: "Central", status: true }, { id: "w2", name: "Olva", status: true }],
-    nameOf: (id: string) => ({ w1: "Central", w2: "Olva" })[id] ?? "su almacén",
+    nameOf: (id: string) => ({ w1: "Central", w2: "Olva" })[id] ?? "Almacén",
   }),
 }));
 // FEAT-24 H6: el filtro de almacén ofrece solo los que el usuario ve.

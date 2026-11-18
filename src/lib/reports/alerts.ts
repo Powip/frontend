@@ -116,7 +116,7 @@ function rowsOf(alert: InventoryAlert, ctx: { orderNumbers: Record<string, strin
  * corta, una fila final dice cuántas faltan.
  */
 export function alertRows(data: InventoryAlerts, ctx: { orderNumbers?: Record<string, string>; warehouseName?: (id: string) => string } = {}): AlertRow[] {
-  const context = { orderNumbers: ctx.orderNumbers ?? {}, warehouseName: ctx.warehouseName ?? (() => "su almacén") };
+  const context = { orderNumbers: ctx.orderNumbers ?? {}, warehouseName: ctx.warehouseName ?? (() => "Almacén") };
   return data.alerts
     .filter((alert) => alert.enabled && alert.count > 0)
     .flatMap((alert) => {
