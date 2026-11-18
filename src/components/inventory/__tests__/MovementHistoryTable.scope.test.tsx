@@ -70,6 +70,16 @@ describe("kardex desde la fachada", () => {
     expect(screen.getAllByRole("columnheader").map((cell) => cell.textContent)).toEqual(["Fecha y hora", "Tipo", "Producto / SKU", "Almacén", "Físico", "Reservado", "Referencia", "Usuario", "Motivo"]);
   });
 
+  it("FEAT-24 H5-L: muestra los lotes de cada movimiento debajo del producto", async () => {
+    kardex.mockResolvedValue(page([
+      row({ id: "con-lote", type: "MERMA", physicalDelta: -4, lots: [{ lotId: "l1", lotNumber: "A117", expiresAt: "2026-10-31", quantity: -3 }, { lotId: null, lotNumber: null, quantity: -1 }] }),
+      row({ id: "sin-lote", productName: "Gorra", lots: null }),
+    ]));
+    setup();
+    expect(await screen.findByTestId("kardex-lots-con-lote")).toHaveTextContent("Lotes: A117 −3 · Sin lote −1");
+    expect(screen.queryByTestId("kardex-lots-sin-lote")).not.toBeInTheDocument();
+  });
+
   it("los tipos nuevos salen en español", async () => {
     kardex.mockResolvedValue(page([
       row({ id: "a", type: "ENTRADA_COMPRA", reason: "PURCHASE_RECEPTION - OC-0001 - REC-0001", referenceId: "OC-0001", referenceNumber: "REC-0001", productName: "Polo A" }),

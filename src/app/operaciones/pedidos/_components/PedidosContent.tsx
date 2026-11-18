@@ -13,6 +13,7 @@ import { getOperationsPedidosPage, type OperationsPedidosQuery } from "@/service
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "@/lib/axiosAuth";
+import { expiredLotDispatchMessage } from "@/lib/lots";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { ScanLine } from "lucide-react";
@@ -268,7 +269,8 @@ export function PedidosContent() {
         toast.success(`Estado actualizado a ${getStatusLabel(newStatus)}`);
         fetchOrders();
       } catch (error: any) {
-        toast.error(error?.response?.data?.message || error?.message || "No se pudo actualizar el estado");
+        // FEAT-24 H5-L: el 409 de lotes vencidos o bloqueados al despachar se explica con qué hacer.
+        toast.error(expiredLotDispatchMessage(error) || error?.response?.data?.message || error?.message || "No se pudo actualizar el estado");
         if (sale && canPrepareDeferredManualOrder(sale)) fetchOrders();
       }
     },

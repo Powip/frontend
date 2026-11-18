@@ -3,7 +3,7 @@
  */
 import type ExcelJS from "exceljs";
 import { stockReportWorkbook, stockReportFilterRows, stockReportPdfSpec } from "../stockReport";
-import { kardexFilterRows, kardexWorkbook } from "../kardex";
+import { kardexFilterRows, kardexPdfSpec, kardexWorkbook } from "../kardex";
 import { purchasesReportWorkbook } from "../purchasesReport";
 import type { KardexRow, PurchasesReport, StockReportData } from "@/services/inventoryReportsService";
 
@@ -141,6 +141,22 @@ describe("Excel del kardex", () => {
     const workbook = kardexWorkbook(masked, { filters: kardexFilters, canSeeCosts: false, truncated: true, now: NOW });
     expect(sheetRows(workbook, "Movimientos")[0]).not.toEqual(expect.arrayContaining(["Costo unit.", "Valor"]));
     expect(sheetRows(workbook, "Filtros").at(-1)).toEqual(["Aviso", "Hay más de 10.000 movimientos: se exportaron los 10.000 más nuevos."]);
+  });
+
+  it("FEAT-24 H5-L: con lotes agrega la columna «Lotes» (y el PDF los pone debajo del producto)", () => {
+    expect(sheetRows(kardexWorkbook(KARDEX, { filters: kardexFilters, canSeeCosts: true, now: NOW }), "Movimientos")[0]).not.toContain("Lotes");
+    const withLots: KardexRow[] = [
+      { ...KARDEX[0], lots: [{ lotId: "l1", lotNumber: "L2410", expiresAt: "2027-10-31", quantity: 20 }, { lotId: null, lotNumber: null, quantity: 4 }] },
+      KARDEX[1],
+    ];
+    const [header, first, second] = sheetRows(kardexWorkbook(withLots, { filters: kardexFilters, canSeeCosts: true, now: NOW }), "Movimientos");
+    const column = header.indexOf("Lotes");
+    expect(header[column - 1]).toBe("Almacén");
+    expect(first[column]).toBe("L2410 +20 · Sin lote +4");
+    expect(second[column] ?? "").toBe("");
+    const pdf = kardexPdfSpec(withLots, { filters: [], today: "2026-11-18" });
+    expect(pdf.tables[0].rows[0][3]).toBe("Polo · Talla: M\nL2410 +20 · Sin lote +4");
+    expect(pdf.tables[0].rows[1][3]).toBe("Polo · Talla: M");
   });
 });
 

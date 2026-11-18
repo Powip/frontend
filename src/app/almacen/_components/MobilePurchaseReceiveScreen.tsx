@@ -9,6 +9,7 @@ import ReceivePurchaseOrderDialog from "@/components/compras/ReceivePurchaseOrde
 import { warehouseErrorMessage } from "@/components/forms/warehouseUi";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import type { LotTracking } from "@/hooks/useLotTrackedVariants";
 import { scanFeedback } from "@/lib/barcodeScanner";
 import { toWriteResult } from "@/lib/offlineQueue";
 import { OfflineUnavailableError, readWithSnapshot } from "@/lib/offlineStore";
@@ -95,6 +96,13 @@ export default function MobilePurchaseReceiveScreen() {
     placeholderData: (previous) => previous,
   });
   const variants = useMemo(() => variantsQuery.data?.data ?? [], [variantsQuery.data]);
+  // FEAT-24 H5-L: qué productos manejan lotes sale de lo mismo que se descargó para el escáner (sirve sin señal).
+  const { isPending: variantsPending, isError: variantsFailed, refetch: refetchVariants } = variantsQuery;
+  const lotTracking = useMemo<LotTracking>(() => {
+    if (variantsFailed) return { status: "error", retry: () => void refetchVariants() };
+    if (variantsPending && variantIds.length > 0) return { status: "loading" };
+    return { status: "ready", variantIds: new Set(variants.filter((variant) => variant.tracksLots).map((variant) => variant.id)) };
+  }, [variants, variantsPending, variantsFailed, refetchVariants, variantIds.length]);
   const warehouses = warehousesQuery.data?.data.warehouses ?? [];
   const warehouseName = (id: string) => warehouses.find((warehouse) => warehouse.id === id)?.name ?? "Almacén";
 
@@ -196,6 +204,7 @@ export default function MobilePurchaseReceiveScreen() {
           renderScanner={(scan) => <ScanInput id="almacen-compra-scan" label="Escanear (suma 1 a lo recibido)" onCode={scan} />}
           localLookup={(code) => matchCodeLocally(code, variants)}
           onFeedback={(kind) => scanFeedback(kind)}
+          lotTracking={lotTracking}
         />
       ) : null}
     </div>

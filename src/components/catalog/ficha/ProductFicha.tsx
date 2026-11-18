@@ -33,8 +33,10 @@ import FichaVariantsTab from "./FichaVariantsTab";
 import FichaStockTab from "./FichaStockTab";
 import FichaChannelsTab from "./FichaChannelsTab";
 import PackFichaTab from "@/components/packs/PackFichaTab";
+// FEAT-24 H5-L: lotes con vencimiento de las variantes.
+import FichaLotsTab from "@/components/lots/FichaLotsTab";
 
-export type FichaTab = "general" | "pack" | "variantes" | "stock" | "canales" | "historial";
+export type FichaTab = "general" | "pack" | "variantes" | "lotes" | "stock" | "canales" | "historial";
 
 /**
  * FEAT-24 H4 (H4-D11) — ficha del producto en pestañas (spec §6.1, mockup `vFicha`): General, Variantes,
@@ -132,7 +134,9 @@ export default function ProductFicha({ productId, actions }: { productId: string
   const category = categoryPath(categories.tree, product.categoryId ?? product.category?.id) ?? product.category?.name;
   const conflict = Boolean(product.skuConflict) || live.some((variant) => variant.skuConflict);
   const editHref = live[0] ? `/productos?edit=${encodeURIComponent(live[0].id)}` : null;
-  const activeTab: FichaTab = (isSimple && tab === "variantes") || (!isPack && tab === "pack") ? "general" : tab;
+  // FEAT-24 H5-L: pestaña «Lotes y vencimiento» solo si el producto maneja lotes (mockup vFicha).
+  const tracksLots = product.tracksLots === true && !isPack;
+  const activeTab: FichaTab = (isSimple && tab === "variantes") || (!isPack && tab === "pack") || (!tracksLots && tab === "lotes") ? "general" : tab;
 
   return (
     <div className="space-y-4 p-6">
@@ -169,6 +173,7 @@ export default function ProductFicha({ productId, actions }: { productId: string
               <TabsTrigger value="general">General</TabsTrigger>
               {isPack ? <TabsTrigger value="pack">Pack</TabsTrigger> : null}
               {!isSimple ? <TabsTrigger value="variantes">Variantes ({live.length})</TabsTrigger> : null}
+              {tracksLots ? <TabsTrigger value="lotes">Lotes y vencimiento</TabsTrigger> : null}
               <TabsTrigger value="stock">Stock por almacén</TabsTrigger>
               <TabsTrigger value="canales">Canales</TabsTrigger>
               <TabsTrigger value="historial">Historial</TabsTrigger>
@@ -184,6 +189,13 @@ export default function ProductFicha({ productId, actions }: { productId: string
             {!isSimple ? (
               <TabsContent value="variantes">
                 <FichaVariantsTab productId={product.id} productImage={product.imageUrl} variants={variants} canEdit costs={costs} />
+              </TabsContent>
+            ) : null}
+            {tracksLots ? (
+              <TabsContent value="lotes">
+                {activeTab === "lotes" ? (
+                  <FichaLotsTab variants={kardexVariants.filter((option) => variants.some((variant) => variant.id === option.id && !variant.mergedInto))} showVariant={!isSimple} />
+                ) : null}
               </TabsContent>
             ) : null}
             <TabsContent value="stock">

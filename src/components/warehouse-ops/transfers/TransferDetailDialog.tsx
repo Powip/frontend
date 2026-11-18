@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { transferLineLotText } from "@/lib/lots";
 import { formatMoney } from "@/lib/purchaseOrders";
 import {
   formatDateTime,
@@ -73,6 +74,7 @@ export default function TransferDetailDialog({ transfer, originName, destination
                   <td className="px-3 py-2">
                     <p>{lineLabel(line)}</p>
                     <p className="font-mono text-xs text-muted-foreground">{line.sku}</p>
+                    {transferLineLotText(line) ? <p className="text-xs text-muted-foreground">{transferLineLotText(line)}</p> : null}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums">{line.quantitySent}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{line.quantityReceived ?? "—"}</td>

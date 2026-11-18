@@ -15,6 +15,8 @@ export interface CatalogVariant {
   powipEan: string | null;
   attributeValues: Record<string, string>;
   productName: string;
+  /** FEAT-24 H5-L: el producto maneja lotes («Maneja lotes»). Falta en lo descargado antes de H5-L: se toma como no. */
+  tracksLots?: boolean;
 }
 
 interface RawVariant {
@@ -24,7 +26,7 @@ interface RawVariant {
   barcode?: unknown;
   powipEan?: unknown;
   attributeValues?: unknown;
-  product?: { name?: unknown; companyId?: unknown } | null;
+  product?: { name?: unknown; companyId?: unknown; tracksLots?: unknown } | null;
 }
 
 const BY_IDS_CHUNK = 200;
@@ -59,6 +61,7 @@ export async function fetchVariantsByIds(ids: string[], companyId: string): Prom
           ? (raw.attributeValues as Record<string, string>)
           : {},
       productName: text(raw.product?.name) ?? "",
+      ...(raw.product?.tracksLots === true ? { tracksLots: true } : {}),
     }));
 }
 

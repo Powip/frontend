@@ -14,6 +14,7 @@ import { formatMoney, todayInLima } from "@/lib/purchaseOrders";
 import { formatVariantLabel } from "@/lib/variantAttributes";
 import { KARDEX_TYPE_OPTIONS } from "@/lib/reports/kardexTypes";
 import { kardexFilterRows, kardexPdfSpec, kardexReference, kardexWorkbook } from "@/lib/reports/kardex";
+import { kardexLotsOf, kardexLotsText } from "@/lib/lots";
 import { reportSku, reportVariantLabel } from "@/lib/reports/stockReport";
 import { downloadWorkbook } from "@/lib/reports/excel";
 import { SELECT_CLASS } from "@/components/compras/PurchaseBits";
@@ -347,6 +348,11 @@ export function MovementHistoryTable({
                       <div className="flex flex-col">
                         <span className="line-clamp-1 max-w-[220px] text-sm font-semibold">{reportVariantLabel(row)}</span>
                         <span className="font-mono text-[10px] uppercase text-muted-foreground">{reportSku(row)}</span>
+                        {kardexLotsOf(row) ? (
+                          <span className="text-[10px] text-muted-foreground" data-testid={`kardex-lots-${row.id}`}>
+                            Lotes: {kardexLotsText(kardexLotsOf(row))}
+                          </span>
+                        ) : null}
                       </div>
                     </TableCell>
                     <TableCell className="text-sm">{row.inventoryName || inventoryName(row.inventoryId) || "—"}</TableCell>

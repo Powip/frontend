@@ -2,6 +2,7 @@
 import { ExchangeOrderTag } from "@/components/orders/exchange/ExchangeOrderTag";
 import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/orders/ExternalOrderNumberColumn";
 import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
+import { expiredLotDispatchMessage } from "@/lib/lots";
 import { isCommercialSaleOrder, canPrepareDeferredManualOrder, canShipCommercialOrder, salesPhysicalOperationBlockReason, salesStatusBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
 import { toWhatsAppDigits } from "@/lib/phone";
 import { formatSalesMoney } from "@/utils/salesMoney";
@@ -750,7 +751,12 @@ function VentasContent() {
       refetchOrders();
     } catch (error) {
       console.error("Error actualizando estado", error);
-      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message || (error instanceof Error ? error.message : "No se pudo actualizar el estado"));
+      // FEAT-24 H5-L: el 409 de lotes vencidos o bloqueados al despachar se explica con qué hacer.
+      toast.error(
+        expiredLotDispatchMessage(error) ||
+          (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+          (error instanceof Error ? error.message : "No se pudo actualizar el estado"),
+      );
       if (canPrepareDeferredManualOrder(selectedCommercial)) refetchOrders();
     }
   };

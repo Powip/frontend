@@ -13,6 +13,7 @@ import { hasAdminAccess } from "@/config/permissions.config";
 import { useAuth } from "@/contexts/AuthContext";
 import { inventoryRulesChanged, parseReleaseDays, releaseDaysToText } from "@/lib/stockRules";
 import { DEFAULT_COVERAGE_DAYS, parseDays } from "@/lib/suggestedPurchase";
+import { DEFAULT_EXPIRY_ALERT_DAYS } from "@/lib/lots";
 import { getInventoryRules, saveInventoryRules, type InventoryRules } from "@/services/warehousesService";
 
 // FEAT-24 H2-F — Configuración › Tiendas y almacenes › «Reglas de inventario»:
@@ -20,6 +21,7 @@ import { getInventoryRules, saveInventoryRules, type InventoryRules } from "@/se
 // FEAT-24 H3 — suma las dos reglas de compras: si la empresa está afecta al IGV
 // y si se puede comprar directo a un almacén courier.
 // FEAT-24 H13 — suma los días de venta que cubre el pedido sugerido.
+// FEAT-24 H5-L — suma los días de aviso de vencimiento de los lotes.
 
 interface Form {
   releaseDays: string;
@@ -28,6 +30,8 @@ interface Form {
   allowPurchaseToCourier: boolean;
   /** FEAT-24 H13: días de cobertura objetivo, como se tipean. */
   coverageDays: string;
+  /** FEAT-24 H5-L: con cuántos días de anticipación avisa «Lotes por vencer», como se tipean. */
+  expiryAlertDays: string;
 }
 
 export default function InventoryRulesSection() {
@@ -41,6 +45,7 @@ export default function InventoryRulesSection() {
   const rulesQuery = useQuery({ queryKey: rulesKey, queryFn: () => getInventoryRules(), enabled, retry: false, staleTime: 0 });
   const saved: InventoryRules | undefined = rulesQuery.data;
   const savedCoverageDays = saved?.defaultCoverageDays ?? DEFAULT_COVERAGE_DAYS;
+  const savedExpiryAlertDays = saved?.expiryAlertDays ?? DEFAULT_EXPIRY_ALERT_DAYS;
 
   // `null` = sin cambios en pantalla: se muestra lo guardado.
   const [edited, setEdited] = useState<Form | null>(null);
@@ -51,16 +56,19 @@ export default function InventoryRulesSection() {
     igvAffected: saved?.igvAffected ?? true,
     allowPurchaseToCourier: saved?.allowPurchaseToCourier ?? false,
     coverageDays: String(savedCoverageDays),
+    expiryAlertDays: String(savedExpiryAlertDays),
   };
   const parsed = parseReleaseDays(form.releaseDays);
   const coverageDays = parseDays(form.coverageDays);
+  const expiryAlertDays = parseDays(form.expiryAlertDays);
   const dirty =
     saved !== undefined &&
     edited !== null &&
     (inventoryRulesChanged(edited, saved) ||
       edited.igvAffected !== saved.igvAffected ||
       edited.allowPurchaseToCourier !== saved.allowPurchaseToCourier ||
-      coverageDays !== savedCoverageDays);
+      coverageDays !== savedCoverageDays ||
+      expiryAlertDays !== savedExpiryAlertDays);
 
   const save = useMutation({
     mutationFn: (rules: InventoryRules) => saveInventoryRules(rules),
@@ -214,6 +222,29 @@ export default function InventoryRulesSection() {
               </p>
               {coverageDays === null ? <p className="text-xs text-destructive">Escribe un número entero de 1 a 365.</p> : null}
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="expiry-alert-days">Días de aviso de vencimiento</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="expiry-alert-days"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  className="w-24"
+                  value={form.expiryAlertDays}
+                  disabled={disabled}
+                  aria-invalid={expiryAlertDays === null || undefined}
+                  aria-describedby="expiry-alert-days-help"
+                  onChange={(e) => change({ expiryAlertDays: e.target.value })}
+                />
+                <span className="text-sm">días antes</span>
+              </div>
+              <p id="expiry-alert-days-help" className="text-xs text-muted-foreground">
+                En productos con lotes, con cuántos días de anticipación avisa «Lotes por vencer» (de 1 a 365). Los vencidos no se
+                despachan.
+              </p>
+              {expiryAlertDays === null ? <p className="text-xs text-destructive">Escribe un número entero de 1 a 365.</p> : null}
+            </div>
           </div>
 
           {serverError ? (
@@ -241,9 +272,9 @@ export default function InventoryRulesSection() {
               <Button
                 type="button"
                 size="sm"
-                disabled={!dirty || !parsed.ok || coverageDays === null || save.isPending}
+                disabled={!dirty || !parsed.ok || coverageDays === null || expiryAlertDays === null || save.isPending}
                 onClick={() => {
-                  if (!parsed.ok || coverageDays === null) return;
+                  if (!parsed.ok || coverageDays === null || expiryAlertDays === null) return;
                   save.mutate({
                     releaseAfterDays: parsed.value,
                     pickingRequired: form.pickingRequired,
@@ -251,6 +282,7 @@ export default function InventoryRulesSection() {
                     allowPurchaseToCourier: form.allowPurchaseToCourier,
                     // Solo si cambió: sin el campo, el servidor lo deja como estaba.
                     ...(coverageDays !== savedCoverageDays ? { defaultCoverageDays: coverageDays } : {}),
+                    ...(expiryAlertDays !== savedExpiryAlertDays ? { expiryAlertDays } : {}),
                   });
                 }}
               >

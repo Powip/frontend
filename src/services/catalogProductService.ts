@@ -26,6 +26,8 @@ export interface CatalogProductDetail {
   externalSource?: string | null;
   externalId?: string | null;
   trackingMode?: string | null;
+  /** FEAT-24 H5-L: «Maneja lotes» (lote y vencimiento al recibir; no con IMEI/serie ni en packs). */
+  tracksLots?: boolean;
 }
 
 export interface CatalogVariantDetail {

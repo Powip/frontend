@@ -11,6 +11,9 @@ jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { accessTok
 jest.mock("@/services/inventoryReportsService", () => ({ getInventoryAlerts: jest.fn() }));
 jest.mock("@/services/orderNumbersService", () => ({ resolveOrderNumbers: jest.fn() }));
 jest.mock("@/hooks/useCompanyWarehouses", () => ({ useCompanyWarehouses: () => ({ warehouses: [], nameOf: (id: string) => ({ w1: "Central", w2: "Olva" })[id] ?? "Almacén" }) }));
+// FEAT-24 H5-L: «Vencimiento en dinero» tiene su propio test.
+jest.mock("@/components/lots/ExpiryValueSection", () => ({ __esModule: true, default: () => null }));
+jest.mock("@/services/variantCodesService", () => ({ fetchVariantsByIds: jest.fn().mockResolvedValue([]) }));
 
 const DATA: InventoryAlerts = {
   generatedAt: "2026-11-18T15:00:00Z",

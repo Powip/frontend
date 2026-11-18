@@ -51,12 +51,14 @@ export const ALERT_META: Record<string, AlertMeta> = {
   reservas_viejas: { title: "Reserva vieja", tone: "amber", href: "/operaciones/pedidos", action: "Ver pedidos" },
   devoluciones_por_recibir: { title: "Devolución sin recibir", tone: "amber", href: "/inventario/recepciones", action: "Recibir" },
   sku_por_vincular: { title: "SKU por vincular", tone: "slate", href: "/inventario/unificacion", action: "Vincular" },
-  lotes_por_vencer: { title: "Lotes por vencer", tone: "amber", href: "/inventario/stock", action: "Ver stock" },
+  lotes_por_vencer: { title: "Lotes por vencer", tone: "amber", href: "/inventario/alertas#vencimiento", action: "Ver vencimientos" },
   investigacion_vencida: { title: "Investigación vencida", tone: "slate", href: "/inventario/stock", action: "Revisar" },
   // FEAT-24 H8: conciliaciones con el courier y reclamos viejos, con enlace a Inventario › Couriers.
   conciliacion_courier_pendiente: { title: "Courier no cuadra", tone: "amber", href: COURIERS_HREF, action: "Conciliar" },
   reclamos_abiertos_viejos: { title: "Reclamo al courier sin cobrar", tone: "amber", href: COURIERS_HREF, action: "Ver reclamo" },
   packs_bajo_margen: { title: "Pack bajo margen", tone: "slate", href: "/productos", action: "Revisar pack" },
+  // FEAT-24 H5-L: los dos llevan a «Vencimiento en dinero», en esta misma pantalla.
+  lotes_vencidos_con_stock: { title: "Lote vencido con stock", tone: "red", href: "/inventario/alertas#vencimiento", action: "Ver vencimientos" },
 };
 
 const metaOf = (type: string): AlertMeta => ALERT_META[type] ?? { title: type, tone: "slate", href: "/inventario/stock", action: "Ver" };
@@ -72,7 +74,14 @@ const days = (value: number | null | undefined) => (value === null || value === 
 /** Número legible del pedido: el que resolvió ventas o «Pedido». */
 const orderText = (orderId: string, orderNumbers: Record<string, string>) => orderNumbers[orderId] ?? "Pedido";
 
-function rowsOf(alert: InventoryAlert, ctx: { orderNumbers: Record<string, string>; warehouseName: (id: string) => string }): AlertRow[] {
+interface RowsContext {
+  orderNumbers: Record<string, string>;
+  warehouseName: (id: string) => string;
+  /** FEAT-24 H5-L: nombre de la variante (las alertas de lotes solo traen `variantId`). */
+  variantName: (variantId: string) => string | undefined;
+}
+
+function rowsOf(alert: InventoryAlert, ctx: RowsContext): AlertRow[] {
   const meta = metaOf(alert.type);
   const href = alertHref(alert);
   const base = (key: string, description: string, overrides: Partial<AlertRow> = {}): AlertRow => ({
@@ -141,6 +150,24 @@ function rowsOf(alert: InventoryAlert, ctx: { orderNumbers: Record<string, strin
           `${alert.count} ${alert.count === 1 ? "SKU de tus canales no está unido" : "SKU de tus canales no están unidos"} a una variante de POWIP. Las ventas con esos SKU no reservan stock.`,
         ),
       ];
+    // FEAT-24 H5-L: un renglón por lote y almacén.
+    case "lotes_por_vencer":
+      return (alert.items as LotAlertItem[]).map((item) => {
+        const left = item.daysToExpiry === null || item.daysToExpiry === undefined ? "" : item.daysToExpiry <= 0 ? " vencen hoy" : ` vencen en ${days(item.daysToExpiry)}`;
+        const blocked = item.status === "bloqueado" ? " (bloqueado)" : "";
+        return base(
+          `${item.lotId}:${item.inventoryId}`,
+          `${lotWhat(item, ctx)}${blocked} en ${item.inventoryName || ctx.warehouseName(item.inventoryId)}: ${item.quantity} und${left}. Véndelo primero, trasládalo o haz una promoción.`,
+        );
+      });
+    case "lotes_vencidos_con_stock":
+      return (alert.items as LotAlertItem[]).map((item) => {
+        const ago = item.daysToExpiry !== null && item.daysToExpiry !== undefined && item.daysToExpiry < 0 ? ` hace ${days(-item.daysToExpiry)}` : "";
+        return base(
+          `${item.lotId}:${item.inventoryId}`,
+          `${lotWhat(item, ctx)} en ${item.inventoryName || ctx.warehouseName(item.inventoryId)}: ${item.quantity} und vencidas${ago}. No se despachan: registra la merma.`,
+        );
+      });
     default:
       return alert.count > 0 ? [base("total", `${alert.count} por revisar.`)] : [];
   }
@@ -150,8 +177,15 @@ function rowsOf(alert: InventoryAlert, ctx: { orderNumbers: Record<string, strin
  * Filas de la lista: solo las alertas encendidas y con algo. Si una alerta tiene más de lo que trajo la lista
  * corta, una fila final dice cuántas faltan.
  */
-export function alertRows(data: InventoryAlerts, ctx: { orderNumbers?: Record<string, string>; warehouseName?: (id: string) => string } = {}): AlertRow[] {
-  const context = { orderNumbers: ctx.orderNumbers ?? {}, warehouseName: ctx.warehouseName ?? (() => "Almacén") };
+export function alertRows(
+  data: InventoryAlerts,
+  ctx: { orderNumbers?: Record<string, string>; warehouseName?: (id: string) => string; variantName?: (variantId: string) => string | undefined } = {},
+): AlertRow[] {
+  const context: RowsContext = {
+    orderNumbers: ctx.orderNumbers ?? {},
+    warehouseName: ctx.warehouseName ?? (() => "Almacén"),
+    variantName: ctx.variantName ?? (() => undefined),
+  };
   return data.alerts
     .filter((alert) => alert.enabled && alert.count > 0)
     .flatMap((alert) => {
@@ -191,3 +225,37 @@ export function alertOrderIds(data: InventoryAlerts): string[] {
 
 /** Texto del contador (badge): «99+» desde 100. */
 export const alertBadgeText = (total: number): string => (total > 99 ? "99+" : String(total));
+
+/* ---------------------------------------------------------------------------
+   FEAT-24 H5-L — alertas de lotes
+--------------------------------------------------------------------------- */
+
+/** Ítem de `lotes_por_vencer` y `lotes_vencidos_con_stock`: lote × almacén con stock (sin nombre de producto). */
+interface LotAlertItem {
+  lotId: string;
+  lotNumber: string;
+  variantId: string;
+  inventoryId: string;
+  inventoryName?: string | null;
+  daysToExpiry?: number | null;
+  status?: string;
+  quantity: number;
+}
+
+const LOT_ALERTS = ["lotes_por_vencer", "lotes_vencidos_con_stock"];
+
+/** «Crema Centella · 50 ml · lote L2402» (o «Lote L2402» si todavía no se sabe el nombre). */
+function lotWhat(item: LotAlertItem, ctx: RowsContext): string {
+  const name = ctx.variantName(item.variantId);
+  return name ? `${name} · lote ${item.lotNumber}` : `Lote ${item.lotNumber}`;
+}
+
+/** Variantes de las alertas de lotes, para pedir sus nombres al catálogo. */
+export function alertLotVariantIds(data: InventoryAlerts): string[] {
+  const ids = new Set<string>();
+  for (const alert of data.alerts) {
+    if (!LOT_ALERTS.includes(alert.type) || !alert.enabled) continue;
+    for (const item of alert.items as Array<{ variantId?: string }>) if (item.variantId) ids.add(item.variantId);
+  }
+  return [...ids].sort();
+}

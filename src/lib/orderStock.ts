@@ -2,6 +2,8 @@
 // estado de stock del pedido, bandejas «Sin stock» / «Sin reserva», picking y
 // permisos. Sin React ni HTTP para poder probarla sola.
 
+import { expiredLotDispatchMessage } from "@/lib/lots";
+
 export const ORDER_STOCK_STATES = [
   "reserved",
   "sin_stock",
@@ -97,8 +99,13 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
 export const DISPATCH_PENDING_MESSAGE =
   "El despacho quedó pendiente: se reintenta solo. No hace falta volver a completarlo.";
 
-/** Mensaje al fallar «Completar»: 409 = lo que dice el servidor (p. ej. el faltante); 503 = quedó pendiente. */
+/**
+ * Mensaje al fallar «Completar»: 409 = lo que dice el servidor (p. ej. el faltante); 503 = quedó pendiente.
+ * FEAT-24 H5-L: el 409 `LOTE_VENCIDO` («solo quedan lotes vencidos o bloqueados») se explica con qué hacer.
+ */
 export function pickingCompleteErrorMessage(error: unknown): string {
+  const expired = expiredLotDispatchMessage(error);
+  if (expired) return expired;
   const status = apiErrorStatus(error);
   if (status === 503) return DISPATCH_PENDING_MESSAGE;
   if (status === 403) return apiErrorMessage(error, "No tienes permiso para despachar pedidos.");

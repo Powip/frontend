@@ -44,6 +44,14 @@ describe("variantes para Recepciones (FEAT-24 H2-F)", () => {
     expect(axiosAuth.post).toHaveBeenCalledWith(`${GATEWAY.products}/product-variant/multiple/by-ids`, { ids: ["v1", "v2"] });
   });
 
+  it("FEAT-24 H5-L: marca las variantes de productos que manejan lotes", async () => {
+    jest.mocked(axiosAuth.post).mockResolvedValue({
+      data: [{ id: "v1", sku: "CREMA", attributeValues: {}, product: { name: "Crema", companyId: COMPANY, tracksLots: true } }],
+    });
+    const [variant] = await fetchVariantsByIds(["v1"], COMPANY);
+    expect(variant.tracksLots).toBe(true);
+  });
+
   it("parte los ids en bloques de 200 y no llama sin ids", async () => {
     jest.mocked(axiosAuth.post).mockResolvedValue({ data: [] });
     await fetchVariantsByIds([], COMPANY);

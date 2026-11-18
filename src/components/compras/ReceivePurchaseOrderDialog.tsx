@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { Info, ScanBarcode } from "lucide-react";
+import { Info, Plus, ScanBarcode, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,8 +19,12 @@ import { warehouseErrorMessage } from "@/components/forms/warehouseUi";
 import { playErrorBeep } from "@/lib/errorBeep";
 import type { WriteResult } from "@/lib/offlineQueue";
 import { isNetworkError } from "@/lib/offlineStore";
+import { LOT_COMMENT_MAX, LOT_NUMBER_MAX, isLotReceiveConflict, lotWriteErrorMessage } from "@/lib/lots";
+import { useLotTrackedVariants, type LotTracking } from "@/hooks/useLotTrackedVariants";
 import {
   addOneToLine,
+  addReceiveLot,
+  applyLotTracking,
   buildReceiveLines,
   fillPending,
   httpStatus,
@@ -31,7 +35,9 @@ import {
   receiveLineProblem,
   receiveScanMessage,
   receiveTotal,
+  removeReceiveLot,
   resolveReceiveScan,
+  setReceiveLot,
   setReceiveQuantity,
   type ReceiveDraftLine,
 } from "@/lib/purchaseOrders";
@@ -53,6 +59,11 @@ import { Money } from "./PurchaseBits";
 // manda la recepción por la cola sin conexión, `renderScanner` pone el escáner
 // con cámara, `localLookup` resuelve códigos sin señal y `onFeedback` suena y
 // vibra. Cada apertura tiene su `operationId`: reintentar no duplica.
+//
+// FEAT-24 H5-L: si el producto maneja lotes, cada línea pide lote y
+// vencimiento (obligatorios) y se puede partir en varios lotes. Qué productos
+// manejan lotes lo dice el catálogo (`product.tracksLots`); el celular lo pasa
+// con lo descargado (`lotTracking`) para recibir sin señal.
 
 export type ReceiveFeedbackKind = "ok" | "error";
 
@@ -72,6 +83,8 @@ interface Props {
   renderScanner?: (scan: (code: string) => void) => ReactNode;
   localLookup?: (code: string) => VariantCodeMatch[];
   onFeedback?: (kind: ReceiveFeedbackKind) => void;
+  /** FEAT-24 H5-L: qué variantes manejan lotes. Sin la prop, el diálogo lo consulta al catálogo. */
+  lotTracking?: LotTracking;
 }
 
 export default function ReceivePurchaseOrderDialog({
@@ -87,6 +100,7 @@ export default function ReceivePurchaseOrderDialog({
   renderScanner,
   localLookup,
   onFeedback,
+  lotTracking: lotTrackingProp,
 }: Props) {
   const [lines, setLinesState] = useState<ReceiveDraftLine[]>(() => receiveDraft(order, fill));
   const linesRef = useRef(lines);
@@ -101,6 +115,20 @@ export default function ReceivePurchaseOrderDialog({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const lookups = useRef(new Map<string, VariantCodeMatch[]>());
   const scans = useRef<Promise<void>>(Promise.resolve());
+
+  // FEAT-24 H5-L: las líneas de productos con lotes pasan a pedir lote y vencimiento.
+  const lineVariantIds = useMemo(() => order.lines.map((line) => line.variantId), [order.lines]);
+  const fetchedTracking = useLotTrackedVariants(lineVariantIds, companyId, { enabled: !lotTrackingProp });
+  const tracking = lotTrackingProp ?? fetchedTracking;
+  const trackedIds = tracking.status === "ready" ? tracking.variantIds : null;
+  useEffect(() => {
+    if (!trackedIds) return;
+    const next = applyLotTracking(linesRef.current, trackedIds);
+    if (next !== linesRef.current) {
+      linesRef.current = next;
+      setLinesState(next);
+    }
+  }, [trackedIds]);
 
   const fail = (message: string) => {
     setScanInfo(null);
@@ -162,6 +190,11 @@ export default function ReceivePurchaseOrderDialog({
       onReceived(written.status === "done" ? written.result : undefined);
     },
     onError: (error) => {
+      // FEAT-24 H5-L: el lote ya existe con otra fecha (o no tiene saldo): se corrige el lote, no hace falta refrescar.
+      if (isLotReceiveConflict(error)) {
+        setSubmitError(lotWriteErrorMessage(error, "Revisa el lote y la fecha de vencimiento."));
+        return;
+      }
       if (httpStatus(error) === 409) {
         setSubmitError(warehouseErrorMessage(error, "Lo pendiente cambió: revisa las cantidades."));
         onConflict?.();
@@ -172,7 +205,8 @@ export default function ReceivePurchaseOrderDialog({
   });
 
   const busy = receive.isPending;
-  const valid = receiveDraftValid(lines);
+  const checkingLots = tracking.status === "loading";
+  const valid = receiveDraftValid(lines) && !checkingLots;
   const total = receiveTotal(lines);
 
   return (
@@ -227,6 +261,19 @@ export default function ReceivePurchaseOrderDialog({
           ) : null}
         </div>
 
+        {checkingLots ? (
+          <p role="status" className="text-xs text-muted-foreground">
+            Revisando qué productos manejan lotes…
+          </p>
+        ) : tracking.status === "error" ? (
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+            <span>No se pudo revisar qué productos manejan lotes: si alguno los maneja, la recepción pedirá el lote.</span>
+            <Button type="button" variant="outline" size="sm" className="h-7" onClick={tracking.retry}>
+              Reintentar
+            </Button>
+          </div>
+        ) : null}
+
         <div className="flex justify-end">
           <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => setLines(fillPending(linesRef.current))}>
             Recibir todo lo pendiente
@@ -259,6 +306,15 @@ export default function ReceivePurchaseOrderDialog({
                 </div>
                 {done ? (
                   <p className="text-xs text-teal-700 dark:text-teal-300">Completo: ya se recibió todo.</p>
+                ) : line.lots ? (
+                  <ReceiveLots
+                    line={line}
+                    disabled={busy}
+                    problem={problem}
+                    onChange={(key, patch) => setLines(setReceiveLot(linesRef.current, line.itemId, key, patch))}
+                    onAdd={() => setLines(addReceiveLot(linesRef.current, line.itemId))}
+                    onRemove={(key) => setLines(removeReceiveLot(linesRef.current, line.itemId, key))}
+                  />
                 ) : (
                   <div className="flex flex-wrap items-center gap-3">
                     <Label htmlFor={`receive-${line.itemId}`} className="text-xs">
@@ -309,5 +365,92 @@ export default function ReceivePurchaseOrderDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * FEAT-24 H5-L — lotes de una línea (mockup `mRecOC`: «Lote / vence»): número, vencimiento, unidades y comentario por
+ * lote; «Agregar otro lote» parte la línea. Lo recibido es la suma de los lotes.
+ */
+function ReceiveLots({
+  line,
+  disabled,
+  problem,
+  onChange,
+  onAdd,
+  onRemove,
+}: {
+  line: ReceiveDraftLine;
+  disabled: boolean;
+  problem: string | null;
+  onChange: (key: string, patch: { lotNumber?: string; expiresAt?: string; comment?: string; quantity?: string }) => void;
+  onAdd: () => void;
+  onRemove: (key: string) => void;
+}) {
+  const lots = line.lots ?? [];
+  const total = lots.reduce((sum, lot) => sum + (/^\d+$/.test(lot.quantity.trim()) ? Number(lot.quantity.trim()) : 0), 0);
+  return (
+    <div className="space-y-2" role="group" aria-label={`Lotes: ${line.label}`}>
+      <p className="text-xs font-medium text-muted-foreground">Maneja lotes: lote y vencimiento obligatorios.</p>
+      {lots.map((lot, index) => {
+        const name = lots.length > 1 ? `${line.label} (lote ${index + 1})` : line.label;
+        return (
+          <div key={lot.key} className="grid gap-2 rounded-md bg-muted/40 p-2 sm:grid-cols-[1fr_10rem_6rem_auto]" data-testid={`receive-lot-${line.itemId}-${index}`}>
+            <Input
+              aria-label={`Lote: ${name}`}
+              className="font-mono"
+              placeholder="Lote"
+              maxLength={LOT_NUMBER_MAX}
+              value={lot.lotNumber}
+              disabled={disabled}
+              onChange={(e) => onChange(lot.key, { lotNumber: e.target.value })}
+            />
+            <Input
+              aria-label={`Vencimiento: ${name}`}
+              type="date"
+              value={lot.expiresAt}
+              disabled={disabled}
+              onChange={(e) => onChange(lot.key, { expiresAt: e.target.value })}
+            />
+            <Input
+              aria-label={`Unidades: ${name}`}
+              type="number"
+              inputMode="numeric"
+              min={0}
+              max={line.pending}
+              value={lot.quantity}
+              disabled={disabled}
+              onChange={(e) => onChange(lot.key, { quantity: e.target.value })}
+            />
+            {lots.length > 1 ? (
+              <Button type="button" variant="ghost" size="icon" aria-label={`Quitar lote ${index + 1} de ${line.label}`} disabled={disabled} onClick={() => onRemove(lot.key)}>
+                <X className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            ) : (
+              <span />
+            )}
+            <Input
+              aria-label={`Comentario del lote: ${name}`}
+              className="sm:col-span-4"
+              placeholder="Comentario (opcional)"
+              maxLength={LOT_COMMENT_MAX}
+              value={lot.comment}
+              disabled={disabled}
+              onChange={(e) => onChange(lot.key, { comment: e.target.value })}
+            />
+          </div>
+        );
+      })}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Button type="button" variant="outline" size="sm" disabled={disabled} onClick={onAdd}>
+          <Plus className="mr-1 h-4 w-4" aria-hidden="true" />
+          Agregar otro lote
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          Recibe ahora: <strong className="text-foreground">{total}</strong> de {line.pending}
+        </span>
+      </div>
+      {problem ? <p className="text-xs text-destructive">{problem}</p> : null}
+    </div>
   );
 }

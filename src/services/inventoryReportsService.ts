@@ -236,6 +236,8 @@ export interface KardexRow {
   sku: string | null;
   companySku: string | null;
   attributes: Record<string, string> | null;
+  /** FEAT-24 H5-L: en qué lotes entró o salió (null = producto sin lotes o fila anterior a los lotes). */
+  lots?: Array<{ lotId: string | null; lotNumber: string | null; expiresAt?: string | null; quantity: number }> | null;
 }
 
 export interface KardexPage {

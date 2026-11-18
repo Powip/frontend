@@ -173,6 +173,8 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
 
   const [variants, setVariants] = useState<VariantForm[]>([]);
   const [trackingMode, setTrackingMode] = useState<TrackingMode>("NONE");
+  // FEAT-24 H5-L: «Maneja lotes» en el alta (en la edición se cambia en la ficha). No con IMEI/serie.
+  const [tracksLots, setTracksLots] = useState(false);
   const [companySku, setCompanySku] = useState("");
   // FEAT-24 H3: unidad de compra del producto («Caja» × 12). Vacía = se compra por unidad.
   const [purchaseUnit, setPurchaseUnit] = useState("");
@@ -622,6 +624,7 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
     setCatalogCategoryId("");
     setSimpleVariant(emptyVariant());
     setTrackingMode("NONE");
+    setTracksLots(false);
     setMessage("");
   };
 
@@ -783,6 +786,7 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
 
     const payload = {
       ...(isTracked(trackingMode) ? { trackingMode } : {}),
+      ...(tracksLots && !isTracked(trackingMode) ? { tracksLots: true } : {}),
       name: form.name,
       description: form.description,
       companySku: companySku.trim() || undefined,
@@ -939,6 +943,28 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                     {productKind === "simple"
                       ? "Una sola presentación: un SKU, un código de barras y un precio."
                       : "Varias presentaciones (talla, color…): cada variante tiene su SKU y su código de barras."}
+                  </p>
+                </div>
+              ) : null}
+              {!isEditMode ? (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="product-tracks-lots"
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={tracksLots && !isTracked(trackingMode)}
+                      disabled={isSubmitting || isTracked(trackingMode)}
+                      onChange={(event) => setTracksLots(event.target.checked)}
+                    />
+                    <Label htmlFor="product-tracks-lots" className="font-normal">Este producto maneja lotes (lote y vencimiento)</Label>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {isTracked(trackingMode)
+                      ? "Un producto con IMEI o serie no maneja lotes."
+                      : tracksLots
+                        ? "Al recibir una compra se pide el lote y la fecha de vencimiento. El stock inicial entra sin lote: regístralo después en la ficha (pestaña Lotes)."
+                        : "Actívalo en productos con fecha de vencimiento (cremas, suplementos, alimentos)."}
                   </p>
                 </div>
               ) : null}

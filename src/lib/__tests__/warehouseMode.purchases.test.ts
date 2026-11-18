@@ -83,6 +83,17 @@ describe("recibir OC por la cola (modo almacén)", () => {
     expect(receivePurchaseOrder).toHaveBeenCalledTimes(1);
   });
 
+  it("FEAT-24 H5-L: con la línea partida en lotes compara la suma con lo pendiente", async () => {
+    const split = { ...payload, body: { ...body, lines: [{ itemId: "item-1", quantity: 3, lotNumber: "L1", expiresAt: "2027-01-31" }, { itemId: "item-1", quantity: 2, lotNumber: "L2", expiresAt: "2027-02-28" }] } };
+    // Quedan 3 pendientes: 3 + 2 ya no alcanza (cada lote por separado sí).
+    jest.mocked(getPurchaseOrder).mockResolvedValueOnce(detail(2)).mockResolvedValueOnce(detail(7));
+    jest.mocked(receivePurchaseOrder).mockRejectedValueOnce(networkError());
+    const queue = queueWithHandlers();
+    await queue.enqueue(WAREHOUSE_ACTION.purchaseReceive, split);
+    await expect(queue.flush()).resolves.toMatchObject({ review: 1 });
+    expect(receivePurchaseOrder).toHaveBeenCalledTimes(1);
+  });
+
   it("si la OC se anuló, va a revisar", async () => {
     jest.mocked(getPurchaseOrder).mockResolvedValueOnce(detail(0)).mockResolvedValueOnce(detail(0, { status: "ANULADA" }));
     jest.mocked(receivePurchaseOrder).mockRejectedValueOnce(networkError());

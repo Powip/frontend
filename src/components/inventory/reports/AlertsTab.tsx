@@ -7,7 +7,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useInventoryAlerts } from "@/hooks/useInventoryAlerts";
 import { useCompanyWarehouses } from "@/hooks/useCompanyWarehouses";
 import { resolveOrderNumbers } from "@/services/orderNumbersService";
-import { alertCounts, alertOrderIds, alertRows, upcomingAlerts, type AlertTone } from "@/lib/reports/alerts";
+import { alertCounts, alertLotVariantIds, alertOrderIds, alertRows, upcomingAlerts, type AlertTone } from "@/lib/reports/alerts";
+import { variantNames } from "@/lib/lots";
+import { fetchVariantsByIds } from "@/services/variantCodesService";
+import ExpiryValueSection from "@/components/lots/ExpiryValueSection";
 import { formatPeruDateTime } from "@/components/inventory/movementLabels";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,9 +39,22 @@ export default function AlertsTab() {
     enabled: orderIds.length > 0,
     staleTime: 5 * 60_000,
   });
+  // FEAT-24 H5-L: las alertas de lotes traen solo la variante; el nombre sale del catálogo.
+  const lotVariantIds = useMemo(() => (alerts.data ? alertLotVariantIds(alerts.data) : []), [alerts.data]);
+  const lotVariants = useQuery({
+    queryKey: ["lot-variant-names", companyId, lotVariantIds],
+    queryFn: () => fetchVariantsByIds(lotVariantIds, companyId),
+    enabled: lotVariantIds.length > 0,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const lotNames = useMemo(() => variantNames(lotVariants.data ?? []), [lotVariants.data]);
   const rows = useMemo(
-    () => (alerts.data ? alertRows(alerts.data, { orderNumbers: orderNumbers.data ?? {}, warehouseName: nameOf }) : []),
-    [alerts.data, orderNumbers.data, nameOf],
+    () =>
+      alerts.data
+        ? alertRows(alerts.data, { orderNumbers: orderNumbers.data ?? {}, warehouseName: nameOf, variantName: (id) => lotNames.get(id)?.name })
+        : [],
+    [alerts.data, orderNumbers.data, nameOf, lotNames],
   );
 
   return (
@@ -98,6 +114,9 @@ export default function AlertsTab() {
       ) : alerts.isFetching ? (
         <p role="status" className="text-sm text-muted-foreground">Cargando alertas…</p>
       ) : null}
+
+      {/* FEAT-24 H5-L: «Vencimiento en dinero» (mockup vAlertas); las alertas de lotes llevan aquí. */}
+      <ExpiryValueSection />
     </div>
   );
 }

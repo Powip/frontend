@@ -1,7 +1,9 @@
 import { buildSaveBody, draftFromAssignments, draftProblem, sameDraft } from "../userWarehouses";
 import {
   buildAdjustmentBody,
+  buildTransferBody,
   buildTransferReceiveLines,
+  clearDraftLots,
   canCancelTransfer,
   countDecisionOptions,
   countHidesSystem,
@@ -78,6 +80,26 @@ describe("ajustes y conteos", () => {
     expect(buildAdjustmentBody(form, "op-1")).toEqual({ inventoryId: "w-1", kind: "merma", reason: "dano", lines: [{ variantId: "v-1", quantity: 3, direction: "OUT" }], operationId: "op-1" });
     expect(buildAdjustmentBody({ ...form, type: "positivo" }, "op-2").lines[0]).toMatchObject({ direction: "IN" });
     expect(buildAdjustmentBody({ ...form, type: "positivo" }, "op-2").kind).toBe("ajuste");
+  });
+
+  it("FEAT-24 H5-L: el lote elegido viaja como lotId; sin elegir, no va (automático)", () => {
+    const lines = [
+      { variantId: "v-1", label: "Crema", sku: "C", quantity: "3", lotId: "l-1" },
+      { variantId: "v-2", label: "Polo", sku: "P", quantity: "1", lotId: "" },
+    ];
+    const adjust = { inventoryId: "w-1", type: "merma" as const, reason: "vencimiento" as const, note: "", lines };
+    expect(buildAdjustmentBody(adjust, "op-1").lines).toEqual([
+      { variantId: "v-1", quantity: 3, direction: "OUT", lotId: "l-1" },
+      { variantId: "v-2", quantity: 1, direction: "OUT" },
+    ]);
+    const move = { originInventoryId: "w-1", destinationInventoryId: "w-2", freight: "", remissionGuide: "", notes: "", lines };
+    expect(buildTransferBody(move).lines).toEqual([
+      { variantId: "v-1", quantity: 3, lotId: "l-1" },
+      { variantId: "v-2", quantity: 1 },
+    ]);
+    expect(clearDraftLots(lines).map((line) => line.lotId)).toEqual(["", ""]);
+    const plain = [{ variantId: "v-2", label: "Polo", sku: "P", quantity: "1" }];
+    expect(clearDraftLots(plain)).toBe(plain);
   });
 
   it("el conteo ciego oculta el sistema solo mientras está en curso", () => {

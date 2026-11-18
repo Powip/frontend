@@ -17,10 +17,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useMyWarehouses } from "@/hooks/useMyWarehouses";
+import { useLotTrackedVariants } from "@/hooks/useLotTrackedVariants";
 import { newOperationId } from "@/lib/purchaseOrders";
+import LotSelect from "@/components/lots/LotSelect";
 import {
   addDraftLines,
   buildTransferBody,
+  clearDraftLots,
   emptyTransferForm,
   opsErrorMessage,
   parseQuantity,
@@ -80,6 +83,9 @@ export default function TransferFormDialog({ companyId, transfer, defaultOriginI
     staleTime: 15_000,
     retry: false,
   });
+  // FEAT-24 H5-L: en productos con lotes, cada línea puede elegir el lote (si no, sale el que vence antes).
+  const lotTracking = useLotTrackedVariants(variantIds, companyId);
+  const tracksLots = (variantId: string) => lotTracking.status === "ready" && lotTracking.variantIds.has(variantId);
   const stockAt = useMemo(() => {
     const map = new Map<string, { physical: number; reserved: number }>();
     for (const row of stockQuery.data ?? [])
@@ -164,7 +170,7 @@ export default function TransferFormDialog({ companyId, transfer, defaultOriginI
               className={SELECT_CLASS}
               value={form.originInventoryId}
               disabled={busy}
-              onChange={(event) => change({ originInventoryId: event.target.value })}
+              onChange={(event) => change({ originInventoryId: event.target.value, lines: clearDraftLots(form.lines) })}
             >
               <option value="">{warehousesQuery.isLoading || scope.isLoading ? "Cargando…" : "Elige el origen"}</option>
               {origins.map((warehouse) => (
@@ -268,6 +274,19 @@ export default function TransferFormDialog({ companyId, transfer, defaultOriginI
                       <td className="px-3 py-2">
                         <p>{line.label}</p>
                         <p className="font-mono text-xs text-muted-foreground">{line.sku}</p>
+                        {tracksLots(line.variantId) ? (
+                          <LotSelect
+                            variantId={line.variantId}
+                            inventoryId={form.originInventoryId}
+                            direction="OUT"
+                            label={`Lote: ${line.label}`}
+                            value={line.lotId ?? ""}
+                            disabled={busy}
+                            onChange={(lotId) =>
+                              change({ lines: form.lines.map((candidate) => (candidate.variantId === line.variantId ? { ...candidate, lotId } : candidate)) })
+                            }
+                          />
+                        ) : null}
                       </td>
                       <td className={`px-3 py-2 text-right tabular-nums ${available !== null && available <= 0 ? "text-destructive" : ""}`}>{available ?? "—"}</td>
                       <td className="px-3 py-2 text-right">
