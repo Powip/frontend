@@ -17,7 +17,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useMyWarehouses } from "@/hooks/useMyWarehouses";
+import { useLotTrackedVariants } from "@/hooks/useLotTrackedVariants";
 import { formatMoney, newOperationId } from "@/lib/purchaseOrders";
+import LotSelect from "@/components/lots/LotSelect";
 import {
   ADJUSTMENT_REASON_LABEL,
   ADJUSTMENT_REASONS,
@@ -26,6 +28,7 @@ import {
   addDraftLines,
   adjustmentFormProblem,
   buildAdjustmentBody,
+  clearDraftLots,
   emptyAdjustmentForm,
   opsErrorMessage,
   parseQuantity,
@@ -63,6 +66,10 @@ export default function AdjustmentFormDialog({ companyId, canSeeCosts, onClose, 
 
   const options = useMemo(() => scope.operable(warehouses.filter((warehouse) => warehouse.status)), [scope, warehouses]);
   const variantIds = useMemo(() => [...new Set(form.lines.map((line) => line.variantId))].sort(), [form.lines]);
+  // FEAT-24 H5-L: en productos con lotes, cada línea puede elegir el lote (la merma del lote vencido, por ejemplo).
+  const lotTracking = useLotTrackedVariants(variantIds, companyId);
+  const tracksLots = (variantId: string) => lotTracking.status === "ready" && lotTracking.variantIds.has(variantId);
+  const direction = form.type === "positivo" ? "IN" : "OUT";
   const costsQuery = useQuery({
     queryKey: ["adjustment-costs", companyId, variantIds],
     queryFn: () => getVariantCosts(variantIds),
@@ -113,7 +120,7 @@ export default function AdjustmentFormDialog({ companyId, canSeeCosts, onClose, 
         <div className="grid gap-4 md:grid-cols-3">
           <div className="space-y-1">
             <Label htmlFor="aj-warehouse">Almacén</Label>
-            <select id="aj-warehouse" className={SELECT_CLASS} value={form.inventoryId} disabled={busy} onChange={(event) => change({ inventoryId: event.target.value })}>
+            <select id="aj-warehouse" className={SELECT_CLASS} value={form.inventoryId} disabled={busy} onChange={(event) => change({ inventoryId: event.target.value, lines: clearDraftLots(form.lines) })}>
               <option value="">{warehousesQuery.isLoading || scope.isLoading ? "Cargando…" : "Elige el almacén"}</option>
               {options.map((warehouse) => (
                 <option key={warehouse.id} value={warehouse.id}>
@@ -124,7 +131,17 @@ export default function AdjustmentFormDialog({ companyId, canSeeCosts, onClose, 
           </div>
           <div className="space-y-1">
             <Label htmlFor="aj-type">Tipo</Label>
-            <select id="aj-type" className={SELECT_CLASS} value={form.type} disabled={busy} onChange={(event) => change({ type: event.target.value as AdjustmentType })}>
+            <select
+              id="aj-type"
+              className={SELECT_CLASS}
+              value={form.type}
+              disabled={busy}
+              onChange={(event) => {
+                const type = event.target.value as AdjustmentType;
+                // Entrada ↔ salida: los lotes que se ofrecen cambian.
+                change({ type, ...((type === "positivo") !== (form.type === "positivo") ? { lines: clearDraftLots(form.lines) } : {}) });
+              }}
+            >
               {TYPES.map((type) => (
                 <option key={type} value={type}>
                   {ADJUSTMENT_TYPE_LABEL[type]}
@@ -182,6 +199,19 @@ export default function AdjustmentFormDialog({ companyId, canSeeCosts, onClose, 
                 <div className="min-w-0 flex-1">
                   <p className="text-sm">{line.label}</p>
                   <p className="font-mono text-xs text-muted-foreground">{line.sku}</p>
+                  {tracksLots(line.variantId) ? (
+                    <LotSelect
+                      variantId={line.variantId}
+                      inventoryId={form.inventoryId}
+                      direction={direction}
+                      label={`Lote: ${line.label}`}
+                      value={line.lotId ?? ""}
+                      disabled={busy}
+                      onChange={(lotId) =>
+                        change({ lines: form.lines.map((candidate) => (candidate.variantId === line.variantId ? { ...candidate, lotId } : candidate)) })
+                      }
+                    />
+                  ) : null}
                 </div>
                 <Input
                   aria-label={`Cantidad: ${line.label}`}

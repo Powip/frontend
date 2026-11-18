@@ -11,7 +11,7 @@ import { useExpiryAlertDays } from "@/hooks/useExpiryAlertDays";
 import { LOT_TONE_CLASS, lotDate, lotStatusView, lotWriteErrorMessage } from "@/lib/lots";
 import { warehouseOpsAccess } from "@/lib/warehouseOps";
 import { cn } from "@/lib/utils";
-import { listLots, updateLot, type LotRow, type UnlottedRow } from "@/services/lotsService";
+import { LOTS_QUERY_KEY, listLots, updateLot, type LotRow, type UnlottedRow } from "@/services/lotsService";
 import AssignLotDialog, { type AssignLotDefaults } from "./AssignLotDialog";
 import LotEditDialog from "./LotEditDialog";
 
@@ -20,8 +20,6 @@ import LotEditDialog from "./LotEditDialog";
 // y estado (vigente, por vencer, vencido o bloqueado), más lo «sin lote» de cada
 // almacén. Editar y bloquear: Administrador u Operaciones. «Registrar lote»
 // (pasa stock sin lote a un lote): Administrador, Operaciones o Almacén.
-
-export const LOTS_QUERY_KEY = "lots";
 
 export interface FichaLotVariant {
   id: string;

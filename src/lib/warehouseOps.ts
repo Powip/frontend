@@ -228,7 +228,13 @@ export interface DraftLine {
   label: string;
   sku: string;
   quantity: string;
+  /** FEAT-24 H5-L: lote elegido (vacío = automático: sale primero el que vence antes; en una entrada, «sin lote»). */
+  lotId?: string;
 }
+
+/** FEAT-24 H5-L: al cambiar el almacén o el sentido, el lote elegido deja de valer. */
+export const clearDraftLots = (lines: DraftLine[]): DraftLine[] =>
+  lines.some((line) => line.lotId) ? lines.map((line) => (line.lotId ? { ...line, lotId: "" } : line)) : lines;
 
 export interface TransferForm {
   originInventoryId: string;
@@ -260,6 +266,7 @@ export function transferFormFrom(transfer: Transfer): TransferForm {
       label: lineLabel(line),
       sku: line.sku ?? "",
       quantity: String(line.quantitySent),
+      ...(line.lotId ? { lotId: line.lotId } : {}),
     })),
   };
 }
@@ -297,7 +304,7 @@ export function buildTransferBody(form: TransferForm): SaveTransferBody {
     originInventoryId: form.originInventoryId,
     destinationInventoryId: form.destinationInventoryId,
     lines: form.lines
-      .map((line) => ({ variantId: line.variantId, quantity: parseQuantity(line.quantity, 1) ?? 0 }))
+      .map((line) => ({ variantId: line.variantId, quantity: parseQuantity(line.quantity, 1) ?? 0, ...(line.lotId ? { lotId: line.lotId } : {}) }))
       .filter((line) => line.quantity > 0),
     ...(freight ? { freight: Number(freight) } : {}),
     ...(form.remissionGuide.trim() ? { remissionGuide: form.remissionGuide.trim() } : {}),
@@ -445,7 +452,12 @@ export function buildAdjustmentBody(form: AdjustmentForm, operationId: string): 
     kind,
     reason: form.reason as AdjustmentReasonCode,
     ...(form.note.trim() ? { note: form.note.trim() } : {}),
-    lines: form.lines.map((line) => ({ variantId: line.variantId, quantity: parseQuantity(line.quantity, 1) ?? 0, direction })),
+    lines: form.lines.map((line) => ({
+      variantId: line.variantId,
+      quantity: parseQuantity(line.quantity, 1) ?? 0,
+      direction,
+      ...(line.lotId ? { lotId: line.lotId } : {}),
+    })),
     operationId,
   };
 }

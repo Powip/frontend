@@ -122,6 +122,22 @@ export function kardexLotsText(lots: KardexLot[] | null): string {
   return lots.map((lot) => `${lot.lotId ? lot.lotNumber || "Lote" : "Sin lote"} ${signed(Number(lot.quantity) || 0)}`).join(" · ");
 }
 
+/**
+ * Lote de una línea de traslado: en qué lotes salió («Lotes: L2408 ×3 · Sin lote ×1») o, en el borrador, el elegido
+ * («Lote L2408 · vence 30/08/2027»). `null` si no tiene lote.
+ */
+export function transferLineLotText(line: {
+  lotNumber?: string | null;
+  lotExpiresAt?: string | null;
+  lots?: Array<{ lotId: string | null; lotNumber: string | null; quantity: number }> | null;
+}): string | null {
+  if (line.lots?.length) {
+    return `Lotes: ${line.lots.map((lot) => `${lot.lotId ? lot.lotNumber || "Lote" : "Sin lote"} ×${Math.abs(Number(lot.quantity) || 0)}`).join(" · ")}`;
+  }
+  if (line.lotNumber) return `Lote ${line.lotNumber}${line.lotExpiresAt ? ` · vence ${lotDay(line.lotExpiresAt)}` : ""}`;
+  return null;
+}
+
 /* ---------------------------------------------------------------------------
    Errores (409 de logistics con `code`)
 --------------------------------------------------------------------------- */

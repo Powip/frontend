@@ -59,6 +59,9 @@ export interface LotList {
   truncated: boolean;
 }
 
+/** Clave de react-query de todo lo que se lee de `/lots` (invalidarla refresca ficha, selectores y vencimientos). */
+export const LOTS_QUERY_KEY = "lots";
+
 export interface LotListFilters {
   variantId?: string;
   inventoryId?: string;

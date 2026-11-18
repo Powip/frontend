@@ -55,6 +55,11 @@ export interface TransferLine {
   value?: number | null;
   investigationId?: string | null;
   receivedAt: string | null;
+  /** FEAT-24 H5-L: lote elegido en el borrador (null = automático) y en qué lotes salió al despachar. */
+  lotId?: string | null;
+  lotNumber?: string | null;
+  lotExpiresAt?: string | null;
+  lots?: Array<{ lotId: string | null; lotNumber: string | null; quantity: number }> | null;
 }
 
 export interface Transfer {
@@ -89,7 +94,8 @@ export interface Transfer {
 export interface SaveTransferBody {
   originInventoryId: string;
   destinationInventoryId: string;
-  lines: Array<{ variantId: string; quantity: number }>;
+  /** FEAT-24 H5-L: `lotId` opcional (sin él sale primero el que vence antes). */
+  lines: Array<{ variantId: string; quantity: number; lotId?: string }>;
   freight?: number;
   remissionGuide?: string;
   notes?: string;
@@ -209,7 +215,8 @@ export interface CreateAdjustmentBody {
   reason: AdjustmentReasonCode;
   note?: string;
   photoUrl?: string;
-  lines: Array<{ variantId: string; quantity: number; direction?: "IN" | "OUT" }>;
+  /** FEAT-24 H5-L: `lotId` opcional (salida sin él: el que vence antes; entrada sin él: «sin lote»). */
+  lines: Array<{ variantId: string; quantity: number; direction?: "IN" | "OUT"; lotId?: string }>;
   operationId: string;
 }
 
