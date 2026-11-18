@@ -117,4 +117,24 @@ describe("PickingPanel en el modo almacén (FEAT-24 H6-D)", () => {
     expect(await screen.findByText(/se reintenta solo/)).toBeInTheDocument();
     await waitFor(() => expect(loadView).toHaveBeenCalledTimes(2));
   });
+
+  it("FEAT-24 H5-L: completar con solo lotes vencidos o bloqueados lo explica (409 LOTE_VENCIDO desde la cola)", async () => {
+    setup(
+      {
+        complete: jest
+          .fn()
+          .mockRejectedValue(
+            new QueueRejectedError(
+              "Solo hay 0 unidades vigentes para despachar 2: el resto está en lotes vencidos o bloqueados. Registra la merma del lote vencido, desbloquéalo o recibe stock nuevo.",
+              409,
+            ),
+          ),
+      },
+      { loadView: async () => view(2) },
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Completar" }));
+    const alert = await screen.findByText(/^Solo quedan lotes vencidos o bloqueados: no se puede despachar\./);
+    expect(alert).toHaveTextContent("Solo hay 0 unidades vigentes para despachar 2");
+    expect(alert).toHaveTextContent("desbloquéalo en la ficha del producto (pestaña Lotes)");
+  });
 });

@@ -183,6 +183,8 @@ export function isExpiredLotError(error: unknown): boolean {
   return /lotes? vencidos? o bloqueados?/i.test(messageOf(error) ?? "");
 }
 
+const EXPIRED_LOT_ADVICE = "Registra la merma del lote vencido, desbloquéalo en la ficha del producto (pestaña Lotes) o recibe stock nuevo.";
+
 /**
  * Mensaje claro del 409 `LOTE_VENCIDO` al despachar o completar el picking (o `null` si es otro error):
  * «Solo quedan lotes vencidos o bloqueados de X: …» con qué hacer. `product` es el nombre del producto o del pedido.
@@ -199,17 +201,17 @@ export function expiredLotDispatchMessage(error: unknown, product?: string | nul
       const status = lot.status === "bloqueado" ? "bloqueado" : `vencido${typeof lot.expiresAt === "string" ? ` el ${lotDay(lot.expiresAt)}` : ""}`;
       return `${String(lot.number ?? "Lote")} (${status}, ${Number(lot.quantity) || 0} und)`;
     });
-  const detail = Number.isFinite(required) && Number.isFinite(usable) && data?.required !== undefined
-    ? ` Hay ${usable} ${usable === 1 ? "unidad vigente" : "unidades vigentes"} para despachar ${required}.`
-    : messageOf(error)
-      ? ` ${messageOf(error)}`
-      : "";
+  // ms-ventas reenvía solo el mensaje (con su propio consejo al final): se deja el dato y se da el consejo completo.
+  const server = (messageOf(error) ?? "").replace(/\s*Registra la merma[^.]*\.?\s*$/i, "").trim();
+  const detail =
+    data?.required !== undefined && Number.isFinite(required) && Number.isFinite(usable)
+      ? ` Hay ${usable} ${usable === 1 ? "unidad vigente" : "unidades vigentes"} para despachar ${required}.`
+      : server
+        ? ` ${server}${/[.!?]$/.test(server) ? "" : "."}`
+        : "";
   const which = blocked.length ? ` Lotes: ${blocked.join(", ")}.` : "";
   const what = product?.trim() ? ` de ${product.trim()}` : "";
-  return (
-    `Solo quedan lotes vencidos o bloqueados${what}: no se puede despachar.${detail}${which}` +
-    " Registra la merma del lote vencido, desbloquéalo en la ficha del producto (pestaña Lotes) o recibe stock nuevo."
-  ).replace(/\.\./g, ".");
+  return `Solo quedan lotes vencidos o bloqueados${what}: no se puede despachar.${detail}${which} ${EXPIRED_LOT_ADVICE}`;
 }
 
 /**

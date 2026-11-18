@@ -61,6 +61,13 @@ describe("errores de la API", () => {
     expect(pickingCompleteErrorMessage(httpError(403))).toBe("No tienes permiso para despachar pedidos.");
     expect(pickingCompleteErrorMessage(new Error("red"))).toMatch(/No se pudo completar/);
   });
+
+  it("FEAT-24 H5-L: el 409 de lotes vencidos o bloqueados dice qué hacer (también desde la cola del celular)", () => {
+    const server = "Solo hay 2 unidades vigentes para despachar 5: el resto está en lotes vencidos o bloqueados. Registra la merma del lote vencido, desbloquéalo o recibe stock nuevo.";
+    expect(pickingCompleteErrorMessage(httpError(409, server))).toBe(
+      "Solo quedan lotes vencidos o bloqueados: no se puede despachar. Solo hay 2 unidades vigentes para despachar 5: el resto está en lotes vencidos o bloqueados. Registra la merma del lote vencido, desbloquéalo en la ficha del producto (pestaña Lotes) o recibe stock nuevo.",
+    );
+  });
 });
 
 describe("picking", () => {
