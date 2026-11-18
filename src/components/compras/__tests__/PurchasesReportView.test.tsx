@@ -44,6 +44,9 @@ const REPORT: PurchasesReport = {
   orders: [],
 };
 
+/** Lo que manda la fachada a quien no ve costos: sin esas claves. */
+const withoutKeys = <T,>(value: T, keys: string[]): T => JSON.parse(JSON.stringify(value, (key, val) => (keys.includes(key) ? undefined : val)));
+
 function renderView() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}><PurchasesReportView /></QueryClientProvider>);
@@ -85,13 +88,7 @@ it("pide el rango del periodo elegido y valida el rango a mano", async () => {
 });
 
 it("sin la clave del monto muestra «••••» y grafica unidades", async () => {
-  const { amount: _a, averageTicket: _b, ...totals } = REPORT.totals;
-  jest.mocked(getPurchasesReport).mockResolvedValue({
-    ...REPORT,
-    totals,
-    byMonth: REPORT.byMonth.map(({ amount: _m, ...row }) => row),
-    bySupplier: REPORT.bySupplier.map(({ amount: _m, share: _s, ...row }) => row),
-  } as PurchasesReport);
+  jest.mocked(getPurchasesReport).mockResolvedValue(withoutKeys(REPORT, ["amount", "averageTicket", "share"]));
   renderView();
   expect(await screen.findByText("Unidades compradas por mes")).toBeInTheDocument();
   expect(screen.getByText("Total comprado").parentElement).toHaveTextContent("••••");

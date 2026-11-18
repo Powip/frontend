@@ -189,11 +189,9 @@ it("en una tienda suma solo sus almacenes: el compartido con la tienda Shopify c
 });
 
 it("sin rol de costos la fachada omite el valor y se ve «••••»", async () => {
-  const { value: _total, ...totals } = VALUATION.totals;
+  const masked = JSON.parse(JSON.stringify(VALUATION, (key, val) => (key === "value" ? undefined : val)));
   mockGet.mockImplementation(async (url) => ({
-    data: String(url).endsWith("/inventory-reports/valuation")
-      ? { ...VALUATION, totals, warehouses: VALUATION.warehouses.map(({ value: _value, ...warehouse }) => warehouse) }
-      : dataFor(String(url)),
+    data: String(url).endsWith("/inventory-reports/valuation") ? masked : dataFor(String(url)),
   }));
   render(<FinanceStats {...RANGE} />);
   await act(async () => {});

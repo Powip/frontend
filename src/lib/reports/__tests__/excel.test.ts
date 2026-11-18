@@ -47,14 +47,8 @@ const REPORT: StockReportData = {
 };
 
 /** Lo que llega a quien no ve costos: la fachada omite las claves. */
-function withoutCosts(report: StockReportData): StockReportData {
-  const { value: _v, ...totals } = report.totals;
-  return {
-    ...report,
-    totals: totals as StockReportData["totals"],
-    items: report.items.map(({ averageCost: _a, value: _b, warehouses, ...item }) => ({ ...item, warehouses: warehouses.map(({ value: _c, ...cell }) => cell) })),
-  };
-}
+const withoutKeys = <T,>(value: T, keys: string[]): T => JSON.parse(JSON.stringify(value, (key, val) => (keys.includes(key) ? undefined : val)));
+const withoutCosts = (report: StockReportData): StockReportData => withoutKeys(report, ["value", "averageCost"]);
 
 const filters = stockReportFilterRows({ date: "", inventoryId: "w1", q: "polo", onlyWithStock: true }, (id) => (id === "w1" ? "Central" : id));
 
@@ -143,7 +137,7 @@ describe("Excel del kardex", () => {
   });
 
   it("sin rol de costos no hay columnas de costo; si se cortó, lo avisa", () => {
-    const masked = KARDEX.map(({ unitCost: _a, value: _b, averageCostAfter: _c, ...row }) => row as KardexRow);
+    const masked = withoutKeys(KARDEX, ["unitCost", "value", "averageCostAfter"]);
     const workbook = kardexWorkbook(masked, { filters: kardexFilters, canSeeCosts: false, truncated: true, now: NOW });
     expect(sheetRows(workbook, "Movimientos")[0]).not.toEqual(expect.arrayContaining(["Costo unit.", "Valor"]));
     expect(sheetRows(workbook, "Filtros").at(-1)).toEqual(["Aviso", "Hay más de 10.000 movimientos: se exportaron los 10.000 más nuevos."]);
