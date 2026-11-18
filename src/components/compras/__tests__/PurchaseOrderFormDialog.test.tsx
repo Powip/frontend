@@ -36,6 +36,9 @@ jest.mock("@/services/purchasesService", () => ({
   listPurchaseSuppliers: jest.fn(),
 }));
 jest.mock("@/services/warehousesService", () => ({ listWarehouses: jest.fn(), getInventoryRules: jest.fn() }));
+jest.mock("@/hooks/useMyWarehouses");
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const { __setMyWarehouses } = require("@/hooks/useMyWarehouses") as typeof import("@/hooks/__mocks__/useMyWarehouses");
 
 const onSaved = jest.fn();
 
@@ -54,6 +57,7 @@ function setup() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  __setMyWarehouses(null);
   rules(true);
   jest.mocked(listPurchaseSuppliers).mockResolvedValue([
     {
@@ -115,6 +119,15 @@ describe("formulario de la OC", () => {
     await user.selectOptions(screen.getByLabelText("Proveedor"), "s-1");
     expect(screen.getByText("RUC 20100047218 · Crédito 30 días")).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /Gorra/ })).not.toBeInTheDocument();
+  });
+
+  it("«Llega a» ofrece solo los almacenes que el usuario opera (FEAT-24 H6)", async () => {
+    __setMyWarehouses({ all: false, inventoryIds: ["w-1"], operableIds: [] });
+    setup();
+    await waitFor(() =>
+      expect(within(screen.getByLabelText("Llega a")).getAllByRole("option").map((option) => option.textContent)).toEqual(["Elige el almacén"]),
+    );
+    expect(listWarehouses).toHaveBeenCalled();
   });
 
   it("agrega las variantes activas con la unidad del producto y el precio sugerido del costo promedio", async () => {

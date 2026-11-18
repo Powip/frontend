@@ -41,6 +41,7 @@ import {
   type ReceiveReturnBody,
   type ReturnReception,
 } from "@/services/warehousesService";
+import { useMyWarehouses } from "@/hooks/useMyWarehouses";
 import { orderLabel, type VariantLabeler } from "./receptionLabels";
 
 // FEAT-24 H2-F — recibir una devolución completa: por producto, cuántas
@@ -97,6 +98,7 @@ export default function ReceiveReturnDialog({
     setLinesState(next);
   };
   const [destination, setDestination] = useState(reception.inventoryId);
+  const myWarehouses = useMyWarehouses();
   const [scanCode, setScanCode] = useState("");
   const [scanError, setScanError] = useState<string | null>(null);
   const [scanInfo, setScanInfo] = useState<string | null>(null);
@@ -172,7 +174,8 @@ export default function ReceiveReturnDialog({
 
   const origin = warehouses.find((w) => w.id === reception.inventoryId);
   // A dónde puede reingresar: almacenes activos (y el del pedido, aunque esté inactivo, para no mostrar vacío).
-  const destinations = warehouses.filter((w) => w.status || w.id === reception.inventoryId);
+  // FEAT-24 H6: de los otros, solo los que el usuario opera.
+  const destinations = warehouses.filter((w) => w.id === reception.inventoryId || (w.status && myWarehouses.canOperate(w.id)));
   const valid = draftIsValid(lines);
   const busy = receive.isPending;
   const anyReingreso = lines.some((line) => line.reingreso > 0);

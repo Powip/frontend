@@ -16,6 +16,7 @@ import {
   type ReturnReception,
   type ReturnReceptionStatus,
 } from "@/services/warehousesService";
+import { useMyWarehouses } from "@/hooks/useMyWarehouses";
 import ReceiveReturnDialog from "./ReceiveReturnDialog";
 import { makeVariantLabeler, orderLabel } from "./receptionLabels";
 
@@ -57,8 +58,16 @@ export default function ReceptionsTab({ companyId, canEdit, scopeInventoryIds }:
     staleTime: 60_000,
   });
 
-  const pending = useMemo(() => receptionsInScope(pendingQuery.data ?? [], scopeInventoryIds), [pendingQuery.data, scopeInventoryIds]);
-  const received = useMemo(() => receptionsInScope(receivedQuery.data ?? [], scopeInventoryIds), [receivedQuery.data, scopeInventoryIds]);
+  // FEAT-24 H6: además de la tienda elegida, solo los almacenes que el usuario ve; recibe donde opera.
+  const myWarehouses = useMyWarehouses();
+  const pending = useMemo(
+    () => receptionsInScope(pendingQuery.data ?? [], scopeInventoryIds).filter((reception) => myWarehouses.canSee(reception.inventoryId)),
+    [pendingQuery.data, scopeInventoryIds, myWarehouses],
+  );
+  const received = useMemo(
+    () => receptionsInScope(receivedQuery.data ?? [], scopeInventoryIds).filter((reception) => myWarehouses.canSee(reception.inventoryId)),
+    [receivedQuery.data, scopeInventoryIds, myWarehouses],
+  );
   const variantIds = useMemo(() => receptionVariantIds([...pending, ...received]), [pending, received]);
   // Nombres y SKU de los productos: es un adorno, si falla se muestra el id.
   const variantsQuery = useQuery({
@@ -150,7 +159,7 @@ export default function ReceptionsTab({ companyId, canEdit, scopeInventoryIds }:
                       <td className="px-4 py-3">{warehouseName(reception.inventoryId)}</td>
                       <td className="px-4 py-3 whitespace-nowrap">{formatPeruDateTime(reception.createdAt)}</td>
                       <td className="px-4 py-3 text-right">
-                        {canEdit ? (
+                        {canEdit && myWarehouses.canOperate(reception.inventoryId) ? (
                           <Button size="sm" aria-label={`Recibir ${orderLabel(reception)}`} onClick={() => setReceiving(reception)}>
                             Recibir
                           </Button>
