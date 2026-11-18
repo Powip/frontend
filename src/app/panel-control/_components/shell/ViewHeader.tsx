@@ -4,6 +4,7 @@ import Link from "next/link";
 import { tieneSubtabsOcultas } from "@/features/panel-control/shared/config/panel-entrega.config";
 import { getTabDefinition } from "@/features/panel-control/shared/config/panel-tabs.config";
 import type { PanelTabId } from "@/features/panel-control/shared/models/panel-navigation.model";
+import { ReporteVentasExcelButton } from "./ReporteVentasExcelButton";
 
 export function ViewHeader({ tab }: { tab: PanelTabId }) {
   const definicion = getTabDefinition(tab);
@@ -20,6 +21,7 @@ export function ViewHeader({ tab }: { tab: PanelTabId }) {
         </p>
       </div>
       <div className="grow" />
+      {tab === "canales" && <ReporteVentasExcelButton />}
       {definicion.moduloRelacionado && (
         <Link
           href={definicion.moduloRelacionado.href}
