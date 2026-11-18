@@ -7,6 +7,8 @@
  * 3. Vista previa CON IGV incluido: el total es lo tipeado y el subtotal es sin IGV.
  * 4. Empresa no afecta al IGV: el interruptor queda apagado y no hay IGV.
  * 5. «Emitir orden» guarda el borrador (sin montos) y lo emite; si la emisión falla, el reintento edita el mismo.
+ * 6. FEAT-24 H13-D4: con el proveedor elegido el precio inicial es el último costo que se le pagó (sin pisar
+ *    lo que escribe el usuario).
  */
 
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -23,6 +25,7 @@ import {
   type PurchaseOrder,
 } from "@/services/purchasesService";
 import { getInventoryRules, listWarehouses } from "@/services/warehousesService";
+import { getSupplierPrices, type SupplierPrice } from "@/services/suggestedPurchaseService";
 import PurchaseOrderFormDialog from "../PurchaseOrderFormDialog";
 
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), info: jest.fn() } }));
@@ -36,6 +39,7 @@ jest.mock("@/services/purchasesService", () => ({
   listPurchaseSuppliers: jest.fn(),
 }));
 jest.mock("@/services/warehousesService", () => ({ listWarehouses: jest.fn(), getInventoryRules: jest.fn() }));
+jest.mock("@/services/suggestedPurchaseService", () => ({ getSupplierPrices: jest.fn() }));
 jest.mock("@/hooks/useMyWarehouses");
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { __setMyWarehouses } = require("@/hooks/useMyWarehouses") as typeof import("@/hooks/__mocks__/useMyWarehouses");
@@ -96,6 +100,7 @@ beforeEach(() => {
     { id: "v-3", sku: "POLO-S", companySku: null, attributeValues: { Talla: "S" }, isActive: true, mergedInto: "v-1" },
   ]);
   jest.mocked(getVariantCosts).mockResolvedValue([{ variantId: "v-1", averageCost: 10 }]);
+  jest.mocked(getSupplierPrices).mockResolvedValue({ items: [], total: 0, truncated: false });
 });
 
 async function fillHeaderAndAddPolo(user: ReturnType<typeof userEvent.setup>) {
@@ -213,5 +218,66 @@ describe("formulario de la OC", () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ status: "PEDIDA" })));
     expect(createPurchaseOrder).toHaveBeenCalledTimes(1);
     expect(updatePurchaseOrder).toHaveBeenCalledWith("oc-9", expect.objectContaining({ supplierId: "s-1" }));
+  });
+});
+
+describe("precio por proveedor como sugerencia (FEAT-24 H13-D4)", () => {
+  const lastPrice: SupplierPrice = {
+    variantId: "v-1",
+    sku: "POLO-M",
+    productName: "Polo",
+    supplierId: "s-1",
+    supplierName: "Textiles",
+    supplierActive: true,
+    purchases: 2,
+    units: 24,
+    lastUnitCost: 9,
+    averageUnitCost: 9.5,
+    minUnitCost: 9,
+    maxUnitCost: 10,
+    lastPurchaseUnit: "Caja",
+    lastPurchaseFactor: 12,
+    lastPurchaseNumber: "OC-0003",
+    lastPurchaseOrderId: "oc-3",
+    firstDate: "2026-09-01",
+    lastDate: "2026-11-05",
+  };
+
+  beforeEach(() => {
+    jest.mocked(listPurchaseSuppliers).mockResolvedValue([
+      { id: "s-1", companyId: "c-1", name: "Textiles", businessName: null, tradeName: null, ruc: null, contactPerson: null, phone: null, email: null, fiscalAddress: null, paymentTerms: "contado", active: true, purchaseCount: 2, createdAt: "", updatedAt: "" },
+      { id: "s-2", companyId: "c-1", name: "Hilos", businessName: null, tradeName: null, ruc: null, contactPerson: null, phone: null, email: null, fiscalAddress: null, paymentTerms: "contado", active: true, purchaseCount: 0, createdAt: "", updatedAt: "" },
+    ]);
+    jest.mocked(getSupplierPrices).mockImplementation(async ({ supplierId }) =>
+      supplierId === "s-1" ? { items: [lastPrice], total: 1, truncated: false } : { items: [], total: 0, truncated: false },
+    );
+  });
+
+  it("el precio inicial es el último costo pagado a ese proveedor (× factor) y muestra la referencia", async () => {
+    const user = userEvent.setup();
+    await fillHeaderAndAddPolo(user);
+    await waitFor(() => expect(screen.getByLabelText("Precio: Polo · Talla: M")).toHaveValue("108"));
+    expect(screen.getByTestId("last-price-v-1")).toHaveTextContent(/Último: S\/\s?9\.00 c\/u · 05\/11\/2026/);
+    expect(getSupplierPrices).toHaveBeenCalledWith({ supplierId: "s-1" }, expect.anything());
+    // Otro proveedor sin historial: vuelve al costo promedio.
+    await user.selectOptions(screen.getByLabelText("Proveedor"), "s-2");
+    await waitFor(() => expect(screen.getByLabelText("Precio: Polo · Talla: M")).toHaveValue("120"));
+    expect(screen.queryByTestId("last-price-v-1")).not.toBeInTheDocument();
+  });
+
+  it("con precios con IGV la sugerencia suma el IGV; lo que escribe el usuario no se pisa", async () => {
+    const user = userEvent.setup();
+    await fillHeaderAndAddPolo(user);
+    const price = screen.getByLabelText("Precio: Polo · Talla: M");
+    await waitFor(() => expect(price).toHaveValue("108"));
+    await user.click(screen.getByRole("switch", { name: "Incluyen IGV" }));
+    await waitFor(() => expect(price).toHaveValue("127.44"));
+    await user.clear(price);
+    await user.type(price, "100");
+    await user.click(screen.getByRole("switch", { name: "Incluyen IGV" }));
+    await user.selectOptions(screen.getByLabelText("Proveedor"), "s-2");
+    await user.selectOptions(screen.getByLabelText("Proveedor"), "s-1");
+    await screen.findByTestId("last-price-v-1");
+    expect(price).toHaveValue("100");
   });
 });

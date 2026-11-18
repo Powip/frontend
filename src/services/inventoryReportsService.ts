@@ -74,6 +74,10 @@ export interface StockReportItem extends ReportCatalogInfo {
   averageCost?: number | null;
   value?: number | null;
   warehouses: StockReportCell[];
+  /** FEAT-24 H13-D2 (solo con `withCoverage`): venta diaria de la ventana. */
+  vd?: number;
+  /** Días que dura el disponible a la venta diaria; `null` = sin ventas en la ventana. */
+  coverageDays?: number | null;
 }
 
 export interface StockReportTotals {
@@ -101,6 +105,8 @@ export interface StockReportData {
   limit: number;
   truncated?: boolean;
   q?: string;
+  /** FEAT-24 H13-D2 (solo con `withCoverage`): ventana de la venta diaria. */
+  coverage?: { windowDays: number; until: string };
 }
 
 export type StockReport = StockReportData | ReportUnavailable;
@@ -115,6 +121,10 @@ export interface StockReportFilters {
   limit?: number;
   /** Todo de una vez, para exportar (tope 20.000 variantes). */
   all?: boolean;
+  /** FEAT-24 H13-D2: suma `vd` y `coverageDays` a cada variante. */
+  withCoverage?: boolean;
+  /** Días de la ventana de la venta diaria (1..365; 30 si no viene). */
+  coverageWindowDays?: number;
 }
 
 const bool = (value: boolean | undefined) => (value ? "true" : undefined);
@@ -139,6 +149,8 @@ export async function getStockReport(filters: StockReportFilters = {}, signal?: 
       page: filters.all ? undefined : filters.page,
       limit: filters.all ? undefined : filters.limit,
       all: bool(filters.all),
+      withCoverage: bool(filters.withCoverage),
+      coverageWindowDays: filters.withCoverage ? filters.coverageWindowDays : undefined,
     }),
     signal,
   });
@@ -429,6 +441,13 @@ export interface InventoryAlert {
   dependsOn?: string;
   releaseAfterDays?: number | null;
   thresholdDays?: number | null;
+  /** FEAT-24 H13: atajo de la alerta (`bajo_minimo` → pedido sugerido con estos filtros). */
+  action?: InventoryAlertAction;
+}
+
+export interface InventoryAlertAction {
+  type: "suggested_purchase" | string;
+  params?: Record<string, unknown>;
 }
 
 export interface InventoryAlerts {

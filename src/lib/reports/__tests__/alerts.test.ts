@@ -1,4 +1,4 @@
-import { alertBadgeText, alertCounts, alertOrderIds, alertRows, upcomingAlerts } from "../alerts";
+import { alertBadgeText, alertCounts, alertHref, alertOrderIds, alertRows, upcomingAlerts } from "../alerts";
 import type { InventoryAlerts } from "@/services/inventoryReportsService";
 
 const DATA: InventoryAlerts = {
@@ -57,5 +57,24 @@ describe("alertas de inventario (FEAT-24 H10-D8)", () => {
     expect(alertOrderIds(DATA)).toEqual(["o1", "o2"]);
     expect(alertBadgeText(7)).toBe("7");
     expect(alertBadgeText(140)).toBe("99+");
+  });
+});
+
+describe("atajo de la alerta «Bajo mínimo» al pedido sugerido (FEAT-24 H13)", () => {
+  it("con la acción `suggested_purchase` todas sus filas (y «Y N más») abren el pedido sugerido con sus parámetros", () => {
+    const withAction: InventoryAlerts = {
+      ...DATA,
+      alerts: DATA.alerts.map((alert) =>
+        alert.type === "bajo_minimo" ? { ...alert, action: { type: "suggested_purchase", params: { includeWithoutSales: true } } } : alert,
+      ),
+    };
+    const rows = alertRows(withAction).filter((row) => row.type === "bajo_minimo");
+    expect(rows).toHaveLength(3);
+    expect(rows.every((row) => row.href === "/compras/sugerido?includeWithoutSales=true" && row.action === "Crear compra")).toBe(true);
+  });
+
+  it("sin acción (servidor anterior) sigue yendo a Compras; otra acción no cambia el destino", () => {
+    expect(alertHref({ type: "bajo_minimo" })).toBe("/compras");
+    expect(alertHref({ type: "reservas_viejas", action: { type: "otra" } })).toBe("/operaciones/pedidos");
   });
 });

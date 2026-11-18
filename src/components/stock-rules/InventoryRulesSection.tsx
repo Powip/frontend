@@ -12,18 +12,22 @@ import { warehouseErrorMessage } from "@/components/forms/warehouseUi";
 import { hasAdminAccess } from "@/config/permissions.config";
 import { useAuth } from "@/contexts/AuthContext";
 import { inventoryRulesChanged, parseReleaseDays, releaseDaysToText } from "@/lib/stockRules";
+import { DEFAULT_COVERAGE_DAYS, parseDays } from "@/lib/suggestedPurchase";
 import { getInventoryRules, saveInventoryRules, type InventoryRules } from "@/services/warehousesService";
 
 // FEAT-24 H2-F — Configuración › Tiendas y almacenes › «Reglas de inventario»:
 // liberar reservas viejas y exigir el picking con escaneo. Solo un administrador edita.
 // FEAT-24 H3 — suma las dos reglas de compras: si la empresa está afecta al IGV
 // y si se puede comprar directo a un almacén courier.
+// FEAT-24 H13 — suma los días de venta que cubre el pedido sugerido.
 
 interface Form {
   releaseDays: string;
   pickingRequired: boolean;
   igvAffected: boolean;
   allowPurchaseToCourier: boolean;
+  /** FEAT-24 H13: días de cobertura objetivo, como se tipean. */
+  coverageDays: string;
 }
 
 export default function InventoryRulesSection() {
@@ -36,6 +40,7 @@ export default function InventoryRulesSection() {
   const rulesKey = useMemo(() => ["inventory-rules", companyId], [companyId]);
   const rulesQuery = useQuery({ queryKey: rulesKey, queryFn: () => getInventoryRules(), enabled, retry: false, staleTime: 0 });
   const saved: InventoryRules | undefined = rulesQuery.data;
+  const savedCoverageDays = saved?.defaultCoverageDays ?? DEFAULT_COVERAGE_DAYS;
 
   // `null` = sin cambios en pantalla: se muestra lo guardado.
   const [edited, setEdited] = useState<Form | null>(null);
@@ -45,14 +50,17 @@ export default function InventoryRulesSection() {
     pickingRequired: saved?.pickingRequired ?? false,
     igvAffected: saved?.igvAffected ?? true,
     allowPurchaseToCourier: saved?.allowPurchaseToCourier ?? false,
+    coverageDays: String(savedCoverageDays),
   };
   const parsed = parseReleaseDays(form.releaseDays);
+  const coverageDays = parseDays(form.coverageDays);
   const dirty =
     saved !== undefined &&
     edited !== null &&
     (inventoryRulesChanged(edited, saved) ||
       edited.igvAffected !== saved.igvAffected ||
-      edited.allowPurchaseToCourier !== saved.allowPurchaseToCourier);
+      edited.allowPurchaseToCourier !== saved.allowPurchaseToCourier ||
+      coverageDays !== savedCoverageDays);
 
   const save = useMutation({
     mutationFn: (rules: InventoryRules) => saveInventoryRules(rules),
@@ -183,6 +191,29 @@ export default function InventoryRulesSection() {
                 propios o tiendas.
               </p>
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="default-coverage-days">Días de cobertura objetivo</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="default-coverage-days"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  className="w-24"
+                  value={form.coverageDays}
+                  disabled={disabled}
+                  aria-invalid={coverageDays === null || undefined}
+                  aria-describedby="default-coverage-days-help"
+                  onChange={(e) => change({ coverageDays: e.target.value })}
+                />
+                <span className="text-sm">días de venta</span>
+              </div>
+              <p id="default-coverage-days-help" className="text-xs text-muted-foreground">
+                Cuántos días de venta cubre el pedido sugerido (de 1 a 365). En Stock, la cobertura menor a estos días se marca en
+                ámbar.
+              </p>
+              {coverageDays === null ? <p className="text-xs text-destructive">Escribe un número entero de 1 a 365.</p> : null}
+            </div>
           </div>
 
           {serverError ? (
@@ -210,14 +241,16 @@ export default function InventoryRulesSection() {
               <Button
                 type="button"
                 size="sm"
-                disabled={!dirty || !parsed.ok || save.isPending}
+                disabled={!dirty || !parsed.ok || coverageDays === null || save.isPending}
                 onClick={() => {
-                  if (!parsed.ok) return;
+                  if (!parsed.ok || coverageDays === null) return;
                   save.mutate({
                     releaseAfterDays: parsed.value,
                     pickingRequired: form.pickingRequired,
                     igvAffected: form.igvAffected,
                     allowPurchaseToCourier: form.allowPurchaseToCourier,
+                    // Solo si cambió: sin el campo, el servidor lo deja como estaba.
+                    ...(coverageDays !== savedCoverageDays ? { defaultCoverageDays: coverageDays } : {}),
                   });
                 }}
               >

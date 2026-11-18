@@ -1,6 +1,7 @@
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
 import { writeConfigArgs, type WriteOptions } from "@/lib/idempotency";
+import { DEFAULT_COVERAGE_DAYS } from "@/lib/suggestedPurchase";
 
 // FEAT-24 H1-A — almacenes de la empresa. Van por la fachada autenticada de
 // ms-products (/warehouses), que toma la empresa del token: este servicio
@@ -98,15 +99,29 @@ export interface InventoryRules {
   igvAffected?: boolean;
   /** FEAT-24 H3: se puede comprar directo a un almacén courier (por defecto no). */
   allowPurchaseToCourier?: boolean;
+  /**
+   * FEAT-24 H13: días de venta que cubre el pedido sugerido (1..365, 30 por defecto). Al leer siempre viene
+   * (con su valor por defecto); al guardar, si falta, queda como estaba.
+   */
+  defaultCoverageDays?: number;
 }
 
+/** Lo que devuelve el GET: todas las reglas con su valor por defecto. */
+export type InventoryRulesView = Required<Omit<InventoryRules, "defaultCoverageDays">> & Pick<InventoryRules, "defaultCoverageDays">;
+
+const coverageDays = (value: unknown): number => {
+  const days = Number(value);
+  return Number.isInteger(days) && days >= 1 && days <= 365 ? days : DEFAULT_COVERAGE_DAYS;
+};
+
 /** Lo que devolvió ms-logistics, con los valores por defecto de cada regla. */
-function inventoryRulesFrom(data: Partial<InventoryRules> | undefined): Required<InventoryRules> {
+function inventoryRulesFrom(data: Partial<InventoryRules> | undefined): InventoryRulesView {
   return {
     releaseAfterDays: data?.releaseAfterDays ?? null,
     pickingRequired: data?.pickingRequired === true,
     igvAffected: data?.igvAffected !== false,
     allowPurchaseToCourier: data?.allowPurchaseToCourier === true,
+    defaultCoverageDays: coverageDays(data?.defaultCoverageDays),
   };
 }
 
@@ -161,18 +176,19 @@ export async function saveReservationRules(rules: ReservationRuleInput[]): Promi
   return Array.isArray(data?.rules) ? data.rules : [];
 }
 
-export async function getInventoryRules(): Promise<Required<InventoryRules>> {
+export async function getInventoryRules(): Promise<InventoryRulesView> {
   const { data } = await axiosAuth.get<InventoryRules>(`${base()}/inventory-rules`);
   return inventoryRulesFrom(data);
 }
 
-/** Solo Administrador (403 al resto). Las dos reglas de compras se mandan solo si vienen. */
-export async function saveInventoryRules(rules: InventoryRules): Promise<Required<InventoryRules>> {
+/** Solo Administrador (403 al resto). Las reglas de compras y los días de cobertura se mandan solo si vienen. */
+export async function saveInventoryRules(rules: InventoryRules): Promise<InventoryRulesView> {
   const { data } = await axiosAuth.put<InventoryRules>(`${base()}/inventory-rules`, {
     releaseAfterDays: rules.releaseAfterDays,
     pickingRequired: rules.pickingRequired,
     ...(rules.igvAffected !== undefined ? { igvAffected: rules.igvAffected } : {}),
     ...(rules.allowPurchaseToCourier !== undefined ? { allowPurchaseToCourier: rules.allowPurchaseToCourier } : {}),
+    ...(rules.defaultCoverageDays !== undefined ? { defaultCoverageDays: rules.defaultCoverageDays } : {}),
   });
   return inventoryRulesFrom(data);
 }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Building2, Info, Pencil, Plus } from "lucide-react";
+import { Building2, Info, PackageSearch, Pencil, Plus } from "lucide-react";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,10 +15,12 @@ import { PAYMENT_TERMS_LABEL, purchaseAccess } from "@/lib/purchaseOrders";
 import { listPurchaseSuppliers, type PurchaseSupplier } from "@/services/purchasesService";
 import { Money, PurchasesNav } from "./PurchaseBits";
 import SupplierFormDialog from "./SupplierFormDialog";
+import SupplierPricesDialog from "./supplier-prices/SupplierPricesDialog";
 
 // FEAT-24 H3-E — Compras › Proveedores (mockup vProv): RUC, razón social,
 // contacto, condición de pago, lo comprado en 12 meses y lo que se les debe
 // («••••» si el rol no ve costos). Con compras no se borran: se desactivan.
+// FEAT-24 H13-D4: «Productos que le compras» con el precio por proveedor.
 
 export default function SuppliersView() {
   const { auth } = useAuth();
@@ -27,6 +29,7 @@ export default function SuppliersView() {
   const queryClient = useQueryClient();
   const [includeInactive, setIncludeInactive] = useState(false);
   const [editing, setEditing] = useState<PurchaseSupplier | "new" | null>(null);
+  const [pricesFor, setPricesFor] = useState<PurchaseSupplier | null>(null);
 
   const suppliersQuery = useQuery({
     queryKey: ["purchase-suppliers", companyId, includeInactive ? "all" : "active"],
@@ -146,7 +149,17 @@ export default function SuppliersView() {
                           {supplier.active ? "Activo" : "Inactivo"}
                         </span>
                       </td>
-                      <td className="p-2 text-right">
+                      <td className="whitespace-nowrap p-2 text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          title="Productos que le compras"
+                          aria-label={`Productos que le compras a ${supplier.name}`}
+                          onClick={() => setPricesFor(supplier)}
+                        >
+                          <PackageSearch className="h-4 w-4" />
+                        </Button>
                         {access.canWrite ? (
                           <Button
                             type="button"
@@ -169,6 +182,7 @@ export default function SuppliersView() {
         </CardContent>
       </Card>
 
+      {pricesFor ? <SupplierPricesDialog supplier={pricesFor} linkOrders={access.canWrite} onClose={() => setPricesFor(null)} /> : null}
       {editing ? (
         <SupplierFormDialog
           supplier={editing === "new" ? null : editing}

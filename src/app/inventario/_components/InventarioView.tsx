@@ -77,6 +77,8 @@ import { useMyWarehouses } from "@/hooks/useMyWarehouses";
 import { filterStockVariants, groupByProduct, packStockRows, stockTotals, storesOf, variantPositionsFlat, visibleInventories, STOCK_STATUS_LABEL, type StockMode, type StockStatusFilter } from "@/components/inventory/stockView";
 // FEAT-24 H9: los packs se listan al final de la tabla de Stock con el disponible de sus componentes.
 import { listAllPacks } from "@/services/packsService";
+// FEAT-24 H13-D2: columna «Cobertura» de Stock.
+import { useStockCoverage } from "@/hooks/useStockCoverage";
 
 const ITEMS_PER_PAGE = 10;
 // FEAT-24 H11: las variantes con SKU repetido salen agrupadas en «Por unificar»; arriba queda solo el SKU base.
@@ -188,6 +190,10 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
     });
   };
   const totals = useMemo(() => stockTotals(variantRows), [variantRows]);
+  // FEAT-24 H13-D2: cobertura del almacén elegido (o del único de la vista); si no, de todos los que ve el usuario.
+  const coverageInventoryId = selectedInventoryId !== "all" ? selectedInventoryId : warehouseColumns.length === 1 ? warehouseColumns[0].id : undefined;
+  const stockCoverage = useStockCoverage({ inventoryId: coverageInventoryId, enabled: activeTab === "stock" && warehouses.isSuccess && !myWarehouses.isLoading });
+  const coverageMap = stockCoverage.byVariant;
 
   const router = useRouter();
 
@@ -258,6 +264,8 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
         { header: "Reservado", key: "reservado", width: 12 },
         { header: "Disponible", key: "disponible", width: 12 },
         { header: "Precio venta", key: "precio", width: 15, style: { numFmt: '"S/" #,##0.00' } },
+        // FEAT-24 H13-D2: la cobertura ya cargada en pantalla (por variante, no por almacén).
+        ...(coverageMap ? [{ header: "Cobertura (días)", key: "cobertura", width: 16 }] : []),
       ];
 
       worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
@@ -280,6 +288,7 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
           reservado: prod.reservedStock,
           disponible: prod.availableStock,
           precio: prod.priceVta,
+          ...(coverageMap ? { cobertura: coverageMap.get(prod.variantId)?.coverageDays ?? "Sin ventas" } : {}),
         });
       });
 
@@ -549,6 +558,7 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                       emptyText={loadError ? "No se pudo consultar el stock" : "No hay productos con estos filtros"}
                       actions={stockActions}
                       packs={currentPage >= totalPages ? packRows : []}
+                      coverage={coverageMap ? { byVariant: coverageMap, targetDays: stockCoverage.targetDays } : undefined}
                     />
                     {!isLoading && (
                       <div className="mt-4">

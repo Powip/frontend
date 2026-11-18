@@ -7,6 +7,7 @@
  * 4. Un 400 del servidor se muestra.
  * 5. Quien no es admin solo lee.
  * 6. FEAT-24 H3: las reglas de compras (afecta al IGV y compra directa a courier).
+ * 7. FEAT-24 H13: días de cobertura objetivo (1..365, 30 por defecto; solo se mandan si cambiaron).
  */
 
 import { render, screen, waitFor } from "@testing-library/react";
@@ -150,5 +151,40 @@ describe("Reglas de inventario (FEAT-24 H2-F)", () => {
         allowPurchaseToCourier: true,
       }),
     );
+  });
+
+  it("días de cobertura objetivo: muestra el guardado, valida 1..365 y lo manda solo si cambió (FEAT-24 H13)", async () => {
+    loginAs("ADMINISTRADOR");
+    const user = userEvent.setup();
+    mockGet.mockResolvedValue({ releaseAfterDays: 7, pickingRequired: false, igvAffected: true, allowPurchaseToCourier: false, defaultCoverageDays: 21 });
+    mockSave.mockResolvedValue({ releaseAfterDays: 7, pickingRequired: false, igvAffected: true, allowPurchaseToCourier: false, defaultCoverageDays: 45 });
+    renderSection();
+    const coverage = await screen.findByLabelText("Días de cobertura objetivo");
+    expect(coverage).toHaveValue("21");
+    await user.clear(coverage);
+    await user.type(coverage, "400");
+    expect(screen.getByText("Escribe un número entero de 1 a 365.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Guardar reglas de inventario" })).toBeDisabled();
+    await user.clear(coverage);
+    await user.type(coverage, "45");
+    await user.click(screen.getByRole("button", { name: "Guardar reglas de inventario" }));
+    await waitFor(() =>
+      expect(mockSave).toHaveBeenCalledWith({
+        releaseAfterDays: 7,
+        pickingRequired: false,
+        igvAffected: true,
+        allowPurchaseToCourier: false,
+        defaultCoverageDays: 45,
+      }),
+    );
+    await waitFor(() => expect(screen.getByLabelText("Días de cobertura objetivo")).toHaveValue("45"));
+  });
+
+  it("sin el dato en el servidor muestra 30 y quien no es admin no lo edita (FEAT-24 H13)", async () => {
+    loginAs("OPERACIONES");
+    renderSection();
+    const coverage = await screen.findByLabelText("Días de cobertura objetivo");
+    expect(coverage).toHaveValue("30");
+    expect(coverage).toBeDisabled();
   });
 });

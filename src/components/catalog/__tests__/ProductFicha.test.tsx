@@ -36,6 +36,13 @@ jest.mock("@/services/uploadService", () => ({ uploadImage: jest.fn() }));
 jest.mock("@/components/labels/PrintLabelsDialog", () => ({
   PrintLabelsDialog: ({ source }: { source: { productIds: string[]; title?: string } }) => <div>etiquetas de {source.productIds.join(",")} · {source.title}</div>,
 }));
+// FEAT-24 H13-D4: la tarjeta de precio por proveedor tiene su propio test; acá solo qué variantes recibe.
+jest.mock("@/components/compras/supplier-prices/FichaSupplierPrices", () => ({
+  __esModule: true,
+  default: ({ variants, linkOrders }: { variants: Array<{ id: string; label: string }>; linkOrders?: boolean }) => (
+    <div data-testid="supplier-prices">{variants.map((variant) => `${variant.id}=${variant.label}`).join(", ")}{linkOrders ? " · con enlaces" : ""}</div>
+  ),
+}));
 jest.mock("@/components/inventory/MovementHistoryTable", () => ({
   MovementHistoryTable: ({ variants, title }: { variants?: Array<{ id: string; label: string }>; title?: string }) => (
     <div data-testid="kardex">{title}: {variants?.map((variant) => `${variant.id}=${variant.label}`).join(", ")}</div>
@@ -84,6 +91,11 @@ describe("Ficha del producto en pestañas (FEAT-24 H4-D)", () => {
       expect(screen.getByRole("tab", { name })).toBeInTheDocument();
     }
     expect(screen.getByRole("link", { name: "Editar opciones y precios" })).toHaveAttribute("href", "/productos?edit=v1");
+  });
+
+  it("precio de compra por proveedor: recibe las variantes del producto (FEAT-24 H13-D4)", async () => {
+    renderFicha();
+    expect(await screen.findByTestId("supplier-prices")).toHaveTextContent("v1=Talla: S (POL0001-S), v2=Talla: M (POL0001-M) · con enlaces");
   });
 
   it("General: guarda solo lo que cambió (categoría, unidad de compra y factor)", async () => {

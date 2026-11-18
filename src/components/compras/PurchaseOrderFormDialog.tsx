@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Info, Loader2, Plus, Search, X } from "lucide-react";
 import { toast } from "sonner";
@@ -22,7 +22,10 @@ import {
   addFormLines,
   buildOrderBody,
   emptyOrderForm,
+  formatDay,
+  formatMoney,
   formFromOrder,
+  IGV_RATE,
   orderFormProblem,
   PAYMENT_TERMS_LABEL,
   parseOrderLine,
@@ -44,6 +47,7 @@ import {
   type PurchasableProduct,
   type PurchaseOrder,
 } from "@/services/purchasesService";
+import { getSupplierPrices, type SupplierPrice } from "@/services/suggestedPurchaseService";
 import { getInventoryRules, listWarehouses } from "@/services/warehousesService";
 import { useMyWarehouses } from "@/hooks/useMyWarehouses";
 import { Money, SELECT_CLASS } from "./PurchaseBits";
@@ -52,6 +56,9 @@ import { Money, SELECT_CLASS } from "./PurchaseBits";
 // Se elige el producto y entran sus variantes activas, cada una con la unidad
 // de compra del producto (caja × 12) que se puede cambiar. Los montos de abajo
 // son una vista previa: el servidor los calcula al guardar.
+// FEAT-24 H13-D4: con el proveedor elegido, el precio inicial de cada variante es
+// el último costo que se le pagó a ESE proveedor (si no hay, el costo promedio).
+// Es solo un valor inicial: un precio que el usuario escribió no se toca.
 
 const MAX_PRODUCT_MATCHES = 30;
 
@@ -91,6 +98,10 @@ export default function PurchaseOrderFormDialog({ companyId, order, canSeeCosts,
   const [addInfo, setAddInfo] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const [touched, setTouched] = useState(false);
+  // Variantes con precio escrito a mano (o guardado en el borrador): la sugerencia no las pisa.
+  const typedPrices = useRef<Set<string>>(new Set(order?.lines.map((line) => line.variantId) ?? []));
+  // Costo promedio por unidad de stock de cada variante agregada (la sugerencia de respaldo).
+  const averageCosts = useRef<Map<string, number>>(new Map());
   // FEAT-24 H6: la OC llega solo a un almacén que el usuario opera (el borrador conserva el suyo).
   const myWarehouses = useMyWarehouses();
 
@@ -114,6 +125,14 @@ export default function PurchaseOrderFormDialog({ companyId, order, canSeeCosts,
     queryKey: ["purchasable-products", companyId],
     queryFn: ({ signal }) => listPurchasableProducts(companyId, signal),
     enabled: !!companyId,
+    staleTime: 60_000,
+  });
+
+  const supplierPricesQuery = useQuery({
+    queryKey: ["supplier-prices", companyId, "supplier", form.supplierId],
+    queryFn: ({ signal }) => getSupplierPrices({ supplierId: form.supplierId }, signal),
+    enabled: !!companyId && canSeeCosts && !!form.supplierId,
+    retry: false,
     staleTime: 60_000,
   });
 
@@ -145,6 +164,33 @@ export default function PurchaseOrderFormDialog({ companyId, order, canSeeCosts,
       .slice(0, MAX_PRODUCT_MATCHES);
   }, [products, productQuery]);
 
+  // Último costo (sin IGV, por unidad de stock) de cada variante con el proveedor elegido.
+  const supplierCosts = useMemo(() => {
+    const byVariant = new Map<string, SupplierPrice>();
+    for (const price of supplierPricesQuery.data?.items ?? [])
+      if (price.supplierId === form.supplierId && typeof price.lastUnitCost === "number") byVariant.set(price.variantId, price);
+    return byVariant;
+  }, [supplierPricesQuery.data, form.supplierId]);
+  const igvFactor = igvAffected && form.pricesIncludeIgv ? 1 + IGV_RATE : 1;
+  const linesKey = form.lines.map((line) => `${line.variantId}:${line.purchaseFactor}`).join("|");
+  useEffect(() => {
+    // Precio sugerido de las líneas que el usuario no tocó: último costo con este proveedor, si no el promedio.
+    setForm((current) => {
+      let changed = false;
+      const lines = current.lines.map((line) => {
+        if (typedPrices.current.has(line.variantId)) return line;
+        const cost = supplierCosts.get(line.variantId)?.lastUnitCost ?? averageCosts.current.get(line.variantId) ?? null;
+        const factor = Number(line.purchaseFactor);
+        if (cost === null || !Number.isInteger(factor) || factor < 1) return line;
+        const unitPrice = String(roundTo(cost * factor * igvFactor, 4));
+        if (unitPrice === line.unitPrice) return line;
+        changed = true;
+        return { ...line, unitPrice };
+      });
+      return changed ? { ...current, lines } : current;
+    });
+  }, [supplierCosts, linesKey, igvFactor]);
+
   const preview = previewForm(form, igvAffected);
   const problem = orderFormProblem(form);
   const supplier = suppliers.find((candidate) => candidate.id === form.supplierId);
@@ -160,8 +206,10 @@ export default function PurchaseOrderFormDialog({ companyId, order, canSeeCosts,
       lines: current.lines.map((line) => (line.variantId === variantId ? { ...line, ...patch } : line)),
     }));
   };
-  const removeLine = (variantId: string) =>
+  const removeLine = (variantId: string) => {
+    typedPrices.current.delete(variantId);
     setForm((current) => ({ ...current, lines: current.lines.filter((line) => line.variantId !== variantId) }));
+  };
 
   const addProduct = async (product: PurchasableProduct) => {
     setAdding(true);
@@ -182,6 +230,7 @@ export default function PurchaseOrderFormDialog({ companyId, order, canSeeCosts,
           // sin sugerencia
         }
       }
+      for (const [variantId, cost] of costs) averageCosts.current.set(variantId, cost);
       const lines: OrderFormLine[] = variants.map((variant) => {
         const attributes = formatVariantLabel(variant.attributeValues);
         const cost = costs.get(variant.id);
@@ -447,6 +496,7 @@ export default function PurchaseOrderFormDialog({ companyId, order, canSeeCosts,
                 form.lines.map((line, index) => {
                   const lineProblem = parseOrderLine(line).problem;
                   const previewLine = preview.lines[index];
+                  const lastPrice = supplierCosts.get(line.variantId);
                   return (
                     <tr key={line.variantId} className="border-t align-top">
                       <td className="p-2">
@@ -495,8 +545,20 @@ export default function PurchaseOrderFormDialog({ companyId, order, canSeeCosts,
                           inputMode="decimal"
                           value={line.unitPrice}
                           disabled={busy}
-                          onChange={(e) => changeLine(line.variantId, { unitPrice: e.target.value })}
+                          onChange={(e) => {
+                            typedPrices.current.add(line.variantId);
+                            changeLine(line.variantId, { unitPrice: e.target.value });
+                          }}
                         />
+                        {lastPrice ? (
+                          <p
+                            className="mt-1 whitespace-nowrap text-xs text-muted-foreground"
+                            data-testid={`last-price-${line.variantId}`}
+                            title="Último costo pagado a este proveedor, sin IGV, por unidad de stock"
+                          >
+                            Último: {formatMoney(lastPrice.lastUnitCost, 4)} c/u · {formatDay(lastPrice.lastDate)}
+                          </p>
+                        ) : null}
                       </td>
                       <td className="p-2 text-right" data-testid={`entry-cost-${line.variantId}`}>
                         <Money value={previewLine?.entryCost ?? 0} decimals={4} />

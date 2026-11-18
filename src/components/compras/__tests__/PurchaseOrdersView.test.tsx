@@ -316,3 +316,33 @@ describe("detalle", () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Solo Administrador u Operaciones."));
   });
 });
+
+describe("enlace a una OC (FEAT-24 H13)", () => {
+  function setupWith(initialOrderId: string) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={client}>
+        <PurchaseOrdersView initialOrderId={initialOrderId} />
+      </QueryClientProvider>,
+    );
+  }
+
+  it("`/compras?oc=` abre el detalle de esa orden al entrar", async () => {
+    loginAs("ADMINISTRADOR");
+    listing([]);
+    jest.mocked(getPurchaseOrder).mockResolvedValue({ ...order({ id: "oc-10", number: "OC-0010", status: "BORRADOR" }), receptions: [], supplierReturns: [] });
+    setupWith("oc-10");
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getAllByText(/OC-0010/).length).toBeGreaterThan(0);
+    expect(getPurchaseOrder).toHaveBeenCalledWith("oc-10", expect.anything());
+  });
+
+  it("si la orden no se puede abrir, avisa con el mensaje del servidor", async () => {
+    loginAs("ADMINISTRADOR");
+    listing([]);
+    jest.mocked(getPurchaseOrder).mockRejectedValue({ response: { status: 404, data: { message: "La orden de compra no existe." } } });
+    setupWith("oc-x");
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("La orden de compra no existe."));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+});

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardList, Eye, FileSpreadsheet, Info, Pencil, Plus, ScanBarcode } from "lucide-react";
@@ -24,6 +24,7 @@ import {
 } from "@/lib/purchaseOrders";
 import {
   cancelPurchaseOrder,
+  getPurchaseOrder,
   listPurchaseOrders,
   listPurchaseSuppliers,
   placePurchaseOrder,
@@ -67,7 +68,8 @@ type DialogState =
   | { kind: "costs" }
   | null;
 
-export default function PurchaseOrdersView() {
+/** `initialOrderId` (FEAT-24 H13): abre el detalle de esa OC al entrar (los enlaces `/compras?oc=` del pedido sugerido). */
+export default function PurchaseOrdersView({ initialOrderId }: { initialOrderId?: string } = {}) {
   const { auth } = useAuth();
   const companyId = auth?.company?.id ?? "";
   const access = purchaseAccess(auth?.user);
@@ -76,6 +78,23 @@ export default function PurchaseOrdersView() {
   const [supplierId, setSupplierId] = useState("");
   const [page, setPage] = useState(1);
   const [dialog, setDialog] = useState<DialogState>(null);
+  const initialOpened = useRef(false);
+  const initialOrderQuery = useQuery({
+    queryKey: ["purchase-order", initialOrderId],
+    queryFn: ({ signal }) => getPurchaseOrder(initialOrderId as string, signal),
+    enabled: !!companyId && !!initialOrderId,
+    retry: false,
+  });
+  useEffect(() => {
+    if (initialOpened.current || !initialOrderQuery.data) return;
+    initialOpened.current = true;
+    setDialog({ kind: "detail", order: initialOrderQuery.data });
+  }, [initialOrderQuery.data]);
+  useEffect(() => {
+    if (initialOpened.current || !initialOrderQuery.error) return;
+    initialOpened.current = true;
+    toast.error(warehouseErrorMessage(initialOrderQuery.error, "No se pudo abrir esa orden de compra."));
+  }, [initialOrderQuery.error]);
 
   const ordersQuery = useQuery({
     queryKey: ["purchase-orders", companyId, status, supplierId, page],
