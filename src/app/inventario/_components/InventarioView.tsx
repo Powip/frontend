@@ -74,6 +74,10 @@ import TransfersTab from "@/components/warehouse-ops/transfers/TransfersTab";
 import CountsTab from "@/components/warehouse-ops/counts/CountsTab";
 import AdjustmentsTab from "@/components/warehouse-ops/adjustments/AdjustmentsTab";
 import { useMyWarehouses } from "@/hooks/useMyWarehouses";
+// FEAT-24 H8: Couriers (stock POWIP contra courier, conciliación y reclamos).
+import { Truck } from "lucide-react";
+import CouriersTab from "@/components/inventory/couriers/CouriersTab";
+import { courierAccess } from "@/lib/courier";
 import { filterStockVariants, groupByProduct, packExcelRows, packStockRows, stockTotals, storesOf, variantPositionsFlat, visibleInventories, STOCK_STATUS_LABEL, type StockMode, type StockStatusFilter } from "@/components/inventory/stockView";
 // FEAT-24 H9: los packs se listan en Stock (por producto y por almacén) y en su Excel con el disponible de sus componentes.
 import { listAllPacks } from "@/services/packsService";
@@ -94,6 +98,7 @@ export type InventarioTab =
   | "conteos" // FEAT-24 H5-C
   | "ajustes" // FEAT-24 H5-C
   | "pedidos-sin-stock"
+  | "couriers" // FEAT-24 H8
   | "alertas" // FEAT-24 H10
   | "unificacion"
   | "cierre"; // FEAT-24 H10
@@ -107,20 +112,24 @@ export const INVENTARIO_TAB_ROUTES: Record<InventarioTab, string> = {
   conteos: "/inventario/conteos",
   ajustes: "/inventario/ajustes",
   "pedidos-sin-stock": "/inventario/pedidos-sin-stock",
+  couriers: "/inventario/couriers",
   alertas: "/inventario/alertas",
   unificacion: "/inventario/unificacion",
   cierre: "/inventario/cierre",
 };
 
-export default function InventarioView({ tab = "stock", initialMovementSearch = "", initialMovementVariantId }: { tab?: InventarioTab; initialMovementSearch?: string; initialMovementVariantId?: string }) {
+export default function InventarioView({ tab = "stock", initialMovementSearch = "", initialMovementVariantId, initialCourier }: { tab?: InventarioTab; initialMovementSearch?: string; initialMovementVariantId?: string; initialCourier?: { inventoryId?: string; claimId?: string } }) {
   const { auth, hasPermission } = useAuth();
   // Pedidos sin stock / sin reserva: Atención al cliente y Operaciones (los mismos permisos que ms-ventas).
   const stockAccess = orderStockAccess((permission) => hasPermission?.(permission) ?? false);
   // Editar inventario (ajustes, mermas, transferencias, importar Excel, compras, reconciliación): solo
   // Administrador y Operaciones. El resto sigue viendo el stock en solo lectura.
   const canEdit = canEditInventory(auth?.user);
+  // FEAT-24 H8: Couriers lo ven Administrador, Operaciones y Almacén (el courier usa su portal en /almacen).
+  const couriers = courierAccess(auth?.user);
+  const canSeeCouriers = couriers.view && !couriers.courier;
   const activeTab: InventarioTab =
-    (tab === "unificacion" && !canEdit) || (tab === "pedidos-sin-stock" && !stockAccess.sinReserva) ? "stock" : tab;
+    (tab === "unificacion" && !canEdit) || (tab === "pedidos-sin-stock" && !stockAccess.sinReserva) || (tab === "couriers" && !canSeeCouriers) ? "stock" : tab;
   // FEAT-24 H10-D8: contador de la pestaña Alertas (misma consulta que el menú lateral).
   const alerts = useInventoryAlerts();
   const alertTotal = alerts.data?.total ?? 0;
@@ -224,7 +233,8 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
   useEffect(() => {
     if (auth && tab === "unificacion" && !canEdit) router.replace(INVENTARIO_TAB_ROUTES.stock);
     if (auth && tab === "pedidos-sin-stock" && !stockAccess.sinReserva) router.replace(INVENTARIO_TAB_ROUTES.stock);
-  }, [auth, tab, canEdit, stockAccess.sinReserva, router]);
+    if (auth && tab === "couriers" && !canSeeCouriers) router.replace(INVENTARIO_TAB_ROUTES.stock);
+  }, [auth, tab, canEdit, stockAccess.sinReserva, canSeeCouriers, router]);
 
   if (!auth) return null;
   const stockActions: StockBoardActions = {
@@ -411,6 +421,12 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                 <TabsTrigger value="pedidos-sin-stock" className="flex items-center gap-2">
                   <PackageX className="h-4 w-4" />
                   Pedidos sin stock
+                </TabsTrigger>
+              )}
+              {canSeeCouriers && (
+                <TabsTrigger value="couriers" className="flex items-center gap-2">
+                  <Truck className="h-4 w-4" />
+                  Couriers
                 </TabsTrigger>
               )}
               <TabsTrigger value="alertas" className="flex items-center gap-2">
@@ -625,6 +641,16 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
               </CardContent>
             </Card>
           </TabsContent>
+
+          {canSeeCouriers && (
+            <TabsContent value="couriers" className="flex-1 flex flex-col mt-0">
+              <Card className="flex-1 flex flex-col">
+                <CardContent className="p-6 overflow-auto">
+                  {activeTab === "couriers" ? <CouriersTab initialInventoryId={initialCourier?.inventoryId} initialClaimId={initialCourier?.claimId} /> : null}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
 
           <TabsContent value="alertas" className="flex-1 flex flex-col mt-0">
             <Card className="flex-1 flex flex-col">
