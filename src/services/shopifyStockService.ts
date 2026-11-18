@@ -221,8 +221,11 @@ export interface ShopifyShopReauthorization {
   scopesError: string | null;
   needsReauthorization: boolean;
   reasons: ShopifyReauthorizationReason[];
-  /** Absoluta, o relativa a ms-integrations (`/shopify/reauth/<tienda>`). */
-  reauthorizeUrl: string;
+  /**
+   * Ya no se usa (FEAT-24 SEC): abría `/shopify/reauth/<tienda>` sin sesión. Re-autorizar se pide con
+   * `requestShopifyAuthUrl`; el backend deja de mandarlo en el cierre.
+   */
+  reauthorizeUrl?: string;
 }
 
 export interface ShopifyReauthorizationStatus {
@@ -281,7 +284,12 @@ export async function getShopifyReauthorizationStatus(refresh = false): Promise<
   return data;
 }
 
-/** Base de ms-integrations, para completar una `reauthorizeUrl` relativa. */
-export function integrationsBaseUrl(): string {
-  return base().replace(/\/$/, "");
+/**
+ * FEAT-24 SEC — URL de la pantalla de permisos de Shopify para conectar o volver a autorizar una tienda
+ * (`POST /shopify/auth-url`, solo admin). La empresa y el usuario los pone ms-integrations desde el token:
+ * nunca se manda un companyId. 403 si la tienda es de otra empresa.
+ */
+export async function requestShopifyAuthUrl(shop: string): Promise<string> {
+  const { data } = await axiosAuth.post<{ url: string }>(`${base()}/shopify/auth-url`, { shop });
+  return data.url;
 }

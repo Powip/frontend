@@ -77,3 +77,7 @@ NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY
 - `removeFromWarehouse(inventoryId, { variantId } | { productId })` en `warehouseOpsService.ts` → `POST {products}/warehouses/:id/remove-items` (fachada JWT; nunca manda empresa ni usuario).
 - `fetchBusinessInventoryItems({ excludeRemoved: true })` es opcional a propósito: solo lo pide /inventario (lista y Excel). El catálogo y la ficha siguen viendo las filas quitadas.
 - Deploy: después de ms-logistics (que acepta `excludeRemoved` en `/inventory-item/search`) y de ms-products (la ruta nueva). Si el front sale antes, la búsqueda de /inventario puede dar 400 por el parámetro desconocido.
+
+## Notas de seguridad
+
+- **OAuth de Shopify (FEAT-24 SEC):** conectar o volver a autorizar una tienda se pide con la sesión: `requestShopifyAuthUrl(shop)` (`src/services/shopifyStockService.ts`, `POST {NEXT_PUBLIC_API_INTEGRATIONS}/shopify/auth-url` con el token de un admin; ms-integrations firma la empresa y el usuario del token). Se navega solo si `isShopifyAuthorizeUrl(url, shop)` (`src/lib/shopifyStock.ts`) y con `goToExternalPage`. Nunca armar `/shopify/auth/<tienda>?companyId=` ni enlazar `/shopify/reauth/<tienda>`: eran sin sesión y se borran en el cierre de ms-integrations. `reauthorizeUrl` de `reauthorization-status` ya no se usa.

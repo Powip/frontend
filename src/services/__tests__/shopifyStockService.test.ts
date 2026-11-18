@@ -6,8 +6,8 @@ import {
   getShopifyStockLocations,
   getShopifyStockReport,
   getShopifyStockRun,
-  integrationsBaseUrl,
   listShopifyStockShops,
+  requestShopifyAuthUrl,
   requestShopifyStockRun,
 } from "../shopifyStockService";
 
@@ -73,7 +73,14 @@ describe("Servicio de stock de Shopify (FEAT-24 H1-D, H1D-5)", () => {
     delete process.env.NEXT_PUBLIC_API_INTEGRATIONS;
     await listShopifyStockShops();
     expect(axiosAuth.get).toHaveBeenCalledWith(`${GATEWAY.integrations}/shopify/stock/shops`);
-    expect(integrationsBaseUrl()).toBe(GATEWAY.integrations);
+  });
+
+  it("FEAT-24 SEC: la URL de autorización se pide con la sesión, solo con la tienda (sin companyId)", async () => {
+    const url = "https://a.myshopify.com/admin/oauth/authorize?client_id=x";
+    jest.mocked(axiosAuth.post).mockResolvedValueOnce({ data: { url } });
+    await expect(requestShopifyAuthUrl("a.myshopify.com")).resolves.toBe(url);
+    expect(axiosAuth.post).toHaveBeenCalledWith("https://int.powip.test/shopify/auth-url", { shop: "a.myshopify.com" });
+    expect(JSON.stringify(jest.mocked(axiosAuth.post).mock.calls)).not.toContain("companyId");
   });
 
   it("devuelve el cuerpo de la respuesta", async () => {

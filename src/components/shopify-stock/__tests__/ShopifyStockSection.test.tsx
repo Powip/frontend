@@ -4,8 +4,9 @@
  * 1. Sin tiendas de Shopify no muestra nada.
  * 2. Cada tienda muestra su modo («Shopify manda» / «Solo reporte» / «Powip manda»),
  *    su tienda y almacén de Powip y los contadores del último reporte.
- * 3. Si falta re-autorizar: aviso con motivos y, para un admin, el enlace a
- *    `reauthorizeUrl` (la relativa se completa con la base de ms-integrations).
+ * 3. Si falta re-autorizar: aviso con motivos y, para un admin, «Volver a autorizar
+ *    en Shopify» pide la URL con la sesión (`POST /shopify/auth-url`, FEAT-24 SEC) y
+ *    navega solo si es la pantalla de permisos de esa tienda; si no, avisa.
  * 4. Un usuario que no es admin ve el estado y el reporte, pero no «Generar
  *    reporte» ni «Cambiar modo».
  * 5. «Generar reporte» pide la corrida, la sigue hasta que termina y refresca;
@@ -20,8 +21,10 @@ import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { goToExternalPage } from "@/lib/browserNavigation";
 import {
   getShopifyReauthorizationStatus,
+  requestShopifyAuthUrl,
   getShopifyStockReport,
   getShopifyStockRun,
   listShopifyStockShops,
@@ -46,8 +49,9 @@ jest.mock("@/services/shopifyStockService", () => ({
   getShopifyStockRun: jest.fn(),
   requestShopifyStockRun: jest.fn(),
   changeShopifyStockMode: jest.fn(),
-  integrationsBaseUrl: () => "https://int.powip.test",
+  requestShopifyAuthUrl: jest.fn(),
 }));
+jest.mock("@/lib/browserNavigation", () => ({ goToExternalPage: jest.fn() }));
 jest.mock("@/services/warehousesService", () => ({ listWarehouses: jest.fn() }));
 
 const mockShops = jest.mocked(listShopifyStockShops);
@@ -55,6 +59,8 @@ const mockReauth = jest.mocked(getShopifyReauthorizationStatus);
 const mockReport = jest.mocked(getShopifyStockReport);
 const mockRun = jest.mocked(getShopifyStockRun);
 const mockRequest = jest.mocked(requestShopifyStockRun);
+const mockAuthUrl = jest.mocked(requestShopifyAuthUrl);
+const mockGoTo = jest.mocked(goToExternalPage);
 
 const COMPANY = "company-a";
 const counters = (over: Partial<ShopifyStockCounters> = {}): ShopifyStockCounters => ({
@@ -176,7 +182,30 @@ it("muestra el modo, la tienda, el almacén y los contadores del último reporte
   expect(within(dos).getByText("Todavía no hay reportes de esta tienda.")).toBeInTheDocument();
 });
 
-it("avisa que hay que volver a autorizar, con el enlace para un admin", async () => {
+const reauthNeeded = () =>
+  mockReauth.mockResolvedValue({
+    generatedAt: "x",
+    requiredScopes: ["read_inventory"],
+    shops: [
+      {
+        shopId: "shop-1",
+        shopUrl: "uno.myshopify.com",
+        storeId: "store-a",
+        isActive: true,
+        healthStatus: "ok",
+        tokenHealthy: true,
+        grantedScopes: ["read_orders"],
+        missingScopes: ["read_inventory"],
+        scopesCheckedAt: null,
+        scopesSource: "access_scopes",
+        scopesError: null,
+        needsReauthorization: true,
+        reasons: ["faltan_scopes"],
+      },
+    ],
+  });
+
+it("avisa que hay que volver a autorizar, con el botón para un admin", async () => {
   mockReauth.mockResolvedValue({
     generatedAt: "x",
     requiredScopes: ["read_inventory", "write_inventory", "read_locations"],
@@ -203,10 +232,9 @@ it("avisa que hay que volver a autorizar, con el enlace para un admin", async ()
   const uno = await card("shop-1");
   expect(await within(uno).findByText("Hay que volver a autorizar la app de Powip en Shopify")).toBeInTheDocument();
   expect(within(uno).getByText(/Faltan permisos de inventario: leer el inventario, escribir el inventario/)).toBeInTheDocument();
-  expect(within(uno).getByRole("link", { name: "Volver a autorizar en Shopify" })).toHaveAttribute(
-    "href",
-    "https://int.powip.test/shopify/reauth/uno.myshopify.com",
-  );
+  // FEAT-24 SEC: ya no es un enlace a /shopify/reauth (sin sesión), sino un botón que pide la URL con el token.
+  expect(within(uno).getByRole("button", { name: "Volver a autorizar en Shopify" })).toBeEnabled();
+  expect(within(uno).queryByRole("link", { name: /volver a autorizar/i })).not.toBeInTheDocument();
   // La otra tienda no tiene aviso.
   expect(within(await card("shop-2")).queryByText(/volver a autorizar/i)).not.toBeInTheDocument();
 });
@@ -238,10 +266,48 @@ it("un usuario que no es admin ve el estado y el reporte, sin generar ni cambiar
   renderSection();
   const uno = await card("shop-1");
   expect(await within(uno).findByText("Un administrador de la empresa tiene que volver a autorizarla.")).toBeInTheDocument();
-  expect(within(uno).queryByRole("link", { name: /volver a autorizar/i })).not.toBeInTheDocument();
+  expect(within(uno).queryByRole("button", { name: /volver a autorizar/i })).not.toBeInTheDocument();
   expect(within(uno).getByRole("button", { name: "Ver reporte" })).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /Generar reporte/ })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Cambiar modo" })).not.toBeInTheDocument();
+});
+
+it("«Volver a autorizar» pide la URL con la sesión y va a la pantalla de permisos de esa tienda (FEAT-24 SEC)", async () => {
+  const user = userEvent.setup();
+  reauthNeeded();
+  const url = "https://uno.myshopify.com/admin/oauth/authorize?client_id=x&state=v1.a.b";
+  mockAuthUrl.mockResolvedValue(url);
+  renderSection();
+  const uno = await card("shop-1");
+
+  await user.click(await within(uno).findByRole("button", { name: "Volver a autorizar en Shopify" }));
+
+  await waitFor(() => expect(mockGoTo).toHaveBeenCalledWith(url));
+  expect(mockAuthUrl).toHaveBeenCalledWith("uno.myshopify.com");
+  expect(toast.error).not.toHaveBeenCalled();
+});
+
+it("«Volver a autorizar»: si la URL no es la de esa tienda no navega; un 403 muestra el motivo del backend", async () => {
+  const user = userEvent.setup();
+  reauthNeeded();
+  mockAuthUrl.mockResolvedValueOnce("https://evil.example/admin/oauth/authorize?x=1");
+  mockAuthUrl.mockRejectedValueOnce({
+    response: { status: 403, data: { message: "Esta tienda de Shopify ya está vinculada a otra empresa de Powip." } },
+  });
+  renderSection();
+  const uno = await card("shop-1");
+  const button = await within(uno).findByRole("button", { name: "Volver a autorizar en Shopify" });
+
+  await user.click(button);
+  await waitFor(() =>
+    expect(toast.error).toHaveBeenCalledWith("No se pudo abrir la autorización de Shopify. Inténtalo de nuevo."),
+  );
+  await waitFor(() => expect(button).toBeEnabled());
+  await user.click(button);
+  await waitFor(() =>
+    expect(toast.error).toHaveBeenCalledWith("Esta tienda de Shopify ya está vinculada a otra empresa de Powip."),
+  );
+  expect(mockGoTo).not.toHaveBeenCalled();
 });
 
 it("«Generar reporte» pide la corrida, la sigue hasta el final y refresca las tiendas", async () => {

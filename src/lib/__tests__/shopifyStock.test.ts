@@ -11,7 +11,8 @@ import {
   parseModeChangeError,
   parseRunRequestError,
   pollStockRun,
-  reauthorizeHref,
+  isShopifyAuthorizeUrl,
+  parseAuthUrlError,
   reportLists,
   sharedWarehouseSiblings,
   StockRunPollTimeoutError,
@@ -411,13 +412,24 @@ describe("ayudas", () => {
     expect(sharedWarehouseSiblings(shop({ id: "x", inventoryId: null }), all)).toEqual([]);
   });
 
-  it("reauthorizeHref: deja la absoluta y completa la relativa con la base de ms-integrations", () => {
-    expect(reauthorizeHref("https://api.powip.test/shopify/reauth/a.myshopify.com", "http://x")).toBe(
-      "https://api.powip.test/shopify/reauth/a.myshopify.com",
+  it("isShopifyAuthorizeUrl: solo la pantalla de permisos de ESA tienda, por https (FEAT-24 SEC)", () => {
+    const shop = "a.myshopify.com";
+    expect(isShopifyAuthorizeUrl("https://a.myshopify.com/admin/oauth/authorize?client_id=x&state=s", shop)).toBe(true);
+    expect(isShopifyAuthorizeUrl("https://b.myshopify.com/admin/oauth/authorize?client_id=x", shop)).toBe(false);
+    expect(isShopifyAuthorizeUrl("http://a.myshopify.com/admin/oauth/authorize", shop)).toBe(false);
+    expect(isShopifyAuthorizeUrl("https://a.myshopify.com.evil.com/admin/oauth/authorize", shop)).toBe(false);
+    expect(isShopifyAuthorizeUrl("https://a.myshopify.com/admin/otra", shop)).toBe(false);
+    expect(isShopifyAuthorizeUrl("/shopify/reauth/a.myshopify.com", shop)).toBe(false);
+    expect(isShopifyAuthorizeUrl(undefined, shop)).toBe(false);
+  });
+
+  it("parseAuthUrlError: 401 pide volver a entrar; 403 usa el motivo del backend; si no hay, uno genérico", () => {
+    expect(parseAuthUrlError({ response: { status: 401, data: {} } })).toBe("Tu sesión venció. Vuelve a iniciar sesión.");
+    expect(parseAuthUrlError({ response: { status: 403, data: { message: "Es de otra empresa." } } })).toBe("Es de otra empresa.");
+    expect(parseAuthUrlError({ response: { status: 403, data: {} } })).toBe(
+      "Solo un administrador de la empresa puede volver a autorizar la tienda.",
     );
-    expect(reauthorizeHref("/shopify/reauth/a.myshopify.com", "https://int.powip.test/")).toBe(
-      "https://int.powip.test/shopify/reauth/a.myshopify.com",
-    );
+    expect(parseAuthUrlError(new Error("Network Error"))).toBe("No se pudo abrir la autorización de Shopify. Inténtalo de nuevo.");
   });
 
   it("locationKey y findLocation: gid o número de la misma ubicación", () => {

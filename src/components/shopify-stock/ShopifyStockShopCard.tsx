@@ -2,20 +2,23 @@
 
 import { useState } from "react";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   formatDateTime,
   HEALTH_LABELS,
+  isShopifyAuthorizeUrl,
+  parseAuthUrlError,
   REAUTH_REASON_LABELS,
-  reauthorizeHref,
   RUN_STATUS_LABELS,
   scopeLabel,
   STOCK_MODE_DESCRIPTIONS,
   STOCK_MODE_LABELS,
 } from "@/lib/shopifyStock";
+import { goToExternalPage } from "@/lib/browserNavigation";
 import {
-  integrationsBaseUrl,
+  requestShopifyAuthUrl,
   type ShopifyShopReauthorization,
   type ShopifyStockMode,
   type ShopifyStockShop,
@@ -61,6 +64,24 @@ export default function ShopifyStockShopCard({
   const last = shop.lastRun;
   const reauth = reauthorization?.needsReauthorization === true ? reauthorization : null;
   const missing = reauth?.missingScopes ?? [];
+  const [authorizing, setAuthorizing] = useState(false);
+
+  // FEAT-24 SEC: la URL de Shopify se pide con la sesión (POST /shopify/auth-url, solo admin), así el
+  // `state` lleva la empresa y el usuario del token. Ya no se abre /shopify/reauth sin sesión.
+  const startReauthorization = async () => {
+    setAuthorizing(true);
+    try {
+      const url = await requestShopifyAuthUrl(shop.shopUrl);
+      if (isShopifyAuthorizeUrl(url, shop.shopUrl)) {
+        goToExternalPage(url);
+        return;
+      }
+      toast.error("No se pudo abrir la autorización de Shopify. Inténtalo de nuevo.");
+    } catch (error) {
+      toast.error(parseAuthUrlError(error));
+    }
+    setAuthorizing(false);
+  };
 
   return (
     <article data-testid={`shopify-stock-${shop.id}`} className="space-y-3 rounded-md border p-4">
@@ -105,9 +126,16 @@ export default function ShopifyStockShopCard({
           </ul>
           {isAdmin ? (
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              {/* Abre /shopify/reauth/<tienda> de ms-integrations, que redirige a la pantalla de permisos de Shopify. */}
-              <Button asChild size="sm" variant="outline">
-                <a href={reauthorizeHref(reauth.reauthorizeUrl, integrationsBaseUrl())}>Volver a autorizar en Shopify</a>
+              {/* Pide la URL con la sesión y recién ahí va a la pantalla de permisos de Shopify. */}
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2"
+                disabled={authorizing}
+                onClick={() => void startReauthorization()}
+              >
+                {authorizing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Volver a autorizar en Shopify
               </Button>
               {shop.stockMode === "powip" ? (
                 <span className="text-xs">

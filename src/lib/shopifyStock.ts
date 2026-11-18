@@ -457,11 +457,27 @@ export function sharedWarehouseSiblings(shop: ShopifyStockShop, shops: ShopifySt
   );
 }
 
-/** URL de re-autorización lista para abrir: la relativa se completa con la base de ms-integrations. */
-export function reauthorizeHref(url: string, base: string): string {
-  if (/^https?:\/\//i.test(url)) return url;
-  const root = base.replace(/\/$/, "");
-  return `${root}${url.startsWith("/") ? "" : "/"}${url}`;
+/**
+ * FEAT-24 SEC — la URL que devuelve `POST /shopify/auth-url` tiene que ser la pantalla de permisos de ESA
+ * tienda (`https://<tienda>/admin/oauth/authorize`): si no, no se navega.
+ */
+export function isShopifyAuthorizeUrl(url: unknown, shop: string): url is string {
+  if (typeof url !== "string") return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && parsed.hostname === shop && parsed.pathname === "/admin/oauth/authorize";
+  } catch {
+    return false;
+  }
+}
+
+/** Mensaje del rechazo de «Volver a autorizar en Shopify» (`POST /shopify/auth-url`). */
+export function parseAuthUrlError(error: unknown): string {
+  const status = httpStatus(error);
+  const detail = backendMessage(responseBody<ModeErrorBody>(error));
+  if (status === 401) return "Tu sesión venció. Vuelve a iniciar sesión.";
+  if (status === 403) return detail ?? "Solo un administrador de la empresa puede volver a autorizar la tienda.";
+  return detail ?? "No se pudo abrir la autorización de Shopify. Inténtalo de nuevo.";
 }
 
 /** Clave numérica de una ubicación de Shopify (gid o número); null si no es una ubicación. */
