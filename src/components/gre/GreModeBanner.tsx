@@ -1,13 +1,15 @@
 "use client";
 
-import { FlaskConical, KeyRound } from "lucide-react";
+import { FlaskConical, KeyRound, Lock } from "lucide-react";
 import type { GreSettings } from "@/features/sunat/despatch-advice/types/despatch-advice.types";
-import { GRE_PILOT_NOTICE } from "@/features/sunat/despatch-advice/utils/gre-form";
+import { GRE_NOT_ENABLED_NOTICE, GRE_PILOT_NOTICE } from "@/features/sunat/despatch-advice/utils/gre-form";
 
 // FEAT-24 H12-D6 — aviso de modo de pruebas de la guía de remisión. Se muestra
 // mientras ms-sunat no envía a SUNAT (sin conexión o contra un simulador) o
 // mientras la empresa no tenga credenciales GRE. SUNAT no tiene beta REST para
-// la GRE: el modo de pruebas es un simulador o no enviar nada.
+// la GRE: el modo de pruebas es un simulador o no enviar nada. Con SUNAT
+// producción, ms-sunat solo deja emitir a las empresas habilitadas
+// (enabledForCompany; si no, 403 GRE_NO_HABILITADA).
 
 interface Props {
   settings: GreSettings | undefined;
@@ -15,7 +17,10 @@ interface Props {
   sunatProfileId?: string;
 }
 
-export function greModeNotice(settings: GreSettings | undefined, sunatProfileId?: string): { tone: "test" | "credentials"; title: string; body: string } | null {
+export function greModeNotice(
+  settings: GreSettings | undefined,
+  sunatProfileId?: string,
+): { tone: "test" | "disabled" | "credentials"; title: string; body: string } | null {
   if (!settings) return null;
   if (settings.sunatConnection === "NOT_CONFIGURED")
     return {
@@ -28,6 +33,12 @@ export function greModeNotice(settings: GreSettings | undefined, sunatProfileId?
       tone: "test",
       title: "Guías de remisión en modo de pruebas.",
       body: `Las guías van a un entorno de pruebas, no a SUNAT, y no sirven para trasladar mercadería. ${GRE_PILOT_NOTICE}`,
+    };
+  if (!settings.enabledForCompany)
+    return {
+      tone: "disabled",
+      title: GRE_NOT_ENABLED_NOTICE,
+      body: "Se habilita empresa por empresa, empezando por la piloto. Mientras tanto puedes dejar cargadas tus credenciales GRE.",
     };
   const configured = sunatProfileId
     ? settings.profiles.some((profile) => profile.sunatProfileId === sunatProfileId && profile.configured)
@@ -44,7 +55,7 @@ export function greModeNotice(settings: GreSettings | undefined, sunatProfileId?
 export function GreModeBanner({ settings, sunatProfileId }: Props) {
   const notice = greModeNotice(settings, sunatProfileId);
   if (!notice) return null;
-  const Icon = notice.tone === "test" ? FlaskConical : KeyRound;
+  const Icon = notice.tone === "test" ? FlaskConical : notice.tone === "disabled" ? Lock : KeyRound;
   return (
     <div
       role="note"

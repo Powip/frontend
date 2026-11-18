@@ -132,6 +132,12 @@ export interface GreProfileSettings {
 
 export interface GreSettings {
   sunatConnection: SunatGreConnection;
+  /**
+   * false si las guías van a SUNAT producción y la empresa no está habilitada
+   * (SUNAT_GRE_ALLOWED_COMPANY_IDS): emitir y reenviar responden 403
+   * GRE_NO_HABILITADA. Siempre true contra un simulador o sin conexión.
+   */
+  enabledForCompany: boolean;
   profiles: GreProfileSettings[];
 }
 

@@ -59,6 +59,7 @@ function profile(id: string, ruc: string, razonSocial: string, isDefault: boolea
 
 const SETTINGS: GreSettings = {
   sunatConnection: "SUNAT_PRODUCTION",
+  enabledForCompany: true,
   profiles: [
     {
       sunatProfileId: "p1",

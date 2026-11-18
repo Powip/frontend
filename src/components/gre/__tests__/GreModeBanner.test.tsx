@@ -20,8 +20,9 @@ const profile = (sunatProfileId: string, configured: boolean) => ({
   updatedAt: null,
 });
 
-const settings = (sunatConnection: GreSettings["sunatConnection"], configured = true): GreSettings => ({
+const settings = (sunatConnection: GreSettings["sunatConnection"], configured = true, enabledForCompany = true): GreSettings => ({
   sunatConnection,
+  enabledForCompany,
   profiles: [profile("p-1", configured), profile("p-2", false)],
 });
 
@@ -42,6 +43,11 @@ describe("GreModeBanner", () => {
   it("contra un simulador avisa que las guías no sirven para trasladar", () => {
     render(<GreModeBanner settings={settings("OTHER")} />);
     expect(screen.getByTestId("gre-mode-banner")).toHaveTextContent("no sirven para trasladar mercadería");
+  });
+
+  it("con SUNAT producción y la empresa no habilitada dice que todavía no está habilitada", () => {
+    render(<GreModeBanner settings={settings("SUNAT_PRODUCTION", true, false)} />);
+    expect(screen.getByTestId("gre-mode-banner")).toHaveTextContent("La guía de remisión electrónica todavía no está habilitada para tu empresa.");
   });
 
   it("con SUNAT pero sin credenciales (o el RUC elegido sin ellas) pide cargarlas", () => {

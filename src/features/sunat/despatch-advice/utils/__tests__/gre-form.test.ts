@@ -187,18 +187,27 @@ describe("habilitación y mensajes", () => {
   const profile = { sunatProfileId: "p-1", configured: true, isActive: true };
 
   it("sin conexión con SUNAT no se emite (modo de pruebas, empresa piloto)", () => {
-    expect(greEmissionBlockReason({ sunatConnection: "NOT_CONFIGURED", profiles: [profile] })).toMatch(/empresa piloto/);
+    expect(greEmissionBlockReason({ sunatConnection: "NOT_CONFIGURED", enabledForCompany: true, profiles: [profile] })).toMatch(/empresa piloto/);
+  });
+
+  it("con SUNAT producción, una empresa no habilitada no emite aunque tenga credenciales", () => {
+    expect(greEmissionBlockReason({ sunatConnection: "SUNAT_PRODUCTION", enabledForCompany: false, profiles: [profile] })).toBe(
+      "La guía de remisión electrónica todavía no está habilitada para tu empresa.",
+    );
   });
 
   it("sin credenciales GRE no se emite; con un simulador o con SUNAT y credenciales sí", () => {
-    expect(greEmissionBlockReason({ sunatConnection: "SUNAT_PRODUCTION", profiles: [{ ...profile, configured: false }] })).toMatch(/credenciales GRE/);
-    expect(greEmissionBlockReason({ sunatConnection: "OTHER", profiles: [profile] })).toBeNull();
-    expect(greEmissionBlockReason({ sunatConnection: "SUNAT_PRODUCTION", profiles: [profile] })).toBeNull();
+    expect(greEmissionBlockReason({ sunatConnection: "SUNAT_PRODUCTION", enabledForCompany: true, profiles: [{ ...profile, configured: false }] })).toMatch(
+      /credenciales GRE/,
+    );
+    expect(greEmissionBlockReason({ sunatConnection: "OTHER", enabledForCompany: true, profiles: [profile] })).toBeNull();
+    expect(greEmissionBlockReason({ sunatConnection: "SUNAT_PRODUCTION", enabledForCompany: true, profiles: [profile] })).toBeNull();
   });
 
   it("traduce los errores de ms-sunat", () => {
     const error = (status: number, data: unknown) => ({ response: { status, data } });
     expect(greErrorMessage(error(409, { code: "GRE_CREDENTIALS_NOT_CONFIGURED" }))).toMatch(/credenciales GRE/);
+    expect(greErrorMessage(error(403, { code: "GRE_NO_HABILITADA" }))).toBe("La guía de remisión electrónica todavía no está habilitada para tu empresa.");
     expect(greErrorMessage(error(400, { code: "DESPATCH_ADVICE_RULE_VIOLATION", message: "Invalid: carrier.ruc: bad; vehicle.plate: bad" }))).toBe(
       "SUNAT no aceptaría la guía. Revisa: RUC del transportista, Placa.",
     );

@@ -52,6 +52,7 @@ jest.mock("@/features/sunat/despatch-advice/api/despatch-advice.api", () => ({
 
 const SETTINGS: GreSettings = {
   sunatConnection: "SUNAT_PRODUCTION",
+  enabledForCompany: true,
   profiles: [
     {
       sunatProfileId: "p-1",
@@ -247,6 +248,23 @@ describe("GuiasTab", () => {
     expect(await screen.findByTestId("gre-mode-banner")).toHaveTextContent("modo de pruebas");
     expect(screen.getByTestId("gre-mode-banner")).toHaveTextContent("se habilita con la empresa piloto");
     expect(screen.getByRole("button", { name: /Emitir guía de remisión/ })).toBeDisabled();
+  });
+
+  it("con SUNAT producción y la empresa no habilitada lo avisa y bloquea emitir y reenviar", async () => {
+    jest.mocked(getGreSettingsApi).mockResolvedValue({ ...SETTINGS, enabledForCompany: false });
+    setup();
+    expect(await screen.findByTestId("gre-mode-banner")).toHaveTextContent("La guía de remisión electrónica todavía no está habilitada para tu empresa.");
+    const issue = screen.getByRole("button", { name: /Emitir guía de remisión/ });
+    expect(issue).toBeDisabled();
+    expect(issue).toHaveAttribute("title", "La guía de remisión electrónica todavía no está habilitada para tu empresa.");
+    expect(within(await row("T001-00000003")).getByRole("button", { name: /Reenviar/ })).toBeDisabled();
+  });
+
+  it("si ms-sunat responde 403 GRE_NO_HABILITADA al reenviar, muestra su motivo", async () => {
+    jest.mocked(sendDespatchAdviceApi).mockRejectedValue({ response: { status: 403, data: { code: "GRE_NO_HABILITADA" } } });
+    const user = setup();
+    await user.click(within(await row("T001-00000003")).getByRole("button", { name: /Reenviar/ }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("La guía de remisión electrónica todavía no está habilitada para tu empresa."));
   });
 
   it("con SUNAT pero sin credenciales avisa que faltan", async () => {

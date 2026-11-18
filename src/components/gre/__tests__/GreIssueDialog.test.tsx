@@ -7,7 +7,8 @@
  * 3. Traslado (motivo 04): partida y llegada de las fichas de los dos almacenes, sin destinatario,
  *    con transporte privado.
  * 4. Transporte público y privado: sus validaciones se muestran antes de pedir número.
- * 5. Sin conexión con SUNAT (modo de pruebas): aviso de la empresa piloto y no se emite.
+ * 5. Sin conexión con SUNAT (modo de pruebas) o con la empresa no habilitada para SUNAT producción:
+ *    aviso y no se emite; el 403 GRE_NO_HABILITADA de ms-sunat se muestra con su texto.
  * SUNAT nunca se llama: la API de ms-sunat está mockeada.
  */
 
@@ -50,6 +51,7 @@ jest.mock("@/features/sunat/despatch-advice/api/despatch-advice.api", () => ({
 
 const SETTINGS: GreSettings = {
   sunatConnection: "OTHER",
+  enabledForCompany: true,
   profiles: [
     {
       sunatProfileId: "p-1",
@@ -303,5 +305,29 @@ describe("GreIssueDialog", () => {
 
     expect(await within(scope).findByTestId("gre-mode-banner")).toHaveTextContent("La emisión real de guías de remisión se habilita con la empresa piloto.");
     expect(within(scope).getByRole("button", { name: "Emitir guía" })).toBeDisabled();
+  });
+
+  it("con SUNAT producción y la empresa no habilitada lo dice y no deja emitir", async () => {
+    jest.mocked(getGreSettingsApi).mockResolvedValue({ ...SETTINGS, sunatConnection: "SUNAT_PRODUCTION", enabledForCompany: false });
+    givenResolution({ resolved: true, ubigeo: "150122", department: "LIMA", province: "LIMA METROPOLITANA", district: "MIRAFLORES" });
+    setup({ kind: "order", orderId: "o-1" });
+    const scope = await dialog();
+
+    expect(await within(scope).findByTestId("gre-mode-banner")).toHaveTextContent("La guía de remisión electrónica todavía no está habilitada para tu empresa.");
+    expect(within(scope).getByRole("alert")).toHaveTextContent("La guía de remisión electrónica todavía no está habilitada para tu empresa.");
+    expect(within(scope).getByRole("button", { name: "Emitir guía" })).toBeDisabled();
+  });
+
+  it("si ms-sunat responde 403 GRE_NO_HABILITADA muestra su texto", async () => {
+    jest.mocked(issueDespatchAdviceApi).mockRejectedValue({ response: { status: 403, data: { code: "GRE_NO_HABILITADA" } } });
+    givenResolution({ resolved: true, ubigeo: "150122", department: "LIMA", province: "LIMA METROPOLITANA", district: "MIRAFLORES" });
+    const { user } = setup({ kind: "order", orderId: "o-1" });
+    const scope = await dialog();
+    await within(scope).findByText("MIRAFLORES");
+
+    await fillPublicCarrier(user, scope);
+    await user.click(within(scope).getByRole("button", { name: "Emitir guía" }));
+
+    expect(await within(scope).findByRole("alert")).toHaveTextContent("La guía de remisión electrónica todavía no está habilitada para tu empresa.");
   });
 });

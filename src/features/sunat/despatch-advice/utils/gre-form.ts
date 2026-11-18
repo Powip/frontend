@@ -484,6 +484,8 @@ export function greErrorMessage(error: unknown, fallback = "No se pudo completar
   if (!shape.response) return "No hubo respuesta del servidor de facturación. Revisa tu conexión e inténtalo de nuevo.";
 
   switch (code) {
+    case "GRE_NO_HABILITADA":
+      return GRE_NOT_ENABLED_NOTICE;
     case "GRE_CREDENTIALS_NOT_CONFIGURED":
       return "Este RUC no tiene credenciales GRE (client_id y client_secret de SOL). Cárgalas en Facturación › Certificado Digital.";
     case "GRE_CREDENTIALS_NOT_FOUND":
@@ -531,10 +533,14 @@ export function greErrorMessage(error: unknown, fallback = "No se pudo completar
 
 export interface GreSettingsLike {
   sunatConnection: "NOT_CONFIGURED" | "SUNAT_PRODUCTION" | "OTHER";
+  enabledForCompany: boolean;
   profiles: Array<{ sunatProfileId: string; configured: boolean; isActive: boolean }>;
 }
 
 export const GRE_PILOT_NOTICE = "La emisión real de guías de remisión se habilita con la empresa piloto.";
+
+/** Texto del 403 GRE_NO_HABILITADA de ms-sunat (la empresa no está en la lista de habilitadas). */
+export const GRE_NOT_ENABLED_NOTICE = "La guía de remisión electrónica todavía no está habilitada para tu empresa.";
 
 /**
  * Por qué no se puede emitir ahora (o `null`). Sin conexión configurada,
@@ -545,6 +551,7 @@ export function greEmissionBlockReason(settings: GreSettingsLike | null | undefi
   if (!settings) return "Cargando la configuración de guías de remisión…";
   if (settings.sunatConnection === "NOT_CONFIGURED")
     return `Powip todavía no envía guías de remisión a SUNAT. ${GRE_PILOT_NOTICE}`;
+  if (!settings.enabledForCompany) return GRE_NOT_ENABLED_NOTICE;
   if (!settings.profiles.some((profile) => profile.isActive && profile.configured))
     return "Primero carga las credenciales GRE (client_id y client_secret de SOL) de tu RUC en Facturación › Certificado Digital.";
   return null;
