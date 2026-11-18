@@ -3,7 +3,7 @@
 import { Fragment, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Camera, ChevronDown, ChevronRight, History, PackagePlus, Pencil, ShoppingBag, Warehouse } from "lucide-react";
+import { Camera, ChevronDown, ChevronRight, History, PackagePlus, Pencil, ShoppingBag, Trash2, Warehouse } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -23,6 +23,11 @@ const NO_META: WarehouseMeta = new Map();
 
 export type StockTrackingAction = "regularize" | "units" | "transfer" | "write-off";
 
+/** FEAT-24 RMV: qué pide quitar del almacén la papelera (una posición o el producto entero). */
+export type StockRemoveTarget =
+  | { kind: "variant"; item: BusinessInventoryItem }
+  | { kind: "product"; productId: string; productName: string };
+
 export interface StockBoardActions {
   canEdit: boolean;
   onImage: (item: BusinessInventoryItem, trigger: HTMLButtonElement) => void;
@@ -31,6 +36,11 @@ export interface StockBoardActions {
   onEdit: (variantId: string) => void;
   /** FEAT-24 H10: abre Movimientos filtrado por la variante (`label` = su nombre y SKU). */
   onKardex: (variantId: string, label: string) => void;
+  /**
+   * FEAT-24 RMV: papelera «Quitar del almacén». Solo se muestra si llega (quien edita inventario) y la vista tiene
+   * UN almacén; no se ofrece con IMEI/serie (se manejan por unidades).
+   */
+  onRemove?: (target: StockRemoveTarget) => void;
 }
 
 const STATUS_CLASS: Record<StockStatus, string> = {
@@ -227,6 +237,8 @@ function CoverageCell({ variantId, coverage }: { variantId: string; coverage: No
 export function StockByProduct({ groups, inventories, isLoading, emptyText, actions, meta = NO_META, packs = [], coverage }: ProductViewProps) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const cols = inventories.length + 4 + (coverage ? 1 : 0);
+  // FEAT-24 RMV: con un solo almacén en la vista no hay duda de cuál se quita.
+  const removeFrom = actions.onRemove && inventories.length === 1 ? inventories[0] : null;
   return (
     <div className="flex-1 overflow-auto rounded-md border">
       <Table>
@@ -263,11 +275,25 @@ export function StockByProduct({ groups, inventories, isLoading, emptyText, acti
             ))
           ) : groups.length === 0 ? (
             <TableRow><TableCell colSpan={cols} className="py-6 text-center text-muted-foreground">{emptyText}</TableCell></TableRow>
-          ) : groups.map((group) => (
+          ) : groups.map((group) => {
+            const productId = group.variants[0]?.first.productId;
+            const removableProduct = removeFrom && productId && !isTracked(group.variants[0].first.trackingMode) &&
+              group.variants.some((variant) => variant.byInventory.has(removeFrom.id));
+            return (
             <Fragment key={group.key}>
               <TableRow className="bg-muted/30 hover:bg-muted/30">
                 <TableCell colSpan={cols} className="py-2 text-xs font-semibold tracking-wide">
-                  <span className="uppercase">{group.productName}</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="uppercase">{group.productName}</span>
+                    {removableProduct ? (
+                      <Button size="sm" variant="ghost" className="h-7 text-destructive hover:bg-destructive/10 hover:text-destructive" title="Quitar el producto del almacén"
+                        aria-label={`Quitar el producto ${group.productName} del almacén`}
+                        onClick={() => actions.onRemove?.({ kind: "product", productId, productName: group.productName })}>
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only sm:not-sr-only">Quitar producto</span>
+                      </Button>
+                    ) : null}
+                  </div>
                 </TableCell>
               </TableRow>
               {group.variants.map((variant) => {
@@ -275,6 +301,7 @@ export function StockByProduct({ groups, inventories, isLoading, emptyText, acti
                 const single = variant.positions.length === 1 ? first : null;
                 const isOpen = Boolean(open[variant.variantId]);
                 const label = formatVariantLabel(first.attributes);
+                const removable = removeFrom ? variant.byInventory.get(removeFrom.id) : undefined;
                 return (
                   <Fragment key={variant.variantId}>
                     <TableRow className="cursor-pointer transition-colors hover:bg-muted/30" onClick={() => setOpen((state) => ({ ...state, [variant.variantId]: !isOpen }))}>
@@ -315,6 +342,13 @@ export function StockByProduct({ groups, inventories, isLoading, emptyText, acti
                         <Button size="icon" variant="ghost" className="h-8 w-8" title="Editar Producto" onClick={() => actions.onEdit(variant.variantId)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
+                        {removable && !isTracked(removable.trackingMode) ? (
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive" title="Quitar del almacén"
+                            aria-label={`Quitar ${[first.productName, label].filter(Boolean).join(" · ")} del almacén`}
+                            onClick={() => actions.onRemove?.({ kind: "variant", item: removable })}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                     {isOpen ? <VariantDetail variant={variant} actions={actions} colSpan={cols} /> : null}
@@ -322,7 +356,8 @@ export function StockByProduct({ groups, inventories, isLoading, emptyText, acti
                 );
               })}
             </Fragment>
-          ))}
+            );
+          })}
           {!isLoading && packs.length > 0 ? <PackRows packs={packs} inventories={inventories} colSpan={cols} showCoverage={Boolean(coverage)} /> : null}
         </TableBody>
       </Table>
