@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, Building2, ClipboardList, Undo2 } from "lucide-react";
+import { BarChart3, Building2, ClipboardList, ShoppingCart, Undo2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   formatMoney,
@@ -24,6 +24,8 @@ export const SELECT_CLASS =
 /** Pestañas del grupo Compras (mockup: Órdenes de compra, Proveedores, Devoluciones a proveedor). */
 export const PURCHASE_TABS = [
   { value: "/compras", label: "Órdenes de compra", icon: ClipboardList },
+  // FEAT-24 H13-D3: lo que conviene comprar según la venta, el mínimo y lo ya pedido.
+  { value: "/compras/sugerido", label: "Pedido sugerido", icon: ShoppingCart },
   { value: "/proveedores", label: "Proveedores", icon: Building2 },
   { value: "/compras/devoluciones", label: "Devoluciones a proveedor", icon: Undo2 },
   // FEAT-24 H10-D7: reporte de compras del periodo.
