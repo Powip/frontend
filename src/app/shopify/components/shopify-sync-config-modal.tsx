@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import axios from 'axios';
 import { toast } from 'sonner';
-import { useAuth } from '@/contexts/AuthContext';
+import axiosAuth from '@/lib/axiosAuth';
+import { parseShopifySyncError } from '@/lib/shopifyStock';
 import {
   Dialog,
   DialogContent,
@@ -29,7 +29,6 @@ export function ShopifySyncConfigModal({
   companyId,
   storeId,
 }: ShopifySyncConfigModalProps) {
-  const { auth } = useAuth();
   const [checkoutsEnabled, setCheckoutsEnabled] = useState(false);
   const [checkoutsStartDate, setCheckoutsStartDate] = useState('2025-01-01');
   const [productStrategy, setProductStrategy] = useState<'all' | 'from_orders'>('all');
@@ -39,7 +38,9 @@ export function ShopifySyncConfigModal({
   const handleConfirm = async () => {
     setLoading(true);
     try {
-      await axios.post(
+      // FEAT-24 SEC: con la sesión (admin de la empresa de la tienda). ms-integrations toma la empresa del token;
+      // `companyId` se sigue mandando para el backend anterior, que lo exige.
+      await axiosAuth.post(
         `${process.env.NEXT_PUBLIC_API_INTEGRATIONS}/shopify/confirm-sync/${shopUrl}`,
         {
           companyId,
@@ -52,14 +53,13 @@ export function ShopifySyncConfigModal({
           },
           products: { strategy: productStrategy },
         },
-        { headers: { Authorization: `Bearer ${auth?.accessToken}` } },
       );
       setSuccess(true);
       toast.success('Sincronizacion iniciada correctamente');
     } catch (err: unknown) {
-      const message =
+      const fallback =
         err instanceof Error ? err.message : 'Error al iniciar sincronizacion';
-      toast.error(message);
+      toast.error(parseShopifySyncError(err, fallback));
     } finally {
       setLoading(false);
     }
