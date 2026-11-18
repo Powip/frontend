@@ -115,6 +115,15 @@ describe("renderPdf (encabezado y pie comunes)", () => {
     expect(texts.map((item) => item.text)).toContain("Consulta esta guía en SUNAT");
   });
 
+  it("FEAT-24 H12: con un emisor propio (multi-RUC) el encabezado va a su nombre, RUC y dirección", () => {
+    const { deps, texts } = fakeDeps();
+    renderPdf({ ...SPEC, issuer: { name: "SEGUNDA E.I.R.L.", ruc: "20222222222", address: "Jr. Lampa 1, Lima" } }, { ...CTX, company: { ...CTX.company, storeName: null } }, deps);
+    const first = texts.filter((item) => item.page === 1).map((item) => item.text);
+    expect(first).toEqual(expect.arrayContaining(["SEGUNDA E.I.R.L.", "RUC 20222222222 · Jr. Lampa 1, Lima"]));
+    expect(first).not.toContain("KUNCA SAC");
+    expect(first.join(" ")).not.toContain("20601234567");
+  });
+
   it("sin logo escribe solo el nombre de la empresa; una tabla vacía dice «Sin datos.»", () => {
     const { deps, images, tables } = fakeDeps();
     renderPdf({ ...SPEC, tables: [{ head: ["A", "B"], rows: [] }] }, { ...CTX, company: { name: "KUNCA SAC" } }, deps);

@@ -53,6 +53,12 @@ export interface PdfDocSpec {
   signatures?: string[];
   landscape?: boolean;
   fileName: string;
+  /**
+   * Emisor del documento cuando no es la empresa de la sesión (multi-RUC: la guía de remisión
+   * va a nombre del RUC que la emitió). Reemplaza nombre, RUC y dirección del encabezado; el
+   * logo y el teléfono siguen siendo los de la empresa.
+   */
+  issuer?: { name: string; ruc: string; address?: string | null };
 }
 
 /** Lo que el generador usa de jsPDF (los tests lo reemplazan). */
@@ -156,18 +162,21 @@ function drawHeader(doc: PdfDoc, spec: PdfDocSpec, ctx: PdfContext): number {
   doc.setFillColor(...BRAND);
   doc.rect(0, 0, width, 3, "F");
 
-  const logoWidth = drawLogo(doc, ctx.company.logoDataUrl);
+  const company: PdfCompany = spec.issuer
+    ? { ...ctx.company, name: spec.issuer.name, ruc: spec.issuer.ruc, address: spec.issuer.address ?? null }
+    : ctx.company;
+  const logoWidth = drawLogo(doc, company.logoDataUrl);
   const left = MARGIN + logoWidth;
   doc.setFont("helvetica", "bold");
   doc.setFontSize(13);
   doc.setTextColor(...BRAND);
-  doc.text(pdfText(ctx.company.name || "Mi empresa"), left, 13);
+  doc.text(pdfText(company.name || "Mi empresa"), left, 13);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.5);
   doc.setTextColor(80, 80, 80);
-  const details = [ctx.company.ruc ? `RUC ${ctx.company.ruc}` : null, ctx.company.address, ctx.company.phone].filter(Boolean).join(" · ");
+  const details = [company.ruc ? `RUC ${company.ruc}` : null, company.address, company.phone].filter(Boolean).join(" · ");
   if (details) doc.text(pdfText(details), left, 18, { maxWidth: width / 2 - left });
-  if (ctx.company.storeName) doc.text(pdfText(`Tienda: ${ctx.company.storeName}`), left, 22.5);
+  if (company.storeName) doc.text(pdfText(`Tienda: ${company.storeName}`), left, 22.5);
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(14);

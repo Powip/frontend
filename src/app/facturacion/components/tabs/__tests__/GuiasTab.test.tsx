@@ -215,6 +215,22 @@ describe("GuiasTab", () => {
     expect(spec).toMatchObject({ title: "Guía de remisión remitente", number: "T001-00000001", fileName: "GRE-20111111111-T001-00000001" });
     expect(spec.image).toEqual(expect.objectContaining({ dataUrl: "data:image/png;base64,QR" }));
     expect(spec.meta).toEqual(expect.arrayContaining([["Emisor", "ACME S.A.C. · RUC 20111111111"]]));
+    // El encabezado va a nombre del emisor elegido: RUC, razón social y dirección.
+    expect(spec.issuer).toEqual({ name: "ACME S.A.C.", ruc: "20111111111", address: "Av. Arequipa 100, Lima" });
+  });
+
+  it("sin emisor elegido (Todos los RUC) no imprime la guía y lo avisa", async () => {
+    const user = setup({});
+    await user.click(within(await row("T001-00000001")).getByRole("button", { name: "PDF de T001-00000001" }));
+    expect(toast.error).toHaveBeenCalledWith("Selecciona un emisor (RUC) antes de imprimir la guía");
+    expect(mockDownloadPdf).not.toHaveBeenCalled();
+  });
+
+  it("no imprime una guía de otro RUC con el encabezado del RUC elegido", async () => {
+    const user = setup({ issuer: { ruc: "20222222222", razonSocial: "SEGUNDA E.I.R.L.", direccion: "Jr. Lampa 1" } });
+    await user.click(within(await row("T001-00000001")).getByRole("button", { name: "PDF de T001-00000001" }));
+    expect(toast.error).toHaveBeenCalledWith("La guía T001-00000001 es del RUC 20111111111. Para imprimirla, elige ese RUC en el filtro «RUC emisor».");
+    expect(mockDownloadPdf).not.toHaveBeenCalled();
   });
 
   it("el PDF de una guía no aceptada avisa que no sirve para trasladar y no lleva QR", async () => {

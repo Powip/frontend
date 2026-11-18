@@ -36,7 +36,7 @@ import {
 } from "@/features/sunat/despatch-advice/utils/gre-form";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { usePdfDownload } from "@/hooks/usePdfDownload";
-import { despatchAdvicePdfSpec } from "@/lib/pdf/despatchAdvice";
+import { type DespatchAdviceIssuer, despatchAdvicePdfSpec } from "@/lib/pdf/despatchAdvice";
 import { downloadFile } from "@/utils/http/download-file";
 
 // FEAT-24 H12 — Facturación › Guías de remisión, real (reemplaza el mock en
@@ -48,17 +48,13 @@ const PAGE_SIZE = 20;
 const STATUSES: DespatchAdviceStatus[] = ["PENDING", "SENT", "ACCEPTED", "ACCEPTED_WITH_OBSERVATION", "REJECTED"];
 const SELECT_CLASS = "h-9 rounded-md border border-input bg-background px-2 text-sm";
 
-/** Emisor de la guía impresa: el RUC elegido en la barra «RUC emisor» (con un solo RUC, ese RUC). */
-export interface GuiaIssuer {
-  ruc: string;
-  razonSocial: string;
-  direccion?: string;
-}
-
 interface GuiasTabProps {
   comprobanteRows: TaxDocumentRow[];
-  /** Sin emisor no se imprime la guía (multi-RUC, «Todos los RUC»). */
-  issuer?: GuiaIssuer;
+  /**
+   * Emisor de la guía impresa: el RUC elegido en la barra «RUC emisor» (con un solo RUC, ese RUC).
+   * Sin emisor no se imprime la guía (multi-RUC, «Todos los RUC»).
+   */
+  issuer?: DespatchAdviceIssuer;
 }
 
 const day = (value: string) => {
@@ -153,7 +149,7 @@ export function GuiasTab({ comprobanteRows, issuer }: GuiasTabProps) {
         const QRCode = await import("qrcode");
         qrDataUrl = await QRCode.toDataURL(advice.qrUrl, { margin: 1, width: 256 });
       }
-      await downloadPdf(despatchAdvicePdfSpec(advice, { issuerName: issuer.razonSocial, qrDataUrl }));
+      await downloadPdf(despatchAdvicePdfSpec(advice, { issuer, qrDataUrl }));
     } catch {
       toast.error("No se pudo generar el PDF de la guía.");
     }

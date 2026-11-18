@@ -13,15 +13,26 @@ const day = (value: string) => {
 
 const place = (value: { address: string; establishmentCode?: string | null } | undefined) => value?.address ?? "—";
 
+/** Emisor de la guía: RUC, razón social y dirección del perfil SUNAT que la emitió. */
+export interface DespatchAdviceIssuer {
+  ruc: string;
+  razonSocial: string;
+  direccion?: string | null;
+}
+
 export interface DespatchAdvicePdfOptions {
-  /** Razón social del RUC emisor (multi-RUC: puede no ser la de la empresa de la sesión). */
-  issuerName?: string | null;
+  /**
+   * Emisor (multi-RUC: puede no ser la empresa de la sesión). Va en el encabezado en lugar de la
+   * empresa; se ignora si su RUC no es el de la guía.
+   */
+  issuer?: DespatchAdviceIssuer | null;
   /** QR del link de SUNAT como data URL PNG. */
   qrDataUrl?: string | null;
 }
 
 export function despatchAdvicePdfSpec(advice: DespatchAdvice, options: DespatchAdvicePdfOptions = {}): PdfDocSpec {
   const payload = advice.payload;
+  const issuer = options.issuer && options.issuer.ruc === advice.rucIssuer ? options.issuer : null;
   const accepted = advice.status === "ACCEPTED" || advice.status === "ACCEPTED_WITH_OBSERVATION";
   const recipient = payload.recipient
     ? `${GRE_DOCUMENT_TYPE_LABEL[payload.recipient.identityDocumentType] ?? "Doc."} ${payload.recipient.identityDocumentNumber} · ${payload.recipient.name}`
@@ -49,7 +60,7 @@ export function despatchAdvicePdfSpec(advice: DespatchAdvice, options: DespatchA
     number: advice.number,
     date: day(advice.issueDate),
     meta: [
-      ["Emisor", options.issuerName ? `${options.issuerName} · RUC ${advice.rucIssuer}` : `RUC ${advice.rucIssuer}`],
+      ["Emisor", issuer ? `${issuer.razonSocial} · RUC ${advice.rucIssuer}` : `RUC ${advice.rucIssuer}`],
       ["Estado SUNAT", GRE_STATUS_LABEL[advice.status] ?? advice.status],
       ["Motivo", `${advice.transferReason} · ${GRE_REASON_LABEL[advice.transferReason] ?? ""}`],
       ["Modalidad", `${advice.transportMode} · ${GRE_MODE_LABEL[advice.transportMode] ?? ""}`],
@@ -81,5 +92,6 @@ export function despatchAdvicePdfSpec(advice: DespatchAdvice, options: DespatchA
       : `Sin validez para trasladar mercadería: SUNAT todavía no aceptó esta guía (${(GRE_STATUS_LABEL[advice.status] ?? advice.status).toLowerCase()}).`,
     ...(accepted && options.qrDataUrl ? { image: { dataUrl: options.qrDataUrl, caption: "Consulta esta guía en SUNAT escaneando el código QR." } } : {}),
     fileName: `GRE-${advice.rucIssuer}-${advice.number}`,
+    ...(issuer ? { issuer: { name: issuer.razonSocial, ruc: advice.rucIssuer, address: issuer.direccion || null } } : {}),
   };
 }
