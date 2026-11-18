@@ -49,6 +49,24 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { PaymentDetailsModal } from "./PaymentDetailsModal";
+import { getValuation } from "@/services/inventoryReportsService";
+import { listWarehouses } from "@/services/warehousesService";
+import { MASK } from "@/lib/purchaseOrders";
+
+/**
+ * FEAT-24 H10 — valor del inventario desde la fachada (`GET /inventory-reports/valuation`, JWT y empresa del
+ * token), en vez de `/stats/inventory-value` de logística (sin guarda). En una tienda suma solo los almacenes
+ * de los que es dueña (los que otra tienda comparte no se cuentan dos veces). `undefined` = el rol no ve costos.
+ */
+async function scopedInventoryValue(storeScope: boolean, storeIds: string[]): Promise<number | null | undefined> {
+  const [valuation, owned] = await Promise.all([getValuation(), storeScope ? listWarehouses() : Promise.resolve(null)]);
+  if (!valuation.available) return null;
+  if (!owned) return "value" in valuation.totals ? valuation.totals.value ?? 0 : undefined;
+  const ids = new Set(owned.warehouses.filter((warehouse) => storeIds.includes(warehouse.store_id)).map((warehouse) => warehouse.id));
+  const rows = valuation.warehouses.filter((warehouse) => ids.has(warehouse.inventoryId));
+  if (!("value" in valuation.totals) || rows.some((warehouse) => !("value" in warehouse))) return undefined;
+  return rows.reduce((total, warehouse) => total + (warehouse.value ?? 0), 0);
+}
 
 interface BillingStats {
   month: number;
@@ -95,13 +113,13 @@ interface FinanceStatsProps {
 
 export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) => {
   const { auth } = useAuth();
-  const { scopeParams, storeIds, canFetch, currency } = useDashboardScope();
+  const { scope, scopeParams, storeIds, canFetch, currency } = useDashboardScope();
   const currencyPrefix = reportCurrencyLabel(currency);
   const isAdmin = hasAdminAccess(auth?.user?.role) || isSuperadmin(auth?.user?.email);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [billing, setBilling] = useState<BillingStats[]>([]);
-  const [inventoryValue, setInventoryValue] = useState(0);
+  const [inventoryValue, setInventoryValue] = useState<number | null | undefined>(0);
   const [dailyIncome, setDailyIncome] = useState<any[]>([]);
 
   // Receivables state
@@ -155,15 +173,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
           axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/billing`, {
             params: billingParams,
           }),
-          // El backend valoriza cada almacén por su tienda propietaria, aunque
-          // otros canales de venta compartan su inventory_id.
-          Promise.all(storeIds.map((storeId) =>
-            axios.get(`${process.env.NEXT_PUBLIC_API_INVENTORY}/stats/inventory-value`, {
-              params: { storeId },
-            }),
-          )).then((responses) => ({
-            data: { totalValue: responses.reduce((total, response) => total + Number(response.data?.totalValue || 0), 0) },
-          })),
+          scopedInventoryValue(scope === "store", storeIds),
           // Fetch receivables (pending payments)
           axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/receivables`, {
             params,
@@ -179,7 +189,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
         ]);
 
       setBilling(billingRes.data || []);
-      setInventoryValue(invRes.data?.totalValue || 0);
+      setInventoryValue(invRes);
 
       // Process receivables
       const receivablesData = receivablesRes.data || {
@@ -206,7 +216,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
     } finally {
       setLoading(false);
     }
-  }, [scopeParams, storeIds, canFetch, auth?.user?.id, isAdmin]);
+  }, [scope, scopeParams, storeIds, canFetch, auth?.user?.id, isAdmin]);
 
   useEffect(() => {
     if (fromDate && toDate) {
@@ -280,7 +290,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Valor Almacén"
-          value={`Unidad de costo ${inventoryValue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
+          value={inventoryValue === undefined ? MASK : `Unidad de costo ${(inventoryValue ?? 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
           subValue="Costo reposición est."
           loading={loading}
         />
