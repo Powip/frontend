@@ -35,6 +35,9 @@ import { canCorrectTrackingRequest, getSaleUnits, isTracked, trackingError, type
 import { persistSaleOperation, readSaleOperation, saleOperationKey, validateSaleUnits, type PendingSaleOperation } from "@/services/saleTrackingService";
 import CartLines from "@/components/registrar-venta/CartLines";
 import ProductSearchMatrix from "@/components/registrar-venta/ProductSearchMatrix";
+import SalePackResults from "@/components/registrar-venta/SalePackResults";
+import { addPackLine } from "@/lib/packs/salePack";
+import type { PackView } from "@/services/packsService";
 import {
   hasSaleChannelSelection,
   SaleChannelField,
@@ -1740,6 +1743,12 @@ function RegistrarVentaContent() {
     });
   };
 
+  // FEAT-24 H9: un pack va con su variante; ms-ventas lo expande por componentes al reservar.
+  const addPackToCart = (pack: PackView) => {
+    setProductFrequencies(bumpProductFrequency(companyId, pack.name));
+    setCart((prev) => addPackLine(prev, pack));
+  };
+
   const addVariantQty = (product: InventoryItemForSale, qty: number) => {
     if (unitSelectionLocked && isTracked(product.trackingMode)) { toast.error("La selección de unidades ya no se puede cambiar en este estado."); return; }
     setCart((prev) => {
@@ -2753,7 +2762,14 @@ function RegistrarVentaContent() {
                   </div>
 
                   {/* Resultados */}
-                  <div className="border-t pt-4">
+                  <div className="border-t pt-4 space-y-3">
+                    <SalePackResults
+                      query={productQuery}
+                      inventoryId={selectedInventory}
+                      disabled={isSubmitting}
+                      qtyInCartByVariant={qtyInCartByVariant}
+                      onAddPack={addPackToCart}
+                    />
                     <ProductSearchMatrix
                       products={products}
                       query={productQuery}
