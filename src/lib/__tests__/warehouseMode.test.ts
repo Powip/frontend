@@ -92,6 +92,8 @@ describe("warehouseAccess", () => {
       picking: true,
       receiveReturns: true,
       receivePurchases: true,
+      receiveTransfers: true,
+      count: true,
     });
   });
 
@@ -101,6 +103,8 @@ describe("warehouseAccess", () => {
       picking: false,
       receiveReturns: false,
       receivePurchases: false,
+      receiveTransfers: false,
+      count: false,
     });
   });
 
