@@ -18,6 +18,7 @@ import {
 } from "@/services/warehousesService";
 import ReceiveReturnDialog from "./ReceiveReturnDialog";
 import { makeVariantLabeler, orderLabel } from "./receptionLabels";
+import { ReceptionOriginBadge } from "./ReceptionOriginBadge";
 
 // FEAT-24 H2-F — Inventario › Recepciones: devoluciones que el courier trajo de
 // vuelta. Quedan «por recibir» hasta que alguien decide, por producto, qué
@@ -133,7 +134,7 @@ export default function ReceptionsTab({ companyId, canEdit, scopeInventoryIds }:
                 <tbody>
                   {pending.map((reception) => (
                     <tr key={reception.id} className="border-t align-top" data-testid={`reception-${reception.id}`}>
-                      <td className="px-4 py-3 font-mono font-semibold">{orderLabel(reception)}</td>
+                      <td className="px-4 py-3 font-mono font-semibold"><span>{orderLabel(reception)}</span><ReceptionOriginBadge reception={reception} /></td>
                       <td className="px-4 py-3">
                         <ul className="space-y-1">
                           {reception.lines.map((line) => {
@@ -190,7 +191,7 @@ export default function ReceptionsTab({ companyId, canEdit, scopeInventoryIds }:
                 <tbody>
                   {received.map((reception) => (
                     <tr key={reception.id} className="border-t align-top" data-testid={`received-${reception.id}`}>
-                      <td className="px-4 py-3 font-mono font-semibold">{orderLabel(reception)}</td>
+                      <td className="px-4 py-3 font-mono font-semibold"><span>{orderLabel(reception)}</span><ReceptionOriginBadge reception={reception} /></td>
                       <td className="px-4 py-3">
                         <ul className="space-y-1">
                           {summarizeReceived(reception.receivedLines).map((row) => (

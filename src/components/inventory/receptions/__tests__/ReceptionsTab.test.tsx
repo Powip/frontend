@@ -285,3 +285,16 @@ describe("Recepciones de devoluciones (FEAT-24 H2-F)", () => {
     expect(await screen.findByTestId("reception-rec-1")).toBeInTheDocument();
   });
 });
+
+describe("origen de la recepción (FEAT-24 H12)", () => {
+  it("marca «Cambio» lo que vuelve por un cambio de producto y «Devolución» lo del courier", async () => {
+    const exchange = { ...pending, id: "rec-2", orderNumber: "ORD-157002", origin: "cambio" } as ReturnReception;
+    mockList.mockImplementation(async (status) => (status === "por_recibir" ? [pending, exchange] : [{ ...received, origin: "cambio" } as ReturnReception]));
+    const user = userEvent.setup();
+    renderTab();
+    expect(within(await screen.findByTestId("reception-rec-2")).getByText("Cambio")).toBeInTheDocument();
+    expect(within(screen.getByTestId("reception-rec-1")).getByText("Devolución")).toBeInTheDocument();
+    await user.click(screen.getByRole("tab", { name: /Recibidas/ }));
+    expect(within(await screen.findByTestId("received-rec-0")).getByText("Cambio")).toBeInTheDocument();
+  });
+});

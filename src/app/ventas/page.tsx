@@ -1,4 +1,5 @@
 "use client";
+import { ExchangeOrderTag } from "@/components/orders/exchange/ExchangeOrderTag";
 import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/orders/ExternalOrderNumberColumn";
 import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
 import { isCommercialSaleOrder, canPrepareDeferredManualOrder, canShipCommercialOrder, salesPhysicalOperationBlockReason, salesStatusBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
@@ -182,6 +183,10 @@ export interface Sale extends UnitAssignmentState {
   customerId: string;
   orderNumber: string;
   externalOrderNumber?: string | null;
+  /** FEAT-24 H12: pedido de cambio («Cambio de ORD-xxxx»). */
+  orderType?: string | null;
+  parentOrderId?: string | null;
+  parentOrderNumber?: string | null;
   clientName: string;
   phoneNumber: string;
   documentType?: string | null;
@@ -286,6 +291,9 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     customerId: order.customer.id,
     orderNumber: order.orderNumber,
     externalOrderNumber: order.externalOrderNumber ?? null,
+    orderType: order.orderType ?? null,
+    parentOrderId: order.parentOrderId ?? null,
+    parentOrderNumber: order.parentOrderNumber ?? null,
     clientName: order.customer.fullName,
     phoneNumber: order.customer.phoneNumber ?? "999",
     documentType: order.customer.documentType ?? null,
@@ -1477,6 +1485,7 @@ Estado: ${sale.status}
                       )}
                       {sale.orderNumber}
                     </div>
+                    <ExchangeOrderTag order={sale} className="mt-0.5 whitespace-normal" />
                   </TableCell>
                   {showExternalCol && (
                     <ExternalOrderNumberCell
@@ -1833,6 +1842,7 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell className="font-medium 2xl:sticky 2xl:left-[81px] w-[100px] min-w-[100px] 2xl:z-10 bg-background text-xs">
                     {sale.orderNumber}
+                    <ExchangeOrderTag order={sale} className="mt-0.5 whitespace-normal" />
                   </TableCell>
                   {showExternalCol && (
                     <ExternalOrderNumberCell
