@@ -556,7 +556,8 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
           <TabsContent value="movimientos" className="flex-1 flex flex-col mt-0">
             <Card className="flex-1 flex flex-col">
               <CardContent className="p-6 overflow-auto">
-                <MovementHistoryTable initialSearch={initialMovementSearch} initialVariantId={initialMovementVariantId} companyId={auth?.company?.id} scope={scope} inventories={storeInventories} scopeReady={warehouses.isSuccess} scopeError={scope === "store" ? warehouses.error : undefined} onRetryScope={() => void warehouses.refetch()} />
+                {/* FEAT-24 H10 + H6: el kardex ofrece solo los almacenes que el usuario ve; en una tienda espera a /me/warehouses para no leer uno ajeno. */}
+                <MovementHistoryTable initialSearch={initialMovementSearch} initialVariantId={initialMovementVariantId} companyId={auth?.company?.id} scope={scope} inventories={storeInventories} scopeReady={warehouses.isSuccess && !myWarehouses.isLoading} scopeError={scope === "store" ? warehouses.error : undefined} onRetryScope={() => void warehouses.refetch()} />
               </CardContent>
             </Card>
           </TabsContent>

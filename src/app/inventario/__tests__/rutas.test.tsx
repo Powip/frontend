@@ -81,6 +81,14 @@ describe("rutas del módulo de inventario (FEAT-24 F1)", () => {
     });
   });
 
+  it("las pestañas siguen el orden del mockup (FEAT-24 H5-C + H10)", async () => {
+    loginAs("ADMINISTRADOR");
+    renderTab("stock");
+    await waitFor(() => expect(screen.getByRole("tab", { name: /^Stock$/ })).toHaveAttribute("aria-selected", "true"));
+    const names = screen.getAllByRole("tab").map((tab) => tab.textContent);
+    expect(names).toEqual(["Stock", "Reporte general", "Movimientos", "Traslados", "Recepciones", "Conteos", "Ajustes y mermas", "Pedidos sin stock", "Alertas", "Unificación", "Cierre mensual"]);
+  });
+
   it.each([
     ["stock", /^Stock$/],
     ["movimientos", /^Movimientos$/],
