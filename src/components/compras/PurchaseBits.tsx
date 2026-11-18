@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { Building2, ClipboardList, Undo2 } from "lucide-react";
+import { BarChart3, Building2, ClipboardList, Undo2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   formatMoney,
@@ -26,6 +26,8 @@ export const PURCHASE_TABS = [
   { value: "/compras", label: "Órdenes de compra", icon: ClipboardList },
   { value: "/proveedores", label: "Proveedores", icon: Building2 },
   { value: "/compras/devoluciones", label: "Devoluciones a proveedor", icon: Undo2 },
+  // FEAT-24 H10-D7: reporte de compras del periodo.
+  { value: "/compras/reporte", label: "Reporte de compras", icon: BarChart3 },
 ] as const;
 
 export function PurchasesNav() {
