@@ -197,11 +197,14 @@ const STICKY_RIGHT_BODY = "sticky z-10 bg-background";
 type TrackingFieldKey = (typeof TRACKING_FIELDS)[number]["key"];
 
 function trackingValuesOf(order: OrderHeader): Record<TrackingFieldKey, string> {
+  // Con saldo pendiente la clave nunca se precarga: el input sirve solo para
+  // registrar una clave nueva (oculta), sin exponer la que ya existe.
+  const keyLocked = getPendingPayment(order) > 0;
   return {
     externalTrackingNumber: order.externalTrackingNumber || "",
     shippingCode: order.shippingCode || "",
     shippingOffice: order.shippingOffice || "",
-    shippingKey: order.shippingKey || "",
+    shippingKey: keyLocked ? "" : order.shippingKey || "",
   };
 }
 
@@ -212,6 +215,12 @@ function trackingValuesOf(order: OrderHeader): Record<TrackingFieldKey, string> 
  * número/código/oficina/clave a mano. Autoguarda solo — sin botón: al salir
  * de cualquiera de los 4 campos (blur) guarda en un solo PATCH todos los que
  * hayan cambiado desde el último valor conocido.
+ *
+ * Con saldo pendiente la clave igual se puede registrar (para cuando la
+ * sincronización con el courier falla), pero queda oculta: input tipo
+ * password, sin precargar la clave guardada y se limpia tras guardar. Se
+ * revela recién cuando el pedido queda libre de deuda (el backend tampoco
+ * la devuelve antes).
  */
 function TrackingInputCells({
   order,
@@ -223,9 +232,9 @@ function TrackingInputCells({
   const original = trackingValuesOf(order);
   const [values, setValues] = useState<Record<TrackingFieldKey, string>>(original);
   const [saving, setSaving] = useState(false);
-  // La clave solo se habilita cuando el pedido queda libre de deuda — no
-  // alcanza con tener un comprobante cargado, si fue de un pago parcial
-  // sigue habiendo saldo pendiente.
+  // La clave solo se ve/edita en claro cuando el pedido queda libre de deuda —
+  // no alcanza con tener un comprobante cargado, si fue de un pago parcial
+  // sigue habiendo saldo pendiente. Mientras tanto se registra oculta.
   const canEdit = getPendingPayment(order) <= 0;
 
   useEffect(() => {
@@ -237,6 +246,7 @@ function TrackingInputCells({
     order.shippingCode,
     order.shippingOffice,
     order.shippingKey,
+    canEdit,
   ]);
 
   const handleAutoSave = async () => {
@@ -246,10 +256,13 @@ function TrackingInputCells({
     try {
       const payload: Partial<Record<TrackingFieldKey, string | null>> = {};
       TRACKING_FIELDS.forEach(({ key }) => {
-        // La clave no tiene input mientras está bloqueada (no hay forma de
-        // que el usuario la haya tocado), pero por las dudas se excluye
-        // explícitamente del payload sin comprobante.
-        if (key === "shippingKey" && !canEdit) return;
+        if (key === "shippingKey" && !canEdit) {
+          // Clave oculta: solo se envía si se tipeó una nueva. Nunca se
+          // manda null (borraría la clave guardada que no se muestra).
+          const newKey = values.shippingKey.trim();
+          if (newKey) payload.shippingKey = newKey;
+          return;
+        }
         if (values[key] !== original[key]) payload[key] = values[key] || null;
       });
       if (Object.keys(payload).length === 0) return;
@@ -259,7 +272,15 @@ function TrackingInputCells({
       // ponía la tabla entera en loading (skeleton) cada vez que se
       // autoguardaba un campo, perdiendo el foco/valores de otras filas que
       // se estuvieran editando al mismo tiempo.
-      onSaved(order.id, payload);
+      if (!canEdit && payload.shippingKey) {
+        // La clave oculta no pasa al estado local (seguiría oculta igual) y
+        // el input se limpia para poder registrar otra si hiciera falta.
+        const { shippingKey: _hiddenKey, ...visiblePatch } = payload;
+        setValues((prev) => ({ ...prev, shippingKey: "" }));
+        onSaved(order.id, visiblePatch);
+      } else {
+        onSaved(order.id, payload);
+      }
     } catch {
       toast.error("No se pudo guardar el tracking");
     } finally {
@@ -270,8 +291,8 @@ function TrackingInputCells({
   return (
     <>
       {TRACKING_FIELDS.map(({ key, placeholder }, i) => {
-        // Solo la clave se bloquea mientras haya deuda — tracking, código y
-        // oficina siempre se pueden ingresar.
+        // Solo la clave queda oculta mientras haya deuda — tracking, código y
+        // oficina siempre se ven y se ingresan en claro.
         const locked = key === "shippingKey" && !canEdit;
         const isKeyCol = key === "shippingKey";
         return (
@@ -287,7 +308,7 @@ function TrackingInputCells({
               className="flex items-center gap-1"
               title={
                 locked
-                  ? "La clave solo es visible cuando no hay saldo pendiente"
+                  ? "Puedes registrar la clave; se mostrará cuando no haya saldo pendiente"
                   : undefined
               }
             >
@@ -295,12 +316,14 @@ function TrackingInputCells({
                 <Lock className="h-3 w-3 shrink-0 text-amber-600" />
               )}
               <Input
-                placeholder={locked ? "Bloqueada" : placeholder}
-                value={locked ? "" : values[key]}
+                type={locked ? "password" : "text"}
+                autoComplete={locked ? "new-password" : undefined}
+                aria-label={isKeyCol ? `Clave del pedido ${order.orderNumber}` : undefined}
+                placeholder={locked ? "Clave oculta" : placeholder}
+                value={values[key]}
                 onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
                 onBlur={handleAutoSave}
-                disabled={locked}
-                className="h-7 w-24 text-[11px] disabled:cursor-not-allowed disabled:opacity-60"
+                className="h-7 w-24 text-[11px]"
               />
               {i === TRACKING_FIELDS.length - 1 && saving && (
                 <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
