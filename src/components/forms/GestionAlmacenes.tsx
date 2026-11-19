@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -138,6 +137,10 @@ const GestionAlmacenes = () => {
 
   if (!companyId) return null;
 
+  // Tiendas que tienen este almacén como su almacén por defecto.
+  const storesUsing = (inventoryId: string) =>
+    stores.filter((store) => links.some((link) => link.inventory_id === inventoryId && link.store_id === store.id && link.is_default)).map((store) => store.name);
+
   const defaultFor = (storeId: string) =>
     links.find((link) => link.store_id === storeId && link.is_default)?.inventory_id ?? "";
 
@@ -145,9 +148,9 @@ const GestionAlmacenes = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center bg-card p-6 rounded-lg border">
         <div>
-          <h3 className="text-lg font-medium">Gestión de Almacenes</h3>
+          <h3 className="text-lg font-medium">Tiendas y almacenes</h3>
           <p className="text-sm text-muted-foreground">
-            Los almacenes son de tu empresa y se pueden compartir entre tiendas
+            El stock es de tu empresa: los almacenes (propios, tiendas físicas o de courier) se comparten entre tiendas
           </p>
         </div>
         <Button
@@ -159,130 +162,10 @@ const GestionAlmacenes = () => {
         </Button>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {query.isPending ? (
-          Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i} className="animate-pulse">
-              <CardContent className="p-6">
-                <div className="h-5 w-32 bg-muted rounded mb-2" />
-                <div className="h-4 w-48 bg-muted rounded" />
-              </CardContent>
-            </Card>
-          ))
-        ) : loadError ? (
-          <div className="col-span-full py-12 flex flex-col items-center justify-center gap-3 border border-dashed rounded-lg">
-            <p className="font-medium">No se pudieron cargar los almacenes</p>
-            <p className="text-sm text-muted-foreground">{loadError}</p>
-            <Button
-              variant="outline"
-              disabled={query.isFetching}
-              onClick={() => void query.refetch()}
-            >
-              Reintentar
-            </Button>
-          </div>
-        ) : warehouses.length > 0 ? (
-          warehouses.map((almacen) => (
-            <Card
-              key={almacen.id}
-              data-testid={`warehouse-${almacen.id}`}
-              className="hover:shadow-md transition-shadow"
-            >
-              <CardContent className="space-y-4 px-6">
-                <div className="flex items-start gap-3">
-                  <div className="p-2 bg-teal-50 text-teal-600 rounded-lg">
-                    <Home className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h4 className="font-medium">{almacen.name}</h4>
-                    <p className="text-xs text-muted-foreground">
-                      {`Tienda de origen: ${storeName(almacen.store_id)}`}
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    {almacen.is_main && almacen.status && <Badge>Principal</Badge>}
-                    {!almacen.status && <Badge variant="outline">Inactivo</Badge>}
-                  </div>
-                </div>
-
-                <div className="flex items-end gap-2">
-                  <div className="flex-1 space-y-1">
-                    <span className="text-xs text-muted-foreground" aria-hidden="true">
-                      Tipo
-                    </span>
-                    <select
-                      aria-label={`Tipo de ${almacen.name}`}
-                      className={SELECT_CLASS}
-                      value={almacen.type}
-                      disabled={!almacen.status}
-                      aria-disabled={busy || undefined}
-                      onChange={(e) => {
-                        if (busy) return;
-                        const type = e.target.value as WarehouseType;
-                        change.mutate({
-                          run: () => setWarehouseType(almacen.id, type),
-                          success: "Tipo actualizado",
-                        });
-                      }}
-                    >
-                      {WAREHOUSE_TYPE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {almacen.status && !almacen.is_main && (
-                    <Button
-                      variant="outline"
-                      disabled={busy}
-                      aria-label={`Hacer principal: ${almacen.name}`}
-                      onClick={() =>
-                        change.mutate({
-                          run: () => setMainWarehouse(almacen.id),
-                          success: "Almacén principal actualizado",
-                        })
-                      }
-                    >
-                      Hacer principal
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    disabled={busy || almacen.is_main}
-                    aria-label={`Eliminar almacén ${almacen.name}`}
-                    title={
-                      almacen.is_main
-                        ? "El almacén principal no se puede eliminar. Define otro como principal primero."
-                        : "Eliminar almacén"
-                    }
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                    onClick={() => {
-                      setConfirmName("");
-                      setPendingDelete({ id: almacen.id, name: almacen.name });
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))
-        ) : (
-          <div className="col-span-full py-12 flex flex-col items-center justify-center border border-dashed rounded-lg">
-            <Home className="h-12 w-12 text-muted-foreground mb-4 opacity-20" />
-            <p className="text-muted-foreground">
-              No tienes almacenes creados aún
-            </p>
-          </div>
-        )}
-      </div>
-
       {!query.isPending && !loadError && stores.length > 0 && warehouses.length > 0 && (
         <div className="space-y-3 bg-card p-6 rounded-lg border">
           <div>
-            <h3 className="text-lg font-medium">Almacén por defecto de cada tienda</h3>
+            <h3 className="text-lg font-medium">Tiendas</h3>
             <p className="text-sm text-muted-foreground">
               Los pedidos que llegan sin almacén (canales e integraciones) salen de este almacén.
             </p>
@@ -293,8 +176,13 @@ const GestionAlmacenes = () => {
               // Un almacén inactivo no se ofrece, salvo que sea el actual (para no mostrar un valor vacío).
               const options = warehouses.filter((w) => w.status || w.id === current);
               return (
-                <div key={store.id} className="space-y-1">
-                  <p className="text-sm font-medium">{store.name}</p>
+                <div key={store.id} data-testid={`store-${store.id}`} className="space-y-2 rounded-md border p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted text-xs font-semibold uppercase">
+                      {store.name.slice(0, 2)}
+                    </div>
+                    <p className="text-sm font-medium">{store.name}</p>
+                  </div>
                   <span className="text-xs text-muted-foreground" aria-hidden="true">
                     Almacén por defecto
                   </span>
@@ -335,6 +223,149 @@ const GestionAlmacenes = () => {
           </div>
         </div>
       )}
+
+
+      <div className="space-y-3 bg-card p-6 rounded-lg border">
+        <h3 className="text-lg font-medium">Almacenes</h3>
+        {query.isPending ? (
+          <div className="space-y-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="animate-pulse rounded-md border p-4">
+                <div className="h-5 w-32 bg-muted rounded mb-2" />
+                <div className="h-4 w-48 bg-muted rounded" />
+              </div>
+            ))}
+          </div>
+        ) : loadError ? (
+          <div className="py-12 flex flex-col items-center justify-center gap-3 border border-dashed rounded-lg">
+            <p className="font-medium">No se pudieron cargar los almacenes</p>
+            <p className="text-sm text-muted-foreground">{loadError}</p>
+            <Button
+              variant="outline"
+              disabled={query.isFetching}
+              onClick={() => void query.refetch()}
+            >
+              Reintentar
+            </Button>
+          </div>
+        ) : warehouses.length > 0 ? (
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/50 text-left text-xs font-medium text-muted-foreground">
+                  <th className="px-4 py-2">Almacén</th>
+                  <th className="px-4 py-2">Tipo</th>
+                  <th className="px-4 py-2">Tiendas que lo usan por defecto</th>
+                  <th className="px-4 py-2 text-right">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+          {warehouses.map((almacen) => (
+            <tr
+              key={almacen.id}
+              data-testid={`warehouse-${almacen.id}`}
+              className="border-t align-middle"
+            >
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-3">
+                  <div className="p-2 bg-teal-50 text-teal-600 rounded-lg">
+                    <Home className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                    <h4 className="font-medium">{almacen.name}</h4>
+                    {almacen.is_main && almacen.status && <Badge>Principal</Badge>}
+                    {!almacen.status && <Badge variant="outline">Inactivo</Badge>}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {`Tienda de origen: ${storeName(almacen.store_id)}`}
+                    </p>
+                  </div>
+                  </div>
+                </td>
+                <td className="px-4 py-3 min-w-[150px]">
+                    <select
+                      aria-label={`Tipo de ${almacen.name}`}
+                      className={SELECT_CLASS}
+                      value={almacen.type}
+                      disabled={!almacen.status}
+                      aria-disabled={busy || undefined}
+                      onChange={(e) => {
+                        if (busy) return;
+                        const type = e.target.value as WarehouseType;
+                        change.mutate({
+                          run: () => setWarehouseType(almacen.id, type),
+                          success: "Tipo actualizado",
+                        });
+                      }}
+                    >
+                      {WAREHOUSE_TYPE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                </td>
+                <td className="px-4 py-3 text-muted-foreground">
+                  {storesUsing(almacen.id).join(", ") || "—"}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-2">
+                  {almacen.status && !almacen.is_main && (
+                    <Button
+                      variant="outline"
+                      disabled={busy}
+                      aria-label={`Hacer principal: ${almacen.name}`}
+                      onClick={() =>
+                        change.mutate({
+                          run: () => setMainWarehouse(almacen.id),
+                          success: "Almacén principal actualizado",
+                        })
+                      }
+                    >
+                      Hacer principal
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    disabled={busy || almacen.is_main}
+                    aria-label={`Eliminar almacén ${almacen.name}`}
+                    title={
+                      almacen.is_main
+                        ? "El almacén principal no se puede eliminar. Define otro como principal primero."
+                        : "Eliminar almacén"
+                    }
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => {
+                      setConfirmName("");
+                      setPendingDelete({ id: almacen.id, name: almacen.name });
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                  </div>
+                </td>
+            </tr>
+          ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="py-12 flex flex-col items-center justify-center border border-dashed rounded-lg">
+            <Home className="h-12 w-12 text-muted-foreground mb-4 opacity-20" />
+            <p className="text-muted-foreground">
+              No tienes almacenes creados aún
+            </p>
+          </div>
+        )}
+        {!query.isPending && !loadError && warehouses.length > 0 && (
+          <p className="text-xs text-muted-foreground">
+            El almacén principal no se puede eliminar: define otro como principal primero.
+          </p>
+        )}
+      </div>
+
 
       <AlertDialog
         open={pendingDefault !== null}

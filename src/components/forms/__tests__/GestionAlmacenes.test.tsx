@@ -500,4 +500,18 @@ describe("Revisión final de la pantalla de almacenes (FEAT-24 H1-A)", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/Las ventas de la tienda salen de este almacén/)).not.toBeInTheDocument();
   });
+
+  // F2: la pantalla se ordena como el mockup (tiendas arriba, tabla de almacenes abajo).
+  it("ordena la pantalla en Tiendas y Almacenes y dice qué tiendas usan cada almacén por defecto", async () => {
+    renderScreen();
+    await waitForList();
+
+    const headings = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
+    expect(headings.slice(0, 3)).toEqual(["Tiendas y almacenes", "Tiendas", "Almacenes"]);
+    for (const name of ["Almacén", "Tipo", "Tiendas que lo usan por defecto", "Acciones"]) {
+      expect(screen.getByRole("columnheader", { name })).toBeInTheDocument();
+    }
+    const rows = screen.getAllByTestId(/^warehouse-/);
+    expect(rows.every((row) => row.tagName === "TR")).toBe(true);
+  });
 });

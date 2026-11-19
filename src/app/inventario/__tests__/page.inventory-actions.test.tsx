@@ -9,7 +9,7 @@ import {
 } from "@/services/businessInventoryItemsService";
 import axiosAuth from "@/lib/axiosAuth";
 import { toast } from "sonner";
-import AlmacenPage from "../page";
+import AlmacenPage from "../_components/InventarioView";
 
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: jest.fn() }));
 jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: jest.fn() }));
@@ -27,7 +27,7 @@ jest.mock("next/image", () => ({
 }));
 jest.mock("exceljs", () => ({ Workbook: jest.fn() }));
 jest.mock("@/components/header/HeaderConfig", () => ({ HeaderConfig: () => null }));
-jest.mock("../../productos/shopify-sync-wizard", () => ({ __esModule: true, default: () => null }));
+jest.mock("@/app/productos/shopify-sync-wizard", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/inventory/MovementHistoryTable", () => ({ MovementHistoryTable: () => null }));
 jest.mock("@/components/inventory/InventoryUnitMovementModal", () => ({
   __esModule: true, default: ({ action, source, onSaved }: any) => <div role="dialog" aria-label={`Movimiento ${action}`}><span>{source.inventoryItemId}:{source.inventoryId}</span><button onClick={onSaved}>Guardar movimiento de prueba</button></div>,
@@ -244,7 +244,10 @@ describe("Warehouse product actions with business inventory queries", () => {
     it("muestra el precio en soles y oculta Default Title", async () => {
       fetchItems.mockResolvedValue([item("simple", { priceVta: 49.9, attributes: { Title: "Default Title" } }), item("polo", { attributes: { Color: "Rojo", Talla: "M" } })]);
       setup(); await screen.findByText("Producto simple");
-      expect(screen.getByText("S/ 49.90")).toBeInTheDocument();
+      // el precio vive en el detalle de la fila (mockup): se abre al tocarla
+      expect(screen.queryByText(/S\/ 49\.90/)).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /Ver detalle de Producto simple/ }));
+      expect(screen.getByText(/Precio venta S\/ 49\.90/)).toBeInTheDocument();
       expect(screen.queryByText(/Default Title/)).not.toBeInTheDocument();
       expect(screen.getByText("Color: Rojo · Talla: M")).toBeInTheDocument();
     });
@@ -259,6 +262,19 @@ describe("Warehouse product actions with business inventory queries", () => {
       expect(fetchItems).toHaveBeenLastCalledWith(expect.objectContaining({ includeInactive: true }));
       expect(screen.getByText("Inactiva")).toBeInTheDocument();
       expect(screen.getByText("Unificada")).toBeInTheDocument();
+    });
+
+    // F2: tras M2 una variante puede tener fila en varios almacenes; las acciones son de cada posición.
+    it("una variante en dos almacenes ofrece sus acciones por almacén en el detalle", async () => {
+      fetchItems.mockResolvedValue([
+        item("multi", { trackingMode: "NONE", variantId: "v-multi", productId: "p-multi", physicalStock: 5, availableStock: 5 }),
+        item("multi-b", { trackingMode: "NONE", variantId: "v-multi", productId: "p-multi", productName: "Producto multi", inventoryId: "warehouse-b", inventoryName: "Almacén B", physicalStock: 2, availableStock: 2 }),
+      ]);
+      setup(); await screen.findByText("Producto multi");
+      expect(screen.queryByTitle("Ajustar stock")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "2 almacenes" }));
+      expect(screen.getAllByTitle("Ajustar stock")).toHaveLength(2);
+      expect(screen.getByTestId("kpi-disponible")).toHaveTextContent("7");
     });
 
     // F4: el stock de una unificada vive en la madre; ms-products rechaza el ajuste.
@@ -304,7 +320,7 @@ describe("Inventario · acciones de edición según el rol", () => {
     for (const name of EDIT_ACTIONS) expect(screen.getAllByRole("button", { name }).length).toBeGreaterThan(0);
     expect(screen.getByTitle("Ajustar stock")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Compras/ })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Reconciliación/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Unificación/i })).toBeInTheDocument();
   });
 
   it.each([
@@ -317,8 +333,8 @@ describe("Inventario · acciones de edición según el rol", () => {
     await screen.findByText("Producto normal");
     // Sigue viendo el inventario y la consulta de unidades (solo lectura)
     expect(screen.getByText("Producto serial")).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Stock Actual/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Historial de Movimientos/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /^Stock$/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /^Movimientos$/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Buscar IMEI/serie" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Ver unidades" })).toBeInTheDocument();
     // …pero ninguna acción que cambie stock
@@ -327,6 +343,6 @@ describe("Inventario · acciones de edición según el rol", () => {
     }
     expect(screen.queryByTitle("Ajustar stock")).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Compras/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: /Reconciliación/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Unificación/i })).not.toBeInTheDocument();
   });
 });

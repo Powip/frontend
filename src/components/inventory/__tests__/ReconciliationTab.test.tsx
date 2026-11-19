@@ -344,11 +344,11 @@ describe('ReconciliationTab', () => {
       renderTab();
       expect(await screen.findByText(/no hay posibles duplicados para unificar/i)).toBeInTheDocument();
       await openTab(/aplicadas/i);
-      expect(await screen.findByText(/todavía no hay reconciliaciones aplicadas/i)).toBeInTheDocument();
-      await openTab(/provisionales pendientes/i);
-      expect(await screen.findByText(/no hay provisionales pendientes/i)).toBeInTheDocument();
-      await openTab(/cola manual/i);
-      expect(await screen.findByText(/no hay líneas de venta sin resolver/i)).toBeInTheDocument();
+      expect(await screen.findByText(/todavía no hay unificaciones aplicadas/i)).toBeInTheDocument();
+      await openTab(/nuevos por revisar/i);
+      expect(await screen.findByText(/no hay productos nuevos por revisar/i)).toBeInTheDocument();
+      await openTab(/ventas sin producto/i);
+      expect(await screen.findByText(/no hay ventas sin producto/i)).toBeInTheDocument();
     });
 
     it('con companyId undefined no pide nada, no muestra skeleton y muestra el vacío', () => {
@@ -382,15 +382,15 @@ describe('ReconciliationTab', () => {
       expect(tabs.map((t) => t.textContent)).toEqual([
         'Por unificar1',
         'Aplicadas0',
-        'Provisionales pendientes2',
-        'Cola manual0',
+        'Ventas sin producto0',
+        'Nuevos por revisar2',
       ]);
     });
 
     it('cambiar de tab pide la página 1 de esa tab', async () => {
       serveTabs({ provisionales: [makeProvisionalTask()] }, { provisionales: 3 });
       renderTab();
-      await openTab(/provisionales pendientes/i);
+      await openTab(/nuevos por revisar/i);
       await waitFor(() =>
         expect(mockListPage).toHaveBeenLastCalledWith({ tab: 'provisionales', page: 1, limit: 10 }),
       );
@@ -399,7 +399,7 @@ describe('ReconciliationTab', () => {
     it('la paginación pide la página siguiente y al cambiar de tab vuelve a la 1', async () => {
       serveTabs({ provisionales: [makeProvisionalTask()] }, { provisionales: 3 });
       renderTab();
-      await openTab(/provisionales pendientes/i);
+      await openTab(/nuevos por revisar/i);
       await screen.findByText('Zapatilla Roja Talla 40');
       await userEvent.setup().click(screen.getByRole('button', { name: '2' }));
       await waitFor(() =>
@@ -430,7 +430,7 @@ describe('ReconciliationTab', () => {
       });
 
       renderTab();
-      await openTab(/provisionales pendientes/i);
+      await openTab(/nuevos por revisar/i);
       await userEvent.setup().click(await screen.findByRole('button', { name: '2' }));
       await waitFor(() =>
         expect(mockListPage).toHaveBeenLastCalledWith({ tab: 'provisionales', page: 2, limit: 10 }),
@@ -449,7 +449,7 @@ describe('ReconciliationTab', () => {
       expect(mockToast.error).toHaveBeenCalledWith('Error al cargar las tareas de reconciliación');
       await userEvent.setup().click(screen.getByRole('button', { name: /reintentar/i }));
       await waitFor(() => expect(mockListPage).toHaveBeenCalledTimes(2));
-      await openTab(/cola manual/i);
+      await openTab(/ventas sin producto/i);
       await waitFor(() =>
         expect(mockListPage).toHaveBeenLastCalledWith({ tab: 'cola_manual', page: 1, limit: 10 }),
       );
@@ -478,12 +478,12 @@ describe('ReconciliationTab', () => {
 
       // Llega primero la tab activa y después la vieja (por_unificar).
       pending.aplicadas(pageOf([]));
-      expect(await screen.findByText(/todavía no hay reconciliaciones aplicadas/i)).toBeInTheDocument();
+      expect(await screen.findByText(/todavía no hay unificaciones aplicadas/i)).toBeInTheDocument();
       await act(async () => {
         pending.por_unificar(pageOf([makeClusterTask()]));
       });
       expect(screen.queryByText(/camiseta azul/i)).not.toBeInTheDocument();
-      expect(screen.getByText(/todavía no hay reconciliaciones aplicadas/i)).toBeInTheDocument();
+      expect(screen.getByText(/todavía no hay unificaciones aplicadas/i)).toBeInTheDocument();
     });
   });
 
@@ -491,7 +491,7 @@ describe('ReconciliationTab', () => {
     it('"Seleccionar las de esta página" marca todas y el botón muestra N', async () => {
       serveTabs({ provisionales: [makeProvisionalTask(), makeProvisionalTask({ id: 'task-prov-2' })] });
       renderTab();
-      await openTab(/provisionales pendientes/i);
+      await openTab(/nuevos por revisar/i);
       await userEvent
         .setup()
         .click(await screen.findByRole('checkbox', { name: /seleccionar las de esta página/i }));
@@ -501,7 +501,7 @@ describe('ReconciliationTab', () => {
     it('cambiar de página limpia la selección', async () => {
       serveTabs({ provisionales: [makeProvisionalTask()] }, { provisionales: 2 });
       renderTab();
-      await openTab(/provisionales pendientes/i);
+      await openTab(/nuevos por revisar/i);
       const user = userEvent.setup();
       await user.click(await screen.findByRole('checkbox', { name: /seleccionar las de esta página/i }));
       expect(screen.getByRole('button', { name: /aceptar como productos nuevos \(1\)/i })).toBeEnabled();
@@ -521,7 +521,7 @@ describe('ReconciliationTab', () => {
       });
 
       renderTab();
-      await openTab(/provisionales pendientes/i);
+      await openTab(/nuevos por revisar/i);
       await screen.findByText('Zapatilla Roja Talla 40');
 
       const user = userEvent.setup();
@@ -541,7 +541,7 @@ describe('ReconciliationTab', () => {
       await waitFor(() =>
         expect(mockToast.success).toHaveBeenCalledWith('1 tarea(s) confirmada(s) correctamente'),
       );
-      expect(await screen.findByText(/no hay provisionales pendientes/i)).toBeInTheDocument();
+      expect(await screen.findByText(/no hay productos nuevos por revisar/i)).toBeInTheDocument();
     });
 
     it('no muestra barra masiva ni checkboxes fuera de provisionales', async () => {
@@ -578,21 +578,21 @@ describe('ReconciliationTab', () => {
       });
 
       renderTab();
-      await openTab(/provisionales pendientes/i);
+      await openTab(/nuevos por revisar/i);
       await screen.findByText('Zapatilla Roja Talla 40');
 
       await userEvent.setup().click(screen.getByRole('button', { name: /confirmar como nuevo/i }));
 
       await waitFor(() => expect(mockConfirmProvisional).toHaveBeenCalledWith('task-prov-1'));
       expect(mockToast.success).toHaveBeenCalledWith('Producto confirmado como nuevo');
-      expect(await screen.findByText(/no hay provisionales pendientes/i)).toBeInTheDocument();
+      expect(await screen.findByText(/no hay productos nuevos por revisar/i)).toBeInTheDocument();
     });
 
     it('"Sí, es la misma → unificar" abre ReconciliationLinkDialog y confirmar llama a resolveReconciliationLink', async () => {
       serveTabs({ provisionales: [makeProvisionalTaskWithSuggestion()] });
 
       renderTab();
-      await openTab(/provisionales pendientes/i);
+      await openTab(/nuevos por revisar/i);
       await screen.findByText('Zapatilla Roja Talla 40');
 
       const user = userEvent.setup();
@@ -615,7 +615,7 @@ describe('ReconciliationTab', () => {
       serveTabs({ provisionales: [makeProvisionalTask()] });
 
       renderTab();
-      await openTab(/provisionales pendientes/i);
+      await openTab(/nuevos por revisar/i);
       await screen.findByText('Zapatilla Roja Talla 40');
 
       const user = userEvent.setup();
@@ -636,7 +636,7 @@ describe('ReconciliationTab', () => {
       mockConfirmProvisional.mockRejectedValueOnce(new Error('falla de red'));
 
       renderTab();
-      await openTab(/provisionales pendientes/i);
+      await openTab(/nuevos por revisar/i);
       await screen.findByText('Zapatilla Roja Talla 40');
 
       await userEvent.setup().click(screen.getByRole('button', { name: /confirmar como nuevo/i }));
@@ -654,7 +654,7 @@ describe('ReconciliationTab', () => {
       serveTabs({ cola_manual: [makeManualTask()] });
 
       renderTab();
-      await openTab(/cola manual/i);
+      await openTab(/ventas sin producto/i);
       await screen.findByText('Línea de venta sin match');
 
       expect(screen.queryByRole('button', { name: /confirmar como nuevo/i })).not.toBeInTheDocument();

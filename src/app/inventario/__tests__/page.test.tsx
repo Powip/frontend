@@ -7,7 +7,7 @@ import { fetchBusinessInventoryItems } from '@/services/businessInventoryItemsSe
 import type { BusinessInventoryItem } from '@/services/businessInventoryItemsService';
 import { toast } from 'sonner';
 import ExcelJS from 'exceljs';
-import AlmacenPage from '../page';
+import AlmacenPage from '../_components/InventarioView';
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { accessToken: 'fake-token', user: { id: 'user-1', role: 'ADMINISTRADOR' }, company: { id: 'company-1', stores: [{id:'store-1', name:'Principal'}] } } }) }));
 jest.mock('@/contexts/BusinessScopeContext', () => ({ useBusinessScope: () => ({scope:'business',storeIds:['store-1'],canFetch:true}) }));
 jest.mock('@/hooks/useBusinessInventories', () => ({useBusinessInventories: () => ({inventories:[{id:'inv-1',name:'Almacén Principal',storeId:'store-1'}],isSuccess:true,isPending:false,refetch:jest.fn()})}));
@@ -65,7 +65,7 @@ jest.mock('exceljs', () => {
 const fetch = jest.mocked(fetchBusinessInventoryItems);
 const mockToast = toast as jest.Mocked<typeof toast>;
 const mockExcelJS = ExcelJS as unknown as { __getAddRowCalls: () => Array<Record<string, unknown>>; __resetAddRowCalls: () => void; __getWorksheets: () => Array<{ columns: Array<{ header: string; key: string; style?: { numFmt?: string } }> }> };
-const makeItem = (id: string, name: string): BusinessInventoryItem => ({ inventoryItemId:id,productId:'product',variantId:`variant-${id}`,productName:name,sku:`SKU-${id}`,price:100,priceVta:100,availableStock:10,physicalStock:12,reservedStock:2, inventoryId:'inv-1', inventoryName:'Almacén Principal',storeId:'store-1',storeName:'Principal' });
+const makeItem = (id: string, name: string): BusinessInventoryItem => ({ inventoryItemId:id,productId:`product-${id}`,variantId:`variant-${id}`,productName:name,sku:`SKU-${id}`,price:100,priceVta:100,availableStock:10,physicalStock:12,reservedStock:2, inventoryId:'inv-1', inventoryName:'Almacén Principal',storeId:'store-1',storeName:'Principal' });
 const DEFAULT_ITEMS = [makeItem('item-1','Producto Uno'),makeItem('item-2','Producto Dos')];
 function renderPage() { const client = new QueryClient({defaultOptions:{queries:{retry:false}}}); return render(<QueryClientProvider client={client}><AlmacenPage /></QueryClientProvider>); }
 async function loaded() { await screen.findByText('Producto Uno'); }
@@ -103,7 +103,7 @@ it.each([
  await waitFor(()=>expect(mockToast.error).toHaveBeenCalledWith(message)); expect(screen.getByText('Producto Uno')).toBeInTheDocument(); expect(screen.getByRole('button',{name:/exportar en excel/i})).not.toBeDisabled();
 });
 it('keeps Stock, Movement History and Reconciliation tabs available', async () => {
- renderPage(); await loaded(); for(const name of [/stock actual/i,/historial de movimientos/i,/reconciliación/i]) expect(screen.getByRole('tab',{name})).toBeInTheDocument();
+ renderPage(); await loaded(); for(const name of [/^stock$/i,/^movimientos$/i,/unificación/i]) expect(screen.getByRole('tab',{name})).toBeInTheDocument();
 });
 it('paginates the complete union without repeating fetches or exporting', async () => {
  fetch.mockResolvedValue(Array.from({length:12},(_,index)=>makeItem(`row-${index}`,`Producto Página ${index}`))); renderPage(); await screen.findByText('Producto Página 0');

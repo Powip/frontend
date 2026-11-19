@@ -117,6 +117,13 @@ function NavItemBadge({
   );
 }
 
+// El módulo de inventario tiene una ruta por pestaña (/inventario/stock, /movimientos, /unificacion):
+// su entrada del menú sigue activa en cualquiera de ellas. El resto de entradas compara la ruta exacta.
+const SECTION_ROOTS = ["/inventario"];
+export function isChildActive(pathname: string, href: string) {
+  return pathname === href || (SECTION_ROOTS.includes(href) && pathname.startsWith(`${href}/`));
+}
+
 export function Sidebar({ className }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
@@ -497,7 +504,7 @@ export function Sidebar({ className }: SidebarProps) {
             const isActive = item.href
               ? pathname === item.href
               : item.children?.some(
-                  (c: { href: string }) => pathname === c.href,
+                  (c: { href: string }) => isChildActive(pathname, c.href),
                 );
             const hasNewBadgeChild = item.children?.some((c) =>
               isBadgeActive(c.badgeUntil),
@@ -551,7 +558,7 @@ export function Sidebar({ className }: SidebarProps) {
                             href={child.href}
                             className={cn(
                               "flex items-center gap-2.5 px-2 py-2 cursor-pointer rounded-md transition-colors",
-                              pathname === child.href
+                              isChildActive(pathname, child.href)
                                 ? "bg-primary/5 text-primary font-semibold shadow-sm"
                                 : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800",
                             )}
@@ -560,7 +567,7 @@ export function Sidebar({ className }: SidebarProps) {
                               <child.icon
                                 className={cn(
                                   "h-4 w-4 shrink-0",
-                                  pathname === child.href
+                                  isChildActive(pathname, child.href)
                                     ? "text-primary"
                                     : "text-gray-400",
                                 )}
@@ -569,7 +576,7 @@ export function Sidebar({ className }: SidebarProps) {
                               <div
                                 className={cn(
                                   "w-1.5 h-1.5 rounded-full shrink-0",
-                                  pathname === child.href
+                                  isChildActive(pathname, child.href)
                                     ? "bg-primary"
                                     : "bg-gray-300 dark:bg-gray-600",
                                 )}
@@ -580,7 +587,7 @@ export function Sidebar({ className }: SidebarProps) {
                             </span>
                             <NavItemBadge
                               child={child}
-                              isCurrentPage={pathname === child.href}
+                              isCurrentPage={isChildActive(pathname, child.href)}
                             />
                           </Link>
                         </DropdownMenuItem>
@@ -630,7 +637,7 @@ export function Sidebar({ className }: SidebarProps) {
                                 variant="ghost"
                                 className={cn(
                                   "flex items-center gap-2.5 h-9 w-full justify-start text-[13px] rounded-md transition-all",
-                                  pathname === child.href
+                                  isChildActive(pathname, child.href)
                                     ? "text-primary font-semibold bg-primary/5 shadow-sm"
                                     : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-transparent",
                                 )}
@@ -639,7 +646,7 @@ export function Sidebar({ className }: SidebarProps) {
                                   <child.icon
                                     className={cn(
                                       "h-4 w-4 shrink-0",
-                                      pathname === child.href
+                                      isChildActive(pathname, child.href)
                                         ? "text-primary"
                                         : "text-gray-400",
                                     )}
@@ -648,7 +655,7 @@ export function Sidebar({ className }: SidebarProps) {
                                   <div
                                     className={cn(
                                       "w-1.5 h-1.5 rounded-full shrink-0 transition-all",
-                                      pathname === child.href
+                                      isChildActive(pathname, child.href)
                                         ? "bg-primary scale-125"
                                         : "bg-gray-300 dark:bg-gray-600 group-hover:bg-gray-400",
                                     )}
@@ -659,7 +666,7 @@ export function Sidebar({ className }: SidebarProps) {
                                 </span>
                                 <NavItemBadge
                                   child={child}
-                                  isCurrentPage={pathname === child.href}
+                                  isCurrentPage={isChildActive(pathname, child.href)}
                                 />
                               </Button>
                             </Link>
