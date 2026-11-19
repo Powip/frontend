@@ -8,6 +8,7 @@ export function clientToFormFields(client: Client) {
   return {
     fullName: client.fullName ?? "",
     phoneNumber: client.phoneNumber ?? "",
+    email: client.email ?? "",
     documentType: client.documentType ?? undefined,
     documentNumber: client.documentNumber ?? "",
     clientType: client.clientType,
@@ -46,6 +47,8 @@ export function buildClientUpdatePayload(
     changes.documentType = form.documentType ?? null;
     changes.documentNumber = form.documentType ? form.documentNumber : null;
   }
+  // Email is a shared client field (not delivery). Empty clears the column.
+  if (form.email.trim() !== previous.email.trim()) changes.email = form.email.trim() || null;
   for (const field of ["reference", "googleMapsUrl"] as const) {
     if (form[field] !== previous[field]) changes[field] = form[field] || null;
   }

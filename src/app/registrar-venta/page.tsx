@@ -80,7 +80,12 @@ import { bumpProductFrequency, getProductFrequencies } from "@/utils/productFreq
 import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
 import { resolveBundleVariant } from "@/utils/resolveBundleVariant";
 import { buildOrderItem, getOrderItemPricing } from "./orderItemPricing";
-import { isClientDocumentRequired, validateClientDocument } from "./clientDocumentValidation";
+import { VerifyIdentityButton } from "@/app/facturacion/components/VerifyIdentityButton";
+import {
+  isClientDocumentRequired,
+  validateClientDocument,
+  validateClientEmail,
+} from "./clientDocumentValidation";
 import { buildClientUpdatePayload, clientToFormFields, splitOrderClientChanges } from "./clientForm";
 import { clientSaveErrorMessage } from "./clientSaveError";
 import {
@@ -197,6 +202,7 @@ function isoToDateValue(iso: string): string {
 const emptyClientForm = {
   fullName: "",
   phoneNumber: "",
+  email: "",
   documentType: undefined as DocumentType | undefined,
   documentNumber: "",
   clientType: "TRADICIONAL" as ClientType,
@@ -1088,6 +1094,7 @@ function RegistrarVentaContent() {
     clientForm.documentNumber,
     isDocumentRequired,
   );
+  const clientEmailError = validateClientEmail(clientForm.email);
   const hasValidClientDistrict = !!clientForm.district.trim();
   const districtError = clientErrors.district ?? (
     isFound && !hasValidClientDistrict ? "Selecciona el distrito para continuar." : undefined
@@ -1102,6 +1109,7 @@ function RegistrarVentaContent() {
     if (!clientForm.department.trim()) errors.department = "Debes completar este dato.";
     if (!hasValidClientDistrict) errors.district = "Selecciona el distrito para continuar.";
     if (!clientForm.address.trim()) errors.address = "Debes completar este dato.";
+    if (clientEmailError) errors.email = clientEmailError;
 
     setClientErrors(errors);
     return Object.keys(errors).length === 0;
@@ -1119,6 +1127,7 @@ function RegistrarVentaContent() {
         companyId: auth.company.id,
         fullName: clientForm.fullName,
         phoneNumber: clientForm.phoneNumber || undefined, // Evita "" que falla en backend
+        email: clientForm.email.trim() || undefined,
         documentType: clientForm.documentType,
         documentNumber: clientForm.documentType ? clientForm.documentNumber : undefined,
         clientType: clientForm.clientType,
@@ -1287,6 +1296,7 @@ function RegistrarVentaContent() {
             companyId: auth.company.id,
             fullName: clientForm.fullName,
             phoneNumber: clientForm.phoneNumber || undefined,
+            email: clientForm.email.trim() || undefined,
             documentType: clientForm.documentType,
             documentNumber: clientForm.documentType ? clientForm.documentNumber : undefined,
             clientType: clientForm.clientType,
@@ -1926,6 +1936,7 @@ function RegistrarVentaContent() {
     (!orderId || !!orderData) &&
     hasValidClient &&
     hasValidDocumentForRegion &&
+    !clientEmailError &&
     hasValidCart &&
     !validateSaleUnits(cart) &&
     !unknownVariantIds &&
@@ -1952,6 +1963,7 @@ function RegistrarVentaContent() {
       ok: hasValidDocumentForRegion,
       msg: "Completa el documento de identidad del cliente (obligatorio para ventas de provincia)",
     },
+    ...(clientEmailError ? [{ ok: false, msg: "Corrige el correo electrónico del cliente" }] : []),
     { ok: !!orderDetails.orderType, msg: "Selecciona el tipo de orden" },
     { ok: hasValidSalesChannel, msg: "Selecciona el canal de venta de esta tienda" },
     { ok: !!orderDetails.closingChannel, msg: "Selecciona el canal de cierre" },
@@ -2333,6 +2345,7 @@ function RegistrarVentaContent() {
                             <SelectItem value="DNI">DNI</SelectItem>
                             <SelectItem value="CARNET">Carnet de Extranjería</SelectItem>
                             <SelectItem value="PASAPORTE">Pasaporte</SelectItem>
+                            <SelectItem value="RUC">RUC</SelectItem>
                           </SelectContent>
                         </Select>
                         {clientErrors.documentType && (
@@ -2372,6 +2385,18 @@ function RegistrarVentaContent() {
                             {clientErrors.documentNumber}
                           </p>
                         )}
+                        {formEnabled &&
+                          (clientForm.documentType === "DNI" || clientForm.documentType === "RUC") && (
+                            <VerifyIdentityButton
+                              className="mt-1"
+                              documentType={clientForm.documentType}
+                              documentNumber={clientForm.documentNumber}
+                              onVerified={(result) =>
+                                // RENIEC/SUNAT devuelven el nombre o la razón social oficial.
+                                setClientForm((prev) => ({ ...prev, fullName: result.fullName }))
+                              }
+                            />
+                          )}
                       </div>
                     </div>
 
@@ -2536,13 +2561,43 @@ function RegistrarVentaContent() {
                           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                           <p className="text-xs font-medium">
                             Venta de provincia detectada. Completa el documento
-                            de identidad del cliente (DNI, CE o pasaporte).
+                            de identidad del cliente (DNI, CE, pasaporte o RUC).
                           </p>
                         </div>
                       )}
                     </div>
 
                     <Disclosure label="Agregar referencia y ubicación (opcional)">
+                      <div className="space-y-1">
+                        <Label
+                          htmlFor="client-email"
+                          className={clientEmailError ? "text-destructive" : ""}
+                        >
+                          Correo electrónico{" "}
+                          <span className="text-muted-foreground font-normal">(opcional)</span>
+                        </Label>
+                        <Input
+                          id="client-email"
+                          disabled={!formEnabled}
+                          type="email"
+                          inputMode="email"
+                          autoComplete="email"
+                          placeholder="Ej. compras@empresa.com"
+                          value={clientForm.email}
+                          aria-invalid={!!clientEmailError}
+                          className={clientEmailError ? "border-destructive" : ""}
+                          onChange={(e) =>
+                            setClientForm({
+                              ...clientForm,
+                              email: e.target.value,
+                            })
+                          }
+                        />
+                        {clientEmailError && (
+                          <p className="text-xs text-destructive mt-1">{clientEmailError}</p>
+                        )}
+                      </div>
+
                       <div className="space-y-1">
                         <Label>
                           Referencia{" "}

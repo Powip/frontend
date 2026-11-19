@@ -14,10 +14,21 @@ const fieldLabels: Record<string, string> = {
   latitude: "latitud",
   longitude: "longitud",
   googleMapsUrl: "enlace de Google Maps (URL completa con http:// o https://, máximo 500 caracteres)",
+  email: "correo electrónico",
 };
+
+const EMAIL_CONFLICT = "Ya existe otro cliente con ese correo en esta empresa";
 
 export function clientSaveErrorMessage(error: unknown): string {
   const retained = "Los datos de la venta se conservan en el formulario.";
+  // ms-ventas: (company_id, email) es único. Solo se muestra el texto conocido, nunca el cuerpo crudo.
+  if (
+    axios.isAxiosError(error) &&
+    error.response?.status === 409 &&
+    error.response.data?.message === EMAIL_CONFLICT
+  ) {
+    return `No se pudieron guardar los cambios del cliente. ${EMAIL_CONFLICT}: usa otro correo o déjalo vacío. ${retained}`;
+  }
   if (axios.isAxiosError(error) && error.response?.status === 400) {
     const message: unknown = error.response.data?.message;
     const messages = typeof message === "string"

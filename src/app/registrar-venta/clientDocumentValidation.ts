@@ -1,8 +1,14 @@
 import type { DocumentType } from "@/interfaces/ICliente";
+import { isValidRuc } from "@/lib/ruc";
 
 type DocumentErrors = Partial<Record<"documentType" | "documentNumber", string>>;
 
-const documentFormats: Record<DocumentType, { pattern: RegExp; message: string }> = {
+const documentFormats: Record<DocumentType, { pattern: RegExp | { test: (value: string) => boolean }; message: string }> = {
+  // Misma regla que DocumentNumberValidator de ms-ventas: 11 dígitos, prefijo y dígito verificador.
+  RUC: {
+    pattern: { test: isValidRuc },
+    message: "RUC no válido: 11 dígitos que empiecen con 10, 15, 16, 17 o 20.",
+  },
   DNI: {
     pattern: /^\d{7,8}$/,
     message: "DNI debe tener 7 u 8 dígitos.",
@@ -53,4 +59,13 @@ export function validateClientDocument(
   }
 
   return format.pattern.test(documentNumber) ? {} : { documentNumber: format.message };
+}
+
+// El correo es opcional; si se escribe, debe tener forma nombre@dominio.tld y sin espacios.
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function validateClientEmail(email: string): string | undefined {
+  const trimmed = email.trim();
+  if (!trimmed) return undefined;
+  return EMAIL_PATTERN.test(trimmed) ? undefined : "Ingresa un correo válido (ej. nombre@empresa.com).";
 }

@@ -19,6 +19,7 @@ export async function fetchClientByPhone(
       companyId: data.companyId,
       fullName: data.fullName,
       phoneNumber: data.phoneNumber,
+      email: data.email ?? null,
       documentType: data.documentType,
       documentNumber: data.documentNumber,
       clientType: data.clientType,
@@ -44,6 +45,7 @@ export async function createClient(payload: {
   companyId: string;
   fullName: string;
   phoneNumber?: string;
+  email?: string;
   documentType?: string;
   documentNumber?: string;
   clientType: "TRADICIONAL" | "MAYORISTA";
@@ -64,6 +66,7 @@ export type UpdateClientPayload = Partial<{
   companyId: string;
   fullName: string;
   phoneNumber: string;
+  email: string | null;
   documentType: string | null;
   documentNumber: string | null;
   clientType: "TRADICIONAL" | "MAYORISTA";
