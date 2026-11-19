@@ -517,3 +517,25 @@ it("lets a Shopify sale confirmer manage the order using only its actual permiss
   expect(getCcOrderConfirmationCapabilities).toHaveBeenCalledWith("order-cc-1");
   expect(getCommercialLeadConfirmationCapabilities).not.toHaveBeenCalled();
 });
+
+it("does not offer to confirm the dispatch again once a Shopify COD sale has left CC", async () => {
+  // confirmarDespacho (and a paid Shopify order) clear sub_estado_cc: null means the
+  // order is already in Operaciones, not a contact still waiting for confirmation.
+  currentOrder = order({ canalOrigen: "shopify_cod", commercialStage: "SALE", commercialStockState: "QUEUED", subEstadoCc: null });
+  const get = jest.mocked(axiosAuth.get).getMockImplementation()!;
+  jest.mocked(axiosAuth.get).mockImplementation(async (url, config) => {
+    if (String(url).endsWith("/receipt")) return { data: {
+      orderId: currentOrder.id, orderNumber: currentOrder.orderNumber, status: "PENDIENTE",
+      customer: currentOrder.customer,
+      items: [{ productName: "Audífonos Bluetooth", quantity: 1, unitPrice: 79.9, subtotal: 79.9 }],
+      payments: [], totals: { productsTotal: 79.9, grandTotal: 79.9, taxTotal: 0, shippingTotal: 0, discountTotal: 0, totalPaid: 0, pendingAmount: 79.9 },
+    } };
+    return get(url, config);
+  });
+  renderModal();
+
+  expect(await screen.findByText("Audífonos Bluetooth")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Confirmar despacho" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Gestión CC" })).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Gestión de llamada" })).toBeInTheDocument();
+});
