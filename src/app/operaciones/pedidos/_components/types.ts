@@ -189,10 +189,30 @@ export function mapOrderToSale(order: OrderHeader): Sale {
   };
 }
 
+const SCHEDULED_DISPATCH_FORMAT = new Intl.DateTimeFormat("es-PE", {
+  timeZone: "America/Lima",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
+/**
+ * Fecha programada de despacho para el Excel (dd/mm/aaaa, hora de Lima).
+ * Es `callbackAt`: la fecha comprometida o reprogramada que usa
+ * Planificación para agendar el pedido. Sin fecha (o inválida) → null.
+ */
+export function formatScheduledDispatchDate(callbackAt?: string | null): string | null {
+  if (!callbackAt) return null;
+  const date = new Date(callbackAt);
+  if (Number.isNaN(date.getTime())) return null;
+  return SCHEDULED_DISPATCH_FORMAT.format(date);
+}
+
 /**
  * Filas del Excel de Pedidos: una por pedido, Total = total de la orden y
  * "Productos" con todos sus ítems. Con filtro por producto (`productFilter`)
- * se agregan las unidades de ese producto en cada pedido.
+ * se agregan las unidades de ese producto en cada pedido. Incluye la fecha
+ * programada de despacho (`callbackAt`).
  */
 export function buildPedidosExportRows(sales: Sale[], productFilter?: string): SaleExportData[] {
   return sales.map((s) => ({
@@ -207,6 +227,7 @@ export function buildPedidosExportRows(sales: Sale[], productFilter?: string): S
     documentType: s.documentType,
     documentNumber: s.documentNumber,
     date: s.date,
+    scheduledDispatchDate: formatScheduledDispatchDate(s.callbackAt),
     total: s.total,
     advancePayment: s.advancePayment,
     pendingPayment: s.pendingPayment,

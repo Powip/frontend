@@ -39,9 +39,16 @@ export interface SaleExportData {
   products?: string;
   /** Solo con filtro por producto: unidades de ese producto en la orden. */
   filteredProductUnits?: number;
+  /**
+   * Solo en el export de Pedidos: fecha programada de despacho ya formateada
+   * (dd/mm/aaaa) o null si el pedido no tiene fecha. Con `undefined` en todas
+   * las filas la columna no se agrega (otros módulos no la usan).
+   */
+  scheduledDispatchDate?: string | null;
 }
 
 export const FILTERED_PRODUCT_UNITS_HEADER = "Unidades del producto filtrado";
+export const SCHEDULED_DISPATCH_HEADER = "Fecha programada de despacho";
 
 /**
  * Texto de la columna "Productos": todos los ítems de la orden como
@@ -87,6 +94,7 @@ export function exportSalesToExcel(
   const withUnits = sales.some((s) => s.filteredProductUnits !== undefined);
   // FEAT-31: igual que en pantalla, «N° Externo» solo si algún pedido exportado lo trae.
   const withExternalNumber = hasExternalOrderNumbers(sales);
+  const withScheduledDispatch = sales.some((s) => s.scheduledDispatchDate !== undefined);
 
   const exportData = sales.map((s, index) => ({
     "N°": index + 1,
@@ -99,6 +107,9 @@ export function exportSalesToExcel(
     "Tipo Doc": s.documentType || "-",
     "N° Documento": s.documentNumber || "-",
     Fecha: s.date,
+    ...(withScheduledDispatch && {
+      [SCHEDULED_DISPATCH_HEADER]: s.scheduledDispatchDate || "-",
+    }),
     Productos: s.products || "-",
     ...(withUnits && {
       [FILTERED_PRODUCT_UNITS_HEADER]: s.filteredProductUnits ?? 0,

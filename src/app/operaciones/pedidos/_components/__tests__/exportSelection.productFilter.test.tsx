@@ -39,7 +39,7 @@ import { TransitTab } from "../TransitTab";
 import { ClosedTab } from "../ClosedTab";
 import { emptyTabState, patchTabState, type OperationsTabData, type OperationsTabProps } from "../tabState";
 import { OrderDetailModalProvider } from "@/components/orders/OrderDetailModal";
-import { buildPedidosExportRows, type PedidosActions, type Sale, type SaleItem } from "../types";
+import { buildPedidosExportRows, formatScheduledDispatchDate, type PedidosActions, type Sale, type SaleItem } from "../types";
 import type { OrderStatus } from "@/interfaces/IOrder";
 
 function item(productVariantId: string, productName: string, quantity: number): SaleItem {
@@ -220,5 +220,21 @@ describe("buildPedidosExportRows — unidades del producto filtrado", () => {
   it("sin filtro por producto no agrega el campo", () => {
     expect(buildPedidosExportRows(SALES, "")[0]).not.toHaveProperty("filteredProductUnits");
     expect(buildPedidosExportRows(SALES)[0]).not.toHaveProperty("filteredProductUnits");
+  });
+});
+
+describe("buildPedidosExportRows — fecha programada de despacho", () => {
+  it("usa callbackAt en hora de Lima (dd/mm/aaaa)", () => {
+    // 02:00 UTC del 22/11 = 21/11 21:00 en Lima: el día debe ser 21.
+    const sale = { ...makeSale(1, "PREPARADO", "18/11/2026", [CAFE(1)]), callbackAt: "2026-11-22T02:00:00.000Z" };
+    expect(buildPedidosExportRows([sale])[0].scheduledDispatchDate).toBe("21/11/2026");
+  });
+
+  it("sin fecha programada queda null (columna con '-')", () => {
+    expect(buildPedidosExportRows([makeSale(1, "PREPARADO", "18/11/2026", [CAFE(1)])])[0].scheduledDispatchDate).toBeNull();
+  });
+
+  it("fecha inválida queda null", () => {
+    expect(formatScheduledDispatchDate("no-es-fecha")).toBeNull();
   });
 });
