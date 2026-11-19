@@ -48,7 +48,7 @@ function initials(name: string): string {
  */
 export function imprimirGuiaPdf(guia: Guia, almacen?: Almacen, issuer?: GuiaIssuer): void {
   if (!issuer) {
-    toast.error("Selecciona un emisor (RUC) antes de imprimir la guía");
+    toast.error("Agrega un RUC emisor en la pestaña Emisores (RUC) para imprimir la guía");
     return;
   }
 

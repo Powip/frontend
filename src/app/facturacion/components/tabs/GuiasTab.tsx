@@ -201,7 +201,7 @@ export function GuiasTab({ mock, comprobanteRows, issuer }: GuiasTabProps) {
                             className="gap-1.5"
                             onClick={() => {
                               if (!issuer) {
-                                toast.error("Selecciona un emisor (RUC) antes de imprimir la guía");
+                                toast.error("Agrega un RUC emisor en la pestaña Emisores (RUC) para imprimir la guía");
                                 return;
                               }
                               imprimirGuiaPdf(g, alm, issuer);

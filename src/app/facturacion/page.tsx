@@ -20,6 +20,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
 import { getCertificateStatus } from "@/features/sunat/sunat-profile/utils/get-certificate-status";
+import { getDefaultIssuer } from "@/features/sunat/sunat-profile/utils/issuers";
 import { useFacturacionMock } from "@/hooks/useFacturacionMock";
 import { useTaxDocuments } from "@/hooks/useTaxDocuments";
 import { cn } from "@/lib/utils";
@@ -247,7 +248,11 @@ export default function FacturacionPage() {
             mock={mock}
             comprobanteRows={taxDocuments.rows}
             issuer={(() => {
-              const profile = activeProfiles.find((item) => item.id === issuerFilter);
+              // With "Todos los RUC" selected, print with the default RUC so the
+              // user is never blocked; a specific RUC in the filter wins.
+              const profile =
+                activeProfiles.find((item) => item.id === issuerFilter) ??
+                getDefaultIssuer(sunatProfiles);
               return profile
                 ? { ruc: profile.ruc, razonSocial: profile.razonSocial, direccion: profile.address }
                 : undefined;
