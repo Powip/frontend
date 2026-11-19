@@ -23,7 +23,21 @@ describe("client save feedback", () => {
       .toContain("Revisa número de documento");
   });
 
-  it.each([undefined, null, {}, [null, { unexpected: true }]])("handles an unexpected validation body: %p", (message) => {
+  it("names the email field when the backend rejects its format", () => {
+    expect(clientSaveErrorMessage(validationError(["email debe ser un correo electrónico válido"])))
+      .toContain("Revisa correo electrónico");
+  });
+
+  it("explains a duplicated email (409) instead of asking to retry", () => {
+    const result = clientSaveErrorMessage(
+      validationError("Ya existe otro cliente con ese correo en esta empresa", 409),
+    );
+    expect(result).toContain("Ya existe otro cliente con ese correo en esta empresa");
+    expect(result).toContain("Los datos de la venta se conservan en el formulario");
+    expect(result).not.toContain("Vuelve a confirmar para reintentar");
+  });
+
+  it.each([undefined, null, {},[null, { unexpected: true }]])("handles an unexpected validation body: %p", (message) => {
     expect(clientSaveErrorMessage(validationError(message))).toContain("Revisa los datos del cliente");
   });
 

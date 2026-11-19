@@ -1,7 +1,12 @@
 "use client";
 
-import { FileMinus, Plus } from "lucide-react";
+import { FileMinus, Plus, Printer } from "lucide-react";
 import { BetaBanner } from "@/app/facturacion/components/BetaBanner";
+import {
+  imprimirNotaCreditoPdf,
+  type NotaIssuer,
+} from "@/app/facturacion/lib/imprimir-nota-credito-pdf";
+import { formatMotivoNota } from "@/app/facturacion/lib/motivos-nota-credito";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,14 +19,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { useFacturacionMock } from "@/hooks/useFacturacionMock";
+import type { Nota } from "@/types/facturacion";
 
 interface NotasTabProps {
   mock: ReturnType<typeof useFacturacionMock>;
   hasAceptados: boolean;
   onNuevaNota: () => void;
+  /** RUC emisor con el que se imprime cada nota. */
+  getIssuer: (nota: Nota) => NotaIssuer | undefined;
 }
 
-export function NotasTab({ mock, hasAceptados, onNuevaNota }: NotasTabProps) {
+export function NotasTab({ mock, hasAceptados, onNuevaNota, getIssuer }: NotasTabProps) {
   const { notas } = mock;
 
   return (
@@ -66,13 +74,14 @@ export function NotasTab({ mock, hasAceptados, onNuevaNota }: NotasTabProps) {
                   <TableHead>Motivo</TableHead>
                   <TableHead className="text-right">Monto</TableHead>
                   <TableHead>Estado</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
 
               <TableBody>
                 {notas.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center h-40 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center h-40 text-muted-foreground">
                       <FileMinus className="h-6 w-6 mx-auto mb-2 opacity-40" />
                       Aún no has emitido notas de crédito
                     </TableCell>
@@ -91,7 +100,7 @@ export function NotasTab({ mock, hasAceptados, onNuevaNota }: NotasTabProps) {
 
                         <TableCell className="text-xs">{nota.cliente}</TableCell>
 
-                        <TableCell className="text-xs">{nota.motivo}</TableCell>
+                        <TableCell className="text-xs">{formatMotivoNota(nota)}</TableCell>
 
                         <TableCell className="text-right font-bold">
                           S/ {nota.monto.toFixed(2)}
@@ -101,6 +110,19 @@ export function NotasTab({ mock, hasAceptados, onNuevaNota }: NotasTabProps) {
                           <Badge className="bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-950 dark:text-green-300">
                             {nota.estado}
                           </Badge>
+                        </TableCell>
+
+                        <TableCell className="text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1 text-xs"
+                            onClick={() => imprimirNotaCreditoPdf(nota, getIssuer(nota))}
+                            title={`Imprimir PDF de ${nota.num}`}
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                            Imprimir PDF
+                          </Button>
                         </TableCell>
                       </TableRow>
                     );

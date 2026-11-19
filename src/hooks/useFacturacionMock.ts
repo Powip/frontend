@@ -60,16 +60,15 @@ export function useFacturacionMock() {
   }, []);
 
   const crearNota = useCallback(
-    (input: { original: string; tipoOriginal: "01" | "03"; cliente: string; motivo: string; monto: number }) => {
+    (
+      input: Omit<Nota, "fecha" | "num" | "estado" | "tipoOriginal"> & { tipoOriginal: "01" | "03" }
+    ) => {
       const serieKey = input.tipoOriginal === "01" ? "FC01" : "BC01";
       const fullNumber = bumpSerie(serieKey);
       const nota: Nota = {
+        ...input,
         fecha: new Date().toLocaleDateString("es-PE"),
         num: fullNumber,
-        original: input.original,
-        cliente: input.cliente,
-        motivo: input.motivo,
-        monto: input.monto,
         estado: "ACEPTADO",
       };
       setNotas((prev) => [nota, ...prev]);

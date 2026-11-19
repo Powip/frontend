@@ -1,5 +1,5 @@
 export type ClientType = "TRADICIONAL" | "MAYORISTA";
-export type DocumentType = "DNI" | "CARNET" | "PASAPORTE";
+export type DocumentType = "DNI" | "CARNET" | "PASAPORTE" | "RUC";
 
 export type DeliveryZone =
   | "LIMA_NORTE"
@@ -15,6 +15,7 @@ export interface Client {
   companyId: string;
   fullName: string;
   phoneNumber?: string;
+  email?: string | null;
   documentType?: DocumentType;
   documentNumber?: string;
   clientType: ClientType;

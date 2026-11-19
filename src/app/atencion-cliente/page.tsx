@@ -35,6 +35,7 @@ import { CcTabsL2, defaultSubEstado } from "@/components/atencion-cliente/cc-v2/
 import { CcKpiBar } from "@/components/atencion-cliente/cc-v2/CcKpiBar";
 import { CcToolbar, AGENTE_UNASSIGNED } from "@/components/atencion-cliente/cc-v2/CcToolbar";
 import { CcPedidosTable } from "@/components/atencion-cliente/cc-v2/CcPedidosTable";
+import { effectiveSubEstadoCc } from "@/components/atencion-cliente/cc-v2/ccPedidoFields";
 import { exportCcPedidosToExcel } from "@/utils/exportCcPedidosExcel";
 import { useAgentes } from "@/hooks/useAgentes";
 import { IncompleteOrdersTab } from "@/components/atencion-cliente/IncompleteOrdersTab";
@@ -322,7 +323,7 @@ export default function AtencionClientePage() {
         if (pageLoaded && cached.page === pageCc) return undefined;
         return cached.order;
       })
-      .filter((o): o is OrderHeader => !!o && o.subEstadoCc === l2);
+      .filter((o): o is OrderHeader => !!o && effectiveSubEstadoCc(o) === l2);
   })();
 
   const exportTabLabel = l1 === "cod" ? CC_EXPORT_TABS[l2] : undefined;

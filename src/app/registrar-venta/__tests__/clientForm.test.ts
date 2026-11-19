@@ -207,3 +207,38 @@ describe("cambios del cliente al registrar una venta", () => {
     expect(buildClientUpdatePayload(original, form)).toEqual({ phoneNumber: "" });
   });
 });
+
+describe("correo y RUC del cliente", () => {
+  it("carga el correo guardado (null del API como vacío)", () => {
+    expect(clientToFormFields(client({ email: "compras@drasanvi.pe" })).email).toBe("compras@drasanvi.pe");
+    expect(clientToFormFields(client({ email: null })).email).toBe("");
+  });
+
+  it("envía el correo recortado solo si cambió, y null al borrarlo", () => {
+    const original = client({ email: "viejo@drasanvi.pe" });
+    const base = clientToFormFields(original);
+
+    expect(buildClientUpdatePayload(original, base)).toEqual({});
+    expect(buildClientUpdatePayload(original, { ...base, email: " nuevo@drasanvi.pe " })).toEqual({
+      email: "nuevo@drasanvi.pe",
+    });
+    expect(buildClientUpdatePayload(original, { ...base, email: "" })).toEqual({ email: null });
+  });
+
+  it("envía RUC con su número juntos", () => {
+    const original = client();
+    const form = { ...clientToFormFields(original), documentType: "RUC" as const, documentNumber: "20100070970" };
+
+    expect(buildClientUpdatePayload(original, form)).toEqual({
+      documentType: "RUC",
+      documentNumber: "20100070970",
+    });
+  });
+
+  it("el correo es dato del cliente, no de la entrega: nunca va al parche del pedido", () => {
+    expect(splitOrderClientChanges({ email: "x@y.pe", address: "Av. 1" }, true)).toEqual({
+      sharedClientChanges: { email: "x@y.pe" },
+      deliveryChanges: { address: "Av. 1" },
+    });
+  });
+});

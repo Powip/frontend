@@ -30,6 +30,7 @@ import {
   getPedidoMontos,
   getUpsellCount,
   isDniFaltante,
+  effectiveSubEstadoCc,
   type PowipStore,
 } from "./ccPedidoFields";
 
@@ -160,7 +161,7 @@ export function CcPedidosTable({
             const phone = order.customer?.phoneNumber ?? "—";
             const { grandTotal, totalPaid, porCobrar } = getPedidoMontos(order);
 
-            const subEstado = order.subEstadoCc;
+            const subEstado = effectiveSubEstadoCc(order);
             const subStyle = subEstado ? SUB_ESTADO_STYLES[subEstado] : null;
             const canalStyle = order.canalOrigen
               ? (CANAL_COLORS[order.canalOrigen] ?? "bg-gray-100 text-gray-600")
@@ -384,7 +385,7 @@ export function CcPedidosTable({
                     >
                       <WhatsAppIcon className="h-3.5 w-3.5" />
                     </Button>
-                    {order.commercialStage !== "LEAD" && order.subEstadoCc === "anulado_cc" && onRecuperar && (
+                    {order.commercialStage !== "LEAD" && subEstado === "anulado_cc" && onRecuperar && (
                       <Button
                         size="icon"
                         variant="outline"

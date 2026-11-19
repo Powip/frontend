@@ -3,6 +3,7 @@
 import { Download, FileSpreadsheet, FileText, Loader2, Printer } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
+import { formatMotivoNota } from "@/app/facturacion/lib/motivos-nota-credito";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -361,7 +362,7 @@ export function ReportesTab({
         nota.num,
         nota.original,
         nota.cliente,
-        nota.motivo,
+        formatMotivoNota(nota),
         nota.monto.toFixed(2),
         nota.estado,
       ]),
