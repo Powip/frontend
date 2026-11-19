@@ -26,7 +26,6 @@ import {
   Check,
   AlertCircle,
   ExternalLink,
-  ImagePlus,
   Loader2,
   Pencil,
   X,
@@ -42,6 +41,7 @@ import {
   changeLeadPaymentAmount,
   uploadLeadPaymentProof,
 } from "@/services/leadPaymentsService";
+import ProofDropzone from "@/components/modals/ProofDropzone";
 import { safePaymentProof } from "@/components/commercial-leads/paymentPresentation";
 import { notifyCommercialChange } from "@/utils/commercialOrders";
 import { leadCommandId } from "@/components/commercial-leads/lead-ui";
@@ -140,7 +140,6 @@ export default function PaymentVerificationModal({
   const [savingAmountForId, setSavingAmountForId] = useState<string | null>(
     null,
   );
-  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const pathname = usePathname();
   const isCcRoute = pathname === "/atencion-cliente" || pathname.startsWith("/atencion-cliente/");
   const isShopifyCodOrder = orderData?.canalOrigen === "shopify_cod";
@@ -562,48 +561,17 @@ export default function PaymentVerificationModal({
     }
   };
 
-  const handleProofFileChange = (
-    paymentId: string,
-    e: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const selectedFile = e.target.files?.[0];
-    e.target.value = "";
-    if (selectedFile && validateProofFile(selectedFile)) {
-      handleUploadProofToPayment(paymentId, selectedFile);
-    }
-  };
-
   const renderProofUpload = (payment: Payment) => (
-    <div className="flex items-center gap-2">
-      <input
-        type="file"
-        ref={(el) => {
-          fileInputRefs.current[payment.id] = el;
-        }}
-        accept={PROOF_FILE_ACCEPT}
-        className="hidden"
-        onChange={(e) => handleProofFileChange(payment.id, e)}
-      />
-      <Button
-        size="sm"
-        variant="outline"
-        className="text-xs"
-        disabled={!canRecord||uploadingProofForId === payment.id}
-        onClick={() => fileInputRefs.current[payment.id]?.click()}
-      >
-        {uploadingProofForId === payment.id ? (
-          <>
-            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-            Subiendo...
-          </>
-        ) : (
-          <>
-            <ImagePlus className="h-3 w-3 mr-1" />
-            Agregar comprobante
-          </>
-        )}
-      </Button>
-    </div>
+    <ProofDropzone
+      variant="compact"
+      accept={PROOF_FILE_ACCEPT}
+      validate={validateProofFile}
+      disabled={!canRecord}
+      busy={uploadingProofForId === payment.id}
+      onFile={(f) => {
+        if (f) handleUploadProofToPayment(payment.id, f);
+      }}
+    />
   );
 
   const formatCurrency = (value: number) => {
@@ -889,32 +857,18 @@ export default function PaymentVerificationModal({
                   </div>
 
                   <div className="space-y-1">
-                    <Label htmlFor="proof">Comprobante (opcional)</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="proof"
-                        type="file"
-                        accept={PROOF_FILE_ACCEPT}
-                        onChange={(e) => {
-                          const selectedFile = e.target.files?.[0];
-                          if (
-                            !selectedFile ||
-                            !validateProofFile(selectedFile)
-                          ) {
-                            setFile(null);
-                            e.target.value = "";
-                            return;
-                          }
-                          setFile(selectedFile);
-                        }}
-                        className="flex-1"
-                      />
-                      {file && (
-                        <span className="text-xs text-muted-foreground">
-                          {file.name.slice(0, 20)}...
-                        </span>
-                      )}
-                    </div>
+                    <Label>Comprobante (opcional)</Label>
+                    <ProofDropzone
+                      variant="full"
+                      inputLabel="Comprobante (opcional)"
+                      inputId="proof"
+                      file={file}
+                      onFile={setFile}
+                      accept={PROOF_FILE_ACCEPT}
+                      validate={validateProofFile}
+                      disabled={!canRecord || captureFrozen}
+                      globalPaste
+                    />
                   </div>
 
                   </div>
