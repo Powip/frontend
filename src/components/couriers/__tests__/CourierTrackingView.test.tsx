@@ -361,7 +361,7 @@ describe("CourierTrackingView — clave con saldo pendiente", () => {
     });
   }
 
-  it("con saldo permite registrar la clave oculta, sin mostrar la guardada", async () => {
+  it("con saldo la clave guardada se ve en claro y se puede editar", async () => {
     const user = userEvent.setup();
     useOrders([
       { ...order("o-debt", "PED-CON-SALDO", "2026-09-10T12:00:00", "2026-09-26T12:00:00"), grandTotal: 45, shippingKey: "1111" } as ReturnType<typeof order>,
@@ -371,20 +371,21 @@ describe("CourierTrackingView — clave con saldo pendiente", () => {
 
     const input = keyInput("PED-CON-SALDO");
     expect(input).not.toBeDisabled();
-    expect(input.type).toBe("password");
-    expect(input.value).toBe("");
+    expect(input.type).toBe("text");
+    expect(input.value).toBe("1111");
 
-    await user.type(input, " 4547 ");
+    await user.clear(input);
+    await user.type(input, "4547");
     await user.tab();
 
     await waitFor(() => expect(mockedPatch).toHaveBeenCalledTimes(1));
     expect(mockedPatch).toHaveBeenCalledWith(expect.stringMatching(/\/order-header\/o-debt$/), {
       shippingKey: "4547",
     });
-    await waitFor(() => expect(keyInput("PED-CON-SALDO").value).toBe(""));
+    await waitFor(() => expect(keyInput("PED-CON-SALDO").value).toBe("4547"));
   });
 
-  it("con saldo y sin tipear nada no envía la clave (no la borra)", async () => {
+  it("con saldo y sin cambiar nada no envía nada", async () => {
     const user = userEvent.setup();
     useOrders([
       { ...order("o-debt", "PED-CON-SALDO", "2026-09-10T12:00:00", "2026-09-26T12:00:00"), grandTotal: 45, shippingKey: "1111" } as ReturnType<typeof order>,

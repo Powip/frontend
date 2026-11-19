@@ -32,7 +32,6 @@ import {
   CalendarIcon,
   ChevronDown,
   Loader2,
-  Lock,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -197,14 +196,11 @@ const STICKY_RIGHT_BODY = "sticky z-10 bg-background";
 type TrackingFieldKey = (typeof TRACKING_FIELDS)[number]["key"];
 
 function trackingValuesOf(order: OrderHeader): Record<TrackingFieldKey, string> {
-  // Con saldo pendiente la clave nunca se precarga: el input sirve solo para
-  // registrar una clave nueva (oculta), sin exponer la que ya existe.
-  const keyLocked = getPendingPayment(order) > 0;
   return {
     externalTrackingNumber: order.externalTrackingNumber || "",
     shippingCode: order.shippingCode || "",
     shippingOffice: order.shippingOffice || "",
-    shippingKey: keyLocked ? "" : order.shippingKey || "",
+    shippingKey: order.shippingKey || "",
   };
 }
 
@@ -216,11 +212,8 @@ function trackingValuesOf(order: OrderHeader): Record<TrackingFieldKey, string> 
  * de cualquiera de los 4 campos (blur) guarda en un solo PATCH todos los que
  * hayan cambiado desde el último valor conocido.
  *
- * Con saldo pendiente la clave igual se puede registrar (para cuando la
- * sincronización con el courier falla), pero queda oculta: input tipo
- * password, sin precargar la clave guardada y se limpia tras guardar. Se
- * revela recién cuando el pedido queda libre de deuda (el backend tampoco
- * la devuelve antes).
+ * La clave se ve y se edita en claro siempre, con o sin saldo pendiente
+ * (el personal con sesión la recibe del backend en ambos casos).
  */
 function TrackingInputCells({
   order,
@@ -232,11 +225,6 @@ function TrackingInputCells({
   const original = trackingValuesOf(order);
   const [values, setValues] = useState<Record<TrackingFieldKey, string>>(original);
   const [saving, setSaving] = useState(false);
-  // La clave solo se ve/edita en claro cuando el pedido queda libre de deuda —
-  // no alcanza con tener un comprobante cargado, si fue de un pago parcial
-  // sigue habiendo saldo pendiente. Mientras tanto se registra oculta.
-  const canEdit = getPendingPayment(order) <= 0;
-
   useEffect(() => {
     setValues(trackingValuesOf(order));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -246,7 +234,6 @@ function TrackingInputCells({
     order.shippingCode,
     order.shippingOffice,
     order.shippingKey,
-    canEdit,
   ]);
 
   const handleAutoSave = async () => {
@@ -256,13 +243,6 @@ function TrackingInputCells({
     try {
       const payload: Partial<Record<TrackingFieldKey, string | null>> = {};
       TRACKING_FIELDS.forEach(({ key }) => {
-        if (key === "shippingKey" && !canEdit) {
-          // Clave oculta: solo se envía si se tipeó una nueva. Nunca se
-          // manda null (borraría la clave guardada que no se muestra).
-          const newKey = values.shippingKey.trim();
-          if (newKey) payload.shippingKey = newKey;
-          return;
-        }
         if (values[key] !== original[key]) payload[key] = values[key] || null;
       });
       if (Object.keys(payload).length === 0) return;
@@ -272,15 +252,7 @@ function TrackingInputCells({
       // ponía la tabla entera en loading (skeleton) cada vez que se
       // autoguardaba un campo, perdiendo el foco/valores de otras filas que
       // se estuvieran editando al mismo tiempo.
-      if (!canEdit && payload.shippingKey) {
-        // La clave oculta no pasa al estado local (seguiría oculta igual) y
-        // el input se limpia para poder registrar otra si hiciera falta.
-        const { shippingKey: _hiddenKey, ...visiblePatch } = payload;
-        setValues((prev) => ({ ...prev, shippingKey: "" }));
-        onSaved(order.id, visiblePatch);
-      } else {
-        onSaved(order.id, payload);
-      }
+      onSaved(order.id, payload);
     } catch {
       toast.error("No se pudo guardar el tracking");
     } finally {
@@ -291,9 +263,6 @@ function TrackingInputCells({
   return (
     <>
       {TRACKING_FIELDS.map(({ key, placeholder }, i) => {
-        // Solo la clave queda oculta mientras haya deuda — tracking, código y
-        // oficina siempre se ven y se ingresan en claro.
-        const locked = key === "shippingKey" && !canEdit;
         const isKeyCol = key === "shippingKey";
         return (
           <TableCell
@@ -304,22 +273,11 @@ function TrackingInputCells({
                 : "px-2 py-2"
             }
           >
-            <div
-              className="flex items-center gap-1"
-              title={
-                locked
-                  ? "Puedes registrar la clave; se mostrará cuando no haya saldo pendiente"
-                  : undefined
-              }
-            >
-              {locked && (
-                <Lock className="h-3 w-3 shrink-0 text-amber-600" />
-              )}
+            <div className="flex items-center gap-1">
               <Input
-                type={locked ? "password" : "text"}
-                autoComplete={locked ? "new-password" : undefined}
+                type="text"
                 aria-label={isKeyCol ? `Clave del pedido ${order.orderNumber}` : undefined}
-                placeholder={locked ? "Clave oculta" : placeholder}
+                placeholder={placeholder}
                 value={values[key]}
                 onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
                 onBlur={handleAutoSave}
@@ -797,7 +755,7 @@ export default function CourierTrackingView() {
         "Número de tracking": o.externalTrackingNumber || "-",
         "Código de envío": o.shippingCode || "-",
         Oficina: o.shippingOffice || "-",
-        "Clave de envío": getPendingPayment(o) <= 0 ? o.shippingKey || "-" : "Bloqueada",
+        "Clave de envío": o.shippingKey || "-",
         "Link de rastreo": trackingUrlFor(o),
       };
     });
@@ -1549,7 +1507,7 @@ function CourierOrdersTab({
         "Número de tracking": o.externalTrackingNumber || "-",
         "Código de envío": o.shippingCode || "-",
         Oficina: o.shippingOffice || "-",
-        "Clave de envío": getPendingPayment(o) <= 0 ? o.shippingKey || "-" : "Bloqueada",
+        "Clave de envío": o.shippingKey || "-",
         "Link de rastreo": trackingUrlFor(o),
       };
     });
