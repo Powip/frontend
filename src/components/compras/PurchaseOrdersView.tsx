@@ -263,7 +263,8 @@ export default function PurchaseOrdersView({ initialOrderId }: { initialOrderId?
                     </tr>
                   ))
                 ) : orders.length === 0 ? (
-                  <tr>
+                  // Con error de carga no se dice «todavía no hay»: el aviso de arriba ya explica qué pasó.
+                  ordersQuery.error ? null : <tr>
                     <td colSpan={10} className="p-8 text-center text-muted-foreground">
                       {status || supplierId ? "No hay compras con esos filtros." : "Todavía no hay compras."}
                     </td>

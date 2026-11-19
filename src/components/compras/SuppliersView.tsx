@@ -109,7 +109,8 @@ export default function SuppliersView() {
                     </tr>
                   ))
                 ) : suppliers.length === 0 ? (
-                  <tr>
+                  // Con error de carga no se dice «todavía no hay»: el aviso de arriba ya explica qué pasó.
+                  suppliersQuery.error ? null : <tr>
                     <td colSpan={9} className="p-8 text-center text-muted-foreground">
                       Todavía no hay proveedores.
                     </td>
