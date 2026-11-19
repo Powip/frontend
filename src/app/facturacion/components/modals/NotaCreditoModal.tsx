@@ -1,8 +1,9 @@
 "use client";
 
-import { FileMinus } from "lucide-react";
+import { FileMinus, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { MOTIVOS_NC } from "@/app/facturacion/lib/motivos-nota-credito";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -30,193 +31,190 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  calcularMontosNota,
-  getCodigoMotivoNc,
-  MOTIVOS_NC,
-} from "@/app/facturacion/lib/motivos-nota-credito";
+import { IGV_RATE } from "@/features/sunat/shared/constants/sunat.constants";
+import { SUNAT_TAX_AFFECTATION_TYPES } from "@/features/sunat/sunat-document/enums/sunat-document.enums";
+import { useCreateSunatDocuments } from "@/features/sunat/sunat-document/hooks/use-create-sunat-documents";
+import type { SunatDocument } from "@/features/sunat/sunat-document/models/sunat-document.model";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
-import type { useFacturacionMock } from "@/hooks/useFacturacionMock";
-import type { Nota, NotaItem } from "@/types/facturacion";
-
-const MOTIVOS_TOTAL = new Set<string>([
-  "Devolución total",
-  "Anulación de la operación",
-  "Anulación por error en el RUC",
-]);
+import {
+  AMOUNT_CREDIT_REASON_CODES,
+  buildCreditNoteRequest,
+  FULL_CREDIT_REASON_CODES,
+  getCreditableBalance,
+  resolveCreditNoteSeries,
+} from "@/features/sunat/sunat-document/utils/build-credit-note-request";
+import { roundCurrency } from "@/features/sunat/sunat-document/utils/calculate-sunat-document-totals";
+import { getEmissionErrorMessage } from "@/features/sunat/sunat-document/utils/get-emission-error-message";
+import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
+import type { SunatProfile } from "@/features/sunat/sunat-profile/models/sunat-profile";
+import { findIssuerByRuc } from "@/features/sunat/sunat-profile/utils/issuers";
 
 interface NotaCreditoModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Ventas con factura/boleta aceptada por SUNAT y saldo por acreditar. */
   aceptados: TaxDocumentRow[];
+  /** Todos los documentos SUNAT (para el saldo ya acreditado por otras notas). */
+  documents: readonly SunatDocument[];
+  /** Perfiles SUNAT (RUC) activos, para usar las series del RUC del comprobante. */
+  profiles: SunatProfile[];
   preselectId?: string;
-  crearNota: ReturnType<typeof useFacturacionMock>["crearNota"];
-  /** Imprime la nota recién creada (acción del aviso de éxito). */
-  onImprimir?: (nota: Nota) => void;
+  /** La nota se creó y quedó en cola de envío a SUNAT. */
+  onEmitida?: (nota: SunatDocument) => void;
 }
 
-function getFullNumber(row: TaxDocumentRow): string | null {
-  if (!row.taxDocument) {
-    return null;
-  }
+type OriginalItem = SunatDocument["taxDocumentPayload"]["items"][number];
 
-  return `${row.taxDocument.series}-${row.taxDocument.correlative}`;
+const EMPTY_ITEMS: OriginalItem[] = [];
+
+const isGravado = (taxType: string) => taxType === SUNAT_TAX_AFFECTATION_TYPES.GRAVADO;
+
+function getFullNumber(document: SunatDocument): string {
+  return `${document.series}-${document.correlative}`;
+}
+
+/** Importe con IGV de una línea del comprobante por `quantity` unidades. */
+function lineGross(item: OriginalItem, quantity: number): number {
+  const ratio = item.quantity > 0 ? quantity / item.quantity : 0;
+  const net = quantity * Number(item.unitPrice) - Number(item.discountAmount) * ratio;
+  return roundCurrency(isGravado(item.taxType) ? net * (1 + IGV_RATE) : net);
 }
 
 export default function NotaCreditoModal({
   isOpen,
   onClose,
   aceptados,
+  documents,
+  profiles,
   preselectId,
-  crearNota,
-  onImprimir,
+  onEmitida,
 }: NotaCreditoModalProps) {
-  const defaultOriginalId = preselectId ?? aceptados[0]?.sale.id ?? "";
-
-  const [originalId, setOriginalId] = useState(defaultOriginalId);
-  const [motivo, setMotivo] = useState<string>(MOTIVOS_NC[0].label);
-  const [checked, setChecked] = useState<Record<string, boolean>>({});
-  const [qty, setQty] = useState<Record<string, number>>({});
+  const [originalId, setOriginalId] = useState(preselectId ?? aceptados[0]?.sale.id ?? "");
+  const [motivoCode, setMotivoCode] = useState<string>(MOTIVOS_NC[0].code);
+  const [qty, setQty] = useState<Record<number, number>>({});
   const [montoManual, setMontoManual] = useState("");
 
-  const original = useMemo(
-    () => aceptados.find((row) => row.sale.id === originalId),
+  const createDocuments = useCreateSunatDocuments();
+
+  const row = useMemo(
+    () => aceptados.find((item) => item.sale.id === originalId),
     [aceptados, originalId],
   );
+  const original = row?.taxDocument;
+  const originalItems = original?.taxDocumentPayload.items ?? EMPTY_ITEMS;
+  const motivo = MOTIVOS_NC.find((item) => item.code === motivoCode) ?? MOTIVOS_NC[0];
+  const isFull = FULL_CREDIT_REASON_CODES.has(motivo.code);
+  const isAmount = AMOUNT_CREDIT_REASON_CODES.has(motivo.code);
 
-  const originalItems = original?.sale.items ?? [];
+  const issuerProfile = findIssuerByRuc(profiles, original?.rucIssuer);
+  const { data: sequences = [], isLoading: loadingSequences } = useSunatDocumentSequences(
+    issuerProfile?.id,
+    { enabled: Boolean(issuerProfile) },
+  );
+  const series = original
+    ? resolveCreditNoteSeries(sequences, original.taxDocumentType)
+    : undefined;
+  const seriesPrefix = original?.taxDocumentType === "01" ? "F" : "B";
+
+  const balance = original ? getCreditableBalance(original, documents) : 0;
+  const originalTotal = Number(original?.taxDocumentPayload.totals.grandTotal ?? 0);
 
   useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    const id = preselectId ?? aceptados[0]?.sale.id ?? "";
-
-    setOriginalId(id);
-    setMotivo(MOTIVOS_NC[0].label);
+    if (!isOpen) return;
+    setOriginalId(preselectId ?? aceptados[0]?.sale.id ?? "");
+    setMotivoCode(MOTIVOS_NC[0].code);
     setMontoManual("");
   }, [isOpen, preselectId, aceptados]);
 
-  // ✅ Fixed effect dependency to prevent maximum update depth exceeded
+  // Total reasons credit every line; partial reasons start with nothing selected.
   useEffect(() => {
-    if (!original) {
-      setChecked({});
-      setQty({});
-      return;
-    }
-
-    const items = original.sale.items ?? [];
-    const isTotal = MOTIVOS_TOTAL.has(motivo);
-    const nextChecked: Record<string, boolean> = {};
-    const nextQty: Record<string, number> = {};
-
-    for (const item of items) {
-      const itemId = String(item.id);
-
-      nextChecked[itemId] = isTotal;
-      nextQty[itemId] = item.quantity;
-    }
-
-    setChecked(nextChecked);
-    setQty(nextQty);
-  }, [original, motivo]);
-
-  const isManual = motivo === "Descuento global" || originalItems.length === 0;
+    const next: Record<number, number> = {};
+    originalItems.forEach((item, index) => {
+      next[index] = isFull ? item.quantity : 0;
+    });
+    setQty(next);
+  }, [originalItems, isFull]);
 
   const total = useMemo(() => {
-    if (!original) {
-      return 0;
-    }
+    if (!original) return 0;
+    if (isFull) return originalTotal;
+    if (isAmount) return roundCurrency(Number.parseFloat(montoManual) || 0);
+    return roundCurrency(
+      originalItems.reduce((sum, item, index) => sum + lineGross(item, qty[index] ?? 0), 0),
+    );
+  }, [original, isFull, isAmount, originalTotal, montoManual, originalItems, qty]);
 
-    return originalItems.reduce((sum, item) => {
-      const itemId = String(item.id);
-
-      if (!checked[itemId]) {
-        return sum;
-      }
-
-      const quantity = qty[itemId] ?? item.quantity;
-
-      return sum + quantity * Number(item.unitPrice);
-    }, 0);
-  }, [original, originalItems, checked, qty]);
-
-  const handleCrear = () => {
-    if (!original) {
+  const handleEmitir = async () => {
+    if (!original || !row) {
       toast.error("Selecciona el comprobante original");
       return;
     }
-
-    let monto = 0;
-    let items: NotaItem[] | undefined;
-
-    if (isManual) {
-      monto = Number.parseFloat(montoManual) || 0;
-    } else {
-      const anySelected = Object.values(checked).some(Boolean);
-
-      if (!anySelected) {
-        toast.error("Selecciona al menos un ítem para la nota");
-        return;
-      }
-
-      monto = total;
-      items = originalItems
-        .filter((item) => checked[String(item.id)])
-        .map((item) => {
-          const cantidad = qty[String(item.id)] ?? item.quantity;
-          const precioUnitario = Number(item.unitPrice);
-          return {
-            descripcion: item.productName,
-            cantidad,
-            precioUnitario,
-            importe: cantidad * precioUnitario,
-          };
-        });
+    if (!series) {
+      toast.error(
+        `Este RUC no tiene una serie de nota de crédito que empiece con ${seriesPrefix} (p. ej. ${seriesPrefix}C01). Agrégala en Series y Correlativos.`,
+      );
+      return;
     }
-
-    if (monto <= 0) {
-      toast.error("Ingresa o calcula un monto válido");
+    if (total <= 0) {
+      toast.error(
+        isAmount ? "Ingresa un monto válido" : "Selecciona al menos un ítem para la nota",
+      );
+      return;
+    }
+    if (isFull && balance + 0.01 < originalTotal) {
+      toast.error(
+        "Este comprobante ya tiene notas de crédito. Usa «Devolución por ítem» o «Descuento global» por el saldo.",
+      );
+      return;
+    }
+    if (total > balance + 0.01) {
+      toast.error(
+        `El monto supera el saldo por acreditar del comprobante (S/ ${balance.toFixed(2)}).`,
+      );
       return;
     }
 
-    const originalTotals = original.taxDocument?.taxDocumentPayload?.totals;
-    const montos = calcularMontosNota(monto, originalTotals);
-
-    const nota = crearNota({
-      original: getFullNumber(original) || original.sale.orderNumber,
-      tipoOriginal: original.taxDocument?.taxDocumentType === "01" ? "01" : "03",
-      cliente: original.sale.customer.fullName,
-      motivo,
-      motivoCodigo: getCodigoMotivoNc(motivo),
-      monto,
-      subtotal: montos.subtotal,
-      igv: montos.igv,
-      items,
-      rucEmisor: original.taxDocument?.rucIssuer,
+    const request = buildCreditNoteRequest({
+      original,
+      series,
+      reason: { code: motivo.code, description: motivo.label },
+      lines: originalItems.map((_, index) => ({ index, quantity: qty[index] ?? 0 })),
+      amount: total,
     });
 
-    toast.success(
-      `Nota de crédito ${nota.num} registrada (vista previa — aún no enviada a SUNAT).`,
-      onImprimir
-        ? { action: { label: "Imprimir PDF", onClick: () => onImprimir(nota) }, duration: 10000 }
-        : undefined,
-    );
+    try {
+      const result = await createDocuments.mutateAsync({ documents: [request] });
+      const [error] = result.errors;
+      const [nota] = result.documents;
 
-    onClose();
+      if (error || !nota) {
+        toast.error(
+          error ? getEmissionErrorMessage(error) : "No se pudo crear la nota de crédito.",
+        );
+        return;
+      }
+
+      toast.success(
+        `Nota de crédito ${getFullNumber(nota)} enviada a SUNAT. Podrás imprimirla cuando SUNAT la acepte.`,
+      );
+      onEmitida?.(nota);
+      onClose();
+    } catch (error) {
+      console.error("Error al emitir la nota de crédito:", error);
+      toast.error("No se pudo emitir la nota de crédito. Revisa tu conexión e intenta nuevamente.");
+    }
   };
+
+  const emitting = createDocuments.isPending;
 
   return (
     <Dialog
       open={isOpen}
       onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
+        if (!open && !emitting) onClose();
       }}
     >
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[600px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[640px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
             <FileMinus className="h-5 w-5 text-primary" />
@@ -224,14 +222,14 @@ export default function NotaCreditoModal({
           </DialogTitle>
 
           <DialogDescription>
-            Elige a qué factura o boleta corresponde — toda nota queda ligada a un comprobante
-            original ya aceptado por SUNAT.
+            Elige la factura o boleta aceptada por SUNAT. La nota se envía a SUNAT con el mismo RUC
+            del comprobante y queda guardada.
           </DialogDescription>
         </DialogHeader>
 
         {aceptados.length === 0 ? (
           <p className="py-6 text-center text-sm text-muted-foreground">
-            Aún no tienes comprobantes aceptados para notar.
+            Aún no tienes comprobantes aceptados con saldo por acreditar.
           </p>
         ) : (
           <div className="grid gap-4">
@@ -244,27 +242,48 @@ export default function NotaCreditoModal({
                 </SelectTrigger>
 
                 <SelectContent>
-                  {aceptados.map((row) => (
-                    <SelectItem key={row.sale.id} value={row.sale.id}>
-                      {getFullNumber(row)} — {row.sale.customer.fullName} — S/{" "}
-                      {Number(row.sale.grandTotal).toFixed(2)}
-                    </SelectItem>
-                  ))}
+                  {aceptados.map((item) =>
+                    item.taxDocument ? (
+                      <SelectItem key={item.sale.id} value={item.sale.id}>
+                        {getFullNumber(item.taxDocument)} —{" "}
+                        {item.taxDocument.taxDocumentPayload.customer?.name ??
+                          item.sale.customer.fullName}{" "}
+                        — S/{" "}
+                        {Number(item.taxDocument.taxDocumentPayload.totals.grandTotal).toFixed(2)}
+                      </SelectItem>
+                    ) : null,
+                  )}
                 </SelectContent>
               </Select>
+
+              {original && (
+                <p className="text-xs text-muted-foreground">
+                  RUC emisor {original.rucIssuer} · Saldo por acreditar S/ {balance.toFixed(2)} ·
+                  Serie de la nota:{" "}
+                  {loadingSequences ? (
+                    "…"
+                  ) : series ? (
+                    <b>{series}</b>
+                  ) : (
+                    <span className="font-medium text-red-600">
+                      falta una serie {seriesPrefix}C01 en Series y Correlativos
+                    </span>
+                  )}
+                </p>
+              )}
             </div>
 
             <div className="grid gap-2">
               <Label>Motivo (catálogo SUNAT 09)</Label>
 
-              <Select value={motivo} onValueChange={setMotivo}>
+              <Select value={motivoCode} onValueChange={setMotivoCode}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
 
                 <SelectContent>
                   {MOTIVOS_NC.map((item) => (
-                    <SelectItem key={item.code} value={item.label}>
+                    <SelectItem key={item.code} value={item.code}>
                       {item.code} · {item.label}
                     </SelectItem>
                   ))}
@@ -272,9 +291,9 @@ export default function NotaCreditoModal({
               </Select>
             </div>
 
-            {isManual ? (
+            {isAmount ? (
               <div className="grid gap-2">
-                <Label>Monto de la nota</Label>
+                <Label>Monto de la nota (IGV incluido)</Label>
 
                 <Input
                   type="number"
@@ -299,20 +318,22 @@ export default function NotaCreditoModal({
                   </TableHeader>
 
                   <TableBody>
-                    {originalItems.map((item) => {
-                      const itemId = String(item.id);
-                      const selected = !!checked[itemId];
-                      const quantity = qty[itemId] ?? item.quantity;
+                    {originalItems.map((item, index) => {
+                      const quantity = qty[index] ?? 0;
+                      const selected = quantity > 0;
 
                       return (
-                        <TableRow key={itemId}>
+                        // biome-ignore lint/suspicious/noArrayIndexKey: lines of an issued comprobante never reorder; the same SKU can repeat
+                        <TableRow key={`${item.sku}-${index}`}>
                           <TableCell>
                             <Checkbox
                               checked={selected}
+                              disabled={isFull}
+                              aria-label={`Incluir ${item.productName}`}
                               onCheckedChange={(value) =>
-                                setChecked((previous) => ({
+                                setQty((previous) => ({
                                   ...previous,
-                                  [itemId]: !!value,
+                                  [index]: value ? item.quantity : 0,
                                 }))
                               }
                             />
@@ -325,16 +346,16 @@ export default function NotaCreditoModal({
                           <TableCell>
                             <Input
                               type="number"
-                              min={1}
+                              min={0}
                               max={item.quantity}
                               value={quantity}
-                              disabled={!selected}
+                              disabled={isFull}
+                              aria-label={`Cantidad a notar de ${item.productName}`}
                               onChange={(event) => {
-                                const nextValue = Number(event.target.value) || 0;
-
+                                const value = Number(event.target.value) || 0;
                                 setQty((previous) => ({
                                   ...previous,
-                                  [itemId]: Math.min(Math.max(nextValue, 0), item.quantity),
+                                  [index]: Math.min(Math.max(value, 0), item.quantity),
                                 }));
                               }}
                               className="h-8 text-xs"
@@ -342,7 +363,7 @@ export default function NotaCreditoModal({
                           </TableCell>
 
                           <TableCell className="text-right text-xs font-medium">
-                            S/ {((selected ? quantity : 0) * Number(item.unitPrice)).toFixed(2)}
+                            S/ {lineGross(item, quantity).toFixed(2)}
                           </TableCell>
                         </TableRow>
                       );
@@ -352,23 +373,25 @@ export default function NotaCreditoModal({
               </div>
             )}
 
-            {!isManual && (
-              <div className="flex justify-between rounded-md border bg-muted/30 px-4 py-3 font-bold">
-                <span>Monto de la nota</span>
-
-                <span className="text-primary">S/ {total.toFixed(2)}</span>
-              </div>
-            )}
+            <div className="flex justify-between rounded-md border bg-muted/30 px-4 py-3 font-bold">
+              <span>Monto de la nota</span>
+              <span className="text-primary">S/ {total.toFixed(2)}</span>
+            </div>
           </div>
         )}
 
         <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" onClick={onClose} disabled={emitting}>
             Cancelar
           </Button>
 
           {aceptados.length > 0 && (
-            <Button onClick={handleCrear} className="bg-primary text-white hover:bg-primary/90">
+            <Button
+              onClick={handleEmitir}
+              disabled={emitting || loadingSequences}
+              className="gap-2 bg-primary text-white hover:bg-primary/90"
+            >
+              {emitting && <Loader2 className="h-4 w-4 animate-spin" />}
               Emitir Nota de Crédito
             </Button>
           )}

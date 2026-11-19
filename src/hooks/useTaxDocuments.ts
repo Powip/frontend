@@ -10,10 +10,15 @@ import {
   EMPTY_SALES,
   isTaxDocumentEligibleStatus,
 } from "@/features/sunat/shared/constants/sunat.constants";
+import { SUNAT_DOCUMENT_TYPES } from "@/features/sunat/sunat-document/enums/sunat-document.enums";
 import type { SunatDocument } from "@/features/sunat/sunat-document/models/sunat-document.model";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { fetchAllSunatDocuments } from "@/features/sunat/sunat-document/utils/fetch-all-sunat-documents";
 import { computeTaxDocumentKpis } from "@/features/sunat/sunat-document/utils/tax-document-kpis";
+
+const isNoteDocument = (document: SunatDocument) =>
+  document.taxDocumentType === SUNAT_DOCUMENT_TYPES.CREDIT_NOTE ||
+  document.taxDocumentType === SUNAT_DOCUMENT_TYPES.DEBIT_NOTE;
 
 export function useTaxDocuments() {
   const { auth } = useAuth();
@@ -42,7 +47,10 @@ export function useTaxDocuments() {
   /**
    * The backend returns SUNAT documents ordered from newest to oldest.
    *
-   * We keep only the first document belonging to each sale/order.
+   * We keep only the first factura/boleta belonging to each sale/order.
+   * Credit/debit notes share the sale's `orderId` but never replace its
+   * comprobante in the row: they are listed apart (`creditNotes`). A sale
+   * whose only documents are notes still shows the newest one.
    *
    * `orderId` is the relation between the SUNAT document and the sale.
    */
@@ -50,13 +58,21 @@ export function useTaxDocuments() {
     const map = new Map<string, SunatDocument>();
 
     for (const document of documents) {
-      if (!map.has(document.orderId)) {
+      const current = map.get(document.orderId);
+      if (!current || (isNoteDocument(current) && !isNoteDocument(document))) {
         map.set(document.orderId, document);
       }
     }
 
     return map;
   }, [documents]);
+
+  /** Credit notes (07) of the company, newest first. */
+  const creditNotes = useMemo(
+    () =>
+      documents.filter((document) => document.taxDocumentType === SUNAT_DOCUMENT_TYPES.CREDIT_NOTE),
+    [documents],
+  );
 
   /**
    * Build the rows consumed by the tax-document UI.
@@ -124,6 +140,9 @@ export function useTaxDocuments() {
 
   return {
     rows,
+    /** Every SUNAT document of the company (comprobantes and notes). */
+    documents,
+    creditNotes,
     loading: loadingSales || loadingListDocuments,
     error,
 

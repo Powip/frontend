@@ -1,12 +1,16 @@
 "use client";
 
-import { FileMinus, Plus, Printer } from "lucide-react";
-import { BetaBanner } from "@/app/facturacion/components/BetaBanner";
+import { FileMinus, Loader2, Plus, Printer } from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 import {
-  imprimirNotaCreditoPdf,
-  type NotaIssuer,
-} from "@/app/facturacion/lib/imprimir-nota-credito-pdf";
-import { formatMotivoNota } from "@/app/facturacion/lib/motivos-nota-credito";
+  formatNotaFecha,
+  getNotaEstado,
+  getNotaMotivo,
+  getNotaNumero,
+  getNotaOriginal,
+  isNotaImprimible,
+} from "@/app/facturacion/lib/notas-credito";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,19 +22,39 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { useFacturacionMock } from "@/hooks/useFacturacionMock";
-import type { Nota } from "@/types/facturacion";
+import type { SunatDocument } from "@/features/sunat/sunat-document/models/sunat-document.model";
 
 interface NotasTabProps {
-  mock: ReturnType<typeof useFacturacionMock>;
+  /** Notas de crédito reales (tipo 07) guardadas en el backend, más nuevas primero. */
+  notas: SunatDocument[];
+  /** Todos los documentos SUNAT de la empresa, para mostrar el comprobante original. */
+  documents: readonly SunatDocument[];
   hasAceptados: boolean;
   onNuevaNota: () => void;
-  /** RUC emisor con el que se imprime cada nota. */
-  getIssuer: (nota: Nota) => NotaIssuer | undefined;
+  /** Abre el PDF real de la nota (representación impresa del backend). */
+  onImprimir: (nota: SunatDocument) => Promise<void>;
 }
 
-export function NotasTab({ mock, hasAceptados, onNuevaNota, getIssuer }: NotasTabProps) {
-  const { notas } = mock;
+export function NotasTab({
+  notas,
+  documents,
+  hasAceptados,
+  onNuevaNota,
+  onImprimir,
+}: NotasTabProps) {
+  const [printingId, setPrintingId] = useState<string | null>(null);
+
+  const imprimir = async (nota: SunatDocument) => {
+    setPrintingId(nota.id);
+    try {
+      await onImprimir(nota);
+    } catch (error) {
+      console.error("Error al abrir el PDF de la nota de crédito:", error);
+      toast.error("No se pudo abrir el PDF de la nota. Intenta nuevamente.");
+    } finally {
+      setPrintingId(null);
+    }
+  };
 
   return (
     <div className="space-y-5">
@@ -52,14 +76,12 @@ export function NotasTab({ mock, hasAceptados, onNuevaNota, getIssuer }: NotasTa
         </Button>
       </div>
 
-      <BetaBanner>
-        Las notas que emitas aquí quedan solo en esta sesión de vista previa; no se envían a SUNAT.
-      </BetaBanner>
-
       <Card>
         <CardHeader>
           <CardTitle>Historial de Notas</CardTitle>
-          <CardDescription>BC01 = NC sobre boletas · FC01 = NC sobre facturas</CardDescription>
+          <CardDescription>
+            Se envían a SUNAT y quedan guardadas. FC = NC sobre facturas · BC = NC sobre boletas
+          </CardDescription>
         </CardHeader>
 
         <CardContent>
@@ -88,27 +110,34 @@ export function NotasTab({ mock, hasAceptados, onNuevaNota, getIssuer }: NotasTa
                   </TableRow>
                 ) : (
                   notas.map((nota) => {
-                    const notaKey = [nota.num, nota.original, nota.fecha, nota.motivo].join("-");
+                    const estado = getNotaEstado(nota);
+                    const numero = getNotaNumero(nota);
 
                     return (
-                      <TableRow key={notaKey}>
-                        <TableCell className="text-xs whitespace-nowrap">{nota.fecha}</TableCell>
+                      <TableRow key={nota.id}>
+                        <TableCell className="text-xs whitespace-nowrap">
+                          {formatNotaFecha(nota.issueDate)}
+                        </TableCell>
 
-                        <TableCell className="font-medium">{nota.num}</TableCell>
+                        <TableCell className="font-medium">{numero}</TableCell>
 
-                        <TableCell className="text-xs">{nota.original}</TableCell>
+                        <TableCell className="text-xs">
+                          {getNotaOriginal(nota, documents)}
+                        </TableCell>
 
-                        <TableCell className="text-xs">{nota.cliente}</TableCell>
+                        <TableCell className="text-xs">
+                          {nota.taxDocumentPayload?.customer?.name ?? "—"}
+                        </TableCell>
 
-                        <TableCell className="text-xs">{formatMotivoNota(nota)}</TableCell>
+                        <TableCell className="text-xs">{getNotaMotivo(nota)}</TableCell>
 
                         <TableCell className="text-right font-bold">
-                          S/ {nota.monto.toFixed(2)}
+                          S/ {Number(nota.taxDocumentPayload?.totals?.grandTotal ?? 0).toFixed(2)}
                         </TableCell>
 
                         <TableCell>
-                          <Badge className="bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-950 dark:text-green-300">
-                            {nota.estado}
+                          <Badge className={estado.className} title={estado.detalle}>
+                            {estado.label}
                           </Badge>
                         </TableCell>
 
@@ -117,10 +146,19 @@ export function NotasTab({ mock, hasAceptados, onNuevaNota, getIssuer }: NotasTa
                             variant="outline"
                             size="sm"
                             className="h-7 gap-1 text-xs"
-                            onClick={() => imprimirNotaCreditoPdf(nota, getIssuer(nota))}
-                            title={`Imprimir PDF de ${nota.num}`}
+                            onClick={() => imprimir(nota)}
+                            disabled={!isNotaImprimible(nota) || printingId === nota.id}
+                            title={
+                              isNotaImprimible(nota)
+                                ? `Imprimir PDF de ${numero}`
+                                : "Disponible cuando SUNAT acepte la nota"
+                            }
                           >
-                            <Printer className="h-3.5 w-3.5" />
+                            {printingId === nota.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Printer className="h-3.5 w-3.5" />
+                            )}
                             Imprimir PDF
                           </Button>
                         </TableCell>
