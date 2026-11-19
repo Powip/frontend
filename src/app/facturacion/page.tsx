@@ -12,6 +12,7 @@ import { CertificadoTab } from "@/app/facturacion/components/tabs/CertificadoTab
 import { EmisoresTab } from "@/app/facturacion/components/tabs/EmisoresTab";
 import { GuiasTab } from "@/app/facturacion/components/tabs/GuiasTab";
 import { NotasTab } from "@/app/facturacion/components/tabs/NotasTab";
+import { imprimirNotaCreditoPdf } from "@/app/facturacion/lib/imprimir-nota-credito-pdf";
 import { ReportesTab } from "@/app/facturacion/components/tabs/ReportesTab";
 import { SeriesTab } from "@/app/facturacion/components/tabs/SeriesTab";
 import { Button } from "@/components/ui/button";
@@ -20,9 +21,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
 import { getCertificateStatus } from "@/features/sunat/sunat-profile/utils/get-certificate-status";
-import { getDefaultIssuer } from "@/features/sunat/sunat-profile/utils/issuers";
+import { findIssuerByRuc, getDefaultIssuer } from "@/features/sunat/sunat-profile/utils/issuers";
 import { useFacturacionMock } from "@/hooks/useFacturacionMock";
 import { useTaxDocuments } from "@/hooks/useTaxDocuments";
+import type { Nota } from "@/types/facturacion";
 import { cn } from "@/lib/utils";
 import { TaxDocumentsTab } from "./components/tabs/TaxDocumentsTab";
 
@@ -87,6 +89,19 @@ export default function FacturacionPage() {
       row.taxDocument?.cdrStatus === "ACCEPTED" ||
       row.taxDocument?.cdrStatus === "ACCEPTED_WITH_OBSERVATION",
   );
+
+  // Issuer used to print a credit note: the RUC of the original comprobante
+  // when known; otherwise the RUC in the filter, or the default RUC with
+  // "Todos los RUC" (same rule as guías).
+  const getNotaIssuer = (nota: Nota) => {
+    const profile =
+      findIssuerByRuc(activeProfiles, nota.rucEmisor) ??
+      activeProfiles.find((item) => item.id === issuerFilter) ??
+      getDefaultIssuer(sunatProfiles);
+    return profile
+      ? { ruc: profile.ruc, razonSocial: profile.razonSocial, direccion: profile.address }
+      : undefined;
+  };
 
   const refreshAll = () => {
     taxDocuments.refreshSales();
@@ -265,6 +280,7 @@ export default function FacturacionPage() {
             mock={mock}
             hasAceptados={aceptados.length > 0}
             onNuevaNota={() => openNotaCredito()}
+            getIssuer={getNotaIssuer}
           />
         </TabsContent>
 
@@ -307,6 +323,7 @@ export default function FacturacionPage() {
         aceptados={aceptados}
         preselectId={ncPreselectId}
         crearNota={mock.crearNota}
+        onImprimir={(nota) => imprimirNotaCreditoPdf(nota, getNotaIssuer(nota))}
       />
     </div>
   );

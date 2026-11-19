@@ -13,7 +13,7 @@ export interface GuiaIssuer {
   direccion?: string;
 }
 
-function escapeHtml(value: string | number | null | undefined): string {
+export function escapeHtml(value: string | number | null | undefined): string {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -23,7 +23,7 @@ function escapeHtml(value: string | number | null | undefined): string {
 }
 
 /** Iniciales del emisor para el recuadro del logo (como en la boleta). */
-function initials(name: string): string {
+export function initials(name: string): string {
   return (
     name
       .split(/\s+/)

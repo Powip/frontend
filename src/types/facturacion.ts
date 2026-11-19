@@ -176,13 +176,30 @@ export interface Guia {
   motivoAnulacion?: string;
 }
 
+export interface NotaItem {
+  descripcion: string;
+  cantidad: number;
+  precioUnitario: number;
+  importe: number;
+}
+
 export interface Nota {
   fecha: string;
   num: string;
   original: string;
+  /** Tipo del comprobante que modifica: 01 factura, 03 boleta. */
+  tipoOriginal?: "01" | "03";
   cliente: string;
   motivo: string;
+  /** Código del motivo según catálogo SUNAT 09 (p. ej. "06" = Devolución total). */
+  motivoCodigo?: string;
+  /** Monto total de la nota, IGV incluido. */
   monto: number;
+  subtotal?: number;
+  igv?: number;
+  items?: NotaItem[];
+  /** RUC que emitió el comprobante original (multi-RUC). */
+  rucEmisor?: string;
   estado: string;
 }
 
