@@ -47,6 +47,7 @@ import {
   LayoutList,
   Plug,
   Radio,
+  MessageCircle,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -190,6 +191,11 @@ export function Sidebar({ className }: SidebarProps) {
             name: "Ventas",
             href: "/ventas",
             icon: ShoppingCart,
+          },
+          {
+            name: "Ventas por chat",
+            href: "/comercial/ventas-chat",
+            icon: MessageCircle,
           },
           {
             name: "Cotizaciones",

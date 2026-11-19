@@ -40,6 +40,13 @@ import {
   SaleChannelField,
 } from "@/components/registrar-venta/SaleChannelField";
 import { SaleOriginField } from "@/components/registrar-venta/SaleOriginField";
+import {
+  crmSalePayload,
+  linkSaleToConversation,
+  parseCrmSaleContext,
+  pickWhatsappChannel,
+} from "@/components/registrar-venta/crmSaleContext";
+import { toLocalPhone } from "@/lib/crmPhone";
 import SuggestionsPanel from "@/components/registrar-venta/SuggestionsPanel";
 import { useSaleOrigin } from "@/components/registrar-venta/useSaleOrigin";
 import { Badge } from "@/components/ui/badge";
@@ -253,6 +260,11 @@ function RegistrarVentaContent() {
     !rawReturnTo.includes("\\")
       ? rawReturnTo
       : null;
+  // Venta iniciada desde un chat del CRM (solo para pedidos nuevos y sin Lead).
+  const crmCtx = useMemo(
+    () => (orderId || leadId ? null : parseCrmSaleContext(searchParams)),
+    [searchParams, orderId, leadId],
+  );
 
   /* ---------------- Cliente ---------------- */
   const [clientFound, setClientFound] = useState<Client | null>(null);
@@ -488,6 +500,45 @@ function RegistrarVentaContent() {
     editing: Boolean(orderId),
     fixedId: orderData?.salesChannelId,
   });
+
+  // CRM: prellenar cliente por el teléfono del chat (una sola vez).
+  const crmClientPrefilled = useRef(false);
+  useEffect(() => {
+    if (!crmCtx?.phone || !companyId || crmClientPrefilled.current) return;
+    crmClientPrefilled.current = true;
+    setClientForm((prev) => ({ ...prev, phoneNumber: toLocalPhone(crmCtx.phone) }));
+    setLoadingClient(true);
+    fetchClientByPhone(companyId, toLocalPhone(crmCtx.phone))
+      .then((client) => {
+        if (client) {
+          setClientFound(client);
+          setSearchState("found");
+          setOriginalClient(client);
+        } else {
+          setClientFound(null);
+          setSearchState("not_found");
+        }
+      })
+      .catch(() => {
+        setSearchState("error");
+        toast.error("No se pudo buscar el cliente. Intenta de nuevo.");
+      })
+      .finally(() => setLoadingClient(false));
+  }, [crmCtx, companyId]);
+
+  // CRM: canal de venta WhatsApp, solo si se puede elegir sin ambigüedad.
+  const crmChannelApplied = useRef(false);
+  useEffect(() => {
+    if (!crmCtx || crmChannelApplied.current || !saleContext.data || !origin.storeId) return;
+    crmChannelApplied.current = true;
+    const pick = pickWhatsappChannel(storeChannels, salesChannels);
+    if (!pick) return;
+    setOrderDetails((current) =>
+      current.salesChannel || current.salesChannelId
+        ? current
+        : { ...current, salesChannelId: pick.id, salesChannel: pick.type },
+    );
+  }, [crmCtx, saleContext.data, origin.storeId, storeChannels, salesChannels]);
 
   useEffect(() => {
     const request = ++leadRequestRef.current;
@@ -1456,7 +1507,7 @@ function RegistrarVentaContent() {
           return;
         }
         if (!orderId) {
-          let createPayload: Record<string, unknown> = payload;
+          let createPayload: Record<string, unknown> = { ...payload, ...crmSalePayload(crmCtx) };
           if (cart.some((item) => isTracked(item.trackingMode))) {
             const operationId = crypto.randomUUID();
             createPayload = { ...payload, operationId };
@@ -1471,6 +1522,7 @@ function RegistrarVentaContent() {
 
           const createdOrderId = response.data.id;
           const createdAsLead = response.data.commercialStage === "LEAD";
+          if (crmCtx) await linkSaleToConversation(crmCtx, { id: createdOrderId, orderNumber: response.data.orderNumber });
           const recordedLabel = createdAsLead ? "Lead registrado" : "Venta registrada";
 
           let proofFailed = false;
@@ -1517,6 +1569,7 @@ function RegistrarVentaContent() {
           }
           if (proofFailed) return;
           notifyCommercialChange(companyId, response.data.commercialLeadId);
+          if (crmCtx) { resetForm(); router.push(crmCtx.returnTo); return; }
           if (createdAsLead) { router.push(response.data.commercialLeadId ? commercialLeadHref(response.data.commercialLeadId) : "/leads-comerciales"); resetForm(); return; }
           setReceiptOrderId(createdOrderId);
           setReceiptOpen(true);
@@ -2007,7 +2060,7 @@ function RegistrarVentaContent() {
                 Volver
               </Button>
             ) : (
-              <Link href={returnTo ?? "/ventas"}>
+              <Link href={returnTo ?? crmCtx?.returnTo ?? "/ventas"}>
                 <Button variant="outline" size="sm" className="rounded-full">
                   <ArrowLeft className="h-4 w-4 mr-1" />
                   Volver
