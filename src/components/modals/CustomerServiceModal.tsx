@@ -104,6 +104,7 @@ import { DatosIncompletosBlock } from "@/components/atencion-cliente/cc-v2/Datos
 import { CcGestionPanel } from "@/components/atencion-cliente/cc-v2/CcGestionPanel";
 import { hasCompleteDeliveryLocation } from "@/components/atencion-cliente/cc-v2/ccDeliveryData";
 import { CcScriptPanel } from "@/components/atencion-cliente/cc-v2/CcScriptPanel";
+import { effectiveSubEstadoCc } from "@/components/atencion-cliente/cc-v2/ccPedidoFields";
 import { OrderHeader, OrderStatus, SubEstadoCc } from "@/interfaces/IOrder";
 import { getAvailableStatuses, getStatusChainSteps, getStatusLabel } from "@/utils/domain/orders-status-flow";
 import { isJunkDni } from "@/utils/junk-document.util";
@@ -940,7 +941,12 @@ export default function CustomerServiceModal({
   );
   const canEditCustomerData = hasPermission("MANAGE_CUSTOMER_SERVICE") || canEditOrder ||
     (canCompleteCustomerServicePurchaseData(orderHeader ?? {}) && confirmationAccess.canConfirm);
-  const ccSubEstado = subEstadoCc ?? (canalOrigen === "shopify_cod" ? "por_confirmar" : null);
+  // Un pedido anulado por otra vía (Ventas, Shopify) ya no está en la cola COD.
+  const isAnulado = (orderHeader?.status ?? receipt?.status) === "ANULADO";
+  const effectiveCcSubEstado = isAnulado && subEstadoCc
+    ? effectiveSubEstadoCc({ status: "ANULADO", subEstadoCc })
+    : subEstadoCc;
+  const ccSubEstado = effectiveCcSubEstado ?? (canalOrigen === "shopify_cod" && !isAnulado ? "por_confirmar" : null);
   const detailMoney = (value: number) => isPendingPurchase
     ? formatSalesMoney(value, orderHeader?.currency)
     : `S/${value.toFixed(2)}`;
@@ -1034,7 +1040,7 @@ export default function CustomerServiceModal({
                       </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
-                    <FinancialStatusBadge pendingAmount={financialState?.pendingAmount ?? Number.NaN} status={orderHeader?.status} />
+                    {!isAnulado && <FinancialStatusBadge pendingAmount={financialState?.pendingAmount ?? Number.NaN} status={orderHeader?.status} />}
                     <Select
                       value={receipt.status}
                       onValueChange={(v) => handleChangeStatus(v as OrderStatus)}
@@ -1057,7 +1063,7 @@ export default function CustomerServiceModal({
                   </div>
                 </DialogHeader>
                 {!isPendingPurchase && orderHeader && <UnitAssignmentNotice order={orderHeader} />}
-                {orderHeader?.commercialStage === "SALE" && orderHeader.commercialStockState === "DEFERRED" && <p className="text-sm text-amber-700">{salesPhysicalOperationBlockReason(orderHeader)}{orderHeader.commercialLeadId && !canPrepareDeferredManualOrder(orderHeader) && <a className="ml-1 font-semibold underline" href={commercialLeadHref(orderHeader.commercialLeadId)}>Preparar reserva de stock</a>}</p>}
+                {!isAnulado && orderHeader?.commercialStage === "SALE" && orderHeader.commercialStockState === "DEFERRED" && <p className="text-sm text-amber-700">{salesPhysicalOperationBlockReason(orderHeader)}{orderHeader.commercialLeadId && !canPrepareDeferredManualOrder(orderHeader) && <a className="ml-1 font-semibold underline" href={commercialLeadHref(orderHeader.commercialLeadId)}>Preparar reserva de stock</a>}</p>}
                 {!isPendingPurchase && orderHeader && <SaleUnitLifecycleButtons order={orderHeader} onAction={setLifecycleAction} />}
 
                 <Tabs value={tab} onValueChange={setTab}>
@@ -2072,9 +2078,9 @@ export default function CustomerServiceModal({
                   )}
 
                   {/* Script sugerido CC */}
-                  {subEstadoCc && (
+                  {effectiveCcSubEstado && (
                     <CcScriptPanel
-                      subEstadoCc={subEstadoCc}
+                      subEstadoCc={effectiveCcSubEstado}
                       clienteName={receipt.customer.fullName}
                       orderNumber={receipt.orderNumber}
                     />

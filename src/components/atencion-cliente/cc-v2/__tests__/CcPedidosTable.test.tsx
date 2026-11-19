@@ -195,6 +195,15 @@ describe('CcPedidosTable — botón "Recuperar venta"', () => {
     expect(screen.queryByTitle('Recuperar venta')).toBeNull();
   });
 
+  it('trata como anulado un pedido status=ANULADO que conservó sub-estado de cola (anulado desde Ventas/Shopify)', () => {
+    const order = makeOrder({ status: 'ANULADO', subEstadoCc: 'por_confirmar' } as Partial<OrderHeader>);
+    renderTable([order], { onRecuperar: jest.fn() });
+
+    expect(screen.getByText('Anulado CC')).toBeInTheDocument();
+    expect(screen.queryByText('Por confirmar')).toBeNull();
+    expect(screen.getByTitle('Recuperar venta')).toBeInTheDocument();
+  });
+
   it('NO renderiza el botón cuando subEstadoCc=anulado_cc pero onRecuperar no está provisto', () => {
     const order = makeOrder({ subEstadoCc: 'anulado_cc' });
 

@@ -229,3 +229,24 @@ it("preserves customer corrections for a CC manager on a confirmed manual order 
   expect(getCommercialLeadConfirmationCapabilities).not.toHaveBeenCalled();
   expect(getCcOrderConfirmationCapabilities).not.toHaveBeenCalled();
 });
+
+describe("pedido ANULADO (reclamo 2026-11-19: anulado fuera de Gestión COD)", () => {
+  const permissions = ["VIEW_CUSTOMER_SERVICE", "MANAGE_CUSTOMER_SERVICE", "CONFIRM_SALE"];
+  const confirmedDeferred: Partial<OrderHeader> = { commercialStage: "SALE", commercialStockState: "DEFERRED", subEstadoCc: "por_confirmar" };
+
+  it("no muestra el aviso de reserva de stock, el badge de saldo ni la gestión de cola", async () => {
+    renderOrder(permissions, "shopify_cod", "ADMINISTRADOR", { ...confirmedDeferred, status: "ANULADO" });
+    expect(await screen.findByText(/Pedido ORD-CC-001/, {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.queryByText(/Prepara la reserva de stock desde el Lead/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Preparar reserva de stock")).not.toBeInTheDocument();
+    expect(screen.queryByText("Con saldo")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Contactado" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Anular pedido" })).not.toBeInTheDocument();
+  });
+
+  it("conserva el aviso y el badge para una venta confirmada activa", async () => {
+    renderOrder(permissions, "shopify_cod", "ADMINISTRADOR", { ...confirmedDeferred, status: "LLAMADO" });
+    expect(await screen.findByText(/Prepara la reserva de stock desde el Lead/, {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.getByText("Con saldo")).toBeInTheDocument();
+  });
+});
