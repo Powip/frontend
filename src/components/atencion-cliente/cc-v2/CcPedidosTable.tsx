@@ -264,7 +264,14 @@ export function CcPedidosTable({
 
                 {/* Sub-estado chip */}
                 <TableCell>
-                  {subStyle ? (
+                  {order.ccEtiqueta === "compra_confirmada_pendiente_despacho" ? (
+                    <span
+                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200"
+                      title="La compra ya está confirmada en Ventas. Falta confirmar el despacho desde Call Center."
+                    >
+                      Compra confirmada · falta despacho
+                    </span>
+                  ) : subStyle ? (
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${subStyle.cls}`}>
                       {subStyle.label}
                     </span>
