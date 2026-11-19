@@ -719,6 +719,40 @@ describe('SendToShalomModal', () => {
     });
   });
 
+  describe('búsqueda de agencias sin saturar Shalom', () => {
+    const agencyCalls = () =>
+      (axios.get as jest.Mock).mock.calls
+        .map(([url]) => String(url))
+        .filter((url) => url.includes('/shalom/agencies/search/'));
+
+    it('varios pedidos del mismo distrito hacen una sola búsqueda al abrir', async () => {
+      (axios.get as jest.Mock).mockResolvedValue({ data: { success: true, data: [MOCK_AGENCY] } });
+      const second = { ...MOCK_ORDER, id: 'order-def', orderNumber: 'ORD-002' };
+      const third = { ...MOCK_ORDER, id: 'order-ghi', orderNumber: 'ORD-003', customer: { ...MOCK_ORDER.customer, district: 'MIRAFLORES ' } };
+
+      await renderModal({ orders: [MOCK_ORDER, second, third] });
+
+      const miraflores = agencyCalls().filter((url) => /miraflores/i.test(decodeURIComponent(url)));
+      expect(miraflores).toHaveLength(1);
+    });
+
+    it('al escribir en el buscador espera a que se deje de tipear (una llamada, no una por tecla)', async () => {
+      (axios.get as jest.Mock).mockResolvedValue({ data: { success: true, data: [MOCK_AGENCY] } });
+      const user = userEvent.setup();
+      await renderModal();
+      const before = agencyCalls().length;
+
+      const originInput = screen.getByPlaceholderText('Lima, Arequipa, etc.');
+      await user.clear(originInput);
+      await user.type(originInput, 'Cusco');
+
+      await waitFor(() => {
+        expect(agencyCalls().length).toBe(before + 1);
+      });
+      expect(decodeURIComponent(agencyCalls().at(-1)!)).toMatch(/\/Cusco$/);
+    });
+  });
+
   // ── 2. Selector de modalidad por orden ─────────────────────────────────────
 
   describe('selector de modalidad de envío', () => {
