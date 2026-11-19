@@ -2,7 +2,7 @@
  * Tests: matchesCcSearch — criterios del buscador de Gestión COD
  * (mismos que Comercial → Ventas: nombre, teléfono y N° de orden).
  */
-import { matchesCcSearch, resolvePowipStoreName } from '../ccPedidoFields';
+import { effectiveSubEstadoCc, matchesCcSearch, resolvePowipStoreName } from '../ccPedidoFields';
 import { OrderHeader } from '@/interfaces/IOrder';
 
 const order = {
@@ -86,5 +86,21 @@ describe('matchesCcSearch — N° externo (FEAT-31)', () => {
 
   it('un pedido sin N° externo no coincide con ese texto', () => {
     expect(matchesCcSearch(order, 'AGPE')).toBe(false);
+  });
+});
+
+describe('effectiveSubEstadoCc', () => {
+  it.each([
+    ['ANULADO', 'por_confirmar', 'anulado_cc'],
+    ['ANULADO', 'contactado', 'anulado_cc'],
+    ['ANULADO', 'no_contesta', 'anulado_cc'],
+    ['ANULADO', 'anulado_cc', 'anulado_cc'],
+    ['ANULADO', 'entrega_lima', 'entrega_lima'],
+    ['ANULADO', 'carrito_contactado', 'carrito_contactado'],
+    ['PENDIENTE', 'por_confirmar', 'por_confirmar'],
+    ['LLAMADO', 'contactado', 'contactado'],
+    ['ANULADO', null, null],
+  ])('status %s + sub-estado %s → %s', (status, subEstadoCc, expected) => {
+    expect(effectiveSubEstadoCc({ status, subEstadoCc } as never)).toBe(expected);
   });
 });

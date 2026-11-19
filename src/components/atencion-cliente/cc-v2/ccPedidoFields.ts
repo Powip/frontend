@@ -24,6 +24,23 @@ export const SUB_ESTADO_LABEL: Record<SubEstadoCc, string> = {
 
 export const MAX_INTENTOS_CC = 3;
 
+/** Sub-estados de la cola COD que todavía esperan una llamada. */
+const SUB_ESTADOS_COLA_COD: readonly SubEstadoCc[] = ["por_confirmar", "contactado", "no_contesta"];
+
+/**
+ * Sub-estado CC con el que se muestra un pedido. Si se anuló por otra vía
+ * (Ventas, cancelación Shopify) conserva status=ANULADO con un sub-estado de
+ * cola: para Gestión COD ya es «Anulado». Misma regla que ms-ventas usa para
+ * filtrar y contar las pestañas.
+ */
+export function effectiveSubEstadoCc(
+  order: Pick<OrderHeader, "status" | "subEstadoCc">,
+): SubEstadoCc | null {
+  const subEstado = order.subEstadoCc ?? null;
+  if (order.status === "ANULADO" && subEstado && SUB_ESTADOS_COLA_COD.includes(subEstado)) return "anulado_cc";
+  return subEstado;
+}
+
 export function resolveStoreName(order: OrderHeader): string | null {
   const src = order.externalSource?.toLowerCase() ?? "";
 

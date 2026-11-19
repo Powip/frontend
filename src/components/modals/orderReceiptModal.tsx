@@ -239,7 +239,7 @@ export default function OrderReceiptModal({
           />
         )}
         <div className="flex flex-wrap justify-end gap-2 mt-4">
-          {orderHeader?.commercialLeadId && orderHeader.commercialStockState === "DEFERRED" && !canPrepareDeferredManualOrder(orderHeader) && <Link className="text-sm font-semibold text-violet-700 underline" href={commercialLeadHref(orderHeader.commercialLeadId)}>Compra confirmada · Preparar reserva de stock</Link>}
+          {orderHeader?.commercialLeadId && orderHeader.status !== "ANULADO" && orderHeader.commercialStockState === "DEFERRED" && !canPrepareDeferredManualOrder(orderHeader) && <Link className="text-sm font-semibold text-violet-700 underline" href={commercialLeadHref(orderHeader.commercialLeadId)}>Compra confirmada · Preparar reserva de stock</Link>}
           <Button
             variant="outline"
             disabled={!receipt}
