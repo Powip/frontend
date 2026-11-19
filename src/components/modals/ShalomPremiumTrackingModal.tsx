@@ -15,6 +15,7 @@ import {
   FileText,
   Download,
   Printer,
+  RefreshCw,
 } from "lucide-react";
 import {
   Dialog,
@@ -31,6 +32,7 @@ import {
   trackShalomShipment,
   generateShalomTicketPdf,
 } from "@/services/shalomService";
+import { formatShalomSyncedAt } from "@/components/tracking/shalomSyncedAt";
 import { useAuth } from "@/contexts/AuthContext";
 import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 
@@ -57,6 +59,7 @@ export default function ShalomPremiumTrackingModal({
   const { auth } = useAuth();
   const [trackingData, setTrackingData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [syncedAt, setSyncedAt] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [dynamicPdfUrl, setDynamicPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
@@ -82,7 +85,7 @@ export default function ShalomPremiumTrackingModal({
     }
   }, [auth?.accessToken, auth?.company?.id, order?.externalTrackingNumber, order?.shippingCode]);
 
-  const loadTracking = useCallback(async () => {
+  const loadTracking = useCallback(async (refresh = false) => {
     if (!auth?.accessToken || !auth?.company?.id || !order?.externalTrackingNumber || !order?.shippingCode) return;
 
     setLoading(true);
@@ -92,7 +95,9 @@ export default function ShalomPremiumTrackingModal({
         auth.company.id,
         order.externalTrackingNumber,
         order.shippingCode,
+        refresh ? { refresh: true } : undefined,
       );
+      setSyncedAt(typeof raw?.syncedAt === "string" ? raw.syncedAt : null);
       let payload: any = raw;
       for (let i = 0; i < 3; i++) {
         if (payload?.search || payload?.statuses) break;
@@ -111,7 +116,7 @@ export default function ShalomPremiumTrackingModal({
     if (!open) return;
     if (order?.externalTrackingNumber && order?.shippingCode && auth?.accessToken) {
       loadPdf();
-      if (auth?.company?.id) loadTracking();
+      if (auth?.company?.id) loadTracking(false);
     }
     return () => {
       setDynamicPdfUrl((prev) => { if (prev) URL.revokeObjectURL(prev.split("#")[0]); return null; });
@@ -280,6 +285,28 @@ export default function ShalomPremiumTrackingModal({
                     <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 uppercase tracking-tight">
                       Progreso del Envío
                     </h3>
+                    <div className="ml-auto flex items-center gap-2">
+                      {formatShalomSyncedAt(syncedAt) && (
+                        <span
+                          className="text-[10px] text-slate-400 dark:text-slate-500"
+                          data-testid="shalom-synced-at"
+                        >
+                          {formatShalomSyncedAt(syncedAt)}
+                        </span>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1.5"
+                        disabled={loading}
+                        onClick={() => void loadTracking(true)}
+                      >
+                        <RefreshCw
+                          className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+                        />
+                        {loading ? "Actualizando..." : "Actualizar estado"}
+                      </Button>
+                    </div>
                   </div>
 
                   {loading ? (

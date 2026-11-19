@@ -77,3 +77,19 @@ it("without a token argument it lets axiosAuth put the session token (no empty B
 
   expect(mockAuthGet).toHaveBeenCalledWith(expect.stringContaining(`/shalom/status/${companyId}`), { headers: {} });
 });
+
+it("trackShalomShipment manda refresh:true solo cuando se pide y conserva syncedAt/fromCache", async () => {
+  mockAuthPost.mockResolvedValue({ data: { syncedAt: "2026-11-19T20:00:00.000Z", fromCache: false } });
+
+  const normal = await trackShalomShipment("token", companyId, "12345678", "AB12");
+  expect(mockAuthPost.mock.calls[0][1]).toEqual({ companyId, orderNumber: "12345678", orderCode: "AB12" });
+  expect(normal.syncedAt).toBe("2026-11-19T20:00:00.000Z");
+
+  await trackShalomShipment("token", companyId, "12345678", "AB12", { refresh: true });
+  expect(mockAuthPost.mock.calls[1][1]).toEqual({
+    companyId,
+    orderNumber: "12345678",
+    orderCode: "AB12",
+    refresh: true,
+  });
+});

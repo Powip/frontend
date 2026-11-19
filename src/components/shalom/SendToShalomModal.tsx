@@ -49,6 +49,13 @@ import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 // Radix Select no admite value="" en SelectItem — usar este sentinel y mapear al enviar.
 const DECLARACION_JURADA_NINGUNA = "__ninguna__";
 
+/** Espera tras la última tecla antes de buscar agencias (evita una llamada por tecla). */
+const AGENCY_SEARCH_DEBOUNCE_MS = 400;
+
+/** Término de agencia normalizado: sin tildes, sin espacios extra, en minúsculas. */
+const normalizeAgencyQuery = (q: string): string =>
+  q.normalize("NFD").replace(/\p{M}/gu, "").trim().replace(/\s+/g, " ").toLowerCase();
+
 // Lista exacta del enum del OpenAPI de Shalom. NO agregar valores fuera de este set.
 const DECLARACION_JURADA_OPTIONS = [
   { value: DECLARACION_JURADA_NINGUNA, label: "Ninguna" },
@@ -382,35 +389,70 @@ export default function SendToShalomModal({
   const [aereoChangedShipments, setAereoChangedShipments] = useState<ShalomRegisteredShipment[]>([]);
   const [aereoUnverifiedShipments, setAereoUnverifiedShipments] = useState<ShalomRegisteredShipment[]>([]);
 
+  // Caché local de agencias por término (normalizado) mientras el modal vive: al
+  // abrir con 20 pedidos del mismo distrito se hace UNA búsqueda, no 20. Guarda la
+  // promesa, así dos pedidos que piden lo mismo a la vez comparten la llamada.
+  const agenciesCacheRef = useRef(new Map<string, Promise<Agency[] | null>>());
+  // Último término pedido por cada buscador ("origin" o id de pedido): una
+  // respuesta vieja que llega tarde no pisa la del término actual.
+  const latestAgencyQueryRef = useRef<Record<string, string>>({});
+  const agencySearchTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  useEffect(() => {
+    const timers = agencySearchTimersRef.current;
+    return () => {
+      Object.values(timers).forEach(clearTimeout);
+    };
+  }, []);
+
   const fetchAgencies = useCallback(
     async (q: string, type: "origin" | string) => {
       if (!q || q.length < 3) return;
-      try {
-        if (type === "origin") setLoadingOrigins(true);
+      const key = normalizeAgencyQuery(q);
+      latestAgencyQueryRef.current[type] = key;
+      const isLatest = () => latestAgencyQueryRef.current[type] === key;
+
+      const setLoading = (loading: boolean) => {
+        if (type === "origin") setLoadingOrigins(loading);
         else {
           setShipmentsData((prev) => ({
             ...prev,
-            [type]: { ...prev[type], loadingAgencies: true },
+            [type]: { ...prev[type], loadingAgencies: loading },
           }));
         }
+      };
 
+      let request = agenciesCacheRef.current.get(key);
+      if (!request) {
         // FEAT-24 SEC (sec6a): ms-integrations exige la sesión en /shalom/*.
-        const res = await axiosAuth.get(
-          `${API.integrations}/shalom/agencies/search/${encodeURIComponent(q)}`,
+        request = axiosAuth
+          .get(`${API.integrations}/shalom/agencies/search/${encodeURIComponent(q)}`)
+          .then((res) => {
+            if (!res.data?.success) return null;
+            return (res.data.data || []).map(
+              (a: Record<string, unknown>): Agency => ({
+                id_agencia: String(a.ter_id ?? a.id ?? a.id_agencia ?? ""),
+                nombre_agencia: String(a.nombre ?? a.name ?? a.nombre_agencia ?? ""),
+                api_name: String(a.lugar_over ?? a.nombre ?? a.name ?? ""),
+                direccion: String(a.lugar ?? a.direccion ?? ""),
+                ter_aereo: typeof a.ter_aereo === "number" ? a.ter_aereo : 0,
+              }),
+            );
+          });
+        agenciesCacheRef.current.set(key, request);
+        // Un fallo no se guarda: el próximo intento vuelve a consultar.
+        request.then(
+          (agencies) => {
+            if (agencies === null) agenciesCacheRef.current.delete(key);
+          },
+          () => agenciesCacheRef.current.delete(key),
         );
+      }
 
-        if (res.data.success) {
-          // Map from results if they differ in structure
-          const agencies = (res.data.data || []).map(
-            (a: Record<string, unknown>): Agency => ({
-              id_agencia: String(a.ter_id ?? a.id ?? a.id_agencia ?? ""),
-              nombre_agencia: String(a.nombre ?? a.name ?? a.nombre_agencia ?? ""),
-              api_name: String(a.lugar_over ?? a.nombre ?? a.name ?? ""),
-              direccion: String(a.lugar ?? a.direccion ?? ""),
-              ter_aereo: typeof a.ter_aereo === "number" ? a.ter_aereo : 0,
-            }),
-          );
-
+      setLoading(true);
+      try {
+        const agencies = await request;
+        if (agencies && isLatest()) {
           if (type === "origin") {
             setOriginAgencies(agencies);
           } else {
@@ -427,16 +469,24 @@ export default function SendToShalomModal({
       } catch (error) {
         console.error(error);
       } finally {
-        if (type === "origin") setLoadingOrigins(false);
-        else {
-          setShipmentsData((prev) => ({
-            ...prev,
-            [type]: { ...prev[type], loadingAgencies: false },
-          }));
-        }
+        if (isLatest()) setLoading(false);
       }
     },
     [],
+  );
+
+  /** Búsqueda mientras se escribe: espera a que se deje de tipear (no una llamada por tecla). */
+  const scheduleFetchAgencies = useCallback(
+    (q: string, type: "origin" | string) => {
+      const timers = agencySearchTimersRef.current;
+      if (timers[type]) clearTimeout(timers[type]);
+      if (!q || q.length < 3) return;
+      timers[type] = setTimeout(() => {
+        delete timers[type];
+        void fetchAgencies(q, type);
+      }, AGENCY_SEARCH_DEBOUNCE_MS);
+    },
+    [fetchAgencies],
   );
 
   // Deps intencionalmente limitadas a [open]: el padre (GuideDetailsModal)
@@ -550,8 +600,8 @@ export default function SendToShalomModal({
       };
     });
 
-    if (field === "destinationSearch" && typeof value === "string" && value.length >= 3) {
-      fetchAgencies(value, orderId);
+    if (field === "destinationSearch" && typeof value === "string") {
+      scheduleFetchAgencies(value, orderId);
     }
   };
 
@@ -1250,7 +1300,7 @@ export default function SendToShalomModal({
                       selectedAgency={originAgency}
                       onSearchChange={(val) => {
                         setOriginSearch(val);
-                        if (val.length >= 3) fetchAgencies(val, "origin");
+                        scheduleFetchAgencies(val, "origin");
                       }}
                       onAgencyChange={setOriginAgency}
                       isLoadingAgencies={loadingOrigins}

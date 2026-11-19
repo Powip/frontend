@@ -95,7 +95,7 @@ export function CourierStatusBadge({
   live,
 }: {
   order: OrderHeader;
-  live?: { label: string; style: string; icon: string };
+  live?: { label: string; style: string; icon: string; title?: string };
 }) {
   const isShalom = isShalomCourier(order.courier) || isShalomCourier(order.shippingOffice);
   const isAliclik = isAliclikCourier(order.courier);
@@ -104,7 +104,11 @@ export function CourierStatusBadge({
   if (isShalom) {
     if (live) {
       return (
-        <Badge variant="outline" className={`text-[10px] ${live.style}`}>
+        <Badge
+          variant="outline"
+          className={`text-[10px] ${live.style}`}
+          title={live.title}
+        >
           {live.icon} {live.label}
         </Badge>
       );
