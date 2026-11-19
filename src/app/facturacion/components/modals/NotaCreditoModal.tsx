@@ -30,19 +30,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  calcularMontosNota,
+  getCodigoMotivoNc,
+  MOTIVOS_NC,
+} from "@/app/facturacion/lib/motivos-nota-credito";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import type { useFacturacionMock } from "@/hooks/useFacturacionMock";
-
-const MOTIVOS_NC = [
-  "Devolución total",
-  "Devolución por ítem",
-  "Anulación de la operación",
-  "Anulación por error en el RUC",
-  "Corrección por error en la descripción",
-  "Descuento por ítem",
-  "Bonificación",
-  "Descuento global",
-] as const;
+import type { Nota, NotaItem } from "@/types/facturacion";
 
 const MOTIVOS_TOTAL = new Set<string>([
   "Devolución total",
@@ -56,6 +51,8 @@ interface NotaCreditoModalProps {
   aceptados: TaxDocumentRow[];
   preselectId?: string;
   crearNota: ReturnType<typeof useFacturacionMock>["crearNota"];
+  /** Imprime la nota recién creada (acción del aviso de éxito). */
+  onImprimir?: (nota: Nota) => void;
 }
 
 function getFullNumber(row: TaxDocumentRow): string | null {
@@ -72,11 +69,12 @@ export default function NotaCreditoModal({
   aceptados,
   preselectId,
   crearNota,
+  onImprimir,
 }: NotaCreditoModalProps) {
   const defaultOriginalId = preselectId ?? aceptados[0]?.sale.id ?? "";
 
   const [originalId, setOriginalId] = useState(defaultOriginalId);
-  const [motivo, setMotivo] = useState<string>(MOTIVOS_NC[0]);
+  const [motivo, setMotivo] = useState<string>(MOTIVOS_NC[0].label);
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [qty, setQty] = useState<Record<string, number>>({});
   const [montoManual, setMontoManual] = useState("");
@@ -96,7 +94,7 @@ export default function NotaCreditoModal({
     const id = preselectId ?? aceptados[0]?.sale.id ?? "";
 
     setOriginalId(id);
-    setMotivo(MOTIVOS_NC[0]);
+    setMotivo(MOTIVOS_NC[0].label);
     setMontoManual("");
   }, [isOpen, preselectId, aceptados]);
 
@@ -151,6 +149,7 @@ export default function NotaCreditoModal({
     }
 
     let monto = 0;
+    let items: NotaItem[] | undefined;
 
     if (isManual) {
       monto = Number.parseFloat(montoManual) || 0;
@@ -163,6 +162,18 @@ export default function NotaCreditoModal({
       }
 
       monto = total;
+      items = originalItems
+        .filter((item) => checked[String(item.id)])
+        .map((item) => {
+          const cantidad = qty[String(item.id)] ?? item.quantity;
+          const precioUnitario = Number(item.unitPrice);
+          return {
+            descripcion: item.productName,
+            cantidad,
+            precioUnitario,
+            importe: cantidad * precioUnitario,
+          };
+        });
     }
 
     if (monto <= 0) {
@@ -170,15 +181,28 @@ export default function NotaCreditoModal({
       return;
     }
 
-    crearNota({
+    const originalTotals = original.taxDocument?.taxDocumentPayload?.totals;
+    const montos = calcularMontosNota(monto, originalTotals);
+
+    const nota = crearNota({
       original: getFullNumber(original) || original.sale.orderNumber,
       tipoOriginal: original.taxDocument?.taxDocumentType === "01" ? "01" : "03",
       cliente: original.sale.customer.fullName,
       motivo,
+      motivoCodigo: getCodigoMotivoNc(motivo),
       monto,
+      subtotal: montos.subtotal,
+      igv: montos.igv,
+      items,
+      rucEmisor: original.taxDocument?.rucIssuer,
     });
 
-    toast.success("Nota de crédito registrada (vista previa — aún no enviada a SUNAT).");
+    toast.success(
+      `Nota de crédito ${nota.num} registrada (vista previa — aún no enviada a SUNAT).`,
+      onImprimir
+        ? { action: { label: "Imprimir PDF", onClick: () => onImprimir(nota) }, duration: 10000 }
+        : undefined,
+    );
 
     onClose();
   };
@@ -240,8 +264,8 @@ export default function NotaCreditoModal({
 
                 <SelectContent>
                   {MOTIVOS_NC.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {item}
+                    <SelectItem key={item.code} value={item.label}>
+                      {item.code} · {item.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
