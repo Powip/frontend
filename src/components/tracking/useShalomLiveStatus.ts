@@ -48,6 +48,13 @@ export const SHALOM_STEP_ICONS: Record<string, string> = {
   "Entregado": "🎉",
 };
 
+/**
+ * Mientras el estado de un pedido siga «fresco» no se vuelve a consultar solo
+ * (cambio de página, mismo render, token que llega tarde). El botón manual
+ * «Actualizar» sí fuerza la consulta.
+ */
+export const SHALOM_LIVE_FRESH_MS = 5 * 60_000;
+
 /** Límite del proveedor para `POST /shalom/track-massive`. */
 const MASSIVE_TRACK_CHUNK_SIZE = 50;
 
@@ -167,7 +174,10 @@ export interface ShalomLiveRefreshResult {
 export function useShalomLiveStatuses(orders: OrderHeader[]) {
   const { auth } = useAuth();
   const [liveStatuses, setLiveStatuses] = useState<Record<string, string>>({});
+  const [liveSyncedAt, setLiveSyncedAt] = useState<Record<string, string>>({});
   const [loadingLiveStatuses, setLoadingLiveStatuses] = useState(false);
+  // orderId → { key de tracking, momento (ms) del último estado obtenido }.
+  const freshRef = useRef<Map<string, { key: string; at: number }>>(new Map());
   const ordersRef = useRef(orders);
   ordersRef.current = orders;
 
@@ -181,7 +191,10 @@ export function useShalomLiveStatuses(orders: OrderHeader[]) {
     .join("|");
 
   const fetchLiveStatuses = useCallback(
-    async (list: OrderHeader[]): Promise<ShalomLiveRefreshResult> => {
+    async (
+      list: OrderHeader[],
+      force = true,
+    ): Promise<ShalomLiveRefreshResult> => {
       const emptyResult: ShalomLiveRefreshResult = {
         requested: 0,
         updated: 0,
@@ -189,9 +202,18 @@ export function useShalomLiveStatuses(orders: OrderHeader[]) {
         unresolved: 0,
       };
       if (!auth?.accessToken) return emptyResult;
-      const eligible = list.filter(
-        (o) => o.externalTrackingNumber && o.shippingCode,
-      );
+      const now = Date.now();
+      const eligible = list.filter((o) => {
+        if (!o.externalTrackingNumber || !o.shippingCode) return false;
+        if (force) return true;
+        const fresh = freshRef.current.get(o.id);
+        const key = makeKey(o.externalTrackingNumber, o.shippingCode);
+        return !(
+          fresh &&
+          fresh.key === key &&
+          now - fresh.at < SHALOM_LIVE_FRESH_MS
+        );
+      });
       if (!eligible.length) return emptyResult;
 
       // Índice orderNumber+orderCode → orderId para reasociar la respuesta plana.
@@ -238,6 +260,7 @@ export function useShalomLiveStatuses(orders: OrderHeader[]) {
           }
 
           const chunkUpdates: Record<string, string> = {};
+          const chunkSyncedAt: Record<string, string> = {};
           results.forEach((item) => {
             const orderId = orderIdByTrackKey.get(
               makeKey(item.orderNumber, item.orderCode),
@@ -249,6 +272,11 @@ export function useShalomLiveStatuses(orders: OrderHeader[]) {
             if (label) {
               chunkUpdates[orderId] = label;
               updatedOrderIds.add(orderId);
+              freshRef.current.set(orderId, {
+                key: makeKey(item.orderNumber, item.orderCode),
+                at: Date.now(),
+              });
+              if (item.syncedAt) chunkSyncedAt[orderId] = item.syncedAt;
             }
           });
 
@@ -256,6 +284,14 @@ export function useShalomLiveStatuses(orders: OrderHeader[]) {
           // que termine en 429 no borra los badges buenos previos.
           if (Object.keys(chunkUpdates).length > 0) {
             setLiveStatuses((prev) => ({ ...prev, ...chunkUpdates }));
+            setLiveSyncedAt((prev) => {
+              const next = { ...prev };
+              Object.keys(chunkUpdates).forEach((id) => {
+                if (chunkSyncedAt[id]) next[id] = chunkSyncedAt[id];
+                else delete next[id];
+              });
+              return next;
+            });
           }
         }
       } finally {
@@ -274,15 +310,24 @@ export function useShalomLiveStatuses(orders: OrderHeader[]) {
 
   useEffect(() => {
     if (ordersRef.current.length > 0) {
-      void fetchLiveStatuses(ordersRef.current);
+      // Consulta automática: omite las guías con estado todavía fresco.
+      void fetchLiveStatuses(ordersRef.current, false);
     }
     // `fetchLiveStatuses` cambia de identidad cuando llega `auth.accessToken`
     // (auth cargando en la primera corrida) → re-dispara el rastreo al tenerlo.
   }, [ordersKey, fetchLiveStatuses]);
 
+  const refreshLiveStatuses = useCallback(
+    (list: OrderHeader[]) => fetchLiveStatuses(list, true),
+    [fetchLiveStatuses],
+  );
+
   return {
     liveStatuses,
+    /** orderId → ISO de la última consulta a Shalom (solo si el backend lo manda). */
+    liveSyncedAt,
     loadingLiveStatuses,
-    refreshLiveStatuses: fetchLiveStatuses,
+    /** Botón manual: siempre consulta, aunque el estado esté fresco. */
+    refreshLiveStatuses,
   };
 }

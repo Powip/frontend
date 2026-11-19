@@ -62,6 +62,7 @@ import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import { isShalomCourier } from "@/utils/courierNormalizer";
 import { ShalomStatusBadge } from "./ShalomStatusBadge";
 import { useShalomLiveStatuses, SHALOM_STEP_STYLES, SHALOM_STEP_ICONS } from "./useShalomLiveStatus";
+import { formatShalomSyncedAt } from "./shalomSyncedAt";
 
 interface ShippingGuide {
   id: string;
@@ -276,7 +277,7 @@ export default function ShalomOrderTrackingView() {
         ),
     [pagedOrders],
   );
-  const { liveStatuses, loadingLiveStatuses, refreshLiveStatuses } =
+  const { liveStatuses, liveSyncedAt, loadingLiveStatuses, refreshLiveStatuses } =
     useShalomLiveStatuses(pagedShalomHeaders);
 
   const handleRefreshLiveStatuses = async () => {
@@ -794,7 +795,14 @@ export default function ShalomOrderTrackingView() {
                             const style = SHALOM_STEP_STYLES[liveLabel] ?? "bg-amber-50 text-amber-700 border-amber-200";
                             const icon = SHALOM_STEP_ICONS[liveLabel] ?? "•";
                             return (
-                              <Badge variant="outline" className={`text-[10px] ${style}`}>
+                              <Badge
+                                variant="outline"
+                                className={`text-[10px] ${style}`}
+                                title={
+                                  formatShalomSyncedAt(liveSyncedAt[order.id]) ??
+                                  undefined
+                                }
+                              >
                                 {icon} {liveLabel}
                               </Badge>
                             );

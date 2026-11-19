@@ -89,6 +89,7 @@ import { getAliclikCredentials } from "@/services/aliclikService";
 import { OrderHeader } from "@/interfaces/IOrder";
 import { isAliclikCourier, isEvaCourier, isShalomCourier } from "@/utils/courierNormalizer";
 import { isOrderTrackable } from "@/utils/domain/courier-tracking";
+import { formatShalomSyncedAt } from "@/components/tracking/shalomSyncedAt";
 import { useShalomLiveStatuses, SHALOM_STEP_STYLES, SHALOM_STEP_ICONS } from "@/components/tracking/useShalomLiveStatus";
 import {
   CourierStatusBadge,
@@ -640,7 +641,8 @@ export default function CourierTrackingView() {
     () => pagedOrderRows.filter((o) => isShalomCourier(o.courier) || isShalomCourier(o.shippingOffice)),
     [pagedOrderRows],
   );
-  const { liveStatuses: shalomLiveStatuses } = useShalomLiveStatuses(shalomPagedOrders);
+  const { liveStatuses: shalomLiveStatuses, liveSyncedAt: shalomLiveSyncedAt } =
+    useShalomLiveStatuses(shalomPagedOrders);
 
   const handleTrackShalom = async (guide: TrackingGuide) => {
     if (!auth?.accessToken || !auth?.company?.id) return;
@@ -1181,6 +1183,10 @@ export default function CourierTrackingView() {
                                           SHALOM_STEP_STYLES[liveLabel] ??
                                           "bg-amber-50 text-amber-700 border-amber-200",
                                         icon: SHALOM_STEP_ICONS[liveLabel] ?? "•",
+                                        title:
+                                          formatShalomSyncedAt(
+                                            shalomLiveSyncedAt[order.id],
+                                          ) ?? undefined,
                                       }
                                     : undefined;
                                   return <CourierStatusBadge order={order} live={live} />;

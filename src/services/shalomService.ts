@@ -163,18 +163,36 @@ export const listShalomAgencies = async (
 
 // ─── TRACKING ────────────────────────────────────────────
 
+/** Metadatos de frescura que suma el backend (opcionales: un backend viejo no los manda). */
+export interface ShalomSyncMeta {
+  /** ISO: cuándo se consultó a Shalom por última vez. */
+  syncedAt?: string;
+  /** true si la respuesta salió de lo guardado y no de una consulta nueva a Shalom. */
+  fromCache?: boolean;
+}
+
+/** Respuesta de `POST /shalom/track` (forma libre de Shalom + metadatos de frescura). */
+export type ShalomTrackResponse = Record<string, unknown> & ShalomSyncMeta;
+
+export interface TrackShalomShipmentOptions {
+  /** Fuerza una consulta a Shalom (el backend la limita a una cada 2 min por guía). */
+  refresh?: boolean;
+}
+
 export const trackShalomShipment = async (
   token: string,
   companyId: string, // ⬅️ SÍ es necesario
   externalTrackingNumber: string, // ⬅️ 8 dígitos de Shalom
   shippingCode: string, // ⬅️ 4 caracteres de Shalom
-): Promise<Record<string, unknown>> => {
+  options: TrackShalomShipmentOptions = {},
+): Promise<ShalomTrackResponse> => {
   const res = await axiosAuth.post(
     `${API_INTEGRATIONS}/shalom/track`,
     {
       companyId, // ✅ Enviar companyId
       orderNumber: externalTrackingNumber,
       orderCode: shippingCode,
+      ...(options.refresh ? { refresh: true } : {}),
     },
     { headers: headers(token) },
   );
@@ -188,7 +206,7 @@ export interface ShalomMassiveTrackOrder {
 }
 
 /** Ítem del array plano que devuelve `POST /shalom/track-massive`. */
-export interface ShalomMassiveTrackResult {
+export interface ShalomMassiveTrackResult extends ShalomSyncMeta {
   orderNumber: string;
   orderCode: string;
   search?: { success: boolean; message: string };
