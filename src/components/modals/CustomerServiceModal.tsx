@@ -955,7 +955,11 @@ export default function CustomerServiceModal({
   const effectiveCcSubEstado = isAnulado && subEstadoCc
     ? effectiveSubEstadoCc({ status: "ANULADO", subEstadoCc })
     : subEstadoCc;
-  const ccSubEstado = effectiveCcSubEstado ?? (canalOrigen === "shopify_cod" && !isAnulado ? "por_confirmar" : null);
+  // Only a pending Shopify COD purchase defaults to por_confirmar. On a sale, a null
+  // sub_estado_cc means CC already confirmed the dispatch (or the paid order skipped
+  // CC): showing «Confirmar despacho» again only earns a backend rejection.
+  const ccSubEstado = effectiveCcSubEstado ??
+    (canalOrigen === "shopify_cod" && isPendingPurchase && !isAnulado ? "por_confirmar" : null);
   const detailMoney = (value: number) => isPendingPurchase
     ? formatSalesMoney(value, orderHeader?.currency)
     : `S/${value.toFixed(2)}`;
