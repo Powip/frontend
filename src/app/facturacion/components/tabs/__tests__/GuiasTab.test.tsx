@@ -219,10 +219,10 @@ describe("GuiasTab", () => {
     expect(spec.issuer).toEqual({ name: "ACME S.A.C.", ruc: "20111111111", address: "Av. Arequipa 100, Lima" });
   });
 
-  it("sin emisor elegido (Todos los RUC) no imprime la guía y lo avisa", async () => {
+  it("sin ningún RUC activo no imprime la guía y lo avisa", async () => {
     const user = setup({});
     await user.click(within(await row("T001-00000001")).getByRole("button", { name: "PDF de T001-00000001" }));
-    expect(toast.error).toHaveBeenCalledWith("Selecciona un emisor (RUC) antes de imprimir la guía");
+    expect(toast.error).toHaveBeenCalledWith("Agrega un RUC emisor en la pestaña Emisores (RUC) para imprimir la guía");
     expect(mockDownloadPdf).not.toHaveBeenCalled();
   });
 

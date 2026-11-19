@@ -133,9 +133,9 @@ export function GuiasTab({ comprobanteRows, issuer }: GuiasTabProps) {
   };
 
   const downloadGrePdf = async (advice: DespatchAdvice) => {
-    // Sin emisor elegido no se imprime (#310): el PDF no adivina el RUC.
+    // Sin ningún RUC activo no se imprime (#310, #314): el PDF no adivina el RUC.
     if (!issuer) {
-      toast.error("Selecciona un emisor (RUC) antes de imprimir la guía");
+      toast.error("Agrega un RUC emisor en la pestaña Emisores (RUC) para imprimir la guía");
       return;
     }
     // Multi-RUC: el encabezado no puede ser de otro RUC que el de la guía.
