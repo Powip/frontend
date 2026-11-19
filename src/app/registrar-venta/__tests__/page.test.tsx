@@ -1155,6 +1155,66 @@ describe("RegistrarVentaPage — actualización parcial del cliente al confirmar
     expect(mockToast.error).not.toHaveBeenCalled();
   });
 
+  it("permite elegir RUC y guarda RUC + correo del cliente al registrar", async () => {
+    const client = { ...FOUND_CLIENT, clientType: "MAYORISTA" as const };
+    mockFetchClientByPhone.mockResolvedValue(client);
+    mockUpdateClient.mockResolvedValue({
+      ...client, documentType: "RUC", documentNumber: "20100070970", email: "compras@drasanvi.pe",
+    });
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "order-ruc", payments: [] } });
+    renderPage();
+    await fillCommonRequiredFields();
+
+    const typeSelect = within(fieldByLabel(/^tipo de documento/i)).getByRole("combobox");
+    expect(within(typeSelect).getByRole("option", { name: "RUC" })).toBeInTheDocument();
+    await userEvent.selectOptions(typeSelect, "RUC");
+    fireEvent.change(screen.getByPlaceholderText("Número"), { target: { value: "20100070970" } });
+    await userEvent.click(screen.getByRole("button", { name: /agregar referencia y ubicación/i }));
+    fireEvent.change(screen.getByLabelText(/correo electrónico/i), {
+      target: { value: "compras@drasanvi.pe" },
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Registrar pedido" }));
+
+    await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1));
+    expect(mockUpdateClient).toHaveBeenCalledWith(client.id, {
+      companyId: client.companyId,
+      documentType: "RUC",
+      documentNumber: "20100070970",
+      email: "compras@drasanvi.pe",
+    });
+    expect(mockToast.error).not.toHaveBeenCalled();
+  });
+
+  it("bloquea registrar con RUC inválido y muestra el motivo", async () => {
+    mockFetchClientByPhone.mockResolvedValue(FOUND_CLIENT);
+    renderPage();
+    await fillCommonRequiredFields();
+
+    await userEvent.selectOptions(
+      within(fieldByLabel(/^tipo de documento/i)).getByRole("combobox"),
+      "RUC",
+    );
+    fireEvent.change(screen.getByPlaceholderText("Número"), { target: { value: "20100070971" } });
+    await userEvent.click(screen.getByRole("button", { name: "Registrar pedido" }));
+
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+    expect(mockUpdateClient).not.toHaveBeenCalled();
+  });
+
+  it("no guarda un correo con formato inválido", async () => {
+    mockFetchClientByPhone.mockResolvedValue(FOUND_CLIENT);
+    renderPage();
+    await fillCommonRequiredFields();
+
+    await userEvent.click(screen.getByRole("button", { name: /agregar referencia y ubicación/i }));
+    fireEvent.change(screen.getByLabelText(/correo electrónico/i), { target: { value: "compras@" } });
+    expect(await screen.findByText("Ingresa un correo válido (ej. nombre@empresa.com).")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Registrar pedido" }));
+
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+    expect(mockUpdateClient).not.toHaveBeenCalled();
+  });
+
   it("envía null en ambos campos al quitar el documento opcional de una venta de Lima", async () => {
     const client = { ...FOUND_CLIENT, documentType: "DNI" as const, documentNumber: "12345678" };
     mockFetchClientByPhone.mockResolvedValue(client);
@@ -1594,6 +1654,7 @@ describe("RegistrarVentaPage — documentos de identidad en provincia", () => {
     ["CE numérico con cero inicial", "CARNET", "001234567"],
     ["pasaporte", "PASAPORTE", "AB123456"],
     ["DNI", "DNI", "12345678"],
+    ["RUC", "RUC", "20100070970"],
   ] as const)("permite confirmar una venta de provincia con cliente encontrado y %s válido", async (_label, documentType, documentNumber) => {
     mockFetchClientByPhone.mockResolvedValue({ ...provinceClient, documentType, documentNumber });
     mockedAxiosAuth.post.mockResolvedValue({ data: { id: "order-document", payments: [] } });
