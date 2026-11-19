@@ -55,6 +55,7 @@ interface Payment {
   paymentProofUrl?: string | null;
   notes?: string | null;
   paymentDate: string;
+  externalReference?: string | null;
   leadId?: string | null;
   leadPaymentVersion?: number | null;
 }
@@ -100,6 +101,32 @@ const PROOF_FILE_TYPES = [
   "application/pdf",
 ];
 const PROOF_FILE_ACCEPT = PROOF_FILE_TYPES.join(",");
+
+// La fecha de pago es la del comprobante (cuando el cliente pagó), en hora de
+// Lima. Se guarda al mediodía para que ningún huso la corra al día anterior.
+const PAYMENT_TZ = "America/Lima";
+
+function todayInLima() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: PAYMENT_TZ }).format(new Date());
+}
+
+function paymentDateToInput(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", { timeZone: PAYMENT_TZ }).format(date);
+}
+
+function inputToPaymentDate(value: string) {
+  return `${value}T12:00:00-05:00`;
+}
+
+function formatPaymentDate(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("es-PE", { timeZone: PAYMENT_TZ, day: "2-digit", month: "2-digit", year: "numeric" });
+}
 
 function validateProofFile(file: File) {
   if (!PROOF_FILE_TYPES.includes(file.type)) {
@@ -157,6 +184,12 @@ export default function PaymentVerificationModal({
   const [amount, setAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [paymentDateValue, setPaymentDateValue] = useState(todayInLima);
+  const [operationCode, setOperationCode] = useState("");
+  const [editingDetailsForId, setEditingDetailsForId] = useState<string | null>(null);
+  const [editDateValue, setEditDateValue] = useState("");
+  const [editCodeValue, setEditCodeValue] = useState("");
+  const [savingDetailsForId, setSavingDetailsForId] = useState<string | null>(null);
   const captureScope = `${auth?.company?.id ?? ""}:${auth?.user?.id ?? ""}:${orderId}`;
   const activeCaptureScope = useRef(captureScope);
   activeCaptureScope.current = captureScope;
@@ -269,6 +302,16 @@ export default function PaymentVerificationModal({
       toast.warning("El monto debe ser un número válido mayor a 0");
       return;
     }
+    if (!needsLeadCapture) {
+      if (!paymentDateValue) {
+        toast.warning("Indica la fecha de pago");
+        return;
+      }
+      if (paymentDateValue > todayInLima()) {
+        toast.warning("La fecha de pago no puede ser futura");
+        return;
+      }
+    }
 
     operationLocks.current.add(lockKey);
     setIsSubmitting(true);
@@ -312,6 +355,12 @@ export default function PaymentVerificationModal({
       const formData = new FormData();
       formData.append("amount", numericAmount.toString());
       formData.append("paymentMethod", paymentMethod);
+      if (paymentDateValue) {
+        formData.append("paymentDate", inputToPaymentDate(paymentDateValue));
+      }
+      if (operationCode.trim()) {
+        formData.append("externalReference", operationCode.trim());
+      }
 
       if (file) {
         formData.append("file", file);
@@ -332,6 +381,8 @@ export default function PaymentVerificationModal({
       setAmount("");
       setPaymentMethod("");
       setFile(null);
+      setPaymentDateValue(todayInLima());
+      setOperationCode("");
       paymentChanged();
     } catch (error) {
       if (!currentOperation(epoch)) return;
@@ -561,6 +612,130 @@ export default function PaymentVerificationModal({
     }
   };
 
+  const canEditDetails = (payment: Payment) => canRecord && !payment.leadId;
+
+  const handleStartEditDetails = (payment: Payment) => {
+    setEditingDetailsForId(payment.id);
+    setEditDateValue(paymentDateToInput(payment.paymentDate));
+    setEditCodeValue(payment.externalReference ?? "");
+  };
+
+  const handleSaveDetails = async (paymentId: string) => {
+    const epoch = operationEpoch.current;
+    const lockKey = `${epoch}:details:${paymentId}`;
+    if (!currentOperation(epoch) || operationLocks.current.has(lockKey)) return;
+    if (!editDateValue) {
+      toast.warning("Indica la fecha de pago");
+      return;
+    }
+    if (editDateValue > todayInLima()) {
+      toast.warning("La fecha de pago no puede ser futura");
+      return;
+    }
+    operationLocks.current.add(lockKey);
+    setSavingDetailsForId(paymentId);
+    try {
+      await axiosAuth.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/details`,
+        {
+          paymentDate: inputToPaymentDate(editDateValue),
+          externalReference: editCodeValue.trim() || null,
+        },
+      );
+      if (!currentOperation(epoch)) return;
+      toast.success("Datos del pago actualizados");
+      setEditingDetailsForId(null);
+      paymentChanged();
+    } catch (error) {
+      if (!currentOperation(epoch)) return;
+      console.error("Error actualizando datos del pago", error);
+      toast.error("No se pudieron guardar la fecha y el código de operación");
+    } finally {
+      operationLocks.current.delete(lockKey);
+      if (currentOperation(epoch)) setSavingDetailsForId(null);
+    }
+  };
+
+  const renderPaymentDetails = (payment: Payment) => {
+    if (editingDetailsForId === payment.id) {
+      const saving = savingDetailsForId === payment.id;
+      const isShopifyOrder = orderData?.externalSource === "shopify";
+      return (
+        <div className="mt-1 space-y-1.5">
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="space-y-0.5">
+            <Label htmlFor={`edit-date-${payment.id}`} className="text-xs">Fecha de pago</Label>
+            <Input
+              id={`edit-date-${payment.id}`}
+              type="date"
+              max={todayInLima()}
+              value={editDateValue}
+              onChange={(e) => setEditDateValue(e.target.value)}
+              className="h-8 w-36"
+              disabled={saving}
+            />
+          </div>
+          <div className="space-y-0.5">
+            <Label htmlFor={`edit-code-${payment.id}`} className="text-xs">Código de operación</Label>
+            <Input
+              id={`edit-code-${payment.id}`}
+              value={editCodeValue}
+              maxLength={150}
+              onChange={(e) => setEditCodeValue(e.target.value)}
+              className="h-8 w-36"
+              disabled={saving}
+            />
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 bg-green-50 hover:bg-green-100 text-green-600"
+            disabled={saving}
+            onClick={() => handleSaveDetails(payment.id)}
+          >
+            {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : "Guardar"}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8"
+            disabled={saving}
+            onClick={() => setEditingDetailsForId(null)}
+          >
+            Cancelar
+          </Button>
+        </div>
+        {isShopifyOrder && (
+          <p role="alert" className="flex items-start gap-1 text-xs text-amber-700">
+            <AlertCircle className="mt-px h-3 w-3 shrink-0" />
+            <span>
+              Este pago viene de Shopify. Si editas el código de operación, Shopify no lo reconocerá al actualizar.
+            </span>
+          </p>
+        )}
+        </div>
+      );
+    }
+    const date = formatPaymentDate(payment.paymentDate);
+    const code = payment.externalReference?.trim();
+    return (
+      <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+        <span>Pagado el {date || "—"}</span>
+        <span>· Op. {code || "—"}</span>
+        {canEditDetails(payment) && (
+          <button
+            type="button"
+            className="flex items-center gap-0.5 text-blue-600 hover:underline"
+            onClick={() => handleStartEditDetails(payment)}
+          >
+            <Pencil className="h-3 w-3" />
+            {code ? "Editar" : "Completar"}
+          </button>
+        )}
+      </div>
+    );
+  };
+
   const renderProofUpload = (payment: Payment) => (
     <ProofDropzone
       variant="compact"
@@ -712,6 +887,7 @@ export default function PaymentVerificationModal({
                               )}
                             </div>
                           )}
+                          {renderPaymentDetails(payment)}
                           {payment.paymentProofUrl ? (
                             <a
                               href={
@@ -784,6 +960,7 @@ export default function PaymentVerificationModal({
                             {formatCurrency(Number(payment.amount))} -{" "}
                             {payment.paymentMethod}
                           </span>
+                          {renderPaymentDetails(payment)}
                           {payment.paymentProofUrl ? (
                             <a
                               href={
@@ -856,7 +1033,32 @@ export default function PaymentVerificationModal({
                     </div>
                   </div>
 
-                  <div className="space-y-1">
+                  {!needsLeadCapture && (
+                    <div className="mt-3 grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label htmlFor="payment-date">Fecha de pago *</Label>
+                        <Input
+                          id="payment-date"
+                          type="date"
+                          max={todayInLima()}
+                          value={paymentDateValue}
+                          onChange={(e) => setPaymentDateValue(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="operation-code">Código de operación</Label>
+                        <Input
+                          id="operation-code"
+                          placeholder="Nº de operación"
+                          maxLength={150}
+                          value={operationCode}
+                          onChange={(e) => setOperationCode(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-4 space-y-2">
                     <Label>Comprobante (opcional)</Label>
                     <ProofDropzone
                       variant="full"

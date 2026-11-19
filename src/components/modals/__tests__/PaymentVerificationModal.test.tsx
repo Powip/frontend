@@ -979,3 +979,101 @@ describe("PaymentVerificationModal — adelantos Shopify COD desde Gestión CC",
     expect(mockedAxiosAuth.patch).not.toHaveBeenCalled();
   });
 });
+
+describe('PaymentVerificationModal — fecha de pago y código de operación', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedAxiosAuth.patch.mockResolvedValue({ data: {} });
+    mockedAxiosAuth.post.mockResolvedValue({ data: {} });
+  });
+
+  it('envía la fecha del comprobante (mediodía Lima) y el código de operación al registrar', async () => {
+    mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData(null) });
+    renderModal();
+    await userEvent.type(await screen.findByLabelText('Monto *'), '25');
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'YAPE');
+    const dateInput = screen.getByLabelText('Fecha de pago *');
+    await userEvent.clear(dateInput);
+    await userEvent.type(dateInput, '2026-11-13');
+    await userEvent.type(screen.getByLabelText('Código de operación'), ' 00123456 ');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar Pago' }));
+
+    await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledTimes(1));
+    const data = mockedAxiosAuth.post.mock.calls[0][1] as FormData;
+    expect(data.get('paymentDate')).toBe('2026-11-13T12:00:00-05:00');
+    expect(data.get('externalReference')).toBe('00123456');
+  });
+
+  it('no registra con fecha futura', async () => {
+    mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData(null) });
+    renderModal();
+    await userEvent.type(await screen.findByLabelText('Monto *'), '25');
+    await userEvent.selectOptions(screen.getByRole('combobox'), 'YAPE');
+    const dateInput = screen.getByLabelText('Fecha de pago *');
+    await userEvent.clear(dateInput);
+    await userEvent.type(dateInput, '2999-01-01');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Registrar Pago' }));
+
+    expect(mockToast.warning).toHaveBeenCalledWith('La fecha de pago no puede ser futura');
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+  });
+
+  it('muestra fecha y código del pago y permite completarlos en un pago antiguo', async () => {
+    const order = makeOrderData(null);
+    order.payments[0].status = 'PAID';
+    (order.payments[0] as { paymentDate: string }).paymentDate = '2026-11-13T17:00:00.000Z';
+    mockedAxiosAuth.get.mockResolvedValue({ data: order });
+    renderModal();
+
+    expect(await screen.findByText('Pagado el 13/11/2026')).toBeInTheDocument();
+    expect(screen.getByText('· Op. —')).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /completar/i }));
+    const editDate = screen.getByLabelText('Fecha de pago');
+    expect(editDate).toHaveValue('2026-11-13');
+    await userEvent.clear(editDate);
+    await userEvent.type(editDate, '2026-11-12');
+    await userEvent.type(screen.getAllByLabelText('Código de operación')[0], 'OP-9');
+    await userEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    await waitFor(() =>
+      expect(mockedAxiosAuth.patch).toHaveBeenCalledWith(
+        'http://ventas/payments/payments/payment-1/details',
+        { paymentDate: '2026-11-12T12:00:00-05:00', externalReference: 'OP-9' },
+      ),
+    );
+    expect(mockToast.success).toHaveBeenCalledWith('Datos del pago actualizados');
+  });
+});
+
+describe('PaymentVerificationModal — aviso en pagos de Shopify', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('al editar el código de un pago de pedido Shopify muestra el aviso de Shopify', async () => {
+    const order: any = makeOrderData(null);
+    order.externalSource = 'shopify';
+    order.payments[0].status = 'PAID';
+    order.payments[0].externalReference = 'SHOP-1';
+    mockedAxiosAuth.get.mockResolvedValue({ data: order });
+    renderModal();
+
+    await userEvent.click(await screen.findByRole('button', { name: /editar/i }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Shopify no lo reconocerá al actualizar');
+  });
+
+  it('no muestra el aviso en pedidos que no son de Shopify', async () => {
+    const order: any = makeOrderData(null);
+    order.payments[0].status = 'PAID';
+    mockedAxiosAuth.get.mockResolvedValue({ data: order });
+    renderModal();
+
+    await userEvent.click(await screen.findByRole('button', { name: /completar/i }));
+
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+});
