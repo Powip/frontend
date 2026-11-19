@@ -316,6 +316,8 @@ export interface OrderHeader extends UnitAssignmentState {
   // ========================================
   canalOrigen?: string | null;
   subEstadoCc?: SubEstadoCc | null;
+  /** Solo respuesta de Atención al cliente: venta confirmada que falta confirmar el despacho. */
+  ccEtiqueta?: "compra_confirmada_pendiente_despacho" | null;
   ccAgenteId?: string | null;
   ccConfirmadoAt?: string | null;
   ccConfirmadoBy?: string | null;
