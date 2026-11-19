@@ -86,3 +86,24 @@ it("lista las ventas desde PREPARADO y deja fuera pendientes, pagadas, anuladas 
   ]);
   expect(result.current.kpis.pendientes).toBe(6);
 });
+
+it("una nota de crédito no reemplaza la factura de la venta y se lista aparte", async () => {
+  const factura = { id: "inv", orderId: "prepared", taxDocumentType: "01", cdrStatus: "ACCEPTED" };
+  const nota = {
+    id: "nc",
+    orderId: "prepared",
+    taxDocumentType: "07",
+    cdrStatus: "ACCEPTED",
+    referenceDocumentId: "inv",
+  };
+  // El backend responde del más nuevo al más antiguo: la nota llega primero.
+  get.mockResolvedValue({ data: { items: [nota, factura], total: 2 } });
+
+  const { result } = renderHook(() => useTaxDocuments(), { wrapper });
+  await waitFor(() => expect(result.current.creditNotes).toHaveLength(1));
+
+  const row = result.current.rows.find((item) => item.sale.id === "prepared");
+  expect(row?.taxDocument?.id).toBe("inv");
+  expect(result.current.creditNotes[0].id).toBe("nc");
+  expect(result.current.documents).toHaveLength(2);
+});

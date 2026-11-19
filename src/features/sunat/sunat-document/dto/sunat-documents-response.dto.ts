@@ -40,6 +40,8 @@ export interface SunatDocumentPayloadResponseDto {
   customer?: SunatDocumentCustomerResponseDto;
   totals: SunatDocumentTotalsResponseDto;
   items: SunatDocumentLineItemResponseDto[];
+  /** Credit/debit notes only: SUNAT reason (catalog 09/10). */
+  discrepancyResponse?: { reasonCode: string; reasonDescription: string };
 }
 
 export interface SunatDocumentResponseDto {
