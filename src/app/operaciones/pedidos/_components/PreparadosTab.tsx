@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
+import { StockStateBadge } from "@/components/orders/StockStateBadge";
 import { OrderDetailButton } from "@/components/orders/OrderDetailModal";
 import { BulkStatusSelect } from "@/components/ventas/BulkStatusSelect";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
@@ -369,6 +370,7 @@ export function PreparadosTab({
                     {sale.orderNumber}
                     <OrderOriginLabel {...sale} />
                   </div>
+                  <StockStateBadge state={sale.stockState} className="mt-1 flex w-fit" />
                   {(sale.storeName || sale.stockStoreName) && (
                     <div className="truncate text-[11px] font-normal text-muted-foreground">
                       {[sale.storeName, sale.stockStoreName].filter(Boolean).join(" · ")}

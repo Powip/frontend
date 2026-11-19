@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
-import { canEditInventory } from "@/config/permissions.config";
+import { canEditInventory, hasAdminAccess } from "@/config/permissions.config";
 
 import {
   Download,
@@ -24,6 +24,11 @@ import {
   History,
   LayoutList,
   GitMerge,
+  PackageOpen,
+  PackageX,
+  FileBarChart,
+  Bell,
+  Lock,
 } from "lucide-react";
 
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -52,28 +57,91 @@ import ShopifySyncWizard from "@/app/productos/shopify-sync-wizard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MovementHistoryTable } from "@/components/inventory/MovementHistoryTable";
 import { ReconciliationTab } from "@/components/inventory/ReconciliationTab";
+import ReceptionsTab from "@/components/inventory/receptions/ReceptionsTab";
+import OutOfStockTab from "@/components/inventory/out-of-stock/OutOfStockTab";
+import { orderStockAccess } from "@/lib/orderStock";
+import SkuConflictsPanel from "@/components/catalog/SkuConflictsPanel";
 import { StockByProduct, StockByWarehouse, StockKpis, type StockBoardActions } from "@/components/inventory/StockBoard";
-import { filterStockVariants, groupByProduct, stockTotals, storesOf, variantPositionsFlat, visibleInventories, STOCK_STATUS_LABEL, type StockMode, type StockStatusFilter } from "@/components/inventory/stockView";
+// FEAT-24 RMV: «Quitar del almacén» (baja lógica por almacén, con doble confirmación).
+import { RemoveFromWarehouseDialog, type RemoveFromWarehouseItem } from "@/components/inventory/RemoveFromWarehouseDialog";
+import type { BusinessInventory } from "@/services/inventoryCatalogService";
+// FEAT-24 H10: Reporte general, Alertas y Cierre mensual.
+import StockReportTab from "@/components/inventory/reports/StockReportTab";
+import AlertsTab from "@/components/inventory/reports/AlertsTab";
+import PeriodCloseTab from "@/components/inventory/reports/PeriodCloseTab";
+import { useInventoryAlerts } from "@/hooks/useInventoryAlerts";
+import { alertBadgeText } from "@/lib/reports/alerts";
+// FEAT-24 H5-C: operación de almacén (traslados, conteos, ajustes y mermas) y alcance de almacenes del usuario (H6).
+import { ArrowLeftRight, ClipboardCheck, SlidersHorizontal } from "lucide-react";
+import TransfersTab from "@/components/warehouse-ops/transfers/TransfersTab";
+import CountsTab from "@/components/warehouse-ops/counts/CountsTab";
+import AdjustmentsTab from "@/components/warehouse-ops/adjustments/AdjustmentsTab";
+import { useMyWarehouses } from "@/hooks/useMyWarehouses";
+// FEAT-24 H8: Couriers (stock POWIP contra courier, conciliación y reclamos).
+import { Truck } from "lucide-react";
+import CouriersTab from "@/components/inventory/couriers/CouriersTab";
+import { courierAccess } from "@/lib/courier";
+import { filterStockVariants, groupByProduct, packExcelRows, packStockRows, stockTotals, storesOf, variantPositionsFlat, visibleInventories, STOCK_STATUS_LABEL, type StockMode, type StockStatusFilter } from "@/components/inventory/stockView";
+// FEAT-24 H9: los packs se listan en Stock (por producto y por almacén) y en su Excel con el disponible de sus componentes.
+import { listAllPacks } from "@/services/packsService";
+// FEAT-24 H13-D2: columna «Cobertura» de Stock.
+import { useStockCoverage } from "@/hooks/useStockCoverage";
 
 const ITEMS_PER_PAGE = 10;
+// FEAT-24 H11: las variantes con SKU repetido salen agrupadas en «Por unificar»; arriba queda solo el SKU base.
+const PRODUCT_SKU_CONFLICTS: Array<"product"> = ["product"];
 
 /** Pestañas del módulo (mockup vistainv.html, grupo «Almacén»). Cada una vive en su propia ruta. */
-export type InventarioTab = "stock" | "movimientos" | "unificacion";
+export type InventarioTab =
+  | "stock"
+  | "reporte" // FEAT-24 H10
+  | "movimientos"
+  | "traslados" // FEAT-24 H5-C
+  | "recepciones"
+  | "conteos" // FEAT-24 H5-C
+  | "ajustes" // FEAT-24 H5-C
+  | "pedidos-sin-stock"
+  | "couriers" // FEAT-24 H8
+  | "alertas" // FEAT-24 H10
+  | "unificacion"
+  | "cierre"; // FEAT-24 H10
 export const INVENTARIO_TAB_ROUTES: Record<InventarioTab, string> = {
+  // Mismo orden que las pestañas del mockup. FEAT-24 H10: reporte, alertas y cierre; H5-C: traslados, conteos y ajustes.
   stock: "/inventario/stock",
+  reporte: "/inventario/reporte",
   movimientos: "/inventario/movimientos",
+  traslados: "/inventario/traslados",
+  recepciones: "/inventario/recepciones",
+  conteos: "/inventario/conteos",
+  ajustes: "/inventario/ajustes",
+  "pedidos-sin-stock": "/inventario/pedidos-sin-stock",
+  couriers: "/inventario/couriers",
+  alertas: "/inventario/alertas",
   unificacion: "/inventario/unificacion",
+  cierre: "/inventario/cierre",
 };
 
-export default function InventarioView({ tab = "stock", initialMovementSearch = "" }: { tab?: InventarioTab; initialMovementSearch?: string }) {
-  const { auth } = useAuth();
+export default function InventarioView({ tab = "stock", initialMovementSearch = "", initialMovementVariantId, initialCourier }: { tab?: InventarioTab; initialMovementSearch?: string; initialMovementVariantId?: string; initialCourier?: { inventoryId?: string; claimId?: string } }) {
+  const { auth, hasPermission } = useAuth();
+  // Pedidos sin stock / sin reserva: Atención al cliente y Operaciones (los mismos permisos que ms-ventas).
+  const stockAccess = orderStockAccess((permission) => hasPermission?.(permission) ?? false);
   // Editar inventario (ajustes, mermas, transferencias, importar Excel, compras, reconciliación): solo
   // Administrador y Operaciones. El resto sigue viendo el stock en solo lectura.
   const canEdit = canEditInventory(auth?.user);
+  // FEAT-24 H8: Couriers lo ven Administrador, Operaciones y Almacén (el courier usa su portal en /almacen).
+  const couriers = courierAccess(auth?.user);
+  const canSeeCouriers = couriers.view && !couriers.courier;
+  const activeTab: InventarioTab =
+    (tab === "unificacion" && !canEdit) || (tab === "pedidos-sin-stock" && !stockAccess.sinReserva) || (tab === "couriers" && !canSeeCouriers) ? "stock" : tab;
+  // FEAT-24 H10-D8: contador de la pestaña Alertas (misma consulta que el menú lateral).
+  const alerts = useInventoryAlerts();
+  const alertTotal = alerts.data?.total ?? 0;
   const queryClient = useQueryClient();
   const { scope, storeIds, canFetch } = useBusinessScope();
   const warehouses = useBusinessInventories({ scope, storeIds });
-  const storeInventories = warehouses.inventories;
+  // FEAT-24 H6: solo los almacenes que el usuario ve (sin restricciones o si /me/warehouses falla, todos).
+  const myWarehouses = useMyWarehouses();
+  const storeInventories = useMemo(() => myWarehouses.visible(warehouses.inventories), [myWarehouses, warehouses.inventories]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedInventoryId, setSelectedInventoryId] = useState("all");
   const [selectedStoreId, setSelectedStoreId] = useState("all");
@@ -87,8 +155,9 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
   const companyId = auth?.company?.id ?? "";
   const inventoryQuery = useQuery({
     queryKey: ["business-inventory-items", companyId, auth?.user?.id, scope, storeIds, storeInventories.map((inv) => inv.id).sort(), includeInactive],
-    queryFn: ({ signal }) => fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth?.accessToken ?? "", signal, includeInactive }),
-    enabled: canFetch && warehouses.isSuccess,
+    // FEAT-24 RMV: lo quitado de un almacén no se lista aquí (vuelve a aparecer cuando entra stock).
+    queryFn: ({ signal }) => fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth?.accessToken ?? "", signal, includeInactive, excludeRemoved: true }),
+    enabled: canFetch && warehouses.isSuccess && !myWarehouses.isLoading,
     retry: false,
   });
   // Tipo y «Principal» de cada almacén (pantalla de almacenes de la empresa). Es un adorno: si falla, no se muestra.
@@ -100,6 +169,15 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
     staleTime: 60_000,
   });
   const warehouseMeta = useMemo(() => new Map((warehouseMetaQuery.data?.warehouses ?? []).map((w) => [w.id, { type: w.type, isMain: w.is_main }])), [warehouseMetaQuery.data]);
+  // FEAT-24 H9: packs activos con su disponible por almacén (lo calcula ms-products). Como el tipo de almacén, es
+  // un agregado: si falla, la tabla sale sin el bloque de packs.
+  const packsQuery = useQuery({
+    queryKey: ["inventory-packs-stock", companyId],
+    queryFn: ({ signal }) => listAllPacks({ active: true }, signal),
+    enabled: Boolean(companyId && auth?.accessToken) && activeTab === "stock",
+    retry: false,
+    staleTime: 60_000,
+  });
   const stockFilters = useMemo(() => ({ search: searchQuery, storeId: selectedStoreId, inventoryId: selectedInventoryId, status: statusFilter }), [searchQuery, selectedStoreId, selectedInventoryId, statusFilter]);
   // Variantes (con sus posiciones por almacén) agrupadas por producto: la paginación cuenta productos.
   const variantRows = useMemo(() => filterStockVariants(inventoryQuery.data ?? [], stockFilters), [inventoryQuery.data, stockFilters]);
@@ -107,25 +185,36 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
   const stores = useMemo(() => storesOf(storeInventories), [storeInventories]);
   const warehouseColumns = useMemo(() => visibleInventories(storeInventories, stockFilters), [storeInventories, stockFilters]);
   const warehouseOptions = useMemo(() => visibleInventories(storeInventories, { storeId: selectedStoreId, inventoryId: "all" }), [storeInventories, selectedStoreId]);
+  const packRows = useMemo(() => packStockRows(packsQuery.data ?? [], warehouseColumns, stockFilters), [packsQuery.data, warehouseColumns, stockFilters]);
   const totalItems = productGroups.length;
   const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
   const pagedGroups = productGroups.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
   const isLoadingInventories = warehouses.isPending;
   const isLoading = warehouses.isPending || (warehouses.isSuccess && inventoryQuery.isPending);
   const loadError = warehouses.error || inventoryQuery.error;
-  const refreshItems = async () => { await inventoryQuery.refetch({ throwOnError: true }); };
+  const refreshItems = async () => {
+    // El disponible de los packs depende del de sus componentes: se refresca aparte y sin bloquear.
+    if (packsQuery.isFetched) void packsQuery.refetch();
+    await inventoryQuery.refetch({ throwOnError: true });
+  };
   const handleStockRefresh = () => {
     void refreshItems().catch(() => {
       toast.warning("Los cambios se guardaron, pero no se pudo actualizar el almacén. Recarga la página.");
     });
   };
   const totals = useMemo(() => stockTotals(variantRows), [variantRows]);
+  // FEAT-24 H13-D2: cobertura del almacén elegido (o del único de la vista); si no, de todos los que ve el usuario.
+  const coverageInventoryId = selectedInventoryId !== "all" ? selectedInventoryId : warehouseColumns.length === 1 ? warehouseColumns[0].id : undefined;
+  const stockCoverage = useStockCoverage({ inventoryId: coverageInventoryId, enabled: activeTab === "stock" && warehouses.isSuccess && !myWarehouses.isLoading });
+  const coverageMap = stockCoverage.byVariant;
 
   const router = useRouter();
 
   const [unitTrace, setUnitTrace] = useState<{ companyId: string; userId: string; code: string } | null>(null);
   const [trackingItem, setTrackingItem] = useState<{ item: BusinessInventoryItem; companyId: string; action: "regularize" | "units" | "transfer" | "write-off" } | null>(null);
-  useEffect(() => { setTrackingItem(null); setUnitTrace(null); }, [companyId, auth?.user?.id]);
+  // FEAT-24 RMV: lo que se está por quitar y de qué almacén (el único de la vista).
+  const [removing, setRemoving] = useState<{ item: RemoveFromWarehouseItem; warehouse: BusinessInventory; companyId: string } | null>(null);
+  useEffect(() => { setTrackingItem(null); setUnitTrace(null); setRemoving(null); }, [companyId, auth?.user?.id]);
 
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItemForSale | null>(
@@ -149,18 +238,30 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
   // La unificación es de quienes editan inventario: el resto vuelve al stock.
   useEffect(() => {
     if (auth && tab === "unificacion" && !canEdit) router.replace(INVENTARIO_TAB_ROUTES.stock);
-  }, [auth, tab, canEdit, router]);
+    if (auth && tab === "pedidos-sin-stock" && !stockAccess.sinReserva) router.replace(INVENTARIO_TAB_ROUTES.stock);
+    if (auth && tab === "couriers" && !canSeeCouriers) router.replace(INVENTARIO_TAB_ROUTES.stock);
+  }, [auth, tab, canEdit, stockAccess.sinReserva, canSeeCouriers, router]);
 
   if (!auth) return null;
+  // FEAT-24 RMV: la papelera es de quien edita inventario y solo con UN almacén en la vista (si no, ¿de cuál?).
+  const removeWarehouse = canEdit && warehouseColumns.length === 1 ? warehouseColumns[0] : null;
   const stockActions: StockBoardActions = {
     canEdit,
     onImage: (item, trigger) => { imageTriggerRef.current = trigger; setImageItem(item); },
     onTracking: (item, action) => setTrackingItem({ item, companyId, action }),
     onAdjust: (item) => { setSelectedItem(item); setAdjustOpen(true); },
     onEdit: (variantId) => router.push(`/productos?edit=${variantId}`),
-    onKardex: (sku) => router.push(`${INVENTARIO_TAB_ROUTES.movimientos}?q=${encodeURIComponent(sku)}`),
+    onKardex: (variantId, label) => router.push(`${INVENTARIO_TAB_ROUTES.movimientos}?variantId=${encodeURIComponent(variantId)}&q=${encodeURIComponent(label)}`),
+    onRemove: removeWarehouse
+      ? (target) => setRemoving({
+        warehouse: removeWarehouse,
+        companyId,
+        item: target.kind === "product"
+          ? { kind: "product", productId: target.productId, name: target.productName }
+          : { kind: "variant", variantId: target.item.variantId, name: [target.item.productName, formatVariantLabel(target.item.attributes)].filter(Boolean).join(" · "), sku: target.item.companySku || target.item.sku },
+      })
+      : undefined,
   };
-  const activeTab: InventarioTab = tab === "unificacion" && !canEdit ? "stock" : tab;
 
   const handleExportExcel = async () => {
     if (loadError || isLoading) { toast.error("Espera a que el inventario termine de cargar correctamente."); return; }
@@ -168,8 +269,14 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
     setIsExporting(true);
 
     try {
-      const fresh = await fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth.accessToken, includeInactive });
+      // FEAT-24 H9: los packs se piden frescos junto con el stock; si fallan, se usa lo que ya está en pantalla.
+      const [fresh, freshPacks] = await Promise.all([
+        fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth.accessToken, includeInactive, excludeRemoved: true }),
+        listAllPacks({ active: true }).catch(() => packsQuery.data ?? null),
+      ]);
       const items = variantPositionsFlat(filterStockVariants(fresh, stockFilters));
+      const exportPacks = packStockRows(freshPacks ?? [], warehouseColumns, stockFilters);
+      const packLines = packExcelRows(exportPacks, warehouseColumns);
 
       if (items.length === 0) {
         toast.warning("No hay productos para exportar");
@@ -190,6 +297,8 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
         { header: "Reservado", key: "reservado", width: 12 },
         { header: "Disponible", key: "disponible", width: 12 },
         { header: "Precio venta", key: "precio", width: 15, style: { numFmt: '"S/" #,##0.00' } },
+        // FEAT-24 H13-D2: la cobertura ya cargada en pantalla (por variante, no por almacén).
+        ...(coverageMap ? [{ header: "Cobertura (días)", key: "cobertura", width: 16 }] : []),
       ];
 
       worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
@@ -212,8 +321,31 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
           reservado: prod.reservedStock,
           disponible: prod.availableStock,
           precio: prod.priceVta,
+          ...(coverageMap ? { cobertura: coverageMap.get(prod.variantId)?.coverageDays ?? "Sin ventas" } : {}),
         });
       });
+
+      // FEAT-24 H9: sección «Packs» al final, con el disponible calculado de sus componentes (sin físico ni reservado propios).
+      if (packLines.length > 0) {
+        worksheet.addRow({});
+        const title = worksheet.addRow({ companySku: "Packs · su stock es el de sus componentes" });
+        title.font = { bold: true };
+        packLines.forEach((pack) => {
+          worksheet.addRow({
+            companySku: pack.companySku,
+            sku: "",
+            name: pack.name,
+            variante: "Pack",
+            store: pack.store,
+            inventory: pack.inventory,
+            stock: "",
+            reservado: "",
+            disponible: pack.available,
+            precio: pack.price,
+            ...(coverageMap ? { cobertura: "—" } : {}),
+          });
+        });
+      }
 
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], {
@@ -226,7 +358,8 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
       a.click();
       window.URL.revokeObjectURL(url);
 
-      toast.success(`Exportados ${items.length} producto(s)`);
+      toast.success(`Exportados ${items.length} producto(s)${packLines.length > 0 ? ` y ${exportPacks.length} pack(s)` : ""}`);
+      if (!freshPacks) toast.warning("El Excel salió sin packs: no se pudo leer su stock calculado.");
     } catch (err) {
       console.error("Error al exportar el inventario:", err);
 
@@ -257,8 +390,18 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
         handleStockRefresh();
         void queryClient.invalidateQueries({ queryKey: ["admin-shrinkage-list", companyId] });
         void queryClient.invalidateQueries({ queryKey: ["admin-shrinkage-summary", companyId] });
-        void queryClient.invalidateQueries({ queryKey: ["inventory-movement-history", companyId] });
+        void queryClient.invalidateQueries({ queryKey: ["inventory-kardex", companyId] });
       }} /> : null}
+      {removing?.companyId === companyId ? (
+        <RemoveFromWarehouseDialog
+          key={`${removing.warehouse.id}:${removing.item.kind === "product" ? removing.item.productId : removing.item.variantId}`}
+          item={removing.item}
+          warehouse={{ id: removing.warehouse.id, name: removing.warehouse.name, storeName: removing.warehouse.storeName }}
+          onClose={() => setRemoving(null)}
+          // Tras un rechazo (409) se refresca en silencio: no se guardó nada.
+          onChanged={(saved) => { if (saved) handleStockRefresh(); else void refreshItems().catch(() => undefined); }}
+        />
+      ) : null}
       {unitTrace?.companyId === companyId && unitTrace.userId === auth.user.id ? <InventoryUnitTraceModal companyId={companyId} initialCode={unitTrace.code} onClose={() => setUnitTrace(null)} /> : null}
       <HeaderConfig
         title="Almacén"
@@ -271,15 +414,54 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
         </div>
       ) : (
         <Tabs value={activeTab} onValueChange={(next) => router.push(INVENTARIO_TAB_ROUTES[next as InventarioTab])} className="flex-1 flex flex-col">
-          <div className="mb-4 flex items-center justify-between">
-            <TabsList>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <TabsList className="h-auto flex-wrap">
               <TabsTrigger value="stock" className="flex items-center gap-2">
                 <LayoutList className="h-4 w-4" />
                 Stock
               </TabsTrigger>
+              <TabsTrigger value="reporte" className="flex items-center gap-2">
+                <FileBarChart className="h-4 w-4" />
+                Reporte general
+              </TabsTrigger>
               <TabsTrigger value="movimientos" className="flex items-center gap-2">
                 <History className="h-4 w-4" />
                 Movimientos
+              </TabsTrigger>
+              <TabsTrigger value="traslados" className="flex items-center gap-2">
+                <ArrowLeftRight className="h-4 w-4" />
+                Traslados
+              </TabsTrigger>
+              <TabsTrigger value="recepciones" className="flex items-center gap-2">
+                <PackageOpen className="h-4 w-4" />
+                Recepciones
+              </TabsTrigger>
+              <TabsTrigger value="conteos" className="flex items-center gap-2">
+                <ClipboardCheck className="h-4 w-4" />
+                Conteos
+              </TabsTrigger>
+              <TabsTrigger value="ajustes" className="flex items-center gap-2">
+                <SlidersHorizontal className="h-4 w-4" />
+                Ajustes y mermas
+              </TabsTrigger>
+              {stockAccess.sinReserva && (
+                <TabsTrigger value="pedidos-sin-stock" className="flex items-center gap-2">
+                  <PackageX className="h-4 w-4" />
+                  Pedidos sin stock
+                </TabsTrigger>
+              )}
+              {canSeeCouriers && (
+                <TabsTrigger value="couriers" className="flex items-center gap-2">
+                  <Truck className="h-4 w-4" />
+                  Couriers
+                </TabsTrigger>
+              )}
+              <TabsTrigger value="alertas" className="flex items-center gap-2">
+                <Bell className="h-4 w-4" />
+                Alertas
+                {alertTotal > 0 ? (
+                  <span aria-label={`${alertTotal} alertas`} className="rounded-full bg-red-500 px-1.5 text-[11px] font-semibold leading-5 text-white">{alertBadgeText(alertTotal)}</span>
+                ) : null}
               </TabsTrigger>
               {canEdit && (
                 <TabsTrigger
@@ -290,6 +472,10 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                   Unificación
                 </TabsTrigger>
               )}
+              <TabsTrigger value="cierre" className="flex items-center gap-2">
+                <Lock className="h-4 w-4" />
+                Cierre mensual
+              </TabsTrigger>
             </TabsList>
 
             <div className="flex gap-2">
@@ -302,15 +488,18 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                   </Button>
                 </Link>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="border-teal-100 dark:border-teal-900/30 text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/20"
-                onClick={() => setMode("shopify")}
-              >
-                <ShoppingBag className="mr-2 h-4 w-4" />
-                Sincronizar Shopify
-              </Button>
+              {/* FEAT-24 SEC (sec6b): sincronizar con Shopify es solo de un administrador (ms-integrations da 403). */}
+              {hasAdminAccess(auth?.user?.role) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-teal-100 dark:border-teal-900/30 text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/20"
+                  onClick={() => setMode("shopify")}
+                >
+                  <ShoppingBag className="mr-2 h-4 w-4" />
+                  Sincronizar Shopify
+                </Button>
+              )}
             </div>
           </div>
 
@@ -384,9 +573,12 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                 </div>
 
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm text-muted-foreground">
-                    {!isLoading && !loadError ? `${totalItems} producto(s) · ${variantRows.length} variante(s)` : ""}
-                  </p>
+                  <div className="text-sm text-muted-foreground">
+                    <p>{!isLoading && !loadError ? `${totalItems} producto(s) · ${variantRows.length} variante(s)` : ""}</p>
+                    {canEdit && stockMode === "producto" && warehouseColumns.length > 1 ? (
+                      <p className="text-xs" data-testid="hint-quitar-del-almacen">Para quitar un producto de un almacén, elige ese almacén en el filtro «Almacén».</p>
+                    ) : null}
+                  </div>
                   <div className="flex items-center gap-2">
                     <label className="flex items-center gap-2 text-sm text-muted-foreground">
                       <input
@@ -443,6 +635,8 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                       isLoading={isLoading}
                       emptyText={loadError ? "No se pudo consultar el stock" : "No hay productos con estos filtros"}
                       actions={stockActions}
+                      packs={currentPage >= totalPages ? packRows : []}
+                      coverage={coverageMap ? { byVariant: coverageMap, targetDays: stockCoverage.targetDays } : undefined}
                     />
                     {!isLoading && (
                       <div className="mt-4">
@@ -458,7 +652,7 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
                     )}
                   </>
                 ) : (
-                  <StockByWarehouse variants={variantRows} inventories={warehouseColumns} isLoading={isLoading} meta={warehouseMeta} />
+                  <StockByWarehouse variants={variantRows} inventories={warehouseColumns} isLoading={isLoading} meta={warehouseMeta} packs={packRows} />
                 )}
               </CardContent>
             </Card>
@@ -467,10 +661,91 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
           <TabsContent value="movimientos" className="flex-1 flex flex-col mt-0">
             <Card className="flex-1 flex flex-col">
               <CardContent className="p-6 overflow-auto">
-                <MovementHistoryTable initialSearch={initialMovementSearch} companyId={auth?.company?.id} scope={scope} inventories={storeInventories} scopeReady={warehouses.isSuccess} scopeError={scope === "store" ? warehouses.error : undefined} onRetryScope={() => void warehouses.refetch()} />
+                {/* FEAT-24 H10 + H6: el kardex ofrece solo los almacenes que el usuario ve; en una tienda espera a /me/warehouses para no leer uno ajeno. */}
+                <MovementHistoryTable initialSearch={initialMovementSearch} initialVariantId={initialMovementVariantId} companyId={auth?.company?.id} scope={scope} inventories={storeInventories} scopeReady={warehouses.isSuccess && !myWarehouses.isLoading} scopeError={scope === "store" ? warehouses.error : undefined} onRetryScope={() => void warehouses.refetch()} />
               </CardContent>
             </Card>
           </TabsContent>
+
+          <TabsContent value="reporte" className="flex-1 flex flex-col mt-0">
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 overflow-auto">
+                {activeTab === "reporte" ? <StockReportTab /> : null}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {canSeeCouriers && (
+            <TabsContent value="couriers" className="flex-1 flex flex-col mt-0">
+              <Card className="flex-1 flex flex-col">
+                <CardContent className="p-6 overflow-auto">
+                  {activeTab === "couriers" ? <CouriersTab initialInventoryId={initialCourier?.inventoryId} initialClaimId={initialCourier?.claimId} /> : null}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
+
+          <TabsContent value="alertas" className="flex-1 flex flex-col mt-0">
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 overflow-auto">
+                {activeTab === "alertas" ? <AlertsTab /> : null}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="cierre" className="flex-1 flex flex-col mt-0">
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 overflow-auto">
+                {activeTab === "cierre" ? <PeriodCloseTab /> : null}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="traslados" className="flex-1 flex flex-col mt-0">
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 overflow-auto">
+                {activeTab === "traslados" ? <TransfersTab companyId={companyId} /> : null}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="recepciones" className="flex-1 flex flex-col mt-0">
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 overflow-auto">
+                <ReceptionsTab
+                  companyId={companyId}
+                  canEdit={canEdit}
+                  scopeInventoryIds={scope === "store" ? (warehouses.isSuccess ? storeInventories.map((inv) => inv.id) : []) : null}
+                />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="conteos" className="flex-1 flex flex-col mt-0">
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 overflow-auto">
+                {activeTab === "conteos" ? <CountsTab companyId={companyId} /> : null}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="ajustes" className="flex-1 flex flex-col mt-0">
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 overflow-auto">
+                {activeTab === "ajustes" ? <AdjustmentsTab companyId={companyId} /> : null}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {stockAccess.sinReserva && (
+            <TabsContent value="pedidos-sin-stock" className="flex-1 flex flex-col mt-0">
+              <Card className="flex-1 flex flex-col">
+                <CardContent className="p-6 overflow-auto">
+                  <OutOfStockTab companyId={companyId} access={stockAccess} />
+                </CardContent>
+              </Card>
+            </TabsContent>
+          )}
 
           {canEdit && (
           <TabsContent
@@ -480,6 +755,8 @@ export default function InventarioView({ tab = "stock", initialMovementSearch = 
             <Card className="flex-1 flex flex-col">
               <CardContent className="p-6 overflow-auto">
                 <p className="mb-3 text-sm text-muted-foreground">Unificación del catálogo de todo el negocio.</p>
+                {/* FEAT-24 H4: productos con «SKU base repetido» (sku_conflict) para renombrar; las variantes van en «Por unificar» (H11). */}
+                <SkuConflictsPanel companyId={auth?.company?.id} kinds={PRODUCT_SKU_CONFLICTS} />
                 <ReconciliationTab companyId={auth?.company?.id} />
               </CardContent>
             </Card>

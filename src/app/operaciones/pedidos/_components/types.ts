@@ -24,6 +24,8 @@ export interface Sale extends UnitAssignmentState, Omit<SalesPhysicalOrderProjec
   stockStoreName?: string;
   inventoryId?: string | null;
   stockStoreId?: string | null;
+  /** FEAT-24 H2: estado de stock del pedido (si el servidor lo manda). */
+  stockState?: string | null;
   customerId: string;
   orderNumber: string;
   externalOrderNumber?: string | null;
@@ -117,6 +119,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     stockStoreName: order.stockStoreName,
     inventoryId: order.inventoryId,
     stockStoreId: order.stockStoreId,
+    stockState: order.stockState ?? null,
     customerId: order.customer?.id,
     orderNumber: order.orderNumber,
     externalOrderNumber: order.externalOrderNumber ?? null,
@@ -357,8 +360,8 @@ export interface PedidosActions {
     context: { selectedIds: string[]; dayKey?: string },
   ) => void;
   onSyncCourier: () => void;
-  onReturnToStock: (sale: Sale) => void;
-  onMarkAsLoss: (sale: Sale) => void;
+  /** FEAT-24 H2-F: el courier devolvió el pedido (queda por recibir en Inventario › Recepciones). */
+  onCourierReturn: (sale: Sale) => void;
   /** Pide al servidor pedidos concretos de Preparados (máx. 100 por llamada): restaurar la selección y acciones por guía. */
   loadSalesByIds: (ids: string[]) => Promise<Sale[]>;
   companyId?: string;

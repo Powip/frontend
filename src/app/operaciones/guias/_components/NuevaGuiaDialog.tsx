@@ -139,6 +139,9 @@ export default function NuevaGuiaDialog({
           total: Number(o.grandTotal || 0),
           pendingPayment: getPendingPayment(o),
           zone: o.customer?.zone,
+          status: o.status,
+          stockState: o.stockState,
+          externalSource: o.externalSource,
         })),
     [orders, selectedIds],
   );

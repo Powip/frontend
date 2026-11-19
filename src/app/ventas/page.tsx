@@ -1,12 +1,15 @@
 "use client";
+import { ExchangeOrderTag } from "@/components/orders/exchange/ExchangeOrderTag";
 import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/orders/ExternalOrderNumberColumn";
 import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
+import { expiredLotDispatchMessage } from "@/lib/lots";
 import { isCommercialSaleOrder, canPrepareDeferredManualOrder, canShipCommercialOrder, salesPhysicalOperationBlockReason, salesStatusBlockReason, commercialLeadHref } from "@/utils/commercialOrders";
 import { toWhatsAppDigits } from "@/lib/phone";
 import { formatSalesMoney } from "@/utils/salesMoney";
 import { operationalStatus, orderFinancialState } from "@/utils/orderState";
 import { shouldShowReprogramado } from "@/utils/domain/reprogramado";
 import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
+import { StockStateBadge } from "@/components/orders/StockStateBadge";
 
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
 import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
@@ -171,6 +174,8 @@ export interface Sale extends UnitAssignmentState {
   commercialStage?: "LEAD" | "SALE" | null;
   commercialLeadId?: string | null;
   commercialStockState?: "DEFERRED" | "QUEUED" | "PRESERVED" | "NOT_REQUIRED" | null;
+  /** FEAT-24 H2: estado de stock del pedido (si el servidor lo manda). */
+  stockState?: string | null;
 
   id: string;
   storeId: string;
@@ -179,6 +184,10 @@ export interface Sale extends UnitAssignmentState {
   customerId: string;
   orderNumber: string;
   externalOrderNumber?: string | null;
+  /** FEAT-24 H12: pedido de cambio («Cambio de ORD-xxxx»). */
+  orderType?: string | null;
+  parentOrderId?: string | null;
+  parentOrderNumber?: string | null;
   clientName: string;
   phoneNumber: string;
   documentType?: string | null;
@@ -276,12 +285,16 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     subEstadoCc: order.subEstadoCc,
     canalOrigen: order.canalOrigen,
     currency: order.currency, commercialStage: order.commercialStage, commercialLeadId: order.commercialLeadId, commercialStockState: order.commercialStockState,
+    stockState: order.stockState ?? null,
     storeId: order.storeId,
     inventoryId: order.inventoryId,
     stockStoreId: order.stockStoreId,
     customerId: order.customer.id,
     orderNumber: order.orderNumber,
     externalOrderNumber: order.externalOrderNumber ?? null,
+    orderType: order.orderType ?? null,
+    parentOrderId: order.parentOrderId ?? null,
+    parentOrderNumber: order.parentOrderNumber ?? null,
     clientName: order.customer.fullName,
     phoneNumber: order.customer.phoneNumber ?? "999",
     documentType: order.customer.documentType ?? null,
@@ -738,7 +751,12 @@ function VentasContent() {
       refetchOrders();
     } catch (error) {
       console.error("Error actualizando estado", error);
-      toast.error((error as { response?: { data?: { message?: string } } })?.response?.data?.message || (error instanceof Error ? error.message : "No se pudo actualizar el estado"));
+      // FEAT-24 H5-L: el 409 de lotes vencidos o bloqueados al despachar se explica con qué hacer.
+      toast.error(
+        expiredLotDispatchMessage(error) ||
+          (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+          (error instanceof Error ? error.message : "No se pudo actualizar el estado"),
+      );
       if (canPrepareDeferredManualOrder(selectedCommercial)) refetchOrders();
     }
   };
@@ -1473,6 +1491,7 @@ Estado: ${sale.status}
                       )}
                       {sale.orderNumber}
                     </div>
+                    <ExchangeOrderTag order={sale} className="mt-0.5 whitespace-normal" />
                   </TableCell>
                   {showExternalCol && (
                     <ExternalOrderNumberCell
@@ -1616,6 +1635,7 @@ Estado: ${sale.status}
                     />
                     {salesPhysicalOperationBlockReason(sale) && <p className="mt-1 max-w-[150px] whitespace-normal text-[10px] text-muted-foreground">{salesPhysicalOperationBlockReason(sale)}{sale.commercialLeadId && sale.commercialStockState === "DEFERRED" && !canPrepareDeferredManualOrder(sale) && <Link className="ml-1 font-semibold text-violet-700 underline" href={commercialLeadHref(sale.commercialLeadId)}>Preparar reserva de stock</Link>}</p>}
                     <ReprogramadoChip sale={sale} />
+                    <StockStateBadge state={sale.stockState} className="mt-1" />
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-[140px] w-[100px] min-w-[100px] 2xl:z-10 bg-background">
                       <Button
@@ -1828,6 +1848,7 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell className="font-medium 2xl:sticky 2xl:left-[81px] w-[100px] min-w-[100px] 2xl:z-10 bg-background text-xs">
                     {sale.orderNumber}
+                    <ExchangeOrderTag order={sale} className="mt-0.5 whitespace-normal" />
                   </TableCell>
                   {showExternalCol && (
                     <ExternalOrderNumberCell
@@ -2566,6 +2587,9 @@ Estado: ${sale.status}
                 total: Number(createGuideOrder.grandTotal),
                 pendingPayment: orderFinancialState(createGuideOrder).pendingAmount,
                 zone: createGuideOrder.customer.zone,
+                status: createGuideOrder.status,
+                stockState: createGuideOrder.stockState,
+                externalSource: createGuideOrder.externalSource,
               },
             ]}
             onConfirm={handleCreateGuide}

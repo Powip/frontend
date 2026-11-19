@@ -10,7 +10,24 @@ export interface BusinessProduct {
   companySku?: string;
   status: boolean;
   priceVta: number;
-  variants?: Array<{ id: string; status?: boolean }>;
+  variants?: Array<{
+    id: string;
+    status?: boolean;
+    // FEAT-24 H4: lo que trae `/products/report` de cada variante (opcional: backends anteriores no lo mandan).
+    isActive?: boolean;
+    mergedInto?: string | null;
+    attributeValues?: Record<string, unknown> | null;
+    companySku?: string | null;
+    skuConflict?: boolean;
+  }>;
+  // FEAT-24 H4 (catálogo pro): categoría propia, marca, tipo, canal y foto.
+  brandId?: string | null;
+  categoryId?: string | null;
+  category?: { id: string; name: string } | null;
+  type?: string | null;
+  externalSource?: string | null;
+  imageUrl?: string | null;
+  skuConflict?: boolean;
 }
 export async function fetchBusinessProducts({ companyId, accessToken, signal }: { companyId: string; accessToken: string; signal?: AbortSignal }): Promise<BusinessProduct[]> {
   const { data } = await axiosAuth.get(`${process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products}/products/report`, {

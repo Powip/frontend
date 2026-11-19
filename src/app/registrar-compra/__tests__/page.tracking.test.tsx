@@ -110,23 +110,25 @@ async function addProduct() {
   return addButton;
 }
 
-it("keeps quantity purchases on the legacy endpoint without code or operation fields", async () => {
+it("seguridad: una compra por cantidad va por la fachada autenticada, sin empresa, usuario, códigos ni operationId", async () => {
   render(<RegistrarCompraPage />);
   const addButton = await addProduct();
   expect(addButton).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "Registrar Compra" }));
-  await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(1));
-  const [url, payload] = apiPost.mock.calls[0];
-  expect(String(url)).toMatch(/\/purchase$/);
+  await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+  const [payload] = create.mock.calls[0] as [Record<string, unknown>];
   expect(payload).toMatchObject({
-    companyId: "company-a",
+    storeId: "store-a",
     inventoryId: "warehouse-a",
     items: [{ variantId: "v1", quantity: 1 }],
   });
+  expect(payload).not.toHaveProperty("companyId");
+  expect(payload).not.toHaveProperty("userEmail");
   expect(payload).not.toHaveProperty("operationId");
   expect(payload).not.toHaveProperty("items.0.codes");
   expect(payload).not.toHaveProperty("items.0.trackingMode");
-  expect(create).not.toHaveBeenCalled();
+  // Ya no se usa la ruta pública de logística (`/purchase`).
+  expect(apiPost).not.toHaveBeenCalled();
 });
 
 it.each([
@@ -242,7 +244,7 @@ describe("FEAT-24 H0", () => {
     fireEvent.change(screen.getByLabelText("Cantidad de Celular"), { target: { value: "10001" } });
     fireEvent.click(screen.getByRole("button", { name: "Registrar Compra" }));
     expect(await screen.findByText("La cantidad máxima por variante y almacén es 10,000 unidades.")).toBeInTheDocument();
-    expect(apiPost).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
   });
 
   it("una línea de más de 1.000 unidades pide confirmar", async () => {
@@ -251,9 +253,9 @@ describe("FEAT-24 H0", () => {
     fireEvent.change(screen.getByLabelText("Cantidad de Celular"), { target: { value: "1500" } });
     fireEvent.click(screen.getByRole("button", { name: "Registrar Compra" }));
     expect(await screen.findByText("Estás cargando 1,500 unidades. ¿Confirmas la cantidad?")).toBeInTheDocument();
-    expect(apiPost).not.toHaveBeenCalled();
+    expect(create).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Sí, confirmar" }));
-    await waitFor(() => expect(apiPost).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
   });
 
   it("no muestra Default Title al elegir ni en el carrito (F5)", async () => {

@@ -129,6 +129,11 @@ jest.mock("@/services/promos.service", () => ({
   updatePromo: jest.fn(),
   deletePromo: jest.fn(),
 }));
+// FEAT-24 H9: precio sugerido y regalos del backend; no forman parte de lo que se prueba aquí.
+jest.mock("@/services/promotionsService", () => ({
+  resolvePrices: async () => [],
+  evaluatePromotions: async () => ({ gifts: [] }),
+}));
 // Bundles are unrelated to the sale/payment/session behavior under test.
 // Keep their shared-catalog contract explicit instead of hitting HTTP fixtures
 // that model only order and inventory endpoints.

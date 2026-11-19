@@ -47,10 +47,16 @@ import {
   LayoutList,
   Plug,
   Radio,
+  ScanLine,
+  Smartphone,
+  Barcode,
+  Boxes,
+  BadgeDollarSign,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
 import { Badge } from "@/components/ui/badge";
+import { InventoryAlertsBadge } from "@/components/inventory/reports/InventoryAlertsBadge";
 import { isBadgeActive } from "@/utils/navBadge";
 import {
   Avatar,
@@ -65,6 +71,7 @@ import {
   isSuperadmin,
   hasRouteAccess,
   isAccessGatedRoute,
+  isCourierRole,
 } from "@/config/permissions.config";
 import {
   DropdownMenu,
@@ -204,7 +211,8 @@ export function Sidebar({ className }: SidebarProps) {
             icon: FileText,
           },
           {
-            name: "Packs & Promos",
+            // FEAT-24 H9: los packs pasan a Productos › Packs; acá quedan las promociones.
+            name: "Promociones",
             href: "/packs-promos",
             icon: PackagePlus,
           },
@@ -238,6 +246,11 @@ export function Sidebar({ className }: SidebarProps) {
             icon: Package,
           },
           {
+            name: "Picking",
+            href: "/operaciones/picking",
+            icon: ScanLine,
+          },
+          {
             name: "Guías & Courier",
             href: "/operaciones/guias",
             icon: PackagePlus,
@@ -254,7 +267,14 @@ export function Sidebar({ className }: SidebarProps) {
         icon: Package,
         children: [
           { name: "Lista de productos", href: "/productos", icon: Tags },
+          { name: "Categorías", href: "/productos/categorias", icon: LayoutList },
+          { name: "Etiquetas", href: "/productos/etiquetas", icon: Barcode },
+          // FEAT-24 H9: packs y listas de precios.
+          { name: "Packs", href: "/productos/packs", icon: Boxes },
+          { name: "Listas de precios", href: "/productos/listas-precios", icon: BadgeDollarSign },
           { name: "Inventario", href: "/inventario", icon: Package },
+          // FEAT-24 H6: la app del celular para el almacén (PWA instalable).
+          { name: "Modo almacén", href: "/almacen", icon: Smartphone },
           { name: "Compras", href: "/compras", icon: PackagePlus },
           { name: "Proveedores", href: "/proveedores", icon: Building2 },
         ],
@@ -397,9 +417,14 @@ export function Sidebar({ className }: SidebarProps) {
     }));
   };
 
+  // FEAT-24 H8-D5: al rol COURIER solo le queda su portal (Modo almacén); el resto del menú se le cierra.
+  const courierOnly = isCourierRole(auth?.user.role);
+
   // Filtrar navegación por permisos y mostrar Superadmin solo a autorizados
   const filteredNavigation = navigation
     .filter((item: NavigationItem) => {
+      if (courierOnly)
+        return item.href ? hasRouteAccess(item.href, auth?.user) : (item.children ?? []).some((child) => hasRouteAccess(child.href, auth?.user));
       if (item.name === "Publicidad")
         return !advertisingAccess.isError && advertisingAccess.data?.capabilities.view === true;
       // Si es Super Admin, verificar específicamente por email
@@ -428,6 +453,7 @@ export function Sidebar({ className }: SidebarProps) {
         return {
           ...item,
           children: item.children.filter((child: { name: string; href?: string }) => {
+            if (courierOnly) return !!child.href && hasRouteAccess(child.href, auth?.user);
             // Enlaces que se deciden por rol (Finanzas, Compras, Administración…): se ocultan con la
             // misma regla que AuthGuard aplica a la ruta (ROUTE_PERMISSIONS). Se filtra por href y no
             // por nombre porque "Resumen" existe en Finanzas y en Administración.
@@ -589,6 +615,7 @@ export function Sidebar({ className }: SidebarProps) {
                               child={child}
                               isCurrentPage={isChildActive(pathname, child.href)}
                             />
+                            {child.href === "/inventario" ? <InventoryAlertsBadge /> : null}
                           </Link>
                         </DropdownMenuItem>
                       ))}
@@ -668,6 +695,7 @@ export function Sidebar({ className }: SidebarProps) {
                                   child={child}
                                   isCurrentPage={isChildActive(pathname, child.href)}
                                 />
+                                {child.href === "/inventario" ? <InventoryAlertsBadge /> : null}
                               </Button>
                             </Link>
                           </div>

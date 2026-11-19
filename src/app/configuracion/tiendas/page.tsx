@@ -14,6 +14,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { parseShopifySyncError } from "@/lib/shopifyStock";
 import {
   Edit2,
   Plus,
@@ -64,6 +66,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CatalogoMarcas from "@/components/brands/CatalogoMarcas";
 import StoreDeliverySettings from "@/components/forms/StoreDeliverySettings";
 import GestionAlmacenes from "@/components/forms/GestionAlmacenes";
+import ShopifyStockSection from "@/components/shopify-stock/ShopifyStockSection";
+import ReservationRulesSection from "@/components/stock-rules/ReservationRulesSection";
+import InventoryRulesSection from "@/components/stock-rules/InventoryRulesSection";
 import GestionCouriers from "@/components/couriers/GestionCouriers";
 import StoreSalesChannels from "@/components/stores/StoreSalesChannels";
 
@@ -177,11 +182,9 @@ export default function TiendasPage() {
       const integrationApiUrl =
         process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3007";
 
-      // Sincronizar todas las tiendas en paralelo
+      // Sincronizar todas las tiendas en paralelo. FEAT-24 SEC: con la sesión (admin de la empresa de la tienda).
       const syncPromises = shopifyConnectedShops.map((shop) =>
-        axios.post(`${integrationApiUrl}/shopify/sync/${shop.shop_url}`, {
-          accessToken: "dynamic",
-        }),
+        axiosAuth.post(`${integrationApiUrl}/shopify/sync/${shop.shop_url}`, {}),
       );
 
       const results = await Promise.all(syncPromises);
@@ -203,7 +206,7 @@ export default function TiendasPage() {
       }
     } catch (error) {
       console.error("Error en sincronización global:", error);
-      toast.error("Error al sincronizar tiendas Shopify");
+      toast.error(parseShopifySyncError(error, "Error al sincronizar tiendas Shopify"));
     } finally {
       setSyncingGlobal(false);
     }
@@ -247,7 +250,8 @@ export default function TiendasPage() {
       if (!companyId) return;
       const integrationApiUrl =
         process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3007";
-      const response = await axios.get(
+      // FEAT-24 SEC: con la sesión; ms-integrations exige que la empresa de la ruta sea la del token.
+      const response = await axiosAuth.get(
         `${integrationApiUrl}/shopify/status/${companyId}`,
       );
       if (currentCompanyId.current === companyId)
@@ -680,12 +684,10 @@ export default function TiendasPage() {
                               const integrationApiUrl =
                                 process.env.NEXT_PUBLIC_API_INTEGRATIONS ||
                                 "http://localhost:3007";
-                              axios
+                              axiosAuth
                                 .post(
                                   `${integrationApiUrl}/shopify/sync/${shopInfo.shop_url}`,
-                                  {
-                                    accessToken: "dynamic",
-                                  },
+                                  {},
                                 )
                                 .then((response) => {
                                   const { total_found, orders_synced } =
@@ -700,8 +702,13 @@ export default function TiendasPage() {
                                     );
                                   }
                                 })
-                                .catch(() =>
-                                  toast.error("Error sincronizando"),
+                                .catch((error) =>
+                                  toast.error(
+                                    parseShopifySyncError(
+                                      error,
+                                      "Error sincronizando",
+                                    ),
+                                  ),
                                 );
                             }}
                           >
@@ -849,8 +856,11 @@ export default function TiendasPage() {
           </TabsContent>
 
           <TabsContent value="envios" className="space-y-5">{commercialStores.filter(store=>store.id).map(store=><div key={store.id}><h2 className="mb-3 font-semibold">{store.name}</h2><StoreDeliverySettings storeId={store.id!} initial={store.deliverySettings?.options || []} onSaved={()=>void fetchStore()}/></div>)}</TabsContent>
-          <TabsContent value="almacenes">
+          <TabsContent value="almacenes" className="space-y-6">
             <GestionAlmacenes />
+            <ReservationRulesSection />
+            <InventoryRulesSection />
+            <ShopifyStockSection />
           </TabsContent>
 
           <TabsContent value="marcas">

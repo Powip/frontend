@@ -654,4 +654,51 @@ describe('AliclikConfigPage', () => {
       ).toBeInTheDocument();
     });
   });
+
+  // ── 12. Quien no es administrador (FEAT-24 SEC sec6b) ─────────────────────
+  // ms-integrations responde 403 a quien no es admin al guardar credenciales o la tienda destino.
+
+  describe('quien no es administrador de la empresa', () => {
+    const asSeller = () =>
+      mockUseAuth.mockReturnValue({
+        ...MOCK_AUTH,
+        auth: { ...MOCK_AUTH.auth, user: { ...MOCK_AUTH.auth.user, role: 'VENTAS' } },
+      } as unknown as ReturnType<typeof useAuth>);
+
+    it('sin credencial: no ve el formulario del token, solo el aviso', async () => {
+      asSeller();
+      renderPage();
+
+      expect(
+        await screen.findByText(/solo un administrador de la empresa puede conectar aliclik/i),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText(/bearer token/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /guardar y verificar/i })).not.toBeInTheDocument();
+    });
+
+    it('con credencial: ve el estado, pero no puede cambiar la tienda destino ni el token', async () => {
+      asSeller();
+      mockGetCredentials.mockResolvedValue(MOCK_CREDENTIAL_NO_WEBHOOK);
+      mockFetchCompanyById.mockResolvedValue({
+        id: 'company-1',
+        name: 'Powip Test',
+        userId: 'user-1',
+        stores: [{ id: 'store-1', name: 'Tienda Principal' }],
+      });
+      renderPage();
+
+      expect(await screen.findByText(/cuenta conectada/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/store destino/i)).toBeDisabled();
+      expect(screen.queryByRole('button', { name: /^guardar$/i })).not.toBeInTheDocument();
+      expect(screen.getByText(/solo un administrador de la empresa puede cambiar el store destino/i)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /actualizar token/i })).not.toBeInTheDocument();
+    });
+
+    it('un administrador sigue viendo el formulario', async () => {
+      renderPage();
+
+      expect(await screen.findByLabelText(/bearer token/i)).toBeInTheDocument();
+      expect(screen.queryByText(/solo un administrador/i)).not.toBeInTheDocument();
+    });
+  });
 });

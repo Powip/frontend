@@ -18,7 +18,10 @@ import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-s
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { filterRowsByIssuerRuc } from "@/features/sunat/sunat-document/utils/tax-document-kpis";
 import type { SunatProfile } from "@/features/sunat/sunat-profile/models/sunat-profile";
-import type { Guia, Nota } from "@/types/facturacion";
+import { useDespatchAdvicesReport } from "@/features/sunat/despatch-advice/hooks/use-despatch-advices";
+import type { DespatchAdvice } from "@/features/sunat/despatch-advice/types/despatch-advice.types";
+import { GRE_REASON_LABEL, GRE_STATUS_LABEL } from "@/features/sunat/despatch-advice/utils/gre-form";
+import type { Nota } from "@/types/facturacion";
 import { downloadFile } from "@/utils/http/download-file";
 
 interface ReporteData {
@@ -161,7 +164,6 @@ function abrirImpresionPDF(title: string, headers: string[], rows: (string | num
 interface ReportesTabProps {
   comprobanteRows: TaxDocumentRow[];
   notas: Nota[];
-  guias: Guia[];
   /**
    * Multi-RUC: RUC picked in the "RUC emisor" filter. When set, every sales
    * report only contains that issuer, as an accounting book must.
@@ -189,13 +191,50 @@ function getEstadoLabel(row: TaxDocumentRow): "ACEPTADO" | "ACEPTADO_CON_OBS" {
     : "ACEPTADO";
 }
 
+const isoDay = (value: string) => {
+  const [year, month, date] = value.split("-");
+  return year && month && date ? `${date}/${month}/${year}` : value;
+};
+
+/** RUC elegido en el filtro «RUC emisor» y cómo lo dicen el título y el nombre del archivo. */
+interface IssuerScope {
+  ruc?: string;
+  title: string;
+  filename: string;
+}
+
+/**
+ * FEAT-24 H12 — registro de guías de remisión con las GRE reales de ms-sunat (antes, las del mock en memoria).
+ * Multi-RUC: con un RUC elegido solo trae sus guías, igual que los registros de ventas.
+ */
+function getReporteGuias(allGuias: DespatchAdvice[], scope: IssuerScope): ReporteData {
+  const guias = scope.ruc ? allGuias.filter((guia) => guia.rucIssuer === scope.ruc) : allGuias;
+  return {
+    title: `Registro de Guías de Remisión${scope.title}`,
+    filename: `powip_guias_remision${scope.filename}`,
+    headers: ["Fecha", "N° Guía", "RUC emisor", "Motivo", "Referencia", "Destinatario", "Destino", "Ubigeo destino", "Estado SUNAT", "Código SUNAT"],
+    rows: guias.map((guia) => [
+      isoDay(guia.issueDate),
+      guia.number,
+      guia.rucIssuer,
+      `${guia.transferReason} ${GRE_REASON_LABEL[guia.transferReason] ?? ""}`.trim(),
+      guia.externalReference ?? "",
+      guia.payload.recipient?.name ?? "",
+      guia.payload.destination?.address ?? "",
+      guia.payload.destination?.ubigeo ?? "",
+      GRE_STATUS_LABEL[guia.status] ?? guia.status,
+      guia.sunatCode ?? "",
+    ]),
+  };
+}
+
 export function ReportesTab({
   comprobanteRows,
   notas,
-  guias,
   issuer,
   showIssuerColumn = false,
 }: ReportesTabProps) {
+  const guiasReport = useDespatchAdvicesReport();
   const {
     mutate: downloadSunatDocumentPdf,
     isPending: isDownloadingPdf,
@@ -227,7 +266,7 @@ export function ReportesTab({
   const issuerCell = (row: TaxDocumentRow) =>
     showIssuerColumn ? [row.taxDocument?.rucIssuer ?? ""] : [];
 
-  const getReporte = (key: ReporteKey): ReporteData => {
+  const getReporte = (key: Exclude<ReporteKey, "guias">): ReporteData => {
     if (key === "ventas") {
       return {
         title: `Registro de Ventas${issuerTitle}`,
@@ -306,47 +345,40 @@ export function ReportesTab({
       };
     }
 
-    if (key === "notas") {
-      return {
-        title: "Registro de Notas de Crédito y Débito",
-        filename: "powip_notas_credito",
-        headers: [
-          "Fecha",
-          "N° Nota",
-          "Comprobante Original",
-          "Cliente",
-          "Motivo",
-          "Monto",
-          "Estado",
-        ],
-        rows: notas.map((nota) => [
-          nota.fecha,
-          nota.num,
-          nota.original,
-          nota.cliente,
-          formatMotivoNota(nota),
-          nota.monto.toFixed(2),
-          nota.estado,
-        ]),
-      };
-    }
-
     return {
-      title: "Registro de Guías de Remisión",
-      filename: "powip_guias_remision",
-      headers: ["Fecha", "N° Guía", "Pedido", "Destino", "Estado"],
-      rows: guias.map((guia) => [
-        guia.fecha,
-        guia.fullNumber || "—",
-        guia.pedido,
-        guia.destino,
-        guia.estado,
+      title: "Registro de Notas de Crédito y Débito",
+      filename: "powip_notas_credito",
+      headers: [
+        "Fecha",
+        "N° Nota",
+        "Comprobante Original",
+        "Cliente",
+        "Motivo",
+        "Monto",
+        "Estado",
+      ],
+      rows: notas.map((nota) => [
+        nota.fecha,
+        nota.num,
+        nota.original,
+        nota.cliente,
+        formatMotivoNota(nota),
+        nota.monto.toFixed(2),
+        nota.estado,
       ]),
     };
   };
 
   const handleDescargar = (key: ReporteKey, tipo: DownloadType) => {
-    const reporte = getReporte(key);
+    if (key === "guias" && !guiasReport.data) {
+      toast.error(guiasReport.isError ? "No se pudieron cargar las guías de remisión. Inténtalo de nuevo." : "Todavía se están cargando las guías de remisión.");
+      if (guiasReport.isError) void guiasReport.refetch();
+      return;
+    }
+    const reporte =
+      key === "guias"
+        ? getReporteGuias(guiasReport.data ?? [], { ruc: issuer?.ruc, title: issuerTitle, filename: issuerFilename })
+        : getReporte(key);
 
     if (!reporte.rows.length) {
       toast.error("No hay datos disponibles para este reporte todavía");
@@ -393,8 +425,7 @@ export function ReportesTab({
     {
       key: "guias",
       title: "Guías de Remisión",
-      desc: "Trazabilidad de los traslados emitidos en esta sesión de vista previa.",
-      beta: true,
+      desc: "Las guías de remisión electrónicas (GRE) emitidas, con su estado en SUNAT.",
     },
   ];
 

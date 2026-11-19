@@ -18,6 +18,7 @@ import {
 import { OrderHeader, SubEstadoCc, TipoGestionCC } from "@/interfaces/IOrder";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
+import { StockStateBadge } from "@/components/orders/StockStateBadge";
 import SendToEvaButton from "@/components/eva/SendToEvaButton";
 import { guideOrderBalance } from "@/utils/guideOrderBalance";
 import { isEvaCourier } from "@/utils/courierNormalizer";
@@ -183,6 +184,7 @@ export function CcPedidosTable({
                 <TableCell className="font-mono text-xs font-semibold">
                   {order.orderNumber}
                     {order.commercialStage === "LEAD" && <span className="block text-xs">Lead · compra pendiente</span>}
+                    <StockStateBadge state={order.stockState} className="mt-1 flex w-fit font-sans" />
                 </TableCell>
 
                 {showExternalCol && <ExternalOrderNumberCell value={order.externalOrderNumber} />}

@@ -15,6 +15,10 @@ jest.mock("xlsx", () => ({
 jest.mock("@/features/sunat/sunat-document/hooks/use-sunat-document-pdf", () => ({
   useSunatDocumentPdf: () => ({ mutate: jest.fn(), isPending: false, variables: undefined }),
 }));
+// FEAT-24 H12: las guías del reporte son las GRE reales de ms-sunat (ya no un prop del mock).
+jest.mock("@/features/sunat/despatch-advice/hooks/use-despatch-advices", () => ({
+  useDespatchAdvicesReport: () => ({ data: [], isError: false, refetch: jest.fn() }),
+}));
 
 const A = { ruc: "20111111111", razonSocial: "PRINCIPAL S.A.C." };
 const B = { ruc: "20222222222", razonSocial: "SEGUNDA E.I.R.L." };
@@ -52,7 +56,7 @@ describe("ReportesTab — multi-RUC", () => {
   beforeEach(() => jest.clearAllMocks());
 
   it("con varios RUC cada fila indica su RUC emisor, para distinguir números iguales", async () => {
-    render(<ReportesTab comprobanteRows={rows} notas={[]} guias={[]} showIssuerColumn />);
+    render(<ReportesTab comprobanteRows={rows} notas={[]} showIssuerColumn />);
 
     const [header, ...body] = await exportVentas();
 
@@ -63,7 +67,7 @@ describe("ReportesTab — multi-RUC", () => {
 
   it("con un RUC elegido el reporte solo trae sus comprobantes y lo dice en el archivo", async () => {
     render(
-      <ReportesTab comprobanteRows={rows} notas={[]} guias={[]} issuer={B} showIssuerColumn />,
+      <ReportesTab comprobanteRows={rows} notas={[]} issuer={B} showIssuerColumn />,
     );
 
     const [, ...body] = await exportVentas();
@@ -77,7 +81,7 @@ describe("ReportesTab — multi-RUC", () => {
   });
 
   it("con un solo RUC el reporte queda igual que antes, sin columna de emisor", async () => {
-    render(<ReportesTab comprobanteRows={[rows[0]]} notas={[]} guias={[]} />);
+    render(<ReportesTab comprobanteRows={[rows[0]]} notas={[]} />);
 
     const [header] = await exportVentas();
 

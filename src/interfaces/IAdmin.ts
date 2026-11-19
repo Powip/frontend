@@ -104,6 +104,7 @@ export interface ICreateShrinkageDto {
   recoveredAmount?: number;
   notes?: string;
   referenceId?: string;
+  /** Ya no se manda: la fachada de ms-products lo toma del token (FEAT-24 SEC). */
   createdBy?: string;
 }
 

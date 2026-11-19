@@ -32,8 +32,16 @@ import {
 } from "@/components/ui/select";
 import BrandSelect from "@/components/products/BrandSelect";
 import VariantStatusControl from "@/components/products/VariantStatusControl";
+import VariantCodes from "@/components/products/VariantCodes";
+import VariantCostField from "@/components/products/VariantCostField";
+import { isCompanyAdminRole, MAX_PURCHASE_FACTOR, MAX_PURCHASE_UNIT_LENGTH, parseWhole } from "@/lib/purchaseOrders";
+import { getVariantCosts } from "@/services/purchasesService";
+import { PrintLabelsDialog } from "@/components/labels/PrintLabelsDialog";
 import { MAX_ITEM_UNITS, MAX_ITEM_UNITS_MESSAGE, largeQuantityConfirmText, needsQuantityConfirmation } from "@/lib/stockLimits";
 import { formatVariantLabel } from "@/lib/variantAttributes";
+import CategoryTreeSelect from "@/components/catalog/CategoryTreeSelect";
+import { useCatalogCategories } from "@/hooks/useCatalogCategories";
+import { apiErrorInfo, buildVariantPatch, duplicateSkuKeys, skuKey } from "@/lib/catalog/catalogPayloads";
 
 interface Category {
   id: string;
@@ -82,7 +90,24 @@ interface VariantForm {
   mergedInto?: string | null;
   mergedIntoSku?: string | null;
   linkedSources?: string[];
+  // FEAT-24 H2-F: códigos de la variante guardada (solo lectura): SKU POWIP y EAN de POWIP.
+  sku?: string | null;
+  powipEan?: string | null;
+  // FEAT-24 H4 (H4-D12): SKU y código de barras propios de cada variante (vacío = se genera / sin código).
+  companySku: string;
+  barcode: string;
+  originalCompanySku?: string;
+  originalBarcode?: string;
 }
+
+/** FEAT-24 H4 (H4-D7): un producto simple tiene una sola variante sin opciones. */
+type ProductKindChoice = "simple" | "variantes";
+
+const emptyVariant = (): VariantForm => ({
+  attributes: {}, priceBase: 0, priceVta: 0, stock: 0, minStock: 0, imageFile: null, companySku: "", barcode: "",
+});
+
+const optionalCode = (value: string) => value.trim().replace(/\s+/g, " ");
 
 // ---------- util: cartesian product ----------
 function generateCartesian(obj: Record<string, string[]>) {
@@ -148,9 +173,27 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
 
   const [variants, setVariants] = useState<VariantForm[]>([]);
   const [trackingMode, setTrackingMode] = useState<TrackingMode>("NONE");
+  // FEAT-24 H5-L: «Maneja lotes» en el alta (en la edición se cambia en la ficha). No con IMEI/serie.
+  const [tracksLots, setTracksLots] = useState(false);
   const [companySku, setCompanySku] = useState("");
+  // FEAT-24 H3: unidad de compra del producto («Caja» × 12). Vacía = se compra por unidad.
+  const [purchaseUnit, setPurchaseUnit] = useState("");
+  const [purchaseFactor, setPurchaseFactor] = useState("1");
+  const loadedPurchase = useRef<{ unit: string; factor: string }>({ unit: "", factor: "1" });
+  // FEAT-24 H3 (H3-D17): costo promedio de las variantes guardadas (Map) o "error" si no se pudo leer.
+  const [variantCosts, setCostsByVariant] = useState<Map<string, number | null> | "error" | undefined>(undefined);
+  const canEditCosts = canSeeCosts && isCompanyAdminRole(auth?.user?.role);
+  // FEAT-24 H4: tipo de producto (solo en el alta), categoría propia y SKU base guardados (edición).
+  const [productKind, setProductKind] = useState<ProductKindChoice>("variantes");
+  const [simpleVariant, setSimpleVariant] = useState<VariantForm>(emptyVariant);
+  const [catalogCategoryId, setCatalogCategoryId] = useState("");
+  const [originalCatalogCategoryId, setOriginalCatalogCategoryId] = useState("");
+  const [originalCompanySku, setOriginalCompanySku] = useState("");
+  const catalogCategories = useCatalogCategories();
   const [message, setMessage] = useState("");
   const [confirmLargeStock, setConfirmLargeStock] = useState(false);
+  // FEAT-24 H7 — etiquetas de las variantes del producto (solo en edición).
+  const [printingLabels, setPrintingLabels] = useState(false);
 
   // =========================
   // Cargar categorías
@@ -254,6 +297,17 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
 
         // Cargar companySku si existe
         setCompanySku(product.companySku || "");
+        setOriginalCompanySku(product.companySku || "");
+        const ownCategory = productDetails.categoryId ?? product.categoryId ?? "";
+        setCatalogCategoryId(ownCategory);
+        setOriginalCatalogCategoryId(ownCategory);
+
+        // FEAT-24 H3: unidad de compra del producto.
+        const unit = String(productDetails.purchaseUnit ?? product.purchaseUnit ?? "");
+        const factor = String(Number(productDetails.purchaseFactor ?? product.purchaseFactor) || 1);
+        loadedPurchase.current = { unit, factor };
+        setPurchaseUnit(unit);
+        setPurchaseFactor(factor);
 
         // Obtener TODAS las variantes del producto para mostrarlas
         const { data: allVariants } = await axiosAuth.get(
@@ -273,6 +327,12 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
           mergedInto: v.mergedInto ?? null,
           mergedIntoSku: v.mergedIntoSku ?? null,
           linkedSources: v.linkedSources ?? [],
+          sku: v.sku ?? null,
+          powipEan: v.powipEan ?? null,
+          companySku: v.companySku ?? "",
+          barcode: v.barcode ?? "",
+          originalCompanySku: v.companySku ?? "",
+          originalBarcode: v.barcode ?? "",
         }));
         setVariants(variantForms);
 
@@ -507,6 +567,10 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
         stock: existing?.stock ?? 0,
         minStock: existing?.minStock ?? 0,
         imageFile: null,
+        companySku: existing?.companySku ?? "",
+        barcode: existing?.barcode ?? "",
+        originalCompanySku: existing?.originalCompanySku,
+        originalBarcode: existing?.originalBarcode,
       };
     });
 
@@ -555,7 +619,12 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
     setCustomAttributes([]);
     setVariants([]);
     setCompanySku("");
+    setPurchaseUnit("");
+    setPurchaseFactor("1");
+    setCatalogCategoryId("");
+    setSimpleVariant(emptyVariant());
     setTrackingMode("NONE");
+    setTracksLots(false);
     setMessage("");
   };
 
@@ -570,6 +639,26 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
   const handleRemoveVariant = (index: number) => {
     setVariants((prev) => prev.filter((_, i) => i !== index));
   };
+
+  // FEAT-24 H3 (H3-D17): el costo promedio de las variantes guardadas (solo roles con costos).
+  const savedVariantIds = variants
+    .filter((variant) => variant.id && !variant.mergedInto)
+    .map((variant) => variant.id as string)
+    .join(",");
+  useEffect(() => {
+    if (!canSeeCosts || !isEditMode || !savedVariantIds) return;
+    let cancelled = false;
+    getVariantCosts(savedVariantIds.split(","))
+      .then((rows) => {
+        if (!cancelled) setCostsByVariant(new Map(rows.map((row) => [row.variantId, row.averageCost])));
+      })
+      .catch(() => {
+        if (!cancelled) setCostsByVariant("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [canSeeCosts, isEditMode, savedVariantIds]);
 
   // =========================
   // Submit
@@ -590,13 +679,24 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
       return;
     }
 
-    if (variants.length === 0) {
+    // FEAT-24 H4 (H4-D7): un producto simple lleva una sola variante sin opciones.
+    const isSimple = !isEditMode && productKind === "simple";
+    const submitVariants = isSimple ? [{ ...simpleVariant, attributes: {} }] : variants;
+
+    if (submitVariants.length === 0) {
       toast.error("Genera al menos una variante.");
       return;
     }
 
+    // FEAT-24 H4: el SKU de cada variante es único en la empresa; dentro del producto, lo validamos acá.
+    const repeatedSkus = duplicateSkuKeys(submitVariants.filter((v) => !v.mergedInto).map((v) => v.companySku));
+    if (repeatedSkus.size > 0) {
+      toast.error(`Hay variantes con el mismo SKU: ${[...repeatedSkus].join(", ")}.`);
+      return;
+    }
+
     // Validar precios (y stock solo en modo creación)
-    for (const v of variants) {
+    for (const v of submitVariants) {
       if ((canSeeCosts && v.priceBase <= 0) || v.priceVta <= 0) {
         toast.error(
           canSeeCosts
@@ -616,8 +716,28 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
       }
     }
 
+    // FEAT-24 H3: unidad de compra.
+    const factorValue = parseWhole(purchaseFactor, 1, MAX_PURCHASE_FACTOR);
+    if (factorValue === null) {
+      toast.error(`Las unidades por unidad de compra van de 1 a ${MAX_PURCHASE_FACTOR.toLocaleString("es-PE")}.`);
+      return;
+    }
+    if (purchaseUnit.trim().length > MAX_PURCHASE_UNIT_LENGTH) {
+      toast.error(`La unidad de compra tiene hasta ${MAX_PURCHASE_UNIT_LENGTH} caracteres.`);
+      return;
+    }
+    const unitValue = purchaseUnit.trim() || null;
+    if (!unitValue && factorValue > 1) {
+      toast.error("Escribe la unidad de compra (ej. Caja) o deja 1 unidad por unidad de compra.");
+      return;
+    }
+    // Solo se manda si cambió (o, al crear, si no es «por unidad»): un servidor anterior a H3 no la conoce.
+    const purchaseChanged =
+      (unitValue ?? "") !== loadedPurchase.current.unit || String(factorValue) !== loadedPurchase.current.factor;
+    const purchasePayload = purchaseChanged ? { purchaseUnit: unitValue, purchaseFactor: factorValue } : {};
+
     // FEAT-24 H0: una carga grande pide confirmar antes de enviar.
-    const largestStock = isEditMode || isTracked(trackingMode) ? 0 : Math.max(0, ...variants.map((v) => Number(v.stock) || 0));
+    const largestStock = isEditMode || isTracked(trackingMode) ? 0 : Math.max(0, ...submitVariants.map((v) => Number(v.stock) || 0));
     if (needsQuantityConfirmation(largestStock) && !confirmLargeStock) {
       setConfirmLargeStock(true);
       return;
@@ -627,7 +747,7 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
     setIsSubmitting(true);
 
     // Armar payload "teórico" para el backend
-    const attributesPayload = [
+    const attributesPayload = isSimple ? [] : [
       // default attributes
       ...defaultAttributes.map((attr, index) => ({
         attributeId: attr.id,
@@ -652,24 +772,30 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
         }),
     ];
 
-    const variantsPayload = variants.map((v, index) => ({
+    // FEAT-24 H4 (H4-D12): cada variante manda su SKU y su código de barras; vacío = el servidor lo genera.
+    const variantsPayload = submitVariants.map((v) => ({
       attributeValues: v.attributes,
       priceBase: v.priceBase,
       priceVta: v.priceVta,
       stock: isTracked(trackingMode) ? 0 : v.stock,
       minStock: Number(v.minStock),
       images: [],
+      ...(optionalCode(v.companySku) ? { companySku: optionalCode(v.companySku) } : {}),
+      ...(v.barcode.replace(/\s+/g, "") ? { barcode: v.barcode.replace(/\s+/g, "") } : {}),
     }));
 
     const payload = {
       ...(isTracked(trackingMode) ? { trackingMode } : {}),
+      ...(tracksLots && !isTracked(trackingMode) ? { tracksLots: true } : {}),
       name: form.name,
       description: form.description,
       companySku: companySku.trim() || undefined,
       companyId: auth?.company?.id,
       subcategoryId: form.subcategoryId,
+      ...(catalogCategoryId ? { categoryId: catalogCategoryId } : {}),
       inventory_id: form.inventory_id,
       brandId: form.brandId || null,
+      ...purchasePayload,
       attributes: attributesPayload,
       variants: variantsPayload,
       imageUrl: form.mainImageUrl,
@@ -694,6 +820,10 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
           name: form.name,
           description: form.description,
           brandId: form.brandId || null,
+          ...purchasePayload,
+          // FEAT-24 H4: categoría propia y SKU base, solo si cambiaron.
+          ...((catalogCategoryId || null) !== (originalCatalogCategoryId || null) ? { categoryId: catalogCategoryId || null } : {}),
+          ...(skuKey(companySku) !== skuKey(originalCompanySku) ? { companySku: companySku.trim() || null } : {}),
         };
 
         await axiosAuth.patch(
@@ -704,10 +834,14 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
         await Promise.all(
           // FEAT-24 H0: una variante unificada no se edita (ms-products responde 409).
           variants.filter((v) => !v.mergedInto).map((v) => {
+            const codes = v.id
+              ? buildVariantPatch({ companySku: v.originalCompanySku ?? "", barcode: v.originalBarcode ?? "" }, { companySku: v.companySku, barcode: v.barcode }).patch
+              : { ...(optionalCode(v.companySku) ? { companySku: optionalCode(v.companySku) } : {}), ...(v.barcode.trim() ? { barcode: v.barcode.replace(/\s+/g, "") } : {}) };
             const variantPayload = {
               priceBase: Number(v.priceBase),
               priceVta: Number(v.priceVta),
               attributeValues: v.attributes,
+              ...codes,
             };
 
             if (v.id) {
@@ -738,11 +872,10 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
       }
     } catch (error) {
       console.error("❌ Error al guardar producto:", error);
-      toast.error(
-        isEditMode
-          ? "Error al actualizar el producto."
-          : "Error al crear el producto. Intenta nuevamente.",
-      );
+      // FEAT-24 H4: el 409 (SKU repetido) y el 400 traen un mensaje claro del servidor: se muestra tal cual.
+      const fallback = isEditMode ? "Error al actualizar el producto." : "Error al crear el producto. Intenta nuevamente.";
+      const info = apiErrorInfo(error, fallback);
+      toast.error(info.status && info.status < 500 ? info.message : fallback);
     } finally {
       setIsSubmitting(false);
     }
@@ -754,7 +887,20 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
       <HeaderConfig
         title="Productos"
         description={isEditMode ? "Editar producto" : "Crear nuevo producto"}
-      />
+      >
+        {isEditMode && editProductId && !isLoadingProduct ? (
+          <Button type="button" variant="outline" onClick={() => setPrintingLabels(true)}>
+            Imprimir etiquetas
+          </Button>
+        ) : null}
+      </HeaderConfig>
+      {printingLabels && editProductId ? (
+        <PrintLabelsDialog
+          open
+          source={{ kind: "products", productIds: [editProductId], title: form.name || undefined }}
+          onOpenChange={setPrintingLabels}
+        />
+      ) : null}
 
       {isLoadingProduct ? (
         <div className="flex items-center justify-center py-20">
@@ -783,10 +929,49 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                 }}><option value="NONE">Por cantidad (sin código único)</option><option value="SERIAL">Número de serie por unidad</option><option value="IMEI">IMEI por unidad</option></select>
                 <p className="text-sm text-muted-foreground">{isEditMode ? "El modo no se cambia desde esta edición. Para asociar códigos al stock existente, abre Almacén y elige Asociar IMEI/series." : isTracked(trackingMode) ? "El producto se creará con stock 0. Registra después una compra con un código por unidad." : "El inventario se administra por cantidades."}</p>
               </div>
+              {!isEditMode ? (
+                <div className="space-y-2">
+                  <Label id="product-kind-label">Tipo de producto</Label>
+                  <div role="radiogroup" aria-labelledby="product-kind-label" className="flex flex-wrap gap-2">
+                    {([["simple", "Simple"], ["variantes", "Con variantes"]] as const).map(([value, text]) => (
+                      <Button key={value} type="button" role="radio" aria-checked={productKind === value} variant={productKind === value ? "default" : "outline"} disabled={isSubmitting} onClick={() => setProductKind(value)}>
+                        {text}
+                      </Button>
+                    ))}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {productKind === "simple"
+                      ? "Una sola presentación: un SKU, un código de barras y un precio."
+                      : "Varias presentaciones (talla, color…): cada variante tiene su SKU y su código de barras."}
+                  </p>
+                </div>
+              ) : null}
+              {!isEditMode ? (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="product-tracks-lots"
+                      type="checkbox"
+                      className="h-4 w-4"
+                      checked={tracksLots && !isTracked(trackingMode)}
+                      disabled={isSubmitting || isTracked(trackingMode)}
+                      onChange={(event) => setTracksLots(event.target.checked)}
+                    />
+                    <Label htmlFor="product-tracks-lots" className="font-normal">Este producto maneja lotes (lote y vencimiento)</Label>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {isTracked(trackingMode)
+                      ? "Un producto con IMEI o serie no maneja lotes."
+                      : tracksLots
+                        ? "Al recibir una compra se pide el lote y la fecha de vencimiento. El stock inicial entra sin lote: regístralo después en la ficha (pestaña Lotes)."
+                        : "Actívalo en productos con fecha de vencimiento (cremas, suplementos, alimentos)."}
+                  </p>
+                </div>
+              ) : null}
               {/* Row: Inventario + Categoría */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="inventory_id">Almacén destino</Label>
+                  <Label htmlFor="inventory_id">Almacén del stock inicial</Label>
                   {warehouseQuery.isPending ? <p>Cargando almacenes...</p> : warehouseQuery.isError ? <p role="alert">No se pudieron cargar los almacenes. <Button type="button" variant="outline" onClick={() => void warehouseQuery.refetch()}>Reintentar</Button></p> : null}
                   <Select
                     value={form.inventory_id || undefined}
@@ -860,8 +1045,15 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                 </div>
               </div>
 
+              {/* FEAT-24 H4 (H4-D4): categoría propia de la empresa (árbol de hasta 3 niveles). */}
               <div className="space-y-2">
-                <Label htmlFor="categoryId">Categoría</Label>
+                <Label htmlFor="catalogCategoryId">Categoría</Label>
+                <CategoryTreeSelect id="catalogCategoryId" tree={catalogCategories.tree} value={catalogCategoryId} disabled={isSubmitting} onChange={setCatalogCategoryId} />
+                <p className="text-xs text-muted-foreground">Ordena tu catálogo (ej.: Ropa › Polos). Se administran en Catálogo › Categorías.</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="categoryId">Categoría POWIP (atributos)</Label>
                 <Select
                   value={form.categoryId}
                   onValueChange={(value) =>
@@ -886,6 +1078,32 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                 onChange={(brandId) => setForm((prev) => ({ ...prev, brandId }))}
               />
 
+              {/* FEAT-24 H3: unidad de compra (las órdenes de compra la proponen) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <Label htmlFor="purchase-unit">Unidad de compra (opcional)</Label>
+                  <Input
+                    id="purchase-unit"
+                    maxLength={MAX_PURCHASE_UNIT_LENGTH}
+                    placeholder="Ej: Caja"
+                    value={purchaseUnit}
+                    onChange={(e) => setPurchaseUnit(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="purchase-factor">Unidades por unidad de compra</Label>
+                  <Input
+                    id="purchase-factor"
+                    inputMode="numeric"
+                    value={purchaseFactor}
+                    onChange={(e) => setPurchaseFactor(e.target.value)}
+                  />
+                </div>
+                <p className="col-span-2 text-xs text-muted-foreground">
+                  Cómo lo compras (ej. Caja × 12): la orden de compra lo propone y se puede cambiar en cada compra.
+                </p>
+              </div>
+
               {/* Nombre */}
               <div className="space-y-2">
                 <Label htmlFor="name">Nombre</Label>
@@ -899,10 +1117,10 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                 />
               </div>
 
-              {/* SKU Empresa (opcional) */}
+              {/* SKU base de la empresa (opcional, FEAT-24 H4-D1/D3) */}
               <div className="space-y-2">
                 <Label htmlFor="companySku">
-                  SKU personalizado{" "}
+                  SKU base{" "}
                   <span className="text-xs text-muted-foreground font-normal">
                     (opcional)
                   </span>
@@ -912,18 +1130,18 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                   name="companySku"
                   value={companySku}
                   onChange={(e) => setCompanySku(e.target.value)}
-                  placeholder="Dejalo vacío para usar el SKU generado por Powip"
+                  placeholder="Se genera solo si lo dejas vacío"
                   maxLength={50}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Si no ingresás un SKU, Powip generará uno automáticamente
-                  basado en la categoría y subcategoría.
+                  Si lo dejas vacío, POWIP lo genera solo (3 letras del nombre y un número, ej.: POL0042).
+                  Es único en tu empresa y cada variante tiene su propio SKU.
                 </p>
               </div>
 
               {/* Subcategoría */}
               <div className="space-y-2">
-                <Label htmlFor="subcategoryId">Subcategoría</Label>
+                <Label htmlFor="subcategoryId">Subcategoría POWIP (atributos)</Label>
                 <Select
                   value={form.subcategoryId}
                   onValueChange={(value) =>
@@ -948,6 +1166,7 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">Definen los atributos sugeridos (talla, color…). Para ordenar tu catálogo usa «Categoría».</p>
               </div>
 
               {/* Descripción */}
@@ -965,7 +1184,45 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
             </CardContent>
           </Card>
 
-          {/* Card 2: Atributos del producto */}
+          {/* FEAT-24 H4 (H4-D7): producto simple, una sola variante sin opciones (sin tabla de variantes). */}
+          {!isEditMode && productKind === "simple" ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Precio, stock y códigos</CardTitle>
+                <CardDescription>Un producto simple tiene un solo SKU y un solo código de barras.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                {canSeeCosts ? (
+                  <div className="space-y-1">
+                    <Label htmlFor="simple-base-price">Precio base</Label>
+                    <Input id="simple-base-price" type="number" value={simpleVariant.priceBase || ""} onChange={(e) => setSimpleVariant((prev) => ({ ...prev, priceBase: Number(e.target.value) }))} />
+                  </div>
+                ) : null}
+                <div className="space-y-1">
+                  <Label htmlFor="simple-sale-price">Precio venta</Label>
+                  <Input id="simple-sale-price" type="number" value={simpleVariant.priceVta || ""} onChange={(e) => setSimpleVariant((prev) => ({ ...prev, priceVta: Number(e.target.value) }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="simple-stock">Stock</Label>
+                  <Input id="simple-stock" type="number" value={isTracked(trackingMode) ? 0 : simpleVariant.stock || ""} disabled={isTracked(trackingMode)} onChange={(e) => setSimpleVariant((prev) => ({ ...prev, stock: Number(e.target.value) }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="simple-min-stock">Stock mínimo</Label>
+                  <Input id="simple-min-stock" type="number" value={simpleVariant.minStock || ""} onChange={(e) => setSimpleVariant((prev) => ({ ...prev, minStock: Number(e.target.value) }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="simple-sku">SKU <span className="text-xs font-normal text-muted-foreground">(opcional)</span></Label>
+                  <Input id="simple-sku" className="font-mono" maxLength={60} placeholder="Se genera solo" value={simpleVariant.companySku} onChange={(e) => setSimpleVariant((prev) => ({ ...prev, companySku: e.target.value }))} />
+                  <p className="text-xs text-muted-foreground">Vacío = el SKU base.</p>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="simple-barcode">Código de barras <span className="text-xs font-normal text-muted-foreground">(opcional)</span></Label>
+                  <Input id="simple-barcode" className="font-mono" maxLength={64} placeholder="EAN de fábrica" value={simpleVariant.barcode} onChange={(e) => setSimpleVariant((prev) => ({ ...prev, barcode: e.target.value }))} />
+                  <p className="text-xs text-muted-foreground">Si no tiene, POWIP le asigna su propio EAN.</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
           <Card>
             <CardHeader>
               <CardTitle>Atributos del producto</CardTitle>
@@ -1122,6 +1379,30 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                         {formatVariantLabel(variant.attributes, " | ")}
                       </p>
 
+                      {variant.id ? (
+                        <VariantCodes sku={variant.sku} barcode={variant.originalBarcode} powipEan={variant.powipEan} />
+                      ) : null}
+
+                      {/* FEAT-24 H3 (H3-D17): costo promedio; solo el Administrador lo carga a mano */}
+                      {variant.id && canSeeCosts && !variant.mergedInto ? (
+                        variantCosts === "error" ? (
+                          <p className="text-xs text-muted-foreground">No se pudo leer el costo promedio.</p>
+                        ) : (
+                          <VariantCostField
+                            variantId={variant.id}
+                            cost={variantCosts === undefined ? undefined : (variantCosts.get(variant.id) ?? null)}
+                            canEdit={canEditCosts}
+                            onSaved={(cost) =>
+                              setCostsByVariant((current) => {
+                                const next = new Map(current instanceof Map ? current : []);
+                                next.set(variant.id as string, cost);
+                                return next;
+                              })
+                            }
+                          />
+                        )
+                      ) : null}
+
                       {/* Datos de la variante */}
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                         {canSeeCosts && (
@@ -1196,6 +1477,33 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                           />
                         </div>
 
+                        {/* FEAT-24 H4 (H4-D12): SKU y código de barras propios de la variante. */}
+                        <div className="space-y-1">
+                          <Label htmlFor={`variant-${index}-sku`} className="text-xs">SKU</Label>
+                          <Input
+                            id={`variant-${index}-sku`}
+                            className="font-mono"
+                            maxLength={60}
+                            placeholder="Se genera solo"
+                            disabled={Boolean(variant.mergedInto)}
+                            value={variant.companySku}
+                            onChange={(e) => updateVariantField(index, "companySku", e.target.value)}
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label htmlFor={`variant-${index}-barcode`} className="text-xs">Código de barras</Label>
+                          <Input
+                            id={`variant-${index}-barcode`}
+                            className="font-mono"
+                            maxLength={64}
+                            placeholder="EAN de fábrica"
+                            disabled={Boolean(variant.mergedInto)}
+                            value={variant.barcode}
+                            onChange={(e) => updateVariantField(index, "barcode", e.target.value)}
+                          />
+                        </div>
+
                         {/*  <div className="space-y-1">
                         <Label className="text-xs">Imagen (opcional)</Label>
                         <input
@@ -1217,12 +1525,13 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
               )}
             </CardContent>
           </Card>
+          )}
         </div>
       )}
 
       {confirmLargeStock ? (
         <div className="mt-6 rounded-md border border-amber-300 p-3 text-sm">
-          <p>{largeQuantityConfirmText(Math.max(0, ...variants.map((v) => Number(v.stock) || 0)))}</p>
+          <p>{largeQuantityConfirmText(Math.max(0, ...(!isEditMode && productKind === "simple" ? [simpleVariant] : variants).map((v) => Number(v.stock) || 0)))}</p>
           <Button type="submit" size="sm" className="mt-2" disabled={isSubmitting}>
             Sí, confirmar
           </Button>

@@ -59,6 +59,8 @@ function ScopedAppContainer({ children }: { children: React.ReactNode }) {
     "/onboarding",
     "/pasate-a-flow",
     "/cuenta-suspendida",
+    // FEAT-24 H6-D: el modo almacén tiene su propio layout móvil.
+    "/almacen",
   ];
 
   const hideSidebar =

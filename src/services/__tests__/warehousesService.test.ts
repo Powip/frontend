@@ -3,7 +3,13 @@ import { GATEWAY } from "@/lib/gateway";
 import {
   createWarehouse,
   deleteWarehouse,
+  getInventoryRules,
+  getReservationRules,
+  listReturnReceptions,
   listWarehouses,
+  receiveReturnReception,
+  saveInventoryRules,
+  saveReservationRules,
   setMainWarehouse,
   setStoreDefaultWarehouse,
   setWarehouseType,
@@ -122,5 +128,98 @@ describe("Servicio de almacenes de la empresa (FEAT-24 H1-A)", () => {
     await expect(setWarehouseType(WAREHOUSE_ID, "COURIER")).rejects.toThrow("status code 400");
     jest.mocked(axiosAuth.get).mockRejectedValue(new Error("Unauthorized"));
     await expect(listWarehouses()).rejects.toThrow("Unauthorized");
+  });
+});
+
+describe("Reglas de stock y recepciones en /warehouses (FEAT-24 H2-F)", () => {
+  const RECEPTION_ID = "44444444-4444-4444-8444-444444444444";
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    delete process.env.NEXT_PUBLIC_API_PRODUCTOS;
+  });
+
+  it("lee y reemplaza las reglas de reserva sin mandar la empresa", async () => {
+    const rules = [{ id: "r", priority: 10, department: "Lima", province: null, storeId: null, inventoryId: WAREHOUSE_ID, active: true }];
+    jest.mocked(axiosAuth.get).mockResolvedValue({ data: { rules } });
+    await expect(getReservationRules()).resolves.toEqual(rules);
+    expect(axiosAuth.get).toHaveBeenCalledWith(`${BASE}/reservation-rules`);
+
+    jest.mocked(axiosAuth.put).mockResolvedValue({ data: { rules } });
+    const input = [{ priority: 10, department: "Lima", province: null, storeId: null, inventoryId: WAREHOUSE_ID, active: true }];
+    await expect(saveReservationRules(input)).resolves.toEqual(rules);
+    expect(axiosAuth.put).toHaveBeenCalledWith(`${BASE}/reservation-rules`, { rules: input });
+    expect(jest.mocked(axiosAuth.put).mock.calls[0][1]).not.toHaveProperty("companyId");
+  });
+
+  it("una respuesta sin lista se lee como lista vacía", async () => {
+    jest.mocked(axiosAuth.get).mockResolvedValue({ data: {} });
+    await expect(getReservationRules()).resolves.toEqual([]);
+    await expect(listReturnReceptions("por_recibir")).resolves.toEqual([]);
+  });
+
+  it("lee y guarda las reglas de inventario", async () => {
+    jest.mocked(axiosAuth.get).mockResolvedValue({ data: { releaseAfterDays: null, pickingRequired: false } });
+    // FEAT-24 H3: sin las reglas de compras, IGV afecto y sin compra directa a courier.
+    await expect(getInventoryRules()).resolves.toEqual({
+      releaseAfterDays: null,
+      pickingRequired: false,
+      igvAffected: true,
+      allowPurchaseToCourier: false,
+      // FEAT-24 H13 y H5-L: días de cobertura y de aviso de vencimiento, 30 por defecto.
+      defaultCoverageDays: 30,
+      expiryAlertDays: 30,
+    });
+    expect(axiosAuth.get).toHaveBeenCalledWith(`${BASE}/inventory-rules`);
+
+    jest.mocked(axiosAuth.put).mockResolvedValue({ data: { releaseAfterDays: 7, pickingRequired: true } });
+    await expect(saveInventoryRules({ releaseAfterDays: 7, pickingRequired: true })).resolves.toEqual({
+      releaseAfterDays: 7,
+      pickingRequired: true,
+      igvAffected: true,
+      allowPurchaseToCourier: false,
+      defaultCoverageDays: 30,
+      expiryAlertDays: 30,
+    });
+    expect(axiosAuth.put).toHaveBeenCalledWith(`${BASE}/inventory-rules`, { releaseAfterDays: 7, pickingRequired: true });
+  });
+
+  it("guarda las reglas de compras solo si vienen (FEAT-24 H3)", async () => {
+    jest.mocked(axiosAuth.put).mockResolvedValue({
+      data: { releaseAfterDays: null, pickingRequired: false, igvAffected: false, allowPurchaseToCourier: true },
+    });
+    await expect(
+      saveInventoryRules({ releaseAfterDays: null, pickingRequired: false, igvAffected: false, allowPurchaseToCourier: true }),
+    ).resolves.toEqual({ releaseAfterDays: null, pickingRequired: false, igvAffected: false, allowPurchaseToCourier: true, defaultCoverageDays: 30, expiryAlertDays: 30 });
+    expect(axiosAuth.put).toHaveBeenCalledWith(`${BASE}/inventory-rules`, {
+      releaseAfterDays: null,
+      pickingRequired: false,
+      igvAffected: false,
+      allowPurchaseToCourier: true,
+    });
+  });
+
+  it("FEAT-24 H5-L: lee los días de aviso de vencimiento y los manda solo si vienen", async () => {
+    jest.mocked(axiosAuth.get).mockResolvedValue({ data: { releaseAfterDays: null, pickingRequired: false, expiryAlertDays: 45 } });
+    await expect(getInventoryRules()).resolves.toMatchObject({ expiryAlertDays: 45 });
+    jest.mocked(axiosAuth.put).mockResolvedValue({ data: { releaseAfterDays: null, pickingRequired: false, expiryAlertDays: 60 } });
+    await expect(saveInventoryRules({ releaseAfterDays: null, pickingRequired: false, expiryAlertDays: 60 })).resolves.toMatchObject({ expiryAlertDays: 60 });
+    expect(axiosAuth.put).toHaveBeenLastCalledWith(`${BASE}/inventory-rules`, { releaseAfterDays: null, pickingRequired: false, expiryAlertDays: 60 });
+  });
+
+  it("lista las recepciones por estado y recibe una con POST .../receive", async () => {
+    jest.mocked(axiosAuth.get).mockResolvedValue({ data: { items: [{ id: RECEPTION_ID }] } });
+    await expect(listReturnReceptions("recibida")).resolves.toEqual([{ id: RECEPTION_ID }]);
+    expect(axiosAuth.get).toHaveBeenCalledWith(`${BASE}/return-receptions`, { params: { status: "recibida" } });
+
+    const body = { lines: [{ variantId: "v", quantity: 1, result: "reingreso" as const }] };
+    jest.mocked(axiosAuth.post).mockResolvedValue({ data: { id: RECEPTION_ID, duplicate: true } });
+    await expect(receiveReturnReception(RECEPTION_ID, body)).resolves.toEqual({ id: RECEPTION_ID, duplicate: true });
+    expect(axiosAuth.post).toHaveBeenCalledWith(`${BASE}/return-receptions/${RECEPTION_ID}/receive`, body);
+  });
+
+  it("propaga el 409 de recibir", async () => {
+    jest.mocked(axiosAuth.post).mockRejectedValue(Object.assign(new Error("409"), { response: { status: 409 } }));
+    await expect(receiveReturnReception(RECEPTION_ID, { lines: [] })).rejects.toThrow("409");
   });
 });

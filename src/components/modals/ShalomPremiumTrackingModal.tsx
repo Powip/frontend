@@ -29,7 +29,6 @@ import { Separator } from "@/components/ui/separator";
 import { OrderHeader } from "@/interfaces/IOrder";
 import {
   trackShalomShipment,
-  getShalomTicketPdfUrl,
   generateShalomTicketPdf,
 } from "@/services/shalomService";
 import { useAuth } from "@/contexts/AuthContext";

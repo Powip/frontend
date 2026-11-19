@@ -31,6 +31,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 import { useAuth } from "@/contexts/AuthContext";
 import { API } from "@/lib/api";
 import { getUserProfile } from "@/services/userService";
@@ -393,7 +394,8 @@ export default function SendToShalomModal({
           }));
         }
 
-        const res = await axios.get(
+        // FEAT-24 SEC (sec6a): ms-integrations exige la sesión en /shalom/*.
+        const res = await axiosAuth.get(
           `${API.integrations}/shalom/agencies/search/${encodeURIComponent(q)}`,
         );
 
@@ -592,7 +594,8 @@ export default function SendToShalomModal({
         }),
       };
 
-      const res = await axios.post(`${API.integrations}/shalom/quote`, payload);
+      // FEAT-24 SEC (sec6a): con la sesión; el `companyId` tiene que ser el del token (otro → 404).
+      const res = await axiosAuth.post(`${API.integrations}/shalom/quote`, payload);
       if (res.data.success) {
         const amount = res.data.data.total_amount;
         setTotalQuoted(amount);
@@ -775,7 +778,8 @@ export default function SendToShalomModal({
             const costPerOrder = quotedTotal / successfulOrders.length;
             await Promise.all(
               successfulOrders.map((o) =>
-                axios
+                // FEAT-24 SEC: `PATCH order-header/:id` pide el JWT de la empresa.
+                axiosAuth
                   .patch(`${API.ventas}/order-header/${o.id}`, {
                     carrierShippingCost: costPerOrder,
                   })

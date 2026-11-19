@@ -97,7 +97,6 @@ const BASE_CONFIG = {
   id: 'cfg-1',
   companyId: 'company-1',
   instanceId: null as string | null,
-  instanceKey: null as string | null,
   username: 'shalom-user@empresa.com',
   isActive: true,
   createdAt: '2026-01-01T00:00:00.000Z',

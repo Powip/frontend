@@ -67,9 +67,29 @@ const RANGE = { fromDate: "2026-10-01", toDate: "2026-10-31" };
 let scope: ReturnType<typeof useDashboardScope>;
 let auth: ReturnType<typeof useAuth>;
 
-function dataFor(url: string, storeId?: string) {
+const VALUATION = {
+  available: true, date: "2026-10-31", asOf: null, source: "live", closePeriod: null, cutoffAt: null,
+  warehouses: [
+    { inventoryId: "w-a", name: "A", items: 1, units: 5, value: 100, withoutCost: { items: 0, units: 0 } },
+    { inventoryId: "w-b", name: "B", items: 1, units: 5, value: 250, withoutCost: { items: 0, units: 0 } },
+  ],
+  totals: { items: 2, variants: 2, units: 10, value: 350, withoutCost: { items: 0, units: 0, variants: 0 } },
+};
+const WAREHOUSES = {
+  warehouses: [
+    { id: "w-a", name: "A", status: true, store_id: "store-a", company_id: "company", type: "PROPIO", is_main: true },
+    { id: "w-b", name: "B", status: true, store_id: "store-b", company_id: "company", type: "PROPIO", is_main: true },
+  ],
+  // La tienda Shopify B también vende del almacén de A, pero no es su dueña.
+  links: [{ store_id: "store-b", inventory_id: "w-a", is_default: false }],
+};
+const isFacade = (url: unknown) => String(url).includes("/inventory-reports/") || String(url).endsWith("/warehouses");
+
+function dataFor(url: string) {
   if (url.endsWith("/by-channel")) return { salesChannels: [], closingChannels: [] };
-  if (url.endsWith("/inventory-value")) return { totalValue: storeId === "store-a" ? 100 : 250 };
+  // FEAT-24 H10: el valor del inventario sale de la fachada (empresa del token) y los almacenes de su dueño.
+  if (url.endsWith("/inventory-reports/valuation")) return VALUATION;
+  if (url.endsWith("/warehouses")) return WAREHOUSES;
   if (url.endsWith("/receivables")) return { pendingTotal: 75, limaCount: 1, provinciaCount: 0, avgTicket: 75, pendingOrders: [] };
   if (url.endsWith("/summary")) return { deliveredAmount: 1200, totalDelivered: 6, dailySales: [], byStatus: {} };
   if (url.endsWith("/by-seller")) return [
@@ -103,23 +123,23 @@ beforeEach(() => {
   };
   mockUseAuth.mockImplementation(() => auth);
   mockUseScope.mockImplementation(() => scope);
-  mockGet.mockImplementation(async (url, config) => ({
-    data: dataFor(String(url), config?.params?.storeId),
-  }));
+  mockGet.mockImplementation(async (url) => ({ data: dataFor(String(url)) }));
 });
 
 it.each([
   ["análisis", Analysis, 3],
   ["geografía", Geography, 5],
-  ["finanzas", FinanceStats, 6],
+  ["finanzas", FinanceStats, 5],
   ["equipo", TeamManagement, 2],
 ] as const)("consulta todas las tiendas y luego la tienda elegida en %s", async (_name, Panel, count) => {
   const view = render(<Panel key="business" {...RANGE} />);
   await act(async () => {});
   expect(mockGet).toHaveBeenCalledTimes(count);
   for (const [url, config] of mockGet.mock.calls) {
-    if (String(url).endsWith("/inventory-value")) {
-      expect(scope.storeIds).toContain(config?.params?.storeId);
+    if (isFacade(url)) {
+      // La fachada toma la empresa del token: no se le manda ni empresa ni tiendas.
+      expect(config?.params ?? {}).not.toHaveProperty("storeIds");
+      expect(config?.params ?? {}).not.toHaveProperty("companyId");
     } else {
       expect(config?.params).toEqual(expect.objectContaining({ storeIds: "store-a,store-b" }));
       expect(config?.params).not.toHaveProperty("storeId");
@@ -132,8 +152,9 @@ it.each([
   view.rerender(<Panel key="store" {...RANGE} />);
   await act(async () => {});
 
-  expect(mockGet).toHaveBeenCalledTimes(Panel === FinanceStats ? 5 : count);
-  for (const [, config] of mockGet.mock.calls) {
+  expect(mockGet).toHaveBeenCalledTimes(Panel === FinanceStats ? 6 : count);
+  for (const [url, config] of mockGet.mock.calls) {
+    if (isFacade(url)) continue;
     expect(config?.params).toEqual(expect.objectContaining({ storeId: "store-a" }));
     expect(config?.params).not.toHaveProperty("storeIds");
   }
@@ -152,22 +173,30 @@ it("suma los activos de las tiendas y consulta los pagos con el mismo alcance", 
   }));
 });
 
-it("cuenta una vez el almacén compartido entre KUNCA y su tienda Shopify", async () => {
-  // inventory-value filtra por la tienda propietaria del almacén. La tienda
-  // Shopify referencia el mismo inventory_id, pero no es una segunda propietaria.
-  mockGet.mockImplementation(async (url, config) => ({
-    data: String(url).endsWith("/inventory-value")
-      ? { totalValue: config?.params?.storeId === "store-a" ? 200 : 0 }
-      : dataFor(String(url), config?.params?.storeId),
-  }));
-
+it("lee el valor de la fachada y no de /stats/inventory-value (FEAT-24 H10)", async () => {
   render(<FinanceStats {...RANGE} />);
   await act(async () => {});
+  expect(mockGet).toHaveBeenCalledWith(expect.stringMatching(/\/inventory-reports\/valuation$/), expect.anything());
+  expect(mockGet.mock.calls.some(([url]) => String(url).includes("/stats/inventory-value"))).toBe(false);
+});
 
+it("en una tienda suma solo sus almacenes: el compartido con la tienda Shopify cuenta una vez", async () => {
+  scope = { ...scope, scope: "store", storeIds: ["store-b"], scopeParams: { storeId: "store-b" } };
+  render(<FinanceStats {...RANGE} />);
+  await act(async () => {});
   const inventoryCard = screen.getByText("Valor Almacén").closest('[data-slot="card"]') as HTMLElement;
-  expect(within(inventoryCard).getByText("Unidad de costo 200.00")).toBeInTheDocument();
-  const inventoryRequests = mockGet.mock.calls.filter(([url]) => String(url).endsWith("/inventory-value"));
-  expect(inventoryRequests.map(([, config]) => config?.params?.storeId)).toEqual(["store-a", "store-b"]);
+  expect(within(inventoryCard).getByText("Unidad de costo 250.00")).toBeInTheDocument();
+});
+
+it("sin rol de costos la fachada omite el valor y se ve «••••»", async () => {
+  const masked = JSON.parse(JSON.stringify(VALUATION, (key, val) => (key === "value" ? undefined : val)));
+  mockGet.mockImplementation(async (url) => ({
+    data: String(url).endsWith("/inventory-reports/valuation") ? masked : dataFor(String(url)),
+  }));
+  render(<FinanceStats {...RANGE} />);
+  await act(async () => {});
+  const inventoryCard = screen.getByText("Valor Almacén").closest('[data-slot="card"]') as HTMLElement;
+  expect(within(inventoryCard).getByText("••••")).toBeInTheDocument();
 });
 
 it("adapta vendedores y entregas del negocio al modelo del equipo", async () => {
@@ -193,9 +222,9 @@ it.each([
   [TeamManagement, "/stats/delivery-by-seller", "datos del equipo"],
 ] as const)("muestra una falla parcial sin fabricar métricas cero", async (Panel, endpoint, message) => {
   const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
-  mockGet.mockImplementation(async (url, config) => {
+  mockGet.mockImplementation(async (url) => {
     if (String(url).endsWith(endpoint)) throw new Error("Servicio no disponible");
-    return { data: dataFor(String(url), config?.params?.storeId) };
+    return { data: dataFor(String(url)) };
   });
   render(<Panel {...RANGE} />);
   await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(message));

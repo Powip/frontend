@@ -54,4 +54,13 @@ describe("Business stock positions", () => {
     await fetchBusinessInventoryItems({ ...request, inventories: [warehouse], includeInactive: true });
     expect(get.mock.calls[0][1]?.params).toMatchObject({ includeInactive: true });
   });
+
+  it("FEAT-24 RMV: excludeRemoved solo viaja si se pide (lo pide /inventario, no el catálogo ni la ficha)", async () => {
+    get.mockResolvedValue(response([row("item-a")]));
+    await fetchBusinessInventoryItems({ ...request, inventories: [warehouse] });
+    expect(get.mock.calls[0][1]?.params).not.toHaveProperty("excludeRemoved");
+    get.mockClear();
+    await fetchBusinessInventoryItems({ ...request, inventories: [warehouse], excludeRemoved: true });
+    expect(get.mock.calls[0][1]?.params).toMatchObject({ excludeRemoved: true, inventoryId: "warehouse-a" });
+  });
 });

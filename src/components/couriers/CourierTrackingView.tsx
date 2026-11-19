@@ -70,8 +70,6 @@ import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import {
   getShalomConfig,
-  getShalomLabelPdfUrl,
-  getShalomTicketPdfUrl,
   quoteShalom,
   trackShalomGuide,
   updateGuideQuote

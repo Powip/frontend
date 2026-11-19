@@ -16,6 +16,8 @@ const mockPack: BundlePack = {
   packPrice: 100, shared: true, synced: false,
 };
 jest.mock("@/contexts/PacksContext", () => ({ usePacks: () => ({ packs: [mockPack] }) }));
+// FEAT-24 H9: los regalos los evalúa el backend con react-query; acá no se renderiza su proveedor.
+jest.mock("@/hooks/usePromoGifts", () => ({ usePromoGifts: () => ({ gifts: [], loading: false, failed: false }) }));
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: { get: jest.fn() } }));
 jest.mock("@/services/quotationService", () => ({
   createQuotation: jest.fn(), updateQuotation: jest.fn(), getQuotationCatalog: jest.fn(), getQuotationInventories: jest.fn(), searchQuotationCustomers: jest.fn(), uploadQuotationLineImage: jest.fn(),

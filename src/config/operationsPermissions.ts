@@ -55,7 +55,9 @@ export const OPERATIONS_VIEW_ROLE_LABEL: Record<OperationsViewRole, string> = {
 };
 
 const ADMIN_ROLE_NAMES = ["ADMIN", "OWNER", "SUPERADMIN", "ADMINISTRADOR"];
-const DESPACHO_ROLE_NAMES = ["OPERACIONES", "COURIER"];
+// ALMACEN (FEAT-24 H6): el rol del almacenero hace picking y despacho; sin esto caería en el fallback,
+// que además le daría gestión de llamadas y reasignar vendedor.
+const DESPACHO_ROLE_NAMES = ["OPERACIONES", "COURIER", "ALMACEN"];
 // NOTA (confirmar con backend): el catálogo de roles trae "CALLER" con
 // descripción "Integraciones externas" en el fallback local de
 // UserForm.tsx — no está claro si es un rol humano de call center o una

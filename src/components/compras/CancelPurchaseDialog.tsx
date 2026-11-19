@@ -7,13 +7,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2 } from "lucide-react";
 import { trackingError } from "@/services/inventoryTrackingService";
+import { periodLockedMessage } from "@/lib/reports/periods";
 
 /** FEAT-24 H0 — anular una compra recibida exige motivo; si el backend la rechaza, el diálogo queda abierto con el motivo. */
-export default function CancelPurchaseDialog({ open, purchaseNumber, onConfirm, onClose }: {
+export default function CancelPurchaseDialog({ open, purchaseNumber, onConfirm, onClose, description }: {
   open: boolean;
   purchaseNumber: string;
   onConfirm: (reason: string) => Promise<void>;
   onClose: () => void;
+  /** FEAT-24 H3: texto propio (p. ej. una orden de compra sin recibir no genera salidas). */
+  description?: string;
 }) {
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
@@ -36,7 +39,8 @@ export default function CancelPurchaseDialog({ open, purchaseNumber, onConfirm, 
       await onConfirm(trimmed);
       setReason("");
     } catch (failure) {
-      setError(trackingError(failure, "No se pudo anular la compra."));
+      // FEAT-24 H10-D6: 423 si la compra tiene fecha en un mes cerrado.
+      setError(periodLockedMessage(failure) ?? trackingError(failure, "No se pudo anular la compra."));
     } finally {
       setSaving(false);
     }
@@ -48,7 +52,8 @@ export default function CancelPurchaseDialog({ open, purchaseNumber, onConfirm, 
         <DialogHeader>
           <DialogTitle>Anular compra {purchaseNumber}</DialogTitle>
           <DialogDescription>
-            Se registran las salidas inversas y la compra queda anulada con su motivo. Si alguna variante ya no tiene stock suficiente, no se anula.
+            {description ??
+              "Se registran las salidas inversas y la compra queda anulada con su motivo. Si alguna variante ya no tiene stock suficiente, no se anula."}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">

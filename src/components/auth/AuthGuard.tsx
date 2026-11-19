@@ -3,7 +3,7 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, ReactNode } from "react";
-import { hasRouteAccess, isSuperadmin } from "@/config/permissions.config";
+import { COURIER_HOME, hasRouteAccess, isCourierRole, isSuperadmin } from "@/config/permissions.config";
 import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
 import { isPublicLiveRoute } from "@/lib/liveRoutes";
 import { resolveSubscriptionRedirect } from "@/lib/subscriptionGate";
@@ -62,6 +62,10 @@ export default function AuthGuard({ children }: AuthGuardProps) {
         })
       : null;
 
+  // FEAT-24 H8-D5: el courier solo usa su portal; cualquier otra pantalla (el dashboard tras el login, una URL
+  // vieja) lo lleva a /almacen en lugar de «Acceso denegado».
+  const courierRedirect = !loading && auth && !isPublicRoute && !hasAccess && isCourierRole(auth.user?.role) ? COURIER_HOME : null;
+
   const gateRedirect = subscriptionRedirect || (
     !loading && auth && !isPublicRoute && !isPartnersRoute && pathname
       ? resolveBusinessQuestionsRedirect({
@@ -73,7 +77,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
           isSuperadmin: isSuperadmin(auth.user.email),
         })
       : null
-  );
+  ) || courierRedirect;
 
   useEffect(() => {
     // Si no está cargando, no hay auth, y NO es ruta pública -> login

@@ -49,7 +49,9 @@ jest.mock('@/services/evaService', () => ({
 // FEAT-26: las secciones de tarifas y SKU EVA tienen sus propios tests.
 jest.mock('../_components/EvaShippingRatesSection', () => ({
   __esModule: true,
-  default: () => <div data-testid="eva-rates-section" />,
+  default: ({ canEdit }: { canEdit?: boolean }) => (
+    <div data-testid="eva-rates-section" data-can-edit={String(canEdit)} />
+  ),
 }));
 jest.mock('../_components/EvaSkuMapSection', () => ({
   __esModule: true,
@@ -578,6 +580,42 @@ describe('EvaConfigPage', () => {
       renderPage();
       await screen.findByText(/integración inactiva/i);
       expect(screen.queryByTestId('eva-rates-section')).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Quien no es administrador (FEAT-24 SEC sec6b) ─────────────────────────
+  // ms-integrations responde 403 a quien no es admin al guardar credenciales o tarifas.
+
+  describe('quien no es administrador de la empresa', () => {
+    const asSeller = () =>
+      mockUseAuth.mockReturnValue({
+        ...MOCK_AUTH,
+        auth: { ...MOCK_AUTH.auth, user: { ...MOCK_AUTH.auth.user, role: 'VENTAS' } },
+      } as unknown as ReturnType<typeof useAuth>);
+
+    it('sin credencial: no ve el formulario, solo el aviso', async () => {
+      asSeller();
+      renderPage();
+
+      expect(await screen.findByText(/solo un administrador de la empresa puede conectar eva/i)).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: /credenciales eva/i })).not.toBeInTheDocument();
+    });
+
+    it('con credencial activa: no puede actualizar credenciales y las tarifas quedan de solo lectura', async () => {
+      asSeller();
+      mockGetCredentials.mockResolvedValue(MOCK_CREDENTIAL_ACTIVE);
+      renderPage();
+
+      expect(await screen.findByTestId('eva-rates-section')).toHaveAttribute('data-can-edit', 'false');
+      expect(screen.queryByRole('button', { name: /actualizar credenciales/i })).not.toBeInTheDocument();
+    });
+
+    it('un administrador puede editar las tarifas', async () => {
+      mockGetCredentials.mockResolvedValue(MOCK_CREDENTIAL_ACTIVE);
+      renderPage();
+
+      expect(await screen.findByTestId('eva-rates-section')).toHaveAttribute('data-can-edit', 'true');
+      expect(screen.getByRole('button', { name: /actualizar credenciales/i })).toBeInTheDocument();
     });
   });
 });

@@ -2,16 +2,19 @@
 
 import { Fragment, useState } from "react";
 import Image from "next/image";
-import { Camera, ChevronDown, ChevronRight, History, PackagePlus, Pencil, ShoppingBag, Warehouse } from "lucide-react";
+import Link from "next/link";
+import { Camera, ChevronDown, ChevronRight, History, PackagePlus, Pencil, ShoppingBag, Trash2, Warehouse } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatMoney } from "@/lib/money";
+import { COVERAGE_TONE_CLASS, coverageText, coverageTone } from "@/lib/suggestedPurchase";
+import type { VariantCoverage } from "@/hooks/useStockCoverage";
 import { formatVariantLabel } from "@/lib/variantAttributes";
 import { isTracked } from "@/services/inventoryTrackingService";
 import type { BusinessInventoryItem } from "@/services/businessInventoryItemsService";
 import type { BusinessInventory } from "@/services/inventoryCatalogService";
-import { STOCK_STATUS_LABEL, type StockProductGroup, type StockStatus, type StockTotals, type StockVariantRow } from "./stockView";
+import { packsInInventory, STOCK_STATUS_LABEL, type PackStockRow, type StockProductGroup, type StockStatus, type StockTotals, type StockVariantRow } from "./stockView";
 
 /** Datos de la pantalla de almacenes de la empresa; pueden faltar (la pantalla funciona igual). */
 export type WarehouseMeta = Map<string, { type: "PROPIO" | "TIENDA" | "COURIER"; isMain: boolean }>;
@@ -20,13 +23,24 @@ const NO_META: WarehouseMeta = new Map();
 
 export type StockTrackingAction = "regularize" | "units" | "transfer" | "write-off";
 
+/** FEAT-24 RMV: qué pide quitar del almacén la papelera (una posición o el producto entero). */
+export type StockRemoveTarget =
+  | { kind: "variant"; item: BusinessInventoryItem }
+  | { kind: "product"; productId: string; productName: string };
+
 export interface StockBoardActions {
   canEdit: boolean;
   onImage: (item: BusinessInventoryItem, trigger: HTMLButtonElement) => void;
   onTracking: (item: BusinessInventoryItem, action: StockTrackingAction) => void;
   onAdjust: (item: BusinessInventoryItem) => void;
   onEdit: (variantId: string) => void;
-  onKardex: (sku: string) => void;
+  /** FEAT-24 H10: abre Movimientos filtrado por la variante (`label` = su nombre y SKU). */
+  onKardex: (variantId: string, label: string) => void;
+  /**
+   * FEAT-24 RMV: papelera «Quitar del almacén». Solo se muestra si llega (quien edita inventario) y la vista tiene
+   * UN almacén; no se ofrece con IMEI/serie (se manejan por unidades).
+   */
+  onRemove?: (target: StockRemoveTarget) => void;
 }
 
 const STATUS_CLASS: Record<StockStatus, string> = {
@@ -153,6 +167,44 @@ function VariantDetail({ variant, actions, colSpan }: { variant: StockVariantRow
   );
 }
 
+/** FEAT-24 H9 (mockup vistainv.html): packs al final de la tabla, con el disponible calculado de sus componentes. */
+function PackRows({ packs, inventories, colSpan, showCoverage = false }: { packs: PackStockRow[]; inventories: BusinessInventory[]; colSpan: number; showCoverage?: boolean }) {
+  return (
+    <>
+      <TableRow className="bg-muted/30 hover:bg-muted/30">
+        <TableCell colSpan={colSpan} className="py-2 text-xs font-semibold uppercase tracking-wide">Packs · su stock es el de sus componentes</TableCell>
+      </TableRow>
+      {packs.map((pack) => (
+        <TableRow key={pack.id} data-testid={`pack-stock-${pack.id}`}>
+          <TableCell>
+            <div className="flex items-center gap-3">
+              <span className="w-4 shrink-0" aria-hidden="true" />
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-primary/30 bg-primary/10 text-xs font-semibold text-primary" aria-hidden="true">PK</div>
+              <div className="min-w-0">
+                <Link href={`/productos/${pack.id}`} className="text-sm font-medium hover:underline">{pack.name}</Link>
+                {pack.sku ? <div className="font-mono text-xs text-muted-foreground">{pack.sku}</div> : null}
+              </div>
+            </div>
+          </TableCell>
+          {inventories.map((inv) => {
+            const available = pack.byInventory.get(inv.id);
+            return available === undefined
+              ? <TableCell key={inv.id} className="text-center text-muted-foreground">—</TableCell>
+              : <TableCell key={inv.id} className={`text-center tabular-nums ${availableClass(available)}`}>{available}</TableCell>;
+          })}
+          <TableCell className={`text-right tabular-nums ${pack.total === null ? "text-muted-foreground" : availableClass(pack.total)}`}>{pack.total ?? "—"}</TableCell>
+          <TableCell><span className="inline-block whitespace-nowrap rounded border border-teal-300 bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-400">Calculado</span></TableCell>
+          {/* FEAT-24 H13-D2: la cobertura se calcula por variante; la fila del pack mantiene la columna con «—». */}
+          {showCoverage ? <TableCell className="text-right text-muted-foreground" data-testid={`pack-coverage-${pack.id}`} title="La cobertura se calcula por variante; el pack depende de sus componentes">—</TableCell> : null}
+          <TableCell className="text-right text-xs text-muted-foreground">
+            {pack.total === null ? "No se pudo calcular el stock" : "Disponible del componente con menos stock"}
+          </TableCell>
+        </TableRow>
+      ))}
+    </>
+  );
+}
+
 interface ProductViewProps {
   groups: StockProductGroup[];
   inventories: BusinessInventory[];
@@ -160,12 +212,33 @@ interface ProductViewProps {
   emptyText: string;
   actions: StockBoardActions;
   meta?: WarehouseMeta;
+  /** FEAT-24 H9: packs que se listan al final (la pantalla los pasa solo en la última página). */
+  packs?: PackStockRow[];
+  /** FEAT-24 H13-D2: columna «Cobertura» (sin esto, no se muestra). */
+  coverage?: { byVariant: Map<string, VariantCoverage>; targetDays: number };
+}
+
+/** «N días» o «—» (sin ventas); ámbar bajo los días objetivo y rojo en 0. */
+function CoverageCell({ variantId, coverage }: { variantId: string; coverage: NonNullable<ProductViewProps["coverage"]> }) {
+  const days = coverage.byVariant.get(variantId)?.coverageDays ?? null;
+  const tone = coverageTone(days, coverage.targetDays);
+  return (
+    <TableCell
+      className={`whitespace-nowrap text-right tabular-nums ${COVERAGE_TONE_CLASS[tone]}`}
+      data-testid={`coverage-${variantId}`}
+      title={days === null ? "Sin ventas en la ventana" : tone === "low" || tone === "out" ? `Menos de ${coverage.targetDays} días de venta` : undefined}
+    >
+      {coverageText(days)}
+    </TableCell>
+  );
 }
 
 /** Vista «Por producto»: filas por variante agrupadas por producto, una columna por almacén. */
-export function StockByProduct({ groups, inventories, isLoading, emptyText, actions, meta = NO_META }: ProductViewProps) {
+export function StockByProduct({ groups, inventories, isLoading, emptyText, actions, meta = NO_META, packs = [], coverage }: ProductViewProps) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
-  const cols = inventories.length + 4;
+  const cols = inventories.length + 4 + (coverage ? 1 : 0);
+  // FEAT-24 RMV: con un solo almacén en la vista no hay duda de cuál se quita.
+  const removeFrom = actions.onRemove && inventories.length === 1 ? inventories[0] : null;
   return (
     <div className="flex-1 overflow-auto rounded-md border">
       <Table>
@@ -184,6 +257,7 @@ export function StockByProduct({ groups, inventories, isLoading, emptyText, acti
             ))}
             <TableHead className="text-right">Disponible total</TableHead>
             <TableHead>Estado</TableHead>
+            {coverage ? <TableHead className="text-right" title={`Días que dura el disponible a la venta diaria. Objetivo: ${coverage.targetDays} días`}>Cobertura</TableHead> : null}
             <TableHead className="text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>
@@ -195,16 +269,31 @@ export function StockByProduct({ groups, inventories, isLoading, emptyText, acti
                 {inventories.map((inv) => <TableCell key={inv.id}><Skeleton className="mx-auto h-4 w-12" /></TableCell>)}
                 <TableCell><Skeleton className="ml-auto h-4 w-12" /></TableCell>
                 <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                {coverage ? <TableCell><Skeleton className="ml-auto h-4 w-12" /></TableCell> : null}
                 <TableCell><Skeleton className="ml-auto h-4 w-24" /></TableCell>
               </TableRow>
             ))
           ) : groups.length === 0 ? (
             <TableRow><TableCell colSpan={cols} className="py-6 text-center text-muted-foreground">{emptyText}</TableCell></TableRow>
-          ) : groups.map((group) => (
+          ) : groups.map((group) => {
+            const productId = group.variants[0]?.first.productId;
+            const removableProduct = removeFrom && productId && !isTracked(group.variants[0].first.trackingMode) &&
+              group.variants.some((variant) => variant.byInventory.has(removeFrom.id));
+            return (
             <Fragment key={group.key}>
               <TableRow className="bg-muted/30 hover:bg-muted/30">
                 <TableCell colSpan={cols} className="py-2 text-xs font-semibold tracking-wide">
-                  <span className="uppercase">{group.productName}</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="uppercase">{group.productName}</span>
+                    {removableProduct ? (
+                      <Button size="sm" variant="ghost" className="h-7 text-destructive hover:bg-destructive/10 hover:text-destructive" title="Quitar el producto del almacén"
+                        aria-label={`Quitar el producto ${group.productName} del almacén`}
+                        onClick={() => actions.onRemove?.({ kind: "product", productId, productName: group.productName })}>
+                        <Trash2 className="h-4 w-4" />
+                        <span className="sr-only sm:not-sr-only">Quitar producto</span>
+                      </Button>
+                    ) : null}
+                  </div>
                 </TableCell>
               </TableRow>
               {group.variants.map((variant) => {
@@ -212,6 +301,7 @@ export function StockByProduct({ groups, inventories, isLoading, emptyText, acti
                 const single = variant.positions.length === 1 ? first : null;
                 const isOpen = Boolean(open[variant.variantId]);
                 const label = formatVariantLabel(first.attributes);
+                const removable = removeFrom ? variant.byInventory.get(removeFrom.id) : undefined;
                 return (
                   <Fragment key={variant.variantId}>
                     <TableRow className="cursor-pointer transition-colors hover:bg-muted/30" onClick={() => setOpen((state) => ({ ...state, [variant.variantId]: !isOpen }))}>
@@ -239,18 +329,26 @@ export function StockByProduct({ groups, inventories, isLoading, emptyText, acti
                       })}
                       <TableCell className={`text-right tabular-nums ${availableClass(variant.available)}`}>{variant.available}</TableCell>
                       <TableCell><StatusBadge status={variant.status} /></TableCell>
+                      {coverage ? <CoverageCell variantId={variant.variantId} coverage={coverage} /> : null}
                       <TableCell className="space-x-1 whitespace-nowrap text-right" onClick={(event) => event.stopPropagation()}>
                         {single ? <PositionActions item={single} actions={actions} /> : (
                           <Button size="sm" variant="outline" onClick={() => setOpen((state) => ({ ...state, [variant.variantId]: true }))}>
                             {variant.positions.length} almacenes
                           </Button>
                         )}
-                        <Button size="icon" variant="ghost" className="h-8 w-8" title="Ver movimientos" onClick={() => actions.onKardex(first.sku)}>
+                        <Button size="icon" variant="ghost" className="h-8 w-8" title="Ver movimientos" onClick={() => actions.onKardex(variant.variantId, `${[first.productName, label].filter(Boolean).join(" · ")}${first.sku ? ` (${first.sku})` : ""}`)}>
                           <History className="h-4 w-4" />
                         </Button>
                         <Button size="icon" variant="ghost" className="h-8 w-8" title="Editar Producto" onClick={() => actions.onEdit(variant.variantId)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
+                        {removable && !isTracked(removable.trackingMode) ? (
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:bg-destructive/10 hover:text-destructive" title="Quitar del almacén"
+                            aria-label={`Quitar ${[first.productName, label].filter(Boolean).join(" · ")} del almacén`}
+                            onClick={() => actions.onRemove?.({ kind: "variant", item: removable })}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        ) : null}
                       </TableCell>
                     </TableRow>
                     {isOpen ? <VariantDetail variant={variant} actions={actions} colSpan={cols} /> : null}
@@ -258,7 +356,9 @@ export function StockByProduct({ groups, inventories, isLoading, emptyText, acti
                 );
               })}
             </Fragment>
-          ))}
+            );
+          })}
+          {!isLoading && packs.length > 0 ? <PackRows packs={packs} inventories={inventories} colSpan={cols} showCoverage={Boolean(coverage)} /> : null}
         </TableBody>
       </Table>
       {!isLoading && groups.length > 0 ? (
@@ -275,10 +375,12 @@ interface WarehouseViewProps {
   inventories: BusinessInventory[];
   isLoading: boolean;
   meta?: WarehouseMeta;
+  /** FEAT-24 H9: packs con el disponible de sus componentes; cada tarjeta muestra los de su almacén. */
+  packs?: PackStockRow[];
 }
 
-/** Vista «Por almacén»: una tarjeta por almacén con sus posiciones. */
-export function StockByWarehouse({ variants, inventories, isLoading, meta = NO_META }: WarehouseViewProps) {
+/** Vista «Por almacén»: una tarjeta por almacén con sus posiciones (y, al final, sus packs). */
+export function StockByWarehouse({ variants, inventories, isLoading, meta = NO_META, packs = [] }: WarehouseViewProps) {
   if (isLoading) return <div className="space-y-3"><Skeleton className="h-32 w-full" /><Skeleton className="h-32 w-full" /></div>;
   if (inventories.length === 0) return <p className="rounded-md border py-6 text-center text-muted-foreground">No hay almacenes en este alcance</p>;
   return (
@@ -288,6 +390,8 @@ export function StockByWarehouse({ variants, inventories, isLoading, meta = NO_M
         const physical = rows.reduce((sum, row) => sum + row.physicalStock, 0);
         const reserved = rows.reduce((sum, row) => sum + reservedOf(row), 0);
         const available = rows.reduce((sum, row) => sum + row.availableStock, 0);
+        // Los packs no suman al resumen del almacén: su stock es el de sus componentes, que ya está en las filas.
+        const packRows = packsInInventory(packs, inv.id);
         return (
           <section key={inv.id} className="rounded-md border" aria-label={`Almacén ${inv.name}`}>
             <header className="flex flex-wrap items-center gap-3 border-b p-4">
@@ -298,7 +402,10 @@ export function StockByWarehouse({ variants, inventories, isLoading, meta = NO_M
                   {meta.get(inv.id)?.isMain ? <span className="rounded border border-teal-300 bg-teal-50 px-1.5 py-0.5 text-xs font-medium text-teal-700 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-400">Principal</span> : null}
                   {meta.get(inv.id) ? <span className="rounded border px-1.5 py-0.5 text-xs font-normal text-muted-foreground">{TYPE_LABEL[meta.get(inv.id)!.type]}</span> : null}
                 </h3>
-                <p className="text-xs text-muted-foreground">{rows.length} SKU · {physical} físico · {reserved} reservado · {available} disponible</p>
+                <p className="text-xs text-muted-foreground">
+                  {rows.length} SKU · {physical} físico · {reserved} reservado · {available} disponible
+                  {packRows.length > 0 ? ` · ${packRows.length} pack${packRows.length === 1 ? "" : "s"}` : ""}
+                </p>
               </div>
               {inv.storeName ? <span className="ml-auto rounded border px-2 py-0.5 text-xs text-muted-foreground">{inv.storeName}</span> : null}
             </header>
@@ -327,6 +434,25 @@ export function StockByWarehouse({ variants, inventories, isLoading, meta = NO_M
                     </TableRow>
                   );
                 })}
+                {packRows.length > 0 ? (
+                  <>
+                    <TableRow className="bg-muted/30 hover:bg-muted/30">
+                      <TableCell colSpan={5} className="py-2 text-xs font-semibold uppercase tracking-wide">Packs · su stock es el de sus componentes</TableCell>
+                    </TableRow>
+                    {packRows.map(({ pack, available: packAvailable }) => (
+                      <TableRow key={pack.id} data-testid={`pack-warehouse-${inv.id}-${pack.id}`}>
+                        <TableCell className="text-sm">
+                          <Link href={`/productos/${pack.id}`} className="hover:underline">{pack.name}</Link>
+                          <span className="ml-2 inline-block whitespace-nowrap rounded border border-teal-300 bg-teal-50 px-1.5 py-0.5 text-[11px] font-medium text-teal-700 dark:border-teal-800 dark:bg-teal-950/30 dark:text-teal-400">Calculado</span>
+                        </TableCell>
+                        <TableCell className="font-mono text-xs">{pack.sku ?? "—"}</TableCell>
+                        <TableCell className="text-right text-muted-foreground" title="Un pack no tiene stock propio">—</TableCell>
+                        <TableCell className="text-right text-muted-foreground" title="Un pack no tiene stock propio">—</TableCell>
+                        <TableCell className={`text-right tabular-nums ${availableClass(packAvailable)}`} title="Disponible del componente con menos stock">{packAvailable}</TableCell>
+                      </TableRow>
+                    ))}
+                  </>
+                ) : null}
               </TableBody>
             </Table>
           </section>

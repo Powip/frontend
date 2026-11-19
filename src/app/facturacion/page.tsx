@@ -33,9 +33,8 @@ export default function FacturacionPage() {
   const router = useRouter();
 
   // Single source of truth for comprobantes: real sales + SUNAT documents.
-  // The remaining legacy tabs (Guías, Notas, Reportes) reuse this same
-  // real data — only their own local, not-yet-implemented state (guías,
-  // notas) still comes from useFacturacionMock.
+  // Guías de remisión are real since FEAT-24 H12 (ms-sunat GRE); only the
+  // notas still come from the in-memory useFacturacionMock.
   const taxDocuments = useTaxDocuments();
 
   const mock = useFacturacionMock();
@@ -256,15 +255,14 @@ export default function FacturacionPage() {
           />
         </TabsContent>
 
-        {/* Legacy tabs: no backend yet for guías/notas emission (mock only),
-            but they read real comprobante data from taxDocuments. */}
+        {/* FEAT-24 H12: real GRE remitente (ms-sunat). The order picker reuses the real sales. */}
         <TabsContent value="guias" className="pt-4">
           <GuiasTab
-            mock={mock}
             comprobanteRows={taxDocuments.rows}
             issuer={(() => {
               // With "Todos los RUC" selected, print with the default RUC so the
-              // user is never blocked; a specific RUC in the filter wins.
+              // user is never blocked; a specific RUC in the filter wins. A GRE of
+              // another RUC is still refused in GuiasTab (it names the RUC to pick).
               const profile =
                 activeProfiles.find((item) => item.id === issuerFilter) ??
                 getDefaultIssuer(sunatProfiles);
@@ -274,6 +272,8 @@ export default function FacturacionPage() {
             })()}
           />
         </TabsContent>
+
+        {/* Legacy tab: no backend yet for notas emission (mock only). */}
 
         <TabsContent value="nc" className="pt-4">
           <NotasTab
@@ -288,7 +288,6 @@ export default function FacturacionPage() {
           <ReportesTab
             comprobanteRows={taxDocuments.rows}
             notas={mock.notas}
-            guias={mock.guias}
             issuer={activeProfiles.find((profile) => profile.id === issuerFilter)}
             showIssuerColumn={activeProfiles.length > 1}
           />

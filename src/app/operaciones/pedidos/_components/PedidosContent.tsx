@@ -4,7 +4,7 @@ import { canPrepareDeferredManualOrder, salesPhysicalOperationBlockReason, sales
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
 import SaleUnitLifecycleModal from "@/components/registrar-venta/SaleUnitLifecycleModal";
 import { type SaleUnitLifecycleAction } from "@/services/saleUnitLifecycleService";
-import { assignmentBlockReason, requiresAuthenticatedSaleMutation, saleMutationUrl, saleReceiptUrl } from "@/services/saleTrackingService";
+import { assignmentBlockReason, saleMutationUrl, saleReceiptUrl } from "@/services/saleTrackingService";
 import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
 import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
 import { useOperationsPedidos } from "@/hooks/useOperationsPedidos";
@@ -13,6 +13,7 @@ import { getOperationsPedidosPage, type OperationsPedidosQuery } from "@/service
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "@/lib/axiosAuth";
+import { expiredLotDispatchMessage } from "@/lib/lots";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { ScanLine } from "lucide-react";
@@ -48,6 +49,7 @@ import CancellationModal, { CancellationReason } from "@/components/modals/Cance
 import CourierAssignmentModal from "@/components/modals/CourierAssignmentModal";
 import ReassignSellerModal from "@/components/modals/ReassignSellerModal";
 import { RescheduleDialog } from "@/components/ventas/RescheduleDialog";
+import { CourierReturnDialog } from "@/components/orders/CourierReturnDialog";
 
 import { PreparadosTab } from "./PreparadosTab";
 import { TransitTab } from "./TransitTab";
@@ -218,6 +220,7 @@ export function PedidosContent() {
   }, [guideReturn]);
 
   const [lifecycle, setLifecycle] = useState<{ orderId: string; action: SaleUnitLifecycleAction } | null>(null);
+  const [courierReturnOrder, setCourierReturnOrder] = useState<{ id: string; orderNumber: string } | null>(null);
 
   const patchOrderWithAssignment = useCallback(async (url: string, payload: Record<string, unknown>) => {
     const orderId = url.split("/").pop() ?? "";
@@ -266,7 +269,8 @@ export function PedidosContent() {
         toast.success(`Estado actualizado a ${getStatusLabel(newStatus)}`);
         fetchOrders();
       } catch (error: any) {
-        toast.error(error?.response?.data?.message || error?.message || "No se pudo actualizar el estado");
+        // FEAT-24 H5-L: el 409 de lotes vencidos o bloqueados al despachar se explica con qué hacer.
+        toast.error(expiredLotDispatchMessage(error) || error?.response?.data?.message || error?.message || "No se pudo actualizar el estado");
         if (sale && canPrepareDeferredManualOrder(sale)) fetchOrders();
       }
     },
@@ -806,48 +810,15 @@ export function PedidosContent() {
     });
   }, [fetchOrders]);
 
-  // No hay endpoint de inventario/devoluciones real (ver informe de brechas
-  // de backend) — "reingresar a stock" y "marcar merma" se registran como
-  // anulación con motivo distinguible, honestamente sin tocar stock.
-  const handleReturnToStock = useCallback(
+  // FEAT-24 H2-F: «Devuelto por courier» reemplaza a «Reingresar a stock» y «Marcar merma». El pedido se
+  // anula y la devolución queda por recibir en Inventario › Recepciones (allí se decide stock o merma).
+  // Las ventas con IMEI/series siguen por su flujo de retorno físico de unidades.
+  const handleCourierReturn = useCallback(
     async (sale: Sale) => {
       if (await routeSaleLifecycle(sale, "ANULADO", (action) => setLifecycle({ orderId: sale.id, action }))) return;
-      try {
-        await patchOrderWithAssignment(`${API_VENTAS}/order-header/${sale.id}`, {
-          status: "ANULADO",
-          cancellationReason: "DELIVERY_ISSUE",
-          notes: "Devolución del courier — mercadería reingresada a stock",
-          ...getUserInfo(),
-        });
-        toast.success(`Pedido ${sale.orderNumber} reingresado a stock`);
-        fetchOrders();
-      } catch (error: any) {
-        toast.error(error?.response?.data?.message || "No se pudo registrar el reingreso");
-      }
+      setCourierReturnOrder({ id: sale.id, orderNumber: sale.orderNumber });
     },
-    [getUserInfo, fetchOrders, patchOrderWithAssignment, routeSaleLifecycle],
-  );
-
-  const handleMarkAsLoss = useCallback(
-    async (sale: Sale) => {
-      if (requiresAuthenticatedSaleMutation(sale)) {
-        toast.error("La merma de IMEI/series se registra desde Inventario y requiere unidades disponibles. Si fueron vendidas, confirma primero su devolución completa.", { action: { label: "Abrir inventario", onClick: () => router.push("/inventario") } });
-        return;
-      }
-      try {
-        await patchOrderWithAssignment(`${API_VENTAS}/order-header/${sale.id}`, {
-          status: "ANULADO",
-          cancellationReason: "OTHER",
-          notes: "Devolución del courier — mercadería registrada como merma",
-          ...getUserInfo(),
-        });
-        toast.success(`Pedido ${sale.orderNumber} registrado como merma`);
-        fetchOrders();
-      } catch (error: any) {
-        toast.error(error?.response?.data?.message || "No se pudo registrar la merma");
-      }
-    },
-    [getUserInfo, fetchOrders, patchOrderWithAssignment, router],
+    [routeSaleLifecycle],
   );
 
   const salesChannels = auth?.company?.sales_channels?.length
@@ -907,8 +878,7 @@ export function PedidosContent() {
     onEditDeliveryType: handleEditDeliveryType,
     onSyncCourier: handleSyncCourier,
     loadSalesByIds,
-    onReturnToStock: handleReturnToStock,
-    onMarkAsLoss: handleMarkAsLoss,
+    onCourierReturn: handleCourierReturn,
     companyId: auth?.company?.id,
   };
 
@@ -972,6 +942,7 @@ export function PedidosContent() {
         {/* ------------------------------ Modales ------------------------------ */}
 
         {lifecycle && <SaleUnitLifecycleModal open {...lifecycle} onClose={() => setLifecycle(null)} onUpdated={() => { void fetchOrders(); }} />}
+        <CourierReturnDialog order={courierReturnOrder} onClose={() => setCourierReturnOrder(null)} onDone={() => { void fetchOrders(); }} />
         {paymentSale && (
           <PaymentVerificationModal
             open={!!paymentSale}

@@ -3,7 +3,7 @@ import Header from "@/components/header/Header";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
-import { Building2, Store, User, Blocks, CreditCard } from "lucide-react";
+import { Building2, Store, User, Blocks, CreditCard, Warehouse } from "lucide-react";
 import Link from "next/link";
 import { HelpHeaderLink, HelpSection } from "./_components/HelpSection";
 
@@ -36,6 +36,15 @@ export default function ConfiguracionPage() {
             href: "/configuracion/plan",
             color: "text-purple-600",
             bgColor: "bg-purple-50",
+          },
+          // FEAT-24 H6: qué almacenes ve y opera cada usuario.
+          {
+            title: "Usuarios y almacenes",
+            description: "Qué almacenes ve cada usuario y en cuáles mueve stock",
+            icon: Warehouse,
+            href: "/configuracion/usuarios-almacenes",
+            color: "text-amber-600",
+            bgColor: "bg-amber-50",
           },
         ]
       : []),

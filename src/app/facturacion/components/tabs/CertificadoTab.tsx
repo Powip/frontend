@@ -1,12 +1,16 @@
 "use client";
 
-import { AlertTriangle, RefreshCw, ShieldCheck, ShieldX, Trash2 } from "lucide-react";
+import { AlertTriangle, KeyRound, RefreshCw, ShieldCheck, ShieldX, Trash2 } from "lucide-react";
 import { useState } from "react";
 import CertificadoReplaceModal from "@/app/facturacion/components/modals/CertificadoReplaceModal";
 import CertificadoUploadModal from "@/app/facturacion/components/modals/CertificadoUploadModal";
 import { DeleteSunatProfileDialog } from "@/app/facturacion/components/modals/DeleteSunatProfileDialog";
+import GreCredentialsModal from "@/app/facturacion/components/modals/GreCredentialsModal";
+import { GreModeBanner } from "@/components/gre/GreModeBanner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useGreSettings } from "@/features/sunat/despatch-advice/hooks/use-despatch-advices";
+import type { GreProfileSettings } from "@/features/sunat/despatch-advice/types/despatch-advice.types";
 import { useSetDefaultSunatProfile } from "@/features/sunat/sunat-profile/hooks/use-set-default-sunat-profie";
 import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
 import type { SunatProfile } from "@/features/sunat/sunat-profile/models/sunat-profile";
@@ -17,8 +21,11 @@ export function CertificadoTab() {
   const [modalOpen, setModalOpen] = useState(false);
   const [profileToReplace, setProfileToReplace] = useState<SunatProfile | null>(null);
   const [profileToDelete, setProfileToDelete] = useState<SunatProfile | null>(null);
+  const [greProfile, setGreProfile] = useState<GreProfileSettings | null>(null);
 
   const { data: profiles = [], isLoading, isError } = useSunatProfiles();
+  // FEAT-24 H12 — credenciales GRE (guía de remisión) por RUC.
+  const greSettings = useGreSettings(profiles.length > 0);
 
   const setDefaultProfile = useSetDefaultSunatProfile();
 
@@ -82,10 +89,13 @@ export function CertificadoTab() {
         </Card>
       )}
 
+      {!isLoading && !isError && profiles.length > 0 ? <GreModeBanner settings={greSettings.data} /> : null}
+
       {!isLoading &&
         !isError &&
         sortedProfiles.map((profile) => {
           const { daysToExpire, status } = getCertificateStatus(profile);
+          const gre = greSettings.data?.profiles.find((item) => item.sunatProfileId === profile.id) ?? null;
 
           const Icon = status === "ok" ? ShieldCheck : status === "warn" ? AlertTriangle : ShieldX;
 
@@ -160,7 +170,38 @@ export function CertificadoTab() {
                   </div>
                 </div>
 
-                <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+                <div
+                  className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t pt-4"
+                  data-testid={`gre-credentials-${profile.ruc}`}
+                >
+                  <div className="flex items-start gap-2">
+                    <KeyRound className="mt-0.5 h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <div>
+                      <div className="text-sm font-semibold">
+                        Guía de remisión (GRE):{" "}
+                        {greSettings.isPending ? (
+                          <span className="font-normal text-muted-foreground">cargando…</span>
+                        ) : greSettings.isError ? (
+                          <span className="font-normal text-destructive">no se pudo consultar</span>
+                        ) : gre?.configured ? (
+                          <span className="text-green-700 dark:text-green-400">configurada</span>
+                        ) : (
+                          <span className="text-amber-700 dark:text-amber-400">falta configurar</span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {gre?.configured
+                          ? `client_id ${gre.clientId ?? "—"} · serie ${gre.series ?? "T001"} · próximo número ${gre.nextCorrelative ?? 1}`
+                          : "Carga el client_id y el client_secret de SOL para emitir guías de remisión con este RUC."}
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="outline" disabled={!gre} onClick={() => setGreProfile(gre)}>
+                    {gre?.configured ? "Actualizar credenciales GRE" : "Configurar credenciales GRE"}
+                  </Button>
+                </div>
+
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t pt-4">
                   <div className="flex flex-wrap gap-2">
                     <Button variant="outline" onClick={() => setProfileToReplace(profile)}>
                       <RefreshCw className="mr-2 h-4 w-4" />
@@ -209,6 +250,8 @@ export function CertificadoTab() {
         profile={profileToReplace}
         onClose={() => setProfileToReplace(null)}
       />
+
+      <GreCredentialsModal profile={greProfile} onClose={() => setGreProfile(null)} />
 
       <DeleteSunatProfileDialog
         profile={profileToDelete}

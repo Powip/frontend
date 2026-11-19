@@ -2,8 +2,9 @@
  * Dominio de Facturación SUNAT (comprobantes, guías de remisión, notas de
  * crédito/débito, certificado digital y series).
  *
- * Los catálogos de códigos (ERRORES_SUNAT, ERRORES_GRE, MOTIVOS_TRASLADO,
- * MODALIDAD_TRANSPORTE) son códigos oficiales SUNAT y no dependen del backend.
+ * Los catálogos de códigos (ERRORES_SUNAT, ERRORES_GRE) son códigos oficiales
+ * SUNAT y no dependen del backend. Los de la guía de remisión real (motivos,
+ * modalidades, estados) están en features/sunat/despatch-advice (FEAT-24 H12).
  */
 
 export type EstadoComprobante =
@@ -107,73 +108,6 @@ export interface ItemComprobante {
   desc: string;
   qty: number;
   price: number;
-}
-
-export interface MotivoTraslado {
-  code: string;
-  label: string;
-}
-
-export const MOTIVOS_TRASLADO: MotivoTraslado[] = [
-  { code: "01", label: "Venta" },
-  { code: "14", label: "Venta sujeta a confirmación del comprador (recomendado para COD)" },
-  { code: "04", label: "Traslado entre establecimientos de la misma empresa" },
-  { code: "02", label: "Compra" },
-  { code: "08", label: "Importación" },
-  { code: "09", label: "Exportación" },
-  { code: "18", label: "Traslado por emisor itinerante de comprobantes de pago" },
-  { code: "19", label: "Traslado a zona primaria" },
-  { code: "13", label: "Otros" },
-];
-
-export interface ModalidadTransporte {
-  code: "01" | "02";
-  label: string;
-}
-
-export const MODALIDAD_TRANSPORTE: ModalidadTransporte[] = [
-  { code: "01", label: "Transporte público (courier / transportista tercero)" },
-  { code: "02", label: "Transporte privado (vehículo propio del negocio)" },
-];
-
-export type EstadoGuia = "GENERADA" | "ENVIADA_SUNAT" | "ACEPTADA" | "RECHAZADA" | "ANULADA";
-
-export const ESTADOS_GUIA: Record<EstadoGuia, { label: string; badgeClassName: string }> = {
-  GENERADA: { label: "Generada", badgeClassName: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" },
-  ENVIADA_SUNAT: { label: "Enviada a SUNAT", badgeClassName: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" },
-  ACEPTADA: { label: "Aceptada", badgeClassName: "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300" },
-  RECHAZADA: { label: "Rechazada", badgeClassName: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300" },
-  ANULADA: { label: "Anulada", badgeClassName: "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300" },
-};
-
-export interface Almacen {
-  id: string;
-  nombre: string;
-  tienda: string;
-  direccion: string;
-}
-
-export interface Guia {
-  id: number;
-  fecha: string;
-  pedido: string;
-  almacenId: string;
-  destino: string;
-  cliente: string;
-  motivo: string;
-  modalidad: "01" | "02";
-  transportista: string;
-  transportistaRuc?: string;
-  placa?: string;
-  licencia?: string;
-  docRelacionado: string | null;
-  fullNumber?: string;
-  estado: EstadoGuia;
-  bultos: number | string;
-  peso: number | string;
-  cdrCode?: string;
-  cdrDesc?: string;
-  motivoAnulacion?: string;
 }
 
 export interface NotaItem {

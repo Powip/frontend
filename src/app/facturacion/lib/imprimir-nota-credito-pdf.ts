@@ -1,9 +1,9 @@
 import { toast } from "sonner";
-import { escapeHtml, type GuiaIssuer, initials } from "@/app/facturacion/lib/imprimir-guia-pdf";
+import { escapeHtml, initials, type PrintIssuer } from "@/app/facturacion/lib/imprimir-html";
 import { calcularMontosNota, formatMotivoNota } from "@/app/facturacion/lib/motivos-nota-credito";
 import type { Nota } from "@/types/facturacion";
 
-export type NotaIssuer = GuiaIssuer;
+export type NotaIssuer = PrintIssuer;
 
 const TIPO_ORIGINAL_LABEL: Record<"01" | "03", string> = {
   "01": "Factura electrónica (01)",

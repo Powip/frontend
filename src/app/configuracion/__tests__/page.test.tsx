@@ -23,4 +23,14 @@ describe("Configuración (hub)", () => {
     render(<ConfiguracionPage />);
     expect(screen.queryByText("Plan y facturación")).not.toBeInTheDocument();
   });
+
+  it("solo el administrador ve «Usuarios y almacenes» (FEAT-24 H6)", () => {
+    asRole("ADMINISTRADOR");
+    const { unmount } = render(<ConfiguracionPage />);
+    expect(screen.getByText("Usuarios y almacenes").closest("a")).toHaveAttribute("href", "/configuracion/usuarios-almacenes");
+    unmount();
+    asRole("OPERACIONES");
+    render(<ConfiguracionPage />);
+    expect(screen.queryByText("Usuarios y almacenes")).not.toBeInTheDocument();
+  });
 });

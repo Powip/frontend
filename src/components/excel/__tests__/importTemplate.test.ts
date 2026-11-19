@@ -308,7 +308,11 @@ describe("plantilla v2 generada (ExcelJS real)", () => {
     const { headers, map } = parseWorkbook(await roundTrip(buildTemplateWorkbook({ isBase: true, inventoryId: "", validCategories })));
     expect(headers.some(isLegacyHeader)).toBe(false);
     expect(Object.keys(map).sort()).toEqual(
-      ["categoryName", "color", "companySku", "description", "min_stock", "name", "otherAttrs", "priceBase", "priceVta", "quantity", "size", "subcategoryName"].sort(),
+      [
+        "categoryName", "color", "companySku", "description", "min_stock", "name", "otherAttrs", "priceBase", "priceVta", "quantity", "size", "subcategoryName",
+        // FEAT-24 H4 (plantilla v3)
+        "brand", "variantSku", "barcode", "purchaseUnit", "purchaseFactor",
+      ].sort(),
     );
   });
 
@@ -486,5 +490,64 @@ describe("plantilla anterior", () => {
     expect(headers.some(isLegacyHeader)).toBe(true);
     expect(LEGACY_TEMPLATE_MESSAGE).toMatch(/plantilla nueva/);
     expect(LEGACY_TEMPLATE_MESSAGE).toMatch(/No se cargó ningún producto/);
+  });
+});
+
+/* ───────────────────── FEAT-24 H4-D · plantilla v3 ───────────────────── */
+
+describe("plantilla v3: Marca, SKU de variante, Código de barras, Unidad de compra y Factor", () => {
+  it("las columnas nuevas van al final y «SKU Empresa» pasa a llamarse «SKU base»", async () => {
+    const wb = await roundTrip(buildTemplateWorkbook({ isBase: true, inventoryId: "" }));
+    const header = wb.getWorksheet("Productos")!.getRow(1);
+    expect(header.getCell(5).value).toBe("SKU base");
+    expect([13, 14, 15, 16, 17].map((c) => header.getCell(c).value)).toEqual(["Marca", "SKU de variante", "Código de barras", "Unidad de compra", "Factor"]);
+    expect(TEMPLATE_VERSION).toBe("3");
+    const text = wb.getWorksheet("Instrucciones")!.getSheetValues().flat().join("\n");
+    expect(text).toMatch(/SKU de variante/);
+    expect(text).toMatch(/vista previa del servidor/);
+  });
+
+  it("el encabezado viejo «SKU Empresa» se sigue leyendo como SKU base", () => {
+    const wb = new ExcelJS.Workbook();
+    const sheet = wb.addWorksheet("Productos");
+    sheet.addRow(["Nombre *", "SKU Empresa", "Código de barras", "Factor"]);
+    expect(buildColumnIndexMap(sheet.getRow(1))).toEqual({ name: 1, companySku: 2, barcode: 3, purchaseFactor: 4 });
+  });
+
+  it("lee las columnas nuevas y limpia el código de barras", () => {
+    const row = rowOf({ brand: " Nike ", variantSku: "POL-S", barcode: "775 123", purchaseUnit: "Caja", purchaseFactor: num(12) });
+    expect(row).toMatchObject({ brand: "Nike", variantSku: "POL-S", barcode: "775123", purchaseUnit: "Caja", purchaseFactor: 12, rowProblems: [] });
+  });
+
+  it("sin las columnas nuevas (plantilla v2) la fila no cambia", () => {
+    const row = rowOf();
+    expect(row).toMatchObject({ brand: "", variantSku: "", barcode: "", purchaseUnit: "", purchaseFactor: null, rowProblems: [] });
+  });
+
+  it.each([
+    [num(0), /entero entre 1 y 10000/],
+    [num(2.5), /entero entre 1 y 10000/],
+    [num(10001), /entero entre 1 y 10000/],
+    [{ kind: "invalid", text: "doce" } as CellNum, /El factor no es un número: «doce»/],
+  ])("rechaza el factor %j", (factor, message) => {
+    expect(rowOf({ purchaseFactor: factor }).rowProblems.join(" ")).toMatch(message);
+  });
+
+  it("rechaza textos más largos que lo que guarda el servidor", () => {
+    const problems = rowOf({ variantSku: "X".repeat(61), barcode: "1".repeat(65) }).rowProblems.join(" ");
+    expect(problems).toMatch(/SKU de variante tiene más de 60/);
+    expect(problems).toMatch(/código de barras tiene más de 64/);
+  });
+
+  it("el mismo SKU de variante en dos filas es error en la segunda (aunque sean productos distintos)", () => {
+    const rows = [
+      rowOf({ name: "Polo", size: "S", variantSku: "POL-S" }),
+      rowOf({ name: "Polo", size: "M", variantSku: "pol-s" }),
+      rowOf({ name: "Gorra", variantSku: "GOR-1" }),
+    ];
+    const result = validateRows(rows);
+    expect(result[0].error).toBeUndefined();
+    expect(result[1].error).toMatch(/El SKU de variante «pol-s» ya está en la fila 2/);
+    expect(result[2].error).toBeUndefined();
   });
 });

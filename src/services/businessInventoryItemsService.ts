@@ -14,9 +14,13 @@ export interface BusinessInventoryItem extends InventoryItemForSale {
   mergedInto?: string | null;
 }
 
-/** Read every backend page before paginating the union. Never merge physical rows by SKU or variant. */
-export async function fetchBusinessInventoryItems({ inventories, companyId, accessToken, signal, includeInactive = false }: {
-  inventories: BusinessInventory[]; companyId: string; accessToken: string; signal?: AbortSignal; includeInactive?: boolean;
+/**
+ * Read every backend page before paginating the union. Never merge physical rows by SKU or variant.
+ * FEAT-24 RMV: `excludeRemoved` oculta lo que se quitó de cada almacén. Es opcional a propósito: solo lo pide
+ * /inventario; el catálogo y la ficha siguen viendo esas filas.
+ */
+export async function fetchBusinessInventoryItems({ inventories, companyId, accessToken, signal, includeInactive = false, excludeRemoved = false }: {
+  inventories: BusinessInventory[]; companyId: string; accessToken: string; signal?: AbortSignal; includeInactive?: boolean; excludeRemoved?: boolean;
 }): Promise<BusinessInventoryItem[]> {
   if (!companyId || !accessToken) throw new Error("La sesión no permite consultar el inventario.");
   const uniqueWarehouses = [...new Map(inventories.map((inv) => [inv.id, inv])).values()];
@@ -26,7 +30,7 @@ export async function fetchBusinessInventoryItems({ inventories, companyId, acce
     let totalPages = 1;
     do {
       const { data } = await axiosAuth.get(`${process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics}/inventory-item/search`, {
-        params: { inventoryId: inv.id, companyId, page, limit: 100, ...(includeInactive ? { includeInactive: true } : {}) },
+        params: { inventoryId: inv.id, companyId, page, limit: 100, ...(includeInactive ? { includeInactive: true } : {}), ...(excludeRemoved ? { excludeRemoved: true } : {}) },
         headers: { Authorization: `Bearer ${accessToken}` }, signal,
       });
       totalPages = Number(data?.meta?.totalPages);

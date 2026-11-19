@@ -37,6 +37,9 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/dashboard": [],
   "/productos": [],
   "/inventario": [],
+  // Modo almacén (FEAT-24 H6): entra cualquiera con sesión, como Inventario. Cada pantalla pide lo suyo:
+  // picking con los permisos de Operaciones y recibir con el rol que edita inventario o el rol Almacén.
+  "/almacen": [],
   // Compras: dan de alta stock con costo, así que van con la edición de inventario (Administrador y
   // Operaciones, los únicos roles que las registran en prod). El inventario en sí se sigue viendo.
   "/compras": ["__INVENTORY_ROLE__"],
@@ -162,8 +165,28 @@ export const canEditInventory = (user?: RouteAccessUser): boolean =>
  */
 export const canSeeProductCosts = (user?: RouteAccessUser): boolean => canEditInventory(user);
 
+/**
+ * FEAT-24 H8-D5 — rol COURIER: el personal del courier, con su almacén asignado. Su portal es /almacen: ve el
+ * stock, cuenta, recibe traslados y ve la conciliación de su almacén. Todo lo demás se le cierra (menú y
+ * rutas): el backend igual valida, pero las rutas viejas siguen la regla de H6 y le dejarían ver todo.
+ */
+export const COURIER_ROLE = "COURIER";
+export const COURIER_HOME = "/almacen";
+export const isCourierRole = (role?: string | null): boolean => role?.trim().toUpperCase() === COURIER_ROLE;
+
+const underRoute = (pathname: string, route: string) => pathname === route || pathname.startsWith(`${route}/`);
+// Dentro del modo almacén, lo que no es suyo: consultar el catálogo entero, picking, compras y devoluciones.
+const COURIER_BLOCKED_ROUTES = ["/almacen/consultar", "/almacen/picking", "/almacen/recibir/compras", "/almacen/recibir/devoluciones"];
+// Avisos de la cuenta (sin plan, suspendida): el gate de suscripción también puede llevarlo ahí.
+const COURIER_ROUTES = [COURIER_HOME, "/sin-plan", "/cuenta-suspendida"];
+
+/** ¿El courier puede abrir esta ruta? Solo su portal (/almacen, sin lo que no le toca) y los avisos de la cuenta. */
+export const isCourierRoute = (pathname: string): boolean =>
+  COURIER_ROUTES.some((route) => underRoute(pathname, route)) && !COURIER_BLOCKED_ROUTES.some((route) => underRoute(pathname, route));
+
 export const hasRouteAccess = (pathname: string, user: RouteAccessUser | undefined): boolean => {
   if (isSuperadmin(user?.email)) return true;
+  if (isCourierRole(user?.role)) return isCourierRoute(pathname);
   const requiredPermissions = getRoutePermissions(pathname);
   if (requiredPermissions.includes("__ADMIN_ROLE__")) return hasAdminAccess(user?.role);
   if (requiredPermissions.includes("__INVENTORY_ROLE__")) return canEditInventory(user);
