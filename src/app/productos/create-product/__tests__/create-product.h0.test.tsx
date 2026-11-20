@@ -6,6 +6,8 @@ import { toast } from "sonner";
 jest.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ auth: { company: { id: "company-a" }, user: { id: "user-a", role: "ADMINISTRADOR" }, accessToken: "token" } }),
 }));
+// FEAT-24 H4: la categoría propia sale de react-query; acá no hace falta.
+jest.mock("@/hooks/useCatalogCategories", () => ({ useCatalogCategories: () => ({ tree: [], isLoading: false, error: null }) }));
 jest.mock("@/hooks/useBusinessInventories", () => {
   const inventories = [{ id: "warehouse", name: "Central", storeId: "store" }];
   return { useBusinessInventories: () => ({ inventories }) };
@@ -130,5 +132,23 @@ describe("Ficha del producto (FEAT-24 H0)", () => {
     const productPatch = patch.mock.calls.find(([url]) => String(url).includes("/products/p-1"));
     expect(productPatch?.[1]).toMatchObject({ brandId: "brand-1" });
     expect(patch.mock.calls.some(([url]) => String(url).includes("/product-variant/v-2"))).toBe(false);
+  });
+
+  it("en edición muestra el código de fábrica y el EAN de POWIP de cada variante guardada (FEAT-24 H2-F)", async () => {
+    mockCatalog([
+      { id: "v-1", sku: "POW-ROJO", barcode: "7750000000001", powipEan: "2000000000015", attributeValues: { Color: "Rojo" }, priceBase: 10, priceVta: 20, isActive: true, mergedInto: null, linkedSources: [] },
+      { id: "v-2", sku: "POW-AZUL", barcode: null, powipEan: "2000000000022", attributeValues: { Color: "Azul" }, priceBase: 10, priceVta: 20, isActive: true, mergedInto: null, linkedSources: [] },
+    ]);
+    post.mockImplementation(async (url) => ({
+      data: String(url).includes("multiple/by-ids")
+        ? [{ id: "v-1", product: { id: "p-1", companyId: "company-a", trackingMode: "NONE", name: "Polo", inventory_id: "warehouse" } }]
+        : [{ subcategory: { id: "subcategory", category: { id: "category" } }, brand: { id: "brand-1" } }],
+    }));
+    render(<ProductCreateForm editVariantId="v-1" />);
+    expect(await screen.findByText("2000000000015")).toBeInTheDocument();
+    expect(screen.getByText("7750000000001")).toBeInTheDocument();
+    expect(screen.getByText("2000000000022")).toBeInTheDocument();
+    expect(screen.getByText("POW-ROJO")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Copiar EAN de POWIP" })).toHaveLength(2);
   });
 });

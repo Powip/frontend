@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import axios from 'axios';
 import { toast } from 'sonner';
-import { useAuth } from '@/contexts/AuthContext';
+import axiosAuth from '@/lib/axiosAuth';
+import { parseShopifySyncError } from '@/lib/shopifyStock';
 import {
   Dialog,
   DialogContent,
@@ -19,7 +19,13 @@ interface ShopifySyncConfigModalProps {
   onClose: () => void;
   shopUrl: string;
   companyId: string;
+  /**
+   * Tienda de Powip ya vinculada a la tienda de Shopify ("" si no hay). FEAT-24 SEC (sec6b): antes iba siempre la
+   * primera tienda de la empresa; ms-integrations usa la vinculada y, sin vínculo, exige una tienda de la empresa.
+   */
   storeId: string;
+  /** Tiendas de la empresa para elegir cuando no hay vínculo (con una sola, queda elegida). */
+  storeOptions?: { id: string; name: string }[];
 }
 
 export function ShopifySyncConfigModal({
@@ -28,8 +34,13 @@ export function ShopifySyncConfigModal({
   shopUrl,
   companyId,
   storeId,
+  storeOptions = [],
 }: ShopifySyncConfigModalProps) {
-  const { auth } = useAuth();
+  const needsStoreChoice = !storeId;
+  const onlyStoreId = storeOptions.length === 1 ? storeOptions[0].id : '';
+  const [chosenStoreId, setChosenStoreId] = useState('');
+  const selectedStoreId = chosenStoreId || onlyStoreId;
+  const targetStoreId = storeId || selectedStoreId;
   const [checkoutsEnabled, setCheckoutsEnabled] = useState(false);
   const [checkoutsStartDate, setCheckoutsStartDate] = useState('2025-01-01');
   const [productStrategy, setProductStrategy] = useState<'all' | 'from_orders'>('all');
@@ -37,13 +48,19 @@ export function ShopifySyncConfigModal({
   const [success, setSuccess] = useState(false);
 
   const handleConfirm = async () => {
+    if (!targetStoreId) {
+      toast.error('Elige la tienda de Powip donde entran las ventas.');
+      return;
+    }
     setLoading(true);
     try {
-      await axios.post(
+      // FEAT-24 SEC: con la sesión (admin de la empresa de la tienda). ms-integrations toma la empresa del token;
+      // `companyId` se sigue mandando para el backend anterior, que lo exige.
+      await axiosAuth.post(
         `${process.env.NEXT_PUBLIC_API_INTEGRATIONS}/shopify/confirm-sync/${shopUrl}`,
         {
           companyId,
-          storeId,
+          storeId: targetStoreId,
           checkouts: {
             enabled: checkoutsEnabled,
             startDate: checkoutsEnabled
@@ -52,14 +69,13 @@ export function ShopifySyncConfigModal({
           },
           products: { strategy: productStrategy },
         },
-        { headers: { Authorization: `Bearer ${auth?.accessToken}` } },
       );
       setSuccess(true);
       toast.success('Sincronizacion iniciada correctamente');
     } catch (err: unknown) {
-      const message =
+      const fallback =
         err instanceof Error ? err.message : 'Error al iniciar sincronizacion';
-      toast.error(message);
+      toast.error(parseShopifySyncError(err, fallback));
     } finally {
       setLoading(false);
     }
@@ -93,6 +109,34 @@ export function ShopifySyncConfigModal({
           </div>
         ) : (
           <div className="space-y-5 py-2">
+            {/* Tienda de Powip: solo si la tienda de Shopify todavía no está vinculada a una */}
+            {needsStoreChoice && (
+              <div>
+                <label htmlFor="shopify-sync-store" className="text-sm font-medium text-gray-700 mb-1 block">
+                  Tienda de Powip
+                </label>
+                {storeOptions.length === 0 ? (
+                  <p className="text-sm text-red-600">
+                    Tu empresa no tiene tiendas en Powip. Crea una antes de sincronizar.
+                  </p>
+                ) : (
+                  <select
+                    id="shopify-sync-store"
+                    value={selectedStoreId}
+                    onChange={(e) => setChosenStoreId(e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  >
+                    <option value="">Elige una tienda</option>
+                    {storeOptions.map((store) => (
+                      <option key={store.id} value={store.id}>
+                        {store.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+
             {/* Ventas */}
             <div>
               <p className="text-sm font-medium text-gray-700 mb-1">Ventas</p>
@@ -181,7 +225,7 @@ export function ShopifySyncConfigModal({
               </Button>
               <Button
                 onClick={handleConfirm}
-                disabled={loading}
+                disabled={loading || !targetStoreId}
                 className="bg-teal-600 hover:bg-teal-700 text-white min-w-[160px]"
               >
                 {loading ? (

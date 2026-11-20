@@ -18,6 +18,7 @@ import {
 import { OrderHeader, SubEstadoCc, TipoGestionCC } from "@/interfaces/IOrder";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
+import { StockStateBadge } from "@/components/orders/StockStateBadge";
 import SendToEvaButton from "@/components/eva/SendToEvaButton";
 import { guideOrderBalance } from "@/utils/guideOrderBalance";
 import { isEvaCourier } from "@/utils/courierNormalizer";
@@ -183,6 +184,7 @@ export function CcPedidosTable({
                 <TableCell className="font-mono text-xs font-semibold">
                   {order.orderNumber}
                     {order.commercialStage === "LEAD" && <span className="block text-xs">Lead · compra pendiente</span>}
+                    <StockStateBadge state={order.stockState} className="mt-1 flex w-fit font-sans" />
                 </TableCell>
 
                 {showExternalCol && <ExternalOrderNumberCell value={order.externalOrderNumber} />}
@@ -262,7 +264,14 @@ export function CcPedidosTable({
 
                 {/* Sub-estado chip */}
                 <TableCell>
-                  {subStyle ? (
+                  {order.ccEtiqueta === "compra_confirmada_pendiente_despacho" ? (
+                    <span
+                      className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200"
+                      title="La compra ya está confirmada en Ventas. Falta confirmar el despacho desde Call Center."
+                    >
+                      Compra confirmada · falta despacho
+                    </span>
+                  ) : subStyle ? (
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${subStyle.cls}`}>
                       {subStyle.label}
                     </span>

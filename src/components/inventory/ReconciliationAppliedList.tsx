@@ -18,10 +18,12 @@ import { ReconciliationSourceChip } from "./ReconciliationSourceChip";
 
 // FEAT-17 Anexo D — el backend no distingue si una provisional se aceptó
 // como nueva o se vinculó a una existente: se muestra por tipo de tarea.
+// FEAT-24 H11: las únicas `manual` confirmadas son las uniones manuales (la
+// cola de ventas sin producto solo se rechaza); el detalle está en Historial.
 const APPLIED_TYPE_LABELS: Record<ReconciliationTaskType, string> = {
   duplicate_cluster: "Unificación",
   provisional: "Provisional resuelta",
-  manual: "Línea manual",
+  manual: "Unión manual",
 };
 
 function formatAppliedAt(value: string | null): string {

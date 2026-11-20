@@ -22,8 +22,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import { 
-  getShalomLabelPdfUrl, 
-  getShalomTicketPdfUrl,
   quoteShalom,
   trackShalomGuide,
   updateGuideQuote

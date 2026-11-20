@@ -52,6 +52,14 @@ export interface VariantSearchResult {
   sku: string;
   company_sku: string | null;
   attribute_values: Record<string, string>;
+  // FEAT-24 H11 — datos para la vista previa de la unión manual (foto de la
+  // variante o del producto, tipo, canal, IMEI/serie). Opcionales: un backend
+  // anterior no los manda y la vista previa muestra «—».
+  image_url?: string | null;
+  product_type?: string | null;
+  external_source?: string | null;
+  tracking_mode?: string | null;
+  is_active?: boolean;
 }
 
 export interface ReconciliationTaskItem {

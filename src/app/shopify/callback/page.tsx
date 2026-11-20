@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Loader2, CheckCircle2, XCircle, Settings2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { ShopifySyncConfigModal } from "../components/shopify-sync-config-modal";
+import { isConnectedCallback } from "@/lib/shopifyCallback";
+import { getShopifyStatus } from "@/services/shopifyService";
 
 function CallbackContent() {
   const searchParams = useSearchParams();
@@ -18,10 +20,12 @@ function CallbackContent() {
   const [message, setMessage] = useState("Procesando conexión con Shopify...");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [currentShop, setCurrentShop] = useState("");
+  // FEAT-24 SEC (sec6b): la tienda de Powip vinculada a esta tienda de Shopify (`null` = todavía no se sabe).
+  const [linkedStoreId, setLinkedStoreId] = useState<string | null>(null);
+  const companyId = auth?.company?.id;
 
   useEffect(() => {
     const shop = searchParams.get("shop");
-    const token = searchParams.get("token");
     const error = searchParams.get("error");
 
     if (error) {
@@ -30,7 +34,7 @@ function CallbackContent() {
       return;
     }
 
-    if (shop && token) {
+    if (shop && isConnectedCallback(searchParams)) {
       handleSuccess(shop);
     } else {
       setStatus("error");
@@ -42,8 +46,26 @@ function CallbackContent() {
     setStatus("success");
     setMessage(`¡Conexión exitosa con ${shop}!`);
     setCurrentShop(shop);
-    setIsModalOpen(true);
   };
+
+  // Antes se mandaba siempre la primera tienda de la empresa. Ahora va la vinculada; sin vínculo (o si no se puede
+  // consultar), el modal pide elegir una tienda de la empresa (ms-integrations igual manda la vinculada si la hay).
+  useEffect(() => {
+    if (!currentShop || !companyId) return;
+    let cancelled = false;
+    const shop = currentShop.toLowerCase();
+    getShopifyStatus(companyId)
+      .then((shops) => shops.find((s) => s.shop_url?.toLowerCase() === shop)?.store_id ?? "")
+      .catch(() => "")
+      .then((storeId) => {
+        if (cancelled) return;
+        setLinkedStoreId(storeId);
+        setIsModalOpen(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentShop, companyId]);
 
   return (
     <div className="flex items-center justify-center min-vh-100 p-10 mt-20">
@@ -71,6 +93,7 @@ function CallbackContent() {
               </p>
               <Button
                 onClick={() => setIsModalOpen(true)}
+                disabled={linkedStoreId === null}
                 className="w-full bg-teal-600 hover:bg-teal-700 text-white shadow-md transition-all active:scale-95"
               >
                 <Settings2 className="mr-2 h-4 w-4" />
@@ -104,8 +127,9 @@ function CallbackContent() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         shopUrl={currentShop}
-        companyId={auth?.company?.id ?? ""}
-        storeId={auth?.company?.stores?.[0]?.id ?? ""}
+        companyId={companyId ?? ""}
+        storeId={linkedStoreId ?? ""}
+        storeOptions={auth?.company?.stores ?? []}
       />
     </div>
   );

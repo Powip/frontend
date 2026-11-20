@@ -101,3 +101,16 @@ it('un costo con más de 2 decimales deshabilita guardar', async () => {
   await userEvent.type(await screen.findByLabelText('Costo MIRAFLORES'), '55');
   expect(screen.getByRole('button', { name: /guardar tarifas/i })).toBeDisabled();
 });
+
+// FEAT-24 SEC (sec6b): guardar la tarifa es solo de un administrador (ms-integrations da 403 al resto).
+it('sin permiso de edición: la tarifa se ve, pero no se puede cambiar ni guardar', async () => {
+  render(<EvaShippingRatesSection companyId="company-1" token="tk" canEdit={false} />);
+
+  expect(await screen.findByLabelText(/costo por defecto/i)).toBeDisabled();
+  expect(screen.getByLabelText('Costo MIRAFLORES')).toBeDisabled();
+  expect(screen.queryByRole('button', { name: /guardar tarifas/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /agregar distrito/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /quitar miraflores/i })).not.toBeInTheDocument();
+  expect(screen.getByText(/solo un administrador de la empresa puede cambiar las tarifas/i)).toBeInTheDocument();
+  expect(mockSaveRates).not.toHaveBeenCalled();
+});

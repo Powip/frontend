@@ -44,6 +44,13 @@ export interface SunatDocumentRequestDto {
   customer?: SunatDocumentCustomerRequestDto;
   totals: SunatDocumentTotalsRequestDto;
   items: SunatDocumentLineItemRequestDto[];
+  /**
+   * SUNAT document id of the invoice/receipt a credit or debit note amends.
+   * Required for taxDocumentType 07/08 only.
+   */
+  referenceDocumentId?: string;
+  /** SUNAT "sustento" (catalog 09 for credit notes). Required for 07/08 only. */
+  reason?: { code: string; description: string };
 }
 
 export interface CreateSunatDocumentsRequestDto {

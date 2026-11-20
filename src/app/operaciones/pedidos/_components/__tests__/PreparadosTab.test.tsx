@@ -299,8 +299,7 @@ function makeActions(overrides: Partial<PedidosActions> = {}): PedidosActions {
     onEdit: jest.fn(),
     onEditDeliveryType: jest.fn(),
     onSyncCourier: jest.fn(),
-    onReturnToStock: jest.fn(),
-    onMarkAsLoss: jest.fn(),
+    onCourierReturn: jest.fn(),
     loadSalesByIds: jest.fn(),
     ...overrides,
   } as unknown as PedidosActions;
@@ -691,6 +690,13 @@ describe("PreparadosTab — diseño de la pestaña", () => {
     await user.click(screen.getByRole("button", { name: /exportar excel \(1\)/i }));
 
     expect(actions.onExportExcel).toHaveBeenCalledWith([expect.objectContaining({ id: "b" })], "preparados", "");
+  });
+
+  it("muestra el estado de stock del pedido cuando el servidor lo manda (FEAT-24 H2-F)", () => {
+    renderTab([makeSale({ id: "a", stockState: "sin_stock" }), makeSale({ id: "b", orderNumber: "ORD-B", stockState: null })]);
+
+    expect(screen.getAllByTestId("stock-state-badge")).toHaveLength(1);
+    expect(screen.getByText("Stock: Sin stock")).toBeInTheDocument();
   });
 
   it("no hay chips de courier: el courier es un desplegable y no existe el selector de tienda", () => {

@@ -35,6 +35,9 @@ import { canCorrectTrackingRequest, getSaleUnits, isTracked, trackingError, type
 import { persistSaleOperation, readSaleOperation, saleOperationKey, validateSaleUnits, type PendingSaleOperation } from "@/services/saleTrackingService";
 import CartLines from "@/components/registrar-venta/CartLines";
 import ProductSearchMatrix from "@/components/registrar-venta/ProductSearchMatrix";
+import SalePackResults from "@/components/registrar-venta/SalePackResults";
+import { addPackLine } from "@/lib/packs/salePack";
+import type { PackView } from "@/services/packsService";
 import {
   hasSaleChannelSelection,
   SaleChannelField,
@@ -48,6 +51,7 @@ import {
 } from "@/components/registrar-venta/crmSaleContext";
 import { toLocalPhone } from "@/lib/crmPhone";
 import SuggestionsPanel from "@/components/registrar-venta/SuggestionsPanel";
+import PromoGiftsPanel from "@/components/registrar-venta/PromoGiftsPanel";
 import { useSaleOrigin } from "@/components/registrar-venta/useSaleOrigin";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -69,6 +73,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { PacksProvider, usePacks } from "@/contexts/PacksContext";
 import { DeliveryType, OrderType, type SalesChannel } from "@/enum/Order.enum";
 import { usePacksEngine } from "@/hooks/usePacksEngine";
+import { usePromoGifts } from "@/hooks/usePromoGifts";
+import { useSuggestedPrices } from "@/hooks/useSuggestedPrices";
 import { useCompanyCouriers } from "@/hooks/useCompanyCouriers";
 import type { Client, ClientType, DocumentType } from "@/interfaces/ICliente";
 import type { CartItem, OrderHeader } from "@/interfaces/IOrder";
@@ -732,6 +738,7 @@ function RegistrarVentaContent() {
         pvp: grossUnit,
         discount: totalDiscount, // informativo/legado; buildOrderItem deriva el descuento del precio de cierre
         packId: null,
+        packComponents: item.packComponents ?? null,
       };
     });
     setCart(mappedCart);
@@ -893,7 +900,9 @@ function RegistrarVentaContent() {
 
   /* ---------------- Packs & Promos (solo UI) ---------------- */
   const isAdmin = isSuperadmin(auth?.user?.email) || hasAdminAccess(auth?.user?.role);
-  const { packs } = usePacks();
+  const { packs: localPacks } = usePacks();
+  // FEAT-24 H9: los regalos (GIFT) ya no salen del navegador; los evalúa el backend (usePromoGifts).
+  const packs = useMemo(() => localPacks.filter((pack) => pack.type !== "GIFT"), [localPacks]);
 
   const getVariantsForProduct = useCallback(
     async (productName: string) => {
@@ -913,10 +922,15 @@ function RegistrarVentaContent() {
   const packsEngine = usePacksEngine({
     packs,
     channel: orderDetails.salesChannel,
+    storeId: origin.storeId,
     cart,
     setCart,
     getVariantsForProduct,
   });
+
+  // FEAT-24 H9: precio sugerido por la lista de la tienda y el canal, y regalos que suma el backend.
+  useSuggestedPrices({ cart, setCart, storeId: origin.storeId, channel: orderDetails.salesChannel });
+  const promoGifts = usePromoGifts({ cart, storeId: origin.storeId, channel: orderDetails.salesChannel, enabled: !orderId && !leadId });
 
   const qtyInCartByVariant = useCallback(
     (variantId: string) =>
@@ -1786,9 +1800,16 @@ function RegistrarVentaContent() {
           pvp: product.price,
           discount: 0,
           packId: null,
+          priceSource: "catalog",
         },
       ];
     });
+  };
+
+  // FEAT-24 H9: un pack va con su variante; ms-ventas lo expande por componentes al reservar.
+  const addPackToCart = (pack: PackView) => {
+    setProductFrequencies(bumpProductFrequency(companyId, pack.name));
+    setCart((prev) => addPackLine(prev, pack));
   };
 
   const addVariantQty = (product: InventoryItemForSale, qty: number) => {
@@ -1820,6 +1841,7 @@ function RegistrarVentaContent() {
           pvp: product.price,
           discount: 0,
           packId: null,
+          priceSource: "catalog",
         },
       ];
     });
@@ -1843,7 +1865,7 @@ function RegistrarVentaContent() {
     const net = Math.round(price * 100) / 100;
     setCart((prev) =>
       prev.map((p) =>
-        p.id === cartItemId ? { ...p, price: net, discMode: "man", discValue: net } : p,
+        p.id === cartItemId ? { ...p, price: net, discMode: "man", discValue: net, priceSource: "manual" } : p,
       ),
     );
   };
@@ -1880,7 +1902,7 @@ function RegistrarVentaContent() {
     const ids = new Set(editableCartLines().map((l) => l.id));
     const net = Math.round(price * 100) / 100;
     setCart((prev) =>
-      prev.map((p) => (ids.has(p.id) ? { ...p, price: net, discMode: "man", discValue: net } : p)),
+      prev.map((p) => (ids.has(p.id) ? { ...p, price: net, discMode: "man", discValue: net, priceSource: "manual" } : p)),
     );
     toast.success(`Precio S/ ${price.toFixed(2)} aplicado a ${ids.size} ítem(s)`);
   };
@@ -2848,7 +2870,14 @@ function RegistrarVentaContent() {
                   </div>
 
                   {/* Resultados */}
-                  <div className="border-t pt-4">
+                  <div className="border-t pt-4 space-y-3">
+                    <SalePackResults
+                      query={productQuery}
+                      inventoryId={selectedInventory}
+                      disabled={isSubmitting}
+                      qtyInCartByVariant={qtyInCartByVariant}
+                      onAddPack={addPackToCart}
+                    />
                     <ProductSearchMatrix
                       products={products}
                       query={productQuery}
@@ -2871,6 +2900,7 @@ function RegistrarVentaContent() {
               <SuggestionsPanel
                 packs={packs}
                 channel={orderDetails.salesChannel}
+                storeId={origin.storeId}
                 appliedPacks={packsEngine.appliedPacks}
                 pendingHints={packsEngine.pendingHints}
                 modelQtyInCart={packsEngine.modelQtyInCart}
@@ -2919,6 +2949,7 @@ function RegistrarVentaContent() {
                     onChangeGift={packsEngine.changeGift}
                     onGiftCancel={packsEngine.giftCancel}
                   />
+                  <div className="mt-3"><PromoGiftsPanel gifts={promoGifts.gifts} failed={promoGifts.failed} /></div>
                   {orderData && <SaleUnitLifecycleActions key={orderData.id} order={orderData} onUpdated={() => { void loadOrder(); }} />}
                   {orderData && <SaleAssignmentStatus order={orderData} onRefresh={(saved) => setCart((lines) => lines.map((line) => {
                     const units = saved.items.flatMap((item) => item.units ?? []).filter((unit) => line.unitIds?.includes(unit.id));

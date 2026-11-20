@@ -32,7 +32,6 @@ import {
   CalendarIcon,
   ChevronDown,
   Loader2,
-  Lock,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -70,8 +69,6 @@ import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import {
   getShalomConfig,
-  getShalomLabelPdfUrl,
-  getShalomTicketPdfUrl,
   quoteShalom,
   trackShalomGuide,
   updateGuideQuote
@@ -92,6 +89,7 @@ import { getAliclikCredentials } from "@/services/aliclikService";
 import { OrderHeader } from "@/interfaces/IOrder";
 import { isAliclikCourier, isEvaCourier, isShalomCourier } from "@/utils/courierNormalizer";
 import { isOrderTrackable } from "@/utils/domain/courier-tracking";
+import { formatShalomSyncedAt } from "@/components/tracking/shalomSyncedAt";
 import { useShalomLiveStatuses, SHALOM_STEP_STYLES, SHALOM_STEP_ICONS } from "@/components/tracking/useShalomLiveStatus";
 import {
   CourierStatusBadge,
@@ -214,6 +212,9 @@ function trackingValuesOf(order: OrderHeader): Record<TrackingFieldKey, string> 
  * número/código/oficina/clave a mano. Autoguarda solo — sin botón: al salir
  * de cualquiera de los 4 campos (blur) guarda en un solo PATCH todos los que
  * hayan cambiado desde el último valor conocido.
+ *
+ * La clave se ve y se edita en claro siempre, con o sin saldo pendiente
+ * (el personal con sesión la recibe del backend en ambos casos).
  */
 function TrackingInputCells({
   order,
@@ -225,11 +226,6 @@ function TrackingInputCells({
   const original = trackingValuesOf(order);
   const [values, setValues] = useState<Record<TrackingFieldKey, string>>(original);
   const [saving, setSaving] = useState(false);
-  // La clave solo se habilita cuando el pedido queda libre de deuda — no
-  // alcanza con tener un comprobante cargado, si fue de un pago parcial
-  // sigue habiendo saldo pendiente.
-  const canEdit = getPendingPayment(order) <= 0;
-
   useEffect(() => {
     setValues(trackingValuesOf(order));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -248,10 +244,6 @@ function TrackingInputCells({
     try {
       const payload: Partial<Record<TrackingFieldKey, string | null>> = {};
       TRACKING_FIELDS.forEach(({ key }) => {
-        // La clave no tiene input mientras está bloqueada (no hay forma de
-        // que el usuario la haya tocado), pero por las dudas se excluye
-        // explícitamente del payload sin comprobante.
-        if (key === "shippingKey" && !canEdit) return;
         if (values[key] !== original[key]) payload[key] = values[key] || null;
       });
       if (Object.keys(payload).length === 0) return;
@@ -272,9 +264,6 @@ function TrackingInputCells({
   return (
     <>
       {TRACKING_FIELDS.map(({ key, placeholder }, i) => {
-        // Solo la clave se bloquea mientras haya deuda — tracking, código y
-        // oficina siempre se pueden ingresar.
-        const locked = key === "shippingKey" && !canEdit;
         const isKeyCol = key === "shippingKey";
         return (
           <TableCell
@@ -285,24 +274,15 @@ function TrackingInputCells({
                 : "px-2 py-2"
             }
           >
-            <div
-              className="flex items-center gap-1"
-              title={
-                locked
-                  ? "La clave solo es visible cuando no hay saldo pendiente"
-                  : undefined
-              }
-            >
-              {locked && (
-                <Lock className="h-3 w-3 shrink-0 text-amber-600" />
-              )}
+            <div className="flex items-center gap-1">
               <Input
-                placeholder={locked ? "Bloqueada" : placeholder}
-                value={locked ? "" : values[key]}
+                type="text"
+                aria-label={isKeyCol ? `Clave del pedido ${order.orderNumber}` : undefined}
+                placeholder={placeholder}
+                value={values[key]}
                 onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
                 onBlur={handleAutoSave}
-                disabled={locked}
-                className="h-7 w-24 text-[11px] disabled:cursor-not-allowed disabled:opacity-60"
+                className="h-7 w-24 text-[11px]"
               />
               {i === TRACKING_FIELDS.length - 1 && saving && (
                 <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
@@ -661,7 +641,8 @@ export default function CourierTrackingView() {
     () => pagedOrderRows.filter((o) => isShalomCourier(o.courier) || isShalomCourier(o.shippingOffice)),
     [pagedOrderRows],
   );
-  const { liveStatuses: shalomLiveStatuses } = useShalomLiveStatuses(shalomPagedOrders);
+  const { liveStatuses: shalomLiveStatuses, liveSyncedAt: shalomLiveSyncedAt } =
+    useShalomLiveStatuses(shalomPagedOrders);
 
   const handleTrackShalom = async (guide: TrackingGuide) => {
     if (!auth?.accessToken || !auth?.company?.id) return;
@@ -776,7 +757,7 @@ export default function CourierTrackingView() {
         "Número de tracking": o.externalTrackingNumber || "-",
         "Código de envío": o.shippingCode || "-",
         Oficina: o.shippingOffice || "-",
-        "Clave de envío": getPendingPayment(o) <= 0 ? o.shippingKey || "-" : "Bloqueada",
+        "Clave de envío": o.shippingKey || "-",
         "Link de rastreo": trackingUrlFor(o),
       };
     });
@@ -1202,6 +1183,10 @@ export default function CourierTrackingView() {
                                           SHALOM_STEP_STYLES[liveLabel] ??
                                           "bg-amber-50 text-amber-700 border-amber-200",
                                         icon: SHALOM_STEP_ICONS[liveLabel] ?? "•",
+                                        title:
+                                          formatShalomSyncedAt(
+                                            shalomLiveSyncedAt[order.id],
+                                          ) ?? undefined,
                                       }
                                     : undefined;
                                   return <CourierStatusBadge order={order} live={live} />;
@@ -1528,7 +1513,7 @@ function CourierOrdersTab({
         "Número de tracking": o.externalTrackingNumber || "-",
         "Código de envío": o.shippingCode || "-",
         Oficina: o.shippingOffice || "-",
-        "Clave de envío": getPendingPayment(o) <= 0 ? o.shippingKey || "-" : "Bloqueada",
+        "Clave de envío": o.shippingKey || "-",
         "Link de rastreo": trackingUrlFor(o),
       };
     });

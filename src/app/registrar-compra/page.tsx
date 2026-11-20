@@ -414,12 +414,12 @@ function RegistrarCompraForm() {
         (s) => s.id === selectedSupplierId,
       );
 
+      // Seguridad (FEAT-24): toda compra va por la fachada autenticada (`/tracking/purchases`): la empresa y el
+      // usuario salen del token, no de este cuerpo. La ruta pública de logística (`/purchase`) se cierra después.
       const payload = {
-        companyId,
         storeId: inventories.find((inv) => inv.id === selectedInventoryId)?.storeId,
         inventoryId: selectedInventoryId,
         notes: notes || null,
-        userEmail: auth?.user?.email || null,
         receiptType,
         paymentMethod,
         purchaseDate,
@@ -432,8 +432,7 @@ function RegistrarCompraForm() {
       if (hasTracked) {
         let request = pendingTrackedRef.current;
         if (!request) {
-          const { companyId: _company, userEmail: _email, ...safePayload } = payload;
-          request = { ...safePayload, operationId: crypto.randomUUID() };
+          request = { ...payload, operationId: crypto.randomUUID() };
           pendingTrackedRef.current = request;
           setPendingTracked(request);
           try { sessionStorage.setItem(recoveryKey, JSON.stringify({ request, cart })); } catch { /* In-memory retry remains available. */ }
@@ -444,10 +443,7 @@ function RegistrarCompraForm() {
         pendingTrackedRef.current = null; setPendingTracked(null);
         toast.success("Compra registrada con sus unidades");
       } else {
-        await axiosAuth.post(
-          `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/purchase`,
-          payload,
-        );
+        await createTrackedPurchase(payload);
         toast.success("Compra registrada correctamente");
         setCart([]);
         setNotes("");

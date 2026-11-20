@@ -66,7 +66,23 @@ jest.mock('@/services/userService', () => ({
   getUserProfile: jest.fn(),
 }));
 
-jest.mock('@/lib/axiosAuth', () => ({ default: {} }));
+// FEAT-24 SEC: el costo cotizado se guarda con `PATCH order-header/:id` autenticado.
+const mockAuthPatch = jest.fn();
+// FEAT-24 SEC (sec6a): la búsqueda de agencias y la cotización (`/shalom/*` de ms-integrations) van con axiosAuth.
+// Por defecto delegan en los mocks de axios, así los casos de siempre siguen armando sus respuestas en `axios.get`
+// y `axios.post`; el bloque «sec6a» las separa para comprobar que no salen con axios sin token.
+const delegateAuthGet = (...args: unknown[]) => (jest.requireMock('axios') as { get: jest.Mock }).get(...args);
+const delegateAuthPost = (...args: unknown[]) => (jest.requireMock('axios') as { post: jest.Mock }).post(...args);
+const mockAuthGet = jest.fn(delegateAuthGet);
+const mockAuthPost = jest.fn(delegateAuthPost);
+jest.mock('@/lib/axiosAuth', () => ({
+  __esModule: true,
+  default: {
+    patch: (...args: unknown[]) => mockAuthPatch(...args),
+    get: (...args: unknown[]) => mockAuthGet(...args),
+    post: (...args: unknown[]) => mockAuthPost(...args),
+  },
+}));
 jest.mock('@/utils/printOrderLabel', () => ({
   printOrderLabelsBatch: jest.fn().mockResolvedValue(undefined),
   generateBarcode: jest.fn().mockReturnValue(''),
@@ -703,6 +719,40 @@ describe('SendToShalomModal', () => {
     });
   });
 
+  describe('búsqueda de agencias sin saturar Shalom', () => {
+    const agencyCalls = () =>
+      (axios.get as jest.Mock).mock.calls
+        .map(([url]) => String(url))
+        .filter((url) => url.includes('/shalom/agencies/search/'));
+
+    it('varios pedidos del mismo distrito hacen una sola búsqueda al abrir', async () => {
+      (axios.get as jest.Mock).mockResolvedValue({ data: { success: true, data: [MOCK_AGENCY] } });
+      const second = { ...MOCK_ORDER, id: 'order-def', orderNumber: 'ORD-002' };
+      const third = { ...MOCK_ORDER, id: 'order-ghi', orderNumber: 'ORD-003', customer: { ...MOCK_ORDER.customer, district: 'MIRAFLORES ' } };
+
+      await renderModal({ orders: [MOCK_ORDER, second, third] });
+
+      const miraflores = agencyCalls().filter((url) => /miraflores/i.test(decodeURIComponent(url)));
+      expect(miraflores).toHaveLength(1);
+    });
+
+    it('al escribir en el buscador espera a que se deje de tipear (una llamada, no una por tecla)', async () => {
+      (axios.get as jest.Mock).mockResolvedValue({ data: { success: true, data: [MOCK_AGENCY] } });
+      const user = userEvent.setup();
+      await renderModal();
+      const before = agencyCalls().length;
+
+      const originInput = screen.getByPlaceholderText('Lima, Arequipa, etc.');
+      await user.clear(originInput);
+      await user.type(originInput, 'Cusco');
+
+      await waitFor(() => {
+        expect(agencyCalls().length).toBe(before + 1);
+      });
+      expect(decodeURIComponent(agencyCalls().at(-1)!)).toMatch(/\/Cusco$/);
+    });
+  });
+
   // ── 2. Selector de modalidad por orden ─────────────────────────────────────
 
   describe('selector de modalidad de envío', () => {
@@ -912,6 +962,51 @@ describe('SendToShalomModal', () => {
         const [, payload] = sendCall as [unknown, { declaracionJurada?: string; packageDetails?: Record<string, { aereo?: boolean }> }];
         expect(payload.packageDetails![MOCK_ORDER.id].aereo).toBe(true);
       });
+    });
+
+    it('guarda el costo cotizado en ms-ventas con la sesión (axiosAuth), nunca con axios sin token', async () => {
+      mockAuthPatch.mockResolvedValue({ data: {} });
+      mockAxiosPost.mockImplementation(async (url: string) => String(url).includes('shalom/quote')
+        ? { data: { success: true, data: { total_amount: 30 } } }
+        : { data: { success: true, summary: { total: 1, successful: 1, failed: 0 }, data: [], errors: [] } });
+
+      const { user } = await setupValidForm();
+      await user.click(screen.getByRole('button', { name: /confirmar y enviar a shalom/i }));
+
+      await waitFor(() => {
+        expect(mockAuthPatch).toHaveBeenCalledWith(`http://ventas/order-header/${MOCK_ORDER.id}`, { carrierShippingCost: 30 });
+      });
+      expect((axios as unknown as { patch?: jest.Mock }).patch).toBeUndefined();
+    });
+  });
+
+  // ── 3b. FEAT-24 SEC (sec6a): /shalom/* de ms-integrations con la sesión ─────
+
+  describe('FEAT-24 SEC (sec6a) — agencias y cotización con la sesión', () => {
+    afterEach(() => {
+      mockAuthGet.mockImplementation(delegateAuthGet);
+      mockAuthPost.mockImplementation(delegateAuthPost);
+    });
+
+    it('busca agencias y cotiza con axiosAuth; ninguna llamada a /shalom/* sale con axios sin token', async () => {
+      mockAuthGet.mockImplementation(async () => ({ data: { success: true, data: [MOCK_AGENCY] } }));
+      mockAuthPost.mockImplementation(async () => ({ data: { success: true, data: { total_amount: 30 } } }));
+      mockAuthPatch.mockResolvedValue({ data: {} });
+      mockAxiosPost.mockResolvedValue({
+        data: { success: true, summary: { total: 1, successful: 1, failed: 0 }, data: [], errors: [] },
+      });
+
+      const { user } = await setupValidForm();
+      await user.click(screen.getByRole('button', { name: /confirmar y enviar a shalom/i }));
+
+      await waitFor(() => {
+        expect(mockAuthPost).toHaveBeenCalledWith('http://integrations/shalom/quote', expect.any(Object));
+      });
+      expect(mockAuthGet).toHaveBeenCalledWith(expect.stringMatching(/^http:\/\/integrations\/shalom\/agencies\/search\//));
+      const sinToken = [...(axios.get as jest.Mock).mock.calls, ...mockAxiosPost.mock.calls]
+        .map(([url]) => String(url))
+        .filter((url) => url.startsWith('http://integrations/shalom/'));
+      expect(sinToken).toEqual([]);
     });
   });
 

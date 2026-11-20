@@ -50,6 +50,19 @@ export interface CartItem {
    *  prefillear el editor) — el precio de cobro real siempre es `price`. */
   discMode?: "pct" | "amt" | "man" | null;
   discValue?: number | null;
+  /** FEAT-24 H9: de dónde salió el precio al agregar la línea. `catalog`/`list` = sugerido (se
+   *  actualiza con la lista de precios de la tienda y el canal); `manual` = lo escribió el usuario. */
+  priceSource?: "catalog" | "list" | "manual";
+  /** FEAT-24 H9: si la línea es un pack, su contenido (snapshot del pedido). */
+  packComponents?: PackComponentSnapshot[] | null;
+}
+
+/** FEAT-24 H9 — componente de un pack en una línea de pedido (`order_items.pack_components`). */
+export interface PackComponentSnapshot {
+  variantId: string;
+  quantity: number;
+  sku?: string | null;
+  productName?: string | null;
 }
 
 /* -----------------------------------------
@@ -164,6 +177,10 @@ export interface OrderItem {
   discountAmount: string;
   imageUrl?: string;
   isPromoItem?: boolean;
+  /** FEAT-24 H9: contenido del pack (null si la línea no es un pack). */
+  packComponents?: PackComponentSnapshot[] | null;
+  /** FEAT-24 H12: unidades ya cambiadas por otra variante. */
+  exchangedQuantity?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -203,6 +220,9 @@ export interface OrderHeader extends UnitAssignmentState {
   receiptType: ReceiptType;
   orderType: OrderType;
   orderNumber: string;
+  /** FEAT-24 H12: pedido original si este es un pedido de cambio (`orderType` CAMBIO). */
+  parentOrderId?: string | null;
+  parentOrderNumber?: string | null;
   /** FEAT-31: N° con el que el cliente identifica el pedido fuera de Powip (Shopify, Excel o API). */
   externalOrderNumber?: string | null;
   storeId: string;
@@ -211,6 +231,10 @@ export interface OrderHeader extends UnitAssignmentState {
   inventoryId?: string | null;
   stockStoreId?: string | null;
   stockVersion?: number;
+  /** FEAT-24 H2: estado de stock del pedido (columna `stock_state`, la escribe logística). */
+  stockState?: string | null;
+  /** FEAT-24 H2: desde cuándo está sin stock. */
+  outOfStockSince?: string | null;
   customer: Client;
   salesChannel: SalesChannel;
   salesChannelId?: string | null;
@@ -292,6 +316,8 @@ export interface OrderHeader extends UnitAssignmentState {
   // ========================================
   canalOrigen?: string | null;
   subEstadoCc?: SubEstadoCc | null;
+  /** Solo respuesta de Atención al cliente: venta confirmada que falta confirmar el despacho. */
+  ccEtiqueta?: "compra_confirmada_pendiente_despacho" | null;
   ccAgenteId?: string | null;
   ccConfirmadoAt?: string | null;
   ccConfirmadoBy?: string | null;

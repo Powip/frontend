@@ -24,6 +24,8 @@ export interface Sale extends UnitAssignmentState, Omit<SalesPhysicalOrderProjec
   stockStoreName?: string;
   inventoryId?: string | null;
   stockStoreId?: string | null;
+  /** FEAT-24 H2: estado de stock del pedido (si el servidor lo manda). */
+  stockState?: string | null;
   customerId: string;
   orderNumber: string;
   externalOrderNumber?: string | null;
@@ -117,6 +119,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     stockStoreName: order.stockStoreName,
     inventoryId: order.inventoryId,
     stockStoreId: order.stockStoreId,
+    stockState: order.stockState ?? null,
     customerId: order.customer?.id,
     orderNumber: order.orderNumber,
     externalOrderNumber: order.externalOrderNumber ?? null,
@@ -189,10 +192,30 @@ export function mapOrderToSale(order: OrderHeader): Sale {
   };
 }
 
+const SCHEDULED_DISPATCH_FORMAT = new Intl.DateTimeFormat("es-PE", {
+  timeZone: "America/Lima",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
+/**
+ * Fecha programada de despacho para el Excel (dd/mm/aaaa, hora de Lima).
+ * Es `callbackAt`: la fecha comprometida o reprogramada que usa
+ * Planificación para agendar el pedido. Sin fecha (o inválida) → null.
+ */
+export function formatScheduledDispatchDate(callbackAt?: string | null): string | null {
+  if (!callbackAt) return null;
+  const date = new Date(callbackAt);
+  if (Number.isNaN(date.getTime())) return null;
+  return SCHEDULED_DISPATCH_FORMAT.format(date);
+}
+
 /**
  * Filas del Excel de Pedidos: una por pedido, Total = total de la orden y
  * "Productos" con todos sus ítems. Con filtro por producto (`productFilter`)
- * se agregan las unidades de ese producto en cada pedido.
+ * se agregan las unidades de ese producto en cada pedido. Incluye la fecha
+ * programada de despacho (`callbackAt`).
  */
 export function buildPedidosExportRows(sales: Sale[], productFilter?: string): SaleExportData[] {
   return sales.map((s) => ({
@@ -207,6 +230,7 @@ export function buildPedidosExportRows(sales: Sale[], productFilter?: string): S
     documentType: s.documentType,
     documentNumber: s.documentNumber,
     date: s.date,
+    scheduledDispatchDate: formatScheduledDispatchDate(s.callbackAt),
     total: s.total,
     advancePayment: s.advancePayment,
     pendingPayment: s.pendingPayment,
@@ -357,8 +381,8 @@ export interface PedidosActions {
     context: { selectedIds: string[]; dayKey?: string },
   ) => void;
   onSyncCourier: () => void;
-  onReturnToStock: (sale: Sale) => void;
-  onMarkAsLoss: (sale: Sale) => void;
+  /** FEAT-24 H2-F: el courier devolvió el pedido (queda por recibir en Inventario › Recepciones). */
+  onCourierReturn: (sale: Sale) => void;
   /** Pide al servidor pedidos concretos de Preparados (máx. 100 por llamada): restaurar la selección y acciones por guía. */
   loadSalesByIds: (ids: string[]) => Promise<Sale[]>;
   companyId?: string;

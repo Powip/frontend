@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Inventory from "../_components/InventarioView";
 import { fetchBusinessInventoryItems } from "@/services/businessInventoryItemsService";
+import { listAllPacks, type PackView } from "@/services/packsService";
+jest.mock("@/services/userWarehousesService", () => ({ getMyWarehouses: jest.fn().mockResolvedValue({ all: true, inventoryIds: [], operableIds: [] }) })); // FEAT-24 H6
 jest.mock("exceljs", () => ({ __esModule: true, default: { Workbook: jest.fn() } }));
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }) }));
 jest.mock("next/image", () => ({ __esModule: true, default: () => <span /> }));
@@ -17,13 +19,15 @@ jest.mock("@/components/modals/ImportExcelModal", () => ({ __esModule: true, def
 jest.mock("@/components/modals/AdjustStockModal", () => ({ __esModule: true, default: ({ item, open }: { item?: { inventoryItemId: string }; open: boolean }) => open ? <div data-testid="adjust-target">{item?.inventoryItemId}</div> : null }));
 jest.mock("@/app/productos/shopify-sync-wizard", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/services/warehousesService", () => ({ listWarehouses: jest.fn().mockResolvedValue({ warehouses: [{ id: "warehouse-b", name: "Web", status: true, store_id: "stocked-store", company_id: "company-a", type: "COURIER", is_main: true }], links: [] }) }));
+jest.mock("@/services/packsService", () => ({ listAllPacks: jest.fn() })); // FEAT-24 H9
 const fetch = jest.mocked(fetchBusinessInventoryItems);
+const listPacks = jest.mocked(listAllPacks);
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(<QueryClientProvider client={client}><Inventory /></QueryClientProvider>);
 }
 const rows = Array.from({ length: 12 }, (_, index) => ({ inventoryItemId: `physical-item-${index}`, productId: `product-${index}`, variantId: `variant-${index}`, productName: `Producto ${String(index).padStart(2, "0")}`, sku: `SKU-${index}`, price: 20, physicalStock: 4, availableStock: 3, inventoryId: "warehouse-b", inventoryName: "Web", storeId: "stocked-store", storeName: "Tienda Web" }));
-beforeEach(() => fetch.mockReset());
+beforeEach(() => { fetch.mockReset(); listPacks.mockReset().mockResolvedValue([]); });
 it("renders the business union with totals and real pagination despite the selected empty store", async () => {
   fetch.mockResolvedValue(rows); setup();
   await waitFor(() => expect(screen.getByText(/12 producto\(s\)/)).toHaveTextContent("12 producto(s) · 12 variante(s)"));
@@ -57,4 +61,23 @@ it("la vista por almacén muestra una tarjeta por almacén con sus totales", asy
   await waitFor(() => expect(within(screen.getByRole("region", { name: "Almacén Web" })).getByRole("heading")).toHaveTextContent("WebPrincipalCourier"));
   expect(within(screen.getByRole("region", { name: "Almacén Principal" })).getByRole("heading")).toHaveTextContent(/^Principal$/);
   expect(screen.getByText("Producto 11")).toBeInTheDocument(); // sin paginar: el almacén se ve entero
+});
+it("lista los packs al final de la última página con el disponible de sus componentes (FEAT-24 H9)", async () => {
+  const pack = {
+    id: "pack-1", variantId: "pack-1-v", name: "Pack Verano", description: null, sku: "PK-VER", productSku: null, powipEan: null, barcode: null,
+    imageUrl: null, price: 50, active: true, categoryId: null, brandId: null, components: [],
+    available: { total: 7, byWarehouse: [{ inventoryId: "warehouse-b", inventoryName: "Web", storeId: "stocked-store", available: 2 }, { inventoryId: "warehouse-otro", inventoryName: "Otro", storeId: "otra", available: 5 }] },
+  } as PackView;
+  listPacks.mockResolvedValue([pack]);
+  fetch.mockResolvedValue(rows); setup();
+  await screen.findByText("Producto 00");
+  expect(listPacks).toHaveBeenCalledWith({ active: true }, expect.anything());
+  expect(screen.queryByText(/Packs · su stock es el de sus componentes/i)).not.toBeInTheDocument(); // página 1 de 2
+  fireEvent.click(screen.getByRole("button", { name: /Siguiente/ }));
+  const row = await screen.findByTestId("pack-stock-pack-1");
+  expect(screen.getByText(/Packs · su stock es el de sus componentes/i)).toBeInTheDocument();
+  expect(within(row).getByRole("link", { name: "Pack Verano" })).toHaveAttribute("href", "/productos/pack-1");
+  const cells = within(row).getAllByRole("cell").map((cell) => cell.textContent);
+  // Principal no tiene los componentes (—), Web alcanza para 2 y el total suma solo los almacenes visibles
+  expect(cells.slice(1, 5)).toEqual(["—", "2", "2", "Calculado"]);
 });

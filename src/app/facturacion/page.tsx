@@ -12,19 +12,20 @@ import { CertificadoTab } from "@/app/facturacion/components/tabs/CertificadoTab
 import { EmisoresTab } from "@/app/facturacion/components/tabs/EmisoresTab";
 import { GuiasTab } from "@/app/facturacion/components/tabs/GuiasTab";
 import { NotasTab } from "@/app/facturacion/components/tabs/NotasTab";
-import { imprimirNotaCreditoPdf } from "@/app/facturacion/lib/imprimir-nota-credito-pdf";
+import { abrirPdfNota, toNotaReporte } from "@/app/facturacion/lib/notas-credito";
 import { ReportesTab } from "@/app/facturacion/components/tabs/ReportesTab";
 import { SeriesTab } from "@/app/facturacion/components/tabs/SeriesTab";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-document-pdf";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
+import { getCreditableBalance } from "@/features/sunat/sunat-document/utils/build-credit-note-request";
 import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
 import { getCertificateStatus } from "@/features/sunat/sunat-profile/utils/get-certificate-status";
-import { findIssuerByRuc, getDefaultIssuer } from "@/features/sunat/sunat-profile/utils/issuers";
+import { getDefaultIssuer } from "@/features/sunat/sunat-profile/utils/issuers";
 import { useFacturacionMock } from "@/hooks/useFacturacionMock";
 import { useTaxDocuments } from "@/hooks/useTaxDocuments";
-import type { Nota } from "@/types/facturacion";
 import { cn } from "@/lib/utils";
 import { TaxDocumentsTab } from "./components/tabs/TaxDocumentsTab";
 
@@ -33,9 +34,8 @@ export default function FacturacionPage() {
   const router = useRouter();
 
   // Single source of truth for comprobantes: real sales + SUNAT documents.
-  // The remaining legacy tabs (Guías, Notas, Reportes) reuse this same
-  // real data — only their own local, not-yet-implemented state (guías,
-  // notas) still comes from useFacturacionMock.
+  // Guías de remisión are real since FEAT-24 H12 (ms-sunat GRE); only the
+  // notas still come from the in-memory useFacturacionMock.
   const taxDocuments = useTaxDocuments();
 
   const mock = useFacturacionMock();
@@ -64,6 +64,8 @@ export default function FacturacionPage() {
   const [ncOpen, setNcOpen] = useState(false);
   const [ncPreselectId, setNcPreselectId] = useState<string | undefined>();
 
+  const { mutateAsync: downloadSunatDocumentPdf } = useSunatDocumentPdf();
+
   useEffect(() => {
     if (!authLoading && !auth?.company) {
       toast.error("No tienes una empresa asociada.");
@@ -84,24 +86,21 @@ export default function FacturacionPage() {
     setNcOpen(true);
   };
 
-  const aceptados = taxDocuments.rows.filter(
-    (row) =>
-      row.taxDocument?.cdrStatus === "ACCEPTED" ||
-      row.taxDocument?.cdrStatus === "ACCEPTED_WITH_OBSERVATION",
-  );
+  // Facturas/boletas accepted by SUNAT that still have an amount to credit.
+  const aceptados = taxDocuments.rows.filter((row) => {
+    const document = row.taxDocument;
+    return (
+      (document?.taxDocumentType === "01" || document?.taxDocumentType === "03") &&
+      (document.cdrStatus === "ACCEPTED" || document.cdrStatus === "ACCEPTED_WITH_OBSERVATION") &&
+      getCreditableBalance(document, taxDocuments.documents) > 0
+    );
+  });
 
-  // Issuer used to print a credit note: the RUC of the original comprobante
-  // when known; otherwise the RUC in the filter, or the default RUC with
-  // "Todos los RUC" (same rule as guías).
-  const getNotaIssuer = (nota: Nota) => {
-    const profile =
-      findIssuerByRuc(activeProfiles, nota.rucEmisor) ??
-      activeProfiles.find((item) => item.id === issuerFilter) ??
-      getDefaultIssuer(sunatProfiles);
-    return profile
-      ? { ruc: profile.ruc, razonSocial: profile.razonSocial, direccion: profile.address }
-      : undefined;
-  };
+  // Credit notes of the RUC chosen in the filter ("Todos" = every RUC).
+  const issuerRuc = activeProfiles.find((profile) => profile.id === issuerFilter)?.ruc;
+  const notasCredito = issuerRuc
+    ? taxDocuments.creditNotes.filter((nota) => nota.rucIssuer === issuerRuc)
+    : taxDocuments.creditNotes;
 
   const refreshAll = () => {
     taxDocuments.refreshSales();
@@ -256,15 +255,14 @@ export default function FacturacionPage() {
           />
         </TabsContent>
 
-        {/* Legacy tabs: no backend yet for guías/notas emission (mock only),
-            but they read real comprobante data from taxDocuments. */}
+        {/* FEAT-24 H12: real GRE remitente (ms-sunat). The order picker reuses the real sales. */}
         <TabsContent value="guias" className="pt-4">
           <GuiasTab
-            mock={mock}
             comprobanteRows={taxDocuments.rows}
             issuer={(() => {
               // With "Todos los RUC" selected, print with the default RUC so the
-              // user is never blocked; a specific RUC in the filter wins.
+              // user is never blocked; a specific RUC in the filter wins. A GRE of
+              // another RUC is still refused in GuiasTab (it names the RUC to pick).
               const profile =
                 activeProfiles.find((item) => item.id === issuerFilter) ??
                 getDefaultIssuer(sunatProfiles);
@@ -275,20 +273,22 @@ export default function FacturacionPage() {
           />
         </TabsContent>
 
+        {/* Legacy tab: no backend yet for notas emission (mock only). */}
+
         <TabsContent value="nc" className="pt-4">
           <NotasTab
-            mock={mock}
+            notas={notasCredito}
+            documents={taxDocuments.documents}
             hasAceptados={aceptados.length > 0}
             onNuevaNota={() => openNotaCredito()}
-            getIssuer={getNotaIssuer}
+            onImprimir={(nota) => abrirPdfNota(() => downloadSunatDocumentPdf(nota.id))}
           />
         </TabsContent>
 
         <TabsContent value="reportes" className="pt-4">
           <ReportesTab
             comprobanteRows={taxDocuments.rows}
-            notas={mock.notas}
-            guias={mock.guias}
+            notas={notasCredito.map((nota) => toNotaReporte(nota, taxDocuments.documents))}
             issuer={activeProfiles.find((profile) => profile.id === issuerFilter)}
             showIssuerColumn={activeProfiles.length > 1}
           />
@@ -321,9 +321,10 @@ export default function FacturacionPage() {
         isOpen={ncOpen}
         onClose={() => setNcOpen(false)}
         aceptados={aceptados}
+        documents={taxDocuments.documents}
+        profiles={activeProfiles}
         preselectId={ncPreselectId}
-        crearNota={mock.crearNota}
-        onImprimir={(nota) => imprimirNotaCreditoPdf(nota, getNotaIssuer(nota))}
+        onEmitida={() => setActiveTab("nc")}
       />
     </div>
   );

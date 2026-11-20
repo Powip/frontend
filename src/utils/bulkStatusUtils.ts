@@ -1,4 +1,4 @@
-import axios from "axios";
+// FEAT-24 SEC: `bulk-status` y `PATCH order-header/:id` piden el JWT de la empresa (axiosAuth).
 import axiosAuth from "@/lib/axiosAuth";
 import { OrderStatus } from "@/interfaces/IOrder";
 
@@ -51,7 +51,7 @@ export async function processBulkStatusChange(
   }
 
   try {
-    const response = await axios.patch(`${apiBaseUrl}/order-header/bulk-status`, {
+    const response = await axiosAuth.patch(`${apiBaseUrl}/order-header/bulk-status`, {
       ids: orderIds,
       ...(newStatus !== undefined && { status: newStatus }),
       ...(callStatus !== undefined && { callStatus }),
@@ -95,7 +95,7 @@ async function processBulkIndividual(
 
   const results = await Promise.allSettled(
     orderIds.map((id) =>
-      axios.patch(`${apiBaseUrl}/order-header/${id}`, {
+      axiosAuth.patch(`${apiBaseUrl}/order-header/${id}`, {
         ...(newStatus !== undefined && { status: newStatus }),
         ...(callStatus !== undefined && { callStatus }),
         ...(callbackAt !== undefined && { callbackAt }),

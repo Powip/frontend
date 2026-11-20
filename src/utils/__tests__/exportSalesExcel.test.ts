@@ -9,6 +9,7 @@
  * 2. Una fila por orden y "Total" sigue siendo el total de la orden.
  * 3. Solo una orden sin ítems queda con "-".
  * 4. Con filtro por producto aparece "Unidades del producto filtrado" (y sin filtro, no).
+ * 5. Pedidos agrega "Fecha programada de despacho" después de Fecha; otros exports no.
  */
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
@@ -16,6 +17,7 @@ import {
   exportSalesToExcel,
   FILTERED_PRODUCT_UNITS_HEADER,
   formatProductsForExport,
+  SCHEDULED_DISPATCH_HEADER,
   type SaleExportData,
 } from "../exportSalesExcel";
 
@@ -118,5 +120,31 @@ describe("exportSalesToExcel — columna Productos", () => {
   it("sin el campo products la columna queda en '-' (causa del bug reportado)", async () => {
     const rows = await exportedRows([sale()]);
     expect(rows[0].Productos).toBe("-");
+  });
+});
+
+describe("exportSalesToExcel — fecha programada de despacho", () => {
+  it("agrega la columna después de Fecha; sin fecha queda '-'", async () => {
+    exportSalesToExcel(
+      [
+        sale({ orderNumber: "ORD-001", scheduledDispatchDate: "21/11/2026" }),
+        sale({ orderNumber: "ORD-002", scheduledDispatchDate: null }),
+      ],
+      "operaciones_pedidos_preparados",
+    );
+    const blob = mockedSaveAs.mock.calls.at(-1)![0] as Blob;
+    const wb = XLSX.read(new Uint8Array(await blob.arrayBuffer()), { type: "array" });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const [header] = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
+
+    expect(header[header.indexOf("Fecha") + 1]).toBe(SCHEDULED_DISPATCH_HEADER);
+    expect(rows[0][SCHEDULED_DISPATCH_HEADER]).toBe("21/11/2026");
+    expect(rows[1][SCHEDULED_DISPATCH_HEADER]).toBe("-");
+  });
+
+  it("exports que no traen el campo (Ventas, Clientes) no muestran la columna", async () => {
+    const rows = await exportedRows([sale()]);
+    expect(rows[0]).not.toHaveProperty(SCHEDULED_DISPATCH_HEADER);
   });
 });

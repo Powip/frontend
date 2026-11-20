@@ -20,7 +20,7 @@
  * - @/services/shalomService -> trackShalomMassive
  */
 
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 jest.mock('@/contexts/AuthContext', () => ({
   useAuth: jest.fn(),
@@ -32,7 +32,7 @@ jest.mock('@/services/shalomService', () => ({
 
 import { useAuth } from '@/contexts/AuthContext';
 import { trackShalomMassive } from '@/services/shalomService';
-import { useShalomLiveStatuses } from '../useShalomLiveStatus';
+import { useShalomLiveStatuses, SHALOM_LIVE_FRESH_MS } from '../useShalomLiveStatus';
 import type { OrderHeader } from '@/interfaces/IOrder';
 
 // ── Casts ─────────────────────────────────────────────────────────────────────
@@ -302,5 +302,88 @@ describe('useShalomLiveStatuses', () => {
     await waitFor(() => expect(result.current.loadingLiveStatuses).toBe(false));
 
     expect(mockTrack).toHaveBeenCalledWith('fake-token', expect.any(Array));
+  });
+  // ── 8. Frescura: no reconsultar lo reciente ────────────────────────────────
+
+  const echoBatch = async (_t: string, batch: { orderNumber: string; orderCode: string }[]) =>
+    batch.map((b) => ({ ...b, statuses: { estado: 'EN_CAMINO' } }));
+
+  it('expone liveSyncedAt con el syncedAt que manda el backend', async () => {
+    mockTrack.mockResolvedValue([
+      {
+        orderNumber: '10000000',
+        orderCode: 'C0',
+        syncedAt: '2026-11-19T15:00:00.000Z',
+        fromCache: true,
+        statuses: { estado: 'EN_CAMINO' },
+      },
+    ]);
+    const { result } = renderHook(() => useShalomLiveStatuses(eligibleOrders(1)));
+
+    await waitFor(() => expect(result.current.liveStatuses['ord-0']).toBe('En tránsito'));
+    expect(result.current.liveSyncedAt['ord-0']).toBe('2026-11-19T15:00:00.000Z');
+  });
+
+  it('sin syncedAt (backend viejo) no hay liveSyncedAt', async () => {
+    mockTrack.mockResolvedValue([
+      { orderNumber: '10000000', orderCode: 'C0', statuses: { estado: 'EN_CAMINO' } },
+    ]);
+    const { result } = renderHook(() => useShalomLiveStatuses(eligibleOrders(1)));
+
+    await waitFor(() => expect(result.current.liveStatuses['ord-0']).toBe('En tránsito'));
+    expect(result.current.liveSyncedAt).toEqual({});
+  });
+
+  it('no reconsulta guías frescas al cambiar de página y volver', async () => {
+    mockTrack.mockImplementation(echoBatch);
+    const pageA = eligibleOrders(2, 0);
+    const pageB = eligibleOrders(2, 10);
+    const { result, rerender } = renderHook(({ orders }) => useShalomLiveStatuses(orders), {
+      initialProps: { orders: pageA },
+    });
+    await waitFor(() => expect(result.current.liveStatuses['ord-1']).toBe('En tránsito'));
+    expect(mockTrack).toHaveBeenCalledTimes(1);
+
+    rerender({ orders: pageB });
+    await waitFor(() => expect(result.current.liveStatuses['ord-11']).toBe('En tránsito'));
+    expect(mockTrack).toHaveBeenCalledTimes(2);
+
+    // Vuelve a la página A (<5 min): no hay llamada nueva y el badge se conserva.
+    rerender({ orders: pageA });
+    await waitFor(() => expect(result.current.loadingLiveStatuses).toBe(false));
+    expect(mockTrack).toHaveBeenCalledTimes(2);
+    expect(result.current.liveStatuses['ord-0']).toBe('En tránsito');
+  });
+
+  it('reconsulta guías cuyo estado ya no es fresco (>5 min)', async () => {
+    const nowSpy = jest.spyOn(Date, 'now');
+    nowSpy.mockReturnValue(1_000_000);
+    mockTrack.mockImplementation(echoBatch);
+    const pageA = eligibleOrders(1, 0);
+    const pageB = eligibleOrders(1, 10);
+    const { result, rerender } = renderHook(({ orders }) => useShalomLiveStatuses(orders), {
+      initialProps: { orders: pageA },
+    });
+    await waitFor(() => expect(result.current.liveStatuses['ord-0']).toBe('En tránsito'));
+    rerender({ orders: pageB });
+    await waitFor(() => expect(result.current.liveStatuses['ord-10']).toBe('En tránsito'));
+
+    nowSpy.mockReturnValue(1_000_000 + SHALOM_LIVE_FRESH_MS + 1);
+    rerender({ orders: pageA });
+    await waitFor(() => expect(mockTrack).toHaveBeenCalledTimes(3));
+    nowSpy.mockRestore();
+  });
+
+  it('refreshLiveStatuses (botón manual) siempre consulta, aunque esté fresco', async () => {
+    mockTrack.mockImplementation(echoBatch);
+    const orders = eligibleOrders(2);
+    const { result } = renderHook(() => useShalomLiveStatuses(orders));
+    await waitFor(() => expect(result.current.liveStatuses['ord-1']).toBe('En tránsito'));
+    expect(mockTrack).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await result.current.refreshLiveStatuses(orders);
+    });
+    expect(mockTrack).toHaveBeenCalledTimes(2);
   });
 });

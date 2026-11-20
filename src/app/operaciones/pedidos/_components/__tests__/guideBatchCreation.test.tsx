@@ -370,19 +370,25 @@ describe("Pedidos — WhatsApp masivo", () => {
   });
 });
 
-test("Pedidos serialized merma directs to available inventory units without cancelling or writing stock", async () => {
-  mockOrders[0] = { ...mockOrders[0], status: "ENTREGADO", unitAssignmentStatus: "CONFIRMED", unitCatalogValidated: true };
+test("Devuelto por courier (pedido normal) confirma y llama a courier-return sin anular por PATCH (FEAT-24 H2-F)", async () => {
+  mockOrders[0] = { ...mockOrders[0], status: "EN_ENVIO", unitAssignmentStatus: "NONE", unitCatalogValidated: true };
+  jest.mocked(axios.post).mockResolvedValue({ data: {} });
   render(<PedidosContent />);
-  await act(async () => { await mockActions.onMarkAsLoss(mockOrders[0] as unknown as Sale); });
-  expect(axios.patch).not.toHaveBeenCalled(); expect(axios.post).not.toHaveBeenCalled();
-  expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("confirma primero su devolución completa"), expect.objectContaining({ action: expect.objectContaining({ label: "Abrir inventario", onClick: expect.any(Function) }) }));
-});
-test("Pedidos normal merma retains the existing cancellation payload without unit movement fields", async () => {
-  mockOrders[0] = { ...mockOrders[0], status: "ENTREGADO", unitAssignmentStatus: "NONE", unitCatalogValidated: true };
-  render(<PedidosContent />);
-  await act(async () => { await mockActions.onMarkAsLoss(mockOrders[0] as unknown as Sale); });
-  expect(axios.patch).toHaveBeenCalledWith(expect.stringContaining("/order-header/order-1"), { status: "ANULADO", cancellationReason: "OTHER", notes: "Devolución del courier — mercadería registrada como merma", userId: "operator" });
+  await act(async () => { await mockActions.onCourierReturn(mockOrders[0] as unknown as Sale); });
   expect(axios.post).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText("Nota (opcional)"), { target: { value: "caja dañada" } });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Registrar devolución" })); });
+  expect(axios.post).toHaveBeenCalledWith(expect.stringMatching(/\/order-header\/order-1\/courier-return$/), { note: "caja dañada" });
+  expect(axios.patch).not.toHaveBeenCalled();
+  expect(toast.success).toHaveBeenCalledWith("Pedido ORD-1 devuelto por courier", expect.objectContaining({ description: expect.stringContaining("Inventario › Recepciones") }));
+});
+test("Devuelto por courier muestra el mensaje del servidor si lo rechaza (FEAT-24 H2-F)", async () => {
+  mockOrders[0] = { ...mockOrders[0], status: "PREPARADO", unitAssignmentStatus: "NONE", unitCatalogValidated: true };
+  jest.mocked(axios.post).mockRejectedValue({ response: { status: 409, data: { message: "Solo un pedido enviado puede volver del courier (está en PREPARADO)." } } });
+  render(<PedidosContent />);
+  await act(async () => { await mockActions.onCourierReturn(mockOrders[0] as unknown as Sale); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Registrar devolución" })); });
+  expect(toast.error).toHaveBeenCalledWith("Solo un pedido enviado puede volver del courier (está en PREPARADO).");
 });
 
 describe("Pedidos — receipt batch identity and scope", () => {
@@ -433,7 +439,7 @@ describe("Pedidos — anulación en envío conserva la reserva hasta retorno fí
     await act(async () => {
       if (entry === "status") await mockActions.onChangeStatus("order-1", "ANULADO");
       else if (entry === "cancel") mockActions.onCancel(mockOrders[0] as unknown as Sale);
-      else await mockActions.onReturnToStock(mockOrders[0] as unknown as Sale);
+      else await mockActions.onCourierReturn(mockOrders[0] as unknown as Sale);
     });
     expect(await screen.findByTestId("lifecycle-flow")).toHaveTextContent("return:order-1");
     expect(screen.queryByRole("button", { name: "Confirmar anulación normal" })).not.toBeInTheDocument();

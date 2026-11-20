@@ -132,15 +132,18 @@ export const deleteMarketplaceConfig = async (
 };
 
 // ── Inventory Shrinkage (B4) ─────────────────────────────────────────────────
+// Seguridad (FEAT-24 SEC): las mermas van por la fachada con JWT de ms-products (`/inventory-shrinkage`), que
+// toma la empresa y el autor del token; la ruta vieja de ms-logistics (`/inventory-shrinkage/company/:id`, sin
+// guard) se cierra. `_companyId` se conserva en la firma para no tocar a los que llaman (clave de caché).
 
 export const getShrinkageList = async (
-  companyId: string,
+  _companyId: string,
   fromDate: string,
   toDate: string,
   token: string,
 ): Promise<IInventoryShrinkage[]> => {
   const { data } = await axios.get(
-    `${API.inventory}/inventory-shrinkage/company/${companyId}`,
+    `${API.productos}/inventory-shrinkage`,
     {
       params: { fromDate, toDate },
       headers: { Authorization: `Bearer ${token}` },
@@ -150,26 +153,36 @@ export const getShrinkageList = async (
 };
 
 export const createShrinkage = async (
-  companyId: string,
+  _companyId: string,
   dto: ICreateShrinkageDto,
   token: string,
 ): Promise<IInventoryShrinkage> => {
+  // La fachada rechaza `companyId` y `createdBy` en el cuerpo (los pone del token): solo viajan los datos de la merma.
+  const body = {
+    ...(dto.inventoryItemId ? { inventoryItemId: dto.inventoryItemId } : {}),
+    shrinkageType: dto.shrinkageType,
+    quantity: dto.quantity,
+    unitCost: dto.unitCost,
+    ...(dto.recoveredAmount !== undefined ? { recoveredAmount: dto.recoveredAmount } : {}),
+    ...(dto.notes ? { notes: dto.notes } : {}),
+    ...(dto.referenceId ? { referenceId: dto.referenceId } : {}),
+  };
   const { data } = await axios.post(
-    `${API.inventory}/inventory-shrinkage/company/${companyId}`,
-    dto,
+    `${API.productos}/inventory-shrinkage`,
+    body,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   return data;
 };
 
 export const getShrinkageSummary = async (
-  companyId: string,
+  _companyId: string,
   fromDate: string,
   toDate: string,
   token: string,
 ): Promise<{ totalUnidades: number; costoEstimado: number }> => {
   const { data } = await axios.get(
-    `${API.inventory}/inventory-shrinkage/company/${companyId}/summary`,
+    `${API.productos}/inventory-shrinkage/summary`,
     {
       params: { fromDate, toDate },
       headers: { Authorization: `Bearer ${token}` },

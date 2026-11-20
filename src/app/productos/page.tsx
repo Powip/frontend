@@ -11,10 +11,15 @@ import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Card, CardContent } from "@/components/ui/card";
 import { FileSpreadsheet, PenLine, ShoppingBag } from "lucide-react";
 import ShopifySyncWizard from "./shopify-sync-wizard";
+import { useAuth } from "@/contexts/AuthContext";
+import { hasAdminAccess } from "@/config/permissions.config";
 
 function ProductosContent() {
   const searchParams = useSearchParams();
   const editVariantId = searchParams.get("edit");
+  // FEAT-24 SEC (sec6b): sincronizar con Shopify es solo de un administrador (ms-integrations da 403).
+  const { auth } = useAuth();
+  const canSyncShopify = hasAdminAccess(auth?.user?.role);
   const [mode, setMode] = useState<"list" | "select" | "manual" | "excel" | "shopify">(
     editVariantId ? "manual" : "list",
   );
@@ -39,7 +44,7 @@ function ProductosContent() {
     );
   }
 
-  if (mode === "shopify") {
+  if (mode === "shopify" && canSyncShopify) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen">
         <ShopifySyncWizard onBack={() => setMode("list")} />
@@ -94,22 +99,24 @@ function ProductosContent() {
         </Card>
 
         {/* Shopify */}
-        <Card
-          className="cursor-pointer hover:border-primary hover:shadow-lg transition-all group border-teal-100 dark:border-teal-900/30"
-          onClick={() => setMode("shopify")}
-        >
-          <CardContent className="flex flex-col items-center justify-center gap-4 py-10">
-            <div className="rounded-full bg-teal-100 dark:bg-teal-950/30 p-4 group-hover:bg-teal-200 dark:group-hover:bg-teal-900/40 transition">
-              <ShoppingBag className="h-8 w-8 text-teal-600" />
-            </div>
-            <div className="text-center">
-              <h3 className="text-lg font-semibold">Sincronizar Shopify</h3>
-              <p className="text-sm text-muted-foreground mt-1">
-                Importa productos automáticamente desde Shopify
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        {canSyncShopify && (
+          <Card
+            className="cursor-pointer hover:border-primary hover:shadow-lg transition-all group border-teal-100 dark:border-teal-900/30"
+            onClick={() => setMode("shopify")}
+          >
+            <CardContent className="flex flex-col items-center justify-center gap-4 py-10">
+              <div className="rounded-full bg-teal-100 dark:bg-teal-950/30 p-4 group-hover:bg-teal-200 dark:group-hover:bg-teal-900/40 transition">
+                <ShoppingBag className="h-8 w-8 text-teal-600" />
+              </div>
+              <div className="text-center">
+                <h3 className="text-lg font-semibold">Sincronizar Shopify</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Importa productos automáticamente desde Shopify
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );

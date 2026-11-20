@@ -14,6 +14,9 @@
  *    limpia al cambiar de página, confirmar llama a `bulkConfirm`.
  * 5. Acciones existentes (confirmar como nuevo, vincular, rechazar, unificar,
  *    errores, cola manual, franja ámbar) dentro de su tab.
+ * 6. FEAT-24 H11: «Unificar manualmente», «SKU repetido» dentro de «Por
+ *    unificar» (suma al contador) con «Unir a…» que precarga el origen,
+ *    «Historial» y sin «En progreso».
  *
  * Mocks: service de reconciliación (`listReconciliationTaskPage` + acciones),
  * `getStockByVariants`, sonner. Radix Tabs/AlertDialog/Checkbox sin mockear.
@@ -64,6 +67,15 @@ jest.mock('@/services/inventoryItems.service', () => ({
   getStockByVariants: jest.fn(),
 }));
 
+// FEAT-24 H11 — SKU repetidos, historial y unión manual.
+jest.mock('@/services/unification.service', () => ({
+  listSkuConflictGroups: jest.fn(),
+  listUnificationHistory: jest.fn(),
+  createUnification: jest.fn(),
+}));
+
+jest.mock('next/image', () => ({ __esModule: true, default: () => null }));
+
 // ── Imports bajo prueba (después de los mocks) ────────────────────────────────
 
 import { toast } from 'sonner';
@@ -82,6 +94,11 @@ import {
   type BulkConfirmResultItem,
 } from '@/services/reconciliationTask.service';
 import { getStockByVariants } from '@/services/inventoryItems.service';
+import {
+  listSkuConflictGroups,
+  listUnificationHistory,
+  type SkuConflictPage,
+} from '@/services/unification.service';
 import { ReconciliationTab } from '../ReconciliationTab';
 
 // ── Casts ────────────────────────────────────────────────────────────────────
@@ -96,6 +113,13 @@ const mockGetTaskDetails = jest.mocked(getReconciliationTaskDetails);
 const mockGetStock = jest.mocked(getStockByVariants);
 const mockToast = toast as jest.Mocked<typeof toast>;
 const mockUseAuth = jest.mocked(useAuth);
+const mockListSkuConflicts = jest.mocked(listSkuConflictGroups);
+const mockListHistory = jest.mocked(listUnificationHistory);
+
+const EMPTY_SKU_CONFLICTS: SkuConflictPage = {
+  data: [],
+  meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+};
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -289,6 +313,11 @@ beforeEach(() => {
   mockSearchVariants.mockResolvedValue([]);
   mockGetTaskDetails.mockResolvedValue({ task_id: '', candidates: [] });
   mockGetStock.mockResolvedValue([]);
+  mockListSkuConflicts.mockResolvedValue(EMPTY_SKU_CONFLICTS);
+  mockListHistory.mockResolvedValue({
+    data: [],
+    meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+  });
 });
 
 function buildWrapper() {
@@ -368,7 +397,7 @@ describe('ReconciliationTab', () => {
   });
 
   describe('tabs y paginación (FEAT-17 Anexo D)', () => {
-    it('muestra las 4 tabs en orden con sus contadores y arranca en "Por unificar" página 1', async () => {
+    it('muestra las 5 tabs en orden con sus contadores y arranca en "Por unificar" página 1', async () => {
       serveTabs({
         por_unificar: [makeClusterTask()],
         provisionales: [makeProvisionalTask(), makeProvisionalTask({ id: 'task-prov-2' })],
@@ -384,7 +413,9 @@ describe('ReconciliationTab', () => {
         'Aplicadas0',
         'Ventas sin producto0',
         'Nuevos por revisar2',
+        'Historial',
       ]);
+      expect(screen.queryByRole('tab', { name: /en progreso/i })).not.toBeInTheDocument();
     });
 
     it('cambiar de tab pide la página 1 de esa tab', async () => {
@@ -693,6 +724,70 @@ describe('ReconciliationTab', () => {
 
       await waitFor(() => expect(mockReject).toHaveBeenCalledWith('task-cluster-1'));
       expect(mockToast.success).toHaveBeenCalledWith('Tarea rechazada');
+    });
+  });
+
+  describe('FEAT-24 H11 — unión manual, SKU repetidos e historial', () => {
+    const SKU_PAGE: SkuConflictPage = {
+      data: [
+        {
+          sku_key: 'POL-M',
+          variants: [
+            {
+              variant_id: 'v-sku-1', product_id: 'p-sku-1', product_name: 'Polo', product_type: 'variantes',
+              sku: 'INT-1', company_sku: 'POL-M', attribute_values: { Talla: 'M' }, image_url: null, price: 30,
+              cost: 10, sku_conflict: true, tracking_mode: 'NONE', external_source: null, created_at: '2026-11-01T00:00:00.000Z',
+            },
+            {
+              variant_id: 'v-sku-2', product_id: 'p-sku-2', product_name: 'Polo Shopify', product_type: 'variantes',
+              sku: 'SHP-1', company_sku: 'POL-M', attribute_values: { Talla: 'M' }, image_url: null, price: 30,
+              cost: 11, sku_conflict: true, tracking_mode: 'NONE', external_source: 'shopify', created_at: '2026-11-02T00:00:00.000Z',
+            },
+          ],
+        },
+      ],
+      meta: { page: 1, limit: 10, total: 1, totalPages: 1 },
+    };
+
+    it('«Por unificar» suma los grupos de SKU repetido al contador y los muestra sobre los duplicados', async () => {
+      mockListSkuConflicts.mockResolvedValue(SKU_PAGE);
+      serveTabs({ por_unificar: [makeClusterTask()] });
+      renderTab();
+      expect(await screen.findByRole('heading', { name: 'SKU repetido (1)' })).toBeInTheDocument();
+      await screen.findAllByText('Camiseta Azul M');
+      expect(screen.getByRole('tab', { name: /por unificar/i })).toHaveTextContent('Por unificar2');
+      // Un solo pedido: el contador y la lista comparten la misma consulta.
+      expect(mockListSkuConflicts).toHaveBeenCalledTimes(1);
+    });
+
+    it('«Unir a…» abre la unión manual con el origen precargado', async () => {
+      mockListSkuConflicts.mockResolvedValue(SKU_PAGE);
+      renderTab();
+      const user = userEvent.setup();
+      await user.click(await screen.findByRole('button', { name: 'Unir a… Polo Shopify · Talla: M' }));
+
+      const dialog = within(await screen.findByRole('dialog', { name: 'Unificar manualmente' }));
+      expect(dialog.getByText('Polo Shopify')).toBeInTheDocument();
+      expect(dialog.getByRole('button', { name: 'Cambiar Variante que se une' })).toBeInTheDocument();
+      expect(dialog.queryByLabelText('Buscar Variante que se une')).not.toBeInTheDocument();
+      expect(dialog.getByLabelText('Buscar Variante madre (se queda)')).toBeInTheDocument();
+    });
+
+    it('«Unificar manualmente» abre el diálogo vacío para buscar las dos variantes', async () => {
+      renderTab();
+      await userEvent.setup().click(screen.getByRole('button', { name: /unificar manualmente/i }));
+      const dialog = within(await screen.findByRole('dialog', { name: 'Unificar manualmente' }));
+      expect(dialog.getByLabelText('Buscar Variante madre (se queda)')).toBeInTheDocument();
+      expect(dialog.getByLabelText('Buscar Variante que se une')).toBeInTheDocument();
+    });
+
+    it('«Historial» lista las resueltas sin pedir la bandeja con esa pestaña', async () => {
+      renderTab();
+      await waitFor(() => expect(mockListPage).toHaveBeenCalledTimes(1));
+      await openTab(/historial/i);
+      expect(await screen.findByText(/no hay unificaciones en el historial/i)).toBeInTheDocument();
+      expect(mockListHistory).toHaveBeenCalledWith({ page: 1, limit: 10 });
+      expect(mockListPage).toHaveBeenCalledTimes(1);
     });
   });
 });

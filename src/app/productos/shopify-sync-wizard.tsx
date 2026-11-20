@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
+import { parseShopifySyncError } from "@/lib/shopifyStock";
 
 interface ShopifySyncWizardProps {
   onBack: () => void;
@@ -76,7 +77,7 @@ export default function ShopifySyncWizard({ onBack }: ShopifySyncWizardProps) {
       );
     } catch (error) {
       console.error("Error syncing products:", error);
-      toast.error("Error al sincronizar productos");
+      toast.error(parseShopifySyncError(error, "Error al sincronizar productos"));
     } finally {
       setSyncing(null);
     }

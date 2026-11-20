@@ -10,6 +10,7 @@ import {
   AliclikCredentialSafe,
 } from "@/services/aliclikService";
 import { fetchCompanyById } from "@/services/companyService";
+import { hasAdminAccess } from "@/config/permissions.config";
 
 const API_INTEGRATIONS = (
   process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3004"
@@ -21,6 +22,9 @@ export default function AliclikConfigPage() {
   const { auth } = useAuth();
   const companyId = auth?.company?.id;
   const token = auth?.accessToken;
+  // FEAT-24 SEC (sec6b): credenciales, tienda destino y prueba de conexión son solo de un administrador de la empresa
+  // (ms-integrations responde 403 al resto). El secreto del webhook tampoco le llega a quien no es admin.
+  const isAdmin = hasAdminAccess(auth?.user?.role);
 
   const [credential, setCredential] = useState<AliclikCredentialSafe | null>(null);
   const [loading, setLoading] = useState(true);
@@ -362,7 +366,7 @@ export default function AliclikConfigPage() {
                 id="aliclik-import-store"
                 value={selectedStoreId}
                 onChange={(e) => setSelectedStoreId(e.target.value)}
-                disabled={savingStore}
+                disabled={savingStore || !isAdmin}
                 className="w-full border dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
               >
                 <option value="">Sin store destino</option>
@@ -382,17 +386,23 @@ export default function AliclikConfigPage() {
                   Store guardado correctamente.
                 </p>
               )}
-              <button
-                type="button"
-                onClick={handleSaveStore}
-                disabled={
-                  savingStore ||
-                  selectedStoreId === (credential?.importStoreId ?? "")
-                }
-                className="self-start bg-blue-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
-              >
-                {savingStore ? "Guardando..." : "Guardar"}
-              </button>
+              {isAdmin ? (
+                <button
+                  type="button"
+                  onClick={handleSaveStore}
+                  disabled={
+                    savingStore ||
+                    selectedStoreId === (credential?.importStoreId ?? "")
+                  }
+                  className="self-start bg-blue-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                >
+                  {savingStore ? "Guardando..." : "Guardar"}
+                </button>
+              ) : (
+                <p className="text-xs text-gray-500 dark:text-slate-400">
+                  Solo un administrador de la empresa puede cambiar el store destino.
+                </p>
+              )}
             </div>
           </div>
 
@@ -401,18 +411,29 @@ export default function AliclikConfigPage() {
             Operaciones y CC.
           </p>
 
-          <button
-            type="button"
-            onClick={handleReconfigure}
-            className="text-xs text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition"
-          >
-            Actualizar token →
-          </button>
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={handleReconfigure}
+              className="text-xs text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition"
+            >
+              Actualizar token →
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Estado NO CONFIGURADO, quien no es admin: no puede cargar credenciales */}
+      {!saving && !credential && !isAdmin && (
+        <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl p-5">
+          <p className="text-sm text-gray-600 dark:text-slate-300">
+            Solo un administrador de la empresa puede conectar Aliclik. Pídele que lo configure.
+          </p>
         </div>
       )}
 
       {/* Estado NO CONFIGURADO — formulario */}
-      {!saving && !credential && (
+      {!saving && !credential && isAdmin && (
         <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl p-5 space-y-4">
           <form onSubmit={handleSave} className="space-y-4">
             <h2 className="text-sm font-semibold dark:text-slate-100">Credenciales Aliclik</h2>

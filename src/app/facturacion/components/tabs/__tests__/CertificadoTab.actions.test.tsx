@@ -11,6 +11,11 @@ jest.mock("@/features/sunat/sunat-profile/hooks/use-sunat-profiles");
 jest.mock("@/features/sunat/sunat-profile/hooks/use-set-default-sunat-profie");
 jest.mock("@/features/sunat/sunat-profile/hooks/use-delete-sunat-profile");
 jest.mock("@/features/sunat/sunat-profile/hooks/use-replace-sunat-profile-certificate");
+// FEAT-24 H12: la sección de credenciales GRE tiene su propio test (CertificadoTab.gre.test.tsx).
+jest.mock("@/features/sunat/despatch-advice/hooks/use-despatch-advices", () => ({
+  greKeys: { all: ["despatch-advices"] },
+  useGreSettings: () => ({ data: undefined, isPending: true, isError: false }),
+}));
 jest.mock("@/app/facturacion/components/modals/CertificadoUploadModal", () => ({
   __esModule: true,
   default: () => null,
