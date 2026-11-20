@@ -18,6 +18,7 @@ import { leadCommandId } from "@/components/commercial-leads/lead-ui";
 import {
   confirmarVentaCc,
 } from "@/services/atencionClienteService";
+import { CcShalomAgencyPicker, type CcShalomAgencyOptions } from "./CcShalomAgencyPicker";
 
 interface Props {
   orderId: string;
@@ -31,6 +32,8 @@ interface Props {
    */
   deliveryDataComplete?: boolean;
   embedded?: boolean;
+  /** Si se informa, la tarjeta ofrece elegir (opcional) la agencia Shalom de la ciudad del pedido. */
+  shalomAgency?: CcShalomAgencyOptions;
   onUpdated: () => void;
 }
 
@@ -42,6 +45,7 @@ export function CcSaleConfirmationPanel({
   datosCompletos,
   deliveryDataComplete,
   embedded = false,
+  shalomAgency,
   onUpdated,
 }: Props) {
   const { auth } = useAuth();
@@ -189,6 +193,15 @@ export function CcSaleConfirmationPanel({
         <p className="text-amber-700 dark:text-amber-400">
           Vuelve a abrir el pedido para revisar sus datos actualizados.
         </p>
+      ) : null}
+
+      {canConfirm && shalomAgency ? (
+        <CcShalomAgencyPicker
+          orderId={orderId}
+          {...shalomAgency}
+          disabled={pending || reviewing}
+          onSaved={onUpdated}
+        />
       ) : null}
 
       {canConfirm && reviewing ? (

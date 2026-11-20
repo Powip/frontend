@@ -4,6 +4,7 @@ import {useAuth} from "@/contexts/AuthContext";
 
 import { useState, useCallback } from "react";
 import { CcSaleConfirmationPanel } from "./CcSaleConfirmationPanel";
+import type { CcShalomAgencyOptions } from "./CcShalomAgencyPicker";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, Phone, PhoneOff, MapPin, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,8 @@ interface Props {
   orderUpdatedAt?: string;
   commercialStockState?: "DEFERRED" | "QUEUED" | "PRESERVED" | "NOT_REQUIRED" | null;
   pendingPurchase?: boolean;
+  /** Agencia Shalom opcional para pedidos pendientes de confirmar. */
+  shalomAgency?: CcShalomAgencyOptions;
 }
 
 const CHECKLIST_ITEMS = [
@@ -86,6 +89,7 @@ export function CcGestionPanel({
   orderUpdatedAt,
   commercialStockState,
   pendingPurchase,
+  shalomAgency,
 }: Props) {
   const {hasPermission}=useAuth();
   const canManage=canManageCustomerServiceOrder(hasPermission, canalOrigen);
@@ -165,6 +169,7 @@ export function CcGestionPanel({
         orderUpdatedAt={orderUpdatedAt}
         datosCompletos={datosCompletos}
         deliveryDataComplete={deliveryDataComplete}
+        shalomAgency={shalomAgency}
         onUpdated={onUpdated}
       />
     ) : (
@@ -239,6 +244,7 @@ export function CcGestionPanel({
           orderUpdatedAt={orderUpdatedAt}
           datosCompletos={datosCompletos}
           deliveryDataComplete={deliveryDataComplete}
+          shalomAgency={shalomAgency}
           onUpdated={onUpdated}
         />
       ) : commercialStockState === "DEFERRED" ? (
