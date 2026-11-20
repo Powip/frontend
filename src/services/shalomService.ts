@@ -1,4 +1,5 @@
 import axiosAuth from "@/lib/axiosAuth";
+import { API } from "@/lib/api";
 
 const API_INTEGRATIONS = (
   process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3004"
@@ -159,6 +160,49 @@ export const listShalomAgencies = async (
     console.error("SHALOM API ERROR:", error);
     return [];
   }
+};
+
+/** Agencia lista para elegir en un selector (forma común del envío a Shalom y de Registrar venta). */
+export interface ShalomAgencyOption {
+  id_agencia: string;
+  nombre_agencia: string;
+  direccion: string;
+  /** Nombre que espera la API de Shalom al registrar el envío. */
+  api_name: string;
+  ter_aereo: number; // 1 = permite envío aéreo, 0 = solo terrestre
+  /** Ubicación de la agencia según el catálogo ("" si no viene). */
+  departamento: string;
+  provincia: string;
+}
+
+export const toShalomAgencyOption = (a: Record<string, unknown>): ShalomAgencyOption => ({
+  id_agencia: String(a.ter_id ?? a.id ?? a.id_agencia ?? ""),
+  nombre_agencia: String(a.nombre ?? a.name ?? a.nombre_agencia ?? ""),
+  api_name: String(a.lugar_over ?? a.nombre ?? a.name ?? ""),
+  direccion: String(a.lugar ?? a.direccion ?? ""),
+  ter_aereo: typeof a.ter_aereo === "number" ? a.ter_aereo : 0,
+  departamento: String(a.departamento ?? a.department ?? ""),
+  provincia: String(a.provincia ?? a.province ?? ""),
+});
+
+/**
+ * Agencias para un selector: con término usa `GET /shalom/agencies/search/:q`; sin término,
+ * el catálogo completo (`GET /shalom/agencies`). Va con la sesión (`axiosAuth`).
+ * Devuelve `null` si el backend responde sin `success` (el llamador no debe guardar ese resultado);
+ * los errores de red se propagan.
+ */
+export const fetchShalomAgencyOptions = async (
+  q?: string,
+): Promise<ShalomAgencyOption[] | null> => {
+  const base = (API.integrations || API_INTEGRATIONS).replace(/\/$/, "");
+  const term = q?.trim();
+  const res = await axiosAuth.get(
+    term
+      ? `${base}/shalom/agencies/search/${encodeURIComponent(q as string)}`
+      : `${base}/shalom/agencies`,
+  );
+  if (!res.data?.success) return null;
+  return (res.data.data || []).map(toShalomAgencyOption);
 };
 
 // ─── TRACKING ────────────────────────────────────────────

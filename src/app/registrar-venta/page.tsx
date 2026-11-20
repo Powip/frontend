@@ -65,6 +65,8 @@ import { hasAdminAccess, isSuperadmin } from "@/config/permissions.config";
 import { useAuth } from "@/contexts/AuthContext";
 import { PacksProvider, usePacks } from "@/contexts/PacksContext";
 import { DeliveryType, OrderType, type SalesChannel } from "@/enum/Order.enum";
+import { ShalomAgencyField } from "@/components/shalom/ShalomAgencyField";
+import type { ShalomAgencyOption } from "@/services/shalomService";
 import { usePacksEngine } from "@/hooks/usePacksEngine";
 import { usePromoGifts } from "@/hooks/usePromoGifts";
 import { useSuggestedPrices } from "@/hooks/useSuggestedPrices";
@@ -267,6 +269,8 @@ function RegistrarVentaContent() {
   const [originalClient, setOriginalClient] = useState<Client | null>(null);
   const [clientForm, setClientForm] = useState(emptyClientForm);
   const [orderDeliveryAgency, setOrderDeliveryAgency] = useState("");
+  // `api_name` de la agencia Shalom elegida en el buscador (solo para marcarla en el selector).
+  const [shalomAgencyApiName, setShalomAgencyApiName] = useState("");
   const [clientErrors, setClientErrors] = useState<
     Partial<Record<keyof typeof emptyClientForm, string>>
   >({});
@@ -632,6 +636,7 @@ function RegistrarVentaContent() {
     setOriginalClient(cust);
     setClientForm(clientToFormFields(cust));
     setOrderDeliveryAgency(orderData.deliverySnapshot?.agency ?? "");
+    setShalomAgencyApiName("");
     setSearchState("found");
 
     // --- Detalles de la venta ---
@@ -1036,6 +1041,8 @@ function RegistrarVentaContent() {
       enviaPor: undefined,
       customerNotes: "",
     });
+    setOrderDeliveryAgency("");
+    setShalomAgencyApiName("");
     setSalesRegion("LIMA");
     setScheduleDelivery(false);
     setScheduledDeliveryDate("");
@@ -1405,6 +1412,10 @@ function RegistrarVentaContent() {
         // --- Envío ---
         shippingTotal: shippingTotal ?? 0,
         courier: orderDetails.enviaPor ?? null,
+        // «Recojo en agencia»: la agencia elegida queda como entrega propia del pedido.
+        ...(orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && orderDeliveryAgency.trim()
+          ? { delivery: { agency: orderDeliveryAgency.trim() } }
+          : {}),
         sellerName: sellerDisplayName || null,
 
         // --- Modo de impuestos ---
@@ -1484,6 +1495,10 @@ function RegistrarVentaContent() {
           if (!isCurrentEditor()) return;
 
           const createdOrderId = response.data.id;
+          // Un backend sin soporte descarta `delivery` sin avisar: que no pase desapercibido.
+          if (createPayload.delivery && !response.data?.deliverySnapshot?.agency) {
+            toast.warning("La venta se registró, pero la agencia de recojo no se guardó. Indícala al editar el pedido o en la guía.");
+          }
           const createdAsLead = response.data.commercialStage === "LEAD";
           const recordedLabel = createdAsLead ? "Lead registrado" : "Venta registrada";
 
@@ -1925,13 +1940,32 @@ function RegistrarVentaContent() {
   const hasValidCart =
     cart.length > 0 && cart.every((item) => item.quantity > 0 && item.price >= 0);
 
+  // La agencia de recojo solo se puede guardar al registrar una venta nueva o en pedidos que ya
+  // tienen entrega propia; un pedido antiguo sin entrega propia no la admite.
+  const agencyDeliveryAllowed = !orderId || !!orderData?.deliverySnapshot;
+  const isShalomCourier = /shalom/i.test(orderDetails.enviaPor ?? "");
+  const hasValidCourier = Boolean(orderDetails.enviaPor) &&
+    (Boolean(orderId) || orderDetails.enviaPor === "OTROS" ||
+      couriers.some((courier) => courier.name === orderDetails.enviaPor));
+
   const hasValidDelivery = orderData?.deliverySnapshot
     ? orderDetails.deliveryType === DeliveryType.DOMICILIO ||
       (orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && !!orderDeliveryAgency.trim())
     : orderDetails.deliveryType === DeliveryType.RETIRO_TIENDA ||
-    (orderDetails.deliveryType === DeliveryType.DOMICILIO && Boolean(orderDetails.enviaPor) &&
-      (Boolean(orderId) || orderDetails.enviaPor === "OTROS" ||
-        couriers.some((courier) => courier.name === orderDetails.enviaPor)));
+    (orderDetails.deliveryType === DeliveryType.DOMICILIO && hasValidCourier) ||
+    (orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && !orderId && hasValidCourier &&
+      !!orderDeliveryAgency.trim());
+
+  const handleShalomAgencySelect = (agency: ShalomAgencyOption) => {
+    setShalomAgencyApiName(agency.api_name);
+    setOrderDeliveryAgency(`Shalom — ${agency.nombre_agencia}`.slice(0, 150));
+    // Shalom entrega en agencia: al elegir una, el pedido pasa a «Recojo en agencia».
+    setOrderDetails((prev) =>
+      prev.deliveryType === DeliveryType.PUNTO_EXTERNO
+        ? prev
+        : { ...prev, deliveryType: DeliveryType.PUNTO_EXTERNO },
+    );
+  };
 
   const hasValidPayments = !!leadId || orderData?.commercialStage === "LEAD" || !!paymentMethod;
 
@@ -2970,8 +3004,9 @@ function RegistrarVentaContent() {
                   </div>
 
                   </div>
-                  {/* Costo de envío - solo si es envío a domicilio */}
-                  {orderDetails.deliveryType === DeliveryType.DOMICILIO && (
+                  {/* Costo de envío - envío a domicilio o recojo en agencia */}
+                  {(orderDetails.deliveryType === DeliveryType.DOMICILIO ||
+                    orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO) && (
                     <div className="space-y-1">
                       <Label>Costo de envío</Label>
                       <Input
@@ -3322,13 +3357,15 @@ function RegistrarVentaContent() {
                       <Select
                         disabled={isSubmitting}
                         value={orderDetails.deliveryType ?? ""}
-                        onValueChange={(v) =>
+                        onValueChange={(v) => {
                           setOrderDetails({
                             ...orderDetails,
                             deliveryType: v as DeliveryType,
                             enviaPor: undefined,
-                          })
-                        }
+                          });
+                          setShalomAgencyApiName("");
+                          if (!orderData?.deliverySnapshot) setOrderDeliveryAgency("");
+                        }}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Seleccionar tipo de entrega" />
@@ -3340,14 +3377,14 @@ function RegistrarVentaContent() {
                             </SelectItem>
                           )}
                           <SelectItem value={DeliveryType.DOMICILIO}>Envío a domicilio</SelectItem>
-                          {orderData?.deliverySnapshot && (
-                            <SelectItem value={DeliveryType.PUNTO_EXTERNO}>Envío a agencia</SelectItem>
+                          {agencyDeliveryAllowed && (
+                            <SelectItem value={DeliveryType.PUNTO_EXTERNO}>Recojo en agencia</SelectItem>
                           )}
                         </SelectContent>
                       </Select>
                     </div>
 
-                    {orderData?.deliverySnapshot && orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && (
+                    {agencyDeliveryAllowed && orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && !isShalomCourier && (
                       <div className="md:col-span-2 space-y-1">
                         <Label htmlFor="order-delivery-agency">Agencia y sucursal de este pedido</Label>
                         <Input
@@ -3362,7 +3399,8 @@ function RegistrarVentaContent() {
                     )}
 
                     {/* Método de envío */}
-                    {orderDetails.deliveryType === DeliveryType.DOMICILIO && (
+                    {(orderDetails.deliveryType === DeliveryType.DOMICILIO ||
+                      (agencyDeliveryAllowed && orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO)) && (
                       <div className="md:col-span-2 space-y-1">
                         <Label>
                           Método de envío <span className="text-destructive">*</span>
@@ -3370,12 +3408,14 @@ function RegistrarVentaContent() {
                         <Select
                           disabled={isSubmitting || isLoadingCouriers}
                           value={orderDetails.enviaPor ?? ""}
-                          onValueChange={(v) =>
+                          onValueChange={(v) => {
                             setOrderDetails({
                               ...orderDetails,
                               enviaPor: v,
-                            })
-                          }
+                            });
+                            setShalomAgencyApiName("");
+                            if (!orderData?.deliverySnapshot) setOrderDeliveryAgency("");
+                          }}
                         >
                           <SelectTrigger>
                             <SelectValue
@@ -3401,6 +3441,39 @@ function RegistrarVentaContent() {
                             </Button>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* Agencia Shalom: catálogo de agencias cuando el método de envío es Shalom */}
+                    {agencyDeliveryAllowed && isShalomCourier &&
+                      (orderDetails.deliveryType === DeliveryType.DOMICILIO ||
+                        orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO) && (
+                      <div className="md:col-span-2 space-y-1">
+                        <ShalomAgencyField
+                          label="Agencia Shalom de recojo"
+                          selectedAgency={shalomAgencyApiName}
+                          onSelect={handleShalomAgencySelect}
+                          onClear={() => {
+                            setShalomAgencyApiName("");
+                            setOrderDeliveryAgency("");
+                          }}
+                          location={{
+                            department: clientForm.department,
+                            province: clientForm.province,
+                            district: clientForm.district,
+                          }}
+                          disabled={isSubmitting}
+                          required={orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && !orderDeliveryAgency.trim()}
+                        />
+                        {orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && orderDeliveryAgency.trim() ? (
+                          <p className="text-sm text-muted-foreground">
+                            Agencia elegida: <span className="font-medium text-foreground">{orderDeliveryAgency}</span>
+                          </p>
+                        ) : orderDetails.deliveryType === DeliveryType.DOMICILIO ? (
+                          <p className="text-sm text-muted-foreground">
+                            Al elegir una agencia, el tipo de entrega cambia a «Recojo en agencia».
+                          </p>
+                        ) : null}
                       </div>
                     )}
                   </div>
