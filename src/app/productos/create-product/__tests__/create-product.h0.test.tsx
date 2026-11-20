@@ -134,6 +134,25 @@ describe("Ficha del producto (FEAT-24 H0)", () => {
     expect(patch.mock.calls.some(([url]) => String(url).includes("/product-variant/v-2"))).toBe(false);
   });
 
+  it("en edición, las variantes cargadas no se borran solas aunque la carga termine antes del render", async () => {
+    // Con respuestas instantáneas la carga de edición termina antes de que React pinte la categoría: el
+    // efecto «cambió la categoría» la veía como un cambio del usuario y vaciaba subcategorías y variantes.
+    mockCatalog([
+      { id: "v-1", sku: "POW-ROJO", attributeValues: { Color: "Rojo" }, priceBase: 10, priceVta: 20, isActive: true, mergedInto: null, linkedSources: [] },
+    ]);
+    post.mockImplementation(async (url) => ({
+      data: String(url).includes("multiple/by-ids")
+        ? [{ id: "v-1", product: { id: "p-1", companyId: "company-a", trackingMode: "NONE", name: "Polo", inventory_id: "warehouse" } }]
+        : [{ subcategory: { id: "subcategory", category: { id: "category" } }, brand: { id: "brand-1" } }],
+    }));
+    render(<ProductCreateForm editVariantId="v-1" />);
+    expect(await screen.findByText("POW-ROJO")).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(screen.getByText("POW-ROJO")).toBeInTheDocument();
+    // La carga ya trajo subcategorías y atributos: los efectos no los vuelven a pedir.
+    expect(get.mock.calls.filter(([url]) => String(url).includes("/subcategories/category/"))).toHaveLength(1);
+  });
+
   it("en edición muestra el código de fábrica y el EAN de POWIP de cada variante guardada (FEAT-24 H2-F)", async () => {
     mockCatalog([
       { id: "v-1", sku: "POW-ROJO", barcode: "7750000000001", powipEan: "2000000000015", attributeValues: { Color: "Rojo" }, priceBase: 10, priceVta: 20, isActive: true, mergedInto: null, linkedSources: [] },

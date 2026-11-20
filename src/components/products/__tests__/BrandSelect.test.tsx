@@ -36,6 +36,24 @@ describe("BrandSelect (FEAT-24 H0)", () => {
     expect(screen.getByRole("option", { name: "Nike" })).toBeInTheDocument();
   });
 
+  it("«Crear marca» va primera: se ve sin bajar aunque haya muchas parecidas", () => {
+    jest.mocked(useCompanyBrands).mockReturnValue({
+      brands: Array.from({ length: 12 }, (_, index) => ({ id: `n-${index}`, name: `Nike ${index}` })),
+      isLoading: false,
+      createBrand,
+    });
+    render(<BrandSelect value="" onChange={jest.fn()} />);
+    fireEvent.change(screen.getByLabelText("Marca"), { target: { value: "Nike" } });
+    expect(screen.getAllByRole("option")[0]).toHaveAccessibleName('Crear marca "Nike"');
+  });
+
+  it("sin marcas todavía, al abrir explica que se crean escribiendo el nombre", () => {
+    jest.mocked(useCompanyBrands).mockReturnValue({ brands: [], isLoading: false, createBrand });
+    render(<BrandSelect value="" onChange={jest.fn()} />);
+    fireEvent.focus(screen.getByLabelText("Marca"));
+    expect(screen.getByText("Aún no tienes marcas: escribe el nombre para crearla.")).toBeInTheDocument();
+  });
+
   it("muestra la marca elegida y permite quitarla", () => {
     const onChange = jest.fn();
     render(<BrandSelect value="nike" onChange={onChange} />);
