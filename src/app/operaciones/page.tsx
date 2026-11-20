@@ -24,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { OrderHeader } from "@/interfaces/IOrder";
+import { isCourierDelivery } from "@/utils/domain/courier-delivery";
 import {
   getOperationsTab,
   getPedidosTab,
@@ -80,7 +81,7 @@ export default function OperacionesTableroPage() {
   const [scannerOpen, setScannerOpen] = useState(false);
 
   const shippingOrders = useMemo(
-    () => orders.filter((o) => o.deliveryType === "DOMICILIO" && SHIPPING_STATUSES.includes(o.status)),
+    () => orders.filter((o) => isCourierDelivery(o) && SHIPPING_STATUSES.includes(o.status)),
     [orders],
   );
 
