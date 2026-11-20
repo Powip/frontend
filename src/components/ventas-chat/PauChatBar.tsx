@@ -3,9 +3,11 @@ import { useRef, useState } from "react";
 import { HelpCircle, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSuggestPauReply, usePauSettings } from "@/hooks/useCrmPau";
-import { useUpdateConversation } from "@/hooks/useCrmChat";
+import { useMessages, useUpdateConversation } from "@/hooks/useCrmChat";
 import type { Conversation } from "@/types/crm";
 import ConfirmDialog from "./ConfirmDialog";
+import TeachPauDialog from "./TeachPauDialog";
+import { lastCustomerText } from "./format";
 
 interface Props {
   conversation: Conversation;
@@ -25,11 +27,15 @@ export default function PauChatBar({ conversation, text, onFill, windowOpen }: P
   const update = useUpdateConversation(conversation.id);
   const suggest = useSuggestPauReply(conversation.id);
   const [confirm, setConfirm] = useState<Confirm>(null);
+  const [teaching, setTeaching] = useState(false);
+  const messages = useMessages(conversation.id);
   const textRef = useRef(text);
   textRef.current = text;
 
   const mode = settings.data?.mode;
-  if (!mode || mode === "off") return null;
+  const showBar = !!mode && mode !== "off";
+  // Con Pau apagado solo se pinta si pidió ayuda: ahí aún sirve enseñarle la respuesta.
+  if (!showBar && !conversation.pauHelpReason) return null;
 
   const auto = mode === "auto";
   const active = conversation.pauEnabled;
@@ -62,6 +68,12 @@ export default function PauChatBar({ conversation, text, onFill, windowOpen }: P
           <span>Pau pidió ayuda: {conversation.pauHelpReason}</span>
         </p>
       )}
+      {!showBar && (
+        <Button size="sm" variant="outline" onClick={() => setTeaching(true)}>
+          Enseñarle la respuesta
+        </Button>
+      )}
+      {showBar && (
       <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-2 py-1.5">
         <Sparkles className="h-4 w-4 shrink-0 text-primary" aria-hidden />
         <span className="min-w-0 flex-1 text-xs font-medium" data-testid="pau-status">
@@ -88,12 +100,22 @@ export default function PauChatBar({ conversation, text, onFill, windowOpen }: P
           size="sm"
           variant="outline"
           disabled={suggest.isPending || !windowOpen}
-          title={windowOpen ? undefined : "La ventana de 24 h está cerrada: no se puede responder"}
+          title={windowOpen ? undefined : "La ventana de respuesta está cerrada: no se puede responder"}
           onClick={ask}
         >
           Sugerir respuesta
         </Button>
+        <Button size="sm" variant="outline" onClick={() => setTeaching(true)}>
+          Enseñarle la respuesta
+        </Button>
       </div>
+      )}
+      {teaching && (
+        <TeachPauDialog
+          initialQuestion={lastCustomerText(messages.data?.items)}
+          onClose={() => setTeaching(false)}
+        />
+      )}
       <ConfirmDialog
         open={!!confirm}
         title="¿Reemplazar lo que escribiste?"

@@ -16,6 +16,7 @@ import {
   listObjections,
   listSheets,
   markScriptRead,
+  proposeObjection,
   registerObjectionUse,
   saveScript,
   updateMaterial,
@@ -126,6 +127,23 @@ export function useObjectionActions() {
       onError,
     }),
   };
+}
+
+/** «Enseñarle la respuesta a Pau»: queda pendiente de aprobación, salvo que proponga un administrador. */
+export function useProposeObjection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ObjectionInput) => proposeObjection(input),
+    onSuccess: (o) => {
+      qc.invalidateQueries({ queryKey: contentKeys.objections });
+      toast.success(
+        o.active
+          ? "Respuesta guardada: Pau ya la usa"
+          : "Propuesta enviada: queda pendiente hasta que un administrador la apruebe",
+      );
+    },
+    onError,
+  });
 }
 
 /** Registra el uso de una respuesta en un chat. Un fallo no debe estorbar a la vendedora. */

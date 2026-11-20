@@ -36,6 +36,7 @@ const obj = (over: Partial<Objection> = {}): Objection => ({
   position: 0,
   active: true,
   createdAt: "2026-11-01T00:00:00.000Z",
+  proposedByName: null,
   ...over,
 });
 const stats = (over: Partial<ObjectionStats> = {}): ObjectionStats => ({

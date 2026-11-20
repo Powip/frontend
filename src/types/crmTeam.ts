@@ -135,3 +135,25 @@ export interface ConnectWabaResult {
     updatedAt: string;
   };
 }
+
+// --- Cuentas de Messenger e Instagram (ms-integrations) ---
+
+export type MetaChannel = "messenger" | "instagram";
+
+export interface MetaAccount {
+  id: string;
+  channel: MetaChannel;
+  accountId: string;
+  pageId: string;
+  name: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface ConnectMetaAccountInput {
+  channel: MetaChannel;
+  accountId: string;
+  pageId: string;
+  name?: string;
+  accessToken: string;
+}

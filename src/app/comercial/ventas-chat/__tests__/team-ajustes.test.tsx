@@ -30,6 +30,9 @@ jest.mock("@/services/crmTeamService", () => ({
   updateCrmSettings: jest.fn(),
   listTeamMembers: jest.fn(),
   connectCustomWaba: jest.fn(),
+  listMetaAccounts: jest.fn(),
+  connectMetaAccount: jest.fn(),
+  deleteMetaAccount: jest.fn(),
 }));
 const team = teamService as jest.Mocked<typeof teamService>;
 const crm = crmService as jest.Mocked<typeof crmService>;
@@ -70,6 +73,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockRole = "ADMIN";
   team.getCrmSettings.mockResolvedValue(settings());
+  team.listMetaAccounts.mockResolvedValue([]);
   team.updateCrmSettings.mockImplementation(async (input) => settings(input));
   team.listTeamMembers.mockResolvedValue([
     { userId: "u1", userName: "Ana" },
@@ -300,5 +304,95 @@ describe("Ajustes · permisos", () => {
     expect(team.getCrmSettings).not.toHaveBeenCalled();
     expect(team.listTeamMembers).not.toHaveBeenCalled();
     expect(crm.listTemplates).not.toHaveBeenCalled();
+  });
+});
+
+describe("Ajustes · Instagram y Messenger", () => {
+  const account = (over: Record<string, unknown> = {}) => ({
+    id: "a1",
+    channel: "instagram" as const,
+    accountId: "1784000",
+    pageId: "9001",
+    name: "Tienda IG",
+    isActive: true,
+    createdAt: "2026-11-19T10:00:00.000Z",
+    ...over,
+  });
+  const fill = () => {
+    fireEvent.change(screen.getByLabelText("Canal"), { target: { value: "messenger" } });
+    fireEvent.change(screen.getByLabelText(/Cuenta que recibe los mensajes/), {
+      target: { value: " 555 " },
+    });
+    fireEvent.change(screen.getByLabelText("ID de la página de Facebook"), { target: { value: "777" } });
+    fireEvent.change(screen.getByLabelText(/Nombre \(opcional\)/), { target: { value: " Mi página " } });
+    fireEvent.change(screen.getByLabelText("Token de acceso de la página"), {
+      target: { value: "EAAG-secreto" },
+    });
+  };
+
+  it("lista las cuentas conectadas con canal, nombre e id", async () => {
+    team.listMetaAccounts.mockResolvedValue([account()]);
+    setup();
+    const row = await screen.findByTestId("meta-account");
+    expect(row).toHaveTextContent("Instagram");
+    expect(row).toHaveTextContent("Tienda IG");
+    expect(row).toHaveTextContent("ID 1784000");
+  });
+
+  it("el token es contraseña sin autocompletar y el botón espera los datos", async () => {
+    setup();
+    const token = await screen.findByLabelText("Token de acceso de la página");
+    expect(token).toHaveAttribute("type", "password");
+    expect(token).toHaveAttribute("autocomplete", "off");
+    expect(saveBtn("meta", "Conectar cuenta")).toBeDisabled();
+  });
+
+  it("envía el cuerpo exacto y limpia el token", async () => {
+    team.connectMetaAccount.mockResolvedValue(
+      account({ channel: "messenger", accountId: "555", pageId: "777", name: "Mi página" }),
+    );
+    setup();
+    await screen.findByLabelText("Token de acceso de la página");
+    fill();
+    fireEvent.click(saveBtn("meta", "Conectar cuenta"));
+    await waitFor(() =>
+      expect(team.connectMetaAccount).toHaveBeenCalledWith({
+        channel: "messenger",
+        accountId: "555",
+        pageId: "777",
+        name: "Mi página",
+        accessToken: "EAAG-secreto",
+      }),
+    );
+    expect(await screen.findByText(/Cuenta conectada: Messenger · Mi página/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Token de acceso de la página")).toHaveValue("");
+    expect(document.body.textContent).not.toContain("EAAG-secreto");
+  });
+
+  it("si Meta rechaza el token muestra el error y limpia el token", async () => {
+    team.connectMetaAccount.mockRejectedValue(
+      Object.assign(new Error("x"), {
+        isAxiosError: true,
+        response: { status: 422, data: { message: "Meta rechazó el token" } },
+      }),
+    );
+    setup();
+    await screen.findByLabelText("Token de acceso de la página");
+    fill();
+    fireEvent.click(saveBtn("meta", "Conectar cuenta"));
+    expect(await within(card("meta")).findByRole("alert")).toHaveTextContent("Meta rechazó el token");
+    expect(screen.getByLabelText("Token de acceso de la página")).toHaveValue("");
+    expect(screen.getByLabelText("ID de la página de Facebook")).toHaveValue("777");
+  });
+
+  it("eliminar pide confirmación y llama al endpoint con el id", async () => {
+    team.listMetaAccounts.mockResolvedValue([account()]);
+    team.deleteMetaAccount.mockResolvedValue(undefined);
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: "Eliminar cuenta Tienda IG" }));
+    expect(team.deleteMetaAccount).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Eliminar" }));
+    await waitFor(() => expect(team.deleteMetaAccount).toHaveBeenCalled());
+    expect(team.deleteMetaAccount.mock.calls[0][0]).toBe("a1");
   });
 });

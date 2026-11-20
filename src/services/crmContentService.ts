@@ -49,6 +49,15 @@ export async function createObjection(input: ObjectionInput): Promise<Objection>
   return (await axiosAuth.post<Objection>(`${BASE}/content/objections`, input)).data;
 }
 
+/**
+ * «Enseñarle la respuesta a Pau»: cualquier usuario puede proponer. Queda
+ * inactiva hasta que un administrador la apruebe (si propone un administrador,
+ * queda activa de inmediato).
+ */
+export async function proposeObjection(input: ObjectionInput): Promise<Objection> {
+  return (await axiosAuth.post<Objection>(`${BASE}/content/objections/propose`, input)).data;
+}
+
 export async function updateObjection(id: string, input: ObjectionUpdate): Promise<Objection> {
   return (await axiosAuth.patch<Objection>(`${BASE}/content/objections/${enc(id)}`, input)).data;
 }

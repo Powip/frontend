@@ -76,9 +76,14 @@ export function parseCrmEvent(frame: SseFrame): CrmEvent | null {
 export const crmKeys = {
   all: ["crm"] as const,
   conversations: ["crm", "conversations"] as const,
+  summary: ["crm", "inbox-summary"] as const,
+  tags: ["crm", "tags"] as const,
+  followups: ["crm", "followups"] as const,
+  conversationFollowups: (id: string) => ["crm", "followups", id] as const,
   conversation: (id: string) => ["crm", "conversation", id] as const,
   messages: (id: string) => ["crm", "messages", id] as const,
   orders: (id: string) => ["crm", "orders", id] as const,
+  quotes: (id: string) => ["crm", "quotes", id] as const,
   pipelines: ["crm", "pipelines"] as const,
   board: (pipelineId: string, assigned: string) =>
     ["crm", "board", pipelineId, assigned] as const,
@@ -125,6 +130,8 @@ export function applyCrmEvent(queryClient: QueryClient, event: CrmEvent): void {
         (old) => (old ? appendMessage(old, message) : old),
       );
       queryClient.invalidateQueries({ queryKey: crmKeys.conversations });
+      queryClient.invalidateQueries({ queryKey: crmKeys.summary });
+      queryClient.invalidateQueries({ queryKey: crmKeys.conversationFollowups(conversation.id) });
       break;
     }
     case "message.status": {
@@ -150,6 +157,7 @@ export function applyCrmEvent(queryClient: QueryClient, event: CrmEvent): void {
         conversation,
       );
       queryClient.invalidateQueries({ queryKey: crmKeys.conversations });
+      queryClient.invalidateQueries({ queryKey: crmKeys.summary });
       // Puede haber cambiado de etapa: refresca los tableros del Embudo.
       queryClient.invalidateQueries({ queryKey: crmKeys.boards });
       break;

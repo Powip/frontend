@@ -1,12 +1,12 @@
 "use client";
 import { useState } from "react";
-import { BellPlus, Check, Loader2 } from "lucide-react";
+import { BellPlus, Check, Loader2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { crmError } from "@/services/crmService";
 import { useUpdateConversation } from "@/hooks/useCrmChat";
 import { usePipelines, useTaskMutations, useTasks } from "@/hooks/useCrmPlanning";
-import type { Conversation, Stage } from "@/types/crm";
+import type { Conversation, Pipeline, Stage } from "@/types/crm";
 import LostReasonDialog from "./LostReasonDialog";
 import TaskDialog from "./TaskDialog";
 import { TASK_TYPE_LABEL, formatDue } from "./agenda";
@@ -20,15 +20,49 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Embudo de la conversación (el suyo, o el predeterminado, o el primero). */
+function pipelineOf(list: Pipeline[] | undefined, conversation: Conversation) {
+  return (
+    list?.find((p) => p.id === conversation.pipelineId) ?? list?.find((p) => p.isDefault) ?? list?.[0]
+  );
+}
+
+/** Botón «Perdido» del chat: pide el motivo y mueve a la etapa «perdida» del embudo. */
+export function LostChatButton({ conversation }: { conversation: Conversation }) {
+  const pipelines = usePipelines();
+  const update = useUpdateConversation(conversation.id);
+  const [open, setOpen] = useState(false);
+  const pipeline = pipelineOf(pipelines.data, conversation);
+  const lostStage = pipeline?.stages.find((s) => s.kind === "lost");
+  const current = pipeline?.stages.find((s) => s.id === conversation.stageId);
+  if (!lostStage || current?.kind === "lost") return null;
+  return (
+    <>
+      <Button size="sm" variant="outline" disabled={update.isPending} onClick={() => setOpen(true)}>
+        <XCircle /> Perdido
+      </Button>
+      {open && (
+        <LostReasonDialog
+          open
+          contact={contactLabel(conversation)}
+          onCancel={() => setOpen(false)}
+          onConfirm={(lostReason) => {
+            update.mutate({ stageId: lostStage.id, lostReason });
+            setOpen(false);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
 /** Etapa del embudo de la conversación; si es «perdida» pide el motivo. */
 export function PipelineSection({ conversation }: { conversation: Conversation }) {
   const pipelines = usePipelines();
   const update = useUpdateConversation(conversation.id);
   const [lost, setLost] = useState<Stage | null>(null);
 
-  const list = pipelines.data;
-  const pipeline =
-    list?.find((p) => p.id === conversation.pipelineId) ?? list?.find((p) => p.isDefault) ?? list?.[0];
+  const pipeline = pipelineOf(pipelines.data, conversation);
   const current = pipeline?.stages.find((s) => s.id === conversation.stageId);
 
   const change = (stageId: string) => {

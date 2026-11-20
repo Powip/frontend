@@ -146,6 +146,7 @@ describe("pestañas", () => {
   it("Seguimientos, Difusiones y Pau van después de Embudo", () => {
     expect(VENTAS_CHAT_TABS.map((t) => t.label)).toEqual([
       "Bandeja",
+      "Llamadas",
       "Agenda",
       "Embudo",
       "Seguimientos",
@@ -158,8 +159,8 @@ describe("pestañas", () => {
       "Auditoría",
       "Ajustes",
     ]);
-    expect(VENTAS_CHAT_TABS[3].href).toBe("/comercial/ventas-chat/seguimientos");
-    expect(VENTAS_CHAT_TABS[4].href).toBe("/comercial/ventas-chat/difusiones");
+    expect(VENTAS_CHAT_TABS[4].href).toBe("/comercial/ventas-chat/seguimientos");
+    expect(VENTAS_CHAT_TABS[5].href).toBe("/comercial/ventas-chat/difusiones");
   });
 });
 

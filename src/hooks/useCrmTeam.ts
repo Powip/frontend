@@ -5,13 +5,22 @@ import { crmError } from "@/services/crmService";
 import {
   getAudit,
   getCrmSettings,
+  connectMetaAccount,
+  deleteMetaAccount,
   getTeamStats,
+  listMetaAccounts,
   listTeamMembers,
   reassignConversation,
   remindScript,
   updateCrmSettings,
 } from "@/services/crmTeamService";
-import type { CrmSettings, CrmSettingsInput, TeamDays, TeamPerson } from "@/types/crmTeam";
+import type {
+  ConnectMetaAccountInput,
+  CrmSettings,
+  CrmSettingsInput,
+  TeamDays,
+  TeamPerson,
+} from "@/types/crmTeam";
 
 export const teamKeys = {
   stats: (days: number) => ["crm", "team", "stats", days] as const,
@@ -19,6 +28,7 @@ export const teamKeys = {
   members: ["crm", "team", "members"] as const,
   audit: ["crm", "audit"] as const,
   settings: ["crm", "settings"] as const,
+  metaAccounts: ["crm", "meta-accounts"] as const,
 };
 
 const onError = (err: unknown) => toast.error(crmError(err).message);
@@ -81,5 +91,26 @@ export function useUpdateCrmSettings() {
       toast.success("Ajuste guardado");
     },
     onError,
+  });
+}
+
+export function useMetaAccounts() {
+  return useQuery({ queryKey: teamKeys.metaAccounts, queryFn: listMetaAccounts, retry: false });
+}
+
+/** Sin toast de error: la tarjeta muestra el mensaje junto al formulario. */
+export function useConnectMetaAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ConnectMetaAccountInput) => connectMetaAccount(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: teamKeys.metaAccounts }),
+  });
+}
+
+export function useDeleteMetaAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteMetaAccount(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: teamKeys.metaAccounts }),
   });
 }

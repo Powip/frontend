@@ -13,21 +13,29 @@ import type { Client } from "@/interfaces/ICliente";
 import type { Conversation, ConversationOrder } from "@/types/crm";
 import { crmError } from "@/services/crmService";
 import { useConversationOrders, useCoreOrder, useUpdateConversation } from "@/hooks/useCrmChat";
+import ChatCallsSection from "./ChatCallsSection";
+import { FollowupsSection, TagsSection } from "./ChatExtrasSections";
 import { PipelineSection, TasksSection } from "./ChatPlanningSections";
+import CustomerPhoneField from "./CustomerPhoneField";
 import CrearClienteDialog from "./CrearClienteDialog";
+import PedidoLinkSection from "./PedidoLinkSection";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import {
   abrirPedidoUrl,
   crearPedidoUrl,
   formatMoney,
   formatTime,
+  isMetaChannel,
   orderBalance,
+  phoneForCustomer,
 } from "./format";
 
 interface Props {
   conversation: Conversation;
   companyId: string | undefined;
   client: Pick<UseQueryResult<Client | null>, "data" | "isLoading" | "isError" | "refetch">;
+  /** Deja un texto en la caja del chat (sin enviarlo). */
+  onInsertMessage?: (text: string) => void;
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
@@ -41,9 +49,12 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 function ClientSection({ conversation, companyId, client }: Props) {
   const [creating, setCreating] = useState(false);
   const found = client.data;
+  const phone = phoneForCustomer(conversation);
+  const meta = isMetaChannel(conversation);
   return (
     <section className="space-y-2" aria-label="Cliente">
       <SectionTitle>Cliente</SectionTitle>
+      {meta && <CustomerPhoneField conversation={conversation} />}
       {!companyId && (
         <p className="text-sm text-muted-foreground">No se pudo identificar la empresa.</p>
       )}
@@ -69,7 +80,7 @@ function ClientSection({ conversation, companyId, client }: Props) {
             </p>
           )}
           <p className="text-xs text-muted-foreground">
-            {found.phoneNumber ?? conversation.contactPhone}
+            {found.phoneNumber ?? phone}
           </p>
           {(found.district || found.address) && (
             <p className="text-xs text-muted-foreground">
@@ -78,7 +89,7 @@ function ClientSection({ conversation, companyId, client }: Props) {
           )}
         </div>
       )}
-      {companyId && !client.isLoading && !client.isError && !found && (
+      {companyId && !!phone && !client.isLoading && !client.isError && !found && (
         <div className="space-y-2 text-sm">
           <p className="flex items-start gap-1.5 text-muted-foreground">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -92,7 +103,7 @@ function ClientSection({ conversation, companyId, client }: Props) {
               open
               onOpenChange={setCreating}
               companyId={companyId}
-              phone={conversation.contactPhone}
+              phone={phone ?? ""}
               name={conversation.contactName}
               onCreated={() => void client.refetch()}
             />
@@ -245,12 +256,20 @@ export default function ClientOrderPanel(props: Props) {
   return (
     <div className="h-full space-y-5 overflow-y-auto p-3" data-testid="client-order-panel">
       <ClientSection {...props} />
+      <TagsSection conversation={conversation} />
       <PipelineSection conversation={conversation} />
       <TasksSection conversation={conversation} />
+      <FollowupsSection conversation={conversation} />
+      <ChatCallsSection conversation={conversation} />
+      <PedidoLinkSection
+        conversation={conversation}
+        client={props.client.data}
+        onInsertMessage={props.onInsertMessage}
+      />
       <OrdersSection conversation={conversation} />
       <MarketingOptOutSection conversation={conversation} />
       <Button className="w-full" onClick={() => router.push(crearPedidoUrl(conversation))}>
-        <Plus /> Crear pedido
+        <Plus /> Registrar venta completa
       </Button>
     </div>
   );

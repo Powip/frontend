@@ -22,11 +22,16 @@ import {
 import {
   crmError,
   getConversation,
+  getInboxSummary,
+  listConversationFollowups,
   listConversationOrders,
   listConversations,
   listMessages,
+  listTags,
   markConversationRead,
+  sendConversationTemplate,
   sendMessage,
+  sendNote,
   updateConversation,
 } from "@/services/crmService";
 import type {
@@ -34,6 +39,7 @@ import type {
   ConversationListParams,
   Message,
   MessagePage,
+  SendTemplateInput,
   UpdateConversationInput,
 } from "@/types/crm";
 
@@ -143,9 +149,12 @@ export function useSendMessage(
     },
     onError: (err, { tempId }) => {
       const e = crmError(err);
+      const channel = qc.getQueryData<Conversation>(crmKeys.conversation(conversationId))?.channel;
       const reason =
         e.code === "WINDOW_CLOSED"
-          ? "Pasaron 24 h desde el último mensaje del cliente."
+          ? channel && channel !== "whatsapp"
+            ? "Pasaron 7 días desde el último mensaje del cliente."
+            : "Pasaron 24 h desde el último mensaje del cliente."
           : e.message;
       patchMessage(qc, conversationId, (items) =>
         items.map((m) =>
@@ -157,6 +166,69 @@ export function useSendMessage(
       }
       toast.error(reason);
     },
+  });
+}
+
+/** Agrega el mensaje real a la caché sin duplicarlo (el SSE pudo traerlo antes). */
+function appendReal(qc: ReturnType<typeof useQueryClient>, conversationId: string, real: Message) {
+  patchMessage(qc, conversationId, (items) =>
+    items.some((m) => m.id === real.id) ? items : [...items, real],
+  );
+  qc.invalidateQueries({ queryKey: crmKeys.conversations });
+  qc.invalidateQueries({ queryKey: crmKeys.conversation(conversationId) });
+}
+
+/** Nota interna: no se envía al cliente y sirve con la ventana cerrada. */
+export function useSendNote(conversationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: string) => sendNote(conversationId, body),
+    onSuccess: (real) => appendReal(qc, conversationId, real),
+    onError: (err) => toast.error(crmError(err).message),
+  });
+}
+
+/** Plantilla de WhatsApp con la ventana cerrada (Meta cobra el envío). */
+export function useSendTemplate(conversationId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SendTemplateInput) => sendConversationTemplate(conversationId, input),
+    onSuccess: (real) => {
+      appendReal(qc, conversationId, real);
+      toast.success("Plantilla enviada");
+    },
+    onError: (err) => toast.error(crmError(err).message),
+  });
+}
+
+/** Conteos de los indicadores. Se refresca con el SSE y cada 60 s. */
+export function useInboxSummary() {
+  return useQuery({
+    queryKey: crmKeys.summary,
+    queryFn: getInboxSummary,
+    retry: false,
+    refetchInterval: 60_000,
+  });
+}
+
+/** Etiquetas ya usadas por la empresa, para sugerir. */
+export function useCrmTags(enabled = true) {
+  return useQuery({
+    queryKey: crmKeys.tags,
+    queryFn: listTags,
+    enabled,
+    retry: false,
+    staleTime: 60_000,
+  });
+}
+
+/** Próximos seguimientos automáticos del chat. */
+export function useConversationFollowups(id: string | null) {
+  return useQuery({
+    queryKey: crmKeys.conversationFollowups(id ?? ""),
+    queryFn: () => listConversationFollowups(id!),
+    enabled: !!id,
+    retry: false,
   });
 }
 
@@ -179,6 +251,9 @@ export function useUpdateConversation(id: string) {
       qc.setQueryData<Conversation>(crmKeys.conversation(id), conv);
       qc.invalidateQueries({ queryKey: crmKeys.conversations });
       qc.invalidateQueries({ queryKey: crmKeys.boards });
+      qc.invalidateQueries({ queryKey: crmKeys.summary });
+      qc.invalidateQueries({ queryKey: crmKeys.tags });
+      qc.invalidateQueries({ queryKey: crmKeys.conversationFollowups(id) });
     },
     onError: (err) => toast.error(crmError(err).message),
   });

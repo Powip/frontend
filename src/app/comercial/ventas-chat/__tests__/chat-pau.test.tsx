@@ -38,6 +38,7 @@ jest.mock("@/services/crmService", () => ({
   markConversationRead: jest.fn(),
   updateConversation: jest.fn(),
   listConversationOrders: jest.fn(),
+  listConversationQuotes: jest.fn(),
   listPipelines: jest.fn(),
   listTasks: jest.fn(),
   getPauSettings: jest.fn(),
@@ -53,6 +54,7 @@ const conv = (over: Partial<Conversation> = {}): Conversation => ({
   id: "c1",
   channel: "whatsapp",
   contactPhone: "51999111222",
+  customerPhone: null,
   contactName: "Ana Pérez",
   status: "open",
   assignedUserId: null,
@@ -73,6 +75,9 @@ const conv = (over: Partial<Conversation> = {}): Conversation => ({
   pauEnabled: true,
   pauHelpReason: null,
   scriptStep: null,
+  resumeAt: null,
+  resumeNote: null,
+  tags: [],
   ...over,
 });
 const msg = (over: Partial<Message> = {}): Message => ({
@@ -116,6 +121,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockParams = new URLSearchParams("c=c1");
   s.listConversationOrders.mockResolvedValue([]);
+  s.listConversationQuotes.mockResolvedValue([]);
   s.listPipelines.mockResolvedValue([]);
   s.listTasks.mockResolvedValue([]);
   fetchClient.mockResolvedValue(null);

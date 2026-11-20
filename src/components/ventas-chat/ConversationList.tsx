@@ -1,12 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
-import { HelpCircle, Loader2, MessageCircle, Search } from "lucide-react";
+import { Clock, HelpCircle, Loader2, MessageCircle, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { crmError } from "@/services/crmService";
 import { useConversations } from "@/hooks/useCrmChat";
-import type { AssignedFilter, ConversationStatus } from "@/types/crm";
+import type { AssignedFilter, ConversationChannel, ConversationStatus } from "@/types/crm";
+import ChannelBadge from "./ChannelBadge";
+import { INDICATOR_PARAMS, type InboxIndicator } from "./InboxIndicators";
 import { contactLabel, relativeTime } from "./format";
 
 export const CRM_UNREACHABLE = "No se pudo conectar con el servicio de chat";
@@ -21,6 +23,13 @@ const ASSIGNED_OPTIONS: Array<{ value: AssignedFilter; label: string }> = [
   { value: "unassigned", label: "Sin asignar" },
 ];
 
+const CHANNEL_OPTIONS: Array<{ value: ConversationChannel | "all"; label: string }> = [
+  { value: "all", label: "Todos" },
+  { value: "whatsapp", label: "WhatsApp" },
+  { value: "messenger", label: "Messenger" },
+  { value: "instagram", label: "Instagram" },
+];
+
 function Segmented<T extends string>({
   options,
   value,
@@ -33,7 +42,7 @@ function Segmented<T extends string>({
   label: string;
 }) {
   return (
-    <div role="group" aria-label={label} className="flex gap-1">
+    <div role="group" aria-label={label} className="flex flex-wrap gap-1">
       {options.map((o) => (
         <Button
           key={o.value}
@@ -53,11 +62,20 @@ function Segmented<T extends string>({
 interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** Indicador activo (filtro de la franja de la Bandeja). */
+  indicator?: InboxIndicator | null;
+  onIndicatorChange?: (next: InboxIndicator | null) => void;
 }
 
-export default function ConversationList({ selectedId, onSelect }: Props) {
+export default function ConversationList({
+  selectedId,
+  onSelect,
+  indicator = null,
+  onIndicatorChange,
+}: Props) {
   const [status, setStatus] = useState<ConversationStatus>("open");
   const [assigned, setAssigned] = useState<AssignedFilter>("all");
+  const [channel, setChannel] = useState<ConversationChannel | "all">("all");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
 
@@ -66,8 +84,19 @@ export default function ConversationList({ selectedId, onSelect }: Props) {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const { data, isLoading, isError, error, refetch, isFetching } =
-    useConversations({ status, assigned, search });
+  // Con un indicador activo, manda su filtro y la lista muestra solo chats abiertos.
+  const extra = indicator ? INDICATOR_PARAMS[indicator] : {};
+  const effStatus: ConversationStatus = indicator ? "open" : status;
+  const effAssigned: AssignedFilter = extra.assigned ?? assigned;
+  const clearIndicator = () => onIndicatorChange?.(null);
+
+  const { data, isLoading, isError, error, refetch, isFetching } = useConversations({
+    ...extra,
+    status: effStatus,
+    assigned: effAssigned,
+    search,
+    ...(channel === "all" ? {} : { channel }),
+  });
 
   const items = data?.items ?? [];
   const err = isError ? crmError(error) : null;
@@ -83,8 +112,25 @@ export default function ConversationList({ selectedId, onSelect }: Props) {
           placeholder="Buscar por nombre o teléfono"
           aria-label="Buscar conversación"
         />
-        <Segmented label="Estado" options={STATUS_OPTIONS} value={status} onChange={setStatus} />
-        <Segmented label="Asignación" options={ASSIGNED_OPTIONS} value={assigned} onChange={setAssigned} />
+        <Segmented
+          label="Estado"
+          options={STATUS_OPTIONS}
+          value={effStatus}
+          onChange={(v) => {
+            clearIndicator();
+            setStatus(v);
+          }}
+        />
+        <Segmented
+          label="Asignación"
+          options={ASSIGNED_OPTIONS}
+          value={effAssigned}
+          onChange={(v) => {
+            if (indicator === "unassigned") clearIndicator();
+            setAssigned(v);
+          }}
+        />
+        <Segmented label="Canal" options={CHANNEL_OPTIONS} value={channel} onChange={setChannel} />
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto" aria-busy={isFetching}>
@@ -125,8 +171,11 @@ export default function ConversationList({ selectedId, onSelect }: Props) {
                 )}
               >
                 <span className="flex items-center justify-between gap-2">
-                  <span className={cn("truncate text-sm", c.unreadCount > 0 ? "font-semibold" : "font-medium")}>
-                    {contactLabel(c)}
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <span className={cn("truncate text-sm", c.unreadCount > 0 ? "font-semibold" : "font-medium")}>
+                      {contactLabel(c)}
+                    </span>
+                    <ChannelBadge channel={c.channel} />
                   </span>
                   <span className="shrink-0 text-xs text-muted-foreground">
                     {relativeTime(c.lastMessageAt)}
@@ -153,6 +202,23 @@ export default function ConversationList({ selectedId, onSelect }: Props) {
                     data-testid="pau-help-flag"
                   >
                     <HelpCircle className="h-3 w-3" aria-hidden /> Pau pidió ayuda
+                  </span>
+                )}
+                {c.resumeAt && (
+                  <span
+                    className="flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-400"
+                    data-testid="thinking-flag"
+                  >
+                    <Clock className="h-3 w-3" aria-hidden /> Lo está pensando
+                  </span>
+                )}
+                {(c.tags ?? []).length > 0 && (
+                  <span className="flex flex-wrap gap-1" data-testid="conv-tags">
+                    {(c.tags ?? []).slice(0, 2).map((t) => (
+                      <span key={t} className="rounded-full border px-1.5 text-[10px] text-muted-foreground">
+                        {t}
+                      </span>
+                    ))}
                   </span>
                 )}
                 {c.assignedUserName && (

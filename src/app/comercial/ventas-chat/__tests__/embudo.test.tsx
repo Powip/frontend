@@ -45,6 +45,7 @@ const conv = (over: Partial<Conversation> = {}): Conversation => ({
   id: "c1",
   channel: "whatsapp",
   contactPhone: "51999111222",
+  customerPhone: null,
   contactName: "Ana Pérez",
   status: "open",
   assignedUserId: "u1",
@@ -65,6 +66,9 @@ const conv = (over: Partial<Conversation> = {}): Conversation => ({
   pauEnabled: false,
   pauHelpReason: null,
   scriptStep: null,
+  resumeAt: null,
+  resumeNote: null,
+  tags: [],
   ...over,
 });
 const board = (): Board => ({

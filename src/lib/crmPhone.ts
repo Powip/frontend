@@ -9,3 +9,13 @@ export function toLocalPhone(raw: string): string {
   if (digits.length === 9) return digits;
   return digits ? `+${digits}` : "";
 }
+
+/**
+ * Enlace `tel:` de un teléfono, o null si no parece uno (p. ej. el identificador
+ * de un contacto de Instagram). Un número de 9 dígitos se toma como peruano.
+ */
+export function telHref(raw: string | null | undefined): string | null {
+  const digits = (raw ?? "").replace(/\D/g, "");
+  if (digits.length < 7 || digits.length > 15) return null;
+  return `tel:+${digits.length === 9 ? `51${digits}` : digits}`;
+}

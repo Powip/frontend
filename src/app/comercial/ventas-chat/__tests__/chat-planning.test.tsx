@@ -38,6 +38,7 @@ const conv: Conversation = {
   id: "c1",
   channel: "whatsapp",
   contactPhone: "51999111222",
+  customerPhone: null,
   contactName: "Ana Pérez",
   status: "open",
   assignedUserId: null,
@@ -58,6 +59,9 @@ const conv: Conversation = {
   pauEnabled: false,
   pauHelpReason: null,
   scriptStep: null,
+  resumeAt: null,
+  resumeNote: null,
+  tags: [],
 };
 const task: Task = {
   id: "t1",

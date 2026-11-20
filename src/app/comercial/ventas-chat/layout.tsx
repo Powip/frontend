@@ -17,7 +17,7 @@ export default function VentasChatLayout({ children }: { children: ReactNode }) 
       <div>
         <h1 className="text-2xl font-semibold">Ventas por chat</h1>
         <p className="text-sm text-muted-foreground">
-          Atiende y vende por WhatsApp desde Powip.
+          Atiende y vende por WhatsApp, Messenger e Instagram desde Powip.
         </p>
       </div>
       <nav aria-label="Secciones de Ventas por chat" className="flex flex-wrap gap-1 border-b">

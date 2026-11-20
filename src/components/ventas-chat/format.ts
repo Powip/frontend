@@ -1,4 +1,4 @@
-import type { Conversation, Message } from "@/types/crm";
+import type { Conversation, ConversationChannel, Message } from "@/types/crm";
 
 export const BANDEJA_PATH = "/comercial/ventas-chat/bandeja";
 
@@ -7,11 +7,35 @@ export function bandejaUrl(conversationId: string) {
   return `${BANDEJA_PATH}?c=${encodeURIComponent(conversationId)}`;
 }
 
+export const CHANNEL_LABEL: Record<ConversationChannel, string> = {
+  whatsapp: "WhatsApp",
+  messenger: "Messenger",
+  instagram: "Instagram",
+};
+
+type PhoneSource = Pick<Conversation, "contactPhone"> &
+  Partial<Pick<Conversation, "channel" | "customerPhone">>;
+
+/** Conversación de Messenger o Instagram (su `contactPhone` no es un teléfono). */
+export function isMetaChannel(c: Partial<Pick<Conversation, "channel">>) {
+  return !!c.channel && c.channel !== "whatsapp";
+}
+
+/**
+ * Teléfono real del cliente para buscarlo, crearlo o vender: en WhatsApp es el
+ * del contacto; en Messenger e Instagram, el que el equipo guardó (o null).
+ */
+export function phoneForCustomer(c: PhoneSource): string | null {
+  if (!isMetaChannel(c)) return c.contactPhone || null;
+  return c.customerPhone?.trim() || null;
+}
+
 /** Ruta de registrar-venta para vender desde una conversación. */
-export function crearPedidoUrl(conversation: Pick<Conversation, "id" | "contactPhone">) {
+export function crearPedidoUrl(conversation: PhoneSource & Pick<Conversation, "id">) {
+  const phone = phoneForCustomer(conversation);
   const q = new URLSearchParams({
     crmConversationId: conversation.id,
-    crmPhone: conversation.contactPhone,
+    ...(phone ? { crmPhone: phone } : {}),
     returnTo: bandejaUrl(conversation.id),
   });
   return `/registrar-venta?${q.toString()}`;
@@ -45,8 +69,20 @@ const TZ = "America/Lima";
 export const WINDOW_CLOSED_NOTICE =
   "Pasaron 24 h desde el último mensaje del cliente. WhatsApp solo permite responder con una plantilla aprobada.";
 
-export function contactLabel(c: Pick<Conversation, "contactName" | "contactPhone">) {
-  return c.contactName?.trim() || c.contactPhone;
+export const META_WINDOW_CLOSED_NOTICE =
+  "Pasaron 7 días desde el último mensaje del cliente. En Messenger e Instagram ya no se puede responder hasta que el cliente vuelva a escribir (no hay plantillas en estos canales).";
+
+export function windowClosedNotice(c: Partial<Pick<Conversation, "channel">>) {
+  return isMetaChannel(c) ? META_WINDOW_CLOSED_NOTICE : WINDOW_CLOSED_NOTICE;
+}
+
+/** Nombre del contacto; sin nombre, el teléfono (WhatsApp) o «Contacto de <canal>». */
+export function contactLabel(
+  c: Pick<Conversation, "contactName" | "contactPhone"> & Partial<Pick<Conversation, "channel">>,
+) {
+  const name = c.contactName?.trim();
+  if (name) return name;
+  return c.channel && isMetaChannel(c) ? `Contacto de ${CHANNEL_LABEL[c.channel]}` : c.contactPhone;
 }
 
 export function isWindowOpen(c: Pick<Conversation, "windowExpiresAt">, now = Date.now()) {
@@ -95,6 +131,38 @@ export function relativeTime(iso: string | null, now = Date.now()) {
     day: "2-digit",
     month: "2-digit",
     timeZone: TZ,
+  });
+}
+
+/** «20 de noviembre a las 09:00» (hora Lima), para «Lo está pensando». */
+export function formatResumeAt(iso: string) {
+  const d = new Date(iso);
+  const date = d.toLocaleDateString("es-PE", { day: "numeric", month: "long", timeZone: TZ });
+  return `${date} a las ${formatTime(iso)}`;
+}
+
+/** Nota interna del equipo (no se envía al cliente). */
+export function isInternalNote(m: Pick<Message, "type">) {
+  return m.type === "note";
+}
+
+/** Texto del último mensaje real del cliente; las notas internas no cuentan. */
+export function lastCustomerText(messages: Message[] | undefined): string {
+  if (!messages) return "";
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.direction === "in" && m.senderKind === "customer" && !isInternalNote(m) && m.body?.trim()) {
+      return m.body.trim();
+    }
+  }
+  return "";
+}
+
+/** Cuerpo de una plantilla con sus `{{1}}`, `{{2}}`… reemplazados (los vacíos quedan como están). */
+export function fillTemplateBody(body: string, variables: string[]) {
+  return body.replace(/\{\{\s*(\d+)\s*\}\}/g, (all, n: string) => {
+    const v = variables[Number(n) - 1]?.trim();
+    return v ? v : all;
   });
 }
 

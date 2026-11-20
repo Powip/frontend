@@ -187,7 +187,7 @@ export default function DifusionesView() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-sm text-muted-foreground">
-          Envía una plantilla aprobada por Meta a muchos contactos a la vez.
+          Envía una plantilla aprobada por Meta a muchos contactos a la vez. Solo aplica a chats de WhatsApp.
         </p>
         <Button type="button" size="sm" className="ml-auto" onClick={() => setDialog({})}>
           <Plus /> Nueva difusión

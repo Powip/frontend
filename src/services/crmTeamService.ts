@@ -6,7 +6,9 @@ import type { Conversation, UpdateConversationInput } from "@/types/crm";
 import type {
   Audit,
   ConnectWabaInput,
+  ConnectMetaAccountInput,
   ConnectWabaResult,
+  MetaAccount,
   CrmSettings,
   CrmSettingsInput,
   TeamDays,
@@ -95,4 +97,29 @@ export function integrationsErrorMessage(err: unknown): string {
     return err.message || "Error desconocido";
   }
   return err instanceof Error ? err.message : "Error desconocido";
+}
+
+const META_ACCOUNTS = () => `${API.integrations}/meta-messaging/accounts`;
+
+/** ms-integrations: cuentas de Messenger e Instagram conectadas. */
+export async function listMetaAccounts(): Promise<MetaAccount[]> {
+  return (await axiosAuth.get<{ status: string; data: MetaAccount[] }>(META_ACCOUNTS())).data.data;
+}
+
+/** 201, o 400 (validación), 422 (Meta rechaza el token). */
+export async function connectMetaAccount(input: ConnectMetaAccountInput): Promise<MetaAccount> {
+  return (
+    await axiosAuth.post<{ status: string; data: MetaAccount }>(META_ACCOUNTS(), {
+      channel: input.channel,
+      accountId: input.accountId,
+      pageId: input.pageId,
+      ...(input.name ? { name: input.name } : {}),
+      accessToken: input.accessToken,
+    })
+  ).data.data;
+}
+
+/** 204. */
+export async function deleteMetaAccount(id: string): Promise<void> {
+  await axiosAuth.delete(`${META_ACCOUNTS()}/${encodeURIComponent(id)}`);
 }

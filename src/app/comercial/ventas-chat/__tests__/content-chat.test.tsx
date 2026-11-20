@@ -40,6 +40,7 @@ jest.mock("@/services/crmService", () => ({
   markConversationRead: jest.fn(),
   updateConversation: jest.fn(),
   listConversationOrders: jest.fn(),
+  listConversationQuotes: jest.fn(),
   listPipelines: jest.fn(),
   listTasks: jest.fn(),
   getPauSettings: jest.fn(),
@@ -69,6 +70,7 @@ const conv = (over: Partial<Conversation> = {}): Conversation => ({
   id: "c1",
   channel: "whatsapp",
   contactPhone: "51999111222",
+  customerPhone: null,
   contactName: "Ana Pérez",
   status: "open",
   assignedUserId: null,
@@ -89,6 +91,9 @@ const conv = (over: Partial<Conversation> = {}): Conversation => ({
   pauEnabled: true,
   pauHelpReason: null,
   scriptStep: null,
+  resumeAt: null,
+  resumeNote: null,
+  tags: [],
   ...over,
 });
 const msg: Message = {
@@ -122,6 +127,7 @@ const OBJ: Objection = {
   position: 0,
   active: true,
   createdAt: "2026-11-01T00:00:00.000Z",
+  proposedByName: null,
 };
 const SHEET: Sheet = {
   id: "s1",
@@ -152,6 +158,7 @@ const box = () => screen.findByLabelText("Mensaje") as Promise<HTMLTextAreaEleme
 beforeEach(() => {
   jest.clearAllMocks();
   s.listConversationOrders.mockResolvedValue([]);
+  s.listConversationQuotes.mockResolvedValue([]);
   s.listPipelines.mockResolvedValue([]);
   s.listTasks.mockResolvedValue([]);
   s.getPauSettings.mockRejectedValue(new Error("sin pau"));

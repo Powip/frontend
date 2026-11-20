@@ -1,6 +1,17 @@
 "use client";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { AlertCircle, ArrowLeft, Check, CheckCheck, Loader2, PanelRight, Send, Sparkles } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowLeft,
+  Check,
+  CheckCheck,
+  Clock,
+  Loader2,
+  PanelRight,
+  Send,
+  Sparkles,
+  StickyNote,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -15,21 +26,32 @@ import {
   useMarkRead,
   useMessages,
   useSendMessage,
+  useSendNote,
   useUpdateConversation,
 } from "@/hooks/useCrmChat";
 import type { Message } from "@/types/crm";
 import { CRM_UNREACHABLE } from "./ConversationList";
+import ChannelBadge from "./ChannelBadge";
+import { ChatCallButtons } from "./ChatCallsSection";
+import { LostChatButton } from "./ChatPlanningSections";
 import ClientOrderPanel from "./ClientOrderPanel";
+import { appendLine } from "./quotes";
 import ContentChatBar from "./ContentChatBar";
 import PauChatBar from "./PauChatBar";
+import TemplateDialog from "./TemplateDialog";
+import ThinkingDialog from "./ThinkingDialog";
 import {
   STATUS_LABEL,
-  WINDOW_CLOSED_NOTICE,
   contactLabel,
+  formatResumeAt,
   formatTime,
+  isInternalNote,
   groupByDay,
+  isMetaChannel,
   isWindowOpen,
   messageText,
+  phoneForCustomer,
+  windowClosedNotice,
 } from "./format";
 
 function StatusMark({ message }: { message: Message }) {
@@ -53,6 +75,20 @@ function isAutomatic(m: Message) {
 }
 
 function Bubble({ message }: { message: Message }) {
+  if (isInternalNote(message)) {
+    return (
+      <div
+        data-testid="internal-note"
+        className="mx-auto max-w-[85%] rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
+      >
+        <p className="mb-0.5 flex items-center gap-1 text-[11px] font-medium">
+          <StickyNote className="h-3 w-3" aria-hidden /> Nota interna
+          {message.senderName ? ` · ${message.senderName}` : ""} · {formatTime(message.createdAt)}
+        </p>
+        <p className="whitespace-pre-wrap break-words">{message.body}</p>
+      </div>
+    );
+  }
   if (message.senderKind === "system" && !isAutomatic(message)) {
     return (
       <p
@@ -116,19 +152,32 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
   const convQuery = useConversation(conversationId);
   const msgsQuery = useMessages(conversationId);
   const send = useSendMessage(conversationId, me);
+  const sendNote = useSendNote(conversationId);
   const update = useUpdateConversation(conversationId);
   const markRead = useMarkRead();
   const older = useLoadOlder(conversationId);
 
   const [text, setText] = useState("");
+  const [mode, setMode] = useState<"message" | "note">("message");
+  const [noteText, setNoteText] = useState("");
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [thinkingOpen, setThinkingOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  /** Deja un texto en la caja (en línea nueva si ya hay algo) sin enviarlo. */
+  const insertInMessage = (t: string) => {
+    setMode("message");
+    setText((cur) => appendLine(cur, t));
+  };
   const conversation = convQuery.data;
   const items = msgsQuery.data?.items;
   const lastId = items?.[items.length - 1]?.id;
   const prevLastId = useRef<string | undefined>(undefined);
   const unread = conversation?.unreadCount ?? 0;
   const markReadMutate = markRead.mutate;
-  const clientQuery = useConversationClient(companyId, conversation?.contactPhone);
+  const clientQuery = useConversationClient(
+    companyId,
+    conversation ? (phoneForCustomer(conversation) ?? undefined) : undefined,
+  );
   useAutoLinkClient(conversation, clientQuery.data?.id);
 
   // Al abrir (o llegar mensajes mientras está abierta) con no leídos → marcar leída.
@@ -179,7 +228,15 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
     send.mutate({ body, tempId: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` });
   };
 
+  const submitNote = () => {
+    const body = noteText.trim();
+    if (!body || sendNote.isPending) return;
+    sendNote.mutate(body, { onSuccess: () => setNoteText("") });
+  };
+
   const groups = groupByDay(items ?? []);
+  const isNote = mode === "note";
+  const canTemplate = !windowOpen && !isMetaChannel(conversation);
 
   return (
     <div className="flex h-full min-h-0">
@@ -188,13 +245,17 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
         <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={onBack} aria-label="Volver a la lista">
           <ArrowLeft />
         </Button>
-        <div className="min-w-0 flex-1">
-          <h2 className="truncate text-sm font-semibold">{contactLabel(conversation)}</h2>
+        <div className="min-w-[11rem] flex-1">
+          <h2 className="flex items-center gap-2 truncate text-sm font-semibold">
+            <span className="truncate">{contactLabel(conversation)}</span>
+            <ChannelBadge channel={conversation.channel} />
+          </h2>
           <p className="truncate text-xs text-muted-foreground">
-            {conversation.contactPhone}
+            {isMetaChannel(conversation) ? (conversation.customerPhone ?? "Sin teléfono") : conversation.contactPhone}
             {conversation.assignedUserName ? ` · Asignada a ${conversation.assignedUserName}` : " · Sin asignar"}
           </p>
         </div>
+        <ChatCallButtons conversation={conversation} />
         <Button
           size="icon-sm"
           variant="outline"
@@ -204,6 +265,12 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
         >
           <PanelRight />
         </Button>
+        {!closed && !conversation.resumeAt && (
+          <Button size="sm" variant="outline" onClick={() => setThinkingOpen(true)}>
+            <Clock /> Lo está pensando
+          </Button>
+        )}
+        {!closed && <LostChatButton conversation={conversation} />}
         <Button
           size="sm"
           variant="outline"
@@ -221,6 +288,30 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
           {closed ? "Reabrir" : "Cerrar"}
         </Button>
       </header>
+
+      {conversation.resumeAt && (
+        <div
+          role="status"
+          data-testid="thinking-banner"
+          className="flex flex-wrap items-center gap-2 border-b border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-100"
+        >
+          <Clock className="h-4 w-4 shrink-0" aria-hidden />
+          <span className="min-w-0 flex-1">
+            <span className="font-medium">
+              Lo está pensando · retomar el {formatResumeAt(conversation.resumeAt)}
+            </span>
+            {conversation.resumeNote && <span className="block text-xs">{conversation.resumeNote}</span>}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={update.isPending}
+            onClick={() => update.mutate({ resumeAt: null })}
+          >
+            Retomar ahora
+          </Button>
+        </div>
+      )}
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3" data-testid="messages">
         {msgsQuery.isLoading && (
@@ -256,12 +347,69 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
         <div ref={bottomRef} />
       </div>
 
-      <div className="border-t p-3">
-        {!windowOpen && (
-          <p role="status" className="mb-2 rounded-md border bg-muted p-2 text-xs text-muted-foreground">
-            {WINDOW_CLOSED_NOTICE}
-          </p>
+      <div className={cn("border-t p-3", isNote && "bg-amber-50/60 dark:bg-amber-950/20")}>
+        <div role="group" aria-label="Tipo de escritura" className="mb-2 flex gap-1">
+          <Button
+            type="button"
+            size="sm"
+            variant={isNote ? "outline" : "default"}
+            aria-pressed={!isNote}
+            onClick={() => setMode("message")}
+          >
+            Mensaje
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={isNote ? "default" : "outline"}
+            aria-pressed={isNote}
+            onClick={() => setMode("note")}
+          >
+            <StickyNote /> Nota interna
+          </Button>
+        </div>
+        {!isNote && !windowOpen && (
+          <div role="status" className="mb-2 space-y-2 rounded-md border bg-muted p-2 text-xs text-muted-foreground">
+            <p>{windowClosedNotice(conversation)}</p>
+            {canTemplate && (
+              <Button type="button" size="sm" onClick={() => setTemplateOpen(true)}>
+                Enviar plantilla
+              </Button>
+            )}
+          </div>
         )}
+        {isNote ? (
+          <>
+            <p className="mb-2 text-xs font-medium text-amber-800 dark:text-amber-300">
+              Solo la ve tu equipo. No se envía al cliente.
+            </p>
+            <div className="flex items-end gap-2">
+              <Textarea
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    submitNote();
+                  }
+                }}
+                maxLength={2000}
+                rows={2}
+                placeholder="Escribe una nota para tu equipo (Enter guarda, Shift+Enter salto de línea)"
+                aria-label="Nota interna"
+                className="min-h-0 resize-none border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30"
+              />
+              <Button
+                onClick={submitNote}
+                disabled={!noteText.trim() || sendNote.isPending}
+                aria-label="Guardar nota"
+              >
+                <Send />
+              </Button>
+            </div>
+          </>
+        ) : (
+        <>
         <ContentChatBar conversation={conversation} text={text} onFill={setText} windowOpen={windowOpen} />
         <PauChatBar conversation={conversation} text={text} onFill={setText} windowOpen={windowOpen} />
         <div className="flex items-end gap-2">
@@ -284,14 +432,23 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
             <Send />
           </Button>
         </div>
+        </>
+        )}
       </div>
     </div>
     <aside
       aria-label="Cliente y pedido"
       className="hidden w-80 shrink-0 border-l xl:block"
     >
-      <ClientOrderPanel conversation={conversation} companyId={companyId} client={clientQuery} />
+      <ClientOrderPanel
+        conversation={conversation}
+        companyId={companyId}
+        client={clientQuery}
+        onInsertMessage={insertInMessage}
+      />
     </aside>
+    {templateOpen && <TemplateDialog conversation={conversation} onClose={() => setTemplateOpen(false)} />}
+    {thinkingOpen && <ThinkingDialog conversation={conversation} onClose={() => setThinkingOpen(false)} />}
     <Sheet open={panelOpen} onOpenChange={setPanelOpen}>
       <SheetContent side="right" className="w-full max-w-sm p-0 xl:hidden">
         <SheetHeader className="border-b p-3">
@@ -300,7 +457,15 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
             Datos del cliente y pedidos de esta conversación
           </SheetDescription>
         </SheetHeader>
-        <ClientOrderPanel conversation={conversation} companyId={companyId} client={clientQuery} />
+        <ClientOrderPanel
+          conversation={conversation}
+          companyId={companyId}
+          client={clientQuery}
+          onInsertMessage={(t) => {
+            insertInMessage(t);
+            setPanelOpen(false);
+          }}
+        />
       </SheetContent>
     </Sheet>
     </div>

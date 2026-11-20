@@ -112,6 +112,7 @@ function HowItWorks() {
           Al cliente se le escribe por WhatsApp: con tu texto si pasaron menos de 24 h desde su último
           mensaje; si pasaron más, solo con la plantilla de la regla (sin plantilla, no se envía).
         </li>
+        <li>Los seguimientos con plantilla solo aplican a chats de WhatsApp; Messenger e Instagram quedan fuera.</li>
         <li>Solo se escribe entre las 07:00 y las 20:00 (hora de Lima).</li>
         <li>
           Si el destino es la vendedora, se crea una tarea en su Agenda. Si la conversación no tiene

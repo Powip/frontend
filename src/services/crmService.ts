@@ -13,7 +13,10 @@ import type {
   FollowupStats,
   Template,
   Conversation,
+  ConversationFollowup,
   CreateTaskInput,
+  InboxSummary,
+  SendTemplateInput,
   Pipeline,
   StageInput,
   Task,
@@ -23,6 +26,8 @@ import type {
   ConversationListParams,
   ConversationOrder,
   LinkOrderInput,
+  ConversationQuote,
+  LinkQuoteInput,
   ConversationListResponse,
   Message,
   MessagePage,
@@ -52,6 +57,12 @@ export async function listConversations(
     limit: params.limit ?? 30,
   };
   if (params.search?.trim()) query.search = params.search.trim();
+  if (params.channel) query.channel = params.channel;
+  if (params.unanswered) query.unanswered = "true";
+  if (params.overSla) query.overSla = "true";
+  if (params.pauHelp) query.pauHelp = "true";
+  if (params.thinking) query.thinking = "true";
+  if (params.tag?.trim()) query.tag = params.tag.trim();
   return (
     await axiosAuth.get<ConversationListResponse>(`${BASE}/conversations`, {
       params: query,
@@ -82,6 +93,39 @@ export async function sendMessage(id: string, body: string): Promise<Message> {
   return (await axiosAuth.post<Message>(`${conv(id)}/messages`, { body })).data;
 }
 
+/** Nota interna: la ve solo el equipo, no se envía al cliente. Sirve con la ventana cerrada. */
+export async function sendNote(id: string, body: string): Promise<Message> {
+  return (await axiosAuth.post<Message>(`${conv(id)}/notes`, { body })).data;
+}
+
+/**
+ * Plantilla de WhatsApp desde el chat (solo WhatsApp). 400 si el canal no es
+ * WhatsApp o faltan variables; 502 si WhatsApp la rechaza.
+ */
+export async function sendConversationTemplate(
+  id: string,
+  input: SendTemplateInput,
+): Promise<Message> {
+  return (await axiosAuth.post<Message>(`${conv(id)}/template`, input)).data;
+}
+
+/** Conteos de los indicadores de la Bandeja. */
+export async function getInboxSummary(): Promise<InboxSummary> {
+  return (await axiosAuth.get<InboxSummary>(`${BASE}/inbox/summary`)).data;
+}
+
+/** Etiquetas ya usadas por la empresa (para sugerir). */
+export async function listTags(): Promise<string[]> {
+  return (await axiosAuth.get<{ items: string[] }>(`${BASE}/tags`)).data.items;
+}
+
+/** Seguimientos automáticos que se dispararán si el cliente no responde. */
+export async function listConversationFollowups(id: string): Promise<ConversationFollowup[]> {
+  return (
+    await axiosAuth.get<{ items: ConversationFollowup[] }>(`${conv(id)}/followups`)
+  ).data.items;
+}
+
 export async function markConversationRead(id: string): Promise<Conversation> {
   return (await axiosAuth.post<Conversation>(`${conv(id)}/read`)).data;
 }
@@ -107,6 +151,23 @@ export async function linkConversationOrder(
   input: LinkOrderInput,
 ): Promise<ConversationOrder> {
   return (await axiosAuth.post<ConversationOrder>(`${conv(id)}/orders`, input))
+    .data;
+}
+
+export async function listConversationQuotes(
+  id: string,
+): Promise<ConversationQuote[]> {
+  return (
+    await axiosAuth.get<{ items: ConversationQuote[] }>(`${conv(id)}/quotes`)
+  ).data.items;
+}
+
+/** Idempotente: deja una nota «POWIP Link … creado» en el chat; no envía nada al cliente. */
+export async function linkConversationQuote(
+  id: string,
+  input: LinkQuoteInput,
+): Promise<ConversationQuote> {
+  return (await axiosAuth.post<ConversationQuote>(`${conv(id)}/quotes`, input))
     .data;
 }
 

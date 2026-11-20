@@ -42,6 +42,8 @@ export interface Objection {
   position: number;
   active: boolean;
   createdAt: string;
+  /** Quien la propuso desde un chat (no nulo = propuesta; inactiva hasta que un administrador la apruebe). */
+  proposedByName: string | null;
 }
 
 export interface ObjectionInput {

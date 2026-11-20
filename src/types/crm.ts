@@ -9,10 +9,18 @@ export type MessageStatus =
   | "failed";
 export type MessageSenderKind = "customer" | "agent" | "pau" | "system";
 
+export type ConversationChannel = "whatsapp" | "messenger" | "instagram";
+
 export interface Conversation {
   id: string;
-  channel: "whatsapp";
+  channel: ConversationChannel;
+  /**
+   * En WhatsApp es el teléfono del contacto. En Messenger e Instagram NO es un
+   * teléfono: es el identificador del contacto en ese canal.
+   */
   contactPhone: string;
+  /** Teléfono real del cliente cuando el canal no lo da (null = aún no se conoce). */
+  customerPhone: string | null;
   contactName: string | null;
   status: ConversationStatus;
   assignedUserId: string | null;
@@ -39,6 +47,11 @@ export interface Conversation {
   pauHelpReason: string | null;
   /** Índice del paso del guion en que va el chat (null = ninguno). */
   scriptStep: number | null;
+  /** «Lo está pensando»: cuándo retomar el chat (null = no está en pausa). */
+  resumeAt: string | null;
+  resumeNote: string | null;
+  /** Etiquetas del chat (máx. 10, cada una ≤ 30 caracteres). */
+  tags: string[];
 }
 
 export interface Message {
@@ -60,9 +73,45 @@ export type AssignedFilter = "all" | "me" | "unassigned";
 export interface ConversationListParams {
   status: ConversationStatus;
   assigned: AssignedFilter;
+  /** Sin valor = todos los canales. */
+  channel?: ConversationChannel;
   search?: string;
+  /** Indicadores de la Bandeja (solo se envían cuando valen true). */
+  unanswered?: boolean;
+  overSla?: boolean;
+  pauHelp?: boolean;
+  thinking?: boolean;
+  tag?: string;
   page?: number;
   limit?: number;
+}
+
+/** Conteos de los indicadores de la Bandeja. */
+export interface InboxSummary {
+  slaMinutes: number;
+  open: number;
+  unanswered: number;
+  overSla: number;
+  mineUnanswered: number;
+  unassigned: number;
+  pauHelp: number;
+  thinking: number;
+}
+
+export interface SendTemplateInput {
+  templateName: string;
+  templateLanguage: string;
+  variables?: string[];
+}
+
+export interface ConversationFollowup {
+  ruleId: string;
+  ruleName: string;
+  objective: RuleObjective;
+  target: RuleTarget;
+  dueAt: string;
+  /** Para esa hora la ventana de 24 h ya habrá cerrado: sale por plantilla. */
+  viaTemplate: boolean;
 }
 
 export interface ConversationListResponse {
@@ -87,10 +136,18 @@ export interface UpdateConversationInput {
   /** Solo al mover a una etapa de tipo «lost». */
   lostReason?: string;
   marketingOptOut?: boolean;
+  /** Teléfono real del cliente (≤ 32 caracteres); null lo quita. */
+  customerPhone?: string | null;
   /** Devolver el chat a Pau (true) o tomarlo una persona (false). */
   pauEnabled?: boolean;
   /** Paso del guion en que va el chat (null lo quita). */
   scriptStep?: number | null;
+  /** «Lo está pensando»: fecha para retomar (ISO); null lo quita. */
+  resumeAt?: string | null;
+  /** Nota de «Lo está pensando» (≤ 200 caracteres). */
+  resumeNote?: string;
+  /** Etiquetas del chat (máx. 10, cada una ≤ 30 caracteres). */
+  tags?: string[];
 }
 
 export interface ConversationOrder {
@@ -101,6 +158,23 @@ export interface ConversationOrder {
   createdByUserId: string | null;
   createdByName: string | null;
   createdAt: string;
+}
+
+/** POWIP Link (cotización de Core) armado desde la conversación. */
+export interface ConversationQuote {
+  id: string;
+  conversationId: string;
+  quotationId: string;
+  quotationNumber: string | null;
+  publicUrl: string | null;
+  createdByName: string | null;
+  createdAt: string;
+}
+
+export interface LinkQuoteInput {
+  quotationId: string;
+  quotationNumber?: string;
+  publicUrl?: string;
 }
 
 export interface LinkOrderInput {

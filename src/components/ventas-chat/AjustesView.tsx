@@ -6,6 +6,7 @@ import { useCrmSettings } from "@/hooks/useCrmTeam";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import EquipoAdminGate from "./EquipoAdminGate";
 import AjustesWhatsAppCard from "./AjustesWhatsAppCard";
+import AjustesMetaCard from "./AjustesMetaCard";
 import { AssignCard, HoursCard, SlaCard, WelcomeCard, WhereCard } from "./AjustesCards";
 
 function AjustesContent() {
@@ -15,6 +16,7 @@ function AjustesContent() {
     <div className="mx-auto max-w-3xl space-y-4">
       <h1 className="text-lg font-semibold">Ajustes</h1>
       <AjustesWhatsAppCard />
+      <AjustesMetaCard />
       {isLoading && (
         <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" /> Cargando ajustes…

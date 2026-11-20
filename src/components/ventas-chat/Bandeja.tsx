@@ -5,6 +5,7 @@ import { MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCrmEvents } from "@/hooks/useCrmChat";
 import ConversationList from "./ConversationList";
+import InboxIndicators, { type InboxIndicator } from "./InboxIndicators";
 import ChatPanel from "./ChatPanel";
 
 export default function Bandeja() {
@@ -24,6 +25,7 @@ export default function Bandeja() {
     [router, pathname],
   );
   const live = useCrmEvents();
+  const [indicator, setIndicator] = useState<InboxIndicator | null>(null);
 
   return (
     <div className="space-y-2">
@@ -45,9 +47,16 @@ export default function Bandeja() {
         </span>
       </div>
 
+      <InboxIndicators active={indicator} onChange={setIndicator} />
+
       <div className="grid h-[calc(100vh-14rem)] min-h-[420px] overflow-hidden rounded-lg border bg-card md:grid-cols-[340px_1fr]">
         <div className={cn("min-h-0 border-r", selectedId ? "hidden md:block" : "block")}>
-          <ConversationList selectedId={selectedId} onSelect={select} />
+          <ConversationList
+            selectedId={selectedId}
+            onSelect={select}
+            indicator={indicator}
+            onIndicatorChange={setIndicator}
+          />
         </div>
         <div className={cn("min-h-0", selectedId ? "block" : "hidden md:block")}>
           {selectedId ? (

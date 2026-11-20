@@ -7,6 +7,7 @@ export interface VentasChatTab {
 
 export const VENTAS_CHAT_TABS: VentasChatTab[] = [
   { label: "Bandeja", href: "/comercial/ventas-chat/bandeja" },
+  { label: "Llamadas", href: "/comercial/ventas-chat/llamadas" },
   { label: "Agenda", href: "/comercial/ventas-chat/agenda" },
   { label: "Embudo", href: "/comercial/ventas-chat/embudo" },
   { label: "Seguimientos", href: "/comercial/ventas-chat/seguimientos" },

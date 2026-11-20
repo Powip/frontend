@@ -24,6 +24,7 @@ jest.mock("@/services/crmService", () => ({
   listPipelines: jest.fn(),
   listTasks: jest.fn(),
   listConversationOrders: jest.fn(),
+  listConversationQuotes: jest.fn(),
   updateConversation: jest.fn(),
 }));
 const s = svc as jest.Mocked<typeof svc>;
@@ -32,6 +33,7 @@ const conv: Conversation = {
   id: "c1",
   channel: "whatsapp",
   contactPhone: "51999111222",
+  customerPhone: null,
   contactName: "Ana Pérez",
   status: "open",
   assignedUserId: null,
@@ -52,6 +54,9 @@ const conv: Conversation = {
   pauEnabled: false,
   pauHelpReason: null,
   scriptStep: null,
+  resumeAt: null,
+  resumeNote: null,
+  tags: [],
 };
 
 function setup(c: Conversation) {
@@ -69,6 +74,7 @@ beforeEach(() => {
   s.listPipelines.mockResolvedValue([]);
   s.listTasks.mockResolvedValue([]);
   s.listConversationOrders.mockResolvedValue([]);
+  s.listConversationQuotes.mockResolvedValue([]);
   s.updateConversation.mockResolvedValue({ ...conv, marketingOptOut: true });
 });
 

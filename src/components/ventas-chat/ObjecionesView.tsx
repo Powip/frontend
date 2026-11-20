@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Info, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Info, Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -95,7 +95,13 @@ function ObjecionesBody() {
   const actions = useObjectionActions();
   const [editing, setEditing] = useState<Objection | "new" | null>(null);
   const [deleting, setDeleting] = useState<Objection | null>(null);
+  const [discarding, setDiscarding] = useState<Objection | null>(null);
   const busy = actions.create.isPending || actions.update.isPending || actions.remove.isPending;
+
+  // Propuestas desde el chat («Enseñarle la respuesta»): esperan aprobación y no van en la tabla.
+  const isPending = (o: Objection) => !!o.proposedByName && !o.active;
+  const proposals = useMemo(() => (list.data ?? []).filter(isPending), [list.data]);
+  const rows = useMemo(() => (list.data ?? []).filter((o) => !isPending(o)), [list.data]);
 
   const byId = useMemo(() => new Map((stats.data?.items ?? []).map((s) => [s.objectionId, s])), [stats.data]);
   const mostUsed = useMemo(() => {
@@ -111,12 +117,14 @@ function ObjecionesBody() {
 
   // Cada objeción toma como posición su índice: se actualizan solo las dos que cambian.
   const move = (index: number, to: number) => {
-    const items = list.data ?? [];
-    const a = items[index];
-    const b = items[to];
+    const a = rows[index];
+    const b = rows[to];
     if (!a || !b) return;
-    actions.update.mutate({ id: a.id, input: { position: to } });
-    actions.update.mutate({ id: b.id, input: { position: index } });
+    // Se intercambian sus posiciones reales (las propuestas ocupan lugares que no se ven en la tabla).
+    const pa = a.position === b.position ? to : b.position;
+    const pb = a.position === b.position ? index : a.position;
+    actions.update.mutate({ id: a.id, input: { position: pa } });
+    actions.update.mutate({ id: b.id, input: { position: pb } });
   };
 
   return (
@@ -151,6 +159,47 @@ function ObjecionesBody() {
       </section>
       {stats.isError && <ContentError error={stats.error} onRetry={() => stats.refetch()} />}
 
+      {proposals.length > 0 && (
+        <section
+          aria-labelledby="obj-propuestas"
+          className="space-y-3 rounded-md border border-amber-300 bg-amber-50/50 p-4 dark:border-amber-700 dark:bg-amber-950/20"
+        >
+          <h2 id="obj-propuestas" className="text-base font-semibold">
+            Propuestas por aprobar
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            El equipo las propuso desde un chat. Pau no las usa hasta que las apruebes.
+          </p>
+          <ul className="space-y-2">
+            {proposals.map((o) => (
+              <li key={o.id} data-testid="proposal-row" className="space-y-2 rounded-md border bg-card p-3">
+                <div>
+                  <p className="font-medium">{o.name}</p>
+                  <p className="whitespace-pre-wrap text-sm text-muted-foreground">{o.response}</p>
+                  <p className="text-[11px] text-muted-foreground">Propuesta de {o.proposedByName}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    disabled={busy}
+                    aria-label={`Aprobar ${o.name}`}
+                    onClick={() => actions.update.mutate({ id: o.id, input: { active: true } })}
+                  >
+                    <Check /> Aprobar
+                  </Button>
+                  <Button size="sm" variant="outline" aria-label={`Editar propuesta ${o.name}`} onClick={() => setEditing(o)}>
+                    <Pencil /> Editar
+                  </Button>
+                  <Button size="sm" variant="outline" aria-label={`Descartar ${o.name}`} onClick={() => setDiscarding(o)}>
+                    <Trash2 /> Descartar
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <section aria-labelledby="obj-tabla" className="space-y-3 rounded-md border bg-card p-4">
         <div className="flex flex-wrap items-center gap-2">
           <h2 id="obj-tabla" className="min-w-0 flex-1 text-base font-semibold">
@@ -162,10 +211,10 @@ function ObjecionesBody() {
         </div>
         {list.isLoading && <ContentLoading />}
         {list.isError && <ContentError error={list.error} onRetry={() => list.refetch()} />}
-        {list.data && list.data.length === 0 && (
+        {list.data && rows.length === 0 && (
           <p className="text-sm text-muted-foreground">Aún no hay objeciones. Crea la primera.</p>
         )}
-        {list.data && list.data.length > 0 && (
+        {list.data && rows.length > 0 && (
           <Table>
             <TableHeader>
               <TableRow>
@@ -181,7 +230,7 @@ function ObjecionesBody() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {list.data.map((o, i) => {
+              {rows.map((o, i) => {
                 const s = byId.get(o.id);
                 return (
                   <TableRow key={o.id} data-testid="objection-row">
@@ -208,7 +257,7 @@ function ObjecionesBody() {
                         <Button size="icon-sm" variant="ghost" aria-label={`Subir ${o.name}`} disabled={busy || i === 0} onClick={() => move(i, i - 1)}>
                           <ArrowUp />
                         </Button>
-                        <Button size="icon-sm" variant="ghost" aria-label={`Bajar ${o.name}`} disabled={busy || i === list.data.length - 1} onClick={() => move(i, i + 1)}>
+                        <Button size="icon-sm" variant="ghost" aria-label={`Bajar ${o.name}`} disabled={busy || i === rows.length - 1} onClick={() => move(i, i + 1)}>
                           <ArrowDown />
                         </Button>
                         <Button size="icon-sm" variant="ghost" aria-label={`Editar ${o.name}`} onClick={() => setEditing(o)}>
@@ -243,6 +292,18 @@ function ObjecionesBody() {
           )}
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={!!discarding}
+        title="¿Descartar esta propuesta?"
+        description={`Se descartará «${discarding?.name ?? ""}». Esta acción no se puede deshacer.`}
+        confirmLabel="Descartar"
+        onCancel={() => setDiscarding(null)}
+        onConfirm={() => {
+          const o = discarding;
+          setDiscarding(null);
+          if (o) actions.remove.mutate(o.id);
+        }}
+      />
       <ConfirmDialog
         open={!!deleting}
         title="¿Eliminar esta objeción?"

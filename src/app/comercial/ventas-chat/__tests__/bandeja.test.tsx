@@ -1,5 +1,5 @@
 import React from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Bandeja from "@/components/ventas-chat/Bandeja";
 import { applyCrmEvent } from "@/lib/crmSse";
@@ -36,6 +36,12 @@ jest.mock("@/lib/axiosAuth", () => ({
   default: { get: jest.fn(), post: jest.fn(), patch: jest.fn() },
 }));
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
+jest.mock("@/services/crmCallsService", () => ({
+  listCalls: jest.fn().mockResolvedValue([]),
+  getCallStats: jest.fn(),
+  createCall: jest.fn(),
+  deleteCall: jest.fn(),
+}));
 jest.mock("@/services/crmService", () => ({
   ...jest.requireActual("@/services/crmService"),
   listConversations: jest.fn(),
@@ -45,6 +51,7 @@ jest.mock("@/services/crmService", () => ({
   markConversationRead: jest.fn(),
   updateConversation: jest.fn(),
   listConversationOrders: jest.fn(),
+  listConversationQuotes: jest.fn(),
   listPipelines: jest.fn(),
   listTasks: jest.fn(),
 }));
@@ -61,6 +68,7 @@ const conv = (over: Partial<Conversation> = {}): Conversation => ({
   id: "c1",
   channel: "whatsapp",
   contactPhone: "51999111222",
+  customerPhone: null,
   contactName: "Ana Pérez",
   status: "open",
   assignedUserId: null,
@@ -81,6 +89,9 @@ const conv = (over: Partial<Conversation> = {}): Conversation => ({
   pauEnabled: false,
   pauHelpReason: null,
   scriptStep: null,
+  resumeAt: null,
+  resumeNote: null,
+  tags: [],
   ...over,
 });
 const msg = (over: Partial<Message> = {}): Message => ({
@@ -115,6 +126,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockParams = new URLSearchParams();
   s.listConversationOrders.mockResolvedValue([]);
+  s.listConversationQuotes.mockResolvedValue([]);
   s.listPipelines.mockResolvedValue([]);
   s.listTasks.mockResolvedValue([]);
   fetchClient.mockResolvedValue(null);
@@ -404,14 +416,94 @@ describe("Panel Cliente y pedido", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("Crear pedido arma la URL de registrar-venta con returnTo a la bandeja", async () => {
+  it("Registrar venta completa arma la URL de registrar-venta con returnTo a la bandeja", async () => {
     setup();
     fireEvent.click(await screen.findByText("Ana Pérez"));
-    fireEvent.click((await screen.findAllByRole("button", { name: /Crear pedido/ }))[0]);
+    fireEvent.click((await screen.findAllByRole("button", { name: /Registrar venta completa/ }))[0]);
     const url = new URL(mockPush.mock.calls[0][0], "http://x");
     expect(url.pathname).toBe("/registrar-venta");
     expect(url.searchParams.get("crmConversationId")).toBe("c1");
     expect(url.searchParams.get("crmPhone")).toBe("51999111222");
     expect(url.searchParams.get("returnTo")).toBe("/comercial/ventas-chat/bandeja?c=c1");
+  });
+});
+
+describe("Bandeja · canales Messenger e Instagram", () => {
+  const IG_ID = "17841400000000";
+  const ig = (over: Partial<Conversation> = {}) =>
+    conv({ channel: "instagram", contactPhone: IG_ID, contactName: "Luz Mora", customerPhone: null, ...over });
+
+  it("cada fila muestra el canal y el filtro de canal envía channel", async () => {
+    setup(ig());
+    expect(await screen.findByText("Luz Mora")).toBeInTheDocument();
+    expect(screen.getByTestId("channel-badge")).toHaveTextContent("Instagram");
+    expect(s.listConversations.mock.calls[0][0]).not.toHaveProperty("channel");
+    const group = screen.getByRole("group", { name: "Canal" });
+    expect(within(group).getByRole("button", { name: "Todos" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(group).getByRole("button", { name: "Messenger" }));
+    await waitFor(() =>
+      expect(s.listConversations).toHaveBeenLastCalledWith(
+        expect.objectContaining({ channel: "messenger" }),
+        expect.anything(),
+      ),
+    );
+    fireEvent.click(within(group).getByRole("button", { name: "Todos" }));
+    await waitFor(() => expect(s.listConversations.mock.calls.at(-1)?.[0]).not.toHaveProperty("channel"));
+  });
+
+  it("un chat de Instagram no muestra el identificador como teléfono y pide el número", async () => {
+    setup(ig());
+    fireEvent.click(await screen.findByText("Luz Mora"));
+    expect(await screen.findByText(/Pide el número al cliente para vincularlo/)).toBeInTheDocument();
+    expect(document.body.textContent).not.toContain(IG_ID);
+    await waitFor(() => expect(s.listConversationOrders).toHaveBeenCalled());
+    expect(fetchClient).not.toHaveBeenCalled();
+    expect(screen.queryByText("Este número no está en Clientes")).not.toBeInTheDocument();
+  });
+
+  it("al guardar el teléfono lo manda como customerPhone y busca al cliente con ese número", async () => {
+    s.updateConversation.mockResolvedValue(ig({ customerPhone: "+51 999 111 222" }));
+    setup(ig());
+    fireEvent.click(await screen.findByText("Luz Mora"));
+    fireEvent.change(await screen.findByLabelText("Teléfono del cliente"), {
+      target: { value: "+51 999 111 222" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar" }));
+    await waitFor(() =>
+      expect(s.updateConversation).toHaveBeenCalledWith("c1", { customerPhone: "+51 999 111 222" }),
+    );
+    await waitFor(() => expect(fetchClient).toHaveBeenCalledWith("co1", "999111222"));
+    expect(document.body.textContent).not.toContain(IG_ID);
+  });
+
+  it("«Registrar venta completa» usa el teléfono guardado, no el identificador", async () => {
+    setup(ig({ customerPhone: "988777666" }));
+    fireEvent.click(await screen.findByText("Luz Mora"));
+    fireEvent.click(await screen.findByRole("button", { name: /Registrar venta completa/ }));
+    const url = new URL(mockPush.mock.calls[0][0], "http://x");
+    expect(url.searchParams.get("crmPhone")).toBe("988777666");
+  });
+
+  it("con la ventana de 7 días vencida avisa del plazo de Messenger e Instagram", async () => {
+    setup(ig({ windowExpiresAt: PAST }));
+    fireEvent.click(await screen.findByText("Luz Mora"));
+    expect(await screen.findByText(/Pasaron 7 días desde el último mensaje del cliente/)).toBeInTheDocument();
+    expect(screen.queryByText(/Pasaron 24 h/)).not.toBeInTheDocument();
+    expect(await screen.findByLabelText("Mensaje")).toBeDisabled();
+  });
+
+  it("con teléfono guardado «Llamar» es un enlace tel:", async () => {
+    setup(ig({ customerPhone: "988777666" }));
+    fireEvent.click(await screen.findByText("Luz Mora"));
+    const link = await screen.findByRole("link", { name: /Llamar/ });
+    expect(link).toHaveAttribute("href", "tel:+51988777666");
+  });
+
+  it("sin teléfono guardado «Llamar» está desactivado", async () => {
+    setup(ig());
+    fireEvent.click(await screen.findByText("Luz Mora"));
+    const btn = await screen.findByRole("button", { name: /Llamar/ });
+    expect(btn).toBeDisabled();
+    expect(screen.queryByRole("link", { name: /Llamar/ })).not.toBeInTheDocument();
   });
 });
