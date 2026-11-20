@@ -57,14 +57,16 @@ interface Props {
   companyId: string;
   transfer?: Transfer | null;
   defaultOriginId?: string;
+  /** Destino precargado (filtro «Destino» de la lista); editable. */
+  defaultDestinationId?: string;
   onClose: () => void;
   onSaved: (transfer: Transfer, dispatched: boolean) => void;
 }
 
-export default function TransferFormDialog({ companyId, transfer, defaultOriginId, onClose, onSaved }: Props) {
+export default function TransferFormDialog({ companyId, transfer, defaultOriginId, defaultDestinationId, onClose, onSaved }: Props) {
   const scope = useMyWarehouses();
   const { warehouses, query: warehousesQuery } = useCompanyWarehouses();
-  const [form, setForm] = useState<TransferForm>(() => (transfer ? transferFormFrom(transfer) : emptyTransferForm(defaultOriginId ?? "")));
+  const [form, setForm] = useState<TransferForm>(() => (transfer ? transferFormFrom(transfer) : emptyTransferForm(defaultOriginId ?? "", defaultDestinationId ?? "")));
   const [savedId, setSavedId] = useState<string | null>(transfer?.id ?? null);
   const [dispatchKey] = useState(() => newOperationId());
   const [touched, setTouched] = useState(false);
