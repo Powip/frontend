@@ -1,14 +1,8 @@
 import type { Metadata } from "next";
-import { Manrope, Montserrat, Poppins } from "next/font/google";
+import { Montserrat, Poppins } from "next/font/google";
 import "../styles/globals.css";
 
-const manrope = Manrope({
-  subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  variable: "--next-font-manrope",
-  display: "swap",
-});
-
+// Brandbook v1.0: Montserrat para títulos y destacados; Poppins para texto y UI.
 const montserrat = Montserrat({
   subsets: ["latin"],
   variable: "--font-montserrat",
@@ -56,7 +50,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body suppressHydrationWarning className={`${poppins.variable} ${montserrat.variable} ${manrope.variable} antialiased`}>
+      <body suppressHydrationWarning className={`${poppins.variable} ${montserrat.variable} antialiased`}>
         <GoogleTagManager gtmId="GTM-M83R94SC" />
         <ThemeProvider>
           <QueryProvider>
