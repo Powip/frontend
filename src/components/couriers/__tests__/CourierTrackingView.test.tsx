@@ -349,28 +349,76 @@ function render(node: ReactNode) {
   return renderRTL(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
 }
 
-describe("CourierTrackingView — clave con saldo pendiente", () => {
+jest.mock("@/components/modals/PaymentVerificationModal", () => ({
+  __esModule: true,
+  default: ({ orderNumber, onPaymentUpdated }: { orderNumber: string; onPaymentUpdated?: () => void }) => {
+    const React = jest.requireActual("react");
+    return React.createElement(
+      "div",
+      { role: "dialog", "aria-label": `Pagos ${orderNumber}` },
+      React.createElement("button", { onClick: onPaymentUpdated }, "simular comprobante subido"),
+    );
+  },
+}));
+
+describe("CourierTrackingView — columna Clave según saldo y comprobante", () => {
   const keyInput = (orderNumber: string) =>
     screen.getAllByLabelText(`Clave del pedido ${orderNumber}`)[0] as HTMLInputElement;
+  const lockedKey = (orderNumber: string) =>
+    screen.queryAllByLabelText(`Clave bloqueada del pedido ${orderNumber}: saldo pendiente. Subir comprobante`)[0];
 
-  function useOrders(list: ReturnType<typeof order>[]) {
+  function useOrders(list: unknown[]) {
     mockedGet.mockImplementation((url: string) => {
       if (url.includes("/shipping-guides/store/")) return Promise.resolve({ data: guides });
       if (url.includes("/order-header/store/")) return Promise.resolve({ data: list });
       return Promise.resolve({ data: [] });
     });
   }
+  const base = (id: string, num: string) => order(id, num, "2026-09-10T12:00:00", "2026-09-26T12:00:00");
 
-  it("con saldo la clave guardada se ve en claro y se puede editar", async () => {
-    const user = userEvent.setup();
+  it("con saldo y sin comprobante la clave queda bloqueada y su valor no está en el DOM", async () => {
+    useOrders([{ ...base("o-debt", "PED-CON-SALDO"), grandTotal: 45, shippingKey: "7391" }]);
+    render(<CourierTrackingView />);
+    await waitFor(() => expect(renderedOrderNumbers()).toHaveLength(1));
+
+    expect(lockedKey("PED-CON-SALDO")).toBeTruthy();
+    expect(lockedKey("PED-CON-SALDO")).toHaveTextContent("Bloqueado: saldo pendiente");
+    expect(screen.queryAllByLabelText("Clave del pedido PED-CON-SALDO")).toHaveLength(0);
+    expect(document.body.innerHTML).not.toContain("7391");
+    expect(mockedPatch).not.toHaveBeenCalled();
+  });
+
+  it("con saldo parcial pagado y sin comprobante sigue bloqueada", async () => {
     useOrders([
-      { ...order("o-debt", "PED-CON-SALDO", "2026-09-10T12:00:00", "2026-09-26T12:00:00"), grandTotal: 45, shippingKey: "1111" } as ReturnType<typeof order>,
+      {
+        ...base("o-part", "PED-PARCIAL"),
+        grandTotal: 45,
+        shippingKey: "7391",
+        payments: [{ id: "p1", status: "PAID", amount: 20, paymentProofUrl: null }],
+      },
     ]);
     render(<CourierTrackingView />);
     await waitFor(() => expect(renderedOrderNumbers()).toHaveLength(1));
 
-    const input = keyInput("PED-CON-SALDO");
-    expect(input).not.toBeDisabled();
+    expect(lockedKey("PED-PARCIAL")).toBeTruthy();
+    expect(document.body.innerHTML).not.toContain("7391");
+  });
+
+  it("con saldo y comprobante subido la clave se ve y se edita", async () => {
+    const user = userEvent.setup();
+    useOrders([
+      {
+        ...base("o-proof", "PED-COMPROBANTE"),
+        grandTotal: 45,
+        shippingKey: "1111",
+        payments: [{ id: "p1", status: "PENDING", amount: 45, paymentProofUrl: "https://x/voucher.png" }],
+      },
+    ]);
+    render(<CourierTrackingView />);
+    await waitFor(() => expect(renderedOrderNumbers()).toHaveLength(1));
+
+    expect(lockedKey("PED-COMPROBANTE")).toBeUndefined();
+    const input = keyInput("PED-COMPROBANTE");
     expect(input.type).toBe("text");
     expect(input.value).toBe("1111");
 
@@ -379,35 +427,57 @@ describe("CourierTrackingView — clave con saldo pendiente", () => {
     await user.tab();
 
     await waitFor(() => expect(mockedPatch).toHaveBeenCalledTimes(1));
-    expect(mockedPatch).toHaveBeenCalledWith(expect.stringMatching(/\/order-header\/o-debt$/), {
+    expect(mockedPatch).toHaveBeenCalledWith(expect.stringMatching(/\/order-header\/o-proof$/), {
       shippingKey: "4547",
     });
-    await waitFor(() => expect(keyInput("PED-CON-SALDO").value).toBe("4547"));
   });
 
-  it("con saldo y sin cambiar nada no envía nada", async () => {
-    const user = userEvent.setup();
-    useOrders([
-      { ...order("o-debt", "PED-CON-SALDO", "2026-09-10T12:00:00", "2026-09-26T12:00:00"), grandTotal: 45, shippingKey: "1111" } as ReturnType<typeof order>,
-    ]);
+  it("sin saldo la clave se ve en claro", async () => {
+    useOrders([{ ...base("o-paid", "PED-PAGADO"), shippingKey: "4545" }]);
     render(<CourierTrackingView />);
     await waitFor(() => expect(renderedOrderNumbers()).toHaveLength(1));
 
-    await user.click(keyInput("PED-CON-SALDO"));
+    expect(lockedKey("PED-PAGADO")).toBeUndefined();
+    expect(keyInput("PED-PAGADO").value).toBe("4545");
+  });
+
+  it("sin clave el campo queda en blanco, sin placeholder y editable, aun con saldo", async () => {
+    const user = userEvent.setup();
+    useOrders([{ ...base("o-nokey", "PED-SIN-CLAVE"), grandTotal: 45 }]);
+    render(<CourierTrackingView />);
+    await waitFor(() => expect(renderedOrderNumbers()).toHaveLength(1));
+
+    expect(lockedKey("PED-SIN-CLAVE")).toBeUndefined();
+    const input = keyInput("PED-SIN-CLAVE");
+    expect(input.value).toBe("");
+    expect(input).not.toHaveAttribute("placeholder", "Clave...");
+    expect(screen.queryAllByPlaceholderText("Clave...")).toHaveLength(0);
+
+    await user.type(input, "8821");
     await user.tab();
 
-    expect(mockedPatch).not.toHaveBeenCalled();
+    await waitFor(() => expect(mockedPatch).toHaveBeenCalledTimes(1));
+    expect(mockedPatch).toHaveBeenCalledWith(expect.stringMatching(/\/order-header\/o-nokey$/), {
+      shippingKey: "8821",
+    });
   });
 
-  it("sin saldo la clave se ve y se edita en claro", async () => {
-    useOrders([
-      { ...order("o-paid", "PED-PAGADO", "2026-09-10T12:00:00", "2026-09-26T12:00:00"), shippingKey: "4545" } as ReturnType<typeof order>,
-    ]);
+  it("al subir el comprobante la clave se desbloquea", async () => {
+    const user = userEvent.setup();
+    const debt = { ...base("o-debt", "PED-CON-SALDO"), grandTotal: 45, shippingKey: "7391" };
+    useOrders([debt]);
     render(<CourierTrackingView />);
     await waitFor(() => expect(renderedOrderNumbers()).toHaveLength(1));
 
-    const input = keyInput("PED-PAGADO");
-    expect(input.type).toBe("text");
-    expect(input.value).toBe("4545");
+    await user.click(lockedKey("PED-CON-SALDO") as HTMLElement);
+    expect(screen.getByRole("dialog", { name: "Pagos PED-CON-SALDO" })).toBeInTheDocument();
+
+    useOrders([
+      { ...debt, payments: [{ id: "p1", status: "PENDING", amount: 45, paymentProofUrl: "https://x/voucher.png" }] },
+    ]);
+    await user.click(screen.getByRole("button", { name: "simular comprobante subido" }));
+
+    await waitFor(() => expect(keyInput("PED-CON-SALDO").value).toBe("7391"));
+    expect(lockedKey("PED-CON-SALDO")).toBeUndefined();
   });
 });
