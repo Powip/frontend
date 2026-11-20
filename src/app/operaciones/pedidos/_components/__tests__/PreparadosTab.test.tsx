@@ -390,6 +390,21 @@ describe("PreparadosTab — asignar a guía", () => {
     expect(actions.onOpenCreateGuide).not.toHaveBeenCalled();
   });
 
+  it("'Imprimir etiquetas' es un botón visible de la barra: sin selección deshabilitado y con selección imprime ese pedido", async () => {
+    const user = userEvent.setup();
+    const actions = makeActions();
+    renderTab([makeSale({ id: "sale-print-1", orderNumber: "ORD-PRINT-1" })], actions);
+
+    const printButton = screen.getByRole("button", { name: /imprimir etiquetas/i });
+    expect(printButton).toBeDisabled();
+
+    await selectLastRow(user);
+    expect(printButton).toBeEnabled();
+    await user.click(printButton);
+
+    expect(actions.onBulkPrint).toHaveBeenCalledWith([expect.objectContaining({ id: "sale-print-1" })]);
+  });
+
   it("'Asignar guía' de una fila abre la creación de guía solo con ese pedido", async () => {
     const user = userEvent.setup();
     const actions = makeActions();
