@@ -388,6 +388,16 @@ describe("CourierTrackingView — columna Clave según saldo y comprobante", () 
     expect(mockedPatch).not.toHaveBeenCalled();
   });
 
+  it("con la clave oculta por la API (shippingKey null, hasShippingKey true) sigue bloqueada", async () => {
+    useOrders([{ ...base("o-hidden", "PED-OCULTA"), grandTotal: 45, shippingKey: null, hasShippingKey: true }]);
+    render(<CourierTrackingView />);
+    await waitFor(() => expect(renderedOrderNumbers()).toHaveLength(1));
+
+    expect(lockedKey("PED-OCULTA")).toHaveTextContent("Bloqueado: saldo pendiente");
+    expect(screen.queryAllByLabelText("Clave del pedido PED-OCULTA")).toHaveLength(0);
+    expect(mockedPatch).not.toHaveBeenCalled();
+  });
+
   it("con saldo parcial pagado y sin comprobante sigue bloqueada", async () => {
     useOrders([
       {

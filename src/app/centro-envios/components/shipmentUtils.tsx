@@ -46,8 +46,11 @@ export function hasPaymentProof(order: OrderHeader): boolean {
  * y editable para escribir una nueva.
  */
 export function isShippingKeyLocked(order: OrderHeader): boolean {
+  // La API oculta la clave bloqueada (shippingKey null) y avisa con hasShippingKey.
   return (
-    !!order.shippingKey && getPendingPayment(order) > 0 && !hasPaymentProof(order)
+    (!!order.shippingKey || !!order.hasShippingKey) &&
+    getPendingPayment(order) > 0 &&
+    !hasPaymentProof(order)
   );
 }
 
