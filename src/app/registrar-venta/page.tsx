@@ -124,7 +124,7 @@ const CustomerServiceModal = dynamic(
 );
 
 const TONE_CLASSES = {
-  violet: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300",
+  violet: "bg-primary/10 text-primary dark:bg-primary/15",
   green: "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300",
   amber: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300",
 } as const;
@@ -162,7 +162,7 @@ function Disclosure({ label, children }: { label: string; children: React.ReactN
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 text-xs font-bold text-violet-600 dark:text-violet-300"
+        className="flex items-center gap-1.5 text-xs font-bold text-primary"
       >
         <ChevronDown className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
         {label}
@@ -2004,7 +2004,7 @@ function RegistrarVentaContent() {
   if (!auth) return null;
 
   return (
-    <div className="flex h-screen w-full [--primary:#6D4FE0] [--primary-foreground:#ffffff] [--ring:#8067F0] dark:[--primary:#9B85FF] dark:[--ring:#8A72F5]">
+    <div className="flex h-screen w-full">
       <main className="flex-1 overflow-auto bg-gradient-to-b from-muted/40 to-transparent">
         {pendingTrackedSale && <PendingSaleRecovery operation={pendingTrackedSale} storageKey={trackedSaleKey} disabled={isSubmitting} onCorrect={() => setPendingTrackedSale(null)} onResolved={(saved) => {
           setPendingTrackedSale(null);
@@ -2808,7 +2808,7 @@ function RegistrarVentaContent() {
                       <button
                         type="button"
                         onClick={() => (window.location.href = "/productos")}
-                        className="flex items-center gap-1 font-bold text-violet-600 hover:underline"
+                        className="flex items-center gap-1 font-bold text-primary hover:underline"
                       >
                         <Plus className="h-3 w-3" />
                         Nuevo producto
@@ -3044,7 +3044,7 @@ function RegistrarVentaContent() {
                           href={payment.paymentProofUrl!}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="block text-sm text-violet-600 underline dark:text-violet-300"
+                          className="block text-sm text-primary underline"
                         >
                           Ver comprobante guardado · Método registrado en recaudo: {payment.paymentMethod} · {moneyPrefix} {Number(payment.amount).toFixed(2)}
                           {payment.status === "PAID" ? " (aprobado)" : payment.status === "LOST" ? " (rechazado)" : " (pendiente)"}
@@ -3076,7 +3076,7 @@ function RegistrarVentaContent() {
                     )}
                     <div
                       className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors
-                  ${paymentProofFile ? "border-violet-500 bg-violet-50 dark:bg-violet-500/10" : "border-muted-foreground/25 hover:border-violet-400 hover:bg-muted/30"}`}
+                  ${paymentProofFile ? "border-primary bg-primary/5 dark:bg-primary/10" : "border-muted-foreground/25 hover:border-primary/60 hover:bg-muted/30"}`}
                       onClick={() => paymentProofInputRef.current?.click()}
                     >
                       <input
@@ -3135,7 +3135,7 @@ function RegistrarVentaContent() {
                               className="max-h-24 mx-auto rounded-md object-contain"
                             />
                           ) : (
-                            <p className="text-sm text-violet-600 font-medium">PDF seleccionado</p>
+                            <p className="text-sm text-primary font-medium">PDF seleccionado</p>
                           )}
                           <p className="text-xs text-gray-600 truncate">{paymentProofFile.name}</p>
                           <Button
@@ -3550,7 +3550,7 @@ function RegistrarVentaContent() {
 
                   <div className="h-1.5 rounded-full bg-muted overflow-hidden mt-3">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-violet-600 to-green-500 transition-all"
+                      className="h-full rounded-full bg-gradient-to-r from-primary to-green-500 transition-all"
                       style={{ width: `${checklistPct}%` }}
                     />
                   </div>
@@ -3587,7 +3587,7 @@ function RegistrarVentaContent() {
                     size="lg"
                     className={`w-full rounded-xl text-base font-semibold transition-all ${
                       (pendingProofUpload || canSubmit) && !isSubmitting
-                        ? "bg-gradient-to-br from-violet-600 to-green-600 text-white shadow-lg shadow-violet-600/25 hover:opacity-95"
+                        ? "bg-gradient-to-br from-primary to-green-600 text-white shadow-lg shadow-primary/25 hover:opacity-95"
                         : "bg-muted text-muted-foreground"
                     }`}
                     disabled={isSubmitting || (pendingProofUpload ? !paymentProofFile : !canSubmit)}

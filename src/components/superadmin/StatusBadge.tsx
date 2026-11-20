@@ -35,7 +35,7 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string; lab
   con_dudas:   { bg: 'bg-amber-100 dark:bg-amber-500/20',      text: 'text-amber-700 dark:text-amber-400',     dot: 'bg-amber-500',    label: 'Con dudas' },
   en_riesgo:   { bg: 'bg-rose-100 dark:bg-rose-500/20',        text: 'text-rose-700 dark:text-rose-400',       dot: 'bg-rose-500',     label: 'En riesgo' },
   cancelado:   { bg: 'bg-rose-100 dark:bg-rose-500/20',        text: 'text-rose-700 dark:text-rose-400',       dot: 'bg-rose-500',     label: 'Cancelado' },
-  upsell:      { bg: 'bg-violet-100 dark:bg-violet-500/20',    text: 'text-violet-700 dark:text-violet-400',   dot: 'bg-violet-500',   label: 'Upsell' },
+  upsell:      { bg: 'bg-primary/10 dark:bg-primary/20',    text: 'text-primary',   dot: 'bg-primary',   label: 'Upsell' },
 };
 
 const DEFAULT_STYLE = { bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-600 dark:text-slate-300', dot: 'bg-slate-400', label: '' };

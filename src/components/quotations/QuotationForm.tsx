@@ -965,7 +965,7 @@ export default function QuotationForm({
                           {(line.packId ||
                             quotation?.lines.find((original) => original.id === line.id)
                               ?.isPack) && (
-                            <span className="text-xs font-medium text-violet-600">
+                            <span className="text-xs font-medium text-primary">
                               Promoción aplicada
                             </span>
                           )}

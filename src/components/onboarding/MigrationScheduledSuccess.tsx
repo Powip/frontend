@@ -31,7 +31,7 @@ export default function MigrationScheduledSuccess({
       <button
         type="button"
         onClick={onGoToDashboard}
-        className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#4F3A96] px-5 py-3 text-sm font-semibold text-white"
+        className="flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white"
       >
         Ir a Powip
         <ArrowRight className="h-4 w-4" aria-hidden="true" />

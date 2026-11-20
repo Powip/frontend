@@ -285,7 +285,7 @@ export default function LiveCatalogDialog({
                   ref={searchInput}
                   aria-label="Buscar producto para live"
                   disabled={locked}
-                  className="h-11 rounded-xl pl-10 pr-10 text-sm focus-visible:ring-4 focus-visible:ring-violet-500/10"
+                  className="h-11 rounded-xl pl-10 pr-10 text-sm focus-visible:ring-4 focus-visible:ring-primary/10"
                   placeholder="Buscar por modelo, color, talla o SKU"
                   value={state.search}
                   onChange={(event) =>
@@ -345,7 +345,7 @@ export default function LiveCatalogDialog({
                       key={group.key}
                       className={cn(
                         "overflow-hidden rounded-2xl border bg-card transition-colors",
-                        expanded && "border-violet-500 shadow-sm shadow-violet-600/10",
+                        expanded && "border-primary shadow-sm shadow-primary/10",
                       )}
                     >
                       <button
@@ -394,7 +394,7 @@ export default function LiveCatalogDialog({
                           ) : null}
                         </div>
                         <div className="shrink-0 text-right">
-                          <p className="text-xs font-bold text-violet-700 dark:text-violet-300">
+                          <p className="text-xs font-bold text-primary">
                             {liveMoney(group.minPrice)}
                             {group.maxPrice !== group.minPrice ? (
                               <>
@@ -416,7 +416,7 @@ export default function LiveCatalogDialog({
                           <ChevronDown
                             className={cn(
                               "h-4 w-4 shrink-0 text-muted-foreground transition-transform",
-                              expanded && "rotate-180 text-violet-600",
+                              expanded && "rotate-180 text-primary",
                             )}
                             aria-hidden="true"
                           />
@@ -436,9 +436,9 @@ export default function LiveCatalogDialog({
                               aria-pressed={selected?.variantId === product.variantId}
                               onClick={() => choose(product)}
                               className={cn(
-                                "flex w-full items-center gap-2 rounded-xl border bg-background p-2.5 text-left hover:border-violet-400 disabled:opacity-60",
+                                "flex w-full items-center gap-2 rounded-xl border bg-background p-2.5 text-left hover:border-primary/60 disabled:opacity-60",
                                 selected?.variantId === product.variantId &&
-                                  "border-violet-500 bg-violet-50 dark:bg-violet-500/10",
+                                  "border-primary bg-primary/5 dark:bg-primary/10",
                               )}
                             >
                               <div className="min-w-0 flex-1">
@@ -468,12 +468,12 @@ export default function LiveCatalogDialog({
                                   ) : null}
                                 </div>
                               </div>
-                              <span className="shrink-0 text-xs font-semibold text-violet-700 dark:text-violet-300">
+                              <span className="shrink-0 text-xs font-semibold text-primary">
                                 {liveMoney(product.regularPrice)}
                               </span>
                               {selected?.variantId === product.variantId ? (
                                 <Check
-                                  className="h-4 w-4 shrink-0 text-violet-600"
+                                  className="h-4 w-4 shrink-0 text-primary"
                                   aria-hidden="true"
                                 />
                               ) : (
@@ -492,7 +492,7 @@ export default function LiveCatalogDialog({
               ) : (
                 <div className="rounded-2xl border border-dashed bg-muted/20 px-5 py-10 text-center">
                   <PackageSearch
-                    className="mx-auto mb-3 h-8 w-8 text-violet-500"
+                    className="mx-auto mb-3 h-8 w-8 text-primary"
                     aria-hidden="true"
                   />
                   <p className="text-sm font-semibold">
@@ -521,7 +521,7 @@ export default function LiveCatalogDialog({
                 <button
                   type="button"
                   disabled={locked}
-                  className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-violet-700 disabled:opacity-40 dark:text-violet-300"
+                  className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-primary disabled:opacity-40"
                   onClick={() =>
                     setPicker((previous) => ({ ...previous, selected: null, error: "" }))
                   }
@@ -647,7 +647,7 @@ export default function LiveCatalogDialog({
                   </label>
                   <Button
                     type="submit"
-                    className="h-11 w-full bg-violet-600 text-white hover:bg-violet-700"
+                    className="h-11 w-full bg-primary text-white hover:bg-primary/90"
                     disabled={locked || !priceValid || !maxValid}
                   >
                     {locked ? (
@@ -664,7 +664,7 @@ export default function LiveCatalogDialog({
               </>
             ) : (
               <div className="flex h-full min-h-52 flex-col items-center justify-center px-3 py-10 text-center">
-                <div className="mb-4 rounded-2xl bg-violet-100 p-4 text-violet-600 dark:bg-violet-500/15">
+                <div className="mb-4 rounded-2xl bg-primary/10 p-4 text-primary dark:bg-primary/15">
                   <PackageSearch className="h-7 w-7" aria-hidden="true" />
                 </div>
                 <h2 className="text-sm font-semibold">Elige una variante</h2>

@@ -35,7 +35,7 @@ export const SHALOM_STEP_STYLES: Record<string, string> = {
   "En origen": "bg-teal-50 text-teal-700 border-teal-200",
   "En tránsito": "bg-blue-50 text-blue-700 border-blue-200",
   "En destino": "bg-indigo-50 text-indigo-700 border-indigo-200",
-  "En reparto": "bg-violet-50 text-violet-700 border-violet-200",
+  "En reparto": "bg-primary/5 text-primary border-primary/25",
   "Entregado": "bg-emerald-50 text-emerald-700 border-emerald-200",
 };
 

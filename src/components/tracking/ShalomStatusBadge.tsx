@@ -60,7 +60,7 @@ export function ShalomStatusBadge({
   }
   if (status === "EN_REPARTO") {
     return (
-      <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200 text-[10px]">
+      <Badge variant="outline" className="bg-primary/5 text-primary border-primary/25 text-[10px]">
         🛵 En reparto
       </Badge>
     );

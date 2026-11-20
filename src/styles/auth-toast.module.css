@@ -1,5 +1,5 @@
 .toast[data-sonner-toast][data-styled="true"][data-type="error"] {
-  font-family: var(--next-font-manrope), Arial, Helvetica, sans-serif;
+  font-family: var(--font-poppins), Arial, Helvetica, sans-serif;
   --error-bg: #fff;
   --error-border: #e9c6cc;
   --error-text: #a3273d;

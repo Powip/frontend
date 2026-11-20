@@ -91,7 +91,7 @@ export function CcFunnelCards({ storeId, range }: Props) {
               <div key={card.key} className="flex items-center gap-2 col-span-2 lg:col-span-1">
                 {/* Chevron separador en desktop */}
                 <ChevronRight className="hidden lg:block h-4 w-4 text-muted-foreground/40 shrink-0 -ml-2" />
-                <Card className="flex-1 border-0 shadow-sm bg-gradient-to-br from-indigo-50 to-violet-50 dark:from-indigo-950/40 dark:to-violet-950/40 ring-1 ring-indigo-200 dark:ring-indigo-800">
+                <Card className="flex-1 border-0 shadow-sm bg-gradient-to-br from-indigo-50 to-primary/5 dark:from-indigo-950/40 dark:to-primary/40 ring-1 ring-indigo-200 dark:ring-indigo-800">
                   <CardHeader className="pb-2 pt-4 px-4">
                     <CardTitle className="text-xs font-medium text-indigo-600 dark:text-indigo-400 uppercase tracking-wide">
                       {card.title}

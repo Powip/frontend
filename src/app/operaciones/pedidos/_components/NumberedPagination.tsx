@@ -63,7 +63,7 @@ export function NumberedPagination({
               variant={item === currentPage ? "default" : "outline"}
               aria-current={item === currentPage ? "page" : undefined}
               aria-label={`Página ${item}`}
-              className={`h-8 w-8 p-0 ${item === currentPage ? "bg-violet-600 text-white hover:bg-violet-700" : ""}`}
+              className={`h-8 w-8 p-0 ${item === currentPage ? "bg-primary text-white hover:bg-primary/90" : ""}`}
               onClick={() => onPageChange(item)}
               disabled={disabled || (single && item !== currentPage)}
             >

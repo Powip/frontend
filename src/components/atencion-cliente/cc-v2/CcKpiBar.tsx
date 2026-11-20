@@ -17,7 +17,7 @@ const STATUS_STATS: Record<TipoGestionCC, StatItem[]> = {
     { key: "por_confirmar", label: "Por confirmar",  sub: "COD sin contactar",       valueClass: "text-red-600" },
     { key: "contactado",    label: "Contactado",      sub: "Link adelanto enviado",   valueClass: "text-blue-600" },
     { key: "no_contesta",   label: "No contesta",     sub: "Sin respuesta",           valueClass: "text-amber-600" },
-    { key: "reprogramado",  label: "Reprogramado",    sub: "Nueva fecha",             valueClass: "text-violet-600" },
+    { key: "reprogramado",  label: "Reprogramado",    sub: "Nueva fecha",             valueClass: "text-primary" },
   ],
   lima: [
     { key: "entrega_lima",  label: "Por coordinar",   sub: "Pendiente de llamada",   valueClass: "text-teal-600" },

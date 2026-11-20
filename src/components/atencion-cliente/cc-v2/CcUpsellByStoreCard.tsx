@@ -42,7 +42,7 @@ function TiendaUpsellCard({ item }: TiendaCardProps) {
               <p className="text-xs text-muted-foreground truncate">{item.shop}</p>
             )}
           </div>
-          <span className="shrink-0 rounded-full bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 text-xs font-semibold text-violet-700 dark:text-violet-300">
+          <span className="shrink-0 rounded-full bg-primary/10 dark:bg-primary/30 px-2 py-0.5 text-xs font-semibold text-primary">
             +{item.pctIncremento.toFixed(1)}%
           </span>
         </div>
@@ -50,9 +50,9 @@ function TiendaUpsellCard({ item }: TiendaCardProps) {
 
       <CardContent className="px-4 pb-4 space-y-3">
         {/* Upsell monto destacado */}
-        <div className="rounded-lg bg-violet-50 dark:bg-violet-950/30 px-3 py-2">
+        <div className="rounded-lg bg-primary/5 dark:bg-primary/30 px-3 py-2">
           <p className="text-xs text-muted-foreground mb-0.5">Upsell generado</p>
-          <p className="text-xl font-bold text-violet-700 dark:text-violet-300">
+          <p className="text-xl font-bold text-primary">
             {formatPEN(item.upsellMonto)}
           </p>
           <p className="text-xs text-muted-foreground">
@@ -123,7 +123,7 @@ function ConsolidadoCard({ data }: ConsolidadoCardProps) {
           <CardTitle className="text-sm font-semibold text-slate-200 uppercase tracking-wide">
             Consolidado total
           </CardTitle>
-          <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-xs font-semibold text-violet-300">
+          <span className="rounded-full bg-primary/20 px-2 py-0.5 text-xs font-semibold text-primary">
             +{data.pctIncremento.toFixed(1)}% ticket
           </span>
         </div>
@@ -131,9 +131,9 @@ function ConsolidadoCard({ data }: ConsolidadoCardProps) {
 
       <CardContent className="px-4 pb-4 space-y-3">
         {/* Upsell total destacado */}
-        <div className="rounded-lg bg-violet-500/10 border border-violet-500/20 px-3 py-2">
+        <div className="rounded-lg bg-primary/10 border border-primary/20 px-3 py-2">
           <p className="text-xs text-slate-400 mb-0.5">Upsell total generado</p>
-          <p className="text-2xl font-bold text-violet-300">
+          <p className="text-2xl font-bold text-primary">
             {formatPEN(data.upsellMonto)}
           </p>
           <p className="text-xs text-slate-400">
@@ -150,7 +150,7 @@ function ConsolidadoCard({ data }: ConsolidadoCardProps) {
           </div>
           <div className="rounded bg-white/5 px-2 py-1.5">
             <p className="text-slate-400">Con upsell</p>
-            <p className="font-semibold text-violet-300">
+            <p className="font-semibold text-primary">
               {data.conUpsell}{" "}
               <span className="font-normal text-slate-400">
                 ({data.pctConUpsell.toFixed(1)}%)

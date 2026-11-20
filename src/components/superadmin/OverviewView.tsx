@@ -186,7 +186,7 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
                         </div>
                       </td>
                       <td className="px-5 py-3.5">
-                        <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border border-violet-500/30 bg-violet-500/20 text-violet-300">
+                        <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded border border-primary/30 bg-primary/20 text-primary">
                           {c.plan}
                         </span>
                       </td>

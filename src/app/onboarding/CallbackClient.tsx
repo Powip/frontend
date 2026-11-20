@@ -107,7 +107,7 @@ export default function CallbackClient() {
         role="status"
         aria-label="Recuperando tu sesión"
       >
-        <Loader2 className="h-8 w-8 animate-spin text-[#4F3A96]" aria-hidden="true" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" aria-hidden="true" />
       </div>
     );
   }
@@ -190,7 +190,7 @@ export default function CallbackClient() {
             <p className="text-sm text-gray-500">
               Tu cuenta sigue creada. Puedes retomar la elección de tu plan.
             </p>
-            <Link href={choosePlanHref} className="text-[#4F3A96] underline text-sm font-medium">
+            <Link href={choosePlanHref} className="text-primary underline text-sm font-medium">
               Elegir mi plan
             </Link>
           </>
@@ -205,7 +205,7 @@ export default function CallbackClient() {
               type="button"
               onClick={() => void checkPaymentAgain()}
               disabled={state.isLoading}
-              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-[#4F3A96] disabled:opacity-70"
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-primary disabled:opacity-70"
             >
               Volver a verificar
             </button>
@@ -221,20 +221,20 @@ export default function CallbackClient() {
                 type="button"
                 disabled={state.isLoading}
                 onClick={() => void (activeSubscription ? checkPaymentAgain() : confirmPayment())}
-                className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-[#4F3A96] disabled:opacity-70"
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-primary disabled:opacity-70"
               >
                 {activeSubscription ? "Volver a verificar" : "Reintentar confirmación"}
               </button>
             )}
             {!canRetry && (
-              <Link href={choosePlanHref} className="text-[#4F3A96] underline text-sm font-medium">
+              <Link href={choosePlanHref} className="text-primary underline text-sm font-medium">
                 Elegir mi plan
               </Link>
             )}
           </>
         ) : (
           <>
-            <Loader2 className="h-10 w-10 animate-spin text-[#4F3A96] mx-auto" aria-hidden="true" />
+            <Loader2 className="h-10 w-10 animate-spin text-primary mx-auto" aria-hidden="true" />
             <h1 className="text-xl font-bold text-gray-900">Confirmando tu pago</h1>
             <p className="text-sm text-gray-500">
               Estamos verificando tu medio de pago y activando tu suscripción.

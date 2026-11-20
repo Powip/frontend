@@ -82,7 +82,7 @@ export function SubstateBadge({ sale }: { sale: Sale }) {
         </span>
       )}
       {sale.callStatus === "SCHEDULED" && (
-        <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
+        <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary dark:bg-primary/15">
           Reprogramado
         </span>
       )}
@@ -155,7 +155,7 @@ export function PreparadosTab({
         total={data.loading ? undefined : data.total}
         action={
           canDispatch && (
-            <Button className="gap-1.5 bg-violet-600 text-white hover:bg-violet-700" onClick={() => startGuide(selection.selected)}>
+            <Button className="gap-1.5 bg-primary text-white hover:bg-primary/90" onClick={() => startGuide(selection.selected)}>
               <Plus className="h-4 w-4" />
               Asignar a guía de salida
             </Button>
@@ -178,7 +178,7 @@ export function PreparadosTab({
             onClick={() => onState({ sub: chip.key })}
             className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
               state.sub === chip.key
-                ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
+                ? "border-primary bg-primary/10 text-primary dark:bg-primary/15"
                 : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
             }`}
           >
@@ -228,7 +228,7 @@ export function PreparadosTab({
         {canDispatch && (
           <Button
             size="sm"
-            className="h-8 gap-1 bg-violet-600 text-xs text-white hover:bg-violet-700"
+            className="h-8 gap-1 bg-primary text-xs text-white hover:bg-primary/90"
             disabled={selection.count === 0}
             onClick={() => startGuide(selection.selected)}
             title={blocked.length > 0 ? `${blocked.length} pedido(s) bloqueado(s): se mostrará el detalle` : undefined}

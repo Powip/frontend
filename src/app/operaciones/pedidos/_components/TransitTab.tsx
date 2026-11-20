@@ -61,7 +61,7 @@ export function courierNotice(sale: Pick<Sale, "shalomStatus">): { label: string
 const chipClass = (active: boolean) =>
   `rounded-full border px-3 py-1 text-xs font-semibold transition ${
     active
-      ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
+      ? "border-primary bg-primary/10 text-primary dark:bg-primary/15"
       : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
   }`;
 
@@ -221,7 +221,7 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
               type="button"
               aria-pressed={state.view === view}
               onClick={() => onState({ view })}
-              className={`rounded-md px-2.5 py-1 text-xs font-semibold ${state.view === view ? "bg-violet-600 text-white" : "text-muted-foreground"}`}
+              className={`rounded-md px-2.5 py-1 text-xs font-semibold ${state.view === view ? "bg-primary text-white" : "text-muted-foreground"}`}
             >
               {view === "pedido" ? "Por pedido" : "Por guía"}
             </button>
@@ -352,7 +352,7 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
                     <TableCell className="text-sm">{sale.district || "—"}</TableCell>
                     <TableCell className="text-sm">
                       {sale.guideNumber ? (
-                        <button className="font-semibold text-violet-600 underline hover:text-violet-700" onClick={() => actions.onOpenGuide(sale)}>
+                        <button className="font-semibold text-primary underline hover:text-primary" onClick={() => actions.onOpenGuide(sale)}>
                           {sale.guideNumber}
                         </button>
                       ) : (
@@ -447,7 +447,7 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
                   <TableRow key={group.guideNumber || "sin-guia"} data-testid="guide-row">
                     <TableCell className="font-medium">
                       {group.guideNumber ? (
-                        <button className="font-semibold text-violet-600 underline hover:text-violet-700" onClick={() => actions.onOpenGuide({ id: group.orderIds[0], courier: group.courier } as Sale)}>
+                        <button className="font-semibold text-primary underline hover:text-primary" onClick={() => actions.onOpenGuide({ id: group.orderIds[0], courier: group.courier } as Sale)}>
                           {group.guideNumber}
                         </button>
                       ) : (

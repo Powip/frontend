@@ -384,7 +384,7 @@ function Step2({
         <p className="text-sm text-gray-700 mt-1">
           Potencia tu operación. Integra, automatiza y escala sin límites.
         </p>
-        <p className="text-xs font-semibold mt-1" style={{ color: "#4F3A96" }}>
+        <p className="text-xs font-semibold mt-1" style={{ color: "var(--primary)" }}>
           ⭐ Todos los add ons disponibles para todos los planes
         </p>
         <p className="text-sm text-gray-500 mt-1">
@@ -432,10 +432,10 @@ function Step2({
               onClick={() => onToggleAddon(addon.id)}
               className="relative text-left rounded-2xl border-2 p-4 transition-all duration-200 cursor-pointer"
               style={{
-                borderColor: isSelected ? "#4F3A96" : "#e5e7eb",
-                background: isSelected ? "#f5f2ff" : "white",
+                borderColor: isSelected ? "var(--primary)" : "#e5e7eb",
+                background: isSelected ? "color-mix(in srgb, var(--primary) 6%, #fff)" : "white",
                 boxShadow: isSelected
-                  ? "0 0 0 4px rgba(79,58,150,0.08), 0 1px 3px rgba(0,0,0,0.04)"
+                  ? "0 0 0 4px color-mix(in srgb, var(--primary) 8%, transparent), 0 1px 3px rgba(0,0,0,0.04)"
                   : "0 1px 3px rgba(0,0,0,0.04)",
               }}
             >
@@ -443,7 +443,7 @@ function Step2({
               {isPopular && (
                 <div
                   className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap"
-                  style={{ background: "#4F3A96", color: "white" }}
+                  style={{ background: "var(--primary)", color: "white" }}
                 >
                   Más popular
                 </div>
@@ -453,7 +453,7 @@ function Step2({
               {isSelected && (
                 <div
                   className="absolute top-3 right-3 w-5 h-5 rounded-full flex items-center justify-center"
-                  style={{ background: "#4F3A96" }}
+                  style={{ background: "var(--primary)" }}
                 >
                   <Check className="w-3 h-3 text-white" />
                 </div>
@@ -475,14 +475,14 @@ function Step2({
               <ul className="mt-2 flex flex-col gap-1">
                 {config.benefits.map((benefit) => (
                   <li key={benefit} className="flex items-start gap-1.5 text-[11px] text-gray-600">
-                    <Check className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "#4F3A96" }} />
+                    <Check className="w-3 h-3 mt-0.5 shrink-0" style={{ color: "var(--primary)" }} />
                     {benefit}
                   </li>
                 ))}
               </ul>
 
               {/* Price */}
-              <div className="font-bold text-sm mt-3" style={{ color: "#4F3A96" }}>
+              <div className="font-bold text-sm mt-3" style={{ color: "var(--primary)" }}>
                 + S/ {addOnPrice(addon, isAnnual)}/{period}
               </div>
             </button>
@@ -526,7 +526,7 @@ function Step2({
       {/* Total summary */}
       <div
         className="rounded-xl p-4 flex items-center justify-between mt-1"
-        style={{ background: "#faf7ff", border: "1px solid #e4d8ff" }}
+        style={{ background: "color-mix(in srgb, var(--primary) 3%, #fff)", border: "1px solid color-mix(in srgb, var(--primary) 18%, #fff)" }}
       >
         <div className="text-gray-500 text-sm">
           Total {isAnnual ? "anual" : "mensual"}
@@ -536,7 +536,7 @@ function Step2({
             {summary.addOns.length > 0 && ` + Add-ons S/${summary.addOnsTotal}`}
           </span>
         </div>
-        <div className="font-bold text-xl" style={{ color: "#4F3A96" }}>
+        <div className="font-bold text-xl" style={{ color: "var(--primary)" }}>
           S/ {summary.total}/{period}
         </div>
       </div>
@@ -548,7 +548,7 @@ function Step2({
           onClick={onNext}
           disabled={!canContinue}
           className="w-full h-12 text-base rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{ background: "#4F3A96" }}
+          style={{ background: "var(--primary)" }}
         >
           <ArrowRight className="w-4 h-4" />
           {!hasPlan
@@ -621,7 +621,7 @@ function InvalidEmailStep({
         type="submit"
         disabled={!canSubmit}
         className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white flex items-center gap-2 disabled:opacity-70"
-        style={{ background: "#4F3A96" }}
+        style={{ background: "var(--primary)" }}
       >
         {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
         Continuar con el pago
@@ -681,7 +681,7 @@ function Step3({
   if (step === "CONFIRMING") {
     return (
       <div className="flex flex-col items-center gap-3 py-10 text-center">
-        <Loader2 className="h-10 w-10 animate-spin" style={{ color: "#4F3A96" }} />
+        <Loader2 className="h-10 w-10 animate-spin" style={{ color: "var(--primary)" }} />
         <p className="font-semibold text-gray-900">Confirmando tu pago...</p>
         <p className="text-sm text-gray-500">
           Estamos registrando tu medio de pago y procesando el primer cobro. Puede tardar unos segundos.
@@ -705,7 +705,7 @@ function Step3({
           onClick={onCheckAgain}
           disabled={isLoading}
           className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white flex items-center gap-2 disabled:opacity-70"
-          style={{ background: "#4F3A96" }}
+          style={{ background: "var(--primary)" }}
         >
           {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
           Volver a verificar
@@ -735,7 +735,7 @@ function Step3({
           type="button"
           onClick={onRetry}
           className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-          style={{ background: "#4F3A96" }}
+          style={{ background: "var(--primary)" }}
         >
           Volver a intentar
         </button>
@@ -772,12 +772,12 @@ function Step3({
       {/* Plan summary card */}
       <div
         className="rounded-xl p-4"
-        style={{ background: "#f5f2ff", border: "1px solid #e8e0ff" }}
+        style={{ background: "color-mix(in srgb, var(--primary) 6%, #fff)", border: "1px solid color-mix(in srgb, var(--primary) 14%, #fff)" }}
       >
         {/* Plan row */}
         <div className="flex items-center justify-between mb-2">
           <span className="font-semibold text-gray-800 text-sm">Plan {planDisplayName(planName)}</span>
-          <span className="font-bold text-sm" style={{ color: "#4F3A96" }}>
+          <span className="font-bold text-sm" style={{ color: "var(--primary)" }}>
             S/ {price}/{period}
           </span>
         </div>
@@ -800,10 +800,10 @@ function Step3({
         {/* Total */}
         <div
           className="flex items-center justify-between pt-3 mt-1"
-          style={{ borderTop: "1px solid #e8e0ff", background: "transparent" }}
+          style={{ borderTop: "1px solid color-mix(in srgb, var(--primary) 14%, #fff)", background: "transparent" }}
         >
           <span className="font-bold text-gray-900">Total</span>
-          <span className="font-black text-xl" style={{ color: "#4F3A96" }}>
+          <span className="font-black text-xl" style={{ color: "var(--primary)" }}>
             S/ {summary.total}/{period}
           </span>
         </div>
@@ -856,7 +856,7 @@ function Step3({
         onClick={() => void onInitiate("widget")}
         disabled={isLoading}
         className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2 mt-1 transition-opacity disabled:opacity-70"
-        style={{ background: "#4F3A96" }}
+        style={{ background: "var(--primary)" }}
       >
         {isLoading ? (
           <>
@@ -877,7 +877,7 @@ function Step3({
         onClick={() => void onInitiate("redirect")}
         disabled={isLoading}
         className="w-full h-12 rounded-xl font-semibold flex items-center justify-center gap-2 transition-opacity disabled:opacity-70"
-        style={{ color: "#4F3A96", border: "1.5px solid #4F3A96", background: "white" }}
+        style={{ color: "var(--primary)", border: "1.5px solid var(--primary)", background: "white" }}
       >
         <Smartphone className="w-4 h-4" />
         Pagar con Yape
@@ -937,7 +937,7 @@ function StepSuccess({
         calendarRef.current.innerHTML = ""; // Clear previously rendered buttons
         w.calendar.schedulingButton.load({
           url: "https://calendar.google.com/calendar/appointments/schedules/AcZssZ2iNRS7HzAPMxW6Q0K5ZVJWvujdZCCc1VNocEStpp5filq3ug2I523N8OzpfVqyMAb6o2M4IL93?gv=true",
-          color: "#8E24AA",
+          color: "#4C2FB5", // Widget externo de Google: necesita HEX (primary del brandbook)
           label: "Agendar reunión de onboarding",
           target: calendarRef.current,
         });
@@ -990,9 +990,9 @@ function StepSuccess({
       {/* Receipt ticket */}
       <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 overflow-hidden">
         {/* Ticket header */}
-        <div className="px-5 py-3 flex items-center gap-2" style={{ background: "#f5f2ff" }}>
+        <div className="px-5 py-3 flex items-center gap-2" style={{ background: "color-mix(in srgb, var(--primary) 6%, #fff)" }}>
           <span className="text-base">🎫</span>
-          <span className="text-sm font-semibold" style={{ color: "#4F3A96" }}>
+          <span className="text-sm font-semibold" style={{ color: "var(--primary)" }}>
             Comprobante de suscripción
           </span>
         </div>
@@ -1003,7 +1003,7 @@ function StepSuccess({
               {/* Plan & price */}
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600">Plan {receiptPlanName}</span>
-                <span className="text-sm font-bold" style={{ color: "#4F3A96" }}>
+                <span className="text-sm font-bold" style={{ color: "var(--primary)" }}>
                   S/ {receiptPrice}/{receiptIsAnnual ? "año" : "mes"}
                 </span>
               </div>
@@ -1074,12 +1074,12 @@ function StepSuccess({
       {/* Onboarding meeting CTA */}
       <div
         className="rounded-xl border p-4 flex flex-col gap-3"
-        style={{ background: "#faf7ff", borderColor: "#e4d8ff" }}
+        style={{ background: "color-mix(in srgb, var(--primary) 3%, #fff)", borderColor: "color-mix(in srgb, var(--primary) 18%, #fff)" }}
       >
         <div className="flex items-start gap-3">
           <div
             className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-base"
-            style={{ background: "#ede9ff" }}
+            style={{ background: "color-mix(in srgb, var(--primary) 10%, #fff)" }}
           >
             📅
           </div>
@@ -1102,7 +1102,7 @@ function StepSuccess({
         type="button"
         onClick={onGoToDashboard}
         className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-opacity"
-        style={{ background: "#4F3A96" }}
+        style={{ background: "var(--primary)" }}
       >
         Configurar mi empresa
         <ArrowRight className="w-4 h-4" />
@@ -1387,7 +1387,7 @@ export default function OnboardingClient({
           <button
             type="button"
             onClick={handleGoToDashboard}
-            className="text-sm font-medium text-[#4F3A96] underline"
+            className="text-sm font-medium text-primary underline"
           >
             Ir a Powip
           </button>

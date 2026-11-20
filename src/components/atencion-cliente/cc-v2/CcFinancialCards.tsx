@@ -64,8 +64,8 @@ const CARD_CONFIGS: KpiCardConfig[] = [
   {
     title: "Ticket promedio",
     icon: <BarChart3 className="h-5 w-5" />,
-    colorClass: "text-violet-600 dark:text-violet-400",
-    bgClass: "bg-violet-50 dark:bg-violet-950/30",
+    colorClass: "text-primary",
+    bgClass: "bg-primary/5 dark:bg-primary/30",
     getValue: (k) => k.ticketPromedio,
     getSubtext: (_k) => "Promedio por pedido confirmado",
   },

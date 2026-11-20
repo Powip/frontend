@@ -115,7 +115,7 @@ interface OrderDetailButtonProps extends OrderDetailOpenOverrides {
 
 /** Estilo único del botón «Ver» en todas las tablas que abren el detalle. */
 export const orderDetailButtonClassName =
-  "h-7 gap-1 rounded-md border border-violet-300 bg-violet-50 px-2.5 text-xs font-medium text-violet-700 shadow-none hover:bg-violet-100 hover:text-violet-800 dark:border-violet-500/40 dark:bg-violet-500/15 dark:text-violet-300 dark:hover:bg-violet-500/25 dark:hover:text-violet-200 focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-1 has-[>svg]:px-2.5";
+  "h-7 gap-1 rounded-md border border-primary/40 bg-primary/5 px-2.5 text-xs font-medium text-primary shadow-none hover:bg-primary/10 hover:text-primary dark:bg-primary/15 dark:hover:bg-primary/25 dark:hover:text-primary/40 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 has-[>svg]:px-2.5";
 
 export function OrderDetailButton({
   orderId,

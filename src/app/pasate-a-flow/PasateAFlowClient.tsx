@@ -64,7 +64,7 @@ export default function PasateAFlowClient() {
     <button
       type="button"
       onClick={() => void goToPowip()}
-      className="text-sm font-medium text-[#4F3A96] underline"
+      className="text-sm font-medium text-primary underline"
     >
       {label}
     </button>
@@ -85,7 +85,7 @@ export default function PasateAFlowClient() {
         <button
           type="button"
           onClick={() => void refreshSubscription()}
-          className="rounded-xl bg-[#4F3A96] px-5 py-2 text-sm font-semibold text-white"
+          className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-white"
         >
           Reintentar
         </button>
@@ -107,7 +107,7 @@ export default function PasateAFlowClient() {
         <button
           type="button"
           onClick={() => setRevision((r) => r + 1)}
-          className="rounded-xl bg-[#4F3A96] px-5 py-2 text-sm font-semibold text-white"
+          className="rounded-xl bg-primary px-5 py-2 text-sm font-semibold text-white"
         >
           Reintentar
         </button>

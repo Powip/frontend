@@ -216,7 +216,7 @@ export default function FlowWidgetStep({ token, onSuccess, onError }: FlowWidget
             type="button"
             onClick={() => setRetryCount((c) => c + 1)}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold text-white"
-            style={{ background: "#4F3A96" }}
+            style={{ background: "var(--primary)" }}
           >
             <RefreshCw className="w-4 h-4" aria-hidden="true" />
             Intentar nuevamente
@@ -228,7 +228,7 @@ export default function FlowWidgetStep({ token, onSuccess, onError }: FlowWidget
           <Loader2
             aria-hidden="true"
             className="h-8 w-8 animate-spin"
-            style={{ color: "#4F3A96" }}
+            style={{ color: "var(--primary)" }}
           />
           <p className="text-sm text-gray-400">Cargando widget de pago...</p>
         </div>

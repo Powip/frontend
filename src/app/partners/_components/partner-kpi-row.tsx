@@ -12,7 +12,7 @@ const COLOR: Record<string, string> = {
   teal: "border-l-teal-500 text-teal-600 dark:text-teal-400",
   green: "border-l-green-500 text-green-600 dark:text-green-400",
   amber: "border-l-amber-500 text-amber-600 dark:text-amber-400",
-  purple: "border-l-violet-500 text-violet-600 dark:text-violet-400",
+  purple: "border-l-primary text-primary",
 };
 
 function Kpi({

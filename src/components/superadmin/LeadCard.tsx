@@ -26,7 +26,7 @@ const SOURCE_COLORS: Record<string, string> = {
 // Plan badge
 const PLAN_COLORS: Record<string, string> = {
   basic:      'bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-500/20 dark:text-sky-300 dark:border-sky-500/40',
-  standard:   'bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-500/20 dark:text-violet-300 dark:border-violet-500/40',
+  standard:   'bg-primary/10 text-primary border-primary/25 dark:bg-primary/20 dark:border-primary/40',
   full:       'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40',
   enterprise: 'bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/40',
 };
