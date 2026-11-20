@@ -13,7 +13,7 @@ interface BusinessQuestionsProps extends BusinessQuestionAnswers {
 }
 
 const choiceClassName =
-  "block rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900 transition-colors peer-checked:border-[#4F3A96] peer-checked:bg-[#f0ebfb] peer-checked:text-[#4F3A96] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#4F3A96] peer-disabled:cursor-not-allowed peer-disabled:opacity-60 sm:text-base";
+  "block rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-900 transition-colors peer-checked:border-primary peer-checked:bg-primary/10 peer-checked:text-primary peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-primary peer-disabled:cursor-not-allowed peer-disabled:opacity-60 sm:text-base";
 
 export function BusinessQuestions({
   salesChannels,

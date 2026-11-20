@@ -141,7 +141,7 @@ describe("OnboardingClient — resúmenes", () => {
 
     backToPlan();
     expect(screen.getByRole("button", { name: /Integración Courier/ })).toHaveStyle({
-      borderColor: "#4F3A96",
+      borderColor: "var(--primary)",
     });
     expect(screen.getByText("S/ 218/mes")).toBeInTheDocument();
 

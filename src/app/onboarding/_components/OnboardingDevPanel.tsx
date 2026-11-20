@@ -79,7 +79,7 @@ interface OnboardingDevPanelProps {
 
 const chip = (active: boolean) =>
   `px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-    active ? "bg-[#4F3A96] text-white" : "bg-[#ede9ff] text-[#4F3A96] hover:bg-[#ddd5ff]"
+    active ? "bg-primary text-white" : "bg-primary/10 text-primary hover:bg-primary/20"
   }`;
 
 export function OnboardingDevPanel({

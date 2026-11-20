@@ -84,7 +84,7 @@ export default function CompleteBusinessPage() {
     <div className="min-h-screen bg-[#f7f5ff] px-4 py-12">
       <div className="mx-auto max-w-3xl">
         <div className="mb-8 text-center">
-          <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-[#4F3A96]">
+          <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary">
             <Building2 className="h-7 w-7 text-white" />
           </div>
           <h1 className="text-2xl font-black text-gray-900">Cuéntanos sobre tu negocio</h1>
@@ -92,7 +92,7 @@ export default function CompleteBusinessPage() {
             Completa estas dos preguntas para continuar en {company?.name}. Solo necesitas responder una vez por empresa.
           </p>
         </div>
-        <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-[#4F3A96]/10 bg-white p-6 shadow-sm sm:p-8">
+        <form onSubmit={handleSubmit} className="space-y-6 rounded-2xl border border-primary/10 bg-white p-6 shadow-sm sm:p-8">
           <BusinessQuestions
             {...answers}
             onSalesChannelsChange={(salesChannels) => {
@@ -106,7 +106,7 @@ export default function CompleteBusinessPage() {
             errors={errors}
             disabled={saving}
           />
-          <Button type="submit" disabled={saving} className="h-12 w-full rounded-xl bg-[#4F3A96] text-base font-semibold">
+          <Button type="submit" disabled={saving} className="h-12 w-full rounded-xl bg-primary text-base font-semibold">
             {saving ? "Guardando respuestas..." : "Guardar y continuar"}
           </Button>
         </form>
