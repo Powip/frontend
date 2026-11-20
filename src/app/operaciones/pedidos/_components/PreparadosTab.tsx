@@ -283,6 +283,18 @@ export function PreparadosTab({
           />
         )}
         {canDispatch && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1 text-xs"
+            disabled={selection.count === 0 || actions.isBulkLoading}
+            onClick={() => actions.onBulkPrint(selection.selected)}
+          >
+            {actions.isBulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+            Imprimir etiquetas
+          </Button>
+        )}
+        {canDispatch && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" disabled={selection.count === 0}>
@@ -300,10 +312,6 @@ export function PreparadosTab({
               >
                 <Truck className="mr-2 h-3.5 w-3.5" />
                 Asignar courier ({eligibleForCourier.length})
-              </DropdownMenuItem>
-              <DropdownMenuItem disabled={actions.isBulkLoading} onClick={() => actions.onBulkPrint(selection.selected)}>
-                {actions.isBulkLoading ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Printer className="mr-2 h-3.5 w-3.5" />}
-                Imprimir etiquetas
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => actions.onBulkDeliveryReschedule(ids())}>
                 <CalendarClock className="mr-2 h-3.5 w-3.5" />
