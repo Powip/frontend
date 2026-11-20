@@ -31,3 +31,15 @@ export async function saveAliclikDestinationCoordinates(
   if (!clientId) throw new Error("No se pudo determinar el cliente para guardar las coordenadas");
   await updateClient(clientId, { companyId, latitude, longitude });
 }
+
+/**
+ * Guarda la agencia Shalom elegida en el pedido, igual que Registrar venta al editar: pasa el pedido
+ * a «Recojo en agencia» (`deliveryType: PUNTO_EXTERNO`) y guarda el nombre en `delivery.agency`.
+ * El backend exige que el pedido tenga dirección propia (`deliverySnapshot`) y que no tenga guía.
+ */
+export async function saveOrderShalomAgency(orderId: string, agency: string): Promise<void> {
+  await axiosAuth.put(`${GATEWAY.ventas}/order-header/manual/${encodeURIComponent(orderId)}/full`, {
+    deliveryType: "PUNTO_EXTERNO",
+    delivery: { agency: agency.trim().slice(0, 150) },
+  });
+}
