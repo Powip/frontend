@@ -99,7 +99,7 @@ const SOURCE_BADGE_CLASS: Record<SourceKey, string> = {
   listos:
     "bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/30",
   reprogramado:
-    "bg-violet-100 text-violet-700 border-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/30",
+    "bg-primary/10 text-primary border-primary/25 dark:bg-primary/15 dark:border-primary/30",
   vendido:
     "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30",
 };
@@ -408,29 +408,29 @@ export default function PlanificacionTab() {
         ) : (
           <div className="space-y-3">
             {/* Reloj de pase automático */}
-            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-violet-200 bg-violet-50 p-3 dark:border-violet-500/30 dark:bg-violet-500/10">
-              <Clock className="h-5 w-5 shrink-0 text-violet-600 dark:text-violet-300" />
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3 dark:border-primary/30 dark:bg-primary/10">
+              <Clock className="h-5 w-5 shrink-0 text-primary" />
               <div className="min-w-[220px] flex-1">
-                <p className="text-sm font-bold text-violet-900 dark:text-violet-200">
+                <p className="text-sm font-bold text-primary dark:text-primary/40">
                   Pase automático a Preparados: hoy {AUTO_PASS_HOUR}:00 a.m.
                 </p>
-                <p className="text-xs text-violet-700 dark:text-violet-300">
+                <p className="text-xs text-primary">
                   A esa hora POWIP mueve solo los agendados de hoy a Por
                   Despachar. Si quieres adelantarlo, confírmalos manualmente acá
                   abajo.
                 </p>
               </div>
-              <span className="rounded-full bg-violet-600 px-3 py-1 text-xs font-bold text-white">
+              <span className="rounded-full bg-primary px-3 py-1 text-xs font-bold text-white">
                 faltan {countdown}
               </span>
-              <label className="flex items-center gap-2 text-xs font-semibold text-violet-700 dark:text-violet-300">
+              <label className="flex items-center gap-2 text-xs font-semibold text-primary">
                 <Switch checked={autoPassOn} onCheckedChange={setAutoPassOn} />
                 Pase automático activo
               </label>
             </div>
 
             {selectedItems.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-violet-600 p-2.5 text-sm text-white shadow-sm">
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-primary p-2.5 text-sm text-white shadow-sm">
                 <span className="font-semibold">
                   {selectedItems.length} agendados seleccionados
                 </span>
@@ -438,7 +438,7 @@ export default function PlanificacionTab() {
                 <Button
                   size="sm"
                   disabled={busy}
-                  className="h-8 gap-1 bg-white text-xs font-bold text-violet-700 hover:bg-white/90"
+                  className="h-8 gap-1 bg-white text-xs font-bold text-primary hover:bg-white/90"
                   onClick={() =>
                     pasarAPreparados(selectedItems.map((it) => it.order.id))
                   }
@@ -500,7 +500,7 @@ export default function PlanificacionTab() {
                   <h3 className="flex items-center gap-2 font-bold capitalize">
                     Agendados de {activeDayKey === todayKey ? "hoy" : ""} ·{" "}
                     {activeDayLabel}
-                    <Badge className="border-violet-200 bg-violet-100 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/15 dark:text-violet-300">
+                    <Badge className="border-primary/25 bg-primary/10 text-primary dark:border-primary/30 dark:bg-primary/15">
                       {agendados.length} por pasar
                     </Badge>
                   </h3>
@@ -524,7 +524,7 @@ export default function PlanificacionTab() {
                   <Button
                     size="sm"
                     disabled={agendados.length === 0 || busy}
-                    className="gap-1.5 bg-violet-600 text-white hover:bg-violet-700"
+                    className="gap-1.5 bg-primary text-white hover:bg-primary/90"
                     onClick={() =>
                       pasarAPreparados(agendados.map((it) => it.order.id))
                     }

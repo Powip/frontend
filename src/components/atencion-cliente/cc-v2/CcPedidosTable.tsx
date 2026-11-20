@@ -41,7 +41,7 @@ const SUB_ESTADO_STYLES: Record<SubEstadoCc, { label: string; cls: string }> = {
   no_contesta:          { label: "No contesta",    cls: "bg-amber-100 text-amber-700 border border-amber-200" },
   anulado_cc:           { label: "Anulado CC",     cls: "bg-gray-100 text-gray-600 border border-gray-200" },
   confirmado:           { label: "Confirmado",     cls: "bg-green-100 text-green-700 border border-green-200" },
-  reprogramado:         { label: "Reprogramado",   cls: "bg-violet-100 text-violet-700 border border-violet-200" },
+  reprogramado:         { label: "Reprogramado",   cls: "bg-primary/10 text-primary border border-primary/25" },
   entrega_lima:         { label: "Entrega Lima",   cls: "bg-teal-100 text-teal-700 border border-teal-200" },
   carrito_sin_contactar:{ label: "Sin contactar",  cls: "bg-purple-100 text-purple-700 border border-purple-200" },
   carrito_contactado:   { label: "Contactado",     cls: "bg-blue-100 text-blue-700 border border-blue-200" },

@@ -118,7 +118,7 @@ function abrirImpresionPDF(title: string, headers: string[], rows: (string | num
           }
 
           th {
-            background: #6D4FE0;
+            background: #4C2FB5;
             color: #fff;
             text-align: left;
             padding: 7px 9px;

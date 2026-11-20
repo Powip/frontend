@@ -19,8 +19,8 @@ const STATUS_STYLES: Record<
     label: "Incompleto",
   },
   PREVENTA: {
-    bg: "bg-violet-100",
-    text: "text-violet-700",
+    bg: "bg-primary/10",
+    text: "text-primary",
     label: "Pre-Venta",
   },
   PENDIENTE: {

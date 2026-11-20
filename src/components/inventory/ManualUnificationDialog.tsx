@@ -152,7 +152,7 @@ function VariantCard({
           {pick.tracking_mode === undefined ? (
             <Unknown label="Seguimiento" />
           ) : isSerializedTracking(pick.tracking_mode) ? (
-            <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">IMEI o serie</Badge>
+            <Badge variant="outline" className="border-primary/25 bg-primary/5 text-primary">IMEI o serie</Badge>
           ) : null}
           {pick.is_active === false ? <Badge variant="outline">Desactivada</Badge> : null}
         </div>

@@ -94,7 +94,7 @@ export function CourierEvidenceSelector({
                         href={url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs text-violet-700 underline"
+                        className="text-xs text-primary underline"
                       >
                         Abrir evidencia {index + 1}
                       </a>

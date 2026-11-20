@@ -29,16 +29,16 @@ const tones: Record<
   { card: string; badge: string; icon: string; button: string }
 > = {
   violet: {
-    card: "border-violet-100 bg-gradient-to-br from-violet-50 via-violet-50 to-indigo-100/70 dark:border-slate-700 dark:from-violet-950/50 dark:via-slate-900 dark:to-indigo-950/40",
-    badge: "bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-200",
-    icon: "text-violet-600 dark:text-violet-300",
-    button: "bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700",
+    card: "border-primary/15 bg-gradient-to-br from-primary/5 via-primary/5 to-indigo-100/70 dark:border-slate-700 dark:from-primary/50 dark:via-slate-900 dark:to-indigo-950/40",
+    badge: "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary/40",
+    icon: "text-primary",
+    button: "bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/90 hover:to-indigo-700",
   },
   sky: {
     card: "border-sky-100 bg-gradient-to-br from-sky-50 to-indigo-50/60 dark:border-slate-700 dark:from-sky-950/40 dark:to-slate-900",
     badge: "bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-200",
     icon: "text-indigo-600 dark:text-indigo-300",
-    button: "bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700",
+    button: "bg-gradient-to-r from-indigo-500 to-primary hover:from-indigo-600 hover:to-primary/90",
   },
   green: {
     card: "border-emerald-100 bg-gradient-to-br from-emerald-50 to-green-50/60 dark:border-slate-700 dark:from-emerald-950/40 dark:to-slate-900",
@@ -153,14 +153,14 @@ function TutorialArt() {
     >
       <div className="absolute right-6 top-8 w-[82%] rotate-2 rounded-xl border border-white/80 bg-white/90 p-3 shadow-lg dark:border-slate-700 dark:bg-slate-800/90">
         <div className="flex gap-2">
-          <div className="flex aspect-video flex-1 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600">
+          <div className="flex aspect-video flex-1 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-indigo-600">
             <Play className="h-6 w-6 fill-white text-white" />
           </div>
           <div className="flex w-2/5 flex-col justify-between gap-1.5">
             {[0, 1, 2].map((i) => (
               <div key={i} className="flex items-center gap-1.5">
-                <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-violet-100 dark:bg-violet-500/20">
-                  <Play className="h-2 w-2 fill-violet-600 text-violet-600 dark:fill-violet-300 dark:text-violet-300" />
+                <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-primary/10 dark:bg-primary/20">
+                  <Play className="h-2 w-2 fill-primary text-primary dark:fill-primary" />
                 </div>
                 <div className="h-1 flex-1 rounded-full bg-slate-200 dark:bg-slate-600" />
               </div>
@@ -168,8 +168,8 @@ function TutorialArt() {
           </div>
         </div>
         <div className="mt-2 flex items-center">
-          <div className="h-1 w-1/3 rounded-full bg-violet-600 dark:bg-violet-400" />
-          <div className="-ml-0.5 h-2 w-2 rounded-full bg-violet-600 dark:bg-violet-400" />
+          <div className="h-1 w-1/3 rounded-full bg-primary dark:bg-primary/80" />
+          <div className="-ml-0.5 h-2 w-2 rounded-full bg-primary dark:bg-primary/80" />
           <div className="h-1 flex-1 rounded-full bg-slate-200 dark:bg-slate-600" />
         </div>
       </div>

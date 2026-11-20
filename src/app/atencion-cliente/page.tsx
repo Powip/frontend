@@ -442,10 +442,10 @@ export default function AtencionClientePage() {
             <div className="px-6 pt-4">
               <TabsList>
                 <TabsTrigger value="cc">📞 Call Center v2</TabsTrigger>
-                {canReadLegacyOrders ? <><TabsTrigger value="preventa" className="text-violet-600">
+                {canReadLegacyOrders ? <><TabsTrigger value="preventa" className="text-primary">
                   Pre-Ventas
                   {pedidosPreVenta.length > 0 && (
-                    <span className="ml-1 rounded-full bg-violet-600 text-white text-xs px-1.5 py-0.5">
+                    <span className="ml-1 rounded-full bg-primary text-white text-xs px-1.5 py-0.5">
                       {pedidosPreVenta.length}
                     </span>
                   )}

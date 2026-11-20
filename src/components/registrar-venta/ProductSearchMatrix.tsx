@@ -113,7 +113,7 @@ export default function ProductSearchMatrix({
   if (!loading && groups.length === 0) {
     return (
       <div className="rounded-xl border-[1.5px] border-dashed bg-muted/20 py-9 px-5 text-center">
-        <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300">
+        <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary dark:bg-primary/15">
           <PackageSearch className="h-5 w-5" />
         </div>
         <p className="text-sm font-semibold">
@@ -191,7 +191,7 @@ function ModelCard({
     <div
       className={cn(
         "border rounded-2xl overflow-hidden bg-card transition-all",
-        open && "border-violet-500 shadow-md shadow-violet-600/10",
+        open && "border-primary shadow-md shadow-primary/10",
       )}
     >
       <button
@@ -228,7 +228,7 @@ function ModelCard({
               </span>
             )}
             {packs.length > 0 && (
-              <Badge className="bg-violet-100 text-violet-700 hover:bg-violet-100 dark:bg-violet-500/15 dark:text-violet-300 gap-1">
+              <Badge className="bg-primary/10 text-primary hover:bg-primary/10 dark:bg-primary/15 gap-1">
                 <PackagePlus className="h-3 w-3" /> con pack
               </Badge>
             )}
@@ -256,11 +256,11 @@ function ModelCard({
           </div>
         </div>
         <div className="text-right shrink-0">
-          <div className="font-bold text-sm text-violet-700 dark:text-violet-300">{priceLabel}</div>
+          <div className="font-bold text-sm text-primary">{priceLabel}</div>
           <div className="text-[10px] text-muted-foreground">PVP</div>
         </div>
         <ChevronDown
-          className={cn("h-4 w-4 text-muted-foreground transition-transform shrink-0", open && "rotate-180 text-violet-600")}
+          className={cn("h-4 w-4 text-muted-foreground transition-transform shrink-0", open && "rotate-180 text-primary")}
         />
       </button>
 
@@ -359,7 +359,7 @@ function MatrixGrid({
             stock
           </span>
           <span className="flex items-center gap-1">
-            <i className="inline-block w-2.5 h-2.5 rounded-sm bg-violet-600" /> En venta
+            <i className="inline-block w-2.5 h-2.5 rounded-sm bg-primary" /> En venta
           </span>
         </div>
       </div>
@@ -417,8 +417,8 @@ function MatrixGrid({
                             oos
                               ? "bg-muted border-dashed border-amber-300 text-amber-700 dark:text-amber-300 hover:border-amber-500"
                               : inCart
-                                ? "bg-violet-600 border-violet-600 text-white"
-                                : "bg-background hover:border-violet-500 hover:bg-violet-50 dark:hover:bg-violet-500/10",
+                                ? "bg-primary border-primary text-white"
+                                : "bg-background hover:border-primary hover:bg-primary/5 dark:hover:bg-primary/10",
                             !oos && stock < 10 && !inCart && "border-amber-300",
                             dim && "opacity-30 grayscale",
                           )}
@@ -476,8 +476,8 @@ function VariantList({
               oos
                 ? "bg-muted border-dashed border-amber-300 hover:border-amber-500"
                 : inCart
-                  ? "border-violet-500 bg-violet-50 dark:bg-violet-500/10"
-                  : "hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10",
+                  ? "border-primary bg-primary/5 dark:bg-primary/10"
+                  : "hover:border-primary/60 hover:bg-primary/5 dark:hover:bg-primary/10",
             )}
           >
             <Thumb imageUrl={item.imageUrl ?? group.imageUrl} name={group.productName} size={32} />
@@ -491,7 +491,7 @@ function VariantList({
             >
               {oos ? "Bajo pedido" : `${item.availableStock} u.`}
             </Badge>
-            <span className="font-semibold text-sm text-violet-700 dark:text-violet-300 min-w-[64px] text-right">
+            <span className="font-semibold text-sm text-primary min-w-[64px] text-right">
               {fmt(item.price)}
             </span>
             {inCart > 0 && (

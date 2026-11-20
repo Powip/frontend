@@ -103,7 +103,7 @@ interface NavigationItem {
 }
 
 const navBadgeClass =
-  "ml-auto shrink-0 h-4 px-1.5 text-[9px] font-bold uppercase leading-none border-transparent bg-violet-600 text-white hover:bg-violet-600 dark:bg-violet-500 dark:hover:bg-violet-500";
+  "ml-auto shrink-0 h-4 px-1.5 text-[9px] font-bold uppercase leading-none border-transparent bg-primary text-white hover:bg-primary dark:hover:bg-primary";
 
 // En la página del propio ítem se muestra el texto completo ("Nuevo"); en el
 // resto de la navegación un puntito basta y no compite por espacio con el
@@ -120,7 +120,7 @@ function NavItemBadge({
     return <Badge className={navBadgeClass}>{child.badge}</Badge>;
   }
   return (
-    <span className="ml-auto h-1.5 w-1.5 rounded-full bg-violet-600 shrink-0" />
+    <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
   );
 }
 
@@ -564,7 +564,7 @@ export function Sidebar({ className }: SidebarProps) {
                             )}
                           />
                           {hasNewBadgeChild && (
-                            <span className="absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-violet-600 ring-2 ring-white dark:ring-gray-900" />
+                            <span className="absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-primary ring-2 ring-white dark:ring-gray-900" />
                           )}
                         </span>
                       </Button>
@@ -642,7 +642,7 @@ export function Sidebar({ className }: SidebarProps) {
                             )}
                           />
                           {hasNewBadgeChild && !isOpen && (
-                            <span className="absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-violet-600 ring-2 ring-white dark:ring-gray-900" />
+                            <span className="absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-primary ring-2 ring-white dark:ring-gray-900" />
                           )}
                         </span>
                         <span className="text-[13.5px] truncate">

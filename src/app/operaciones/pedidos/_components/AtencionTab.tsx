@@ -225,7 +225,7 @@ export function AtencionTab({
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setMotivoChip("")}
-            className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${motivoChip === "" ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300" : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"}`}
+            className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${motivoChip === "" ? "border-primary bg-primary/10 text-primary dark:bg-primary/15" : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"}`}
           >
             Todos los motivos
           </button>
@@ -233,7 +233,7 @@ export function AtencionTab({
             <button
               key={m}
               onClick={() => setMotivoChip(motivoChip === m ? "" : m)}
-              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${motivoChip === m ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300" : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"}`}
+              className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${motivoChip === m ? "border-primary bg-primary/10 text-primary dark:bg-primary/15" : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"}`}
             >
               {m} ({bySubView.filter((s) => guessFailureReason(s) === m).length}
               )

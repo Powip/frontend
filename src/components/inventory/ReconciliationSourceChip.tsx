@@ -12,7 +12,7 @@ const SOURCE_CONFIG: Record<
   },
   yavendio: {
     label: "Yavendio",
-    className: "border-violet-200 bg-violet-50 text-violet-700",
+    className: "border-primary/25 bg-primary/5 text-primary",
   },
   aliclik: {
     label: "Aliclik",

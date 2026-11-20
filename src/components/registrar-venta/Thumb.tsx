@@ -30,7 +30,7 @@ export default function Thumb({
   return (
     <div
       className={cn(
-        "rounded-xl bg-violet-600 text-white flex items-center justify-center font-bold shrink-0",
+        "rounded-xl bg-primary text-white flex items-center justify-center font-bold shrink-0",
         className,
       )}
       style={{ width: size, height: size, fontSize: size * 0.34 }}

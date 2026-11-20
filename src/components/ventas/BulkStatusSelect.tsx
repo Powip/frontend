@@ -61,7 +61,7 @@ export function BulkStatusSelect({
             "w-full max-w-full font-semibold transition-colors sm:w-[230px]",
             isSelectDisabled
               ? "bg-muted text-muted-foreground border-border cursor-not-allowed opacity-50"
-              : "border-violet-600 bg-violet-600 text-white data-[placeholder]:text-white shadow-sm hover:bg-violet-700 dark:border-violet-500 dark:bg-violet-500 dark:hover:bg-violet-600",
+              : "border-primary bg-primary text-white data-[placeholder]:text-white shadow-sm hover:bg-primary/90 dark:hover:bg-primary",
           )}
         >
           <Layers className="h-4 w-4 mr-2 text-white placeholder:text-white" />

@@ -33,7 +33,7 @@ import { Label } from "@/components/ui/label";
 const ITEMS_PER_PAGE = 8;
 
 const PLAN_COLORS: Record<string, string> = {
-  FULL:       'bg-violet-500/20 text-violet-300 border-violet-500/30',
+  FULL:       'bg-primary/20 text-primary border-primary/30',
   STANDARD:   'bg-sky-500/20 text-sky-300 border-sky-500/30',
   BASIC:      'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
   ENTERPRISE: 'bg-amber-500/20 text-amber-300 border-amber-500/30',

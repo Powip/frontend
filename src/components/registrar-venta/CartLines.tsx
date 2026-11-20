@@ -187,7 +187,7 @@ export default function CartLines({
 
       {cart.length === 0 ? (
         <div className="rounded-xl border-[1.5px] border-dashed bg-muted/20 py-9 px-5 text-center">
-          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300">
+          <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-primary/10 text-primary dark:bg-primary/15">
             <ShoppingBag className="h-5 w-5" />
           </div>
           <p className="text-sm font-semibold">Aún no agregas productos</p>
@@ -355,7 +355,7 @@ function LineRow({
             {!isPack && (
               <button
                 type="button"
-                className="text-muted-foreground hover:text-violet-600"
+                className="text-muted-foreground hover:text-primary"
                 onClick={() => setEditorOpen((v) => !v)}
               >
                 ✎
@@ -411,7 +411,7 @@ function DiscountEditor({
             onClick={() => setMode(m)}
             className={cn(
               "text-[11px] px-1.5 py-1 rounded-md border truncate",
-              mode === m ? "bg-violet-600 text-white border-violet-600" : "bg-background",
+              mode === m ? "bg-primary text-white border-primary" : "bg-background",
             )}
           >
             {m === "pct" ? "%" : m === "amt" ? "S/" : "Manual"}
@@ -460,7 +460,7 @@ function DiscountEditor({
                 <button
                   key={p}
                   type="button"
-                  className="text-[11px] border rounded-md px-2 py-1 hover:border-violet-500"
+                  className="text-[11px] border rounded-md px-2 py-1 hover:border-primary"
                   onClick={() => setValue(String(p))}
                 >
                   {p}%
@@ -517,12 +517,12 @@ function BundleBlock({
 }) {
   const save = pack.items.reduce((a, i) => a + i.price, 0) - pack.packPrice;
   return (
-    <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3 dark:border-violet-800 dark:bg-violet-500/10">
+    <div className="rounded-xl border border-primary/25 bg-primary/60 p-3 dark:border-primary/40 dark:bg-primary/10">
       <div className="flex items-center justify-between mb-2">
-        <span className="font-semibold text-sm text-violet-700 dark:text-violet-300 flex items-center gap-1.5">
+        <span className="font-semibold text-sm text-primary flex items-center gap-1.5">
           <Sparkles className="h-3.5 w-3.5" /> {pack.name}
         </span>
-        <button type="button" className="text-xs text-violet-700 dark:text-violet-300 underline" onClick={onUndo}>
+        <button type="button" className="text-xs text-primary underline" onClick={onUndo}>
           Quitar bundle
         </button>
       </div>
@@ -549,8 +549,8 @@ function BundleBlock({
           </div>
         ))}
       </div>
-      <div className="flex items-center justify-between border-t border-violet-200 dark:border-violet-800 mt-2.5 pt-2.5 text-sm">
-        <span className="font-semibold text-violet-700 dark:text-violet-300">Total bundle: {fmt(pack.packPrice)}</span>
+      <div className="flex items-center justify-between border-t border-primary/25 dark:border-primary/40 mt-2.5 pt-2.5 text-sm">
+        <span className="font-semibold text-primary">Total bundle: {fmt(pack.packPrice)}</span>
         <span className="font-semibold text-emerald-600 dark:text-emerald-400">✓ Ahorras {fmt(Math.max(0, save))}</span>
       </div>
     </div>

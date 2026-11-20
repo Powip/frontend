@@ -54,7 +54,7 @@ export default function IntroModal() {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && handleClose()}>
       <DialogContent className="sm:max-w-3xl overflow-hidden p-0 gap-0">
-        <div className="relative bg-gradient-to-br from-violet-600 to-purple-700 px-8 pt-8 pb-28 sm:pb-8 text-white overflow-hidden">
+        <div className="relative bg-gradient-to-br from-primary to-purple-700 px-8 pt-8 pb-28 sm:pb-8 text-white overflow-hidden">
           <div
             className="absolute -bottom-16 -right-10 w-64 h-64 rounded-full opacity-10 pointer-events-none"
             style={{ background: "rgba(255,255,255,0.4)" }}
@@ -105,8 +105,8 @@ export default function IntroModal() {
         <div className="px-8 py-6 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
           {HIGHLIGHTS.map(({ icon: Icon, title, text }) => (
             <div key={title} className="flex items-start gap-3">
-              <div className="h-10 w-10 rounded-lg bg-violet-100 dark:bg-violet-950 flex items-center justify-center shrink-0">
-                <Icon className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+              <div className="h-10 w-10 rounded-lg bg-primary/10 dark:bg-primary/20 flex items-center justify-center shrink-0">
+                <Icon className="h-5 w-5 text-primary" />
               </div>
               <div>
                 <div className="text-sm font-semibold">{title}</div>
@@ -119,7 +119,7 @@ export default function IntroModal() {
         <DialogFooter className="px-8 pb-8">
           <Button
             size="lg"
-            className="w-full sm:w-auto sm:ml-auto bg-gradient-to-r from-violet-600 to-purple-700 text-white font-semibold shadow-lg shadow-purple-500/30 hover:from-violet-500 hover:to-purple-600 px-8"
+            className="w-full sm:w-auto sm:ml-auto bg-gradient-to-r from-primary to-purple-700 text-white font-semibold shadow-lg shadow-purple-500/30 hover:from-primary hover:to-purple-600 px-8"
             onClick={handleClose}
           >
             Entendido, empezar

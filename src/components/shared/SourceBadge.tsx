@@ -33,7 +33,7 @@ const SheetsIcon = () => (
 export const SourceBadge: React.FC<SourceBadgeProps> = ({ source }) => {
   const normalizedSource = source?.toLowerCase();
 
-  if (["powip_live", "powip_link"].includes(normalizedSource || "")) return <span className="inline-flex rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-semibold text-violet-700">{normalizedSource === "powip_link" ? "💬 POWIP Link" : "((•)) POWIP Live"}</span>;
+  if (["powip_live", "powip_link"].includes(normalizedSource || "")) return <span className="inline-flex rounded-full border border-primary/25 bg-primary/5 px-2 py-0.5 text-[10px] font-semibold text-primary">{normalizedSource === "powip_link" ? "💬 POWIP Link" : "((•)) POWIP Live"}</span>;
 
   if (normalizedSource === "shopify") {
     return (

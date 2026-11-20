@@ -337,7 +337,7 @@ export function CcLeaderboard({ storeId, companyId, range }: Props) {
                         {/* Upsell S/ */}
                         <td className="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">
                           {agente.upsellMonto > 0 ? (
-                            <span className="font-semibold text-violet-700 dark:text-violet-300">
+                            <span className="font-semibold text-primary">
                               {formatPEN(agente.upsellMonto)}
                             </span>
                           ) : (
@@ -380,7 +380,7 @@ export function CcLeaderboard({ storeId, companyId, range }: Props) {
                     <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">
                       {formatPEN(totales.facturacionBase)}
                     </td>
-                    <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-violet-700 dark:text-violet-300 whitespace-nowrap">
+                    <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-primary whitespace-nowrap">
                       {formatPEN(totales.upsellMonto)}
                     </td>
                     <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-emerald-700 dark:text-emerald-300 whitespace-nowrap">
@@ -399,7 +399,7 @@ export function CcLeaderboard({ storeId, companyId, range }: Props) {
                 </p>
                 {insights.map((insight, i) => (
                   <p key={i} className="text-xs text-slate-700 dark:text-slate-300 flex items-start gap-1.5">
-                    <span className="text-violet-500 mt-0.5 shrink-0">•</span>
+                    <span className="text-primary mt-0.5 shrink-0">•</span>
                     {insight}
                   </p>
                 ))}

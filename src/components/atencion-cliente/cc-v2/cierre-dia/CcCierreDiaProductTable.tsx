@@ -91,7 +91,7 @@ export function CcCierreDiaProductTable({ rows, totals, isLoading, isError, subt
                   <TableHead className="text-center">Desp.</TableHead>
                   <TableHead className="text-center">Entre.</TableHead>
                   <TableHead className="text-center">Anul.</TableHead>
-                  <TableHead className="text-center text-violet-600 dark:text-violet-400">Upsell</TableHead>
+                  <TableHead className="text-center text-primary">Upsell</TableHead>
                   <TableHead className="text-right">Ingreso S/</TableHead>
                   <TableHead className="text-right">Costo S/</TableHead>
                   <TableHead className="text-right">Margen S/</TableHead>
@@ -112,7 +112,7 @@ export function CcCierreDiaProductTable({ rows, totals, isLoading, isError, subt
                     <TableCell className="text-center"><BucketBadge value={r.despachado} className="bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300" /></TableCell>
                     <TableCell className="text-center"><BucketBadge value={r.entregado} className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300" /></TableCell>
                     <TableCell className="text-center"><BucketBadge value={r.anulado} className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300" /></TableCell>
-                    <TableCell className="text-center"><BucketBadge value={r.upsell} className="bg-violet-100 text-violet-700 dark:bg-violet-900 dark:text-violet-300" /></TableCell>
+                    <TableCell className="text-center"><BucketBadge value={r.upsell} className="bg-primary/10 text-primary dark:bg-primary/30" /></TableCell>
                     <TableCell className="text-right font-semibold">{formatCurrency(r.ingreso)}</TableCell>
                     <TableCell className="text-right text-muted-foreground">{formatCurrency(r.costo)}</TableCell>
                     <TableCell className={`text-right font-semibold ${marginColorClass(r.pctMargen)}`}>{formatCurrency(r.margen)}</TableCell>
@@ -130,7 +130,7 @@ export function CcCierreDiaProductTable({ rows, totals, isLoading, isError, subt
                   <TableCell className="text-center">{totals.despachado}</TableCell>
                   <TableCell className="text-center">{totals.entregado}</TableCell>
                   <TableCell className="text-center">{totals.anulado}</TableCell>
-                  <TableCell className="text-center text-violet-600 dark:text-violet-400">{totals.upsell}</TableCell>
+                  <TableCell className="text-center text-primary">{totals.upsell}</TableCell>
                   <TableCell className="text-right text-emerald-600 dark:text-emerald-400">{formatCurrency(totals.ingreso)}</TableCell>
                   <TableCell className="text-right">{formatCurrency(totals.costo)}</TableCell>
                   <TableCell className="text-right text-emerald-600 dark:text-emerald-400">{formatCurrency(totals.margen)}</TableCell>

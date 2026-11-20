@@ -71,7 +71,7 @@ function GuiasPageInner() {
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
-            className="gap-1.5 bg-violet-600 text-white hover:bg-violet-700"
+            className="gap-1.5 bg-primary text-white hover:bg-primary/90"
             onClick={() => setScannerOpen(true)}
           >
             <ScanLine className="h-4 w-4" />
