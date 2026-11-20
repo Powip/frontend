@@ -245,9 +245,10 @@ export interface TransferForm {
   lines: DraftLine[];
 }
 
-export const emptyTransferForm = (originInventoryId = ""): TransferForm => ({
+/** Formulario vacío; origen y destino pueden venir de los filtros de la lista (nunca el mismo almacén en los dos). */
+export const emptyTransferForm = (originInventoryId = "", destinationInventoryId = ""): TransferForm => ({
   originInventoryId,
-  destinationInventoryId: "",
+  destinationInventoryId: destinationInventoryId && destinationInventoryId !== originInventoryId ? destinationInventoryId : "",
   freight: "",
   remissionGuide: "",
   notes: "",

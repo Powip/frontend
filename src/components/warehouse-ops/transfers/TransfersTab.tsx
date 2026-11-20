@@ -266,7 +266,9 @@ export default function TransfersTab({ companyId }: { companyId: string }) {
         <TransferFormDialog
           companyId={companyId}
           transfer={dialog.transfer}
+          // Los filtros de la lista precargan el traslado nuevo (editables en el modal).
           defaultOriginId={originId || undefined}
+          defaultDestinationId={destinationId || undefined}
           onClose={() => setDialog(null)}
           onSaved={() => {
             setDialog(null);
