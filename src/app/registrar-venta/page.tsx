@@ -271,6 +271,8 @@ function RegistrarVentaContent() {
   const [orderDeliveryAgency, setOrderDeliveryAgency] = useState("");
   // `api_name` de la agencia Shalom elegida en el buscador (solo para marcarla en el selector).
   const [shalomAgencyApiName, setShalomAgencyApiName] = useState("");
+  // `id_agencia` (ter_id) de la agencia elegida en el catálogo; se borra si se escribe el nombre a mano.
+  const [shalomAgencyId, setShalomAgencyId] = useState("");
   const [clientErrors, setClientErrors] = useState<
     Partial<Record<keyof typeof emptyClientForm, string>>
   >({});
@@ -637,6 +639,7 @@ function RegistrarVentaContent() {
     setClientForm(clientToFormFields(cust));
     setOrderDeliveryAgency(orderData.deliverySnapshot?.agency ?? "");
     setShalomAgencyApiName("");
+    setShalomAgencyId("");
     setSearchState("found");
 
     // --- Detalles de la venta ---
@@ -1043,6 +1046,7 @@ function RegistrarVentaContent() {
     });
     setOrderDeliveryAgency("");
     setShalomAgencyApiName("");
+    setShalomAgencyId("");
     setSalesRegion("LIMA");
     setScheduleDelivery(false);
     setScheduledDeliveryDate("");
@@ -1414,7 +1418,7 @@ function RegistrarVentaContent() {
         courier: orderDetails.enviaPor ?? null,
         // «Recojo en agencia»: la agencia elegida queda como entrega propia del pedido.
         ...(orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && orderDeliveryAgency.trim()
-          ? { delivery: { agency: orderDeliveryAgency.trim() } }
+          ? { delivery: { agency: orderDeliveryAgency.trim(), ...(shalomAgencyId ? { agencyId: shalomAgencyId } : {}) } }
           : {}),
         sellerName: sellerDisplayName || null,
 
@@ -1598,6 +1602,7 @@ function RegistrarVentaContent() {
                   department: clientForm.department, province: clientForm.province,
                   district: clientForm.district, address: clientForm.address,
                   agency: orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO ? orderDeliveryAgency.trim() : null,
+                  ...(orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && shalomAgencyId ? { agencyId: shalomAgencyId } : {}),
                   reference: clientForm.reference || null,
                   latitude: clientForm.latitude ? Number(clientForm.latitude) : null,
                   longitude: clientForm.longitude ? Number(clientForm.longitude) : null,
@@ -1958,6 +1963,7 @@ function RegistrarVentaContent() {
 
   const handleShalomAgencySelect = (agency: ShalomAgencyOption) => {
     setShalomAgencyApiName(agency.api_name);
+    setShalomAgencyId(String(agency.id_agencia));
     setOrderDeliveryAgency(`Shalom — ${agency.nombre_agencia}`.slice(0, 150));
     // Shalom entrega en agencia: al elegir una, el pedido pasa a «Recojo en agencia».
     setOrderDetails((prev) =>
@@ -2032,7 +2038,9 @@ function RegistrarVentaContent() {
   const clientChanges = originalClient ? buildClientUpdatePayload(originalClient, clientForm) : {};
   const { sharedClientChanges, deliveryChanges: destinationChanges } = splitOrderClientChanges(clientChanges, !!orderData?.deliverySnapshot);
   const agencyChanged = !!orderData?.deliverySnapshot && orderDeliveryAgency.trim() !== (orderData.deliverySnapshot.agency ?? "").trim();
-  const deliveryChanges = agencyChanged ? { ...destinationChanges, agency: orderDeliveryAgency.trim() || null } : destinationChanges;
+  const deliveryChanges = agencyChanged
+    ? { ...destinationChanges, agency: orderDeliveryAgency.trim() || null, ...(shalomAgencyId ? { agencyId: shalomAgencyId } : {}) }
+    : destinationChanges;
   const hasClientChanges = Object.keys(clientChanges).length > 0 || agencyChanged;
 
   if (!auth) return null;
@@ -3364,6 +3372,7 @@ function RegistrarVentaContent() {
                             enviaPor: undefined,
                           });
                           setShalomAgencyApiName("");
+                          setShalomAgencyId("");
                           if (!orderData?.deliverySnapshot) setOrderDeliveryAgency("");
                         }}
                       >
@@ -3393,7 +3402,11 @@ function RegistrarVentaContent() {
                           maxLength={150}
                           disabled={isSubmitting}
                           placeholder="Ej.: Shalom — agencia principal"
-                          onChange={(event) => setOrderDeliveryAgency(event.target.value)}
+                          onChange={(event) => {
+                            setOrderDeliveryAgency(event.target.value);
+                            setShalomAgencyId("");
+                            setShalomAgencyApiName("");
+                          }}
                         />
                       </div>
                     )}
@@ -3414,6 +3427,7 @@ function RegistrarVentaContent() {
                               enviaPor: v,
                             });
                             setShalomAgencyApiName("");
+                            setShalomAgencyId("");
                             if (!orderData?.deliverySnapshot) setOrderDeliveryAgency("");
                           }}
                         >
@@ -3455,6 +3469,7 @@ function RegistrarVentaContent() {
                           onSelect={handleShalomAgencySelect}
                           onClear={() => {
                             setShalomAgencyApiName("");
+                            setShalomAgencyId("");
                             setOrderDeliveryAgency("");
                           }}
                           location={{

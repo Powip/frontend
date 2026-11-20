@@ -137,7 +137,10 @@ export interface OrderDeliverySnapshot {
 export type OrderDeliveryPatch = Partial<Omit<OrderDeliverySnapshot, "version" | "type" | "zone">>;
 
 /** Destination accepted for this order, without internal delivery metadata. */
-export type OrderDeliveryDetails = Pick<OrderDeliverySnapshot, "type" | "department" | "province" | "district" | "address" | "agency">;
+export type OrderDeliveryDetails = Pick<OrderDeliverySnapshot, "type" | "department" | "province" | "district" | "address" | "agency"> & {
+  /** `id_agencia` de Shalom, si el pedido se creó eligiendo la agencia del catálogo. */
+  agencyId?: string;
+};
 
 export interface OrderCustomer {
   id: string;
