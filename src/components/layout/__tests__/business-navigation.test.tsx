@@ -4,6 +4,7 @@ import AppContainer from "../AppContainer";
 import { useBusinessScope } from "@/contexts/BusinessScopeContext";
 
 let mockPathname = "/operaciones";
+jest.mock("@/components/gre/GreCredentialsNotice", () => ({ __esModule: true, default: () => null }));
 jest.mock("next/navigation", () => ({ usePathname: () => mockPathname }));
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({
   auth: { accessToken: "session", user: { id: "owner", email: "owner@example.com", role: "ADMINISTRADOR" }, company: { id: "company", stores: [{ id: "empty", name: "KUNCA" }, { id: "web", name: "WEB" }] } },
