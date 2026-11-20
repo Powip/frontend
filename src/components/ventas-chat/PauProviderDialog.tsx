@@ -40,11 +40,19 @@ export default function PauProviderDialog({ open, onOpenChange, provider }: Prop
   const [model, setModel] = useState(
     provider?.model ?? (provider ? "" : ANTHROPIC_DEFAULT_MODEL),
   );
+  const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? "");
   const [tried, setTried] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<PauProviderTest | null>(null);
   const [pickedModel, setPickedModel] = useState("");
+  const [modelQuery, setModelQuery] = useState("");
+  const visibleModels = result
+    ? result.models.filter((m) => {
+        const q = modelQuery.trim().toLowerCase();
+        return !q || m.toLowerCase().includes(q) || m === pickedModel;
+      })
+    : [];
   const [savingModel, setSavingModel] = useState(false);
 
   const editing = !!provider;
@@ -52,8 +60,12 @@ export default function PauProviderDialog({ open, onOpenChange, provider }: Prop
     label: label.trim() ? undefined : "Escribe una etiqueta para reconocerlo",
     apiKey: editing || apiKey.trim() ? undefined : "Pega la llave del proveedor",
     model: kind === "openai" && !model.trim() ? "OpenAI necesita que indiques el modelo" : undefined,
+    baseUrl:
+      kind === "openai_compatible" && !/^https:\/\/\S+$/.test(baseUrl.trim())
+        ? "Escribe la URL base con https://"
+        : undefined,
   };
-  const valid = !errors.label && !errors.apiKey && !errors.model;
+  const valid = !errors.label && !errors.apiKey && !errors.model && !errors.baseUrl;
 
   const changeKind = (next: PauProviderKind) => {
     setKind(next);
@@ -97,6 +109,7 @@ export default function PauProviderDialog({ open, onOpenChange, provider }: Prop
           label: label.trim(),
           apiKey: apiKey.trim(),
           ...(model.trim() ? { model: model.trim() } : {}),
+          ...(kind === "openai_compatible" ? { baseUrl: baseUrl.trim() } : {}),
         });
         setApiKey("");
         await runTest(created.id);
@@ -156,23 +169,33 @@ export default function PauProviderDialog({ open, onOpenChange, provider }: Prop
             {result.ok && result.models.length > 0 && (
               <div className="space-y-1.5">
                 <Label htmlFor="pau-model-pick">Modelo que usará Pau</Label>
+                <Input
+                  id="pau-model-search"
+                  type="search"
+                  value={modelQuery}
+                  onChange={(e) => setModelQuery(e.target.value)}
+                  placeholder="Buscar modelo (ej.: free, deepseek, gemini)"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
                 <select
                   id="pau-model-pick"
-                  className={SELECT}
+                  className="w-full rounded-md border border-input bg-background p-1 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   value={pickedModel}
                   onChange={(e) => setPickedModel(e.target.value)}
+                  size={Math.min(10, Math.max(4, visibleModels.length))}
                 >
                   {!result.models.includes(pickedModel) && (
                     <option value={pickedModel}>{pickedModel}</option>
                   )}
-                  {result.models.map((m) => (
+                  {visibleModels.map((m) => (
                     <option key={m} value={m}>
                       {m}
                     </option>
                   ))}
                 </select>
                 <p className="text-xs text-muted-foreground">
-                  Lista de los modelos que tu cuenta puede usar.
+                  {visibleModels.length} de {result.models.length} modelos de tu cuenta.
                 </p>
               </div>
             )}
@@ -256,12 +279,38 @@ export default function PauProviderDialog({ open, onOpenChange, provider }: Prop
               )}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="pau-model">Modelo{kind === "openai" ? "" : " (opcional)"}</Label>
+              {kind === "openai_compatible" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="pau-base-url">URL base</Label>
+                  <Input
+                    id="pau-base-url"
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                    placeholder="https://ai-gateway.kilo.ai/api/v1"
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                  {showErr("baseUrl") && (
+                    <p role="alert" className="text-xs font-medium text-destructive">
+                      {showErr("baseUrl")}
+                    </p>
+                  )}
+                </div>
+              )}
+              <Label htmlFor="pau-model">
+                Modelo{kind === "openai" ? "" : " (opcional)"}
+              </Label>
               <Input
                 id="pau-model"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
-                placeholder={kind === "openai" ? "Ej.: gpt-4.1" : ANTHROPIC_DEFAULT_MODEL}
+                placeholder={
+                  kind === "anthropic"
+                    ? ANTHROPIC_DEFAULT_MODEL
+                    : kind === "openai_compatible"
+                      ? "Vacío = se elige al probar la conexión"
+                      : "Ej.: gpt-4.1"
+                }
                 autoComplete="off"
               />
               {showErr("model") && (

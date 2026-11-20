@@ -43,6 +43,7 @@ export const PAU_MODE_LABEL: Record<PauMode, string> = {
 export const PROVIDER_LABEL: Record<PauProviderKind, string> = {
   anthropic: "Anthropic · Claude",
   openai: "OpenAI",
+  openai_compatible: "Compatible con OpenAI (URL propia)",
 };
 
 export const USAGE_GROUPS: Array<{ label: string; kinds: PauUsage["byKind"][number]["kind"][] }> = [

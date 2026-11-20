@@ -432,7 +432,7 @@ export interface PauSettingsInput {
   monthlyTokenCap?: number | null;
 }
 
-export type PauProviderKind = "anthropic" | "openai";
+export type PauProviderKind = "anthropic" | "openai" | "openai_compatible";
 
 /** La llave nunca vuelve del servidor: solo `keyHint` (p. ej. «••••a1b2»). */
 export interface PauProvider {
@@ -441,6 +441,8 @@ export interface PauProvider {
   label: string;
   keyHint: string;
   model: string;
+  /** Solo `openai_compatible`. */
+  baseUrl: string | null;
   isDefault: boolean;
   lastTestOk: boolean | null;
   lastTestAt: string | null;
@@ -453,6 +455,7 @@ export interface PauProviderInput {
   label: string;
   apiKey: string;
   model?: string;
+  baseUrl?: string;
 }
 
 export interface PauProviderUpdate {
