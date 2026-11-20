@@ -10,6 +10,7 @@
  * 3. Solo una orden sin ítems queda con "-".
  * 4. Con filtro por producto aparece "Unidades del producto filtrado" (y sin filtro, no).
  * 5. Pedidos agrega "Fecha programada de despacho" después de Fecha; otros exports no.
+ * 6. Pedidos agrega "Referencia" después de Dirección; otros exports no.
  */
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
@@ -17,6 +18,7 @@ import {
   exportSalesToExcel,
   FILTERED_PRODUCT_UNITS_HEADER,
   formatProductsForExport,
+  REFERENCE_HEADER,
   SCHEDULED_DISPATCH_HEADER,
   type SaleExportData,
 } from "../exportSalesExcel";
@@ -146,5 +148,39 @@ describe("exportSalesToExcel — fecha programada de despacho", () => {
   it("exports que no traen el campo (Ventas, Clientes) no muestran la columna", async () => {
     const rows = await exportedRows([sale()]);
     expect(rows[0]).not.toHaveProperty(SCHEDULED_DISPATCH_HEADER);
+  });
+});
+
+describe("exportSalesToExcel — referencia de la dirección", () => {
+  it("agrega la columna entre Dirección y Link Maps; sin referencia queda '-'", async () => {
+    exportSalesToExcel(
+      [
+        sale({ orderNumber: "ORD-001", reference: "Frente al parque, portón verde" }),
+        sale({ orderNumber: "ORD-002", reference: null }),
+        sale({ orderNumber: "ORD-003", reference: "   " }),
+      ],
+      "operaciones_pedidos_preparados",
+    );
+    const blob = mockedSaveAs.mock.calls.at(-1)![0] as Blob;
+    const wb = XLSX.read(new Uint8Array(await blob.arrayBuffer()), { type: "array" });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const [header] = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet);
+
+    expect(header.slice(header.indexOf("Distrito"), header.indexOf("Link Maps") + 1)).toEqual([
+      "Distrito",
+      "Zona",
+      "Dirección",
+      REFERENCE_HEADER,
+      "Link Maps",
+    ]);
+    expect(rows[0]).toMatchObject({ Dirección: "Av. Test 123", [REFERENCE_HEADER]: "Frente al parque, portón verde" });
+    expect(rows[1][REFERENCE_HEADER]).toBe("-");
+    expect(rows[2][REFERENCE_HEADER]).toBe("-");
+  });
+
+  it("exports que no traen el campo (Ventas, Finanzas) no muestran la columna", async () => {
+    const rows = await exportedRows([sale()]);
+    expect(rows[0]).not.toHaveProperty(REFERENCE_HEADER);
   });
 });
