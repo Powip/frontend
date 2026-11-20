@@ -210,7 +210,7 @@ describe("Registrar venta — recojo en agencia al registrar una venta nueva", (
     await user.click(submitButton());
     await waitFor(() => expect(http.post).toHaveBeenCalledTimes(1));
     expect(postedOrder()).toEqual(expect.objectContaining({
-      deliveryType: "PUNTO_EXTERNO", courier: "Shalom", delivery: { agency: "Shalom — MIRAFLORES CENTRO" },
+      deliveryType: "PUNTO_EXTERNO", courier: "Shalom", delivery: { agency: "Shalom — MIRAFLORES CENTRO", agencyId: "101" },
     }));
     expect(toast.warning).not.toHaveBeenCalled();
   }, 20000);
@@ -229,7 +229,7 @@ describe("Registrar venta — recojo en agencia al registrar una venta nueva", (
     await user.click(submitButton());
     await waitFor(() => expect(http.post).toHaveBeenCalledTimes(1));
     expect(postedOrder()).toEqual(expect.objectContaining({
-      deliveryType: "PUNTO_EXTERNO", courier: "Shalom", delivery: { agency: "Shalom — MIRAFLORES OVALO" },
+      deliveryType: "PUNTO_EXTERNO", courier: "Shalom", delivery: { agency: "Shalom — MIRAFLORES OVALO", agencyId: "102" },
     }));
   }, 20000);
 
@@ -246,7 +246,7 @@ describe("Registrar venta — recojo en agencia al registrar una venta nueva", (
     await waitFor(() => expect(submitButton()).toBeEnabled());
     await user.click(submitButton());
     await waitFor(() => expect(http.post).toHaveBeenCalledTimes(1));
-    expect(postedOrder().delivery).toEqual({ agency: "Shalom — CUSCO WANCHAQ" });
+    expect(postedOrder().delivery).toEqual({ agency: "Shalom — CUSCO WANCHAQ", agencyId: "104" });
     expect(agencyCalls()).toHaveLength(1);
   }, 20000);
 
@@ -278,6 +278,21 @@ describe("Registrar venta — recojo en agencia al registrar una venta nueva", (
       deliveryType: "PUNTO_EXTERNO", courier: "OTROS", delivery: { agency: "Olva — Sucursal Centro" },
     }));
     expect(agencyCalls()).toHaveLength(0);
+  }, 20000);
+
+  it("cambiar de Shalom a otro método descarta también el id: la agencia escrita a mano no lo lleva", async () => {
+    http.post.mockResolvedValue({ data: { id: "order-created", payments: [], deliverySnapshot: { type: "AGENCY", agency: "Olva — Sucursal Centro" } } });
+    mountPage();
+    const user = await fillSale();
+    await user.selectOptions(deliveryType(), "PUNTO_EXTERNO");
+    await user.selectOptions(field(/método de envío/i).getByRole("combobox"), "Shalom");
+    await chooseShalomAgency(user);
+    await user.selectOptions(field(/método de envío/i).getByRole("combobox"), "OTROS");
+    await user.type(screen.getByLabelText("Agencia y sucursal de este pedido"), "Olva — Sucursal Centro");
+    await waitFor(() => expect(submitButton()).toBeEnabled());
+    await user.click(submitButton());
+    await waitFor(() => expect(http.post).toHaveBeenCalledTimes(1));
+    expect(postedOrder().delivery).toEqual({ agency: "Olva — Sucursal Centro" });
   }, 20000);
 
   it("cambiar de método de envío descarta la agencia Shalom ya elegida", async () => {
