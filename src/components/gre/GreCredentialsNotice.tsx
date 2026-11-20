@@ -2,7 +2,6 @@
 
 import { KeyRound } from "lucide-react";
 import { useEffect, useState } from "react";
-import { SUPPORT_WHATSAPP_URL } from "@/app/configuracion/_components/HelpSection";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,11 +18,14 @@ import type { GreSettings } from "@/features/sunat/despatch-advice/types/despatc
 // Pop-up una vez por sesión al entrar + recuadro que reaparece cada 60 s y se
 // desvanece a los 4 s. Los textos viven aquí para ajustarlos en un solo lugar.
 
-export const GRE_NOTICE_TITLE = "Falta configurar tus credenciales SUNAT para emitir guías";
-export const GRE_NOTICE_SUPPORT =
-  "Comunícate con el grupal de soporte para recibir apoyo en la configuración de credenciales y guías.";
-export const GRE_NOTICE_UPDATE =
-  "Actualización obligatoria de SUNAT: cambió el envío de guías de remisión y sus validaciones.";
+export const GRE_NOTICE_POPUP_TITLE =
+  "Actualización obligatoria de SUNAT: configura tus credenciales para emitir guías";
+export const GRE_NOTICE_POPUP_BODY =
+  "Para enviar guías de remisión electrónicas y pasar las validaciones de SUNAT, cada RUC debe cargar sus credenciales GRE (client_id y client_secret de SOL) en Facturación › Certificado Digital.";
+export const GRE_NOTICE_POPUP_SUPPORT =
+  "¿Necesitas ayuda? Comunícate con tu grupo de soporte para configurar tus credenciales y guías.";
+export const GRE_NOTICE_BOX_TEXT =
+  "Actualización obligatoria de SUNAT: configura tus credenciales GRE en Facturación › Certificado Digital para emitir guías. Ayuda: tu grupo de soporte.";
 export const GRE_NOTICE_SESSION_KEY = "powip:gre-credentials-popup-shown";
 export const GRE_NOTICE_INTERVAL_MS = 60_000;
 export const GRE_NOTICE_VISIBLE_MS = 4_000;
@@ -34,16 +36,6 @@ export function missingGreCredentials(settings: GreSettings | undefined): boolea
   if (!settings) return false;
   const active = settings.profiles.filter((profile) => profile.isActive);
   return active.length > 0 && active.some((profile) => !profile.configured);
-}
-
-function NoticeText() {
-  return (
-    <>
-      <p>{GRE_NOTICE_TITLE}.</p>
-      <p>{GRE_NOTICE_UPDATE}</p>
-      <p>{GRE_NOTICE_SUPPORT}</p>
-    </>
-  );
 }
 
 export default function GreCredentialsNotice() {
@@ -91,20 +83,13 @@ export default function GreCredentialsNotice() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <KeyRound className="h-5 w-5 text-primary" aria-hidden="true" />
-              {GRE_NOTICE_TITLE}
+              {GRE_NOTICE_POPUP_TITLE}
             </DialogTitle>
-            <DialogDescription>{GRE_NOTICE_UPDATE}</DialogDescription>
+            <DialogDescription>{GRE_NOTICE_POPUP_BODY}</DialogDescription>
           </DialogHeader>
-          <p className="text-sm">{GRE_NOTICE_SUPPORT}</p>
+          <p className="text-sm">{GRE_NOTICE_POPUP_SUPPORT}</p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
-              Entendido
-            </Button>
-            <Button asChild>
-              <a href={SUPPORT_WHATSAPP_URL} target="_blank" rel="noopener noreferrer">
-                Contactar soporte
-              </a>
-            </Button>
+            <Button onClick={() => setDialogOpen(false)}>Entendido</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -112,11 +97,11 @@ export default function GreCredentialsNotice() {
         <div
           role="status"
           data-testid="gre-credentials-box"
-          className={`fixed bottom-4 right-4 z-50 max-w-sm space-y-1 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm shadow-lg transition-opacity duration-500 dark:border-amber-900 dark:bg-amber-950 ${
+          className={`fixed bottom-4 right-4 z-50 max-w-sm rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm shadow-lg transition-opacity duration-500 dark:border-amber-900 dark:bg-amber-950 ${
             boxFading ? "opacity-0" : "opacity-100"
           }`}
         >
-          <NoticeText />
+          {GRE_NOTICE_BOX_TEXT}
         </div>
       ) : null}
     </>
