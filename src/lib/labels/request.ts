@@ -60,11 +60,57 @@ export function buildLabelsRequest(
           ...(options.filter?.brandId ? { brandId: options.filter.brandId } : {}),
         };
   if (!scope) return null;
-  if (mode === "stock") {
-    if (!options.inventoryId) return null;
-    return { origin: "stock", inventoryId: options.inventoryId, ...scope };
-  }
+  if (mode === "stock" && !options.inventoryId) return null;
+  // Con almacén elegido (también en «1 de cada una», donde hace de filtro: ver mergeLabelLines), lo de ese almacén.
+  if (options.inventoryId) return { origin: "stock", inventoryId: options.inventoryId, ...scope };
   return { origin: "products", ...scope };
+}
+
+/**
+ * Lo agregado con el buscador de «Imprimir etiquetas»: un producto entero (`variantId: null`, elegido por
+ * nombre o SKU) o una sola variante (código de barras o SKU de variante escaneado).
+ */
+export interface AddedLabelItem {
+  productId: string;
+  variantId: string | null;
+}
+
+/** Pedido para traer lo agregado: con «según stock» el disponible del almacén; si no, 1 de cada una. */
+export function buildAddedRequest(added: AddedLabelItem[], mode: LabelsQuantityMode, inventoryId: string): LabelsDataRequest | null {
+  if (added.length === 0) return null;
+  const ids = [...new Set(added.map((item) => item.productId))];
+  if (mode === "stock") return inventoryId ? { origin: "stock", inventoryId, ids } : null;
+  return { origin: "products", ids };
+}
+
+/**
+ * La lista a imprimir: lo del origen (con `warehouseFilter` —almacén elegido y «1 de cada una»— solo lo que
+ * hay en ese almacén, una etiqueta por variante), más lo agregado que no esté ya, menos lo quitado.
+ */
+export function mergeLabelLines({
+  base,
+  added = [],
+  addedLines = [],
+  removed = [],
+  warehouseFilter = false,
+}: {
+  base: LabelLine[];
+  added?: AddedLabelItem[];
+  addedLines?: LabelLine[];
+  removed?: string[];
+  warehouseFilter?: boolean;
+}): LabelLine[] {
+  const fromSource = warehouseFilter ? base.filter((line) => line.quantity > 0).map((line) => ({ ...line, quantity: 1 })) : base;
+  const wholeProducts = new Set(added.filter((item) => item.variantId === null).map((item) => item.productId));
+  const singleVariants = new Set(added.flatMap((item) => (item.variantId ? [item.variantId] : [])));
+  const seen = new Set(fromSource.map((line) => line.variantId));
+  const extra = addedLines.filter((line) => {
+    if (seen.has(line.variantId) || !(wholeProducts.has(line.productId) || singleVariants.has(line.variantId))) return false;
+    seen.add(line.variantId);
+    return true;
+  });
+  const hidden = new Set(removed);
+  return [...fromSource, ...extra].filter((line) => !hidden.has(line.variantId));
 }
 
 /** Cantidades finales: la del backend, o la que el usuario editó (entero ≥ 0). */

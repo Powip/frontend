@@ -8,6 +8,8 @@ import { downloadLabelsPdf } from "@/lib/labels/pdf";
 import type { LabelsSource } from "@/lib/labels/request";
 import { SAMPLE_LABEL_LINE, type LabelFormat, type LabelLine } from "@/lib/labels/types";
 import { fetchLabelLines, listLabelFormats } from "@/services/labelsService";
+import { listPurchasableProducts } from "@/services/purchasesService";
+import { lookupVariantsByCodes } from "@/services/variantCodesService";
 import { PrintLabelsDialog } from "../PrintLabelsDialog";
 
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: jest.fn() }));
@@ -17,6 +19,8 @@ jest.mock("@/services/labelsService", () => ({
   listLabelFormats: jest.fn(),
   fetchLabelLines: jest.fn(),
 }));
+jest.mock("@/services/purchasesService", () => ({ listPurchasableProducts: jest.fn().mockResolvedValue([]) }));
+jest.mock("@/services/variantCodesService", () => ({ lookupVariantsByCodes: jest.fn().mockResolvedValue([]) }));
 jest.mock("@/hooks/useBusinessInventories", () => ({
   useBusinessInventories: () => ({
     inventories: [
@@ -191,6 +195,77 @@ describe("Imprimir etiquetas (FEAT-24 H7)", () => {
     expect(screen.queryByLabelText("Categoría")).not.toBeInTheDocument();
     expect(axiosAuth.get).not.toHaveBeenCalled();
     expect(downloadButton()).toHaveTextContent("Descargar PDF · 6 etiquetas");
+  });
+
+  // Correcciones 11-20 (B2): buscador, quitar líneas y filtro por almacén. Lo de arriba sigue igual por defecto.
+  const lineOf = (variantId: string, productId: string, sku: string, quantity: number): LabelLine => ({ ...line(variantId, sku, quantity), productId });
+  const casaca = { id: "p2", name: "Casaca", sku: "CAS", companySku: null, status: true, purchaseUnit: null, purchaseFactor: 1 };
+
+  it("busca por nombre y agrega el producto con sus variantes; se quitan líneas y se pueden volver a poner", async () => {
+    jest.mocked(listPurchasableProducts).mockResolvedValue([casaca, { ...casaca, id: "p9", name: "Casaca vieja", status: false }]);
+    (fetchLabelLines as jest.Mock).mockImplementation(async (request: { ids?: string[] }) =>
+      request.ids?.[0] === "p2" ? [lineOf("v3", "p2", "CAS-M", 1), lineOf("v4", "p2", "CAS-L", 1)] : [line("v1", "POLO-M-NEG", 1), line("v2", "POLO-L-NEG", 1)],
+    );
+    renderDialog();
+    await screen.findByLabelText("Etiquetas de POLO-M-NEG");
+    fireEvent.change(screen.getByLabelText("Agregar a la lista"), { target: { value: "casa" } });
+    expect(screen.queryByRole("button", { name: /Casaca vieja/ })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Agregar Casaca · CAS" }));
+    await waitFor(() => expect(fetchLabelLines).toHaveBeenCalledWith({ origin: "products", ids: ["p2"] }, expect.anything()));
+    expect(await screen.findByLabelText("Etiquetas de CAS-M")).toHaveValue(1);
+    expect(downloadButton()).toHaveTextContent("Descargar PDF · 4 etiquetas");
+
+    fireEvent.click(screen.getByRole("button", { name: "Quitar POLO-M-NEG" }));
+    fireEvent.click(screen.getByRole("button", { name: "Quitar CAS-L" }));
+    expect(screen.queryByLabelText("Etiquetas de POLO-M-NEG")).not.toBeInTheDocument();
+    expect(downloadButton()).toHaveTextContent("Descargar PDF · 2 etiquetas");
+    fireEvent.click(downloadButton());
+    await waitFor(() => expect(downloadLabelsPdf).toHaveBeenCalledTimes(1));
+    expect((downloadLabelsPdf as jest.Mock).mock.calls[0][0].lines.map((l: LabelLine) => l.variantId)).toEqual(["v2", "v3"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Volver a poner las 2 quitadas" }));
+    expect(downloadButton()).toHaveTextContent("Descargar PDF · 4 etiquetas");
+  });
+
+  it("con el lector: el código de barras agrega solo esa variante, y avisa si no existe", async () => {
+    jest.mocked(listPurchasableProducts).mockResolvedValue([casaca]);
+    jest.mocked(lookupVariantsByCodes).mockResolvedValueOnce([
+      { code: "7750000000017", variantId: "v4", sku: "CAS-L", companySku: null, productId: "p2", productName: "Casaca", matchedBy: "barcode" },
+    ]);
+    (fetchLabelLines as jest.Mock).mockImplementation(async (request: { ids?: string[] }) =>
+      request.ids?.[0] === "p2" ? [lineOf("v3", "p2", "CAS-M", 1), lineOf("v4", "p2", "CAS-L", 1)] : [line("v1", "POLO-M-NEG", 1)],
+    );
+    renderDialog();
+    await screen.findByLabelText("Etiquetas de POLO-M-NEG");
+    const search = screen.getByLabelText("Agregar a la lista");
+    fireEvent.change(search, { target: { value: "7750000000017" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(await screen.findByLabelText("Etiquetas de CAS-L")).toHaveValue(1);
+    expect(lookupVariantsByCodes).toHaveBeenCalledWith(["7750000000017"], "c-1");
+    expect(screen.queryByLabelText("Etiquetas de CAS-M")).not.toBeInTheDocument();
+    expect(search).toHaveValue("");
+
+    jest.mocked(lookupVariantsByCodes).mockResolvedValueOnce([]);
+    fireEvent.change(search, { target: { value: "XYZ-404" } });
+    fireEvent.keyDown(search, { key: "Enter" });
+    expect(await screen.findByText("No encontramos «XYZ-404». Elige el producto en la lista.")).toBeInTheDocument();
+  });
+
+  it("filtro de almacén con «1 de cada una»: solo lo que hay en ese almacén, una etiqueta por variante", async () => {
+    (fetchLabelLines as jest.Mock).mockImplementation(async (request: { origin: string }) =>
+      request.origin === "stock" ? [line("v1", "POLO-M-NEG", 7), line("v2", "POLO-L-NEG", 0)] : [line("v1", "POLO-M-NEG", 1), line("v2", "POLO-L-NEG", 1)],
+    );
+    renderDialog();
+    await screen.findByLabelText("Etiquetas de POLO-L-NEG");
+    fireEvent.change(screen.getByRole("combobox", { name: "Almacén" }), { target: { value: "w1" } });
+    await waitFor(() => expect(fetchLabelLines).toHaveBeenLastCalledWith({ origin: "stock", inventoryId: "w1", ids: ["p1"] }, expect.anything()));
+    await waitFor(() => expect(screen.queryByLabelText("Etiquetas de POLO-L-NEG")).not.toBeInTheDocument());
+    expect(screen.getByLabelText("Etiquetas de POLO-M-NEG")).toHaveValue(1);
+
+    // «Según el stock»: el mismo almacén pone la cantidad.
+    fireEvent.click(screen.getByRole("radio", { name: /Según el stock disponible del almacén/ }));
+    expect(await screen.findByLabelText("Etiquetas de POLO-L-NEG")).toHaveValue(0);
+    expect(screen.getByLabelText("Etiquetas de POLO-M-NEG")).toHaveValue(7);
   });
 
   it("shows the backend message when the lines cannot be loaded", async () => {
