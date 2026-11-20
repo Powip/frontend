@@ -33,6 +33,22 @@ jest.mock("@/services/suggestedPurchaseService", () => ({ getSuggestedPurchase: 
 jest.mock("@/services/purchasesService", () => ({ listPurchaseSuppliers: jest.fn() }));
 jest.mock("@/services/warehousesService", () => ({ listWarehouses: jest.fn(), getInventoryRules: jest.fn() }));
 jest.mock("@/hooks/useMyWarehouses");
+// El alta real de proveedor tiene su propio test; acá solo importa que al guardar quede elegido en el grupo.
+jest.mock("@/components/compras/SupplierFormDialog", () => ({
+  __esModule: true,
+  default: ({ onSaved }: { onSaved: (supplier: unknown) => void }) => (
+    <div role="dialog" aria-label="Proveedor (mock)">
+      <button
+        type="button"
+        onClick={() =>
+          onSaved({ id: "55555555-5555-4555-8555-555555555555", companyId: "c-1", name: "Nuevo", businessName: null, tradeName: null, ruc: null, contactPerson: null, phone: null, email: null, fiscalAddress: null, paymentTerms: "contado", active: true, purchaseCount: 0, createdAt: "", updatedAt: "" })
+        }
+      >
+        guardar proveedor (mock)
+      </button>
+    </div>
+  ),
+}));
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { __setMyWarehouses } = require("@/hooks/useMyWarehouses") as typeof import("@/hooks/__mocks__/useMyWarehouses");
 
@@ -40,6 +56,7 @@ const S1 = "22222222-2222-4222-8222-222222222222";
 const S2 = "33333333-3333-4333-8333-333333333333";
 const W1 = "11111111-1111-4111-8111-111111111111";
 const W2 = "44444444-4444-4444-8444-444444444444";
+const S3 = "55555555-5555-4555-8555-555555555555";
 
 function item(overrides: Partial<SuggestedPurchaseItem> = {}): SuggestedPurchaseItem {
   return {
@@ -290,5 +307,50 @@ describe("Pedido sugerido", () => {
     await waitFor(() =>
       expect(generateSuggestedPurchase).toHaveBeenCalledWith(expect.objectContaining({ lines: [{ variantId: "v-1", quantity: 60, supplierId: S2 }] }), expect.any(String)),
     );
+  });
+
+  it("el botón deshabilitado dice qué falta (el motivo va pegado al botón)", async () => {
+    jest.mocked(getSuggestedPurchase).mockResolvedValue(
+      suggestion({ groups: [{ supplierId: null, supplierName: null, supplierActive: null, totals: { ...totals }, items: [item({ supplierId: null, supplierName: null })] }] }),
+    );
+    setup();
+    await screen.findByLabelText("Pedir: Polo · Talla: M");
+    const button = screen.getByRole("button", { name: "Generar órdenes de compra" });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAccessibleDescription("Elige a quién comprarle los productos sin proveedor o desmárcalos.");
+  });
+
+  it("sin proveedores activos: se crea uno desde el grupo, sin salir, y queda elegido", async () => {
+    const user = userEvent.setup();
+    jest.mocked(listPurchaseSuppliers).mockResolvedValue([]);
+    jest.mocked(getSuggestedPurchase).mockResolvedValue(
+      suggestion({ groups: [{ supplierId: null, supplierName: null, supplierActive: null, totals: { ...totals }, items: [item({ supplierId: null, supplierName: null })] }] }),
+    );
+    jest.mocked(generateSuggestedPurchase).mockResolvedValue({ runId: "r-1", inventoryId: W1, duplicate: false, purchaseOrders: [] });
+    setup();
+    await screen.findByLabelText("Pedir: Polo · Talla: M");
+    expect(screen.getByTestId("sg-group-__sin_proveedor__")).toHaveTextContent("No tienes proveedores activos");
+    await user.click(within(screen.getByTestId("sg-group-__sin_proveedor__")).getByRole("button", { name: "Nuevo proveedor" }));
+    // Después del alta, el servidor ya lo devuelve entre los activos.
+    jest.mocked(listPurchaseSuppliers).mockResolvedValue([supplier(S3, "Nuevo")]);
+    await user.click(await screen.findByRole("button", { name: "guardar proveedor (mock)" }));
+    await waitFor(() => expect(screen.getByLabelText("Comprar a (Sin proveedor)")).toHaveValue(S3));
+    expect(screen.queryByRole("dialog", { name: "Proveedor (mock)" })).not.toBeInTheDocument();
+    const button = screen.getByRole("button", { name: "Generar órdenes de compra" });
+    expect(button).toBeEnabled();
+    await user.click(button);
+    await waitFor(() =>
+      expect(generateSuggestedPurchase).toHaveBeenCalledWith(expect.objectContaining({ lines: [{ variantId: "v-1", quantity: 60, supplierId: S3 }] }), expect.any(String)),
+    );
+  });
+
+  it("sin rol de costos no se ofrece crear proveedor", async () => {
+    loginAs("VENTAS");
+    jest.mocked(getSuggestedPurchase).mockResolvedValue(
+      suggestion({ groups: [{ supplierId: null, supplierName: null, supplierActive: null, totals: { ...totals }, items: [item({ supplierId: null, supplierName: null })] }] }),
+    );
+    setup();
+    await screen.findByLabelText("Pedir: Polo · Talla: M");
+    expect(within(screen.getByTestId("sg-group-__sin_proveedor__")).queryByRole("button", { name: "Nuevo proveedor" })).not.toBeInTheDocument();
   });
 });
