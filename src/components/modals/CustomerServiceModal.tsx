@@ -1427,6 +1427,24 @@ export default function CustomerServiceModal({
                           {receipt.customer.clientType || "-"}
                         </span>
                       </div>
+                      <div className="sm:col-start-2" data-testid="detalle-metodo-envio">
+                        <span className="text-muted-foreground">
+                          Método de envío:{" "}
+                        </span>
+                        <span className="font-medium">
+                          {orderHeader?.courier?.trim() || "-"}
+                        </span>
+                      </div>
+                      <div className="sm:col-start-2" data-testid="detalle-agencia-recojo">
+                        <span className="text-muted-foreground">
+                          Agencia de recojo:{" "}
+                        </span>
+                        <span className="font-medium break-words">
+                          {receipt.delivery?.agency?.trim() ||
+                            orderHeader?.deliverySnapshot?.agency?.trim() ||
+                            "-"}
+                        </span>
+                      </div>
                       <div className="col-span-full flex items-center gap-1">
                         <span className="text-muted-foreground">
                           Dirección:{" "}
