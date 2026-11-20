@@ -145,6 +145,16 @@ describe("alta y edición del pack", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
+  it("explica que para Shopify el SKU del pack tiene que ser el mismo que allá (correcciones 11-20, A1)", () => {
+    const { unmount } = wrap(<PackFormDialog pack={null} onClose={jest.fn()} />);
+    expect(screen.getByLabelText(/^SKU/)).toHaveAccessibleDescription(
+      "Si vendes este pack en Shopify, pon el mismo SKU que tiene allá: así sus pedidos descuentan los componentes.",
+    );
+    unmount();
+    wrap(<PackFormDialog pack={KIT} onClose={jest.fn()} />);
+    expect(screen.getByText("Los pedidos de Shopify entran como este pack si el producto allá tiene este mismo SKU.")).toBeInTheDocument();
+  });
+
   it("al editar guarda precio y componentes; un 409 PACK_LOW_MARGIN pide confirmar y reintenta con confirmLowMargin", async () => {
     jest.mocked(getVariantCosts).mockResolvedValue([{ variantId: "v-polo", averageCost: 10 }, { variantId: "v-gorra", averageCost: 5 }]);
     const conflict = new AxiosError("409", "ERR", undefined, undefined, {

@@ -171,11 +171,16 @@ export function PackFormDialog({ pack, onClose, onSaved }: { pack: PackView | nu
               <div className="space-y-1.5">
                 <Label>SKU</Label>
                 <p className="font-mono text-sm">{pack.sku || pack.productSku || "—"}</p>
+                <p className="text-xs text-muted-foreground">Los pedidos de Shopify entran como este pack si el producto allá tiene este mismo SKU.</p>
               </div>
             ) : (
               <div className="space-y-1.5">
                 <Label htmlFor="pack-sku">SKU <span className="text-muted-foreground">(opcional)</span></Label>
-                <Input id="pack-sku" value={sku} onChange={(event) => setSku(event.target.value)} placeholder="Se genera solo si lo dejas vacío" className="font-mono" maxLength={100} />
+                <Input id="pack-sku" value={sku} onChange={(event) => setSku(event.target.value)} placeholder="Se genera solo si lo dejas vacío" className="font-mono" maxLength={100} aria-describedby="pack-sku-hint" />
+                {/* Correcciones 11-20 (A1): un pedido de Shopify se reconoce como pack solo por el SKU (o un vínculo ya hecho). */}
+                <p id="pack-sku-hint" className="text-xs text-muted-foreground">
+                  Si vendes este pack en Shopify, pon el mismo SKU que tiene allá: así sus pedidos descuentan los componentes.
+                </p>
               </div>
             )}
             <div className="space-y-1.5">
