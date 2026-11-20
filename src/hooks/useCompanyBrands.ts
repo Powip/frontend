@@ -24,13 +24,29 @@ export function useCompanyBrands() {
     enabled: Boolean(companyId && auth?.accessToken),
     staleTime: 60 * 1000,
   });
+  const invalidate = () => void queryClient.invalidateQueries({ queryKey });
   const create = useMutation({
     mutationFn: async (name: string) => (await axiosAuth.post<CompanyBrand>(brandsApi(), { name })).data,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey }),
+    onSuccess: invalidate,
+  });
+  // Correcciones 11-20 (B1): Configuración › Marcas renombra y desactiva (DELETE = desactivar en ms-products).
+  const rename = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) =>
+      (await axiosAuth.patch<CompanyBrand>(`${brandsApi()}/${encodeURIComponent(id)}`, { name })).data,
+    onSuccess: invalidate,
+  });
+  const deactivate = useMutation({
+    mutationFn: async (id: string) => {
+      await axiosAuth.delete(`${brandsApi()}/${encodeURIComponent(id)}`);
+    },
+    onSuccess: invalidate,
   });
   return {
     brands: query.data ?? [],
     isLoading: query.isPending,
+    isError: query.isError,
     createBrand: (name: string) => create.mutateAsync(name),
+    renameBrand: (id: string, name: string) => rename.mutateAsync({ id, name }),
+    deactivateBrand: (id: string) => deactivate.mutateAsync(id),
   };
 }
