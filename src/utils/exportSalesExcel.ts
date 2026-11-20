@@ -45,10 +45,17 @@ export interface SaleExportData {
    * las filas la columna no se agrega (otros módulos no la usan).
    */
   scheduledDispatchDate?: string | null;
+  /**
+   * Solo en el export de Pedidos: referencia de la dirección de entrega, o
+   * null si el pedido no tiene. Con `undefined` en todas las filas la columna
+   * no se agrega (otros módulos no la usan).
+   */
+  reference?: string | null;
 }
 
 export const FILTERED_PRODUCT_UNITS_HEADER = "Unidades del producto filtrado";
 export const SCHEDULED_DISPATCH_HEADER = "Fecha programada de despacho";
+export const REFERENCE_HEADER = "Referencia";
 
 /**
  * Texto de la columna "Productos": todos los ítems de la orden como
@@ -95,6 +102,7 @@ export function exportSalesToExcel(
   // FEAT-31: igual que en pantalla, «N° Externo» solo si algún pedido exportado lo trae.
   const withExternalNumber = hasExternalOrderNumbers(sales);
   const withScheduledDispatch = sales.some((s) => s.scheduledDispatchDate !== undefined);
+  const withReference = sales.some((s) => s.reference !== undefined);
 
   const exportData = sales.map((s, index) => ({
     "N°": index + 1,
@@ -124,6 +132,7 @@ export function exportSalesToExcel(
     Distrito: s.district || "-",
     Zona: s.zone || "-",
     Dirección: s.address || "-",
+    ...(withReference && { [REFERENCE_HEADER]: s.reference?.trim() || "-" }),
     "Link Maps": s.googleMapsUrl || "-",
     "Método Pago": s.paymentMethod,
     "Tipo Entrega": s.deliveryType,
