@@ -39,7 +39,7 @@ import { useOperationsRole, OPS_PERMISSIONS } from "@/contexts/OperationsRoleCon
 import { useUserAuditInfo } from "@/hooks/useUserAuditInfo";
 import { OrderHeader } from "@/interfaces/IOrder";
 import { DELIVERY_ZONES } from "@/constants/operationsDomain";
-import { getPedidosTab, PRE_FULFILLMENT_STATUSES } from "@/utils/domain/operations-pedidos-tabs";
+import { getPedidosTab, isPreFulfillmentScheduled, PRE_FULFILLMENT_STATUSES } from "@/utils/domain/operations-pedidos-tabs";
 import {
   Sale,
   mapOrderToSale,
@@ -177,9 +177,16 @@ export default function PlanificacionTab() {
       if (o.deliveryType !== "DOMICILIO") continue;
       if (["DESPACHADO", "ENTREGADO", "ANULADO"].includes(o.status)) continue;
       // La preparación se gestiona en Pedidos › Pendientes.
-      // La planificación de guías empieza cuando el paquete está preparado.
-      if (PRE_FULFILLMENT_STATUSES.includes(o.status)) continue;
-      if (getPedidosTab(o) !== "despachar") continue;
+      // La planificación de guías empieza cuando el paquete está preparado,
+      // salvo las ventas con fecha comprometida: una venta recién registrada
+      // con «Programar venta para otra fecha» queda PENDIENTE (aún sin
+      // preparar) y debe verse igual en su día como «agendado».
+      if (isPreFulfillmentScheduled(o)) {
+        // pasa: se clasifica por callbackAt más abajo
+      } else {
+        if (PRE_FULFILLMENT_STATUSES.includes(o.status)) continue;
+        if (getPedidosTab(o) !== "despachar") continue;
+      }
 
       // Con fecha comprometida (reprogramado o vendido con fecha): es un
       // "agendado" del día que le corresponda, todavía no confirmado — se

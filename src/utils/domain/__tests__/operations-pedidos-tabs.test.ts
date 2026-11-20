@@ -1,5 +1,5 @@
 import type { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
-import { PRE_FULFILLMENT_STATUSES, SHIPPING_STATUSES, countByTab, getPedidosTab, isOperationsOrderVisible } from "../operations-pedidos-tabs";
+import { PRE_FULFILLMENT_STATUSES, SHIPPING_STATUSES, countByTab, getPedidosTab, isOperationsOrderVisible, isPreFulfillmentScheduled } from "../operations-pedidos-tabs";
 
 const order = (status: OrderStatus, overrides: Partial<OrderHeader> = {}) => ({ id: "order-1", status, ...overrides }) as OrderHeader;
 
@@ -44,5 +44,18 @@ describe("operational queues are independent of payment", () => {
   it("keeps failed deliveries and courier errors in attention", () => {
     expect(getPedidosTab(order("EN_ENVIO", { shalomStatus: "DEVUELTO" }))).toBe("atencion");
     expect(getPedidosTab(order("DESPACHADO", { shalomError: "Error" }))).toBe("atencion");
+  });
+});
+
+describe("isPreFulfillmentScheduled (ventas programadas en Planificación)", () => {
+  const cb = "2026-11-23T17:00:00.000Z";
+  it.each(["PENDIENTE", "PAGADO"] as OrderStatus[])("acepta %s con fecha y SCHEDULED", (status) => {
+    expect(isPreFulfillmentScheduled(order(status, { callbackAt: cb, callStatus: "SCHEDULED" } as Partial<OrderHeader>))).toBe(true);
+  });
+  it("rechaza sin fecha, ya confirmada, o en otros estados", () => {
+    expect(isPreFulfillmentScheduled(order("PENDIENTE", { callStatus: "SCHEDULED" } as Partial<OrderHeader>))).toBe(false);
+    expect(isPreFulfillmentScheduled(order("PENDIENTE", { callbackAt: cb, callStatus: "CONFIRMED" } as Partial<OrderHeader>))).toBe(false);
+    expect(isPreFulfillmentScheduled(order("PREVENTA", { callbackAt: cb, callStatus: "SCHEDULED" } as Partial<OrderHeader>))).toBe(false);
+    expect(isPreFulfillmentScheduled(order("PREPARADO", { callbackAt: cb, callStatus: "SCHEDULED" } as Partial<OrderHeader>))).toBe(false);
   });
 });
