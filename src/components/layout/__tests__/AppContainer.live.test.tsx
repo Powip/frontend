@@ -15,6 +15,7 @@ jest.mock("@/components/auth/AuthGuard", () => ({
   __esModule: true,
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
+jest.mock("@/components/gre/GreCredentialsNotice", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/layout/Sidebar", () => ({ Sidebar: () => <nav>Panel privado</nav> }));
 jest.mock("@/components/subscription/FlowMigrationBanner", () => ({
   __esModule: true, default: () => <p>Banner Flow</p>,

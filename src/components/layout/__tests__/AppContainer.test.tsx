@@ -11,6 +11,7 @@ import AppContainer from "../AppContainer";
 let mockPathname = "/";
 let mockAuth: { user: { id: string } } | null = null;
 
+jest.mock("@/components/gre/GreCredentialsNotice", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ auth: mockAuth }),
 }));
