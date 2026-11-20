@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import ScannerSheet from "@/app/centro-envios/components/ScannerSheet";
 import { OrderHeader } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
+import { isCourierDelivery } from "@/utils/domain/courier-delivery";
 import { useUserAuditInfo } from "@/hooks/useUserAuditInfo";
 import { SHIPPING_STATUSES } from "@/utils/domain/operations-pedidos-tabs";
 import { assignmentBlockReason, requiresAuthenticatedSaleMutation, saleMutationUrl } from "@/services/saleTrackingService";
@@ -31,7 +32,7 @@ export function GlobalScanner({
   const { auth } = useAuth();
   const getUserInfo = useUserAuditInfo();
   const { orders: allOrders, loading, error, retry, refetch: loadOrders } = useBusinessOrders(undefined, undefined, { enabled: open });
-  const orders = allOrders.filter((o) => o.deliveryType === "DOMICILIO" && SHIPPING_STATUSES.includes(o.status));
+  const orders = allOrders.filter((o) => isCourierDelivery(o) && SHIPPING_STATUSES.includes(o.status));
 
   // Recarga siempre al abrir — un pedido puede haber cambiado de estado (p.ej.
   // recién pasó a PREPARADO) o de tienda seleccionada desde la última vez que

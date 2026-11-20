@@ -38,6 +38,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useOperationsRole, OPS_PERMISSIONS } from "@/contexts/OperationsRoleContext";
 import { useUserAuditInfo } from "@/hooks/useUserAuditInfo";
 import { OrderHeader } from "@/interfaces/IOrder";
+import { isCourierDelivery } from "@/utils/domain/courier-delivery";
 import { DELIVERY_ZONES } from "@/constants/operationsDomain";
 import { getPedidosTab, isPreFulfillmentScheduled, PRE_FULFILLMENT_STATUSES } from "@/utils/domain/operations-pedidos-tabs";
 import {
@@ -174,7 +175,7 @@ export default function PlanificacionTab() {
     for (const d of days) map.set(dayKey(d), []);
 
     for (const o of orders) {
-      if (o.deliveryType !== "DOMICILIO") continue;
+      if (!isCourierDelivery(o)) continue;
       if (["DESPACHADO", "ENTREGADO", "ANULADO"].includes(o.status)) continue;
       // La preparación se gestiona en Pedidos › Pendientes.
       // La planificación de guías empieza cuando el paquete está preparado,

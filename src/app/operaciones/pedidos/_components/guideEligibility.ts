@@ -1,6 +1,7 @@
 import type { OrderStatus } from "@/interfaces/IOrder";
 import { DELIVERY_TYPE_OPTIONS } from "@/constants/operationsDomain";
 import { getStatusLabel } from "@/utils/domain/orders-status-flow";
+import { isCourierDelivery } from "@/utils/domain/courier-delivery";
 import type { Sale } from "./types";
 
 /**
@@ -56,12 +57,8 @@ export function getGuideBlockReason(sale: Sale): GuideBlockReason | null {
   if (sale.guideNumber) return "HAS_GUIDE";
   if (!GUIDE_ELIGIBLE_STATUSES.includes(sale.status))
     return "STATUS_NOT_ALLOWED";
-  if ((sale.deliveryType ?? "").toUpperCase() === "DOMICILIO") return null;
+  if (isCourierDelivery(sale)) return null;
   const normalized = normalizeDeliveryType(sale.deliveryType);
-  // «Recojo en agencia» (registrar-venta elige agencia Shalom) sale con
-  // courier: arma guía igual que un domicilio. Sin courier sigue bloqueado.
-  if (normalized === "PUNTO_EXTERNO" && (sale.courier || sale.courierId))
-    return null;
   if (normalized === "RETIRO_TIENDA") return "PICKUP_IN_STORE";
   if (!normalized) return "MISSING_DELIVERY_TYPE";
   return "UNSUPPORTED_DELIVERY_TYPE";

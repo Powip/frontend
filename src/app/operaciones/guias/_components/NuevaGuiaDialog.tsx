@@ -1,6 +1,7 @@
 "use client";
 import { ExternalOrderNumberValue } from "@/components/orders/ExternalOrderNumberColumn";
 import { EXTERNAL_ORDER_NUMBER_LABEL, hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
+import { isCourierDelivery } from "@/utils/domain/courier-delivery";
 import { canShipCommercialOrder } from "@/utils/commercialOrders";
 
 import { OrderOriginLabel } from "@/app/operaciones/_shared/OrderOriginLabel";
@@ -96,7 +97,7 @@ export default function NuevaGuiaDialog({
   const eligible = useMemo(() => {
     return orders.filter(canShipCommercialOrder).filter(
       (o) =>
-        o.deliveryType === "DOMICILIO" &&
+        isCourierDelivery(o) &&
         !o.guideNumber &&
         (o.status === "PREPARADO" ||
           o.status === "LLAMADO" ||

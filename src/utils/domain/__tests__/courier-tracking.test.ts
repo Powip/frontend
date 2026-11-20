@@ -37,6 +37,18 @@ describe("isOrderTrackable — ENTREGADO manual sin guía/tracking", () => {
     expect(isOrderTrackable(makeOrder({ deliveryType: "PUNTO_EXTERNO" }))).toBe(false);
   });
 
+  it("incluye ENTREGADO + PUNTO_EXTERNO con courier (recojo en agencia)", () => {
+    expect(
+      isOrderTrackable(makeOrder({ deliveryType: "PUNTO_EXTERNO", courier: "Shalom" })),
+    ).toBe(true);
+  });
+
+  it("incluye ENTREGADO + PUNTO_EXTERNO con courierId", () => {
+    expect(
+      isOrderTrackable(makeOrder({ deliveryType: "PUNTO_EXTERNO", courierId: "c-1" })),
+    ).toBe(true);
+  });
+
   it("incluye ENTREGADO + RETIRO_TIENDA si tiene guía", () => {
     expect(
       isOrderTrackable(makeOrder({ deliveryType: "RETIRO_TIENDA", guideNumber: "G-001" })),
