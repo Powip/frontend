@@ -7,6 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { createGasto, deleteGasto, getGastos, updateGasto } from "@/api/Admin";
 import { getOrdersByCompany } from "@/api/Ventas";
+import { getProducts } from "@/api/Productos";
 import { soloEntregados } from "../_lib/realData";
 import { CategoriaGasto, ICreateGastoDto, IGastoOperativo } from "@/interfaces/IAdmin";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 const CATEGORIAS: { value: CategoriaGasto; label: string }[] = [
@@ -27,6 +28,12 @@ const CATEGORIAS: { value: CategoriaGasto; label: string }[] = [
   { value: "OTRO", label: "Otro" },
 ];
 
+// INVERSION es la compra de mercadería por prenda. No es gasto operativo:
+// el costo de la prenda ya entra al COGS cuando se vende, así que no se
+// suma a fijos/variables ni al P&L. Se muestra aparte, agrupado por prenda.
+const INVERSION: { value: CategoriaGasto; label: string } = { value: "INVERSION", label: "Inversión (por prenda)" };
+const CATEGORIAS_FORM = [...CATEGORIAS, INVERSION];
+
 const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
 
 function fmt(n: number) {
@@ -34,6 +41,72 @@ function fmt(n: number) {
 }
 
 const emptyForm: ICreateGastoDto = { categoria: "OTRO", descripcion: "", monto: 0, mes: new Date().getMonth() + 1, anio: new Date().getFullYear() };
+
+type Prenda = { id: string; name: string; sku?: string };
+
+function BuscadorPrenda({ value, onChange }: { value: Prenda | null; onChange: (p: Prenda | null) => void }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<Prenda[]>([]);
+  const [open, setOpen] = useState(false);
+  const [searching, setSearching] = useState(false);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setResults([]); return; }
+    let cancel = false;
+    setSearching(true);
+    const t = setTimeout(() => {
+      getProducts({ name: q })
+        .then((items) => { if (!cancel) setResults(items.slice(0, 8).map((p) => ({ id: p.id, name: p.name, sku: p.sku }))); })
+        .catch(() => { if (!cancel) setResults([]); })
+        .finally(() => { if (!cancel) setSearching(false); });
+    }, 300);
+    return () => { cancel = true; clearTimeout(t); };
+  }, [query]);
+
+  if (value) {
+    return (
+      <div className="flex h-9 items-center justify-between gap-2 rounded-md border px-3 text-sm">
+        <span className="truncate" title={value.name}>{value.name}</span>
+        <button type="button" aria-label="Quitar prenda" className="text-muted-foreground hover:text-foreground" onClick={() => onChange(null)}>
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <Input
+        placeholder="Buscar prenda…"
+        value={query}
+        onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+      />
+      {open && query.trim().length >= 2 && (
+        <div className="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-md border bg-popover shadow-md">
+          {searching ? (
+            <p className="px-3 py-2 text-xs text-muted-foreground">Buscando…</p>
+          ) : results.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-muted-foreground">Sin resultados</p>
+          ) : results.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              className="flex w-full flex-col items-start px-3 py-2 text-left text-sm hover:bg-muted"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { onChange(p); setQuery(""); setOpen(false); }}
+            >
+              <span>{p.name}</span>
+              {p.sku && <span className="text-[11px] text-muted-foreground">{p.sku}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function GastosPage() {
   const { auth } = useAuth();
@@ -90,7 +163,7 @@ export default function GastosPage() {
 
   const handleEdit = (g: IGastoOperativo) => {
     setEditId(g.id);
-    setForm({ categoria: g.categoria, descripcion: g.descripcion || "", monto: Number(g.monto), mes: g.mes, anio: g.anio });
+    setForm({ categoria: g.categoria, descripcion: g.descripcion || "", monto: Number(g.monto), mes: g.mes, anio: g.anio, productId: g.productId ?? null, productName: g.productName ?? null });
     setShowForm(true);
   };
 
@@ -118,6 +191,20 @@ export default function GastosPage() {
   const pctVariables = totalGeneral > 0 ? (totalVariables / totalGeneral) * 100 : 0;
   const pctCogsSobreVentas = costos.ventas > 0 ? (costos.cogs / costos.ventas) * 100 : 0;
   const totalCostosYGastos = costos.cogs + totalGeneral;
+
+  const gastosInversion = gastos.filter((g) => g.categoria === "INVERSION");
+  const totalInversion = gastosInversion.reduce((s, g) => s + Number(g.monto), 0);
+  const inversionPorPrenda = Object.values(
+    gastosInversion.reduce<Record<string, { key: string; prenda: string; registros: number; total: number }>>((acc, g) => {
+      const key = g.productId ?? "sin-prenda";
+      const row = acc[key] ?? { key, prenda: g.productName || "Sin prenda", registros: 0, total: 0 };
+      row.registros += 1;
+      row.total += Number(g.monto);
+      acc[key] = row;
+      return acc;
+    }, {}),
+  ).sort((a, b) => b.total - a.total);
+  const esInversion = form.categoria === "INVERSION";
 
   return (
     <div className="p-8 space-y-6">
@@ -164,14 +251,31 @@ export default function GastosPage() {
       {showForm && (
         <Card>
           <CardHeader><CardTitle className="text-sm">{editId ? "Editar gasto" : "Registrar gasto"}</CardTitle></CardHeader>
-          <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <CardContent className={`grid grid-cols-2 gap-3 ${esInversion ? "md:grid-cols-6" : "md:grid-cols-5"}`}>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted-foreground font-medium">Categoría</label>
-              <Select value={form.categoria} onValueChange={(v) => setForm((f) => ({ ...f, categoria: v as CategoriaGasto }))}>
+              <Select
+                value={form.categoria}
+                onValueChange={(v) => setForm((f) => ({
+                  ...f,
+                  categoria: v as CategoriaGasto,
+                  // La prenda solo aplica a INVERSION: al cambiar a otra categoría se desliga.
+                  ...(v !== "INVERSION" && f.productId ? { productId: null, productName: null } : {}),
+                }))}
+              >
                 <SelectTrigger><SelectValue placeholder="Seleccioná una" /></SelectTrigger>
-                <SelectContent>{CATEGORIAS.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
+                <SelectContent>{CATEGORIAS_FORM.map((c) => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
+            {esInversion && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-muted-foreground font-medium">Prenda (opcional)</label>
+                <BuscadorPrenda
+                  value={form.productId ? { id: form.productId, name: form.productName || "Prenda" } : null}
+                  onChange={(p) => setForm((f) => ({ ...f, productId: p?.id ?? null, productName: p?.name ?? null }))}
+                />
+              </div>
+            )}
             <div className="flex flex-col gap-1">
               <label className="text-xs text-muted-foreground font-medium">Descripción</label>
               <Input placeholder="Ej: Planilla enero" value={form.descripcion} onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))} />
@@ -212,18 +316,19 @@ export default function GastosPage() {
                 <TableRow>
                   <TableHead>Categoría</TableHead>
                   <TableHead>Descripción</TableHead>
+                  <TableHead>Prenda</TableHead>
                   <TableHead className="text-right">Monto</TableHead>
                   <TableHead className="w-24" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {gastos.length === 0 ? (
-                  <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-8">No hay gastos registrados para este período</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No hay gastos registrados para este período</TableCell></TableRow>
                 ) : gastos.map((g) => (
                   <TableRow key={g.id}>
                     <TableCell>
                       <div className="flex items-center gap-1.5">
-                        <Badge variant="outline">{CATEGORIAS.find((c) => c.value === g.categoria)?.label ?? g.categoria}</Badge>
+                        <Badge variant="outline">{CATEGORIAS_FORM.find((c) => c.value === g.categoria)?.label ?? g.categoria}</Badge>
                         {g.source && g.source !== "manual" && (
                           <Badge variant="secondary" className="text-[10px] px-1.5 py-0">Auto</Badge>
                         )}
@@ -233,6 +338,7 @@ export default function GastosPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground text-sm">{g.descripcion || "—"}</TableCell>
+                    <TableCell className="text-sm">{g.productName || <span className="text-muted-foreground">—</span>}</TableCell>
                     <TableCell className="text-right font-mono font-semibold">{fmt(Number(g.monto))}</TableCell>
                     <TableCell>
                       <div className="flex gap-1 justify-end">
@@ -240,6 +346,40 @@ export default function GastosPage() {
                         <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => handleDelete(g.id)}><Trash2 className="h-4 w-4" /></Button>
                       </div>
                     </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-sm font-semibold">Inversión por prenda</CardTitle>
+          <span className="text-sm font-mono font-semibold">{fmt(totalInversion)}</span>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            Compra de mercadería del período. No suma a gastos operativos ni a la utilidad: el costo de la prenda ya entra al COGS cuando se vende.
+          </p>
+          {inversionPorPrenda.length === 0 ? (
+            <p className="text-sm text-muted-foreground py-4 text-center">No hay inversión registrada para este período</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Prenda</TableHead>
+                  <TableHead className="text-right">Registros</TableHead>
+                  <TableHead className="text-right">Total invertido</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {inversionPorPrenda.map((r) => (
+                  <TableRow key={r.key}>
+                    <TableCell className={r.key === "sin-prenda" ? "text-muted-foreground" : ""}>{r.prenda}</TableCell>
+                    <TableCell className="text-right font-mono">{r.registros}</TableCell>
+                    <TableCell className="text-right font-mono font-semibold">{fmt(r.total)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
