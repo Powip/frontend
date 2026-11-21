@@ -98,17 +98,24 @@ export function ShalomAgencyField({
   }, [locationKey]);
 
   const term = normalizeAgencyQuery(search);
+  const matchesTerm = (agency: ShalomAgencyOption) =>
+    [agency.nombre_agencia, agency.api_name, agency.direccion].some((text) =>
+      normalizeAgencyQuery(text).includes(term),
+    );
+  const localMatches = useMemo(
+    () => (filtering && term ? located.agencies.filter(matchesTerm) : located.agencies),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `matchesTerm` solo depende de `term`
+    [filtering, term, located],
+  );
+  // Lo escrito no coincide con ninguna agencia de la zona del cliente (por ejemplo, el cliente vive
+  // en un distrito y recoge en otro): se busca en todo el catálogo en vez de mostrar la lista vacía.
+  const widened = filtering && !!term && localMatches.length === 0;
   const list = useMemo(() => {
-    if (filtering) {
-      if (!term) return located.agencies;
-      return located.agencies.filter((agency) =>
-        [agency.nombre_agencia, agency.api_name, agency.direccion].some((text) =>
-          normalizeAgencyQuery(text).includes(term),
-        ),
-      );
-    }
+    if (widened) return catalog.filter(matchesTerm);
+    if (filtering) return localMatches;
     return search.length >= AGENCY_SEARCH_MIN_CHARS ? found : catalog;
-  }, [filtering, term, search, located, found, catalog]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `matchesTerm` solo depende de `term`
+  }, [widened, filtering, term, search, localMatches, found, catalog]);
 
   const visible = useMemo(() => {
     const top = list.slice(0, SHALOM_AGENCY_FIELD_MAX_OPTIONS);
@@ -125,6 +132,12 @@ export function ShalomAgencyField({
       : located.level === "province"
         ? `de la provincia ${location?.province?.trim()}`
         : `del departamento ${location?.department?.trim()}`;
+  const zone =
+    located.level === "district"
+      ? `en el distrito ${location?.district?.trim()}`
+      : located.level === "province"
+        ? `en la provincia ${location?.province?.trim()}`
+        : `en el departamento ${location?.department?.trim()}`;
   const fallbackNote =
     located.level !== "district" && location?.district?.trim()
       ? `No hay agencias en ${location.district.trim()}. `
@@ -156,7 +169,11 @@ export function ShalomAgencyField({
           <span>
             {showAll
               ? "Mostrando todas las agencias."
-              : `${fallbackNote}Mostrando las agencias ${place} (${located.agencies.length}).`}
+              : widened
+                ? list.length > 0
+                  ? `No hay agencias con «${search.trim()}» ${zone}. Mostrando coincidencias de todas las agencias (${list.length}).`
+                  : `No hay agencias con «${search.trim()}» ${zone} ni en el resto de agencias.`
+                : `${fallbackNote}Mostrando las agencias ${place} (${located.agencies.length}).`}
           </span>
           <Button
             type="button"
