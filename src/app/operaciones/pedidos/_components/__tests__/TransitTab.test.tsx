@@ -323,6 +323,38 @@ describe("TransitTab — En camino: acciones por estado", () => {
   });
 });
 
+describe("TransitTab — En camino: impresión masiva", () => {
+  it("'Imprimir etiquetas' va en la barra: sin selección deshabilitado y con selección imprime esos pedidos", async () => {
+    const user = userEvent.setup();
+    const actions = makeActions({ onBulkPrint: jest.fn() } as Partial<PedidosActions>);
+    renderTab("camino", [makeSale({ id: "p-1", orderNumber: "ORD-P1" }), makeSale({ id: "p-2", orderNumber: "ORD-P2" })], { actions });
+
+    const printButton = screen.getByRole("button", { name: /imprimir etiquetas/i });
+    expect(printButton).toBeDisabled();
+
+    await user.click(within(rowOf("ORD-P1")).getByRole("checkbox"));
+    await user.click(within(rowOf("ORD-P2")).getByRole("checkbox"));
+    expect(printButton).toBeEnabled();
+    await user.click(printButton);
+
+    expect(actions.onBulkPrint).toHaveBeenCalledWith([
+      expect.objectContaining({ id: "p-1" }),
+      expect.objectContaining({ id: "p-2" }),
+    ]);
+  });
+
+  it("'Imprimir etiquetas' no aparece sin el permiso de despacho", () => {
+    const actions = makeActions({ can: jest.fn((permission: string) => permission !== "OPS_DISPATCH") as never });
+    renderTab("camino", [makeSale({ orderNumber: "ORD-P1" })], { actions });
+    expect(screen.queryByRole("button", { name: /imprimir etiquetas/i })).not.toBeInTheDocument();
+  });
+
+  it("'Imprimir etiquetas' no aparece en Despachados", () => {
+    renderTab("despachados", [makeSale({ orderNumber: "ORD-D1", status: "DESPACHADO" })]);
+    expect(screen.queryByRole("button", { name: /imprimir etiquetas/i })).not.toBeInTheDocument();
+  });
+});
+
 describe("TransitTab — Despachados", () => {
   it("cada fila tiene el botón 'Entregado' y no hay botón Despachar ni Aprobar guía", async () => {
     const user = userEvent.setup();
