@@ -972,6 +972,11 @@ export function PedidosContent() {
             storeId={createGuideOrders?.[0]?.storeId || ""}
             onConfirm={handleCreateGuideConfirm}
             isLoading={isCreatingGuide}
+            onRemoveOrder={(orderId) =>
+              setCreateGuideOrders((prev) =>
+                prev ? prev.filter((o) => o.id !== orderId) : prev,
+              )
+            }
           />
         )}
 

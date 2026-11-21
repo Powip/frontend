@@ -181,7 +181,7 @@ describe("Registrar venta — recojo en agencia al registrar una venta nueva", (
     mountPage();
     await screen.findByDisplayValue("Almacén compartido A");
     const options = within(deliveryType()).getAllByRole("option").map((option) => option.textContent);
-    expect(options).toEqual(expect.arrayContaining(["Retiro en tienda", "Envío a domicilio", "Recojo en agencia"]));
+    expect(options).toEqual(expect.arrayContaining(["Retiro en tienda negocio", "Envío a domicilio", "Recojo en tienda courier"]));
     expect(options).not.toContain("Envío a agencia");
   });
 
@@ -220,7 +220,7 @@ describe("Registrar venta — recojo en agencia al registrar una venta nueva", (
     const user = await fillSale();
     await user.selectOptions(deliveryType(), "DOMICILIO");
     await user.selectOptions(field(/método de envío/i).getByRole("combobox"), "Shalom");
-    expect(screen.getByText(/el tipo de entrega cambia a «Recojo en agencia»/)).toBeInTheDocument();
+    expect(screen.getByText(/el tipo de entrega cambia a «Recojo en tienda courier»/)).toBeInTheDocument();
     await waitFor(() => expect(submitButton()).toBeEnabled());
 
     await chooseShalomAgency(user, "MIRAFLORES OVALO LIMA");
@@ -325,6 +325,6 @@ describe("Registrar venta — recojo en agencia al registrar una venta nueva", (
     await screen.findByDisplayValue("Almacén compartido A");
     await waitFor(() => expect(deliveryType()).toHaveValue("RETIRO_TIENDA"));
     const options = within(deliveryType()).getAllByRole("option").map((option) => option.textContent);
-    expect(options).not.toContain("Recojo en agencia");
+    expect(options).not.toContain("Recojo en tienda courier");
   });
 });

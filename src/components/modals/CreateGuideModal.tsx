@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { PackagePlus, Loader2, AlertTriangle, Truck } from "lucide-react";
+import { PackagePlus, Loader2, AlertTriangle, Truck, X } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -57,6 +57,8 @@ interface CreateGuideModalProps {
   isLoading?: boolean;
   defaultCourierId?: string | null;
   defaultCourierName?: string | null;
+  /** Quita un pedido de la guía en armado (no borra el pedido). Sin esta prop no se muestra el botón. */
+  onRemoveOrder?: (orderId: string) => void;
 }
 
 export interface CreateGuideData {
@@ -116,6 +118,7 @@ export default function CreateGuideModal({
   isLoading = false,
   defaultCourierId,
   defaultCourierName,
+  onRemoveOrder,
 }: CreateGuideModalProps) {
   const invalidateBusinessData = useInvalidateBusinessData();
   const { auth, hasPermission } = useAuth();
@@ -322,6 +325,21 @@ export default function CreateGuideModal({
                     ) : null}
                   </div>
                   <div className="text-right">
+                    {onRemoveOrder && selectedOrders.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-xs text-muted-foreground hover:text-red-600"
+                        aria-label={`Quitar pedido ${order.orderNumber} de la guía`}
+                        title="Quitar de la guía (no borra el pedido)"
+                        disabled={isLoading}
+                        onClick={() => onRemoveOrder(order.id)}
+                      >
+                        <X className="h-3.5 w-3.5 mr-1" />
+                        Quitar
+                      </Button>
+                    )}
                     <span className="text-muted-foreground text-xs block">
                       {order.district}
                     </span>
