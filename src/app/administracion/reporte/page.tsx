@@ -184,7 +184,11 @@ export default function ReporteRapidoPage() {
     (s, o) => s + (o.itemCount || (Array.isArray(o.items) ? o.items.length : 1)),
     0,
   );
-  const gastosFijosMes = (gastosMes as any[]).reduce((s, g) => s + Number(g.monto || 0), 0);
+  // INVERSION (compra de mercadería por prenda) no es gasto operativo:
+  // ya se cuenta como costo de producto (COGS) al vender.
+  const gastosFijosMes = (gastosMes as any[])
+    .filter((g) => g.categoria !== "INVERSION")
+    .reduce((s, g) => s + Number(g.monto || 0), 0);
   const publicidadMes = useMemo(
     () => totalInvertidoEnRango(pautaEntries, format(startOfMonth(hoy), "yyyy-MM-dd"), hoyStr),
     [pautaEntries, hoy, hoyStr],
