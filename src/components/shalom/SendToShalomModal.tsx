@@ -46,7 +46,11 @@ import { buildWhatsAppUrl } from "@/utils/whatsapp/build-whatsapp-url";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import type { ShalomAgencyOption } from "@/services/shalomService";
 import { ShalomAgencySelector as AgencySelector } from "@/components/shalom/ShalomAgencySelector";
-import { useShalomAgencySearch } from "@/components/shalom/useShalomAgencySearch";
+import {
+  useShalomAgencySearch,
+  normalizeAgencyQuery,
+  AGENCY_SEARCH_MIN_CHARS,
+} from "@/components/shalom/useShalomAgencySearch";
 
 // Sentinel para representar el valor vacío "" que exige la API de Shalom.
 // Radix Select no admite value="" en SelectItem — usar este sentinel y mapear al enviar.
@@ -160,7 +164,7 @@ const extractShalomErrorMessage = (rawError: string): string => {
   return rawError.replace(/^Error en Shalom API:\s*/i, "").trim();
 };
 
-const isValidSecurityCode = (code: string): boolean => {
+export const isValidSecurityCode = (code: string): boolean => {
   if (!code || code.length !== 4) return false;
 
   // Detectar números consecutivos ascendentes: 1234, 2345, etc.
@@ -181,6 +185,42 @@ const isValidSecurityCode = (code: string): boolean => {
   return !isAscending && !isDescending && !allSame;
 };
 
+/** Genera `count` códigos de seguridad válidos (4 dígitos) y distintos entre sí. */
+export const generateDistinctSecurityCodes = (count: number): string[] => {
+  const codes = new Set<string>();
+  while (codes.size < count) {
+    const code = String(Math.floor(Math.random() * 10000)).padStart(4, "0");
+    if (isValidSecurityCode(code)) codes.add(code);
+  }
+  return [...codes];
+};
+
+/** Agencia Shalom que el pedido ya trae guardada desde Registrar venta («Shalom — <nombre>»). */
+interface SavedAgency {
+  name: string;
+  agencyId?: string;
+  /** true cuando ya se buscó por el nombre de la agencia (último intento). */
+  triedName: boolean;
+}
+
+const savedAgencyOfOrder = (order: any): SavedAgency | null => { // eslint-disable-line @typescript-eslint/no-explicit-any
+  if (order?.delivery?.type !== "AGENCY" || !order.delivery.agency) return null;
+  const name = String(order.delivery.agency).replace(/^\s*Shalom\s*[—-]\s*/i, "").trim();
+  if (!name) return null;
+  const agencyId = order.delivery.agencyId ? String(order.delivery.agencyId) : undefined;
+  return { name, agencyId, triedName: false };
+};
+
+const findSavedAgency = (agencies: Agency[], saved: SavedAgency): Agency | undefined => {
+  const name = normalizeAgencyQuery(saved.name);
+  return (
+    (saved.agencyId
+      ? agencies.find((a) => String(a.id_agencia) === saved.agencyId)
+      : undefined) ??
+    agencies.find((a) => normalizeAgencyQuery(a.nombre_agencia || "") === name)
+  );
+};
+
 export default function SendToShalomModal({
   open,
   onClose,
@@ -196,6 +236,10 @@ export default function SendToShalomModal({
   const [originSearch, setOriginSearch] = useState<string>("");
   const [originAgency, setOriginAgency] = useState<string>("");
   const [globalSecurityCode, setGlobalSecurityCode] = useState<string>("");
+  // true tras «Generar código distinto por pedido»: el código global deja de pisar los de cada pedido.
+  const [codesPerOrder, setCodesPerOrder] = useState(false);
+  // Agencia guardada en el pedido, pendiente de precargar cuando lleguen los resultados.
+  const pendingSavedAgencyRef = useRef<Record<string, SavedAgency>>({});
   const [declaracionJurada, setDeclaracionJurada] = useState<string>(DECLARACION_JURADA_NINGUNA);
   const [loadingOrigins, setLoadingOrigins] = useState(false);
   const [quoting, setQuoting] = useState(false);
@@ -274,14 +318,32 @@ export default function SendToShalomModal({
     onResult: (type, agencies) => {
       if (type === "origin") setOriginAgencies(agencies);
       else {
+        // Precarga de la agencia que el pedido ya tiene guardada: primero se busca entre las
+        // del distrito del cliente; si no está, se busca una vez por el nombre de la agencia.
+        const pending = pendingSavedAgencyRef.current[type];
+        const saved = pending ? findSavedAgency(agencies, pending) : undefined;
+        let retryByName = "";
+        if (pending) {
+          if (saved || pending.triedName || pending.name.length < AGENCY_SEARCH_MIN_CHARS) {
+            delete pendingSavedAgencyRef.current[type];
+          } else {
+            pending.triedName = true;
+            retryByName = pending.name;
+          }
+        }
         setShipmentsData((prev) => ({
           ...prev,
           [type]: {
             ...prev[type],
             destinationAgencies: agencies,
             loadingAgencies: false,
+            ...(saved && !prev[type]?.destinationAgencyId
+              ? { destinationAgencyId: saved.api_name }
+              : {}),
+            ...(retryByName ? { destinationSearch: retryByName } : {}),
           },
         }));
+        if (retryByName) void fetchAgencies(retryByName, type);
       }
     },
   });
@@ -313,6 +375,8 @@ export default function SendToShalomModal({
     setAereoUnverifiedShipments([]);
     setTotalQuoted(null);
     setGlobalSecurityCode("");
+    setCodesPerOrder(false);
+    pendingSavedAgencyRef.current = {};
     setDeclaracionJurada(DECLARACION_JURADA_NINGUNA);
 
     // Pre-fill origin: fetch perfil completo del usuario para obtener district/province
@@ -329,8 +393,17 @@ export default function SendToShalomModal({
 
     const initialData: Record<string, ShipmentEntry> = {};
     orders.forEach((order) => {
-      const destSearch =
+      const savedAgency = savedAgencyOfOrder(order);
+      const customerPlace =
         order.customer?.district || order.customer?.city || order.city || "";
+      // Sin distrito del cliente se busca directo por el nombre de la agencia guardada.
+      const destSearch = customerPlace || savedAgency?.name || "";
+      if (savedAgency) {
+        pendingSavedAgencyRef.current[order.id] = {
+          ...savedAgency,
+          triedName: !customerPlace,
+        };
+      }
       initialData[order.id] = {
         recipientDoc: order.customer?.dni || "",
         recipientPhone:
@@ -357,7 +430,7 @@ export default function SendToShalomModal({
 
   // Propagar código global a todos los pedidos cuando cambia
   useEffect(() => {
-    if (!open || orders.length === 0) return;
+    if (!open || orders.length === 0 || codesPerOrder) return;
     setShipmentsData((prev) => {
       const next = { ...prev };
       orders.forEach((order) => {
@@ -367,7 +440,23 @@ export default function SendToShalomModal({
       });
       return next;
     });
-  }, [globalSecurityCode, orders]);
+  }, [globalSecurityCode, orders, codesPerOrder]);
+
+  // Un código aleatorio distinto para cada pedido (el código global deja de aplicarse).
+  const handleGenerateCodesPerOrder = () => {
+    const codes = generateDistinctSecurityCodes(orders.length);
+    setGlobalSecurityCode("");
+    setCodesPerOrder(true);
+    setShipmentsData((prev) => {
+      const next = { ...prev };
+      orders.forEach((order, i) => {
+        if (next[order.id]) {
+          next[order.id] = { ...next[order.id], securityCode: codes[i] };
+        }
+      });
+      return next;
+    });
+  };
 
   const updateShipmentField = (
     orderId: string,
@@ -665,7 +754,7 @@ export default function SendToShalomModal({
     if (!originAgency)
       issues.push({ label: "Agencia de origen", field: "origen" });
 
-    if (!globalSecurityCode || !isValidSecurityCode(globalSecurityCode))
+    if (!codesPerOrder && (!globalSecurityCode || !isValidSecurityCode(globalSecurityCode)))
       issues.push({ label: "Código de seguridad global", field: "securityCode" });
 
     orders.forEach((order) => {
@@ -686,7 +775,7 @@ export default function SendToShalomModal({
     });
 
     return issues;
-  }, [originAgency, globalSecurityCode, orders, shipmentsData]);
+  }, [originAgency, globalSecurityCode, codesPerOrder, orders, shipmentsData]);
 
   // Compartido por los documentos de despacho y los rótulos Shalom:
   // incluye únicamente los pedidos que se registraron correctamente.
@@ -1112,7 +1201,9 @@ export default function SendToShalomModal({
                             <Label className="text-sm font-bold text-slate-700 dark:text-slate-200">
                               Código de seguridad{" "}
                               <span className="text-blue-500 text-xs font-medium">
-                                — aplica a todos los pedidos
+                                {codesPerOrder
+                                  ? "— un código distinto por pedido"
+                                  : "— aplica a todos los pedidos"}
                               </span>
                             </Label>
                             {globalSecurityCode &&
@@ -1121,7 +1212,7 @@ export default function SendToShalomModal({
                                   INVÁLIDO
                                 </span>
                               )}
-                            {!globalSecurityCode && (
+                            {!globalSecurityCode && !codesPerOrder && (
                               <span className="text-[10px] font-bold text-red-500">
                                 FALTANTE
                               </span>
@@ -1133,6 +1224,8 @@ export default function SendToShalomModal({
                               onChange={(e) => {
                                 const val = e.target.value.replace(/\D/g, "").slice(0, 4);
                                 setGlobalSecurityCode(val);
+                                // Escribir un código vuelve al modo «uno para todos».
+                                setCodesPerOrder(false);
                                 if (
                                   val.length === 4 &&
                                   !isValidSecurityCode(val)
@@ -1146,6 +1239,7 @@ export default function SendToShalomModal({
                               maxLength={4}
                               className={cn(
                                 "h-9 bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100",
+                                !codesPerOrder &&
                                 (!globalSecurityCode ||
                                   (globalSecurityCode.length > 0 &&
                                     globalSecurityCode.length < 4) ||
@@ -1157,6 +1251,15 @@ export default function SendToShalomModal({
                             <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium italic">
                               4 dígitos sin secuencias ni repetidos
                             </span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 w-full text-xs"
+                              onClick={handleGenerateCodesPerOrder}
+                            >
+                              Generar código distinto por pedido
+                            </Button>
                           </div>
                         </div>
 

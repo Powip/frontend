@@ -531,7 +531,7 @@ test("review shows the agency destination and invoice chosen for this purchase",
   });
   fireEvent.click(screen.getByRole("button", { name: "Continuar" }));
   await screen.findByRole("button", { name: /Continuar con Yape/ });
-  expect(screen.getByText("Recojo en agencia")).toBeInTheDocument();
+  expect(screen.getByText("Recojo en tienda courier")).toBeInTheDocument();
   expect(screen.getByText("Shalom Lima Centro")).toBeInTheDocument();
   expect(screen.getByText("Factura · RUC 20123456789")).toBeInTheDocument();
   expect(screen.getByText("Empresa de prueba SAC")).toBeInTheDocument();

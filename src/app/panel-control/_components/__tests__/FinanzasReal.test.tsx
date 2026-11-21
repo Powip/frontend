@@ -184,10 +184,10 @@ describe("Resultado: antes de publicidad y ganancia parcial", () => {
     expect(fila?.textContent).not.toMatch(/demo/i);
   });
 
-  it("Por liquidar incluye retiro en tienda y POS (nota) y el vencido null es «Sin dato»", async () => {
+  it("Por liquidar incluye retiro en tienda negocio y POS (nota) y el vencido null es «Sin dato»", async () => {
     renderFinanzas("resultado", fuentes());
     const tarjeta = await tarjetaCargada("Por liquidar");
-    expect(tarjeta).toHaveTextContent(/retiro en tienda y POS/i);
+    expect(tarjeta).toHaveTextContent(/retiro en tienda negocio y POS/i);
     expect(tarjeta).toHaveTextContent(/Cobranza.*con courier/i);
     expect(tarjeta).toHaveTextContent(/Vencido: Sin dato/);
     expect(tarjeta.textContent).not.toMatch(/S\/ 0 vencido|NaN|null/);
@@ -279,10 +279,10 @@ describe("Cobranza: con courier, 365 días, tope 5000", () => {
     expect(document.body.textContent).not.toMatch(/\b60 días/);
   });
 
-  it("aclara que Resultado cuenta también retiro en tienda y POS", async () => {
+  it("aclara que Resultado cuenta también retiro en tienda negocio y POS", async () => {
     renderFinanzas("cobranza", fuentes());
     await tarjetaCargada("Por liquidar");
-    expect(screen.getByText(/retiro en tienda y POS/i)).toBeInTheDocument();
+    expect(screen.getByText(/retiro en tienda negocio y POS/i)).toBeInTheDocument();
   });
 
   it("«tiempo hasta liquidar» y «liquidado por el courier» son Pendiente con Liquidaciones de courier", async () => {

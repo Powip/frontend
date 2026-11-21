@@ -417,7 +417,7 @@ describe("PublicQuotationPage", () => {
     render(<PublicQuotationPage token="own-agency" />);
     expect(await screen.findByText("Agencia elegida Huaraz")).toBeInTheDocument();
     expect(screen.getByText("Av. Nueva 456")).toBeInTheDocument();
-    expect(screen.getByText("Retiro en agencia")).toBeInTheDocument();
+    expect(screen.getByText("Recojo en tienda courier")).toBeInTheDocument();
     expect(screen.getByText("Agencia Cayma")).toBeInTheDocument();
   });
 

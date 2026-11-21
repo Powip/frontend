@@ -1472,7 +1472,7 @@ export default function CustomerServiceModal({
                       {receipt.delivery && (
                         <div className="col-span-full">
                           <span className="text-muted-foreground">Entrega del pedido: </span>
-                          <span className="font-medium">{receipt.delivery.type === "AGENCY" ? "Retiro en agencia" : "Envío a domicilio"}</span>
+                          <span className="font-medium">{receipt.delivery.type === "AGENCY" ? "Recojo en tienda courier" : "Envío a domicilio"}</span>
                           {receipt.delivery.type === "AGENCY" && receipt.delivery.agency && (
                             <p className="mt-1 break-words"><span className="text-muted-foreground">Agencia: </span>{receipt.delivery.agency}</p>
                           )}

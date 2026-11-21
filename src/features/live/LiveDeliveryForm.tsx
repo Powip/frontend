@@ -161,7 +161,7 @@ export default function LiveDeliveryForm({
                     })
                   }
                 />
-                {type === "HOME" ? "A domicilio" : "Recojo en agencia"}
+                {type === "HOME" ? "A domicilio" : "Recojo en tienda courier"}
               </label>
             ))}
           </fieldset>

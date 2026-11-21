@@ -3382,12 +3382,12 @@ function RegistrarVentaContent() {
                         <SelectContent>
                           {!orderData?.deliverySnapshot && (
                             <SelectItem value={DeliveryType.RETIRO_TIENDA}>
-                              Retiro en tienda
+                              Retiro en tienda negocio
                             </SelectItem>
                           )}
                           <SelectItem value={DeliveryType.DOMICILIO}>Envío a domicilio</SelectItem>
                           {agencyDeliveryAllowed && (
-                            <SelectItem value={DeliveryType.PUNTO_EXTERNO}>Recojo en agencia</SelectItem>
+                            <SelectItem value={DeliveryType.PUNTO_EXTERNO}>Recojo en tienda courier</SelectItem>
                           )}
                         </SelectContent>
                       </Select>
@@ -3486,7 +3486,7 @@ function RegistrarVentaContent() {
                           </p>
                         ) : orderDetails.deliveryType === DeliveryType.DOMICILIO ? (
                           <p className="text-sm text-muted-foreground">
-                            Al elegir una agencia, el tipo de entrega cambia a «Recojo en agencia».
+                            Al elegir una agencia, el tipo de entrega cambia a «Recojo en tienda courier».
                           </p>
                         ) : null}
                       </div>

@@ -211,7 +211,7 @@ import axios from 'axios';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserProfile } from '@/services/userService';
-import SendToShalomModal from '../SendToShalomModal';
+import SendToShalomModal, { generateDistinctSecurityCodes, isValidSecurityCode } from '../SendToShalomModal';
 import { printOrderLabelsBatch } from '@/utils/printOrderLabel';
 import { printShippingGuide } from '@/utils/printShippingGuide';
 
@@ -1545,5 +1545,189 @@ describe('SendToShalomModal: adelantos sin aprobar antes de enviar', () => {
 
     await waitFor(() => expect(sendCalls()).toHaveLength(1));
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  });
+});
+
+// ── Agencia guardada en el pedido y código distinto por pedido ───────────────
+
+const MOCK_AGENCY_SURCO = {
+  ter_id: 'ag-2',
+  nombre: 'Agencia Surco',
+  lugar_over: 'SURCO',
+  lugar: 'Av. Surco 456',
+  ter_aereo: 0,
+};
+
+const withSavedAgency = (agency: string, agencyId?: string, overrides: Record<string, unknown> = {}) =>
+  ({
+    ...MOCK_ORDER,
+    delivery: { type: 'AGENCY', district: 'Miraflores', address: 'Av. Test 123', agency, ...(agencyId ? { agencyId } : {}) },
+    ...overrides,
+  }) as typeof MOCK_ORDER;
+
+// El <select> simulado no tiene opción vacía: sin valor muestra la primera (LIMA). Por eso la
+// agencia guardada de estos casos es SURCO (la segunda): solo queda elegida si se precargó.
+const selectsWithValue = (value: string) =>
+  (screen.getAllByRole('combobox') as HTMLSelectElement[]).filter((s) => s.value === value);
+
+const agencySearchTerms = () =>
+  (axios.get as jest.Mock).mock.calls
+    .map(([url]) => String(url))
+    .filter((url) => url.includes('/shalom/agencies/search/'))
+    .map((url) => decodeURIComponent(url.split('/shalom/agencies/search/')[1]));
+
+describe('precarga de la agencia guardada en el pedido', () => {
+  it('preselecciona la agencia por su id cuando el pedido la trae guardada', async () => {
+    (axios.get as jest.Mock).mockResolvedValue({ data: { success: true, data: [MOCK_AGENCY, MOCK_AGENCY_SURCO] } });
+
+    await renderModal({ orders: [withSavedAgency('Shalom — Nombre viejo', 'ag-2')] });
+
+    await waitFor(() => expect(selectsWithValue('SURCO')).toHaveLength(1));
+  });
+
+  it('sin id, la preselecciona por el nombre guardado («Shalom — <nombre>»)', async () => {
+    (axios.get as jest.Mock).mockResolvedValue({ data: { success: true, data: [MOCK_AGENCY, MOCK_AGENCY_SURCO] } });
+
+    await renderModal({ orders: [withSavedAgency('Shalom — agencia surco')] });
+
+    await waitFor(() => expect(selectsWithValue('SURCO')).toHaveLength(1));
+  });
+
+  it('si no está entre las del distrito, la busca una vez por su nombre y la preselecciona', async () => {
+    (axios.get as jest.Mock).mockImplementation((url: string) =>
+      Promise.resolve({
+        data: {
+          success: true,
+          data: /Agencia%20Surco$/.test(String(url)) ? [MOCK_AGENCY_SURCO] : [MOCK_AGENCY],
+        },
+      }),
+    );
+
+    await renderModal({ orders: [withSavedAgency('Shalom — Agencia Surco', 'ag-2')] });
+
+    await waitFor(() => expect(selectsWithValue('SURCO')).toHaveLength(1));
+    expect(agencySearchTerms().filter((term) => term === 'Agencia Surco')).toHaveLength(1);
+  });
+
+  it('si la agencia guardada no existe en Shalom, deja el destino vacío y no repite búsquedas', async () => {
+    (axios.get as jest.Mock).mockResolvedValue({ data: { success: true, data: [MOCK_AGENCY, MOCK_AGENCY_SURCO] } });
+
+    await renderModal({ orders: [withSavedAgency('Shalom — Agencia Fantasma', 'ag-9')] });
+
+    await waitFor(() => expect(agencySearchTerms()).toContain('Agencia Fantasma'));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(selectsWithValue('SURCO')).toHaveLength(0);
+    expect(agencySearchTerms().filter((term) => term === 'Agencia Fantasma')).toHaveLength(1);
+  });
+
+  it('un pedido a domicilio (sin agencia guardada) no preselecciona nada', async () => {
+    (axios.get as jest.Mock).mockResolvedValue({ data: { success: true, data: [MOCK_AGENCY, MOCK_AGENCY_SURCO] } });
+
+    await renderModal();
+
+    await waitFor(() => expect(agencySearchTerms().length).toBeGreaterThan(0));
+    expect(selectsWithValue('SURCO')).toHaveLength(0);
+  });
+
+  it('el usuario puede cambiar la agencia precargada', async () => {
+    (axios.get as jest.Mock).mockResolvedValue({ data: { success: true, data: [MOCK_AGENCY, MOCK_AGENCY_SURCO] } });
+    const user = userEvent.setup();
+
+    await renderModal({ orders: [withSavedAgency('Shalom — Agencia Surco', 'ag-2')] });
+    await waitFor(() => expect(selectsWithValue('SURCO')).toHaveLength(1));
+    const destSelect = selectsWithValue('SURCO')[0];
+
+    await user.selectOptions(destSelect, 'LIMA');
+
+    expect(destSelect.value).toBe('LIMA');
+    expect(selectsWithValue('SURCO')).toHaveLength(0);
+  });
+});
+
+describe('código de seguridad distinto por pedido', () => {
+  const ORDER_2 = { ...MOCK_ORDER, id: 'order-def', orderNumber: 'ORD-002' };
+  const ORDER_3 = { ...MOCK_ORDER, id: 'order-ghi', orderNumber: 'ORD-003' };
+  const codeInputs = () => screen.getAllByPlaceholderText('Ej: 1357') as HTMLInputElement[];
+  const generateButton = () => screen.getByRole('button', { name: /generar código distinto por pedido/i });
+
+  it('generateDistinctSecurityCodes devuelve códigos de 4 dígitos, válidos y sin repetir', () => {
+    const codes = generateDistinctSecurityCodes(200);
+
+    expect(codes).toHaveLength(200);
+    expect(new Set(codes).size).toBe(200);
+    codes.forEach((code) => {
+      expect(code).toMatch(/^\d{4}$/);
+      expect(isValidSecurityCode(code)).toBe(true);
+    });
+  });
+
+  it('el botón pone un código válido y distinto en cada pedido y deja vacío el campo general', async () => {
+    const user = userEvent.setup();
+    await renderModal({ orders: [MOCK_ORDER, ORDER_2, ORDER_3] });
+
+    await user.click(generateButton());
+
+    const [globalInput, ...perOrder] = codeInputs();
+    expect(globalInput.value).toBe('');
+    expect(perOrder).toHaveLength(3);
+    const codes = perOrder.map((input) => input.value);
+    expect(new Set(codes).size).toBe(3);
+    codes.forEach((code) => expect(isValidSecurityCode(code)).toBe(true));
+    expect(screen.getByText('— un código distinto por pedido')).toBeInTheDocument();
+  });
+
+  it('escribir un código en el campo general vuelve a aplicar el mismo a todos los pedidos', async () => {
+    const user = userEvent.setup();
+    await renderModal({ orders: [MOCK_ORDER, ORDER_2, ORDER_3] });
+    await user.click(generateButton());
+
+    await user.type(codeInputs()[0], '1357');
+
+    await waitFor(() => {
+      const [, ...perOrder] = codeInputs();
+      expect(perOrder.map((input) => input.value)).toEqual(['1357', '1357', '1357']);
+    });
+    expect(screen.getAllByText('— aplica a todos los pedidos').length).toBeGreaterThan(0);
+    expect(screen.queryByText('— un código distinto por pedido')).not.toBeInTheDocument();
+  });
+
+  it('envía a Shalom un código distinto por pedido, sin exigir el código general', async () => {
+    (axios.get as jest.Mock).mockResolvedValue({ data: { success: true, data: [MOCK_AGENCY] } });
+    mockAxiosPost.mockResolvedValue({
+      data: { success: true, summary: { total: 2, successful: 2, failed: 0 }, data: [], errors: [] },
+    });
+    const user = userEvent.setup();
+    await renderModal({ orders: [MOCK_ORDER, ORDER_2] });
+
+    // Origen + destino de cada pedido: los tres <select> con la opción LIMA.
+    await waitFor(() => {
+      const withLima = (screen.getAllByRole('combobox') as HTMLSelectElement[]).filter((s) =>
+        Array.from(s.options).some((o) => o.value === 'LIMA'),
+      );
+      expect(withLima).toHaveLength(3);
+    });
+    for (const select of (screen.getAllByRole('combobox') as HTMLSelectElement[]).filter((s) =>
+      Array.from(s.options).some((o) => o.value === 'LIMA'),
+    )) {
+      await user.selectOptions(select, 'LIMA');
+    }
+
+    await user.click(generateButton());
+    const [, ...perOrder] = codeInputs();
+    const codes = perOrder.map((input) => input.value);
+
+    const sendBtn = screen.getByRole('button', { name: /confirmar y enviar a shalom/i });
+    await waitFor(() => expect(sendBtn).not.toBeDisabled());
+    await user.click(sendBtn);
+
+    await waitFor(() => {
+      const sendCall = mockAxiosPost.mock.calls.find(([url]) => String(url).includes('send-to-shalom'))!;
+      const [, payload] = sendCall as [unknown, { packageDetails: Record<string, { securityCode?: string }> }];
+      expect(payload.packageDetails[MOCK_ORDER.id].securityCode).toBe(codes[0]);
+      expect(payload.packageDetails[ORDER_2.id].securityCode).toBe(codes[1]);
+      expect(codes[0]).not.toBe(codes[1]);
+    });
   });
 });

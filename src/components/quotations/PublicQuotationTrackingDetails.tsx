@@ -30,7 +30,7 @@ export default function PublicQuotationTrackingDetails({
     .join(", ");
   const fullyPaid = tracking.totals.pendingAmount <= 0;
   const deliveryType = tracking.delivery
-    ? tracking.delivery.type === "AGENCY" ? "Retiro en agencia" : "Envío a domicilio"
+    ? tracking.delivery.type === "AGENCY" ? "Recojo en tienda courier" : "Envío a domicilio"
     : tracking.deliveryType.replace(/_/g, " ").toLocaleLowerCase("es-PE");
 
   return (

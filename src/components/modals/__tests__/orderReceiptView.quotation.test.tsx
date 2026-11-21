@@ -20,7 +20,7 @@ function receipt(amount: number, status = "PENDING") {
 describe("quotation sale receipt", () => {
   it("shows the order agency alongside its delivery address", () => {
     render(<OrderReceiptView data={{ ...receipt(120, "PAID"), delivery: { type: "AGENCY", agency: "Shalom Huaraz" } }} />);
-    expect(screen.getByText("Retiro en agencia")).toBeInTheDocument();
+    expect(screen.getByText("Recojo en tienda courier")).toBeInTheDocument();
     expect(screen.getByText("Shalom Huaraz")).toBeInTheDocument();
   });
   it("keeps a pending advance outside the approved balance", () => {

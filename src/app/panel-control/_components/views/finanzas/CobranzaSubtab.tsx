@@ -241,7 +241,7 @@ export function CobranzaSubtab() {
           <p>
             Cobranza es la deuda con couriers: entregados con courier sin pago completo, de los
             últimos 365 días y hasta 5000 pedidos. El «por liquidar» de Resultado también incluye
-            retiro en tienda y POS, así que puede ser mayor.
+            retiro en tienda negocio y POS, así que puede ser mayor.
           </p>
           <p>
             Tiempo hasta liquidar y liquidado por el courier: Pendiente: se conectará con

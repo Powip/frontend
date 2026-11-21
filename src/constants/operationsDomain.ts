@@ -42,9 +42,9 @@ export const PAYMENT_METHODS = [
 ] as const;
 
 export const DELIVERY_TYPE_OPTIONS = [
-  { value: "RETIRO_TIENDA", label: "Retiro en tienda" },
+  { value: "RETIRO_TIENDA", label: "Retiro en tienda negocio" },
   { value: "DOMICILIO", label: "Domicilio" },
-  { value: "PUNTO_EXTERNO", label: "Punto externo" },
+  { value: "PUNTO_EXTERNO", label: "Recojo en tienda courier" },
 ] as const;
 
 export const SOURCE_OPTIONS = [

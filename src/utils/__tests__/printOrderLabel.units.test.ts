@@ -49,7 +49,7 @@ it("prints the accepted agency and delivery mode from the receipt even with an o
   const document = view.document();
   expect(document.body.textContent).toContain("<Shalom & Huaraz>");
   expect(document.body.textContent).toContain("Av. Nueva 456");
-  expect(document.body.textContent).toContain("Retiro en agencia");
+  expect(document.body.textContent).toContain("Recojo en tienda courier");
   expect(document.body.textContent).not.toContain("Agencia anterior");
   expect(document.querySelector("shalom")).toBeNull();
 });

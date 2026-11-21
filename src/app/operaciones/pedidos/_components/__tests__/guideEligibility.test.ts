@@ -81,7 +81,7 @@ describe("guideBlockReasonLabel", () => {
   it("nombra el tipo de entrega no compatible por su etiqueta", () => {
     const s = sale({ deliveryType: "PUNTO EXTERNO", courier: null });
     expect(guideBlockReasonLabel("UNSUPPORTED_DELIVERY_TYPE", s)).toBe(
-      "Tipo de entrega «Punto externo» no admite guía",
+      "Tipo de entrega «Recojo en tienda courier» no admite guía",
     );
   });
 });
