@@ -443,18 +443,18 @@ describe("PreparadosTab — asignar a guía", () => {
     expect(screen.getByText(/pedido\(s\) seleccionados no se pueden incluir en una guía/i)).toBeInTheDocument();
   });
 
-  it("un pedido PREPARADO con retiro en tienda: abre el modal de retiro y deriva la edición sin generar guía", async () => {
+  it("un pedido PREPARADO con retiro en tienda negocio: abre el modal de retiro y deriva la edición sin generar guía", async () => {
     const user = userEvent.setup();
     const actions = makeActions();
     renderTab([makeSale({ id: "sale-preparado-retiro", orderNumber: "ORD-RETIRO-1", deliveryType: "RETIRO TIENDA" })], actions);
     await selectLastRow(user);
 
-    expect(screen.getByText(/1 configurado\(s\) como retiro en tienda/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 configurado\(s\) como retiro en tienda negocio/i)).toBeInTheDocument();
     await user.click(bulkGuideButton("0 de 1"));
 
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByRole("heading", { name: "Este pedido está configurado como retiro en tienda" })).toBeInTheDocument();
-    expect(within(dialog).getByText(/tipo de entrega actual/i)).toHaveTextContent("Retiro en tienda");
+    expect(within(dialog).getByRole("heading", { name: "Este pedido está configurado como retiro en tienda negocio" })).toBeInTheDocument();
+    expect(within(dialog).getByText(/tipo de entrega actual/i)).toHaveTextContent("Retiro en tienda negocio");
     expect(within(dialog).getByRole("button", { name: "Cancelar" })).toBeInTheDocument();
     expect(within(dialog).getByText(/al guardar, volverás a preparados con tu selección/i)).toBeInTheDocument();
 
@@ -475,7 +475,7 @@ describe("PreparadosTab — asignar a guía", () => {
     await selectLastRow(user);
     await user.click(screen.getByRole("button", { name: /asignar a guía de salida/i }));
 
-    expect(screen.getByRole("heading", { name: "Este pedido está configurado como retiro en tienda" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Este pedido está configurado como retiro en tienda negocio" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Cancelar" }));
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -494,7 +494,7 @@ describe("PreparadosTab — asignar a guía", () => {
     expect(within(dialog).queryByRole("button", { name: /editar entrega/i })).not.toBeInTheDocument();
   });
 
-  it("un pedido sin tipo de entrega se informa como tal, no como retiro en tienda", async () => {
+  it("un pedido sin tipo de entrega se informa como tal, no como retiro en tienda negocio", async () => {
     const user = userEvent.setup();
     renderTab([makeSale({ orderNumber: "ORD-SINTIPO-1", deliveryType: "" })]);
     await selectLastRow(user);
@@ -518,7 +518,7 @@ describe("PreparadosTab — asignar a guía", () => {
 
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByText(/1 de 3 pedidos pueden generar guía/i)).toBeInTheDocument();
-    expect(within(dialog).getByText("Configurado como retiro en tienda")).toBeInTheDocument();
+    expect(within(dialog).getByText("Configurado como retiro en tienda negocio")).toBeInTheDocument();
     expect(within(dialog).getByText("Ya tiene la guía GUIA-9")).toBeInTheDocument();
     const editButtons = within(dialog).getAllByRole("button", { name: /editar entrega/i });
     expect(editButtons).toHaveLength(1);
@@ -579,7 +579,7 @@ describe("PreparadosTab — vuelta desde la edición del tipo de entrega", () =>
     renderTab([], makeActions(), { guideReturn: { sales: [sale], updatedId: "s-sigue" } });
 
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("heading", { name: "El pedido sigue configurado como retiro en tienda" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("heading", { name: "El pedido sigue configurado como retiro en tienda negocio" })).toBeInTheDocument();
     expect(within(dialog).queryByRole("button", { name: /continuar con la generación/i })).not.toBeInTheDocument();
   });
 
@@ -624,7 +624,7 @@ describe("PreparadosTab — vuelta desde la edición del tipo de entrega", () =>
     const { rerenderWith } = renderTab([viejo], actions);
     await selectLastRow(user);
     await user.click(bulkGuideButton("0 de 1"));
-    expect(screen.getByRole("heading", { name: "Este pedido está configurado como retiro en tienda" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Este pedido está configurado como retiro en tienda negocio" })).toBeInTheDocument();
 
     rerenderWith([{ ...viejo, deliveryType: "DOMICILIO" }]);
 

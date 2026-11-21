@@ -76,7 +76,7 @@ export function buildNotaVentaHtml(
   const statusColor = PDF_STATUS_COLOR[rawStatus] ?? { bg: "#f1f5f9", color: "#334155" };
   const statusLabel = getStatusLabel(rawStatus as OrderStatus).toUpperCase();
   const deliveryLabel = receipt.delivery
-    ? receipt.delivery.type === "AGENCY" ? "Retiro en agencia" : "Envío a domicilio"
+    ? receipt.delivery.type === "AGENCY" ? "Recojo en tienda courier" : "Envío a domicilio"
     : PRINT_DELIVERY_TYPE_LABEL[orderHeader?.deliveryType ?? ""] ?? orderHeader?.deliveryType ?? "-";
   const paymentMethods =
     Array.from(new Set(receipt.payments.map((p) => toTitleCase(p.paymentMethod)))).join(" / ") ||

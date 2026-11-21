@@ -50,7 +50,7 @@ export default function LiveCheckoutDetails({
             <h3 className="font-semibold">Entrega</h3>
             {modify("delivery", "entrega")}
           </div>
-          <p>{delivery.type === "AGENCY" ? "Recojo en agencia" : "Envío a domicilio"}</p>
+          <p>{delivery.type === "AGENCY" ? "Recojo en tienda courier" : "Envío a domicilio"}</p>
           {delivery.type === "AGENCY" && delivery.agency ? (
             <p className="mt-1 break-words">{delivery.agency.trim()}</p>
           ) : null}

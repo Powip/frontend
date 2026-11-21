@@ -74,7 +74,7 @@ export function guideBlockReasonLabel(
     case "STATUS_NOT_ALLOWED":
       return `Estado «${getStatusLabel(sale.status)}» no permite generar guía`;
     case "PICKUP_IN_STORE":
-      return "Configurado como retiro en tienda";
+      return "Configurado como retiro en tienda negocio";
     case "MISSING_DELIVERY_TYPE":
       return "No tiene tipo de entrega configurado";
     case "UNSUPPORTED_DELIVERY_TYPE":

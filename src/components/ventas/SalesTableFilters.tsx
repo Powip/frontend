@@ -184,7 +184,7 @@ export const REGION_OPTIONS = [
 
 export const DELIVERY_TYPE_OPTIONS = [
   { value: "", label: "Todos" },
-  { value: "RETIRO_TIENDA", label: "Retiro en tienda" },
+  { value: "RETIRO_TIENDA", label: "Retiro en tienda negocio" },
   { value: "DOMICILIO", label: "Domicilio" },
 ];
 

@@ -108,8 +108,8 @@ const PRINT_STATUS_LABEL: Record<string, { label: string }> = {
 
 export const PRINT_DELIVERY_TYPE_LABEL: Record<string, string> = {
   DOMICILIO: "Envío a domicilio",
-  RETIRO_TIENDA: "Retiro en tienda",
-  PUNTO_EXTERNO: "Retiro en agencia",
+  RETIRO_TIENDA: "Retiro en tienda negocio",
+  PUNTO_EXTERNO: "Recojo en tienda courier",
 };
 
 export async function generateQR(text: string, size = 120): Promise<string> {
@@ -352,7 +352,7 @@ async function buildOrderLabelHtml(
   const rawStatus = operationalStatus((hasTrackedItems ? receipt.status : orderHeader?.status ?? receipt.status) as OrderStatus);
   const statusInfo = PRINT_STATUS_LABEL[rawStatus] ?? { label: rawStatus };
   const deliveryLabel = receipt.delivery
-    ? receipt.delivery.type === "AGENCY" ? "Retiro en agencia" : "Envío a domicilio"
+    ? receipt.delivery.type === "AGENCY" ? "Recojo en tienda courier" : "Envío a domicilio"
     : PRINT_DELIVERY_TYPE_LABEL[orderHeader?.deliveryType ?? ""] ??
     orderHeader?.deliveryType ??
     "-";

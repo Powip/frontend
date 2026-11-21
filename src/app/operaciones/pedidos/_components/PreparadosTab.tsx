@@ -54,7 +54,7 @@ const STATUS_OPTIONS: OrderStatus[] = ["PREPARADO", "LLAMADO"];
 
 const BLOCK_SUMMARY_LABEL: Record<GuideBlockReason, string> = {
   STATUS_NOT_ALLOWED: "por su estado actual — avánzalos con \"Cambiar estado\" de cada fila o en lote",
-  PICKUP_IN_STORE: "configurado(s) como retiro en tienda",
+  PICKUP_IN_STORE: "configurado(s) como retiro en tienda negocio",
   HAS_GUIDE: "que ya tiene(n) guía",
   MISSING_DELIVERY_TYPE: "sin tipo de entrega configurado",
   UNSUPPORTED_DELIVERY_TYPE: "con un tipo de entrega que no admite guía",

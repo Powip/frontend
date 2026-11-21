@@ -71,7 +71,7 @@ it("includes the accepted agency and receipt delivery mode in the PDF", () => {
   expect(document.body.textContent).toContain("Shalom Huaraz");
   expect(document.body.textContent).toContain("Av. Nueva 456");
   expect(document.body.textContent).not.toContain("Av. Central");
-  expect(document.body.textContent).toContain("Retiro en agencia");
+  expect(document.body.textContent).toContain("Recojo en tienda courier");
 });
 // JSDOM has no layout engine. Model measured block heights so the actual DOM
 // pagination can be exercised; the browser/PDF visual run verifies real fonts.
