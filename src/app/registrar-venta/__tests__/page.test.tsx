@@ -1981,3 +1981,104 @@ describe("Pedidos Shopify pendientes — DNI, envío y adelantos", () => {
     expect(screen.queryByRole("button", { name: "Registrar adelanto" })).not.toBeInTheDocument();
   });
 });
+
+describe("RegistrarVentaPage — link de Google Maps del cliente", () => {
+  const MAPS_PLACEHOLDER = "Pega aquí el link de Google Maps…";
+  const INVALID_LINK = "El link de Google Maps no es válido";
+  const newClient = { ...FOUND_CLIENT, id: "created-maps-client", phoneNumber: "999888776" };
+
+  const openLocationFields = () =>
+    userEvent.click(screen.getByRole("button", { name: "Agregar referencia y ubicación (opcional)" }));
+
+  // La búsqueda fallida conserva los datos y activa la creación del cliente al confirmar.
+  async function prepareNewClient(link: string) {
+    mockFetchClientByPhone.mockResolvedValueOnce(FOUND_CLIENT).mockRejectedValueOnce(new Error("network unavailable"));
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "order-maps-client", payments: [] } });
+    renderPage();
+    await fillCommonRequiredFields();
+    const phoneInput = screen.getByPlaceholderText("Número de teléfono");
+    fireEvent.change(phoneInput, { target: { value: newClient.phoneNumber } });
+    fireEvent.keyDown(phoneInput, { key: "Enter" });
+    await screen.findByText(/no se pudo buscar el cliente.*completa los datos manualmente/i);
+    await openLocationFields();
+    fireEvent.change(screen.getByPlaceholderText(MAPS_PLACEHOLDER), { target: { value: link } });
+    mockToast.error.mockClear();
+  }
+
+  it("crea el cliente con https:// cuando el link se pegó sin protocolo", async () => {
+    mockCreateClient.mockResolvedValue(newClient);
+    await prepareNewClient("maps.app.goo.gl/abc123");
+
+    await userEvent.click(screen.getByRole("button", { name: /registrar pedido/i }));
+
+    await waitFor(() => expect(mockCreateClient).toHaveBeenCalledWith(
+      expect.objectContaining({ googleMapsUrl: "https://maps.app.goo.gl/abc123" }),
+    ));
+    expect(mockToast.error).not.toHaveBeenCalled();
+  });
+
+  it("no crea el cliente ni la venta con un link inválido y muestra el motivo", async () => {
+    mockCreateClient.mockResolvedValue(newClient);
+    await prepareNewClient("frente al parque");
+
+    await userEvent.click(screen.getByRole("button", { name: /registrar pedido/i }));
+
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith(INVALID_LINK));
+    expect(screen.getByText(INVALID_LINK)).toBeInTheDocument();
+    expect(mockCreateClient).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByPlaceholderText(MAPS_PLACEHOLDER), { target: { value: "" } });
+    expect(screen.queryByText(INVALID_LINK)).not.toBeInTheDocument();
+  });
+
+  it("crea el cliente sin link cuando el campo queda vacío", async () => {
+    mockCreateClient.mockResolvedValue(newClient);
+    await prepareNewClient("");
+
+    await userEvent.click(screen.getByRole("button", { name: /registrar pedido/i }));
+
+    await waitFor(() => expect(mockCreateClient).toHaveBeenCalledTimes(1));
+    expect(mockCreateClient.mock.calls[0][0].googleMapsUrl).toBeUndefined();
+    expect(mockToast.error).not.toHaveBeenCalled();
+  });
+
+  it("muestra el motivo del backend en vez del mensaje genérico cuando rechaza la creación", async () => {
+    mockCreateClient.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 409, data: { message: "Ya existe un cliente con ese teléfono en esta empresa" } },
+    });
+    await prepareNewClient("");
+
+    await userEvent.click(screen.getByRole("button", { name: /registrar pedido/i }));
+
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith(
+      "No se pudo crear el cliente. Ya existe un cliente con ese teléfono en esta empresa.",
+    ));
+    expect(mockToast.error).not.toHaveBeenCalledWith("Error al crear el cliente. Verifica los datos.");
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+  });
+
+  it("al editar un cliente existente guarda el link con https:// y bloquea uno inválido", async () => {
+    mockFetchClientByPhone.mockResolvedValue(FOUND_CLIENT);
+    mockUpdateClient.mockResolvedValue({ ...FOUND_CLIENT, googleMapsUrl: "https://maps.app.goo.gl/abc123" });
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "order-maps-update", payments: [] } });
+    renderPage();
+    await fillCommonRequiredFields();
+    const confirm = screen.getByRole("button", { name: "Registrar pedido" });
+    await openLocationFields();
+
+    fireEvent.change(screen.getByPlaceholderText(MAPS_PLACEHOLDER), { target: { value: "frente al parque" } });
+    await userEvent.click(confirm);
+    await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith(INVALID_LINK));
+    expect(mockUpdateClient).not.toHaveBeenCalled();
+    expect(mockedAxiosAuth.post).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByPlaceholderText(MAPS_PLACEHOLDER), { target: { value: "maps.app.goo.gl/abc123" } });
+    await userEvent.click(confirm);
+    await waitFor(() => expect(mockUpdateClient).toHaveBeenCalledWith(FOUND_CLIENT.id, {
+      companyId: FOUND_CLIENT.companyId,
+      googleMapsUrl: "https://maps.app.goo.gl/abc123",
+    }));
+  });
+});
