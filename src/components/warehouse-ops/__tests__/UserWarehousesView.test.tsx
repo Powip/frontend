@@ -5,6 +5,7 @@
  * 2. Muestra lo asignado y guarda con PUT /user-warehouses reemplazando la lista del usuario.
  * 3. «Todos» guarda la lista vacía (ve y opera todos); sin «Todos» y sin almacenes no deja guardar.
  * 4. Tu propia fila no se edita.
+ * 5. Si la sesión venció y no se pudo renovar, lo dice claro (no «No hay usuarios»).
  */
 
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -105,5 +106,13 @@ describe("Usuarios y almacenes", () => {
     expect(within(self).getByRole("checkbox", { name: "Todos los almacenes: Octa Admin" })).toBeDisabled();
     expect(within(self).queryByRole("button", { name: /Guardar/ })).not.toBeInTheDocument();
     expect(within(self).getByText("Tus propios almacenes no se cambian desde tu sesión.")).toBeInTheDocument();
+  });
+
+  it("sesión vencida sin renovar: avisa que inicie sesión y no dice «No hay usuarios»", async () => {
+    jest.mocked(getUsersByCompany).mockRejectedValue({ response: { status: 401, data: {} } });
+    setup();
+    expect(await screen.findByText("Tu sesión venció. Vuelve a iniciar sesión.")).toBeInTheDocument();
+    expect(screen.getByText("No se pudo cargar la lista de usuarios.")).toBeInTheDocument();
+    expect(screen.queryByText("No hay usuarios en la empresa.")).not.toBeInTheDocument();
   });
 });
