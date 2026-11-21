@@ -3,7 +3,9 @@ export type CategoriaGasto =
   | 'HERRAMIENTAS'
   | 'PUBLICIDAD'
   | 'COURIER_PROPIO'
-  | 'OTRO';
+  | 'OTRO'
+  // Compra de mercadería por prenda. No es gasto operativo: no entra al P&L.
+  | 'INVERSION';
 
 export interface IGastoOperativo {
   id: string;
@@ -20,6 +22,8 @@ export interface IGastoOperativo {
   source?: string;
   platform?: string | null;
   recurrence?: string | null;
+  productId?: string | null;
+  productName?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -37,6 +41,8 @@ export interface ICreateGastoDto {
   source?: string;
   platform?: string;
   recurrence?: string;
+  productId?: string | null;
+  productName?: string | null;
 }
 
 export interface IPnL {

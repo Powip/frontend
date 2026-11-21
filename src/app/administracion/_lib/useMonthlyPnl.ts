@@ -81,7 +81,9 @@ export function useAdminYearPnl(companyId: string, anio: number, storeIds: strin
     const ventas = entregadasMes.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
     const cogs = entregadasMes.reduce((s, o) => s + Number(o.costAmount || 0), 0);
     const unidades = entregadasMes.reduce((s, o) => s + (o.itemCount || (Array.isArray(o.items) ? o.items.length : 1)), 0);
-    const gastosMes = gastos.filter((g) => g.mes === mesNum && g.anio === anio);
+    // INVERSION (compra de mercadería por prenda) no es gasto operativo:
+    // ya se cuenta en COGS al vender.
+    const gastosMes = gastos.filter((g) => g.mes === mesNum && g.anio === anio && g.categoria !== "INVERSION");
     const gastosFijos = gastosMes.reduce((s, g) => s + Number(g.monto || 0), 0);
     const courierCost = Number(courierQs[i]?.data ?? 0);
     const utilidadBruta = ventas - cogs;
