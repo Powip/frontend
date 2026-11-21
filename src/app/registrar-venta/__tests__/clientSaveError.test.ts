@@ -1,4 +1,4 @@
-import { clientSaveErrorMessage } from "../clientSaveError";
+import { clientCreateErrorMessage, clientSaveErrorMessage } from "../clientSaveError";
 
 function validationError(message: unknown, status = 400) {
   return { isAxiosError: true, response: { status, data: { message } } };
@@ -46,5 +46,47 @@ describe("client save feedback", () => {
     expect(result).toContain("Vuelve a confirmar para reintentar");
     expect(result).toContain("Los datos de la venta se conservan en el formulario");
     expect(result).not.toContain("private database details");
+  });
+});
+
+describe("motivo al fallar la creación del cliente", () => {
+  it("explica el link de Google Maps rechazado sin mostrar la respuesta del servidor", () => {
+    const result = clientCreateErrorMessage(validationError(["googleMapsUrl must be a URL address"]));
+    expect(result).toBe("No se pudo crear el cliente. El link de Google Maps no es válido.");
+  });
+
+  it("nombra en español los demás campos rechazados", () => {
+    const result = clientCreateErrorMessage(validationError([
+      "address must be longer than or equal to 1 characters",
+      "googleMapsUrl must be a URL address",
+    ]));
+    expect(result).toContain("El link de Google Maps no es válido.");
+    expect(result).toContain("Revisa dirección.");
+    expect(result).not.toContain("must be");
+  });
+
+  it("muestra el motivo del backend cuando el teléfono o el correo ya existen", () => {
+    expect(clientCreateErrorMessage(
+      validationError("Ya existe un cliente con ese teléfono en esta empresa", 409),
+    )).toBe("No se pudo crear el cliente. Ya existe un cliente con ese teléfono en esta empresa.");
+    expect(clientCreateErrorMessage(
+      validationError("Ya existe otro cliente con ese correo en esta empresa", 409),
+    )).toBe("No se pudo crear el cliente. Ya existe otro cliente con ese correo en esta empresa.");
+  });
+
+  it("usa un mensaje de respaldo cuando el backend no da un motivo legible", () => {
+    const fallback = "No se pudo crear el cliente. Revisa los datos del cliente e intenta de nuevo.";
+    expect(clientCreateErrorMessage(validationError("Bad Request Exception"))).toBe(fallback);
+    expect(clientCreateErrorMessage(new Error("boom"))).toBe(fallback);
+    expect(clientCreateErrorMessage(validationError("duplicate key value", 409)))
+      .toBe("No se pudo crear el cliente: ya existe un cliente con esos datos en esta empresa.");
+    expect(clientCreateErrorMessage(validationError("relation clients does not exist", 500)))
+      .not.toContain("relation");
+  });
+
+  it("distingue sesión vencida, permisos y falta de conexión", () => {
+    expect(clientCreateErrorMessage(validationError("Token inválido o expirado", 401))).toContain("tu sesión venció");
+    expect(clientCreateErrorMessage(validationError("x", 403))).toContain("no tiene permiso");
+    expect(clientCreateErrorMessage({ isAxiosError: true })).toContain("no hay conexión");
   });
 });
