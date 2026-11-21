@@ -151,6 +151,38 @@ it.each(["explicit-different", "403", "auth-endpoint", "anonymous"])(
   },
 );
 
+it("renews and retries company reads served under /auth/ (users of the company)", async () => {
+  registerRenewal();
+  let attempt = 0;
+  const adapter = jest.fn(async (config: InternalAxiosRequestConfig) => {
+    if (++attempt === 1) reject(config);
+    return response(config);
+  });
+  await axiosAuth.get("http://localhost:8080/api/v1/auth/company/company-a/users", {
+    headers: { Authorization: "Bearer expired-token" },
+    adapter,
+  });
+  expect(axios.post).toHaveBeenCalledTimes(1);
+  expect(adapter).toHaveBeenCalledTimes(2);
+  expect(adapter.mock.calls[1][0].headers.get("Authorization")).toBe("Bearer renewed-token");
+});
+
+it.each([
+  "/api/auth/login",
+  "http://localhost:8080/api/v1/auth/logout",
+  "http://localhost:8080/api/v1/auth/update-password",
+  "/api/auth/refresh?scope=a",
+  "/auth",
+])("does not refresh or replay session endpoint %s", async (url) => {
+  const renew = registerRenewal();
+  const adapter = jest.fn(async (config: InternalAxiosRequestConfig) => reject(config));
+  await expect(axiosAuth.post(url, {}, { adapter })).rejects.toMatchObject({
+    response: { status: 401 },
+  });
+  expect(renew).not.toHaveBeenCalled();
+  expect(adapter).toHaveBeenCalledTimes(1);
+});
+
 it("recovers an explicitly supplied bearer only when it matches the active session", async () => {
   registerRenewal();
   let attempt = 0;

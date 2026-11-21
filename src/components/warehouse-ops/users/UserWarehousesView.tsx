@@ -20,7 +20,12 @@ import {
   type AccessLevel,
   type UserWarehouseDraft,
 } from "@/lib/userWarehouses";
-import { opsErrorMessage } from "@/lib/warehouseOps";
+import { errorStatus, opsErrorMessage } from "@/lib/warehouseOps";
+
+// 401 tras intentar renovar la sesión: decirlo claro en vez de un error genérico.
+const SESSION_EXPIRED = "Tu sesión venció. Vuelve a iniciar sesión.";
+const usersErrorMessage = (error: unknown, fallback: string) =>
+  errorStatus(error) === 401 ? SESSION_EXPIRED : opsErrorMessage(error, fallback);
 import { getUsersByCompany } from "@/services/userService";
 import { listUserWarehouses, saveUserWarehouses } from "@/services/userWarehousesService";
 import { ErrorBox, RuleNote, SELECT_CLASS } from "../OpsBits";
@@ -98,7 +103,7 @@ export default function UserWarehousesView() {
         return next;
       });
     },
-    onError: (error, userId) => setRowError({ userId, message: opsErrorMessage(error, "No se pudieron guardar los almacenes del usuario.") }),
+    onError: (error, userId) => setRowError({ userId, message: usersErrorMessage(error, "No se pudieron guardar los almacenes del usuario.") }),
   });
 
   if (!isAdmin) {
@@ -119,7 +124,7 @@ export default function UserWarehousesView() {
         consultar; «Ve y opera» deja además recibir, trasladar, ajustar y contar. El backend lo aplica en cada operación.
       </RuleNote>
 
-      {loadError ? <ErrorBox>{opsErrorMessage(loadError, "No se pudieron cargar los usuarios o sus almacenes.")}</ErrorBox> : null}
+      {loadError ? <ErrorBox>{usersErrorMessage(loadError, "No se pudieron cargar los usuarios o sus almacenes.")}</ErrorBox> : null}
 
       <div className="overflow-x-auto rounded-md border">
         <table className="w-full text-sm">
@@ -147,7 +152,7 @@ export default function UserWarehousesView() {
             ) : users.length === 0 ? (
               <tr>
                 <td colSpan={columns.length + 4} className="px-3 py-8 text-center text-muted-foreground">
-                  No hay usuarios en la empresa.
+                  {loadError ? "No se pudo cargar la lista de usuarios." : "No hay usuarios en la empresa."}
                 </td>
               </tr>
             ) : (

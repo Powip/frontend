@@ -2,6 +2,8 @@ import axios from "axios";
 import { type UpdateUserRequest, updateUser, updateUserStatus } from "@/services/userService";
 
 jest.mock("axios");
+// userService importa axiosAuth (axios.create + interceptores); con axios mockeado no existe.
+jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: { get: jest.fn() } }));
 
 beforeEach(() => jest.clearAllMocks());
 
