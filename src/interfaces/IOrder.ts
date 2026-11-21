@@ -271,6 +271,8 @@ export interface OrderHeader extends UnitAssignmentState {
   externalTrackingNumber?: string | null;
   shippingCode?: string | null;
   shippingKey?: string | null;
+  // true si el pedido tiene clave guardada aunque la API la oculte (clave bloqueada)
+  hasShippingKey?: boolean | null;
   shippingOffice?: string | null;
   shippingProofUrl?: string | null;
   trackingUrl?: string | null;
