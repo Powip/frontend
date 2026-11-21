@@ -3,7 +3,7 @@
 import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/orders/ExternalOrderNumberColumn";
 import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
 import { useState } from "react";
-import { CheckCircle2, Copy, Eye, FileSpreadsheet, Loader2, MoreVertical, PackageCheck, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Copy, Eye, FileSpreadsheet, Loader2, MoreVertical, PackageCheck, Printer, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -77,6 +77,7 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
   const canChangeStatus = actions.can(OPS_PERMISSIONS.CHANGE_STATUS_MANUAL);
   const canExport = actions.can(OPS_PERMISSIONS.EXPORT);
   const canManageGuides = actions.can(OPS_PERMISSIONS.MANAGE_GUIDES);
+  const canDispatch = actions.can(OPS_PERMISSIONS.DISPATCH);
   const isCamino = variant === "camino";
   // FEAT-31: «N° Externo» solo se dibuja si algún pedido de la pestaña lo trae.
   const showExternalCol = hasExternalOrderNumbers(data.sales);
@@ -283,6 +284,19 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
             >
               <FileSpreadsheet className="h-3.5 w-3.5" />
               Exportar Excel ({bulk.exportCount})
+            </Button>
+          )}
+          {/* Misma impresión masiva que Preparados: en esta etapa no cambia el estado del pedido. */}
+          {isCamino && canDispatch && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1 text-xs"
+              disabled={selection.count === 0 || actions.isBulkLoading}
+              onClick={() => actions.onBulkPrint(selection.selected)}
+            >
+              {actions.isBulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+              Imprimir etiquetas
             </Button>
           )}
           {canExport && selection.count > 0 && <HiddenSelectionNotice count={bulk.exportSelection.hiddenCount} />}

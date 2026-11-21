@@ -206,6 +206,35 @@ describe("ShalomAgencyField — filtro por ubicación del cliente", () => {
     expect(urls()).toEqual(["http://integrations/shalom/agencies"]);
   });
 
+  it("si lo escrito no coincide en la zona del cliente, busca en todas las agencias y lo avisa", async () => {
+    const user = userEvent.setup();
+    const { onSelect } = mount({ location: MIRAFLORES });
+    await loaded();
+    await user.type(search(), "wanchaq");
+    expect(optionNames()).toEqual(["CUSCO WANCHAQ API"]);
+    expect(
+      screen.getByText("No hay agencias con «wanchaq» en el distrito Miraflores. Mostrando coincidencias de todas las agencias (1)."),
+    ).toBeInTheDocument();
+    await user.selectOptions(select(), "CUSCO WANCHAQ API");
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ nombre_agencia: "CUSCO WANCHAQ" }));
+
+    // Al borrar lo escrito vuelve al filtro de la zona; todo sale del catálogo ya cargado.
+    await user.clear(search());
+    expect(optionNames()).toEqual(["MIRAFLORES OVALO API"]);
+    expect(screen.getByText("Mostrando las agencias del distrito Miraflores (1).")).toBeInTheDocument();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(urls()).toEqual(["http://integrations/shalom/agencies"]);
+  });
+
+  it("si lo escrito no coincide en la zona ni en el resto de agencias, lo dice", async () => {
+    const user = userEvent.setup();
+    mount({ location: MIRAFLORES });
+    await loaded();
+    await user.type(search(), "zzz");
+    expect(optionNames()).toEqual([]);
+    expect(screen.getByText("No hay agencias con «zzz» en el distrito Miraflores ni en el resto de agencias.")).toBeInTheDocument();
+  });
+
   it("si no hay agencias para la ubicación muestra todas y lo avisa", async () => {
     mount({ location: { department: "Tacna", province: "Tacna", district: "Tacna" } });
     await loaded();
