@@ -2,6 +2,7 @@ import type { Client } from "@/interfaces/ICliente";
 import {
   buildClientUpdatePayload,
   clientToFormFields,
+  normalizeGoogleMapsUrl,
   splitOrderClientChanges,
 } from "../clientForm";
 
@@ -239,6 +240,59 @@ describe("correo y RUC del cliente", () => {
     expect(splitOrderClientChanges({ email: "x@y.pe", address: "Av. 1" }, true)).toEqual({
       sharedClientChanges: { email: "x@y.pe" },
       deliveryChanges: { address: "Av. 1" },
+    });
+  });
+});
+
+describe("link de Google Maps del cliente", () => {
+  it("agrega https:// solo cuando falta el protocolo", () => {
+    expect(normalizeGoogleMapsUrl("maps.app.goo.gl/abc123")).toEqual({
+      valid: true,
+      url: "https://maps.app.goo.gl/abc123",
+    });
+    expect(normalizeGoogleMapsUrl("  www.google.com/maps?q=-12.1,-77.1  ")).toEqual({
+      valid: true,
+      url: "https://www.google.com/maps?q=-12.1,-77.1",
+    });
+    expect(normalizeGoogleMapsUrl("https://maps.app.goo.gl/abc123")).toEqual({
+      valid: true,
+      url: "https://maps.app.goo.gl/abc123",
+    });
+    expect(normalizeGoogleMapsUrl("HTTP://maps.google.com/?q=1,2")).toEqual({
+      valid: true,
+      url: "HTTP://maps.google.com/?q=1,2",
+    });
+  });
+
+  it("permite el campo vacío", () => {
+    expect(normalizeGoogleMapsUrl("")).toEqual({ valid: true, url: null });
+    expect(normalizeGoogleMapsUrl("   ")).toEqual({ valid: true, url: null });
+    expect(normalizeGoogleMapsUrl(null)).toEqual({ valid: true, url: null });
+    expect(normalizeGoogleMapsUrl(undefined)).toEqual({ valid: true, url: null });
+  });
+
+  it.each([
+    "frente al parque",
+    "casa",
+    "ftp://maps.google.com/x",
+    "=HYPERLINK(\"https://evil.test\")",
+    "https://",
+    "javascript:alert(1)",
+    `maps.google.com/${"a".repeat(500)}`,
+  ])("rechaza %s porque no queda como URL válida", (value) => {
+    expect(normalizeGoogleMapsUrl(value)).toEqual({ valid: false });
+  });
+
+  it("al editar un cliente envía el link corregido y no toca uno antiguo sin modificar", () => {
+    const original = client({ googleMapsUrl: "ubicación antigua sin enlace" });
+    const form = clientToFormFields(original);
+
+    expect(buildClientUpdatePayload(original, form)).not.toHaveProperty("googleMapsUrl");
+    expect(
+      buildClientUpdatePayload(original, { ...form, googleMapsUrl: "maps.app.goo.gl/abc123" }),
+    ).toEqual({ googleMapsUrl: "https://maps.app.goo.gl/abc123" });
+    expect(buildClientUpdatePayload(original, { ...form, googleMapsUrl: "" })).toEqual({
+      googleMapsUrl: null,
     });
   });
 });

@@ -94,8 +94,14 @@ import {
   validateClientDocument,
   validateClientEmail,
 } from "./clientDocumentValidation";
-import { buildClientUpdatePayload, clientToFormFields, splitOrderClientChanges } from "./clientForm";
-import { clientSaveErrorMessage } from "./clientSaveError";
+import {
+  buildClientUpdatePayload,
+  clientToFormFields,
+  INVALID_GOOGLE_MAPS_LINK,
+  normalizeGoogleMapsUrl,
+  splitOrderClientChanges,
+} from "./clientForm";
+import { clientCreateErrorMessage, clientSaveErrorMessage } from "./clientSaveError";
 import {
   resolvePaymentProofTarget,
   type ProofPayment,
@@ -157,8 +163,18 @@ function SectionTitle({
   );
 }
 
-function Disclosure({ label, children }: { label: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
+function Disclosure({
+  label,
+  children,
+  forceOpen = false,
+}: {
+  label: string;
+  children: React.ReactNode;
+  /** Keeps the content visible, e.g. while a field inside has an error. */
+  forceOpen?: boolean;
+}) {
+  const [isOpen, setOpen] = useState(false);
+  const open = isOpen || forceOpen;
   return (
     <div className="mt-3 border-t border-dashed pt-3">
       <button
@@ -289,6 +305,7 @@ function RegistrarVentaContent() {
       googleMapsUrl: value,
       ...(coords ? { latitude: String(coords.lat), longitude: String(coords.lng) } : {}),
     }));
+    setClientErrors((prev) => (prev.googleMapsUrl ? { ...prev, googleMapsUrl: undefined } : prev));
   };
 
   /* ---------------- Productos ---------------- */
@@ -1125,6 +1142,9 @@ function RegistrarVentaContent() {
     isFound && !hasValidClientDistrict ? "Selecciona el distrito para continuar." : undefined
   );
 
+  // https:// is added only in what gets sent; the field keeps what was typed.
+  const clientMapsLink = normalizeGoogleMapsUrl(clientForm.googleMapsUrl);
+
   const validateClientForm = () => {
     const errors: Partial<Record<keyof typeof emptyClientForm, string>> = {
       ...clientDocumentErrors,
@@ -1135,15 +1155,31 @@ function RegistrarVentaContent() {
     if (!hasValidClientDistrict) errors.district = "Selecciona el distrito para continuar.";
     if (!clientForm.address.trim()) errors.address = "Debes completar este dato.";
     if (clientEmailError) errors.email = clientEmailError;
+    if (!clientMapsLink.valid) errors.googleMapsUrl = INVALID_GOOGLE_MAPS_LINK;
 
     setClientErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
+  /**
+   * Blocks saving an existing client while its edited Google Maps link is not a
+   * usable URL. An old value that was not touched never blocks.
+   */
+  const rejectInvalidMapsLink = () => {
+    if (clientMapsLink.valid || !("googleMapsUrl" in clientChanges)) return false;
+    setClientErrors((errors) => ({ ...errors, googleMapsUrl: INVALID_GOOGLE_MAPS_LINK }));
+    toast.error(INVALID_GOOGLE_MAPS_LINK);
+    return true;
+  };
+
   const handleCreateClient = async () => {
     if (!auth?.company?.id) return;
     if (!validateClientForm()) {
-      toast.error("Por favor completa los campos requeridos correctamente.");
+      toast.error(
+        clientMapsLink.valid
+          ? "Por favor completa los campos requeridos correctamente."
+          : INVALID_GOOGLE_MAPS_LINK,
+      );
       return;
     }
 
@@ -1163,15 +1199,15 @@ function RegistrarVentaContent() {
         reference: clientForm.reference || undefined, // Evita "" que falla en backend
         latitude: clientForm.latitude ? Number(clientForm.latitude) : undefined,
         longitude: clientForm.longitude ? Number(clientForm.longitude) : undefined,
-        googleMapsUrl: clientForm.googleMapsUrl || undefined,
+        googleMapsUrl: (clientMapsLink.valid && clientMapsLink.url) || undefined,
       });
       setClientFound(createdClient);
       setOriginalClient(createdClient);
       setSearchState("found");
       setClientErrors({});
       toast.success("Cliente creado correctamente.");
-    } catch {
-      toast.error("Error al crear el cliente. Verifica los datos.");
+    } catch (error) {
+      toast.error(clientCreateErrorMessage(error));
     }
   };
 
@@ -1307,13 +1343,19 @@ function RegistrarVentaContent() {
         return;
       }
 
+      if (isFound && rejectInvalidMapsLink()) return;
+
       let activeClient = clientFound;
 
       // Auto-crear cliente nuevo si no existe en el sistema (o si la búsqueda falló y se completó a mano)
       if (isNotFound || isSearchError) {
         if (!auth?.company?.id) return;
         if (!validateClientForm()) {
-          toast.error("Por favor completa los campos del cliente correctamente.");
+          toast.error(
+            clientMapsLink.valid
+              ? "Por favor completa los campos del cliente correctamente."
+              : INVALID_GOOGLE_MAPS_LINK,
+          );
           return;
         }
         try {
@@ -1332,7 +1374,7 @@ function RegistrarVentaContent() {
             reference: clientForm.reference || undefined,
             latitude: clientForm.latitude ? Number(clientForm.latitude) : undefined,
             longitude: clientForm.longitude ? Number(clientForm.longitude) : undefined,
-            googleMapsUrl: clientForm.googleMapsUrl || undefined,
+            googleMapsUrl: (clientMapsLink.valid && clientMapsLink.url) || undefined,
           });
           if (!isCurrentEditor()) return;
           setClientFound(createdClient);
@@ -1340,9 +1382,9 @@ function RegistrarVentaContent() {
           setSearchState("found");
           setClientErrors({});
           activeClient = createdClient;
-        } catch {
+        } catch (error) {
           if (!isCurrentEditor()) return;
-          toast.error("Error al crear el cliente. Verifica los datos.");
+          toast.error(clientCreateErrorMessage(error));
           return;
         }
       }
@@ -1606,7 +1648,7 @@ function RegistrarVentaContent() {
                   reference: clientForm.reference || null,
                   latitude: clientForm.latitude ? Number(clientForm.latitude) : null,
                   longitude: clientForm.longitude ? Number(clientForm.longitude) : null,
-                  googleMapsUrl: clientForm.googleMapsUrl || null,
+                  googleMapsUrl: (clientMapsLink.valid ? clientMapsLink.url : clientForm.googleMapsUrl) || null,
                 } }
               : deliveryChanges ? { delivery: deliveryChanges } : {}),
             items: cart.map((item) => ({
@@ -1903,6 +1945,7 @@ function RegistrarVentaContent() {
 
   const handleUpdateClient = async () => {
     if (!clientFound?.id || !auth?.company?.id) return;
+    if (rejectInvalidMapsLink()) return;
     if (!Object.keys(sharedClientChanges).length) {
       if (deliveryChanges) toast.info("La entrega se guardará solo en este pedido al confirmar los cambios.");
       return;
@@ -2631,7 +2674,7 @@ function RegistrarVentaContent() {
                       )}
                     </div>
 
-                    <Disclosure label="Agregar referencia y ubicación (opcional)">
+                    <Disclosure label="Agregar referencia y ubicación (opcional)" forceOpen={!!clientErrors.googleMapsUrl}>
                       <div className="space-y-1">
                         <Label
                           htmlFor="client-email"
@@ -2691,7 +2734,12 @@ function RegistrarVentaContent() {
                           placeholder="Pega aquí el link de Google Maps…"
                           value={clientForm.googleMapsUrl}
                           onChange={(e) => handleMapsLinkChange(e.target.value)}
+                          className={clientErrors.googleMapsUrl ? "border-destructive" : ""}
+                          aria-invalid={!!clientErrors.googleMapsUrl}
                         />
+                        {clientErrors.googleMapsUrl && (
+                          <p className="text-xs text-destructive mt-1">{clientErrors.googleMapsUrl}</p>
+                        )}
                         {mapsLinkStatus === "ok" && (
                           <p className="text-xs text-green-600 dark:text-green-400">
                             ✓ Coordenadas detectadas y completadas abajo.
