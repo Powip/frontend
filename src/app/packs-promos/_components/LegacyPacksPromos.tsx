@@ -97,7 +97,7 @@ export function PacksPromosContent({ bundlesOnly = false }: { bundlesOnly?: bool
   const editingPack = editingId ? packs.find((p) => p.id === editingId) ?? null : null;
 
   return (
-    <div className={cn("flex w-full [--primary:#6D4FE0] [--primary-foreground:#ffffff] [--ring:#8067F0] dark:[--primary:#9B85FF] dark:[--ring:#8A72F5]", !bundlesOnly && "h-screen")}>
+    <div className={cn("flex w-full", !bundlesOnly && "h-screen")}>
       <main className={cn("flex-1", !bundlesOnly && "overflow-auto bg-gradient-to-b from-muted/40 to-transparent")}>
         <div className={cn("space-y-6", !bundlesOnly && "mx-auto max-w-[1400px] p-6 lg:p-8")}>
         <div className="flex items-start justify-between flex-wrap gap-3">
@@ -263,7 +263,7 @@ function PackCard({
 }) {
   const typeClasses: Record<PackType, string> = {
     VOLUME: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300",
-    BUNDLE: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
+    BUNDLE: "bg-primary/10 text-primary dark:bg-primary/15",
     GIFT: "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300",
   };
   const typeIcon: Record<PackType, React.ReactNode> = {

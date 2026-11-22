@@ -1,4 +1,5 @@
 import type { OrderHeader } from "@/interfaces/IOrder";
+import { isCourierDelivery } from "./courier-delivery";
 
 export function isOrderTrackable(order: OrderHeader): boolean {
   if (order.status === "ANULADO") return false;
@@ -8,6 +9,6 @@ export function isOrderTrackable(order: OrderHeader): boolean {
     !!order.aliclikDispatchStatus ||
     !!order.shalomStatus ||
     !!order.externalTrackingNumber ||
-    (order.status === "ENTREGADO" && order.deliveryType === "DOMICILIO")
+    (order.status === "ENTREGADO" && isCourierDelivery(order))
   );
 }

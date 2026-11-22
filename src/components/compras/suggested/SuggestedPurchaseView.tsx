@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Info, Loader2, ShoppingCart } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, Loader2, Plus, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,8 @@ import {
   type GroupSuppliers,
   type LineEdits,
 } from "@/lib/suggestedPurchase";
-import { listPurchaseSuppliers } from "@/services/purchasesService";
+import { listPurchaseSuppliers, type PurchaseSupplier } from "@/services/purchasesService";
+import SupplierFormDialog from "../SupplierFormDialog";
 import {
   generateSuggestedPurchase,
   getSuggestedPurchase,
@@ -92,6 +93,8 @@ function SuggestedPurchaseScreen({ initialFilters }: { initialFilters: Suggested
   const [edits, setEdits] = useState<LineEdits>({});
   const [groupSuppliers, setGroupSuppliers] = useState<GroupSuppliers>({});
   const [destination, setDestination] = useState<string | null>(null);
+  // Grupo para el que se está creando un proveedor (casi ninguna empresa tiene proveedores cargados).
+  const [creatingSupplierFor, setCreatingSupplierFor] = useState<string | null>(null);
   // Clave de idempotencia: la misma en cada reintento hasta que una generación sale bien.
   const [operationKey, setOperationKey] = useState(newOperationId);
   const [result, setResult] = useState<GenerateSuggestedResult | null>(null);
@@ -375,6 +378,7 @@ function SuggestedPurchaseScreen({ initialFilters }: { initialFilters: Suggested
                         setGenerateError(null);
                         setGroupSuppliers((current) => ({ ...current, [groupKeyOf(group)]: supplierId }));
                       }}
+                      onCreateSupplier={canGenerate ? () => setCreatingSupplierFor(groupKeyOf(group)) : undefined}
                       onLine={setLine}
                     />
                   ))
@@ -413,28 +417,37 @@ function SuggestedPurchaseScreen({ initialFilters }: { initialFilters: Suggested
                       ))}
                     </select>
                   </div>
-                  <Button
-                    type="button"
-                    disabled={!!selection.problem || generate.isPending}
-                    onClick={() => {
-                      setGenerateError(null);
-                      generate.mutate();
-                    }}
-                  >
-                    {generate.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Generar órdenes de compra
-                  </Button>
+                  <div className="flex flex-col gap-1 md:items-end">
+                    <Button
+                      type="button"
+                      disabled={!!selection.problem || generate.isPending}
+                      aria-describedby={selection.problem ? "sg-problem" : undefined}
+                      onClick={() => {
+                        setGenerateError(null);
+                        generate.mutate();
+                      }}
+                    >
+                      {generate.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Generar órdenes de compra
+                    </Button>
+                    {/* Un botón deshabilitado no puede quedar mudo: el motivo va pegado a él (y es su descripción). */}
+                    {selection.problem ? (
+                      <p
+                        id="sg-problem"
+                        role="status"
+                        className="flex max-w-md items-start gap-1 text-xs font-medium text-amber-700"
+                        data-testid="sg-problem"
+                      >
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        <span>{selection.problem}</span>
+                      </p>
+                    ) : null}
+                  </div>
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">Solo el Administrador u Operaciones pueden generar órdenes de compra.</p>
               )}
             </div>
-          ) : null}
-
-          {canGenerate && groups.length > 0 && selection.problem ? (
-            <p className="text-sm text-muted-foreground" data-testid="sg-problem">
-              {selection.problem}
-            </p>
           ) : null}
           {generateError ? (
             <div role="alert" className="rounded-md border border-destructive/50 bg-destructive/5 p-3 text-sm text-destructive">
@@ -444,6 +457,22 @@ function SuggestedPurchaseScreen({ initialFilters }: { initialFilters: Suggested
           {result ? <GenerateResult result={result} onClose={() => setResult(null)} /> : null}
         </CardContent>
       </Card>
+      {creatingSupplierFor !== null ? (
+        <SupplierFormDialog
+          supplier={null}
+          onClose={() => setCreatingSupplierFor(null)}
+          onSaved={(saved) => {
+            // Queda en la lista y elegido en el grupo que lo pidió, sin salir del pedido sugerido.
+            queryClient.setQueryData<PurchaseSupplier[]>(["purchase-suppliers", companyId, "active"], (current) =>
+              current?.some((supplier) => supplier.id === saved.id) ? current : [...(current ?? []), saved],
+            );
+            void queryClient.invalidateQueries({ queryKey: ["purchase-suppliers", companyId] });
+            setGroupSuppliers((current) => ({ ...current, [creatingSupplierFor]: saved.id }));
+            setGenerateError(null);
+            setCreatingSupplierFor(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -455,10 +484,12 @@ interface GroupRowsProps {
   suppliers: Array<{ id: string; name: string }>;
   targetDays: number;
   onSupplier: (supplierId: string) => void;
+  /** Abre el alta de proveedor para este grupo (solo quien puede generar). */
+  onCreateSupplier?: () => void;
   onLine: (variantId: string, patch: { quantity?: string; selected?: boolean }) => void;
 }
 
-function GroupRows({ group, edits, supplierId, suppliers, targetDays, onSupplier, onLine }: GroupRowsProps) {
+function GroupRows({ group, edits, supplierId, suppliers, targetDays, onSupplier, onCreateSupplier, onLine }: GroupRowsProps) {
   const totals = groupSelection(group, edits);
   const title = group.supplierId ? group.supplierName || "Proveedor" : "Sin proveedor";
   const inactive = group.supplierId !== null && group.supplierActive === false;
@@ -493,7 +524,18 @@ function GroupRows({ group, edits, supplierId, suppliers, targetDays, onSupplier
                   </option>
                 ))}
               </select>
+              {onCreateSupplier ? (
+                <Button type="button" size="sm" variant="outline" className="h-8" onClick={onCreateSupplier}>
+                  <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                  Nuevo proveedor
+                </Button>
+              ) : null}
             </span>
+            {suppliers.length === 0 ? (
+              <span className="basis-full text-xs text-amber-700">
+                No tienes proveedores activos: crea uno para poder generar la orden de compra.
+              </span>
+            ) : null}
           </div>
         </td>
       </tr>

@@ -1,11 +1,12 @@
 import type { OrderStatus } from "@/interfaces/IOrder";
 import { DELIVERY_TYPE_OPTIONS } from "@/constants/operationsDomain";
 import { getStatusLabel } from "@/utils/domain/orders-status-flow";
+import { isCourierDelivery } from "@/utils/domain/courier-delivery";
 import type { Sale } from "./types";
 
 /**
  * Elegibilidad para armar guía desde Preparados. La regla es la de
- * siempre (sin guía + DOMICILIO + estado permitido); este módulo solo
+ * siempre (sin guía + DOMICILIO, o PUNTO_EXTERNO con courier + estado permitido); este módulo solo
  * agrega el *motivo* por el que un pedido queda afuera, para que la UI no
  * descarte pedidos en silencio.
  */
@@ -56,7 +57,7 @@ export function getGuideBlockReason(sale: Sale): GuideBlockReason | null {
   if (sale.guideNumber) return "HAS_GUIDE";
   if (!GUIDE_ELIGIBLE_STATUSES.includes(sale.status))
     return "STATUS_NOT_ALLOWED";
-  if ((sale.deliveryType ?? "").toUpperCase() === "DOMICILIO") return null;
+  if (isCourierDelivery(sale)) return null;
   const normalized = normalizeDeliveryType(sale.deliveryType);
   if (normalized === "RETIRO_TIENDA") return "PICKUP_IN_STORE";
   if (!normalized) return "MISSING_DELIVERY_TYPE";
@@ -73,7 +74,7 @@ export function guideBlockReasonLabel(
     case "STATUS_NOT_ALLOWED":
       return `Estado «${getStatusLabel(sale.status)}» no permite generar guía`;
     case "PICKUP_IN_STORE":
-      return "Configurado como retiro en tienda";
+      return "Configurado como retiro en tienda negocio";
     case "MISSING_DELIVERY_TYPE":
       return "No tiene tipo de entrega configurado";
     case "UNSUPPORTED_DELIVERY_TYPE":

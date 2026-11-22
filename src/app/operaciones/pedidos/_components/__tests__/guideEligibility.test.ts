@@ -42,8 +42,27 @@ describe("getGuideBlockReason", () => {
     [{ deliveryType: "RETIRO_TIENDA" }, "PICKUP_IN_STORE"],
     [{ deliveryType: "" }, "MISSING_DELIVERY_TYPE"],
     [{ deliveryType: "PUNTO EXTERNO" }, "UNSUPPORTED_DELIVERY_TYPE"],
+    [{ deliveryType: "PUNTO EXTERNO", courier: "" }, "UNSUPPORTED_DELIVERY_TYPE"],
   ])("%o → %s", (overrides, reason) => {
     expect(getGuideBlockReason(sale(overrides))).toBe(reason);
+  });
+
+  it.each([
+    [{ courier: "Shalom" }],
+    [{ courierId: "c-1" }],
+    [{ courier: "Shalom", deliveryType: "PUNTO_EXTERNO" }],
+  ])("PUNTO EXTERNO con courier (agencia) %o es elegible", (overrides) => {
+    expect(
+      getGuideBlockReason(sale({ deliveryType: "PUNTO EXTERNO", ...overrides })),
+    ).toBeNull();
+  });
+
+  it("PUNTO EXTERNO con courier respeta guía y estado", () => {
+    const base = { deliveryType: "PUNTO EXTERNO", courier: "Shalom" };
+    expect(getGuideBlockReason(sale({ ...base, guideNumber: "G-1" }))).toBe("HAS_GUIDE");
+    expect(
+      getGuideBlockReason(sale({ ...base, status: "PAGADO" as OrderStatus })),
+    ).toBe("STATUS_NOT_ALLOWED");
   });
 
   it("guía existente y estado prevalecen sobre el tipo de entrega", () => {
@@ -60,9 +79,9 @@ describe("getGuideBlockReason", () => {
 
 describe("guideBlockReasonLabel", () => {
   it("nombra el tipo de entrega no compatible por su etiqueta", () => {
-    const s = sale({ deliveryType: "PUNTO EXTERNO" });
+    const s = sale({ deliveryType: "PUNTO EXTERNO", courier: null });
     expect(guideBlockReasonLabel("UNSUPPORTED_DELIVERY_TYPE", s)).toBe(
-      "Tipo de entrega «Punto externo» no admite guía",
+      "Tipo de entrega «Recojo en tienda courier» no admite guía",
     );
   });
 });

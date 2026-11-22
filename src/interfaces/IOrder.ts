@@ -137,7 +137,10 @@ export interface OrderDeliverySnapshot {
 export type OrderDeliveryPatch = Partial<Omit<OrderDeliverySnapshot, "version" | "type" | "zone">>;
 
 /** Destination accepted for this order, without internal delivery metadata. */
-export type OrderDeliveryDetails = Pick<OrderDeliverySnapshot, "type" | "department" | "province" | "district" | "address" | "agency">;
+export type OrderDeliveryDetails = Pick<OrderDeliverySnapshot, "type" | "department" | "province" | "district" | "address" | "agency"> & {
+  /** `id_agencia` de Shalom, si el pedido se creó eligiendo la agencia del catálogo. */
+  agencyId?: string;
+};
 
 export interface OrderCustomer {
   id: string;
@@ -269,6 +272,8 @@ export interface OrderHeader extends UnitAssignmentState {
   externalTrackingNumber?: string | null;
   shippingCode?: string | null;
   shippingKey?: string | null;
+  // true si el pedido tiene clave guardada aunque la API la oculte (clave bloqueada)
+  hasShippingKey?: boolean | null;
   shippingOffice?: string | null;
   shippingProofUrl?: string | null;
   trackingUrl?: string | null;

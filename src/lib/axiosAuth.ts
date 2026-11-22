@@ -7,6 +7,11 @@ interface SessionRequestConfig extends InternalAxiosRequestConfig {
   _authRetried?: boolean;
 }
 
+// Endpoints de sesión/credenciales: un 401 aquí no se renueva (evita bucles).
+// Las lecturas bajo /auth/ (p. ej. usuarios de la empresa) sí se reintentan.
+const AUTH_SESSION_ENDPOINT =
+  /(?:^|\/)auth(?:\/(?:login|register|refresh|logout|forgot-password|reset-password|update-password)(?:[/?]|$)|\/?(?:\?|$))/i;
+
 const axiosAuth = axios.create();
 
 axiosAuth.interceptors.request.use((config: SessionRequestConfig) => {
@@ -44,7 +49,7 @@ axiosAuth.interceptors.response.use(undefined, async (error: unknown) => {
     !session ||
     config._authRetried ||
     config.signal?.aborted ||
-    /(?:^|\/)auth(?:\/|$)/i.test(config.url ?? "") ||
+    AUTH_SESSION_ENDPOINT.test(config.url ?? "") ||
     !tokenStore.isCurrent(session)
   )
     throw error;

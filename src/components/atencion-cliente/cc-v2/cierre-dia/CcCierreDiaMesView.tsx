@@ -220,8 +220,8 @@ export function CcCierreDiaMesView({
               label="🛍 Upsells"
               value={String(totals.upsells)}
               sub="pedidos con producto adicional"
-              valueClass="text-violet-600 dark:text-violet-400"
-              className="border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-950/20"
+              valueClass="text-primary"
+              className="border-primary/25 dark:border-primary/40 bg-primary/50 dark:bg-primary/20"
             />
           </div>
 

@@ -695,8 +695,8 @@ export function MonthlyNumbersV23({
                   </td>
                 </tr>
               ) : null}
-              <tr className="border-t-2 bg-violet-50 font-bold dark:bg-violet-950/20">
-                <th className="sticky left-0 z-10 bg-violet-50 text-left dark:bg-violet-950">
+              <tr className="border-t-2 bg-primary/5 font-bold dark:bg-primary/20">
+                <th className="sticky left-0 z-10 bg-primary/5 text-left dark:bg-primary/20">
                   {model.remaining ? `Mes al ${effectiveTo.slice(-2)}` : "Mes completo"}
                 </th>
                 {renderCells(total, total.spend, total.projectedGain)}

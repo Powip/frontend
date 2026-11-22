@@ -33,7 +33,7 @@ const EMPTY: Record<ClosedVariant, string> = {
 const chipClass = (active: boolean) =>
   `rounded-full border px-3 py-1 text-xs font-semibold transition ${
     active
-      ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
+      ? "border-primary bg-primary/10 text-primary dark:bg-primary/15"
       : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
   }`;
 

@@ -4,7 +4,7 @@ import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/o
 import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
 import { WhatsAppLastNoticeIndicator } from "@/components/whatsapp/WhatsAppLastNoticeIndicator";
 import { useState } from "react";
-import { CheckCircle2, Copy, Eye, FileSpreadsheet, Loader2, MoreVertical, PackageCheck, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Copy, Eye, FileSpreadsheet, Loader2, MoreVertical, PackageCheck, Printer, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -62,7 +62,7 @@ export function courierNotice(sale: Pick<Sale, "shalomStatus">): { label: string
 const chipClass = (active: boolean) =>
   `rounded-full border px-3 py-1 text-xs font-semibold transition ${
     active
-      ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
+      ? "border-primary bg-primary/10 text-primary dark:bg-primary/15"
       : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
   }`;
 
@@ -78,6 +78,7 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
   const canChangeStatus = actions.can(OPS_PERMISSIONS.CHANGE_STATUS_MANUAL);
   const canExport = actions.can(OPS_PERMISSIONS.EXPORT);
   const canManageGuides = actions.can(OPS_PERMISSIONS.MANAGE_GUIDES);
+  const canDispatch = actions.can(OPS_PERMISSIONS.DISPATCH);
   const isCamino = variant === "camino";
   // FEAT-31: «N° Externo» solo se dibuja si algún pedido de la pestaña lo trae.
   const showExternalCol = hasExternalOrderNumbers(data.sales);
@@ -222,7 +223,7 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
               type="button"
               aria-pressed={state.view === view}
               onClick={() => onState({ view })}
-              className={`rounded-md px-2.5 py-1 text-xs font-semibold ${state.view === view ? "bg-violet-600 text-white" : "text-muted-foreground"}`}
+              className={`rounded-md px-2.5 py-1 text-xs font-semibold ${state.view === view ? "bg-primary text-white" : "text-muted-foreground"}`}
             >
               {view === "pedido" ? "Por pedido" : "Por guía"}
             </button>
@@ -284,6 +285,19 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
             >
               <FileSpreadsheet className="h-3.5 w-3.5" />
               Exportar Excel ({bulk.exportCount})
+            </Button>
+          )}
+          {/* Misma impresión masiva que Preparados: en esta etapa no cambia el estado del pedido. */}
+          {isCamino && canDispatch && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1 text-xs"
+              disabled={selection.count === 0 || actions.isBulkLoading}
+              onClick={() => actions.onBulkPrint(selection.selected)}
+            >
+              {actions.isBulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+              Imprimir etiquetas
             </Button>
           )}
           {canExport && selection.count > 0 && <HiddenSelectionNotice count={bulk.exportSelection.hiddenCount} />}
@@ -353,7 +367,7 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
                     <TableCell className="text-sm">{sale.district || "—"}</TableCell>
                     <TableCell className="text-sm">
                       {sale.guideNumber ? (
-                        <button className="font-semibold text-violet-600 underline hover:text-violet-700" onClick={() => actions.onOpenGuide(sale)}>
+                        <button className="font-semibold text-primary underline hover:text-primary" onClick={() => actions.onOpenGuide(sale)}>
                           {sale.guideNumber}
                         </button>
                       ) : (
@@ -449,7 +463,7 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
                   <TableRow key={group.guideNumber || "sin-guia"} data-testid="guide-row">
                     <TableCell className="font-medium">
                       {group.guideNumber ? (
-                        <button className="font-semibold text-violet-600 underline hover:text-violet-700" onClick={() => actions.onOpenGuide({ id: group.orderIds[0], courier: group.courier } as Sale)}>
+                        <button className="font-semibold text-primary underline hover:text-primary" onClick={() => actions.onOpenGuide({ id: group.orderIds[0], courier: group.courier } as Sale)}>
                           {group.guideNumber}
                         </button>
                       ) : (

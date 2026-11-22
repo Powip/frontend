@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { Fragment, useState } from "react";
 import AuthGuard from "@/components/auth/AuthGuard";
 import { BusinessScopeBar } from "@/components/header/BusinessScopeBar";
+import GreCredentialsNotice from "@/components/gre/GreCredentialsNotice";
 import { Sidebar } from "@/components/layout/Sidebar";
 import FlowMigrationBanner from "@/components/subscription/FlowMigrationBanner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -75,6 +76,7 @@ function ScopedAppContainer({ children }: { children: React.ReactNode }) {
         {!hideSidebar && <Sidebar />}
         <main className="min-w-0 flex-1 bg-gray-light overflow-auto">
           {!hideSidebar && <FlowMigrationBanner />}
+          {!hideSidebar && <GreCredentialsNotice />}
           {!hideSidebar && isBusinessScopeRoute(pathname) && <BusinessScopeBar />}
           <Fragment key={viewKey}>{children}</Fragment>
         </main>

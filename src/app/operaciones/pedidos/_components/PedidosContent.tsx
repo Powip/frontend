@@ -900,7 +900,7 @@ export function PedidosContent() {
           </div>
           <Button
             size="sm"
-            className="gap-1.5 bg-violet-600 text-white hover:bg-violet-700"
+            className="gap-1.5 bg-primary text-white hover:bg-primary/90"
             onClick={() => setScannerOpen(true)}
           >
             <ScanLine className="h-4 w-4" />
@@ -972,6 +972,11 @@ export function PedidosContent() {
             storeId={createGuideOrders?.[0]?.storeId || ""}
             onConfirm={handleCreateGuideConfirm}
             isLoading={isCreatingGuide}
+            onRemoveOrder={(orderId) =>
+              setCreateGuideOrders((prev) =>
+                prev ? prev.filter((o) => o.id !== orderId) : prev,
+              )
+            }
           />
         )}
 

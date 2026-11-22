@@ -224,7 +224,7 @@ export function RowStatusSelect({
         ))}
         {(onMarkNoAnswer || onReschedule) && (nextStatuses.length > 0) && <SelectSeparator />}
         {onReschedule && (
-          <SelectItem value={REPROGRAMAR_VALUE} className="text-violet-600 dark:text-violet-400">
+          <SelectItem value={REPROGRAMAR_VALUE} className="text-primary">
             Reprogramar
           </SelectItem>
         )}

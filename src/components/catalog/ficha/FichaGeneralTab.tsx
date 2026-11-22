@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import BrandSelect from "@/components/products/BrandSelect";
 import CategoryTreeSelect from "@/components/catalog/CategoryTreeSelect";
+import CategoryQuickCreate from "@/components/catalog/CategoryQuickCreate";
 import { ProductThumb, SkuConflictBadge } from "@/components/catalog/CatalogBadges";
 import { uploadImage } from "@/services/uploadService";
 import { updateCatalogProduct, updateCatalogVariant, type CatalogProductDetail, type CatalogVariantDetail } from "@/services/catalogProductService";
@@ -190,7 +191,10 @@ export default function FichaGeneralTab({
         <BrandSelect value={form.brandId} disabled={disabled} onChange={(brandId) => set("brandId", brandId)} />
         <div className="space-y-2">
           <Label htmlFor="ficha-category">Categoría</Label>
-          <CategoryTreeSelect id="ficha-category" tree={categoryTree} value={form.categoryId} disabled={disabled} onChange={(value) => set("categoryId", value)} />
+          <div className="flex gap-2">
+            <CategoryTreeSelect id="ficha-category" className="flex-1" tree={categoryTree} value={form.categoryId} disabled={disabled} onChange={(value) => set("categoryId", value)} />
+            {disabled ? null : <CategoryQuickCreate tree={categoryTree} onCreated={(categoryId) => set("categoryId", categoryId)} />}
+          </div>
           <p className="text-xs text-muted-foreground">Las categorías de tu catálogo se administran en Catálogo › Categorías.</p>
         </div>
         <div className="grid grid-cols-[1fr_7rem] gap-2">

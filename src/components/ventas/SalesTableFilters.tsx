@@ -184,7 +184,7 @@ export const REGION_OPTIONS = [
 
 export const DELIVERY_TYPE_OPTIONS = [
   { value: "", label: "Todos" },
-  { value: "RETIRO_TIENDA", label: "Retiro en tienda" },
+  { value: "RETIRO_TIENDA", label: "Retiro en tienda negocio" },
   { value: "DOMICILIO", label: "Domicilio" },
 ];
 
@@ -269,7 +269,7 @@ export function SalesTableFilters({
           <Filter className="h-4 w-4 mr-2" />
           Filtros
           {activeFiltersCount > 0 && (
-            <span className="ml-2 bg-violet-600 text-white rounded-full px-2 py-0.5 text-xs">
+            <span className="ml-2 bg-primary text-white rounded-full px-2 py-0.5 text-xs">
               {activeFiltersCount}
             </span>
           )}

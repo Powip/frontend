@@ -86,7 +86,7 @@ const ListadoPedidos = () => {
                 <SelectContent>
                   <SelectItem value="lima">Lima</SelectItem>
                   <SelectItem value="puntoScharf">Punto Scharf</SelectItem>
-                  <SelectItem value="recojoTienda">Recojo en Tienda</SelectItem>
+                  <SelectItem value="recojoTienda">Retiro en tienda negocio</SelectItem>
                 </SelectContent>
               </Select>
             </div>

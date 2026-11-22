@@ -135,7 +135,7 @@ export function useBulkTools({
 
   // ---- Piezas de interfaz ----
   const progressNode: ReactNode = loader.progress && (
-    <div role="status" data-testid="bulk-progress" className="flex flex-wrap items-center gap-3 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200">
+    <div role="status" data-testid="bulk-progress" className="flex flex-wrap items-center gap-3 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-xs text-primary dark:border-primary/30 dark:bg-primary/10 dark:text-primary/40">
       <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" />
       <span>
         {loader.progress.purpose === "export" ? "Preparando la exportación" : "Seleccionando"}:{" "}
@@ -143,9 +143,9 @@ export function useBulkTools({
           {fmt(loader.progress.loaded)} de {loader.progress.total ? fmt(loader.progress.total) : "…"}
         </b>
       </span>
-      <div className="h-1.5 w-40 overflow-hidden rounded-full bg-violet-200 dark:bg-violet-500/30">
+      <div className="h-1.5 w-40 overflow-hidden rounded-full bg-primary/20 dark:bg-primary/30">
         <div
-          className="h-full bg-violet-600 transition-all"
+          className="h-full bg-primary transition-all"
           style={{ width: `${loader.progress.total ? Math.round((loader.progress.loaded / loader.progress.total) * 100) : 5}%` }}
         />
       </div>
@@ -158,7 +158,7 @@ export function useBulkTools({
   const bannerNode: ReactNode = (() => {
     if (filterFullySelected) {
       return (
-        <div data-testid="select-filter-banner" className="flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200">
+        <div data-testid="select-filter-banner" className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-2 text-xs text-primary dark:border-primary/30 dark:bg-primary/10 dark:text-primary/40">
           <span>
             Están seleccionados los <b>{fmt(total)}</b> pedidos del filtro.
           </span>

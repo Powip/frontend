@@ -43,10 +43,10 @@ interface TotalesProps {
 function TotalesCards({ totalMonto, totalUnidades, totalRegistros }: TotalesProps) {
   return (
     <div className="grid grid-cols-3 gap-3">
-      <Card className="border border-violet-200 dark:border-violet-800/50 bg-violet-50 dark:bg-violet-950/20">
+      <Card className="border border-primary/25 dark:border-primary/50 bg-primary/5 dark:bg-primary/20">
         <CardContent className="px-4 py-3">
           <p className="text-xs text-muted-foreground mb-0.5">Monto total upsell</p>
-          <p className="text-xl font-bold text-violet-700 dark:text-violet-300">
+          <p className="text-xl font-bold text-primary">
             {formatPEN(totalMonto)}
           </p>
         </CardContent>
@@ -97,7 +97,7 @@ function UpsellRow({ item }: { item: CcUpsellRecordItem }) {
       <td className="px-3 py-2.5 text-xs text-right text-slate-700 dark:text-slate-300 whitespace-nowrap">
         {formatPEN(item.unitPrice)}
       </td>
-      <td className="px-3 py-2.5 text-xs text-right font-semibold text-violet-700 dark:text-violet-300 whitespace-nowrap">
+      <td className="px-3 py-2.5 text-xs text-right font-semibold text-primary whitespace-nowrap">
         {formatPEN(item.subtotal)}
       </td>
       <td className="px-3 py-2.5 text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">

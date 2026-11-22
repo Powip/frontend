@@ -24,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { OrderHeader } from "@/interfaces/IOrder";
+import { isCourierDelivery } from "@/utils/domain/courier-delivery";
 import {
   getOperationsTab,
   getPedidosTab,
@@ -80,7 +81,7 @@ export default function OperacionesTableroPage() {
   const [scannerOpen, setScannerOpen] = useState(false);
 
   const shippingOrders = useMemo(
-    () => orders.filter((o) => o.deliveryType === "DOMICILIO" && SHIPPING_STATUSES.includes(o.status)),
+    () => orders.filter((o) => isCourierDelivery(o) && SHIPPING_STATUSES.includes(o.status)),
     [orders],
   );
 
@@ -250,7 +251,7 @@ export default function OperacionesTableroPage() {
         <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
-            className="gap-1.5 bg-violet-600 text-white hover:bg-violet-700"
+            className="gap-1.5 bg-primary text-white hover:bg-primary/90"
             onClick={() => setScannerOpen(true)}
           >
             <ScanLine className="h-4 w-4" />
@@ -480,7 +481,7 @@ function Kpi({
 }
 
 const BANDEJA_BORDER: Record<string, string> = {
-  purple: "border-l-violet-500",
+  purple: "border-l-primary",
   red: "border-l-red-500",
   amber: "border-l-amber-500",
   green: "border-l-green-500",
@@ -488,7 +489,7 @@ const BANDEJA_BORDER: Record<string, string> = {
   blue: "border-l-blue-500",
 };
 const BANDEJA_NUM: Record<string, string> = {
-  purple: "text-violet-600 dark:text-violet-400",
+  purple: "text-primary",
   red: "text-red-600 dark:text-red-400",
   amber: "text-amber-600 dark:text-amber-400",
   green: "text-green-600 dark:text-green-400",

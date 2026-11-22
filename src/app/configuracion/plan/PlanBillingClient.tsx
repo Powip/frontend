@@ -416,7 +416,7 @@ export default function PlanBillingClient() {
                 className={`flex flex-col gap-3 rounded-xl border bg-card p-4 ${status === "active" ? "border-teal-600 dark:border-teal-400" : ""}`}
               >
                 <div className="flex items-start gap-3">
-                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300">
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary dark:bg-primary/20">
                     <Icon className="h-5 w-5" aria-hidden />
                   </span>
                   <div className="min-w-0 flex-1">
@@ -581,7 +581,7 @@ export default function PlanBillingClient() {
                 </ul>
               )}
               {dialog.card.roi && (
-                <div className="rounded-lg bg-violet-100 p-3 text-sm text-violet-700 dark:bg-violet-500/15 dark:text-violet-300">
+                <div className="rounded-lg bg-primary/10 p-3 text-sm text-primary dark:bg-primary/15">
                   <p className="font-semibold">Se paga solo</p>
                   <p>{dialog.card.roi}</p>
                 </div>

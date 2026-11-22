@@ -4,6 +4,7 @@ import AppContainer from "../AppContainer";
 
 let mockPathname = "/dashboard";
 
+jest.mock("@/components/gre/GreCredentialsNotice", () => ({ __esModule: true, default: () => null }));
 jest.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),

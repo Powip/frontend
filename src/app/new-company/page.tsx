@@ -67,7 +67,7 @@ function CompanyProgress({ currentStep }: { currentStep: number }) {
                   background: isCompleted
                     ? "#e9f5f3"
                     : isCurrent
-                      ? "#4F3A96"
+                      ? "var(--primary)"
                       : "#f3f4f6",
                   color: isCompleted
                     ? "#008a7b"
@@ -75,7 +75,7 @@ function CompanyProgress({ currentStep }: { currentStep: number }) {
                       ? "white"
                       : "#9ca3af",
                   boxShadow: isCurrent
-                    ? "0 0 0 4px rgba(79,58,150,0.12)"
+                    ? "0 0 0 4px color-mix(in srgb, var(--primary) 12%, transparent)"
                     : "none",
                 }}
               >
@@ -87,7 +87,7 @@ function CompanyProgress({ currentStep }: { currentStep: number }) {
                   color: isCompleted
                     ? "#008a7b"
                     : isCurrent
-                      ? "#4F3A96"
+                      ? "var(--primary)"
                       : "#9ca3af",
                 }}
               >
@@ -101,7 +101,7 @@ function CompanyProgress({ currentStep }: { currentStep: number }) {
                 style={{
                   background:
                     step.num < currentStep
-                      ? "linear-gradient(90deg, #008a7b, #4F3A96)"
+                      ? "linear-gradient(90deg, var(--brand-accent), var(--primary))"
                       : "#e5e7eb",
                 }}
               />
@@ -274,7 +274,7 @@ export default function NewCompanyPage() {
         <div className="text-center mb-8">
           <div
             className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4"
-            style={{ background: "#4F3A96" }}
+            style={{ background: "var(--primary)" }}
           >
             <Building2 className="w-7 h-7 text-white" />
           </div>
@@ -296,7 +296,7 @@ export default function NewCompanyPage() {
         {/* Card */}
         <div
           className="bg-white rounded-2xl p-6 sm:p-8 shadow-sm border mb-4"
-          style={{ borderColor: "rgba(79,58,150,0.08)" }}
+          style={{ borderColor: "color-mix(in srgb, var(--primary) 8%, transparent)" }}
         >
           <form onSubmit={handleSubmit}>
             {/* STEP 1 */}
@@ -336,9 +336,9 @@ export default function NewCompanyPage() {
                     </span>
                   </Label>
                   <label
-                    className="mt-1.5 flex items-center gap-4 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-colors hover:border-[#4F3A96]/40"
+                    className="mt-1.5 flex items-center gap-4 p-4 rounded-xl border-2 border-dashed cursor-pointer transition-colors hover:border-primary/40"
                     style={{
-                      borderColor: logoPreview ? "#4F3A96" : "#e5e7eb",
+                      borderColor: logoPreview ? "var(--primary)" : "#e5e7eb",
                     }}
                   >
                     {logoPreview ? (
@@ -438,7 +438,7 @@ export default function NewCompanyPage() {
                   type="button"
                   size="lg"
                   className="w-full h-12 rounded-xl text-base font-semibold mt-2 flex items-center justify-center gap-2"
-                  style={{ background: "#4F3A96" }}
+                  style={{ background: "var(--primary)" }}
                   onClick={() => {
                     const e: Record<string, string> = {};
                     if (!formData.companyName.trim())
@@ -483,7 +483,7 @@ export default function NewCompanyPage() {
                   type="button"
                   size="lg"
                   className="mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-xl text-base font-semibold"
-                  style={{ background: "#4F3A96" }}
+                  style={{ background: "var(--primary)" }}
                   onClick={() => {
                     const questionErrors = businessQuestionErrors(formData);
                     setErrors(questionErrors);
@@ -601,11 +601,11 @@ export default function NewCompanyPage() {
                 {/* Nota informativa */}
                 <div
                   className="flex items-center gap-2.5 p-3.5 rounded-xl text-sm"
-                  style={{ background: "#f5f2ff", color: "#4F3A96" }}
+                  style={{ background: "color-mix(in srgb, var(--primary) 6%, #fff)", color: "var(--primary)" }}
                 >
                   <div
                     className="w-5 h-5 rounded-full flex items-center justify-center shrink-0"
-                    style={{ background: "rgba(79,58,150,0.15)" }}
+                    style={{ background: "color-mix(in srgb, var(--primary) 15%, transparent)" }}
                   >
                     <span className="text-xs font-bold">i</span>
                   </div>
@@ -620,7 +620,7 @@ export default function NewCompanyPage() {
                   type="submit"
                   size="lg"
                   className="w-full h-12 rounded-xl text-base font-semibold flex items-center justify-center gap-2"
-                  style={{ background: "#4F3A96" }}
+                  style={{ background: "var(--primary)" }}
                   disabled={isLoading}
                 >
                   {isLoading ? (

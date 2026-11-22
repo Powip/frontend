@@ -385,7 +385,7 @@ function ProofLink({ companyId, proof }: { companyId: string; proof: SettlementP
       </p>
       {link && link.expiresAt > Date.now() ? (
         <a
-          className="text-violet-700 underline"
+          className="text-primary underline"
           href={link.url}
           target="_blank"
           rel="noopener noreferrer"

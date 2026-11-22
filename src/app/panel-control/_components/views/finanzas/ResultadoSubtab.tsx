@@ -267,7 +267,7 @@ export function ResultadoSubtab() {
                     Vencido: {d.vencido === null ? "Sin dato" : formatSoles(d.vencido)}
                   </span>
                   <span className="block">
-                    Incluye retiro en tienda y POS. Cobranza solo cuenta entregas con courier, por
+                    Incluye retiro en tienda negocio y POS. Cobranza solo cuenta entregas con courier, por
                     eso puede diferir.
                   </span>
                 </>

@@ -1,4 +1,5 @@
 import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 
 // Usar la URL base del ms-auth (sin /api/v1 ya que el endpoint lo incluye)
 const API_AUTH =
@@ -54,12 +55,13 @@ export const getRoles = async (accessToken: string): Promise<Role[]> => {
   return response.data;
 };
 
-// Obtener usuarios por compañía
+// Obtener usuarios por compañía. Usa axiosAuth: ante un 401 renueva la sesión
+// y reintenta una vez, como el resto de llamadas con sesión.
 export const getUsersByCompany = async (
   companyId: string,
   accessToken: string,
 ): Promise<any[]> => {
-  const response = await axios.get(
+  const response = await axiosAuth.get(
     `${API_AUTH}/api/v1/auth/company/${companyId}/users`,
     {
       headers: {

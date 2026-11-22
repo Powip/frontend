@@ -55,12 +55,12 @@ export default function ExistingSubscriptionNotice({
         type="button"
         onClick={() => void continueWithPlan()}
         disabled={isContinuing}
-        className="w-full rounded-xl bg-[#4F3A96] px-5 py-3 text-sm font-semibold text-white disabled:opacity-70"
+        className="w-full rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white disabled:opacity-70"
       >
         {isContinuing ? "Actualizando sesión..." : "Continuar con mi plan actual"}
       </button>
       {subscription.gateway !== "FLOW" && (
-        <Link href="/pasate-a-flow" className="block text-sm font-medium text-[#4F3A96] underline">
+        <Link href="/pasate-a-flow" className="block text-sm font-medium text-primary underline">
           Pasarme a Flow
         </Link>
       )}

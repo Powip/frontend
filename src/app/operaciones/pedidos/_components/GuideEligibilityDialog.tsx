@@ -55,19 +55,19 @@ export function GuideEligibilityDialog({
   const hasPickup = blocked.some((b) => b.reason === "PICKUP_IN_STORE");
 
   const content = (() => {
-    // Caso 1: un solo pedido, configurado como retiro en tienda.
+    // Caso 1: un solo pedido, configurado como retiro en tienda negocio.
     if (single && singleBlock?.reason === "PICKUP_IN_STORE") {
       return (
         <>
           <DialogHeader>
             <DialogTitle>
               {updated
-                ? "El pedido sigue configurado como retiro en tienda"
-                : "Este pedido está configurado como retiro en tienda"}
+                ? "El pedido sigue configurado como retiro en tienda negocio"
+                : "Este pedido está configurado como retiro en tienda negocio"}
             </DialogTitle>
             <DialogDescription>
               El pedido {single.orderNumber} no puede generar una guía porque
-              su tipo de entrega es “Retiro en tienda”. Si necesita un envío,
+              su tipo de entrega es “Retiro en tienda negocio”. Si necesita un envío,
               podés editar el tipo de entrega.
             </DialogDescription>
           </DialogHeader>

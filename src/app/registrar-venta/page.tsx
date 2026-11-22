@@ -72,6 +72,8 @@ import { hasAdminAccess, isSuperadmin } from "@/config/permissions.config";
 import { useAuth } from "@/contexts/AuthContext";
 import { PacksProvider, usePacks } from "@/contexts/PacksContext";
 import { DeliveryType, OrderType, type SalesChannel } from "@/enum/Order.enum";
+import { ShalomAgencyField } from "@/components/shalom/ShalomAgencyField";
+import type { ShalomAgencyOption } from "@/services/shalomService";
 import { usePacksEngine } from "@/hooks/usePacksEngine";
 import { usePromoGifts } from "@/hooks/usePromoGifts";
 import { useSuggestedPrices } from "@/hooks/useSuggestedPrices";
@@ -99,8 +101,14 @@ import {
   validateClientDocument,
   validateClientEmail,
 } from "./clientDocumentValidation";
-import { buildClientUpdatePayload, clientToFormFields, splitOrderClientChanges } from "./clientForm";
-import { clientSaveErrorMessage } from "./clientSaveError";
+import {
+  buildClientUpdatePayload,
+  clientToFormFields,
+  INVALID_GOOGLE_MAPS_LINK,
+  normalizeGoogleMapsUrl,
+  splitOrderClientChanges,
+} from "./clientForm";
+import { clientCreateErrorMessage, clientSaveErrorMessage } from "./clientSaveError";
 import {
   resolvePaymentProofTarget,
   type ProofPayment,
@@ -131,7 +139,7 @@ const CustomerServiceModal = dynamic(
 );
 
 const TONE_CLASSES = {
-  violet: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300",
+  violet: "bg-primary/10 text-primary dark:bg-primary/15",
   green: "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300",
   amber: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300",
 } as const;
@@ -162,14 +170,24 @@ function SectionTitle({
   );
 }
 
-function Disclosure({ label, children }: { label: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
+function Disclosure({
+  label,
+  children,
+  forceOpen = false,
+}: {
+  label: string;
+  children: React.ReactNode;
+  /** Keeps the content visible, e.g. while a field inside has an error. */
+  forceOpen?: boolean;
+}) {
+  const [isOpen, setOpen] = useState(false);
+  const open = isOpen || forceOpen;
   return (
     <div className="mt-3 border-t border-dashed pt-3">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 text-xs font-bold text-violet-600 dark:text-violet-300"
+        className="flex items-center gap-1.5 text-xs font-bold text-primary"
       >
         <ChevronDown className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
         {label}
@@ -279,6 +297,10 @@ function RegistrarVentaContent() {
   const [originalClient, setOriginalClient] = useState<Client | null>(null);
   const [clientForm, setClientForm] = useState(emptyClientForm);
   const [orderDeliveryAgency, setOrderDeliveryAgency] = useState("");
+  // `api_name` de la agencia Shalom elegida en el buscador (solo para marcarla en el selector).
+  const [shalomAgencyApiName, setShalomAgencyApiName] = useState("");
+  // `id_agencia` (ter_id) de la agencia elegida en el catálogo; se borra si se escribe el nombre a mano.
+  const [shalomAgencyId, setShalomAgencyId] = useState("");
   const [clientErrors, setClientErrors] = useState<
     Partial<Record<keyof typeof emptyClientForm, string>>
   >({});
@@ -295,6 +317,7 @@ function RegistrarVentaContent() {
       googleMapsUrl: value,
       ...(coords ? { latitude: String(coords.lat), longitude: String(coords.lng) } : {}),
     }));
+    setClientErrors((prev) => (prev.googleMapsUrl ? { ...prev, googleMapsUrl: undefined } : prev));
   };
 
   /* ---------------- Productos ---------------- */
@@ -683,6 +706,8 @@ function RegistrarVentaContent() {
     setOriginalClient(cust);
     setClientForm(clientToFormFields(cust));
     setOrderDeliveryAgency(orderData.deliverySnapshot?.agency ?? "");
+    setShalomAgencyApiName("");
+    setShalomAgencyId("");
     setSearchState("found");
 
     // --- Detalles de la venta ---
@@ -1087,6 +1112,9 @@ function RegistrarVentaContent() {
       enviaPor: undefined,
       customerNotes: "",
     });
+    setOrderDeliveryAgency("");
+    setShalomAgencyApiName("");
+    setShalomAgencyId("");
     setSalesRegion("LIMA");
     setScheduleDelivery(false);
     setScheduledDeliveryDate("");
@@ -1165,6 +1193,9 @@ function RegistrarVentaContent() {
     isFound && !hasValidClientDistrict ? "Selecciona el distrito para continuar." : undefined
   );
 
+  // https:// is added only in what gets sent; the field keeps what was typed.
+  const clientMapsLink = normalizeGoogleMapsUrl(clientForm.googleMapsUrl);
+
   const validateClientForm = () => {
     const errors: Partial<Record<keyof typeof emptyClientForm, string>> = {
       ...clientDocumentErrors,
@@ -1175,15 +1206,31 @@ function RegistrarVentaContent() {
     if (!hasValidClientDistrict) errors.district = "Selecciona el distrito para continuar.";
     if (!clientForm.address.trim()) errors.address = "Debes completar este dato.";
     if (clientEmailError) errors.email = clientEmailError;
+    if (!clientMapsLink.valid) errors.googleMapsUrl = INVALID_GOOGLE_MAPS_LINK;
 
     setClientErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
+  /**
+   * Blocks saving an existing client while its edited Google Maps link is not a
+   * usable URL. An old value that was not touched never blocks.
+   */
+  const rejectInvalidMapsLink = () => {
+    if (clientMapsLink.valid || !("googleMapsUrl" in clientChanges)) return false;
+    setClientErrors((errors) => ({ ...errors, googleMapsUrl: INVALID_GOOGLE_MAPS_LINK }));
+    toast.error(INVALID_GOOGLE_MAPS_LINK);
+    return true;
+  };
+
   const handleCreateClient = async () => {
     if (!auth?.company?.id) return;
     if (!validateClientForm()) {
-      toast.error("Por favor completa los campos requeridos correctamente.");
+      toast.error(
+        clientMapsLink.valid
+          ? "Por favor completa los campos requeridos correctamente."
+          : INVALID_GOOGLE_MAPS_LINK,
+      );
       return;
     }
 
@@ -1203,15 +1250,15 @@ function RegistrarVentaContent() {
         reference: clientForm.reference || undefined, // Evita "" que falla en backend
         latitude: clientForm.latitude ? Number(clientForm.latitude) : undefined,
         longitude: clientForm.longitude ? Number(clientForm.longitude) : undefined,
-        googleMapsUrl: clientForm.googleMapsUrl || undefined,
+        googleMapsUrl: (clientMapsLink.valid && clientMapsLink.url) || undefined,
       });
       setClientFound(createdClient);
       setOriginalClient(createdClient);
       setSearchState("found");
       setClientErrors({});
       toast.success("Cliente creado correctamente.");
-    } catch {
-      toast.error("Error al crear el cliente. Verifica los datos.");
+    } catch (error) {
+      toast.error(clientCreateErrorMessage(error));
     }
   };
 
@@ -1347,13 +1394,19 @@ function RegistrarVentaContent() {
         return;
       }
 
+      if (isFound && rejectInvalidMapsLink()) return;
+
       let activeClient = clientFound;
 
       // Auto-crear cliente nuevo si no existe en el sistema (o si la búsqueda falló y se completó a mano)
       if (isNotFound || isSearchError) {
         if (!auth?.company?.id) return;
         if (!validateClientForm()) {
-          toast.error("Por favor completa los campos del cliente correctamente.");
+          toast.error(
+            clientMapsLink.valid
+              ? "Por favor completa los campos del cliente correctamente."
+              : INVALID_GOOGLE_MAPS_LINK,
+          );
           return;
         }
         try {
@@ -1372,7 +1425,7 @@ function RegistrarVentaContent() {
             reference: clientForm.reference || undefined,
             latitude: clientForm.latitude ? Number(clientForm.latitude) : undefined,
             longitude: clientForm.longitude ? Number(clientForm.longitude) : undefined,
-            googleMapsUrl: clientForm.googleMapsUrl || undefined,
+            googleMapsUrl: (clientMapsLink.valid && clientMapsLink.url) || undefined,
           });
           if (!isCurrentEditor()) return;
           setClientFound(createdClient);
@@ -1380,9 +1433,9 @@ function RegistrarVentaContent() {
           setSearchState("found");
           setClientErrors({});
           activeClient = createdClient;
-        } catch {
+        } catch (error) {
           if (!isCurrentEditor()) return;
-          toast.error("Error al crear el cliente. Verifica los datos.");
+          toast.error(clientCreateErrorMessage(error));
           return;
         }
       }
@@ -1456,6 +1509,10 @@ function RegistrarVentaContent() {
         // --- Envío ---
         shippingTotal: shippingTotal ?? 0,
         courier: orderDetails.enviaPor ?? null,
+        // «Recojo en agencia»: la agencia elegida queda como entrega propia del pedido.
+        ...(orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && orderDeliveryAgency.trim()
+          ? { delivery: { agency: orderDeliveryAgency.trim(), ...(shalomAgencyId ? { agencyId: shalomAgencyId } : {}) } }
+          : {}),
         sellerName: sellerDisplayName || null,
 
         // --- Modo de impuestos ---
@@ -1535,6 +1592,10 @@ function RegistrarVentaContent() {
           if (!isCurrentEditor()) return;
 
           const createdOrderId = response.data.id;
+          // Un backend sin soporte descarta `delivery` sin avisar: que no pase desapercibido.
+          if (createPayload.delivery && !response.data?.deliverySnapshot?.agency) {
+            toast.warning("La venta se registró, pero la agencia de recojo no se guardó. Indícala al editar el pedido o en la guía.");
+          }
           const createdAsLead = response.data.commercialStage === "LEAD";
           if (crmCtx) await linkSaleToConversation(crmCtx, { id: createdOrderId, orderNumber: response.data.orderNumber });
           const recordedLabel = createdAsLead ? "Lead registrado" : "Venta registrada";
@@ -1636,10 +1697,11 @@ function RegistrarVentaContent() {
                   department: clientForm.department, province: clientForm.province,
                   district: clientForm.district, address: clientForm.address,
                   agency: orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO ? orderDeliveryAgency.trim() : null,
+                  ...(orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && shalomAgencyId ? { agencyId: shalomAgencyId } : {}),
                   reference: clientForm.reference || null,
                   latitude: clientForm.latitude ? Number(clientForm.latitude) : null,
                   longitude: clientForm.longitude ? Number(clientForm.longitude) : null,
-                  googleMapsUrl: clientForm.googleMapsUrl || null,
+                  googleMapsUrl: (clientMapsLink.valid ? clientMapsLink.url : clientForm.googleMapsUrl) || null,
                 } }
               : deliveryChanges ? { delivery: deliveryChanges } : {}),
             items: cart.map((item) => ({
@@ -1936,6 +1998,7 @@ function RegistrarVentaContent() {
 
   const handleUpdateClient = async () => {
     if (!clientFound?.id || !auth?.company?.id) return;
+    if (rejectInvalidMapsLink()) return;
     if (!Object.keys(sharedClientChanges).length) {
       if (deliveryChanges) toast.info("La entrega se guardará solo en este pedido al confirmar los cambios.");
       return;
@@ -1978,13 +2041,33 @@ function RegistrarVentaContent() {
   const hasValidCart =
     cart.length > 0 && cart.every((item) => item.quantity > 0 && item.price >= 0);
 
+  // La agencia de recojo solo se puede guardar al registrar una venta nueva o en pedidos que ya
+  // tienen entrega propia; un pedido antiguo sin entrega propia no la admite.
+  const agencyDeliveryAllowed = !orderId || !!orderData?.deliverySnapshot;
+  const isShalomCourier = /shalom/i.test(orderDetails.enviaPor ?? "");
+  const hasValidCourier = Boolean(orderDetails.enviaPor) &&
+    (Boolean(orderId) || orderDetails.enviaPor === "OTROS" ||
+      couriers.some((courier) => courier.name === orderDetails.enviaPor));
+
   const hasValidDelivery = orderData?.deliverySnapshot
     ? orderDetails.deliveryType === DeliveryType.DOMICILIO ||
       (orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && !!orderDeliveryAgency.trim())
     : orderDetails.deliveryType === DeliveryType.RETIRO_TIENDA ||
-    (orderDetails.deliveryType === DeliveryType.DOMICILIO && Boolean(orderDetails.enviaPor) &&
-      (Boolean(orderId) || orderDetails.enviaPor === "OTROS" ||
-        couriers.some((courier) => courier.name === orderDetails.enviaPor)));
+    (orderDetails.deliveryType === DeliveryType.DOMICILIO && hasValidCourier) ||
+    (orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && !orderId && hasValidCourier &&
+      !!orderDeliveryAgency.trim());
+
+  const handleShalomAgencySelect = (agency: ShalomAgencyOption) => {
+    setShalomAgencyApiName(agency.api_name);
+    setShalomAgencyId(String(agency.id_agencia));
+    setOrderDeliveryAgency(`Shalom — ${agency.nombre_agencia}`.slice(0, 150));
+    // Shalom entrega en agencia: al elegir una, el pedido pasa a «Recojo en agencia».
+    setOrderDetails((prev) =>
+      prev.deliveryType === DeliveryType.PUNTO_EXTERNO
+        ? prev
+        : { ...prev, deliveryType: DeliveryType.PUNTO_EXTERNO },
+    );
+  };
 
   const hasValidPayments = !!leadId || orderData?.commercialStage === "LEAD" || !!paymentMethod;
 
@@ -2051,13 +2134,15 @@ function RegistrarVentaContent() {
   const clientChanges = originalClient ? buildClientUpdatePayload(originalClient, clientForm) : {};
   const { sharedClientChanges, deliveryChanges: destinationChanges } = splitOrderClientChanges(clientChanges, !!orderData?.deliverySnapshot);
   const agencyChanged = !!orderData?.deliverySnapshot && orderDeliveryAgency.trim() !== (orderData.deliverySnapshot.agency ?? "").trim();
-  const deliveryChanges = agencyChanged ? { ...destinationChanges, agency: orderDeliveryAgency.trim() || null } : destinationChanges;
+  const deliveryChanges = agencyChanged
+    ? { ...destinationChanges, agency: orderDeliveryAgency.trim() || null, ...(shalomAgencyId ? { agencyId: shalomAgencyId } : {}) }
+    : destinationChanges;
   const hasClientChanges = Object.keys(clientChanges).length > 0 || agencyChanged;
 
   if (!auth) return null;
 
   return (
-    <div className="flex h-screen w-full [--primary:#6D4FE0] [--primary-foreground:#ffffff] [--ring:#8067F0] dark:[--primary:#9B85FF] dark:[--ring:#8A72F5]">
+    <div className="flex h-screen w-full">
       <main className="flex-1 overflow-auto bg-gradient-to-b from-muted/40 to-transparent">
         {pendingTrackedSale && <PendingSaleRecovery operation={pendingTrackedSale} storageKey={trackedSaleKey} disabled={isSubmitting} onCorrect={() => setPendingTrackedSale(null)} onResolved={(saved) => {
           setPendingTrackedSale(null);
@@ -2642,7 +2727,7 @@ function RegistrarVentaContent() {
                       )}
                     </div>
 
-                    <Disclosure label="Agregar referencia y ubicación (opcional)">
+                    <Disclosure label="Agregar referencia y ubicación (opcional)" forceOpen={!!clientErrors.googleMapsUrl}>
                       <div className="space-y-1">
                         <Label
                           htmlFor="client-email"
@@ -2702,7 +2787,12 @@ function RegistrarVentaContent() {
                           placeholder="Pega aquí el link de Google Maps…"
                           value={clientForm.googleMapsUrl}
                           onChange={(e) => handleMapsLinkChange(e.target.value)}
+                          className={clientErrors.googleMapsUrl ? "border-destructive" : ""}
+                          aria-invalid={!!clientErrors.googleMapsUrl}
                         />
+                        {clientErrors.googleMapsUrl && (
+                          <p className="text-xs text-destructive mt-1">{clientErrors.googleMapsUrl}</p>
+                        )}
                         {mapsLinkStatus === "ok" && (
                           <p className="text-xs text-green-600 dark:text-green-400">
                             ✓ Coordenadas detectadas y completadas abajo.
@@ -2861,7 +2951,7 @@ function RegistrarVentaContent() {
                       <button
                         type="button"
                         onClick={() => (window.location.href = "/productos")}
-                        className="flex items-center gap-1 font-bold text-violet-600 hover:underline"
+                        className="flex items-center gap-1 font-bold text-primary hover:underline"
                       >
                         <Plus className="h-3 w-3" />
                         Nuevo producto
@@ -3023,8 +3113,9 @@ function RegistrarVentaContent() {
                   </div>
 
                   </div>
-                  {/* Costo de envío - solo si es envío a domicilio */}
-                  {orderDetails.deliveryType === DeliveryType.DOMICILIO && (
+                  {/* Costo de envío - envío a domicilio o recojo en agencia */}
+                  {(orderDetails.deliveryType === DeliveryType.DOMICILIO ||
+                    orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO) && (
                     <div className="space-y-1">
                       <Label>Costo de envío</Label>
                       <Input
@@ -3097,7 +3188,7 @@ function RegistrarVentaContent() {
                           href={payment.paymentProofUrl!}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="block text-sm text-violet-600 underline dark:text-violet-300"
+                          className="block text-sm text-primary underline"
                         >
                           Ver comprobante guardado · Método registrado en recaudo: {payment.paymentMethod} · {moneyPrefix} {Number(payment.amount).toFixed(2)}
                           {payment.status === "PAID" ? " (aprobado)" : payment.status === "LOST" ? " (rechazado)" : " (pendiente)"}
@@ -3129,7 +3220,7 @@ function RegistrarVentaContent() {
                     )}
                     <div
                       className={`border-2 border-dashed rounded-xl p-4 text-center cursor-pointer transition-colors
-                  ${paymentProofFile ? "border-violet-500 bg-violet-50 dark:bg-violet-500/10" : "border-muted-foreground/25 hover:border-violet-400 hover:bg-muted/30"}`}
+                  ${paymentProofFile ? "border-primary bg-primary/5 dark:bg-primary/10" : "border-muted-foreground/25 hover:border-primary/60 hover:bg-muted/30"}`}
                       onClick={() => paymentProofInputRef.current?.click()}
                     >
                       <input
@@ -3188,7 +3279,7 @@ function RegistrarVentaContent() {
                               className="max-h-24 mx-auto rounded-md object-contain"
                             />
                           ) : (
-                            <p className="text-sm text-violet-600 font-medium">PDF seleccionado</p>
+                            <p className="text-sm text-primary font-medium">PDF seleccionado</p>
                           )}
                           <p className="text-xs text-gray-600 truncate">{paymentProofFile.name}</p>
                           <Button
@@ -3375,13 +3466,16 @@ function RegistrarVentaContent() {
                       <Select
                         disabled={isSubmitting}
                         value={orderDetails.deliveryType ?? ""}
-                        onValueChange={(v) =>
+                        onValueChange={(v) => {
                           setOrderDetails({
                             ...orderDetails,
                             deliveryType: v as DeliveryType,
                             enviaPor: undefined,
-                          })
-                        }
+                          });
+                          setShalomAgencyApiName("");
+                          setShalomAgencyId("");
+                          if (!orderData?.deliverySnapshot) setOrderDeliveryAgency("");
+                        }}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Seleccionar tipo de entrega" />
@@ -3389,18 +3483,18 @@ function RegistrarVentaContent() {
                         <SelectContent>
                           {!orderData?.deliverySnapshot && (
                             <SelectItem value={DeliveryType.RETIRO_TIENDA}>
-                              Retiro en tienda
+                              Retiro en tienda negocio
                             </SelectItem>
                           )}
                           <SelectItem value={DeliveryType.DOMICILIO}>Envío a domicilio</SelectItem>
-                          {orderData?.deliverySnapshot && (
-                            <SelectItem value={DeliveryType.PUNTO_EXTERNO}>Envío a agencia</SelectItem>
+                          {agencyDeliveryAllowed && (
+                            <SelectItem value={DeliveryType.PUNTO_EXTERNO}>Recojo en tienda courier</SelectItem>
                           )}
                         </SelectContent>
                       </Select>
                     </div>
 
-                    {orderData?.deliverySnapshot && orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && (
+                    {agencyDeliveryAllowed && orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && !isShalomCourier && (
                       <div className="md:col-span-2 space-y-1">
                         <Label htmlFor="order-delivery-agency">Agencia y sucursal de este pedido</Label>
                         <Input
@@ -3409,13 +3503,18 @@ function RegistrarVentaContent() {
                           maxLength={150}
                           disabled={isSubmitting}
                           placeholder="Ej.: Shalom — agencia principal"
-                          onChange={(event) => setOrderDeliveryAgency(event.target.value)}
+                          onChange={(event) => {
+                            setOrderDeliveryAgency(event.target.value);
+                            setShalomAgencyId("");
+                            setShalomAgencyApiName("");
+                          }}
                         />
                       </div>
                     )}
 
                     {/* Método de envío */}
-                    {orderDetails.deliveryType === DeliveryType.DOMICILIO && (
+                    {(orderDetails.deliveryType === DeliveryType.DOMICILIO ||
+                      (agencyDeliveryAllowed && orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO)) && (
                       <div className="md:col-span-2 space-y-1">
                         <Label>
                           Método de envío <span className="text-destructive">*</span>
@@ -3423,12 +3522,15 @@ function RegistrarVentaContent() {
                         <Select
                           disabled={isSubmitting || isLoadingCouriers}
                           value={orderDetails.enviaPor ?? ""}
-                          onValueChange={(v) =>
+                          onValueChange={(v) => {
                             setOrderDetails({
                               ...orderDetails,
                               enviaPor: v,
-                            })
-                          }
+                            });
+                            setShalomAgencyApiName("");
+                            setShalomAgencyId("");
+                            if (!orderData?.deliverySnapshot) setOrderDeliveryAgency("");
+                          }}
                         >
                           <SelectTrigger>
                             <SelectValue
@@ -3454,6 +3556,40 @@ function RegistrarVentaContent() {
                             </Button>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {/* Agencia Shalom: catálogo de agencias cuando el método de envío es Shalom */}
+                    {agencyDeliveryAllowed && isShalomCourier &&
+                      (orderDetails.deliveryType === DeliveryType.DOMICILIO ||
+                        orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO) && (
+                      <div className="md:col-span-2 space-y-1">
+                        <ShalomAgencyField
+                          label="Agencia Shalom de recojo"
+                          selectedAgency={shalomAgencyApiName}
+                          onSelect={handleShalomAgencySelect}
+                          onClear={() => {
+                            setShalomAgencyApiName("");
+                            setShalomAgencyId("");
+                            setOrderDeliveryAgency("");
+                          }}
+                          location={{
+                            department: clientForm.department,
+                            province: clientForm.province,
+                            district: clientForm.district,
+                          }}
+                          disabled={isSubmitting}
+                          required={orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && !orderDeliveryAgency.trim()}
+                        />
+                        {orderDetails.deliveryType === DeliveryType.PUNTO_EXTERNO && orderDeliveryAgency.trim() ? (
+                          <p className="text-sm text-muted-foreground">
+                            Agencia elegida: <span className="font-medium text-foreground">{orderDeliveryAgency}</span>
+                          </p>
+                        ) : orderDetails.deliveryType === DeliveryType.DOMICILIO ? (
+                          <p className="text-sm text-muted-foreground">
+                            Al elegir una agencia, el tipo de entrega cambia a «Recojo en tienda courier».
+                          </p>
+                        ) : null}
                       </div>
                     )}
                   </div>
@@ -3603,7 +3739,7 @@ function RegistrarVentaContent() {
 
                   <div className="h-1.5 rounded-full bg-muted overflow-hidden mt-3">
                     <div
-                      className="h-full rounded-full bg-gradient-to-r from-violet-600 to-green-500 transition-all"
+                      className="h-full rounded-full bg-gradient-to-r from-primary to-green-500 transition-all"
                       style={{ width: `${checklistPct}%` }}
                     />
                   </div>
@@ -3640,7 +3776,7 @@ function RegistrarVentaContent() {
                     size="lg"
                     className={`w-full rounded-xl text-base font-semibold transition-all ${
                       (pendingProofUpload || canSubmit) && !isSubmitting
-                        ? "bg-gradient-to-br from-violet-600 to-green-600 text-white shadow-lg shadow-violet-600/25 hover:opacity-95"
+                        ? "bg-gradient-to-br from-primary to-green-600 text-white shadow-lg shadow-primary/25 hover:opacity-95"
                         : "bg-muted text-muted-foreground"
                     }`}
                     disabled={isSubmitting || (pendingProofUpload ? !paymentProofFile : !canSubmit)}

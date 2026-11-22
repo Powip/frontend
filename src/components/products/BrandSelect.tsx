@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { Plus } from "lucide-react";
 import { useCompanyBrands } from "@/hooks/useCompanyBrands";
 
 const normalize = (value: string) =>
@@ -63,6 +64,18 @@ export default function BrandSelect({ value, onChange, disabled }: { value: stri
       />
       {open && !disabled ? (
         <ul role="listbox" className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border bg-popover p-1 shadow">
+          {/* Crear va primero: con muchas marcas parecidas quedaba al fondo de la lista y no se veía. */}
+          {typed && !exact ? (
+            <li>
+              <button type="button" role="option" aria-selected={false} disabled={creating} className="flex w-full items-center gap-1 rounded px-2 py-1 text-left text-sm font-medium text-primary hover:bg-muted" onMouseDown={(event) => event.preventDefault()} onClick={() => void create()}>
+                <Plus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                {`Crear marca "${query.trim().replace(/\s+/g, " ")}"`}
+              </button>
+            </li>
+          ) : null}
+          {!typed && brands.length === 0 ? (
+            <li className="px-2 py-1 text-xs text-muted-foreground">Aún no tienes marcas: escribe el nombre para crearla.</li>
+          ) : null}
           <li>
             <button type="button" role="option" aria-selected={!value} className="w-full rounded px-2 py-1 text-left text-sm text-muted-foreground hover:bg-muted" onMouseDown={(event) => event.preventDefault()} onClick={() => choose("", "")}>
               Sin marca
@@ -75,13 +88,6 @@ export default function BrandSelect({ value, onChange, disabled }: { value: stri
               </button>
             </li>
           ))}
-          {typed && !exact ? (
-            <li>
-              <button type="button" role="option" aria-selected={false} disabled={creating} className="w-full rounded px-2 py-1 text-left text-sm font-medium text-primary hover:bg-muted" onMouseDown={(event) => event.preventDefault()} onClick={() => void create()}>
-                {`Crear marca "${query.trim().replace(/\s+/g, " ")}"`}
-              </button>
-            </li>
-          ) : null}
         </ul>
       ) : null}
     </div>

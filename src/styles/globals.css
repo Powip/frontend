@@ -4,94 +4,126 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Brandbook Powip v1.0 (nov 2026). Tokens oficiales de marca.
+ * Los componentes no deben usar HEX sueltos: usan las variables de abajo.
+ */
 :root {
-  /* Updated to teal/green color scheme matching Powip logo */
-  --background: oklch(0.98 0.005 180);
-  --foreground: oklch(0.25 0.01 200);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.25 0.01 200);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.25 0.01 200);
+  --brand-primary: #4c2fb5; /* Azul persa: botones, links, acentos */
+  --brand-secondary: #156588; /* Azul báltico: elementos de apoyo, secciones */
+  --brand-accent: #027778; /* Océano profundo: éxito, highlights, gráficos */
+  --brand-surface: #c0ddde; /* Azul claro: fondos, tarjetas, estados suaves */
+  --brand-background: #ffffff; /* Blanco: fondo principal */
+  --brand-text: #1f2937; /* Texto principal */
+  --brand-text-muted: #6b7280; /* Texto secundario */
 
-  /* Teal primary accent matching logo */
-  --primary: oklch(0.5 0.12 195);
-  --primary-foreground: oklch(0.99 0 0);
+  --background: var(--brand-background);
+  --foreground: var(--brand-text);
+  --card: var(--brand-background);
+  --card-foreground: var(--brand-text);
+  --popover: var(--brand-background);
+  --popover-foreground: var(--brand-text);
 
-  /* Gray secondary */
-  --secondary: oklch(0.94 0.005 200);
-  --secondary-foreground: oklch(0.35 0.01 200);
+  /* Botón primario: fondo primary, texto blanco */
+  --primary: var(--brand-primary);
+  --primary-foreground: #ffffff;
 
-  --muted: oklch(0.96 0.005 200);
-  --muted-foreground: oklch(0.5 0.01 200);
+  /* Botón secundario: fondo surface, texto secondary */
+  --secondary: var(--brand-surface);
+  --secondary-foreground: var(--brand-secondary);
 
-  --accent: oklch(0.95 0.01 195);
-  --accent-foreground: oklch(0.3 0.01 200);
+  /* Fondos suaves derivados de surface */
+  --muted: color-mix(in srgb, var(--brand-surface) 25%, #ffffff);
+  --muted-foreground: var(--brand-text-muted);
+
+  /* shadcn usa --accent como fondo de hover (menús, ghost). Se deriva de surface;
+     el acento de marca (#027778) queda en --brand-accent y en los gráficos. */
+  --accent: color-mix(in srgb, var(--brand-surface) 40%, #ffffff);
+  --accent-foreground: var(--brand-text);
+
+  --surface: var(--brand-surface);
+  --surface-foreground: var(--brand-secondary);
 
   --destructive: oklch(0.55 0.22 25);
   --destructive-foreground: oklch(0.99 0 0);
 
+  /* Input normal: borde gris claro. Input con foco: borde primary (vía --ring). */
   --border: oklch(0.9 0.005 200);
   --input: oklch(0.9 0.005 200);
-  --ring: oklch(0.5 0.12 195);
+  --ring: var(--brand-primary);
 
-  --chart-1: oklch(0.5 0.12 195);
-  --chart-2: oklch(0.65 0.15 160);
-  --chart-3: oklch(0.6 0.18 320);
+  --chart-1: var(--brand-primary);
+  --chart-2: var(--brand-accent);
+  --chart-3: var(--brand-secondary);
   --chart-4: oklch(0.7 0.15 280);
   --chart-5: oklch(0.55 0.18 40);
 
+  /* Radios: 8 px estándar (--radius), 12 px tarjetas (rounded-xl), 16-24 px destacados (rounded-2xl / rounded-3xl) */
   --radius: 0.5rem;
 
   /* Sidebar styling */
-  --sidebar: oklch(1 0 0);
-  --sidebar-foreground: oklch(0.35 0.01 200);
-  --sidebar-primary: oklch(0.5 0.12 195);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.97 0.005 195);
-  --sidebar-accent-foreground: oklch(0.3 0.01 200);
+  --sidebar: var(--brand-background);
+  --sidebar-foreground: var(--brand-text);
+  --sidebar-primary: var(--brand-primary);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: color-mix(in srgb, var(--brand-primary) 8%, #ffffff);
+  --sidebar-accent-foreground: var(--brand-primary);
   --sidebar-border: oklch(0.92 0.005 200);
-  --sidebar-ring: oklch(0.5 0.12 195);
+  --sidebar-ring: var(--brand-primary);
 }
 
+/*
+ * Modo oscuro: el brandbook no lo define. Se conservan los neutros oscuros
+ * existentes y los colores de marca se derivan de los mismos tokens
+ * (mezclados con blanco o con el fondo) para mantener contraste.
+ */
 .dark {
+  /* primary 75% + blanco: texto blanco encima 4.7:1 y 4.2:1 sobre el fondo */
+  --brand-primary-dark: color-mix(in srgb, var(--brand-primary) 75%, #ffffff);
+
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.145 0 0);
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.145 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.65 0.15 250);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
+  --primary: var(--brand-primary-dark);
+  --primary-foreground: #ffffff;
+  /* Secundario invertido: fondo secondary y texto surface (4.5:1) */
+  --secondary: var(--brand-secondary);
+  --secondary-foreground: var(--brand-surface);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
+  --surface: var(--brand-secondary);
+  --surface-foreground: var(--brand-surface);
   --destructive: oklch(0.55 0.22 25);
   --destructive-foreground: oklch(0.99 0 0);
   --border: oklch(0.269 0 0);
   --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
+  --ring: var(--brand-primary-dark);
+  --chart-1: var(--brand-primary-dark);
+  --chart-2: color-mix(in srgb, var(--brand-accent) 70%, #ffffff);
+  --chart-3: color-mix(in srgb, var(--brand-secondary) 70%, #ffffff);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.65 0.15 250);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-primary: var(--brand-primary-dark);
+  --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+  --sidebar-ring: var(--brand-primary-dark);
 }
 
 @theme inline {
   --font-sans: var(--font-poppins);
   --font-mono: var(--font-poppins);
   --font-montserrat: var(--font-montserrat);
+  /* Brandbook: Montserrat para títulos y destacados; Poppins para texto y UI */
+  --font-heading: var(--font-montserrat);
   --font-poppins: var(--font-poppins);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -112,6 +144,14 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-surface: var(--surface);
+  --color-surface-foreground: var(--surface-foreground);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-secondary: var(--brand-secondary);
+  --color-brand-accent: var(--brand-accent);
+  --color-brand-surface: var(--brand-surface);
+  --color-brand-text: var(--brand-text);
+  --color-brand-text-muted: var(--brand-text-muted);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -217,17 +257,18 @@ input[type="number"] {
 }
 
 :root {
-  --pc-primary: #027778;
-  --pc-primary-strong: #015e5f;
-  --pc-primary-soft: #eef7f7;
-  --pc-primary-line: #b6dcdc;
-  --pc-bg: #f4f7f7;
+  /* Tokens del Panel de control alineados al brandbook v1.0 */
+  --pc-primary: var(--brand-primary);
+  --pc-primary-strong: color-mix(in srgb, var(--brand-primary) 85%, #000000);
+  --pc-primary-soft: color-mix(in srgb, var(--brand-primary) 6%, #ffffff);
+  --pc-primary-line: color-mix(in srgb, var(--brand-primary) 25%, #ffffff);
+  --pc-bg: var(--brand-background);
   --pc-card: #ffffff;
   --pc-border: #e4e9ea;
   --pc-border-soft: #eef1f2;
   --pc-surface-muted: #f7f9fa;
-  --pc-text: #16202a;
-  --pc-text-muted: #56636f;
+  --pc-text: var(--brand-text);
+  --pc-text-muted: var(--brand-text-muted);
   --pc-text-soft: #6b7785;
   --pc-ok: #0f9d58;
   --pc-ok-soft: #e3f5ea;
@@ -252,10 +293,11 @@ input[type="number"] {
 }
 
 .dark {
-  --pc-primary: #3fb3b4;
-  --pc-primary-strong: #6fcfd0;
-  --pc-primary-soft: #133033;
-  --pc-primary-line: #2a6b6e;
+  /* primary 60% + blanco: con texto oscuro (--pc-on-fill) da >= 5:1 */
+  --pc-primary: color-mix(in srgb, var(--brand-primary) 60%, #ffffff);
+  --pc-primary-strong: color-mix(in srgb, var(--brand-primary) 45%, #ffffff);
+  --pc-primary-soft: color-mix(in srgb, var(--brand-primary) 25%, #0f1719);
+  --pc-primary-line: color-mix(in srgb, var(--brand-primary) 55%, #0f1719);
   --pc-bg: #0f1719;
   --pc-card: #162123;
   --pc-border: #3a4f54;
@@ -274,7 +316,7 @@ input[type="number"] {
   --pc-info-soft: #16243d;
   --pc-demo: #f0a95a;
   --pc-demo-soft: #3a2710;
-  /* En oscuro los rellenos son claros: el texto encima va oscuro (>= 6:1 en todos). */
+  /* En oscuro los rellenos son claros: el texto encima va oscuro (>= 5:1 en todos). */
   --pc-on-fill: #0b1416;
 }
 

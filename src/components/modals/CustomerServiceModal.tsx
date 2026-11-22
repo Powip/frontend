@@ -109,7 +109,7 @@ import ScheduledDeliverySection from "./ScheduledDeliverySection";
 import { trackShalomGuide } from "@/services/shalomService";
 import { DatosIncompletosBlock } from "@/components/atencion-cliente/cc-v2/DatosIncompletosBlock";
 import { CcGestionPanel } from "@/components/atencion-cliente/cc-v2/CcGestionPanel";
-import { hasCompleteDeliveryLocation } from "@/components/atencion-cliente/cc-v2/ccDeliveryData";
+import { hasCompleteDeliveryLocation, shalomAgencyOptions } from "@/components/atencion-cliente/cc-v2/ccDeliveryData";
 import { CcScriptPanel } from "@/components/atencion-cliente/cc-v2/CcScriptPanel";
 import { effectiveSubEstadoCc } from "@/components/atencion-cliente/cc-v2/ccPedidoFields";
 import { OrderHeader, OrderStatus, SubEstadoCc } from "@/interfaces/IOrder";
@@ -299,6 +299,7 @@ export default function CustomerServiceModal({
   const [datosCompletos, setDatosCompletos] = useState<boolean>(true);
   // La venta se puede aceptar sin DNI (se exige al confirmar el despacho), no sin dirección de entrega.
   const deliveryDataComplete = orderHeader ? hasCompleteDeliveryLocation(orderHeader) : undefined;
+  const shalomAgency = shalomAgencyOptions(orderHeader);
   const [dniCliente, setDniCliente] = useState<string | null>(null);
   const [referenciaEntrega, setReferenciaEntrega] = useState<string | null>(null);
   const [canalOrigen, setCanalOrigen] = useState<string | null>(null);
@@ -1428,6 +1429,24 @@ export default function CustomerServiceModal({
                           {receipt.customer.clientType || "-"}
                         </span>
                       </div>
+                      <div className="sm:col-start-2" data-testid="detalle-metodo-envio">
+                        <span className="text-muted-foreground">
+                          Método de envío:{" "}
+                        </span>
+                        <span className="font-medium">
+                          {orderHeader?.courier?.trim() || "-"}
+                        </span>
+                      </div>
+                      <div className="sm:col-start-2" data-testid="detalle-agencia-recojo">
+                        <span className="text-muted-foreground">
+                          Agencia de recojo:{" "}
+                        </span>
+                        <span className="font-medium break-words">
+                          {receipt.delivery?.agency?.trim() ||
+                            orderHeader?.deliverySnapshot?.agency?.trim() ||
+                            "-"}
+                        </span>
+                      </div>
                       <div className="col-span-full flex items-center gap-1">
                         <span className="text-muted-foreground">
                           Dirección:{" "}
@@ -1454,7 +1473,7 @@ export default function CustomerServiceModal({
                       {receipt.delivery && (
                         <div className="col-span-full">
                           <span className="text-muted-foreground">Entrega del pedido: </span>
-                          <span className="font-medium">{receipt.delivery.type === "AGENCY" ? "Retiro en agencia" : "Envío a domicilio"}</span>
+                          <span className="font-medium">{receipt.delivery.type === "AGENCY" ? "Recojo en tienda courier" : "Envío a domicilio"}</span>
                           {receipt.delivery.type === "AGENCY" && receipt.delivery.agency && (
                             <p className="mt-1 break-words"><span className="text-muted-foreground">Agencia: </span>{receipt.delivery.agency}</p>
                           )}
@@ -1788,6 +1807,7 @@ export default function CustomerServiceModal({
                         callAttempts={receipt.callAttempts ?? 0}
                         datosCompletos={datosCompletos}
                         deliveryDataComplete={deliveryDataComplete}
+                        shalomAgency={shalomAgency}
                         beforeCancellation={() => routeSaleLifecycle(orderHeader, "ANULADO", setLifecycleAction)}
                         aliclikDispatchStatus={aliclikDispatchStatus}
                         aliclikSyncedAt={aliclikSyncedAt}
@@ -1808,6 +1828,7 @@ export default function CustomerServiceModal({
                         orderUpdatedAt={orderHeader?.updated_at}
                         datosCompletos={datosCompletos}
                         deliveryDataComplete={deliveryDataComplete}
+                        shalomAgency={shalomAgency}
                         onUpdated={() => {
                           void fetchReceipt();
                           void fetchLogs();

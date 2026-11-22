@@ -23,7 +23,7 @@ export function WindowNotice({
   return (
     <div
       data-testid="window-notice"
-      className="flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200"
+      className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/25 bg-primary/5 px-3 py-1.5 text-xs text-primary dark:border-primary/30 dark:bg-primary/10 dark:text-primary/40"
     >
       <CalendarDays aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />
       {explicit ? (

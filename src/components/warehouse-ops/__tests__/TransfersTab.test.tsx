@@ -108,6 +108,37 @@ describe("Traslados", () => {
     expect(within(screen.getByLabelText("Origen")).queryByRole("option", { name: "Shalom" })).not.toBeInTheDocument();
   });
 
+  it("los filtros Origen y Destino filtran la lista y «Nuevo traslado» abre con ambos precargados y editables", async () => {
+    const user = userEvent.setup();
+    setup();
+    await row("TR-0003");
+    await waitFor(() => expect(within(screen.getByLabelText("Origen")).getAllByRole("option")).toHaveLength(4));
+    await user.selectOptions(screen.getByLabelText("Origen"), "w-1");
+    await user.selectOptions(screen.getByLabelText("Destino"), "w-2");
+    await waitFor(() => expect(screen.queryByTestId("transfer-TR-0003")).not.toBeInTheDocument());
+    expect(screen.getByTestId("transfer-TR-0001")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Nuevo traslado" }));
+    const dialog = await screen.findByRole("dialog", { name: "Nuevo traslado" });
+    await waitFor(() => expect(within(dialog).getByLabelText("Origen")).toHaveValue("w-1"));
+    expect(within(dialog).getByLabelText("Destino")).toHaveValue("w-2");
+    await user.selectOptions(within(dialog).getByLabelText("Destino"), "w-3");
+    expect(within(dialog).getByLabelText("Destino")).toHaveValue("w-3");
+  });
+
+  it("con el mismo almacén en Origen y Destino, el destino no se precarga", async () => {
+    const user = userEvent.setup();
+    setup();
+    await row("TR-0001");
+    await waitFor(() => expect(within(screen.getByLabelText("Destino")).getAllByRole("option")).toHaveLength(4));
+    await user.selectOptions(screen.getByLabelText("Origen"), "w-1");
+    await user.selectOptions(screen.getByLabelText("Destino"), "w-1");
+    await user.click(screen.getByRole("button", { name: "Nuevo traslado" }));
+    const dialog = await screen.findByRole("dialog", { name: "Nuevo traslado" });
+    await waitFor(() => expect(within(dialog).getByLabelText("Origen")).toHaveValue("w-1"));
+    expect(within(dialog).getByLabelText("Destino")).toHaveValue("");
+  });
+
   it("despachar con el periodo cerrado lo explica y el reintento usa la misma Idempotency-Key", async () => {
     const user = userEvent.setup();
     jest.mocked(dispatchTransfer)

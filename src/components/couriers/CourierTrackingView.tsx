@@ -32,7 +32,9 @@ import {
   CalendarIcon,
   ChevronDown,
   Loader2,
+  Lock,
 } from "lucide-react";
+import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -82,7 +84,7 @@ import ShalomDocumentModal from "@/components/modals/ShalomDocumentModal";
 import ShalomOrderTrackingView from "@/components/tracking/ShalomOrderTrackingView";
 import AliclikOrderTrackingView from "@/components/tracking/AliclikOrderTrackingView";
 import EvaOrderTrackingView from "@/components/tracking/EvaOrderTrackingView";
-import { getPendingPayment, trackingUrlFor } from "@/app/centro-envios/components/shipmentUtils";
+import { getPendingPayment, isShippingKeyLocked, trackingUrlFor } from "@/app/centro-envios/components/shipmentUtils";
 import { fetchCouriers } from "@/services/courierService";
 import { getEvaCredentials } from "@/services/evaService";
 import { getAliclikCredentials } from "@/services/aliclikService";
@@ -164,7 +166,7 @@ const TRACKING_FIELDS = [
   { key: "externalTrackingNumber", label: "Nro Tracking", placeholder: "Nro Tracking..." },
   { key: "shippingCode", label: "Código", placeholder: "Código..." },
   { key: "shippingOffice", label: "Oficina", placeholder: "Oficina..." },
-  { key: "shippingKey", label: "Clave", placeholder: "Clave..." },
+  { key: "shippingKey", label: "Clave", placeholder: "" },
 ] as const;
 
 /**
@@ -196,12 +198,13 @@ const STICKY_RIGHT_BODY = "sticky z-10 bg-background";
 
 type TrackingFieldKey = (typeof TRACKING_FIELDS)[number]["key"];
 
-function trackingValuesOf(order: OrderHeader): Record<TrackingFieldKey, string> {
+function trackingValuesOf(order: OrderHeader, keyLocked: boolean): Record<TrackingFieldKey, string> {
   return {
     externalTrackingNumber: order.externalTrackingNumber || "",
     shippingCode: order.shippingCode || "",
     shippingOffice: order.shippingOffice || "",
-    shippingKey: order.shippingKey || "",
+    // Bloqueada: el valor nunca entra al estado ni al DOM.
+    shippingKey: keyLocked ? "" : order.shippingKey || "",
   };
 }
 
@@ -213,21 +216,26 @@ function trackingValuesOf(order: OrderHeader): Record<TrackingFieldKey, string> 
  * de cualquiera de los 4 campos (blur) guarda en un solo PATCH todos los que
  * hayan cambiado desde el último valor conocido.
  *
- * La clave se ve y se edita en claro siempre, con o sin saldo pendiente
- * (el personal con sesión la recibe del backend en ambos casos).
+ * Clave: con saldo pendiente y sin comprobante de pago se muestra bloqueada
+ * (no se renderiza el valor); al subir el comprobante, o sin saldo, se ve y
+ * se edita. Sin clave el campo queda en blanco y editable.
  */
 function TrackingInputCells({
   order,
   onSaved,
+  onPaymentUpdated,
 }: {
   order: OrderHeader;
   onSaved: (orderId: string, patch: Partial<Record<TrackingFieldKey, string | null>>) => void;
+  onPaymentUpdated?: () => void;
 }) {
-  const original = trackingValuesOf(order);
+  const keyLocked = isShippingKeyLocked(order);
+  const original = trackingValuesOf(order, keyLocked);
   const [values, setValues] = useState<Record<TrackingFieldKey, string>>(original);
   const [saving, setSaving] = useState(false);
+  const [proofOpen, setProofOpen] = useState(false);
   useEffect(() => {
-    setValues(trackingValuesOf(order));
+    setValues(trackingValuesOf(order, keyLocked));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     order.id,
@@ -235,6 +243,7 @@ function TrackingInputCells({
     order.shippingCode,
     order.shippingOffice,
     order.shippingKey,
+    keyLocked,
   ]);
 
   const handleAutoSave = async () => {
@@ -265,6 +274,36 @@ function TrackingInputCells({
     <>
       {TRACKING_FIELDS.map(({ key, placeholder }, i) => {
         const isKeyCol = key === "shippingKey";
+        if (isKeyCol && keyLocked) {
+          return (
+            <TableCell
+              key={key}
+              className={`${STICKY_RIGHT_BODY} right-28 w-28 min-w-28 border-l px-2 py-2`}
+            >
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 w-24 gap-1 px-1.5 text-[10px] leading-tight"
+                title="Bloqueado: saldo pendiente. Sube el comprobante de pago para ver la clave."
+                aria-label={`Clave bloqueada del pedido ${order.orderNumber}: saldo pendiente. Subir comprobante`}
+                onClick={() => setProofOpen(true)}
+              >
+                <Lock className="h-3 w-3 shrink-0" />
+                <span className="truncate">Bloqueado: saldo pendiente</span>
+              </Button>
+              {proofOpen && (
+                <PaymentVerificationModal
+                  open
+                  onClose={() => setProofOpen(false)}
+                  orderId={order.id}
+                  orderNumber={order.orderNumber}
+                  onPaymentUpdated={onPaymentUpdated}
+                />
+              )}
+            </TableCell>
+          );
+        }
         return (
           <TableCell
             key={key}
@@ -757,7 +796,7 @@ export default function CourierTrackingView() {
         "Número de tracking": o.externalTrackingNumber || "-",
         "Código de envío": o.shippingCode || "-",
         Oficina: o.shippingOffice || "-",
-        "Clave de envío": o.shippingKey || "-",
+        "Clave de envío": isShippingKeyLocked(o) ? "Bloqueada" : o.shippingKey || "-",
         "Link de rastreo": trackingUrlFor(o),
       };
     });
@@ -1193,7 +1232,7 @@ export default function CourierTrackingView() {
                                 })()}
                               </TableCell>
                               <ShippingCostCell order={order} onSaved={applyShippingCostSaved} />
-                              <TrackingInputCells order={order} onSaved={applyTrackingPatch} />
+                              <TrackingInputCells order={order} onSaved={applyTrackingPatch} onPaymentUpdated={fetchOrders} />
                               <TableCell className={`${STICKY_RIGHT_BODY} right-0 w-28 min-w-28 px-4 py-3 text-right`}>
                                 <div className="flex items-center justify-end gap-1">
                                   <Button
@@ -1513,7 +1552,7 @@ function CourierOrdersTab({
         "Número de tracking": o.externalTrackingNumber || "-",
         "Código de envío": o.shippingCode || "-",
         Oficina: o.shippingOffice || "-",
-        "Clave de envío": o.shippingKey || "-",
+        "Clave de envío": isShippingKeyLocked(o) ? "Bloqueada" : o.shippingKey || "-",
         "Link de rastreo": trackingUrlFor(o),
       };
     });
@@ -1695,7 +1734,7 @@ function CourierOrdersTab({
                         {money(getPendingPayment(order))}
                       </TableCell>
                       <ShippingCostCell order={order} onSaved={onShippingCostSaved} />
-                      <TrackingInputCells order={order} onSaved={onTrackingSaved} />
+                      <TrackingInputCells order={order} onSaved={onTrackingSaved} onPaymentUpdated={onRefresh} />
                       <TableCell className={`${STICKY_RIGHT_BODY} right-0 w-28 min-w-28 px-4 py-3 text-right`}>
                         <div className="flex items-center justify-end gap-1">
                           <Button

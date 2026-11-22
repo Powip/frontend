@@ -84,6 +84,19 @@ export function isDeliveryRescheduledForToday(order: OrderHeader): boolean {
   );
 }
 
+/**
+ * Venta sin preparar (PENDIENTE/PAGADO, incluida la de stock diferido) con
+ * fecha comprometida: la crea «Programar venta para otra fecha» en Registrar
+ * venta (callbackAt + callStatus SCHEDULED). Planificación la muestra en su día.
+ */
+export function isPreFulfillmentScheduled(order: OrderHeader): boolean {
+  return (
+    !!order.callbackAt &&
+    ["PENDIENTE", "PAGADO"].includes(order.status) &&
+    order.callStatus === "SCHEDULED"
+  );
+}
+
 export function getPedidosTab(order: OrderHeader): PedidosTabKey {
   if (order.status === "ANULADO") return "anulados";
   if (order.status === "ENTREGADO") return "historial";

@@ -266,7 +266,7 @@ function formatCallbackAt(dateStr: string): string {
 function ReprogramadoChip({ sale }: { sale: Pick<Sale, "status" | "callStatus" | "callbackAt"> }) {
   if (!shouldShowReprogramado(sale) || !sale.callbackAt) return null;
   return (
-    <span className="mt-1 flex items-center gap-1 text-[9px] font-semibold text-violet-600 dark:text-violet-400">
+    <span className="mt-1 flex items-center gap-1 text-[9px] font-semibold text-primary">
       🔁 {formatCallbackAt(sale.callbackAt)}
     </span>
   );
@@ -1219,7 +1219,7 @@ Estado: ${sale.status}
     {
       value: BULK_ACTION_REPROGRAMAR,
       label: "Reprogramar",
-      colorClassName: "text-violet-600",
+      colorClassName: "text-primary",
     },
   ] : [];
 
@@ -1641,7 +1641,7 @@ Estado: ${sale.status}
                       }
                       onExtraAction={() => { if (mutationSale(sale.id)) setRescheduleDialogSaleId(sale.id); }}
                     />
-                    {salesPhysicalOperationBlockReason(sale) && <p className="mt-1 max-w-[150px] whitespace-normal text-[10px] text-muted-foreground">{salesPhysicalOperationBlockReason(sale)}{sale.commercialLeadId && sale.commercialStockState === "DEFERRED" && !canPrepareDeferredManualOrder(sale) && <Link className="ml-1 font-semibold text-violet-700 underline" href={commercialLeadHref(sale.commercialLeadId)}>Preparar reserva de stock</Link>}</p>}
+                    {salesPhysicalOperationBlockReason(sale) && <p className="mt-1 max-w-[150px] whitespace-normal text-[10px] text-muted-foreground">{salesPhysicalOperationBlockReason(sale)}{sale.commercialLeadId && sale.commercialStockState === "DEFERRED" && !canPrepareDeferredManualOrder(sale) && <Link className="ml-1 font-semibold text-primary underline" href={commercialLeadHref(sale.commercialLeadId)}>Preparar reserva de stock</Link>}</p>}
                     <ReprogramadoChip sale={sale} />
                     <StockStateBadge state={sale.stockState} className="mt-1" />
                   </TableCell>
@@ -2104,7 +2104,7 @@ Estado: ${sale.status}
             <Link href="/registrar-venta" className="w-full lg:w-auto">
               <Button
                 size="lg"
-                className="w-full lg:w-auto bg-gradient-to-r from-violet-600 to-purple-700 text-white font-semibold shadow-lg shadow-purple-500/40 hover:shadow-purple-500/60 hover:from-violet-500 hover:to-purple-600 transition-shadow"
+                className="w-full lg:w-auto bg-gradient-to-r from-primary to-purple-700 text-white font-semibold shadow-lg shadow-purple-500/40 hover:shadow-purple-500/60 hover:from-primary hover:to-purple-600 transition-shadow"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Nueva venta
@@ -2212,14 +2212,14 @@ Estado: ${sale.status}
             <TabsList className="mb-4 h-auto max-w-full flex-wrap justify-start">
               <TabsTrigger value="pendientes">
                 Ventas Pendientes
-                <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
+                <span className="ml-1.5 rounded-full bg-primary/10 text-primary dark:bg-primary/20 px-1.5 py-0.5 text-[10px] font-bold">
                   {salesPage?.counts?.pendientes ?? "—"}
                 </span>
               </TabsTrigger>
               <TabsTrigger value="anuladas">
                 Ventas Anuladas
                 {ventas.anuladas.ready && (
-                <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
+                <span className="ml-1.5 rounded-full bg-primary/10 text-primary dark:bg-primary/20 px-1.5 py-0.5 text-[10px] font-bold">
                   {salesPage?.counts?.anuladas ?? "—"}
                 </span>
                 )}
@@ -2227,7 +2227,7 @@ Estado: ${sale.status}
               <TabsTrigger value="todas">
                 Todas las Ventas
                 {todasTabCount !== null && (
-                <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
+                <span className="ml-1.5 rounded-full bg-primary/10 text-primary dark:bg-primary/20 px-1.5 py-0.5 text-[10px] font-bold">
                   {todasTabCount}
                 </span>
                 )}

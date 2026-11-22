@@ -128,7 +128,7 @@ export function SkuConflictGroups({ companyId, onUnite }: SkuConflictGroupsProps
                         <div className="flex flex-wrap items-center gap-1.5">
                           {kind ? <KindBadge kind={kind} /> : null}
                           <ChannelBadge source={variant.external_source} />
-                          {serialized ? <Badge variant="outline" className="border-violet-200 bg-violet-50 text-violet-700">IMEI o serie</Badge> : null}
+                          {serialized ? <Badge variant="outline" className="border-primary/25 bg-primary/5 text-primary">IMEI o serie</Badge> : null}
                         </div>
                         <p className="text-xs text-muted-foreground">
                           SKU <span className="font-mono">{variant.company_sku || variant.sku || "—"}</span>

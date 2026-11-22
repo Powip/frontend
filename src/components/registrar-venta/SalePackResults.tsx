@@ -75,15 +75,15 @@ export default function SalePackResults({
               oos
                 ? "bg-muted border-dashed border-amber-300 hover:border-amber-500"
                 : inCart
-                  ? "border-violet-500 bg-violet-50 dark:bg-violet-500/10"
-                  : "hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10",
+                  ? "border-primary bg-primary/5 dark:bg-primary/10"
+                  : "hover:border-primary/60 hover:bg-primary/5 dark:hover:bg-primary/10",
             )}
           >
             <Thumb imageUrl={pack.imageUrl} name={pack.name} size={32} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-sm font-medium truncate">{pack.name}</span>
-                <Badge className="bg-violet-100 text-violet-700 hover:bg-violet-100 dark:bg-violet-500/15 dark:text-violet-300">Pack</Badge>
+                <Badge className="bg-primary/10 text-primary hover:bg-primary/10 dark:bg-primary/15">Pack</Badge>
               </div>
               {pack.sku || pack.productSku ? (
                 <div className="text-[11px] text-muted-foreground">{pack.sku ?? pack.productSku}</div>
@@ -97,7 +97,7 @@ export default function SalePackResults({
             >
               {available === null ? "Stock sin dato" : oos ? "Bajo pedido" : `${available} u.`}
             </Badge>
-            <span className="font-semibold text-sm text-violet-700 dark:text-violet-300 min-w-[64px] text-right shrink-0">
+            <span className="font-semibold text-sm text-primary min-w-[64px] text-right shrink-0">
               {fmt(Number(pack.price) || 0)}
             </span>
             {inCart > 0 && (

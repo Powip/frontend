@@ -1,10 +1,10 @@
 .page {
   min-height: 100dvh;
   min-width: 0;
-  background: #f8f7fc;
-  color: #302645;
+  background: color-mix(in srgb, var(--brand-surface) 20%, #fff);
+  color: var(--brand-text);
   color-scheme: light;
-  font-family: var(--next-font-manrope), Arial, Helvetica, sans-serif;
+  font-family: var(--font-poppins), Arial, Helvetica, sans-serif;
 }
 
 .page h1,
@@ -16,7 +16,7 @@
 
 .page button:focus-visible,
 .page a:focus-visible {
-  outline: 3px solid #baa7e1;
+  outline: 3px solid color-mix(in srgb, var(--brand-primary) 45%, #fff);
   outline-offset: 3px;
 }
 
@@ -28,7 +28,7 @@
   height: 56px;
   grid-template-columns: 44px minmax(0, 1fr) 44px;
   align-items: center;
-  border-bottom: 1px solid #edeaf3;
+  border-bottom: 1px solid color-mix(in srgb, var(--brand-text-muted) 15%, #fff);
   background: #fff;
   padding: 6px 12px;
 }
@@ -47,7 +47,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  color: #4f3a96;
+  color: var(--brand-primary);
 }
 
 .layout {
@@ -75,13 +75,13 @@
   position: sticky;
   top: 56px;
   z-index: 20;
-  border-bottom: 1px solid #e8e2ef;
-  background: #f8f7fc;
+  border-bottom: 1px solid color-mix(in srgb, var(--brand-text-muted) 18%, #fff);
+  background: color-mix(in srgb, var(--brand-surface) 20%, #fff);
   padding: 20px 0 18px;
 }
 
 .heading {
-  color: #302645;
+  color: var(--brand-text);
   font-size: clamp(23px, 2.2vw, 30px);
   font-weight: 700;
   letter-spacing: -0.035em;
@@ -94,7 +94,7 @@
 
 .stepCaption {
   margin-top: 6px;
-  color: #736880;
+  color: var(--brand-text-muted);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -113,7 +113,7 @@
   min-width: 0;
   align-items: center;
   gap: 8px;
-  color: #7b7289;
+  color: var(--brand-text-muted);
   font-size: 12px;
   font-weight: 600;
 }
@@ -126,33 +126,33 @@
   align-items: center;
   justify-content: center;
   border-radius: 9px;
-  background: #ece7f4;
-  color: #76658f;
+  background: color-mix(in srgb, var(--brand-primary) 10%, #fff);
+  color: var(--brand-text-muted);
   font-size: 12px;
 }
 
 .progressCurrent {
-  color: #4f3a96;
+  color: var(--brand-primary);
 }
 
 .progressCurrent .progressIndex {
-  background: #4f3a96;
+  background: var(--brand-primary);
   color: #fff;
 }
 
 .progressComplete {
-  color: #6045a5;
+  color: var(--brand-primary);
 }
 
 .progressComplete .progressIndex {
-  background: #e5dcf2;
-  color: #6045a5;
+  background: color-mix(in srgb, var(--brand-primary) 14%, #fff);
+  color: var(--brand-primary);
 }
 
 .stepCard {
   min-width: 0;
   margin-top: 24px;
-  border: 1px solid #ece8f3;
+  border: 1px solid color-mix(in srgb, var(--brand-text-muted) 15%, #fff);
   border-radius: 20px;
   background: #fff;
   padding: 24px;
@@ -175,7 +175,7 @@
 }
 
 .planTitle {
-  color: #302645;
+  color: var(--brand-text);
   font-size: 21px;
   font-weight: 700;
   line-height: 1.3;
@@ -183,13 +183,13 @@
 
 .planIntro {
   margin-top: -8px;
-  color: #736880;
+  color: var(--brand-text-muted);
   font-size: 13px;
   line-height: 1.6;
 }
 
 .planNote {
-  color: #736880;
+  color: var(--brand-text-muted);
   font-size: 12px;
   font-style: italic;
   line-height: 1.6;
@@ -199,9 +199,9 @@
   display: flex;
   min-width: 0;
   margin: 0;
-  border: 1px solid #eee8f6;
+  border: 1px solid color-mix(in srgb, var(--brand-text-muted) 15%, #fff);
   border-radius: 10px;
-  background: #f5f2fa;
+  background: color-mix(in srgb, var(--brand-primary) 5%, #fff);
   padding: 4px;
 }
 
@@ -209,14 +209,14 @@
   min-height: 36px;
   border-radius: 7px;
   padding: 8px 14px;
-  color: #6045a5;
+  color: var(--brand-primary);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
 }
 
 .cycleButton[aria-pressed="true"] {
-  background: #4f3a96;
+  background: var(--brand-primary);
   color: #fff;
 }
 
@@ -233,7 +233,7 @@
   display: flex;
   min-width: 0;
   flex-direction: column;
-  border: 2px solid #e4dfeb;
+  border: 2px solid color-mix(in srgb, var(--brand-text-muted) 22%, #fff);
   border-radius: 14px;
   background: #fff;
   padding: 20px 18px;
@@ -245,12 +245,12 @@
 }
 
 .planCard:hover {
-  border-color: #b7a6d5;
+  border-color: color-mix(in srgb, var(--brand-primary) 40%, #fff);
 }
 
 .planCard[aria-pressed="true"] {
-  border-color: #4f3a96;
-  background: #f8f5fd;
+  border-color: var(--brand-primary);
+  background: color-mix(in srgb, var(--brand-primary) 4%, #fff);
 }
 
 .popular {
@@ -258,7 +258,7 @@
   top: -11px;
   left: 16px;
   border-radius: 6px;
-  background: #4f3a96;
+  background: var(--brand-primary);
   padding: 3px 9px;
   color: #fff;
   font-size: 10px;
@@ -275,13 +275,13 @@
   align-items: center;
   justify-content: center;
   border-radius: 7px;
-  background: #4f3a96;
+  background: var(--brand-primary);
   color: #fff;
 }
 
 .planName {
   padding-right: 22px;
-  color: #302645;
+  color: var(--brand-text);
   font-size: 15px;
   font-weight: 700;
   line-height: 1.4;
@@ -289,7 +289,7 @@
 
 .planTarget {
   margin-top: 7px;
-  color: #736880;
+  color: var(--brand-text-muted);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -306,7 +306,7 @@
   display: flex;
   align-items: flex-start;
   gap: 6px;
-  color: #736880;
+  color: var(--brand-text-muted);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -314,12 +314,12 @@
 .planFeature > svg {
   margin-top: 3px;
   flex-shrink: 0;
-  color: #6045a5;
+  color: var(--brand-primary);
 }
 
 .planPrice {
   margin-top: 20px;
-  color: #4f3a96;
+  color: var(--brand-primary);
   font-size: 17px;
   font-weight: 700;
   line-height: 1.4;
@@ -344,7 +344,7 @@
     grid-template-rows: auto auto auto minmax(0, 1fr);
     gap: 24px;
     overflow: hidden;
-    background: linear-gradient(165deg, #382769 0%, #4c358c 58%, #6546aa 100%);
+    background: linear-gradient(165deg, color-mix(in srgb, var(--brand-primary) 70%, #000) 0%, color-mix(in srgb, var(--brand-primary) 88%, #000) 58%, var(--brand-primary) 100%);
     padding: 32px clamp(24px, 2.5vw, 40px);
     color: #fff;
   }
@@ -365,13 +365,13 @@
 
   .brandDescription {
     margin-top: 12px;
-    color: #ddd3ef;
+    color: color-mix(in srgb, var(--brand-primary) 12%, #fff);
     font-size: 14px;
     line-height: 1.7;
   }
 
   .brandPlan {
-    color: #e4daf3;
+    color: color-mix(in srgb, var(--brand-primary) 10%, #fff);
     font-size: 13px;
     font-weight: 600;
     line-height: 1.6;
@@ -397,7 +397,7 @@
   }
 
   .brandSummary dt {
-    color: #e4daf3;
+    color: color-mix(in srgb, var(--brand-primary) 10%, #fff);
   }
 
   .brandSummary dd {

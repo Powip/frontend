@@ -40,6 +40,7 @@ import { PrintLabelsDialog } from "@/components/labels/PrintLabelsDialog";
 import { MAX_ITEM_UNITS, MAX_ITEM_UNITS_MESSAGE, largeQuantityConfirmText, needsQuantityConfirmation } from "@/lib/stockLimits";
 import { formatVariantLabel } from "@/lib/variantAttributes";
 import CategoryTreeSelect from "@/components/catalog/CategoryTreeSelect";
+import CategoryQuickCreate from "@/components/catalog/CategoryQuickCreate";
 import { useCatalogCategories } from "@/hooks/useCatalogCategories";
 import { apiErrorInfo, buildVariantPatch, duplicateSkuKeys, skuKey } from "@/lib/catalog/catalogPayloads";
 
@@ -142,6 +143,11 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
   const [isLoadingProduct, setIsLoadingProduct] = useState(false);
   const [editProductId, setEditProductId] = useState<string | null>(null);
   const editLoadComplete = useRef(false);
+  // Categoría y subcategoría que puso la carga de edición (ya trajo sus subcategorías, atributos y variantes).
+  // Los efectos de «cambió la categoría/subcategoría» no las toman como un cambio del usuario: si la carga
+  // termina antes de que React pinte (respuesta muy rápida), el guard de `editLoadComplete` no alcanzaba y
+  // se vaciaban las variantes recién cargadas. Se olvidan en cuanto el usuario cambia la categoría.
+  const editLoaded = useRef<{ categoryId: string | null; subcategoryId: string | null }>({ categoryId: null, subcategoryId: null });
 
   const [form, setForm] = useState<CreateProductBase>({
     name: "",
@@ -285,6 +291,7 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
         setDefaultAttributes(attrs);
 
         // Llenar el formulario
+        editLoaded.current = { categoryId: categoryId || null, subcategoryId: subcategoryId || null };
         setForm({
           name: product.name || "",
           description: product.description || "",
@@ -404,6 +411,8 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
   // =========================
   useEffect(() => {
     if (isEditMode && !editLoadComplete.current) return;
+    if (form.categoryId && form.categoryId === editLoaded.current.categoryId) return;
+    editLoaded.current = { categoryId: null, subcategoryId: null };
 
     setSubcategories([]);
     setDefaultAttributes([]);
@@ -426,6 +435,8 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
   // =========================
   useEffect(() => {
     if (isEditMode && !editLoadComplete.current) return;
+    if (form.subcategoryId && form.subcategoryId === editLoaded.current.subcategoryId) return;
+    editLoaded.current = { ...editLoaded.current, subcategoryId: null };
 
     setDefaultAttributes([]);
     setAttributeValues({});
@@ -1048,7 +1059,11 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
               {/* FEAT-24 H4 (H4-D4): categoría propia de la empresa (árbol de hasta 3 niveles). */}
               <div className="space-y-2">
                 <Label htmlFor="catalogCategoryId">Categoría</Label>
-                <CategoryTreeSelect id="catalogCategoryId" tree={catalogCategories.tree} value={catalogCategoryId} disabled={isSubmitting} onChange={setCatalogCategoryId} />
+                <div className="flex gap-2">
+                  <CategoryTreeSelect id="catalogCategoryId" className="flex-1" tree={catalogCategories.tree} value={catalogCategoryId} disabled={isSubmitting} onChange={setCatalogCategoryId} />
+                  {/* Correcciones 11-20 (B1): crearla sin salir del formulario (solo Administrador). */}
+                  <CategoryQuickCreate tree={catalogCategories.tree} disabled={isSubmitting} onCreated={setCatalogCategoryId} />
+                </div>
                 <p className="text-xs text-muted-foreground">Ordena tu catálogo (ej.: Ropa › Polos). Se administran en Catálogo › Categorías.</p>
               </div>
 

@@ -1,4 +1,5 @@
 import type { OrderDeliverySnapshot } from "@/interfaces/IOrder";
+import type { CcShalomAgencyOptions } from "./CcShalomAgencyPicker";
 
 /** Valores con los que los sistemas de origen rellenan una dirección que no existe. */
 const JUNK_LOCATION_VALUES = new Set([
@@ -43,4 +44,30 @@ export function hasCompleteDeliveryLocation(order: LocationOrder | null | undefi
   return (["province", "city", "district", "address"] as const).every(
     (field) => !isJunkLocationValue(place[field]),
   );
+}
+
+type AgencyOrder = LocationOrder & {
+  deliverySnapshot?: Pick<OrderDeliverySnapshot, "department" | "province" | "district" | "agency"> | null;
+};
+
+/**
+ * Datos para el selector de agencia Shalom de Gestión CC: la ciudad sale de la dirección propia del
+ * pedido (`deliverySnapshot`) o, si no la tiene, del cliente. Los valores de relleno cuentan como vacíos.
+ */
+export function shalomAgencyOptions(order: AgencyOrder | null | undefined): CcShalomAgencyOptions | undefined {
+  if (!order) return undefined;
+  const snapshot = order.deliverySnapshot;
+  const clean = (value?: string | null) => (isJunkLocationValue(value) ? "" : value!.trim());
+  const place = snapshot
+    ? { department: snapshot.department, province: snapshot.province, district: snapshot.district }
+    : { department: order.customer?.city, province: order.customer?.province, district: order.customer?.district };
+  return {
+    location: {
+      department: clean(place.department),
+      province: clean(place.province),
+      district: clean(place.district),
+    },
+    current: snapshot?.agency ?? null,
+    editable: !!snapshot,
+  };
 }

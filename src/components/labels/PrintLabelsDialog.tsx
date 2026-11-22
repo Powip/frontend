@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Printer } from "lucide-react";
+import { Loader2, Printer, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -16,8 +16,11 @@ import { flattenCategoryTree } from "@/lib/catalog/categoryTree";
 import { loadImageAsDataUrl } from "@/lib/labels/logo";
 import {
   applyQuantities,
+  buildAddedRequest,
   buildLabelsRequest,
+  mergeLabelLines,
   printBlocker,
+  type AddedLabelItem,
   type LabelsCatalogFilter,
   type LabelsQuantityMode,
   type LabelsSource,
@@ -25,6 +28,7 @@ import {
 import { LABEL_OUTPUT_NAMES, labelCount, MAX_LABELS_PER_PRINT } from "@/lib/labels/types";
 import { listCatalogCategories } from "@/services/catalogCategoriesService";
 import { fetchLabelLines, labelsErrorMessage } from "@/services/labelsService";
+import { LabelItemSearch } from "./LabelItemSearch";
 import { LabelPreview } from "./LabelPreview";
 
 interface PrintLabelsDialogProps {
@@ -38,6 +42,10 @@ interface PrintLabelsDialogProps {
  * productos elegidos), desde Etiquetas (el catálogo, por categoría propia o marca) o desde una compra
  * recibida (H3: lo que entró en la recepción). La cantidad por variante es 1, lo disponible en el almacén
  * elegido o lo recibido, y se puede cambiar línea por línea. El PDF se arma en el navegador.
+ *
+ * Correcciones 11-20 (B2): lo de arriba sigue siendo lo que se carga por defecto (imprimir todo). Además, un
+ * buscador agrega productos o variantes, cada línea se puede quitar (y volver a poner) y el almacén hace de
+ * filtro: con «1 de cada una», solo lo que tiene stock ahí; con «según stock», su disponible.
  */
 export function PrintLabelsDialog({ open, onOpenChange, source }: PrintLabelsDialogProps) {
   const { auth } = useAuth();
@@ -63,6 +71,8 @@ export function PrintLabelsDialog({ open, onOpenChange, source }: PrintLabelsDia
   const [filter, setFilter] = useState<LabelsCatalogFilter>({});
   const [storeId, setStoreId] = useState(stores[0]?.id ?? "");
   const [edits, setEdits] = useState<{ key: string; values: Record<string, number> }>({ key: "", values: {} });
+  const [added, setAdded] = useState<AddedLabelItem[]>([]);
+  const [removed, setRemoved] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
 
@@ -79,9 +89,30 @@ export function PrintLabelsDialog({ open, onOpenChange, source }: PrintLabelsDia
     enabled: open && Boolean(request) && Boolean(companyId),
     retry: false,
   });
+  // Lo agregado con el buscador: «según stock» trae su disponible en el almacén; si no, 1 de cada una.
+  const addedRequest = useMemo(
+    () => buildAddedRequest(added, fromPurchase ? "fixed" : mode, fromPurchase ? "" : inventoryId),
+    [added, fromPurchase, mode, inventoryId],
+  );
+  const addedLines = useQuery({
+    queryKey: ["label-lines", companyId, JSON.stringify(addedRequest)],
+    queryFn: ({ signal }) => fetchLabelLines(addedRequest!, signal),
+    enabled: open && Boolean(addedRequest) && Boolean(companyId),
+    retry: false,
+  });
+  const warehouseFilter = !fromPurchase && mode === "fixed" && inventoryId !== "";
+  const listed = useMemo(
+    () => mergeLabelLines({ base: lines.data ?? [], added, addedLines: addedLines.data ?? [], warehouseFilter }),
+    [lines.data, added, addedLines.data, warehouseFilter],
+  );
+  const hiddenCount = useMemo(() => listed.filter((line) => removed.includes(line.variantId)).length, [listed, removed]);
   // Las cantidades editadas valen para estas líneas; si cambia el pedido, se vuelve a la automática.
   const overrides = useMemo(() => (edits.key === requestKey ? edits.values : {}), [edits, requestKey]);
-  const finalLines = useMemo(() => applyQuantities(lines.data ?? [], overrides), [lines.data, overrides]);
+  const finalLines = useMemo(
+    () => applyQuantities(listed.filter((line) => !removed.includes(line.variantId)), overrides),
+    [listed, removed, overrides],
+  );
+  const loadingAdded = Boolean(addedRequest) && addedLines.isFetching;
   const total = finalLines.reduce((sum, line) => sum + labelCount(line.quantity), 0);
   const blocker = lines.data ? printBlocker(finalLines) : null;
   const storeName = stores.find((store) => store.id === storeId)?.name ?? null;
@@ -89,6 +120,21 @@ export function PrintLabelsDialog({ open, onOpenChange, source }: PrintLabelsDia
   const setQuantity = (variantId: string, raw: string) => {
     const value = raw === "" ? 0 : Number(raw);
     setEdits({ key: requestKey, values: { ...overrides, [variantId]: Number.isFinite(value) ? value : 0 } });
+  };
+
+  const known = [...(lines.data ?? []), ...(addedLines.data ?? [])];
+  const addProduct = (product: { id: string; name: string }) => {
+    setAdded((current) => (current.some((item) => item.productId === product.id && item.variantId === null) ? current : [...current, { productId: product.id, variantId: null }]));
+    // Volver a agregarlo devuelve las variantes que se habían quitado.
+    setRemoved((current) => current.filter((variantId) => !known.some((line) => line.variantId === variantId && line.productId === product.id)));
+    return `Se agregó ${product.name} con sus variantes.`;
+  };
+  const addVariant = (match: { variantId: string; productId: string; sku: string; companySku: string | null; productName: string }) => {
+    const label = `${match.productName} · ${match.companySku || match.sku}`;
+    if (finalLines.some((line) => line.variantId === match.variantId)) return `${label} ya está en la lista.`;
+    setAdded((current) => (current.some((item) => item.variantId === match.variantId) ? current : [...current, { productId: match.productId, variantId: match.variantId }]));
+    setRemoved((current) => current.filter((variantId) => variantId !== match.variantId));
+    return `Se agregó ${label}.`;
   };
 
   const download = async () => {
@@ -225,25 +271,38 @@ export function PrintLabelsDialog({ open, onOpenChange, source }: PrintLabelsDia
                     <input type="radio" name="labels-mode" checked={mode === "stock"} onChange={() => setMode("stock")} />
                     Según el stock disponible del almacén
                   </label>
-                  {mode === "stock" ? (
-                    <select
-                      aria-label="Almacén"
-                      className="w-full rounded-md border p-2 text-sm"
-                      value={inventoryId}
-                      onChange={(event) => setInventoryId(event.target.value)}
-                    >
-                      <option value="">Elige el almacén</option>
-                      {warehouses.inventories.map((warehouse) => (
-                        <option key={warehouse.id} value={warehouse.id}>
-                          {warehouse.name}
-                          {warehouse.storeName ? ` · ${warehouse.storeName}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  ) : null}
                   <p className="text-xs text-muted-foreground">Luego puedes cambiar la cantidad de cada variante en la lista.</p>
                 </fieldset>
               )}
+
+              {fromPurchase ? null : (
+                <div className="space-y-1">
+                  <Label htmlFor="labels-warehouse">Almacén</Label>
+                  <select
+                    id="labels-warehouse"
+                    className="w-full rounded-md border p-2 text-sm"
+                    value={inventoryId}
+                    onChange={(event) => setInventoryId(event.target.value)}
+                  >
+                    <option value="">Todos los almacenes</option>
+                    {warehouses.inventories.map((warehouse) => (
+                      <option key={warehouse.id} value={warehouse.id}>
+                        {warehouse.name}
+                        {warehouse.storeName ? ` · ${warehouse.storeName}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    {!inventoryId
+                      ? "Elige uno para imprimir solo lo que hay en ese almacén."
+                      : mode === "fixed"
+                        ? "Solo lo que tiene stock en este almacén."
+                        : "La cantidad es el disponible en este almacén."}
+                  </p>
+                </div>
+              )}
+
+              <LabelItemSearch companyId={companyId} disabled={!companyId} onAddProduct={addProduct} onAddVariant={addVariant} />
 
               {!request ? (
                 <p className="text-sm text-muted-foreground">Elige el almacén para traer su stock.</p>
@@ -253,8 +312,14 @@ export function PrintLabelsDialog({ open, onOpenChange, source }: PrintLabelsDia
                 </p>
               ) : lines.isPending ? (
                 <p role="status">Cargando variantes...</p>
-              ) : finalLines.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No hay variantes activas para imprimir.</p>
+              ) : finalLines.length === 0 && !loadingAdded ? (
+                <p className="text-sm text-muted-foreground">
+                  {hiddenCount > 0
+                    ? "Quitaste todas las líneas."
+                    : warehouseFilter
+                      ? "No hay stock de estos productos en este almacén."
+                      : "No hay variantes activas para imprimir."}
+                </p>
               ) : (
                 <div className="max-h-72 overflow-auto rounded-md border">
                   <table className="w-full text-sm">
@@ -263,6 +328,9 @@ export function PrintLabelsDialog({ open, onOpenChange, source }: PrintLabelsDia
                         <th className="p-2">Variante</th>
                         <th className="p-2">Código</th>
                         <th className="p-2 text-right">Etiquetas</th>
+                        <th className="w-10 p-2">
+                          <span className="sr-only">Quitar</span>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -289,15 +357,39 @@ export function PrintLabelsDialog({ open, onOpenChange, source }: PrintLabelsDia
                               onChange={(event) => setQuantity(line.variantId, event.target.value)}
                             />
                           </td>
+                          <td className="p-2 text-right">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              aria-label={`Quitar ${line.sku}`}
+                              onClick={() => setRemoved((current) => [...current, line.variantId])}
+                            >
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            </Button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
               )}
-              <p className="text-sm" aria-live="polite">
-                {finalLines.length} variantes · <b>{total} etiquetas</b>
-              </p>
+              {addedLines.isError ? (
+                <p role="alert" className="text-sm text-destructive">
+                  {labelsErrorMessage(addedLines.error, "No se pudo agregar a la lista.")}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <p className="text-sm" aria-live="polite">
+                  {finalLines.length} variantes · <b>{total} etiquetas</b>
+                </p>
+                {hiddenCount > 0 ? (
+                  <Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={() => setRemoved([])}>
+                    {hiddenCount === 1 ? "Volver a poner la quitada" : `Volver a poner las ${hiddenCount} quitadas`}
+                  </Button>
+                ) : null}
+              </div>
               {blocker && lines.data?.length ? (
                 <p role="alert" className="text-sm text-destructive">
                   {blocker}
@@ -326,7 +418,7 @@ export function PrintLabelsDialog({ open, onOpenChange, source }: PrintLabelsDia
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={generating}>
             Cerrar
           </Button>
-          <Button type="button" onClick={() => void download()} disabled={!format || !lines.data || Boolean(blocker) || generating}>
+          <Button type="button" onClick={() => void download()} disabled={!format || !lines.data || loadingAdded || Boolean(blocker) || generating}>
             {generating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Printer className="mr-2 h-4 w-4" />}
             Descargar PDF · {total} etiquetas
           </Button>

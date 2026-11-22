@@ -196,7 +196,7 @@ export default function StoreDeliverySettings({
             }
           >
             <option value="HOME">A domicilio</option>
-            <option value="AGENCY">Recojo en agencia</option>
+            <option value="AGENCY">Recojo en tienda courier</option>
           </select>
         </label>
         <label className="grid gap-1 text-sm">

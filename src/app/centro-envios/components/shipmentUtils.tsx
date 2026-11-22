@@ -39,6 +39,21 @@ export function hasPaymentProof(order: OrderHeader): boolean {
   return paymentsHaveProof(order.payments);
 }
 
+/**
+ * Clave de recojo bloqueada en Rastreo Courier: el pedido tiene clave, aún
+ * debe saldo (mismo cálculo que el filtro «Con saldo») y no se subió
+ * comprobante de pago. Sin clave nunca se bloquea: el campo queda en blanco
+ * y editable para escribir una nueva.
+ */
+export function isShippingKeyLocked(order: OrderHeader): boolean {
+  // La API oculta la clave bloqueada (shippingKey null) y avisa con hasShippingKey.
+  return (
+    (!!order.shippingKey || !!order.hasShippingKey) &&
+    getPendingPayment(order) > 0 &&
+    !hasPaymentProof(order)
+  );
+}
+
 export function isReassigned(order: OrderHeader): boolean {
   return !!order.notes?.includes("[REASIGNADO]");
 }

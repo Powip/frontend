@@ -13,10 +13,10 @@ function Tile({
   label, value, sub, highlight,
 }: { label: string; value: string; sub: string; highlight?: boolean }) {
   return (
-    <Card className={highlight ? "border-violet-200 dark:border-violet-800 bg-violet-50/60 dark:bg-violet-950/20" : ""}>
+    <Card className={highlight ? "border-primary/25 dark:border-primary/40 bg-primary/60 dark:bg-primary/20" : ""}>
       <CardContent className="py-3 px-3.5">
         <p className="text-[9px] font-bold uppercase tracking-wide text-muted-foreground mb-1">{label}</p>
-        <p className={`text-xl font-extrabold ${highlight ? "text-violet-700 dark:text-violet-300" : ""}`}>{value}</p>
+        <p className={`text-xl font-extrabold ${highlight ? "text-primary" : ""}`}>{value}</p>
         <p className="text-[10px] text-muted-foreground mt-0.5">{sub}</p>
       </CardContent>
     </Card>

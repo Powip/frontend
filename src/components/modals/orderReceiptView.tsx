@@ -19,8 +19,8 @@ const STATUS_STYLES: Record<
     label: "Incompleto",
   },
   PREVENTA: {
-    bg: "bg-violet-100",
-    text: "text-violet-700",
+    bg: "bg-primary/10",
+    text: "text-primary",
     label: "Pre-Venta",
   },
   PENDIENTE: {
@@ -234,7 +234,7 @@ export default function OrderReceiptView({ data }: Props) {
         {data.delivery && (
           <div>
             <span className="text-muted-foreground">Entrega: </span>
-            <span className="font-medium">{data.delivery.type === "AGENCY" ? "Retiro en agencia" : "Envío a domicilio"}</span>
+            <span className="font-medium">{data.delivery.type === "AGENCY" ? "Recojo en tienda courier" : "Envío a domicilio"}</span>
           </div>
         )}
         {data.delivery?.type === "AGENCY" && data.delivery.agency && (

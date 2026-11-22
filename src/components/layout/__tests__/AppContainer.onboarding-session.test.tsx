@@ -23,6 +23,7 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
 }));
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => mockUseAuth() }));
+jest.mock("@/components/gre/GreCredentialsNotice", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/layout/Sidebar", () => ({ Sidebar: () => <nav /> }));
 jest.mock("@/components/auth/AuthGuard", () => ({
   __esModule: true,

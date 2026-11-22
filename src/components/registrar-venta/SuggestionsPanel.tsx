@@ -67,7 +67,7 @@ export default function SuggestionsPanel({
           </>
         ),
         action: (
-          <Button type="button" size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => onApplyPack(p)}>
+          <Button type="button" size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => onApplyPack(p)}>
             {p.variantFree ? "Elegir tallas y aplicar" : "Aplicar"}
           </Button>
         ),
@@ -89,7 +89,7 @@ export default function SuggestionsPanel({
           </>
         ),
         action: (
-          <Button type="button" size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => onApplyPack(p)}>
+          <Button type="button" size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => onApplyPack(p)}>
             Aplicar bundle
           </Button>
         ),
@@ -141,7 +141,7 @@ export default function SuggestionsPanel({
             </>
           ),
           action: (
-            <Button type="button" size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => onAutoFillVolume(p)}>
+            <Button type="button" size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => onAutoFillVolume(p)}>
               Sumar {falta} u.
             </Button>
           ),
@@ -223,12 +223,12 @@ export default function SuggestionsPanel({
 
   if (!items.length) {
     return (
-      <div className="flex items-start gap-3 rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-card p-4 dark:border-violet-800 dark:from-violet-500/10">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-violet-600 text-white">
+      <div className="flex items-start gap-3 rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/5 to-card p-4 dark:border-primary/40 dark:from-primary/10">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-primary text-white">
           <Lightbulb className="h-4 w-4" />
         </span>
         <div>
-          <h4 className="text-sm font-bold text-violet-700 dark:text-violet-300">Sugerencias para cerrar</h4>
+          <h4 className="text-sm font-bold text-primary">Sugerencias para cerrar</h4>
           <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
             Agrega productos y POWIP te sugerirá packs y combos para cerrar con mejor ticket.
           </p>
@@ -240,15 +240,15 @@ export default function SuggestionsPanel({
   return (
     <div className="space-y-2.5">
       <div className="flex items-center gap-2 px-0.5 text-sm font-bold text-foreground">
-        <Lightbulb className="h-4 w-4 text-violet-600 dark:text-violet-300" />
+        <Lightbulb className="h-4 w-4 text-primary" />
         Sugerencias para cerrar
       </div>
       {items.map((item, idx) => (
         <div
           key={idx}
-          className="flex gap-2.5 rounded-xl border border-violet-200 bg-gradient-to-b from-violet-50/70 to-transparent p-3 dark:border-violet-800 dark:from-violet-500/10"
+          className="flex gap-2.5 rounded-xl border border-primary/25 bg-gradient-to-b from-primary/70 to-transparent p-3 dark:border-primary/40 dark:from-primary/10"
         >
-          <div className="w-7 h-7 rounded-lg bg-violet-100 text-violet-600 dark:bg-violet-500/20 dark:text-violet-300 flex items-center justify-center shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-primary/10 text-primary dark:bg-primary/20 flex items-center justify-center shrink-0">
             {item.icon}
           </div>
           <div className="flex-1 min-w-0">

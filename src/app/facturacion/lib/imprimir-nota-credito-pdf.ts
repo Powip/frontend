@@ -95,7 +95,7 @@ export function buildNotaCreditoHtml(nota: Nota, issuer: NotaIssuer): string {
           .head-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
           .company { display: flex; gap: 14px; align-items: center; }
           .logo-box {
-            width: 56px; height: 56px; border-radius: 10px; background: #6D4FE0; color: #fff;
+            width: 56px; height: 56px; border-radius: 10px; background: #4C2FB5; color: #fff;
             display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 700;
             flex-shrink: 0; font-family: "Poppins", sans-serif;
           }
@@ -103,13 +103,13 @@ export function buildNotaCreditoHtml(nota: Nota, issuer: NotaIssuer): string {
           .company-meta { font-size: 10.5px; color: #667085; margin-top: 3px; }
           .doc-info { text-align: right; }
           .doc-badge {
-            display: inline-block; background: #F4F1FD; color: #6D4FE0; font-size: 9.5px; font-weight: 700;
+            display: inline-block; background: #F4F1FD; color: #4C2FB5; font-size: 9.5px; font-weight: 700;
             letter-spacing: 0.5px; padding: 4px 10px; border-radius: 4px; border: 1px solid #E8DFFF;
             font-family: "Poppins", sans-serif;
           }
           .doc-title { font-size: 20px; font-weight: 700; margin-top: 6px; font-family: "Poppins", sans-serif; }
           .doc-number { font-size: 11px; color: #667085; margin-top: 2px; }
-          .divider { height: 3px; background: #6D4FE0; margin: 16px 0; border-radius: 2px; }
+          .divider { height: 3px; background: #4C2FB5; margin: 16px 0; border-radius: 2px; }
           .summary-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px 20px; margin-bottom: 18px; }
           .summary-label {
             font-size: 9px; font-weight: 700; color: #888; letter-spacing: 0.4px; margin-bottom: 3px;
@@ -122,7 +122,7 @@ export function buildNotaCreditoHtml(nota: Nota, issuer: NotaIssuer): string {
           }
           .customer-box { background: #F4F1FD; border-radius: 8px; padding: 14px 16px; margin-bottom: 18px; }
           .customer-title {
-            font-size: 10.5px; font-weight: 700; color: #6D4FE0; letter-spacing: 0.5px; margin-bottom: 8px;
+            font-size: 10.5px; font-weight: 700; color: #4C2FB5; letter-spacing: 0.5px; margin-bottom: 8px;
             text-transform: uppercase; font-family: "Poppins", sans-serif;
           }
           .customer-grid { display: grid; grid-template-columns: 1fr 1.6fr; gap: 10px 20px; }

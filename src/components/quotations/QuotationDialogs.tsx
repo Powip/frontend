@@ -933,7 +933,7 @@ export function QuotationConvertDialog({
               </div>
               {selectField("deliveryType", "Tipo de entrega", [
                 ["DOMICILIO", "Envío a domicilio"],
-                ["RETIRO_TIENDA", "Recojo en tienda"],
+                ["RETIRO_TIENDA", "Retiro en tienda negocio"],
               ])}
               {fields.deliveryType === "DOMICILIO" && (
                 <>

@@ -39,7 +39,7 @@ import { TransitTab } from "../TransitTab";
 import { ClosedTab } from "../ClosedTab";
 import { emptyTabState, patchTabState, type OperationsTabData, type OperationsTabProps } from "../tabState";
 import { OrderDetailModalProvider } from "@/components/orders/OrderDetailModal";
-import { buildPedidosExportRows, formatScheduledDispatchDate, type PedidosActions, type Sale, type SaleItem } from "../types";
+import { buildPedidosExportRows, formatScheduledDispatchDate, orderDeliveryReference, type PedidosActions, type Sale, type SaleItem } from "../types";
 import type { OrderStatus } from "@/interfaces/IOrder";
 
 function item(productVariantId: string, productName: string, quantity: number): SaleItem {
@@ -236,5 +236,41 @@ describe("buildPedidosExportRows — fecha programada de despacho", () => {
 
   it("fecha inválida queda null", () => {
     expect(formatScheduledDispatchDate("no-es-fecha")).toBeNull();
+  });
+});
+
+describe("buildPedidosExportRows — referencia de la dirección", () => {
+  it("pasa la referencia del pedido al Excel", () => {
+    const sale = { ...makeSale(1, "PREPARADO", "18/11/2026", [CAFE(1)]), reference: "Frente al parque" };
+    expect(buildPedidosExportRows([sale])[0].reference).toBe("Frente al parque");
+  });
+
+  it("sin referencia queda null (columna con '-')", () => {
+    expect(buildPedidosExportRows([makeSale(1, "PREPARADO", "18/11/2026", [CAFE(1)])])[0].reference).toBeNull();
+  });
+});
+
+describe("orderDeliveryReference — de dónde sale la referencia", () => {
+  const snapshot = { reference: "Referencia del snapshot" } as NonNullable<Parameters<typeof orderDeliveryReference>[0]["deliverySnapshot"]>;
+
+  it("sin deliverySnapshot usa la referencia del cliente", () => {
+    expect(orderDeliveryReference({ customer: { reference: " Casa azul " } })).toBe("Casa azul");
+  });
+
+  it("sin deliverySnapshot manda la referencia que completó Atención al cliente", () => {
+    expect(orderDeliveryReference({ referenciaEntrega: "Tocar el timbre 2", customer: { reference: "Casa azul" } })).toBe("Tocar el timbre 2");
+    expect(orderDeliveryReference({ referenciaEntrega: "  ", customer: { reference: "Casa azul" } })).toBe("Casa azul");
+  });
+
+  it("con deliverySnapshot usa la del cliente que devuelve el listado (ya es la entrega del pedido)", () => {
+    expect(
+      orderDeliveryReference({ deliverySnapshot: snapshot, referenciaEntrega: "Vieja", customer: { reference: "Referencia del snapshot" } }),
+    ).toBe("Referencia del snapshot");
+    expect(orderDeliveryReference({ deliverySnapshot: snapshot, referenciaEntrega: "Vieja", customer: { reference: null } })).toBeNull();
+  });
+
+  it("sin cliente ni referencia devuelve null", () => {
+    expect(orderDeliveryReference({})).toBeNull();
+    expect(orderDeliveryReference({ customer: null })).toBeNull();
   });
 });

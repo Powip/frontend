@@ -388,7 +388,7 @@ export default function PublicQuotationPage({ token }: { token: string }) {
         <header className="mb-7 flex items-center justify-between">
           <a
             href="https://powip.lat"
-            className="text-xl font-extrabold tracking-wide text-violet-700"
+            className="text-xl font-extrabold tracking-wide text-primary"
             aria-label="POWIP"
           >
             POWIP<span className="text-teal-600">.</span>
@@ -517,7 +517,7 @@ export default function PublicQuotationPage({ token }: { token: string }) {
                     {line.quantity} × {money(line.unitPrice)}
                   </p>
                   {line.isPack && (
-                    <span className="mt-2 inline-block rounded bg-violet-50 px-2 py-1 text-[10px] font-bold text-violet-700">
+                    <span className="mt-2 inline-block rounded bg-primary/5 px-2 py-1 text-[10px] font-bold text-primary">
                       PACK
                     </span>
                   )}
@@ -747,7 +747,7 @@ export default function PublicQuotationPage({ token }: { token: string }) {
           )}
 
         {active && paymentOpen && (
-          <section className="mt-5 rounded-2xl border border-violet-200 bg-white p-6">
+          <section className="mt-5 rounded-2xl border border-primary/25 bg-white p-6">
             <h2 className="font-bold">Reportar un pago</h2>
             <PublicQuotationPaymentDestinations destinations={quote.paymentDestinations} />
             <form className="mt-5 space-y-4" onSubmit={submitPayment}>

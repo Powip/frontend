@@ -48,6 +48,8 @@ export interface Sale extends UnitAssignmentState, Omit<SalesPhysicalOrderProjec
   city?: string;
   district: string;
   address: string;
+  /** Referencia de la dirección de entrega del pedido (ver `orderDeliveryReference`). */
+  reference?: string | null;
   googleMapsUrl?: string | null;
   advancePayment: number;
   pendingPayment: number;
@@ -104,6 +106,22 @@ export function paidAmount(order: OrderHeader): number {
   return orderFinancialState(order).totalPaid;
 }
 
+/**
+ * Referencia de la dirección de entrega, con la misma regla que el recibo de
+ * ms-ventas: con `deliverySnapshot` el listado ya trae en `customer` la
+ * entrega aceptada del pedido (dirección y referencia); sin él manda la
+ * referencia que completó Atención al cliente y, si no hay, la del cliente.
+ */
+export function orderDeliveryReference(
+  order: Pick<OrderHeader, "deliverySnapshot" | "referenciaEntrega"> & {
+    customer?: { reference?: string | null } | null;
+  },
+): string | null {
+  const fromCustomer = order.customer?.reference?.trim() || null;
+  if (order.deliverySnapshot) return fromCustomer;
+  return order.referenciaEntrega?.trim() || fromCustomer;
+}
+
 export function mapOrderToSale(order: OrderHeader): Sale {
   const total = Number(order.grandTotal || 0);
   const { totalPaid: advancePayment, pendingAmount: pendingPayment } = orderFinancialState(order);
@@ -148,6 +166,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     city: order.customer?.city ?? "",
     district: order.customer?.district ?? "",
     address: order.customer?.address ?? "",
+    reference: orderDeliveryReference(order),
     googleMapsUrl: order.customer?.googleMapsUrl ?? null,
     advancePayment,
     pendingPayment,
@@ -221,7 +240,7 @@ export function formatScheduledDispatchDate(callbackAt?: string | null): string 
  * Filas del Excel de Pedidos: una por pedido, Total = total de la orden y
  * "Productos" con todos sus ítems. Con filtro por producto (`productFilter`)
  * se agregan las unidades de ese producto en cada pedido. Incluye la fecha
- * programada de despacho (`callbackAt`).
+ * programada de despacho (`callbackAt`) y la referencia de la dirección.
  */
 export function buildPedidosExportRows(sales: Sale[], productFilter?: string): SaleExportData[] {
   return sales.map((s) => ({
@@ -247,6 +266,7 @@ export function buildPedidosExportRows(sales: Sale[], productFilter?: string): S
     district: s.district,
     zone: s.zone,
     address: s.address,
+    reference: s.reference ?? null,
     googleMapsUrl: s.googleMapsUrl,
     paymentMethod: s.paymentMethod,
     deliveryType: s.deliveryType,

@@ -44,17 +44,17 @@ import type { ShippingGuide } from "@/components/modals/GuideDetailsModal";
 import ShalomShippingLabelsModal from "@/components/modals/ShalomShippingLabelsModal";
 import { buildWhatsAppUrl } from "@/utils/whatsapp/build-whatsapp-url";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
+import type { ShalomAgencyOption } from "@/services/shalomService";
+import { ShalomAgencySelector as AgencySelector } from "@/components/shalom/ShalomAgencySelector";
+import {
+  useShalomAgencySearch,
+  normalizeAgencyQuery,
+  AGENCY_SEARCH_MIN_CHARS,
+} from "@/components/shalom/useShalomAgencySearch";
 
 // Sentinel para representar el valor vacío "" que exige la API de Shalom.
 // Radix Select no admite value="" en SelectItem — usar este sentinel y mapear al enviar.
 const DECLARACION_JURADA_NINGUNA = "__ninguna__";
-
-/** Espera tras la última tecla antes de buscar agencias (evita una llamada por tecla). */
-const AGENCY_SEARCH_DEBOUNCE_MS = 400;
-
-/** Término de agencia normalizado: sin tildes, sin espacios extra, en minúsculas. */
-const normalizeAgencyQuery = (q: string): string =>
-  q.normalize("NFD").replace(/\p{M}/gu, "").trim().replace(/\s+/g, " ").toLowerCase();
 
 // Lista exacta del enum del OpenAPI de Shalom. NO agregar valores fuera de este set.
 const DECLARACION_JURADA_OPTIONS = [
@@ -89,13 +89,7 @@ const PACKAGE_TYPES = [
   { label: "Mercadería General (Manual)", value: "MERCADERIA" },
 ];
 
-interface Agency {
-  id_agencia: string;
-  nombre_agencia: string;
-  direccion: string;
-  api_name: string;
-  ter_aereo: number; // 1 = permite envío aéreo, 0 = solo terrestre
-}
+type Agency = ShalomAgencyOption;
 
 interface District {
   id_distrito: string;
@@ -144,127 +138,6 @@ interface ShalomShipmentError {
   orderNumber?: string | null;
 }
 
-interface AgencySelectorProps {
-  label: string;
-  agencyLabel?: string;
-  searchPlaceholder: string;
-  agencies: Agency[];
-  searchValue: string;
-  selectedAgency: string;
-  onSearchChange: (val: string) => void;
-  onAgencyChange: (id: string) => void;
-  isLoadingAgencies?: boolean;
-  error?: boolean;
-}
-
-const AgencySelector = ({
-  label,
-  agencyLabel = "Agencia (Destino)",
-  searchPlaceholder,
-  agencies,
-  searchValue,
-  selectedAgency,
-  onSearchChange,
-  onAgencyChange,
-  isLoadingAgencies,
-  error,
-}: AgencySelectorProps) => (
-  <div className="space-y-3">
-    <div className="flex items-center justify-between">
-      <Label className="text-sm font-bold text-slate-700 dark:text-slate-200">
-        {label}
-      </Label>
-      {error && !selectedAgency && (
-        <span className="text-[10px] font-bold text-red-500">FALTANTE</span>
-      )}
-    </div>
-
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      <div className="space-y-1">
-        <Label className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase">
-          Buscar distrito / provincia
-        </Label>
-        <Input
-          placeholder={searchPlaceholder}
-          value={searchValue}
-          onChange={(e) => onSearchChange(e.target.value)}
-          className={cn(
-            "h-9 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 focus:border-blue-400 focus:ring-blue-100 placeholder:text-slate-300 dark:placeholder:text-slate-600 dark:text-slate-100",
-            error &&
-              !searchValue &&
-              "border-red-200 bg-red-50/10 dark:border-red-800 dark:bg-red-950/20",
-          )}
-        />
-      </div>
-
-      <div className="space-y-1">
-        <Label className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase">
-          {agencyLabel}
-        </Label>
-        <Select
-          value={selectedAgency}
-          onValueChange={onAgencyChange}
-          disabled={isLoadingAgencies}
-        >
-          <SelectTrigger
-            className={cn(
-              "h-9 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 dark:text-slate-100",
-              error &&
-                !selectedAgency &&
-                "border-red-200 bg-red-50/10 dark:border-red-800 dark:bg-red-950/20",
-            )}
-          >
-            <SelectValue
-              placeholder={
-                isLoadingAgencies
-                  ? "Buscando..."
-                  : !searchValue
-                    ? "Escribe para buscar..."
-                    : "Seleccionar agencia"
-              }
-            />
-          </SelectTrigger>
-          <SelectContent className="max-h-[250px] w-full dark:bg-slate-800 dark:border-slate-700 z-50">
-            {agencies.length === 0 && searchValue ? (
-              <div className="p-3 text-center text-xs text-slate-400 dark:text-slate-500">
-                No se encontraron agencias
-              </div>
-            ) : (
-              agencies.map((a) => (
-                <SelectItem
-                  key={a.id_agencia}
-                  value={a.api_name}
-                  className="py-1 focus:bg-slate-50 dark:focus:bg-slate-700"
-                >
-                  <div className="flex items-start gap-2 max-w-none min-w-[300px]">
-                    <div className="flex flex-col gap-0 flex-1 min-w-0">
-                      <span className="font-normal text-[12px] text-slate-700 dark:text-slate-200 truncate">
-                        {a.nombre_agencia}
-                      </span>
-                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal truncate italic">
-                        {a.direccion}
-                      </span>
-                    </div>
-                    {a.ter_aereo === 1 ? (
-                      <span className="shrink-0 mt-0.5 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-sky-100 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800">
-                        Terrestre + Aéreo
-                      </span>
-                    ) : (
-                      <span className="shrink-0 mt-0.5 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700">
-                        Solo terrestre
-                      </span>
-                    )}
-                  </div>
-                </SelectItem>
-              ))
-            )}
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-  </div>
-);
-
 interface SendToShalomModalProps {
   open: boolean;
   onClose: () => void;
@@ -291,7 +164,7 @@ const extractShalomErrorMessage = (rawError: string): string => {
   return rawError.replace(/^Error en Shalom API:\s*/i, "").trim();
 };
 
-const isValidSecurityCode = (code: string): boolean => {
+export const isValidSecurityCode = (code: string): boolean => {
   if (!code || code.length !== 4) return false;
 
   // Detectar números consecutivos ascendentes: 1234, 2345, etc.
@@ -312,6 +185,42 @@ const isValidSecurityCode = (code: string): boolean => {
   return !isAscending && !isDescending && !allSame;
 };
 
+/** Genera `count` códigos de seguridad válidos (4 dígitos) y distintos entre sí. */
+export const generateDistinctSecurityCodes = (count: number): string[] => {
+  const codes = new Set<string>();
+  while (codes.size < count) {
+    const code = String(Math.floor(Math.random() * 10000)).padStart(4, "0");
+    if (isValidSecurityCode(code)) codes.add(code);
+  }
+  return [...codes];
+};
+
+/** Agencia Shalom que el pedido ya trae guardada desde Registrar venta («Shalom — <nombre>»). */
+interface SavedAgency {
+  name: string;
+  agencyId?: string;
+  /** true cuando ya se buscó por el nombre de la agencia (último intento). */
+  triedName: boolean;
+}
+
+const savedAgencyOfOrder = (order: any): SavedAgency | null => { // eslint-disable-line @typescript-eslint/no-explicit-any
+  if (order?.delivery?.type !== "AGENCY" || !order.delivery.agency) return null;
+  const name = String(order.delivery.agency).replace(/^\s*Shalom\s*[—-]\s*/i, "").trim();
+  if (!name) return null;
+  const agencyId = order.delivery.agencyId ? String(order.delivery.agencyId) : undefined;
+  return { name, agencyId, triedName: false };
+};
+
+const findSavedAgency = (agencies: Agency[], saved: SavedAgency): Agency | undefined => {
+  const name = normalizeAgencyQuery(saved.name);
+  return (
+    (saved.agencyId
+      ? agencies.find((a) => String(a.id_agencia) === saved.agencyId)
+      : undefined) ??
+    agencies.find((a) => normalizeAgencyQuery(a.nombre_agencia || "") === name)
+  );
+};
+
 export default function SendToShalomModal({
   open,
   onClose,
@@ -327,6 +236,10 @@ export default function SendToShalomModal({
   const [originSearch, setOriginSearch] = useState<string>("");
   const [originAgency, setOriginAgency] = useState<string>("");
   const [globalSecurityCode, setGlobalSecurityCode] = useState<string>("");
+  // true tras «Generar código distinto por pedido»: el código global deja de pisar los de cada pedido.
+  const [codesPerOrder, setCodesPerOrder] = useState(false);
+  // Agencia guardada en el pedido, pendiente de precargar cuando lleguen los resultados.
+  const pendingSavedAgencyRef = useRef<Record<string, SavedAgency>>({});
   const [declaracionJurada, setDeclaracionJurada] = useState<string>(DECLARACION_JURADA_NINGUNA);
   const [loadingOrigins, setLoadingOrigins] = useState(false);
   const [quoting, setQuoting] = useState(false);
@@ -389,105 +302,51 @@ export default function SendToShalomModal({
   const [aereoChangedShipments, setAereoChangedShipments] = useState<ShalomRegisteredShipment[]>([]);
   const [aereoUnverifiedShipments, setAereoUnverifiedShipments] = useState<ShalomRegisteredShipment[]>([]);
 
-  // Caché local de agencias por término (normalizado) mientras el modal vive: al
-  // abrir con 20 pedidos del mismo distrito se hace UNA búsqueda, no 20. Guarda la
-  // promesa, así dos pedidos que piden lo mismo a la vez comparten la llamada.
-  const agenciesCacheRef = useRef(new Map<string, Promise<Agency[] | null>>());
-  // Último término pedido por cada buscador ("origin" o id de pedido): una
-  // respuesta vieja que llega tarde no pisa la del término actual.
-  const latestAgencyQueryRef = useRef<Record<string, string>>({});
-  const agencySearchTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-
-  useEffect(() => {
-    const timers = agencySearchTimersRef.current;
-    return () => {
-      Object.values(timers).forEach(clearTimeout);
-    };
-  }, []);
-
-  const fetchAgencies = useCallback(
-    async (q: string, type: "origin" | string) => {
-      if (!q || q.length < 3) return;
-      const key = normalizeAgencyQuery(q);
-      latestAgencyQueryRef.current[type] = key;
-      const isLatest = () => latestAgencyQueryRef.current[type] === key;
-
-      const setLoading = (loading: boolean) => {
-        if (type === "origin") setLoadingOrigins(loading);
-        else {
-          setShipmentsData((prev) => ({
-            ...prev,
-            [type]: { ...prev[type], loadingAgencies: loading },
-          }));
-        }
-      };
-
-      let request = agenciesCacheRef.current.get(key);
-      if (!request) {
-        // FEAT-24 SEC (sec6a): ms-integrations exige la sesión en /shalom/*.
-        request = axiosAuth
-          .get(`${API.integrations}/shalom/agencies/search/${encodeURIComponent(q)}`)
-          .then((res) => {
-            if (!res.data?.success) return null;
-            return (res.data.data || []).map(
-              (a: Record<string, unknown>): Agency => ({
-                id_agencia: String(a.ter_id ?? a.id ?? a.id_agencia ?? ""),
-                nombre_agencia: String(a.nombre ?? a.name ?? a.nombre_agencia ?? ""),
-                api_name: String(a.lugar_over ?? a.nombre ?? a.name ?? ""),
-                direccion: String(a.lugar ?? a.direccion ?? ""),
-                ter_aereo: typeof a.ter_aereo === "number" ? a.ter_aereo : 0,
-              }),
-            );
-          });
-        agenciesCacheRef.current.set(key, request);
-        // Un fallo no se guarda: el próximo intento vuelve a consultar.
-        request.then(
-          (agencies) => {
-            if (agencies === null) agenciesCacheRef.current.delete(key);
-          },
-          () => agenciesCacheRef.current.delete(key),
-        );
+  // Búsqueda de agencias compartida con Registrar venta: caché por término mientras el modal
+  // vive (20 pedidos del mismo distrito = UNA búsqueda), llamadas simultáneas compartidas,
+  // respuestas viejas descartadas y espera a que se deje de tipear.
+  const { fetchAgencies, scheduleFetchAgencies } = useShalomAgencySearch({
+    onLoading: (type, loading) => {
+      if (type === "origin") setLoadingOrigins(loading);
+      else {
+        setShipmentsData((prev) => ({
+          ...prev,
+          [type]: { ...prev[type], loadingAgencies: loading },
+        }));
       }
-
-      setLoading(true);
-      try {
-        const agencies = await request;
-        if (agencies && isLatest()) {
-          if (type === "origin") {
-            setOriginAgencies(agencies);
+    },
+    onResult: (type, agencies) => {
+      if (type === "origin") setOriginAgencies(agencies);
+      else {
+        // Precarga de la agencia que el pedido ya tiene guardada: primero se busca entre las
+        // del distrito del cliente; si no está, se busca una vez por el nombre de la agencia.
+        const pending = pendingSavedAgencyRef.current[type];
+        const saved = pending ? findSavedAgency(agencies, pending) : undefined;
+        let retryByName = "";
+        if (pending) {
+          if (saved || pending.triedName || pending.name.length < AGENCY_SEARCH_MIN_CHARS) {
+            delete pendingSavedAgencyRef.current[type];
           } else {
-            setShipmentsData((prev) => ({
-              ...prev,
-              [type]: {
-                ...prev[type],
-                destinationAgencies: agencies,
-                loadingAgencies: false,
-              },
-            }));
+            pending.triedName = true;
+            retryByName = pending.name;
           }
         }
-      } catch (error) {
-        console.error(error);
-      } finally {
-        if (isLatest()) setLoading(false);
+        setShipmentsData((prev) => ({
+          ...prev,
+          [type]: {
+            ...prev[type],
+            destinationAgencies: agencies,
+            loadingAgencies: false,
+            ...(saved && !prev[type]?.destinationAgencyId
+              ? { destinationAgencyId: saved.api_name }
+              : {}),
+            ...(retryByName ? { destinationSearch: retryByName } : {}),
+          },
+        }));
+        if (retryByName) void fetchAgencies(retryByName, type);
       }
     },
-    [],
-  );
-
-  /** Búsqueda mientras se escribe: espera a que se deje de tipear (no una llamada por tecla). */
-  const scheduleFetchAgencies = useCallback(
-    (q: string, type: "origin" | string) => {
-      const timers = agencySearchTimersRef.current;
-      if (timers[type]) clearTimeout(timers[type]);
-      if (!q || q.length < 3) return;
-      timers[type] = setTimeout(() => {
-        delete timers[type];
-        void fetchAgencies(q, type);
-      }, AGENCY_SEARCH_DEBOUNCE_MS);
-    },
-    [fetchAgencies],
-  );
+  });
 
   // Deps intencionalmente limitadas a [open]: el padre (GuideDetailsModal)
   // pasa `orders` como `ordersDetails.filter(...)`, que es un array NUEVO en
@@ -516,6 +375,8 @@ export default function SendToShalomModal({
     setAereoUnverifiedShipments([]);
     setTotalQuoted(null);
     setGlobalSecurityCode("");
+    setCodesPerOrder(false);
+    pendingSavedAgencyRef.current = {};
     setDeclaracionJurada(DECLARACION_JURADA_NINGUNA);
 
     // Pre-fill origin: fetch perfil completo del usuario para obtener district/province
@@ -532,8 +393,17 @@ export default function SendToShalomModal({
 
     const initialData: Record<string, ShipmentEntry> = {};
     orders.forEach((order) => {
-      const destSearch =
+      const savedAgency = savedAgencyOfOrder(order);
+      const customerPlace =
         order.customer?.district || order.customer?.city || order.city || "";
+      // Sin distrito del cliente se busca directo por el nombre de la agencia guardada.
+      const destSearch = customerPlace || savedAgency?.name || "";
+      if (savedAgency) {
+        pendingSavedAgencyRef.current[order.id] = {
+          ...savedAgency,
+          triedName: !customerPlace,
+        };
+      }
       initialData[order.id] = {
         recipientDoc: order.customer?.dni || "",
         recipientPhone:
@@ -560,7 +430,7 @@ export default function SendToShalomModal({
 
   // Propagar código global a todos los pedidos cuando cambia
   useEffect(() => {
-    if (!open || orders.length === 0) return;
+    if (!open || orders.length === 0 || codesPerOrder) return;
     setShipmentsData((prev) => {
       const next = { ...prev };
       orders.forEach((order) => {
@@ -570,7 +440,23 @@ export default function SendToShalomModal({
       });
       return next;
     });
-  }, [globalSecurityCode, orders]);
+  }, [globalSecurityCode, orders, codesPerOrder]);
+
+  // Un código aleatorio distinto para cada pedido (el código global deja de aplicarse).
+  const handleGenerateCodesPerOrder = () => {
+    const codes = generateDistinctSecurityCodes(orders.length);
+    setGlobalSecurityCode("");
+    setCodesPerOrder(true);
+    setShipmentsData((prev) => {
+      const next = { ...prev };
+      orders.forEach((order, i) => {
+        if (next[order.id]) {
+          next[order.id] = { ...next[order.id], securityCode: codes[i] };
+        }
+      });
+      return next;
+    });
+  };
 
   const updateShipmentField = (
     orderId: string,
@@ -868,7 +754,7 @@ export default function SendToShalomModal({
     if (!originAgency)
       issues.push({ label: "Agencia de origen", field: "origen" });
 
-    if (!globalSecurityCode || !isValidSecurityCode(globalSecurityCode))
+    if (!codesPerOrder && (!globalSecurityCode || !isValidSecurityCode(globalSecurityCode)))
       issues.push({ label: "Código de seguridad global", field: "securityCode" });
 
     orders.forEach((order) => {
@@ -889,7 +775,7 @@ export default function SendToShalomModal({
     });
 
     return issues;
-  }, [originAgency, globalSecurityCode, orders, shipmentsData]);
+  }, [originAgency, globalSecurityCode, codesPerOrder, orders, shipmentsData]);
 
   // Compartido por los documentos de despacho y los rótulos Shalom:
   // incluye únicamente los pedidos que se registraron correctamente.
@@ -1315,7 +1201,9 @@ export default function SendToShalomModal({
                             <Label className="text-sm font-bold text-slate-700 dark:text-slate-200">
                               Código de seguridad{" "}
                               <span className="text-blue-500 text-xs font-medium">
-                                — aplica a todos los pedidos
+                                {codesPerOrder
+                                  ? "— un código distinto por pedido"
+                                  : "— aplica a todos los pedidos"}
                               </span>
                             </Label>
                             {globalSecurityCode &&
@@ -1324,7 +1212,7 @@ export default function SendToShalomModal({
                                   INVÁLIDO
                                 </span>
                               )}
-                            {!globalSecurityCode && (
+                            {!globalSecurityCode && !codesPerOrder && (
                               <span className="text-[10px] font-bold text-red-500">
                                 FALTANTE
                               </span>
@@ -1336,6 +1224,8 @@ export default function SendToShalomModal({
                               onChange={(e) => {
                                 const val = e.target.value.replace(/\D/g, "").slice(0, 4);
                                 setGlobalSecurityCode(val);
+                                // Escribir un código vuelve al modo «uno para todos».
+                                setCodesPerOrder(false);
                                 if (
                                   val.length === 4 &&
                                   !isValidSecurityCode(val)
@@ -1349,6 +1239,7 @@ export default function SendToShalomModal({
                               maxLength={4}
                               className={cn(
                                 "h-9 bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100",
+                                !codesPerOrder &&
                                 (!globalSecurityCode ||
                                   (globalSecurityCode.length > 0 &&
                                     globalSecurityCode.length < 4) ||
@@ -1360,6 +1251,15 @@ export default function SendToShalomModal({
                             <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium italic">
                               4 dígitos sin secuencias ni repetidos
                             </span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 w-full text-xs"
+                              onClick={handleGenerateCodesPerOrder}
+                            >
+                              Generar código distinto por pedido
+                            </Button>
                           </div>
                         </div>
 

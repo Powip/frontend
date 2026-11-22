@@ -136,12 +136,12 @@ export function AgentPerformanceCard({
           </div>
 
           {/* Entregados */}
-          <div className="rounded-lg bg-violet-50 dark:bg-violet-950/30 p-2">
+          <div className="rounded-lg bg-primary/5 dark:bg-primary/30 p-2">
             <div className="flex items-start justify-center gap-1">
-              <p className="text-2xl font-bold text-violet-700 dark:text-violet-400">
+              <p className="text-2xl font-bold text-primary">
                 {agente.entregados}
               </p>
-              <span className="text-[10px] text-violet-500 dark:text-violet-300 mt-1 font-medium">
+              <span className="text-[10px] text-primary mt-1 font-medium">
                 {agente.pctEntregados.toFixed(1)}%
               </span>
             </div>
@@ -221,16 +221,16 @@ export function AgentPerformanceCard({
 
           {/* Entregados */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-violet-500 dark:text-violet-400 w-20 shrink-0">
+            <span className="text-xs text-primary w-20 shrink-0">
               Entregados
             </span>
-            <div className="flex-1 h-4 bg-violet-100 dark:bg-violet-900/30 rounded-full overflow-hidden">
+            <div className="flex-1 h-4 bg-primary/10 dark:bg-primary/30 rounded-full overflow-hidden">
               <div
-                className="h-full bg-violet-400 dark:bg-violet-500 rounded-full transition-all duration-500"
+                className="h-full bg-primary/80 dark:bg-primary rounded-full transition-all duration-500"
                 style={{ width: `${agente.asignados > 0 ? barWidths.entregados : 0}%` }}
               />
             </div>
-            <span className="text-xs font-medium text-violet-600 dark:text-violet-300 w-6 text-right">
+            <span className="text-xs font-medium text-primary w-6 text-right">
               {agente.entregados}
             </span>
           </div>
