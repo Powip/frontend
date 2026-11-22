@@ -38,6 +38,18 @@ jest.mock("@/services/crmTeamService", () => ({
   getTikTokAuthUrl: jest.fn(),
   connectTikTokOAuth: jest.fn(),
   goToExternalUrl: jest.fn(),
+  getExportLog: jest.fn(),
+  createExport: jest.fn(),
+}));
+const mockDownload = jest.fn();
+jest.mock("xlsx", () => ({
+  utils: {
+    book_new: () => ({}),
+    json_to_sheet: (rows: unknown[]) => ({ rows }),
+    aoa_to_sheet: () => ({}),
+    book_append_sheet: jest.fn(),
+  },
+  writeFile: (...args: unknown[]) => mockDownload(...args),
 }));
 const team = teamService as jest.Mocked<typeof teamService>;
 const crm = crmService as jest.Mocked<typeof crmService>;
@@ -78,6 +90,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockRole = "ADMIN";
   team.getCrmSettings.mockResolvedValue(settings());
+  team.getExportLog.mockResolvedValue([]);
   team.listMetaAccounts.mockResolvedValue([]);
   team.listTikTokAccounts.mockResolvedValue([]);
   window.history.replaceState(null, "", "/comercial/ventas-chat/ajustes");
@@ -492,5 +505,55 @@ describe("Ajustes · TikTok", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Eliminar" }));
     await waitFor(() => expect(team.deleteTikTokAccount).toHaveBeenCalled());
     expect(team.deleteTikTokAccount.mock.calls[0][0]).toBe("t1");
+  });
+});
+
+describe("Ajustes · descargar base (fase 3)", () => {
+  it("descarga Excel con las bases elegidas y el periodo", async () => {
+    team.createExport.mockResolvedValue([
+      { dataset: "clients", rows: [{ nombre: "Ana" }], truncated: false },
+    ]);
+    setup();
+    const box = await screen.findByTestId("card-export");
+    await within(box).findByText("Todavía nadie descargó la base.");
+    fireEvent.click(within(box).getByRole("checkbox", { name: "Pedidos" }));
+    fireEvent.change(within(box).getByLabelText("Periodo"), { target: { value: "30" } });
+    fireEvent.click(within(box).getByRole("button", { name: /Descargar Excel/ }));
+    await waitFor(() =>
+      expect(team.createExport).toHaveBeenCalledWith({ datasets: ["clients"], days: 30 }),
+    );
+    await waitFor(() =>
+      expect(mockDownload).toHaveBeenCalledWith(expect.anything(), expect.stringMatching(/^base-crm-\d{4}-\d{2}-\d{2}\.xlsx$/)),
+    );
+  });
+
+  it("sin bases elegidas no deja descargar", async () => {
+    setup();
+    const box = await screen.findByTestId("card-export");
+    fireEvent.click(within(box).getByRole("checkbox", { name: "Pedidos" }));
+    fireEvent.click(within(box).getByRole("checkbox", { name: "Clientes" }));
+    expect(within(box).getByText("Elige al menos una base para descargar.")).toBeInTheDocument();
+    expect(within(box).getByRole("button", { name: /Descargar Excel/ })).toBeDisabled();
+  });
+
+  it("muestra el registro de descargas", async () => {
+    team.getExportLog.mockResolvedValue([
+      {
+        id: "e1",
+        userId: "u1",
+        userEmail: "admin@tienda.pe",
+        dataset: "orders",
+        filters: { days: 90 },
+        rowCount: 42,
+        createdAt: "2026-11-22T15:00:00.000Z",
+      },
+    ] as never);
+    setup();
+    const log = await screen.findByTestId("export-log");
+    const row = within(log).getAllByRole("row")[1];
+    expect(row).toHaveTextContent("admin@tienda.pe");
+    expect(row).toHaveTextContent("Pedidos");
+    expect(row).toHaveTextContent("Todas las tiendas · Últimos 90 días");
+    expect(row).toHaveTextContent("42");
   });
 });

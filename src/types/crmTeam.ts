@@ -36,6 +36,25 @@ export interface TeamWaiting {
   waitingMinutes: number;
 }
 
+/** Meta del día: cobrado hoy (hora de Lima) con pagos aprobados en el chat. */
+export interface TeamToday {
+  /** 0 = sin meta. */
+  goal: number;
+  total: number;
+  /** Cobrado en chats sin vendedora asignada. */
+  unassigned: number;
+  members: { userId: string; userName: string; collected: number }[];
+}
+
+export interface TeamChannelResult {
+  channel: string;
+  chats: number;
+  won: number;
+  /** Porcentaje; null si no hubo chats. */
+  conversion: number | null;
+  collected: number;
+}
+
 export interface TeamStats {
   days: number;
   slaMinutes: number;
@@ -43,6 +62,8 @@ export interface TeamStats {
   members: TeamMember[];
   waiting: TeamWaiting[];
   lostReasons: { reason: string; count: number }[];
+  today: TeamToday;
+  byChannel: TeamChannelResult[];
 }
 
 export interface TeamPerson {
@@ -107,9 +128,43 @@ export interface CrmSettings {
   welcomeMessage: string;
   assignMode: AssignMode;
   assignUsers: TeamPerson[];
+  /** Meta de cobro del día en soles; 0 = sin meta. */
+  dailyGoal: number;
+  /** Tope de mensajes automáticos por cliente en 7 días (1-20). */
+  followupWeeklyMax: number;
+  /** Horario de envío de seguimientos, «HH:mm» en hora de Lima. */
+  followupSendStart: string;
+  followupSendEnd: string;
 }
 
 export type CrmSettingsInput = Partial<CrmSettings>;
+
+// --- Descarga de base ---
+
+export type ExportDataset = "clients" | "orders";
+
+export interface CreateExportInput {
+  datasets: ExportDataset[];
+  storeId?: string;
+  /** Sin valor = todo. */
+  days?: 30 | 90;
+}
+
+export interface ExportSheet {
+  dataset: ExportDataset;
+  rows: Record<string, string | number | boolean | null>[];
+  truncated: boolean;
+}
+
+export interface ExportLogItem {
+  id: string;
+  userId: string;
+  userEmail: string | null;
+  dataset: ExportDataset;
+  filters: { storeId?: string | null; days?: number | null };
+  rowCount: number;
+  createdAt: string;
+}
 
 // --- Conexión de WhatsApp (ms-integrations) ---
 

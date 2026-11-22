@@ -6,6 +6,9 @@ import {
   getAudit,
   getCrmSettings,
   connectMetaAccount,
+  createExport,
+  getExportLog,
+  setDailyGoal,
   connectTikTokOAuth,
   deleteMetaAccount,
   deleteTikTokAccount,
@@ -19,6 +22,7 @@ import {
 } from "@/services/crmTeamService";
 import type {
   ConnectMetaAccountInput,
+  CreateExportInput,
   CrmSettings,
   CrmSettingsInput,
   TeamDays,
@@ -33,6 +37,7 @@ export const teamKeys = {
   settings: ["crm", "settings"] as const,
   metaAccounts: ["crm", "meta-accounts"] as const,
   tiktokAccounts: ["crm", "tiktok-accounts"] as const,
+  exportLog: ["crm", "export", "log"] as const,
 };
 
 const onError = (err: unknown) => toast.error(crmError(err).message);
@@ -137,5 +142,32 @@ export function useDeleteTikTokAccount() {
   return useMutation({
     mutationFn: (id: string) => deleteTikTokAccount(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: teamKeys.tiktokAccounts }),
+  });
+}
+
+export function useSetDailyGoal() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (goal: number) => setDailyGoal(goal),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: teamKeys.allStats });
+      qc.invalidateQueries({ queryKey: teamKeys.settings });
+      toast.success("Meta del día guardada");
+    },
+    onError,
+  });
+}
+
+export function useExportLog() {
+  return useQuery({ queryKey: teamKeys.exportLog, queryFn: getExportLog, retry: false });
+}
+
+/** Devuelve las hojas; quien llama arma el Excel. */
+export function useCreateExport() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateExportInput) => createExport(input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: teamKeys.exportLog }),
+    onError,
   });
 }

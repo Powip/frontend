@@ -1,20 +1,23 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, Info, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, CheckCircle2, Info, Loader2, Target } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { crmError } from "@/services/crmService";
 import {
   useReassignConversation,
+  useSetDailyGoal,
   useTeamMembers,
   useTeamStats,
 } from "@/hooks/useCrmTeam";
-import type { TeamDays, TeamMember, TeamStats } from "@/types/crmTeam";
+import type { ConversationChannel } from "@/types/crm";
+import type { TeamChannelResult, TeamDays, TeamMember, TeamStats, TeamToday } from "@/types/crmTeam";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import EquipoAdminGate from "./EquipoAdminGate";
-import { NATIVE_SELECT_CLASS, bandejaUrl, contactLabel } from "./format";
+import { CHANNEL_LABEL, NATIVE_SELECT_CLASS, bandejaUrl, contactLabel, formatMoney } from "./format";
 
 /** «—», «12 min», «2 h 5 min». */
 export function formatMinutes(min: number | null | undefined): string {
@@ -57,8 +60,10 @@ function Help() {
           <b>Pedidos</b>: pedidos creados desde el chat.
         </li>
         <li>
-          Todavía no se miden montos de dinero, llamadas ni resultados de anuncios.
+          <b>Meta del día</b>: lo cobrado hoy (hora de Lima) con pagos aprobados en el chat, por
+          vendedora asignada. <b>Resultados por canal</b>: chats del periodo y cuántos se ganaron.
         </li>
+        <li>Todavía no se miden llamadas ni resultados de anuncios.</li>
       </ul>
     </details>
   );
@@ -290,6 +295,141 @@ function LostReasons({ reasons }: { reasons: TeamStats["lostReasons"] }) {
   );
 }
 
+/** Porcentaje de avance (0-100, entero); null si no hay meta. */
+export function goalPercent(collected: number, goal: number): number | null {
+  if (!goal || goal <= 0) return null;
+  return Math.min(100, Math.round((collected / goal) * 100));
+}
+
+function Meter({ percent }: { percent: number }) {
+  return (
+    <div className="h-2 rounded-full bg-muted" role="presentation">
+      <div className="h-2 rounded-full bg-primary" style={{ width: `${percent}%` }} />
+    </div>
+  );
+}
+
+function DailyGoal({ today }: { today: TeamToday }) {
+  const setGoal = useSetDailyGoal();
+  const [draft, setDraft] = useState<string | null>(null);
+  const value = draft ?? String(today.goal || "");
+  const parsed = value.trim() === "" ? 0 : Number(value);
+  const valid = Number.isInteger(parsed) && parsed >= 0 && parsed <= 1_000_000;
+  const dirty = valid && parsed !== today.goal;
+  const pct = goalPercent(today.total, today.goal);
+  const perSeller = today.members.length ? today.goal / today.members.length : 0;
+  return (
+    <section aria-label="Meta del día" className="space-y-2 rounded-md border p-3" data-testid="daily-goal">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-sm font-semibold">
+          <Target className="h-4 w-4" /> Meta del día
+        </h2>
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (dirty) setGoal.mutate(parsed, { onSuccess: () => setDraft(null) });
+          }}
+        >
+          <label htmlFor="daily-goal" className="text-xs text-muted-foreground">
+            Meta (S/)
+          </label>
+          <Input
+            id="daily-goal"
+            inputMode="numeric"
+            className="h-8 w-28"
+            value={value}
+            placeholder="Sin meta"
+            onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ""))}
+          />
+          <Button type="submit" size="sm" disabled={!dirty || setGoal.isPending}>
+            {setGoal.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+            Guardar
+          </Button>
+        </form>
+      </div>
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
+        <span className="text-xl font-semibold tabular-nums">{formatMoney(today.total)}</span>
+        <span className="text-muted-foreground">
+          {pct == null ? "cobrado hoy · sin meta fijada" : `de ${formatMoney(today.goal)} · ${pct}%`}
+        </span>
+      </div>
+      {pct != null && <Meter percent={pct} />}
+      {today.members.length > 0 && (
+        <ul className="grid gap-2 pt-1 sm:grid-cols-2" data-testid="goal-members">
+          {today.members.map((m) => {
+            const p = goalPercent(m.collected, perSeller);
+            return (
+              <li key={m.userId} className="space-y-1">
+                <div className="flex justify-between gap-2 text-xs">
+                  <span className="truncate">{m.userName}</span>
+                  <span className="tabular-nums text-muted-foreground">
+                    {formatMoney(m.collected)}
+                    {p != null && ` · ${p}%`}
+                  </span>
+                </div>
+                {p != null && <Meter percent={p} />}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {today.unassigned > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {formatMoney(today.unassigned)} cobrados en chats sin vendedora asignada.
+        </p>
+      )}
+      {today.goal > 0 && today.members.length > 0 && (
+        <p className="text-[11px] text-muted-foreground">
+          La meta se reparte por igual entre las {today.members.length} personas del equipo.
+        </p>
+      )}
+    </section>
+  );
+}
+
+function ChannelResults({ rows }: { rows: TeamChannelResult[] }) {
+  return (
+    <section aria-label="Resultados por canal" className="space-y-2">
+      <h2 className="text-sm font-semibold">Resultados por canal</h2>
+      {rows.length === 0 ? (
+        <p className="rounded-md border p-3 text-sm text-muted-foreground">
+          No hubo chats en este periodo.
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full text-sm" data-testid="channel-results">
+            <thead className="bg-muted/40 text-xs">
+              <tr>
+                <th scope="col" className="px-3 py-2 text-left font-medium">Canal</th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">Chats</th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">Ganados</th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">Conversión</th>
+                <th scope="col" className="px-3 py-2 text-right font-medium">Cobrado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.channel} className="border-t">
+                  <th scope="row" className="px-3 py-2 text-left font-medium">
+                    {CHANNEL_LABEL[r.channel as ConversationChannel] ?? r.channel}
+                  </th>
+                  <td className="px-3 py-2 text-right tabular-nums">{r.chats}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{r.won}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {r.conversion == null ? "—" : `${r.conversion}%`}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{formatMoney(r.collected)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function EquipoContent() {
   const [days, setDays] = useState<TeamDays>(7);
   const { data, isLoading, isError, error, refetch } = useTeamStats(days);
@@ -349,8 +489,10 @@ function EquipoContent() {
             <Kpi label="Pedidos desde el chat" value={data.kpis.ordersLinked} />
             <Kpi label="Mensajes enviados" value={data.kpis.messagesSent} />
           </section>
+          {data.today && <DailyGoal today={data.today} />}
           <WaitingSection stats={data} />
           <Ranking members={data.members} />
+          {data.byChannel && <ChannelResults rows={data.byChannel} />}
           <LostReasons reasons={data.lostReasons} />
         </>
       )}

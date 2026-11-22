@@ -1,7 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import EquipoView from "@/components/ventas-chat/EquipoView";
+import EquipoView, { goalPercent } from "@/components/ventas-chat/EquipoView";
 import * as crmService from "@/services/crmService";
 import * as teamService from "@/services/crmTeamService";
 import type { Conversation } from "@/types/crm";
@@ -29,6 +29,7 @@ jest.mock("@/services/crmTeamService", () => ({
   ...jest.requireActual("@/services/crmTeamService"),
   getTeamStats: jest.fn(),
   listTeamMembers: jest.fn(),
+  setDailyGoal: jest.fn(),
 }));
 const team = teamService as jest.Mocked<typeof teamService>;
 const crm = crmService as jest.Mocked<typeof crmService>;
@@ -208,5 +209,74 @@ describe("Equipo", () => {
     expect(screen.getByText("Solo un administrador puede ver esta sección")).toBeInTheDocument();
     expect(team.getTeamStats).not.toHaveBeenCalled();
     expect(team.listTeamMembers).not.toHaveBeenCalled();
+  });
+});
+
+describe("Equipo · fase 3", () => {
+  const today = {
+    goal: 1000,
+    total: 450,
+    unassigned: 50,
+    members: [
+      { userId: "u1", userName: "Ana", collected: 300 },
+      { userId: "u2", userName: "Luis", collected: 100 },
+    ],
+  };
+
+  it("goalPercent: sin meta es null y no pasa de 100", () => {
+    expect(goalPercent(10, 0)).toBeNull();
+    expect(goalPercent(450, 1000)).toBe(45);
+    expect(goalPercent(2000, 1000)).toBe(100);
+  });
+
+  it("muestra la meta del día, el avance por vendedora y lo no asignado", async () => {
+    team.getTeamStats.mockResolvedValue(stats({ today }));
+    setup();
+    const box = await screen.findByTestId("daily-goal");
+    expect(box).toHaveTextContent("45%");
+    const items = within(screen.getByTestId("goal-members")).getAllByRole("listitem");
+    expect(items[0]).toHaveTextContent("Ana");
+    expect(items[0]).toHaveTextContent("60%");
+    expect(items[1]).toHaveTextContent("20%");
+    expect(box).toHaveTextContent("cobrados en chats sin vendedora asignada");
+  });
+
+  it("guarda la nueva meta", async () => {
+    team.getTeamStats.mockResolvedValue(stats({ today }));
+    team.setDailyGoal.mockResolvedValue({ dailyGoal: 1500 });
+    setup();
+    const box = await screen.findByTestId("daily-goal");
+    const input = within(box).getByLabelText("Meta (S/)");
+    const save = within(box).getByRole("button", { name: "Guardar" });
+    expect(save).toBeDisabled();
+    fireEvent.change(input, { target: { value: "1500" } });
+    fireEvent.click(save);
+    await waitFor(() => expect(team.setDailyGoal).toHaveBeenCalledWith(1500));
+  });
+
+  it("sin meta fijada lo dice y no dibuja barras", async () => {
+    team.getTeamStats.mockResolvedValue(stats({ today: { ...today, goal: 0 } }));
+    setup();
+    const box = await screen.findByTestId("daily-goal");
+    expect(box).toHaveTextContent("sin meta fijada");
+    expect(within(box).queryByText(/%/)).not.toBeInTheDocument();
+  });
+
+  it("tabla de resultados por canal con conversión", async () => {
+    team.getTeamStats.mockResolvedValue(
+      stats({
+        byChannel: [
+          { channel: "whatsapp", chats: 10, won: 1, conversion: 10, collected: 250 },
+          { channel: "tiktok", chats: 0, won: 0, conversion: null, collected: 0 },
+        ],
+      }),
+    );
+    setup();
+    const table = await screen.findByTestId("channel-results");
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows[0]).toHaveTextContent("WhatsApp");
+    expect(rows[0]).toHaveTextContent("10%");
+    expect(rows[1]).toHaveTextContent("TikTok");
+    expect(rows[1]).toHaveTextContent("—");
   });
 });

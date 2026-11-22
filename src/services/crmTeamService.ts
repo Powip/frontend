@@ -14,6 +14,9 @@ import type {
   TikTokWebhookResult,
   CrmSettings,
   CrmSettingsInput,
+  CreateExportInput,
+  ExportLogItem,
+  ExportSheet,
   TeamDays,
   TeamPerson,
   TeamStats,
@@ -56,6 +59,20 @@ export async function remindScript(person: TeamPerson): Promise<{ ok: true }> {
       userName: person.userName,
     })
   ).data;
+}
+
+/** Meta de cobro del día (supervisora). */
+export async function setDailyGoal(dailyGoal: number): Promise<{ dailyGoal: number }> {
+  return (await axiosAuth.patch<{ dailyGoal: number }>(`${BASE}/team/goal`, { dailyGoal })).data;
+}
+
+/** Solo administrador. Cada descarga queda en el registro. */
+export async function createExport(input: CreateExportInput): Promise<ExportSheet[]> {
+  return (await axiosAuth.post<{ sheets: ExportSheet[] }>(`${BASE}/export`, input)).data.sheets;
+}
+
+export async function getExportLog(): Promise<ExportLogItem[]> {
+  return (await axiosAuth.get<{ items: ExportLogItem[] }>(`${BASE}/export/log`)).data.items;
 }
 
 export async function getCrmSettings(): Promise<CrmSettings> {

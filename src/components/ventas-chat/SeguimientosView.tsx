@@ -25,9 +25,12 @@ import {
   useTemplates,
 } from "@/hooks/useCrmEngagement";
 import { usePipelines } from "@/hooks/useCrmPlanning";
+import { useCrmMe } from "@/hooks/useCrmMe";
+import { useCrmSettings } from "@/hooks/useCrmTeam";
 import type { FollowupRule, FollowupRun, FollowupStats, Stage } from "@/types/crm";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import ConfirmDialog from "./ConfirmDialog";
+import { FollowupLimitsCard } from "./AjustesCards";
 import RuleDialog from "./RuleDialog";
 import {
   OBJECTIVES,
@@ -113,7 +116,14 @@ function HowItWorks() {
           mensaje; si pasaron más, solo con la plantilla de la regla (sin plantilla, no se envía).
         </li>
         <li>Los seguimientos con plantilla solo aplican a chats de WhatsApp; Messenger e Instagram quedan fuera.</li>
-        <li>Solo se escribe entre las 07:00 y las 20:00 (hora de Lima).</li>
+        <li>
+          Solo se escribe dentro del horario de envío de «Límites» (por defecto de 07:00 a 20:00, hora
+          de Lima).
+        </li>
+        <li>
+          Cada cliente recibe como máximo los mensajes automáticos por semana que fija «Límites»
+          (por defecto 3), sumando todas las reglas. Si el cliente responde, se cancela solo.
+        </li>
         <li>
           Si el destino es la vendedora, se crea una tarea en su Agenda. Si la conversación no tiene
           vendedora asignada, se omite.
@@ -126,6 +136,12 @@ function HowItWorks() {
       </ul>
     </details>
   );
+}
+
+/** Solo administrador: los ajustes del CRM son suyos. */
+function LimitsSection() {
+  const { data } = useCrmSettings();
+  return data ? <FollowupLimitsCard settings={data} /> : null;
 }
 
 interface PresetProps {
@@ -351,6 +367,7 @@ export default function SeguimientosView() {
   const [dialog, setDialog] = useState<RuleDialogState>(null);
   const [deleting, setDeleting] = useState<FollowupRule | null>(null);
   const [preset, setPreset] = useState<Preset | null>(null);
+  const { isAdmin } = useCrmMe();
 
   const stages = useMemo(() => pipelines.data?.flatMap((p) => p.stages) ?? [], [pipelines.data]);
   const wonStage = useMemo(() => firstWonStage(pipelines.data), [pipelines.data]);
@@ -374,6 +391,8 @@ export default function SeguimientosView() {
       </div>
 
       <HowItWorks />
+
+      {isAdmin && <LimitsSection />}
 
       <StatsSection
         stats={statsQ.data}

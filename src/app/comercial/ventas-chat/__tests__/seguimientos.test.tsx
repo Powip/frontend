@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import SeguimientosView from "@/components/ventas-chat/SeguimientosView";
 import { VENTAS_CHAT_TABS } from "@/app/comercial/ventas-chat/tabs";
 import * as svc from "@/services/crmService";
+import * as teamSvc from "@/services/crmTeamService";
 import type {
   FollowupRule,
   FollowupRun,
@@ -17,6 +18,20 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
   usePathname: () => "/comercial/ventas-chat/seguimientos",
   useSearchParams: () => new URLSearchParams(),
+}));
+let mockRole = "SELLER";
+jest.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({
+    auth: { accessToken: "t", user: { id: "u1", name: "Jairo", role: mockRole }, company: { id: "co1" } },
+  }),
+}));
+jest.mock("@/config/permissions.config", () => ({
+  hasAdminAccess: (role?: string) => role === "ADMIN",
+}));
+jest.mock("@/services/crmTeamService", () => ({
+  ...jest.requireActual("@/services/crmTeamService"),
+  getCrmSettings: jest.fn(),
+  updateCrmSettings: jest.fn(),
 }));
 jest.mock("@/lib/axiosAuth", () => ({
   __esModule: true,
@@ -35,6 +50,7 @@ jest.mock("@/services/crmService", () => ({
   deleteFollowupRule: jest.fn(),
 }));
 const s = svc as jest.Mocked<typeof svc>;
+const team = teamSvc as jest.Mocked<typeof teamSvc>;
 
 beforeAll(() => {
   // Radix (Switch dentro de un diálogo) usa ResizeObserver, que jsdom no trae.
@@ -140,6 +156,22 @@ beforeEach(() => {
   s.createFollowupRule.mockResolvedValue(rule({ id: "new" }));
   s.updateFollowupRule.mockResolvedValue(rule());
   s.deleteFollowupRule.mockResolvedValue(undefined);
+  mockRole = "SELLER";
+  team.getCrmSettings.mockResolvedValue({
+    slaMinutes: 15,
+    hours: { days: [1, 2, 3, 4, 5], start: "09:00", end: "18:00" },
+    awayEnabled: false,
+    awayMessage: "",
+    welcomeEnabled: false,
+    welcomeMessage: "",
+    assignMode: "manual",
+    assignUsers: [],
+    dailyGoal: 0,
+    followupWeeklyMax: 3,
+    followupSendStart: "07:00",
+    followupSendEnd: "20:00",
+  } as never);
+  team.updateCrmSettings.mockImplementation(async (patch) => patch as never);
 });
 
 describe("pestañas", () => {
@@ -355,5 +387,48 @@ describe("Seguimientos · secuencias rápidas", () => {
       "seguimiento_consulta",
     ]);
     expect(calls.every((c) => c.active === false)).toBe(true);
+  });
+});
+
+describe("Seguimientos · límites (fase 3)", () => {
+  it("la vendedora no ve la tarjeta de límites", async () => {
+    setup();
+    await screen.findAllByTestId("stat-card");
+    expect(screen.queryByTestId("card-followup-limits")).not.toBeInTheDocument();
+  });
+
+  it("el administrador cambia tope semanal y horario y guarda", async () => {
+    mockRole = "ADMIN";
+    setup();
+    const card = await screen.findByTestId("card-followup-limits");
+    const weekly = within(card).getByLabelText("Máximo por semana");
+    expect(weekly).toHaveValue(3);
+    fireEvent.change(weekly, { target: { value: "5" } });
+    fireEvent.change(within(card).getByLabelText("Enviar desde"), { target: { value: "08:00" } });
+    fireEvent.click(within(card).getByRole("button", { name: "Guardar" }));
+    await waitFor(() =>
+      expect(team.updateCrmSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          followupWeeklyMax: 5,
+          followupSendStart: "08:00",
+          followupSendEnd: "20:00",
+        }),
+      ),
+    );
+  });
+
+  it("no deja guardar si el tope sale de 1-20 o el horario está al revés", async () => {
+    mockRole = "ADMIN";
+    setup();
+    const card = await screen.findByTestId("card-followup-limits");
+    fireEvent.change(within(card).getByLabelText("Máximo por semana"), { target: { value: "25" } });
+    expect(within(card).getByText("El tope semanal va de 1 a 20 mensajes.")).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Guardar" })).toBeDisabled();
+    fireEvent.change(within(card).getByLabelText("Máximo por semana"), { target: { value: "4" } });
+    fireEvent.change(within(card).getByLabelText("hasta"), { target: { value: "06:00" } });
+    expect(
+      within(card).getByText("El horario de envío debe empezar antes de terminar."),
+    ).toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Guardar" })).toBeDisabled();
   });
 });

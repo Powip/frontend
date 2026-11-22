@@ -8,6 +8,7 @@ import EquipoAdminGate from "./EquipoAdminGate";
 import AjustesWhatsAppCard from "./AjustesWhatsAppCard";
 import AjustesMetaCard from "./AjustesMetaCard";
 import AjustesTikTokCard from "./AjustesTikTokCard";
+import AjustesExportCard from "./AjustesExportCard";
 import { AssignCard, HoursCard, SlaCard, WelcomeCard, WhereCard } from "./AjustesCards";
 
 function AjustesContent() {
@@ -42,6 +43,7 @@ function AjustesContent() {
           <AssignCard settings={data} />
         </>
       )}
+      <AjustesExportCard />
       <WhereCard />
     </div>
   );

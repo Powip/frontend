@@ -337,3 +337,82 @@ export function WhereCard() {
     </section>
   );
 }
+
+type LimitsDraft = Pick<CrmSettings, "followupWeeklyMax" | "followupSendStart" | "followupSendEnd">;
+
+/** Límites de los seguimientos automáticos (se muestra en Seguimientos). */
+export function FollowupLimitsCard({ settings }: { settings: CrmSettings }) {
+  const m = useUpdateCrmSettings();
+  const server: LimitsDraft = {
+    followupWeeklyMax: settings.followupWeeklyMax,
+    followupSendStart: settings.followupSendStart,
+    followupSendEnd: settings.followupSendEnd,
+  };
+  const { draft, setDraft, dirty } = useDraft(server);
+  const maxOk =
+    Number.isInteger(draft.followupWeeklyMax) &&
+    draft.followupWeeklyMax >= 1 &&
+    draft.followupWeeklyMax <= 20;
+  const hoursOk =
+    /^\d{2}:\d{2}$/.test(draft.followupSendStart) &&
+    /^\d{2}:\d{2}$/.test(draft.followupSendEnd) &&
+    draft.followupSendStart < draft.followupSendEnd;
+  return (
+    <AjustesCard
+      id="followup-limits"
+      title="Límites"
+      description="Para no cansar al cliente: tope de mensajes automáticos por cliente en 7 días (sumando todas las reglas) y horario en que se envían (hora de Lima). Si el cliente responde, el seguimiento pendiente se cancela solo."
+      canSave={dirty && maxOk && hoursOk}
+      saving={m.isPending}
+      onSave={() => m.mutate(draft)}
+      error={errMsg(m)}
+      hint={
+        !maxOk
+          ? "El tope semanal va de 1 a 20 mensajes."
+          : !hoursOk
+            ? "El horario de envío debe empezar antes de terminar."
+            : null
+      }
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <Label htmlFor="limits-weekly">Máximo por semana</Label>
+          <Input
+            id="limits-weekly"
+            type="number"
+            min={1}
+            max={20}
+            className="w-20"
+            value={Number.isFinite(draft.followupWeeklyMax) ? draft.followupWeeklyMax : ""}
+            onChange={(e) =>
+              setDraft((cur) => ({
+                ...cur,
+                followupWeeklyMax: e.target.value === "" ? NaN : Number(e.target.value),
+              }))
+            }
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="limits-start">Enviar desde</Label>
+          <Input
+            id="limits-start"
+            type="time"
+            className="w-28"
+            value={draft.followupSendStart}
+            onChange={(e) => setDraft((cur) => ({ ...cur, followupSendStart: e.target.value }))}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <Label htmlFor="limits-end">hasta</Label>
+          <Input
+            id="limits-end"
+            type="time"
+            className="w-28"
+            value={draft.followupSendEnd}
+            onChange={(e) => setDraft((cur) => ({ ...cur, followupSendEnd: e.target.value }))}
+          />
+        </div>
+      </div>
+    </AjustesCard>
+  );
+}
