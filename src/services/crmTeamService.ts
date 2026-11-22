@@ -9,6 +9,9 @@ import type {
   ConnectMetaAccountInput,
   ConnectWabaResult,
   MetaAccount,
+  TikTokAccount,
+  TikTokOAuthResult,
+  TikTokWebhookResult,
   CrmSettings,
   CrmSettingsInput,
   TeamDays,
@@ -122,4 +125,36 @@ export async function connectMetaAccount(input: ConnectMetaAccountInput): Promis
 /** 204. */
 export async function deleteMetaAccount(id: string): Promise<void> {
   await axiosAuth.delete(`${META_ACCOUNTS()}/${encodeURIComponent(id)}`);
+}
+
+const TIKTOK = () => `${API.integrations}/tiktok-messaging`;
+
+/** ms-integrations: cuentas de TikTok conectadas. */
+export async function listTikTokAccounts(): Promise<TikTokAccount[]> {
+  return (await axiosAuth.get<{ status: string; data: TikTokAccount[] }>(`${TIKTOK()}/accounts`)).data.data;
+}
+
+/** 204. */
+export async function deleteTikTokAccount(id: string): Promise<void> {
+  await axiosAuth.delete(`${TIKTOK()}/accounts/${encodeURIComponent(id)}`);
+}
+
+/** URL de la pantalla de permiso de TikTok. 503 si el entorno no tiene las claves. */
+export async function getTikTokAuthUrl(): Promise<string> {
+  return (await axiosAuth.get<{ status: string; data: { url: string } }>(`${TIKTOK()}/oauth/auth-url`)).data
+    .data.url;
+}
+
+/** Canjea el código que devolvió TikTok. 400 (enlace vencido), 403 (otro usuario), 422 (TikTok lo rechaza). */
+export async function connectTikTokOAuth(code: string, state: string): Promise<TikTokOAuthResult> {
+  const res = await axiosAuth.post<{ status: string; data: TikTokAccount; webhook: TikTokWebhookResult }>(
+    `${TIKTOK()}/oauth/connect`,
+    { code, state },
+  );
+  return { account: res.data.data, webhook: res.data.webhook };
+}
+
+/** Sale de Powip hacia una URL externa (pantalla de permiso de TikTok). */
+export function goToExternalUrl(url: string): void {
+  window.location.assign(url);
 }

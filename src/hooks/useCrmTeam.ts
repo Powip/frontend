@@ -6,9 +6,12 @@ import {
   getAudit,
   getCrmSettings,
   connectMetaAccount,
+  connectTikTokOAuth,
   deleteMetaAccount,
+  deleteTikTokAccount,
   getTeamStats,
   listMetaAccounts,
+  listTikTokAccounts,
   listTeamMembers,
   reassignConversation,
   remindScript,
@@ -29,6 +32,7 @@ export const teamKeys = {
   audit: ["crm", "audit"] as const,
   settings: ["crm", "settings"] as const,
   metaAccounts: ["crm", "meta-accounts"] as const,
+  tiktokAccounts: ["crm", "tiktok-accounts"] as const,
 };
 
 const onError = (err: unknown) => toast.error(crmError(err).message);
@@ -112,5 +116,26 @@ export function useDeleteMetaAccount() {
   return useMutation({
     mutationFn: (id: string) => deleteMetaAccount(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: teamKeys.metaAccounts }),
+  });
+}
+
+export function useTikTokAccounts() {
+  return useQuery({ queryKey: teamKeys.tiktokAccounts, queryFn: listTikTokAccounts, retry: false });
+}
+
+/** Sin toast de error: la tarjeta muestra el mensaje. */
+export function useConnectTikTokOAuth() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { code: string; state: string }) => connectTikTokOAuth(input.code, input.state),
+    onSuccess: () => qc.invalidateQueries({ queryKey: teamKeys.tiktokAccounts }),
+  });
+}
+
+export function useDeleteTikTokAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteTikTokAccount(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: teamKeys.tiktokAccounts }),
   });
 }

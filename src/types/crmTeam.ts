@@ -157,3 +157,24 @@ export interface ConnectMetaAccountInput {
   name?: string;
   accessToken: string;
 }
+
+// --- Cuentas de TikTok (ms-integrations) ---
+
+export interface TikTokAccount {
+  id: string;
+  channel: "tiktok";
+  accountId: string;
+  name: string | null;
+  isActive: boolean;
+  createdAt: string;
+  /** true si Powip renueva el token solo (cuenta conectada con el botón de TikTok). */
+  autoRenew: boolean;
+}
+
+/** Resultado de registrar el webhook al conectar. */
+export type TikTokWebhookResult = "registered" | "skipped" | "failed";
+
+export interface TikTokOAuthResult {
+  account: TikTokAccount;
+  webhook: TikTokWebhookResult;
+}

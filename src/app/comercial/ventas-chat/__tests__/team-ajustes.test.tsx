@@ -33,6 +33,11 @@ jest.mock("@/services/crmTeamService", () => ({
   listMetaAccounts: jest.fn(),
   connectMetaAccount: jest.fn(),
   deleteMetaAccount: jest.fn(),
+  listTikTokAccounts: jest.fn(),
+  deleteTikTokAccount: jest.fn(),
+  getTikTokAuthUrl: jest.fn(),
+  connectTikTokOAuth: jest.fn(),
+  goToExternalUrl: jest.fn(),
 }));
 const team = teamService as jest.Mocked<typeof teamService>;
 const crm = crmService as jest.Mocked<typeof crmService>;
@@ -74,6 +79,8 @@ beforeEach(() => {
   mockRole = "ADMIN";
   team.getCrmSettings.mockResolvedValue(settings());
   team.listMetaAccounts.mockResolvedValue([]);
+  team.listTikTokAccounts.mockResolvedValue([]);
+  window.history.replaceState(null, "", "/comercial/ventas-chat/ajustes");
   team.updateCrmSettings.mockImplementation(async (input) => settings(input));
   team.listTeamMembers.mockResolvedValue([
     { userId: "u1", userName: "Ana" },
@@ -394,5 +401,96 @@ describe("Ajustes · Instagram y Messenger", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Eliminar" }));
     await waitFor(() => expect(team.deleteMetaAccount).toHaveBeenCalled());
     expect(team.deleteMetaAccount.mock.calls[0][0]).toBe("a1");
+  });
+});
+
+describe("Ajustes · TikTok", () => {
+  const SETTINGS = "/comercial/ventas-chat/ajustes";
+  const tiktok = (over: Partial<import("@/types/crmTeam").TikTokAccount> = {}) => ({
+    id: "t1",
+    channel: "tiktok" as const,
+    accountId: "BIZ-1",
+    name: "Tienda TT",
+    isActive: true,
+    createdAt: "2026-11-22T00:00:00Z",
+    autoRenew: true,
+    ...over,
+  });
+  const apiError = (status: number, message: string) =>
+    Object.assign(new Error("x"), { isAxiosError: true, response: { status, data: { message } } });
+
+  it("lista las cuentas y avisa de la que no se renueva sola", async () => {
+    team.listTikTokAccounts.mockResolvedValue([tiktok(), tiktok({ id: "t2", name: "Manual", autoRenew: false })]);
+    setup();
+    const rows = await screen.findAllByTestId("tiktok-account");
+    expect(rows[0]).toHaveTextContent("Tienda TT");
+    expect(rows[0]).toHaveTextContent("ID BIZ-1");
+    expect(rows[0]).not.toHaveTextContent("Sin renovación automática");
+    expect(rows[1]).toHaveTextContent("Sin renovación automática");
+  });
+
+  it("el botón pide la URL y sale hacia TikTok", async () => {
+    team.getTikTokAuthUrl.mockResolvedValue("https://www.tiktok.com/v2/auth/authorize?state=s");
+    setup();
+    await screen.findByLabelText("Minutos");
+    fireEvent.click(saveBtn("tiktok", "Conectar con TikTok"));
+    await waitFor(() =>
+      expect(team.goToExternalUrl).toHaveBeenCalledWith("https://www.tiktok.com/v2/auth/authorize?state=s"),
+    );
+  });
+
+  it("si el entorno no tiene las claves muestra el motivo y no sale de Powip", async () => {
+    team.getTikTokAuthUrl.mockRejectedValue(
+      apiError(503, "La conexión con TikTok no está configurada en este entorno."),
+    );
+    setup();
+    await screen.findByLabelText("Minutos");
+    fireEvent.click(saveBtn("tiktok", "Conectar con TikTok"));
+    expect(await within(card("tiktok")).findByRole("alert")).toHaveTextContent("no está configurada");
+    expect(team.goToExternalUrl).not.toHaveBeenCalled();
+    expect(saveBtn("tiktok", "Conectar con TikTok")).toBeEnabled();
+  });
+
+  it("al volver de TikTok canjea el código una vez y limpia la URL", async () => {
+    window.history.replaceState(null, "", `${SETTINGS}#tiktok_code=CODE-1&tiktok_state=STATE-1`);
+    team.connectTikTokOAuth.mockResolvedValue({ account: tiktok(), webhook: "registered" });
+    setup();
+    expect(await screen.findByText(/Cuenta conectada: Tienda TT/)).toBeInTheDocument();
+    expect(team.connectTikTokOAuth).toHaveBeenCalledTimes(1);
+    expect(team.connectTikTokOAuth).toHaveBeenCalledWith("CODE-1", "STATE-1");
+    expect(window.location.hash).toBe("");
+    expect(document.body.textContent).not.toContain("CODE-1");
+  });
+
+  it("avisa si la cuenta quedó conectada pero sin recepción de mensajes", async () => {
+    window.history.replaceState(null, "", `${SETTINGS}#tiktok_code=C&tiktok_state=S`);
+    team.connectTikTokOAuth.mockResolvedValue({ account: tiktok(), webhook: "skipped" });
+    setup();
+    expect(await screen.findByText(/Falta configurar la URL que recibe los mensajes/)).toBeInTheDocument();
+  });
+
+  it("muestra el rechazo del canje y el error con que vuelve TikTok", async () => {
+    window.history.replaceState(null, "", `${SETTINGS}#tiktok_code=C&tiktok_state=S`);
+    team.connectTikTokOAuth.mockRejectedValue(apiError(403, "La conexión con TikTok la inició otro usuario."));
+    const first = setup();
+    expect(await within(card("tiktok")).findByRole("alert")).toHaveTextContent("otro usuario");
+    first.unmount();
+
+    window.history.replaceState(null, "", `${SETTINGS}?tiktok=error&message=Permiso%20denegado`);
+    setup();
+    expect(await within(card("tiktok")).findByRole("alert")).toHaveTextContent("Permiso denegado");
+    expect(window.location.search).toBe("");
+    expect(team.connectTikTokOAuth).toHaveBeenCalledTimes(1);
+  });
+
+  it("eliminar pide confirmación y llama al endpoint con el id", async () => {
+    team.listTikTokAccounts.mockResolvedValue([tiktok()]);
+    team.deleteTikTokAccount.mockResolvedValue(undefined);
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: "Eliminar cuenta Tienda TT" }));
+    expect(team.deleteTikTokAccount).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Eliminar" }));
+    await waitFor(() => expect(team.deleteTikTokAccount).toHaveBeenCalled());
+    expect(team.deleteTikTokAccount.mock.calls[0][0]).toBe("t1");
   });
 });
