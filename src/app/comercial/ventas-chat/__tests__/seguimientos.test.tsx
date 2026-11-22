@@ -1,6 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { toast } from "sonner";
 import SeguimientosView from "@/components/ventas-chat/SeguimientosView";
 import { VENTAS_CHAT_TABS } from "@/app/comercial/ventas-chat/tabs";
 import * as svc from "@/services/crmService";
@@ -113,6 +114,15 @@ const STATS: FollowupStats = {
   skipped: 7,
   failed: 1,
   limits: { sale: 6, collection: 3, aftersale: 2 },
+  month: {
+    since: "2026-11-01T05:00:00.000Z",
+    sent: 142,
+    sentFree: 118,
+    sentTemplate: 24,
+    templateCost: 7.2,
+    recoveredSales: 9,
+    recoveredAmount: 1080,
+  },
 };
 const RUN: FollowupRun = {
   id: "u1",
@@ -221,6 +231,19 @@ describe("Seguimientos · lista", () => {
     expect(screen.queryByRole("group", { name: "Postventa" })).not.toBeInTheDocument();
   });
 
+  it("muestra los seguimientos del mes con costo de plantillas y ventas recuperadas", async () => {
+    setup();
+    const card = await screen.findByTestId("month-card");
+    expect(within(card).getByText("142")).toBeInTheDocument();
+    expect(within(card).getByText("118")).toBeInTheDocument();
+    expect(within(card).getByText("24")).toBeInTheDocument();
+    expect(within(card).getByText("Gratis en ventana")).toBeInTheDocument();
+    expect(within(card).getByText("Con plantilla")).toBeInTheDocument();
+    const summary = within(card).getByTestId("month-summary");
+    expect(summary).toHaveTextContent("24 plantillas costaron aprox. S/ 7.20, cobrados directo en tu cuenta de Meta.");
+    expect(summary).toHaveTextContent("Los seguimientos recuperaron 9 ventas por S/ 1,080.00.");
+  });
+
   it("actividad reciente: enlace al chat, etiqueta de resultado y detalle", async () => {
     setup();
     const row = await screen.findByTestId("run-row");
@@ -237,6 +260,8 @@ describe("Seguimientos · lista", () => {
     await waitFor(() => expect(s.updateFollowupRule).toHaveBeenCalledWith("r1", { active: false }));
     fireEvent.click(screen.getByRole("switch", { name: "Activar Saldo · aviso" }));
     await waitFor(() => expect(s.updateFollowupRule).toHaveBeenCalledWith("r2", { active: true }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("+2 h · recordatorio pausada"));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Saldo · aviso activada"));
   });
 
   it("eliminar pide confirmación", async () => {

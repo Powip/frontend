@@ -430,6 +430,19 @@ export interface FollowupStats {
   skipped: number;
   failed: number;
   limits: Record<RuleObjective, number>;
+  /** Mes calendario en curso (hora de Lima). */
+  month?: FollowupMonthStats;
+}
+
+export interface FollowupMonthStats {
+  since: string;
+  sent: number;
+  sentFree: number;
+  sentTemplate: number;
+  /** Costo aproximado de las plantillas en soles; Meta lo cobra en la cuenta del negocio. */
+  templateCost: number;
+  recoveredSales: number;
+  recoveredAmount: number;
 }
 
 // --- Difusiones ---

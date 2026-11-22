@@ -27,7 +27,7 @@ import {
 import { usePipelines } from "@/hooks/useCrmPlanning";
 import { useCrmMe } from "@/hooks/useCrmMe";
 import { useCrmSettings } from "@/hooks/useCrmTeam";
-import type { FollowupRule, FollowupRun, FollowupStats, Stage } from "@/types/crm";
+import type { FollowupMonthStats, FollowupRule, FollowupRun, FollowupStats, Stage } from "@/types/crm";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import ConfirmDialog from "./ConfirmDialog";
 import { FollowupLimitsCard } from "./AjustesCards";
@@ -48,7 +48,7 @@ import {
   templateKey,
   type Preset,
 } from "./engagement";
-import { NATIVE_SELECT_CLASS, bandejaUrl, contactLabel, relativeTime } from "./format";
+import { NATIVE_SELECT_CLASS, bandejaUrl, contactLabel, formatMoney, relativeTime } from "./format";
 
 function StatCard({ label, value, hint }: { label: string; value: number; hint?: string }) {
   return (
@@ -57,6 +57,39 @@ function StatCard({ label, value, hint }: { label: string; value: number; hint?:
       <p className="text-xs font-medium">{label}</p>
       {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
     </div>
+  );
+}
+
+function MonthSection({ month }: { month: FollowupMonthStats }) {
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  return (
+    <section aria-label="Seguimientos de este mes" className="space-y-2">
+      <h2 className="text-sm font-semibold">Seguimientos de este mes</h2>
+      <div className="rounded-md border bg-card p-3" data-testid="month-card">
+        <div className="grid grid-cols-3 gap-2">
+          <div className="rounded-md bg-muted/40 p-2 text-center">
+            <p className="text-2xl font-semibold tabular-nums">{month.sent}</p>
+            <p className="text-xs text-muted-foreground">Enviados</p>
+          </div>
+          <div className="rounded-md bg-muted/40 p-2 text-center">
+            <p className="text-2xl font-semibold tabular-nums text-primary">{month.sentFree}</p>
+            <p className="text-xs text-muted-foreground">Gratis en ventana</p>
+          </div>
+          <div className="rounded-md bg-muted/40 p-2 text-center">
+            <p className="text-2xl font-semibold tabular-nums">{month.sentTemplate}</p>
+            <p className="text-xs text-muted-foreground">Con plantilla</p>
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground" data-testid="month-summary">
+          {month.sentTemplate > 0
+            ? `${plural(month.sentTemplate, "plantilla costó", "plantillas costaron")} aprox. ${formatMoney(month.templateCost)}, cobrados directo en tu cuenta de Meta. `
+            : "Este mes no se usaron plantillas: todos los envíos fueron gratis. "}
+          {month.recoveredSales > 0
+            ? `Los seguimientos recuperaron ${plural(month.recoveredSales, "venta", "ventas")} por ${formatMoney(month.recoveredAmount)}.`
+            : "Aún no hay ventas pagadas después de un seguimiento."}
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -394,6 +427,8 @@ export default function SeguimientosView() {
 
       {isAdmin && <LimitsSection />}
 
+      {statsQ.data?.month && <MonthSection month={statsQ.data.month} />}
+
       <StatsSection
         stats={statsQ.data}
         loading={statsQ.isLoading}
@@ -476,7 +511,12 @@ export default function SeguimientosView() {
                       key={r.id}
                       rule={r}
                       stages={stages}
-                      onToggle={(rule, active) => m.update.mutate({ id: rule.id, input: { active } })}
+                      onToggle={(rule, active) =>
+                        m.update.mutate(
+                          { id: rule.id, input: { active } },
+                          { onSuccess: () => toast.success(`${rule.name} ${active ? "activada" : "pausada"}`) },
+                        )
+                      }
                       onEdit={(rule) => setDialog({ rule })}
                       onDuplicate={(rule) => {
                         m.create.mutate(duplicateRuleInput(rule), {
