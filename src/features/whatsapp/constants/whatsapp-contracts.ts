@@ -79,8 +79,8 @@ export const WHATSAPP_CONTRACTS = {
   testMessage: {
     id: "C-07",
     label: "Mensaje de prueba",
-    status: PROPOSED_IN_SPEC,
-    evidence: null,
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/test-message.api.ts",
   },
   usageAndPricing: {
     id: "C-08/C-09",
@@ -151,8 +151,8 @@ export const WHATSAPP_CONTRACTS = {
   optOuts: {
     id: "C-25",
     label: "Bajas",
-    status: PROPOSED_IN_SPEC,
-    evidence: null,
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/optouts.api.ts",
   },
   alerts: {
     id: "C-26",

@@ -8,6 +8,7 @@ export interface WhatsAppMessageDto {
   createdAt: string;
   orderId: string | null;
   orderNumber: string;
+  storeId?: string;
   customerName: string | null;
   phone: string | null;
   templateName: string | null;
@@ -59,7 +60,8 @@ export function limaTodayStartIso(now = new Date()): string {
 
 // C-24 / C-19 · GET /wa/messages?storeId=&status=&from=&to=&page=&pageSize=
 export async function listWhatsAppMessages(params: {
-  storeId: string;
+  /** Sin tienda: todas las tiendas de la empresa. */
+  storeId?: string;
   status?: string;
   from?: string;
   to?: string;

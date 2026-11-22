@@ -1,10 +1,9 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { resolveEffectivePermissions } from "@/features/whatsapp/utils/whatsapp-permissions.util";
 import {
   alertSettingsFixture,
   auditPageFixture,
-  auditWithoutUsersFixture,
   mixedEffectivePermissionsFixture,
   optOutsPageFixture,
   permissionSettingsFixture,
@@ -67,18 +66,14 @@ function withData(overrides: Partial<SettingsViewProps> = {}): SettingsViewProps
 const section = (name: string) => screen.getByRole("region", { name });
 
 describe("Sin backend", () => {
-  it("usa sugeridos rotulados, sin registros ni permisos inventados", () => {
+  it("usa sugeridos rotulados y no muestra alertas, registro ni permisos", () => {
     render(<SettingsView {...baseProps()} />);
-    expect(screen.getAllByText(/Valores sugeridos del documento/).length).toBe(3);
+    expect(screen.getAllByText(/Valores sugeridos del documento/).length).toBeGreaterThan(0);
     expect(screen.getByText("Bajas pendientes de integración")).toBeInTheDocument();
-    expect(screen.getByText("Alertas pendientes de integración")).toBeInTheDocument();
-    expect(screen.getByText("Registro pendiente de integración")).toBeInTheDocument();
-    const permissions = section("Permisos");
-    expect(within(permissions).getAllByText("Sin confirmar")).toHaveLength(8);
-    const documented = within(permissions).getAllByRole("checkbox");
-    expect(documented.length).toBeGreaterThan(0);
-    for (const checkbox of documented) expect(checkbox).toBeDisabled();
-    expect(within(permissions).getByText(/no está guardada ni se aplica/)).toBeInTheDocument();
+    // Alertas, registro de cambios y permisos vuelven cuando POWIP los guarde.
+    expect(screen.queryByText("Alertas pendientes de integración")).not.toBeInTheDocument();
+    expect(screen.queryByText("Registro pendiente de integración")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Permisos" })).not.toBeInTheDocument();
   });
 });
 
@@ -194,121 +189,3 @@ describe("Bajas", () => {
   });
 });
 
-describe("Alertas", () => {
-  it("parte de los umbrales del documento y valida unidades y rangos", async () => {
-    const user = userEvent.setup({ delay: null });
-    render(<SettingsView {...baseProps()} />);
-    const alerts = section("Alertas de salud");
-    const inputs = within(alerts).getAllByRole("textbox");
-    expect(inputs.map((input) => (input as HTMLInputElement).value)).toEqual(["5", "80", "30"]);
-    fireEvent.change(inputs[0], { target: { value: "101" } });
-    expect(
-      await within(alerts).findByText("Escribe un número entero entre 1 y 100%."),
-    ).toBeInTheDocument();
-    fireEvent.change(inputs[2], { target: { value: "0" } });
-    expect(
-      await within(alerts).findByText("Escribe un número entero entre 1 y 1440 minutos."),
-    ).toBeInTheDocument();
-    const switches = within(alerts).getAllByRole("switch");
-    await user.click(switches[4]);
-    await waitFor(() =>
-      expect(
-        within(alerts).queryByText("Escribe un número entero entre 1 y 1440 minutos."),
-      ).not.toBeInTheDocument(),
-    );
-    expect(within(alerts).getByRole("button", { name: "Guardar alertas" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(within(alerts).getByText(/esta pantalla no pausa nada/)).toBeInTheDocument();
-    expect(within(alerts).getByText(/La campanita de POWIP todavía no existe/)).toBeInTheDocument();
-  });
-
-  it("«Ver» lleva solo a la pestaña relacionada", async () => {
-    const user = userEvent.setup({ delay: null });
-    const props = withData();
-    render(<SettingsView {...props} />);
-    const alerts = section("Últimas alertas");
-    await user.click(within(alerts).getByRole("button", { name: "Ver en Conversaciones" }));
-    expect(props.onOpenTab).toHaveBeenCalledWith("conversaciones");
-    expect(within(alerts).getByText("Sin pestaña relacionada")).toBeInTheDocument();
-  });
-});
-
-describe("Registro de cambios", () => {
-  it("oculta secretos, muestra ausentes y no ofrece editar ni borrar", async () => {
-    const user = userEvent.setup({ delay: null });
-    render(<SettingsView {...withData()} />);
-    const audit = section("Registro de cambios");
-    const list = within(audit).getByRole("list", { name: "Cambios registrados" });
-    const reconnect = within(list)
-      .getAllByRole("listitem")
-      .find((item) => item.textContent?.includes("reconectó")) as HTMLElement;
-    expect(within(reconnect).getByText("Usuario sin informar")).toBeInTheDocument();
-    await user.click(within(reconnect).getByRole("button", { name: "Ver antes y después" }));
-    expect(reconnect.textContent).not.toMatch(/EAAG|otro-secreto/);
-    expect(within(reconnect).getAllByText(/Oculto por seguridad/).length).toBeGreaterThan(0);
-    expect(
-      within(audit).queryByRole("button", { name: /Editar|Eliminar|Borrar/ }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("recorta valores largos y deja ver el completo", async () => {
-    const user = userEvent.setup({ delay: null });
-    render(<SettingsView {...withData()} />);
-    const list = within(section("Registro de cambios")).getByRole("list", {
-      name: "Cambios registrados",
-    });
-    const reactivation = within(list)
-      .getAllByRole("listitem")
-      .find((item) => item.textContent?.includes("reactivó")) as HTMLElement;
-    await user.click(within(reactivation).getByRole("button", { name: "Ver antes y después" }));
-    expect(within(reactivation).getAllByText("Sin dato").length).toBeGreaterThan(0);
-    await user.click(within(reactivation).getByRole("button", { name: "Ver completo" }));
-    expect(reactivation).toHaveTextContent("incluidos los envíos a provincia.");
-  });
-
-  it("sin la lista de usuarios de backend no inventa el filtro", () => {
-    render(
-      <SettingsView {...withData({ audit: { kind: "ready", data: auditWithoutUsersFixture } })} />,
-    );
-    const user = within(section("Registro de cambios")).getByRole("combobox", { name: "Usuario" });
-    expect(user).toBeDisabled();
-    expect(user).toHaveAccessibleDescription(/cuando POWIP informe quiénes hicieron cambios/);
-  });
-});
-
-describe("Permisos", () => {
-  it("separa permisos efectivos de la matriz y no aplica cambios locales", async () => {
-    const user = userEvent.setup({ delay: null });
-    render(<SettingsView {...withData()} />);
-    const permissions = section("Permisos");
-    expect(within(permissions).getAllByText("Permitido")).toHaveLength(3);
-    expect(within(permissions).getAllByText("Sin confirmar")).toHaveLength(1);
-    const admin = within(permissions).getByRole("checkbox", {
-      name: "Ver conversaciones · Administrador: siempre permitido, no se puede quitar",
-    });
-    expect(admin).toBeChecked();
-    expect(admin).toBeDisabled();
-    await user.click(
-      within(permissions).getByRole("checkbox", {
-        name: "Crear y editar plantillas · Supervisor CC",
-      }),
-    );
-    expect(within(permissions).getByText(/1 cambio sin guardar/)).toBeInTheDocument();
-    expect(within(permissions).getAllByText("Permitido")).toHaveLength(3);
-    expect(within(permissions).getByRole("button", { name: "Guardar permisos" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-  });
-
-  it("sin permiso de configuración la matriz es de solo lectura", () => {
-    render(<SettingsView {...withData({ canManage: false })} />);
-    const readOnly = within(section("Permisos")).getAllByRole("checkbox");
-    expect(readOnly.length).toBeGreaterThan(0);
-    for (const checkbox of readOnly) expect(checkbox).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Agregar número" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Reactivar/ })).not.toBeInTheDocument();
-  });
-});

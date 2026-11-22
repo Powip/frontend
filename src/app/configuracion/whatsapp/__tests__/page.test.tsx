@@ -66,7 +66,7 @@ jest.mock("@/features/whatsapp/api/queue.api", () => ({
     total: 0,
     groups: [],
   }),
-  getWhatsAppMessages: jest.fn().mockResolvedValue({
+  listWhatsAppMessages: jest.fn().mockResolvedValue({
     items: [],
     page: 1,
     pageSize: 10,
@@ -74,6 +74,22 @@ jest.mock("@/features/whatsapp/api/queue.api", () => ({
     hasMore: false,
   }),
   limaTodayStartIso: jest.fn(() => "2026-10-30T00:00:00Z"),
+}));
+
+jest.mock("@/features/whatsapp/api/optouts.api", () => ({
+  listWhatsAppOptOuts: jest.fn().mockResolvedValue({
+    items: [],
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    hasMore: false,
+  }),
+  createWhatsAppOptOut: jest.fn(),
+  reactivateWhatsAppOptOut: jest.fn(),
+}));
+
+jest.mock("@/features/whatsapp/api/test-message.api", () => ({
+  sendWhatsAppTestTemplate: jest.fn(),
 }));
 
 import { useAuth } from "@/contexts/AuthContext";
@@ -130,7 +146,7 @@ beforeEach(() => {
 });
 
 describe("WhatsAppSettingsPage", () => {
-  it("muestra el título y las seis pestañas", async () => {
+  it("muestra el título y las cinco pestañas", async () => {
     await renderPage();
     expect(
       screen.getByRole("heading", { level: 1, name: "Notificaciones por WhatsApp" }),
@@ -139,10 +155,14 @@ describe("WhatsAppSettingsPage", () => {
       "Conexión",
       "Plantillas",
       "Programación",
-      "Conversaciones",
       "Historial de envíos",
-      "Bajas, alertas y permisos",
+      "Bajas y números extranjeros",
     ]);
+  });
+
+  it("la pestaña conversaciones (fuera del menú) vuelve a Conexión", async () => {
+    await renderPage("tab=conversaciones");
+    expect(selectedTabName()).toBe("Conexión");
   });
 
   it("abre la pestaña indicada en la URL aunque haya otra guardada", async () => {
@@ -185,11 +205,13 @@ describe("WhatsAppSettingsPage", () => {
     );
   });
 
-  it("el historial queda pendiente sin ceros, porcentajes ni filas", async () => {
+  it("el historial lee los envíos reales y sin envíos no inventa filas", async () => {
     await renderPage("tab=historial");
-    expect(screen.getByText("Indicadores pendientes de integración")).toBeInTheDocument();
-    expect(screen.getByText("Mensajes pendientes de integración")).toBeInTheDocument();
-    expect(screen.queryByText(/%/)).not.toBeInTheDocument();
+    expect(
+      await screen.findByText("Todavía no se enviaron avisos en este periodo."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Indicadores pendientes de integración")).not.toBeInTheDocument();
+    expect(screen.queryByText("Mensajes pendientes de integración")).not.toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.getByRole("radio", { name: "Últimos 7 días" })).toBeChecked();
     expect(screen.getByRole("button", { name: "Exportar Excel" })).toHaveAttribute(
@@ -198,13 +220,15 @@ describe("WhatsAppSettingsPage", () => {
     );
   });
 
-  it("bajas, alertas y permisos muestra sugeridos sin guardar ni registros ficticios", async () => {
+  it("bajas y números extranjeros lee datos reales y oculta alertas, registro y permisos", async () => {
     await renderPage("tab=ajustes");
-    expect(screen.getByText("Bajas pendientes de integración")).toBeInTheDocument();
-    expect(screen.getByText("Registro pendiente de integración")).toBeInTheDocument();
-    expect(screen.getAllByText(/Valores sugeridos del documento/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Matriz propuesta en el documento/)).toBeInTheDocument();
-    expect(screen.getAllByText("Sin confirmar")).toHaveLength(8);
+    expect(
+      await screen.findByRole("region", { name: "Clientes que no quieren avisos" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Números extranjeros" })).toBeInTheDocument();
+    expect(screen.queryByText("Bajas pendientes de integración")).not.toBeInTheDocument();
+    expect(screen.queryByText("Registro pendiente de integración")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Matriz propuesta en el documento/)).not.toBeInTheDocument();
     expect(screen.getByText(/de la tienda LIVII/)).toBeInTheDocument();
   });
 
@@ -259,43 +283,13 @@ describe("WhatsAppSettingsPage", () => {
     });
   });
 
-  it("la pestaña conversaciones queda pendiente sin conversaciones ni contadores", async () => {
-    await renderPage("tab=conversaciones");
-    expect(screen.getByText("Conversaciones pendientes de integración")).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Respondió" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("searchbox", { name: "Buscar pedido, cliente o teléfono" }),
-    ).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Asignadas a mí" })).toHaveAttribute(
-      "aria-pressed",
-      "false",
-    );
-    expect(screen.getByRole("button", { name: "Respuesta automática" })).toBeInTheDocument();
-  });
-
-  it("quien no es administrador no ve la configuración de respuesta automática", async () => {
-    mockAuth("AGENTES");
-    await renderPage("tab=conversaciones");
-    expect(screen.queryByRole("button", { name: "Respuesta automática" })).not.toBeInTheDocument();
-  });
-
-  it("un enlace a una conversación abre el panel en estado pendiente", async () => {
-    mockSearch = "tab=conversaciones&thread=t-1";
-    render(<WhatsAppSettingsPage />);
-    const drawer = await screen.findByRole("dialog");
-    expect(within(drawer).getByText("Conversación pendiente de integración")).toBeInTheDocument();
-    expect(within(drawer).queryByRole("textbox")).not.toBeInTheDocument();
-  });
-
   it("volver y adelante siguen la pestaña de la URL", async () => {
     await renderPage("tab=historial");
     expect(selectedTabName()).toBe("Historial de envíos");
     mockSearch = "tab=ajustes";
-    const { rerender } = render(<WhatsAppSettingsPage />);
-    rerender(<WhatsAppSettingsPage />);
+    render(<WhatsAppSettingsPage />);
     expect(screen.getAllByRole("tab", { selected: true }).map((tab) => tab.textContent)).toContain(
-      "Bajas, alertas y permisos",
+      "Bajas y números extranjeros",
     );
   });
 
@@ -316,7 +310,9 @@ describe("WhatsAppSettingsPage", () => {
     for (const tab of screen.getAllByRole("tab")) {
       expect(tab.textContent).not.toMatch(/\d/);
     }
-    expect(screen.getByText("Integración pendiente")).toBeInTheDocument();
+    // El indicador muestra el estado real; sin sesión con token no afirma conexión.
+    expect(screen.queryByText("Integración pendiente")).not.toBeInTheDocument();
+    expect(screen.getByText("Estado no disponible")).toBeInTheDocument();
   });
 
   it("lista las tiendas reales de la empresa sin números conectados", async () => {
@@ -350,7 +346,7 @@ describe("WhatsAppSettingsPage", () => {
 
   it("no muestra ese aviso en pestañas de uso diario ni a administradores", async () => {
     mockAuth("AGENTES");
-    await renderPage("tab=conversaciones");
+    await renderPage("tab=historial");
     expect(screen.queryByText(/Solo un administrador/)).not.toBeInTheDocument();
   });
 

@@ -1,7 +1,25 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { listWhatsAppTemplates } from "@/features/whatsapp/api/templates.api";
+import { sendWhatsAppTestTemplate } from "@/features/whatsapp/api/test-message.api";
+import { isWhatsAppContractAvailable } from "@/features/whatsapp/constants/whatsapp-contracts";
+import {
+  WHATSAPP_CONNECTION_STATES,
+  WHATSAPP_CONNECTION_TYPES,
+  WHATSAPP_MESSAGE_STATUSES,
+  type WhatsAppConnectionState,
+  type WhatsAppConnectionType,
+} from "@/features/whatsapp/enums/whatsapp.enums";
+import { toWhatsAppTemplate } from "@/features/whatsapp/mappers/to-whatsapp-template.mapper";
+import type {
+  WhatsAppConnectionStatus,
+  WhatsAppTestRun,
+} from "@/features/whatsapp/models/connection.model";
+import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp/models/resource-state.model";
+import type { WhatsAppTemplate } from "@/features/whatsapp/models/template.model";
 import { resolveEffectivePermissions } from "@/features/whatsapp/utils/whatsapp-permissions.util";
 import { ConnectionView } from "./ConnectionView";
 import {
@@ -39,6 +57,22 @@ const toDate = (value: unknown): Date | null => {
   }
   return null;
 };
+
+const KNOWN_STATES = new Set<string>(Object.values(WHATSAPP_CONNECTION_STATES));
+const KNOWN_TYPES = new Set<string>(Object.values(WHATSAPP_CONNECTION_TYPES));
+
+/** GET /wa/status → modelo de pantalla. Sin campo `state` la respuesta no es válida. */
+function toConnectionStatus(raw: any, storeId: string): WhatsAppConnectionStatus | null {
+  if (!raw || typeof raw.state !== "string") return null;
+  return {
+    storeId,
+    connectionType: KNOWN_TYPES.has(raw.connectionType)
+      ? (raw.connectionType as WhatsAppConnectionType)
+      : null,
+    state: KNOWN_STATES.has(raw.state) ? (raw.state as WhatsAppConnectionState) : null,
+    contingencyActive: typeof raw.contingencyActive === "boolean" ? raw.contingencyActive : null,
+  };
+}
 
 function normalizeAccount(raw: any) {
   if (!raw) return raw;
@@ -80,6 +114,24 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
     [],
   );
 
+  // Plantillas de la empresa (C-12): el envío de prueba solo ofrece las aprobadas.
+  const templatesAvailable = isWhatsAppContractAvailable("templates");
+  const templatesQuery = useQuery({
+    queryKey: ["whatsapp", "templates"],
+    queryFn: listWhatsAppTemplates,
+    enabled: templatesAvailable,
+  });
+  const templates: ResourceState<WhatsAppTemplate[]> = useMemo(() => {
+    if (!templatesAvailable) return { kind: "pending-integration" };
+    if (templatesQuery.data) {
+      return { kind: "ready", data: templatesQuery.data.map(toWhatsAppTemplate) };
+    }
+    if (templatesQuery.isError) {
+      return { kind: "error", message: "No se pudieron cargar las plantillas." };
+    }
+    return { kind: "loading" };
+  }, [templatesAvailable, templatesQuery.data, templatesQuery.isError]);
+
   // Función para recargar la información de la tienda activa
   const loadConnectionData = async () => {
     if (!activeStoreId || !token) {
@@ -96,16 +148,13 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       const statusRes = await getWhatsAppStatus(token, activeStoreId);
       const accountsRes = await getWhatsAppAccounts(token, activeStoreId);
 
-      const isConnected = (statusRes as any).state === "connected" || statusRes.status === "CONNECTED";
-
-      setStatusState({
-        kind: "ready",
-        data: {
-          state: isConnected ? "CONNECTED" : "DISCONNECTED",
-          quality: statusRes.quality || "GREEN",
-          dailyLimit: statusRes.tier || "TIER_1K",
-        },
-      });
+      // Estado tal cual lo guarda POWIP; la calidad y el límite vienen en la cuenta (null si Meta no los dio).
+      const connectionStatus = toConnectionStatus(statusRes, activeStoreId);
+      setStatusState(
+        connectionStatus
+          ? { kind: "ready", data: connectionStatus }
+          : { kind: "error", message: "No se pudo leer el estado de la conexión." },
+      );
 
       const rawList: any[] = Array.isArray(accountsRes)
         ? accountsRes
@@ -147,8 +196,35 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       await updateWhatsAppAccount(token, accountData.id, newType);
       await loadConnectionData();
     },
-    sendTest: async (phone: string, templateId: string) => {
-      console.log("Enviando prueba a:", phone, "con plantilla:", templateId);
+    sendTest: async ({
+      phone,
+      templateId,
+    }: {
+      accountId: string;
+      phone: string;
+      templateId: string;
+    }): Promise<WhatsAppTestRun> => {
+      const dto = templatesQuery.data?.find((template) => template.id === templateId);
+      if (!dto) throw new Error("Plantilla no encontrada. Recarga la página.");
+      const startedAt = new Date();
+      const { messageId } = await sendWhatsAppTestTemplate({
+        to: phone.replace(/\D/g, ""),
+        templateName: dto.name,
+        languageCode: dto.language,
+      });
+      // POWIP no devuelve todavía entregado/leído de esta prueba: queda como enviado.
+      return {
+        messageId,
+        phone,
+        templateName: dto.name,
+        status: WHATSAPP_MESSAGE_STATUSES.SENT,
+        startedAt,
+        sentAt: new Date(),
+        deliveredAt: null,
+        readAt: null,
+        failedAt: null,
+        errorMessage: null,
+      };
     },
     saveContingency: async (settings: any) => {
       console.log("Guardando contingencia:", settings);
@@ -189,7 +265,7 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       status={statusState}
       account={accountState}
       accounts={accountsState}
-      templates={{ kind: "ready", data: [] }}
+      templates={templates}
       testRun={null}
       contingency={{ kind: "ready", data: null }}
       agents={{ kind: "ready", data: [] }}

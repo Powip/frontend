@@ -60,19 +60,8 @@ export const WHATSAPP_TAB_DEFINITIONS: WhatsAppTabDefinition[] = [
     contracts: ["rules", "settings", "upcomingQueue", "campaigns"],
     managedByAdministrators: true,
   },
-  {
-    key: WHATSAPP_TABS.CONVERSATIONS,
-    label: "Conversaciones",
-    description: "Ve y responde lo que contestan los compradores.",
-    sections: [
-      "Tablero por estado del mensaje",
-      "Lista",
-      "Chat por pedido",
-      "Respuesta automática",
-    ],
-    contracts: ["threads", "quickReplies"],
-    managedByAdministrators: false,
-  },
+  // «Conversaciones» queda fuera del menú: POWIP todavía no guarda las respuestas
+  // de los compradores a estos avisos. Los chats se atienden en Ventas por chat.
   {
     key: WHATSAPP_TABS.HISTORY,
     label: "Historial de envíos",
@@ -83,17 +72,11 @@ export const WHATSAPP_TAB_DEFINITIONS: WhatsAppTabDefinition[] = [
   },
   {
     key: WHATSAPP_TABS.SETTINGS,
-    label: "Bajas, alertas y permisos",
-    description:
-      "Lista de quienes no quieren mensajes, alertas de salud, números extranjeros, registro de cambios y permisos.",
-    sections: [
-      "Clientes que no quieren avisos",
-      "Alertas de salud",
-      "Números extranjeros",
-      "Registro de cambios",
-      "Permisos",
-    ],
-    contracts: ["optOuts", "alerts", "auditLog", "permissions"],
+    // Alertas de salud, registro de cambios y permisos vuelven cuando POWIP los guarde.
+    label: "Bajas y números extranjeros",
+    description: "Lista de quienes no quieren mensajes y qué hacer con números extranjeros.",
+    sections: ["Clientes que no quieren avisos", "Números extranjeros"],
+    contracts: ["optOuts", "settings"],
     managedByAdministrators: true,
   },
 ];

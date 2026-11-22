@@ -58,7 +58,8 @@ describe("código de producción del módulo WhatsApp", () => {
 
       // Excepción: ConnectionTab solo usa @/services/whatsappService (contratos C-01 a C-03 pendientes de registro)
       // Pendiente: registrar los contratos de Conexion (C-01 a C-03) en whatsapp-contracts.ts y mover las llamadas a features/whatsapp/api
-      if (relPath.includes("ConnectionTab.tsx")) {
+      // WhatsAppConnectionStatusPill lee GET /wa/status con el mismo servicio (C-01).
+      if (relPath.includes("ConnectionTab.tsx") || relPath.includes("WhatsAppConnectionStatusPill.tsx")) {
         return false;
       }
 

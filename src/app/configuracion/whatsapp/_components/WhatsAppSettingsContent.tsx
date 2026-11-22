@@ -5,8 +5,8 @@ import { resolveWhatsAppAccess } from "@/features/whatsapp/utils/whatsapp-access
 import {
   WhatsAppPageFrame,
   WhatsAppPageHeader,
-  WhatsAppPendingStatusPill,
 } from "./WhatsAppPageLayout";
+import { WhatsAppConnectionStatusPill } from "./WhatsAppConnectionStatusPill";
 import { WhatsAppTabs } from "./WhatsAppTabs";
 
 export function WhatsAppSettingsContent() {
@@ -19,7 +19,7 @@ export function WhatsAppSettingsContent() {
 
   return (
     <WhatsAppPageFrame>
-      <WhatsAppPageHeader status={<WhatsAppPendingStatusPill />} />
+      <WhatsAppPageHeader status={<WhatsAppConnectionStatusPill />} />
       <WhatsAppTabs access={access} businessName={businessName} />
     </WhatsAppPageFrame>
   );
