@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { listWhatsAppTemplates } from "@/features/whatsapp/api/templates.api";
@@ -93,6 +93,7 @@ function normalizeAccount(raw: any) {
 export function ConnectionTab({ canManage }: ConnectionTabProps) {
   const { auth, selectedStoreId } = useAuth();
   const token = auth?.accessToken || "";
+  const queryClient = useQueryClient();
   const storesSource = auth?.company?.stores;
 
   const stores = useMemo(
@@ -172,6 +173,12 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
     }
   };
 
+  /** Recarga la tienda y también la insignia del encabezado tras un cambio en la conexión. */
+  const reloadAfterChange = async () => {
+    await loadConnectionData();
+    await queryClient.invalidateQueries({ queryKey: ["whatsapp", "status"] });
+  };
+
   useEffect(() => {
     loadConnectionData();
   }, [activeStoreId, token]);
@@ -182,19 +189,19 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       const accountData = accountState.kind === "ready" ? accountState.data : null;
       if (!accountData?.id) return;
       await refreshWhatsAppAccount(token, accountData.id);
-      await loadConnectionData();
+      await reloadAfterChange();
     },
     disconnect: async () => {
       const accountData = accountState.kind === "ready" ? accountState.data : null;
       if (!accountData?.id) return;
       await disconnectWhatsAppAccount(token, accountData.id);
-      await loadConnectionData();
+      await reloadAfterChange();
     },
     changeType: async (newType: string) => {
       const accountData = accountState.kind === "ready" ? accountState.data : null;
       if (!accountData?.id) return;
       await updateWhatsAppAccount(token, accountData.id, newType);
-      await loadConnectionData();
+      await reloadAfterChange();
     },
     sendTest: async ({
       phone,
@@ -250,7 +257,7 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
         accessToken: LOCAL_TEST_WABA.accessToken,
         businessPhoneNumber: LOCAL_TEST_WABA.businessPhoneNumber,
       });
-      await loadConnectionData();
+      await reloadAfterChange();
     },
   };
 
