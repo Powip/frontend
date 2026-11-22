@@ -2,6 +2,7 @@
 
 import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/orders/ExternalOrderNumberColumn";
 import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
+import { WhatsAppLastNoticeIndicator } from "@/components/whatsapp/WhatsAppLastNoticeIndicator";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -408,11 +409,12 @@ export function PreparadosTab({
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="h-7 w-7 text-green-600 hover:text-green-700"
+                      className="relative h-7 w-7 text-green-600 hover:text-green-700"
                       title="WhatsApp"
                       onClick={() => actions.onWhatsApp(sale)}
                     >
                       <WhatsAppIcon className="h-3.5 w-3.5" />
+                      <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} />
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

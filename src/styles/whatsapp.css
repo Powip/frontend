@@ -1,0 +1,124 @@
+:root {
+  --wa-surface: #ffffff;
+  --wa-surface-2: #f9fafb;
+  --wa-border: #e5e7eb;
+  --wa-border-strong: #d1d5db;
+  --wa-fg: #1a1d23;
+  --wa-muted: #6b7280;
+  --wa-muted-2: #9ca3af;
+  --wa-primary: #7c3aed;
+  --wa-primary-hover: #6d28d9;
+  --wa-primary-soft: #f3eeff;
+  --wa-primary-fg: #ffffff;
+  --wa-teal: #027778;
+  --wa-teal-soft: #e6f4f4;
+  --wa-whatsapp: #25d366;
+  --wa-whatsapp-dark: #128c4a;
+  --wa-whatsapp-soft: #e7f8ee;
+  --wa-green: #059669;
+  --wa-green-soft: #d1fae5;
+  --wa-amber: #b45309;
+  --wa-amber-soft: #fef3c7;
+  --wa-red: #dc2626;
+  --wa-red-soft: #fee2e2;
+  --wa-blue: #2563eb;
+  --wa-blue-soft: #dbeafe;
+  --wa-tick: #8696a0;
+  --wa-tick-read: #53bdeb;
+  --wa-chat-bg: #efe7dd;
+  --wa-bubble: #ffffff;
+  --wa-bubble-fg: #111b21;
+  --wa-chat-head: #008069;
+  --wa-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.06);
+}
+
+.dark {
+  --wa-surface: #171a21;
+  --wa-surface-2: #1c2028;
+  --wa-border: #2a2f3a;
+  --wa-border-strong: #3a404c;
+  --wa-fg: #e8eaed;
+  --wa-muted: #9aa1ad;
+  --wa-muted-2: #6b7280;
+  --wa-primary: #a78bfa;
+  --wa-primary-hover: #c4b5fd;
+  --wa-primary-soft: #271e40;
+  --wa-primary-fg: #14101f;
+  --wa-teal: #2bb3b4;
+  --wa-teal-soft: #10302f;
+  --wa-whatsapp: #25d366;
+  --wa-whatsapp-dark: #3ddc84;
+  --wa-whatsapp-soft: #11291b;
+  --wa-green: #34d399;
+  --wa-green-soft: #0f2e24;
+  --wa-amber: #fbbf24;
+  --wa-amber-soft: #33270c;
+  --wa-red: #f87171;
+  --wa-red-soft: #3a1616;
+  --wa-blue: #60a5fa;
+  --wa-blue-soft: #172a46;
+  --wa-tick: #8696a0;
+  --wa-tick-read: #53bdeb;
+  --wa-chat-bg: #0b141a;
+  --wa-bubble: #202c33;
+  --wa-bubble-fg: #e9edef;
+  --wa-chat-head: #202c33;
+  --wa-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+@theme inline {
+  --color-wa-surface: var(--wa-surface);
+  --color-wa-surface-2: var(--wa-surface-2);
+  --color-wa-border: var(--wa-border);
+  --color-wa-border-strong: var(--wa-border-strong);
+  --color-wa-fg: var(--wa-fg);
+  --color-wa-muted: var(--wa-muted);
+  --color-wa-muted-2: var(--wa-muted-2);
+  --color-wa-primary: var(--wa-primary);
+  --color-wa-primary-hover: var(--wa-primary-hover);
+  --color-wa-primary-soft: var(--wa-primary-soft);
+  --color-wa-primary-fg: var(--wa-primary-fg);
+  --color-wa-teal: var(--wa-teal);
+  --color-wa-teal-soft: var(--wa-teal-soft);
+  --color-wa-whatsapp: var(--wa-whatsapp);
+  --color-wa-whatsapp-dark: var(--wa-whatsapp-dark);
+  --color-wa-whatsapp-soft: var(--wa-whatsapp-soft);
+  --color-wa-green: var(--wa-green);
+  --color-wa-green-soft: var(--wa-green-soft);
+  --color-wa-amber: var(--wa-amber);
+  --color-wa-amber-soft: var(--wa-amber-soft);
+  --color-wa-red: var(--wa-red);
+  --color-wa-red-soft: var(--wa-red-soft);
+  --color-wa-blue: var(--wa-blue);
+  --color-wa-blue-soft: var(--wa-blue-soft);
+  --color-wa-tick: var(--wa-tick);
+  --color-wa-tick-read: var(--wa-tick-read);
+  --color-wa-chat-bg: var(--wa-chat-bg);
+  --color-wa-bubble: var(--wa-bubble);
+  --color-wa-bubble-fg: var(--wa-bubble-fg);
+  --color-wa-chat-head: var(--wa-chat-head);
+  --shadow-wa: var(--wa-shadow);
+  --font-wa-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+@layer base {
+  .wa-ui {
+    color: var(--wa-fg);
+    font-family: var(--font-poppins), ui-sans-serif, system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .wa-ui :is(h1, h2, h3, h4, h5, h6) {
+    font-family: inherit;
+  }
+
+  .wa-ui :focus-visible {
+    outline: 2px solid var(--wa-primary);
+    outline-offset: 2px;
+  }
+
+  .wa-ui .wa-num {
+    font-variant-numeric: tabular-nums;
+  }
+}

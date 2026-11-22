@@ -2,6 +2,7 @@
 
 import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/orders/ExternalOrderNumberColumn";
 import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
+import { WhatsAppLastNoticeIndicator } from "@/components/whatsapp/WhatsAppLastNoticeIndicator";
 import { useState } from "react";
 import { CheckCircle2, Copy, Eye, FileSpreadsheet, Loader2, MoreVertical, PackageCheck, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -382,8 +383,9 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
                       <div className="flex items-center justify-end gap-1">
                         {renderRowAction(sale)}
                         <OrderDetailButton orderId={sale.id} orderNumber={sale.orderNumber} />
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:text-green-700" title="WhatsApp" onClick={() => actions.onWhatsApp(sale)}>
+                        <Button size="icon" variant="ghost" className="relative h-7 w-7 text-green-600 hover:text-green-700" title="WhatsApp" onClick={() => actions.onWhatsApp(sale)}>
                           <WhatsAppIcon className="h-3.5 w-3.5" />
+                          <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} />
                         </Button>
                         {isCamino && sale.status === "EN_ENVIO" && canChangeStatus && (
                           <DropdownMenu>
