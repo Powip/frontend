@@ -202,10 +202,10 @@ export function useSendTemplate(conversationId: string) {
 }
 
 /** Conteos de los indicadores. Se refresca con el SSE y cada 60 s. */
-export function useInboxSummary() {
+export function useInboxSummary(storeId?: string) {
   return useQuery({
-    queryKey: crmKeys.summary,
-    queryFn: getInboxSummary,
+    queryKey: [...crmKeys.summary, storeId ?? "all"],
+    queryFn: () => getInboxSummary(storeId),
     retry: false,
     refetchInterval: 60_000,
   });

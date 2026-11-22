@@ -23,11 +23,16 @@ const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 interface Props {
   active: InboxIndicator | null;
   onChange: (next: InboxIndicator | null) => void;
+  /** Tienda elegida; sin valor = todas. */
+  storeId?: string;
 }
 
+const money = (v: number) =>
+  `S/ ${v.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
 /** Franja de indicadores sobre la Bandeja. Cada uno filtra la lista; otro clic lo quita. */
-export default function InboxIndicators({ active, onChange }: Props) {
-  const q = useInboxSummary();
+export default function InboxIndicators({ active, onChange, storeId }: Props) {
+  const q = useInboxSummary(storeId);
   const d: Partial<InboxSummary> | undefined = q.data;
   if (!d) return null;
 
@@ -52,19 +57,40 @@ export default function InboxIndicators({ active, onChange }: Props) {
     { key: "thinking", label: "Lo están pensando", count: n(d.thinking), tone: "text-sky-700 dark:text-sky-400" },
   ];
   const allZero = items.every((i) => i.count === 0);
+  // Cobros de los POWIP Link del chat; solo se muestra si el servidor los envía.
+  const hasSales = typeof d.pendingLinks === "number" || typeof d.collectedToday === "number";
+  const sales = hasSales ? (
+    <p
+      aria-label="Cobros del chat"
+      className="flex flex-wrap gap-x-4 gap-y-1 rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground"
+    >
+      <span>
+        POWIP Links por cobrar:{" "}
+        <strong className="text-foreground">{n(d.pendingLinks)}</strong>
+        {n(d.pendingLinksAmount) > 0 && ` · ${money(n(d.pendingLinksAmount))}`}
+      </span>
+      <span>
+        Cobrado hoy: <strong className="text-foreground">{money(n(d.collectedToday))}</strong>
+      </span>
+    </p>
+  ) : null;
 
   if (allZero && !active) {
     return (
-      <p
-        role="status"
-        className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400"
-      >
-        <CheckCircle2 className="h-4 w-4" aria-hidden /> Todo al día
-      </p>
+      <div className="space-y-2">
+        <p
+          role="status"
+          className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400"
+        >
+          <CheckCircle2 className="h-4 w-4" aria-hidden /> Todo al día
+        </p>
+        {sales}
+      </div>
     );
   }
 
   return (
+    <div className="space-y-2">
     <div role="group" aria-label="Indicadores de la bandeja" className="grid grid-cols-2 gap-2 md:grid-cols-5">
       {items.map((i) => (
         <button
@@ -85,6 +111,8 @@ export default function InboxIndicators({ active, onChange }: Props) {
           {i.hint && <span className="ml-2 text-[11px] text-muted-foreground">{i.hint}</span>}
         </button>
       ))}
+    </div>
+    {sales}
     </div>
   );
 }

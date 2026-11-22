@@ -17,6 +17,15 @@ jest.mock("@/lib/axiosAuth", () => ({
   default: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() },
 }));
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
+jest.mock("@/hooks/useCrmMe", () => ({
+  useCrmMe: () => ({
+    level: "admin",
+    isAdmin: true,
+    isSupervisor: true,
+    stores: [{ id: "st1", name: "Tienda Centro" }],
+    fromServer: true,
+  }),
+}));
 jest.mock("@/services/crmService", () => ({
   ...jest.requireActual("@/services/crmService"),
   listPipelines: jest.fn(),
@@ -112,14 +121,14 @@ describe("Embudo", () => {
     expect(card.getByLabelText("2 sin leer")).toBeInTheDocument();
     expect(card.getByText(/Jairo/)).toBeInTheDocument();
     expect(card.getByLabelText("1 conversaciones")).toBeInTheDocument();
-    expect(s.getBoard).toHaveBeenCalledWith("p1", "all");
+    expect(s.getBoard).toHaveBeenCalledWith("p1", "all", undefined);
   });
 
   it("el filtro Mías vuelve a pedir el tablero con assigned=me", async () => {
     setup();
     await screen.findByText("Ana Pérez");
     fireEvent.click(screen.getByRole("button", { name: "Mías" }));
-    await waitFor(() => expect(s.getBoard).toHaveBeenCalledWith("p1", "me"));
+    await waitFor(() => expect(s.getBoard).toHaveBeenCalledWith("p1", "me", undefined));
   });
 
   it("clic en la tarjeta abre la conversación en la Bandeja", async () => {

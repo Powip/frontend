@@ -65,6 +65,8 @@ interface Props {
   /** Indicador activo (filtro de la franja de la Bandeja). */
   indicator?: InboxIndicator | null;
   onIndicatorChange?: (next: InboxIndicator | null) => void;
+  /** Tienda elegida en la Bandeja; sin valor = todas. */
+  storeId?: string;
 }
 
 export default function ConversationList({
@@ -72,6 +74,7 @@ export default function ConversationList({
   onSelect,
   indicator = null,
   onIndicatorChange,
+  storeId,
 }: Props) {
   const [status, setStatus] = useState<ConversationStatus>("open");
   const [assigned, setAssigned] = useState<AssignedFilter>("all");
@@ -96,6 +99,7 @@ export default function ConversationList({
     assigned: effAssigned,
     search,
     ...(channel === "all" ? {} : { channel }),
+    ...(storeId ? { storeId } : {}),
   });
 
   const items = data?.items ?? [];

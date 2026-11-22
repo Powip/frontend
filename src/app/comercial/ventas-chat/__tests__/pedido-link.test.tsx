@@ -26,8 +26,20 @@ jest.mock("@/contexts/AuthContext", () => ({
     selectedStoreId: "st1",
   }),
 }));
+jest.mock("@/hooks/useCrmMe", () => ({
+  useCrmMe: () => ({
+    level: "admin",
+    isAdmin: true,
+    isSupervisor: true,
+    stores: [{ id: "st1", name: "Tienda Centro" }],
+    fromServer: true,
+  }),
+}));
 jest.mock("@/services/crmService", () => ({
   ...jest.requireActual("@/services/crmService"),
+  getCrmSalesInventories: jest.fn(),
+  getCrmSalesCatalog: jest.fn(),
+  createChatQuote: jest.fn(),
   listConversationQuotes: jest.fn(),
   linkConversationQuote: jest.fn(),
   listConversationOrders: jest.fn(),
@@ -35,10 +47,7 @@ jest.mock("@/services/crmService", () => ({
 }));
 jest.mock("@/services/quotationService", () => ({
   ...jest.requireActual("@/services/quotationService"),
-  createQuotation: jest.fn(),
   getQuotation: jest.fn(),
-  getQuotationCatalog: jest.fn(),
-  getQuotationInventories: jest.fn(),
 }));
 const c = crm as jest.Mocked<typeof crm>;
 const q = qs as jest.Mocked<typeof qs>;
@@ -114,8 +123,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   c.listConversationQuotes.mockResolvedValue([]);
   c.listConversationOrders.mockResolvedValue([]);
-  q.getQuotationInventories.mockResolvedValue([{ id: "inv1", name: "Almacén 1", isActive: true }]);
-  q.getQuotationCatalog.mockResolvedValue(CATALOG);
+  c.getCrmSalesInventories.mockResolvedValue([{ id: "inv1", name: "Almacén 1", isActive: true }]);
+  c.getCrmSalesCatalog.mockResolvedValue(CATALOG);
 });
 
 describe("Armar pedido (POWIP Link)", () => {
@@ -130,12 +139,13 @@ describe("Armar pedido (POWIP Link)", () => {
   }
 
   it("elige almacén solo, busca, cambia cantidad, guarda y deja el enlace sin enviar", async () => {
-    q.createQuotation.mockResolvedValue(quotation());
-    c.linkConversationQuote.mockResolvedValue(link("l1", "q1"));
+    c.createChatQuote.mockResolvedValue(
+      link("l1", "q1", { quotationNumber: "COT-0001", publicUrl: "https://app.powip.test/c/tok" }),
+    );
     const { onInsertMessage } = setup();
     await openAndAdd();
 
-    expect(q.getQuotationCatalog).toHaveBeenCalledWith(
+    expect(c.getCrmSalesCatalog).toHaveBeenCalledWith(
       expect.objectContaining({ storeId: "st1", inventoryId: "inv1", page: 1, limit: 30 }),
       expect.anything(),
     );
@@ -144,10 +154,11 @@ describe("Armar pedido (POWIP Link)", () => {
     expect(screen.getByTestId("armar-total")).toHaveTextContent("S/100.00");
 
     fireEvent.click(screen.getByRole("button", { name: /Crear POWIP Link/ }));
-    await waitFor(() => expect(c.linkConversationQuote).toHaveBeenCalled());
+    await waitFor(() => expect(c.createChatQuote).toHaveBeenCalled());
 
-    expect(q.createQuotation).toHaveBeenCalledTimes(1);
-    expect(q.createQuotation).toHaveBeenCalledWith({
+    expect(c.createChatQuote).toHaveBeenCalledTimes(1);
+    expect(c.linkConversationQuote).not.toHaveBeenCalled();
+    expect(c.createChatQuote).toHaveBeenCalledWith("c1", {
       storeId: "st1",
       inventoryId: "inv1",
       customerName: "Ana Pérez",
@@ -155,7 +166,6 @@ describe("Armar pedido (POWIP Link)", () => {
       paymentType: "COMPLETO",
       suggestedDeposit: undefined,
       validityHours: 24,
-      internalNote: "Armado desde el chat de ventas",
       lines: [
         {
           productVariantId: "v1",
@@ -171,11 +181,6 @@ describe("Armar pedido (POWIP Link)", () => {
         },
       ],
     });
-    expect(c.linkConversationQuote).toHaveBeenCalledWith("c1", {
-      quotationId: "q1",
-      quotationNumber: "COT-0001",
-      publicUrl: "https://app.powip.test/c/tok",
-    });
     expect(onInsertMessage).toHaveBeenCalledWith(quoteMessage("https://app.powip.test/c/tok"));
     expect(onInsertMessage.mock.calls[0][0]).toBe(
       "Te dejo tu pedido para confirmar y pagar: https://app.powip.test/c/tok",
@@ -184,21 +189,20 @@ describe("Armar pedido (POWIP Link)", () => {
   });
 
   it("adelanto sin monto sugiere el 30 % del total", async () => {
-    q.createQuotation.mockResolvedValue(quotation({ paymentType: "ADELANTO" }));
-    c.linkConversationQuote.mockResolvedValue(link("l1", "q1"));
+    c.createChatQuote.mockResolvedValue(link("l1", "q1"));
     setup();
     await openAndAdd();
     fireEvent.change(screen.getByLabelText("Tipo de pago"), { target: { value: "ADELANTO" } });
     fireEvent.click(screen.getByRole("button", { name: /Crear POWIP Link/ }));
-    await waitFor(() => expect(q.createQuotation).toHaveBeenCalled());
-    expect(q.createQuotation.mock.calls[0][0]).toMatchObject({
+    await waitFor(() => expect(c.createChatQuote).toHaveBeenCalled());
+    expect(c.createChatQuote.mock.calls[0][1]).toMatchObject({
       paymentType: "ADELANTO",
       suggestedDeposit: 15,
     });
   });
 
   it("un error de Core se muestra y no pierde el carrito ni vincula", async () => {
-    q.createQuotation.mockRejectedValue({
+    c.createChatQuote.mockRejectedValue({
       isAxiosError: true,
       response: { data: { message: "Sin stock suficiente de Polo básico" } },
     });
@@ -212,18 +216,32 @@ describe("Armar pedido (POWIP Link)", () => {
   });
 
   it("si falla el vínculo reintenta solo el vínculo, sin crear otra cotización", async () => {
-    q.createQuotation.mockResolvedValue(quotation());
-    c.linkConversationQuote
-      .mockRejectedValueOnce(new Error("ms-crm caído"))
-      .mockResolvedValueOnce(link("l1", "q1"));
+    c.createChatQuote.mockRejectedValueOnce({
+      isAxiosError: true,
+      response: {
+        data: {
+          code: "QUOTE_CREATED_NOT_LINKED",
+          message: "ms-crm caído",
+          quotationId: "q1",
+          quotationNumber: "COT-0001",
+          publicUrl: "https://app.powip.test/c/tok",
+        },
+      },
+    });
+    c.linkConversationQuote.mockResolvedValueOnce(link("l1", "q1"));
     const { onInsertMessage } = setup();
     await openAndAdd();
     fireEvent.click(screen.getByRole("button", { name: /Crear POWIP Link/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent("COT-0001 se creó");
     fireEvent.click(screen.getByRole("button", { name: /Crear POWIP Link/ }));
     await waitFor(() => expect(onInsertMessage).toHaveBeenCalled());
-    expect(q.createQuotation).toHaveBeenCalledTimes(1);
-    expect(c.linkConversationQuote).toHaveBeenCalledTimes(2);
+    expect(c.createChatQuote).toHaveBeenCalledTimes(1);
+    expect(c.linkConversationQuote).toHaveBeenCalledTimes(1);
+    expect(c.linkConversationQuote).toHaveBeenCalledWith("c1", {
+      quotationId: "q1",
+      quotationNumber: "COT-0001",
+      publicUrl: "https://app.powip.test/c/tok",
+    });
   });
 });
 

@@ -15,18 +15,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { crmKeys } from "@/lib/crmSse";
-import { linkConversationQuote } from "@/services/crmService";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import {
-  createQuotation,
-  getQuotationCatalog,
-  getQuotationInventories,
-} from "@/services/quotationService";
+  createChatQuote,
+  getCrmSalesCatalog,
+  getCrmSalesInventories,
+  linkConversationQuote,
+} from "@/services/crmService";
 import { errorMessage, money } from "@/components/quotations/quotationHelpers";
 import type { Client } from "@/interfaces/ICliente";
-import type { Conversation } from "@/types/crm";
+import type { Conversation, CreateChatQuoteInput } from "@/types/crm";
 import type {
-  CreateQuotationInput,
-  Quotation,
   QuotationAddress,
   QuotationCatalogItem,
   QuotationInventory,
@@ -80,9 +79,29 @@ function addressFromClient(client: Client): QuotationAddress | null {
     : null;
 }
 
+/** Cotización ya creada en Core cuyo vínculo con el chat falló. */
+interface CreatedQuote {
+  quotationId: string;
+  quotationNumber: string;
+  publicUrl: string;
+}
+
+/** Lee la cotización creada que el CRM devuelve en `QUOTE_CREATED_NOT_LINKED`. */
+function createdFromError(e: unknown): CreatedQuote | null {
+  const data = (e as { response?: { data?: Record<string, unknown> } })?.response?.data;
+  if (!data || data.code !== "QUOTE_CREATED_NOT_LINKED") return null;
+  const { quotationId, quotationNumber, publicUrl } = data;
+  return typeof quotationId === "string" &&
+    typeof quotationNumber === "string" &&
+    typeof publicUrl === "string"
+    ? { quotationId, quotationNumber, publicUrl }
+    : null;
+}
+
 /**
- * Armar pedido desde el chat: crea una cotización de Core (con enlace público
- * `/c/<token>`), la vincula a la conversación y deja el enlace en la caja.
+ * Armar pedido desde el chat: el servidor del CRM crea la cotización de Core
+ * (con enlace público `/c/<token>`) y la vincula a la conversación; aquí solo
+ * se deja el enlace en la caja.
  */
 export default function ArmarPedidoDialog({
   conversation,
@@ -92,14 +111,21 @@ export default function ArmarPedidoDialog({
 }: Props) {
   const { auth, selectedStoreId } = useAuth();
   const qc = useQueryClient();
-  const stores = auth?.company?.stores ?? [];
+  // Tiendas del servidor del CRM (`GET /crm/me`); mientras no responde, las de la sesión.
+  const { stores: crmStores } = useCrmMe();
+  const stores = crmStores.length > 0 ? crmStores : (auth?.company?.stores ?? []);
   const phone = phoneForCustomer(conversation);
 
-  const [storeId, setStoreId] = useState(
-    stores.some((s) => s.id === selectedStoreId)
-      ? (selectedStoreId as string)
-      : (stores[0]?.id ?? ""),
-  );
+  // La tienda elegida a mano manda; si no, la del canal del chat y luego la
+  // tienda activa del usuario. Se deriva porque las tiendas llegan después.
+  const [storeChoice, setStoreId] = useState("");
+  const storeId = stores.some((s) => s.id === storeChoice)
+    ? storeChoice
+    : stores.some((s) => s.id === conversation.storeId)
+      ? (conversation.storeId as string)
+      : stores.some((s) => s.id === selectedStoreId)
+        ? (selectedStoreId as string)
+        : (stores[0]?.id ?? "");
   const [inventories, setInventories] = useState<QuotationInventory[]>([]);
   const [inventoryId, setInventoryId] = useState("");
   const [inventoryLoading, setInventoryLoading] = useState(false);
@@ -115,7 +141,7 @@ export default function ArmarPedidoDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   // Si la cotización se creó pero falló el vínculo, el reintento solo repite el vínculo.
-  const created = useRef<Quotation | null>(null);
+  const created = useRef<CreatedQuote | null>(null);
 
   const total = cart.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
   const stockIssue = cart.some((l) => l.quantity > l.stock);
@@ -126,7 +152,7 @@ export default function ArmarPedidoDialog({
     let active = true;
     setInventoryLoading(true);
     setInventoryError("");
-    getQuotationInventories(storeId, controller.signal)
+    getCrmSalesInventories(storeId, controller.signal)
       .then((items) => {
         if (!active) return;
         const available = items.filter((i) => i.isActive);
@@ -160,7 +186,7 @@ export default function ArmarPedidoDialog({
     let active = true;
     const timer = setTimeout(() => {
       setCatalogLoading(true);
-      getQuotationCatalog(
+      getCrmSalesCatalog(
         { storeId, inventoryId, search: query, page: 1, limit: 30 },
         controller.signal,
       )
@@ -229,7 +255,7 @@ export default function ArmarPedidoDialog({
       return setError("El adelanto no puede ser mayor al total.");
 
     const clientAddress = client ? addressFromClient(client) : null;
-    const payload: CreateQuotationInput = {
+    const payload: CreateChatQuoteInput = {
       storeId,
       inventoryId,
       customerName: name.trim(),
@@ -239,7 +265,6 @@ export default function ArmarPedidoDialog({
       paymentType,
       suggestedDeposit: paymentType === "ADELANTO" ? suggestedDeposit : undefined,
       validityHours: 24,
-      internalNote: "Armado desde el chat de ventas",
       lines: cart.map((l) => ({
         productVariantId: l.productVariantId,
         sku: l.sku || undefined,
@@ -250,28 +275,37 @@ export default function ArmarPedidoDialog({
         isManual: false,
         isPack: false,
         isGift: false,
-        imageUrl: l.imageUrl,
+        // El servidor solo acepta URL http(s); sin imagen se omite.
+        ...(l.imageUrl && /^https?:\/\//i.test(l.imageUrl) ? { imageUrl: l.imageUrl } : {}),
       })),
     };
 
     setSaving(true);
     try {
-      if (!created.current) created.current = await createQuotation(payload);
-      const quotation = created.current;
-      await linkConversationQuote(conversation.id, {
-        quotationId: quotation.id,
-        quotationNumber: quotation.number,
-        publicUrl: quotation.publicUrl,
-      });
+      let quote: CreatedQuote;
+      if (created.current) {
+        // La cotización ya existe en Core: solo se repite el vínculo.
+        quote = created.current;
+        await linkConversationQuote(conversation.id, quote);
+      } else {
+        const linked = await createChatQuote(conversation.id, payload);
+        quote = {
+          quotationId: linked.quotationId,
+          quotationNumber: linked.quotationNumber ?? "",
+          publicUrl: linked.publicUrl ?? "",
+        };
+      }
       void qc.invalidateQueries({ queryKey: crmKeys.quotes(conversation.id) });
       void qc.invalidateQueries({ queryKey: crmKeys.messages(conversation.id) });
-      onInsertMessage?.(quoteMessage(quotation.publicUrl));
-      toast.success(`POWIP Link ${quotation.number} listo. Revisa el mensaje y envíalo.`);
+      void qc.invalidateQueries({ queryKey: crmKeys.summary });
+      if (quote.publicUrl) onInsertMessage?.(quoteMessage(quote.publicUrl));
+      toast.success(`POWIP Link ${quote.quotationNumber} listo. Revisa el mensaje y envíalo.`);
       onClose();
     } catch (e) {
+      created.current = created.current ?? createdFromError(e);
       setError(
         created.current
-          ? `La cotización ${created.current.number} se creó, pero no se pudo vincular al chat: ${errorMessage(e, "intenta de nuevo")}. Pulsa de nuevo para reintentar.`
+          ? `La cotización ${created.current.quotationNumber} se creó, pero no se pudo vincular al chat: ${errorMessage(e, "intenta de nuevo")}. Pulsa de nuevo para reintentar.`
           : errorMessage(e, "No se pudo crear el pedido."),
       );
     } finally {

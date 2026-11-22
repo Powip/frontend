@@ -6,8 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/contexts/AuthContext";
-import { hasAdminAccess } from "@/config/permissions.config";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import { crmError } from "@/services/crmService";
 import {
   usePauProviderActions,
@@ -386,8 +385,7 @@ function KnowledgeSection() {
 
 /** Pestaña Pau: agente de ventas con IA de cada negocio. */
 export default function PauView() {
-  const { auth } = useAuth();
-  const isAdmin = hasAdminAccess(auth?.user.role);
+  const { isAdmin } = useCrmMe();
   return (
     <div className="mx-auto max-w-4xl space-y-4">
       <ModeSection isAdmin={isAdmin} />

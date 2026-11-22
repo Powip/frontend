@@ -58,6 +58,7 @@ const KNOWN = new Set([
   "message.status",
   "conversation.updated",
   "order.linked",
+  "sale.updated",
   "task.updated",
   "task.deleted",
   "broadcast.updated",
@@ -77,6 +78,7 @@ export const crmKeys = {
   all: ["crm"] as const,
   conversations: ["crm", "conversations"] as const,
   summary: ["crm", "inbox-summary"] as const,
+  me: ["crm", "me"] as const,
   tags: ["crm", "tags"] as const,
   followups: ["crm", "followups"] as const,
   conversationFollowups: (id: string) => ["crm", "followups", id] as const,
@@ -85,8 +87,8 @@ export const crmKeys = {
   orders: (id: string) => ["crm", "orders", id] as const,
   quotes: (id: string) => ["crm", "quotes", id] as const,
   pipelines: ["crm", "pipelines"] as const,
-  board: (pipelineId: string, assigned: string) =>
-    ["crm", "board", pipelineId, assigned] as const,
+  board: (pipelineId: string, assigned: string, storeId?: string) =>
+    ["crm", "board", pipelineId, assigned, storeId ?? "all"] as const,
   boards: ["crm", "board"] as const,
   broadcasts: ["crm", "broadcasts"] as const,
   templates: ["crm", "templates"] as const,
@@ -199,6 +201,14 @@ export function applyCrmEvent(queryClient: QueryClient, event: CrmEvent): void {
       } else {
         queryClient.invalidateQueries({ queryKey: key });
       }
+      break;
+    }
+    case "sale.updated": {
+      // Core cambió una cotización o un pedido del chat (pago, verificación, estado).
+      const { conversationId } = event.data;
+      queryClient.invalidateQueries({ queryKey: crmKeys.quotes(conversationId) });
+      queryClient.invalidateQueries({ queryKey: crmKeys.orders(conversationId) });
+      queryClient.invalidateQueries({ queryKey: crmKeys.summary });
       break;
     }
   }

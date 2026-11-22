@@ -41,10 +41,10 @@ export function usePipelines() {
   });
 }
 
-export function useBoard(pipelineId: string | null, assigned: AssignedFilter) {
+export function useBoard(pipelineId: string | null, assigned: AssignedFilter, storeId?: string) {
   return useQuery({
-    queryKey: crmKeys.board(pipelineId ?? "", assigned),
-    queryFn: () => getBoard(pipelineId!, assigned),
+    queryKey: crmKeys.board(pipelineId ?? "", assigned, storeId),
+    queryFn: () => getBoard(pipelineId!, assigned, storeId),
     enabled: !!pipelineId,
     retry: false,
     placeholderData: (prev) => prev,
@@ -61,9 +61,13 @@ export interface MoveInput {
  * Mueve una tarjeta de etapa. Optimista: la tarjeta cambia de columna al
  * instante; si el servicio falla se restaura el tablero y se avisa con un toast.
  */
-export function useMoveCard(pipelineId: string | null, assigned: AssignedFilter) {
+export function useMoveCard(
+  pipelineId: string | null,
+  assigned: AssignedFilter,
+  storeId?: string,
+) {
   const qc = useQueryClient();
-  const key = crmKeys.board(pipelineId ?? "", assigned);
+  const key = crmKeys.board(pipelineId ?? "", assigned, storeId);
   return useMutation({
     mutationFn: ({ conversationId, stageId, lostReason }: MoveInput) =>
       updateConversation(conversationId, {

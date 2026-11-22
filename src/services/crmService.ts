@@ -24,6 +24,8 @@ import type {
   UpdateStageInput,
   UpdateTaskInput,
   ConversationListParams,
+  CreateChatQuoteInput,
+  CrmMe,
   ConversationOrder,
   LinkOrderInput,
   ConversationQuote,
@@ -42,6 +44,7 @@ import type {
   PauUsage,
   UpdateConversationInput,
 } from "@/types/crm";
+import type { QuotationCatalogItem, QuotationInventory } from "@/types/quotations";
 
 const BASE = `${API.crm}/crm`;
 const conv = (id: string) => `${BASE}/conversations/${encodeURIComponent(id)}`;
@@ -63,6 +66,7 @@ export async function listConversations(
   if (params.pauHelp) query.pauHelp = "true";
   if (params.thinking) query.thinking = "true";
   if (params.tag?.trim()) query.tag = params.tag.trim();
+  if (params.storeId) query.storeId = params.storeId;
   return (
     await axiosAuth.get<ConversationListResponse>(`${BASE}/conversations`, {
       params: query,
@@ -110,8 +114,65 @@ export async function sendConversationTemplate(
 }
 
 /** Conteos de los indicadores de la Bandeja. */
-export async function getInboxSummary(): Promise<InboxSummary> {
-  return (await axiosAuth.get<InboxSummary>(`${BASE}/inbox/summary`)).data;
+export async function getInboxSummary(storeId?: string): Promise<InboxSummary> {
+  return (
+    await axiosAuth.get<InboxSummary>(`${BASE}/inbox/summary`, {
+      params: storeId ? { storeId } : undefined,
+    })
+  ).data;
+}
+
+/** Nivel del usuario en el CRM y tiendas activas de su empresa. */
+export async function getCrmMe(): Promise<CrmMe> {
+  return (await axiosAuth.get<CrmMe>(`${BASE}/me`)).data;
+}
+
+/** Almacenes de la tienda (el CRM consulta a Core). */
+export async function getCrmSalesInventories(
+  storeId: string,
+  signal?: AbortSignal,
+): Promise<QuotationInventory[]> {
+  return (
+    await axiosAuth.get<QuotationInventory[]>(`${BASE}/sales/inventories`, {
+      params: { storeId },
+      ...(signal ? { signal } : {}),
+    })
+  ).data;
+}
+
+/** Productos con precio y stock del almacén elegido. */
+export async function getCrmSalesCatalog(
+  params: { storeId: string; inventoryId?: string; search?: string; page?: number; limit?: number },
+  signal?: AbortSignal,
+): Promise<QuotationCatalogItem[]> {
+  const query: Record<string, string | number> = { storeId: params.storeId };
+  if (params.inventoryId) query.inventoryId = params.inventoryId;
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.page) query.page = params.page;
+  if (params.limit) query.limit = params.limit;
+  return (
+    await axiosAuth.get<QuotationCatalogItem[]>(`${BASE}/sales/catalog`, {
+      params: query,
+      ...(signal ? { signal } : {}),
+    })
+  ).data;
+}
+
+/**
+ * Crea el POWIP Link en el servidor y lo vincula al chat. 502
+ * `QUOTE_CREATED_NOT_LINKED` trae `quotationId`, `quotationNumber` y
+ * `publicUrl`: se reintenta solo el vínculo con `linkConversationQuote`.
+ */
+export async function createChatQuote(
+  id: string,
+  input: CreateChatQuoteInput,
+): Promise<ConversationQuote> {
+  return (await axiosAuth.post<ConversationQuote>(`${conv(id)}/quotations`, input)).data;
+}
+
+/** Pide al servidor releer en Core las cotizaciones y pedidos del chat. */
+export async function refreshConversationSales(id: string): Promise<void> {
+  await axiosAuth.post(`${conv(id)}/sales/refresh`);
 }
 
 /** Etiquetas ya usadas por la empresa (para sugerir). */
@@ -217,9 +278,12 @@ export async function deleteStage(id: string): Promise<Pipeline> {
 export async function getBoard(
   pipelineId: string,
   assigned: AssignedFilter = "all",
+  storeId?: string,
 ): Promise<Board> {
   return (
-    await axiosAuth.get<Board>(`${pipe(pipelineId)}/board`, { params: { assigned } })
+    await axiosAuth.get<Board>(`${pipe(pipelineId)}/board`, {
+      params: storeId ? { assigned, storeId } : { assigned },
+    })
   ).data;
 }
 

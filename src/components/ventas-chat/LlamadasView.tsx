@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { hasAdminAccess } from "@/config/permissions.config";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import { telHref } from "@/lib/crmPhone";
 import { crmError } from "@/services/crmService";
 import { useCrmEvents } from "@/hooks/useCrmChat";
@@ -232,7 +232,7 @@ export default function LlamadasView() {
   const router = useRouter();
   const { auth } = useAuth();
   const meId = auth?.user?.id;
-  const isAdmin = hasAdminAccess(auth?.user?.role);
+  const { isAdmin } = useCrmMe();
   const live = useCrmEvents();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {

@@ -16,8 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { useAuth } from "@/contexts/AuthContext";
-import { hasAdminAccess } from "@/config/permissions.config";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import { useObjectionActions, useObjectionStats, useObjections } from "@/hooks/useCrmContent";
 import type { Objection, ObjectionStat } from "@/types/crmContent";
 import ConfirmDialog from "./ConfirmDialog";
@@ -88,8 +87,7 @@ function ObjectionForm({ objection, busy, onSave, onClose }: FormProps) {
 }
 
 function ObjecionesBody() {
-  const { auth } = useAuth();
-  const isAdmin = hasAdminAccess(auth?.user?.role);
+  const { isAdmin } = useCrmMe();
   const list = useObjections(isAdmin);
   const stats = useObjectionStats(STATS_DAYS, isAdmin);
   const actions = useObjectionActions();

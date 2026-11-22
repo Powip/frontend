@@ -1,8 +1,7 @@
 "use client";
 import type { ReactNode } from "react";
 import { Lock } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
-import { hasAdminAccess } from "@/config/permissions.config";
+import { useCrmMe } from "@/hooks/useCrmMe";
 
 export const ADMIN_ONLY_NOTICE = "Solo un administrador puede ver esta sección";
 
@@ -11,8 +10,8 @@ export const ADMIN_ONLY_NOTICE = "Solo un administrador puede ver esta sección"
  * hijos ni se montan, así que no se llama a ningún endpoint.
  */
 export default function EquipoAdminGate({ children }: { children: ReactNode }) {
-  const { auth } = useAuth();
-  if (!hasAdminAccess(auth?.user.role)) {
+  const { isAdmin } = useCrmMe();
+  if (!isAdmin) {
     return (
       <div
         role="status"

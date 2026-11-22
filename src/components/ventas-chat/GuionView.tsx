@@ -1,6 +1,5 @@
 "use client";
-import { useAuth } from "@/contexts/AuthContext";
-import { hasAdminAccess } from "@/config/permissions.config";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import { useGeneralMaterials, useScript } from "@/hooks/useCrmContent";
 import ContentAdminGate from "./ContentAdminGate";
 import { ContentError, ContentLoading } from "./ContentStatus";
@@ -10,8 +9,7 @@ import GuionReads from "./GuionReads";
 import GuionSheetsManager from "./GuionSheetsManager";
 
 function GuionBody() {
-  const { auth } = useAuth();
-  const isAdmin = hasAdminAccess(auth?.user?.role);
+  const { isAdmin } = useCrmMe();
   const script = useScript(isAdmin);
   const general = useGeneralMaterials(isAdmin);
 

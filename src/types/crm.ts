@@ -52,6 +52,24 @@ export interface Conversation {
   resumeNote: string | null;
   /** Etiquetas del chat (máx. 10, cada una ≤ 30 caracteres). */
   tags: string[];
+  /** Tienda del canal por el que entró el chat (null = canal sin tienda). */
+  storeId?: string | null;
+}
+
+/** Nivel del usuario en el CRM; lo decide el servidor (`GET /crm/me`). */
+export type CrmLevel = "admin" | "supervisor" | "agent";
+
+export interface CrmStore {
+  id: string;
+  name: string;
+}
+
+export interface CrmMe {
+  userId: string;
+  email: string | null;
+  companyId: string;
+  level: CrmLevel;
+  stores: CrmStore[];
 }
 
 export interface Message {
@@ -82,6 +100,8 @@ export interface ConversationListParams {
   pauHelp?: boolean;
   thinking?: boolean;
   tag?: string;
+  /** Sin valor = todas las tiendas. */
+  storeId?: string;
   page?: number;
   limit?: number;
 }
@@ -96,6 +116,11 @@ export interface InboxSummary {
   unassigned: number;
   pauHelp: number;
   thinking: number;
+  /** POWIP Links sin pagar y su monto. */
+  pendingLinks?: number;
+  pendingLinksAmount?: number;
+  /** Cobrado hoy en pedidos nacidos del chat. */
+  collectedToday?: number;
 }
 
 export interface SendTemplateInput {
@@ -169,6 +194,46 @@ export interface ConversationQuote {
   publicUrl: string | null;
   createdByName: string | null;
   createdAt: string;
+  /** Estado que el servidor mantiene con los eventos de Core. */
+  storeId?: string | null;
+  status?: string | null;
+  total?: number | null;
+  paidAmount?: number | null;
+  orderId?: string | null;
+  verifiedAt?: string | null;
+}
+
+export interface ChatQuoteLineInput {
+  productVariantId?: string;
+  sku?: string;
+  name: string;
+  variant?: string;
+  quantity: number;
+  unitPrice: number;
+  isManual?: boolean;
+  isPack?: boolean;
+  isGift?: boolean;
+  imageUrl?: string;
+}
+
+/** Pedido armado en el chat; el servidor del CRM crea la cotización en Core. */
+export interface CreateChatQuoteInput {
+  storeId: string;
+  inventoryId?: string;
+  customerName: string;
+  customerPhone: string;
+  address?: {
+    address: string;
+    district: string;
+    department?: string;
+    province?: string;
+    reference?: string;
+    documentNumber?: string;
+  };
+  paymentType?: "COMPLETO" | "ADELANTO";
+  suggestedDeposit?: number;
+  validityHours?: number;
+  lines: ChatQuoteLineInput[];
 }
 
 export interface LinkQuoteInput {
@@ -287,6 +352,7 @@ export type CrmEvent =
       type: "order.linked";
       data: { conversationId: string; order: ConversationOrder };
     }
+  | { type: "sale.updated"; data: { conversationId: string } }
   | { type: "task.updated"; data: { task: Task } }
   | { type: "task.deleted"; data: { id: string } }
   | { type: "broadcast.updated"; data: { broadcast: Broadcast } };

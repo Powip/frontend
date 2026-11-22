@@ -3,14 +3,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
-import { useAuth } from "@/contexts/AuthContext";
-import { hasAdminAccess } from "@/config/permissions.config";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import { VENTAS_CHAT_TABS } from "./tabs";
 
 export default function VentasChatLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const { auth } = useAuth();
-  const isAdmin = hasAdminAccess(auth?.user?.role);
+  const { isAdmin } = useCrmMe();
   const tabs = VENTAS_CHAT_TABS.filter((t) => !t.adminOnly || isAdmin);
   return (
     <div className="space-y-4 p-4 md:p-6">

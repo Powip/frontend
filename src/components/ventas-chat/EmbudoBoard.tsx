@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { crmError } from "@/services/crmService";
 import { useCrmEvents } from "@/hooks/useCrmChat";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import { useBoard, useMoveCard, usePipelines } from "@/hooks/useCrmPlanning";
 import type { AssignedFilter, BoardColumn, Conversation, Stage } from "@/types/crm";
 import { CRM_UNREACHABLE } from "./ConversationList";
@@ -173,6 +174,9 @@ export default function EmbudoBoard() {
   const pipelinesQuery = usePipelines();
   const [pipelineId, setPipelineId] = useState<string | null>(null);
   const [assigned, setAssigned] = useState<AssignedFilter>("all");
+  const { stores } = useCrmMe();
+  const [storeChoice, setStoreChoice] = useState("");
+  const storeId = stores.some((s) => s.id === storeChoice) ? storeChoice : undefined;
   const [editing, setEditing] = useState(false);
   const [lostMove, setLostMove] = useState<{ conversation: Conversation; stage: Stage } | null>(
     null,
@@ -183,8 +187,8 @@ export default function EmbudoBoard() {
     pipelines?.find((p) => p.id === pipelineId) ??
     pipelines?.find((p) => p.isDefault) ??
     pipelines?.[0];
-  const boardQuery = useBoard(active?.id ?? null, assigned);
-  const move = useMoveCard(active?.id ?? null, assigned);
+  const boardQuery = useBoard(active?.id ?? null, assigned, storeId);
+  const move = useMoveCard(active?.id ?? null, assigned, storeId);
 
   const board = boardQuery.data;
   const stages = board?.columns.map((c) => c.stage) ?? active?.stages ?? [];
@@ -230,6 +234,23 @@ export default function EmbudoBoard() {
             ))}
           </select>
         </label>
+        {stores.length > 1 && (
+          <label className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">Tienda</span>
+            <select
+              value={storeId ?? ""}
+              onChange={(e) => setStoreChoice(e.target.value)}
+              className={cn(NATIVE_SELECT_CLASS, "w-auto min-w-40")}
+            >
+              <option value="">Todas las tiendas</option>
+              {stores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div role="group" aria-label="Asignación" className="flex gap-1">
           {ASSIGNED_OPTIONS.map((o) => (
             <Button
