@@ -11,6 +11,7 @@ export const CHANNEL_LABEL: Record<ConversationChannel, string> = {
   whatsapp: "WhatsApp",
   messenger: "Messenger",
   instagram: "Instagram",
+  tiktok: "TikTok",
 };
 
 type PhoneSource = Pick<Conversation, "contactPhone"> &
@@ -72,7 +73,11 @@ export const WINDOW_CLOSED_NOTICE =
 export const META_WINDOW_CLOSED_NOTICE =
   "Pasaron 7 días desde el último mensaje del cliente. En Messenger e Instagram ya no se puede responder hasta que el cliente vuelva a escribir (no hay plantillas en estos canales).";
 
+export const TIKTOK_WINDOW_CLOSED_NOTICE =
+  "Pasaron 48 h desde el último mensaje del cliente. En TikTok ya no se puede responder hasta que el cliente vuelva a escribir (no hay plantillas en este canal).";
+
 export function windowClosedNotice(c: Partial<Pick<Conversation, "channel">>) {
+  if (c.channel === "tiktok") return TIKTOK_WINDOW_CLOSED_NOTICE;
   return isMetaChannel(c) ? META_WINDOW_CLOSED_NOTICE : WINDOW_CLOSED_NOTICE;
 }
 

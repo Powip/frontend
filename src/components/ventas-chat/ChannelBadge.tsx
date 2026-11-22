@@ -10,9 +10,11 @@ const TONE: Record<ConversationChannel, string> = {
     "border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-300",
   instagram:
     "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-700 dark:border-fuchsia-800 dark:bg-fuchsia-950/30 dark:text-fuchsia-300",
+  tiktok:
+    "border-zinc-400 bg-zinc-50 text-zinc-800 dark:border-zinc-700 dark:bg-zinc-900/40 dark:text-zinc-200",
 };
 
-/** Etiqueta del canal de una conversación (WhatsApp, Messenger o Instagram). */
+/** Etiqueta del canal de una conversación (WhatsApp, Messenger, Instagram o TikTok). */
 export default function ChannelBadge({
   channel,
   className,

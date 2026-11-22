@@ -9,7 +9,7 @@ export type MessageStatus =
   | "failed";
 export type MessageSenderKind = "customer" | "agent" | "pau" | "system";
 
-export type ConversationChannel = "whatsapp" | "messenger" | "instagram";
+export type ConversationChannel = "whatsapp" | "messenger" | "instagram" | "tiktok";
 
 export interface Conversation {
   id: string;

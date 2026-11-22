@@ -1,6 +1,7 @@
 import { telHref, toLocalPhone } from "@/lib/crmPhone";
 import {
   META_WINDOW_CLOSED_NOTICE,
+  TIKTOK_WINDOW_CLOSED_NOTICE,
   WINDOW_CLOSED_NOTICE,
   contactLabel,
   crearPedidoUrl,
@@ -56,6 +57,10 @@ describe("crearPedidoUrl", () => {
 });
 
 describe("contactLabel y avisos de ventana", () => {
+  it("sin nombre en TikTok muestra «Contacto de TikTok»", () => {
+    expect(contactLabel({ channel: "tiktok", contactName: null, contactPhone: "tt-123" })).toBe("Contacto de TikTok");
+  });
+
   it("sin nombre en Instagram no muestra el identificador", () => {
     expect(contactLabel({ channel: "instagram", contactName: null, contactPhone: "1784" })).toBe(
       "Contacto de Instagram",
@@ -67,6 +72,8 @@ describe("contactLabel y avisos de ventana", () => {
     expect(windowClosedNotice({ channel: "whatsapp" })).toBe(WINDOW_CLOSED_NOTICE);
     expect(windowClosedNotice({ channel: "messenger" })).toBe(META_WINDOW_CLOSED_NOTICE);
     expect(META_WINDOW_CLOSED_NOTICE).toMatch(/7 días/);
+    expect(windowClosedNotice({ channel: "tiktok" })).toBe(TIKTOK_WINDOW_CLOSED_NOTICE);
+    expect(TIKTOK_WINDOW_CLOSED_NOTICE).toMatch(/48 h/);
   });
 });
 

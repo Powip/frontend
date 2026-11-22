@@ -28,6 +28,7 @@ const CHANNEL_OPTIONS: Array<{ value: ConversationChannel | "all"; label: string
   { value: "whatsapp", label: "WhatsApp" },
   { value: "messenger", label: "Messenger" },
   { value: "instagram", label: "Instagram" },
+  { value: "tiktok", label: "TikTok" },
 ];
 
 function Segmented<T extends string>({
