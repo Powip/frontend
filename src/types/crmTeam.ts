@@ -135,6 +135,8 @@ export interface CrmSettings {
   /** Horario de envío de seguimientos, «HH:mm» en hora de Lima. */
   followupSendStart: string;
   followupSendEnd: string;
+  /** Las vendedoras ven el teléfono del cliente como «951 *** 245». */
+  maskPhone: boolean;
 }
 
 export type CrmSettingsInput = Partial<CrmSettings>;

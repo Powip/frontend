@@ -82,12 +82,33 @@ export function windowClosedNotice(c: Partial<Pick<Conversation, "channel">>) {
 }
 
 /** Nombre del contacto; sin nombre, el teléfono (WhatsApp) o «Contacto de <canal>». */
+/**
+ * Teléfono oculto para las vendedoras: «951 *** 245» (o «+51 951 *** 245»).
+ * Solo cambia lo que se muestra; llamar o vender usa el número completo.
+ */
+export function maskPhone(phone: string | null | undefined): string {
+  const digits = (phone ?? "").replace(/\D/g, "");
+  if (!digits) return phone ?? "";
+  if (digits.length < 6) return "***";
+  const local = digits.length > 9 ? digits.slice(-9) : digits;
+  const prefix = digits.length > 9 ? `+${digits.slice(0, digits.length - 9)} ` : "";
+  return `${prefix}${local.slice(0, 3)} *** ${local.slice(-3)}`;
+}
+
+/** Teléfono para mostrar: oculto si `masked`, completo si no. */
+export function showPhone<T extends string | null | undefined>(phone: T, masked: boolean): T | string {
+  return masked && phone ? maskPhone(phone) : phone;
+}
+
 export function contactLabel(
   c: Pick<Conversation, "contactName" | "contactPhone"> & Partial<Pick<Conversation, "channel">>,
+  masked = false,
 ) {
   const name = c.contactName?.trim();
   if (name) return name;
-  return c.channel && isMetaChannel(c) ? `Contacto de ${CHANNEL_LABEL[c.channel]}` : c.contactPhone;
+  return c.channel && isMetaChannel(c)
+    ? `Contacto de ${CHANNEL_LABEL[c.channel]}`
+    : showPhone(c.contactPhone, masked);
 }
 
 export function isWindowOpen(c: Pick<Conversation, "windowExpiresAt">, now = Date.now()) {

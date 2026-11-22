@@ -10,6 +10,7 @@ import type {
   ObjectionUpdate,
   Script,
   ScriptInput,
+  ScriptPlaybookInput,
   ScriptReads,
   Sheet,
   SheetInput,
@@ -28,6 +29,11 @@ export async function getScript(): Promise<Script> {
 /** Solo administrador. Sube la versión. */
 export async function saveScript(input: ScriptInput): Promise<Script> {
   return (await axiosAuth.put<Script>(`${BASE}/content/script`, input)).data;
+}
+
+/** Solo administrador: temperatura y reglas de cierre (no cambia la versión del guion). */
+export async function saveScriptPlaybook(input: ScriptPlaybookInput): Promise<Script> {
+  return (await axiosAuth.patch<Script>(`${BASE}/content/script/playbook`, input)).data;
 }
 
 export async function markScriptRead(): Promise<Script> {

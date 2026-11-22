@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { telHref } from "@/lib/crmPhone";
 import { crmError } from "@/services/crmService";
 import { useCalls } from "@/hooks/useCrmCalls";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import type { Conversation } from "@/types/crm";
 import CallDialog from "./CallDialog";
 import { CALL_DIRECTION_LABEL, CALL_RESULT_LABEL, CALL_RESULT_TONE, formatCallDuration } from "./calls";
@@ -14,6 +15,7 @@ import { contactLabel, phoneForCustomer } from "./format";
 
 /** Botones «Llamar» y «Registrar llamada» de la cabecera del chat. */
 export function ChatCallButtons({ conversation }: { conversation: Conversation }) {
+  const { phoneMasked } = useCrmMe();
   const [open, setOpen] = useState(false);
   const href = telHref(phoneForCustomer(conversation));
   return (
@@ -43,7 +45,7 @@ export function ChatCallButtons({ conversation }: { conversation: Conversation }
           open
           onOpenChange={(o) => !o && setOpen(false)}
           conversationId={conversation.id}
-          contact={contactLabel(conversation)}
+          contact={contactLabel(conversation, phoneMasked)}
         />
       )}
     </>

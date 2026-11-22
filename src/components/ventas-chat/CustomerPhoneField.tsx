@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useUpdateConversation } from "@/hooks/useCrmChat";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import type { Conversation } from "@/types/crm";
-import { CHANNEL_LABEL } from "./format";
+import { CHANNEL_LABEL, showPhone } from "./format";
 
 /**
  * Teléfono real del cliente en Messenger e Instagram (el canal no lo entrega).
@@ -14,6 +15,7 @@ import { CHANNEL_LABEL } from "./format";
  */
 export default function CustomerPhoneField({ conversation }: { conversation: Conversation }) {
   const update = useUpdateConversation(conversation.id);
+  const { phoneMasked } = useCrmMe();
   const saved = conversation.customerPhone?.trim() || null;
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(saved ?? "");
@@ -29,14 +31,14 @@ export default function CustomerPhoneField({ conversation }: { conversation: Con
     return (
       <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>
-          Teléfono del cliente: <b className="text-foreground">{saved}</b>
+          Teléfono del cliente: <b className="text-foreground">{showPhone(saved, phoneMasked)}</b>
         </span>
         <Button
           type="button"
           size="sm"
           variant="ghost"
           onClick={() => {
-            setValue(saved);
+            setValue(phoneMasked ? "" : saved);
             setEditing(true);
           }}
         >

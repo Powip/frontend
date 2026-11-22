@@ -7,8 +7,35 @@ export interface ScriptStep {
   question: string;
 }
 
+export type TemperatureKey = "caliente" | "tibio" | "frio";
+
+/** Señal del cliente y jugada que toca. */
+export interface ScriptTemperature {
+  key: TemperatureKey;
+  signal: string;
+  play: string;
+}
+
+export interface ScriptClosingRules {
+  /** HH:mm, hora de Lima: antes se ofrece «despacho hoy». */
+  cutoffTime: string;
+  /** «Últimas unidades» solo con este stock o menos. */
+  lastUnits: number;
+  /** Responder al instante a quien llega por un anuncio. */
+  instantReply: boolean;
+  /** Promo del día, la misma para todas las vendedoras. */
+  promo: string;
+}
+
+export interface ScriptPlaybookInput {
+  temperature?: ScriptTemperature[];
+  closingRules?: ScriptClosingRules;
+}
+
 export interface Script {
   steps: ScriptStep[];
+  temperature: ScriptTemperature[];
+  closingRules: ScriptClosingRules;
   /** 0 y sin pasos = aún no hay guion. */
   version: number;
   note: string | null;
@@ -82,10 +109,13 @@ export interface Material {
   title: string;
   url: string;
   position: number;
+  /** Método de pago del negocio (Yape, cuenta bancaria…). */
+  payment?: boolean;
 }
 
 export interface MaterialInput {
   sheetId?: string;
+  payment?: boolean;
   kind: MaterialKind;
   title: string;
   url: string;

@@ -22,6 +22,7 @@ jest.mock("@/services/crmContentService", () => ({
   ...jest.requireActual("@/services/crmContentService"),
   getScript: jest.fn(),
   saveScript: jest.fn(),
+  saveScriptPlaybook: jest.fn(),
   getScriptReads: jest.fn(),
   listMaterials: jest.fn(),
   createMaterial: jest.fn(),
@@ -37,6 +38,12 @@ const script = (over: Partial<Script> = {}): Script => ({
     { name: "Saludo", message: "Hola {nombre}", question: "¿Qué buscas?" },
     { name: "Precio", message: "Cuesta S/ 50", question: "" },
   ],
+  temperature: [
+    { key: "caliente", signal: "Pide cuenta", play: "Cierra ya" },
+    { key: "tibio", signal: "Pregunta talla", play: "Ofrece guía" },
+    { key: "frio", signal: "Solo mira", play: "Manda catálogo" },
+  ],
+  closingRules: { cutoffTime: "13:00", lastUnits: 3, instantReply: true, promo: "" },
   version: 2,
   note: null,
   updatedAt: "2026-11-18T15:00:00.000Z",
@@ -91,6 +98,7 @@ beforeEach(() => {
   c.updateMaterial.mockResolvedValue(mat());
   c.createMaterial.mockResolvedValue(mat());
   c.saveScript.mockResolvedValue(script({ version: 3 }));
+  c.saveScriptPlaybook.mockResolvedValue(script());
 });
 
 describe("Guion y material", () => {
@@ -199,6 +207,47 @@ describe("Guion y material", () => {
     expect(c.deleteMaterial).not.toHaveBeenCalled();
     fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Eliminar" }));
     await waitFor(() => expect(c.deleteMaterial).toHaveBeenCalledWith("m1"));
+  });
+
+  it("temperatura: muestra las tres y guarda solo la temperatura", async () => {
+    setup();
+    expect(await screen.findByTestId("temperature-caliente")).toHaveTextContent("Caliente");
+    expect(screen.getByTestId("temperature-tibio")).toHaveTextContent("Tibio");
+    expect(screen.getByTestId("temperature-frio")).toHaveTextContent("Frío");
+    fireEvent.change(screen.getByLabelText("Jugada: Caliente"), { target: { value: "Pide la dirección" } });
+    const card = screen.getByRole("region", { name: "Temperatura del cliente" });
+    fireEvent.click(within(card).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(c.saveScriptPlaybook).toHaveBeenCalledTimes(1));
+    expect(c.saveScriptPlaybook.mock.calls[0][0]).toEqual({
+      temperature: [
+        { key: "caliente", signal: "Pide cuenta", play: "Pide la dirección" },
+        { key: "tibio", signal: "Pregunta talla", play: "Ofrece guía" },
+        { key: "frio", signal: "Solo mira", play: "Manda catálogo" },
+      ],
+    });
+  });
+
+  it("reglas de cierre: valida la hora y guarda las reglas", async () => {
+    setup();
+    const card = await screen.findByRole("region", { name: "Reglas de cierre" });
+    const save = within(card).getByRole("button", { name: "Guardar" });
+    expect(save).toBeDisabled();
+    fireEvent.change(within(card).getByLabelText("Últimas unidades"), { target: { value: "5" } });
+    fireEvent.change(document.getElementById("closing-promo") as HTMLInputElement, { target: { value: "Envío gratis" } });
+    fireEvent.click(save);
+    await waitFor(() => expect(c.saveScriptPlaybook).toHaveBeenCalledTimes(1));
+    expect(c.saveScriptPlaybook.mock.calls[0][0]).toEqual({
+      closingRules: { cutoffTime: "13:00", lastUnits: 5, instantReply: true, promo: "Envío gratis" },
+    });
+  });
+
+  it("métodos de pago: lista aparte del material del negocio", async () => {
+    c.listMaterials.mockResolvedValue([mat(), mat({ id: "m3", title: "Yape", kind: "link", url: "https://x.pe/yape", payment: true })]);
+    setup();
+    const pays = await screen.findByRole("list", { name: "Métodos de pago" });
+    expect(within(pays).getByRole("link", { name: "Abrir Yape" })).toBeInTheDocument();
+    const general = screen.getByRole("list", { name: "Material del negocio" });
+    expect(within(general).queryByText("Yape")).not.toBeInTheDocument();
   });
 
   it("productos: lista con buscador, crea uno y muestra su material", async () => {

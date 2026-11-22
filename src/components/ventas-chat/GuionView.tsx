@@ -5,6 +5,7 @@ import ContentAdminGate from "./ContentAdminGate";
 import { ContentError, ContentLoading } from "./ContentStatus";
 import GuionEditor from "./GuionEditor";
 import GuionMaterialList from "./GuionMaterialList";
+import GuionPlaybook from "./GuionPlaybook";
 import GuionReads from "./GuionReads";
 import GuionSheetsManager from "./GuionSheetsManager";
 
@@ -12,12 +13,15 @@ function GuionBody() {
   const { isAdmin } = useCrmMe();
   const script = useScript(isAdmin);
   const general = useGeneralMaterials(isAdmin);
+  const payments = general.data?.filter((m) => m.payment) ?? [];
+  const others = general.data?.filter((m) => !m.payment) ?? [];
 
   return (
     <div className="space-y-4">
       {script.isLoading && <ContentLoading label="Cargando guion…" />}
       {script.isError && <ContentError error={script.error} onRetry={() => script.refetch()} />}
       {script.data && <GuionEditor key={script.data.version} script={script.data} />}
+      {script.data && <GuionPlaybook script={script.data} editable={isAdmin} />}
       <GuionReads enabled={isAdmin} />
 
       <section aria-labelledby="guion-material" className="space-y-3 rounded-md border bg-card p-4">
@@ -31,7 +35,18 @@ function GuionBody() {
         </div>
         {general.isLoading && <ContentLoading />}
         {general.isError && <ContentError error={general.error} onRetry={() => general.refetch()} />}
-        {general.data && <GuionMaterialList items={general.data} label="Material del negocio" />}
+        {general.data && (
+          <>
+            <GuionMaterialList items={others} label="Material del negocio" />
+            <div className="space-y-2 border-t pt-3">
+              <h3 className="text-sm font-semibold">Métodos de pago</h3>
+              <p className="text-xs text-muted-foreground">
+                Yape, Plin, cuentas o POWIP Link. Pau los usa para responder «¿cómo pago?».
+              </p>
+              <GuionMaterialList items={payments} label="Métodos de pago" payment />
+            </div>
+          </>
+        )}
       </section>
 
       <GuionSheetsManager />

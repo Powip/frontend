@@ -50,6 +50,8 @@ export interface CrmAccess {
   stores: CrmStore[];
   /** `true` cuando el nivel ya viene del servidor y no del rol local. */
   fromServer: boolean;
+  /** Mostrar el teléfono del cliente oculto. Mientras no responde el servidor, se oculta a las vendedoras. */
+  phoneMasked: boolean;
 }
 
 /**
@@ -88,5 +90,6 @@ export function useCrmMe(): CrmAccess {
     isSupervisor: level === "admin" || level === "supervisor",
     stores: me?.stores ?? [],
     fromServer: !!me,
+    phoneMasked: me ? me.phoneMasked === true : level === "agent",
   };
 }

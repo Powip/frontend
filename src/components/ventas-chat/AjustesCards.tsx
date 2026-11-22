@@ -416,3 +416,24 @@ export function FollowupLimitsCard({ settings }: { settings: CrmSettings }) {
     </AjustesCard>
   );
 }
+
+export function MaskPhoneCard({ settings }: { settings: CrmSettings }) {
+  const m = useUpdateCrmSettings();
+  const { draft, setDraft, dirty } = useDraft(settings.maskPhone);
+  return (
+    <AjustesCard
+      id="mask-phone"
+      title="Privacidad del cliente"
+      description="Las vendedoras ven el teléfono del cliente como «951 *** 245». Llaman y escriben desde POWIP, sin copiar el número. Los administradores siempre ven el número completo."
+      canSave={dirty}
+      saving={m.isPending}
+      onSave={() => m.mutate({ maskPhone: draft })}
+      error={errMsg(m)}
+    >
+      <div className="flex items-center gap-2">
+        <Switch id="mask-phone-enabled" checked={draft} onCheckedChange={(v) => setDraft(v)} />
+        <Label htmlFor="mask-phone-enabled">Ocultar el teléfono completo a las vendedoras</Label>
+      </div>
+    </AjustesCard>
+  );
+}

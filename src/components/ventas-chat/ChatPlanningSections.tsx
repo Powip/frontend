@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { crmError } from "@/services/crmService";
 import { useUpdateConversation } from "@/hooks/useCrmChat";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import { usePipelines, useTaskMutations, useTasks } from "@/hooks/useCrmPlanning";
 import type { Conversation, Pipeline, Stage } from "@/types/crm";
 import LostReasonDialog from "./LostReasonDialog";
@@ -29,6 +30,7 @@ function pipelineOf(list: Pipeline[] | undefined, conversation: Conversation) {
 
 /** Botón «Perdido» del chat: pide el motivo y mueve a la etapa «perdida» del embudo. */
 export function LostChatButton({ conversation }: { conversation: Conversation }) {
+  const { phoneMasked } = useCrmMe();
   const pipelines = usePipelines();
   const update = useUpdateConversation(conversation.id);
   const [open, setOpen] = useState(false);
@@ -44,7 +46,7 @@ export function LostChatButton({ conversation }: { conversation: Conversation })
       {open && (
         <LostReasonDialog
           open
-          contact={contactLabel(conversation)}
+          contact={contactLabel(conversation, phoneMasked)}
           onCancel={() => setOpen(false)}
           onConfirm={(lostReason) => {
             update.mutate({ stageId: lostStage.id, lostReason });
@@ -58,6 +60,7 @@ export function LostChatButton({ conversation }: { conversation: Conversation })
 
 /** Etapa del embudo de la conversación; si es «perdida» pide el motivo. */
 export function PipelineSection({ conversation }: { conversation: Conversation }) {
+  const { phoneMasked } = useCrmMe();
   const pipelines = usePipelines();
   const update = useUpdateConversation(conversation.id);
   const [lost, setLost] = useState<Stage | null>(null);
@@ -123,7 +126,7 @@ export function PipelineSection({ conversation }: { conversation: Conversation }
       {lost && (
         <LostReasonDialog
           open
-          contact={contactLabel(conversation)}
+          contact={contactLabel(conversation, phoneMasked)}
           onCancel={() => setLost(null)}
           onConfirm={(lostReason) => {
             update.mutate({ stageId: lost.id, lostReason });
@@ -137,6 +140,7 @@ export function PipelineSection({ conversation }: { conversation: Conversation }
 
 /** Tareas pendientes de la conversación y botón «Recordatorio». */
 export function TasksSection({ conversation }: { conversation: Conversation }) {
+  const { phoneMasked } = useCrmMe();
   const tasks = useTasks({
     assigned: "all",
     status: "pending",
@@ -194,7 +198,7 @@ export function TasksSection({ conversation }: { conversation: Conversation }) {
         <TaskDialog
           open
           conversationId={conversation.id}
-          contact={contactLabel(conversation)}
+          contact={contactLabel(conversation, phoneMasked)}
           onOpenChange={(o) => !o && setCreating(false)}
         />
       )}

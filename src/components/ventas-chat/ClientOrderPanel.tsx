@@ -13,6 +13,7 @@ import type { Client } from "@/interfaces/ICliente";
 import type { Conversation, ConversationOrder } from "@/types/crm";
 import { crmError } from "@/services/crmService";
 import { useConversationOrders, useCoreOrder, useUpdateConversation } from "@/hooks/useCrmChat";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import ChatCallsSection from "./ChatCallsSection";
 import { FollowupsSection, TagsSection } from "./ChatExtrasSections";
 import { PipelineSection, TasksSection } from "./ChatPlanningSections";
@@ -28,6 +29,7 @@ import {
   isMetaChannel,
   orderBalance,
   phoneForCustomer,
+  showPhone,
 } from "./format";
 
 interface Props {
@@ -47,6 +49,7 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 function ClientSection({ conversation, companyId, client }: Props) {
+  const { phoneMasked } = useCrmMe();
   const [creating, setCreating] = useState(false);
   const found = client.data;
   const phone = phoneForCustomer(conversation);
@@ -80,7 +83,7 @@ function ClientSection({ conversation, companyId, client }: Props) {
             </p>
           )}
           <p className="text-xs text-muted-foreground">
-            {found.phoneNumber ?? phone}
+            {showPhone(found.phoneNumber ?? phone, phoneMasked)}
           </p>
           {(found.district || found.address) && (
             <p className="text-xs text-muted-foreground">

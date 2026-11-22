@@ -63,6 +63,7 @@ const settings = (over: Partial<CrmSettings> = {}): CrmSettings => ({
   welcomeMessage: "Hola {nombre}, bienvenida.",
   assignMode: "manual",
   assignUsers: [],
+  maskPhone: false,
   ...over,
 });
 
@@ -197,6 +198,15 @@ describe("Ajustes · tarjetas con PATCH parcial", () => {
     team.listTeamMembers.mockResolvedValue([]);
     setup();
     expect(await screen.findByText(/Todavía no hay personas con actividad/)).toBeInTheDocument();
+  });
+
+  it("Privacidad: activar ocultar teléfono envía solo maskPhone", async () => {
+    setup();
+    await screen.findByTestId("card-mask-phone");
+    expect(saveBtn("mask-phone")).toBeDisabled();
+    fireEvent.click(screen.getByRole("switch", { name: "Ocultar el teléfono completo a las vendedoras" }));
+    fireEvent.click(saveBtn("mask-phone"));
+    await waitFor(() => expect(team.updateCrmSettings).toHaveBeenCalledWith({ maskPhone: true }));
   });
 
   it("muestra el error 400 del servidor dentro de la tarjeta", async () => {

@@ -95,13 +95,15 @@ function MaterialForm({ initial, busy, onSave, onCancel }: FormProps) {
 interface Props {
   /** Sin `sheetId` = material general del negocio. */
   sheetId?: string;
+  /** Lista de métodos de pago: lo que se añade queda marcado como pago. */
+  payment?: boolean;
   items: Material[];
   /** Nombre accesible de la lista. */
   label: string;
 }
 
 /** Lista editable (administrador) de materiales: añadir, editar, reordenar y eliminar. */
-export default function GuionMaterialList({ sheetId, items, label }: Props) {
+export default function GuionMaterialList({ sheetId, payment, items, label }: Props) {
   const actions = useMaterialActions();
   const [editing, setEditing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Material | null>(null);
@@ -159,7 +161,10 @@ export default function GuionMaterialList({ sheetId, items, label }: Props) {
           </li>
         ))}
       </ul>
-      <MaterialForm busy={busy} onSave={(v) => actions.create.mutate({ ...v, ...(sheetId ? { sheetId } : {}) })} />
+      <MaterialForm
+        busy={busy}
+        onSave={(v) => actions.create.mutate({ ...v, ...(sheetId ? { sheetId } : {}), ...(payment ? { payment: true } : {}) })}
+      />
       <ConfirmDialog
         open={!!deleting}
         title="¿Eliminar este material?"

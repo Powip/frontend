@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { crmError } from "@/services/crmService";
 import { useCrmEvents } from "@/hooks/useCrmChat";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import { useTaskMutations, useTasks } from "@/hooks/useCrmPlanning";
 import type { Task } from "@/types/crm";
 import { CRM_UNREACHABLE } from "./ConversationList";
@@ -14,7 +15,7 @@ import ConfirmDialog from "./ConfirmDialog";
 import LiveIndicator from "./LiveIndicator";
 import TaskDialog, { type TaskDialogMode } from "./TaskDialog";
 import { TASK_TYPE_LABEL, formatDue, groupTasks } from "./agenda";
-import { bandejaUrl } from "./format";
+import { bandejaUrl, showPhone } from "./format";
 
 function useNow(intervalMs = 60_000) {
   const [now, setNow] = useState(() => Date.now());
@@ -37,7 +38,8 @@ interface RowProps {
 }
 
 function TaskRow({ task, now, overdue, onDone, onReschedule, onEdit, onDelete, onOpenChat }: RowProps) {
-  const contact = task.contactName || task.contactPhone;
+  const { phoneMasked } = useCrmMe();
+  const contact = task.contactName || showPhone(task.contactPhone, phoneMasked);
   return (
     <li
       data-testid="task-row"
@@ -100,6 +102,7 @@ export default function AgendaView() {
   const router = useRouter();
   const live = useCrmEvents();
   const now = useNow();
+  const { phoneMasked } = useCrmMe();
   const [assigned, setAssigned] = useState<"me" | "all">("me");
   const [showDone, setShowDone] = useState(false);
   const [dialog, setDialog] = useState<{ mode: TaskDialogMode; task?: Task } | null>(null);
@@ -234,7 +237,7 @@ export default function AgendaView() {
                 >
                   <Check className="h-4 w-4 text-emerald-600" />
                   <span className="line-through">{t.title}</span>
-                  <span className="text-xs">{t.contactName || t.contactPhone}</span>
+                  <span className="text-xs">{t.contactName || showPhone(t.contactPhone, phoneMasked)}</span>
                   {t.doneAt && <span className="ml-auto text-xs">{formatDue(t.doneAt, now)}</span>}
                 </li>
               ))}

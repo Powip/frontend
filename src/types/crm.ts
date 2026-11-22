@@ -70,6 +70,8 @@ export interface CrmMe {
   companyId: string;
   level: CrmLevel;
   stores: CrmStore[];
+  /** `true` si este usuario ve el teléfono del cliente oculto («951 *** 245»). */
+  phoneMasked?: boolean;
 }
 
 export interface Message {

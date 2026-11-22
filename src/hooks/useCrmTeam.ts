@@ -86,8 +86,8 @@ export function useRemindScript() {
   });
 }
 
-export function useCrmSettings() {
-  return useQuery({ queryKey: teamKeys.settings, queryFn: getCrmSettings, retry: false });
+export function useCrmSettings(enabled = true) {
+  return useQuery({ queryKey: teamKeys.settings, queryFn: getCrmSettings, retry: false, enabled });
 }
 
 export function useUpdateCrmSettings() {

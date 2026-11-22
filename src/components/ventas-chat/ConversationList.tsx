@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { crmError } from "@/services/crmService";
 import { useConversations } from "@/hooks/useCrmChat";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import type { AssignedFilter, ConversationChannel, ConversationStatus } from "@/types/crm";
 import ChannelBadge from "./ChannelBadge";
 import { INDICATOR_PARAMS, type InboxIndicator } from "./InboxIndicators";
@@ -77,6 +78,7 @@ export default function ConversationList({
   onIndicatorChange,
   storeId,
 }: Props) {
+  const { phoneMasked } = useCrmMe();
   const [status, setStatus] = useState<ConversationStatus>("open");
   const [assigned, setAssigned] = useState<AssignedFilter>("all");
   const [channel, setChannel] = useState<ConversationChannel | "all">("all");
@@ -178,7 +180,7 @@ export default function ConversationList({
                 <span className="flex items-center justify-between gap-2">
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className={cn("truncate text-sm", c.unreadCount > 0 ? "font-semibold" : "font-medium")}>
-                      {contactLabel(c)}
+                      {contactLabel(c, phoneMasked)}
                     </span>
                     <ChannelBadge channel={c.channel} />
                   </span>

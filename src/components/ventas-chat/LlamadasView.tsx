@@ -28,7 +28,7 @@ import {
   callContact,
   formatCallDuration,
 } from "./calls";
-import { bandejaUrl } from "./format";
+import { bandejaUrl, showPhone } from "./format";
 
 function Segmented<T extends string | number>({
   label,
@@ -143,7 +143,8 @@ function QueueRow({
   onResult: (t: Task) => void;
   onOpenChat: (id: string) => void;
 }) {
-  const contact = task.contactName || task.contactPhone;
+  const { phoneMasked } = useCrmMe();
+  const contact = task.contactName || showPhone(task.contactPhone, phoneMasked);
   return (
     <li data-testid="queue-row" className="space-y-1.5 rounded-md border bg-card p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
@@ -232,7 +233,7 @@ export default function LlamadasView() {
   const router = useRouter();
   const { auth } = useAuth();
   const meId = auth?.user?.id;
-  const { isAdmin } = useCrmMe();
+  const { isAdmin, phoneMasked } = useCrmMe();
   const live = useCrmEvents();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -348,7 +349,7 @@ export default function LlamadasView() {
           open
           onOpenChange={(o) => !o && setDialog(null)}
           conversationId={dialog.task?.conversationId ?? undefined}
-          contact={dialog.task ? (dialog.task.contactName || dialog.task.contactPhone || undefined) : undefined}
+          contact={dialog.task ? (dialog.task.contactName || showPhone(dialog.task.contactPhone, phoneMasked) || undefined) : undefined}
           phone={dialog.task?.contactPhone ?? undefined}
           onSaved={() => {
             const task = dialog.task;

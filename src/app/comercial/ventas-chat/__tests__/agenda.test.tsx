@@ -16,6 +16,14 @@ jest.mock("@/lib/axiosAuth", () => ({
   default: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() },
 }));
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
+jest.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({
+    auth: { accessToken: "t", user: { id: "u1", name: "Jairo", role: "ADMIN" }, company: { id: "co1" } },
+  }),
+}));
+jest.mock("@/config/permissions.config", () => ({
+  hasAdminAccess: (role?: string) => role === "ADMIN",
+}));
 jest.mock("@/services/crmService", () => ({
   ...jest.requireActual("@/services/crmService"),
   listTasks: jest.fn(),

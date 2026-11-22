@@ -19,6 +19,7 @@ import {
   proposeObjection,
   registerObjectionUse,
   saveScript,
+  saveScriptPlaybook,
   updateMaterial,
   updateObjection,
   updateSheet,
@@ -30,6 +31,7 @@ import type {
   ObjectionUpdate,
   Script,
   ScriptInput,
+  ScriptPlaybookInput,
   SheetInput,
   SheetUpdate,
 } from "@/types/crmContent";
@@ -60,6 +62,18 @@ export function useSaveScript() {
     onSuccess: (script) => {
       qc.setQueryData<Script>(contentKeys.script, script);
       qc.invalidateQueries({ queryKey: contentKeys.scriptReads });
+    },
+    onError,
+  });
+}
+
+export function useSaveScriptPlaybook() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ScriptPlaybookInput) => saveScriptPlaybook(input),
+    onSuccess: (script) => {
+      qc.setQueryData<Script>(contentKeys.script, script);
+      toast.success("Guion guardado");
     },
     onError,
   });

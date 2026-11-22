@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useUpdateConversation } from "@/hooks/useCrmChat";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import type { Conversation } from "@/types/crm";
 import { fromLimaInput, toLimaInput } from "./agenda";
 import { contactLabel } from "./format";
@@ -32,6 +33,7 @@ interface Props {
 
 /** «Lo está pensando»: fecha y hora (Lima) para retomar el chat, con nota opcional. */
 export default function ThinkingDialog({ conversation, onClose }: Props) {
+  const { phoneMasked } = useCrmMe();
   const update = useUpdateConversation(conversation.id);
   const [due, setDue] = useState(defaultResume());
   const [note, setNote] = useState("");
@@ -51,7 +53,7 @@ export default function ThinkingDialog({ conversation, onClose }: Props) {
         <DialogHeader>
           <DialogTitle>Lo está pensando</DialogTitle>
           <DialogDescription>
-            Cuándo retomar a {contactLabel(conversation)}. Se crea una tarea «Retomar» en tu Agenda. La hora es de
+            Cuándo retomar a {contactLabel(conversation, phoneMasked)}. Se crea una tarea «Retomar» en tu Agenda. La hora es de
             Lima. Si el cliente escribe antes, se retoma solo.
           </DialogDescription>
         </DialogHeader>

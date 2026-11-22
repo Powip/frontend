@@ -9,7 +9,14 @@ import AjustesWhatsAppCard from "./AjustesWhatsAppCard";
 import AjustesMetaCard from "./AjustesMetaCard";
 import AjustesTikTokCard from "./AjustesTikTokCard";
 import AjustesExportCard from "./AjustesExportCard";
-import { AssignCard, HoursCard, SlaCard, WelcomeCard, WhereCard } from "./AjustesCards";
+import {
+  AssignCard,
+  HoursCard,
+  MaskPhoneCard,
+  SlaCard,
+  WelcomeCard,
+  WhereCard,
+} from "./AjustesCards";
 
 function AjustesContent() {
   const { data, isLoading, isError, error, refetch } = useCrmSettings();
@@ -41,6 +48,7 @@ function AjustesContent() {
           <HoursCard settings={data} />
           <WelcomeCard settings={data} />
           <AssignCard settings={data} />
+          <MaskPhoneCard settings={data} />
         </>
       )}
       <AjustesExportCard />

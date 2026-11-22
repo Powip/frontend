@@ -32,7 +32,8 @@ interface CardProps {
 }
 
 function CardBody({ conversation: c, stage, stages, onOpen, onMove }: CardProps) {
-  const name = contactLabel(c);
+  const { phoneMasked } = useCrmMe();
+  const name = contactLabel(c, phoneMasked);
   return (
     <>
       <button
@@ -174,7 +175,7 @@ export default function EmbudoBoard() {
   const pipelinesQuery = usePipelines();
   const [pipelineId, setPipelineId] = useState<string | null>(null);
   const [assigned, setAssigned] = useState<AssignedFilter>("all");
-  const { stores } = useCrmMe();
+  const { stores, phoneMasked } = useCrmMe();
   const [storeChoice, setStoreChoice] = useState("");
   const storeId = stores.some((s) => s.id === storeChoice) ? storeChoice : undefined;
   const [editing, setEditing] = useState(false);
@@ -318,7 +319,7 @@ export default function EmbudoBoard() {
       {lostMove && (
         <LostReasonDialog
           open
-          contact={contactLabel(lostMove.conversation)}
+          contact={contactLabel(lostMove.conversation, phoneMasked)}
           onCancel={() => setLostMove(null)}
           onConfirm={(lostReason) => {
             move.mutate({

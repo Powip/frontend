@@ -17,6 +17,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCrmMe } from "@/hooks/useCrmMe";
+import { useCrmSettings } from "@/hooks/useCrmTeam";
 import { crmError } from "@/services/crmService";
 import {
   useAutoLinkClient,
@@ -51,6 +53,7 @@ import {
   isWindowOpen,
   messageText,
   phoneForCustomer,
+  showPhone,
   windowClosedNotice,
 } from "./format";
 
@@ -145,6 +148,8 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
   const { auth } = useAuth();
   const companyId = auth?.company?.id;
   const [panelOpen, setPanelOpen] = useState(false);
+  const { isAdmin, phoneMasked } = useCrmMe();
+  const adminSettings = useCrmSettings(isAdmin);
   const me = {
     id: auth?.user.id,
     name: [auth?.user.name, auth?.user.surname].filter(Boolean).join(" ") || undefined,
@@ -247,11 +252,14 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
         </Button>
         <div className="min-w-[11rem] flex-1">
           <h2 className="flex items-center gap-2 truncate text-sm font-semibold">
-            <span className="truncate">{contactLabel(conversation)}</span>
+            <span className="truncate">{contactLabel(conversation, phoneMasked)}</span>
             <ChannelBadge channel={conversation.channel} />
           </h2>
           <p className="truncate text-xs text-muted-foreground">
-            {isMetaChannel(conversation) ? (conversation.customerPhone ?? "Sin teléfono") : conversation.contactPhone}
+            {isMetaChannel(conversation)
+              ? (showPhone(conversation.customerPhone, phoneMasked) ?? "Sin teléfono")
+              : showPhone(conversation.contactPhone, phoneMasked)}
+            {isAdmin && adminSettings.data?.maskPhone ? " · Las vendedoras ven el número oculto" : ""}
             {conversation.assignedUserName ? ` · Asignada a ${conversation.assignedUserName}` : " · Sin asignar"}
           </p>
         </div>
