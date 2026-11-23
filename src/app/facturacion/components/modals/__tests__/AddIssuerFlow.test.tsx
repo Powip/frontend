@@ -154,7 +154,7 @@ describe("AddIssuerFlow", () => {
 
     expect(screen.getByLabelText("RUC")).toHaveValue("20222222222");
 
-    await userEvent.click(screen.getByRole("button", { name: /Agregar RUC \(\+S\/ 30\/mes\)/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Pagar cupo \(\+S\/ 30\/mes\)/ }));
 
     expect(buyMutate).toHaveBeenCalledWith(
       { ruc: "20222222222", razonSocial: "EMPRESA b" },
@@ -173,7 +173,7 @@ describe("AddIssuerFlow", () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole("button", { name: /Agregar RUC \(incluido\)/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Activar RUC \(incluido\)/ }));
 
     expect(activateMutate).toHaveBeenCalledWith("b", expect.anything());
     expect(buyMutate).not.toHaveBeenCalled();
@@ -193,7 +193,7 @@ describe("AddIssuerFlow", () => {
 
     expect(screen.getByLabelText("RUC")).toHaveValue("20333333333");
 
-    await userEvent.click(screen.getByRole("button", { name: /Agregar RUC \(\+S\/ 30\/mes\)/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Pagar cupo \(\+S\/ 30\/mes\)/ }));
 
     expect(buyMutate).toHaveBeenCalledWith(
       { ruc: "20333333333", razonSocial: "VENCIDA SAC" },

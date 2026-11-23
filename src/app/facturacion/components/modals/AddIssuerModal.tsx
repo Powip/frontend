@@ -49,6 +49,7 @@ interface AddIssuerModalProps {
 /**
  * Modal "Agregar RUC emisor" del mockup: RUC, razón social (se completa al verificar), el aviso del add-on y los
  * botones Cancelar / Agregar RUC. Si el RUC se paga, al confirmar la pantalla lleva a la pasarela.
+ * Con un RUC que ya existe (initialValues) los textos hablan de activarlo o de pagar su cupo, no de agregarlo.
  */
 export function AddIssuerModal({
   isOpen,
@@ -100,8 +101,20 @@ export function AddIssuerModal({
     onConfirm({ ruc: cleanRuc, razonSocial: cleanName });
   }
 
-  const confirmLabel =
-    requiresPayment === false ? "Agregar RUC (incluido)" : `Agregar RUC (+S/ ${price}/mes)`;
+  const paysExisting = locked && requiresPayment !== false;
+  const title = paysExisting ? "Pagar cupo del RUC" : locked ? "Activar RUC emisor" : "Agregar RUC emisor";
+  const description = paysExisting
+    ? "Paga el cupo mensual de este RUC para volver a emitir con él."
+    : locked
+      ? "Vuelve a activar este RUC para emitir con él."
+      : "Conecta otra razón social para emitir los pedidos de tus tiendas. Después sube su certificado digital.";
+  const confirmLabel = paysExisting
+    ? `Pagar cupo (+S/ ${price}/mes)`
+    : locked
+      ? "Activar RUC (incluido)"
+      : requiresPayment === false
+        ? "Agregar RUC (incluido)"
+        : `Agregar RUC (+S/ ${price}/mes)`;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isSubmitting && onClose()}>
@@ -109,13 +122,10 @@ export function AddIssuerModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
             <Building2 className="h-5 w-5 text-primary" />
-            Agregar RUC emisor
+            {title}
           </DialogTitle>
 
-          <DialogDescription>
-            Conecta otra razón social para emitir los pedidos de tus tiendas. Después sube su
-            certificado digital.
-          </DialogDescription>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">

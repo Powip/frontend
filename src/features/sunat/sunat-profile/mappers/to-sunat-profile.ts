@@ -29,6 +29,7 @@ export function toSunatProfile(dto: SunatProfileResponseDto): SunatProfile {
     isDefault: dto.isDefault,
     isActive: dto.isActive,
     deactivationReason: dto.deactivationReason ?? null,
+    activatedAt: dto.activatedAt ? new Date(dto.activatedAt) : null,
 
     createdAt: new Date(dto.createdAt),
     updatedAt: new Date(dto.updatedAt),

@@ -30,6 +30,8 @@ export interface SunatProfile {
   isActive: boolean;
   /** UNPAID: lo apagó el sistema porque había más RUC activos que cupos pagados. */
   deactivationReason: SunatProfileDeactivationReason | null;
+  /** Última vez que se activó. Null en RUC activados antes de que existiera el dato: se usa createdAt. */
+  activatedAt: Date | null;
 
   createdAt: Date;
   updatedAt: Date;

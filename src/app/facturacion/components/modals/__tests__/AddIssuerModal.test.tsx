@@ -114,6 +114,24 @@ describe("AddIssuerModal", () => {
     expect(screen.queryByRole("button", { name: "Verificar en SUNAT" })).not.toBeInTheDocument();
   });
 
+  it("con un RUC que ya existe y se cobra, habla de pagar su cupo y no de agregarlo", () => {
+    renderModal({ initialValues: { ruc: "20111111111", razonSocial: "EXISTENTE SAC" } });
+
+    expect(screen.getByText("Pagar cupo del RUC")).toBeInTheDocument();
+    expect(screen.queryByText("Agregar RUC emisor")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pagar cupo (+S/ 30/mes)" })).toBeInTheDocument();
+  });
+
+  it("con un RUC que ya existe y entra gratis, habla de activarlo", () => {
+    renderModal({
+      requiresPayment: false,
+      initialValues: { ruc: "20111111111", razonSocial: "EXISTENTE SAC" },
+    });
+
+    expect(screen.getByText("Activar RUC emisor")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Activar RUC (incluido)" })).toBeInTheDocument();
+  });
+
   it("mientras va a la pasarela no se puede cancelar ni confirmar de nuevo", () => {
     renderModal({ isSubmitting: true });
 

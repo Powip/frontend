@@ -86,6 +86,21 @@ describe("getOverLimitProfiles", () => {
 
     expect(result.map((p) => p.id)).toEqual(["new", "old"]);
   });
+
+  it("usa la última activación, igual que ms-sunat: un RUC viejo reactivado hoy se marca antes", () => {
+    const reactivated = profile("re", "20100000002", {
+      createdAt: new Date("2026-10-01T00:00:00.000Z"),
+      activatedAt: new Date("2026-11-22T00:00:00.000Z"),
+    });
+    const newer = profile("new", "20100000003", {
+      createdAt: new Date("2026-11-10T00:00:00.000Z"),
+      activatedAt: null,
+    });
+
+    const result = getOverLimitProfiles([main, reactivated, newer], summary({ maxRucs: 2 }));
+
+    expect(result.map((p) => p.id)).toEqual(["re"]);
+  });
 });
 
 describe("InactiveIssuersAlert", () => {

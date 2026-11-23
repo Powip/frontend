@@ -37,9 +37,14 @@ function paidRucs(summary: ExtraRucSummary): Set<string> {
   );
 }
 
+function activationTime(profile: SunatProfile): number {
+  return new Date(profile.activatedAt ?? profile.createdAt).getTime();
+}
+
 /**
  * RUC activos que superan los cupos pagados. Es el mismo orden que usa ms-sunat para apagarlos: primero los
- * que no tienen cupo propio, y entre ellos el más nuevo. El RUC principal nunca entra.
+ * que no tienen cupo propio, y entre ellos el activado más recientemente (activatedAt, o createdAt si falta).
+ * El RUC principal nunca entra.
  */
 export function getOverLimitProfiles(
   profiles: SunatProfile[],
@@ -66,7 +71,7 @@ export function getOverLimitProfiles(
         return paidDiff;
       }
 
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      return activationTime(b) - activationTime(a);
     })
     .slice(0, excess);
 }
