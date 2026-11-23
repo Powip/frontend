@@ -220,6 +220,10 @@ export interface CodOrder {
   subEstadoCc: string | null;
   dniCliente: string | null;
   dniValid: boolean;
+  /** Ya confirmado en Gestión CC (también en pedidos sin etapa comercial). */
+  confirmed?: boolean;
+  /** Core aún ofrece confirmar este pedido. */
+  canConfirm?: boolean;
   customerName: string | null;
   phoneNumber: string | null;
   address: string | null;

@@ -420,6 +420,27 @@ describe("Contra entrega con Gestión CC (fila 27)", () => {
     expect(await within(card).findByText("confirmado")).toBeInTheDocument();
   });
 
+  it("pedido sin etapa comercial pasa a Confirmada y deja de ofrecer Confirmar", async () => {
+    p.getCodOrder.mockResolvedValue(codOrder({ dniValid: true, dniCliente: "45678912", confirmed: false, canConfirm: true }));
+    p.confirmCod.mockResolvedValue(
+      codOrder({ dniValid: true, dniCliente: "45678912", subEstadoCc: null, confirmed: true, canConfirm: false }),
+    );
+    wrap(<CodSection conversation={conv} />);
+    const card = await screen.findByTestId("cod-card");
+    fireEvent.click(within(card).getByRole("button", { name: /Confirmar/ }));
+    expect(await within(card).findByTestId("cod-confirmed")).toHaveTextContent("Confirmada");
+    expect(within(card).queryByRole("button", { name: /Confirmar/ })).not.toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: "Anular" })).not.toBeInTheDocument();
+  });
+
+  it("si Core ya no permite confirmar, oculta solo Confirmar", async () => {
+    p.getCodOrder.mockResolvedValue(codOrder({ dniValid: true, dniCliente: "45678912", canConfirm: false }));
+    wrap(<CodSection conversation={conv} />);
+    const card = await screen.findByTestId("cod-card");
+    expect(within(card).getByRole("button", { name: "Reprogramar" })).toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: /Confirmar/ })).not.toBeInTheDocument();
+  });
+
   it("Anular pide motivo y lo envía", async () => {
     p.getCodOrder.mockResolvedValue(codOrder({ dniValid: true, dniCliente: "45678912" }));
     p.cancelCod.mockResolvedValue(codOrder({ subEstadoCc: "anulado_cc" }));

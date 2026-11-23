@@ -653,13 +653,17 @@ function CodCard({ conversationId, link }: { conversationId: string; link: Conve
     <li className="space-y-1.5 rounded-md border p-2 text-xs" data-testid="cod-card">
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium">{o.orderNumber ?? link.orderId.slice(0, 8)}</span>
-        <Badge variant="secondary">{o.subEstadoCc ?? o.status}</Badge>
+        {o.confirmed ? (
+          <Badge data-testid="cod-confirmed">Confirmada</Badge>
+        ) : (
+          <Badge variant="secondary">{o.subEstadoCc ?? o.status}</Badge>
+        )}
       </div>
       <p className="text-muted-foreground">
         {formatMoney(o.total)} · DNI {o.dniValid ? o.dniCliente : "pendiente"}
         {o.courier ? ` · ${o.courier}` : ""}
       </p>
-      {(askDni || !o.dniValid) && (
+      {!o.confirmed && (askDni || !o.dniValid) && (
         <div className="flex gap-1">
           <Input
             aria-label="DNI del cliente"
@@ -675,7 +679,7 @@ function CodCard({ conversationId, link }: { conversationId: string; link: Conve
           </Button>
         </div>
       )}
-      {cancelling ? (
+      {o.confirmed ? null : cancelling ? (
         <div className="space-y-1">
           <select
             aria-label="Motivo de anulación"
@@ -715,9 +719,11 @@ function CodCard({ conversationId, link }: { conversationId: string; link: Conve
         </div>
       ) : (
         <div className="flex flex-wrap gap-1">
-          <Button size="sm" variant="outline" disabled={busy} onClick={confirm}>
-            {m.confirm.isPending && <Loader2 className="animate-spin" />} Confirmar
-          </Button>
+          {o.canConfirm !== false && (
+            <Button size="sm" variant="outline" disabled={busy} onClick={confirm}>
+              {m.confirm.isPending && <Loader2 className="animate-spin" />} Confirmar
+            </Button>
+          )}
           <Button size="sm" variant="outline" disabled={busy} onClick={() => m.reschedule.mutate(undefined)}>
             Reprogramar
           </Button>
