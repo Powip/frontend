@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { MessageCircle } from "lucide-react";
+import { Maximize2, MessageCircle, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCrmEvents } from "@/hooks/useCrmChat";
 import { useCrmMe } from "@/hooks/useCrmMe";
@@ -9,6 +9,7 @@ import { NATIVE_SELECT_CLASS } from "./format";
 import ConversationList from "./ConversationList";
 import InboxIndicators, { type InboxIndicator } from "./InboxIndicators";
 import ChatPanel from "./ChatPanel";
+import SoundsControl from "./SoundsControl";
 
 export default function Bandeja() {
   const router = useRouter();
@@ -26,6 +27,19 @@ export default function Bandeja() {
     },
     [router, pathname],
   );
+  // Vista enfocada (lista + chat, sin indicadores) o completa. Se recuerda por navegador.
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    try {
+      setFocused(localStorage.getItem("crm_mode") === "focus");
+    } catch {}
+  }, []);
+  const setMode = (focus: boolean) => {
+    setFocused(focus);
+    try {
+      localStorage.setItem("crm_mode", focus ? "focus" : "full");
+    } catch {}
+  };
   const live = useCrmEvents();
   const [indicator, setIndicator] = useState<InboxIndicator | null>(null);
   const { stores } = useCrmMe();
@@ -36,6 +50,16 @@ export default function Bandeja() {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-end gap-3">
+        <SoundsControl openConversationId={selectedId} />
+        <button
+          type="button"
+          data-testid={focused ? "setfull" : "setfocus"}
+          onClick={() => setMode(!focused)}
+          className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+        >
+          {focused ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+          {focused ? "Vista completa" : "Vista enfocada"}
+        </button>
         {stores.length > 1 && (
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             Tienda
@@ -70,7 +94,9 @@ export default function Bandeja() {
         </span>
       </div>
 
-      <InboxIndicators active={indicator} onChange={setIndicator} storeId={storeId} />
+      {!focused && (
+        <InboxIndicators active={indicator} onChange={setIndicator} storeId={storeId} />
+      )}
 
       <div className="grid h-[calc(100vh-14rem)] min-h-[420px] overflow-hidden rounded-lg border bg-card md:grid-cols-[340px_1fr]">
         <div className={cn("min-h-0 border-r", selectedId ? "hidden md:block" : "block")}>

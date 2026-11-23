@@ -1,4 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
+import { emitSound } from "@/lib/crmSound";
 import type {
   Broadcast,
   Conversation,
@@ -135,6 +136,9 @@ export function applyCrmEvent(queryClient: QueryClient, event: CrmEvent): void {
       queryClient.invalidateQueries({ queryKey: crmKeys.summary });
       queryClient.invalidateQueries({ queryKey: crmKeys.conversationFollowups(conversation.id) });
       break;
+      if (message.direction === "in" && message.type !== "reaction") {
+        emitSound({ event: "msg", conversationId: conversation.id });
+      }
     }
     case "message.status": {
       const { conversationId, messageId, status, errorMessage } = event.data;

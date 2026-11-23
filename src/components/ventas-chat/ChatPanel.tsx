@@ -31,7 +31,7 @@ import {
   useSendNote,
   useUpdateConversation,
 } from "@/hooks/useCrmChat";
-import type { Message } from "@/types/crm";
+import type { Conversation, Message } from "@/types/crm";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import ChannelBadge from "./ChannelBadge";
 import { ChatCallButtons } from "./ChatCallsSection";
@@ -42,6 +42,14 @@ import ContentChatBar from "./ContentChatBar";
 import PauChatBar from "./PauChatBar";
 import TemplateDialog from "./TemplateDialog";
 import ThinkingDialog from "./ThinkingDialog";
+import {
+  ReactButton,
+  ReactionBadges,
+  SocialComposer,
+  SocialContent,
+  isSocialChannel,
+  reactionsByTarget,
+} from "./SocialParts";
 import {
   STATUS_LABEL,
   contactLabel,
@@ -77,7 +85,17 @@ function isAutomatic(m: Message) {
   return m.senderKind === "system" && (m.type === "text" || m.type === "template");
 }
 
-function Bubble({ message }: { message: Message }) {
+const SOCIAL_TYPES = new Set(["sticker", "image", "audio", "comment"]);
+
+function Bubble({
+  message,
+  conversation,
+  reactions,
+}: {
+  message: Message;
+  conversation?: Conversation;
+  reactions?: { emoji: string; mine: boolean }[];
+}) {
   if (isInternalNote(message)) {
     return (
       <div
@@ -124,8 +142,20 @@ function Bubble({ message }: { message: Message }) {
           out &&
           message.senderName && <p className="mb-0.5 text-[11px] opacity-80">{message.senderName}</p>
         )}
-        <p className="whitespace-pre-wrap break-words">{messageText(message)}</p>
+        {conversation && isSocialChannel(conversation) && SOCIAL_TYPES.has(message.type) && (message.type !== "image" || message.mediaUrl) ? (
+          <SocialContent message={message} conversation={conversation} />
+        ) : (
+          <p className="whitespace-pre-wrap break-words">{messageText(message)}</p>
+        )}
+        <ReactionBadges reactions={reactions} />
         <div className="mt-1 flex items-center justify-end gap-2 text-[11px] opacity-80">
+          {conversation && isSocialChannel(conversation) && message.direction === "in" && message.externalId && message.type !== "comment" && (
+            <ReactButton
+              conversationId={conversation.id}
+              message={message}
+              current={reactions?.find((r) => r.mine)?.emoji}
+            />
+          )}
           <span>{formatTime(message.createdAt)}</span>
           <StatusMark message={message} />
         </div>
@@ -240,6 +270,7 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
   };
 
   const groups = groupByDay(items ?? []);
+  const reactions = reactionsByTarget(items ?? []);
   const isNote = mode === "note";
   const canTemplate = !windowOpen && !isMetaChannel(conversation);
 
@@ -344,9 +375,16 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
             <p className="text-center text-xs text-muted-foreground">
               <span className="rounded-full bg-muted px-2 py-0.5">{g.label}</span>
             </p>
-            {g.messages.map((m) => (
-              <Bubble key={m.id} message={m} />
-            ))}
+            {g.messages
+              .filter((m) => m.type !== "reaction")
+              .map((m) => (
+                <Bubble
+                  key={m.id}
+                  message={m}
+                  conversation={conversation}
+                  reactions={m.externalId ? reactions.get(m.externalId) : undefined}
+                />
+              ))}
           </section>
         ))}
         {msgsQuery.data && items?.length === 0 && (
@@ -418,6 +456,7 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
           </>
         ) : (
         <>
+        {isSocialChannel(conversation) && <SocialComposer conversationId={conversation.id} disabled={!windowOpen} />}
         <ContentChatBar conversation={conversation} text={text} onFill={setText} windowOpen={windowOpen} />
         <PauChatBar conversation={conversation} text={text} onFill={setText} windowOpen={windowOpen} />
         <div className="flex items-end gap-2">

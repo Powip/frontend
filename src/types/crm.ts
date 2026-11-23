@@ -86,6 +86,12 @@ export interface Message {
   senderName: string | null;
   errorMessage: string | null;
   createdAt: string;
+  /** Instagram/Messenger: id del mensaje en Meta, id del mensaje al que reacciona, adjunto y transcripción. */
+  externalId?: string | null;
+  contextExternalId?: string | null;
+  mediaUrl?: string | null;
+  mediaId?: string | null;
+  transcript?: string | null;
 }
 
 export type AssignedFilter = "all" | "me" | "unassigned";
