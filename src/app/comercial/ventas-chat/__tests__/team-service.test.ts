@@ -2,7 +2,9 @@ import { AxiosError } from "axios";
 import axiosAuth from "@/lib/axiosAuth";
 import * as crmService from "@/services/crmService";
 import {
+  completeEmbeddedSignup,
   connectCustomWaba,
+  getEmbeddedSignupConfig,
   getAudit,
   getCrmSettings,
   getTeamStats,
@@ -72,9 +74,10 @@ describe("crmTeamService", () => {
     expect(http.patch).toHaveBeenCalledWith("http://crm/crm/settings", { slaMinutes: 20 });
   });
 
-  it("connectCustomWaba envía solo los 4 campos a ms-integrations", async () => {
+  it("connectCustomWaba envía solo los 4 campos a la ruta de la tienda", async () => {
     http.post.mockResolvedValue({ data: { status: "success" } });
     await connectCustomWaba({
+      storeId: "s1",
       wabaId: "w1",
       phoneNumberId: "p1",
       businessPhoneNumber: "+51999999999",
@@ -83,13 +86,43 @@ describe("crmTeamService", () => {
       extra: "x",
     });
     expect(http.post).toHaveBeenCalledWith(
-      "http://integrations/whatsapp/onboarding/connect-custom-waba",
+      "http://integrations/whatsapp/onboarding/s1/connect-custom-waba",
       {
         wabaId: "w1",
         phoneNumberId: "p1",
         businessPhoneNumber: "+51999999999",
         accessToken: "tok",
       },
+    );
+  });
+
+  it("connectCustomWaba manda asCompanyDefault solo si se pide", async () => {
+    http.post.mockResolvedValue({ data: { status: "success" } });
+    await connectCustomWaba({
+      storeId: "s1",
+      wabaId: "w1",
+      phoneNumberId: "p1",
+      businessPhoneNumber: "+51",
+      accessToken: "tok",
+      asCompanyDefault: true,
+    });
+    expect(http.post.mock.calls.at(-1)?.[1]).toMatchObject({ asCompanyDefault: true });
+  });
+
+  it("getEmbeddedSignupConfig lee la config pública", async () => {
+    http.get.mockResolvedValue({ data: { enabled: true, simulated: true } });
+    await expect(getEmbeddedSignupConfig()).resolves.toEqual({ enabled: true, simulated: true });
+    expect(http.get).toHaveBeenCalledWith(
+      "http://integrations/whatsapp/onboarding/embedded-signup/config",
+    );
+  });
+
+  it("completeEmbeddedSignup manda el código a la tienda sin campos vacíos", async () => {
+    http.post.mockResolvedValue({ data: { status: "success" } });
+    await completeEmbeddedSignup({ storeId: "s 1", code: "c", wabaId: "", phoneNumberId: "p" });
+    expect(http.post).toHaveBeenCalledWith(
+      "http://integrations/whatsapp/onboarding/s%201/embedded-signup",
+      { code: "c", phoneNumberId: "p" },
     );
   });
 });

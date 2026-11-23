@@ -171,10 +171,32 @@ export interface ExportLogItem {
 // --- Conexión de WhatsApp (ms-integrations) ---
 
 export interface ConnectWabaInput {
+  /** Tienda dueña del número (ms-integrations lo pide en la ruta). */
+  storeId: string;
   wabaId: string;
   phoneNumberId: string;
   businessPhoneNumber: string;
   accessToken: string;
+  /** Guarda el número como el de toda la empresa (respaldo de las tiendas sin número propio). */
+  asCompanyDefault?: boolean;
+}
+
+/** Lo que el navegador necesita para abrir el Embedded Signup de Meta (sin secretos). */
+export interface EmbeddedSignupConfig {
+  enabled: boolean;
+  appId: string | null;
+  configId: string | null;
+  apiVersion: string;
+  /** true cuando ms-integrations apunta a un simulador local en vez de Meta. */
+  simulated: boolean;
+}
+
+export interface CompleteEmbeddedSignupInput {
+  storeId: string;
+  code: string;
+  wabaId?: string;
+  phoneNumberId?: string;
+  asCompanyDefault?: boolean;
 }
 
 export interface ConnectWabaResult {

@@ -8,6 +8,8 @@ import type {
   ConnectWabaInput,
   ConnectMetaAccountInput,
   ConnectWabaResult,
+  CompleteEmbeddedSignupInput,
+  EmbeddedSignupConfig,
   MetaAccount,
   TikTokAccount,
   TikTokOAuthResult,
@@ -88,12 +90,42 @@ export async function updateCrmSettings(input: CrmSettingsInput): Promise<CrmSet
 export async function connectCustomWaba(input: ConnectWabaInput): Promise<ConnectWabaResult> {
   return (
     await axiosAuth.post<ConnectWabaResult>(
-      `${API.integrations}/whatsapp/onboarding/connect-custom-waba`,
+      `${API.integrations}/whatsapp/onboarding/${encodeURIComponent(input.storeId)}/connect-custom-waba`,
       {
         wabaId: input.wabaId,
         phoneNumberId: input.phoneNumberId,
         businessPhoneNumber: input.businessPhoneNumber,
         accessToken: input.accessToken,
+        ...(input.asCompanyDefault ? { asCompanyDefault: true } : {}),
+      },
+    )
+  ).data;
+}
+
+/** Datos públicos para abrir el Embedded Signup («Conectar con Facebook»). */
+export async function getEmbeddedSignupConfig(): Promise<EmbeddedSignupConfig> {
+  return (
+    await axiosAuth.get<EmbeddedSignupConfig>(
+      `${API.integrations}/whatsapp/onboarding/embedded-signup/config`,
+    )
+  ).data;
+}
+
+/**
+ * Canjea el `code` del Embedded Signup. ms-integrations guarda el número en la misma
+ * conexión que usan la Bandeja y las notificaciones. 503 sin claves, 502 si Meta falla.
+ */
+export async function completeEmbeddedSignup(
+  input: CompleteEmbeddedSignupInput,
+): Promise<ConnectWabaResult> {
+  return (
+    await axiosAuth.post<ConnectWabaResult>(
+      `${API.integrations}/whatsapp/onboarding/${encodeURIComponent(input.storeId)}/embedded-signup`,
+      {
+        code: input.code,
+        ...(input.wabaId ? { wabaId: input.wabaId } : {}),
+        ...(input.phoneNumberId ? { phoneNumberId: input.phoneNumberId } : {}),
+        ...(input.asCompanyDefault ? { asCompanyDefault: true } : {}),
       },
     )
   ).data;

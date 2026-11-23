@@ -9,7 +9,8 @@ import type { CrmSettings } from "@/types/crmTeam";
 let mockRole = "ADMIN";
 jest.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
-    auth: { accessToken: "t", user: { id: "u1", name: "Jairo", role: mockRole }, company: { id: "co1" } },
+    auth: { accessToken: "t", user: { id: "u1", name: "Jairo", role: mockRole }, company: { id: "co1", stores: [{ id: "s1", name: "Tienda Uno" }, { id: "s2", name: "Tienda Dos" }] } },
+    selectedStoreId: "s2",
   }),
 }));
 jest.mock("@/config/permissions.config", () => ({
@@ -30,6 +31,8 @@ jest.mock("@/services/crmTeamService", () => ({
   updateCrmSettings: jest.fn(),
   listTeamMembers: jest.fn(),
   connectCustomWaba: jest.fn(),
+  getEmbeddedSignupConfig: jest.fn(),
+  completeEmbeddedSignup: jest.fn(),
   listMetaAccounts: jest.fn(),
   connectMetaAccount: jest.fn(),
   deleteMetaAccount: jest.fn(),
@@ -94,6 +97,13 @@ beforeEach(() => {
   team.getExportLog.mockResolvedValue([]);
   team.listMetaAccounts.mockResolvedValue([]);
   team.listTikTokAccounts.mockResolvedValue([]);
+  team.getEmbeddedSignupConfig.mockResolvedValue({
+    enabled: false,
+    appId: null,
+    configId: null,
+    apiVersion: "v26.0",
+    simulated: false,
+  });
   window.history.replaceState(null, "", "/comercial/ventas-chat/ajustes");
   team.updateCrmSettings.mockImplementation(async (input) => settings(input));
   team.listTeamMembers.mockResolvedValue([
@@ -280,6 +290,7 @@ describe("Ajustes · WhatsApp del negocio", () => {
     fireEvent.click(saveBtn("whatsapp", "Conectar número"));
     await waitFor(() =>
       expect(team.connectCustomWaba).toHaveBeenCalledWith({
+        storeId: "s2",
         wabaId: "111222",
         phoneNumberId: "333444",
         businessPhoneNumber: "+51999888777",
@@ -307,6 +318,83 @@ describe("Ajustes · WhatsApp del negocio", () => {
     expect(screen.getByLabelText("Token de acceso")).toHaveValue("");
     // Los identificadores se conservan para reintentar.
     expect(screen.getByLabelText(/ID del número/)).toHaveValue("333444");
+  });
+
+  it("envía la tienda elegida y la opción de toda la empresa", async () => {
+    team.connectCustomWaba.mockResolvedValue({ status: "success", message: "ok", data: undefined } as never);
+    setup();
+    await screen.findByLabelText("Token de acceso");
+    fireEvent.change(screen.getByLabelText("Tienda"), { target: { value: "s1" } });
+    fireEvent.click(screen.getByLabelText("Usar como número de toda la empresa"));
+    fill();
+    fireEvent.click(saveBtn("whatsapp", "Conectar número"));
+    await waitFor(() =>
+      expect(team.connectCustomWaba).toHaveBeenCalledWith(
+        expect.objectContaining({ storeId: "s1", asCompanyDefault: true }),
+      ),
+    );
+  });
+
+  it("sin app de Meta deshabilita «Conectar con Facebook» y dice qué falta", async () => {
+    setup();
+    expect(await screen.findByTestId("embedded-signup-disabled")).toHaveTextContent(
+      "WHATSAPP_META_EMBEDDED_SIGNUP_CONFIG_ID",
+    );
+    expect(screen.getByRole("button", { name: "Conectar con Facebook" })).toBeDisabled();
+  });
+
+  it("con el simulador conecta por Embedded Signup en la tienda elegida", async () => {
+    team.getEmbeddedSignupConfig.mockResolvedValue({
+      enabled: true,
+      appId: "app",
+      configId: "cfg",
+      apiVersion: "v26.0",
+      simulated: true,
+    });
+    team.completeEmbeddedSignup.mockResolvedValue({
+      status: "success",
+      message: "ok",
+      data: {
+        id: "1",
+        companyId: "co1",
+        mode: "CUSTOM",
+        wabaId: "w",
+        phoneNumberId: "p",
+        businessPhoneNumber: "+51 900 000 001",
+        isActive: true,
+        createdAt: "",
+        updatedAt: "",
+      },
+    });
+    setup();
+    const btn = await screen.findByRole("button", { name: "Conectar con Facebook" });
+    await waitFor(() => expect(btn).toBeEnabled());
+    fireEvent.click(btn);
+    await waitFor(() =>
+      expect(team.completeEmbeddedSignup).toHaveBeenCalledWith({ storeId: "s2", code: "SIMULATED_CODE" }),
+    );
+    expect(await screen.findByText(/Número conectado: \+51 900 000 001/)).toBeInTheDocument();
+  });
+
+  it("si Meta falla al canjear el código muestra el error", async () => {
+    team.getEmbeddedSignupConfig.mockResolvedValue({
+      enabled: true,
+      appId: "app",
+      configId: "cfg",
+      apiVersion: "v26.0",
+      simulated: true,
+    });
+    team.completeEmbeddedSignup.mockRejectedValue(
+      Object.assign(new Error("x"), {
+        isAxiosError: true,
+        response: { status: 502, data: { message: "Meta no respondió" } },
+      }),
+    );
+    setup();
+    const btn = await screen.findByRole("button", { name: "Conectar con Facebook" });
+    await waitFor(() => expect(btn).toBeEnabled());
+    fireEvent.click(btn);
+    expect(await within(card("whatsapp")).findByRole("alert")).toHaveTextContent("Meta no respondió");
   });
 
   it("muestra cuántas plantillas hay aprobadas, en revisión y rechazadas", async () => {
