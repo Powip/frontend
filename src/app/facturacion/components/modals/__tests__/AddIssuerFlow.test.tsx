@@ -178,4 +178,27 @@ describe("AddIssuerFlow", () => {
     expect(activateMutate).toHaveBeenCalledWith("b", expect.anything());
     expect(buyMutate).not.toHaveBeenCalled();
   });
+
+  it("para volver a pagar un cupo siempre cobra, aunque haya cupo libre", async () => {
+    givenSummary(summary({ maxRucs: 3, extraRucsPaid: 2 }));
+    buyMutate.mockImplementation(() => undefined);
+    render(
+      <AddIssuerFlow
+        isOpen
+        onClose={jest.fn()}
+        profiles={[profile("a", "20111111111", true)]}
+        repay={{ ruc: "20333333333", razonSocial: "VENCIDA SAC" }}
+      />,
+    );
+
+    expect(screen.getByLabelText("RUC")).toHaveValue("20333333333");
+
+    await userEvent.click(screen.getByRole("button", { name: /Agregar RUC \(\+S\/ 30\/mes\)/ }));
+
+    expect(buyMutate).toHaveBeenCalledWith(
+      { ruc: "20333333333", razonSocial: "VENCIDA SAC" },
+      expect.anything(),
+    );
+    expect(activateMutate).not.toHaveBeenCalled();
+  });
 });

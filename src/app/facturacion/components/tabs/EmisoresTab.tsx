@@ -16,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import type { ExtraRucPurchase } from "@/features/sunat/extra-ruc/models/extra-ruc";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
 import { useActivateSunatProfile } from "@/features/sunat/sunat-profile/hooks/use-activate-sunat-profile";
@@ -37,6 +38,8 @@ interface EmisoresTabProps {
   onAddIssuer: () => void;
   /** Un RUC desactivado no tiene cupo libre: abre el flujo para pagar su cupo con sus datos ya cargados. */
   onReactivate: (profile: SunatProfile) => void;
+  /** Cupo dado de baja o vencido: abre el pago de ese RUC con sus datos ya cargados. */
+  onRepay?: (purchase: ExtraRucPurchase) => void;
 }
 
 /**
@@ -49,6 +52,7 @@ export function EmisoresTab({
   onOpenIssuer,
   onAddIssuer,
   onReactivate,
+  onRepay,
 }: EmisoresTabProps) {
   const [editingCode, setEditingCode] = useState<SunatProfile | null>(null);
   const { data: profiles = [], isLoading } = useSunatProfiles();
@@ -157,7 +161,7 @@ export function EmisoresTab({
         emite con el RUC del comprobante que corrige.
       </div>
 
-      <ExtraRucSlotsCard />
+      <ExtraRucSlotsCard onRepay={onRepay} />
 
       <EstablishmentCodeModal profile={editingCode} onClose={() => setEditingCode(null)} />
     </div>

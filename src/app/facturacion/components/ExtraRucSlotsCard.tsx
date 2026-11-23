@@ -20,6 +20,42 @@ import { useExtraRucSummary } from "@/features/sunat/extra-ruc/hooks/use-extra-r
 import type { ExtraRucPurchase } from "@/features/sunat/extra-ruc/models/extra-ruc";
 import { formatSoles } from "@/features/sunat/extra-ruc/utils/ruc-slots";
 
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Vencido: el último día pagado ya pasó. */
+export function isExpired(purchase: ExtraRucPurchase, today = todayIso()): boolean {
+  return purchase.activeUntil !== null && purchase.activeUntil < today;
+}
+
+/**
+ * Se puede volver a pagar un cupo dado de baja o vencido, salvo que ese RUC ya tenga otro cupo vigente que se
+ * renueva (no se cobra dos veces el mismo RUC) o un cupo pagado más nuevo (el botón sale una vez por RUC).
+ */
+export function canRepay(
+  purchase: ExtraRucPurchase,
+  all: ExtraRucPurchase[],
+  today = todayIso(),
+): boolean {
+  if (purchase.renewing && !isExpired(purchase, today)) {
+    return false;
+  }
+
+  return !all.some(
+    (other) =>
+      other.id !== purchase.id &&
+      other.ruc === purchase.ruc &&
+      other.status === "PAID" &&
+      ((other.renewing && !isExpired(other, today)) || other.createdAt > purchase.createdAt),
+  );
+}
+
+interface ExtraRucSlotsCardProps {
+  /** Abre el pago de un cupo nuevo para ese RUC (AddIssuerFlow). */
+  onRepay?: (purchase: ExtraRucPurchase) => void;
+}
+
 function formatDay(value: string | null): string {
   if (!value) {
     return "—";
@@ -32,9 +68,10 @@ function formatDay(value: string | null): string {
 
 /**
  * Cupos de RUC extra que la empresa paga (S/ 30/mes cada uno, siempre mensual). Aquí se da de baja un cupo: deja
- * de cobrarse y vale hasta el final del período ya pagado. No aparece si la empresa no tiene ninguno.
+ * de cobrarse y vale hasta el final del período ya pagado. Los cupos dados de baja o vencidos se pueden volver a
+ * pagar. No aparece si la empresa no tiene ninguno.
  */
-export function ExtraRucSlotsCard() {
+export function ExtraRucSlotsCard({ onRepay }: ExtraRucSlotsCardProps = {}) {
   const { data: summary } = useExtraRucSummary();
   const cancel = useCancelExtraRuc();
   const [toCancel, setToCancel] = useState<ExtraRucPurchase | null>(null);
@@ -69,18 +106,27 @@ export function ExtraRucSlotsCard() {
             <div>
               <div className="font-semibold">{purchase.razonSocial}</div>
               <div className="text-xs text-muted-foreground">
-                RUC {purchase.ruc} · pagado hasta {formatDay(purchase.activeUntil)}
+                RUC {purchase.ruc} · {isExpired(purchase) ? "venció el" : "pagado hasta"}{" "}
+                {formatDay(purchase.activeUntil)}
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              {purchase.renewing ? (
+              {isExpired(purchase) ? (
+                <Badge variant="outline">Vencido</Badge>
+              ) : purchase.renewing ? (
                 <Badge variant="secondary">Se renueva cada mes</Badge>
               ) : (
                 <Badge variant="outline">Dado de baja</Badge>
               )}
 
-              {purchase.renewing && (
+              {onRepay && canRepay(purchase, paid) && (
+                <Button size="sm" onClick={() => onRepay(purchase)}>
+                  Volver a pagar
+                </Button>
+              )}
+
+              {purchase.renewing && !isExpired(purchase) && (
                 <Button
                   variant="outline"
                   size="sm"

@@ -38,6 +38,11 @@ interface AddIssuerFlowProps {
    * cargados y, al confirmar, se paga el cupo.
    */
   reactivate?: AddIssuerValues & { profileId: string };
+  /**
+   * Cupo dado de baja o vencido que se quiere volver a pagar: el modal sale con sus datos ya cargados y, al
+   * confirmar, siempre se paga (no se usa un cupo libre: el cupo es de ese RUC).
+   */
+  repay?: AddIssuerValues;
 }
 
 /**
@@ -52,6 +57,7 @@ export function AddIssuerFlow({
   profiles,
   paidIdentity,
   reactivate,
+  repay,
 }: AddIssuerFlowProps) {
   const router = useRouter();
   const { data: summary } = useExtraRucSummary();
@@ -79,6 +85,11 @@ export function AddIssuerFlow({
   const pricePerRuc = summary?.pricePerRuc ?? DEFAULT_EXTRA_RUC_PRICE;
 
   function handleConfirm(values: AddIssuerValues) {
+    if (repay) {
+      buy(values);
+      return;
+    }
+
     if (reactivate && freeSlot !== false) {
       // El RUC ya existe y ahora hay cupo: solo se activa.
       activateProfile.mutate(reactivate.profileId, { onSuccess: onClose });
@@ -92,6 +103,10 @@ export function AddIssuerFlow({
       return;
     }
 
+    buy(values);
+  }
+
+  function buy(values: AddIssuerValues) {
     buyExtraRuc.mutate(values, {
       onSuccess: (purchase) => {
         if (!purchase.redirectUrl) {
@@ -121,11 +136,11 @@ export function AddIssuerFlow({
         onClose={onClose}
         onConfirm={handleConfirm}
         pricePerRuc={pricePerRuc}
-        requiresPayment={freeSlot === null ? null : !freeSlot}
+        requiresPayment={repay ? true : freeSlot === null ? null : !freeSlot}
         renewingRucs={summary?.renewingRucs ?? 0}
         existingRucs={profiles.map((profile) => profile.ruc)}
         isSubmitting={buyExtraRuc.isPending || activateProfile.isPending}
-        initialValues={reactivate}
+        initialValues={repay ?? reactivate}
       />
 
       <CertificadoUploadModal
