@@ -14,6 +14,7 @@ export async function saveAliclikDestinationCoordinates(
     id: string;
     companyId: string;
     deliverySnapshot?: unknown;
+    customer?: { id?: string } | null;
   }>(`${GATEWAY.ventas}/order-header/manual/${encodeURIComponent(orderId)}`);
   const order = response.data;
   if (order.id !== orderId || order.companyId !== companyId) {
@@ -28,8 +29,10 @@ export async function saveAliclikDestinationCoordinates(
     );
     return;
   }
-  if (!clientId) throw new Error("No se pudo determinar el cliente para guardar las coordenadas");
-  await updateClient(clientId, { companyId, latitude, longitude });
+  // Sin clientId (p. ej. desde el modal de guía) se usa el cliente que devuelve la venta.
+  const targetClientId = clientId || order.customer?.id;
+  if (!targetClientId) throw new Error("No se pudo determinar el cliente para guardar las coordenadas");
+  await updateClient(targetClientId, { companyId, latitude, longitude });
 }
 
 /**

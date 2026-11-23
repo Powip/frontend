@@ -119,6 +119,7 @@ import {
 import { getLeadPayments } from "@/services/leadPaymentsService";
 import type { LeadPayment } from "@/types/leadPayments";
 import type { LeadDetail, ConfirmCommercialLeadInput } from "@/types/leads";
+import { extractLatLngFromGoogleMapsUrl } from "@/lib/googleMapsCoords";
 import {
   commercialLeadHref,
   notifyCommercialChange,
@@ -190,23 +191,6 @@ function Disclosure({
       )}
     </div>
   );
-}
-
-function extractLatLngFromGoogleMapsUrl(url: string): { lat: number; lng: number } | null {
-  const patterns = [
-    /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, // pin exacto en links "place/.../data="
-    /@(-?\d+\.\d+),(-?\d+\.\d+)/, // centro del mapa "@lat,lng,zoom"
-    /[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/, // link corto "?q=lat,lng"
-  ];
-  for (const re of patterns) {
-    const match = url.match(re);
-    if (match) {
-      const lat = parseFloat(match[1]);
-      const lng = parseFloat(match[2]);
-      if (!isNaN(lat) && !isNaN(lng)) return { lat, lng };
-    }
-  }
-  return null;
 }
 
 /** Default: hoy + 24 hs, solo fecha (sin hora). */

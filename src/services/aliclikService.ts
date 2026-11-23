@@ -88,6 +88,7 @@ export interface AliclikOrderQuote {
   customer: AliclikCustomer;
   warehouses: AliclikWarehouseQuote[];
   unresolvedItems: AliclikUnresolvedItem[];
+  missingCoordinates?: boolean;
 }
 
 export interface AliclikShipmentPayload {
