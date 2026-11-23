@@ -9,6 +9,9 @@ import AjustesWhatsAppCard from "./AjustesWhatsAppCard";
 import AjustesMetaCard from "./AjustesMetaCard";
 import AjustesTikTokCard from "./AjustesTikTokCard";
 import AjustesExportCard from "./AjustesExportCard";
+import AdResultsCard from "./AjustesAdResultsCard";
+import { MetaAudienceCard, MetaCapiCard } from "./AjustesMetaAdsCards";
+import { ChannelAccountsCard, PlanCard } from "./AjustesPlanCards";
 import {
   AssignCard,
   HoursCard,
@@ -24,9 +27,11 @@ function AjustesContent() {
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <h1 className="text-lg font-semibold">Ajustes</h1>
+      <PlanCard />
       <AjustesWhatsAppCard />
       <AjustesMetaCard />
       <AjustesTikTokCard />
+      <ChannelAccountsCard />
       {isLoading && (
         <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" /> Cargando ajustes…
@@ -52,6 +57,9 @@ function AjustesContent() {
         </>
       )}
       <AjustesExportCard />
+      <MetaCapiCard />
+      <MetaAudienceCard />
+      <AdResultsCard />
       <WhereCard />
     </div>
   );

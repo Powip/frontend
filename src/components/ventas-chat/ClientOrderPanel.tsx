@@ -15,6 +15,7 @@ import { crmError } from "@/services/crmService";
 import { useConversationOrders, useCoreOrder, useUpdateConversation } from "@/hooks/useCrmChat";
 import { useCrmMe } from "@/hooks/useCrmMe";
 import ChatCallsSection from "./ChatCallsSection";
+import ChatAdSignalSection from "./ChatAdSignalSection";
 import { FollowupsSection, TagsSection } from "./ChatExtrasSections";
 import { PipelineSection, TasksSection } from "./ChatPlanningSections";
 import CustomerPhoneField from "./CustomerPhoneField";
@@ -282,6 +283,7 @@ export default function ClientOrderPanel(props: Props) {
       <ReceiptsSection conversation={conversation} />
       <FinanceQueueSection />
       <CodSection conversation={conversation} />
+      <ChatAdSignalSection conversation={conversation} />
       <MarketingOptOutSection conversation={conversation} />
       <Button className="w-full" onClick={() => router.push(crearPedidoUrl(conversation))}>
         <Plus /> Registrar venta completa
