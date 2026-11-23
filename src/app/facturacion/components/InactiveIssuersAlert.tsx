@@ -144,8 +144,8 @@ export function InactiveIssuersAlert({
                 cupo{Math.max(1, summary.maxRucs) === 1 ? "" : "s"} pagado
                 {Math.max(1, summary.maxRucs) === 1 ? "" : "s"}.{" "}
               </span>
-              Paga el cupo (S/ {price}/mes) o desactiva un RUC. Si no, se desactivará{" "}
-              {overLimit.length === 1 ? "este RUC" : "estos RUC"}:
+              Paga el cupo (S/ {price}/mes) o desactiva un RUC. Si no,{" "}
+              {overLimit.length === 1 ? "se desactivará este RUC" : "se desactivarán estos RUC"}:
             </div>
 
             <ul className="space-y-1">
