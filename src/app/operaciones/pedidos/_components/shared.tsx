@@ -283,14 +283,48 @@ export function guessFailureReason(sale: {
   return "Otro motivo";
 }
 
+/**
+ * ¿El pedido falló al REGISTRARSE en Shalom (no en la entrega)? ms-courier marca
+ * `shalomStatus = FALLIDO` y guarda en `shalomError` el mensaje real de Shalom cuando
+ * el registro del envío no se pudo hacer. Es otra cosa que una entrega fallida
+ * (DEVUELTO): el paquete ni siquiera tiene orden de servicio en Shalom.
+ */
+export function isShalomRegistrationError(sale: {
+  shalomStatus?: string | null;
+  shalomError?: string | null;
+}): boolean {
+  return sale.shalomStatus === "FALLIDO" && !!sale.shalomError?.trim();
+}
+
+/** Alerta de registro fallido en Shalom, con el mensaje real que devolvió Shalom. */
+export function ShalomRegistrationErrorBadge({ shalomError }: { shalomError?: string | null }) {
+  const message = shalomError?.trim() || "Shalom no devolvió detalle del error";
+  return (
+    <div className="flex max-w-[320px] flex-col gap-0.5" data-testid="shalom-registration-error">
+      <span className="inline-flex w-fit items-center gap-1 rounded-full border border-red-200 bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700 dark:border-red-500/30 dark:bg-red-500/15 dark:text-red-300">
+        <AlertTriangle className="h-3 w-3" />
+        Error al registrar en Shalom
+      </span>
+      <span className="line-clamp-3 text-[11px] text-muted-foreground" title={message}>
+        {message}
+      </span>
+    </div>
+  );
+}
+
 /** "Qué pasó" — badge + motivo visible en la celda, sin depender de hover. */
 export function FailureBadge({
+  shalomStatus,
   shalomError,
   syncErrors,
 }: {
+  shalomStatus?: string | null;
   shalomError?: string | null;
   syncErrors?: Record<string, string> | null;
 }) {
+  if (isShalomRegistrationError({ shalomStatus, shalomError })) {
+    return <ShalomRegistrationErrorBadge shalomError={shalomError} />;
+  }
   const motivo = guessFailureReason({ shalomError, syncErrors });
   return (
     <div className="flex flex-col gap-0.5">

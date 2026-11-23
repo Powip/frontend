@@ -1731,3 +1731,165 @@ describe('código de seguridad distinto por pedido', () => {
     });
   });
 });
+
+// ── Declaración jurada con RUC: reenvío con DNI solo del pedido que falló ────────
+//
+// Shalom responde «La declaración jurada solo es para persona natural» cuando el
+// destinatario va con RUC. El modal ofrece escribir el DNI y reenvía solo ese pedido
+// (`onlyOrderIds`), con el DNI en `packageDetails[orderId].recipientDoc`. El cliente no
+// se modifica.
+describe('SendToShalomModal: declaración jurada con RUC (reenvío con DNI)', () => {
+  const RUC_ORDER = {
+    ...MOCK_ORDER,
+    id: 'order-ruc',
+    orderNumber: 'ORD-RUC',
+    customer: { ...MOCK_ORDER.customer, dni: '20123456789', fullName: 'Empresa Test SAC' },
+  };
+  const PERSONA_NATURAL_MSG = 'Error en Shalom API: La declaración jurada solo es para persona natural';
+  const HINT =
+    'Si desea continuar con la declaración jurada, ingrese el DNI del cliente (actualmente solo tiene RUC)';
+
+  const failedResponse = (doc: string) => ({
+    data: {
+      success: false,
+      summary: { total: 1, successful: 0, failed: 1 },
+      errors: [
+        {
+          index: 0,
+          orderId: 'order-ruc',
+          error: PERSONA_NATURAL_MSG,
+          shipmentInfo: { recipientDoc: doc, recipientName: 'Empresa Test SAC' },
+        },
+      ],
+      data: [],
+    },
+  });
+
+  async function setupRucForm(declaracion: string | null) {
+    (axios.get as jest.Mock).mockResolvedValue({ data: { success: true, data: [MOCK_AGENCY] } });
+    const user = userEvent.setup();
+    await renderModal({ orders: [RUC_ORDER] });
+    await fillValidForm(user);
+    if (declaracion) {
+      const djSelect = (screen.getAllByRole('combobox') as HTMLSelectElement[]).find((s) =>
+        Array.from(s.options).some((o) => o.value === '__ninguna__'),
+      )!;
+      await user.selectOptions(djSelect, declaracion);
+    }
+    return { user };
+  }
+
+  it('muestra el texto y el campo DNI debajo del error y reenvía solo ese pedido con el DNI', async () => {
+    mockAxiosPost.mockImplementation(async (url: string, body?: unknown) => {
+      const payload = body as { onlyOrderIds?: string[] } | undefined;
+      if (String(url).includes('send-to-shalom') && payload?.onlyOrderIds) {
+        return {
+          data: {
+            success: true,
+            summary: { total: 1, successful: 1, failed: 0 },
+            errors: [],
+            data: [{ orderId: 'order-ruc', success: true, ose_id: 99, orderNumber: 'ORD-RUC' }],
+            trackingData: { 'order-ruc': { ose_id: 99 } },
+          },
+        };
+      }
+      return failedResponse('20123456789');
+    });
+
+    const { user } = await setupRucForm('Ropa');
+    await user.click(screen.getByRole('button', { name: /confirmar y enviar a shalom/i }));
+
+    expect(await screen.findByText(HINT)).toBeInTheDocument();
+    expect(screen.getByTestId('shalom-send-errors-panel')).toHaveTextContent(
+      'La declaración jurada solo es para persona natural',
+    );
+
+    const retryBtn = screen.getByRole('button', { name: /reenviar con dni/i });
+    expect(retryBtn).toBeDisabled();
+    await user.type(screen.getByLabelText('DNI del cliente'), '87654321');
+    expect(retryBtn).not.toBeDisabled();
+    await user.click(retryBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText('¡Registro Exitoso!')).toBeInTheDocument();
+    });
+
+    const retryCall = mockAxiosPost.mock.calls.find(
+      ([url, body]) =>
+        String(url).includes('send-to-shalom') &&
+        (body as { onlyOrderIds?: string[] })?.onlyOrderIds,
+    )!;
+    const [, payload] = retryCall as [
+      unknown,
+      {
+        onlyOrderIds: string[];
+        declaracionJurada: string;
+        packageDetails: Record<string, { recipientDoc: string }>;
+        orderDestinations: Record<string, string>;
+      },
+    ];
+    expect(payload.onlyOrderIds).toEqual(['order-ruc']);
+    expect(payload.declaracionJurada).toBe('Ropa');
+    expect(payload.packageDetails['order-ruc'].recipientDoc).toBe('87654321');
+    expect(Object.keys(payload.orderDestinations)).toEqual(['order-ruc']);
+    expect(BASE_PROPS.onSuccess).toHaveBeenCalled();
+    // No se edita el cliente (el RUC sigue para la facturación).
+    expect(mockAuthPatch).not.toHaveBeenCalledWith(
+      expect.stringContaining('/client'),
+      expect.anything(),
+    );
+  });
+
+  it('no ofrece el DNI si no hay declaración jurada elegida', async () => {
+    mockAxiosPost.mockResolvedValue(failedResponse('20123456789'));
+    const { user } = await setupRucForm(null);
+    await user.click(screen.getByRole('button', { name: /confirmar y enviar a shalom/i }));
+
+    expect(await screen.findByTestId('shalom-send-errors-panel')).toBeInTheDocument();
+    expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+  });
+
+  it('no ofrece el DNI si el pedido ya se envió con DNI (8 dígitos)', async () => {
+    mockAxiosPost.mockResolvedValue(failedResponse('12345678'));
+    (axios.get as jest.Mock).mockResolvedValue({ data: { success: true, data: [MOCK_AGENCY] } });
+    const user = userEvent.setup();
+    await renderModal({ orders: [{ ...RUC_ORDER, customer: { ...RUC_ORDER.customer, dni: '12345678' } }] });
+    await fillValidForm(user);
+    const djSelect = (screen.getAllByRole('combobox') as HTMLSelectElement[]).find((s) =>
+      Array.from(s.options).some((o) => o.value === '__ninguna__'),
+    )!;
+    await user.selectOptions(djSelect, 'Ropa');
+    await user.click(screen.getByRole('button', { name: /confirmar y enviar a shalom/i }));
+
+    expect(await screen.findByTestId('shalom-send-errors-panel')).toBeInTheDocument();
+    expect(screen.queryByText(HINT)).not.toBeInTheDocument();
+  });
+
+  it('si Shalom vuelve a fallar con el DNI, muestra el nuevo error y no pasa a éxito', async () => {
+    mockAxiosPost.mockImplementation(async (url: string, body?: unknown) => {
+      const payload = body as { onlyOrderIds?: string[] } | undefined;
+      if (String(url).includes('send-to-shalom') && payload?.onlyOrderIds) {
+        return {
+          data: {
+            success: false,
+            summary: { total: 1, successful: 0, failed: 1 },
+            errors: [{ index: 0, orderId: 'order-ruc', error: 'Error en Shalom API: DNI no válido' }],
+            data: [],
+          },
+        };
+      }
+      return failedResponse('20123456789');
+    });
+
+    const { user } = await setupRucForm('Ropa');
+    await user.click(screen.getByRole('button', { name: /confirmar y enviar a shalom/i }));
+    await user.type(await screen.findByLabelText('DNI del cliente'), '87654321');
+    await user.click(screen.getByRole('button', { name: /reenviar con dni/i }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('shalom-send-errors-panel')).toHaveTextContent('DNI no válido');
+    });
+    expect(screen.queryByText('¡Registro Exitoso!')).not.toBeInTheDocument();
+    expect(mockToast.error).toHaveBeenCalledWith(expect.stringContaining('DNI no válido'));
+  });
+});

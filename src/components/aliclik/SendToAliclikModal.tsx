@@ -32,6 +32,7 @@ import {
 } from "@/services/aliclikService";
 
 import { saveAliclikDestinationCoordinates } from "@/services/orderDeliveryService";
+import { extractLatLngFromGoogleMapsUrl } from "@/lib/googleMapsCoords";
 
 // ─── CONSTANTES ─────────────────────────────────────────
 
@@ -99,6 +100,8 @@ export default function SendToAliclikModal({
   // Override de coordenadas cuando el cliente no las tiene
   const [overrideLat, setOverrideLat] = useState("");
   const [overrideLng, setOverrideLng] = useState("");
+  // Link de Google Maps pegado por el usuario: si trae coordenadas, llena lat/lng
+  const [mapsLink, setMapsLink] = useState("");
 
   // Envío
   const [sending, setSending] = useState(false);
@@ -107,6 +110,36 @@ export default function SendToAliclikModal({
     useState<AliclikCreateOrderResult | null>(null);
 
   // ─── EFECTOS ──────────────────────────────────────────
+
+  const loadQuote = async () => {
+    if (!companyId) return;
+    setQuoting(true);
+    setQuoteError(null);
+    try {
+      const data = await quoteAliclikOrder(token, companyId, orderId);
+      setQuote(data);
+      // Inicializar estado por almacén
+      const initial: Record<number, WarehouseState> = {};
+      data.warehouses.forEach((wh) => {
+        const firstCourier = wh.couriers[0] ?? null;
+        initial[wh.warehouseId] = {
+          selectedCourierId: firstCourier?.id ?? null,
+          delivery: firstCourier
+            ? String(firstCourier.deliveryCost)
+            : String(data.shippingTotalSugerido),
+        };
+      });
+      setWarehouseStates(initial);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response
+          ?.data?.message ?? "Error al cotizar el pedido en Aliclik";
+      setQuoteError(msg);
+      toast.error(msg);
+    } finally {
+      setQuoting(false);
+    }
+  };
 
   useEffect(() => {
     if (!open || !orderId || !companyId || !token) return;
@@ -121,33 +154,9 @@ export default function SendToAliclikModal({
     setSuccessResult(null);
     setOverrideLat("");
     setOverrideLng("");
+    setMapsLink("");
 
-    // Cotizar
-    setQuoting(true);
-    quoteAliclikOrder(token, companyId, orderId)
-      .then((data) => {
-        setQuote(data);
-        // Inicializar estado por almacén
-        const initial: Record<number, WarehouseState> = {};
-        data.warehouses.forEach((wh) => {
-          const firstCourier = wh.couriers[0] ?? null;
-          initial[wh.warehouseId] = {
-            selectedCourierId: firstCourier?.id ?? null,
-            delivery: firstCourier
-              ? String(firstCourier.deliveryCost)
-              : String(data.shippingTotalSugerido),
-          };
-        });
-        setWarehouseStates(initial);
-      })
-      .catch((err: unknown) => {
-        const msg =
-          (err as { response?: { data?: { message?: string } } })?.response
-            ?.data?.message ?? "Error al cotizar el pedido en Aliclik";
-        setQuoteError(msg);
-        toast.error(msg);
-      })
-      .finally(() => setQuoting(false));
+    void loadQuote();
   }, [open, orderId, companyId, token]);
 
   // ─── HANDLERS ─────────────────────────────────────────
@@ -191,6 +200,35 @@ export default function SendToAliclikModal({
     overrideLng.trim() !== "" &&
     !Number.isNaN(overrideLatNum) &&
     !Number.isNaN(overrideLngNum);
+
+  const mapsLinkCoords = mapsLink.trim() ? extractLatLngFromGoogleMapsUrl(mapsLink) : null;
+  const handleMapsLinkChange = (value: string) => {
+    setMapsLink(value);
+    const coords = value.trim() ? extractLatLngFromGoogleMapsUrl(value) : null;
+    if (coords) {
+      setOverrideLat(String(coords.lat));
+      setOverrideLng(String(coords.lng));
+    }
+  };
+
+  // Guarda las coordenadas con el flujo existente y vuelve a cotizar
+  const [savingCoords, setSavingCoords] = useState(false);
+  const handleSaveCoordsAndRequote = async () => {
+    if (!companyId || !overrideCoordsValid) return;
+    setSavingCoords(true);
+    try {
+      await saveAliclikDestinationCoordinates(orderId, companyId, clientId, overrideLatNum, overrideLngNum);
+    } catch {
+      toast.error("No se pudieron guardar las coordenadas de entrega del cliente. Revisa los datos del pedido y vuelve a intentar.");
+      setSavingCoords(false);
+      return;
+    }
+    setOverrideLat("");
+    setOverrideLng("");
+    setMapsLink("");
+    await loadQuote();
+    setSavingCoords(false);
+  };
 
   // ─── VALIDACIÓN ───────────────────────────────────────
 
@@ -423,8 +461,32 @@ export default function SendToAliclikModal({
                       <div className="mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
                         <p className="text-xs font-bold text-amber-600 dark:text-amber-400 mb-2 flex items-center gap-1.5">
                           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-                          Aliclik requiere coordenadas GPS del destino
+                          Faltan las coordenadas de entrega. Aliclik no cotiza sin ellas.
                         </p>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-2">
+                          Pega el link de Google Maps de la ubicación o escribe la latitud y longitud. Luego pulsa «Guardar y volver a cotizar».
+                        </p>
+                        <div className="space-y-1 mb-2">
+                          <Label
+                            htmlFor="override-maps-link"
+                            className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase"
+                          >
+                            Link de Google Maps
+                          </Label>
+                          <Input
+                            id="override-maps-link"
+                            type="url"
+                            placeholder="https://www.google.com/maps/place/...@-12.04,-77.04,17z"
+                            value={mapsLink}
+                            onChange={(e) => handleMapsLinkChange(e.target.value)}
+                            className="h-8 text-sm bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-slate-100"
+                          />
+                          {mapsLink.trim() && !mapsLinkCoords && (
+                            <p className="text-[10px] text-red-500">
+                              No se pudieron leer coordenadas de este link. Abre el link en el navegador y copia el link largo, o escribe la latitud y longitud.
+                            </p>
+                          )}
+                        </div>
                         <div className="grid grid-cols-2 gap-2">
                           <div className="space-y-1">
                             <Label
@@ -474,6 +536,17 @@ export default function SendToAliclikModal({
                         <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1.5">
                           Las coordenadas deben corresponder a la dirección de entrega de este pedido.
                         </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mt-2"
+                          disabled={!overrideCoordsValid || savingCoords || quoting}
+                          onClick={handleSaveCoordsAndRequote}
+                        >
+                          {savingCoords && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}
+                          Guardar y volver a cotizar
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -559,7 +632,7 @@ export default function SendToAliclikModal({
                               </div>
                               {!hasCoverage && (
                                 <span className="text-[10px] font-bold px-2 py-1 rounded bg-red-100 dark:bg-red-950/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 uppercase">
-                                  Sin cobertura
+                                  {coordsMissing ? "Faltan coordenadas" : "Sin cobertura"}
                                 </span>
                               )}
                             </div>
