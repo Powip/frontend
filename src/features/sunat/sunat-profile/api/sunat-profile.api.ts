@@ -67,6 +67,24 @@ export async function setDefaultSunatProfileApi(id: string): Promise<SunatProfil
   return data;
 }
 
+/** Activa un RUC desactivado. Usa un cupo: 402 SUNAT_RUC_LIMIT_REACHED si no hay uno libre. */
+export async function activateSunatProfileApi(id: string): Promise<SunatProfileResponseDto> {
+  const { data } = await axiosAuth.patch<SunatProfileResponseDto>(
+    `${API.sunat}/api/v1/sunat-profiles/${id}/activate`,
+  );
+
+  return data;
+}
+
+/** Desactiva un RUC (conserva certificado y SOL) y libera su cupo. */
+export async function deactivateSunatProfileApi(id: string): Promise<SunatProfileResponseDto> {
+  const { data } = await axiosAuth.patch<SunatProfileResponseDto>(
+    `${API.sunat}/api/v1/sunat-profiles/${id}/deactivate`,
+  );
+
+  return data;
+}
+
 export async function updateSunatProfileEstablishmentCodeApi(
   id: string,
   establishmentCode: string,

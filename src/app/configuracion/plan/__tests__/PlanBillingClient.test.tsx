@@ -6,6 +6,10 @@ import PlanBillingClient from "../PlanBillingClient";
 
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: jest.fn() }));
 jest.mock("@/components/header/HeaderConfig", () => ({ HeaderConfig: () => null }));
+// La tarjeta de Facturación SUNAT consulta el resumen de RUC extra con react-query; aquí no hay provider.
+jest.mock("@/features/sunat/extra-ruc/hooks/use-extra-ruc-summary", () => ({
+  useExtraRucSummary: () => ({ data: undefined }),
+}));
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 jest.mock("@/services/onboardingService", () => ({
   fetchPlans: jest.fn().mockResolvedValue([

@@ -17,7 +17,12 @@ import type { SunatProfile } from "@/features/sunat/sunat-profile/models/sunat-p
 import { getCertificateStatus } from "@/features/sunat/sunat-profile/utils/get-certificate-status";
 import { cn } from "@/lib/utils";
 
-export function CertificadoTab() {
+interface CertificadoTabProps {
+  /** Flujo común de agregar RUC (incluido o de pago). Sin él, abre el modal de certificado directo. */
+  onAddIssuer?: () => void;
+}
+
+export function CertificadoTab({ onAddIssuer }: CertificadoTabProps = {}) {
   const [modalOpen, setModalOpen] = useState(false);
   const [profileToReplace, setProfileToReplace] = useState<SunatProfile | null>(null);
   const [profileToDelete, setProfileToDelete] = useState<SunatProfile | null>(null);
@@ -239,7 +244,7 @@ export function CertificadoTab() {
 
       <Button
         className="bg-primary text-white hover:bg-primary/90"
-        onClick={() => setModalOpen(true)}
+        onClick={() => (onAddIssuer ? onAddIssuer() : setModalOpen(true))}
       >
         Subir nuevo certificado
       </Button>

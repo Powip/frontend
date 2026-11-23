@@ -1,5 +1,6 @@
 "use client";
 
+import { ExtraRucPlanLine } from "./ExtraRucPlanLine";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Check, CreditCard, Link2, Lock } from "lucide-react";
@@ -431,6 +432,7 @@ export default function PlanBillingClient() {
                 <p className="flex-1 text-sm text-foreground/80">
                   {available?.description && !card.bullets.length ? available.description : card.tag}
                   {card.note && <span className="mt-1 block text-xs text-foreground">{card.note}</span>}
+                  {card.code === "sunat" && <ExtraRucPlanLine />}
                 </p>
                 <div className="flex flex-wrap items-center gap-2">
                   {status === "active" && active && (

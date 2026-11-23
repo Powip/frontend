@@ -2,6 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Loader2, ShieldCheck } from "lucide-react";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,9 +41,18 @@ import {
 interface CertificadoUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /**
+   * RUC y razón social ya definidos (los del RUC extra que se pagó o se está activando). Se cargan en el
+   * formulario y quedan bloqueados: el cupo se pagó para ese RUC.
+   */
+  initialIdentity?: { ruc: string; razonSocial: string };
 }
 
-export default function CertificadoUploadModal({ isOpen, onClose }: CertificadoUploadModalProps) {
+export default function CertificadoUploadModal({
+  isOpen,
+  onClose,
+  initialIdentity,
+}: CertificadoUploadModalProps) {
   const createSunatProfile = useCreateSunatProfile();
 
   const form = useForm<CreateSunatProfileFormValues>({
@@ -50,6 +60,17 @@ export default function CertificadoUploadModal({ isOpen, onClose }: CertificadoU
     defaultValues: createSunatProfileDefaultValues,
     mode: "onBlur",
   });
+
+  useEffect(() => {
+    if (isOpen && initialIdentity) {
+      form.reset({
+        ...createSunatProfileDefaultValues,
+        ruc: initialIdentity.ruc,
+        razonSocial: initialIdentity.razonSocial,
+        name: initialIdentity.razonSocial,
+      });
+    }
+  }, [isOpen, initialIdentity, form]);
 
   function handleSubmit(values: CreateSunatProfileFormValues) {
     const request = toCreateSunatProfileRequestDto(values);
@@ -123,7 +144,11 @@ export default function CertificadoUploadModal({ isOpen, onClose }: CertificadoU
                         <FormLabel>Razón Social</FormLabel>
 
                         <FormControl>
-                          <Input {...field} placeholder="Mi Empresa S.A.C." />
+                          <Input
+                            {...field}
+                            placeholder="Mi Empresa S.A.C."
+                            readOnly={Boolean(initialIdentity)}
+                          />
                         </FormControl>
 
                         <FormMessage />
@@ -139,7 +164,11 @@ export default function CertificadoUploadModal({ isOpen, onClose }: CertificadoU
                         <FormLabel>RUC</FormLabel>
 
                         <FormControl>
-                          <Input {...field} placeholder="20xxxxxxxxx" />
+                          <Input
+                            {...field}
+                            placeholder="20xxxxxxxxx"
+                            readOnly={Boolean(initialIdentity)}
+                          />
                         </FormControl>
 
                         <FormMessage />

@@ -73,7 +73,7 @@ export const ADDON_CARDS: AddOnCard[] = [
     icon: Receipt,
     where: "Finanzas › Facturación SUNAT",
     price: 29,
-    note: "Comprobantes ilimitados · boletas, facturas y notas de crédito",
+    note: "Comprobantes ilimitados · 1 RUC incluido, cada RUC adicional S/ 30/mes",
     tag: "Boletas y facturas que se emiten solas cuando confirmas el pedido.",
     bullets: [
       "Boleta o factura emitida al confirmar o entregar el pedido",

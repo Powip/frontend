@@ -18,9 +18,23 @@ const MESSAGES_BY_CODE: Record<string, string> = {
   CERTIFICATE_PASSWORD_MISSING: "Ingresa la contraseña del certificado.",
   SUNAT_PROFILE_NOT_FOUND:
     "El certificado ya no existe o fue eliminado. Refresca la página e intenta nuevamente.",
+  SUNAT_RUC_LIMIT_REACHED:
+    "Tu cuenta llegó al límite de RUC activos. Agrega un RUC extra (S/ 30/mes) para poder usar otro.",
+  SUNAT_RUC_ALLOWANCE_UNAVAILABLE:
+    "No pudimos comprobar cuántos RUC tienes pagados. Intenta de nuevo en un momento.",
+  SUNAT_PROFILE_DEFAULT_CANNOT_BE_DEACTIVATED:
+    "No puedes desactivar el RUC predeterminado. Marca otro como predeterminado primero.",
   SUNAT_PROFILE_DEFAULT_CANNOT_BE_DELETED:
     "No puedes eliminar el certificado predeterminado mientras tengas otros. Marca otro como predeterminado primero.",
 };
+
+/** El servidor respondió que no hay un cupo de RUC libre (402): hay que pagar un RUC extra. */
+export function isRucLimitError(error: unknown): boolean {
+  return (
+    axios.isAxiosError<SunatProfileErrorBody>(error) &&
+    error.response?.data?.code === "SUNAT_RUC_LIMIT_REACHED"
+  );
+}
 
 const FALLBACK_MESSAGE = "Ocurrió un error. Intenta de nuevo en unos momentos.";
 

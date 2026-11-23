@@ -1,5 +1,7 @@
 import {
+  activateSunatProfileApi,
   createSunatProfileApi,
+  deactivateSunatProfileApi,
   deleteSunatProfileApi,
   getSunatProfilesApi,
   replaceSunatProfileCertificateApi,
@@ -29,6 +31,14 @@ export async function setDefaultSunatProfile(id: string): Promise<SunatProfile> 
   const responseDto = await setDefaultSunatProfileApi(id);
 
   return toSunatProfile(responseDto);
+}
+
+export async function activateSunatProfile(id: string): Promise<SunatProfile> {
+  return toSunatProfile(await activateSunatProfileApi(id));
+}
+
+export async function deactivateSunatProfile(id: string): Promise<SunatProfile> {
+  return toSunatProfile(await deactivateSunatProfileApi(id));
 }
 
 export async function updateSunatProfileEstablishmentCode({
