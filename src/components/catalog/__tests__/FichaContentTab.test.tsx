@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import FichaContentTab from "@/components/catalog/ficha/FichaContentTab";
 import { getProductContent, saveProductContent, type ProductContentView } from "@/services/productContentService";
 import { uploadImage } from "@/services/uploadService";
+import { getChannelSummary } from "@/services/productChannelsService";
 
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn(), back: jest.fn() }), usePathname: () => "/productos/p1" }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn() } }));
@@ -12,6 +13,7 @@ jest.mock("@/contexts/AuthContext", () => ({
 }));
 jest.mock("@/services/productContentService", () => ({ getProductContent: jest.fn(), saveProductContent: jest.fn() }));
 jest.mock("@/services/uploadService", () => ({ uploadImage: jest.fn() }));
+jest.mock("@/services/productChannelsService", () => ({ getChannelSummary: jest.fn() }));
 
 const STORE = "44444444-4444-4444-8444-444444444444";
 
@@ -38,7 +40,10 @@ function renderTab(view: ProductContentView = VIEW) {
 }
 
 describe("Pestaña Contenido (FEAT-32 M1)", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(getChannelSummary).mockResolvedValue({ channels: [], ownPrices: [] });
+  });
 
   it("muestra lo que viene del producto, el aviso de Shopify, la vista previa y los atributos", async () => {
     renderTab();
@@ -102,6 +107,20 @@ describe("Pestaña Contenido (FEAT-32 M1)", () => {
     await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await waitFor(() => expect(saveProductContent).toHaveBeenCalled());
     expect((saveProductContent as jest.Mock).mock.calls[0][1].overrides).toEqual([{ storeId: STORE, channel: "CATALOGO_WEB", field: "title", value: "Jimena web" }]);
+  });
+
+  it("FEAT-32 M2: un canal desactivado dice «(no activado)», avisa en ámbar y en «Dónde se usa»", async () => {
+    jest.mocked(getChannelSummary).mockResolvedValue({
+      channels: [{ productId: "p1", storeId: STORE, channel: "CATALOGO_WEB", active: false, ruleMode: "same" }],
+      ownPrices: [],
+    });
+    const user = userEvent.setup();
+    renderTab();
+    const select = await screen.findByLabelText("Canal");
+    await waitFor(() => expect(within(select).getByRole("option", { name: "Catálogo web (no activado)" })).toBeInTheDocument());
+    expect(screen.getByText("No activado")).toBeInTheDocument();
+    await user.selectOptions(select, "Catálogo web (no activado)");
+    expect(screen.getByRole("status")).toHaveTextContent("El producto no está activado en Catálogo web.");
   });
 
   it("POWIP Live no admite contenido propio", async () => {

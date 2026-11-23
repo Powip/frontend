@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
@@ -17,6 +17,9 @@ import CatalogFiltersBar from "@/components/catalog/CatalogFiltersBar";
 import CatalogProductTable from "@/components/catalog/CatalogProductTable";
 import { DEFAULT_CATALOG_FILTERS, filterCatalogProducts, type CatalogFilters } from "@/lib/catalog/catalogProducts";
 import { PrintLabelsDialog } from "@/components/labels/PrintLabelsDialog";
+import { ChannelLegend } from "@/components/catalog/ChannelIcons";
+import { productChannelStates } from "@/lib/catalog/productChannels";
+import { getChannelSummary } from "@/services/productChannelsService";
 
 const PAGE_SIZE = 20;
 
@@ -43,6 +46,21 @@ export default function BusinessProductCatalog({ onCreate }: { onCreate: () => v
     queryFn: ({ signal }) => fetchBusinessInventoryItems({ inventories: warehouses.inventories, companyId, accessToken, signal }),
     enabled: canFetch && warehouses.isSuccess, retry: false,
   });
+  // FEAT-32 M2 — estado de cada producto en los canales de POWIP (sin fila = activo). Si falla, la columna
+  // muestra todo «Al día» (el producto nace activo) y la lista sigue andando.
+  const channelSummary = useQuery({
+    queryKey: ["product-channel-summary", companyId],
+    queryFn: ({ signal }) => getChannelSummary(signal),
+    enabled: canFetch, retry: false, staleTime: 60_000,
+  });
+  const scopeStores = useMemo(
+    () => (scope === "business" ? (auth?.company?.stores ?? []).map((store) => store.id) : storeIds),
+    [scope, storeIds, auth?.company?.stores],
+  );
+  const channelStates = useCallback(
+    (productId: string) => productChannelStates(channelSummary.data, productId, scopeStores),
+    [channelSummary.data, scopeStores],
+  );
   const availableByProduct = useMemo(() => {
     const sums = new Map<string, number>();
     for (const row of stock.data ?? []) sums.set(row.productId, (sums.get(row.productId) ?? 0) + row.availableStock);
@@ -51,8 +69,8 @@ export default function BusinessProductCatalog({ onCreate }: { onCreate: () => v
   const brandNames = useMemo(() => new Map(brands.map((brand) => [brand.id, brand.name])), [brands]);
   // El alcance (tienda) se aplica primero; después, los filtros del catálogo (FEAT-24 H4).
   const filtered = useMemo(
-    () => filterCatalogProducts(scopeBusinessProducts(products.data ?? [], stock.data ?? [], scope, ""), filters, { categoryTree: categories.tree, availableByProduct }),
-    [products.data, stock.data, scope, filters, categories.tree, availableByProduct],
+    () => filterCatalogProducts(scopeBusinessProducts(products.data ?? [], stock.data ?? [], scope, ""), filters, { categoryTree: categories.tree, availableByProduct, channelStates }),
+    [products.data, stock.data, scope, filters, categories.tree, availableByProduct, channelStates],
   );
   const changeFilters = (next: CatalogFilters) => { setFilters(next); setPage(1); };
   // FEAT-24 H7: selección por página para «Imprimir etiquetas» (se conserva al cambiar de página o de filtro).
@@ -83,7 +101,9 @@ export default function BusinessProductCatalog({ onCreate }: { onCreate: () => v
         availableByProduct={availableByProduct}
         leadingHead={<input type="checkbox" aria-label="Seleccionar los productos de la página" checked={allPageSelected} onChange={togglePage} />}
         leadingCell={(product) => <input type="checkbox" aria-label={`Seleccionar ${product.name}`} checked={selected.includes(product.id)} onChange={() => toggle(product.id)} />}
+        channelStates={channelStates}
       />
+      <ChannelLegend />
       {printing ? <PrintLabelsDialog open source={{ kind: "products", productIds: selected }} onOpenChange={setPrinting} /> : null}
       <Pagination currentPage={page} totalPages={Math.ceil(filtered.length / PAGE_SIZE)} totalItems={filtered.length} itemsPerPage={PAGE_SIZE} onPageChange={setPage} itemName="productos" />
     </>}
