@@ -31,6 +31,7 @@ import type {
   QuotationInventory,
   QuotationPaymentType,
 } from "@/types/quotations";
+import ArmarPedidoTools from "./ArmarPedidoTools";
 import CustomerPhoneField from "./CustomerPhoneField";
 import { NATIVE_SELECT_CLASS, phoneForCustomer } from "./format";
 import { toLocalPhone } from "@/lib/crmPhone";
@@ -508,6 +509,21 @@ export default function ArmarPedidoDialog({
             </p>
           </div>
         </div>
+
+        <ArmarPedidoTools
+          conversationId={conversation.id}
+          storeId={storeId}
+          inventoryId={inventoryId}
+          cart={cart}
+          setCart={setCart}
+          onInsertMessage={onInsertMessage}
+          onPolicy={(p) => {
+            if (p.firstOffer === "dep" && p.depositEnabled && p.depositAmount > 0) {
+              setPaymentType("ADELANTO");
+              setDeposit(String(p.depositAmount));
+            }
+          }}
+        />
 
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">

@@ -20,6 +20,13 @@ import { PipelineSection, TasksSection } from "./ChatPlanningSections";
 import CustomerPhoneField from "./CustomerPhoneField";
 import CrearClienteDialog from "./CrearClienteDialog";
 import PedidoLinkSection from "./PedidoLinkSection";
+import {
+  CodSection,
+  DiscountApprovalsSection,
+  FinanceQueueSection,
+  PaymentPolicySection,
+  ReceiptsSection,
+} from "./OrderPanelSections";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import {
   abrirPedidoUrl,
@@ -270,6 +277,11 @@ export default function ClientOrderPanel(props: Props) {
         onInsertMessage={props.onInsertMessage}
       />
       <OrdersSection conversation={conversation} />
+      <PaymentPolicySection conversation={conversation} />
+      <DiscountApprovalsSection />
+      <ReceiptsSection conversation={conversation} />
+      <FinanceQueueSection />
+      <CodSection conversation={conversation} />
       <MarketingOptOutSection conversation={conversation} />
       <Button className="w-full" onClick={() => router.push(crearPedidoUrl(conversation))}>
         <Plus /> Registrar venta completa
