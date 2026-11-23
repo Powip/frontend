@@ -32,11 +32,13 @@ import FichaGeneralTab, { type FichaCosts } from "./FichaGeneralTab";
 import FichaVariantsTab from "./FichaVariantsTab";
 import FichaStockTab from "./FichaStockTab";
 import FichaChannelsTab from "./FichaChannelsTab";
+// FEAT-32 M1: pestaña Contenido (galería, textos y lo propio de cada canal).
+import FichaContentTab from "./FichaContentTab";
 import PackFichaTab from "@/components/packs/PackFichaTab";
 // FEAT-24 H5-L: lotes con vencimiento de las variantes.
 import FichaLotsTab from "@/components/lots/FichaLotsTab";
 
-export type FichaTab = "general" | "pack" | "variantes" | "lotes" | "stock" | "canales" | "historial";
+export type FichaTab = "general" | "pack" | "variantes" | "lotes" | "contenido" | "stock" | "canales" | "historial";
 
 /**
  * FEAT-24 H4 (H4-D11) — ficha del producto en pestañas (spec §6.1, mockup `vFicha`): General, Variantes,
@@ -56,6 +58,12 @@ export default function ProductFicha({ productId, actions }: { productId: string
   const { brands } = useCompanyBrands();
   const categories = useCatalogCategories();
   const [tab, setTab] = useState<FichaTab>("general");
+  // FEAT-32 M1: la pestaña Contenido se monta la primera vez que se abre y queda montada (no pierde el borrador).
+  const [contentOpened, setContentOpened] = useState(false);
+  const openTab = (next: FichaTab) => {
+    if (next === "contenido") setContentOpened(true);
+    setTab(next);
+  };
   // FEAT-24 H7: etiquetas de las variantes del producto.
   const [printingLabels, setPrintingLabels] = useState(false);
   const enabled = Boolean(companyId && accessToken && productId);
@@ -168,18 +176,22 @@ export default function ProductFicha({ productId, actions }: { productId: string
           </div>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab} onValueChange={(next) => setTab(next as FichaTab)}>
+          <Tabs value={activeTab} onValueChange={(next) => openTab(next as FichaTab)}>
             <TabsList className="mb-4 h-auto flex-wrap">
               <TabsTrigger value="general">General</TabsTrigger>
               {isPack ? <TabsTrigger value="pack">Pack</TabsTrigger> : null}
               {!isSimple ? <TabsTrigger value="variantes">Variantes ({live.length})</TabsTrigger> : null}
               {tracksLots ? <TabsTrigger value="lotes">Lotes y vencimiento</TabsTrigger> : null}
+              <TabsTrigger value="contenido" className="gap-1.5">
+                Contenido
+                <span className="rounded-full bg-[#efecfb] px-1.5 text-[10.5px] font-bold text-[#4C2FB5] dark:bg-violet-950/60 dark:text-violet-200">Nuevo</span>
+              </TabsTrigger>
               <TabsTrigger value="stock">Stock por almacén</TabsTrigger>
               <TabsTrigger value="canales">Canales</TabsTrigger>
               <TabsTrigger value="historial">Historial</TabsTrigger>
             </TabsList>
             <TabsContent value="general">
-              <FichaGeneralTab key={product.id} product={product} simpleVariant={isSimple ? live[0] ?? null : null} categoryTree={categories.tree} canEdit costs={costs} />
+              <FichaGeneralTab key={product.id} product={product} simpleVariant={isSimple ? live[0] ?? null : null} categoryTree={categories.tree} canEdit costs={costs} onGoToContent={() => openTab("contenido")} />
             </TabsContent>
             {isPack ? (
               <TabsContent value="pack">
@@ -196,6 +208,11 @@ export default function ProductFicha({ productId, actions }: { productId: string
                 {activeTab === "lotes" ? (
                   <FichaLotsTab variants={kardexVariants.filter((option) => variants.some((variant) => variant.id === option.id && !variant.mergedInto))} showVariant={!isSimple} />
                 ) : null}
+              </TabsContent>
+            ) : null}
+            {contentOpened ? (
+              <TabsContent value="contenido" forceMount className="data-[state=inactive]:hidden">
+                <FichaContentTab key={product.id} productId={product.id} variants={variants} onGoToChannels={() => openTab("canales")} />
               </TabsContent>
             ) : null}
             <TabsContent value="stock">

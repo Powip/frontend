@@ -35,6 +35,8 @@ jest.mock("@/services/catalogProductService", () => ({
 }));
 jest.mock("@/services/businessInventoryItemsService", () => ({ fetchBusinessInventoryItems: jest.fn() }));
 jest.mock("@/services/uploadService", () => ({ uploadImage: jest.fn() }));
+// FEAT-32 M1: la pestaña Contenido tiene su propio test; acá solo que se abre desde General.
+jest.mock("@/components/catalog/ficha/FichaContentTab", () => ({ __esModule: true, default: ({ productId }: { productId: string }) => <div data-testid="content-tab">contenido de {productId}</div> }));
 jest.mock("@/components/labels/PrintLabelsDialog", () => ({
   PrintLabelsDialog: ({ source }: { source: { productIds: string[]; title?: string } }) => <div>etiquetas de {source.productIds.join(",")} · {source.title}</div>,
 }));
@@ -95,6 +97,21 @@ describe("Ficha del producto en pestañas (FEAT-24 H4-D)", () => {
       expect(screen.getByRole("tab", { name })).toBeInTheDocument();
     }
     expect(screen.getByRole("link", { name: "Editar opciones y precios" })).toHaveAttribute("href", "/productos?edit=v1");
+  });
+
+  it("FEAT-32 M1: General ya no edita foto ni descripción y lleva a la pestaña Contenido (que queda montada)", async () => {
+    const user = userEvent.setup();
+    renderFicha();
+    expect(await screen.findByText(/ahora están en la pestaña/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Descripción")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Foto principal")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("content-tab")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Ir a Contenido →" }));
+    expect(screen.getByRole("tab", { name: /Contenido/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("content-tab")).toHaveTextContent("contenido de p1");
+    await user.click(screen.getByRole("tab", { name: "General" }));
+    // Sigue montada (no pierde el borrador), oculta por `data-[state=inactive]:hidden`.
+    expect(screen.getByTestId("content-tab").closest('[role="tabpanel"]')).toHaveAttribute("data-state", "inactive");
   });
 
   it("precio de compra por proveedor: recibe las variantes del producto (FEAT-24 H13-D4)", async () => {
