@@ -10,6 +10,7 @@ import { useGeneralMaterials, useMarkScriptRead, useScript, useSheets } from "@/
 import type { Material, Sheet } from "@/types/crmContent";
 import { MATERIAL_KIND_LABEL } from "./ContentLib";
 import { ContentError, ContentLoading } from "./ContentStatus";
+import { FichaAlbum, FichaCoreStock } from "./FichaCoreSection";
 
 export function FichaCopyButton({ text, label }: { text: string; label: string }) {
   const copy = async () => {
@@ -127,6 +128,8 @@ function SheetDetail({ sheet }: { sheet: Sheet }) {
           <MaterialLinks items={sheet.materials} label={`Material de ${sheet.name}`} />
         </div>
       )}
+      <FichaCoreStock sheetId={sheet.id} linked={!!sheet.coreProductId} />
+      <FichaAlbum sheetId={sheet.id} sheetName={sheet.name} />
     </article>
   );
 }

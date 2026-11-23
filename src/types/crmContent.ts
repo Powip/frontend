@@ -132,6 +132,8 @@ export interface Sheet {
   id: string;
   name: string;
   price: string | null;
+  /** Producto del Core vinculado (precios y stock en vivo). */
+  coreProductId?: string | null;
   forWhom: string;
   highlights: string;
   alternatives: string;
@@ -144,6 +146,8 @@ export interface Sheet {
 export interface SheetInput {
   name: string;
   price?: string;
+  /** Vacío quita el vínculo con el Core. */
+  coreProductId?: string;
   forWhom?: string;
   highlights?: string;
   alternatives?: string;

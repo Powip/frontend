@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import CoreProductPicker from "./CoreProductPicker";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { useSheetActions, useSheets } from "@/hooks/useCrmContent";
@@ -50,6 +51,7 @@ function SheetDialog({ open, sheet, busy, onClose, onSave }: DialogProps) {
 function SheetForm({ sheet, busy, onClose, onSave }: Omit<DialogProps, "open">) {
   const [name, setName] = useState(sheet?.name ?? "");
   const [price, setPrice] = useState(sheet?.price ?? "");
+  const [coreProductId, setCoreProductId] = useState(sheet?.coreProductId ?? "");
   const [texts, setTexts] = useState({
     forWhom: sheet?.forWhom ?? "",
     highlights: sheet?.highlights ?? "",
@@ -66,6 +68,8 @@ function SheetForm({ sheet, busy, onClose, onSave }: Omit<DialogProps, "open">) 
         onSave({
           name: name.trim(),
           price: price.trim(),
+          // Solo viaja si hay vínculo o si se quita uno que ya existía.
+          ...(coreProductId || sheet?.coreProductId ? { coreProductId } : {}),
           ...texts,
           ...(sheet ? { active } : {}),
         });
@@ -74,7 +78,7 @@ function SheetForm({ sheet, busy, onClose, onSave }: Omit<DialogProps, "open">) 
       <DialogHeader>
         <DialogTitle>{sheet ? "Editar producto" : "Nuevo producto"}</DialogTitle>
         <DialogDescription>
-          Describe el producto como lo cuentas en el chat. Aún no está ligado al catálogo de Core.
+          Describe el producto como lo cuentas en el chat. Vincúlalo al Core para mostrar precios y stock reales.
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-1">
@@ -85,6 +89,7 @@ function SheetForm({ sheet, busy, onClose, onSave }: Omit<DialogProps, "open">) 
         <Label htmlFor="sh-price">Precio</Label>
         <Input id="sh-price" maxLength={SHEET_TEXT_MAX} value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Ej.: S/ 89" />
       </div>
+      <CoreProductPicker value={coreProductId} onChange={setCoreProductId} />
       {TEXT_FIELDS.map((f) => (
         <div key={f.key} className="space-y-1">
           <Label htmlFor={`sh-${f.key}`}>{f.label}</Label>
@@ -160,6 +165,7 @@ export default function GuionSheetsManager() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="min-w-0 flex-1 truncate text-sm font-semibold">{s.name}</span>
               {s.price && <span className="text-sm text-muted-foreground">{s.price}</span>}
+              {s.coreProductId && <Badge variant="secondary">Core</Badge>}
               {!s.active && <Badge variant="outline">Inactivo</Badge>}
               <Button
                 size="sm"

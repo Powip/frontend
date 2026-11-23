@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { BookOpen, ExternalLink, MessageSquareQuote, Search } from "lucide-react";
+import { BookOpen, ExternalLink, MessageSquareQuote, Search, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -13,6 +13,7 @@ import {
   useScript,
   useSheets,
 } from "@/hooks/useCrmContent";
+import { useDetectObjection } from "@/hooks/useCrmSalesTools";
 import type { Conversation } from "@/types/crm";
 import type { Material } from "@/types/crmContent";
 import ConfirmDialog from "./ConfirmDialog";
@@ -40,6 +41,10 @@ export default function ContentChatBar({ conversation, text, onFill, windowOpen 
   const [debounced, setDebounced] = useState("");
   const [pendingStep, setPendingStep] = useState<number | null>(null);
   const sheets = useSheets(debounced);
+  // Detección automática: se pide una vez por cada mensaje nuevo del cliente.
+  const trigger = conversation.lastInboundAt ?? null;
+  const detection = useDetectObjection(conversation.id, trigger, windowOpen);
+  const [dismissed, setDismissed] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 250);
@@ -72,6 +77,10 @@ export default function ContentChatBar({ conversation, text, onFill, windowOpen 
     setOpen(false);
   };
   const insertMaterial = (m: Material) => insert(materialText(m));
+
+  const detected = detection.data;
+  const showDetected =
+    !!detected?.label && !!detected.suggestedResponse && dismissed !== trigger;
 
   const materialButton = (m: Material) => (
     <button
@@ -194,6 +203,45 @@ export default function ContentChatBar({ conversation, text, onFill, windowOpen 
           </Popover>
         )}
       </div>
+      {showDetected && detected && (
+        <div
+          role="status"
+          aria-label="Objeción detectada"
+          data-testid="objection-detected"
+          className="mt-1.5 flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 px-2 py-1.5"
+        >
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium">
+              Posible objeción: {detected.label}{" "}
+              <span className="font-normal text-muted-foreground">
+                ({Math.round(detected.confidence * 100)} %{detected.source === "mock" ? " · reglas" : " · IA"})
+              </span>
+            </p>
+            <p className="line-clamp-2 text-xs text-muted-foreground">{detected.suggestedResponse}</p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!windowOpen}
+            onClick={() => {
+              insert(detected.suggestedResponse as string);
+              if (detected.objectionId) registerUse.mutate(detected.objectionId);
+              setDismissed(trigger);
+            }}
+          >
+            Usar respuesta
+          </Button>
+          <button
+            type="button"
+            aria-label="Descartar sugerencia"
+            onClick={() => setDismissed(trigger)}
+            className="rounded p-1 text-muted-foreground hover:bg-accent"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+          </button>
+        </div>
+      )}
       <ConfirmDialog
         open={pendingStep !== null}
         title="¿Reemplazar lo que escribiste?"

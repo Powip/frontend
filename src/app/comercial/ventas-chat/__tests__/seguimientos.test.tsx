@@ -195,6 +195,7 @@ describe("pestañas", () => {
       "Difusiones",
       "Pau",
       "Ficha",
+      "Ventas",
       "Guion y material",
       "Objeciones",
       "Equipo",

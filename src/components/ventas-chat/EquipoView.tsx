@@ -16,6 +16,7 @@ import {
 import type { ConversationChannel } from "@/types/crm";
 import type { TeamChannelResult, TeamDays, TeamMember, TeamStats, TeamToday } from "@/types/crmTeam";
 import { CRM_UNREACHABLE } from "./ConversationList";
+import CommissionsSection from "./CommissionsSection";
 import EquipoAdminGate from "./EquipoAdminGate";
 import { CHANNEL_LABEL, NATIVE_SELECT_CLASS, bandejaUrl, contactLabel, formatMoney } from "./format";
 
@@ -492,6 +493,7 @@ function EquipoContent() {
           {data.today && <DailyGoal today={data.today} />}
           <WaitingSection stats={data} />
           <Ranking members={data.members} />
+          <CommissionsSection />
           {data.byChannel && <ChannelResults rows={data.byChannel} />}
           <LostReasons reasons={data.lostReasons} />
         </>

@@ -21,6 +21,7 @@ import { useObjectionActions, useObjectionStats, useObjections } from "@/hooks/u
 import type { Objection, ObjectionStat } from "@/types/crmContent";
 import ConfirmDialog from "./ConfirmDialog";
 import ContentAdminGate from "./ContentAdminGate";
+import ObjectionTester from "./ObjectionTester";
 import {
   MIN_CONVERSATIONS_FOR_RATE,
   OBJECTION_NAME_MAX,
@@ -130,8 +131,8 @@ function ObjecionesBody() {
       <p className="flex items-start gap-2 rounded-md border bg-muted/40 p-3 text-sm text-muted-foreground">
         <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
         <span>
-          Los números salen de las veces que el equipo usa una respuesta desde el chat (botón «Respuestas»). Todavía no
-          hay detección automática de objeciones.
+          Los números salen de las veces que el equipo usa una respuesta desde el chat (botón «Respuestas»). La detección
+          automática (abajo) sugiere la respuesta en el chat.
         </span>
       </p>
 
@@ -273,6 +274,8 @@ function ObjecionesBody() {
           </Table>
         )}
       </section>
+
+      <ObjectionTester />
 
       <Dialog open={!!editing} onOpenChange={(o) => !o && setEditing(null)}>
         <DialogContent>

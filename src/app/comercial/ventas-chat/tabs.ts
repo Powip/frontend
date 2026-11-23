@@ -14,6 +14,7 @@ export const VENTAS_CHAT_TABS: VentasChatTab[] = [
   { label: "Difusiones", href: "/comercial/ventas-chat/difusiones" },
   { label: "Pau", href: "/comercial/ventas-chat/pau" },
   { label: "Ficha", href: "/comercial/ventas-chat/ficha" },
+  { label: "Ventas", href: "/comercial/ventas-chat/ventas" },
   { label: "Guion y material", href: "/comercial/ventas-chat/guion", adminOnly: true },
   { label: "Objeciones", href: "/comercial/ventas-chat/objeciones", adminOnly: true },
   { label: "Equipo", href: "/comercial/ventas-chat/equipo", adminOnly: true },
