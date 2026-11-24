@@ -390,11 +390,23 @@ export async function uploadLiveYapeProof(
     )
   ).data;
 }
-export async function getLiveYapeReviews(storeId: string, signal?: AbortSignal) {
+/** FEAT-33 D4: valida pagos Live el Administrador o quien tiene el permiso de Finanzas (igual que ms-ventas). */
+export function canReviewLivePayments(
+  user?: { role?: string | null; permissions?: readonly string[] | null } | null,
+) {
+  return (
+    user?.role?.trim().toUpperCase() === "ADMINISTRADOR" ||
+    Boolean(user?.permissions?.includes("VIEW_FINANCES"))
+  );
+}
+/** FEAT-33 B1: la única cola de pagos es Finanzas › Pagos por validar, ya filtrada a POWIP Live y Link. */
+export const LIVE_PAYMENTS_HREF = "/finanzas?tab=pagos&origen=live";
+/** Sin `orderId` es la cola (solo lo que espera una decisión); con `orderId`, la historia de ese pedido. */
+export async function getLiveYapeReviews(storeId: string, signal?: AbortSignal, orderId?: string) {
   return (
     await axiosAuth.get<{ reviews: import("./types").LiveYapeReview[]; serverNow: string }>(
       `${adminPath(storeId)}/yape/reviews`,
-      { signal },
+      orderId ? { signal, params: { orderId } } : { signal },
     )
   ).data;
 }

@@ -8,7 +8,8 @@ import { toWhatsAppDigits } from "@/lib/phone";
 import { formatSalesMoney } from "@/utils/salesMoney";
 import { operationalStatus, orderFinancialState } from "@/utils/orderState";
 import { shouldShowReprogramado } from "@/utils/domain/reprogramado";
-import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
+import { SaleAmounts } from "@/components/shared/SaleAmounts";
+import { paymentAttention, pendingApprovalSummary, type PendingApprovalSummary } from "@/utils/pendingApproval";
 import { StockStateBadge } from "@/components/orders/StockStateBadge";
 
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
@@ -208,6 +209,8 @@ export interface Sale extends UnitAssignmentState {
   pendingPayment: number;
   hasStockIssue?: boolean;
   hasPendingApprovalPayments: boolean;
+  /** FEAT-33 A4/D5: lo enviado y sin validar, con su método («Yape por validar»). */
+  awaitingApprovalSummary: PendingApprovalSummary;
   /** Adelanto registrado pero sin aprobar (pagos PENDING): no resta del cobro. Alimenta el aviso previo al despacho. */
   awaitingApprovalAmount?: number;
   /** Lo que cobraría el courier hoy (total − aprobado). */
@@ -269,6 +272,9 @@ function ReprogramadoChip({ sale }: { sale: Pick<Sale, "status" | "callStatus" |
    Mapper
 ----------------------------------------- */
 
+const attentionOf = (sale: Sale) =>
+  paymentAttention({ awaitingApproval: sale.awaitingApprovalSummary.amount, debt: sale.pendingPayment });
+
 function mapOrderToSale(order: BusinessSalesOrder): Sale {
   const total = Number(order.grandTotal);
   const { totalPaid: advancePayment, pendingAmount: pendingPayment } = orderFinancialState(order);
@@ -323,6 +329,7 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     confirmedStockVersion: order.confirmedStockVersion,
     stockVersion: order.stockVersion,
     hasPendingApprovalPayments,
+    awaitingApprovalSummary: pendingApprovalSummary(order.payments),
     awaitingApprovalAmount: guideBalance.awaitingApproval,
     collectAmount: guideBalance.pending,
     externalTrackingNumber: order.externalTrackingNumber || "",
@@ -1584,16 +1591,14 @@ Estado: ${sale.status}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs text-right tabular-nums">
-                    <div className="font-semibold">
-                      {formatSalesMoney(sale.total, sale.currency)}
-                    </div>
-                    <div className="text-green-600">
-                      Adel: {formatSalesMoney(sale.advancePayment, sale.currency)}
-                    </div>
-                    <div className="text-red-600">
-                      Debe: {formatSalesMoney(sale.pendingPayment, sale.currency)}
-                    </div>
-                    <FinancialStatusBadge pendingAmount={sale.pendingPayment} status={sale.status} />
+                    <SaleAmounts
+                      total={sale.total}
+                      advancePayment={sale.advancePayment}
+                      pendingPayment={sale.pendingPayment}
+                      awaitingApproval={sale.awaitingApprovalSummary}
+                      status={sale.status}
+                      currency={sale.currency}
+                    />
                   </TableCell>
                   <TableCell className="text-xs">
                     <span className="inline-flex items-center gap-1">
@@ -1660,15 +1665,20 @@ Estado: ${sale.status}
                           setPaymentModalOpen(true);
                         }}
                         title={
-                          sale.hasPendingApprovalPayments
+                          attentionOf(sale) === "review"
                             ? "Pagos pendientes de aprobación"
-                            : "Gestión de Pagos"
+                            : attentionOf(sale) === "balance"
+                              ? "Pedido con saldo"
+                              : "Gestión de Pagos"
                         }
                       >
                         <DollarSign className="h-4 w-4" />
-                        {sale.hasPendingApprovalPayments && (
-                          <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        {/* FEAT-33 A4: punto rojo si hay algo por validar (late) o saldo. */}
+                        {attentionOf(sale) && (
+                          <span className="absolute -top-1 -right-1 flex h-3 w-3" data-testid="payment-attention">
+                            {attentionOf(sale) === "review" ? (
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                            ) : null}
                             <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
                           </span>
                         )}
@@ -1879,16 +1889,14 @@ Estado: ${sale.status}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs text-right tabular-nums">
-                    <div className="font-semibold">
-                      {formatSalesMoney(sale.total, sale.currency)}
-                    </div>
-                    <div className="text-green-600">
-                      Adel: {formatSalesMoney(sale.advancePayment, sale.currency)}
-                    </div>
-                    <div className="text-red-600">
-                      Debe: {formatSalesMoney(sale.pendingPayment, sale.currency)}
-                    </div>
-                    <FinancialStatusBadge pendingAmount={sale.pendingPayment} status={sale.status} />
+                    <SaleAmounts
+                      total={sale.total}
+                      advancePayment={sale.advancePayment}
+                      pendingPayment={sale.pendingPayment}
+                      awaitingApproval={sale.awaitingApprovalSummary}
+                      status={sale.status}
+                      currency={sale.currency}
+                    />
                   </TableCell>
                   <TableCell className="text-xs">
                     <span className="inline-flex items-center gap-1">

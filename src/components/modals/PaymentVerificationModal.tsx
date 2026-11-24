@@ -1,5 +1,6 @@
 "use client";
 import LiveYapeReviews from "@/features/live/LiveYapeReviews";
+import { canReviewLivePayments } from "@/features/live/liveService";
 import {useAuth} from "@/contexts/AuthContext";
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -762,7 +763,7 @@ export default function PaymentVerificationModal({
     onClose();
   };
 
-  if (orderData?.externalSource === "POWIP_LIVE" && orderData.storeId) return <Dialog open={open} onOpenChange={value => { if (!value) handleClose(); }}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>Pagos · {orderNumber}</DialogTitle></DialogHeader><LiveYapeReviews storeId={orderData.storeId} orderId={orderId} canReview={auth?.user?.role?.toUpperCase() === "ADMINISTRADOR"} onUpdated={paymentChanged}/></DialogContent></Dialog>;
+  if (orderData?.externalSource === "POWIP_LIVE" && orderData.storeId) return <Dialog open={open} onOpenChange={value => { if (!value) handleClose(); }}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>Pagos · {orderNumber}</DialogTitle></DialogHeader><LiveYapeReviews storeId={orderData.storeId} orderId={orderId} canReview={canReviewLivePayments(auth?.user)} onUpdated={paymentChanged}/></DialogContent></Dialog>;
   return (
     <Dialog open={open} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="sm:max-w-[550px] max-h-[85vh] flex flex-col">

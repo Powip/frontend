@@ -1,6 +1,7 @@
 "use client";
 
 import { Link2, Star, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +10,7 @@ import {
   type LiveReservationTab,
   groupReservations,
 } from "./liveGroups";
-import { liveMoney } from "./liveService";
+import { LIVE_PAYMENTS_HREF, liveMoney } from "./liveService";
 import {
   LiveEmpty,
   LiveFieldError,
@@ -42,7 +43,7 @@ const TABS: {
     tab: "REVIEW",
     label: "Pago por validar",
     banner:
-      "Ya enviaron su comprobante Yape. El stock sigue reservado hasta que se valide el pago.",
+      "Ya enviaron su comprobante Yape. El stock sigue reservado hasta que se valide. Se validan en Finanzas › Pagos por validar (un solo lugar) o desde el botón $ del pedido en Ventas.",
     empty: "No hay pagos por validar. ✓",
   },
   {
@@ -80,7 +81,6 @@ export default function LiveReservationsPanel({
   onTrust,
   onTrustPhone,
   onPaymentLink,
-  onReviewPayments,
 }: {
   data: LiveConsoleData;
   canManage: boolean;
@@ -90,7 +90,6 @@ export default function LiveReservationsPanel({
   onTrust: (customerId: string, remove?: boolean) => void;
   onTrustPhone: (input: { name: string; phone: string }) => Promise<boolean>;
   onPaymentLink: (item: LiveReservation) => void;
-  onReviewPayments: () => void;
 }) {
   const [tab, setTab] = useState<LiveReservationTab>("TIMED");
   const byTab = Object.fromEntries(
@@ -247,8 +246,8 @@ export default function LiveReservationsPanel({
                     ) : null}
                   </div>
                 ) : tab === "REVIEW" ? (
-                  <Button size="sm" onClick={onReviewPayments}>
-                    Validar pago →
+                  <Button size="sm" asChild>
+                    <Link href={LIVE_PAYMENTS_HREF}>Validar en Finanzas →</Link>
                   </Button>
                 ) : null}
               </article>
