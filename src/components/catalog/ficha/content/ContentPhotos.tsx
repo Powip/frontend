@@ -9,6 +9,7 @@ import {
   MAX_PHOTOS,
   PHOTO_TYPES,
   addPhotos,
+  imageFileSize,
   makePrincipal,
   movePhoto,
   moveInList,
@@ -20,18 +21,6 @@ import {
   type ContentDraft,
   type DraftMedia,
 } from "@/lib/catalog/productContent";
-
-async function imageSize(file: File): Promise<{ width: number; height: number } | null> {
-  try {
-    if (typeof createImageBitmap !== "function") return null;
-    const bitmap = await createImageBitmap(file);
-    const size = { width: bitmap.width, height: bitmap.height };
-    bitmap.close();
-    return size;
-  } catch {
-    return null;
-  }
-}
 
 const tileButton = "min-w-0 flex-1 rounded-md bg-white/95 px-1 py-1 text-[11px] font-semibold text-slate-800 hover:bg-white disabled:opacity-50";
 
@@ -86,7 +75,7 @@ export default function ContentPhotos({
     const uploaded: Array<Omit<DraftMedia, "id" | "kind">> = [];
     for (const file of valid) {
       try {
-        const [url, size] = await Promise.all([uploadImage(file), imageSize(file)]);
+        const [url, size] = await Promise.all([uploadImage(file), imageFileSize(file)]);
         uploaded.push({
           origin: "uploaded",
           url,

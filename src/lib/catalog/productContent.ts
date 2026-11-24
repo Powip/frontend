@@ -176,6 +176,35 @@ export function removeMedia(draft: ContentDraft, id: string): ContentDraft {
   return { ...draft, media: draft.media.filter((item) => item.id !== id), overrides };
 }
 
+/**
+ * FEAT-32 M7 (spec §5.1: «Al quitar una foto que está elegida en POWIP Live o en un canal, se quita también de
+ * ahí y se avisa») — avisos por las fotos quitadas de la galería (`baseline` → `draft`) que hoy se ven en POWIP
+ * Live (`livePhotos`) o están elegidas en un canal (lo propio con `media`).
+ */
+export function removedPhotoWarnings(
+  baseline: ContentDraft,
+  draft: ContentDraft,
+  livePhotos: ReadonlyArray<{ storeId: string; mediaIds: string[] }> = [],
+  channelName: (key: string) => string = (key) => key,
+): string[] {
+  const kept = new Set(photosOf(draft).map((item) => item.id));
+  const removed = new Set(photosOf(baseline).map((item) => item.id).filter((id) => !kept.has(id)));
+  if (!removed.size) return [];
+  const count = (ids: Iterable<string>) => new Set([...ids].filter((id) => removed.has(id))).size;
+  const warnings: string[] = [];
+  const inLive = count(livePhotos.flatMap((row) => row.mediaIds));
+  if (inLive === 1) warnings.push("Esta foto se ve en POWIP Live: al guardar, se quita también del live.");
+  else if (inLive > 1) warnings.push(`${inLive} de las fotos que quitaste se ven en POWIP Live: al guardar, se quitan también del live.`);
+  for (const [key, values] of Object.entries(baseline.overrides)) {
+    if (!Array.isArray(values.media)) continue;
+    const inChannel = count(values.media as string[]);
+    const name = channelName(key);
+    if (inChannel === 1) warnings.push(`Esta foto se ve en ${name}: al guardar, se quita también de ese canal.`);
+    else if (inChannel > 1) warnings.push(`${inChannel} de las fotos que quitaste se ven en ${name}: al guardar, se quitan también de ese canal.`);
+  }
+  return warnings;
+}
+
 /** Agrega fotos al final (las que no entran en las 12 se descartan y se informa cuántas). */
 export function addPhotos(draft: ContentDraft, photos: Omit<DraftMedia, "id" | "kind">[], makeId: () => string = newId): { draft: ContentDraft; skipped: number } {
   const current = photosOf(draft);
@@ -237,6 +266,19 @@ export function photoFileProblem(file: Pick<File, "type" | "size" | "name">): st
   if (!PHOTO_TYPES.includes(file.type)) return `«${file.name}» no es JPG, PNG ni WebP.`;
   if (file.size > PHOTO_MAX_BYTES) return `«${file.name}» pesa más de 5 MB.`;
   return null;
+}
+
+/** Ancho y alto de una foto antes de subirla (null si el navegador no puede leerla). */
+export async function imageFileSize(file: File): Promise<{ width: number; height: number } | null> {
+  try {
+    if (typeof createImageBitmap !== "function") return null;
+    const bitmap = await createImageBitmap(file);
+    const size = { width: bitmap.width, height: bitmap.height };
+    bitmap.close();
+    return size;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------

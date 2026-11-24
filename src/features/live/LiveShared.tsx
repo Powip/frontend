@@ -7,21 +7,25 @@ import type { LiveProduct } from "./types";
 
 export function LiveProductImage({
   product,
+  src,
   className = "",
 }: {
   product: LiveProduct;
+  /** FEAT-32 M7: foto del contenido del producto (la principal del canal); sin ella, la de la variante. */
+  src?: string | null;
   className?: string;
 }) {
+  const url = src || product.imageUrl;
   return (
     <div
       className={`grid shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-100 text-slate-400 ${className}`}
     >
-      {product.imageUrl ? (
+      {url ? (
         <Image
           width={128}
           height={128}
           unoptimized
-          src={product.imageUrl}
+          src={url}
           alt={product.name}
           className="h-full w-full object-cover"
           loading="lazy"

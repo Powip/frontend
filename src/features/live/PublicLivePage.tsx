@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/dialog";
 import { LiveProductImage, LiveReservationTimer, LiveCountdown } from "./LiveShared";
 import LiveManualPaymentDialog from "./LiveManualPaymentDialog";
+// FEAT-32 M7: la vitrina muestra el contenido del producto (foto, título y «Ver detalle»).
+import LiveProductDetailDialog, { groupContent } from "./LiveProductDetailDialog";
 import { createLivePolling, type LivePollingController } from "./livePolling";
 import LiveCheckoutDelivery from "./LiveCheckoutDelivery";
 import { purchaseField } from "./LiveDeliveryForm";
@@ -70,6 +72,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
     quantity: number;
   } | null>(null);
   const [returningPayment, setReturningPayment] = useState(false);
+  const [detail, setDetail] = useState<LiveProduct[] | null>(null);
   const polling = useRef<LivePollingController | null>(null);
   const refresh = useCallback(async (_token: string) => {
     await polling.current?.refresh({ quiet: true, supersede: true });
@@ -99,6 +102,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
     setCart(false);
     setManualId(null);
     setManual(null);
+    setDetail(null);
     attempts.current.clear();
     const reader = createLivePolling({
       load: (signal) => getPublicLive(storeId, token, signal),
@@ -368,6 +372,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
               }
               minutes={data?.config.reservationMinutes || 15}
               onSeparate={separate}
+              onDetail={() => setDetail(variants)}
             />
           ))
         )}
@@ -564,6 +569,14 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
           }}
         />
       ) : null}
+      {detail && visitor ? (
+        <LiveProductDetailDialog
+          storeId={storeId}
+          visitor={visitor}
+          variants={detail}
+          onClose={() => setDetail(null)}
+        />
+      ) : null}
       {manualId ? (
         <LiveManualPaymentDialog
           key={manualId}
@@ -585,6 +598,7 @@ function ProductCard({
   maxCart,
   minutes,
   onSeparate,
+  onDetail,
 }: {
   variants: LiveProduct[];
   featured: boolean;
@@ -592,6 +606,8 @@ function ProductCard({
   maxCart: number;
   minutes: number;
   onSeparate: (p: LiveProduct, q: number) => Promise<void>;
+  /** FEAT-32 M7: abre «Ver detalle» (fotos y descripción). */
+  onDetail?: () => void;
 }) {
   const [selection, setSelection] = useState<Record<string, string>>({}),
     [quantity, setQuantity] = useState(1);
@@ -629,9 +645,12 @@ function ProductCard({
     display.regularPrice > display.livePrice
       ? Math.round((1 - display.livePrice / display.regularPrice) * 100)
       : 0;
+  // FEAT-32 M7: el contenido es del producto (igual en todas sus variantes); sin él, como antes.
+  const content = groupContent(variants);
+  const title = content?.title?.trim() || display.name;
   return (
     <article
-      aria-label={display.name}
+      aria-label={title}
       className={`overflow-hidden rounded-2xl border ${featured ? "border-emerald-400/50" : "border-white/10"} bg-[#1a172a]`}
     >
       {featured ? (
@@ -639,9 +658,28 @@ function ProductCard({
           📌 Lo que muestran ahora en el live
         </p>
       ) : null}
-      <LiveProductImage product={display} className="aspect-[4/3] w-full !rounded-none" />
+      <LiveProductImage
+        product={display}
+        src={content?.photos[0]}
+        className="aspect-[4/3] w-full !rounded-none"
+      />
       <div className="space-y-4 p-4">
-        <h2 className="text-xl font-bold">{display.name}</h2>
+        <div className="space-y-1">
+          <h2 className="text-xl font-bold">{title}</h2>
+          {content?.shortDescription?.trim() ? (
+            <p className="text-sm text-slate-300">{content.shortDescription}</p>
+          ) : null}
+          {content && onDetail ? (
+            <button
+              type="button"
+              className="min-h-11 text-sm font-semibold text-emerald-300 underline-offset-2 hover:underline"
+              aria-label={`Ver detalle de ${title}`}
+              onClick={onDetail}
+            >
+              Ver detalle
+            </button>
+          ) : null}
+        </div>
         <p className="flex flex-wrap items-center gap-3">
           <strong className="text-2xl text-emerald-300">{liveMoney(display.livePrice)}</strong>
           {discount ? (

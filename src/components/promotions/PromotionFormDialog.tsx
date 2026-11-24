@@ -25,7 +25,7 @@ import { getVariantCosts, listProductVariants, type PurchasableProduct } from "@
 import { fetchVariantsByIds } from "@/services/variantCodesService";
 import { getStockByVariants } from "@/services/inventoryItems.service";
 import { apiErrorInfo } from "@/lib/catalog/catalogPayloads";
-import { VOLUME_GIFT_CHANNELS, channelLabel, normalizeOrderChannel } from "@/lib/promotions/orderChannels";
+import { LIVE_NOT_YET, POWIP_LIVE_CHANNEL, VOLUME_GIFT_CHANNELS, channelLabel, normalizeOrderChannel } from "@/lib/promotions/orderChannels";
 import { isoFromLimaLocal, limaLocalFromIso, parseMoneyInput } from "@/lib/promotions/campaign";
 import { soles, variantLabel } from "@/lib/packs/packMath";
 import { DeletePromotionDialog } from "./CampaignFormDialog";
@@ -377,6 +377,12 @@ export function PromotionFormDialog({
             </div>
             <Chips label="Tiendas" options={stores.map((store) => ({ value: store.id, label: store.name }))} value={storeIds} onChange={setStoreIds} hint={STORES_HINT} />
             <Chips label="Canales" options={channelOptions} value={channels} onChange={setChannels} hint={CHANNELS_HINT} />
+            {/* FEAT-32 M7 (decisión de Octa): las promociones en Live quedan para después. */}
+            {channels.includes(POWIP_LIVE_CHANNEL.value) ? (
+              <p role="note" className="-mt-2 rounded-md bg-[#fff4dc] px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                {LIVE_NOT_YET}
+              </p>
+            ) : null}
             <div className="space-y-1.5">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">

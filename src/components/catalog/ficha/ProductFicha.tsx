@@ -40,14 +40,25 @@ import { packComponentCount, packTypeOf } from "@/services/packsService";
 // FEAT-24 H5-L: lotes con vencimiento de las variantes.
 import FichaLotsTab from "@/components/lots/FichaLotsTab";
 
-export type FichaTab = "general" | "componentes" | "variantes" | "lotes" | "contenido" | "stock" | "canales" | "historial";
+import type { FichaTab } from "@/lib/catalog/fichaTabs";
+
+export type { FichaTab };
 
 /**
  * FEAT-24 H4 (H4-D11) — ficha del producto en pestañas (spec §6.1, mockup `vFicha`): General, Variantes,
  * Stock por almacén, Canales e Historial (kardex). Un producto simple no tiene pestaña Variantes: su SKU
  * y su código de barras están en General. `actions` deja lugar a botones de la cabecera (p. ej. etiquetas).
  */
-export default function ProductFicha({ productId, actions }: { productId: string; actions?: ReactNode }) {
+export default function ProductFicha({
+  productId,
+  actions,
+  initialTab = "general",
+}: {
+  productId: string;
+  actions?: ReactNode;
+  /** FEAT-32 M7: pestaña con la que abre (`?tab=` de la URL, p. ej. `contenido` desde POWIP Live). */
+  initialTab?: FichaTab;
+}) {
   const { auth } = useAuth();
   const companyId = auth?.company?.id ?? "";
   const accessToken = auth?.accessToken ?? "";
@@ -59,9 +70,9 @@ export default function ProductFicha({ productId, actions }: { productId: string
   const scopeReady = warehouses.isSuccess && !myWarehouses.isLoading;
   const { brands } = useCompanyBrands();
   const categories = useCatalogCategories();
-  const [tab, setTab] = useState<FichaTab>("general");
+  const [tab, setTab] = useState<FichaTab>(initialTab);
   // FEAT-32 M1: la pestaña Contenido se monta la primera vez que se abre y queda montada (no pierde el borrador).
-  const [contentOpened, setContentOpened] = useState(false);
+  const [contentOpened, setContentOpened] = useState(initialTab === "contenido");
   const openTab = (next: FichaTab) => {
     if (next === "contenido") setContentOpened(true);
     setTab(next);

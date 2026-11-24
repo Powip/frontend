@@ -30,6 +30,7 @@ import type { CatalogProductDetail, CatalogVariantDetail } from "@/services/cata
 import { getProductChannels, saveProductChannel, type ProductChannelView, type ProductChannelsView } from "@/services/productChannelsService";
 import { getCampaignPrices, listPromotions, type Promotion } from "@/services/promotionsService";
 import { channelLabel } from "@/lib/promotions/orderChannels";
+import { getLiveProductsStatus } from "@/features/live/liveService";
 import {
   STATUS_LABEL,
   activeCampaign,
@@ -47,6 +48,7 @@ import {
 const pill = "inline-block rounded-full px-2 py-0.5 text-xs font-semibold";
 const PILL_TEAL = `${pill} bg-[#e7f3f3] text-[#015d5e] dark:bg-teal-950/50 dark:text-teal-200`;
 const PILL_GRAY = `${pill} bg-muted text-muted-foreground`;
+const PILL_GREEN = `${pill} bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200`;
 const PILL_PROMO = `${pill} bg-[#fde7f1] text-[#a3185a] dark:bg-pink-950/50 dark:text-pink-200`;
 const PILL_SCHEDULED = `${pill} bg-sky-50 text-sky-800 dark:bg-sky-950/40 dark:text-sky-200`;
 const STATUS_PILL: Record<PromoStatus, string> = {
@@ -134,6 +136,18 @@ export default function FichaChannelsTab({ product, variants }: { product: Catal
 
   const origin = productChannel(product.externalSource);
   const live = variants.filter((variant) => !variant.mergedInto);
+
+  // FEAT-32 M7 (spec §7.8): «En el live» si alguna variante está publicada en el live de la tienda elegida.
+  // Mientras carga o si falla (p. ej. 403 sin lectura de Live), «Se maneja en Live» como antes.
+  const liveVariantIds = useMemo(() => variants.filter((variant) => !variant.mergedInto).map((variant) => variant.id).slice(0, 500), [variants]);
+  const liveStatus = useQuery({
+    queryKey: ["live-products-status", currentStore, liveVariantIds.join(",")],
+    queryFn: ({ signal }) => getLiveProductsStatus(currentStore, liveVariantIds, signal),
+    enabled: !!currentStore && liveVariantIds.length > 0,
+    retry: false,
+    staleTime: 30_000,
+  });
+  const inLive = liveStatus.data ? liveStatus.data.enabledVariantIds.some((id) => liveVariantIds.includes(id)) : null;
   const ownByVariant = (channel: ProductChannelView) => new Map(channel.prices.map((price) => [price.variantId, price.own]));
 
   return (
@@ -179,7 +193,15 @@ export default function FichaChannelsTab({ product, variants }: { product: Catal
                       <TableRow key={meta.code}>
                         <TableCell />
                         <TableCell><ChannelCell meta={meta} account={`${storeName} · live`} /></TableCell>
-                        <TableCell><span className={PILL_TEAL}>Se maneja en Live</span></TableCell>
+                        <TableCell>
+                          {inLive === null ? (
+                            <span className={PILL_TEAL}>Se maneja en Live</span>
+                          ) : inLive ? (
+                            <span className={PILL_GREEN}>En el live</span>
+                          ) : (
+                            <span className={PILL_GRAY}>No está en el live</span>
+                          )}
+                        </TableCell>
                         <TableCell>{meta.shows}<small className="block text-xs text-muted-foreground">{meta.showsHint}</small></TableCell>
                         <TableCell><span className="text-sm text-muted-foreground">Precio live · se edita en POWIP Live</span></TableCell>
                         <TableCell className="text-right"><Button variant="outline" size="sm" asChild><Link href="/live">Abrir POWIP Live ↗</Link></Button></TableCell>

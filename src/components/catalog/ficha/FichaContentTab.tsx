@@ -30,6 +30,7 @@ import {
   lastSavedLabel,
   parseChannelKey,
   removeMedia,
+  removedPhotoWarnings,
   resetField,
   sameDraft,
   setChannelValue,
@@ -298,6 +299,8 @@ export default function FichaContentTab({
       ? "En POWIP Live se eligen hasta 3 de estas fotos y el precio live, desde POWIP Live › Productos del live."
       : "Este canal muestra el contenido al instante, sin publicar. Cambia aquí solo lo que necesite distinto: lo demás se hereda de Por defecto.";
   const saved = lastSavedLabel(view);
+  // FEAT-32 M7: quitar una foto que se ve en POWIP Live o en un canal la saca también de ahí al guardar.
+  const removalWarnings = removedPhotoWarnings(baseline, draft, view.livePhotos ?? [], channelName);
 
   return (
     <div className="space-y-4">
@@ -338,6 +341,11 @@ export default function FichaContentTab({
               channel={channel && !isLive ? { key: channel.key, name: channel.name, ownIds: Array.isArray(own.media) ? (own.media as string[]) : null } : null}
               photoOption={view.photoOption}
             />
+            {removalWarnings.length ? (
+              <div role="status" className="mt-3 space-y-1 rounded-xl bg-[#fff4dc] px-3 py-2.5 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                {removalWarnings.map((warning) => <p key={warning}>{warning}</p>)}
+              </div>
+            ) : null}
           </Section>
 
           <Section title={<>Videos <span className="text-xs font-normal text-muted-foreground">({shownVideos.length} de {MAX_VIDEOS})</span></>} aside={sectionAside("videos")}>

@@ -53,6 +53,9 @@ export default function LivePublicProductCard({
   const minimum = Math.min(...prices);
   const maximum = Math.max(...prices);
   const unavailable = !product || max <= 0;
+  // FEAT-32 M7: foto y título del contenido del producto (iguales en todas sus variantes).
+  const content = group.variants.find((variant) => variant.content)?.content;
+  const title = content?.title?.trim() || group.name;
   const help = !product
     ? "Elige la variante que quieres antes de agregar o comprar."
     : product.availableStock <= 0
@@ -72,10 +75,10 @@ export default function LivePublicProductCard({
         </p>
       ) : null}
       <div className="flex gap-4">
-        <LiveProductImage product={preview} className="h-24 w-24 shrink-0" />
+        <LiveProductImage product={preview} src={content?.photos[0]} className="h-24 w-24 shrink-0" />
         <div className="min-w-0 flex-1">
           <h2 id={`${id}-name`} className="font-bold leading-snug">
-            {group.name}
+            {title}
           </h2>
           {product ? <p className="mt-1 break-words text-xs text-zinc-400">{product.sku}</p> : null}
           <p className="mt-2 text-xl font-bold text-[#25F4EE]">

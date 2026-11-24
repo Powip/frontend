@@ -48,7 +48,10 @@ export interface ProductContentView {
   media: ContentMedia[];
   photoOption: { name: string; values: string[] } | null;
   attributes: Record<string, string>;
+  /** Lo propio de cada canal (FEAT-32 M7: sin POWIP Live, que va en `livePhotos`). */
   overrides: ContentOverride[];
+  /** FEAT-32 M7 — fotos elegidas en POWIP Live por tienda (ids de la galería). Vacío o ausente = sin elegir. */
+  livePhotos?: Array<{ storeId: string; mediaIds: string[] }>;
   limits: { photos: number; videos: number; photoBytes: number };
   canEdit: boolean;
   updatedAt: string | null;
@@ -86,4 +89,53 @@ export async function getProductContent(productId: string, signal?: AbortSignal)
 export async function saveProductContent(productId: string, body: SaveProductContentBody): Promise<ProductContentView> {
   const { data } = await axiosAuth.put(`${products()}/products/${encodeURIComponent(productId)}/content`, body);
   return data as ProductContentView;
+}
+
+/** FEAT-32 M7 — contenido efectivo de un canal en una tienda (lo que hoy ve ese canal). */
+export interface EffectiveContentView {
+  productId: string;
+  storeId: string | null;
+  channel: string | null;
+  title: string;
+  shortDescription: string;
+  descriptionHtml: string;
+  features: string[];
+  /** En POWIP Live, hasta 3: las elegidas o, sin elección, las 3 primeras de la galería. */
+  photos: ContentMedia[];
+  videos: ContentMedia[];
+}
+
+/** Foto elegida para el live: se busca por `id` y, si es null (producto sin contenido guardado), por `url`. */
+export interface LivePhotoInput {
+  id: string | null;
+  url: string;
+}
+
+export interface AddContentPhotoBody {
+  url: string;
+  fileName?: string | null;
+  widthPx?: number | null;
+  heightPx?: number | null;
+  sizeBytes?: number | null;
+}
+
+const contentPath = (productId: string) => `${products()}/products/${encodeURIComponent(productId)}/content`;
+
+export async function getEffectiveContent(productId: string, storeId: string, channel: string, signal?: AbortSignal): Promise<EffectiveContentView> {
+  const { data } = await axiosAuth.get(`${contentPath(productId)}/effective`, { params: { storeId, channel }, signal });
+  if (!data || !Array.isArray(data.photos)) throw new Error("No se pudo leer el contenido del producto.");
+  return data as EffectiveContentView;
+}
+
+/** `PUT …/content/live-photos`: hasta 3 en orden (la primera es la principal); `[]` = volver a las 3 primeras. */
+export async function saveLivePhotos(productId: string, body: { storeId: string; photos: LivePhotoInput[] }): Promise<EffectiveContentView> {
+  const { data } = await axiosAuth.put(`${contentPath(productId)}/live-photos`, body);
+  return data as EffectiveContentView;
+}
+
+/** `POST …/content/media`: suma una foto ya subida al final de la galería (si la URL ya estaba, devuelve esa). */
+export async function addContentPhoto(productId: string, body: AddContentPhotoBody): Promise<ContentMedia> {
+  const { data } = await axiosAuth.post(`${contentPath(productId)}/media`, body);
+  if (!data || typeof data.url !== "string") throw new Error("No se pudo agregar la foto a la galería.");
+  return data as ContentMedia;
 }
