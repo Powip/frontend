@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getUsersByCompany } from "@/services/userService";
 import type { LiveConfig } from "./types";
 import { liveError } from "./liveService";
+import LiveCopyButton from "./LiveCopyButton";
 export default function LiveAdvisors({
   config,
   disabled,
@@ -12,7 +13,8 @@ export default function LiveAdvisors({
 }: {
   config: LiveConfig;
   disabled: boolean;
-  onSave: (config: LiveConfig) => void;
+  /** FEAT-33 A1: manda solo los campos de asesoras, nunca la configuración entera. */
+  onSave: (changes: Partial<LiveConfig>) => void;
   catalogUrl: string;
 }) {
   const { auth } = useAuth(),
@@ -57,7 +59,6 @@ export default function LiveAdvisors({
             .replace(/[^a-z0-9]+/g, "-")
             .slice(0, 24)}-${user.id.slice(0, 6)}`;
           onSave({
-            ...config,
             advisorId: user.id,
             advisorName: name,
             advisors: exists
@@ -101,7 +102,6 @@ export default function LiveAdvisors({
               disabled={disabled}
               onChange={(e) =>
                 onSave({
-                  ...config,
                   advisors: config.advisors?.map((row) =>
                     row.id === a.id ? { ...row, commission: e.target.checked } : row,
                   ),
@@ -120,16 +120,7 @@ export default function LiveAdvisors({
               Link del vendedor: {catalogUrl.replace(/\/catalogo(?=\/|$)/, "/live")}?v={a.code}
             </a>
           ) : null}
-          <button
-            className="min-h-11 rounded-xl border px-3 text-sm"
-            onClick={() =>
-              void navigator.clipboard
-                .writeText(`${catalogUrl}?a=${encodeURIComponent(a.code)}`)
-                .catch(() => setError("No se pudo copiar. Selecciona el enlace."))
-            }
-          >
-            Copiar link
-          </button>
+          <LiveCopyButton text={`${catalogUrl}?a=${encodeURIComponent(a.code)}`} label="Copiar link" />
         </div>
       ))}
     </section>

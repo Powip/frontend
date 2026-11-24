@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AxiosError, AxiosHeaders } from "axios";
 import { toast } from "sonner";
 import LiveConsolePage from "../LiveConsolePage";
-import { getLiveConsole, updateLiveProduct } from "../liveService";
+import { getLiveConsole, updateLiveProducts } from "../liveService";
 import { saveLivePhotos } from "@/services/productContentService";
 import type { LiveConsoleData } from "../types";
 
@@ -24,7 +24,7 @@ jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }))
 jest.mock("../liveService", () => ({
   ...jest.requireActual("../liveService"),
   getLiveConsole: jest.fn(),
-  updateLiveProduct: jest.fn(),
+  updateLiveProducts: jest.fn(),
 }));
 jest.mock("@/services/productContentService", () => ({ saveLivePhotos: jest.fn() }));
 // La sección de fotos tiene su propio test: acá solo lo que le pasa a la ventana.
@@ -86,14 +86,14 @@ const badRequest = (message: string) =>
 
 async function openDialog() {
   render(<LiveConsolePage />);
-  fireEvent.click(await screen.findByRole("button", { name: "Editar" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Editar Blusa Sofía" }));
   return screen.findByRole("dialog");
 }
 
 beforeEach(() => {
   jest.clearAllMocks();
   (getLiveConsole as jest.Mock).mockResolvedValue(CONSOLE);
-  (updateLiveProduct as jest.Mock).mockResolvedValue({ products: CONSOLE.products, serverNow: CONSOLE.serverNow });
+  (updateLiveProducts as jest.Mock).mockResolvedValue({ products: CONSOLE.products, serverNow: CONSOLE.serverNow });
   (saveLivePhotos as jest.Mock).mockResolvedValue({ photos: [] });
 });
 
@@ -103,13 +103,14 @@ describe("Editar producto del live con sus fotos (FEAT-32 M7)", () => {
     expect(screen.getByText("fotos de product-sofia en store-a")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Elegir fotos" }));
     fireEvent.click(screen.getByRole("button", { name: "Guardar producto" }));
-    await waitFor(() => expect(updateLiveProduct).toHaveBeenCalled());
+    await waitFor(() => expect(updateLiveProducts).toHaveBeenCalled());
     expect(saveLivePhotos).toHaveBeenCalledWith("product-sofia", {
       storeId: "store-a",
       photos: [{ id: "m3", url: "https://cdn.test/3.jpg" }],
     });
-    expect((saveLivePhotos as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan((updateLiveProduct as jest.Mock).mock.invocationCallOrder[0]);
-    expect(updateLiveProduct).toHaveBeenCalledWith("store-a", "variant-s", { livePrice: 69, maxPerCustomer: null, enabled: true });
+    expect((saveLivePhotos as jest.Mock).mock.invocationCallOrder[0]).toBeLessThan((updateLiveProducts as jest.Mock).mock.invocationCallOrder[0]);
+    // FEAT-33 L1 (B2): un precio live y un máximo para todas las variantes del producto.
+    expect(updateLiveProducts).toHaveBeenCalledWith("store-a", { variantIds: ["variant-s"], livePrice: 69, maxPerCustomer: null });
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
@@ -127,14 +128,14 @@ describe("Editar producto del live con sus fotos (FEAT-32 M7)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Elegir fotos" }));
     fireEvent.click(screen.getByRole("button", { name: "Guardar producto" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Una de las fotos elegidas ya no está en la galería del producto."));
-    expect(updateLiveProduct).not.toHaveBeenCalled();
+    expect(updateLiveProducts).not.toHaveBeenCalled();
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("sin cambios de fotos guarda solo el precio", async () => {
     await openDialog();
     fireEvent.click(screen.getByRole("button", { name: "Guardar producto" }));
-    await waitFor(() => expect(updateLiveProduct).toHaveBeenCalled());
+    await waitFor(() => expect(updateLiveProducts).toHaveBeenCalled());
     expect(saveLivePhotos).not.toHaveBeenCalled();
   });
 });
