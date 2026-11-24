@@ -103,7 +103,7 @@ beforeEach(() => {
 
 describe("Eliminar almacén con confirmación por nombre", () => {
   it("muestra el nombre del almacén, explica la regla y cancelar no envía nada", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderScreen();
     const dialog = await openDialog(user);
     expect(within(dialog).getByRole("heading", { name: "Eliminar almacén" })).toBeInTheDocument();
@@ -116,7 +116,7 @@ describe("Eliminar almacén con confirmación por nombre", () => {
   });
 
   it("deja Eliminar deshabilitado hasta escribir el nombre exacto", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderScreen();
     const dialog = await openDialog(user);
     const confirm = within(dialog).getByRole("button", { name: "Eliminar" });
@@ -139,7 +139,7 @@ describe("Eliminar almacén con confirmación por nombre", () => {
   });
 
   it("al abrir otra vez el diálogo el campo vuelve vacío", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderScreen();
     let dialog = await openDialog(user);
     await typeName(user, dialog, "Almacén Breña");
@@ -150,7 +150,7 @@ describe("Eliminar almacén con confirmación por nombre", () => {
   });
 
   it("el principal no se puede eliminar: el botón está deshabilitado y no abre el diálogo", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderScreen();
     const button = await screen.findByRole("button", { name: "Eliminar almacén Almacén Principal" });
     expect(button).toBeDisabled();
@@ -162,7 +162,7 @@ describe("Eliminar almacén con confirmación por nombre", () => {
   it("envía un solo DELETE con el id, bloquea acciones repetidas y refresca lista e inventarios", async () => {
     let finishDelete!: () => void;
     mockDelete.mockReturnValue(new Promise<void>((resolve) => { finishDelete = resolve; }));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderScreen();
     await confirmDeletion(user);
 
@@ -187,7 +187,7 @@ describe("Eliminar almacén con confirmación por nombre", () => {
   });
 
   it("Enter en el campo elimina solo cuando el nombre coincide", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderScreen();
     const dialog = await openDialog(user);
     const input = within(dialog).getByLabelText(/escribe el nombre del almacén/i);
@@ -200,7 +200,7 @@ describe("Eliminar almacén con confirmación por nombre", () => {
   it("muestra el motivo del backend (409), conserva el almacén y no avisa éxito", async () => {
     const message = "No se puede eliminar este almacén porque tiene productos, movimientos, pedidos o integraciones vinculadas.";
     mockDelete.mockRejectedValue({ response: { status: 409, data: { message } } });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderScreen();
     await confirmDeletion(user);
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith(message));
@@ -215,7 +215,7 @@ describe("Eliminar almacén con confirmación por nombre", () => {
     mockDelete.mockRejectedValue({
       response: { data: { message: [" Almacén vinculado a pedidos ", null, "Revisa sus referencias"] } },
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderScreen();
     await confirmDeletion(user);
     await waitFor(() =>
@@ -226,7 +226,7 @@ describe("Eliminar almacén con confirmación por nombre", () => {
 
   it("usa un mensaje claro cuando falla la petición sin mensaje del backend", async () => {
     mockDelete.mockRejectedValue(new Error("Network Error"));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderScreen();
     await confirmDeletion(user);
     await waitFor(() =>
@@ -239,7 +239,7 @@ describe("Eliminar almacén con confirmación por nombre", () => {
   it("avisa aparte si falla refrescar la información después de eliminar", async () => {
     refreshInventories.mockRejectedValue(new Error("Refresh unavailable"));
     mockList.mockResolvedValueOnce(payload()).mockResolvedValue(payload([PRINCIPAL, SUR]));
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderScreen();
     await confirmDeletion(user);
     await waitFor(() =>

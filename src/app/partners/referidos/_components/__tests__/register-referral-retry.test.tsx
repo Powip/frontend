@@ -98,7 +98,7 @@ describe("reintento de referido con hook, servicio y mapper reales", () => {
       if (!isReplay && committedKeys.size === 1) throw buildAxiosError();
       return REGISTERED;
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
 
     await fillForm(user, "+51 (987) 654-321");
@@ -128,7 +128,7 @@ describe("reintento de referido con hook, servicio y mapper reales", () => {
 
   it("genera otra clave al cambiar el payload después de una respuesta perdida", async () => {
     mockRegisterApi.mockRejectedValueOnce(buildAxiosError()).mockResolvedValueOnce(REGISTERED);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
 
     await fillForm(user);
@@ -152,7 +152,7 @@ describe("reintento de referido con hook, servicio y mapper reales", () => {
 
   it("conserva A pendiente después de registrar B y volver a A", async () => {
     mockRegisterApi.mockRejectedValueOnce(buildAxiosError()).mockResolvedValue(REGISTERED);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
 
     await fillForm(user);
@@ -182,7 +182,7 @@ describe("reintento de referido con hook, servicio y mapper reales", () => {
 
   it("descarta la clave tras éxito confirmado aunque el siguiente registro use los mismos datos", async () => {
     mockRegisterApi.mockResolvedValue(REGISTERED);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
 
     await fillForm(user);
@@ -201,7 +201,7 @@ describe("reintento de referido con hook, servicio y mapper reales", () => {
 
   it("recupera la misma clave tras desmontar y montar con respuesta previa perdida", async () => {
     mockRegisterApi.mockRejectedValueOnce(buildAxiosError()).mockResolvedValueOnce(REGISTERED);
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const firstRender = renderDialog();
     await fillForm(user, "+51 (987) 654-321");
     await submit(user);
@@ -225,7 +225,7 @@ describe("reintento de referido con hook, servicio y mapper reales", () => {
     jest.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new DOMException("blocked", "SecurityError");
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
     await fillForm(user);
     await submit(user);
@@ -245,7 +245,7 @@ describe("reintento de referido con hook, servicio y mapper reales", () => {
       confirmed = true;
       return REGISTERED;
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderDialog();
     await fillForm(user);
     await submit(user);
