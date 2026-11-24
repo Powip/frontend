@@ -1,4 +1,5 @@
 "use client";
+import type { LiveLinks } from "./liveLinks";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUsersByCompany } from "@/services/userService";
@@ -9,13 +10,13 @@ export default function LiveAdvisors({
   config,
   disabled,
   onSave,
-  catalogUrl,
+  links,
 }: {
   config: LiveConfig;
   disabled: boolean;
   /** FEAT-33 A1: manda solo los campos de asesoras, nunca la configuración entera. */
   onSave: (changes: Partial<LiveConfig>) => void;
-  catalogUrl: string;
+  links: LiveLinks;
 }) {
   const { auth } = useAuth(),
     [users, setUsers] = useState<{ id: string; name: string; surname?: string }[]>([]),
@@ -90,9 +91,9 @@ export default function LiveAdvisors({
               className="break-all text-xs text-teal-700"
               target="_blank"
               rel="noopener noreferrer"
-              href={`${catalogUrl}?a=${encodeURIComponent(a.code)}`}
+              href={links.advisorUrl(a.code)}
             >
-              {catalogUrl}?a={a.code}
+              {links.advisorUrl(a.code)}
             </a>
           </div>
           <label className="flex min-h-11 items-center gap-2 text-sm">
@@ -113,14 +114,14 @@ export default function LiveAdvisors({
           {a.commission ? (
             <a
               className="break-all text-xs text-teal-700"
-              href={`${catalogUrl.replace(/\/catalogo(?=\/|$)/, "/live")}?v=${encodeURIComponent(a.code)}`}
+              href={links.sellerUrl(a.code)}
               target="_blank"
               rel="noopener noreferrer"
             >
-              Link del vendedor: {catalogUrl.replace(/\/catalogo(?=\/|$)/, "/live")}?v={a.code}
+              Link del vendedor: {links.sellerUrl(a.code)}
             </a>
           ) : null}
-          <LiveCopyButton text={`${catalogUrl}?a=${encodeURIComponent(a.code)}`} label="Copiar link" />
+          <LiveCopyButton text={links.advisorUrl(a.code)} label="Copiar link" />
         </div>
       ))}
     </section>

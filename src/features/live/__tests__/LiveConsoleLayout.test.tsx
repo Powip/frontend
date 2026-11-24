@@ -215,9 +215,15 @@ test("A2: each advisor's «Copiar link» copies exactly that advisor's link", as
   const bea = screen.getByText("Bea").closest("div")!.parentElement!;
   fireEvent.click(within(bea).getByRole("button", { name: "Copiar link" }));
   await waitFor(() => expect(copyLiveText).toHaveBeenCalledTimes(1));
-  expect((copyLiveText as jest.Mock).mock.calls[0][0]).toMatch(
-    /\?a=bea-222222$/,
+  expect((copyLiveText as jest.Mock).mock.calls[0][0]).toBe(
+    "http://localhost/live/kunca?a=bea-222222",
   );
+  // FEAT-33 A12: el enlace que se muestra es el mismo, sin el formato viejo /catalogo.
+  expect(within(bea).getByRole("link", { name: /\/live\/kunca\?a=bea-222222/ })).toHaveAttribute(
+    "href",
+    "http://localhost/live/kunca?a=bea-222222",
+  );
+  expect(screen.queryByText(/\/catalogo\//)).not.toBeInTheDocument();
 });
 
 test("A1: marking an advisor as commission seller sends only the advisors", async () => {

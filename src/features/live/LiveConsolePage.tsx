@@ -4,6 +4,7 @@ import { toWhatsAppDigits } from "@/lib/phone";
 import { createLivePolling, type LivePollingController } from "./livePolling";
 import { liveAdminError } from "./liveService";
 import LiveAdvisors from "./LiveAdvisors";
+import { liveLinks } from "./liveLinks";
 import LiveProductsTable from "./LiveProductsTable";
 
 import {
@@ -163,17 +164,9 @@ function ScopedLiveConsolePage({
   }, [callbackStoreId, selectedStoreId, auth?.company?.stores, setSelectedStore]);
   const storeId = selectedStoreId;
   const slug = data?.config.slug;
-  const publicUrl =
-    storeId && origin
-      ? slug
-        ? origin.endsWith(".powip.lat") || origin === "https://powip.lat"
-          ? `https://${slug}.powip.lat/live`
-          : `${origin}/live/${slug}`
-        : `${origin}/live/${encodeURIComponent(storeId)}`
-      : "";
-  const catalogUrl = publicUrl.includes(".powip.lat/live")
-    ? publicUrl.replace(/\/live$/, "/catalogo")
-    : publicUrl.replace("/live/", "/catalogo/");
+  // FEAT-33 A12: todos los links del live salen de liveLinks (un solo formato).
+  const links = liveLinks({ origin: storeId ? origin : "", slug, storeId });
+  const publicUrl = links.publicUrl;
 
   const refresh = useCallback(
     (quiet = false) =>
@@ -460,7 +453,7 @@ function ScopedLiveConsolePage({
               <LiveAdvisors
                 config={data.config}
                 disabled={!canManage || !!busy}
-                catalogUrl={catalogUrl}
+                links={links}
                 onSave={(config) =>
                   void run("config", () => updateLiveConfig(storeId, config), "Asesora guardada")
                 }
