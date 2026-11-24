@@ -144,6 +144,26 @@ describe("Pestaña Contenido (FEAT-32 M1)", () => {
     expect(screen.getByText(/\(3 de 12\)/)).toBeInTheDocument();
   });
 
+  it("FEAT-32 M7: quitar una foto que se ve en POWIP Live o en un canal avisa que se quita también de ahí", async () => {
+    const user = userEvent.setup();
+    renderTab({
+      ...VIEW,
+      materialized: true,
+      media: VIEW.media.map((item, index) => ({ ...item, id: `m${index}` })),
+      livePhotos: [{ storeId: STORE, mediaIds: ["m0"] }],
+      overrides: [{ storeId: STORE, channel: "CATALOGO_WEB", field: "media", value: ["m1"] }],
+    });
+    await screen.findByLabelText("Título que ve el cliente");
+    expect(screen.queryByText(/al guardar, se quita también/)).not.toBeInTheDocument();
+    const fotos = screen.getByText(/Fotos/).closest("section") as HTMLElement;
+    await user.click(within(fotos).getAllByRole("button", { name: "Quitar foto" })[0]);
+    expect(within(fotos).getByRole("status")).toHaveTextContent("Esta foto se ve en POWIP Live: al guardar, se quita también del live.");
+    await user.click(within(fotos).getAllByRole("button", { name: "Quitar foto" })[0]);
+    expect(within(fotos).getByRole("status")).toHaveTextContent("Esta foto se ve en Catálogo web: al guardar, se quita también de ese canal.");
+    await user.click(screen.getByRole("button", { name: "Descartar" }));
+    expect(screen.queryByText(/al guardar, se quita también/)).not.toBeInTheDocument();
+  });
+
   it("sin permiso de edición se ve de solo lectura", async () => {
     renderTab({ ...VIEW, canEdit: false });
     expect(await screen.findByText(/Solo el Administrador u Operaciones pueden editar el contenido/)).toBeInTheDocument();

@@ -5,6 +5,7 @@ import FichaChannelsTab from "@/components/catalog/ficha/FichaChannelsTab";
 import { getProductChannels, saveProductChannel, type ProductChannelsView } from "@/services/productChannelsService";
 import type { CatalogProductDetail, CatalogVariantDetail } from "@/services/catalogProductService";
 import { getCampaignPrices, listPromotions, type Promotion } from "@/services/promotionsService";
+import { getLiveProductsStatus } from "@/features/live/liveService";
 
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }), usePathname: () => "/productos/p1" }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
@@ -13,6 +14,7 @@ jest.mock("@/contexts/AuthContext", () => ({
 }));
 jest.mock("@/services/productChannelsService", () => ({ getProductChannels: jest.fn(), saveProductChannel: jest.fn() }));
 jest.mock("@/services/promotionsService", () => ({ listPromotions: jest.fn(), getCampaignPrices: jest.fn() }));
+jest.mock("@/features/live/liveService", () => ({ getLiveProductsStatus: jest.fn() }));
 
 const promo = (over: Partial<Promotion>): Promotion => ({
   id: "c-1", name: "Cyber Wow", type: "CAMPAIGN", isActive: true, channels: ["CATALOGO_WEB"], storeIds: [],
@@ -73,6 +75,29 @@ describe("Ficha › Canales (FEAT-32 M2)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.mocked(listPromotions).mockResolvedValue([]);
+    jest.mocked(getLiveProductsStatus).mockRejectedValue(new Error("sin lectura de Live"));
+  });
+
+  it("FEAT-32 M7: Estado de POWIP Live según las variantes publicadas en el live de la tienda", async () => {
+    jest.mocked(getLiveProductsStatus).mockResolvedValue({ enabledVariantIds: ["v2"] });
+    const { unmount } = renderTab();
+    const liveRow = (await screen.findByText("POWIP Live")).closest("tr")!;
+    expect(await within(liveRow).findByText("En el live")).toBeInTheDocument();
+    expect(getLiveProductsStatus).toHaveBeenCalledWith("s1", ["v1", "v2"], expect.anything());
+    unmount();
+
+    jest.mocked(getLiveProductsStatus).mockResolvedValue({ enabledVariantIds: ["otra"] });
+    renderTab();
+    const offRow = (await screen.findByText("POWIP Live")).closest("tr")!;
+    expect(await within(offRow).findByText("No está en el live")).toBeInTheDocument();
+  });
+
+  it("FEAT-32 M7: si el estado del live falla (p. ej. 403), queda «Se maneja en Live»", async () => {
+    renderTab();
+    const liveRow = (await screen.findByText("POWIP Live")).closest("tr")!;
+    await waitFor(() => expect(getLiveProductsStatus).toHaveBeenCalled());
+    expect(within(liveRow).getByText("Se maneja en Live")).toBeInTheDocument();
+    expect(within(liveRow).queryByText("En el live")).not.toBeInTheDocument();
   });
 
   it("muestra Live, CRM y Catálogo web con estado y precio, Shopify «Lo administra Shopify» y las variantes unidas", async () => {

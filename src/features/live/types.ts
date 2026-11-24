@@ -44,6 +44,8 @@ export interface LiveProduct {
   name: string;
   sku: string;
   imageUrl?: string | null;
+  /** FEAT-32 M7: foto PROPIA de la variante (la de su color), sin caer en la del producto. */
+  variantImageUrl?: string | null;
   variantLabel?: string | null;
   attributes?: Record<string, string>;
   regularPrice: number;
@@ -52,6 +54,24 @@ export interface LiveProduct {
   maxPerCustomer: number | null;
   remainingLimit?: number | null;
   enabled: boolean;
+  /**
+   * FEAT-32 M7 — contenido del producto en la vitrina (igual en todas sus variantes). En `/live`, `photos` son
+   * las hasta 3 fotos del live; en `/catalogo`, las del Catálogo web. Ausente si ms-products no respondió.
+   */
+  content?: LiveProductContent;
+}
+/** FEAT-32 M7 — lo que trae la tarjeta en el catálogo público (liviano: se consulta cada 5 s). */
+export interface LiveProductContent {
+  title: string;
+  shortDescription: string;
+  photos: string[];
+}
+/** FEAT-32 M7 — detalle del producto en la vitrina (`GET live/public/:storeId/products/:productId/content`). */
+export interface LiveProductContentDetail extends LiveProductContent {
+  productId: string;
+  /** Ya saneado por ms-products (lista blanca); el front lo vuelve a sanear antes de mostrarlo. */
+  descriptionHtml: string;
+  features: string[];
 }
 export interface LiveCustomer {
   id?: string;

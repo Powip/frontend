@@ -51,6 +51,9 @@ import {
   LiveReservationTimer,
 } from "./LiveShared";
 import LiveYapeReviews from "./LiveYapeReviews";
+// FEAT-32 M7: las hasta 3 fotos del live se eligen de la galería del producto (ms-products).
+import LiveProductPhotos, { type LivePhotosChange } from "./LiveProductPhotos";
+import { saveLivePhotos, type LivePhotoInput } from "@/services/productContentService";
 import {
   createLivePaymentLink,
   getLiveCatalog,
@@ -849,13 +852,17 @@ function ScopedLiveConsolePage({
       {product ? (
         <ProductDialog
           product={product}
+          storeId={storeId}
           busy={!!busy}
           onClose={() => setProduct(null)}
-          onSave={(input) => {
+          onSave={(input, photos) => {
             if (storeId)
               void run(
                 "product",
                 async () => {
+                  // FEAT-32 M7: primero las fotos (si cambiaron) y después el precio live y el máximo.
+                  if (photos && product.productId)
+                    await saveLivePhotos(product.productId, { storeId, photos });
                   await updateLiveProduct(storeId, product.variantId, input);
                   setProduct(null);
                 },
@@ -1120,17 +1127,21 @@ function ReservationsPanel({
 
 function ProductDialog({
   product,
+  storeId,
   busy,
   onClose,
   onSave,
 }: {
   product: LiveProduct;
+  storeId: string | null;
   busy: boolean;
   onClose: () => void;
-  onSave: (input: Partial<LiveProduct>) => void;
+  /** `photos` null = las fotos del live no cambiaron. */
+  onSave: (input: Partial<LiveProduct>, photos: LivePhotoInput[] | null) => void;
 }) {
   const [price, setPrice] = useState(String(product.livePrice || product.regularPrice || ""));
   const [max, setMax] = useState(product.maxPerCustomer?.toString() ?? "");
+  const [photos, setPhotos] = useState<LivePhotosChange>({ photos: null, uploading: false });
   const valid =
     Number(price) > 0 &&
     Number.isFinite(Number(price)) &&
@@ -1139,10 +1150,10 @@ function ProductDialog({
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open && !busy) onClose();
+        if (!open && !busy && !photos.uploading) onClose();
       }}
     >
-      <DialogContent>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{product.name}</DialogTitle>
           <DialogDescription>
@@ -1154,15 +1165,26 @@ function ProductDialog({
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            if (valid)
-              onSave({
-                livePrice: Number(price),
-                maxPerCustomer: max ? Number(max) : null,
-                enabled: product.enabled,
-              });
+            if (valid && !photos.uploading)
+              onSave(
+                {
+                  livePrice: Number(price),
+                  maxPerCustomer: max ? Number(max) : null,
+                  enabled: product.enabled,
+                },
+                photos.photos,
+              );
           }}
           className="space-y-4"
         >
+          {product.productId && storeId ? (
+            <LiveProductPhotos
+              productId={product.productId}
+              storeId={storeId}
+              disabled={busy}
+              onChange={setPhotos}
+            />
+          ) : null}
           <label htmlFor="live-product-price" className="grid gap-2 text-sm font-medium">
             Precio live (S/)
             <Input
@@ -1195,7 +1217,7 @@ function ProductDialog({
             <Button type="button" variant="outline" disabled={busy} onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={busy || !valid}>
+            <Button type="submit" disabled={busy || !valid || photos.uploading}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Guardar producto
             </Button>

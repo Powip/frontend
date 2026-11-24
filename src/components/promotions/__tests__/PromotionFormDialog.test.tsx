@@ -242,3 +242,15 @@ describe("Regalo como SKU con stock (FEAT-32 M4, spec §7.14 y §6.17)", () => {
     expect(await screen.findByText(/en stock\. En la venta entra como línea a S\/ 0/)).toHaveTextContent("El regalo tiene 4 en stock.");
   });
 });
+
+describe("POWIP Live en volumen y regalo (FEAT-32 M7)", () => {
+  it("al marcar POWIP Live avisa que el live todavía no aplica promociones", async () => {
+    const user = userEvent.setup();
+    renderDialog({ initialType: "GIFT" });
+    expect(screen.queryByText(/todavía no aplica promociones/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "POWIP Live" }));
+    expect(screen.getByRole("note")).toHaveTextContent("POWIP Live todavía no aplica promociones: el live usa su precio live.");
+    await user.click(screen.getByRole("button", { name: "POWIP Live" }));
+    expect(screen.queryByText(/todavía no aplica promociones/)).not.toBeInTheDocument();
+  });
+});

@@ -15,6 +15,7 @@ import {
   photosOf,
   plainTextToHtml,
   removeMedia,
+  removedPhotoWarnings,
   resetField,
   sameDraft,
   sanitizeDescriptionHtml,
@@ -199,5 +200,31 @@ describe("plainTextToHtml (descripción de «Crear producto»)", () => {
     expect(plainTextToHtml("Jean tiro alto\nBota recta\n\n5 < 6")).toBe("<p>Jean tiro alto<br>Bota recta</p><p>5 &lt; 6</p>");
     expect(plainTextToHtml("<p>Ya es HTML</p>")).toBe("<p>Ya es HTML</p>");
     expect(plainTextToHtml("   ")).toBe("");
+  });
+});
+
+describe("removedPhotoWarnings (FEAT-32 M7, spec §5.1)", () => {
+  it("avisa si la foto quitada se ve en POWIP Live o está elegida en un canal", () => {
+    const saved = view({
+      materialized: true,
+      media: [media({ id: "m1", url: "https://a.com/1.jpg", position: 0 }), media({ id: "m2", url: "https://a.com/2.jpg", position: 1 }), media({ id: "m3", url: "https://a.com/3.jpg", position: 2 })],
+      overrides: [{ storeId: STORE, channel: "CATALOGO_WEB", field: "media", value: ["m2", "m3"] }],
+    });
+    const baseline = draftFromView(saved);
+    const live = [{ storeId: STORE, mediaIds: ["m1", "m2"] }];
+    const name = () => "Catálogo web";
+    expect(removedPhotoWarnings(baseline, baseline, live, name)).toEqual([]);
+    expect(removedPhotoWarnings(baseline, removeMedia(baseline, "m1"), live, name)).toEqual([
+      "Esta foto se ve en POWIP Live: al guardar, se quita también del live.",
+    ]);
+    expect(removedPhotoWarnings(baseline, removeMedia(baseline, "m3"), live, name)).toEqual([
+      "Esta foto se ve en Catálogo web: al guardar, se quita también de ese canal.",
+    ]);
+    expect(removedPhotoWarnings(baseline, removeMedia(removeMedia(baseline, "m1"), "m2"), live, name)).toEqual([
+      "2 de las fotos que quitaste se ven en POWIP Live: al guardar, se quitan también del live.",
+      "Esta foto se ve en Catálogo web: al guardar, se quita también de ese canal.",
+    ]);
+    // Sin elección de Live (o sin el campo, backend anterior) no hay aviso de Live.
+    expect(removedPhotoWarnings(baseline, removeMedia(baseline, "m1"))).toEqual([]);
   });
 });

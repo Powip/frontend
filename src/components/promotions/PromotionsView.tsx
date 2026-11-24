@@ -316,7 +316,7 @@ export default function PromotionsView() {
         {isAdmin ? <Button onClick={() => setChoosing(true)}><Plus className="mr-1 h-4 w-4" />Nueva promoción</Button> : null}
       </div>
       <div className="rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
-        Las promociones no crean productos: <b>cambian el precio de SKUs que ya existen</b>. El precio de campaña se calcula sobre el precio de cada canal y se ve al instante en los canales de POWIP; en Shopify, Mercado Libre y Falabella se enviará cuando esos canales se administren desde POWIP. Volumen y regalo se aplican solos al registrar la venta. POWIP Live usa su propio precio live: no entra en las campañas, y volumen y regalo aplican ahí solo si eligen el canal POWIP Live.
+        Las promociones no crean productos: <b>cambian el precio de SKUs que ya existen</b>. El precio de campaña se calcula sobre el precio de cada canal y se ve al instante en los canales de POWIP; en Shopify, Mercado Libre y Falabella se enviará cuando esos canales se administren desde POWIP. Volumen y regalo se aplican solos al registrar la venta. POWIP Live usa su propio precio live: todavía no aplica promociones (ni campañas, ni volumen, ni regalo).
       </div>
       {migration.result ? <MigrationNotice result={migration.result} onDismiss={migration.dismiss} /> : null}
       {migration.pendingForOthers ? (
