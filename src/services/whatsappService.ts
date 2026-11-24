@@ -79,12 +79,18 @@ export async function updateWhatsAppAccount(
 }
 
 export async function refreshWhatsAppAccount(token: string, accountId: string) {
-  const response = await axios.post(
-    `${API_URL}/wa/accounts/${accountId}/refresh`,
-    {},
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  return response.data;
+  try {
+    const response = await axios.post(
+      `${API_URL}/wa/accounts/${accountId}/refresh`,
+      {},
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
+  } catch (error) {
+    // Muestra la causa que dio el backend (p. ej. token de Meta vencido) en vez del error de axios.
+    const message = axios.isAxiosError(error) ? error.response?.data?.message : null;
+    throw typeof message === "string" && message ? new Error(message) : error;
+  }
 }
 
 export async function disconnectWhatsAppAccount(token: string, accountId: string) {
