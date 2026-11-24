@@ -135,6 +135,7 @@ test("tabs follow the mockup order", async () => {
     "Consola en vivo",
     "Apartados",
     "Productos del live",
+    "Vendedores y comisiones",
     "Configuración",
   ]);
 });

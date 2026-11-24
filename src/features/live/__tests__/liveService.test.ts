@@ -219,3 +219,13 @@ describe("catalog logo (FEAT-33 B5)", () => {
     );
   });
 });
+
+test("C2: the catalog of a creator link asks only for her products (?a= or ?v=)", async () => {
+  (axios.get as jest.Mock).mockResolvedValue({ data: {} });
+  window.history.pushState({}, "", "/live/kunca?a=rei-1a2b");
+  await getPublicLive(id, "visitor-private");
+  expect((axios.get as jest.Mock).mock.calls.at(-1)[1].params).toEqual({ channel: "WHATSAPP", a: "rei-1a2b" });
+  window.history.pushState({}, "", "/live/kunca");
+  await getPublicLive(id, "visitor-private");
+  expect((axios.get as jest.Mock).mock.calls.at(-1)[1].params).toEqual({ channel: "LIVE" });
+});

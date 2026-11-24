@@ -299,3 +299,67 @@ export interface LiveReadiness {
     message: string;
   }[];
 }
+
+/** FEAT-33 C1: acuerdo de comisión con cada creadora o vendedor (nunca por producto). */
+export type LiveAgreement =
+  | { type: "PERCENT"; percent: number }
+  | { type: "PER_UNIT"; amount: number }
+  | { type: "RESELLER"; percent: number }
+  | { type: "VOLUME"; period: "MONTH" | "LIVE"; tiers: { from: number; percent: number }[] };
+export interface LiveSellerStats {
+  sales: number;
+  units: number;
+  orders: number;
+  earned: number;
+  pendingConfirmation: number;
+  paid: number;
+  toPay: number;
+}
+export interface LiveSeller {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  social: string | null;
+  code: string;
+  userId: string | null;
+  status: "ACTIVE" | "REMOVED";
+  agreement: LiveAgreement;
+  createdAt: string;
+  productIds: string[];
+  stats: LiveSellerStats;
+}
+export interface LiveSellersData {
+  sellers: LiveSeller[];
+  /** Asesoras de la configuración que todavía no venden por comisión. */
+  advisors: { id: string; name: string; code: string }[];
+  kpis: { sales: number; earned: number; toPay: number; pendingConfirmation: number; sellers: number };
+  suggestedAgreement: LiveAgreement;
+}
+export interface LiveSellerSaleLine {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  createdAt: string;
+  quantity: number;
+  paid: number;
+  state: "CONFIRMED" | "PENDING" | "VOID";
+  commission: number;
+  customer: string;
+  product: string;
+}
+export interface LiveSellerSales {
+  seller: Omit<LiveSeller, "productIds" | "stats">;
+  stats: LiveSellerStats;
+  lines: LiveSellerSaleLine[];
+  payouts: { id: string; amount: number; note: string | null; paidAt: string }[];
+}
+export interface LiveSellerInput {
+  name: string;
+  email?: string;
+  phone?: string;
+  social?: string;
+  agreement: LiveAgreement;
+  productIds: string[];
+  fromAdvisorId?: string;
+}
