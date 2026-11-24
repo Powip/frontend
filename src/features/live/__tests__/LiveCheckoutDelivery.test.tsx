@@ -123,7 +123,8 @@ test("a rejected saved agency reveals delivery fields and recovers with the matc
   expect(screen.getByRole("alert")).toHaveTextContent(shippingError.response.data.message);
   expect(screen.getByLabelText("Agencia")).toHaveValue("");
   expect(screen.getByRole("button", { name: "Continuar a Yape →" })).toBeDisabled();
-  fireEvent.change(district, { target: { value: "Los Baños Del Inca" } });
+  fireEvent.change(district, { target: { value: "Los Baños" } });
+  fireEvent.click(screen.getByRole("option", { name: "Los Baños Del Inca" }));
   expect(screen.getByLabelText("Agencia")).toHaveValue("");
   fireEvent.change(screen.getByLabelText("Agencia"), { target: { value: "247" } });
   await waitFor(() =>

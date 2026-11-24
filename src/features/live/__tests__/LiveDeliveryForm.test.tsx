@@ -60,6 +60,13 @@ function Form({
   );
 }
 
+/** A8: el ubigeo se elige buscando en un combobox (escribir y tocar la opción). */
+function pick(label: string, option: string) {
+  const box = screen.getByRole("combobox", { name: label });
+  fireEvent.change(box, { target: { value: option } });
+  fireEvent.click(screen.getByRole("option", { name: option }));
+}
+
 test("only offers agencies for the selected district and province-wide coverage", () => {
   render(
     <Form
@@ -86,7 +93,7 @@ test("changing district clears the old agency and address before choosing a new 
   const onDelivery = jest.fn();
   render(<Form onDelivery={onDelivery} />);
   expect(screen.getByText(/JR\. CAHUIDE/)).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Distrito"), { target: { value: "Cajamarca" } });
+  pick("Distrito", "Cajamarca");
   expect(onDelivery).toHaveBeenLastCalledWith(
     expect.objectContaining({ district: "Cajamarca", agencyId: "", agency: "" }),
   );
@@ -102,7 +109,48 @@ test("changing district clears the old agency and address before choosing a new 
 test("waits for a district and explains when it has no enabled agency", () => {
   render(<Form initial={{ ...destination, district: "", agencyId: "", agency: "" }} />);
   expect(screen.getByLabelText("Agencia")).toBeDisabled();
-  fireEvent.change(screen.getByLabelText("Distrito"), { target: { value: "Namora" } });
+  pick("Distrito", "Namora");
   expect(screen.getByText(/no tiene agencias habilitadas.*en este distrito/)).toBeInTheDocument();
   expect(within(screen.getByLabelText("Agencia")).getAllByRole("option")).toHaveLength(1);
+});
+
+test("ubigeo fields are searchable comboboxes and choosing a level clears the ones below (A8)", () => {
+  const onDelivery = jest.fn();
+  render(<Form onDelivery={onDelivery} />);
+  const district = screen.getByRole("combobox", { name: "Distrito" });
+  expect(district).toHaveValue("Los Baños Del Inca");
+  fireEvent.change(screen.getByRole("combobox", { name: "Departamento" }), { target: { value: "junín" } });
+  expect(within(screen.getByRole("listbox")).getAllByRole("option").map((o) => o.textContent)).toEqual([
+    "Junin",
+  ]);
+  fireEvent.click(screen.getByRole("option", { name: "Junin" }));
+  expect(onDelivery).toHaveBeenLastCalledWith(
+    expect.objectContaining({ department: "Junin", province: "", district: "", agencyId: "" }),
+  );
+  expect(screen.getByRole("combobox", { name: "Provincia" })).toHaveValue("");
+  expect(screen.getByRole("combobox", { name: "Distrito" })).toBeDisabled();
+  pick("Provincia", "Huancayo");
+  expect(screen.getByRole("combobox", { name: "Distrito" })).toBeEnabled();
+  pick("Distrito", "Chilca");
+  expect(onDelivery).toHaveBeenLastCalledWith(
+    expect.objectContaining({ department: "Junin", province: "Huancayo", district: "Chilca", type: "AGENCY" }),
+  );
+});
+
+test("Lima and Callao offer home or agency; the rest of the country only agency (A8)", () => {
+  render(<Form initial={{ type: "AGENCY", courier: "SHALOM" }} options={[]} />);
+  pick("Departamento", "Lima");
+  pick("Provincia", "Lima");
+  expect(screen.getByRole("radio", { name: /A domicilio/ })).toBeChecked();
+  expect(screen.getByRole("radio", { name: /agencia/i })).not.toBeChecked();
+  pick("Departamento", "Callao");
+  pick("Provincia", "Callao");
+  expect(screen.getByRole("radio", { name: /A domicilio/ })).toBeInTheDocument();
+  pick("Departamento", "Arequipa");
+  pick("Provincia", "Arequipa");
+  expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+  expect(
+    screen.getByText("Para Arequipa el envío es a una agencia: eliges el courier y la agencia donde recoges."),
+  ).toBeInTheDocument();
+  expect(screen.queryByLabelText("Dirección")).not.toBeInTheDocument();
 });
