@@ -29,6 +29,8 @@ import {
 import { ORDER_CHANNELS, POWIP_PRICE_CHANNELS, channelLabel } from "@/lib/promotions/orderChannels";
 import { cn } from "@/lib/utils";
 import { soles, variantLabel } from "@/lib/packs/packMath";
+import { listPromotions } from "@/services/promotionsService";
+import { activeCampaign, promoPriceFor } from "@/lib/promotions/campaign";
 
 const PAGE_SIZE = 50;
 
@@ -37,6 +39,8 @@ const PAGE_SIZE = 50;
  * lo que hereda (`priceVta`) y la excepción de cada lista de la tienda (todos los canales y, si existen,
  * una por canal) con su precio tachado. Vacío = hereda. Leer: cualquiera; escribir: solo el Administrador.
  * No se publica nada a Shopify.
+ * FEAT-32 M3 (§7.10): en la columna de un canal con una campaña activa, la etiqueta «Cyber Wow: S/ 119.20»
+ * (la lista no cambia: la promoción va encima).
  */
 export default function PriceListsView() {
   const { auth } = useAuth();
@@ -61,6 +65,7 @@ export default function PriceListsView() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  const promos = useQuery({ queryKey: ["promotions", companyId], queryFn: ({ signal }) => listPromotions(signal), enabled: !!companyId, retry: false, staleTime: 60_000 });
   const listsQuery = useQuery({ queryKey: ["price-lists", companyId], queryFn: ({ signal }) => listPriceLists(signal), enabled: !!companyId, retry: false });
   const lists = useMemo(() => storeLists(listsQuery.data ?? [], storeId), [listsQuery.data, storeId]);
   const itemQueries = useQueries({
@@ -240,6 +245,9 @@ export default function PriceListsView() {
                     const channel = cell?.channel;
                     const ruled = !!channel && channel.rule.mode !== "same";
                     const draftDirty = !!drafts[list.id]?.[row.variantId];
+                    const campaign = list.channel && storeId ? activeCampaign(promos.data ?? [], row.productId, [storeId], list.channel) : null;
+                    const channelPrice = cell?.inList && cell.price !== null ? cell.price : channel?.rulePrice ?? inherited;
+                    const campaignPrice = campaign && list.channel ? promoPriceFor(campaign, row.productId, list.channel, channelPrice) : null;
                     if (channel && !channel.active && !cell?.inList) {
                       return (
                         <td key={list.id} className="px-3 py-2 text-right">
@@ -302,6 +310,11 @@ export default function PriceListsView() {
                             </>
                           ) : null}
                         </p>
+                        {campaign && campaignPrice !== null ? (
+                          <p className="mt-0.5 text-[11px]">
+                            <span className="inline-block whitespace-nowrap rounded-full bg-[#fde7f1] px-2 py-0.5 font-semibold text-[#a3185a] dark:bg-pink-950/50 dark:text-pink-200">{campaign.name}: {soles(campaignPrice)}</span>
+                          </p>
+                        ) : null}
                       </td>
                     );
                   })}

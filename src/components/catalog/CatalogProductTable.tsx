@@ -17,6 +17,7 @@ export const productFichaHref = (productId: string) => `/productos/${encodeURICo
  * FEAT-24 H4 (H4-D11) — tabla del catálogo (mockup `vCatProductos`): foto, nombre y SKU base, marca,
  * categoría propia, tipo, origen, variantes, disponible, precio en soles y estado. Sin almacén ni «$».
  * FEAT-32 M2 (§7.1): «Canal» pasa a «Origen» y, con `channelStates`, se suma «Canales» y «Varía por canal».
+ * FEAT-32 M3 (§7.1): con `promoTags`, la etiqueta de la campaña activa bajo el precio.
  * `leadingHead`/`leadingCell` dejan una columna al inicio para quien la necesite (p. ej. selección).
  */
 export default function CatalogProductTable({
@@ -27,6 +28,7 @@ export default function CatalogProductTable({
   leadingHead,
   leadingCell,
   channelStates,
+  promoTags,
 }: {
   products: BusinessProduct[];
   brandNames: Map<string, string>;
@@ -36,6 +38,8 @@ export default function CatalogProductTable({
   leadingCell?: (product: BusinessProduct) => ReactNode;
   /** FEAT-32 M2 — estado en los canales de POWIP; sin él no se muestra la columna Canales. */
   channelStates?: (productId: string) => ProductChannelStates;
+  /** FEAT-32 M3 — «Cyber Wow −20%» de las campañas activas del producto en el alcance. */
+  promoTags?: (productId: string) => string[];
 }) {
   const columns = 10 + (leadingHead ? 1 : 0) + (channelStates ? 1 : 0);
   return (
@@ -86,6 +90,11 @@ export default function CatalogProductTable({
               <TableCell className="text-right tabular-nums">
                 {formatMoney(product.priceVta)}
                 {states?.variesByChannel ? <small className="block text-[11px] font-medium text-[#027778]">Varía por canal</small> : null}
+                {(promoTags?.(product.id) ?? []).map((tag) => (
+                  <small key={tag} className="mt-0.5 block">
+                    <span className="inline-block whitespace-nowrap rounded-full bg-[#fde7f1] px-2 py-0.5 text-[11px] font-semibold text-[#a3185a] dark:bg-pink-950/50 dark:text-pink-200">{tag}</span>
+                  </small>
+                ))}
               </TableCell>
               <TableCell><StatusBadge active={product.status !== false} /></TableCell>
               <TableCell className="text-right"><Link href={productFichaHref(product.id)} className="text-sm font-medium text-primary hover:underline">Ver ficha</Link></TableCell>

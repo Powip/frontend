@@ -28,6 +28,7 @@ jest.mock("@/services/promotionsService", () => ({
   createPromotion: jest.fn(),
   updatePromotion: jest.fn(),
   deletePromotion: jest.fn(),
+  getCampaignPrices: jest.fn(),
 }));
 jest.mock("@/services/purchasesService", () => ({ listPurchasableProducts: jest.fn() }));
 jest.mock("@/services/variantCodesService", () => ({ fetchVariantsByIds: jest.fn() }));
@@ -83,7 +84,7 @@ describe("vigencia y reglas (H9-D5)", () => {
 describe("Ventas › Promociones", () => {
   it("lista la promo de regalo con su regla, tiendas, canales y vigencia", async () => {
     renderView();
-    const card = await screen.findByRole("article", { name: "Gorra de regalo" });
+    const card = await screen.findByRole("row", { name: /Gorra de regalo/ });
     await waitFor(() => expect(within(card).getByText("Por compras desde S/ 150.00, regala 1 × Gorra · Negro")).toBeInTheDocument());
     expect(within(card).getByText("Livii")).toBeInTheDocument();
     expect(within(card).getByText("WhatsApp")).toBeInTheDocument();
@@ -99,6 +100,7 @@ describe("Ventas › Promociones", () => {
     const user = userEvent.setup();
     renderView();
     await user.click(await screen.findByRole("button", { name: "Nueva promoción" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: /^Regalo/ }));
     const dialog = await screen.findByRole("dialog");
     const channels = within(dialog).getByRole("group", { name: "Canales" });
     expect(within(channels).getAllByRole("button").map((button) => button.textContent)).toEqual([
@@ -125,10 +127,33 @@ describe("Ventas › Promociones", () => {
     mockRole = "VENTAS";
     window.localStorage.setItem(legacyPackKeys("c1")[0], JSON.stringify([localGift()]));
     renderView();
-    await screen.findByRole("article", { name: "Gorra de regalo" });
+    await screen.findByRole("row", { name: /Gorra de regalo/ });
     expect(screen.queryByRole("button", { name: "Nueva promoción" })).not.toBeInTheDocument();
     expect(screen.getByText(/Pídele a un Administrador/)).toBeInTheDocument();
     expect(createPromotion).not.toHaveBeenCalled();
+  });
+
+  it("FEAT-32 M3: Operaciones también gestiona promociones (igual que ms-ventas)", async () => {
+    mockRole = "OPERACIONES";
+    renderView();
+    await screen.findByRole("row", { name: /Gorra de regalo/ });
+    expect(screen.getByRole("button", { name: "Nueva promoción" })).toBeInTheDocument();
+  });
+
+  it("FEAT-32 M3: «Crear promoción» desde Productos abre la campaña con los productos ya elegidos", async () => {
+    jest.mocked(listPurchasableProducts).mockResolvedValue([
+      { id: "p1", name: "Pantalón Jimena", companySku: "JIM" },
+      { id: "p2", name: "Blusa Sofía", companySku: "SOF" },
+    ] as never);
+    window.history.pushState({}, "", "/packs-promos?nueva=campana&productos=p1");
+    try {
+      renderView();
+      expect(await screen.findByRole("heading", { name: "Nueva promoción" })).toBeInTheDocument();
+      expect(await screen.findByRole("checkbox", { name: "Incluir Pantalón Jimena" })).toBeChecked();
+      expect(screen.getByRole("checkbox", { name: "Incluir Blusa Sofía" })).not.toBeChecked();
+    } finally {
+      window.history.pushState({}, "", "/");
+    }
   });
 });
 
@@ -164,7 +189,7 @@ describe("migración única de regalos del navegador", () => {
     unmount();
 
     renderView();
-    await screen.findByRole("article", { name: "Gorra de regalo" });
+    await screen.findByRole("row", { name: /Gorra de regalo/ });
     expect(screen.queryByText(/Pasamos/)).not.toBeInTheDocument();
     expect(createPromotion).toHaveBeenCalledTimes(2);
   });
