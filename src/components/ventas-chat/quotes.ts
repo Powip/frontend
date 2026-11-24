@@ -34,7 +34,11 @@ export function abrirCotizacionUrl(quotationId: string) {
   return `/cotizaciones?quotationId=${encodeURIComponent(quotationId)}`;
 }
 
-/** Añade `text` a lo que ya hay en la caja, en línea nueva. */
+/**
+ * Añade `text` a lo que ya hay en la caja, en línea nueva. Si ya está (p. ej. el POWIP Link
+ * que se pegó al crearlo), no lo repite.
+ */
 export function appendLine(current: string, text: string) {
+  if (text.trim() && current.includes(text.trim())) return current;
   return current.trim() ? `${current.replace(/\s+$/, "")}\n${text}` : text;
 }

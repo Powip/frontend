@@ -14,6 +14,8 @@ import { MetaAudienceCard, MetaCapiCard } from "./AjustesMetaAdsCards";
 import { ChannelAccountsCard, PlanCard } from "./AjustesPlanCards";
 import {
   AssignCard,
+  CallsCard,
+  CommentsCard,
   HoursCard,
   MaskPhoneCard,
   SlaCard,
@@ -54,6 +56,8 @@ function AjustesContent() {
           <WelcomeCard settings={data} />
           <AssignCard settings={data} />
           <MaskPhoneCard settings={data} />
+          <CommentsCard settings={data} />
+          <CallsCard settings={data} />
         </>
       )}
       <AjustesExportCard />

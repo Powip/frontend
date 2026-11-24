@@ -5,7 +5,7 @@ import ChatBanners from "@/components/ventas-chat/ChatBanners";
 import { CallBubble, isCallNote } from "@/components/ventas-chat/CallBubble";
 import ConversationPills from "@/components/ventas-chat/ConversationPills";
 import SendLinkButton from "@/components/ventas-chat/SendLinkButton";
-import { quoteMessage } from "@/components/ventas-chat/quotes";
+import { appendLine, quoteMessage } from "@/components/ventas-chat/quotes";
 import axiosAuth from "@/lib/axiosAuth";
 import * as crm from "@/services/crmService";
 import * as content from "@/services/crmContentService";
@@ -152,6 +152,12 @@ describe("Enviar POWIP Link", () => {
     const button = await screen.findByText(/Enviar POWIP Link · S\/ ?89\.00/);
     fireEvent.click(button);
     expect(onInsert).toHaveBeenCalledWith(quoteMessage(LINK));
+  });
+
+  it("no repite el link si ya está en la caja", () => {
+    const msg = quoteMessage(LINK);
+    expect(appendLine(msg, msg)).toBe(msg);
+    expect(appendLine("Hola", msg)).toBe(`Hola\n${msg}`);
   });
 
   it("desaparece si ya hay pedido", async () => {

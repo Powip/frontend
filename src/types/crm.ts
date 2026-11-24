@@ -112,6 +112,8 @@ export interface ConversationListParams {
   overSla?: boolean;
   pauHelp?: boolean;
   thinking?: boolean;
+  /** Solo chats que nacieron de un comentario público. */
+  comments?: boolean;
   tag?: string;
   /** Sin valor = todas las tiendas. */
   storeId?: string;

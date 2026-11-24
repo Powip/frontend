@@ -25,12 +25,16 @@ const ASSIGNED_OPTIONS: Array<{ value: AssignedFilter; label: string }> = [
   { value: "unassigned", label: "Sin asignar" },
 ];
 
-const CHANNEL_OPTIONS: Array<{ value: ConversationChannel | "all"; label: string }> = [
+/** «Comentarios» filtra chats que nacieron de un comentario en Facebook o Instagram. */
+type ChannelFilter = ConversationChannel | "all" | "comments";
+
+const CHANNEL_OPTIONS: Array<{ value: ChannelFilter; label: string }> = [
   { value: "all", label: "Todos" },
   { value: "whatsapp", label: "WhatsApp" },
   { value: "messenger", label: "Messenger" },
   { value: "instagram", label: "Instagram" },
   { value: "tiktok", label: "TikTok" },
+  { value: "comments", label: "Comentarios" },
 ];
 
 function Segmented<T extends string>({
@@ -82,7 +86,7 @@ export default function ConversationList({
   const { phoneMasked } = useCrmMe();
   const [status, setStatus] = useState<ConversationStatus>("open");
   const [assigned, setAssigned] = useState<AssignedFilter>("all");
-  const [channel, setChannel] = useState<ConversationChannel | "all">("all");
+  const [channel, setChannel] = useState<ChannelFilter>("all");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
 
@@ -102,7 +106,7 @@ export default function ConversationList({
     status: effStatus,
     assigned: effAssigned,
     search,
-    ...(channel === "all" ? {} : { channel }),
+    ...(channel === "all" ? {} : channel === "comments" ? { comments: true } : { channel }),
     ...(storeId ? { storeId } : {}),
   });
 

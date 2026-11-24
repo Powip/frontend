@@ -137,6 +137,13 @@ export interface CrmSettings {
   followupSendEnd: string;
   /** Las vendedoras ven el teléfono del cliente como «951 *** 245». */
   maskPhone: boolean;
+  /** Grabar llamadas de WhatsApp. */
+  callRecording?: boolean;
+  /** Comentarios públicos: responder en público y seguir por privado. */
+  commentAutoReply?: boolean;
+  commentReplyText?: string;
+  /** Un comentario nuevo solo abre chat si contiene una de estas palabras. Vacío = todos. */
+  commentKeywords?: string[];
 }
 
 export type CrmSettingsInput = Partial<CrmSettings>;

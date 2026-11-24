@@ -437,3 +437,92 @@ export function MaskPhoneCard({ settings }: { settings: CrmSettings }) {
     </AjustesCard>
   );
 }
+
+export const MAX_COMMENT_REPLY = 300;
+
+/** Palabras separadas por coma: «precio, talla, envío». */
+export function parseKeywords(text: string): string[] {
+  return [...new Set(text.split(",").map((k) => k.trim()).filter(Boolean))];
+}
+
+export function CommentsCard({ settings }: { settings: CrmSettings }) {
+  const m = useUpdateCrmSettings();
+  const { draft, setDraft, dirty } = useDraft({
+    commentAutoReply: settings.commentAutoReply ?? false,
+    commentReplyText: settings.commentReplyText ?? "",
+    keywords: (settings.commentKeywords ?? []).join(", "),
+  });
+  const missingText = draft.commentAutoReply && !draft.commentReplyText.trim();
+  return (
+    <AjustesCard
+      id="comments"
+      title="Comentarios en posts y anuncios"
+      description="Comentarios públicos de Facebook e Instagram. Pau no responde comentarios: solo la vendedora. Tampoco se manda bienvenida ni aviso de horario a quien comenta."
+      canSave={dirty && !missingText}
+      saving={m.isPending}
+      onSave={() =>
+        m.mutate({
+          commentAutoReply: draft.commentAutoReply,
+          commentReplyText: draft.commentReplyText.trim(),
+          commentKeywords: parseKeywords(draft.keywords),
+        })
+      }
+      error={errMsg(m)}
+      hint={missingText ? "Escribe la respuesta pública antes de activarla." : null}
+    >
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Switch
+            id="comment-auto-reply"
+            checked={draft.commentAutoReply}
+            onCheckedChange={(v) => setDraft((cur) => ({ ...cur, commentAutoReply: v }))}
+          />
+          <Label htmlFor="comment-auto-reply">Responder en público y seguir por privado</Label>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="comment-reply-text">Respuesta pública</Label>
+          <Input
+            id="comment-reply-text"
+            maxLength={MAX_COMMENT_REPLY}
+            placeholder="Te escribimos por DM 💌"
+            value={draft.commentReplyText}
+            onChange={(e) => setDraft((cur) => ({ ...cur, commentReplyText: e.target.value }))}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="comment-keywords">Comentarios que contienen</Label>
+          <Input
+            id="comment-keywords"
+            placeholder="precio, talla, envío"
+            value={draft.keywords}
+            onChange={(e) => setDraft((cur) => ({ ...cur, keywords: e.target.value }))}
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Separa con comas. Un comentario nuevo crea chat solo si pregunta por compra. Vacío = todos.
+          </p>
+        </div>
+      </div>
+    </AjustesCard>
+  );
+}
+
+export function CallsCard({ settings }: { settings: CrmSettings }) {
+  const m = useUpdateCrmSettings();
+  const { draft, setDraft, dirty } = useDraft(settings.callRecording ?? false);
+  return (
+    <AjustesCard
+      id="calls"
+      title="Llamadas"
+      description="Llamadas de WhatsApp desde la Bandeja. Meta avisa al cliente cuando la llamada se graba."
+      canSave={dirty}
+      saving={m.isPending}
+      onSave={() => m.mutate({ callRecording: draft })}
+      error={errMsg(m)}
+    >
+      <div className="flex items-center gap-2">
+        <Switch id="call-recording" checked={draft} onCheckedChange={(v) => setDraft(v)} />
+        <Label htmlFor="call-recording">Grabar llamadas</Label>
+      </div>
+    </AjustesCard>
+  );
+}

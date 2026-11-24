@@ -219,6 +219,34 @@ describe("Ajustes · tarjetas con PATCH parcial", () => {
     await waitFor(() => expect(team.updateCrmSettings).toHaveBeenCalledWith({ maskPhone: true }));
   });
 
+  it("Comentarios: guarda respuesta pública y palabras clave limpias", async () => {
+    setup();
+    await screen.findByTestId("card-comments");
+    expect(saveBtn("comments")).toBeDisabled();
+    fireEvent.click(screen.getByRole("switch", { name: "Responder en público y seguir por privado" }));
+    expect(saveBtn("comments")).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Respuesta pública"), { target: { value: " Te escribimos por DM " } });
+    fireEvent.change(screen.getByLabelText("Comentarios que contienen"), {
+      target: { value: "precio, talla,, precio , envío" },
+    });
+    fireEvent.click(saveBtn("comments"));
+    await waitFor(() =>
+      expect(team.updateCrmSettings).toHaveBeenCalledWith({
+        commentAutoReply: true,
+        commentReplyText: "Te escribimos por DM",
+        commentKeywords: ["precio", "talla", "envío"],
+      }),
+    );
+  });
+
+  it("Llamadas: envía solo callRecording", async () => {
+    setup();
+    await screen.findByTestId("card-calls");
+    fireEvent.click(screen.getByRole("switch", { name: "Grabar llamadas" }));
+    fireEvent.click(saveBtn("calls"));
+    await waitFor(() => expect(team.updateCrmSettings).toHaveBeenCalledWith({ callRecording: true }));
+  });
+
   it("muestra el error 400 del servidor dentro de la tarjeta", async () => {
     team.updateCrmSettings.mockRejectedValue(
       Object.assign(new Error("x"), {

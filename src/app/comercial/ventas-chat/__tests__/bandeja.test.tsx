@@ -460,6 +460,20 @@ describe("Bandeja · canales Messenger e Instagram", () => {
     await waitFor(() => expect(s.listConversations.mock.calls.at(-1)?.[0]).not.toHaveProperty("channel"));
   });
 
+  it("el filtro Comentarios pide solo chats nacidos de un comentario, de cualquier red", async () => {
+    setup(ig());
+    expect(await screen.findByText("Luz Mora")).toBeInTheDocument();
+    const group = screen.getByRole("group", { name: "Canal" });
+    fireEvent.click(within(group).getByRole("button", { name: "Comentarios" }));
+    await waitFor(() =>
+      expect(s.listConversations).toHaveBeenLastCalledWith(
+        expect.objectContaining({ comments: true }),
+        expect.anything(),
+      ),
+    );
+    expect(s.listConversations.mock.calls.at(-1)?.[0]).not.toHaveProperty("channel");
+  });
+
   it("un chat de Instagram no muestra el identificador como teléfono y pide el número", async () => {
     setup(ig());
     fireEvent.click(await screen.findByText("Luz Mora"));
