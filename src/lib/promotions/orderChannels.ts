@@ -22,8 +22,19 @@ export const POWIP_PRICE_CHANNELS = [
   { value: "CATALOGO_WEB", label: "Catálogo web" },
 ] as const;
 
+/** FEAT-32 M4 — canal POWIP Live: no entra en las campañas (tiene su precio live), sí en volumen y regalo (spec §6.15). */
+export const POWIP_LIVE_CHANNEL = { value: "POWIP_LIVE", label: "POWIP Live" } as const;
+
+/**
+ * FEAT-32 M4 (spec §6.19) — una sola lista de canales: la misma que la campaña (canales de POWIP y del pedido)
+ * más POWIP Live, que en volumen y regalo aplica solo si se elige.
+ */
+export const VOLUME_GIFT_CHANNELS: Array<{ value: string; label: string }> = [POWIP_LIVE_CHANNEL, ...POWIP_PRICE_CHANNELS, ...ORDER_CHANNELS].map(
+  (channel) => ({ value: channel.value, label: channel.label }),
+);
+
 const LABELS: Record<string, string> = Object.fromEntries(
-  [...ORDER_CHANNELS, ...POWIP_PRICE_CHANNELS, { value: "POWIP_LIVE", label: "POWIP Live" }].map((channel) => [channel.value, channel.label]),
+  [...ORDER_CHANNELS, ...POWIP_PRICE_CHANNELS, POWIP_LIVE_CHANNEL].map((channel) => [channel.value, channel.label]),
 );
 
 /** Código en mayúsculas; SHOPIFY (viejo) cuenta como WEB, igual que el backend. */

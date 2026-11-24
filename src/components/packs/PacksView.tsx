@@ -85,8 +85,9 @@ function MinMarginEditor({ canEdit }: { canEdit: boolean }) {
 }
 
 /**
- * FEAT-24 H9 (H9-D1/D3) — Catálogo › Packs (mockup `vPacks`): margen con alerta bajo el mínimo y stock
- * calculado (mínimo de los componentes). Sin permiso de costos, costo y margen van enmascarados.
+ * FEAT-24 H9 (H9-D1/D3) — Packs (mockup `vPacks`): margen con alerta bajo el mínimo y stock calculado (mínimo de
+ * los componentes). Sin permiso de costos, costo y margen van enmascarados. Desde FEAT-32 M4 es la pestaña Packs
+ * de Comercial › Packs y promociones.
  */
 export default function PacksView() {
   const { auth } = useAuth();
@@ -119,7 +120,7 @@ export default function PacksView() {
           <p>
             <b className="text-foreground">Pack = producto.</b> Tiene SKU y código propios (Shopify lo vende como un SKU y se une en Unificación). No tiene stock propio: al vender reserva y despacha sus componentes. Si el precio deja un margen menor al mínimo configurado, avisa.
           </p>
-          <p>Las promociones de volumen y regalo siguen en <Link className="underline" href="/packs-promos">Promociones</Link>.</p>
+          <p>Las promociones (campaña, volumen y regalo) están en la pestaña <Link className="underline" href="/packs-promos?tab=promociones">Promociones</Link>.</p>
         </div>
         {seeCosts ? (
           <Button onClick={() => setEditing("new")}><Plus className="mr-1 h-4 w-4" />Nuevo pack</Button>

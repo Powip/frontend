@@ -110,7 +110,11 @@ export default function FichaChannelsTab({ product, variants }: { product: Catal
       (promo) =>
         promo.type !== "CAMPAIGN" &&
         promoStatus(promo) !== "ENDED" &&
-        (promo.productId === product.id || (!!promo.giftVariantId && variantIds.has(promo.giftVariantId)) || (!!promo.triggerVariantId && variantIds.has(promo.triggerVariantId))),
+        (promo.productId === product.id ||
+          // FEAT-32 M4: el volumen va por SKUs.
+          promo.variantIds.some((id) => variantIds.has(id)) ||
+          (!!promo.giftVariantId && variantIds.has(promo.giftVariantId)) ||
+          (!!promo.triggerVariantId && variantIds.has(promo.triggerVariantId))),
     );
   }, [promosQuery.data, product.id, variants]);
 

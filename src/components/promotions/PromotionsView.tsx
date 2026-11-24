@@ -18,9 +18,10 @@ import {
 } from "@/services/promotionsService";
 import { listPurchasableProducts } from "@/services/purchasesService";
 import { fetchVariantsByIds } from "@/services/variantCodesService";
+import { getStockByVariants } from "@/services/inventoryItems.service";
 import { apiErrorInfo } from "@/lib/catalog/catalogPayloads";
 import { channelLabel } from "@/lib/promotions/orderChannels";
-import { promoRuleText, promoValidityText } from "@/lib/promotions/promoRules";
+import { promoRuleText, volumeSkusText, volumeUnitText } from "@/lib/promotions/promoRules";
 import { STATUS_LABEL, discountLabel, limaDateTimeText, type PromoStatus } from "@/lib/promotions/campaign";
 import { hasPendingGiftMigration, migrateLocalGifts, type GiftMigrationResult } from "@/lib/promotions/giftMigration";
 import { variantLabel } from "@/lib/packs/packMath";
@@ -130,8 +131,9 @@ function MigrationNotice({ result, onDismiss }: { result: GiftMigrationResult; o
 }
 
 /**
- * FEAT-24 H9 (H9-D5) y FEAT-32 M3 (spec §7.12) — Promociones: precio de campaña, volumen y regalo en una tabla
- * con filtro por clase y por estado (con conteo). «＋ Nueva promoción» pide la clase. Los regalos que vivían en
+ * FEAT-24 H9 (H9-D5) y FEAT-32 M3/M4 (spec §7.12) — Promociones: precio de campaña, volumen y regalo en una tabla
+ * con filtro por clase y por estado (con conteo). Volumen dice «3 por S/ 210.00» y sus SKUs; regalo, su SKU y
+ * «Sin stock del regalo» si no hay. «＋ Nueva promoción» pide la clase. Los regalos que vivían en
  * el navegador se pasan al servidor una sola vez (con aviso) y después ya no se leen de ahí.
  */
 export default function PromotionsView() {
@@ -152,8 +154,10 @@ export default function PromotionsView() {
 
   const promos = useQuery({ queryKey: ["promotions", companyId], queryFn: ({ signal }) => listPromotions(signal), enabled: !!companyId, retry: false });
   const products = useQuery({ queryKey: ["promotion-products", companyId], queryFn: ({ signal }) => listPurchasableProducts(companyId, signal), enabled: !!companyId, retry: false, staleTime: 60_000 });
+  // Regalo y variante que hay que comprar, y los 2 primeros SKUs de cada volumen (los que se nombran en la tabla).
   const variantIds = useMemo(
-    () => [...new Set((promos.data ?? []).flatMap((promo) => [promo.giftVariantId, promo.triggerVariantId]).filter((id): id is string => !!id))].sort(),
+    () =>
+      [...new Set((promos.data ?? []).flatMap((promo) => [promo.giftVariantId, promo.triggerVariantId, ...promo.variantIds.slice(0, 2)]).filter((id): id is string => !!id))].sort(),
     [promos.data],
   );
   const variants = useQuery({
@@ -163,11 +167,27 @@ export default function PromotionsView() {
     retry: false,
   });
   const variantNames = useMemo(() => new Map((variants.data ?? []).map((variant) => [variant.id, variantLabel(variant.productName, variant.attributeValues)])), [variants.data]);
+  const variantSkus = useMemo(() => new Map((variants.data ?? []).map((variant) => [variant.id, variant.companySku || variant.sku || null])), [variants.data]);
   const productNames = useMemo(() => new Map((products.data ?? []).map((product) => [product.id, product.name])), [products.data]);
   const names = {
     product: (id: string | null) => (id ? productNames.get(id) ?? "un producto" : "un producto"),
     variant: (id: string | null) => (id ? variantNames.get(id) ?? "un producto" : "un producto"),
+    sku: (id: string | null) => (id ? variantSkus.get(id) ?? null : null),
   };
+  // FEAT-32 M4 (spec §6.17): stock de los regalos vigentes; sin stock la venta no los ofrece.
+  const giftIds = useMemo(
+    () => [...new Set((promos.data ?? []).filter((promo) => promo.type === "GIFT" && promo.status !== "ENDED").map((promo) => promo.giftVariantId).filter((id): id is string => !!id))].sort(),
+    [promos.data],
+  );
+  const giftStock = useQuery({
+    queryKey: ["promotion-gift-stock", companyId, giftIds],
+    queryFn: async () => new Map((await getStockByVariants(giftIds)).map((row) => [row.variant_id, Number(row.available)])),
+    enabled: giftIds.length > 0,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const giftWithoutStock = (promo: Promotion) =>
+    promo.type === "GIFT" && promo.status !== "ENDED" && !!promo.giftVariantId && !!giftStock.data && (giftStock.data.get(promo.giftVariantId) ?? 0) <= 0;
   const storeName = (id: string) => stores.find((store) => store.id === id)?.name ?? "Tienda";
 
   // Enlace directo: «Crear promoción» desde Productos o la ficha, o «Editar» desde la ficha.
@@ -215,7 +235,21 @@ export default function PromotionsView() {
   };
 
   const rule = (promo: Promotion) => {
-    if (promo.type !== "CAMPAIGN") return <span>{promoRuleText(promo, names)}</span>;
+    if (promo.type === "VOLUME")
+      return (
+        <span>
+          {promoRuleText(promo, names)}
+          {volumeUnitText(promo) ? <small className="block text-xs text-muted-foreground">{volumeUnitText(promo)}</small> : null}
+        </span>
+      );
+    if (promo.type === "GIFT")
+      return (
+        <span>
+          {promoRuleText(promo, names)}
+          {promo.giftVariantId && variantNames.has(promo.giftVariantId) ? <small className="block text-xs text-muted-foreground">{variantNames.get(promo.giftVariantId)}</small> : null}
+          {giftWithoutStock(promo) ? <small className="block text-xs font-medium text-red-600">Sin stock del regalo</small> : null}
+        </span>
+      );
     const adjusted = promo.products.some((product) => product.discountType) || promo.manualPrices.length > 0;
     return (
       <span>
@@ -236,18 +270,28 @@ export default function PromotionsView() {
         </small>
       );
     }
-    if (promo.type === "VOLUME") return <small className="text-xs">{names.product(promo.productId)}</small>;
+    if (promo.type === "VOLUME") {
+      // Una fila vieja sin SKUs sigue nombrando su producto.
+      if (!promo.variantIds.length) return <small className="text-xs">{names.product(promo.productId)}</small>;
+      const skus = volumeSkusText(promo.variantIds, (id) => names.sku(id));
+      return (
+        <small className="text-xs">
+          {skus.first ? <span className="font-mono">{skus.first}</span> : null}
+          <span className="block text-muted-foreground">{skus.count}</span>
+        </small>
+      );
+    }
     return <small className="text-xs text-muted-foreground">{promo.giftCondition === "AMOUNT" ? "Toda la compra" : names.product(promo.productId)}</small>;
   };
+  // Fecha y hora de Lima; en volumen y regalo son opcionales (vacío = sin límite).
   const dates = (promo: Promotion) => {
-    if (promo.type === "CAMPAIGN")
-      return (
-        <span className="whitespace-nowrap text-xs">
-          {limaDateTimeText(promo.startsAt)}
-          <small className="block text-muted-foreground">hasta {limaDateTimeText(promo.endsAt)}</small>
-        </span>
-      );
-    return <span className="text-xs">{promo.startsAt || promo.endsAt ? promoValidityText(promo) : <span className="text-muted-foreground">Sin fecha</span>}</span>;
+    if (!promo.startsAt && !promo.endsAt) return <span className="text-xs text-muted-foreground">Sin fecha</span>;
+    return (
+      <span className="whitespace-nowrap text-xs">
+        {promo.startsAt ? limaDateTimeText(promo.startsAt) : "Sin fecha de inicio"}
+        <small className="block text-muted-foreground">{promo.endsAt ? `hasta ${limaDateTimeText(promo.endsAt)}` : "sin fecha de fin"}</small>
+      </span>
+    );
   };
 
   return (
@@ -272,7 +316,7 @@ export default function PromotionsView() {
         {isAdmin ? <Button onClick={() => setChoosing(true)}><Plus className="mr-1 h-4 w-4" />Nueva promoción</Button> : null}
       </div>
       <div className="rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-900 dark:bg-sky-950/40 dark:text-sky-100">
-        Las promociones no crean productos: <b>cambian el precio de SKUs que ya existen</b>. El precio de campaña se calcula sobre el precio de cada canal y se ve al instante en los canales de POWIP; en Shopify, Mercado Libre y Falabella se enviará cuando esos canales se administren desde POWIP. Volumen y regalo se aplican solos al registrar la venta. POWIP Live usa su propio precio live y no entra en estas promociones.
+        Las promociones no crean productos: <b>cambian el precio de SKUs que ya existen</b>. El precio de campaña se calcula sobre el precio de cada canal y se ve al instante en los canales de POWIP; en Shopify, Mercado Libre y Falabella se enviará cuando esos canales se administren desde POWIP. Volumen y regalo se aplican solos al registrar la venta. POWIP Live usa su propio precio live: no entra en las campañas, y volumen y regalo aplican ahí solo si eligen el canal POWIP Live.
       </div>
       {migration.result ? <MigrationNotice result={migration.result} onDismiss={migration.dismiss} /> : null}
       {migration.pendingForOthers ? (
