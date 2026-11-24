@@ -1,4 +1,5 @@
 import type { LiveConfig, LiveYapeConfig } from "./types";
+import { LIVE_DEFAULT_ACCENT } from "./liveAppearance";
 
 /**
  * FEAT-33 A1/B4: formularios de Configuración del panel Live.
@@ -18,8 +19,16 @@ export interface LiveConfigDraft {
   reservationMinutes: string;
   maxReservedUnits: string;
   closePolicy: LiveConfig["closePolicy"];
+  /** FEAT-33 B5: apariencia (el logo se guarda aparte, por su propia ruta). */
+  theme: "dark" | "light";
+  color: string;
+  displayName: string;
 }
 type DraftKey = keyof LiveConfigDraft;
+const APPEARANCE_KEYS = ["theme", "color", "displayName"] as const;
+type AppearanceKey = (typeof APPEARANCE_KEYS)[number];
+const isAppearance = (key: string): key is AppearanceKey =>
+  (APPEARANCE_KEYS as readonly string[]).includes(key);
 export type LiveConfigErrors = Partial<Record<DraftKey, string>>;
 
 const SLUG = /^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$/;
@@ -38,6 +47,9 @@ export function liveConfigDraft(config: LiveConfig): LiveConfigDraft {
     reservationMinutes: String(config.reservationMinutes),
     maxReservedUnits: String(config.maxReservedUnits),
     closePolicy: config.closePolicy,
+    theme: config.appearance?.theme === "light" ? "light" : "dark",
+    color: config.appearance?.color ?? LIVE_DEFAULT_ACCENT,
+    displayName: config.appearance?.displayName ?? "",
   };
 }
 
@@ -45,7 +57,9 @@ function draftValue(draft: LiveConfigDraft, key: DraftKey) {
   const value = draft[key];
   if (key === "reservationMinutes" || key === "maxReservedUnits")
     return Number(value);
-  if (key === "liveUrl" || key === "slug") return String(value).trim();
+  if (key === "liveUrl" || key === "slug" || key === "displayName")
+    return String(value).trim();
+  if (key === "color") return String(value).trim().toLowerCase();
   return value;
 }
 
@@ -55,10 +69,14 @@ export function liveConfigChanges(
 ): Partial<LiveConfig> {
   const base = liveConfigDraft(saved);
   const changes: Record<string, unknown> = {};
+  const appearance: Record<string, unknown> = {};
   for (const key of Object.keys(draft) as DraftKey[]) {
     const next = draftValue(draft, key);
-    if (next !== draftValue(base, key)) changes[key] = next;
+    if (next === draftValue(base, key)) continue;
+    if (isAppearance(key)) appearance[key] = next;
+    else changes[key] = next;
   }
+  if (Object.keys(appearance).length) changes.appearance = appearance;
   return changes as Partial<LiveConfig>;
 }
 
@@ -72,7 +90,8 @@ export function liveConfigErrors(
   saved: LiveConfig,
   draft: LiveConfigDraft,
 ): LiveConfigErrors {
-  const changed = liveConfigChanges(saved, draft) as Record<string, unknown>;
+  const all = liveConfigChanges(saved, draft) as Record<string, unknown>;
+  const changed = { ...all, ...(all.appearance as object | undefined) };
   const errors: LiveConfigErrors = {};
   const url = draft.liveUrl.trim();
   if (
@@ -92,6 +111,10 @@ export function liveConfigErrors(
     errors.liveUrl = "Pega el link de tu live para mostrar «Volver al live».";
   if ("slug" in changed && draft.slug.trim() && !SLUG.test(draft.slug.trim()))
     errors.slug = "Usa de 3 a 50 letras minúsculas, números o guiones.";
+  if ("color" in changed && !/^#[0-9a-f]{6}$/i.test(draft.color.trim()))
+    errors.color = "Elige un color válido.";
+  if ("displayName" in changed && draft.displayName.trim().length > 60)
+    errors.displayName = "Hasta 60 caracteres.";
   return errors;
 }
 

@@ -62,8 +62,9 @@ beforeEach(() => {
 });
 test("shows actual catalog and disables payment when store has no gateway", async () => {
   render(<PublicLivePage storeId={storeId} />);
+  // La bienvenida es una pantalla (mockup): el catálogo aparece al entrar o al «solo mirar».
+  fireEvent.click(await screen.findByRole("button", { name: "Solo quiero mirar primero" }));
   expect(await screen.findByText("Crema Centella")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Solo quiero mirar primero" }));
   expect(screen.queryByRole("button", { name: "Comprar ahora" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Separar ·/ })).toBeEnabled();
 });
@@ -81,7 +82,7 @@ test("retries a failed reserve with same idempotency key", async () => {
     customer: { name: "María Torres", phone: "987654321" },
   });
   render(<PublicLivePage storeId={storeId} />);
-  await screen.findByText("Crema Centella");
+  await screen.findByRole("heading", { name: "Compra lo que ves en el live" });
   fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "987654321" } });
   fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "María Torres" } });
   fireEvent.click(screen.getByRole("button", { name: "Entrar a comprar" }));
@@ -104,7 +105,7 @@ test("a foreign WhatsApp identifies the buyer and reserves with the internationa
     customer: { name: "Clara Gómez", phone: "+5491123456789" },
   });
   render(<PublicLivePage storeId={storeId} />);
-  await screen.findByText("Crema Centella");
+  await screen.findByRole("heading", { name: "Compra lo que ves en el live" });
   // Antes de un número válido no se pide el nombre
   expect(screen.queryByLabelText("Nombre")).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "+54 9 11 2345-6789" } });

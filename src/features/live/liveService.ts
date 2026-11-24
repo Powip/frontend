@@ -92,6 +92,24 @@ export async function updateLiveConfig(storeId: string, input: Partial<LiveConfi
     )
   ).data;
 }
+/** FEAT-33 B5: logo del catálogo (el servidor revisa tipo, peso y que sea cuadrado). */
+export async function uploadLiveLogo(storeId: string, file: File) {
+  const body = new FormData();
+  body.append("file", file);
+  return (
+    await axiosAuth.post<{ config: LiveConfig; serverNow: string }>(
+      `${adminPath(storeId)}/appearance/logo`,
+      body,
+    )
+  ).data;
+}
+export async function removeLiveLogo(storeId: string) {
+  return (
+    await axiosAuth.delete<{ config: LiveConfig; serverNow: string }>(
+      `${adminPath(storeId)}/appearance/logo`,
+    )
+  ).data;
+}
 export async function updateLiveSession(storeId: string, input: Partial<LiveSession>) {
   return (
     await axiosAuth.patch<{ session: LiveSession; serverNow: string }>(

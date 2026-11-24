@@ -3,7 +3,7 @@ import ubigeo from "@/utils/json/ubigeos.json";
 import type { LiveDelivery, LivePurchaseInput, StoreDeliveryOption } from "./types";
 import { liveMoney } from "./liveService";
 export const purchaseField =
-  "mt-1 min-h-11 w-full rounded-xl border border-white/20 bg-slate-900 p-3 text-sm text-white focus:outline-emerald-300";
+  "mt-1 min-h-11 w-full rounded-xl border border-[var(--b-line)] bg-[var(--b-in)] p-3 text-sm text-[var(--b-ink)] focus:outline-[var(--acc)]";
 const norm = (s = "") =>
   s
     .trim()
@@ -146,7 +146,7 @@ export default function LiveDeliveryForm({
             {(["HOME", "AGENCY"] as const).map((type) => (
               <label
                 key={type}
-                className="flex min-h-11 flex-1 items-center gap-2 rounded-xl border border-white/20 p-3 text-sm"
+                className="flex min-h-11 flex-1 items-center gap-2 rounded-xl border border-[var(--b-line)] p-3 text-sm"
               >
                 <input
                   type="radio"
@@ -196,7 +196,7 @@ export default function LiveDeliveryForm({
           </label>
           <button
             type="button"
-            className="min-h-11 rounded-xl border border-white/20 px-4 text-sm"
+            className="min-h-11 rounded-xl border border-[var(--b-line)] px-4 text-sm"
             onClick={() =>
               navigator.geolocation?.getCurrentPosition(
                 (p) => set({ lat: p.coords.latitude, lng: p.coords.longitude }),
@@ -249,11 +249,11 @@ export default function LiveDeliveryForm({
             </select>
           </label>
           {selectedAgency ? (
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-[var(--b-mut)]">
               {selectedAgency.address} · {selectedAgency.hours}
             </p>
           ) : delivery.district && !agencies.length ? (
-            <p className="text-sm text-amber-200">
+            <p className="text-sm text-[var(--b-warn)]">
               La tienda aún no tiene agencias habilitadas de este courier en este distrito.
             </p>
           ) : null}

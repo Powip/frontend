@@ -34,3 +34,13 @@ test.each([
   await screen.findByText("ORD-153866");
   expect(screen.getByTestId("pedido-origen")).toHaveTextContent(new RegExp(`^${label}$`));
 });
+
+test("the order page gives its Yape dialog the catalog colors (FEAT-33 B5)", async () => {
+  (axios.get as jest.Mock).mockResolvedValue({ data: tracking("POWIP_LIVE") });
+  const { unmount } = render(<LiveOrderTracking token={"A".repeat(43)} />);
+  await screen.findByText("ORD-153866");
+  expect(document.body.style.getPropertyValue("--b-bg")).toBe("#0b0d11");
+  expect(document.body.style.getPropertyValue("--acc")).toBe("#72efe8");
+  unmount();
+  expect(document.body.style.getPropertyValue("--acc")).toBe("");
+});

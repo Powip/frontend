@@ -10,10 +10,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { LiveProductImage, LiveReservationTimer, LiveCountdown } from "./LiveShared";
+import { LiveLogo, useLiveBodyLook } from "./LiveBrand";
+import { liveAppearance, liveAppearanceStyle } from "./liveAppearance";
 import LiveManualPaymentDialog from "./LiveManualPaymentDialog";
 import { createLivePolling, type LivePollingController } from "./livePolling";
 import LiveCheckoutDelivery from "./LiveCheckoutDelivery";
-import { purchaseField } from "./LiveDeliveryForm";
 import {
   getPublicLive,
   identifyLiveCustomer,
@@ -36,9 +37,25 @@ import type {
   LiveProduct,
   LivePublicData,
 } from "./types";
-const action =
-  "min-h-11 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 disabled:opacity-40";
-const outline = "min-h-11 rounded-xl border border-white/20 px-4 py-3 text-sm disabled:opacity-40";
+// FEAT-33 B5: todo color sale de las variables de la apariencia (`liveAppearanceStyle`).
+const cta =
+  "min-h-[52px] w-full rounded-2xl bg-[var(--acc)] p-4 text-[17px] font-bold text-[var(--acc-ink)] disabled:bg-[var(--b-dis)] disabled:text-[var(--b-dis-ink)]";
+const ghost =
+  "inline-flex min-h-11 items-center justify-center rounded-xl border border-[var(--b-line)] bg-[var(--b-card)] px-4 py-2.5 text-sm font-semibold text-[var(--b-ink)] disabled:opacity-40";
+const chip =
+  "min-h-11 min-w-[50px] rounded-xl border-[1.5px] border-[var(--b-line)] bg-[var(--b-in)] px-3.5 py-2.5 text-sm font-medium text-[var(--b-ink)] aria-pressed:border-[var(--acc)] aria-pressed:bg-[var(--acc-soft)] aria-pressed:font-bold aria-pressed:text-[var(--acc-tx)] disabled:opacity-35";
+const stepper = "h-9 w-9 text-base disabled:opacity-30";
+const label = "block text-[13px] font-semibold text-[var(--b-ink2)]";
+const bigField =
+  "mt-1.5 w-full rounded-[14px] border-[1.5px] border-[var(--b-line)] bg-[var(--b-in)] px-3.5 py-[15px] text-[17px] text-[var(--b-ink)] outline-none focus:border-[var(--acc)]";
+const tiny = "text-center text-xs leading-normal text-[var(--b-mut)] mt-3";
+const banner = "mx-4 mt-3 rounded-2xl bg-[var(--acc-soft)] px-3.5 py-3 text-[13.5px] text-[var(--b-ink)]";
+const pill = {
+  live: "inline-flex items-center gap-1.5 rounded-full bg-[var(--b-live-bg)] px-3 py-1 text-xs font-bold text-[var(--b-live)]",
+  purple: "rounded-full bg-[var(--b-pur-bg)] px-3 py-1 text-xs font-semibold text-[var(--b-pur)]",
+};
+const sheet =
+  "top-auto bottom-0 max-h-[90dvh] translate-y-0 overflow-y-auto rounded-t-3xl border-[var(--b-line)] bg-[var(--b-bg)] text-[var(--b-ink)] sm:top-1/2 sm:bottom-auto sm:max-w-[430px] sm:-translate-y-1/2";
 export default function PublicLivePage({ storeId }: { storeId: string }) {
   const [data, setData] = useState<LivePublicData | null>(null),
     [visitor, setVisitor] = useState("");
@@ -249,289 +266,391 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
         all.findIndex((p) => (p.orderNumber || p.id) === (o.orderNumber || o.id)) === i,
     )
     .slice(0, 5);
+  const look = liveAppearance(data?.config.appearance, data?.store.name || "POWIP");
+  const lookStyle = liveAppearanceStyle(look);
+  useLiveBodyLook(lookStyle);
+  const whatsapp = data?.channel === "WHATSAPP";
+  const live = data?.session?.status === "LIVE";
+  const platform = data?.session ? platformNames[data.session.platform] : "";
   return (
-    <main className="min-h-dvh bg-[#100e1d] pb-32 text-slate-100">
-      <header className="sticky top-0 z-20 border-b border-white/10 bg-[#171428]/95 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-bold">{data?.store.name || "POWIP"}</h1>
-            <p className="text-xs text-slate-300">
-              {data?.channel === "WHATSAPP"
-                ? "Catálogo · POWIP Link"
-                : data?.session?.status === "LIVE"
-                  ? `En vivo en ${platformNames[data.session.platform]}`
-                  : "Catálogo del live"}
-            </p>
+    <main
+      data-testid="live-buyer"
+      data-theme={look.theme}
+      style={lookStyle}
+      className="flex min-h-dvh justify-center bg-[var(--b-out)] sm:py-[18px]"
+    >
+      <div className="relative flex min-h-dvh w-full max-w-[430px] flex-col bg-[var(--b-bg)] text-[var(--b-ink)] sm:min-h-[calc(100dvh-36px)] sm:rounded-[28px] sm:shadow-[0_0_0_1px_var(--b-line),0_30px_80px_-30px_#000]">
+        <header className="sticky top-0 z-20 flex items-center gap-2.5 border-b border-[var(--b-line)] bg-[var(--b-bg)] px-4 py-3.5 sm:rounded-t-[28px]">
+          <LiveLogo look={look} />
+          <div className="min-w-0 flex-1">
+            <b className="block truncate text-[15px]">{look.displayName}</b>
+            <small className="flex items-center gap-1.5 text-xs text-[var(--b-mut)]">
+              {whatsapp ? (
+                "💬 Catálogo por WhatsApp"
+              ) : live ? (
+                <>
+                  <i
+                    aria-hidden="true"
+                    className="inline-block h-[7px] w-[7px] rounded-full bg-[#ff4d6d] motion-safe:animate-pulse"
+                  />
+                  En vivo en {platform}
+                </>
+              ) : data?.session?.status === "ENDED" ? (
+                "Live terminado"
+              ) : (
+                "Catálogo del live"
+              )}
+            </small>
           </div>
           {social ? (
-            <a className={outline} href={social} target="_blank" rel="noopener noreferrer">
+            <a
+              className="shrink-0 rounded-full border border-[var(--b-line)] bg-[var(--b-card)] px-3 py-2 text-xs font-semibold"
+              href={social}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               Volver al live ↗
             </a>
           ) : null}
-        </div>
-        <div className="mx-auto mt-2 flex max-w-3xl flex-wrap items-center justify-between gap-2 text-xs">
-          {timer && data ? (
-            <span>
-              Tus prendas separadas{" "}
-              <LiveReservationTimer reservation={timer} serverNow={data.serverNow} />
-            </span>
-          ) : null}
-          {data?.channel !== "WHATSAPP" && data?.session?.closesAt ? (
-            <span>
-              Precios del live por{" "}
-              <LiveCountdown expiresAt={data.session.closesAt} serverNow={data.serverNow} />
-            </span>
-          ) : null}
-        </div>
-      </header>
-      <div className="mx-auto max-w-3xl space-y-5 p-4">
+        </header>
         {returningPayment ? (
-          <p role="status" className="p-4 text-sm">
+          <p role="status" className={banner}>
             Estamos verificando el pago. Consulta el estado de tu pedido para ver la confirmación.
           </p>
         ) : null}
-        {error || readError ? (
-          <div
-            role="alert"
-            className="rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-sm text-rose-100"
-          >
-            {error || readError}
-            <button className="ml-3 underline" onClick={() => void refresh(visitor)}>
+        {welcome && readError ? (
+          <div role="alert" className={`${banner} bg-[var(--b-bad-bg)] text-[var(--b-bad)]`}>
+            {readError}
+            <button className="ml-3 font-semibold underline" onClick={() => void refresh(visitor)}>
               Actualizar
             </button>
           </div>
         ) : null}
-        {notice ? (
-          <p role="status" className="rounded-xl bg-emerald-400/10 p-3 text-sm text-emerald-200">
-            {notice}
-          </p>
-        ) : null}
-        {!data ? <p role="status">Cargando catálogo…</p> : null}
-        {customer.name && data?.customer ? (
-          <p className="text-sm text-slate-300">
-            Hola, {customer.name}.{" "}
-            {customer.savedDelivery
-              ? "Tu entrega anterior está guardada."
-              : "Tu pedido queda guardado en este celular."}
-          </p>
-        ) : null}
-        {purchases.map((o) => (
-          <article key={o.orderNumber || o.id} className="rounded-xl border border-white/15 p-4">
-            <p className="text-xs text-slate-400">Tu compra · {o.orderNumber || "Pago iniciado"}</p>
-            <p className="mt-1 font-semibold">
-              {liveBuyerLabel(
-                o.buyerStatus ||
-                  (o.status === "ANULADO"
-                    ? "CANCELLED"
-                    : o.manualPayment?.status || o.paymentStatus),
+        {welcome ? (
+          <section className="px-4 pb-6 pt-5">
+            <div className="flex flex-wrap gap-2">
+              {whatsapp ? (
+                <span className={pill.purple}>💬 Catálogo por WhatsApp</span>
+              ) : (
+                <>
+                  <span className={pill.live}>
+                    <i aria-hidden="true" className="inline-block h-[7px] w-[7px] rounded-full bg-current" />
+                    {live ? `EN VIVO · ${platform}` : "Live terminado"}
+                  </span>
+                  <span className={pill.purple}>Precios del live</span>
+                </>
               )}
-            </p>
-            <div className="mt-2 flex gap-3">
-              {o.trackingUrl?.startsWith("/p/") ? (
-                <a href={o.trackingUrl} className={outline}>
-                  Ver mi pedido
-                </a>
-              ) : null}
-              {o.method === "yape" &&
-              o.checkoutId &&
-              !["ANULADO", "CANCELLED"].includes(o.status) ? (
-                <button
-                  className={outline}
-                  onClick={() => {
-                    setManual(null);
-                    setManualId(o.checkoutId!);
-                  }}
-                >
-                  {o.manualPayment?.status === "REJECTED"
-                    ? "Enviar otro comprobante"
-                    : o.manualPayment?.status === "AWAITING_PROOF"
-                      ? "Continuar pago"
-                      : "Ver pago"}
-                </button>
-              ) : null}
             </div>
-          </article>
-        ))}
-        {closed ? (
-          <p className="rounded-xl border border-white/20 p-5">
-            El catálogo del live está cerrado. Puedes consultar tus pedidos arriba.
-          </p>
-        ) : (
-          grouped.map((variants) => (
-            <ProductCard
-              key={`${storeId}/${variants[0].productId || variants[0].variantId}`}
-              variants={variants}
-              featured={variants.some((p) => p.variantId === data?.session?.pinnedVariantId)}
-              busy={busy}
-              maxCart={
-                data?.isTrusted ? 10000 : Math.max(0, (data?.config.maxReservedUnits || 5) - units)
-              }
-              minutes={data?.config.reservationMinutes || 15}
-              onSeparate={separate}
-            />
-          ))
-        )}
-        {data && !closed && !grouped.length ? (
-          <p className="py-10 text-center text-slate-300">Todavía no hay prendas disponibles.</p>
-        ) : null}
-      </div>
-      {units && data ? (
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-white/15 bg-[#171428] p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-          <div className="mx-auto flex max-w-3xl items-center gap-3">
-            <button className="flex-1 text-left" onClick={() => setCart(true)}>
-              <span className="block text-xs text-slate-300">{units} prendas separadas</span>
-              <span className="font-bold">Ver mi pedido · {liveMoney(subtotal)}</span>
-            </button>
-            <button
-              className={action}
-              disabled={busy || reservations.some((r) => r.status !== "ACTIVE")}
-              onClick={() => setPay(true)}
-            >
-              Pagar →
-            </button>
-          </div>
-        </div>
-      ) : null}
-      {welcome ? (
-        <Dialog open onOpenChange={setWelcome}>
-          <DialogContent className="border-white/15 bg-[#171428] text-white sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle>Bienvenida a {data?.store.name || "la tienda"}</DialogTitle>
-              <DialogDescription className="text-slate-300">
-                Guarda tus prendas con tu WhatsApp. Te lo pedimos una sola vez en este celular.
-              </DialogDescription>
-            </DialogHeader>
+            <h1 className="mb-2 mt-3.5 text-[27px] font-bold leading-tight [text-wrap:balance]">
+              {whatsapp ? "Elige, separa y paga desde tu celular" : "Compra lo que ves en el live"}
+            </h1>
+            <p className="leading-relaxed text-[var(--b-mut)]">
+              Déjanos tu WhatsApp una sola vez. Luego solo eliges, separas y pagas con Yape.
+            </p>
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 void identify();
               }}
-              className="space-y-4"
+              className="mt-5 rounded-[20px] border border-[var(--b-line)] bg-[var(--b-card)] p-[18px]"
             >
-              <label className="block text-sm">
-                WhatsApp
-                <input
-                  aria-label="WhatsApp"
-                  className={purchaseField}
-                  inputMode="tel"
-                  autoComplete="tel"
-                  maxLength={20}
-                  placeholder="987654321 o +54 9 11 2345 6789"
-                  value={customer.phone}
-                  onChange={(e) =>
-                    setCustomer((c) => ({
-                      ...c,
-                      // Dígitos y un "+" inicial para números de otros países.
-                      phone: normalizePhone(e.target.value),
-                    }))
-                  }
-                />
+              <label htmlFor="live-welcome-phone" className={label}>
+                Tu WhatsApp
               </label>
+              <input
+                id="live-welcome-phone"
+                aria-label="WhatsApp"
+                className={bigField}
+                inputMode="tel"
+                autoComplete="tel"
+                maxLength={20}
+                placeholder="9xx xxx xxx"
+                value={customer.phone}
+                onChange={(e) =>
+                  setCustomer((c) => ({
+                    ...c,
+                    // Dígitos y un "+" inicial para números de otros países.
+                    phone: normalizePhone(e.target.value),
+                  }))
+                }
+              />
               {knownPhone === customer.phone && knownPhone ? (
-                <p className="text-emerald-200">¡Hola de nuevo, {customer.name}!</p>
+                <p className="mt-3 rounded-xl border border-[var(--acc)] bg-[var(--acc-soft)] px-3 py-2.5 text-sm">
+                  👋 ¡Hola de nuevo, <b>{customer.name}</b>!
+                </p>
               ) : isValidMobilePhone(customer.phone) ? (
-                <label className="block text-sm">
-                  Nombre
+                // B2: el nombre se pide recién con un WhatsApp válido.
+                <>
+                  <label htmlFor="live-welcome-name" className={`${label} mt-3.5`}>
+                    Tu nombre
+                  </label>
                   <input
+                    id="live-welcome-name"
                     aria-label="Nombre"
-                    className={purchaseField}
-                    autoComplete="given-name"
+                    className={bigField}
+                    autoComplete="name"
                     maxLength={120}
+                    placeholder="Nombre y apellido"
                     value={customer.name}
                     onChange={(e) => setCustomer((c) => ({ ...c, name: e.target.value }))}
                   />
-                </label>
+                </>
               ) : null}
               {error ? (
-                <p role="alert" className="text-sm text-rose-200">
+                <p role="alert" className="mt-1.5 text-[13px] text-[var(--b-err)]">
                   {error}
                 </p>
               ) : null}
               <button
-                className={`${action} w-full`}
+                className={`${cta} mt-4`}
                 disabled={busy || !customer.name.trim() || !isValidMobilePhone(customer.phone)}
               >
-                Entrar a comprar
+                Entrar a comprar<span aria-hidden="true"> →</span>
               </button>
-              <button
-                type="button"
-                className="min-h-11 w-full text-sm text-slate-300"
-                onClick={() => setWelcome(false)}
-              >
-                Solo quiero mirar primero
-              </button>
+              <p className={tiny}>Solo para avisarte de tu pedido. Nadie más ve tu número.</p>
             </form>
-          </DialogContent>
-        </Dialog>
-      ) : null}
+            <button
+              type="button"
+              className="mx-auto mt-3 block p-2 text-sm font-semibold text-[var(--acc-tx)]"
+              onClick={() => setWelcome(false)}
+            >
+              Solo quiero mirar primero
+            </button>
+          </section>
+        ) : (
+          <div className="flex-1 pb-32">
+            <p className="px-4 pt-3.5 text-[15px] leading-normal">
+              {customer.name && data?.customer ? (
+                <>
+                  Hola, <b>{customer.name.trim().split(/\s+/)[0]}</b> 👋{" "}
+                  {data.isTrusted ? (
+                    <span className="block text-[13px] text-[var(--b-pur)]">
+                      ⭐ Cliente de confianza: tus prendas no vencen
+                    </span>
+                  ) : (
+                    "Separa lo que quieras y paga todo junto."
+                  )}
+                </>
+              ) : data ? (
+                "Estás mirando. Para separar te pediremos tu WhatsApp."
+              ) : null}
+            </p>
+            {!whatsapp && data?.session?.closesAt ? (
+              <p className="px-4 pt-1 text-xs text-[var(--b-mut)]">
+                Precios del live por{" "}
+                <LiveCountdown expiresAt={data.session.closesAt} serverNow={data.serverNow} />
+              </p>
+            ) : null}
+            {error || readError ? (
+              <div role="alert" className={`${banner} bg-[var(--b-bad-bg)] text-[var(--b-bad)]`}>
+                {error || readError}
+                <button className="ml-3 font-semibold underline" onClick={() => void refresh(visitor)}>
+                  Actualizar
+                </button>
+              </div>
+            ) : null}
+            {notice ? (
+              <p role="status" className={banner}>
+                {notice}
+              </p>
+            ) : null}
+            {!data ? (
+              <p role="status" className="px-4 py-10 text-center text-[var(--b-mut)]">
+                Cargando catálogo…
+              </p>
+            ) : null}
+            {purchases.map((o) => (
+              <article
+                key={o.orderNumber || o.id}
+                className="mx-4 mt-3 rounded-2xl border border-[var(--b-line)] bg-[var(--b-card)] p-3"
+              >
+                <div className="flex items-start gap-2.5">
+                  <span aria-hidden="true">📦</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs text-[var(--b-mut)]">
+                      Tu compra · {o.orderNumber || "Pago iniciado"}
+                    </p>
+                    <p className="mt-0.5 text-sm font-bold">
+                      {liveBuyerLabel(
+                        o.buyerStatus ||
+                          (o.status === "ANULADO"
+                            ? "CANCELLED"
+                            : o.manualPayment?.status || o.paymentStatus),
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {o.trackingUrl?.startsWith("/p/") ? (
+                    <a href={o.trackingUrl} className={ghost}>
+                      Ver mi pedido
+                    </a>
+                  ) : null}
+                  {o.method === "yape" &&
+                  o.checkoutId &&
+                  !["ANULADO", "CANCELLED"].includes(o.status) ? (
+                    <button
+                      className={ghost}
+                      onClick={() => {
+                        setManual(null);
+                        setManualId(o.checkoutId!);
+                      }}
+                    >
+                      {o.manualPayment?.status === "REJECTED"
+                        ? "Enviar otro comprobante"
+                        : o.manualPayment?.status === "AWAITING_PROOF"
+                          ? "Continuar pago"
+                          : "Ver pago"}
+                    </button>
+                  ) : null}
+                </div>
+              </article>
+            ))}
+            {closed ? (
+              <div className="px-4 py-10 text-center">
+                <p aria-hidden="true" className="text-4xl">
+                  🕛
+                </p>
+                <h2 className="mt-2 text-xl font-bold">El catálogo del live cerró</h2>
+                <p className="mt-1 text-[var(--b-mut)]">
+                  El catálogo del live está cerrado. Puedes consultar tus pedidos arriba.
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-3.5 px-4 pt-3.5">
+                {grouped.map((variants) => (
+                  <ProductCard
+                    key={`${storeId}/${variants[0].productId || variants[0].variantId}`}
+                    variants={variants}
+                    featured={variants.some((p) => p.variantId === data?.session?.pinnedVariantId)}
+                    busy={busy}
+                    maxCart={
+                      data?.isTrusted
+                        ? 10000
+                        : Math.max(0, (data?.config.maxReservedUnits || 5) - units)
+                    }
+                    minutes={data?.config.reservationMinutes || 15}
+                    onSeparate={separate}
+                  />
+                ))}
+              </div>
+            )}
+            {data && !closed && !grouped.length ? (
+              <p className="px-4 py-10 text-center text-[var(--b-mut)]">
+                El negocio aún no publica productos con stock.
+              </p>
+            ) : null}
+            {data ? (
+              <p className={`${tiny} px-4 pt-3`}>
+                {whatsapp
+                  ? "Pagas con Yape y te lo enviamos a todo el Perú"
+                  : "El precio live vale solo aquí mientras el catálogo esté abierto"}{" "}
+                · ⚡ POWIP
+              </p>
+            ) : null}
+          </div>
+        )}
+        {units && data && !welcome ? (
+          <div className="sticky bottom-0 z-20 mt-auto bg-gradient-to-t from-[var(--b-bg)] from-70% to-transparent px-3 pb-[max(12px,env(safe-area-inset-bottom))] pt-2.5">
+            <button
+              className="flex w-full items-center gap-3 rounded-[18px] bg-[var(--acc)] px-4 py-3 text-left text-[var(--acc-ink)]"
+              onClick={() => setCart(true)}
+            >
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--acc-ink)] font-bold text-[var(--acc)]">
+                {units}
+              </span>
+              <span className="min-w-0 flex-1">
+                <b className="block text-[15px]">Ver mi pedido · {liveMoney(subtotal)}</b>
+                <small className="text-[12.5px] opacity-80">
+                  <span>{units} prendas separadas</span>
+                  {data.isTrusted ? (
+                    " · ⭐ No vence"
+                  ) : timer ? (
+                    <>
+                      {" · "}
+                      <LiveReservationTimer reservation={timer} serverNow={data.serverNow} />
+                    </>
+                  ) : null}
+                </small>
+              </span>
+              <span aria-hidden="true" className="font-bold">
+                Pagar →
+              </span>
+            </button>
+          </div>
+        ) : null}
+      </div>
       {cart && data ? (
         <Dialog open onOpenChange={setCart}>
-          <DialogContent className="top-auto bottom-0 max-h-[90dvh] translate-y-0 overflow-y-auto rounded-t-3xl border-white/15 bg-[#171428] text-white sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2">
+          <DialogContent className={sheet}>
             <DialogHeader>
               <DialogTitle>Mi pedido</DialogTitle>
-              <DialogDescription className="text-slate-300">
+              <DialogDescription className="text-[var(--b-mut)]">
                 Todo lo separado comparte el mismo tiempo.
               </DialogDescription>
             </DialogHeader>
             {timer ? <LiveReservationTimer reservation={timer} serverNow={data.serverNow} /> : null}
-            {reservations.map((r) => (
-              <article key={r.id} className="flex items-center gap-3 border-b border-white/10 py-3">
-                {data.products.find((p) => p.variantId === r.variantId) ? (
-                  <LiveProductImage
-                    product={data.products.find((p) => p.variantId === r.variantId)!}
-                    className="h-14 w-14 shrink-0"
-                  />
-                ) : null}
-                <div className="flex-1">
-                  <p className="font-semibold">{r.productName || r.name}</p>
-                  <p className="text-sm text-slate-300">
-                    {r.variantLabel ||
-                      data.products.find((p) => p.variantId === r.variantId)?.variantLabel}{" "}
-                    · {liveMoney(r.unitPrice)}
-                  </p>
-                  <button
-                    className="min-h-11 text-sm text-rose-200"
-                    disabled={busy}
-                    onClick={() =>
-                      void operate(`remove:${r.id}`, async () => {
-                        await removePublicLiveReservation(storeId, visitor, r.id);
-                      })
-                    }
-                  >
-                    Quitar
-                  </button>
-                </div>
-                <button
-                  aria-label={`Restar ${r.productName || r.name}`}
-                  className={outline}
-                  disabled={busy || r.quantity <= 1}
-                  onClick={() =>
-                    void operate(`resize:${r.id}:${r.quantity - 1}`, async (key) => {
-                      await resizeLiveReservation(storeId, visitor, r.id, r.quantity - 1, key);
-                    })
-                  }
+            {reservations.map((r) => {
+              const product = data.products.find((p) => p.variantId === r.variantId);
+              return (
+                <article
+                  key={r.id}
+                  className="flex items-center gap-3 border-b border-[var(--b-line)] py-3"
                 >
-                  −
-                </button>
-                <span>{r.quantity}</span>
-                <button
-                  aria-label={`Sumar ${r.productName || r.name}`}
-                  className={outline}
-                  disabled={busy}
-                  onClick={() =>
-                    void operate(`resize:${r.id}:${r.quantity + 1}`, async (key) => {
-                      await resizeLiveReservation(storeId, visitor, r.id, r.quantity + 1, key);
-                    })
-                  }
-                >
-                  +
-                </button>
-              </article>
-            ))}
+                  {product ? (
+                    <LiveProductImage product={product} className="h-14 w-14 shrink-0" />
+                  ) : null}
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold">{r.productName || r.name}</p>
+                    <p className="text-sm text-[var(--b-mut)]">
+                      {r.variantLabel || product?.variantLabel} · {liveMoney(r.unitPrice)}
+                    </p>
+                    <button
+                      className="min-h-11 text-sm text-[var(--b-err)]"
+                      disabled={busy}
+                      onClick={() =>
+                        void operate(`remove:${r.id}`, async () => {
+                          await removePublicLiveReservation(storeId, visitor, r.id);
+                        })
+                      }
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                  <div className="inline-flex shrink-0 items-center overflow-hidden rounded-[14px] border-[1.5px] border-[var(--b-line)] bg-[var(--b-in)]">
+                    <button
+                      aria-label={`Restar ${r.productName || r.name}`}
+                      className={stepper}
+                      disabled={busy || r.quantity <= 1}
+                      onClick={() =>
+                        void operate(`resize:${r.id}:${r.quantity - 1}`, async (key) => {
+                          await resizeLiveReservation(storeId, visitor, r.id, r.quantity - 1, key);
+                        })
+                      }
+                    >
+                      −
+                    </button>
+                    <span className="min-w-7 text-center font-bold">{r.quantity}</span>
+                    <button
+                      aria-label={`Sumar ${r.productName || r.name}`}
+                      className={stepper}
+                      disabled={busy}
+                      onClick={() =>
+                        void operate(`resize:${r.id}:${r.quantity + 1}`, async (key) => {
+                          await resizeLiveReservation(storeId, visitor, r.id, r.quantity + 1, key);
+                        })
+                      }
+                    >
+                      +
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
             <p className="text-xl font-bold">Productos · {liveMoney(subtotal)}</p>
             <button
-              className={action}
-              disabled={busy || !units}
+              className={cta}
+              disabled={busy || !units || reservations.some((r) => r.status !== "ACTIVE")}
               onClick={() => {
                 setCart(false);
                 setPay(true);
@@ -539,7 +658,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
             >
               Continuar a entrega
             </button>
-            <button className={outline} onClick={() => setCart(false)}>
+            <button className={ghost} onClick={() => setCart(false)}>
               Seguir viendo productos
             </button>
           </DialogContent>
@@ -629,31 +748,46 @@ function ProductCard({
     display.regularPrice > display.livePrice
       ? Math.round((1 - display.livePrice / display.regularPrice) * 100)
       : 0;
+  const optionValue = (k: string) => selection[k];
   return (
     <article
       aria-label={display.name}
-      className={`overflow-hidden rounded-2xl border ${featured ? "border-emerald-400/50" : "border-white/10"} bg-[#1a172a]`}
+      className={`overflow-hidden rounded-[22px] border bg-[var(--b-card)] ${featured ? "border-[var(--acc)] shadow-[inset_0_0_0_1px_var(--acc)]" : "border-[var(--b-line)]"}`}
     >
       {featured ? (
-        <p className="bg-emerald-400/10 p-3 text-sm font-semibold text-emerald-200">
+        <p className="bg-[var(--acc-soft)] px-3.5 py-2 text-xs font-bold text-[var(--acc-tx)]">
           📌 Lo que muestran ahora en el live
         </p>
       ) : null}
-      <LiveProductImage product={display} className="aspect-[4/3] w-full !rounded-none" />
-      <div className="space-y-4 p-4">
-        <h2 className="text-xl font-bold">{display.name}</h2>
-        <p className="flex flex-wrap items-center gap-3">
-          <strong className="text-2xl text-emerald-300">{liveMoney(display.livePrice)}</strong>
+      <div className="relative">
+        <LiveProductImage
+          product={display}
+          className="aspect-[4/3] w-full !rounded-none bg-[var(--b-in)]"
+        />
+        {discount ? (
+          <span className="absolute left-3 top-3 rounded-lg bg-[#e2465f] px-2 py-0.5 text-[13px] font-bold text-white">
+            −{discount}% en el live
+          </span>
+        ) : null}
+      </div>
+      <div className="px-4 pb-4 pt-3.5">
+        <h2 className="text-[17px] font-semibold">{display.name}</h2>
+        <p className="mb-1.5 mt-1 flex flex-wrap items-baseline gap-2.5">
+          <strong className="text-2xl text-[var(--acc-tx)]">{liveMoney(display.livePrice)}</strong>
           {discount ? (
-            <>
-              <s className="text-sm text-slate-400">{liveMoney(display.regularPrice)}</s>
-              <span className="text-xs text-emerald-200">−{discount}% en el live</span>
-            </>
+            <s className="text-[var(--b-mut)]">{liveMoney(display.regularPrice)}</s>
           ) : null}
         </p>
         {keys.map((k, i) => (
           <fieldset key={k}>
-            <legend className="mb-2 text-sm font-semibold">{k}</legend>
+            <legend className="mb-2 mt-3 text-[13px] text-[var(--b-mut)]">
+              {k}
+              {optionValue(k) ? (
+                <>
+                  : <b className="text-[var(--b-ink)]">{optionValue(k)}</b>
+                </>
+              ) : null}
+            </legend>
             <div className="flex flex-wrap gap-2">
               {[...new Set(variants.map((p) => p.attributes?.[k]).filter(Boolean))].map((v) => {
                 const available = variants.some(
@@ -671,7 +805,7 @@ function ProductCard({
                   <button
                     type="button"
                     key={v}
-                    className={`${outline} ${selection[k] === v ? "border-emerald-300 bg-emerald-400/10" : ""} ${!available ? "line-through" : ""}`}
+                    className={`${chip} ${!available ? "line-through" : ""}`}
                     aria-pressed={selection[k] === v}
                     disabled={!available || busy}
                     onClick={() => {
@@ -692,11 +826,11 @@ function ProductCard({
           </fieldset>
         ))}
         {!keys.length && variants.length > 1 ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             {variants.map((v) => (
               <button
                 key={v.variantId}
-                className={outline}
+                className={chip}
                 disabled={!v.availableStock || busy}
                 aria-pressed={fallback === v.variantId}
                 onClick={() => {
@@ -709,26 +843,28 @@ function ProductCard({
             ))}
           </div>
         ) : null}
-        <div className="flex items-center gap-2">
+        <div className="mt-4 flex items-stretch gap-2.5">
+          <div className="inline-flex shrink-0 items-center overflow-hidden rounded-[14px] border-[1.5px] border-[var(--b-line)] bg-[var(--b-in)]">
+            <button
+              className="h-[52px] w-11 text-xl disabled:opacity-30"
+              aria-label={`Restar cantidad de ${display.name}`}
+              disabled={quantity <= 1 || busy}
+              onClick={() => setQuantity((q) => q - 1)}
+            >
+              −
+            </button>
+            <span className="min-w-7 text-center font-bold">{quantity}</span>
+            <button
+              className="h-[52px] w-11 text-xl disabled:opacity-30"
+              aria-label={`Sumar cantidad de ${display.name}`}
+              disabled={quantity >= maximum || busy}
+              onClick={() => setQuantity((q) => q + 1)}
+            >
+              +
+            </button>
+          </div>
           <button
-            className={outline}
-            aria-label={`Restar cantidad de ${display.name}`}
-            disabled={quantity <= 1 || busy}
-            onClick={() => setQuantity((q) => q - 1)}
-          >
-            −
-          </button>
-          <span className="w-6 text-center">{quantity}</span>
-          <button
-            className={outline}
-            aria-label={`Sumar cantidad de ${display.name}`}
-            disabled={quantity >= maximum || busy}
-            onClick={() => setQuantity((q) => q + 1)}
-          >
-            +
-          </button>
-          <button
-            className={`${action} flex-1`}
+            className="min-h-[52px] flex-1 rounded-[14px] bg-[var(--acc)] px-3 text-[15.5px] font-bold text-[var(--acc-ink)] disabled:bg-[var(--b-dis)] disabled:text-[var(--b-dis-ink)]"
             disabled={busy || !!reason || quantity > maximum}
             onClick={() => {
               if (product) void onSeparate(product, quantity);
@@ -737,8 +873,12 @@ function ProductCard({
             {reason || `Separar · ${liveMoney(display.livePrice * quantity)}`}
           </button>
         </div>
-        <p className="text-xs text-slate-300">
-          {product && product.availableStock < 4 ? `¡Quedan ${product.availableStock}! · ` : ""}
+        <p className="mt-2.5 text-xs text-[var(--b-mut)]">
+          {product && product.availableStock < 4 ? (
+            <b className="text-[var(--b-err)]">¡Quedan {product.availableStock}! · </b>
+          ) : (
+            ""
+          )}
           Te lo guardamos {minutes} min
           {display.maxPerCustomer ? ` · Máx. ${display.maxPerCustomer} por cliente` : ""}
         </p>

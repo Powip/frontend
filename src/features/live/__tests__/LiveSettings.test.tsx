@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { toast } from "sonner";
 import LiveConfigPanel from "../LiveConfigPanel";
@@ -137,6 +138,111 @@ describe("Configuración del catálogo (FEAT-33 A1/B4)", () => {
   test("suggests 15 minutes under the field", () => {
     renderConfig();
     expect(minutes()).toHaveAccessibleDescription(/Sugerido 15/);
+  });
+});
+
+describe("Apariencia del catálogo (FEAT-33 B5)", () => {
+  beforeAll(() => {
+    URL.createObjectURL = jest.fn(() => "blob:logo-preview");
+    URL.revokeObjectURL = jest.fn();
+  });
+  const renderLook = (saved: Partial<LiveConfig> = {}) => {
+    const onSave = jest.fn().mockResolvedValue(true);
+    const onLogo = jest.fn().mockResolvedValue(true);
+    render(
+      <LiveConfigPanel
+        config={{ ...config, ...saved }}
+        storeName="Kunca"
+        readiness={{ ready: true, checks: [] }}
+        canManage
+        busy={false}
+        onConsole={jest.fn()}
+        onSave={onSave}
+        onLogo={onLogo}
+      />,
+    );
+    return { onSave, onLogo, preview: screen.getByTestId("look-preview") };
+  };
+  const save = () =>
+    fireEvent.click(screen.getAllByRole("button", { name: "Guardar configuración" })[0]);
+  const logoInput = () => screen.getByLabelText("Subir logo");
+  const pick = (file: File) => fireEvent.change(logoInput(), { target: { files: [file] } });
+
+  test("theme, color and name show in the preview at once and save with the rest", async () => {
+    const { onSave, preview } = renderLook();
+    expect(within(preview).getByText("Kunca")).toBeInTheDocument();
+    expect(within(preview).getByText("KU")).toBeInTheDocument();
+    expect(preview).toHaveAttribute("data-theme", "dark");
+    fireEvent.click(screen.getByRole("button", { name: "Claro" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rosa" }));
+    fireEvent.change(screen.getByLabelText("Nombre que ve el cliente"), {
+      target: { value: "Kunca Store" },
+    });
+    expect(within(preview).getByText("Kunca Store")).toBeInTheDocument();
+    expect(within(preview).getByText("KS")).toBeInTheDocument();
+    expect(preview).toHaveAttribute("data-theme", "light");
+    expect(preview.style.getPropertyValue("--acc")).toBe("#f37ea3");
+    expect(screen.getByRole("button", { name: "Rosa" })).toHaveAttribute("aria-pressed", "true");
+    save();
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({
+        appearance: { theme: "light", color: "#f37ea3", displayName: "Kunca Store" },
+      }),
+    );
+  });
+
+  test("any other color can be chosen", async () => {
+    const { onSave, preview } = renderLook();
+    fireEvent.change(screen.getByLabelText("Otro color"), { target: { value: "#123abc" } });
+    expect(preview.style.getPropertyValue("--acc")).toBe("#123abc");
+    save();
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ appearance: { color: "#123abc" } }));
+  });
+
+  test("a color that cannot be read on the background says how it is shown", () => {
+    const { preview } = renderLook();
+    fireEvent.click(screen.getByRole("button", { name: "Negro" }));
+    expect(screen.getByText(/casi no se ve sobre fondo oscuro/)).toBeInTheDocument();
+    expect(preview.style.getPropertyValue("--acc")).toBe("#f1f4f7");
+    fireEvent.click(screen.getByRole("button", { name: "Claro" }));
+    expect(screen.queryByText(/casi no se ve/)).not.toBeInTheDocument();
+  });
+
+  test("the logo is checked before uploading and saved together with the rest", async () => {
+    const { onSave, onLogo, preview } = renderLook();
+    pick(new File(["gif"], "logo.gif", { type: "image/gif" }));
+    expect(screen.getByText("El logo debe ser PNG, JPG, WebP o SVG.")).toBeInTheDocument();
+    pick(new File([new Uint8Array(2 * 1024 * 1024 + 1)], "logo.png", { type: "image/png" }));
+    expect(screen.getByText("El logo debe pesar como máximo 2 MB.")).toBeInTheDocument();
+    const logo = new File(["png"], "logo.png", { type: "image/png" });
+    pick(logo);
+    expect(screen.queryByText(/El logo debe/)).not.toBeInTheDocument();
+    expect(within(preview).getByRole("img", { name: "Logo de Kunca" })).toHaveAttribute(
+      "src",
+      "blob:logo-preview",
+    );
+    expect(screen.getByText("● Cambios sin guardar")).toBeInTheDocument();
+    save();
+    await waitFor(() => expect(onLogo).toHaveBeenCalledWith(logo));
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  test("Quitar takes the saved logo out on save and Descartar brings it back", async () => {
+    const { onLogo, preview } = renderLook({
+      appearance: { logoUrl: "https://storage.test/logo.png" },
+    });
+    expect(within(preview).getByRole("img", { name: "Logo de Kunca" })).toHaveAttribute(
+      "src",
+      "https://storage.test/logo.png",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Quitar logo" }));
+    expect(within(preview).queryByRole("img")).not.toBeInTheDocument();
+    expect(within(preview).getByText("KU")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Descartar" })[0]);
+    expect(within(preview).getByRole("img", { name: "Logo de Kunca" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Quitar logo" }));
+    save();
+    await waitFor(() => expect(onLogo).toHaveBeenCalledWith(null));
   });
 });
 

@@ -23,7 +23,7 @@ import { LiveCountdown } from "./LiveShared";
 import { purchaseField } from "./LiveDeliveryForm";
 import type { LiveCheckoutSnapshot } from "./types";
 const action =
-  "min-h-11 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-bold text-slate-950 disabled:opacity-40";
+  "min-h-11 rounded-xl bg-[var(--acc)] px-4 py-3 text-sm font-bold text-[var(--acc-ink)] disabled:opacity-40";
 export default function LiveManualPaymentDialog({
   storeId,
   visitor,
@@ -147,24 +147,24 @@ export default function LiveManualPaymentDialog({
         if (!o && !busy) onClose();
       }}
     >
-      <DialogContent className="max-h-[94dvh] overflow-y-auto border-white/15 bg-[#171428] text-white sm:max-w-lg">
+      <DialogContent className="max-h-[94dvh] overflow-y-auto border-[var(--b-line)] bg-[var(--b-bg)] text-[var(--b-ink)] sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
             {terminal
               ? liveBuyerLabel(status)
               : `1 Entrega · ${step === 2 ? "2 Paga con Yape" : "3 Confirma"}`}
           </DialogTitle>
-          <DialogDescription className="text-slate-300">
+          <DialogDescription className="text-[var(--b-mut)]">
             {snapshot?.orderNumber || "Tu pedido"}
           </DialogDescription>
         </DialogHeader>
         {error ? (
-          <p role="alert" className="rounded-xl bg-rose-400/10 p-3 text-sm text-rose-200">
+          <p role="alert" className="rounded-xl bg-[var(--b-bad-bg)] p-3 text-sm text-[var(--b-err)]">
             {error}
           </p>
         ) : null}
         {notice ? (
-          <p role="status" className="text-sm text-emerald-200">
+          <p role="status" className="text-sm text-[var(--acc-tx)]">
             {notice}
           </p>
         ) : null}
@@ -172,8 +172,8 @@ export default function LiveManualPaymentDialog({
           <p>Cargando pago…</p>
         ) : terminal ? (
           <div className="space-y-4">
-            <p className="text-3xl font-bold text-emerald-300">{liveMoney(total!)}</p>
-            <p className="text-sm text-slate-300">
+            <p className="text-3xl font-bold text-[var(--acc-tx)]">{liveMoney(total!)}</p>
+            <p className="text-sm text-[var(--b-mut)]">
               {status === "UNDER_REVIEW"
                 ? `¡Listo, ${snapshot.customer?.name || "recibimos tu compra"}! El negocio está validando tu pago. Tu pedido y tus prendas están guardados.`
                 : status === "APPROVED"
@@ -188,7 +188,7 @@ export default function LiveManualPaymentDialog({
               </a>
             ) : null}
             <button
-              className="min-h-11 w-full rounded-xl border border-white/20 p-3"
+              className="min-h-11 w-full rounded-xl border border-[var(--b-line)] p-3"
               onClick={onClose}
             >
               Seguir comprando
@@ -201,10 +201,10 @@ export default function LiveManualPaymentDialog({
         ) : (
           <>
             {status === "REJECTED" ? (
-              <div className="rounded-xl border border-rose-400/30 p-3">
+              <div className="rounded-xl border border-[var(--b-bad)] p-3">
                 <h2 className="font-bold">Pago no validado</h2>
                 <p className="mt-1 text-sm">{manual?.reason || manual?.rejectionReason}</p>
-                <p className="mt-2 text-xs text-slate-300">
+                <p className="mt-2 text-xs text-[var(--b-mut)]">
                   Revisa la operación y envía otro comprobante para el mismo pedido.
                 </p>
               </div>
@@ -220,11 +220,11 @@ export default function LiveManualPaymentDialog({
             ) : null}
             {step === 2 && status !== "REJECTED" ? (
               <>
-                <div className="rounded-2xl border border-white/15 bg-white/5 p-5">
-                  <p className="text-sm text-slate-300">Monto exacto a yapear</p>
-                  <p className="my-2 text-4xl font-bold text-emerald-300">{liveMoney(total!)}</p>
+                <div className="rounded-2xl border border-[var(--b-line)] bg-[var(--b-in)] p-5">
+                  <p className="text-sm text-[var(--b-mut)]">Monto exacto a yapear</p>
+                  <p className="my-2 text-4xl font-bold text-[var(--acc-tx)]">{liveMoney(total!)}</p>
                   <p className="text-lg font-bold">{manual?.phone}</p>
-                  <p className="text-sm text-slate-300">{manual?.holder}</p>
+                  <p className="text-sm text-[var(--b-mut)]">{manual?.holder}</p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button className={action} onClick={() => void copy(manual?.phone || "")}>
                       Copiar número
@@ -234,7 +234,7 @@ export default function LiveManualPaymentDialog({
                     </button>
                     {qr ? (
                       <button
-                        className="min-h-11 rounded-xl border border-white/20 px-4"
+                        className="min-h-11 rounded-xl border border-[var(--b-line)] px-4"
                         onClick={() => setShowQr((v) => !v)}
                       >
                         Ver QR
@@ -252,7 +252,7 @@ export default function LiveManualPaymentDialog({
                     className="mx-auto rounded-xl bg-white p-3"
                   />
                 ) : null}
-                <ol className="list-inside list-decimal space-y-2 text-sm text-slate-300">
+                <ol className="list-inside list-decimal space-y-2 text-sm text-[var(--b-mut)]">
                   <li>Yapea el monto al número del negocio.</li>
                   <li>Guarda el número de operación.</li>
                   <li>Vuelve y toca «Ya yapeé».</li>
@@ -271,7 +271,7 @@ export default function LiveManualPaymentDialog({
               >
                 <button
                   type="button"
-                  className="min-h-11 text-sm text-slate-300"
+                  className="min-h-11 text-sm text-[var(--b-mut)]"
                   onClick={() => setStep(2)}
                 >
                   ← Ver datos de Yape
@@ -290,7 +290,7 @@ export default function LiveManualPaymentDialog({
                     onChange={(e) => setOperation(e.target.value.replace(/\D/g, ""))}
                     disabled={busy}
                   />
-                  <span className="mt-1 block text-xs text-slate-300">
+                  <span className="mt-1 block text-xs text-[var(--b-mut)]">
                     De 4 a 12 dígitos, tal como aparece en Yape.
                   </span>
                 </label>
@@ -332,8 +332,8 @@ export default function LiveManualPaymentDialog({
           </>
         )}
         {snapshot && !terminal && hasAmount ? (
-          <footer className="sticky -bottom-6 border-t border-white/15 bg-[#171428] py-4">
-            <p className="flex justify-between text-xs text-slate-300">
+          <footer className="sticky -bottom-6 border-t border-[var(--b-line)] bg-[var(--b-bg)] py-4">
+            <p className="flex justify-between text-xs text-[var(--b-mut)]">
               <span>Productos {liveMoney(snapshot.quote?.subtotal || 0)}</span>
               <span>Envío {liveMoney(snapshot.quote?.shipping || 0)}</span>
             </p>

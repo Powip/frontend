@@ -22,6 +22,16 @@ import {
 } from "./liveSettingsForm";
 import type { LiveConfig, LiveReadiness } from "./types";
 import { liveLinks } from "./liveLinks";
+import { LIVE_ACCENTS, liveAppearance, liveEffectiveAccent } from "./liveAppearance";
+import { LiveLookPreview } from "./LiveBrand";
+
+const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
+/** FEAT-33 B5: lo que el servidor también revisa (el cuadrado lo revisa solo el servidor). */
+function logoError(file: File) {
+  if (!LOGO_TYPES.includes(file.type)) return "El logo debe ser PNG, JPG, WebP o SVG.";
+  if (file.size > 2 * 1024 * 1024) return "El logo debe pesar como máximo 2 MB.";
+  return "";
+}
 
 type SwitchKey =
   | "showBackLink"
@@ -59,27 +69,62 @@ const SWITCHES: Record<SwitchKey, { title: string; text: string }> = {
  */
 export default function LiveConfigPanel({
   config,
+  storeName = "",
   readiness,
   onConsole,
   canManage,
   busy,
   onSave,
+  onLogo,
 }: {
   config: LiveConfig;
+  /** Nombre de la tienda: el que ve el cliente si no se escribe otro. */
+  storeName?: string;
   readiness?: LiveReadiness;
   onConsole: () => void;
   canManage: boolean;
   busy: boolean;
   onSave: (changes: Partial<LiveConfig>) => Promise<boolean>;
+  /** FEAT-33 B5: sube (`File`) o quita (`null`) el logo; se llama al guardar. */
+  onLogo?: (file: File | null) => Promise<boolean>;
 }) {
   // Solo se guardan las ediciones: lo que no se tocó sigue al servidor en cada actualización.
   const [linkOrigin] = useState(() => (typeof window === "undefined" ? "" : window.location.origin));
   const [edits, setEdits] = useState<Partial<LiveConfigDraft>>({});
   const [errors, setErrors] = useState<LiveConfigErrors>({});
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [logoEdit, setLogoEdit] = useState<{ file: File; url: string } | "remove" | null>(null);
+  const [logoProblem, setLogoProblem] = useState("");
   const draft: LiveConfigDraft = { ...liveConfigDraft(config), ...edits };
   const changes = liveConfigChanges(config, draft);
-  const dirty = Object.keys(changes).length > 0;
+  const dirty = Object.keys(changes).length > 0 || logoEdit !== null;
+  const look = liveAppearance(
+    {
+      theme: draft.theme,
+      color: /^#[0-9a-f]{6}$/i.test(draft.color.trim()) ? draft.color.trim() : undefined,
+      displayName: draft.displayName,
+      logoUrl:
+        logoEdit === "remove"
+          ? null
+          : logoEdit
+            ? logoEdit.url
+            : config.appearance?.logoUrl,
+    },
+    storeName || "Tu tienda",
+  );
+  const accentWarning = liveEffectiveAccent(look).warning;
+  const replaceLogo = (next: { file: File; url: string } | "remove" | null) => {
+    setLogoEdit((current) => {
+      if (current && current !== "remove") URL.revokeObjectURL(current.url);
+      return next;
+    });
+  };
+  const pickLogo = (file: File | undefined) => {
+    if (!file) return;
+    const problem = logoError(file);
+    setLogoProblem(problem);
+    if (!problem) replaceLogo({ file, url: URL.createObjectURL(file) });
+  };
   const disabled = !canManage || busy;
   const set = <K extends keyof LiveConfigDraft>(
     key: K,
@@ -96,6 +141,8 @@ export default function LiveConfigPanel({
   const discard = () => {
     setEdits({});
     setErrors({});
+    replaceLogo(null);
+    setLogoProblem("");
   };
   async function save() {
     const found = liveConfigErrors(config, draft);
@@ -105,10 +152,15 @@ export default function LiveConfigPanel({
       return;
     }
     if (!dirty) return;
-    if (await onSave(changes)) {
+    if (Object.keys(changes).length) {
+      if (!(await onSave(changes))) return;
       setEdits({});
-      setSavedAt(savedAtLabel());
     }
+    if (logoEdit && onLogo) {
+      if (!(await onLogo(logoEdit === "remove" ? null : logoEdit.file))) return;
+      replaceLogo(null);
+    }
+    setSavedAt(savedAtLabel());
   }
 
   const activationPending = draft.enabled && !config.enabled;
@@ -361,6 +413,143 @@ export default function LiveConfigPanel({
           El tope de unidades no aplica a clientes de confianza. El máximo por
           producto se configura en Productos del live.
         </p>
+        <section aria-labelledby="live-look-title" className="grid gap-4 border-t pt-4">
+          <div>
+            <h3 id="live-look-title" className="font-semibold">
+              Apariencia del catálogo
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Cómo ve el cliente tu catálogo. Se guarda junto con la configuración.
+            </p>
+          </div>
+          <div className="grid gap-5 md:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="grid content-start gap-4">
+              <div className="grid gap-2 text-sm font-medium">
+                <span>Fondo</span>
+                <div className="flex gap-2">
+                  {(
+                    [
+                      ["dark", "Oscuro", "#0b0d11"],
+                      ["light", "Claro", "#ffffff"],
+                    ] as const
+                  ).map(([value, label, swatch]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      disabled={disabled}
+                      aria-pressed={draft.theme === value}
+                      onClick={() => set("theme", value)}
+                      className="flex min-h-11 items-center gap-2 rounded-lg border px-3 aria-pressed:border-primary aria-pressed:bg-primary/5 aria-pressed:font-semibold"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="h-[18px] w-[18px] rounded border"
+                        style={{ background: swatch }}
+                      />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid gap-2 text-sm font-medium">
+                <span>Color de tu marca</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  {LIVE_ACCENTS.map((accent) => (
+                    <button
+                      key={accent.color}
+                      type="button"
+                      disabled={disabled}
+                      aria-label={accent.label}
+                      title={accent.label}
+                      aria-pressed={draft.color.trim().toLowerCase() === accent.color}
+                      onClick={() => set("color", accent.color)}
+                      className="h-[34px] w-[34px] rounded-full border-2 border-white shadow-[0_0_0_1px_var(--border)] aria-pressed:shadow-[0_0_0_2px_var(--foreground)]"
+                      style={{ background: accent.color }}
+                    />
+                  ))}
+                  <label
+                    title="Otro color"
+                    className="relative grid h-[34px] w-[34px] cursor-pointer place-items-center overflow-hidden rounded-full border-2 border-white font-bold text-white shadow-[0_0_0_1px_var(--border)]"
+                    style={{
+                      background: "conic-gradient(#f37ea3,#ffb547,#72efe8,#8b6cff,#f37ea3)",
+                    }}
+                  >
+                    +
+                    <input
+                      type="color"
+                      aria-label="Otro color"
+                      disabled={disabled}
+                      value={/^#[0-9a-f]{6}$/i.test(draft.color.trim()) ? draft.color.trim() : "#72efe8"}
+                      onChange={(event) => set("color", event.target.value)}
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                    />
+                  </label>
+                </div>
+                <LiveFieldError id="live-color-error" message={errors.color} />
+                {accentWarning ? (
+                  <p role="status" className="text-xs font-normal text-amber-700">
+                    {accentWarning}
+                  </p>
+                ) : null}
+              </div>
+              <div className="grid gap-2 text-sm font-medium">
+                <span>Logo</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="inline-flex min-h-10 cursor-pointer items-center rounded-md border px-3 text-sm">
+                    ⬆ {look.logoUrl ? "Cambiar logo" : "Subir logo"}
+                    <input
+                      type="file"
+                      hidden
+                      aria-label="Subir logo"
+                      aria-describedby="live-logo-help"
+                      accept={LOGO_TYPES.join(",")}
+                      disabled={disabled || !onLogo}
+                      onChange={(event) => {
+                        pickLogo(event.target.files?.[0]);
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
+                  {look.logoUrl ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={disabled || !onLogo}
+                      onClick={() => {
+                        setLogoProblem("");
+                        replaceLogo(config.appearance?.logoUrl ? "remove" : null);
+                      }}
+                    >
+                      Quitar logo
+                    </Button>
+                  ) : null}
+                </div>
+                <span id="live-logo-help" className="text-xs font-normal text-muted-foreground">
+                  Cuadrado, PNG o SVG, hasta 2 MB. Sin logo se usan tus iniciales.
+                </span>
+                <LiveFieldError id="live-logo-error" message={logoProblem} />
+              </div>
+              <div className="grid gap-2 text-sm font-medium">
+                <label htmlFor="live-display-name">Nombre que ve el cliente</label>
+                <Input
+                  id="live-display-name"
+                  value={draft.displayName}
+                  placeholder={storeName}
+                  maxLength={80}
+                  disabled={disabled}
+                  aria-invalid={errors.displayName ? true : undefined}
+                  aria-describedby={describedBy(!!errors.displayName && "live-display-name-error")}
+                  onChange={(event) => set("displayName", event.target.value)}
+                />
+                <LiveFieldError id="live-display-name-error" message={errors.displayName} />
+              </div>
+            </div>
+            <div className="grid content-start gap-2 text-sm font-medium">
+              <span>Vista previa</span>
+              <LiveLookPreview look={look} />
+            </div>
+          </div>
+        </section>
         {dirty ? (
           <LiveSaveBar message="Tienes cambios sin guardar en el catálogo">
             <Button
