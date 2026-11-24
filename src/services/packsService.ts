@@ -23,7 +23,7 @@ export interface PackComponentView {
   averageCost?: number | null;
 }
 
-/** FEAT-32 M5 — FIXED: variantes definidas; CHOOSE: el cliente elige talla y color (no se vende hasta M6). */
+/** FEAT-32 M5 — FIXED: variantes definidas; CHOOSE: el cliente elige talla y color (se vende desde M6b). */
 export type PackType = "FIXED" | "CHOOSE";
 /** Solo packs de creadoras (POWIP Live); `null` = pack del negocio. */
 export type PackApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
@@ -197,9 +197,38 @@ export async function setPackApproval(productId: string, decision: "APPROVED" | 
 /** Tipo del pack; sin el dato (ms-products anterior) es FIXED. */
 export const packTypeOf = (pack: Pick<PackView, "packType">): PackType => (pack.packType === "CHOOSE" ? "CHOOSE" : "FIXED");
 
-/** Se vende: FIXED y del negocio o de creadora aprobado (CHOOSE se vende desde M6). */
+/** Del negocio (`approvalStatus` null) o de creadora aprobado: los PENDING/REJECTED no se venden. */
+export const packApproved = (pack: Pick<PackView, "approvalStatus">): boolean =>
+  pack.approvalStatus == null || pack.approvalStatus === "APPROVED";
+
+/**
+ * Se vende con un clic: FIXED y aprobado. FEAT-32 M6b: el CHOOSE aprobado se vende eligiendo talla y color (venta
+ * nueva y edición de un pedido).
+ */
 export const packSellable = (pack: Pick<PackView, "packType" | "approvalStatus">): boolean =>
-  packTypeOf(pack) === "FIXED" && (pack.approvalStatus == null || pack.approvalStatus === "APPROVED");
+  packTypeOf(pack) === "FIXED" && packApproved(pack);
+
+/**
+ * FEAT-32 M6b — el pack de una línea del pedido (por la variante del pack), para «Cambiar variantes»: por su
+ * producto si se conoce y, si no, buscando por SKU y por nombre. Activos o no. `null` si no aparece.
+ */
+export async function findPackForVariant(
+  variantId: string,
+  hints: { productId?: string | null; sku?: string | null; name?: string | null },
+  signal?: AbortSignal,
+): Promise<PackView | null> {
+  const same = (pack: PackView) => pack.variantId?.toLowerCase() === variantId.toLowerCase();
+  if (hints.productId) {
+    // Si falla (borrado, otra empresa), se busca por SKU y nombre.
+    const pack = await getPack(hints.productId, signal).catch(() => null);
+    if (pack && same(pack)) return pack;
+  }
+  for (const q of [hints.sku, hints.name].map((value) => value?.trim()).filter((value): value is string => !!value)) {
+    const hit = (await listPacks({ q, limit: 50 }, signal)).data.find(same);
+    if (hit) return hit;
+  }
+  return null;
+}
 
 /** Cuántos componentes tiene (FIXED: variantes; CHOOSE: productos con sus permitidas). */
 export const packComponentCount = (pack: Pick<PackView, "packType" | "components" | "choiceComponents">): number =>

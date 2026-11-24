@@ -13,6 +13,7 @@ import { initials } from "@/utils/productGrouping";
 import Thumb from "./Thumb";
 import { PackLineContents } from "@/components/packs/PackLineContents";
 import { promoBadgeLabel } from "@/app/registrar-venta/saleEnginePricing";
+import { choiceIncomplete, isChooseLine } from "@/lib/packs/choosePack";
 
 const fmt = (n: number) => `S/ ${n.toFixed(2)}`;
 
@@ -47,6 +48,8 @@ interface CartLinesProps {
   onChooseGift: (packId: string, gift: GiftOption) => void;
   onChangeGift: (packId: string) => void;
   onGiftCancel: () => void;
+  /** FEAT-32 M6b: «Cambiar variantes» de la línea de un pack «a elegir» (reabre «Elige talla y color»). */
+  onChangeChoice?: (lineId: string) => void;
 }
 
 export default function CartLines({
@@ -73,6 +76,7 @@ export default function CartLines({
   onChooseGift,
   onChangeGift,
   onGiftCancel,
+  onChangeChoice,
 }: CartLinesProps) {
   const [bulkPrice, setBulkPrice] = useState("");
   const [bulkDisc, setBulkDisc] = useState("");
@@ -117,6 +121,7 @@ export default function CartLines({
           onApplyDiscount={onApplyDiscount}
           onClearDiscount={onClearDiscount}
           onUndoPack={line.packId ? () => onUndoPack(line.packId!) : undefined}
+          onChangeChoice={onChangeChoice}
         />,
       );
     });
@@ -246,6 +251,7 @@ function LineRow({
   onApplyDiscount,
   onClearDiscount,
   onUndoPack,
+  onChangeChoice,
 }: {
   line: CartItem;
   packName?: string;
@@ -256,6 +262,7 @@ function LineRow({
   onApplyDiscount: (id: string, mode: "pct" | "amt", value: number) => void;
   onClearDiscount: (id: string) => void;
   onUndoPack?: () => void;
+  onChangeChoice?: (lineId: string) => void;
 }) {
   const [editorOpen, setEditorOpen] = useState(false);
   const pvp = line.pvp ?? line.price;
@@ -325,6 +332,22 @@ function LineRow({
             </span>
           </div>
           <PackLineContents components={line.packComponents} lineQuantity={line.quantity} />
+          {/* FEAT-32 M6b: pack «a elegir»: lo elegido va arriba; desde aquí se vuelve a elegir. */}
+          {isChooseLine(line) && (
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+              {choiceIncomplete(line) && <span className="font-semibold text-destructive">Elige talla y color</span>}
+              {onChangeChoice && (
+                <button
+                  type="button"
+                  className="font-semibold text-primary hover:underline"
+                  aria-label={`Cambiar variantes de ${line.productName}`}
+                  onClick={() => onChangeChoice(line.id)}
+                >
+                  {choiceIncomplete(line) ? "Elegir variantes" : "Cambiar variantes"}
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <button

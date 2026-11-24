@@ -37,7 +37,19 @@ import CartLines from "@/components/registrar-venta/CartLines";
 import ProductSearchMatrix from "@/components/registrar-venta/ProductSearchMatrix";
 import SalePackResults from "@/components/registrar-venta/SalePackResults";
 import { addPackLine } from "@/lib/packs/salePack";
-import type { PackView } from "@/services/packsService";
+import { findPackForVariant, packTypeOf, type PackView } from "@/services/packsService";
+import ChoosePackPicker from "@/components/registrar-venta/ChoosePackPicker";
+import {
+  addChosenPackLine,
+  changePackChoice,
+  isChooseLine,
+  lineChoiceVariantIds,
+  linesWithIncompleteChoice,
+  loadedPackChoice,
+  picksFromLine,
+  type ChosenPack,
+  type UnitPicks,
+} from "@/lib/packs/choosePack";
 import {
   hasSaleChannelSelection,
   SaleChannelField,
@@ -702,6 +714,8 @@ function RegistrarVentaContent() {
         packId: null,
         packComponents: item.packComponents ?? null,
         ...loadedPromoTrace(item, netUnit),
+        // FEAT-32 M6b: pack «a elegir»: su combinación (`packKey`) se reenvía mientras no se cambie la elección.
+        ...loadedPackChoice(item),
       };
     });
     setCart(mappedCart);
@@ -909,6 +923,17 @@ function RegistrarVentaContent() {
   });
   const saleCart = saleEngine.cart;
   const [bundlePick, setBundlePick] = useState<BundleProductRef | null>(null);
+  // FEAT-32 M6b: «Elige talla y color» de un pack «a elegir» (agregar, o «Cambiar variantes» de una línea).
+  // Solo en la venta nueva y en la edición de un pedido: al confirmar un Lead ms-ventas no lo vende.
+  const chooseEnabled = !leadId;
+  const [choosing, setChoosing] = useState<{
+    key: number;
+    pack: PackView;
+    lineId: string | null;
+    initialPicks: UnitPicks | null;
+    keepVariantIds?: ReadonlySet<string>;
+  } | null>(null);
+  const choosingSeq = useRef(0);
 
   const qtyInCartByVariant = useCallback(
     (variantId: string) =>
@@ -1832,9 +1857,55 @@ function RegistrarVentaContent() {
   };
 
   // FEAT-24 H9: un pack va con su variante; ms-ventas lo expande por componentes al reservar.
+  // FEAT-32 M6b: el «a elegir» pide antes la talla y el color de cada unidad.
   const addPackToCart = (pack: PackView) => {
+    if (packTypeOf(pack) === "CHOOSE") {
+      if (chooseEnabled) setChoosing({ key: ++choosingSeq.current, pack, lineId: null, initialPicks: null });
+      return;
+    }
     setProductFrequencies(bumpProductFrequency(companyId, pack.name));
     setCart((prev) => addPackLine(prev, pack));
+  };
+
+  // FEAT-32 M6b: «Cambiar variantes» de una línea de un «a elegir» (la cargada de un pedido se busca por su variante).
+  const openChoiceEditor = async (lineId: string) => {
+    const line = cart.find((entry) => entry.id === lineId);
+    if (!line || !isChooseLine(line)) return;
+    const session = tokenStore.snapshot();
+    try {
+      const pack = await findPackForVariant(line.variantId, {
+        productId: line.choosePack?.packProductId,
+        sku: line.sku,
+        name: line.productName,
+      });
+      if (!editorActive.current || !tokenStore.isCurrent(session)) return;
+      if (!pack || packTypeOf(pack) !== "CHOOSE") {
+        toast.error(`No se encontró el pack a elegir «${line.productName}».`);
+        return;
+      }
+      setChoosing({
+        key: ++choosingSeq.current,
+        pack,
+        lineId,
+        initialPicks: picksFromLine(pack, line),
+        keepVariantIds: lineChoiceVariantIds(line),
+      });
+    } catch {
+      if (editorActive.current && tokenStore.isCurrent(session)) toast.error("No se pudo cargar el pack. Intenta de nuevo.");
+    }
+  };
+
+  const confirmPackChoice = (chosen: ChosenPack) => {
+    if (!choosing) return;
+    const { pack, lineId } = choosing;
+    if (lineId) {
+      setCart((prev) => changePackChoice(prev, lineId, pack, chosen));
+    } else {
+      setProductFrequencies(bumpProductFrequency(companyId, pack.name));
+      setCart((prev) => addChosenPackLine(prev, pack, chosen));
+      toast.success(`${pack.name} agregado`);
+    }
+    setChoosing(null);
   };
 
   const addVariantQty = (product: InventoryItemForSale, qty: number) => {
@@ -2005,6 +2076,8 @@ function RegistrarVentaContent() {
     cart.length > 0 && cart.every((item) => item.quantity > 0 && item.price >= 0);
   // FEAT-32 M6a (§5.10): en la venta nueva toda línea lleva SKU.
   const linesMissingSku = saleEngineOn ? linesWithoutSku(cart) : [];
+  // FEAT-32 M6b (§7.17): un pack «a elegir» sin la talla y el color de cada unidad no se puede registrar.
+  const linesMissingChoice = linesWithIncompleteChoice(cart);
 
   // La agencia de recojo solo se puede guardar al registrar una venta nueva o en pedidos que ya
   // tienen entrega propia; un pedido antiguo sin entrega propia no la admite.
@@ -2070,6 +2143,7 @@ function RegistrarVentaContent() {
     hasValidDelivery &&
     hasValidPayments &&
     !linesMissingSku.length &&
+    !linesMissingChoice.length &&
     !packsEngine.pvsOpen;
 
   const checklist = [
@@ -2077,6 +2151,7 @@ function RegistrarVentaContent() {
     { ok: origin.hasInventory, msg: "Selecciona el almacén de salida" },
     { ok: hasValidCart, msg: "Agrega al menos un producto al carrito" },
     ...(linesMissingSku.length ? [{ ok: false, msg: `Hay productos sin SKU: ${linesMissingSku.map((line) => line.productName).join(", ")}` }] : []),
+    ...(linesMissingChoice.length ? [{ ok: false, msg: `Elige talla y color de ${linesMissingChoice.map((line) => line.productName).join(", ")}` }] : []),
     ...(cart.some((line) => isTracked(line.trackingMode)) ? [{ ok: !validateSaleUnits(cart), msg: validateSaleUnits(cart) || "IMEI/series seleccionados" }] : []),
     {
       ok: hasValidClient,
@@ -2932,6 +3007,7 @@ function RegistrarVentaContent() {
                       query={productQuery}
                       inventoryId={selectedInventory}
                       disabled={isSubmitting}
+                      chooseEnabled={chooseEnabled}
                       qtyInCartByVariant={qtyInCartByVariant}
                       onAddPack={addPackToCart}
                     />
@@ -2988,6 +3064,18 @@ function RegistrarVentaContent() {
                 }}
                 onClose={() => setBundlePick(null)}
               />
+              {choosing && (
+                <ChoosePackPicker
+                  key={choosing.key}
+                  pack={choosing.pack}
+                  inventoryId={selectedInventory}
+                  initialPicks={choosing.initialPicks}
+                  keepVariantIds={choosing.keepVariantIds}
+                  confirmLabel={choosing.lineId ? "Guardar cambios" : "Agregar al pedido"}
+                  onConfirm={confirmPackChoice}
+                  onClose={() => setChoosing(null)}
+                />
+              )}
 
               {/* Carrito */}
               <Card>
@@ -3024,6 +3112,7 @@ function RegistrarVentaContent() {
                     onChooseGift={handleChooseGift}
                     onChangeGift={packsEngine.changeGift}
                     onGiftCancel={packsEngine.giftCancel}
+                    onChangeChoice={(lineId) => { void openChoiceEditor(lineId); }}
                   />
                   <div className="mt-3"><SaleGiftLines gifts={saleEngine.gifts} skipped={saleEngine.skippedGifts} /></div>
                   {orderData && <SaleUnitLifecycleActions key={orderData.id} order={orderData} onUpdated={() => { void loadOrder(); }} />}

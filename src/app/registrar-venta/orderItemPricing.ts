@@ -1,5 +1,6 @@
 import { isTracked } from "@/services/inventoryTrackingService";
 import type { CartItem, OrderItem } from "@/interfaces/IOrder";
+import { packChoicePayload } from "@/lib/packs/choosePack";
 
 type PricedCartItem = Pick<CartItem, "pvp" | "price" | "quantity" | "listPrice" | "lineTotal">;
 
@@ -93,5 +94,7 @@ export function buildOrderItem(item: CartItem) {
     isGift: item.isGift ?? false,
     ...(item.isGift ? { giftValue: item.giftValue ?? 0 } : {}),
     ...promoTraceOf(item),
+    // FEAT-32 M6b: pack «a elegir»: `packChoice` (línea nueva o cambiada) o la `packKey` que trajo el pedido.
+    ...packChoicePayload(item),
   };
 }
