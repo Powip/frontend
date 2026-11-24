@@ -202,6 +202,184 @@ export async function evaluatePromotions(
   return { gifts: Array.isArray(data?.gifts) ? data.gifts : [] };
 }
 
+/** FEAT-32 M6a — línea del motor de promociones (mismo orden que los `items` enviados). */
+export interface SaleEngineLine {
+  index: number;
+  variantId: string;
+  quantity: number;
+  /** Precio del canal por unidad. */
+  listPrice: number;
+  /** Neto por unidad con promos (2 decimales). */
+  unitPrice: number;
+  /** Neto de la línea al céntimo (el que suma en los totales). */
+  lineTotal: number;
+  promoId: string | null;
+  promoIds: string[];
+  /** «Cyber Wow», «Volumen: Lleva 3 blusas Sofía a S/ 210». */
+  labels: string[];
+  isGift: boolean;
+}
+
+export type SaleEngineGiftStatus = "GIVEN" | "NOT_SUMMED" | "NO_STOCK";
+
+export interface SaleEngineGift {
+  promoId: string;
+  name: string;
+  variantId: string;
+  quantity: number;
+  sku: string;
+  giftName: string;
+  minAmount: number | null;
+  /** `GIVEN` = se suma; `NOT_SUMMED` = «no se suma»; `NO_STOCK` = sin stock en el almacén de salida. */
+  status: SaleEngineGiftStatus;
+}
+
+export interface PackSuggestion {
+  kind: "PACK";
+  packVariantId: string;
+  name: string;
+  packPrice: number;
+  looseTotal: number;
+  /** `null` = el pack no se ofrece (sin SKU no se puede agregar). */
+  sku: string | null;
+  components: Array<{ variantId: string; quantity: number }>;
+  text: string;
+}
+
+export interface VolumeSuggestion {
+  kind: "VOLUME";
+  promoId: string;
+  name: string;
+  missing: number;
+  addVariantId: string;
+  unitPrice: number;
+  text: string;
+}
+
+export interface GiftSuggestion {
+  kind: "GIFT";
+  promoId: string;
+  name: string;
+  missingAmount: number;
+  giftName: string;
+  text: string;
+}
+
+export type SaleSuggestion = PackSuggestion | VolumeSuggestion | GiftSuggestion;
+
+/** FEAT-32 M6a — respuesta del motor (`POST /promos/evaluate`) para Registrar venta. */
+export interface SaleEngineResult {
+  lines: SaleEngineLine[];
+  gift: SaleEngineGift | null;
+  giftOptions: SaleEngineGift[];
+  suggestions: SaleSuggestion[];
+  totals: { listSubtotal: number; promoDiscount: number; subtotal: number };
+  /** `true` = ms-products no respondió: el precio de lista es el enviado o el del catálogo. */
+  priceFallback: boolean;
+}
+
+const record = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
+const records = (value: unknown): Record<string, unknown>[] => (Array.isArray(value) ? value.filter(record) : []);
+const strings = (value: unknown): string[] => (Array.isArray(value) ? value.filter((item): item is string => typeof item === "string" && item !== "") : []);
+const GIFT_STATUSES: SaleEngineGiftStatus[] = ["GIVEN", "NOT_SUMMED", "NO_STOCK"];
+
+function toEngineGift(raw: Record<string, unknown>): SaleEngineGift | null {
+  const status = GIFT_STATUSES.find((value) => value === raw.status);
+  if (!status || typeof raw.variantId !== "string") return null;
+  return {
+    promoId: String(raw.promoId ?? ""),
+    name: String(raw.name ?? ""),
+    variantId: raw.variantId,
+    quantity: num(raw.quantity) ?? 1,
+    sku: typeof raw.sku === "string" ? raw.sku : "",
+    giftName: String(raw.giftName ?? "Regalo"),
+    minAmount: num(raw.minAmount),
+    status,
+  };
+}
+
+function toSuggestion(raw: Record<string, unknown>): SaleSuggestion | null {
+  const text = typeof raw.text === "string" ? raw.text : "";
+  if (!text) return null;
+  if (raw.kind === "PACK" && typeof raw.packVariantId === "string") {
+    return {
+      kind: "PACK",
+      packVariantId: raw.packVariantId,
+      name: String(raw.name ?? ""),
+      packPrice: num(raw.packPrice) ?? 0,
+      looseTotal: num(raw.looseTotal) ?? 0,
+      sku: str(raw.sku),
+      components: records(raw.components)
+        .filter((row) => typeof row.variantId === "string" && (num(row.quantity) ?? 0) > 0)
+        .map((row) => ({ variantId: String(row.variantId), quantity: num(row.quantity) as number })),
+      text,
+    };
+  }
+  if (raw.kind === "VOLUME") {
+    return {
+      kind: "VOLUME",
+      promoId: String(raw.promoId ?? ""),
+      name: String(raw.name ?? ""),
+      missing: num(raw.missing) ?? 0,
+      addVariantId: String(raw.addVariantId ?? ""),
+      unitPrice: num(raw.unitPrice) ?? 0,
+      text,
+    };
+  }
+  if (raw.kind === "GIFT") {
+    return {
+      kind: "GIFT",
+      promoId: String(raw.promoId ?? ""),
+      name: String(raw.name ?? ""),
+      missingAmount: num(raw.missingAmount) ?? 0,
+      giftName: String(raw.giftName ?? ""),
+      text,
+    };
+  }
+  return null;
+}
+
+/** Normaliza la respuesta del motor (un campo ausente o con otra forma queda vacío, nunca rompe la venta). */
+export function toSaleEngineResult(data: unknown): SaleEngineResult {
+  const raw = record(data) ? data : {};
+  const totals = record(raw.totals) ? raw.totals : {};
+  return {
+    lines: records(raw.lines).map((line, position) => ({
+      index: num(line.index) ?? position,
+      variantId: String(line.variantId ?? ""),
+      quantity: num(line.quantity) ?? 0,
+      listPrice: num(line.listPrice) ?? 0,
+      unitPrice: num(line.unitPrice) ?? 0,
+      lineTotal: num(line.lineTotal) ?? 0,
+      promoId: str(line.promoId),
+      promoIds: strings(line.promoIds),
+      labels: strings(line.labels),
+      isGift: line.isGift === true,
+    })),
+    gift: record(raw.gift) ? toEngineGift(raw.gift) : null,
+    giftOptions: records(raw.giftOptions).map(toEngineGift).filter((gift): gift is SaleEngineGift => !!gift),
+    suggestions: records(raw.suggestions).map(toSuggestion).filter((item): item is SaleSuggestion => !!item),
+    totals: {
+      listSubtotal: num(totals.listSubtotal) ?? 0,
+      promoDiscount: num(totals.promoDiscount) ?? 0,
+      subtotal: num(totals.subtotal) ?? 0,
+    },
+    priceFallback: raw.priceFallback === true,
+  };
+}
+
+/**
+ * FEAT-32 M6a — motor de promociones de la venta nueva: precio de cada línea, regalo y sugerencias para cerrar.
+ * `inventoryId` = almacén de salida (el regalo depende de su stock).
+ */
+export async function evaluateSaleEngine(
+  body: { storeId: string; channel?: string; inventoryId?: string; items: EvaluateItem[] },
+  signal?: AbortSignal,
+): Promise<SaleEngineResult> {
+  const { data } = await axiosAuth.post(`${ventas()}/promos/evaluate`, body, { signal });
+  return toSaleEngineResult(data);
+}
+
 export interface ResolvedPrice {
   variantId: string;
   price: number;

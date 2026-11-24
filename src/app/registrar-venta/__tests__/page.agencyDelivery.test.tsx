@@ -25,10 +25,13 @@ jest.mock("@/services/clients.service", () => ({
 jest.mock("@/services/promos.service", () => ({
   listVolumePromos: jest.fn().mockResolvedValue([]), createVolumePromo: jest.fn(), updatePromo: jest.fn(), deletePromo: jest.fn(),
 }));
-// FEAT-24 H9: precio sugerido y regalos del backend; no forman parte de lo que se prueba aquí.
+// FEAT-24 H9 / FEAT-32 M6a: precio sugerido y motor de promociones (sin promos); no forman parte de lo que se prueba aquí.
 jest.mock("@/services/promotionsService", () => ({
   resolvePrices: async () => [],
-  evaluatePromotions: async () => ({ gifts: [] }),
+  evaluateSaleEngine: async () => ({
+    lines: [], gift: null, giftOptions: [], suggestions: [],
+    totals: { listSubtotal: 0, promoDiscount: 0, subtotal: 0 }, priceFallback: false,
+  }),
 }));
 jest.mock("@/services/inventoryItems.service", () => ({
   searchInventoryItems: jest.fn(),
