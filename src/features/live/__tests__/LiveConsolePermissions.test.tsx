@@ -160,7 +160,7 @@ test("configuration remains editable while purchases are off and enable requires
     "href",
     "/configuracion/tiendas",
   );
-  expect(screen.getByRole("button", { name: "Guardar configuración" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Guardar configuración" })).toBeDisabled();
   (getLiveConsole as jest.Mock).mockResolvedValue(fullConsole(true));
   fireEvent.click(screen.getByRole("button", { name: "Actualizar live" }));
   await waitFor(() => expect(toggle).toBeEnabled());
@@ -236,7 +236,7 @@ test("save shipping, enable purchases and save activation before opening; refres
   });
   const view = render(<LiveConsolePage />);
   const toggle = await screen.findByRole("switch", { name: /^Habilitar compras del live/ });
-  fireEvent.click(screen.getByRole("button", { name: "Configurar envío" }));
+  fireEvent.click(screen.getByRole("button", { name: "Resolver Envío" }));
   await waitFor(() => expect(document.getElementById("live-shipping-settings")).toHaveFocus());
   expect(toggle).toBeDisabled();
   expect(screen.getByRole("link", { name: /Configuración de tienda/ })).toHaveAttribute(
@@ -413,11 +413,12 @@ test("administrator config links to centralized delivery settings without invent
   expect(screen.queryByLabelText("Envío a domicilio")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Envío a agencia")).not.toBeInTheDocument();
   expect(screen.getByRole("switch", { name: "Juntar compras en un envío" })).toBeEnabled();
+  // FEAT-33 A1: sin cambios no hay nada que guardar, y se manda solo lo que cambió
+  // (nunca tarifas de envío: viven en Configuración de tienda).
+  expect(screen.getByRole("button", { name: "Guardar configuración" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("switch", { name: "Juntar compras en un envío" }));
   fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }));
   await waitFor(() =>
-    expect(updateLiveConfig).toHaveBeenCalledWith(
-      "store-a",
-      expect.objectContaining({ homeShipping: null, agencyShipping: null }),
-    ),
+    expect(updateLiveConfig).toHaveBeenCalledWith("store-a", { combineShipping: true }),
   );
 });

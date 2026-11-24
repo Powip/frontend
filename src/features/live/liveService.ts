@@ -55,9 +55,32 @@ export async function getLiveConsole(storeId: string, signal?: AbortSignal) {
 }
 export async function getLiveCatalog(storeId: string, search = "", signal?: AbortSignal) {
   return (
-    await axiosAuth.get<{ products: LiveProduct[]; serverNow: string }>(
-      `${adminPath(storeId)}/catalog`,
-      { params: { search }, signal },
+    await axiosAuth.get<{
+      products: LiveProduct[];
+      /** FEAT-33 A10: almacén de la tienda del que sale el stock. */
+      inventory?: { id: string; name: string };
+      serverNow: string;
+    }>(`${adminPath(storeId)}/catalog`, { params: { search }, signal })
+  ).data;
+}
+/** FEAT-33 A10: la tienda no tiene un único almacén activo; la pantalla ofrece ir a Inventario. */
+export function isLiveWarehouseRequired(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.data?.code === "LIVE_WAREHOUSE_REQUIRED";
+}
+/** FEAT-33 B2: varias variantes con un solo precio live y un solo máximo (todo o nada). */
+export async function updateLiveProducts(
+  storeId: string,
+  input: {
+    variantIds: string[];
+    livePrice?: number;
+    maxPerCustomer?: number | null;
+    enabled?: boolean;
+  },
+) {
+  return (
+    await axiosAuth.put<{ products: LiveProduct[]; serverNow: string }>(
+      `${adminPath(storeId)}/products`,
+      input,
     )
   ).data;
 }
@@ -97,6 +120,15 @@ export async function saveLiveTrustedCustomer(storeId: string, clientId: string)
     `${adminPath(storeId)}/trusted-customers/${encodeURIComponent(clientId)}`,
     {},
   );
+}
+/** FEAT-33 D3: marca de confianza un WhatsApp aunque todavía no haya entrado al live. */
+export async function addLiveTrustedCustomer(storeId: string, input: { name: string; phone: string }) {
+  return (
+    await axiosAuth.post<{ customer: { id: string; name: string; phone: string } }>(
+      `${adminPath(storeId)}/trusted-customers`,
+      input,
+    )
+  ).data;
 }
 export async function removeLiveTrustedCustomer(storeId: string, clientId: string) {
   await axiosAuth.delete(`${adminPath(storeId)}/trusted-customers/${encodeURIComponent(clientId)}`);

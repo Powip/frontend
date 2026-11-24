@@ -6,7 +6,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
-import { LiveErrorBanner, LivePanel } from "./LiveShared";
+import { toast } from "sonner";
+import { LiveErrorBanner, LiveFieldError, LivePanel, LiveSaveState } from "./LiveShared";
+import {
+  type LiveYapeDraft,
+  type LiveYapeErrors,
+  liveYapeDraft,
+  liveYapeErrors,
+  liveYapeInput,
+  sameYapeDraft,
+  savedAtLabel,
+} from "./liveSettingsForm";
 import {
   getLiveYapeConfig,
   liveError,
@@ -28,6 +38,10 @@ export default function LivePaymentSettings({
   onSaved?: () => void;
 }) {
   const [config, setConfig] = useState<LiveYapeConfig | null>(null);
+  // FEAT-33 A1: borrador aparte de lo guardado, para saber qué cambió y poder descartarlo.
+  const [draft, setDraft] = useState<LiveYapeDraft | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<LiveYapeErrors>({});
+  const [savedAt, setSavedAt] = useState<string | null>(null);
   const [errors, setErrors] = useState({ yape: "" });
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
@@ -45,10 +59,12 @@ export default function LivePaymentSettings({
       const result = await getLiveYapeConfig(storeId);
       if (!isCurrent() || request !== sequence.current) return;
       setConfig(result.config);
+      setDraft(liveYapeDraft(result.config));
       setErrors({ yape: "" });
     } catch (cause) {
       if (!isCurrent() || request !== sequence.current) return;
       setConfig(null);
+      setDraft(null);
       setErrors({ yape: liveError(cause) });
     }
   }, [storeId, isCurrent]);
@@ -57,6 +73,9 @@ export default function LivePaymentSettings({
     lock.current = false;
     setBusy("");
     setConfig(null);
+    setDraft(null);
+    setFieldErrors({});
+    setSavedAt(null);
     setQr(null);
     setNotice("");
     if (inputRef.current) inputRef.current.value = "";
@@ -83,18 +102,37 @@ export default function LivePaymentSettings({
       }
     }
   }
-  const valid =
-    !!config &&
-    /^9\d{8}$/.test(config.phone) &&
-    !!config.holder.trim() &&
-    Number.isInteger(config.reviewHours) &&
-    config.reviewHours >= 1 &&
-    config.reviewHours <= 72;
+  const dirty = !!config && !!draft && !sameYapeDraft(draft, liveYapeDraft(config));
+  const edit = <K extends keyof LiveYapeDraft>(key: K, value: LiveYapeDraft[K]) => {
+    setDraft((current) => (current ? { ...current, [key]: value } : current));
+    setFieldErrors((current) => ({ ...current, [key]: undefined }));
+  };
+  function save() {
+    if (!draft) return;
+    const found = liveYapeErrors(draft);
+    setFieldErrors(found);
+    if (Object.keys(found).length) {
+      toast.error("Revisa los campos marcados");
+      return;
+    }
+    void run("yape", async () => {
+      const result = await updateLiveYapeConfig(storeId, liveYapeInput(draft));
+      if (!isCurrent()) return;
+      setConfig(result.config);
+      setDraft(liveYapeDraft(result.config));
+      setSavedAt(savedAtLabel());
+      toast.success(
+        `✓ Yape guardado · el catálogo ya muestra ${result.config.phone.replace(/(\d{3})(\d{3})(\d{3})/, "$1 $2 $3")}`,
+      );
+      onSaved?.();
+    });
+  }
   return (
     <div id="live-yape-settings" tabIndex={-1} className="space-y-5">
       <LivePanel
         title="Yape del negocio"
-        description="El cliente envía su comprobante y tu equipo valida el pago antes de confirmar el pedido."
+        description="El cliente yapea a este número y envía su número de operación. Tu equipo valida el ingreso antes de confirmar el pedido."
+        aside={<LiveSaveState dirty={dirty} savedAt={savedAt} />}
       >
         {errors.yape ? (
           <div className="mb-4">
@@ -106,7 +144,7 @@ export default function LivePaymentSettings({
             {notice}
           </p>
         ) : null}
-        {!config ? (
+        {!config || !draft ? (
           !errors.yape ? (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -115,19 +153,11 @@ export default function LivePaymentSettings({
           ) : null
         ) : (
           <form
+            noValidate
             className="space-y-5"
             onSubmit={(event) => {
               event.preventDefault();
-              if (valid)
-                void run("yape", async () => {
-                  const { qrUrl: _qrUrl, ...input } = config;
-                  const result = await updateLiveYapeConfig(storeId, input);
-                  if (isCurrent()) {
-                    setConfig(result.config);
-                    setNotice("Configuración de Yape guardada.");
-                    onSaved?.();
-                  }
-                });
+              save();
             }}
           >
             <label
@@ -137,42 +167,40 @@ export default function LivePaymentSettings({
               Permitir pagar por Yape
               <Switch
                 id="live-yape-enabled"
-                checked={config.enabled}
+                checked={draft.enabled}
                 disabled={!canManage || !!busy}
-                onCheckedChange={(enabled) =>
-                  setConfig((value) => (value ? { ...value, enabled } : value))
-                }
+                onCheckedChange={(enabled) => edit("enabled", enabled)}
               />
             </label>
             <div className="grid gap-4 sm:grid-cols-2">
-              <label htmlFor="live-yape-phone" className="grid gap-2 text-sm font-medium">
-                Número Yape
+              <div className="grid content-start gap-2 text-sm font-medium">
+                <label htmlFor="live-yape-phone">Número Yape</label>
                 <Input
                   id="live-yape-phone"
-                  inputMode="numeric"
-                  maxLength={9}
+                  inputMode="tel"
+                  maxLength={16}
                   placeholder="9 dígitos"
                   disabled={!canManage || !!busy}
-                  value={config.phone}
-                  onChange={(event) =>
-                    setConfig((value) =>
-                      value ? { ...value, phone: event.target.value.replace(/\D/g, "") } : value,
-                    )
-                  }
+                  value={draft.phone}
+                  aria-invalid={fieldErrors.phone ? true : undefined}
+                  aria-describedby={fieldErrors.phone ? "live-yape-phone-error" : undefined}
+                  onChange={(event) => edit("phone", event.target.value)}
                 />
-              </label>
-              <label htmlFor="live-yape-holder" className="grid gap-2 text-sm font-medium">
-                Titular de la cuenta
+                <LiveFieldError id="live-yape-phone-error" message={fieldErrors.phone} />
+              </div>
+              <div className="grid content-start gap-2 text-sm font-medium">
+                <label htmlFor="live-yape-holder">Titular de la cuenta</label>
                 <Input
                   id="live-yape-holder"
                   maxLength={150}
                   disabled={!canManage || !!busy}
-                  value={config.holder}
-                  onChange={(event) =>
-                    setConfig((value) => (value ? { ...value, holder: event.target.value } : value))
-                  }
+                  value={draft.holder}
+                  aria-invalid={fieldErrors.holder ? true : undefined}
+                  aria-describedby={fieldErrors.holder ? "live-yape-holder-error" : undefined}
+                  onChange={(event) => edit("holder", event.target.value)}
                 />
-              </label>
+                <LiveFieldError id="live-yape-holder-error" message={fieldErrors.holder} />
+              </div>
             </div>
             <div className="flex flex-wrap items-start gap-4 rounded-xl border bg-muted/20 p-4">
               {safeLiveUrl(config.qrUrl) ? (
@@ -260,33 +288,48 @@ export default function LivePaymentSettings({
                 </div>
               </div>
             </div>
-            <label
-              htmlFor="live-yape-review-hours"
-              className="grid max-w-sm gap-2 text-sm font-medium"
-            >
-              Plazo de revisión (horas)
+            <div className="grid max-w-sm gap-2 text-sm font-medium">
+              <label htmlFor="live-yape-review-hours">Plazo de revisión (horas)</label>
               <Input
                 id="live-yape-review-hours"
-                type="number"
-                min={1}
-                max={72}
-                step={1}
+                inputMode="numeric"
                 disabled={!canManage || !!busy}
-                value={config.reviewHours}
-                onChange={(event) =>
-                  setConfig((value) =>
-                    value ? { ...value, reviewHours: Number(event.target.value) } : value,
-                  )
+                value={draft.reviewHours}
+                aria-invalid={fieldErrors.reviewHours ? true : undefined}
+                aria-describedby={
+                  fieldErrors.reviewHours
+                    ? "live-yape-hours-error live-yape-hours-help"
+                    : "live-yape-hours-help"
                 }
+                onChange={(event) => edit("reviewHours", event.target.value)}
               />
-              <span className="text-xs font-normal leading-relaxed text-muted-foreground">
-                Al recibir el comprobante, el stock espera la revisión del negocio. Los pagos fuera
-                de plazo siguen pendientes de una decisión.
+              <LiveFieldError id="live-yape-hours-error" message={fieldErrors.reviewHours} />
+              <span
+                id="live-yape-hours-help"
+                className="text-xs font-normal leading-relaxed text-muted-foreground"
+              >
+                Entre 1 y 72. El stock queda reservado mientras tu equipo revisa el comprobante. Si
+                se vence, el pago sigue en la cola con «requiere una decisión».
               </span>
-            </label>
-            <Button type="submit" disabled={!canManage || !!busy || !valid}>
-              {busy === "yape" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Guardar Yape
-            </Button>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={!canManage || !!busy || !dirty}>
+                {busy === "yape" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}Guardar Yape
+              </Button>
+              {dirty ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!!busy}
+                  onClick={() => {
+                    setDraft(liveYapeDraft(config));
+                    setFieldErrors({});
+                  }}
+                >
+                  Descartar
+                </Button>
+              ) : null}
+            </div>
           </form>
         )}
       </LivePanel>

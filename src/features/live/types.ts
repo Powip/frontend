@@ -122,6 +122,8 @@ export interface LiveConsoleData {
   session: LiveSession | null;
   products: LiveProduct[];
   reservations: LiveReservation[];
+  /** Clientes que entraron al live de esta tienda (FEAT-33 D3: buscar para marcar de confianza). */
+  customers?: LiveTrustedCustomer[];
   trustedCustomers: LiveTrustedCustomer[];
   metrics: LiveMetrics;
   paymentMethods: LivePaymentMethod[];
