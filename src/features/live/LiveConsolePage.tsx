@@ -4,6 +4,7 @@ import { toWhatsAppDigits } from "@/lib/phone";
 import { createLivePolling, type LivePollingController } from "./livePolling";
 import { liveAdminError } from "./liveService";
 import LiveAdvisors from "./LiveAdvisors";
+import LiveSellersPanel from "./LiveSellersPanel";
 import { liveLinks } from "./liveLinks";
 import LiveProductsTable from "./LiveProductsTable";
 
@@ -82,11 +83,12 @@ import type {
 } from "./types";
 
 // FEAT-33 B1: sin «Pagos por revisar»; los comprobantes se validan en Finanzas › Pagos por validar.
-type Tab = "console" | "reservations" | "products" | "config";
+type Tab = "console" | "reservations" | "products" | "sellers" | "config";
 const tabLabels: Record<Tab, string> = {
   console: "Consola en vivo",
   reservations: "Apartados",
   products: "Productos del live",
+  sellers: "Vendedores y comisiones",
   config: "Configuración",
 };
 
@@ -806,6 +808,18 @@ function ScopedLiveConsolePage({
                   </LiveEmpty>
                 )}
               </LivePanel>
+            </TabsContent>
+            <TabsContent value="sellers" className="space-y-5">
+              {canManage && storeId ? (
+                <LiveSellersPanel
+                  storeId={storeId}
+                  products={data.products}
+                  links={links}
+                  canManage={canManage}
+                />
+              ) : (
+                <LiveEmpty>Solo un administrador ve los vendedores y sus comisiones.</LiveEmpty>
+              )}
             </TabsContent>
             <TabsContent value="config" className="space-y-5">
               <LiveReadinessPanel

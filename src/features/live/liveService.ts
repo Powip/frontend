@@ -2,6 +2,7 @@ import axios from "axios";
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
 import type {
+  LiveAgreement,
   LiveCheckout,
   LiveConfig,
   LiveConsoleData,
@@ -13,6 +14,10 @@ import type {
   LiveQuote,
   LiveQuoteInput,
   LiveReservation,
+  LiveSeller,
+  LiveSellerInput,
+  LiveSellerSales,
+  LiveSellersData,
   LiveSession,
 } from "./types";
 
@@ -171,8 +176,60 @@ export async function getPublicLive(storeId: string, visitor: string, signal?: A
     await axios.get<LivePublicData>(publicPath(storeId), {
       ...anonymousOptions(visitor),
       ...(signal ? { signal } : {}),
-      params: { channel: liveEntryContext().channel },
+      params: liveCatalogParams(),
     })
+  ).data;
+}
+/** FEAT-33 C2: con el link de una creadora (`?a=`/`?v=`) el catálogo trae solo sus productos. */
+function liveCatalogParams() {
+  const entry = liveEntryContext();
+  return {
+    channel: entry.channel,
+    ...(entry.advisorCode ? { a: entry.advisorCode } : {}),
+    ...(entry.sellerCode ? { v: entry.sellerCode } : {}),
+  };
+}
+
+/* FEAT-33 L5a (C1/C2): vendedores por comisión. */
+const sellersPath = (storeId: string) => `${adminPath(storeId)}/sellers`;
+export async function getLiveSellers(storeId: string) {
+  return (await axiosAuth.get<LiveSellersData>(sellersPath(storeId))).data;
+}
+export async function createLiveSeller(storeId: string, input: LiveSellerInput) {
+  return (await axiosAuth.post<LiveSeller>(sellersPath(storeId), input)).data;
+}
+export async function updateLiveSellerAgreement(storeId: string, sellerId: string, agreement: LiveAgreement) {
+  return (
+    await axiosAuth.put<LiveSeller>(`${sellersPath(storeId)}/${encodeURIComponent(sellerId)}/agreement`, agreement)
+  ).data;
+}
+export async function updateLiveSellerProducts(storeId: string, sellerId: string, productIds: string[]) {
+  return (
+    await axiosAuth.put<LiveSeller>(`${sellersPath(storeId)}/${encodeURIComponent(sellerId)}/products`, {
+      productIds,
+    })
+  ).data;
+}
+export async function getLiveSellerSales(storeId: string, sellerId: string) {
+  return (
+    await axiosAuth.get<LiveSellerSales>(`${sellersPath(storeId)}/${encodeURIComponent(sellerId)}/sales`)
+  ).data;
+}
+export async function payLiveSellerCommission(
+  storeId: string,
+  sellerId: string,
+  input: { amount: number; note?: string },
+) {
+  return (
+    await axiosAuth.post<LiveSeller>(`${sellersPath(storeId)}/${encodeURIComponent(sellerId)}/payouts`, input)
+  ).data;
+}
+export async function updateLiveSuggestedAgreement(storeId: string, agreement: LiveAgreement) {
+  return (
+    await axiosAuth.put<{ suggestedAgreement: LiveAgreement }>(
+      `${sellersPath(storeId)}/suggested-agreement`,
+      agreement,
+    )
   ).data;
 }
 /**
