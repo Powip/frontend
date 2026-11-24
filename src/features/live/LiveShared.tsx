@@ -71,9 +71,13 @@ export function LiveCountdown({
     >
       {seconds <= 0
         ? "Vencido"
-        : `${Math.floor(seconds / 60)
-            .toString()
-            .padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`}
+        : seconds >= 3600
+          ? `${Math.floor(seconds / 3600)} h ${Math.floor((seconds % 3600) / 60)
+              .toString()
+              .padStart(2, "0")} min`
+          : `${Math.floor(seconds / 60)
+              .toString()
+              .padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`}
     </span>
   );
 }
