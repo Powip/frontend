@@ -6,6 +6,12 @@ import axios from "axios";
 import { GATEWAY } from "@/lib/gateway";
 import { liveBuyerLabel, liveError, liveMoney } from "./liveService";
 import LiveManualPaymentDialog from "./LiveManualPaymentDialog";
+import { useLiveBodyLook } from "./LiveBrand";
+import { LIVE_DEFAULT_ACCENT, liveAppearanceStyle } from "./liveAppearance";
+
+// FEAT-33 B5: el cuadro de pago Yape usa las variables del catálogo (la página del pedido aún no
+// recibe la apariencia de la tienda: usa la de por defecto).
+const ORDER_LOOK = liveAppearanceStyle({ theme: "dark", color: LIVE_DEFAULT_ACCENT });
 interface Tracking {
   storeId: string;
   orderNumber: string;
@@ -46,6 +52,7 @@ interface Tracking {
   };
 }
 export default function LiveOrderTracking({ token }: { token: string }) {
+  useLiveBodyLook(ORDER_LOOK);
   const [data, setData] = useState<Tracking | null>(null),
     [error, setError] = useState(""),
     [checkout, setCheckout] = useState<string | null>(null),

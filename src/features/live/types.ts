@@ -28,6 +28,14 @@ export interface LiveConfig {
   advisorId?: string;
   advisorName?: string;
   advisors?: { id: string; name: string; code: string; commission?: boolean }[];
+  /** FEAT-33 B5: cómo ve el comprador el catálogo. El logo llega como URL firmada. */
+  appearance?: LiveAppearanceConfig;
+}
+export interface LiveAppearanceConfig {
+  theme?: "dark" | "light";
+  color?: string;
+  displayName?: string;
+  logoUrl?: string | null;
 }
 export interface LiveSession {
   id: string;

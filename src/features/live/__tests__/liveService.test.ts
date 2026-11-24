@@ -13,7 +13,9 @@ import {
   liveError,
   liveVisitorToken,
   quoteLivePurchase,
+  removeLiveLogo,
   safeLiveUrl,
+  uploadLiveLogo,
 } from "../liveService";
 import type { LivePurchaseInput } from "../types";
 
@@ -23,7 +25,7 @@ jest.mock("axios", () => ({
 }));
 jest.mock("@/lib/axiosAuth", () => ({
   __esModule: true,
-  default: { get: jest.fn(), put: jest.fn(), patch: jest.fn(), post: jest.fn() },
+  default: { get: jest.fn(), put: jest.fn(), patch: jest.fn(), post: jest.fn(), delete: jest.fn() },
 }));
 const id = "1042cd44-14dd-47e3-9503-ce24f6090853";
 const input: LivePurchaseInput = {
@@ -197,4 +199,23 @@ test("manual proof rejects PDFs and large images before sending anything", async
     }),
   ).rejects.toThrow("5 MB");
   expect(axios.post).not.toHaveBeenCalled();
+});
+
+describe("catalog logo (FEAT-33 B5)", () => {
+  test("uploads the file with the session to the store logo route and returns the new config", async () => {
+    (axiosAuth.post as jest.Mock).mockResolvedValue({ data: { config: { appearance: { logoUrl: "u" } } } });
+    const file = new File(["png"], "logo.png", { type: "image/png" });
+    await expect(uploadLiveLogo(id, file)).resolves.toEqual({ config: { appearance: { logoUrl: "u" } } });
+    const [url, body] = (axiosAuth.post as jest.Mock).mock.calls.at(-1);
+    expect(url).toMatch(new RegExp(`/live/stores/${id}/appearance/logo$`));
+    expect((body as FormData).get("file")).toBe(file);
+  });
+
+  test("removes it with the session", async () => {
+    (axiosAuth.delete as jest.Mock).mockResolvedValue({ data: { config: {} } });
+    await removeLiveLogo(id);
+    expect(axiosAuth.delete).toHaveBeenCalledWith(
+      expect.stringMatching(new RegExp(`/live/stores/${id}/appearance/logo$`)),
+    );
+  });
 });

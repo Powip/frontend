@@ -175,20 +175,20 @@ export default function LiveCheckoutDelivery({
         if (!o && !busy) onClose();
       }}
     >
-      <DialogContent className="max-h-[94dvh] overflow-y-auto border-white/15 bg-[#171428] text-slate-100 sm:max-w-lg">
+      <DialogContent className="max-h-[94dvh] overflow-y-auto border-[var(--b-line)] bg-[var(--b-bg)] text-[var(--b-ink)] sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>1 Entrega · 2 Paga · 3 Confirma</DialogTitle>
-          <DialogDescription className="text-slate-300">
+          <DialogDescription className="text-[var(--b-mut)]">
             Elige dónde recibir tu pedido.
           </DialogDescription>
         </DialogHeader>
         {saved ? (
-          <div className="rounded-xl border border-emerald-300/30 p-4">
+          <div className="rounded-xl border border-[var(--acc)] p-4">
             <p>Enviar a {delivery.address || delivery.agency}</p>
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-[var(--b-mut)]">
               {delivery.district}, {delivery.province}, {delivery.department}
             </p>
-            <button className="mt-2 min-h-11 text-emerald-300" onClick={() => setSaved(false)}>
+            <button className="mt-2 min-h-11 text-[var(--acc-tx)]" onClick={() => setSaved(false)}>
               Cambiar entrega
             </button>
           </div>
@@ -204,18 +204,18 @@ export default function LiveCheckoutDelivery({
           />
         )}
         {error ? (
-          <p role="alert" className="text-sm text-rose-200">
+          <p role="alert" className="text-sm text-[var(--b-err)]">
             {error}
           </p>
         ) : invalid ? (
-          <p className="text-sm text-slate-300">{invalid}</p>
+          <p className="text-sm text-[var(--b-mut)]">{invalid}</p>
         ) : null}
         {quote?.combinedOrderNumber ? (
-          <p className="rounded-xl bg-emerald-400/10 p-3 text-sm text-emerald-200">
+          <p className="rounded-xl bg-[var(--acc-soft)] p-3 text-sm text-[var(--acc-tx)]">
             Se suma a {quote.combinedOrderNumber}. No pagas envío otra vez.
           </p>
         ) : null}
-        <footer className="sticky -bottom-6 space-y-3 border-t border-white/15 bg-[#171428] py-4">
+        <footer className="sticky -bottom-6 space-y-3 border-t border-[var(--b-line)] bg-[var(--b-bg)] py-4">
           <p className="flex justify-between text-sm">
             <span>Productos {liveMoney(subtotal)}</span>
             <span>Envío {quote ? liveMoney(quote.shipping) : "según entrega"}</span>
@@ -235,7 +235,7 @@ export default function LiveCheckoutDelivery({
           {methods.map((m) => (
             <button
               key={m}
-              className="min-h-12 w-full rounded-xl bg-emerald-400 p-3 font-bold text-slate-950 disabled:opacity-40"
+              className="min-h-12 w-full rounded-xl bg-[var(--acc)] p-3 font-bold text-[var(--acc-ink)] disabled:opacity-40"
               disabled={busy || quoting || !quote || !!invalid}
               onClick={() => void proceed(m)}
             >
@@ -243,7 +243,7 @@ export default function LiveCheckoutDelivery({
             </button>
           ))}
           {!methods.length ? (
-            <p className="text-sm text-amber-200">
+            <p className="text-sm text-[var(--b-warn)]">
               La tienda todavía no habilitó un medio de pago.
             </p>
           ) : null}

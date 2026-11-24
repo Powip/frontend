@@ -89,6 +89,33 @@ describe("live config form (FEAT-33 A1/B4)", () => {
   });
 });
 
+describe("catalog appearance in the config form (FEAT-33 B5)", () => {
+  test("an old config without appearance has nothing to send", () => {
+    expect(liveConfigChanges(saved, liveConfigDraft(saved))).toEqual({});
+  });
+
+  test("sends only the appearance fields that changed, together", () => {
+    const withLook = { ...saved, appearance: { theme: "dark" as const, color: "#72efe8" } };
+    const draft = { ...liveConfigDraft(withLook), color: "#F37EA3", displayName: " Kunca Store " };
+    expect(liveConfigChanges(withLook, draft)).toEqual({
+      appearance: { color: "#f37ea3", displayName: "Kunca Store" },
+    });
+  });
+
+  test("choosing the default look on an old config sends nothing", () => {
+    const draft = { ...liveConfigDraft(saved), theme: "dark" as const, color: "#72efe8" };
+    expect(liveConfigChanges(saved, draft)).toEqual({});
+  });
+
+  test.each([
+    ["color", "rosa", "Elige un color válido."],
+    ["displayName", "x".repeat(61), "Hasta 60 caracteres."],
+  ] as const)("rejects %s = %p", (field, value, message) => {
+    const draft = { ...liveConfigDraft(saved), [field]: value };
+    expect(liveConfigErrors(saved, draft)).toEqual({ [field]: message });
+  });
+});
+
 describe("live Yape form (FEAT-33 A1)", () => {
   const yape = {
     enabled: true,

@@ -67,8 +67,10 @@ import {
   releaseLiveReservation,
   removeLiveTrustedCustomer,
   saveLiveTrustedCustomer,
+  removeLiveLogo,
   updateLiveConfig,
   updateLiveProducts,
+  uploadLiveLogo,
   updateLiveSession,
 } from "./liveService";
 import type {
@@ -827,8 +829,16 @@ function ScopedLiveConsolePage({
                 onConsole={() => navigateToTab("console")}
                 canManage={canManage}
                 busy={!!busy}
+                storeName={data.store?.name}
                 onSave={(changes) =>
                   run("config", () => updateLiveConfig(storeId, changes), "✓ Configuración guardada")
+                }
+                onLogo={(file) =>
+                  run(
+                    "config",
+                    () => (file ? uploadLiveLogo(storeId, file) : removeLiveLogo(storeId)),
+                    file ? "✓ Logo guardado" : "Logo quitado",
+                  )
                 }
               />
             </TabsContent>
