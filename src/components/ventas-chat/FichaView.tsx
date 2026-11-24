@@ -175,7 +175,7 @@ export default function FichaView() {
                       selected?.id === s.id && "border-primary bg-accent",
                     )}
                   >
-                    <span className="min-w-0 truncate font-medium">{s.name}</span>
+                    <span className="min-w-0 break-words sm:truncate font-medium">{s.name}</span>
                     {s.price && <span className="shrink-0 text-xs text-muted-foreground">{s.price}</span>}
                   </button>
                 </li>

@@ -4,12 +4,14 @@ import { Loader2, PhoneCall } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { telHref } from "@/lib/crmPhone";
+import { isMaskedPhone, telHref } from "@/lib/crmPhone";
 import { crmError } from "@/services/crmService";
+import { useCallPermission } from "@/hooks/useCallSessions";
 import { useCalls } from "@/hooks/useCrmCalls";
 import { useCrmMe } from "@/hooks/useCrmMe";
 import type { Conversation } from "@/types/crm";
 import CallDialog from "./CallDialog";
+import WhatsAppCallButton from "./WhatsAppCallButton";
 import { CALL_DIRECTION_LABEL, CALL_RESULT_LABEL, CALL_RESULT_TONE, formatCallDuration } from "./calls";
 import { contactLabel, phoneForCustomer } from "./format";
 
@@ -17,13 +19,19 @@ import { contactLabel, phoneForCustomer } from "./format";
 export function ChatCallButtons({ conversation }: { conversation: Conversation }) {
   const { phoneMasked } = useCrmMe();
   const [open, setOpen] = useState(false);
-  const href = telHref(phoneForCustomer(conversation));
+  const phone = phoneForCustomer(conversation);
+  const href = telHref(phone);
   return (
     <>
+      <WhatsAppCallButton
+        conversationId={conversation.id}
+        contactName={conversation.contactName}
+        available={conversation.channel === "whatsapp"}
+      />
       {href ? (
         <Button asChild size="sm" variant="outline">
           <a href={href}>
-            <PhoneCall /> Llamar
+            <PhoneCall /> Llamar por teléfono
           </a>
         </Button>
       ) : (
@@ -32,9 +40,13 @@ export function ChatCallButtons({ conversation }: { conversation: Conversation }
           size="sm"
           variant="outline"
           disabled
-          title="Guarda el teléfono del cliente para poder llamar"
+          title={
+            isMaskedPhone(phone)
+              ? "El teléfono está oculto: llama por WhatsApp"
+              : "Guarda el teléfono del cliente para poder llamar"
+          }
         >
-          <PhoneCall /> Llamar
+          <PhoneCall /> Llamar por teléfono
         </Button>
       )}
       <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
@@ -49,6 +61,22 @@ export function ChatCallButtons({ conversation }: { conversation: Conversation }
         />
       )}
     </>
+  );
+}
+
+/** Si el cliente aceptó que lo llamen por WhatsApp. */
+export function CallPermissionRow({ conversation }: { conversation: Conversation }) {
+  const available = conversation.channel === "whatsapp";
+  const { data } = useCallPermission(available ? conversation.id : null);
+  if (available && !data) return null;
+  return (
+    <p className="flex items-center justify-between gap-2 text-sm">
+      <span className="text-muted-foreground">Llamadas</span>
+      <span className={cn("font-medium", data?.canCall && "text-teal-700")}>
+        {!available && "No disponible en este canal"}
+        {data && (data.canCall ? "Aceptó recibir llamadas" : "Aún no da permiso")}
+      </span>
+    </p>
   );
 }
 

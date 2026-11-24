@@ -9,6 +9,7 @@ import { useConversations } from "@/hooks/useCrmChat";
 import { useCrmMe } from "@/hooks/useCrmMe";
 import type { AssignedFilter, ConversationChannel, ConversationStatus } from "@/types/crm";
 import ChannelBadge from "./ChannelBadge";
+import ConversationPills from "./ConversationPills";
 import { INDICATOR_PARAMS, type InboxIndicator } from "./InboxIndicators";
 import { contactLabel, relativeTime } from "./format";
 
@@ -202,6 +203,7 @@ export default function ConversationList({
                     </span>
                   )}
                 </span>
+                <ConversationPills conversation={c} />
                 {c.pauHelpReason && (
                   <span
                     className="flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-400"
@@ -213,7 +215,7 @@ export default function ConversationList({
                 )}
                 {c.resumeAt && (
                   <span
-                    className="flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-400"
+                    className="flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-400"
                     data-testid="thinking-flag"
                   >
                     <Clock className="h-3 w-3" aria-hidden /> Lo está pensando

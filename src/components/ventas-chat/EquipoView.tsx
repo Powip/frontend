@@ -94,7 +94,7 @@ function WaitingSection({ stats }: { stats: TeamStats }) {
             return (
               <li key={c.id} className="flex flex-wrap items-center gap-3 p-3 text-sm">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{label}</p>
+                  <p className="break-words sm:truncate font-medium">{label}</p>
                   <p className="text-xs text-muted-foreground">
                     Esperando {formatMinutes(waitingMinutes)} · Asignada a{" "}
                     {c.assignedUserName ?? "nadie"}
@@ -326,7 +326,7 @@ function DailyGoal({ today }: { today: TeamToday }) {
           <Target className="h-4 w-4" /> Meta del día
         </h2>
         <form
-          className="flex items-center gap-2"
+          className="flex flex-wrap items-center gap-2"
           onSubmit={(e) => {
             e.preventDefault();
             if (dirty) setGoal.mutate(parsed, { onSuccess: () => setDraft(null) });
@@ -363,7 +363,7 @@ function DailyGoal({ today }: { today: TeamToday }) {
             return (
               <li key={m.userId} className="space-y-1">
                 <div className="flex justify-between gap-2 text-xs">
-                  <span className="truncate">{m.userName}</span>
+                  <span className="break-words sm:truncate">{m.userName}</span>
                   <span className="tabular-nums text-muted-foreground">
                     {formatMoney(m.collected)}
                     {p != null && ` · ${p}%`}

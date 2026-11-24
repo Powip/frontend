@@ -1,5 +1,5 @@
 "use client";
-import { toLocalPhone } from "@/lib/crmPhone";
+import { isMaskedPhone, toLocalPhone } from "@/lib/crmPhone";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   useMutation,
@@ -22,6 +22,7 @@ import {
 import {
   crmError,
   getConversation,
+  getConversationClient,
   getInboxSummary,
   listConversationFollowups,
   listConversationOrders,
@@ -269,24 +270,34 @@ export function useConversationOrders(id: string | null) {
 }
 
 /** Pedido real de Core (total, estado, pagos). Si falla, la UI usa el número guardado. */
-export function useCoreOrder(orderId: string) {
+export function useCoreOrder(orderId: string | null) {
   return useQuery({
     queryKey: ["crm", "core-order", orderId] as const,
     queryFn: async () =>
       (await axiosAuth.get<OrderHeader>(`${GATEWAY.ventas}/order-header/${orderId}`)).data,
+    enabled: !!orderId,
     retry: false,
   });
 }
 
-/** Busca en Core el cliente que tiene el teléfono de la conversación (null = no existe). */
-export function useConversationClient(companyId: string | undefined, phone: string | undefined) {
+/**
+ * Busca en Core el cliente que tiene el teléfono de la conversación (null = no existe).
+ * Con el teléfono oculto lo busca el CRM, que conoce el número real.
+ */
+export function useConversationClient(
+  companyId: string | undefined,
+  phone: string | undefined,
+  conversationId: string,
+) {
+  const masked = isMaskedPhone(phone);
   // WhatsApp entrega el número con código de país («51987654321»); Clientes
   // guarda los peruanos con 9 dígitos, así que se busca en ese formato.
   const localPhone = phone ? toLocalPhone(phone) : "";
   return useQuery({
-    queryKey: ["crm", "client", companyId ?? "", localPhone] as const,
-    queryFn: () => fetchClientByPhone(companyId!, localPhone),
-    enabled: !!companyId && !!localPhone,
+    queryKey: ["crm", "client", companyId ?? "", masked ? conversationId : localPhone] as const,
+    queryFn: () =>
+      masked ? getConversationClient(conversationId) : fetchClientByPhone(companyId!, localPhone),
+    enabled: !!companyId && (masked || !!localPhone),
     retry: false,
   });
 }

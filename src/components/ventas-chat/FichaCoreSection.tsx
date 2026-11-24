@@ -120,7 +120,7 @@ export function FichaAlbum({ sheetId, sheetName }: { sheetId: string; sheetName:
       </div>
       {link.data && (
         <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-2 py-1.5 text-xs" data-testid="catalog-link">
-          <a href={link.data.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 break-all line-clamp-2 text-primary underline">
+          <a href={link.data.url} target="_blank" rel="noopener noreferrer" className="min-w-0 flex-1 break-all sm:line-clamp-2 text-primary underline">
             {link.data.url}
           </a>
           <span className="text-muted-foreground">Vence {new Date(link.data.expiresAt).toLocaleDateString("es-PE")}</span>
@@ -150,13 +150,13 @@ export function FichaAlbum({ sheetId, sheetName }: { sheetId: string; sheetName:
                 </a>
               )}
               <div className="flex items-center gap-1">
-                <span className="min-w-0 flex-1 truncate text-xs font-medium">{it.title}</span>
+                <span className="min-w-0 flex-1 break-words sm:truncate text-xs font-medium">{it.title}</span>
                 {it.status !== "published" && (
                   <Badge variant={it.status === "rejected" ? "destructive" : "secondary"}>{STATUS_LABEL[it.status]}</Badge>
                 )}
               </div>
               {it.proposedByName && it.status !== "published" && (
-                <p className="truncate text-[11px] text-muted-foreground">Propuso: {it.proposedByName}</p>
+                <p className="break-words sm:truncate text-[11px] text-muted-foreground">Propuso: {it.proposedByName}</p>
               )}
               <div className="flex flex-wrap items-center gap-1">
                 <a href={it.url} target="_blank" rel="noopener noreferrer" aria-label={`Abrir ${it.title}`} className="rounded p-1 hover:bg-accent">

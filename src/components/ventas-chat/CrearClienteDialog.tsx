@@ -14,15 +14,17 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/shared/PhoneInput";
-import { toLocalPhone } from "@/lib/crmPhone";
+import { isMaskedPhone, toLocalPhone } from "@/lib/crmPhone";
 import { createClient } from "@/services/clients.service";
+import { createConversationClient } from "@/services/crmService";
 import type { Client } from "@/interfaces/ICliente";
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   companyId: string;
-  /** Teléfono de la conversación (con código de país, solo dígitos). */
+  conversationId: string;
+  /** Teléfono de la conversación; oculto si el usuario no puede verlo. */
   phone: string;
   /** Nombre del perfil de WhatsApp, si lo hay. */
   name: string | null;
@@ -39,13 +41,15 @@ export default function CrearClienteDialog({
   open,
   onOpenChange,
   companyId,
+  conversationId,
   phone,
   name,
   onCreated,
 }: Props) {
+  const masked = isMaskedPhone(phone);
   const [form, setForm] = useState({
     fullName: name?.trim() ?? "",
-    phoneNumber: toLocalPhone(phone),
+    phoneNumber: masked ? phone : toLocalPhone(phone),
     city: "",
     province: "",
     district: "",
@@ -64,16 +68,21 @@ export default function CrearClienteDialog({
     if (missing.length > 0 || saving) return;
     setSaving(true);
     try {
-      const client = await createClient({
-        companyId,
+      const data = {
         fullName: form.fullName.trim(),
-        phoneNumber: form.phoneNumber,
-        clientType: "TRADICIONAL",
         city: form.city.trim(),
         province: form.province.trim(),
         district: form.district.trim(),
         address: form.address.trim(),
-      });
+      };
+      const client = masked
+        ? await createConversationClient(conversationId, data)
+        : await createClient({
+            ...data,
+            companyId,
+            phoneNumber: form.phoneNumber,
+            clientType: "TRADICIONAL",
+          });
       toast.success("Cliente creado");
       onCreated(client);
       onOpenChange(false);
@@ -116,11 +125,15 @@ export default function CrearClienteDialog({
             <Label htmlFor="crm-cli-phone">
               Teléfono <span className="text-destructive">*</span>
             </Label>
-            <PhoneInput
-              id="crm-cli-phone"
-              value={form.phoneNumber}
-              onChange={set("phoneNumber")}
-            />
+            {masked ? (
+              <Input id="crm-cli-phone" value={phone} readOnly disabled />
+            ) : (
+              <PhoneInput
+                id="crm-cli-phone"
+                value={form.phoneNumber}
+                onChange={set("phoneNumber")}
+              />
+            )}
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
             {field("city", "Departamento")}

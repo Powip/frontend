@@ -163,7 +163,7 @@ export default function GuionSheetsManager() {
         {sheets.data?.map((s) => (
           <li key={s.id} className="space-y-2 rounded-md border p-3" data-testid="sheet-row">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="min-w-0 flex-1 truncate text-sm font-semibold">{s.name}</span>
+              <span className="min-w-0 flex-1 break-words sm:truncate text-sm font-semibold">{s.name}</span>
               {s.price && <span className="text-sm text-muted-foreground">{s.price}</span>}
               {s.coreProductId && <Badge variant="secondary">Core</Badge>}
               {!s.active && <Badge variant="outline">Inactivo</Badge>}

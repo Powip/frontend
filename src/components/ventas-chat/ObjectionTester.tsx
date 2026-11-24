@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useTestObjection } from "@/hooks/useCrmSalesTools";
+import SuggestionSourceBadge from "./SuggestionSourceBadge";
 
 /**
  * Prueba la detección automática con un mensaje de ejemplo. En el chat la
@@ -54,7 +55,7 @@ export default function ObjectionTester() {
               <p className="flex flex-wrap items-center gap-2 font-medium">
                 Objeción: {r.label}
                 <Badge variant="secondary">{Math.round(r.confidence * 100)} %</Badge>
-                <Badge variant="outline">{r.source === "llm" ? "IA" : "Reglas"}</Badge>
+                <SuggestionSourceBadge source={r.source} />
               </p>
               {r.suggestedResponse ? (
                 <p className="text-muted-foreground">Respuesta sugerida: {r.suggestedResponse}</p>

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import { getStatusLabel } from "@/utils/domain/orders-status-flow";
 import type { Client } from "@/interfaces/ICliente";
@@ -14,9 +15,10 @@ import type { Conversation, ConversationOrder } from "@/types/crm";
 import { crmError } from "@/services/crmService";
 import { useConversationOrders, useCoreOrder, useUpdateConversation } from "@/hooks/useCrmChat";
 import { useCrmMe } from "@/hooks/useCrmMe";
-import ChatCallsSection from "./ChatCallsSection";
+import ChatCallsSection, { CallPermissionRow } from "./ChatCallsSection";
 import ChatAdSignalSection from "./ChatAdSignalSection";
-import { FollowupsSection, TagsSection } from "./ChatExtrasSections";
+import { FollowupsSection, StageRulesSection, TagsSection } from "./ChatExtrasSections";
+import { ClientHistorySection, ClientOriginRows, OtherChannelsSection } from "./ClientProfileSections";
 import { PipelineSection, TasksSection } from "./ChatPlanningSections";
 import CustomerPhoneField from "./CustomerPhoneField";
 import CrearClienteDialog from "./CrearClienteDialog";
@@ -114,6 +116,7 @@ function ClientSection({ conversation, companyId, client }: Props) {
               open
               onOpenChange={setCreating}
               companyId={companyId}
+              conversationId={conversation.id}
               phone={phone ?? ""}
               name={conversation.contactName}
               onCreated={() => void client.refetch()}
@@ -260,34 +263,88 @@ function OrdersSection({ conversation }: { conversation: Conversation }) {
   );
 }
 
-/** Panel «Cliente y pedido» de la conversación seleccionada. */
+type PanelTab = "pedido" | "cliente" | "seguimiento";
+
+const PANEL_TABS: { id: PanelTab; label: string }[] = [
+  { id: "pedido", label: "Pedido" },
+  { id: "cliente", label: "Cliente" },
+  { id: "seguimiento", label: "Seguimiento" },
+];
+
+/** Panel «Cliente y pedido» de la conversación: pestañas Pedido, Cliente y Seguimiento (mockup 152). */
 export default function ClientOrderPanel(props: Props) {
   const router = useRouter();
   const { conversation } = props;
+  const [tab, setTab] = useState<PanelTab>("pedido");
   return (
-    <div className="h-full space-y-5 overflow-y-auto p-3" data-testid="client-order-panel">
-      <ClientSection {...props} />
-      <TagsSection conversation={conversation} />
-      <PipelineSection conversation={conversation} />
-      <TasksSection conversation={conversation} />
-      <FollowupsSection conversation={conversation} />
-      <ChatCallsSection conversation={conversation} />
-      <PedidoLinkSection
-        conversation={conversation}
-        client={props.client.data}
-        onInsertMessage={props.onInsertMessage}
-      />
-      <OrdersSection conversation={conversation} />
-      <PaymentPolicySection conversation={conversation} />
-      <DiscountApprovalsSection />
-      <ReceiptsSection conversation={conversation} />
-      <FinanceQueueSection />
-      <CodSection conversation={conversation} />
-      <ChatAdSignalSection conversation={conversation} />
-      <MarketingOptOutSection conversation={conversation} />
-      <Button className="w-full" onClick={() => router.push(crearPedidoUrl(conversation))}>
-        <Plus /> Registrar venta completa
-      </Button>
+    <div className="flex h-full min-h-0 flex-col" data-testid="client-order-panel">
+      <div role="tablist" aria-label="Panel del chat" className="flex shrink-0 border-b px-2">
+        {PANEL_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            id={`panel-tab-${t.id}`}
+            aria-selected={tab === t.id}
+            aria-controls={`panel-${t.id}`}
+            onClick={() => setTab(t.id)}
+            className={cn(
+              "-mb-px flex-1 border-b-2 px-2 py-2.5 text-sm font-semibold transition-colors",
+              tab === t.id
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div
+        role="tabpanel"
+        id={`panel-${tab}`}
+        aria-labelledby={`panel-tab-${tab}`}
+        className="min-h-0 flex-1 space-y-5 overflow-y-auto p-3"
+      >
+        {tab === "pedido" && (
+          <>
+            <PedidoLinkSection
+              conversation={conversation}
+              client={props.client.data}
+              onInsertMessage={props.onInsertMessage}
+            />
+            <OrdersSection conversation={conversation} />
+            <PaymentPolicySection conversation={conversation} />
+            <DiscountApprovalsSection />
+            <ReceiptsSection conversation={conversation} />
+            <FinanceQueueSection />
+            <CodSection conversation={conversation} />
+            <Button className="w-full" onClick={() => router.push(crearPedidoUrl(conversation))}>
+              <Plus /> Registrar venta completa
+            </Button>
+          </>
+        )}
+        {tab === "cliente" && (
+          <>
+            <ClientSection {...props} />
+            <ClientOriginRows conversation={conversation} client={props.client.data} />
+            <CallPermissionRow conversation={conversation} />
+            {props.client.data && <ClientHistorySection clientId={props.client.data.id} />}
+            <TagsSection conversation={conversation} />
+            <OtherChannelsSection conversation={conversation} />
+            <ChatAdSignalSection conversation={conversation} />
+            <MarketingOptOutSection conversation={conversation} />
+          </>
+        )}
+        {tab === "seguimiento" && (
+          <>
+            <PipelineSection conversation={conversation} />
+            <TasksSection conversation={conversation} />
+            <FollowupsSection conversation={conversation} />
+            <StageRulesSection conversation={conversation} />
+            <ChatCallsSection conversation={conversation} />
+          </>
+        )}
+      </div>
     </div>
   );
 }

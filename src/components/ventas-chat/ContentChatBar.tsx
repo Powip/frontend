@@ -27,10 +27,15 @@ interface Props {
   onFill: (text: string) => void;
   /** La ventana de 24 h está cerrada: la caja está bloqueada. */
   windowOpen: boolean;
+  /**
+   * La pantalla ya muestra los pasos (barra «Venta en 1 minuto») y la objeción
+   * detectada (tarjeta «Sugerencia»): aquí solo queda el panel «Respuestas».
+   */
+  compact?: boolean;
 }
 
 /** Barra «Guion» y panel «Respuestas» sobre la caja de mensaje. Nada se envía solo. */
-export default function ContentChatBar({ conversation, text, onFill, windowOpen }: Props) {
+export default function ContentChatBar({ conversation, text, onFill, windowOpen, compact = false }: Props) {
   const script = useScript();
   const objections = useObjections();
   const general = useGeneralMaterials();
@@ -43,7 +48,7 @@ export default function ContentChatBar({ conversation, text, onFill, windowOpen 
   const sheets = useSheets(debounced);
   // Detección automática: se pide una vez por cada mensaje nuevo del cliente.
   const trigger = conversation.lastInboundAt ?? null;
-  const detection = useDetectObjection(conversation.id, trigger, windowOpen);
+  const detection = useDetectObjection(conversation.id, trigger, windowOpen && !compact);
   const [dismissed, setDismissed] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,7 +63,7 @@ export default function ContentChatBar({ conversation, text, onFill, windowOpen 
   const hasSheets = sheetItems.length > 0 || debounced !== "";
   const hasReplies = activeObjections.length > 0 || generalItems.length > 0 || hasSheets;
 
-  if (steps.length === 0 && !hasReplies) return null;
+  if ((compact || steps.length === 0) && !hasReplies) return null;
 
   const name = firstName(conversation);
 
@@ -80,7 +85,7 @@ export default function ContentChatBar({ conversation, text, onFill, windowOpen 
 
   const detected = detection.data;
   const showDetected =
-    !!detected?.label && !!detected.suggestedResponse && dismissed !== trigger;
+    !compact && !!detected?.label && !!detected.suggestedResponse && dismissed !== trigger;
 
   const materialButton = (m: Material) => (
     <button
@@ -90,7 +95,7 @@ export default function ContentChatBar({ conversation, text, onFill, windowOpen 
       className="flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs hover:bg-accent/50"
     >
       <span className="shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[10px]">{MATERIAL_KIND_LABEL[m.kind]}</span>
-      <span className="min-w-0 flex-1 truncate">{m.title}</span>
+      <span className="min-w-0 flex-1 break-words sm:truncate">{m.title}</span>
       <ExternalLink className="h-3 w-3 shrink-0 opacity-50" aria-hidden />
     </button>
   );
@@ -98,7 +103,7 @@ export default function ContentChatBar({ conversation, text, onFill, windowOpen 
   return (
     <div role="region" aria-label="Guion" className="mb-2" data-testid="content-bar">
       <div className="flex flex-wrap items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1.5">
-        {steps.length > 0 && (
+        {!compact && steps.length > 0 && (
           <>
             <BookOpen className="h-4 w-4 shrink-0 text-primary" aria-hidden />
             <span className="text-xs font-medium">Guion</span>
@@ -150,7 +155,7 @@ export default function ContentChatBar({ conversation, text, onFill, windowOpen 
                     className="block w-full rounded-md border px-2 py-1.5 text-left hover:bg-accent/50"
                   >
                     <span className="block text-xs font-medium">{o.name}</span>
-                    <span className="line-clamp-2 text-xs text-muted-foreground">{o.response}</span>
+                    <span className="sm:line-clamp-2 text-xs text-muted-foreground">{o.response}</span>
                   </button>
                 ))}
               </section>
@@ -218,7 +223,7 @@ export default function ContentChatBar({ conversation, text, onFill, windowOpen 
                 ({Math.round(detected.confidence * 100)} %{detected.source === "mock" ? " · reglas" : " · IA"})
               </span>
             </p>
-            <p className="line-clamp-2 text-xs text-muted-foreground">{detected.suggestedResponse}</p>
+            <p className="sm:line-clamp-2 text-xs text-muted-foreground">{detected.suggestedResponse}</p>
           </div>
           <Button
             size="sm"

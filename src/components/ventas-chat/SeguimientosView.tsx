@@ -316,7 +316,7 @@ function RuleCard({
       <p className="text-xs text-muted-foreground">
         {summarizeRule(rule, stageNameOf(stages, rule.stageId))}
       </p>
-      <p className="line-clamp-2 whitespace-pre-wrap text-xs">{rule.message}</p>
+      <p className="sm:line-clamp-2 whitespace-pre-wrap text-xs">{rule.message}</p>
       <div className="flex flex-wrap gap-2 pt-1">
         <Button type="button" size="sm" variant="outline" onClick={() => onEdit(rule)}>
           <Pencil /> Editar

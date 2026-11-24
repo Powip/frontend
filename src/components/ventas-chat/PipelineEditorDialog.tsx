@@ -22,7 +22,7 @@ const KIND_LABEL: Record<StageKind, string> = {
   won: "Ganada",
   lost: "Perdida",
 };
-const DEFAULT_COLOR = "#6366f1";
+const DEFAULT_COLOR = "#4C2FB5";
 
 function StageRow({
   stage,

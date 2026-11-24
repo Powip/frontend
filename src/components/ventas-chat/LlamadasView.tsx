@@ -1,4 +1,6 @@
 "use client";
+import WhatsAppCallButton, { CALL_BUTTON_CLASS } from "./WhatsAppCallButton";
+import WhatsAppCallsPanel from "./WhatsAppCallsPanel";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Info, Loader2, MessageCircle, PhoneCall, PhoneIncoming, PhoneOutgoing, Plus, Trash2 } from "lucide-react";
@@ -7,18 +9,19 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCrmMe } from "@/hooks/useCrmMe";
-import { telHref } from "@/lib/crmPhone";
+import { isMaskedPhone, telHref } from "@/lib/crmPhone";
 import { crmError } from "@/services/crmService";
 import { useCrmEvents } from "@/hooks/useCrmChat";
-import { useCallMutations, useCallStats, useCalls } from "@/hooks/useCrmCalls";
+import { useCallMode } from "@/hooks/useCallMode";
+import { useCallPermission } from "@/hooks/useCallSessions";
+import { useCallMutations, useCallProspects, useCallStats, useCalls } from "@/hooks/useCrmCalls";
 import { useTaskMutations, useTasks } from "@/hooks/useCrmPlanning";
-import type { Task } from "@/types/crm";
 import type { Call, CallDays } from "@/types/crmCalls";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import CallDialog from "./CallDialog";
 import ConfirmDialog from "./ConfirmDialog";
 import LiveIndicator from "./LiveIndicator";
-import { formatDue } from "./agenda";
+import { CALL_REASON_LABEL, CALL_REASON_TONE, callQueue, type CallQueueItem } from "./callQueue";
 import {
   CALL_DAYS_OPTIONS,
   CALL_DIRECTION_LABEL,
@@ -90,15 +93,25 @@ function CallLink({ phone }: { phone: string | null | undefined }) {
   const href = telHref(phone);
   if (!href) {
     return (
-      <Button type="button" size="sm" variant="outline" disabled title="No hay un teléfono para llamar">
-        <PhoneCall /> Llamar
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled
+        title={
+          isMaskedPhone(phone)
+            ? "El teléfono está oculto: llama por WhatsApp"
+            : "No hay un teléfono para llamar"
+        }
+      >
+        <PhoneCall /> Llamar por teléfono
       </Button>
     );
   }
   return (
     <Button asChild size="sm" variant="outline">
       <a href={href}>
-        <PhoneCall /> Llamar
+        <PhoneCall /> Llamar por teléfono
       </a>
     </Button>
   );
@@ -132,34 +145,49 @@ function Stats({ days }: { days: CallDays }) {
   );
 }
 
+/** Motivo, vendedora y si el cliente aceptó que lo llamen. */
+function useRowSummary({ detail, agentName, conversationId }: CallQueueItem): string {
+  const { data } = useCallPermission(conversationId);
+  const permission = data && (data.canCall ? "aceptó llamadas" : "falta permiso");
+  return [detail, agentName, permission].filter(Boolean).join(" · ");
+}
+
 function QueueRow({
-  task,
-  now,
+  item,
+  position,
   onResult,
   onOpenChat,
 }: {
-  task: Task;
-  now: number;
-  onResult: (t: Task) => void;
+  item: CallQueueItem;
+  position: number;
+  onResult: (item: CallQueueItem) => void;
   onOpenChat: (id: string) => void;
 }) {
   const { phoneMasked } = useCrmMe();
-  const contact = task.contactName || showPhone(task.contactPhone, phoneMasked);
+  const summary = useRowSummary(item);
+  const { conversationId, contactName, contactPhone, reason, task } = item;
   return (
     <li data-testid="queue-row" className="space-y-1.5 rounded-md border bg-card p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium">{contact ?? "Sin contacto"}</span>
-        <span className="ml-auto text-xs text-muted-foreground">{formatDue(task.dueAt, now)}</span>
+        <span className="w-5 text-xs font-semibold tabular-nums text-muted-foreground">{position}</span>
+        <span className="font-medium">{contactName || showPhone(contactPhone, phoneMasked) || "Sin contacto"}</span>
+        <Badge variant="outline" className={cn("ml-auto", CALL_REASON_TONE[reason])}>
+          {CALL_REASON_LABEL[reason]}
+        </Badge>
       </div>
-      <p className="text-xs text-muted-foreground">{task.title}</p>
+      <p className="text-xs text-muted-foreground">{summary}</p>
+      {task && <p className="text-xs">{task.title}</p>}
       <div className="flex flex-wrap gap-2 pt-1">
-        <CallLink phone={task.contactPhone} />
-        {task.conversationId && (
-          <Button type="button" size="sm" variant="outline" onClick={() => onOpenChat(task.conversationId!)}>
+        {conversationId && (
+          <WhatsAppCallButton conversationId={conversationId} contactName={contactName} askLabel="Pedir" />
+        )}
+        <CallLink phone={contactPhone} />
+        {conversationId && (
+          <Button type="button" size="sm" variant="outline" onClick={() => onOpenChat(conversationId)}>
             <MessageCircle /> Abrir chat
           </Button>
         )}
-        <Button type="button" size="sm" onClick={() => onResult(task)}>
+        <Button type="button" size="sm" variant="outline" onClick={() => onResult(item)}>
           Registrar resultado
         </Button>
       </div>
@@ -179,11 +207,12 @@ function CallRow({
   onOpenChat: (id: string) => void;
 }) {
   const Icon = call.direction === "in" ? PhoneIncoming : PhoneOutgoing;
+  const { phoneMasked } = useCrmMe();
   return (
     <li data-testid="call-row" className="space-y-1.5 rounded-md border bg-card p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <Icon className="h-4 w-4 text-muted-foreground" aria-label={CALL_DIRECTION_LABEL[call.direction]} />
-        <span className="font-medium">{callContact(call)}</span>
+        <span className="font-medium">{callContact(call, phoneMasked)}</span>
         <Badge variant="outline" className={cn(CALL_RESULT_TONE[call.result])}>
           {CALL_RESULT_LABEL[call.result]}
         </Badge>
@@ -214,7 +243,7 @@ function CallRow({
             type="button"
             size="sm"
             variant="outline"
-            aria-label={`Eliminar llamada con ${callContact(call)}`}
+            aria-label={`Eliminar llamada con ${callContact(call, phoneMasked)}`}
             onClick={() => onDelete(call)}
           >
             <Trash2 /> Eliminar
@@ -227,7 +256,7 @@ function CallRow({
 
 /**
  * Pestaña Llamadas: registro manual de las llamadas que el equipo hace con su
- * teléfono. Powip todavía no hace ni recibe llamadas.
+ * teléfono, y llamadas reales por WhatsApp (WhatsAppCallsPanel + overlay).
  */
 export default function LlamadasView() {
   const router = useRouter();
@@ -244,17 +273,17 @@ export default function LlamadasView() {
   const [days, setDays] = useState<CallDays>(1);
   const [queueOwner, setQueueOwner] = useState<"me" | "all">("me");
   const [historyOwner, setHistoryOwner] = useState<"me" | "all">("me");
-  const [dialog, setDialog] = useState<{ task?: Task } | null>(null);
+  const [dialog, setDialog] = useState<{ item?: CallQueueItem } | null>(null);
   const [deleting, setDeleting] = useState<Call | null>(null);
 
   const tasks = useTasks({ assigned: queueOwner, status: "pending" });
+  const prospects = useCallProspects(queueOwner);
+  const startCallMode = useCallMode();
   const history = useCalls({ days, mine: historyOwner === "me" });
   const taskM = useTaskMutations();
   const callM = useCallMutations();
 
-  const queue = (tasks.data ?? [])
-    .filter((t) => t.type === "call")
-    .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime());
+  const queue = callQueue(tasks.data ?? [], prospects.data ?? [], now);
   const openChat = (id: string) => router.push(bandejaUrl(id));
 
   return (
@@ -265,8 +294,8 @@ export default function LlamadasView() {
       >
         <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
         <p>
-          Powip todavía no hace ni recibe llamadas. Aquí registras a mano las llamadas que haces con
-          tu teléfono: cuentan en las métricas y dejan una nota en el chat.
+          Contesta y haz llamadas por WhatsApp desde Powip: al colgar anotas el resultado. Las
+          llamadas que haces con tu teléfono las registras a mano con «Registrar llamada».
         </p>
       </div>
 
@@ -280,6 +309,8 @@ export default function LlamadasView() {
         </span>
       </div>
 
+      <WhatsAppCallsPanel />
+
       <Stats days={days} />
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -291,23 +322,39 @@ export default function LlamadasView() {
               <Segmented label="Cola de" options={MINE_OPTIONS} value={queueOwner} onChange={setQueueOwner} />
             </span>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Tareas de llamada pendientes de la Agenda, de la más próxima a la más lejana.
-          </p>
+          <div className="flex flex-wrap items-center gap-2 rounded-md border border-teal-600/30 bg-teal-50 p-3 dark:bg-teal-950/30">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold">Modo llamadas</p>
+              <p className="text-xs text-muted-foreground">
+                Tu cola de hoy, ordenada por probabilidad de compra. Al colgar pasa a la siguiente.
+              </p>
+            </div>
+            <Button type="button" size="sm" className={CALL_BUTTON_CLASS} onClick={() => void startCallMode(queue)}>
+              <PhoneCall /> Empezar a llamar
+            </Button>
+          </div>
           {tasks.isLoading && (
             <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" /> Cargando cola…
             </p>
           )}
           {tasks.isError && <ErrorBox error={tasks.error} onRetry={() => tasks.refetch()} />}
-          {tasks.data && queue.length === 0 && (
-            <p className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
-              No hay llamadas pendientes.
-            </p>
+          {prospects.isError && <ErrorBox error={prospects.error} onRetry={() => prospects.refetch()} />}
+          {tasks.data && !prospects.isLoading && queue.length === 0 && (
+            <div className="rounded-md border border-dashed p-3 text-center text-xs text-muted-foreground">
+              <p>No hay llamadas pendientes.</p>
+              <p>Cuando un cliente agende o deje un link sin pagar, aparecerá aquí.</p>
+            </div>
           )}
           <ul className="space-y-2">
-            {queue.map((t) => (
-              <QueueRow key={t.id} task={t} now={now} onResult={(task) => setDialog({ task })} onOpenChat={openChat} />
+            {queue.map((item, i) => (
+              <QueueRow
+                key={item.key}
+                item={item}
+                position={i + 1}
+                onResult={(row) => setDialog({ item: row })}
+                onOpenChat={openChat}
+              />
             ))}
           </ul>
         </section>
@@ -348,11 +395,11 @@ export default function LlamadasView() {
         <CallDialog
           open
           onOpenChange={(o) => !o && setDialog(null)}
-          conversationId={dialog.task?.conversationId ?? undefined}
-          contact={dialog.task ? (dialog.task.contactName || showPhone(dialog.task.contactPhone, phoneMasked) || undefined) : undefined}
-          phone={dialog.task?.contactPhone ?? undefined}
+          conversationId={dialog.item?.conversationId ?? undefined}
+          contact={dialog.item ? (dialog.item.contactName || showPhone(dialog.item.contactPhone, phoneMasked) || undefined) : undefined}
+          phone={isMaskedPhone(dialog.item?.contactPhone) ? undefined : (dialog.item?.contactPhone ?? undefined)}
           onSaved={() => {
-            const task = dialog.task;
+            const task = dialog.item?.task;
             if (task) taskM.update.mutate({ id: task.id, input: { status: "done" } });
           }}
         />
@@ -361,7 +408,7 @@ export default function LlamadasView() {
         open={!!deleting}
         title="Eliminar llamada"
         description={
-          deleting ? `Se eliminará la llamada con ${callContact(deleting)} del registro. No se puede deshacer.` : ""
+          deleting ? `Se eliminará la llamada con ${callContact(deleting, phoneMasked)} del registro. No se puede deshacer.` : ""
         }
         onCancel={() => setDeleting(null)}
         onConfirm={() => {

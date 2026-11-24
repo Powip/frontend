@@ -44,7 +44,7 @@ export default function CoreProductPicker({ value, onChange }: Props) {
       {value ? (
         <div className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm" data-testid="core-linked">
           <Package className="h-4 w-4 text-primary" aria-hidden />
-          <span className="min-w-0 flex-1 truncate">{current?.name ?? `Producto ${value}`}</span>
+          <span className="min-w-0 flex-1 break-words sm:truncate">{current?.name ?? `Producto ${value}`}</span>
           <Button type="button" size="sm" variant="ghost" aria-label="Quitar vínculo con el Core" onClick={() => onChange("")}>
             <X />
           </Button>
@@ -83,7 +83,7 @@ export default function CoreProductPicker({ value, onChange }: Props) {
                     }}
                     className="flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1.5 text-left text-xs hover:bg-accent/50"
                   >
-                    <span className="min-w-0 truncate font-medium">{p.name}</span>
+                    <span className="min-w-0 break-words sm:truncate font-medium">{p.name}</span>
                     <span className="shrink-0 text-muted-foreground">
                       {p.variants} var. · desde S/ {p.from.toFixed(2)}
                     </span>

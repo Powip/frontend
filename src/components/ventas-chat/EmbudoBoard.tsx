@@ -43,7 +43,7 @@ function CardBody({ conversation: c, stage, stages, onOpen, onMove }: CardProps)
         aria-label={`Abrir conversación de ${name}`}
       >
         <span className="flex items-center justify-between gap-2">
-          <span className="truncate font-medium">{name}</span>
+          <span className="break-words sm:truncate font-medium">{name}</span>
           {c.unreadCount > 0 && (
             <span
               aria-label={`${c.unreadCount} sin leer`}
@@ -53,7 +53,7 @@ function CardBody({ conversation: c, stage, stages, onOpen, onMove }: CardProps)
             </span>
           )}
         </span>
-        <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+        <span className="mt-0.5 block break-words sm:truncate text-xs text-muted-foreground">
           {c.lastMessagePreview ?? "Sin mensajes"}
         </span>
       </button>
@@ -111,7 +111,7 @@ function Column({
           className="h-2.5 w-2.5 shrink-0 rounded-full"
           style={{ backgroundColor: stage.color }}
         />
-        <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{stage.name}</h3>
+        <h3 className="min-w-0 flex-1 break-words sm:truncate text-sm font-semibold">{stage.name}</h3>
         <Badge variant="secondary" aria-label={`${total} conversaciones`}>
           {total}
         </Badge>

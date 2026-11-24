@@ -143,12 +143,12 @@ function ObjecionesBody() {
         </div>
         <div className="rounded-md border bg-card p-4" data-testid="card-top">
           <p className="text-xs text-muted-foreground">La más usada</p>
-          <p className="truncate text-lg font-semibold">{mostUsed?.name ?? "—"}</p>
+          <p className="break-words sm:truncate text-lg font-semibold">{mostUsed?.name ?? "—"}</p>
           {mostUsed && <p className="text-xs text-muted-foreground">{mostUsed.uses} usos</p>}
         </div>
         <div className="rounded-md border bg-card p-4" data-testid="card-best">
           <p className="text-xs text-muted-foreground">La que más termina en venta</p>
-          <p className="truncate text-lg font-semibold">{bestCloser?.name ?? "—"}</p>
+          <p className="break-words sm:truncate text-lg font-semibold">{bestCloser?.name ?? "—"}</p>
           <p className="text-xs text-muted-foreground">
             {bestCloser
               ? `${formatRate(bestCloser.won, bestCloser.conversations)} de ${bestCloser.conversations} conversaciones`
@@ -237,7 +237,7 @@ function ObjecionesBody() {
                       <p className="font-medium">
                         {o.name} {!o.active && <Badge variant="outline">Inactiva</Badge>}
                       </p>
-                      <p className="truncate text-xs text-muted-foreground">{o.response}</p>
+                      <p className="break-words sm:truncate text-xs text-muted-foreground">{o.response}</p>
                     </TableCell>
                     <TableCell>{s?.uses ?? 0}</TableCell>
                     <TableCell>{s?.conversations ?? 0}</TableCell>

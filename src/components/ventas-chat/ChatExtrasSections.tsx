@@ -1,12 +1,16 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { Loader2, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { crmError } from "@/services/crmService";
 import { useConversationFollowups, useCrmTags, useUpdateConversation } from "@/hooks/useCrmChat";
+import { useFollowupRules } from "@/hooks/useCrmEngagement";
+import { usePipelines } from "@/hooks/useCrmPlanning";
+import { pipelineOf } from "@/lib/crmPipelines";
 import type { Conversation } from "@/types/crm";
-import { OBJECTIVE_LABEL } from "./engagement";
+import { OBJECTIVE_LABEL, formatWait } from "./engagement";
 import { formatDue } from "./agenda";
 
 export const TAG_MAX = 30;
@@ -137,7 +141,7 @@ export function FollowupsSection({ conversation }: { conversation: Conversation 
         <ul className="space-y-1.5">
           {items.map((f) => (
             <li key={`${f.ruleId}-${f.dueAt}`} data-testid="followup-item" className="rounded-md border p-2 text-sm">
-              <p className="truncate font-medium">{f.ruleName}</p>
+              <p className="break-words sm:truncate font-medium">{f.ruleName}</p>
               <p className="text-xs text-muted-foreground">
                 {OBJECTIVE_LABEL[f.objective] ?? f.objective} ·{" "}
                 {f.target === "agent" ? "avisa a la vendedora" : "mensaje al cliente"} · {formatDue(f.dueAt)}
@@ -151,6 +155,42 @@ export function FollowupsSection({ conversation }: { conversation: Conversation 
           ))}
         </ul>
       )}
+    </section>
+  );
+}
+
+/** Reglas automáticas activas que valen para la etapa actual del chat. */
+export function StageRulesSection({ conversation }: { conversation: Conversation }) {
+  const rules = useFollowupRules();
+  const pipeline = pipelineOf(usePipelines().data, conversation);
+  if (!Array.isArray(rules.data)) return null;
+  const stage = pipeline?.stages.find((s) => s.id === conversation.stageId);
+  // Mismo criterio que el motor: sin etapa, la regla vale para las etapas abiertas.
+  const open = !stage || stage.kind === "open";
+  const applied = rules.data.filter(
+    (r) => r.active && (r.stageId ? r.stageId === conversation.stageId : open),
+  );
+  return (
+    <section className="space-y-2" aria-label="Reglas que aplican">
+      <SectionTitle>Reglas que aplican</SectionTitle>
+      {applied.length === 0 && (
+        <p className="text-sm text-muted-foreground">
+          {stage
+            ? `Ninguna regla automática para la etapa ${stage.name}.`
+            : "Ninguna regla automática para este chat."}
+        </p>
+      )}
+      <ul className="space-y-1">
+        {applied.map((r) => (
+          <li key={r.id} className="flex items-center justify-between gap-2 text-sm">
+            <span className="min-w-0 break-words">{r.name}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{formatWait(r.waitMinutes)}</span>
+          </li>
+        ))}
+      </ul>
+      <Button asChild size="sm" variant="outline">
+        <Link href="/comercial/ventas-chat/seguimientos">Ver reglas</Link>
+      </Button>
     </section>
   );
 }

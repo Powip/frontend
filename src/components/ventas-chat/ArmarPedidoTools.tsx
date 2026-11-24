@@ -15,29 +15,20 @@ import {
   useStorePolicy,
 } from "@/hooks/useCrmOrderPanel";
 import type { AiCartResult, EvaluateResponse, StorePolicy } from "@/types/crmOrderPanel";
-
-/** Misma forma que la línea del carrito de ArmarPedidoDialog. */
-export interface ToolCartLine {
-  productVariantId: string;
-  name: string;
-  variant: string;
-  sku: string;
-  imageUrl?: string;
-  unitPrice: number;
-  quantity: number;
-  stock: number;
-}
+import { cartLineFromAi, type CartLine } from "./chatQuote";
 
 interface Props {
   conversationId: string;
   storeId: string;
   inventoryId: string;
-  cart: ToolCartLine[];
-  setCart: (update: (prev: ToolCartLine[]) => ToolCartLine[]) => void;
+  cart: CartLine[];
+  setCart: (update: (prev: CartLine[]) => CartLine[]) => void;
   /** Deja un texto en la caja del chat (sin enviarlo). */
   onInsertMessage?: (text: string) => void;
   /** Se llama una vez cuando llega la política de la tienda (para precargar el tipo de pago). */
   onPolicy?: (policy: StorePolicy) => void;
+  /** «Armar pedido leyendo el chat»: corre «Armar con IA» una vez al tener tienda y almacén. */
+  autoAi?: boolean;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -58,6 +49,7 @@ export default function ArmarPedidoTools({
   setCart,
   onInsertMessage,
   onPolicy,
+  autoAi = false,
 }: Props) {
   const policyQ = useStorePolicy(storeId, !!storeId);
   const policy = policyQ.data;
@@ -84,6 +76,16 @@ export default function ArmarPedidoTools({
       onPolicy?.(policy);
     }
   }, [policy, onPolicy]);
+
+  const autoAiDone = useRef(false);
+  useEffect(() => {
+    // Sin almacén no se conoce el stock: espera a que se elija.
+    if (autoAi && storeId && inventoryId && !autoAiDone.current) {
+      autoAiDone.current = true;
+      void armarConIa();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoAi, storeId, inventoryId]);
 
   // Promos y combos se recalculan cuando cambia el carrito (cantidad o líneas).
   const cartKey = cart.map((l) => `${l.productVariantId}:${l.quantity}`).join("|");
@@ -152,15 +154,7 @@ export default function ArmarPedidoTools({
         for (const l of r.lines) {
           basePrice.current.set(l.productVariantId, l.unitPrice);
           const i = next.findIndex((x) => x.productVariantId === l.productVariantId);
-          const line: ToolCartLine = {
-            productVariantId: l.productVariantId,
-            name: l.name,
-            variant: l.variant ?? "",
-            sku: l.sku ?? "",
-            unitPrice: l.unitPrice,
-            quantity: l.quantity,
-            stock: l.stockAvailable ?? 0,
-          };
+          const line = cartLineFromAi(l);
           if (i >= 0) next[i] = { ...next[i], quantity: l.quantity, stock: line.stock };
           else next.push(line);
         }

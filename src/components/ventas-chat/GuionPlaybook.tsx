@@ -9,12 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useSaveScriptPlaybook } from "@/hooks/useCrmContent";
 import type { Script, ScriptClosingRules, ScriptTemperature, TemperatureKey } from "@/types/crmContent";
 import { useDraft } from "./AjustesCard";
-
-const TEMPERATURE_BADGE: Record<TemperatureKey, { label: string; variant: "error" | "warning" | "info" }> = {
-  caliente: { label: "Caliente", variant: "error" },
-  tibio: { label: "Tibio", variant: "warning" },
-  frio: { label: "Frío", variant: "info" },
-};
+import { TEMPERATURE_BADGE } from "./temperature";
 
 const CUTOFF_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 

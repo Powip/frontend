@@ -7,9 +7,11 @@ import { crmError } from "@/services/crmService";
 import { useUpdateConversation } from "@/hooks/useCrmChat";
 import { useCrmMe } from "@/hooks/useCrmMe";
 import { usePipelines, useTaskMutations, useTasks } from "@/hooks/useCrmPlanning";
-import type { Conversation, Pipeline, Stage } from "@/types/crm";
+import { pipelineOf } from "@/lib/crmPipelines";
+import type { Conversation, Stage } from "@/types/crm";
 import LostReasonDialog from "./LostReasonDialog";
 import TaskDialog from "./TaskDialog";
+import ThinkingButton from "./ThinkingButton";
 import { TASK_TYPE_LABEL, formatDue } from "./agenda";
 import { NATIVE_SELECT_CLASS, contactLabel } from "./format";
 
@@ -18,13 +20,6 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
     <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
       {children}
     </h3>
-  );
-}
-
-/** Embudo de la conversación (el suyo, o el predeterminado, o el primero). */
-function pipelineOf(list: Pipeline[] | undefined, conversation: Conversation) {
-  return (
-    list?.find((p) => p.id === conversation.pipelineId) ?? list?.find((p) => p.isDefault) ?? list?.[0]
   );
 }
 
@@ -173,7 +168,7 @@ export function TasksSection({ conversation }: { conversation: Conversation }) {
               className="flex items-start gap-2 rounded-md border p-2 text-sm"
             >
               <div className="min-w-0 flex-1">
-                <p className="truncate font-medium">{t.title}</p>
+                <p className="break-words sm:truncate font-medium">{t.title}</p>
                 <p className="text-xs text-muted-foreground">
                   {TASK_TYPE_LABEL[t.type]} · {formatDue(t.dueAt)}
                 </p>
@@ -191,9 +186,12 @@ export function TasksSection({ conversation }: { conversation: Conversation }) {
           ))}
         </ul>
       )}
-      <Button type="button" size="sm" variant="outline" onClick={() => setCreating(true)}>
-        <BellPlus /> Recordatorio
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={() => setCreating(true)}>
+          <BellPlus /> Recordatorio
+        </Button>
+        <ThinkingButton conversation={conversation} />
+      </div>
       {creating && (
         <TaskDialog
           open

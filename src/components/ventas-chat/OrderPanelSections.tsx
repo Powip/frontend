@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Eye, FileUp, Loader2, Pencil, Plus, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +47,7 @@ import {
   type StorePolicy,
 } from "@/types/crmOrderPanel";
 import { formatMoney, formatTime, NATIVE_SELECT_CLASS } from "./format";
+import { USE_AS_RECEIPT_EVENT } from "./WhatsAppMedia";
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -396,23 +397,38 @@ export function ReceiptsSection({ conversation }: { conversation: Conversation }
   const [operation, setOperation] = useState("");
   const [orderId, setOrderId] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [fromMessageId, setFromMessageId] = useState<string | null>(null);
+
+  // Botón «Usar como comprobante de pago» de una imagen recibida: abre el formulario con ese archivo.
+  useEffect(() => {
+    const onUse = (e: Event) => {
+      const id = (e as CustomEvent<{ messageId?: string }>).detail?.messageId;
+      if (!id) return;
+      setFromMessageId(id);
+      setFile(null);
+      setOpen(true);
+    };
+    window.addEventListener(USE_AS_RECEIPT_EVENT, onUse);
+    return () => window.removeEventListener(USE_AS_RECEIPT_EVENT, onUse);
+  }, []);
 
   function reset() {
     setOpen(false);
     setAmount("");
     setOperation("");
     setFile(null);
+    setFromMessageId(null);
   }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const n = Number(amount);
     if (!(n > 0)) return toast.error("Ingresa el monto pagado.");
-    if (!file) return toast.error("Adjunta la foto o PDF del comprobante.");
+    if (!file && !fromMessageId) return toast.error("Adjunta la foto o PDF del comprobante.");
     await upload.mutateAsync({
       method,
       amount: n,
-      file,
+      ...(fromMessageId ? { messageId: fromMessageId } : { file: file as File }),
       ...(operation.trim() ? { operationNumber: operation.trim() } : {}),
       ...(orderId ? { orderId } : {}),
     });
@@ -496,12 +512,21 @@ export function ReceiptsSection({ conversation }: { conversation: Conversation }
             <Label htmlFor="comp-archivo" className="text-xs">
               Foto o PDF
             </Label>
-            <Input
-              id="comp-archivo"
-              type="file"
-              accept="image/*,application/pdf"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            />
+            {fromMessageId ? (
+              <div className="flex items-center justify-between gap-2 rounded-md border px-2 py-1 text-xs">
+                <span data-testid="receipt-from-chat">Archivo recibido por el chat</span>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setFromMessageId(null)}>
+                  Quitar
+                </Button>
+              </div>
+            ) : (
+              <Input
+                id="comp-archivo"
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              />
+            )}
           </div>
           <div className="flex flex-wrap justify-end gap-2">
             <Button type="button" size="sm" variant="ghost" onClick={reset}>

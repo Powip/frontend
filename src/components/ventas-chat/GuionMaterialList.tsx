@@ -134,7 +134,7 @@ export default function GuionMaterialList({ sheetId, payment, items, label }: Pr
             ) : (
               <div className="flex flex-wrap items-center gap-2 rounded-md border p-2 text-sm">
                 <Badge variant="secondary">{MATERIAL_KIND_LABEL[m.kind]}</Badge>
-                <span className="min-w-0 flex-1 truncate font-medium">{m.title}</span>
+                <span className="min-w-0 flex-1 break-words sm:truncate font-medium">{m.title}</span>
                 <a
                   href={m.url}
                   target="_blank"

@@ -31,18 +31,27 @@ import {
   useSendNote,
   useUpdateConversation,
 } from "@/hooks/useCrmChat";
+import { useCallPermission } from "@/hooks/useCallSessions";
+import { useChatSuggestion } from "@/hooks/useChatSuggestion";
 import type { Conversation, Message } from "@/types/crm";
 import { CRM_UNREACHABLE } from "./ConversationList";
-import { SendImageButton } from "./SendImageButton";
 import ChannelBadge from "./ChannelBadge";
+import { CallBubble, isCallNote } from "./CallBubble";
 import { ChatCallButtons } from "./ChatCallsSection";
+import WhatsAppCallButton from "./WhatsAppCallButton";
 import { LostChatButton } from "./ChatPlanningSections";
 import ClientOrderPanel from "./ClientOrderPanel";
+import { isWhatsAppMedia, WhatsAppMedia } from "./WhatsAppMedia";
+import { SendImageButton } from "./SendImageButton";
 import { appendLine } from "./quotes";
 import ContentChatBar from "./ContentChatBar";
+import ChatBanners from "./ChatBanners";
+import { QuickChips, SaleStepsBar } from "./ChatSaleGuide";
+import SendLinkButton from "./SendLinkButton";
+import SuggestionCard from "./SuggestionCard";
 import PauChatBar from "./PauChatBar";
 import TemplateDialog from "./TemplateDialog";
-import ThinkingDialog from "./ThinkingDialog";
+import ThinkingButton from "./ThinkingButton";
 import {
   ReactButton,
   ReactionBadges,
@@ -63,6 +72,7 @@ import {
   messageText,
   phoneForCustomer,
   showPhone,
+  retakeNotice,
   windowClosedNotice,
 } from "./format";
 
@@ -101,7 +111,7 @@ function Bubble({
     return (
       <div
         data-testid="internal-note"
-        className="mx-auto max-w-[85%] rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
+        className="mx-auto max-w-[85%] rounded-lg border border-amber-300 bg-crm-note px-3 py-2 text-sm text-crm-note-fg dark:border-amber-700"
       >
         <p className="mb-0.5 flex items-center gap-1 text-[11px] font-medium">
           <StickyNote className="h-3 w-3" aria-hidden /> Nota interna
@@ -111,11 +121,12 @@ function Bubble({
       </div>
     );
   }
+  if (isCallNote(message)) return <CallBubble message={message} />;
   if (message.senderKind === "system" && !isAutomatic(message)) {
     return (
       <p
         data-testid="system-message"
-        className="mx-auto max-w-[80%] text-center text-xs text-muted-foreground"
+        className="mx-auto w-fit max-w-[80%] rounded-md bg-background/80 px-2 py-0.5 text-center text-xs text-muted-foreground"
       >
         {messageText(message)}
         <span className="ml-1.5 opacity-70">{formatTime(message.createdAt)}</span>
@@ -128,7 +139,8 @@ function Bubble({
       <div
         className={cn(
           "max-w-[80%] rounded-lg px-3 py-2 text-sm shadow-xs",
-          out ? "bg-primary text-primary-foreground" : "bg-muted",
+          "text-crm-bubble-fg",
+          out ? "bg-crm-bubble-out" : "bg-crm-bubble-in",
         )}
       >
         {message.senderKind === "pau" ? (
@@ -145,6 +157,11 @@ function Bubble({
         )}
         {conversation && isSocialChannel(conversation) && SOCIAL_TYPES.has(message.type) && (message.type !== "image" || message.mediaUrl) ? (
           <SocialContent message={message} conversation={conversation} />
+        ) : isWhatsAppMedia(message) ? (
+          <div className="space-y-1">
+            <WhatsAppMedia message={message} />
+            {message.body?.trim() && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
+          </div>
         ) : (
           <p className="whitespace-pre-wrap break-words">{messageText(message)}</p>
         )}
@@ -161,7 +178,7 @@ function Bubble({
           <StatusMark message={message} />
         </div>
         {message.status === "failed" && message.errorMessage && (
-          <p className="mt-1 text-[11px] font-medium text-red-200 dark:text-red-300">
+          <p className="mt-1 text-[11px] font-medium text-destructive">
             {message.errorMessage}
           </p>
         )}
@@ -197,8 +214,8 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
   const [mode, setMode] = useState<"message" | "note">("message");
   const [noteText, setNoteText] = useState("");
   const [templateOpen, setTemplateOpen] = useState(false);
-  const [thinkingOpen, setThinkingOpen] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLTextAreaElement>(null);
   /** Deja un texto en la caja (en línea nueva si ya hay algo) sin enviarlo. */
   const insertInMessage = (t: string) => {
     setMode("message");
@@ -213,8 +230,11 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
   const clientQuery = useConversationClient(
     companyId,
     conversation ? (phoneForCustomer(conversation) ?? undefined) : undefined,
+    conversationId,
   );
   useAutoLinkClient(conversation, clientQuery.data?.id);
+  const callPermission = useCallPermission(conversation?.channel === "whatsapp" ? conversationId : null);
+  const suggestion = useChatSuggestion(conversation, !!conversation && isWindowOpen(conversation));
 
   // Al abrir (o llegar mensajes mientras está abierta) con no leídos → marcar leída.
   useEffect(() => {
@@ -274,6 +294,7 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
   const reactions = reactionsByTarget(items ?? []);
   const isNote = mode === "note";
   const canTemplate = !windowOpen && !isMetaChannel(conversation);
+  const canCall = canTemplate && !!callPermission.data?.canCall;
 
   return (
     <div className="flex h-full min-h-0">
@@ -283,11 +304,11 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
           <ArrowLeft />
         </Button>
         <div className="min-w-[11rem] flex-1">
-          <h2 className="flex items-center gap-2 truncate text-sm font-semibold">
-            <span className="truncate">{contactLabel(conversation, phoneMasked)}</span>
+          <h2 className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+            <span className="min-w-0 break-words sm:truncate">{contactLabel(conversation, phoneMasked)}</span>
             <ChannelBadge channel={conversation.channel} />
           </h2>
-          <p className="truncate text-xs text-muted-foreground">
+          <p className="break-words text-xs text-muted-foreground sm:truncate">
             {isMetaChannel(conversation)
               ? (showPhone(conversation.customerPhone, phoneMasked) ?? "Sin teléfono")
               : showPhone(conversation.contactPhone, phoneMasked)}
@@ -305,11 +326,7 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
         >
           <PanelRight />
         </Button>
-        {!closed && !conversation.resumeAt && (
-          <Button size="sm" variant="outline" onClick={() => setThinkingOpen(true)}>
-            <Clock /> Lo está pensando
-          </Button>
-        )}
+        <ThinkingButton conversation={conversation} />
         {!closed && <LostChatButton conversation={conversation} />}
         <Button
           size="sm"
@@ -333,7 +350,7 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
         <div
           role="status"
           data-testid="thinking-banner"
-          className="flex flex-wrap items-center gap-2 border-b border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-900 dark:border-sky-700 dark:bg-sky-950/40 dark:text-sky-100"
+          className="flex flex-wrap items-center gap-2 border-b border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100"
         >
           <Clock className="h-4 w-4 shrink-0" aria-hidden />
           <span className="min-w-0 flex-1">
@@ -353,7 +370,16 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3" data-testid="messages">
+      <SaleStepsBar conversation={conversation} text={text} onFill={setText} windowOpen={windowOpen && !closed} />
+      <ChatBanners
+        conversation={conversation}
+        windowOpen={windowOpen}
+        canCall={canCall}
+        lastInbound={items?.findLast((m) => m.direction === "in")}
+        onInsert={insertInMessage}
+      />
+
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-crm-chat-bg p-3" data-testid="messages">
         {msgsQuery.isLoading && (
           <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Cargando mensajes…
@@ -374,7 +400,7 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
         {groups.map((g) => (
           <section key={g.day} className="space-y-2">
             <p className="text-center text-xs text-muted-foreground">
-              <span className="rounded-full bg-muted px-2 py-0.5">{g.label}</span>
+              <span className="rounded-full bg-background/90 px-2 py-0.5 shadow-xs">{g.label}</span>
             </p>
             {g.messages
               .filter((m) => m.type !== "reaction")
@@ -395,29 +421,50 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
       </div>
 
       <div className={cn("border-t p-3", isNote && "bg-amber-50/60 dark:bg-amber-950/20")}>
-        <div role="group" aria-label="Tipo de escritura" className="mb-2 flex gap-1">
-          <Button
-            type="button"
-            size="sm"
-            variant={isNote ? "outline" : "default"}
-            aria-pressed={!isNote}
-            onClick={() => setMode("message")}
-          >
-            Mensaje
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={isNote ? "default" : "outline"}
-            aria-pressed={isNote}
-            onClick={() => setMode("note")}
-          >
-            <StickyNote /> Nota interna
-          </Button>
+        {!isNote && suggestion && (
+          <SuggestionCard
+            conversationId={conversation.id}
+            suggestion={suggestion}
+            text={text}
+            onFill={setText}
+            onEdit={(t) => {
+              setText(t);
+              requestAnimationFrame(() => boxRef.current?.focus());
+            }}
+            onInsert={insertInMessage}
+          />
+        )}
+        <div className="mb-2 flex flex-wrap items-center gap-2">
+          <div role="group" aria-label="Tipo de escritura" className="inline-flex rounded-lg border bg-muted p-0.5">
+            <button
+              type="button"
+              aria-pressed={!isNote}
+              onClick={() => setMode("message")}
+              className={cn(
+                "rounded-md px-3 py-1 text-xs font-semibold",
+                !isNote ? "bg-background text-foreground shadow-xs" : "text-muted-foreground",
+              )}
+            >
+              Mensaje
+            </button>
+            <button
+              type="button"
+              aria-pressed={isNote}
+              onClick={() => setMode("note")}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md px-3 py-1 text-xs font-semibold",
+                isNote ? "bg-crm-note text-crm-note-fg shadow-xs" : "text-muted-foreground",
+              )}
+            >
+              <StickyNote className="h-3.5 w-3.5" aria-hidden /> Nota interna
+            </button>
+          </div>
+          {!isNote && <QuickChips conversation={conversation} client={clientQuery.data} onInsert={insertInMessage} disabled={!windowOpen} />}
         </div>
         {!isNote && !windowOpen && (
           <div role="status" className="mb-2 space-y-2 rounded-md border bg-muted p-2 text-xs text-muted-foreground">
-            <p>{windowClosedNotice(conversation)}</p>
+            <p>{canTemplate ? retakeNotice(canCall) : windowClosedNotice(conversation)}</p>
+            {canCall && <WhatsAppCallButton conversationId={conversationId} contactName={conversation.contactName} />}
             {canTemplate && (
               <Button type="button" size="sm" onClick={() => setTemplateOpen(true)}>
                 Enviar plantilla
@@ -458,10 +505,11 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
         ) : (
         <>
         {isSocialChannel(conversation) && <SocialComposer conversationId={conversation.id} disabled={!windowOpen} />}
-        <ContentChatBar conversation={conversation} text={text} onFill={setText} windowOpen={windowOpen} />
+        <ContentChatBar conversation={conversation} text={text} onFill={setText} windowOpen={windowOpen} compact />
         <PauChatBar conversation={conversation} text={text} onFill={setText} windowOpen={windowOpen} />
         <div className="flex items-end gap-2">
           <Textarea
+            ref={boxRef}
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
@@ -469,10 +517,15 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
                 e.preventDefault();
                 submit();
               }
+              if (e.key === "Tab" && !e.shiftKey && suggestion && !text.trim()) {
+                e.preventDefault();
+                setText(suggestion.text);
+                suggestion.use();
+              }
             }}
             disabled={!windowOpen}
             rows={2}
-            placeholder={windowOpen ? "Escribe un mensaje (Enter envía, Shift+Enter salto de línea)" : "Respuesta bloqueada"}
+            placeholder={windowOpen ? "Escribe un mensaje (Enter envía, Tab usa la sugerencia)" : "Respuesta bloqueada"}
             aria-label="Mensaje"
             className="min-h-0 resize-none"
           />
@@ -483,13 +536,14 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
             <Send />
           </Button>
         </div>
+        <SendLinkButton conversation={conversation} onInsert={insertInMessage} disabled={!windowOpen} />
         </>
         )}
       </div>
     </div>
     <aside
       aria-label="Cliente y pedido"
-      className="hidden w-80 shrink-0 border-l xl:block"
+      className="hidden w-[22rem] shrink-0 border-l xl:block"
     >
       <ClientOrderPanel
         conversation={conversation}
@@ -499,7 +553,6 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
       />
     </aside>
     {templateOpen && <TemplateDialog conversation={conversation} onClose={() => setTemplateOpen(false)} />}
-    {thinkingOpen && <ThinkingDialog conversation={conversation} onClose={() => setThinkingOpen(false)} />}
     <Sheet open={panelOpen} onOpenChange={setPanelOpen}>
       <SheetContent side="right" className="w-full max-w-sm p-0 xl:hidden">
         <SheetHeader className="border-b p-3">

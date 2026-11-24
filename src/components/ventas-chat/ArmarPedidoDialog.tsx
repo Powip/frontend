@@ -1,8 +1,6 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { Loader2, Minus, Plus, Search, Trash2 } from "lucide-react";
-import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -13,40 +11,22 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/contexts/AuthContext";
-import { crmKeys } from "@/lib/crmSse";
+import { useChatStore } from "@/hooks/useChatStore";
+import { useCreateChatQuote } from "@/hooks/useCreateChatQuote";
 import { useCrmMe } from "@/hooks/useCrmMe";
-import {
-  createChatQuote,
-  getCrmSalesCatalog,
-  getCrmSalesInventories,
-  linkConversationQuote,
-} from "@/services/crmService";
+import { getCrmSalesCatalog, getCrmSalesInventories } from "@/services/crmService";
 import { errorMessage, money } from "@/components/quotations/quotationHelpers";
 import type { Client } from "@/interfaces/ICliente";
-import type { Conversation, CreateChatQuoteInput } from "@/types/crm";
+import type { Conversation } from "@/types/crm";
 import type {
-  QuotationAddress,
   QuotationCatalogItem,
   QuotationInventory,
   QuotationPaymentType,
 } from "@/types/quotations";
 import ArmarPedidoTools from "./ArmarPedidoTools";
 import CustomerPhoneField from "./CustomerPhoneField";
-import { NATIVE_SELECT_CLASS, phoneForCustomer } from "./format";
-import { toLocalPhone } from "@/lib/crmPhone";
-import { quoteMessage } from "./quotes";
-
-interface CartLine {
-  productVariantId: string;
-  name: string;
-  variant: string;
-  sku: string;
-  imageUrl?: string;
-  unitPrice: number;
-  quantity: number;
-  stock: number;
-}
+import { NATIVE_SELECT_CLASS, phoneForCustomer, showPhone } from "./format";
+import { cartTotal, defaultDeposit, paymentFromPolicy, quoteDraftError, type CartLine } from "./chatQuote";
 
 interface Props {
   conversation: Conversation;
@@ -55,48 +35,10 @@ interface Props {
   onClose: () => void;
   /** Recibe el texto con el enlace para dejarlo en la caja del chat (sin enviarlo). */
   onInsertMessage?: (text: string) => void;
-}
-
-/** Misma dirección que arma Cotizaciones al elegir un cliente existente. */
-/**
- * Dirección del cliente de Core para la cotización. Core exige las cuatro
- * partes (departamento, provincia, distrito y dirección); si falta alguna no
- * se envía nada y el cliente la completa al abrir el enlace. En Clientes, el
- * departamento se guarda en `city`.
- */
-function addressFromClient(client: Client): QuotationAddress | null {
-  const department = client.city?.trim();
-  const province = client.province?.trim();
-  return client.address?.trim() && client.district?.trim() && department && province
-    ? {
-        address: client.address,
-        district: client.district,
-        department,
-        province,
-        // Sin valor se omiten: Core falla si llegan como null.
-        ...(client.reference?.trim() ? { reference: client.reference.trim() } : {}),
-        ...(client.documentNumber?.trim() ? { documentNumber: client.documentNumber.trim() } : {}),
-      }
-    : null;
-}
-
-/** Cotización ya creada en Core cuyo vínculo con el chat falló. */
-interface CreatedQuote {
-  quotationId: string;
-  quotationNumber: string;
-  publicUrl: string;
-}
-
-/** Lee la cotización creada que el CRM devuelve en `QUOTE_CREATED_NOT_LINKED`. */
-function createdFromError(e: unknown): CreatedQuote | null {
-  const data = (e as { response?: { data?: Record<string, unknown> } })?.response?.data;
-  if (!data || data.code !== "QUOTE_CREATED_NOT_LINKED") return null;
-  const { quotationId, quotationNumber, publicUrl } = data;
-  return typeof quotationId === "string" &&
-    typeof quotationNumber === "string" &&
-    typeof publicUrl === "string"
-    ? { quotationId, quotationNumber, publicUrl }
-    : null;
+  /** Abre y arma el carrito con IA leyendo el chat. */
+  autoAi?: boolean;
+  /** Carrito que ya se leyó del chat. */
+  initialCart?: CartLine[];
 }
 
 /**
@@ -109,24 +51,14 @@ export default function ArmarPedidoDialog({
   client,
   onClose,
   onInsertMessage,
+  autoAi = false,
+  initialCart = [],
 }: Props) {
-  const { auth, selectedStoreId } = useAuth();
-  const qc = useQueryClient();
-  // Tiendas del servidor del CRM (`GET /crm/me`); mientras no responde, las de la sesión.
-  const { stores: crmStores } = useCrmMe();
-  const stores = crmStores.length > 0 ? crmStores : (auth?.company?.stores ?? []);
+  const { phoneMasked } = useCrmMe();
   const phone = phoneForCustomer(conversation);
 
-  // La tienda elegida a mano manda; si no, la del canal del chat y luego la
-  // tienda activa del usuario. Se deriva porque las tiendas llegan después.
   const [storeChoice, setStoreId] = useState("");
-  const storeId = stores.some((s) => s.id === storeChoice)
-    ? storeChoice
-    : stores.some((s) => s.id === conversation.storeId)
-      ? (conversation.storeId as string)
-      : stores.some((s) => s.id === selectedStoreId)
-        ? (selectedStoreId as string)
-        : (stores[0]?.id ?? "");
+  const { stores, storeId } = useChatStore(conversation, storeChoice);
   const [inventories, setInventories] = useState<QuotationInventory[]>([]);
   const [inventoryId, setInventoryId] = useState("");
   const [inventoryLoading, setInventoryLoading] = useState(false);
@@ -135,17 +67,15 @@ export default function ArmarPedidoDialog({
   const [catalog, setCatalog] = useState<QuotationCatalogItem[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState("");
-  const [cart, setCart] = useState<CartLine[]>([]);
+  const [cart, setCart] = useState<CartLine[]>(initialCart);
   const [name, setName] = useState(client?.fullName || conversation.contactName || "");
   const [paymentType, setPaymentType] = useState<QuotationPaymentType>("COMPLETO");
   const [deposit, setDeposit] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  // Si la cotización se creó pero falló el vínculo, el reintento solo repite el vínculo.
-  const created = useRef<CreatedQuote | null>(null);
+  const quote = useCreateChatQuote(conversation.id, onInsertMessage);
 
-  const total = cart.reduce((sum, l) => sum + l.quantity * l.unitPrice, 0);
-  const stockIssue = cart.some((l) => l.quantity > l.stock);
+  const total = cartTotal(cart);
 
   useEffect(() => {
     if (!storeId) return;
@@ -238,83 +168,18 @@ export default function ArmarPedidoDialog({
 
   async function save() {
     if (saving) return;
-    setError("");
-    if (!name.trim()) return setError("Completa el nombre del cliente.");
-    if (!phone) return setError("Guarda el teléfono del cliente antes de armar el pedido.");
-    if (phone.length > 20) return setError("El teléfono debe tener hasta 20 caracteres.");
-    if (!storeId) return setError("Selecciona una tienda.");
-    if (!inventoryId) return setError("Selecciona un almacén para el pedido.");
-    if (!cart.length) return setError("Agrega al menos un producto.");
-    if (cart.some((l) => !Number.isInteger(l.quantity) || l.quantity < 1))
-      return setError("Cada producto necesita una cantidad entera mayor a cero.");
-    if (stockIssue)
-      return setError("Hay productos sin stock suficiente. Reduce la cantidad o quita la línea.");
-    const suggestedDeposit = deposit === "" ? Math.round(total * 30) / 100 : Number(deposit);
-    if (paymentType === "ADELANTO" && (!Number.isFinite(suggestedDeposit) || suggestedDeposit <= 0))
-      return setError("Ingresa un adelanto sugerido mayor a cero.");
-    if (paymentType === "ADELANTO" && suggestedDeposit > total)
-      return setError("El adelanto no puede ser mayor al total.");
-
-    const clientAddress = client ? addressFromClient(client) : null;
-    const payload: CreateChatQuoteInput = {
-      storeId,
-      inventoryId,
-      customerName: name.trim(),
-      // Mismo formato que Clientes de Core: 9 dígitos si es de Perú.
-      customerPhone: toLocalPhone(phone),
-      ...(clientAddress ? { address: clientAddress } : {}),
-      paymentType,
-      suggestedDeposit: paymentType === "ADELANTO" ? suggestedDeposit : undefined,
-      validityHours: 24,
-      lines: cart.map((l) => ({
-        productVariantId: l.productVariantId,
-        sku: l.sku || undefined,
-        name: l.name.trim(),
-        variant: l.variant,
-        quantity: l.quantity,
-        unitPrice: l.unitPrice,
-        isManual: false,
-        isPack: false,
-        isGift: false,
-        // El servidor solo acepta URL http(s); sin imagen se omite.
-        ...(l.imageUrl && /^https?:\/\//i.test(l.imageUrl) ? { imageUrl: l.imageUrl } : {}),
-      })),
-    };
-
+    const draft = { name, phone, storeId, inventoryId, cart, paymentType, deposit, client };
+    const missing = quoteDraftError(draft);
+    setError(missing ?? "");
+    if (missing) return;
     setSaving(true);
-    try {
-      let quote: CreatedQuote;
-      if (created.current) {
-        // La cotización ya existe en Core: solo se repite el vínculo.
-        quote = created.current;
-        await linkConversationQuote(conversation.id, quote);
-      } else {
-        const linked = await createChatQuote(conversation.id, payload);
-        quote = {
-          quotationId: linked.quotationId,
-          quotationNumber: linked.quotationNumber ?? "",
-          publicUrl: linked.publicUrl ?? "",
-        };
-      }
-      void qc.invalidateQueries({ queryKey: crmKeys.quotes(conversation.id) });
-      void qc.invalidateQueries({ queryKey: crmKeys.messages(conversation.id) });
-      void qc.invalidateQueries({ queryKey: crmKeys.summary });
-      if (quote.publicUrl) onInsertMessage?.(quoteMessage(quote.publicUrl));
-      toast.success(`POWIP Link ${quote.quotationNumber} listo. Revisa el mensaje y envíalo.`);
-      onClose();
-    } catch (e) {
-      created.current = created.current ?? createdFromError(e);
-      setError(
-        created.current
-          ? `La cotización ${created.current.quotationNumber} se creó, pero no se pudo vincular al chat: ${errorMessage(e, "intenta de nuevo")}. Pulsa de nuevo para reintentar.`
-          : errorMessage(e, "No se pudo crear el pedido."),
-      );
-    } finally {
-      setSaving(false);
-    }
+    const failed = await quote.submit(draft);
+    setSaving(false);
+    if (failed) return setError(failed);
+    onClose();
   }
 
-  const locked = cart.length > 0 || !!created.current;
+  const locked = cart.length > 0 || quote.isLinkPending();
   return (
     <Dialog
       open
@@ -355,7 +220,7 @@ export default function ArmarPedidoDialog({
               id="armar-almacen"
               className={NATIVE_SELECT_CLASS}
               value={inventoryId}
-              disabled={locked || inventoryLoading || inventories.length === 0}
+              disabled={(locked && !!inventoryId) || inventoryLoading || inventories.length === 0}
               onChange={(e) => setInventoryId(e.target.value)}
             >
               <option value="" disabled>
@@ -412,8 +277,8 @@ export default function ArmarPedidoDialog({
                     data-testid="catalog-item"
                   >
                     <div className="min-w-0">
-                      <p className="truncate font-medium">{item.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
+                      <p className="break-words sm:truncate font-medium">{item.name}</p>
+                      <p className="break-words sm:truncate text-xs text-muted-foreground">
                         {[item.variant, money(item.unitPrice)].filter(Boolean).join(" · ")} ·{" "}
                         {stock > 0 ? `Stock ${stock}` : "Sin stock"}
                       </p>
@@ -448,8 +313,8 @@ export default function ArmarPedidoDialog({
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate font-medium">{l.name}</p>
-                      <p className="truncate text-xs text-muted-foreground">
+                      <p className="break-words sm:truncate font-medium">{l.name}</p>
+                      <p className="break-words sm:truncate text-xs text-muted-foreground">
                         {[l.variant, money(l.unitPrice)].filter(Boolean).join(" · ")}
                       </p>
                     </div>
@@ -517,11 +382,12 @@ export default function ArmarPedidoDialog({
           cart={cart}
           setCart={setCart}
           onInsertMessage={onInsertMessage}
+          autoAi={autoAi}
           onPolicy={(p) => {
-            if (p.firstOffer === "dep" && p.depositEnabled && p.depositAmount > 0) {
-              setPaymentType("ADELANTO");
-              setDeposit(String(p.depositAmount));
-            }
+            const payment = paymentFromPolicy(p);
+            if (payment.paymentType !== "ADELANTO") return;
+            setPaymentType(payment.paymentType);
+            setDeposit(payment.deposit);
           }}
         />
 
@@ -530,7 +396,7 @@ export default function ArmarPedidoDialog({
             <Label htmlFor="armar-nombre">Cliente</Label>
             <Input id="armar-nombre" value={name} onChange={(e) => setName(e.target.value)} />
             {phone ? (
-              <p className="text-xs text-muted-foreground">Teléfono: {phone}</p>
+              <p className="text-xs text-muted-foreground">Teléfono: {showPhone(phone, phoneMasked)}</p>
             ) : (
               <CustomerPhoneField conversation={conversation} />
             )}
@@ -558,7 +424,7 @@ export default function ArmarPedidoDialog({
                   step="0.01"
                   value={deposit}
                   onChange={(e) => setDeposit(e.target.value)}
-                  placeholder={String(Math.round(total * 30) / 100)}
+                  placeholder={String(defaultDeposit(total))}
                 />
                 <p className="text-xs text-muted-foreground">
                   Si lo dejas vacío se sugiere el 30 % del total.

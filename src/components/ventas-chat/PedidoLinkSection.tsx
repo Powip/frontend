@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, ExternalLink, Loader2, MessageSquarePlus, PackagePlus } from "lucide-react";
+import { Copy, ExternalLink, Loader2, MessageSquarePlus, PackagePlus, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ import {
   useConversationQuotes,
   useCoreQuotation,
 } from "@/hooks/useCrmQuotes";
+import { useAiQuote, type QuoteHandoff } from "@/hooks/useAiQuote";
 import ArmarPedidoDialog from "./ArmarPedidoDialog";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import { formatTime } from "./format";
@@ -127,7 +128,8 @@ function QuoteRow({
 
 /** «Pedido / POWIP Link»: arma una cotización de Core desde el chat y lista las enviadas. */
 export default function PedidoLinkSection({ conversation, client, onInsertMessage }: Props) {
-  const [building, setBuilding] = useState(false);
+  const [building, setBuilding] = useState<QuoteHandoff | null>(null);
+  const ai = useAiQuote({ conversation, client, onInsertMessage, onHandoff: setBuilding });
   const quotes = useConversationQuotes(conversation.id);
   const err = quotes.isError ? crmError(quotes.error) : null;
   return (
@@ -135,14 +137,25 @@ export default function PedidoLinkSection({ conversation, client, onInsertMessag
       <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Pedido / POWIP Link
       </h3>
-      <Button size="sm" className="w-full" onClick={() => setBuilding(true)}>
+      <Button
+        size="sm"
+        variant="outline"
+        className="w-full border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"
+        disabled={ai.loading}
+        onClick={() => void ai.run()}
+      >
+        {ai.loading ? <Loader2 className="animate-spin" /> : <Sparkles />} Armar pedido leyendo el chat
+      </Button>
+      <Button size="sm" className="w-full" onClick={() => setBuilding({ cart: [] })}>
         <PackagePlus /> Armar pedido
       </Button>
       {building && (
         <ArmarPedidoDialog
           conversation={conversation}
           client={client}
-          onClose={() => setBuilding(false)}
+          autoAi={!building.cart}
+          initialCart={building.cart}
+          onClose={() => setBuilding(null)}
           onInsertMessage={onInsertMessage}
         />
       )}

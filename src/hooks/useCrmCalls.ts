@@ -3,14 +3,29 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { crmKeys } from "@/lib/crmSse";
 import { crmError } from "@/services/crmService";
-import { createCall, deleteCall, getCallStats, listCalls } from "@/services/crmCallsService";
+import {
+  createCall,
+  deleteCall,
+  getCallStats,
+  listCallProspects,
+  listCalls,
+} from "@/services/crmCallsService";
 import type { CallDays, CallListParams, CreateCallInput } from "@/types/crmCalls";
 
 export const callKeys = {
   all: ["crm", "calls"] as const,
   list: (p: CallListParams) => ["crm", "calls", "list", p] as const,
   stats: (days: number) => ["crm", "calls", "stats", days] as const,
+  prospects: (assigned: string) => ["crm", "calls", "prospects", assigned] as const,
 };
+
+export function useCallProspects(assigned: "me" | "all") {
+  return useQuery({
+    queryKey: callKeys.prospects(assigned),
+    queryFn: () => listCallProspects(assigned),
+    retry: false,
+  });
+}
 
 export function useCalls(params: CallListParams, enabled = true) {
   return useQuery({

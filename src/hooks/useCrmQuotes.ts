@@ -21,10 +21,11 @@ export function useConversationQuotes(id: string | null) {
  * Cotización real de Core. Se refresca al volver a la pestaña y cada 60 s
  * mientras no esté convertida. Si falla, la UI usa el número y enlace guardados.
  */
-export function useCoreQuotation(quotationId: string) {
+export function useCoreQuotation(quotationId: string | null) {
   return useQuery({
     queryKey: ["crm", "core-quotation", quotationId] as const,
-    queryFn: ({ signal }) => getQuotation(quotationId, { signal }),
+    queryFn: ({ signal }) => getQuotation(quotationId!, { signal }),
+    enabled: !!quotationId,
     retry: false,
     refetchOnWindowFocus: true,
     refetchInterval: (query) => (query.state.data?.status === "CONVERTIDA" ? false : 60_000),
