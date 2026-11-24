@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getChannelSummary } from "@/services/productChannelsService";
 import { toast } from "sonner";
 import { Loader2, Play } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
@@ -50,6 +51,8 @@ interface ChannelOption {
   code: string;
   name: string;
   overridable: boolean;
+  /** FEAT-32 M2 — false = el producto está desactivado en este canal y tienda. */
+  active: boolean;
 }
 
 const money = (value: number) => `S/ ${value.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -115,6 +118,17 @@ export default function FichaContentTab({
     refetchOnWindowFocus: false,
     staleTime: Infinity,
   });
+  // FEAT-32 M2 — canales desactivados para este producto (sin fila = activo).
+  const summary = useQuery({
+    queryKey: ["product-channel-summary", auth?.company?.id ?? ""],
+    queryFn: ({ signal }) => getChannelSummary(signal),
+    retry: false,
+    staleTime: 60_000,
+  });
+  const inactive = useMemo(
+    () => new Set((summary.data?.channels ?? []).filter((row) => row.productId === productId && !row.active).map((row) => channelKey(row.storeId, row.channel))),
+    [summary.data, productId],
+  );
 
   const [baseline, setBaseline] = useState<ContentDraft | null>(null);
   const [draft, setDraftState] = useState<ContentDraft | null>(null);
@@ -154,9 +168,10 @@ export default function FichaContentTab({
           code: channel.code,
           name: stores.length > 1 ? `${channel.name} · ${store.name}` : channel.name,
           overridable: channel.overridable,
+          active: !inactive.has(channelKey(store.id, channel.code)),
         })),
       ),
-    [stores],
+    [stores, inactive],
   );
   const channel = selected ? channels.find((option) => option.key === selected) ?? null : null;
   const channelName = useCallback(
@@ -295,11 +310,17 @@ export default function FichaContentTab({
           onChange={(event) => setSelected(event.target.value || null)}
         >
           <option value="">Por defecto · lo usan todos los canales</option>
-          {channels.map((option) => <option key={option.key} value={option.key}>{option.name}</option>)}
+          {channels.map((option) => <option key={option.key} value={option.key}>{option.name}{option.active ? "" : " (no activado)"}</option>)}
         </select>
         <span className="min-w-[200px] flex-1 text-xs text-muted-foreground">{note}</span>
       </div>
 
+      {channel && !channel.active ? (
+        <div role="status" className="rounded-xl bg-[#fff4dc] px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+          El producto no está activado en {channel.name}. Puedes preparar el contenido y activarlo en la pestaña{" "}
+          {onGoToChannels ? <button type="button" className="font-semibold underline" onClick={onGoToChannels}>Canales</button> : "Canales"}.
+        </div>
+      ) : null}
       {!view.materialized && view.source === "shopify" && canEdit ? (
         <div className="rounded-xl bg-[#fff4dc] px-4 py-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
           Hoy las fotos y la descripción de este producto vienen de <b>Shopify</b>. Cuando guardes aquí, <b>POWIP pasa a ser el dueño del contenido</b>: lo que cambies después en Shopify (fotos y descripción) ya no se copia a POWIP. El nombre, los precios y el stock siguen sincronizándose como siempre.
@@ -477,7 +498,11 @@ export default function FichaContentTab({
                     <b className="font-semibold">{item.name}</b>
                     <small className="block text-xs text-muted-foreground">{item.usage}</small>
                   </div>
-                  <Pill tone="teal">Al día</Pill>
+                  {item.code !== "POWIP_LIVE" && stores.length > 0 && stores.every((store) => inactive.has(channelKey(store.id, item.code))) ? (
+                    <Pill tone="gray">No activado</Pill>
+                  ) : (
+                    <Pill tone="teal">Al día</Pill>
+                  )}
                 </div>
               ))}
               {view.source === "shopify" ? (

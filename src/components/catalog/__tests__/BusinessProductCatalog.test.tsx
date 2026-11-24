@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import BusinessProductCatalog from "@/components/products/BusinessProductCatalog";
 import { fetchBusinessProducts, type BusinessProduct } from "@/services/businessProductsService";
 import { fetchBusinessInventoryItems, type BusinessInventoryItem } from "@/services/businessInventoryItemsService";
+import { getChannelSummary } from "@/services/productChannelsService";
 
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn(), back: jest.fn() }), usePathname: () => "/productos" }));
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { accessToken: "t", user: { id: "u1", role: "ADMINISTRADOR" }, company: { id: "c1" } } }) }));
@@ -18,6 +19,7 @@ jest.mock("@/hooks/useCatalogCategories", () => ({
 }));
 jest.mock("@/services/businessProductsService", () => ({ ...jest.requireActual("@/services/businessProductsService"), fetchBusinessProducts: jest.fn() }));
 jest.mock("@/services/businessInventoryItemsService", () => ({ ...jest.requireActual("@/services/businessInventoryItemsService"), fetchBusinessInventoryItems: jest.fn() }));
+jest.mock("@/services/productChannelsService", () => ({ getChannelSummary: jest.fn() }));
 
 const PRODUCTS: BusinessProduct[] = [
   {
@@ -42,6 +44,7 @@ describe("Catálogo › Productos (FEAT-24 H4-D)", () => {
   beforeEach(() => {
     jest.mocked(fetchBusinessProducts).mockResolvedValue(PRODUCTS);
     jest.mocked(fetchBusinessInventoryItems).mockResolvedValue([stockRow("p1", "v1", 4), stockRow("p1", "v2", 3)]);
+    jest.mocked(getChannelSummary).mockResolvedValue({ channels: [], ownPrices: [] });
   });
 
   it("muestra SKU base, marca, categoría con su ruta, tipo, canal, variantes vivas, disponible y precio en soles", async () => {
@@ -74,7 +77,7 @@ describe("Catálogo › Productos (FEAT-24 H4-D)", () => {
     renderCatalog();
     await screen.findByText("Polo básico");
 
-    await user.selectOptions(screen.getByLabelText("Canal"), "shopify");
+    await user.selectOptions(screen.getByLabelText("Origen"), "shopify");
     expect(screen.queryByText("Polo básico")).not.toBeInTheDocument();
     expect(screen.getByText("Gorra Shopify")).toBeInTheDocument();
 
@@ -91,6 +94,39 @@ describe("Catálogo › Productos (FEAT-24 H4-D)", () => {
     await user.selectOptions(screen.getByLabelText("Stock"), "sin");
     expect(screen.getByText("Gorra Shopify")).toBeInTheDocument();
     expect(screen.queryByText("Polo básico")).not.toBeInTheDocument();
+  });
+
+  it("FEAT-32 M2: columna Origen y Canales (con su estado), «Varía por canal», leyenda y filtro por canal y estado", async () => {
+    jest.mocked(getChannelSummary).mockResolvedValue({
+      channels: [
+        { productId: "p2", storeId: "s1", channel: "CATALOGO_WEB", active: false, ruleMode: "same" },
+        { productId: "p1", storeId: "s1", channel: "POWIP_CRM", active: true, ruleMode: "more" },
+      ],
+      ownPrices: [],
+    });
+    const user = userEvent.setup();
+    renderCatalog();
+    await screen.findByText("Polo básico");
+    const headers = screen.getAllByRole("columnheader").map((th) => th.textContent);
+    expect(headers).toEqual(expect.arrayContaining(["Origen", "Canales"]));
+    expect(headers).not.toContain("Canal");
+    const gorra = screen.getByText("Gorra Shopify").closest("tr")!;
+    expect(await within(gorra).findByRole("img", { name: "Catálogo web: No activado" })).toBeInTheDocument();
+    expect(within(gorra).getByRole("img", { name: "POWIP CRM: Al día" })).toBeInTheDocument();
+    expect(within(gorra).getByRole("img", { name: "Shopify: Lo administra Shopify" })).toBeInTheDocument();
+    const polo = screen.getByText("Polo básico").closest("tr")!;
+    expect(within(polo).getByText("Varía por canal")).toBeInTheDocument();
+    expect(within(gorra).queryByText("Varía por canal")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Leyenda de canales")).toHaveTextContent("No activado");
+
+    expect(screen.queryByLabelText("Estado en el canal")).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Canal"), "CATALOGO_WEB");
+    await user.selectOptions(screen.getByLabelText("Estado en el canal"), "no_activado");
+    expect(screen.queryByText("Polo básico")).not.toBeInTheDocument();
+    expect(screen.getByText("Gorra Shopify")).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Estado en el canal"), "al_dia");
+    expect(screen.getByText("Polo básico")).toBeInTheDocument();
+    expect(screen.queryByText("Gorra Shopify")).not.toBeInTheDocument();
   });
 
   it("enlaza a Catálogo › Categorías", async () => {

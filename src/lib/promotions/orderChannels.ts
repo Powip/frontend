@@ -16,7 +16,15 @@ export const ORDER_CHANNELS = [
 
 export type OrderChannel = (typeof ORDER_CHANNELS)[number]["value"];
 
-const LABELS: Record<string, string> = Object.fromEntries(ORDER_CHANNELS.map((channel) => [channel.value, channel.label]));
+/** FEAT-32 M2 — canales de POWIP (listas de precios por canal); no son canales de venta del pedido. */
+export const POWIP_PRICE_CHANNELS = [
+  { value: "POWIP_CRM", label: "POWIP CRM" },
+  { value: "CATALOGO_WEB", label: "Catálogo web" },
+] as const;
+
+const LABELS: Record<string, string> = Object.fromEntries(
+  [...ORDER_CHANNELS, ...POWIP_PRICE_CHANNELS, { value: "POWIP_LIVE", label: "POWIP Live" }].map((channel) => [channel.value, channel.label]),
+);
 
 /** Código en mayúsculas; SHOPIFY (viejo) cuenta como WEB, igual que el backend. */
 export function normalizeOrderChannel(channel: string | null | undefined): string | null {

@@ -115,3 +115,47 @@ describe("Catálogo › Listas de precios", () => {
     expect(createPriceList).not.toHaveBeenCalled();
   });
 });
+
+describe("FEAT-32 M2 — canal con regla en Listas de precios", () => {
+  const CRM_LIST: PriceList = { id: "l-crm", name: "POWIP CRM", storeId: "s1", channel: "POWIP_CRM", isDefault: false, active: true, itemCount: 1 };
+  const rule = { mode: "more" as const, unit: "amount" as const, value: 10 };
+  const withChannel = (row: PriceListItem, channel: PriceListItem["channel"]): PriceListItem => ({ ...row, channel });
+
+  beforeEach(() => {
+    jest.mocked(listPriceLists).mockResolvedValue([STORE_LIST, CRM_LIST]);
+    jest.mocked(getPriceListItems).mockImplementation(async (listId) =>
+      listId === "l-store"
+        ? pageOf(STORE_LIST, [item("v1", "Polo", 59.9, null), item("v2", "Gorra", 39.9, null), item("v3", "Medias", 9.9, null)])
+        : pageOf(CRM_LIST, [
+            withChannel(item("v1", "Polo", 59.9, null), { active: true, rule, ruleLabel: "Tienda + S/ 10.00", storePrice: 59.9, rulePrice: 69.9 }),
+            withChannel(item("v2", "Gorra", 39.9, 35), { active: true, rule, ruleLabel: "Tienda + S/ 10.00", storePrice: 39.9, rulePrice: 49.9 }),
+            withChannel(item("v3", "Medias", 9.9, null), { active: false, rule, ruleLabel: "Tienda + S/ 10.00", storePrice: 9.9, rulePrice: null }),
+          ]),
+    );
+  });
+
+  it("verde agua = sale de la regla, morado = precio propio con «Volver a la regla», y «No activado»", async () => {
+    const user = userEvent.setup();
+    renderView();
+    const polo = await screen.findByTestId("price-row-v1");
+    expect(screen.getAllByRole("columnheader").map((th) => th.textContent)).toEqual(["Variante", "Precio base", "Todos los canales", "POWIP CRM"]);
+    const poloCell = within(polo).getByTestId("price-cell-l-crm-v1");
+    expect(poloCell.className).toMatch(/bg-\[#e7f3f3\]/);
+    expect(within(poloCell).getByText("regla: tienda + s/ 10.00")).toBeInTheDocument();
+    expect(within(poloCell).getByLabelText("Precio de Polo en POWIP CRM")).toHaveAttribute("placeholder", "69.90");
+
+    const gorraCell = within(screen.getByTestId("price-row-v2")).getByTestId("price-cell-l-crm-v2");
+    expect(gorraCell.className).toMatch(/bg-\[#efecfb\]/);
+    expect(within(gorraCell).getByText(/precio propio/)).toBeInTheDocument();
+    await user.click(within(gorraCell).getByRole("button", { name: "Volver a la regla" }));
+    await waitFor(() => expect(savePriceListItems).toHaveBeenCalledWith("l-crm", [{ variantId: "v2", price: null }]));
+
+    const medias = screen.getByTestId("price-row-v3");
+    expect(within(medias).getByText("No activado")).toBeInTheDocument();
+    expect(within(medias).queryByLabelText("Precio de Medias en POWIP CRM")).not.toBeInTheDocument();
+
+    await user.type(within(poloCell).getByLabelText("Precio de Polo en POWIP CRM"), "65");
+    expect(within(poloCell).getByText("cambio sin guardar")).toBeInTheDocument();
+    expect(poloCell.className).toMatch(/bg-\[#efecfb\]/);
+  });
+});
