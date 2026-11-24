@@ -3,17 +3,15 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ImagePlus, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import BrandSelect from "@/components/products/BrandSelect";
 import CategoryTreeSelect from "@/components/catalog/CategoryTreeSelect";
 import CategoryQuickCreate from "@/components/catalog/CategoryQuickCreate";
 import { ProductThumb, SkuConflictBadge } from "@/components/catalog/CatalogBadges";
-import { uploadImage } from "@/services/uploadService";
 import { updateCatalogProduct, updateCatalogVariant, type CatalogProductDetail, type CatalogVariantDetail } from "@/services/catalogProductService";
 import {
   apiErrorInfo,
@@ -53,8 +51,9 @@ export const codesFromVariant = (variant: CatalogVariantDetail | null | undefine
 
 /**
  * FEAT-24 H4 (H4-D11) — pestaña General: nombre, SKU base, marca (con creación rápida), categoría propia,
- * unidad de compra y factor, descripción y foto principal. Un producto simple muestra acá su SKU y su
- * código de barras (no tiene tabla de variantes).
+ * unidad de compra y factor. Un producto simple muestra acá su SKU y su código de barras (no tiene tabla de
+ * variantes). FEAT-32 M1: la foto y la descripción se mudaron a la pestaña Contenido (aviso con el atajo); el
+ * formulario las sigue leyendo pero ya no las cambia, así que nunca viajan en el PATCH.
  */
 /**
  * FEAT-24 H10 — costo promedio en la ficha: lo ven Administrador y Operaciones; solo el Administrador lo carga
@@ -72,6 +71,7 @@ export default function FichaGeneralTab({
   categoryTree,
   canEdit,
   costs,
+  onGoToContent,
 }: {
   product: CatalogProductDetail;
   /** La única variante de un producto simple (null si tiene variantes). */
@@ -80,6 +80,8 @@ export default function FichaGeneralTab({
   canEdit: boolean;
   /** Sin rol de costos no viene. */
   costs?: FichaCosts;
+  /** FEAT-32 M1: abre la pestaña Contenido. */
+  onGoToContent?: () => void;
 }) {
   const queryClient = useQueryClient();
   const original = formFromProduct(product);
@@ -90,24 +92,11 @@ export default function FichaGeneralTab({
   const [variantSkuError, setVariantSkuError] = useState<string | null>(null);
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const set = <K extends keyof ProductGeneralForm>(key: K, value: ProductGeneralForm[K]) => setForm((prev) => ({ ...prev, [key]: value }));
 
   const productDraft = buildProductPatch(original, form);
   const codesDraft = simpleVariant ? buildVariantPatch(originalCodes, codes) : { patch: {}, errors: [] };
   const dirty = !isEmptyPatch(productDraft.patch) || !isEmptyPatch(codesDraft.patch) || productDraft.errors.length > 0 || codesDraft.errors.length > 0;
-
-  const onPhoto = async (file: File | undefined) => {
-    if (!file) return;
-    setUploading(true);
-    try {
-      set("imageUrl", await uploadImage(file));
-    } catch (error) {
-      toast.error(error instanceof Error && error.message ? error.message : "No se pudo subir la foto.");
-    } finally {
-      setUploading(false);
-    }
-  };
 
   const save = async () => {
     setSkuError(null);
@@ -157,30 +146,17 @@ export default function FichaGeneralTab({
   const lotsBlocked = lotTrackingBlockReason(product);
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start gap-4">
-        <ProductThumb src={form.imageUrl} name={form.name || product.name} size={96} />
-        <div className="space-y-2">
-          <p className="font-medium">Foto principal</p>
-          <p className="text-xs text-muted-foreground">JPG, PNG o WEBP, hasta 5 MB. Se usa en la lista, el reporte y los canales. Cada variante puede tener su propia foto.</p>
-          {canEdit ? (
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" size="sm" asChild disabled={uploading || saving}>
-                <label className="cursor-pointer">
-                  {uploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ImagePlus className="mr-2 h-4 w-4" />}
-                  {form.imageUrl ? "Cambiar foto" : "Subir foto"}
-                  <input type="file" accept="image/*" className="hidden" aria-label="Foto principal" onChange={(event) => void onPhoto(event.target.files?.[0])} />
-                </label>
-              </Button>
-              {form.imageUrl ? <Button type="button" variant="ghost" size="sm" onClick={() => set("imageUrl", "")}>Quitar foto</Button> : null}
-            </div>
-          ) : null}
-        </div>
+      <div className="flex flex-wrap items-center gap-3 rounded-xl bg-[#e7f3f3] px-4 py-3 text-sm text-[#015d5e] dark:bg-teal-950/40 dark:text-teal-100">
+        <ProductThumb src={product.imageUrl} name={product.name} size={48} />
+        <span className="min-w-[220px] flex-1"><b>Fotos, videos y descripción</b> ahora están en la pestaña <b>Contenido</b>, con lo que se muestra en cada canal.</span>
+        {onGoToContent ? <Button type="button" variant="outline" size="sm" onClick={onGoToContent}>Ir a Contenido →</Button> : null}
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-2 md:col-span-2">
           <Label htmlFor="ficha-name">Nombre</Label>
           <Input id="ficha-name" value={form.name} disabled={disabled} onChange={(event) => set("name", event.target.value)} />
+          <p className="text-xs text-muted-foreground">Nombre interno. El título que ve el cliente se edita en Contenido.</p>
         </div>
         <div className="space-y-2">
           <Label htmlFor="ficha-sku">SKU base</Label>
@@ -253,17 +229,13 @@ export default function FichaGeneralTab({
             ) : null}
           </>
         ) : null}
-        <div className="space-y-2 md:col-span-2">
-          <Label htmlFor="ficha-description">Descripción</Label>
-          <Textarea id="ficha-description" rows={3} value={form.description} disabled={disabled} onChange={(event) => set("description", event.target.value)} />
-        </div>
       </div>
 
       {errors.length ? <div role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{errors.map((error) => <p key={error}>{error}</p>)}</div> : null}
       {canEdit ? (
         <div className="flex items-center justify-end gap-3">
           {dirty ? <span className="text-xs text-muted-foreground">Hay cambios sin guardar</span> : null}
-          <Button type="button" onClick={() => void save()} disabled={saving || uploading || !dirty}>
+          <Button type="button" onClick={() => void save()} disabled={saving || !dirty}>
             {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Guardar cambios
           </Button>
