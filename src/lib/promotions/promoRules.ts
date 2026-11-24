@@ -55,18 +55,39 @@ export function promoValidityText(promo: Pick<Promotion, "startsAt" | "endsAt">)
 export interface PromoNames {
   product: (productId: string | null) => string;
   variant: (variantId: string | null) => string;
+  /** FEAT-32 M4 — código del SKU (`null` si todavía no se conoce). */
+  sku: (variantId: string | null) => string | null;
 }
 
-/** Regla en una línea: «Lleva 3 de Polo y paga S/ 90.00 por las 3», «Por compras desde S/ 150.00 regala 1 × Gorra». */
+/**
+ * Regla en una línea (FEAT-32 M4, spec §7.12): «3 por S/ 210.00 · hasta 6 u.», «Regalo ACL0356 desde S/ 300.00»,
+ * «Regalo 2 × GOR al comprar 1 de Polo».
+ */
 export function promoRuleText(promo: Promotion, names: PromoNames): string {
   if (promo.type === "VOLUME") {
-    const min = promo.minQty ?? 0;
-    const range = promo.maxQty ? `${min} a ${promo.maxQty}` : String(min);
-    return `Lleva ${range} de ${names.product(promo.productId)} y paga ${soles(promo.packPrice)} por cada ${min}`;
+    const max = promo.maxQty ? ` · hasta ${promo.maxQty} u.` : "";
+    return `${promo.minQty ?? 0} por ${soles(promo.packPrice)}${max}`;
   }
-  const gift = `regala ${promo.giftQuantity ?? 1} × ${names.variant(promo.giftVariantId)}`;
-  if (promo.giftCondition === "AMOUNT") return `Por compras desde ${soles(promo.minAmount)}, ${gift}`;
-  if (promo.giftCondition === "PRODUCT") return `Al comprar ${promo.minQty ?? 1} de ${names.product(promo.productId)}, ${gift}`;
-  if (promo.giftCondition === "VARIANT") return `Al comprar ${promo.minQty ?? 1} × ${names.variant(promo.triggerVariantId)}, ${gift}`;
-  return gift.charAt(0).toUpperCase() + gift.slice(1);
+  const quantity = promo.giftQuantity && promo.giftQuantity > 1 ? `${promo.giftQuantity} × ` : "";
+  const gift = `Regalo ${quantity}${names.sku(promo.giftVariantId) ?? "un SKU"}`;
+  if (promo.giftCondition === "AMOUNT") return `${gift} desde ${soles(promo.minAmount)}`;
+  if (promo.giftCondition === "PRODUCT") return `${gift} al comprar ${promo.minQty ?? 1} de ${names.product(promo.productId)}`;
+  if (promo.giftCondition === "VARIANT")
+    return `${gift} al comprar ${promo.minQty ?? 1} × ${names.sku(promo.triggerVariantId) ?? names.variant(promo.triggerVariantId)}`;
+  return gift;
+}
+
+/** Precio por unidad del volumen («S/ 70.00 c/u»); vacío si falta el precio o la cantidad. */
+export function volumeUnitText(promo: Pick<Promotion, "minQty" | "packPrice">): string {
+  return promo.minQty && promo.packPrice ? `${soles(promo.packPrice / promo.minQty)} c/u` : "";
+}
+
+/** SKUs del volumen para la tabla: los 2 primeros (los que ya se conocen) y «y N más», más el conteo. */
+export function volumeSkusText(variantIds: string[], sku: (variantId: string) => string | null): { first: string; count: string } {
+  const known = variantIds.slice(0, 2).map(sku).filter((code): code is string => !!code);
+  const rest = variantIds.length - known.length;
+  return {
+    first: known.length ? `${known.join(", ")}${rest > 0 ? ` y ${rest} más` : ""}` : "",
+    count: variantIds.length === 1 ? "1 SKU" : `${variantIds.length} SKUs`,
+  };
 }

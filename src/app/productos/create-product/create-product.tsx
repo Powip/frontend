@@ -8,6 +8,9 @@ import Image from "next/image";
 import { Loader2, Plus, Image as ImageIcon, X as XIcon } from "lucide-react";
 import { isTracked, type TrackingMode } from "@/services/inventoryTrackingService";
 import { uploadImage } from "@/services/uploadService";
+// FEAT-32 M1: alta con varias fotos (la galería se guarda en el contenido del producto).
+import { saveProductContent } from "@/services/productContentService";
+import { MAX_PHOTOS, PHOTO_TYPES, photoFileProblem, plainTextToHtml } from "@/lib/catalog/productContent";
 
 import {
   Card,
@@ -160,6 +163,26 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
   });
 
   const [mainImageFile, setMainImageFile] = useState<File | null>(null);
+  // FEAT-32 M1: fotos adicionales del alta (la principal sigue siendo `mainImageFile`).
+  const [extraImageFiles, setExtraImageFiles] = useState<File[]>([]);
+  /** Valida y reparte los archivos elegidos: el primero es la principal si todavía no hay, el resto adicionales (hasta 12). */
+  const pickPhotos = (files: FileList | null) => {
+    const list = Array.from(files ?? []);
+    const valid = list.filter((file) => {
+      const problem = photoFileProblem(file);
+      if (problem) toast.error(problem);
+      return !problem;
+    });
+    if (!valid.length) return;
+    const hasMain = Boolean(mainImageFile || form.mainImageUrl);
+    const main = hasMain ? null : valid[0];
+    const rest = hasMain ? valid : valid.slice(1);
+    if (main) setMainImageFile(main);
+    if (isEditMode) return;
+    const room = MAX_PHOTOS - 1 - extraImageFiles.length;
+    if (rest.length > room) toast.error(`Solo entran ${MAX_PHOTOS} fotos en total.`);
+    if (rest.length && room > 0) setExtraImageFiles((prev) => [...prev, ...rest.slice(0, room)]);
+  };
   const [isUploading, setIsUploading] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -637,6 +660,8 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
     setTrackingMode("NONE");
     setTracksLots(false);
     setMessage("");
+    setMainImageFile(null);
+    setExtraImageFiles([]);
   };
 
   const handleVariantImageChange = (
@@ -879,6 +904,38 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
         );
 
         toast.success("¡Producto creado exitosamente!");
+        // FEAT-32 M1: con más de una foto, la galería completa va al contenido del producto (la primera es la
+        // principal). Si falla, el producto ya está creado: se avisa y las fotos se suben en la ficha › Contenido.
+        const productId: string | undefined = res?.data?.productId;
+        if (productId && extraImageFiles.length) {
+          try {
+            setIsUploading(true);
+            const extras = await Promise.all(extraImageFiles.map(async (file) => ({ file, url: await uploadImage(file) })));
+            const photos = [
+              ...(payload.imageUrl ? [{ url: payload.imageUrl, file: mainImageFile }] : []),
+              ...extras,
+            ];
+            await saveProductContent(productId, {
+              title: form.name.trim(),
+              shortDescription: "",
+              descriptionHtml: plainTextToHtml(form.description ?? ""),
+              features: [],
+              media: photos.map((photo) => ({
+                id: crypto.randomUUID(),
+                kind: "photo" as const,
+                url: photo.url,
+                origin: "uploaded" as const,
+                fileName: photo.file?.name.slice(0, 200) ?? null,
+                sizeBytes: photo.file?.size ?? null,
+              })),
+              overrides: [],
+            });
+          } catch {
+            toast.warning("El producto se creó, pero no se pudieron guardar las fotos adicionales: súbelas en la ficha del producto › Contenido.");
+          } finally {
+            setIsUploading(false);
+          }
+        }
         resetForm();
       }
     } catch (error) {
@@ -1006,7 +1063,7 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
 
                 <div className="space-y-2">
                   <Label>Imagen del producto</Label>
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-wrap items-center gap-4">
                     {mainImageFile || form.mainImageUrl ? (
                       <div className="relative h-20 w-20 rounded-lg border overflow-hidden">
                         <Image
@@ -1040,17 +1097,56 @@ function ProductCreateFormForCompany({ editVariantId }: ProductCreateFormProps) 
                         </span>
                         <input
                           type="file"
-                          accept="image/*"
+                          accept={PHOTO_TYPES.join(",")}
+                          multiple={!isEditMode}
                           className="hidden"
-                          onChange={(e) =>
-                            setMainImageFile(e.target.files?.[0] || null)
-                          }
+                          aria-label="Fotos del producto"
+                          onChange={(e) => {
+                            pickPhotos(e.target.files);
+                            e.target.value = "";
+                          }}
                         />
                       </label>
                     )}
+                    {!isEditMode && (mainImageFile || form.mainImageUrl) ? (
+                      <>
+                        {extraImageFiles.map((file, index) => (
+                          <div key={`${file.name}-${index}`} className="relative h-20 w-20 overflow-hidden rounded-lg border">
+                            {/* eslint-disable-next-line @next/next/no-img-element -- vista previa local */}
+                            <img src={URL.createObjectURL(file)} alt={file.name} className="h-full w-full object-cover" />
+                            <span className="absolute bottom-1 left-1 rounded bg-white/90 px-1 text-[10px] font-bold">{index + 2}</span>
+                            <button
+                              type="button"
+                              aria-label={`Quitar ${file.name}`}
+                              onClick={() => setExtraImageFiles((prev) => prev.filter((_, i) => i !== index))}
+                              className="absolute top-1 right-1 rounded-full bg-destructive p-0.5 text-destructive-foreground hover:bg-destructive/90"
+                            >
+                              <XIcon className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ))}
+                        {extraImageFiles.length < MAX_PHOTOS - 1 ? (
+                          <label className="flex h-20 w-20 cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed transition-colors hover:bg-muted/50">
+                            <Plus className="h-5 w-5 text-muted-foreground" />
+                            <span className="mt-1 text-center text-[10px] text-muted-foreground">Más fotos</span>
+                            <input
+                              type="file"
+                              accept={PHOTO_TYPES.join(",")}
+                              multiple
+                              className="hidden"
+                              aria-label="Más fotos del producto"
+                              onChange={(e) => {
+                                pickPhotos(e.target.files);
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                        ) : null}
+                      </>
+                    ) : null}
                     <div className="flex-1 text-xs text-muted-foreground">
-                      <p>Formatos: JPG, PNG, WEBP.</p>
-                      <p>Máximo 5MB.</p>
+                      <p>JPG, PNG o WebP de hasta 5 MB.</p>
+                      <p>{isEditMode ? "Las fotos, los videos y la descripción se editan en la ficha del producto › Contenido." : `Hasta ${MAX_PHOTOS} fotos: la primera es la principal. Videos y colores de cada foto, después en la ficha › Contenido.`}</p>
                     </div>
                   </div>
                 </div>

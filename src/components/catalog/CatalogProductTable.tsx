@@ -5,7 +5,9 @@ import Link from "next/link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatMoney } from "@/lib/money";
 import { categoryPath, type CatalogCategoryNode } from "@/lib/catalog/categoryTree";
-import { hasSkuConflict, liveVariants, productKind, visibleProductSku } from "@/lib/catalog/catalogProducts";
+import { hasSkuConflict, liveVariants, productChannel, productKind, visibleProductSku } from "@/lib/catalog/catalogProducts";
+import type { ProductChannelStates } from "@/lib/catalog/productChannels";
+import { ProductChannelStrip } from "./ChannelIcons";
 import type { BusinessProduct } from "@/services/businessProductsService";
 import { ChannelBadge, KindBadge, ProductThumb, SkuConflictBadge, StatusBadge } from "./CatalogBadges";
 
@@ -13,7 +15,9 @@ export const productFichaHref = (productId: string) => `/productos/${encodeURICo
 
 /**
  * FEAT-24 H4 (H4-D11) — tabla del catálogo (mockup `vCatProductos`): foto, nombre y SKU base, marca,
- * categoría propia, tipo, canal, variantes, disponible, precio en soles y estado. Sin almacén ni «$».
+ * categoría propia, tipo, origen, variantes, disponible, precio en soles y estado. Sin almacén ni «$».
+ * FEAT-32 M2 (§7.1): «Canal» pasa a «Origen» y, con `channelStates`, se suma «Canales» y «Varía por canal».
+ * FEAT-32 M3 (§7.1): con `promoTags`, la etiqueta de la campaña activa bajo el precio.
  * `leadingHead`/`leadingCell` dejan una columna al inicio para quien la necesite (p. ej. selección).
  */
 export default function CatalogProductTable({
@@ -23,6 +27,8 @@ export default function CatalogProductTable({
   availableByProduct,
   leadingHead,
   leadingCell,
+  channelStates,
+  promoTags,
 }: {
   products: BusinessProduct[];
   brandNames: Map<string, string>;
@@ -30,8 +36,12 @@ export default function CatalogProductTable({
   availableByProduct: Map<string, number>;
   leadingHead?: ReactNode;
   leadingCell?: (product: BusinessProduct) => ReactNode;
+  /** FEAT-32 M2 — estado en los canales de POWIP; sin él no se muestra la columna Canales. */
+  channelStates?: (productId: string) => ProductChannelStates;
+  /** FEAT-32 M3 — «Cyber Wow −20%» de las campañas activas del producto en el alcance. */
+  promoTags?: (productId: string) => string[];
 }) {
-  const columns = 10 + (leadingHead ? 1 : 0);
+  const columns = 10 + (leadingHead ? 1 : 0) + (channelStates ? 1 : 0);
   return (
     <Table>
       <TableHeader>
@@ -41,7 +51,8 @@ export default function CatalogProductTable({
           <TableHead>Marca</TableHead>
           <TableHead>Categoría</TableHead>
           <TableHead>Tipo</TableHead>
-          <TableHead>Canal</TableHead>
+          <TableHead>Origen</TableHead>
+          {channelStates ? <TableHead>Canales</TableHead> : null}
           <TableHead className="text-right">Variantes</TableHead>
           <TableHead className="text-right">Disponible</TableHead>
           <TableHead className="text-right">Precio</TableHead>
@@ -54,6 +65,7 @@ export default function CatalogProductTable({
           const available = availableByProduct.get(product.id) ?? 0;
           const category = product.categoryId || product.category?.id ? categoryPath(categoryTree, product.categoryId ?? product.category?.id) ?? product.category?.name ?? null : null;
           const brand = product.brandId ? brandNames.get(product.brandId) : undefined;
+          const states = channelStates ? channelStates(product.id) : null;
           return (
             <TableRow key={product.id}>
               {leadingCell ? <TableCell>{leadingCell(product)}</TableCell> : null}
@@ -70,9 +82,20 @@ export default function CatalogProductTable({
               <TableCell>{category ?? <span className="text-muted-foreground">Sin categoría</span>}</TableCell>
               <TableCell><KindBadge kind={productKind(product)} /></TableCell>
               <TableCell><ChannelBadge source={product.externalSource} /></TableCell>
+              {channelStates ? (
+                <TableCell><ProductChannelStrip states={states!} fromShopify={productChannel(product.externalSource) === "shopify"} /></TableCell>
+              ) : null}
               <TableCell className="text-right tabular-nums">{liveVariants(product.variants).length}</TableCell>
               <TableCell className={`text-right tabular-nums font-medium ${available <= 0 ? "text-red-600" : ""}`}>{available}</TableCell>
-              <TableCell className="text-right tabular-nums">{formatMoney(product.priceVta)}</TableCell>
+              <TableCell className="text-right tabular-nums">
+                {formatMoney(product.priceVta)}
+                {states?.variesByChannel ? <small className="block text-[11px] font-medium text-[#027778]">Varía por canal</small> : null}
+                {(promoTags?.(product.id) ?? []).map((tag) => (
+                  <small key={tag} className="mt-0.5 block">
+                    <span className="inline-block whitespace-nowrap rounded-full bg-[#fde7f1] px-2 py-0.5 text-[11px] font-semibold text-[#a3185a] dark:bg-pink-950/50 dark:text-pink-200">{tag}</span>
+                  </small>
+                ))}
+              </TableCell>
               <TableCell><StatusBadge active={product.status !== false} /></TableCell>
               <TableCell className="text-right"><Link href={productFichaHref(product.id)} className="text-sm font-medium text-primary hover:underline">Ver ficha</Link></TableCell>
             </TableRow>
