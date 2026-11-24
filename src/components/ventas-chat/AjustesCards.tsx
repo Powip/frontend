@@ -7,7 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { crmError } from "@/services/crmService";
 import { useTeamMembers, useUpdateCrmSettings } from "@/hooks/useCrmTeam";
-import type { AssignMode, CrmSettings, TeamPerson } from "@/types/crmTeam";
+import type { AbsentTaskMode, AssignMode, CrmSettings, TeamPerson } from "@/types/crmTeam";
 import AjustesCard, { useDraft } from "./AjustesCard";
 
 export const MAX_MESSAGE = 600;
@@ -419,7 +419,10 @@ export function FollowupLimitsCard({ settings }: { settings: CrmSettings }) {
 
 export function MaskPhoneCard({ settings }: { settings: CrmSettings }) {
   const m = useUpdateCrmSettings();
-  const { draft, setDraft, dirty } = useDraft(settings.maskPhone);
+  const { draft, setDraft, dirty } = useDraft({
+    maskPhone: settings.maskPhone,
+    absentTaskMode: settings.absentTaskMode ?? "wait",
+  });
   return (
     <AjustesCard
       id="mask-phone"
@@ -427,12 +430,38 @@ export function MaskPhoneCard({ settings }: { settings: CrmSettings }) {
       description="Las vendedoras ven el teléfono del cliente como «951 *** 245». Llaman y escriben desde POWIP, sin copiar el número. Los administradores siempre ven el número completo."
       canSave={dirty}
       saving={m.isPending}
-      onSave={() => m.mutate({ maskPhone: draft })}
+      onSave={() => m.mutate({ maskPhone: draft.maskPhone, absentTaskMode: draft.absentTaskMode })}
       error={errMsg(m)}
     >
-      <div className="flex items-center gap-2">
-        <Switch id="mask-phone-enabled" checked={draft} onCheckedChange={(v) => setDraft(v)} />
-        <Label htmlFor="mask-phone-enabled">Ocultar el teléfono completo a las vendedoras</Label>
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Switch
+            id="mask-phone-enabled"
+            checked={draft.maskPhone}
+            onCheckedChange={(v) => setDraft((cur) => ({ ...cur, maskPhone: v }))}
+          />
+          <Label htmlFor="mask-phone-enabled">Ocultar el teléfono completo a las vendedoras</Label>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <Label htmlFor="absent-task-mode">Si la vendedora no trabaja el día de su seguimiento</Label>
+            <p className="text-[11px] text-muted-foreground">
+              Qué pasa con las tareas de su agenda. «Conectada» = tiene la Bandeja abierta.
+            </p>
+          </div>
+          <select
+            id="absent-task-mode"
+            aria-label="Regla de agenda"
+            className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+            value={draft.absentTaskMode}
+            onChange={(e) =>
+              setDraft((cur) => ({ ...cur, absentTaskMode: e.target.value as AbsentTaskMode }))
+            }
+          >
+            <option value="wait">Esperar su próximo turno</option>
+            <option value="reassign">Pasar a quien esté conectada</option>
+          </select>
+        </div>
       </div>
     </AjustesCard>
   );
@@ -451,6 +480,7 @@ export function CommentsCard({ settings }: { settings: CrmSettings }) {
     commentAutoReply: settings.commentAutoReply ?? false,
     commentReplyText: settings.commentReplyText ?? "",
     keywords: (settings.commentKeywords ?? []).join(", "),
+    commentHideFlagged: settings.commentHideFlagged ?? false,
   });
   const missingText = draft.commentAutoReply && !draft.commentReplyText.trim();
   return (
@@ -465,6 +495,7 @@ export function CommentsCard({ settings }: { settings: CrmSettings }) {
           commentAutoReply: draft.commentAutoReply,
           commentReplyText: draft.commentReplyText.trim(),
           commentKeywords: parseKeywords(draft.keywords),
+          commentHideFlagged: draft.commentHideFlagged,
         })
       }
       error={errMsg(m)}
@@ -501,6 +532,17 @@ export function CommentsCard({ settings }: { settings: CrmSettings }) {
             Separa con comas. Un comentario nuevo crea chat solo si pregunta por compra. Vacío = todos.
           </p>
         </div>
+        <div className="flex items-start gap-2">
+          <Switch
+            id="comment-hide-flagged"
+            checked={draft.commentHideFlagged}
+            onCheckedChange={(v) => setDraft((cur) => ({ ...cur, commentHideFlagged: v }))}
+          />
+          <div>
+            <Label htmlFor="comment-hide-flagged">Ocultar comentarios con teléfonos o insultos</Label>
+            <p className="text-[11px] text-muted-foreground">Se ocultan para el público, no se borran.</p>
+          </div>
+        </div>
       </div>
     </AjustesCard>
   );
@@ -508,20 +550,71 @@ export function CommentsCard({ settings }: { settings: CrmSettings }) {
 
 export function CallsCard({ settings }: { settings: CrmSettings }) {
   const m = useUpdateCrmSettings();
-  const { draft, setDraft, dirty } = useDraft(settings.callRecording ?? false);
+  const { draft, setDraft, dirty } = useDraft({
+    callRecording: settings.callRecording ?? false,
+    callHoursStart: settings.callHoursStart ?? "09:00",
+    callHoursEnd: settings.callHoursEnd ?? "20:00",
+    callLiveAi: settings.callLiveAi ?? false,
+  });
+  const badHours = draft.callHoursStart >= draft.callHoursEnd;
   return (
     <AjustesCard
       id="calls"
       title="Llamadas"
       description="Llamadas de WhatsApp desde la Bandeja. Meta avisa al cliente cuando la llamada se graba."
-      canSave={dirty}
+      canSave={dirty && !badHours}
       saving={m.isPending}
-      onSave={() => m.mutate({ callRecording: draft })}
+      onSave={() => m.mutate({ ...draft })}
       error={errMsg(m)}
+      hint={badHours ? "El horario para llamar debe empezar antes de terminar." : null}
     >
-      <div className="flex items-center gap-2">
-        <Switch id="call-recording" checked={draft} onCheckedChange={(v) => setDraft(v)} />
-        <Label htmlFor="call-recording">Grabar llamadas</Label>
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Switch
+            id="call-recording"
+            checked={draft.callRecording}
+            onCheckedChange={(v) => setDraft((cur) => ({ ...cur, callRecording: v }))}
+          />
+          <Label htmlFor="call-recording">Grabar llamadas</Label>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <Label htmlFor="call-hours-start">Horario para llamar</Label>
+            <p className="text-[11px] text-muted-foreground">Fuera de este horario el botón Llamar se desactiva.</p>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <Input
+              id="call-hours-start"
+              type="time"
+              aria-label="Llamar desde"
+              className="w-28"
+              value={draft.callHoursStart}
+              onChange={(e) => setDraft((cur) => ({ ...cur, callHoursStart: e.target.value }))}
+            />
+            a
+            <Input
+              id="call-hours-end"
+              type="time"
+              aria-label="Llamar hasta"
+              className="w-28"
+              value={draft.callHoursEnd}
+              onChange={(e) => setDraft((cur) => ({ ...cur, callHoursEnd: e.target.value }))}
+            />
+          </div>
+        </div>
+        <div className="flex items-start gap-2">
+          <Switch
+            id="call-live-ai"
+            checked={draft.callLiveAi}
+            onCheckedChange={(v) => setDraft((cur) => ({ ...cur, callLiveAi: v }))}
+          />
+          <div>
+            <Label htmlFor="call-live-ai">La IA escucha y sugiere en vivo</Label>
+            <p className="text-[11px] text-muted-foreground">
+              Transcribe la llamada, marca los pasos del guion y sugiere qué responder a cada objeción.
+            </p>
+          </div>
+        </div>
       </div>
     </AjustesCard>
   );

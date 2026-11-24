@@ -1,6 +1,7 @@
 import axiosAuth from "@/lib/axiosAuth";
 import { API } from "@/lib/api";
 import type {
+  CallLiveAiState,
   CallPermissionState,
   CallSession,
   CallSessionDays,
@@ -9,6 +10,7 @@ import type {
   CallSessionStats,
   CallSessionsConfig,
   CallSessionsLive,
+  LiveSpeaker,
 } from "@/types/crmCallSessions";
 
 /**
@@ -68,4 +70,25 @@ export async function saveCallSessionResult(
   input: CallSessionResultInput,
 ): Promise<CallSessionResultResponse> {
   return (await axiosAuth.post<CallSessionResultResponse>(`${BASE}/${id(callId)}/result`, input)).data;
+}
+
+export async function getCallLiveAi(callId: string): Promise<CallLiveAiState> {
+  return (await axiosAuth.get<CallLiveAiState>(`${BASE}/${id(callId)}/live-ai`)).data;
+}
+
+/**
+ * IA en vivo: manda un trozo de audio (micrófono o cliente) y recibe la
+ * sugerencia. Sin audio, en el modo de prueba agrega la siguiente frase.
+ * 400 LIVE_AI_OFF si está apagada en Canales y tiendas.
+ */
+export async function sendCallLiveAi(
+  callId: string,
+  chunk?: { audio: Blob; speaker: LiveSpeaker },
+): Promise<CallLiveAiState> {
+  const form = new FormData();
+  if (chunk) {
+    form.append("speaker", chunk.speaker);
+    form.append("audio", chunk.audio, `trozo.${chunk.audio.type.includes("ogg") ? "ogg" : "webm"}`);
+  }
+  return (await axiosAuth.post<CallLiveAiState>(`${BASE}/${id(callId)}/live-ai`, form)).data;
 }

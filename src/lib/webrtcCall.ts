@@ -40,6 +40,17 @@ export class WhatsAppAudioCall {
   /** true si la llamada no tiene audio real (simulada o sin WebRTC). */
   fake = false;
 
+  /** Micrófono de la vendedora (IA en vivo). Null en llamadas simuladas. */
+  get localStream(): MediaStream | null {
+    return this.fake ? null : this.stream;
+  }
+
+  /** Audio del cliente (IA en vivo). Null hasta que llega o en llamadas simuladas. */
+  get remoteStream(): MediaStream | null {
+    const src = this.audio?.srcObject;
+    return !this.fake && src instanceof MediaStream ? src : null;
+  }
+
   /** Llamada entrante: aplica la oferta del cliente y devuelve la respuesta. */
   async answer(offer: string | null | undefined, simulated = false): Promise<string> {
     if (simulated || !offer || !looksLikeSdp(offer) || !webrtcSupported()) return this.fallback();

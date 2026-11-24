@@ -89,6 +89,14 @@ export function SocialContent({
       <div className="space-y-1" data-testid="comment-message">
         <p className="text-[11px] font-medium opacity-80">
           Comentario en {conversation.channel === "instagram" ? "Instagram" : "Facebook"}
+          {message.hiddenAt && (
+            <span
+              className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800"
+              title="Tenía un teléfono o un insulto. Se ocultó para el público, no se borró."
+            >
+              Oculto al público
+            </span>
+          )}
         </p>
         <p className="whitespace-pre-wrap break-words">{message.body}</p>
         {message.direction === "in" &&

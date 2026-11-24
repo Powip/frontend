@@ -8,8 +8,9 @@ import { useCallPermission, useCallSessionMutations, useCallsConfig, useLiveCall
 import { WhatsAppAudioCall } from "@/lib/webrtcCall";
 import { cn } from "@/lib/utils";
 import { crmError } from "@/services/crmService";
-import { acceptCall, hangupCall, rejectCall, startCall } from "@/services/crmCallSessionsService";
-import type { CallSession } from "@/types/crmCallSessions";
+import { acceptCall, getCallLiveAi, hangupCall, rejectCall, startCall } from "@/services/crmCallSessionsService";
+import type { CallLiveAiState, CallSession } from "@/types/crmCallSessions";
+import CallLiveAi from "./CallLiveAi";
 import CallLiveTools from "./CallLiveTools";
 import CallResultCard, { type CallOutcome } from "./CallResultCard";
 import CallScript from "./CallScript";
@@ -68,6 +69,8 @@ export default function WhatsAppCallOverlay() {
   // Pedido de la llamada saliente; null en las entrantes y en las pendientes de resultado.
   const [request, setRequest] = useState<CallRequest | null>(null);
   const [doneSteps, setDoneSteps] = useState<number[]>([]);
+  // Resumen que arma la IA en vivo; se propone al colgar y la vendedora lo edita.
+  const [aiSummary, setAiSummary] = useState("");
 
   const closeAudio = useCallback(() => {
     audio.current?.close();
@@ -120,6 +123,7 @@ export default function WhatsAppCallOverlay() {
   const begin = (next: CallRequest | null) => {
     setRequest(next);
     setDoneSteps([]);
+    setAiSummary("");
   };
 
   const answer = async (s: CallSession) => {
@@ -223,6 +227,28 @@ export default function WhatsAppCallOverlay() {
     );
   };
 
+  // Resultado anotado más tarde (panel Llamadas o recarga): trae lo que la IA en
+  // vivo guardó de esa llamada, para no perder el resumen ni los pasos.
+  const resultId = phase.name === "result" ? phase.session.id : null;
+  const hasAiSummary = aiSummary !== "";
+  useEffect(() => {
+    if (!resultId || hasAiSummary) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const ai = await getCallLiveAi(resultId);
+        if (cancelled || !ai?.lines?.length) return;
+        setAiSummary(ai.summary);
+        setDoneSteps((steps) => [...new Set([...steps, ...ai.checks.map((n) => n - 1)])]);
+      } catch {
+        // Sin IA en vivo guardada: la vendedora escribe su resumen.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [resultId, hasAiSummary]);
+
   const recording = config.data?.recording === true;
 
   return (
@@ -265,6 +291,13 @@ export default function WhatsAppCallOverlay() {
             });
           }}
           onHangup={() => hangup(phase.session)}
+          liveAi={config.data?.liveAi === true}
+          audioCall={audio.current}
+          onLiveAi={(ai) => {
+            setAiSummary(ai.summary);
+            // La IA marca pasos 1..n; el guion de la tarjeta cuenta desde 0.
+            setDoneSteps((steps) => [...new Set([...steps, ...ai.checks.map((n) => n - 1)])]);
+          }}
           doneSteps={doneSteps}
           onToggleStep={(i) =>
             setDoneSteps((steps) => (steps.includes(i) ? steps.filter((s) => s !== i) : [...steps, i]))
@@ -273,11 +306,12 @@ export default function WhatsAppCallOverlay() {
       )}
       {phase.name === "result" && (
         <CallResultCard
-          key={phase.session.id}
+          key={`${phase.session.id}-${hasAiSummary ? "ia" : "sin-ia"}`}
           session={phase.session}
           saving={m.saveResult.isPending}
           queueMode={request?.queueMode === true}
           doneSteps={doneSteps}
+          aiSummary={aiSummary}
           onClose={() => setPhase({ name: "idle" })}
           onSave={(outcome) => saveResult(phase.session, outcome)}
         />
@@ -413,6 +447,9 @@ function LiveCard({
   recording,
   onMute,
   onHangup,
+  liveAi,
+  audioCall,
+  onLiveAi,
   doneSteps,
   onToggleStep,
 }: {
@@ -422,6 +459,9 @@ function LiveCard({
   recording: boolean;
   onMute: () => void;
   onHangup: () => void;
+  liveAi: boolean;
+  audioCall: WhatsAppAudioCall | null;
+  onLiveAi: (state: CallLiveAiState) => void;
   doneSteps: number[];
   onToggleStep: (step: number) => void;
 }) {
@@ -456,6 +496,13 @@ function LiveCard({
         </Button>
       </div>
       <p className="text-[11px] text-muted-foreground">Si no contesta, cuelga y registra el resultado.</p>
+      <CallLiveAi
+        callId={session.id}
+        enabled={liveAi}
+        ringing={ringing}
+        audioCall={audioCall}
+        onState={onLiveAi}
+      />
       <CallScript title="Guion · Venta en 1 minuto" done={doneSteps} onToggle={onToggleStep} />
       {session.conversationId && <CallLiveTools conversationId={session.conversationId} />}
     </CallShell>

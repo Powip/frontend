@@ -49,6 +49,8 @@ export function useCallsConfig() {
     queryFn: getCallsConfig,
     retry: false,
     staleTime: 60_000,
+    // El horario para llamar abre y cierra solo: se vuelve a consultar cada minuto.
+    refetchInterval: 60_000,
   });
 }
 

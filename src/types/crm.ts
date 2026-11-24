@@ -97,6 +97,8 @@ export interface Message {
   mediaMime?: string | null;
   mediaName?: string | null;
   transcript?: string | null;
+  /** Comentario oculto al público (teléfono o insulto). No se borra. */
+  hiddenAt?: string | null;
 }
 
 export type AssignedFilter = "all" | "me" | "unassigned";
@@ -360,6 +362,7 @@ export type CrmEvent =
         messageId: string;
         status: MessageStatus;
         errorMessage: string | null;
+        hiddenAt?: string | null;
       };
     }
   | { type: "conversation.updated"; data: { conversation: Conversation } }

@@ -35,6 +35,37 @@ export interface CallSessionsLive {
 export interface CallSessionsConfig {
   enabled: boolean;
   recording: boolean;
+  /** La IA escucha y sugiere en vivo (Canales y tiendas). */
+  liveAi?: boolean;
+  /** Horario para llamar en hora de Lima; `open` = se puede llamar ahora. */
+  hours?: { start: string; end: string; open: boolean };
+}
+
+export type LiveSpeaker = "agent" | "customer";
+
+export interface LiveLine {
+  who: LiveSpeaker;
+  text: string;
+  at: string;
+  objection?: string | null;
+  objectionResponse?: string | null;
+}
+
+/** IA en vivo de una llamada: transcripción, pasos del guion y sugerencia. */
+export interface CallLiveAiState {
+  callId: string;
+  /** `mock` = sin llave de transcripción (llamada de ejemplo). */
+  mode: "real" | "mock";
+  lines: LiveLine[];
+  /** Pasos del guion (1..n) ya cumplidos. */
+  checks: number[];
+  steps: string[];
+  tip: string;
+  objection: string | null;
+  /** Resumen para editar al colgar. */
+  summary: string;
+  /** Modo de prueba: ya no quedan frases de ejemplo. */
+  done: boolean;
 }
 
 export type CallSessionDays = 1 | 7 | 30;

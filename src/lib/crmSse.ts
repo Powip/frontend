@@ -147,7 +147,7 @@ export function applyCrmEvent(queryClient: QueryClient, event: CrmEvent): void {
       break;
     }
     case "message.status": {
-      const { conversationId, messageId, status, errorMessage } = event.data;
+      const { conversationId, messageId, status, errorMessage, hiddenAt } = event.data;
       queryClient.setQueryData<MessagePage>(
         crmKeys.messages(conversationId),
         (old) =>
@@ -155,7 +155,12 @@ export function applyCrmEvent(queryClient: QueryClient, event: CrmEvent): void {
             ...old,
             items: old.items.map((m) =>
               m.id === messageId
-                ? { ...m, status, errorMessage: errorMessage ?? null }
+                ? {
+                    ...m,
+                    status,
+                    errorMessage: errorMessage ?? null,
+                    ...(hiddenAt !== undefined ? { hiddenAt } : {}),
+                  }
                 : m,
             ),
           },

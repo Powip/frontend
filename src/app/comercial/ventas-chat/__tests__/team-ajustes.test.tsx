@@ -210,13 +210,13 @@ describe("Ajustes · tarjetas con PATCH parcial", () => {
     expect(await screen.findByText(/Todavía no hay personas con actividad/)).toBeInTheDocument();
   });
 
-  it("Privacidad: activar ocultar teléfono envía solo maskPhone", async () => {
+  it("Privacidad: activar ocultar teléfono envía solo su tarjeta", async () => {
     setup();
     await screen.findByTestId("card-mask-phone");
     expect(saveBtn("mask-phone")).toBeDisabled();
     fireEvent.click(screen.getByRole("switch", { name: "Ocultar el teléfono completo a las vendedoras" }));
     fireEvent.click(saveBtn("mask-phone"));
-    await waitFor(() => expect(team.updateCrmSettings).toHaveBeenCalledWith({ maskPhone: true }));
+    await waitFor(() => expect(team.updateCrmSettings).toHaveBeenCalledWith({ maskPhone: true, absentTaskMode: "wait" }));
   });
 
   it("Comentarios: guarda respuesta pública y palabras clave limpias", async () => {
@@ -233,18 +233,68 @@ describe("Ajustes · tarjetas con PATCH parcial", () => {
     await waitFor(() =>
       expect(team.updateCrmSettings).toHaveBeenCalledWith({
         commentAutoReply: true,
+        commentHideFlagged: false,
         commentReplyText: "Te escribimos por DM",
         commentKeywords: ["precio", "talla", "envío"],
       }),
     );
   });
 
-  it("Llamadas: envía solo callRecording", async () => {
+  it("Llamadas: envía solo su tarjeta", async () => {
     setup();
     await screen.findByTestId("card-calls");
     fireEvent.click(screen.getByRole("switch", { name: "Grabar llamadas" }));
     fireEvent.click(saveBtn("calls"));
-    await waitFor(() => expect(team.updateCrmSettings).toHaveBeenCalledWith({ callRecording: true }));
+    await waitFor(() =>
+      expect(team.updateCrmSettings).toHaveBeenCalledWith({
+        callRecording: true,
+        callHoursStart: "09:00",
+        callHoursEnd: "20:00",
+        callLiveAi: false,
+      }),
+    );
+  });
+
+  it("Llamadas: horario, IA en vivo y horario inválido", async () => {
+    setup();
+    await screen.findByTestId("card-calls");
+    fireEvent.change(screen.getByLabelText("Llamar desde"), { target: { value: "21:00" } });
+    fireEvent.change(screen.getByLabelText("Llamar hasta"), { target: { value: "08:00" } });
+    expect(saveBtn("calls")).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Llamar desde"), { target: { value: "10:00" } });
+    fireEvent.change(screen.getByLabelText("Llamar hasta"), { target: { value: "19:00" } });
+    fireEvent.click(screen.getByRole("switch", { name: "La IA escucha y sugiere en vivo" }));
+    fireEvent.click(saveBtn("calls"));
+    await waitFor(() =>
+      expect(team.updateCrmSettings).toHaveBeenCalledWith({
+        callRecording: false,
+        callHoursStart: "10:00",
+        callHoursEnd: "19:00",
+        callLiveAi: true,
+      }),
+    );
+  });
+
+  it("Comentarios: ocultar teléfonos o insultos", async () => {
+    setup();
+    await screen.findByTestId("card-comments");
+    fireEvent.click(screen.getByRole("switch", { name: "Ocultar comentarios con teléfonos o insultos" }));
+    fireEvent.click(saveBtn("comments"));
+    await waitFor(() =>
+      expect(team.updateCrmSettings).toHaveBeenCalledWith(expect.objectContaining({ commentHideFlagged: true })),
+    );
+  });
+
+  it("Privacidad: regla por vendedora ausente", async () => {
+    setup();
+    await screen.findByTestId("card-mask-phone");
+    fireEvent.change(screen.getByLabelText("Si la vendedora no trabaja el día de su seguimiento"), {
+      target: { value: "reassign" },
+    });
+    fireEvent.click(saveBtn("mask-phone"));
+    await waitFor(() =>
+      expect(team.updateCrmSettings).toHaveBeenCalledWith({ maskPhone: false, absentTaskMode: "reassign" }),
+    );
   });
 
   it("muestra el error 400 del servidor dentro de la tarjeta", async () => {

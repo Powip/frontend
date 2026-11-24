@@ -144,7 +144,18 @@ export interface CrmSettings {
   commentReplyText?: string;
   /** Un comentario nuevo solo abre chat si contiene una de estas palabras. Vacío = todos. */
   commentKeywords?: string[];
+  /** Ocultar al público comentarios con teléfonos o insultos (no se borran). */
+  commentHideFlagged?: boolean;
+  /** Horario para llamar, «HH:mm» en hora de Lima. Fuera de él se desactiva Llamar. */
+  callHoursStart?: string;
+  callHoursEnd?: string;
+  /** La IA escucha y sugiere en vivo durante la llamada. */
+  callLiveAi?: boolean;
+  /** Si la vendedora no trabaja el día de su seguimiento: esperar o pasar a quien esté conectada. */
+  absentTaskMode?: AbsentTaskMode;
 }
+
+export type AbsentTaskMode = "wait" | "reassign";
 
 export type CrmSettingsInput = Partial<CrmSettings>;
 

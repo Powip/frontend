@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import WhatsAppCallOverlay, { formatTimer, requestWhatsAppCall } from "@/components/ventas-chat/WhatsAppCallOverlay";
 import WhatsAppCallsPanel from "@/components/ventas-chat/WhatsAppCallsPanel";
+import WhatsAppCallButton from "@/components/ventas-chat/WhatsAppCallButton";
 import { looksLikeSdp, SIMULATED_SDP, WhatsAppAudioCall } from "@/lib/webrtcCall";
 import * as svc from "@/services/crmCallSessionsService";
 import * as crm from "@/services/crmService";
@@ -36,6 +37,8 @@ jest.mock("@/services/crmCallSessionsService", () => ({
   rejectCall: jest.fn(),
   hangupCall: jest.fn(),
   saveCallSessionResult: jest.fn(),
+  sendCallLiveAi: jest.fn(),
+  getCallLiveAi: jest.fn(),
 }));
 jest.mock("@/services/crmService", () => ({
   ...jest.requireActual("@/services/crmService"),
@@ -301,6 +304,109 @@ describe("Modo llamadas y cierre", () => {
     await hangUp(true);
     expect(await screen.findByText("Lo que se cumplió del guion")).toBeInTheDocument();
     expect(screen.getByLabelText("1. Saludo")).toBeInTheDocument();
+  });
+});
+
+describe("IA en vivo y horario para llamar", () => {
+  const liveSetup = () => {
+    const ringing = session();
+    const active = session({ status: "active", agentUserId: "u1", answeredAt: new Date().toISOString() });
+    const ended = { ...active, status: "ended" as const, durationSeconds: 30, endedAt: new Date().toISOString() };
+    s.getLiveCalls.mockResolvedValue({ live: [ringing], pendingResult: [] });
+    s.acceptCall.mockImplementation(async () => {
+      s.getLiveCalls.mockResolvedValue({ live: [active], pendingResult: [] });
+      return active;
+    });
+    s.hangupCall.mockImplementation(async () => {
+      s.getLiveCalls.mockResolvedValue({ live: [], pendingResult: [ended] });
+      return ended;
+    });
+  };
+
+  it("encendida: muestra transcripción, objeción, sugerencia y propone el resumen al colgar", async () => {
+    liveSetup();
+    s.getCallsConfig.mockResolvedValue({ enabled: false, recording: false, liveAi: true });
+    s.sendCallLiveAi.mockResolvedValue({
+      callId: "x",
+      mode: "mock",
+      lines: [
+        { who: "agent", text: "Hola Ana, te llamo por tu consulta", at: "" },
+        { who: "customer", text: "Está caro", at: "", objection: "Precio", objectionResponse: "Va con envío gratis." },
+      ],
+      checks: [1],
+      steps: ["Saludo"],
+      tip: "Objeción «Precio»: Va con envío gratis.",
+      objection: "Precio",
+      summary: "Llamada de 2 intervenciones. Objeción: Precio.",
+      done: false,
+    });
+    renderOverlay();
+    fireEvent.click(await screen.findByRole("button", { name: /Contestar/ }));
+    expect(await screen.findByText("Objeción «Precio»: Va con envío gratis.")).toBeInTheDocument();
+    expect(screen.getByText("Modo prueba · sin llave")).toBeInTheDocument();
+    expect(screen.getByText(/Está caro/)).toBeInTheDocument();
+    expect(screen.getByText("Objeción · Precio")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Colgar/ }));
+    const notes = await screen.findByLabelText("Resumen de la IA (puedes editarlo)");
+    expect(notes).toHaveValue("Llamada de 2 intervenciones. Objeción: Precio.");
+  });
+
+  it("al anotar más tarde trae el resumen guardado de la IA", async () => {
+    const ended = session({ status: "ended", agentUserId: "u1", durationSeconds: 34 });
+    s.getLiveCalls.mockResolvedValue({ live: [], pendingResult: [ended] });
+    s.getCallLiveAi.mockResolvedValue({
+      callId: ended.id,
+      mode: "mock",
+      lines: [{ who: "customer", text: "Listo, mándamelo", at: "" }],
+      checks: [1, 2],
+      steps: ["Saludo", "Precio"],
+      tip: "",
+      objection: null,
+      summary: "Resumen guardado por la IA.",
+      done: true,
+    });
+    renderOverlay();
+    act(() => {
+      requestWhatsAppCall({ kind: "result", session: ended } as never);
+    });
+    expect(await screen.findByLabelText("Resumen de la IA (puedes editarlo)")).toHaveValue(
+      "Resumen guardado por la IA.",
+    );
+    expect(s.getCallLiveAi).toHaveBeenCalledWith(ended.id);
+  });
+
+  it("apagada: no escucha y lo dice", async () => {
+    liveSetup();
+    s.getCallsConfig.mockResolvedValue({ enabled: false, recording: false, liveAi: false });
+    renderOverlay();
+    fireEvent.click(await screen.findByRole("button", { name: /Contestar/ }));
+    expect(await screen.findByText("La IA en vivo está apagada en Canales y tiendas.")).toBeInTheDocument();
+    expect(screen.getByText("(apagada)")).toBeInTheDocument();
+    expect(s.sendCallLiveAi).not.toHaveBeenCalled();
+  });
+
+  it("fuera del horario para llamar, el botón Llamar se desactiva", async () => {
+    s.getCallsConfig.mockResolvedValue({
+      enabled: true,
+      recording: false,
+      hours: { start: "09:00", end: "20:00", open: false },
+    });
+    s.getCallPermission.mockResolvedValue({
+      status: "granted",
+      expiresAt: null,
+      canCall: true,
+      canRequest: false,
+      simulated: true,
+    });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <WhatsAppCallButton conversationId="conv-1" contactName="Ana" />
+      </QueryClientProvider>,
+    );
+    const button = await screen.findByTitle("Fuera del horario para llamar (09:00 a 20:00)");
+    expect(button).toBeDisabled();
   });
 });
 

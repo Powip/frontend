@@ -1,7 +1,7 @@
 "use client";
 import { PhoneCall } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useCallPermission } from "@/hooks/useCallSessions";
+import { useCallPermission, useCallsConfig } from "@/hooks/useCallSessions";
 import { requestWhatsAppCall } from "./WhatsAppCallOverlay";
 
 export const CALL_BUTTON_CLASS = "bg-teal-600 text-white hover:bg-teal-700";
@@ -22,14 +22,20 @@ export default function WhatsAppCallButton({
   askLabel?: string;
 }) {
   const { data } = useCallPermission(available ? conversationId : null);
+  const hours = useCallsConfig().data?.hours;
+  const closed = !!hours && !hours.open;
   const mustAsk = !!data && !data.canCall;
-  const title = mustAsk ? "Primero pide permiso para llamar" : "Llamar por WhatsApp";
+  const title = closed
+    ? `Fuera del horario para llamar (${hours.start} a ${hours.end})`
+    : mustAsk
+      ? "Primero pide permiso para llamar"
+      : "Llamar por WhatsApp";
   return (
     <Button
       type="button"
       size="sm"
       className={CALL_BUTTON_CLASS}
-      disabled={!available}
+      disabled={!available || closed}
       title={available ? title : NOT_WHATSAPP}
       onClick={() =>
         requestWhatsAppCall({

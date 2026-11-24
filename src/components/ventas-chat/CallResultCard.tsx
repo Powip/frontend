@@ -148,6 +148,7 @@ export default function CallResultCard({
   saving,
   queueMode,
   doneSteps,
+  aiSummary = "",
   onSave,
   onClose,
 }: {
@@ -156,11 +157,13 @@ export default function CallResultCard({
   queueMode: boolean;
   /** Pasos del guion que la vendedora marcó en la llamada. */
   doneSteps: number[];
+  /** Resumen de la IA en vivo: se propone y la vendedora lo edita. */
+  aiSummary?: string;
   onSave: (outcome: CallOutcome) => void;
   onClose: () => void;
 }) {
   const [result, setResult] = useState<CallResult>(session.answeredAt ? "sold" : "no_answer");
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(aiSummary);
   const [callbackAt, setCallbackAt] = useState(tomorrowAtTen);
   const [lostReason, setLostReason] = useState(CALL_LOST_REASONS[0]);
   // null = lo que propone el resultado; con valor = lo que eligió la vendedora.
@@ -214,7 +217,7 @@ export default function CallResultCard({
         )}
         {isLost && <LostReasonField value={lostReason} onChange={setLostReason} />}
         <div className="space-y-1.5">
-          <Label htmlFor="wa-call-notes">Resumen (opcional)</Label>
+          <Label htmlFor="wa-call-notes">{aiSummary ? "Resumen de la IA (puedes editarlo)" : "Resumen (opcional)"}</Label>
           <Textarea
             id="wa-call-notes"
             value={notes}
