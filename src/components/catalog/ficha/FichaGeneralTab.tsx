@@ -72,6 +72,7 @@ export default function FichaGeneralTab({
   canEdit,
   costs,
   onGoToContent,
+  packPrice,
 }: {
   product: CatalogProductDetail;
   /** La única variante de un producto simple (null si tiene variantes). */
@@ -82,6 +83,8 @@ export default function FichaGeneralTab({
   costs?: FichaCosts;
   /** FEAT-32 M1: abre la pestaña Contenido. */
   onGoToContent?: () => void;
+  /** FEAT-32 M5 (§6.14): en un pack el precio es de solo lectura; se cambia en «Editar pack». */
+  packPrice?: { price: number | null; onEdit?: () => void };
 }) {
   const queryClient = useQueryClient();
   const original = formFromProduct(product);
@@ -207,6 +210,16 @@ export default function FichaGeneralTab({
             <p className="text-xs text-amber-700 dark:text-amber-300">Apagarlo no borra los lotes que ya tiene el stock: solo deja de pedirlos al recibir.</p>
           ) : null}
         </div>
+        {packPrice ? (
+          <div className="space-y-2">
+            <p className="text-sm font-medium leading-none">Precio del pack</p>
+            <p className="flex flex-wrap items-center gap-2">
+              <b className="tabular-nums" data-testid="ficha-pack-price">{packPrice.price === null ? "—" : `S/ ${packPrice.price.toFixed(2)}`}</b>
+              {packPrice.onEdit ? <Button type="button" variant="link" size="sm" className="h-auto p-0" onClick={packPrice.onEdit}>Editar pack</Button> : null}
+            </p>
+            <p className="text-xs text-muted-foreground">Solo lectura: el precio del pack se cambia en «Editar pack». El precio por canal se ve en Canales.</p>
+          </div>
+        ) : null}
         {simpleVariant ? (
           <>
             <div className="space-y-2">

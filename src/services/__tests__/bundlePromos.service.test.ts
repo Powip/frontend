@@ -24,3 +24,12 @@ it("patch usa el ID de la ruta y omite id/type del cuerpo", async () => {
   const { id: _id, type: _type, ...fields } = bundle;
   expect(axiosAuth.patch).toHaveBeenCalledWith(expect.stringMatching(/\/bundle-promos\/bundle%2Fa$/), fields, undefined);
 });
+it("FEAT-32 M5: desactivar manda solo active y convertir manda el id del pack", async () => {
+  const { convertBundle, setBundleActive } = await import("../bundlePromos.service");
+  jest.mocked(axiosAuth.patch).mockResolvedValue({ data: { ...bundle, active: false } });
+  jest.mocked(axiosAuth.post).mockResolvedValue({ data: { ...bundle, active: false, packPrice: "8.00", convertedToPackId: "p-pack" } });
+  expect(await setBundleActive("bundle/a", false)).toMatchObject({ active: false, shared: true });
+  expect(axiosAuth.patch).toHaveBeenCalledWith(expect.stringMatching(/\/bundle-promos\/bundle%2Fa$/), { active: false }, undefined);
+  expect(await convertBundle("bundle", "p-pack")).toMatchObject({ active: false, packPrice: 8, convertedToPackId: "p-pack" });
+  expect(axiosAuth.post).toHaveBeenCalledWith(expect.stringMatching(/\/bundle-promos\/bundle\/convert$/), { packId: "p-pack" }, undefined);
+});

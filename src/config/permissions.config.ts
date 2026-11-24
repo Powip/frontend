@@ -172,6 +172,12 @@ export const canSeeProductCosts = (user?: RouteAccessUser): boolean => canEditIn
 export const canManagePromotions = (user?: RouteAccessUser): boolean => canEditInventory(user);
 
 /**
+ * FEAT-32 M5 (spec §7.15) — ¿puede crear y editar packs y aprobar los de creadoras? Administrador u Operaciones,
+ * igual que ms-products (escribir en `/packs`).
+ */
+export const canManagePacks = (user?: RouteAccessUser): boolean => canEditInventory(user);
+
+/**
  * FEAT-24 H8-D5 — rol COURIER: el personal del courier, con su almacén asignado. Su portal es /almacen: ve el
  * stock, cuenta, recibe traslados y ve la conciliación de su almacén. Todo lo demás se le cierra (menú y
  * rutas): el backend igual valida, pero las rutas viejas siguen la regla de H6 y le dejarían ver todo.

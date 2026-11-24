@@ -57,6 +57,22 @@ describe("packs en el buscador de la venta manual (FEAT-24 H9)", () => {
     expect(listPacks).toHaveBeenCalledWith({ q: undefined, active: true, limit: 12 }, expect.anything());
   });
 
+  it("FEAT-32 M5: un pack «a elegir» o de creadora sin aprobar aparece deshabilitado con el motivo", async () => {
+    const choose: PackView = { ...KIT, id: "p-jeans", name: "2 jeans", packType: "CHOOSE", components: [] };
+    const creator: PackView = { ...KIT, id: "p-cre", name: "Look Vale", approvalStatus: "REJECTED" };
+    jest.mocked(listPacks).mockResolvedValue(page([KIT, choose, creator]));
+    const user = userEvent.setup();
+    const { onAddPack } = renderResults();
+    const jeans = await screen.findByRole("button", { name: "Agregar el pack 2 jeans" });
+    expect(jeans).toBeDisabled();
+    expect(jeans).toHaveTextContent("Pack a elegir: pronto se podrá vender aquí.");
+    expect(screen.getByRole("button", { name: "Agregar el pack Look Vale" })).toHaveTextContent("Pack de creadora sin aprobar: no se vende.");
+    expect(screen.getByRole("button", { name: "Agregar el pack Look Vale" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Agregar el pack Kit verano" })).toBeEnabled();
+    await user.click(jeans);
+    expect(onAddPack).not.toHaveBeenCalled();
+  });
+
   it("al tocarlo avisa con el pack", async () => {
     jest.mocked(listPacks).mockResolvedValue(page([KIT]));
     const { onAddPack } = renderResults();
