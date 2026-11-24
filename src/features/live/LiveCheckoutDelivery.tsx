@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import LivePayFrame, { COURIER_NAMES, LivePayTotal, payCta, payGhost, payTiny } from "./LivePayFrame";
 import LiveDeliveryForm, { deliveryError } from "./LiveDeliveryForm";
+import { livePromoSummary } from "./LivePromos";
 import {
   checkoutLivePurchase,
   liveError,
@@ -26,6 +27,7 @@ export default function LiveCheckoutDelivery({
   draft,
   onDraft,
   reservations,
+  promoDiscount = 0,
   options,
   methods,
   onClose,
@@ -37,6 +39,8 @@ export default function LiveCheckoutDelivery({
   draft?: { delivery: LiveDelivery; receipt: LivePurchaseInput["receipt"] } | null;
   onDraft?: (value: { delivery: LiveDelivery; receipt: LivePurchaseInput["receipt"] }) => void;
   reservations: LiveReservation[];
+  /** FEAT-33 L7b: descuento del volumen del live en el carrito, hasta que llegue la cotización. */
+  promoDiscount?: number;
   options: StoreDeliveryOption[];
   methods: LivePaymentMethod[];
   onClose: () => void;
@@ -57,7 +61,8 @@ export default function LiveCheckoutDelivery({
   const lock = useRef(false),
     alive = useRef(true),
     attempt = useRef<{ body: string; key: string } | null>(null);
-  const subtotal = reservations.reduce((n, r) => n + r.quantity * r.unitPrice, 0);
+  const subtotal =
+    Math.round((reservations.reduce((n, r) => n + r.quantity * r.unitPrice, 0) - promoDiscount) * 100) / 100;
   const fingerprint = JSON.stringify({
     customer: { name: customer.name, phone: customer.phone },
     reservationIds: reservations.map((r) => r.id),
@@ -162,7 +167,9 @@ export default function LiveCheckoutDelivery({
       if (alive.current) setBusy(false);
     }
   }
-  const units = reservations.reduce((n, r) => n + r.quantity, 0);
+  // FEAT-33 L7b: con la cotización, las prendas compradas (sin el regalo), el descuento y el regalo.
+  const summary = quote ? livePromoSummary(quote.items) : null;
+  const units = summary?.units || reservations.reduce((n, r) => n + r.quantity, 0);
   const home = delivery.type === "HOME";
   const courierName = COURIER_NAMES[delivery.courier || ""] || delivery.courier || "";
   const shippingText = !quote
@@ -182,7 +189,9 @@ export default function LiveCheckoutDelivery({
         <>
           <LivePayTotal
             units={units}
-            products={subtotal}
+            products={quote ? quote.subtotal : subtotal}
+            discount={summary ? summary.discount : promoDiscount}
+            gift={summary?.gift}
             shipping={shippingText}
             total={quote ? liveMoney(quote.total) : `${liveMoney(subtotal)} + envío`}
           />

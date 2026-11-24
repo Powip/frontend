@@ -11,6 +11,7 @@ import LivePayFrame, {
   payLink,
   payTiny,
 } from "./LivePayFrame";
+import { livePromoSummary } from "./LivePromos";
 import {
   getLiveCheckoutSnapshot,
   liveBuyerLabel,
@@ -153,7 +154,9 @@ export default function LiveManualPaymentDialog({
   const close = () => {
     if (!busy) onClose();
   };
-  const units = snapshot?.quote?.items?.reduce((n, item) => n + item.quantity, 0) || null;
+  // FEAT-33 L7b: el regalo no es una prenda comprada; el resumen muestra la promo y el regalo.
+  const promo = livePromoSummary(snapshot?.quote?.items);
+  const units = promo.units || null;
   const combined = !!snapshot?.quote?.combinedOrderNumber;
   const shippingText = combined
     ? "Envío ya pagado hoy"
@@ -270,6 +273,8 @@ export default function LiveManualPaymentDialog({
         <LivePayTotal
           units={units}
           products={snapshot.quote?.subtotal || 0}
+          discount={promo.discount}
+          gift={promo.gift}
           shipping={shippingText}
           total={liveMoney(total!)}
         />

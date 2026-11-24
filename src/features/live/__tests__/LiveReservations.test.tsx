@@ -231,4 +231,24 @@ describe("Clientes de confianza (FEAT-33 A3/D3)", () => {
       screen.getByText(/Está apagado en Configuración/),
     ).toBeInTheDocument();
   });
+  test("a Live promo gift shows as 🎁 Regalo and is not counted as a unit (FEAT-33 L7b)", () => {
+    const rosa = { id: "rosa", name: "Rosa Paz", phone: "948221730" };
+    panel(
+      data([
+        reservation("r1", { checkoutId: "c1", reviewHold: true, customer: rosa, quantity: 2 }),
+        reservation("g1", {
+          checkoutId: "c1",
+          reviewHold: true,
+          customer: rosa,
+          isGift: true,
+          productName: "Medias",
+          unitPrice: 0,
+          variantLabel: null,
+        }),
+      ]),
+    );
+    fireEvent.click(screen.getByRole("tab", { name: /Pago por validar/ }));
+    expect(screen.getByText(/1 × Medias/).closest("li")).toHaveTextContent("🎁 Regalo");
+    expect(screen.getByText(/2 unidades/)).toBeInTheDocument();
+  });
 });

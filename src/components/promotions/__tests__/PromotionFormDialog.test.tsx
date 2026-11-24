@@ -244,13 +244,16 @@ describe("Regalo como SKU con stock (FEAT-32 M4, spec §7.14 y §6.17)", () => {
 });
 
 describe("POWIP Live en volumen y regalo (FEAT-32 M7)", () => {
-  it("al marcar POWIP Live avisa que el live todavía no aplica promociones", async () => {
+  it("al marcar POWIP Live explica que aplica sobre el precio live, sin /catalogo ni links (FEAT-33 L7b)", async () => {
     const user = userEvent.setup();
     renderDialog({ initialType: "GIFT" });
-    expect(screen.queryByText(/todavía no aplica promociones/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "POWIP Live" }));
-    expect(screen.getByRole("note")).toHaveTextContent("POWIP Live todavía no aplica promociones: el live usa su precio live.");
+    expect(screen.getByRole("note")).toHaveTextContent(
+      "En POWIP Live se aplica sobre el precio live. No aplica en el catálogo web del live ni en los links de vendedoras.",
+    );
+    expect(screen.queryByText(/todavía no aplica/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "POWIP Live" }));
-    expect(screen.queryByText(/todavía no aplica promociones/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("note")).not.toBeInTheDocument();
   });
 });
