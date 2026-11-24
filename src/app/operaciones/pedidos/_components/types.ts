@@ -1,4 +1,5 @@
 import { type UnitAssignmentState } from "@/services/saleTrackingService";
+import { saleSourceKey } from "@/utils/saleLabels";
 import { toWhatsAppDigits } from "@/lib/phone";
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import type { OpsPermission } from "@/config/operationsPermissions";
@@ -184,7 +185,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     collectAmount: guideBalance.pending,
     sellerName: order.sellerName ?? null,
     salesChannel: order.salesChannel ?? null,
-    externalSource: order.externalSource ?? null,
+    externalSource: saleSourceKey(order),
     shopifyCancelledAt: order.shopifyCancelledAt ?? null,
     shopifyCancelReason: order.shopifyCancelReason ?? null,
     externalId: order.externalId ?? null,

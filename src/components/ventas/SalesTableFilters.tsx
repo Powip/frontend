@@ -206,9 +206,9 @@ export const GUIDE_OPTIONS = [
 ];
 
 export const SOURCE_OPTIONS = [
+  { value: "", label: "Todos" },
   { value: "powip_live", label: "POWIP Live" },
   { value: "powip_link", label: "POWIP Link" },
-  { value: "", label: "Todos" },
   { value: "manual", label: "Powip" },
   { value: "shopify", label: "Shopify" },
   { value: "google_sheets", label: "Google Sheets" },
@@ -740,6 +740,8 @@ export function applyFilters<T extends {
       if (filters.source === "manual") {
         return !itemSource || itemSource === "" || itemSource === "manual";
       }
+      // FEAT-33 A7: POWIP Live / POWIP Link (el mapeo de cada página deja el Link como POWIP_LINK).
+      return itemSource === filters.source;
     }
 
     return true;

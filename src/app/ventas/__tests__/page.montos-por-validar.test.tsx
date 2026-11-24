@@ -229,3 +229,48 @@ describe("VentasPage — Montos con pago por validar (FEAT-33 A4)", () => {
     expect(within(owing).getByTestId("payment-attention")).toBeInTheDocument();
   });
 });
+
+describe("VentasPage — Pago / Envío y Origen (FEAT-33 A6/A7)", () => {
+  it("says the agency and courier of an agency order and keeps home deliveries as DOMICILIO", async () => {
+    mockPage([
+      pedido({
+        id: "o-1",
+        orderNumber: "ORD-153866",
+        currency: "PEN",
+        deliveryType: "PUNTO_EXTERNO",
+        courier: "SHALOM",
+        externalSource: "POWIP_LIVE",
+        closingChannel: "POWIP_LIVE",
+        payments: [yape("PENDING")],
+      }),
+      pedido({
+        id: "o-2",
+        orderNumber: "ORD-153902",
+        currency: "PEN",
+        deliveryType: "PUNTO_EXTERNO",
+        courier: "OLVA",
+        externalSource: "POWIP_LIVE",
+        closingChannel: "POWIP_LINK",
+        payments: [yape("PAID")],
+      }),
+      pedido({
+        id: "o-3",
+        orderNumber: "ORD-153950",
+        currency: "PEN",
+        deliveryType: "DOMICILIO",
+        courier: "MOTORIZADO",
+        externalSource: "POWIP_LIVE",
+        closingChannel: "POWIP_LIVE",
+        payments: [yape("PAID")],
+      }),
+    ]);
+    render(<VentasPage />);
+    await screen.findByText("ORD-153866");
+
+    expect(within(row("ORD-153866")).getByText("AGENCIA SHALOM")).toBeInTheDocument();
+    expect(within(row("ORD-153866")).getByText(/POWIP Live/)).toBeInTheDocument();
+    expect(within(row("ORD-153902")).getByText("AGENCIA OLVA COURIER")).toBeInTheDocument();
+    expect(within(row("ORD-153902")).getByText(/POWIP Link/)).toBeInTheDocument();
+    expect(within(row("ORD-153950")).getByText("DOMICILIO")).toBeInTheDocument();
+  });
+});

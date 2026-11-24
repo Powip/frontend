@@ -9,6 +9,7 @@ import { formatSalesMoney } from "@/utils/salesMoney";
 import { operationalStatus, orderFinancialState } from "@/utils/orderState";
 import { shouldShowReprogramado } from "@/utils/domain/reprogramado";
 import { SaleAmounts } from "@/components/shared/SaleAmounts";
+import { deliveryLabel, saleSourceKey } from "@/utils/saleLabels";
 import { paymentAttention, pendingApprovalSummary, type PendingApprovalSummary } from "@/utils/pendingApproval";
 import { StockStateBadge } from "@/components/orders/StockStateBadge";
 
@@ -198,6 +199,8 @@ export interface Sale extends UnitAssignmentState {
   status: OrderStatus;
   paymentMethod: string;
   deliveryType: string;
+  /** FEAT-33 A6: «AGENCIA SHALOM», «AGENCIA OLVA COURIER», «DOMICILIO». */
+  deliveryLabel: string;
   salesRegion: "LIMA" | "PROVINCIA";
   district: string;
   city: string;
@@ -311,6 +314,7 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     paymentMethod:
       order.payments.length > 0 ? order.payments[0].paymentMethod : "—",
     deliveryType: order.deliveryType.replace("_", " "),
+    deliveryLabel: deliveryLabel(order),
     salesRegion: order.salesRegion,
     district: order.customer.district ?? "",
     city: order.customer.city ?? "",
@@ -338,7 +342,7 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     shippingOffice: order.shippingOffice || "",
     sellerName: order.sellerName ?? null,
     items: order.items || [],
-    externalSource: order.externalSource === "POWIP_LIVE" && order.closingChannel === "POWIP_LINK" ? "POWIP_LINK" : order.externalSource ?? null,
+    externalSource: saleSourceKey(order),
     shopifyCancelledAt: order.shopifyCancelledAt ?? null,
     shopifyCancelReason: order.shopifyCancelReason ?? null,
     externalId: order.externalId ?? null,
@@ -1587,7 +1591,7 @@ Estado: ${sale.status}
                   <TableCell className="text-xs">
                     <div>{sale.paymentMethod}</div>
                     <div className="text-muted-foreground">
-                      {sale.deliveryType}
+                      {sale.deliveryLabel}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs text-right tabular-nums">
@@ -1885,7 +1889,7 @@ Estado: ${sale.status}
                   <TableCell className="text-xs">
                     <div>{sale.paymentMethod}</div>
                     <div className="text-muted-foreground">
-                      {sale.deliveryType}
+                      {sale.deliveryLabel}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs text-right tabular-nums">

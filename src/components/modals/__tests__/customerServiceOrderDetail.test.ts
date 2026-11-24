@@ -117,6 +117,22 @@ describe("pending order detail", () => {
     });
   });
 
+  it("FEAT-33 A5: Productos is the sum of normal prices so Productos − Descuentos + Envío = Total", () => {
+    const detail = buildPendingOrderDetail(order({
+      items: [
+        { productName: "Chompa A", quantity: 1, unitPrice: "115.00", discountAmount: "48.66", subtotal: "66.34" },
+        { productName: "Chompa B", quantity: 2, unitPrice: "89.00", discountAmount: "45.34", subtotal: "132.66" },
+      ] as OrderHeader["items"],
+      discountTotal: "94.00",
+      shippingTotal: "10.00",
+      grandTotal: "209.00",
+    }));
+    expect(detail.totals.productsTotal).toBe(293);
+    expect(detail.totals.productsTotal - detail.totals.discountTotal + detail.totals.shippingTotal).toBe(
+      detail.totals.grandTotal,
+    );
+  });
+
   it("renders incomplete numeric fields as zero without NaN in the detail", () => {
     const detail = buildPendingOrderDetail(order({
       grandTotal: "invalid",
