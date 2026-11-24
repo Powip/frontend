@@ -49,7 +49,7 @@
  *   buscador/matriz real no es parte de lo que se prueba acá.
  * - `@/components/registrar-venta/CartLines` — expone botones mínimos para
  *   ejercer los callbacks reales de precio individual y masivo del formulario.
- *   `SuggestionsPanel` se mockea a `null` para reducir superficie.
+ *   `SuggestionsPanel` se reduce a un botón que completa un bundle anterior.
  * - `@/components/modals/orderReceiptModal` — se abre tras un submit
  *   exitoso; se mockea a `null` porque no es parte de este flujo.
  *
@@ -129,10 +129,13 @@ jest.mock("@/services/promos.service", () => ({
   updatePromo: jest.fn(),
   deletePromo: jest.fn(),
 }));
-// FEAT-24 H9: precio sugerido y regalos del backend; no forman parte de lo que se prueba aquí.
+// FEAT-24 H9 / FEAT-32 M6a: precio sugerido y motor de promociones (sin promos); no forman parte de lo que se prueba aquí.
 jest.mock("@/services/promotionsService", () => ({
   resolvePrices: async () => [],
-  evaluatePromotions: async () => ({ gifts: [] }),
+  evaluateSaleEngine: jest.fn(async () => ({
+    lines: [], gift: null, giftOptions: [], suggestions: [],
+    totals: { listSubtotal: 0, promoDiscount: 0, subtotal: 0 }, priceFallback: false,
+  })),
 }));
 // Bundles are unrelated to the sale/payment/session behavior under test.
 // Keep their shared-catalog contract explicit instead of hitting HTTP fixtures
@@ -255,22 +258,41 @@ jest.mock("@/components/registrar-venta/ProductSearchMatrix", () => ({
   }: {
     onAddVariant: (item: Record<string, unknown>) => void;
   }) => (
-    <button
-      type="button"
-      onClick={() =>
-        onAddVariant({
-          inventoryItemId: "inv-1",
-          variantId: "var-1",
-          productName: "Producto Test",
-          sku: "SKU-1",
-          price: 100,
-          availableStock: 10,
-          physicalStock: 10,
-        })
-      }
-    >
-      Agregar producto de test
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() =>
+          onAddVariant({
+            inventoryItemId: "inv-1",
+            variantId: "var-1",
+            productName: "Producto Test",
+            sku: "SKU-1",
+            price: 100,
+            availableStock: 10,
+            physicalStock: 10,
+          })
+        }
+      >
+        Agregar producto de test
+      </button>
+      {/* FEAT-32 M6a: una variante sin SKU no se puede registrar. */}
+      <button
+        type="button"
+        onClick={() =>
+          onAddVariant({
+            inventoryItemId: "inv-2",
+            variantId: "var-2",
+            productName: "Polo sin código",
+            sku: "",
+            price: 30,
+            availableStock: 5,
+            physicalStock: 5,
+          })
+        }
+      >
+        Agregar variante sin SKU
+      </button>
+    </>
   ),
 }));
 
@@ -298,9 +320,14 @@ jest.mock("@/components/registrar-venta/CartLines", () => ({
   ),
 }));
 
+// FEAT-32 M6a: solo expone «completar» un bundle anterior armado por producto (sin variante).
 jest.mock("@/components/registrar-venta/SuggestionsPanel", () => ({
   __esModule: true,
-  default: () => null,
+  default: ({ onAutoAddBundleItem }: { onAutoAddBundleItem: (ref: Record<string, unknown>) => void }) => (
+    <button type="button" onClick={() => onAutoAddBundleItem({ productKey: "Blusa Sofía", productName: "Blusa Sofía", price: 89 })}>
+      Completar bundle anterior
+    </button>
+  ),
 }));
 
 // ── Imports bajo prueba (después de los mocks) ──────────────────────────────
@@ -315,6 +342,7 @@ import {
   updateClient,
 } from "@/services/clients.service";
 import RegistrarVentaPage from "../page";
+import { evaluateSaleEngine } from "@/services/promotionsService";
 import type { Client } from "@/interfaces/ICliente";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -2080,5 +2108,140 @@ describe("RegistrarVentaPage — link de Google Maps del cliente", () => {
       companyId: FOUND_CLIENT.companyId,
       googleMapsUrl: "https://maps.app.goo.gl/abc123",
     }));
+  });
+});
+
+// ── FEAT-32 M6a: motor de promociones en la venta nueva ─────────────────────
+
+describe("RegistrarVentaPage — FEAT-32 M6a motor de promociones", () => {
+  const mockedEngine = jest.mocked(evaluateSaleEngine);
+  const EMPTY_ENGINE = {
+    lines: [], gift: null, giftOptions: [], suggestions: [],
+    totals: { listSubtotal: 0, promoDiscount: 0, subtotal: 0 }, priceFallback: false,
+  };
+  afterEach(() => mockedEngine.mockImplementation(async () => EMPTY_ENGINE));
+
+  it("manda tienda, canal y almacén al motor, guarda el origen del precio y muestra los descuentos por promociones", async () => {
+    mockedEngine.mockImplementation(async (body) => ({
+      ...EMPTY_ENGINE,
+      lines: body.items.map((item, index) => ({
+        index, variantId: item.productVariantId, quantity: item.quantity, listPrice: 100, unitPrice: 80,
+        lineTotal: 80 * item.quantity, promoId: "promo-cyber", promoIds: ["promo-cyber"], labels: ["Cyber Wow"], isGift: false,
+      })),
+    }));
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "order-promo", payments: [] } });
+    renderPage();
+    await fillCommonRequiredFields();
+
+    await waitFor(() => expect(mockedEngine).toHaveBeenCalledWith(
+      expect.objectContaining({
+        storeId: "store-2",
+        channel: "WHATSAPP",
+        inventoryId: "warehouse-1",
+        items: [{ productVariantId: "var-1", quantity: 1, unitPrice: 100, discountAmount: 0 }],
+      }),
+      expect.anything(),
+    ));
+    await waitFor(() => expect(screen.getByText("Descuentos por promociones").parentElement).toHaveTextContent("- S/ 20.00"));
+    expect(screen.getByText("Subtotal").parentElement).toHaveTextContent("S/ 100.00");
+    expect(screen.queryByText("Importe productos")).not.toBeInTheDocument();
+    expect(screen.getByText("Total", { exact: true }).parentElement).toHaveTextContent("S/ 80.00");
+
+    await userEvent.click(screen.getByRole("button", { name: /registrar pedido/i }));
+    await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalledWith(
+      expect.stringContaining("/order-header/manual"),
+      expect.objectContaining({
+        items: [expect.objectContaining({
+          productVariantId: "var-1", unitPrice: 100, discountType: "FIXED", discountAmount: 20,
+          listPrice: 100, promoId: "promo-cyber", promoDiscountAmount: 20,
+        })],
+      }),
+    ));
+  });
+
+  it("no deja registrar una línea sin SKU", async () => {
+    renderPage();
+    await fillCommonRequiredFields();
+    await userEvent.click(screen.getByRole("button", { name: "Agregar variante sin SKU" }));
+    expect(await screen.findByText("Hay productos sin SKU: Polo sin código")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /registrar pedido/i })).toBeDisabled();
+  });
+
+  it("si el motor falla, la venta sigue con el precio sugerido y un aviso", async () => {
+    mockedEngine.mockRejectedValue(new Error("caído"));
+    mockedAxiosAuth.post.mockResolvedValue({ data: { id: "order-no-engine", payments: [] } });
+    renderPage();
+    await fillCommonRequiredFields();
+    expect(await screen.findByText("No se pudieron calcular las promociones.")).toBeInTheDocument();
+    expect(screen.getByText("Importe productos").parentElement).toHaveTextContent("S/ 100.00");
+
+    await userEvent.click(screen.getByRole("button", { name: /registrar pedido/i }));
+    await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalled());
+    const [item] = mockedAxiosAuth.post.mock.calls[0][1].items;
+    expect(item).toMatchObject({ unitPrice: 100, discountAmount: 0 });
+    expect(item).not.toHaveProperty("listPrice");
+    expect(item).not.toHaveProperty("promoId");
+  });
+
+  it("al completar un bundle anterior por producto pide elegir la variante (no toma la de más stock)", async () => {
+    const variants = [
+      { inventoryItemId: "inv-s", variantId: "sof-s", productName: "Blusa Sofía", sku: "SOF-S-CRE", price: 89, availableStock: 2, physicalStock: 2, attributes: { Talla: "S" } },
+      { inventoryItemId: "inv-m", variantId: "sof-m", productName: "Blusa Sofía", sku: "SOF-M-CRE", price: 89, availableStock: 9, physicalStock: 9, attributes: { Talla: "M" } },
+    ];
+    const originalGet = mockedAxiosAuth.get.getMockImplementation();
+    mockedAxiosAuth.get.mockImplementation(async (url: string, config?: { params?: { q?: string } }) =>
+      url.endsWith("/inventory-item/search") && config?.params?.q === "Blusa Sofía"
+        ? { data: { data: variants, meta: { page: 1, total: 2, totalPages: 1 } } }
+        : originalGet?.(url, config));
+    renderPage();
+    await screen.findByDisplayValue("Almacén compartido");
+    await userEvent.click(screen.getByRole("button", { name: "Completar bundle anterior" }));
+    expect(await screen.findByText("Elige la variante de cada producto del bundle")).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("radio", { name: /^S/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Agregar" }));
+    expect(await screen.findByRole("button", { name: "Fijar Blusa Sofía en 50" })).toBeInTheDocument();
+    expect(mockToast.success).toHaveBeenCalledWith("Blusa Sofía agregado");
+  });
+
+  function mockPromoOrder() {
+    mockEditableOrder("order-promo-edit");
+    const originalGet = mockedAxiosAuth.get.getMockImplementation();
+    mockedAxiosAuth.get.mockImplementation(async (url: string) => {
+      const response = await originalGet?.(url);
+      if (!url.includes("/order-header/manual/order-promo-edit")) return response;
+      return { data: { ...response?.data, items: [
+        { productVariantId: "bracelet", productName: "Pulsera", sku: "BRA", quantity: 1, unitPrice: "45.00",
+          discountAmount: "9.00", listPrice: "45.00", promoId: "promo-cyber", promoDiscountAmount: "9.00" },
+        { productVariantId: "gift", productName: "Regalo", sku: "GFT", quantity: 1, unitPrice: "0.00",
+          discountAmount: "0.00", listPrice: null, promoId: "promo-gift", promoDiscountAmount: "0.00" },
+      ] } };
+    });
+    mockedAxiosAuth.put.mockResolvedValue({ data: {} });
+  }
+
+  it("al editar devuelve el origen del precio que trajo el pedido (sin motor)", async () => {
+    mockPromoOrder();
+    renderPage();
+    await screen.findByRole("button", { name: "Fijar Pulsera en 50" });
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
+    await waitFor(() => expect(mockedAxiosAuth.put).toHaveBeenCalledTimes(1));
+    expect(mockedEngine).not.toHaveBeenCalled();
+    const [bracelet, gift] = mockedAxiosAuth.put.mock.calls[0][1].items;
+    expect(bracelet).toMatchObject({ unitPrice: 45, discountAmount: 9, listPrice: 45, promoId: "promo-cyber", promoDiscountAmount: 9 });
+    expect(gift).toMatchObject({ promoId: "promo-gift" });
+    expect(gift).not.toHaveProperty("listPrice");
+  });
+
+  it("al editar, la línea que cambia de precio conserva el precio de lista y suelta la promo", async () => {
+    mockPromoOrder();
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Fijar Pulsera en 50" }));
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar venta" }));
+    await waitFor(() => expect(mockedAxiosAuth.put).toHaveBeenCalledTimes(1));
+    const [changed, gift] = mockedAxiosAuth.put.mock.calls[0][1].items;
+    expect(changed).toMatchObject({ unitPrice: 50, listPrice: 45 });
+    expect(changed).not.toHaveProperty("promoId");
+    expect(changed).not.toHaveProperty("promoDiscountAmount");
+    expect(gift).toMatchObject({ promoId: "promo-gift" });
   });
 });

@@ -3,16 +3,20 @@
  * de todos los canales, después una por canal). Las listas guardan solo excepciones: una celda vacía hereda.
  * Cadena de la venta: lista de tienda+canal → lista de la tienda → `priceVta`.
  */
-import type { PriceItemWrite, PriceList, PriceListItemsPage } from "@/services/priceListsService";
+import type { PriceItemWrite, PriceList, PriceListChannelCell, PriceListItemsPage } from "@/services/priceListsService";
 
 export interface PriceCell {
   price: number | null;
   compareAtPrice: number | null;
   inList: boolean;
+  /** FEAT-32 M2 — en las listas de un canal con regla. */
+  channel?: PriceListChannelCell;
 }
 
 export interface PriceMatrixRow {
   variantId: string;
+  /** FEAT-32 M3 — para saber qué campaña lo incluye. */
+  productId: string;
   productName: string;
   attributeValues: Record<string, string>;
   companySku: string | null;
@@ -42,6 +46,7 @@ export function mergePriceRows(pages: Array<{ listId: string; page: PriceListIte
       if (!row) {
         row = {
           variantId: item.variantId,
+          productId: item.productId,
           productName: item.productName,
           attributeValues: item.attributeValues ?? {},
           companySku: item.companySku,
@@ -50,14 +55,24 @@ export function mergePriceRows(pages: Array<{ listId: string; page: PriceListIte
         };
         rows.set(item.variantId, row);
       }
-      row.cells[listId] = { price: item.inList ? item.price : null, compareAtPrice: item.compareAtPrice, inList: item.inList };
+      row.cells[listId] = {
+        price: item.inList ? item.price : null,
+        compareAtPrice: item.compareAtPrice,
+        inList: item.inList,
+        ...(item.channel ? { channel: item.channel } : {}),
+      };
     }
   }
   return [...rows.values()];
 }
 
-/** Lo que cobra una celda vacía: el precio de la lista de la tienda (si es de canal) o `priceVta`. */
+/**
+ * Lo que cobra una celda vacía: en un canal con regla activa, lo que da la regla (FEAT-32 M2); si no, el
+ * precio de la lista de la tienda (si es de canal) o `priceVta`.
+ */
 export function inheritedPrice(row: PriceMatrixRow, lists: PriceList[], listId: string): number {
+  const rulePrice = row.cells[listId]?.channel?.rulePrice;
+  if (rulePrice !== null && rulePrice !== undefined) return rulePrice;
   const list = lists.find((item) => item.id === listId);
   if (list?.channel) {
     const storeList = lists.find((item) => !item.channel && item.storeId === list.storeId);

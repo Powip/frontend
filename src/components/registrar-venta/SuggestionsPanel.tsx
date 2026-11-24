@@ -24,6 +24,8 @@ interface SuggestionsPanelProps {
   onApplyPack: (pack: Pack) => void;
   onAutoFillVolume: (pack: Pack) => void;
   onAutoAddBundleItem: (ref: BundleProductRef) => void;
+  /** FEAT-32 M6a: dentro de «Sugerencias para cerrar» del motor (venta nueva): sin título y nada si no hay. */
+  embedded?: boolean;
 }
 
 export default function SuggestionsPanel({
@@ -40,6 +42,7 @@ export default function SuggestionsPanel({
   onApplyPack,
   onAutoFillVolume,
   onAutoAddBundleItem,
+  embedded = false,
 }: SuggestionsPanelProps) {
   const active = packs.filter((p) => p.active &&
     (p.type === "VOLUME" ? volumeApplies(p, channel, storeId) : !channel || p.channels.includes(channel)) &&
@@ -222,6 +225,7 @@ export default function SuggestionsPanel({
   });
 
   if (!items.length) {
+    if (embedded) return null;
     return (
       <div className="flex items-start gap-3 rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/5 to-card p-4 dark:border-primary/40 dark:from-primary/10">
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-primary text-white">
@@ -238,11 +242,13 @@ export default function SuggestionsPanel({
   }
 
   return (
-    <div className="space-y-2.5">
-      <div className="flex items-center gap-2 px-0.5 text-sm font-bold text-foreground">
-        <Lightbulb className="h-4 w-4 text-primary" />
-        Sugerencias para cerrar
-      </div>
+    <div className={embedded ? "mt-3 space-y-2.5" : "space-y-2.5"}>
+      {!embedded && (
+        <div className="flex items-center gap-2 px-0.5 text-sm font-bold text-foreground">
+          <Lightbulb className="h-4 w-4 text-primary" />
+          Sugerencias para cerrar
+        </div>
+      )}
       {items.map((item, idx) => (
         <div
           key={idx}

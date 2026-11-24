@@ -23,11 +23,33 @@ export interface PackComponentView {
   averageCost?: number | null;
 }
 
+/** FEAT-32 M5 — FIXED: variantes definidas; CHOOSE: el cliente elige talla y color (se vende desde M6b). */
+export type PackType = "FIXED" | "CHOOSE";
+/** Solo packs de creadoras (POWIP Live); `null` = pack del negocio. */
+export type PackApprovalStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+/** El componente que limita el disponible: FIXED «Blusa Sofía M crema»; CHOOSE el nombre del producto. */
+export interface PackLimiting {
+  productId: string;
+  variantId: string | null;
+  label: string;
+}
+
+/** Componente de un pack «a elegir»: una lista de variantes permitidas con la misma cantidad. */
+export interface PackChoiceComponentView {
+  slot: number;
+  productId: string;
+  productName: string;
+  quantity: number;
+  variants: Array<{ variantId: string; sku: string | null; attributeValues: Record<string, string>; active: boolean; imageUrl: string | null }>;
+}
+
 export interface PackWarehouseAvailability {
   inventoryId: string;
   inventoryName: string | null;
   storeId: string | null;
   available: number;
+  limiting?: PackLimiting | null;
 }
 
 export interface PackView {
@@ -44,9 +66,20 @@ export interface PackView {
   active: boolean;
   categoryId: string | null;
   brandId: string | null;
+  /** FIXED; `[]` en CHOOSE. */
   components: PackComponentView[];
+  /**
+   * FEAT-32 M5: opcionales para no romper con un ms-products anterior (sin ellos el pack es FIXED y del negocio).
+   */
+  packType?: PackType;
+  approvalStatus?: PackApprovalStatus | null;
+  creatorId?: string | null;
+  /** CHOOSE; `[]` en FIXED. */
+  choiceComponents?: PackChoiceComponentView[];
+  /** Σ precio × cantidad de los componentes (CHOOSE: el mayor precio de las permitidas). */
+  componentsTotal?: number | null;
   /** Disponible = mín(disponible del componente ÷ cantidad) por almacén; `null` si logística no respondió. */
-  available: { total: number; byWarehouse: PackWarehouseAvailability[] } | null;
+  available: { total: number; byWarehouse: PackWarehouseAvailability[]; limiting?: PackLimiting | null } | null;
   cost?: number | null;
   netPrice?: number;
   igvAffected?: boolean;
@@ -58,7 +91,8 @@ export interface PackView {
 
 export interface PackPage {
   data: PackView[];
-  meta: { page: number; limit: number; total: number; totalPages: number };
+  /** `pendingCount`: packs de creadora pendientes de la empresa, sin importar los filtros. */
+  meta: { page: number; limit: number; total: number; totalPages: number; pendingCount?: number };
 }
 
 export interface PackComponentInput {
@@ -66,13 +100,32 @@ export interface PackComponentInput {
   quantity: number;
 }
 
+/** Componente CHOOSE: variantes permitidas del producto (al menos una), todas con la misma cantidad. */
+export interface PackChoiceComponentInput {
+  productId: string;
+  allowedVariantIds: string[];
+  quantity: number;
+}
+
 export interface CreatePackBody {
   name: string;
   price: number;
-  components: PackComponentInput[];
+  /** FIXED: `{ variantId, quantity }`; CHOOSE: `{ productId, allowedVariantIds, quantity }`. */
+  components: PackComponentInput[] | PackChoiceComponentInput[];
+  packType?: PackType;
   description?: string;
   companySku?: string;
   barcode?: string;
+  confirmLowMargin?: boolean;
+}
+
+/** `PATCH /packs/:id`: si cambia `packType`, `components` es obligatorio (con el formato del tipo nuevo). */
+export interface UpdatePackBody {
+  name?: string;
+  companySku?: string;
+  price?: number;
+  packType?: PackType;
+  components?: PackComponentInput[] | PackChoiceComponentInput[];
   confirmLowMargin?: boolean;
 }
 
@@ -89,10 +142,17 @@ export interface PackLowMarginConflict {
   marginStatus: PackMarginStatus;
 }
 
-export async function listPacks(
-  params: { q?: string; active?: boolean; page?: number; limit?: number } = {},
-  signal?: AbortSignal,
-): Promise<PackPage> {
+export interface ListPacksParams {
+  q?: string;
+  active?: boolean;
+  page?: number;
+  limit?: number;
+  packType?: PackType;
+  /** `creators`: solo los packs de creadoras. */
+  origin?: "creators";
+}
+
+export async function listPacks(params: ListPacksParams = {}, signal?: AbortSignal): Promise<PackPage> {
   const { data } = await axiosAuth.get<PackPage>(`${products()}/packs`, { params, signal });
   return {
     data: Array.isArray(data?.data) ? data.data : [],
@@ -120,17 +180,115 @@ export async function replacePackComponents(
 }
 
 /**
- * Nombre y precio del pack: es un producto con una variante, así que van por las rutas del catálogo
- * (`PATCH /products/:id` y `PATCH /product-variant/:id` con `priceVta`). El margen no se valida acá: lo
- * mide el `PUT .../components` que se manda después.
+ * FEAT-32 M5 — edita nombre, SKU, precio, tipo y componentes en una sola llamada. El margen se mide con el precio
+ * nuevo (409 `PACK_LOW_MARGIN` si queda bajo el mínimo y no viene `confirmLowMargin`).
  */
-export async function updatePackBasics(pack: Pick<PackView, "id" | "variantId">, patch: { name?: string; price?: number }) {
-  if (patch.name !== undefined) {
-    await axiosAuth.patch(`${products()}/products/${encodeURIComponent(pack.id)}`, { name: patch.name });
+export async function updatePack(productId: string, body: UpdatePackBody): Promise<PackView> {
+  const { data } = await axiosAuth.patch<PackView>(`${products()}/packs/${encodeURIComponent(productId)}`, body);
+  return data;
+}
+
+/** FEAT-32 M5 — aprueba (se vende y se publica) o rechaza un pack de creadora. */
+export async function setPackApproval(productId: string, decision: "APPROVED" | "REJECTED"): Promise<PackView> {
+  const { data } = await axiosAuth.post<PackView>(`${products()}/packs/${encodeURIComponent(productId)}/approval`, { decision });
+  return data;
+}
+
+/** Tipo del pack; sin el dato (ms-products anterior) es FIXED. */
+export const packTypeOf = (pack: Pick<PackView, "packType">): PackType => (pack.packType === "CHOOSE" ? "CHOOSE" : "FIXED");
+
+/** Del negocio (`approvalStatus` null) o de creadora aprobado: los PENDING/REJECTED no se venden. */
+export const packApproved = (pack: Pick<PackView, "approvalStatus">): boolean =>
+  pack.approvalStatus == null || pack.approvalStatus === "APPROVED";
+
+/**
+ * Se vende con un clic: FIXED y aprobado. FEAT-32 M6b: el CHOOSE aprobado se vende eligiendo talla y color (venta
+ * nueva y edición de un pedido).
+ */
+export const packSellable = (pack: Pick<PackView, "packType" | "approvalStatus">): boolean =>
+  packTypeOf(pack) === "FIXED" && packApproved(pack);
+
+/**
+ * FEAT-32 M6b — el pack de una línea del pedido (por la variante del pack), para «Cambiar variantes»: por su
+ * producto si se conoce y, si no, buscando por SKU y por nombre. Activos o no. `null` si no aparece.
+ */
+export async function findPackForVariant(
+  variantId: string,
+  hints: { productId?: string | null; sku?: string | null; name?: string | null },
+  signal?: AbortSignal,
+): Promise<PackView | null> {
+  const same = (pack: PackView) => pack.variantId?.toLowerCase() === variantId.toLowerCase();
+  if (hints.productId) {
+    // Si falla (borrado, otra empresa), se busca por SKU y nombre.
+    const pack = await getPack(hints.productId, signal).catch(() => null);
+    if (pack && same(pack)) return pack;
   }
-  if (patch.price !== undefined) {
-    await axiosAuth.patch(`${products()}/product-variant/${encodeURIComponent(pack.variantId)}`, { priceVta: patch.price });
+  for (const q of [hints.sku, hints.name].map((value) => value?.trim()).filter((value): value is string => !!value)) {
+    const hit = (await listPacks({ q, limit: 50 }, signal)).data.find(same);
+    if (hit) return hit;
   }
+  return null;
+}
+
+/** Cuántos componentes tiene (FIXED: variantes; CHOOSE: productos con sus permitidas). */
+export const packComponentCount = (pack: Pick<PackView, "packType" | "components" | "choiceComponents">): number =>
+  packTypeOf(pack) === "CHOOSE" ? (pack.choiceComponents ?? []).length : pack.components.length;
+
+/** Producto que puede ser componente: activo, no pack y sin IMEI/serie (lo mismo valida el backend). */
+export interface PackComponentProduct {
+  id: string;
+  name: string;
+  sku: string;
+  companySku: string | null;
+  imageUrl: string | null;
+}
+
+const textOrNull = (value: unknown) => (typeof value === "string" && value.trim() !== "" ? value : null);
+
+/** Productos de la empresa que pueden ir en un pack (`GET /products/company/:id`). */
+export async function listPackComponentProducts(companyId: string, signal?: AbortSignal): Promise<PackComponentProduct[]> {
+  if (!companyId) return [];
+  const { data } = await axiosAuth.get<unknown[]>(`${products()}/products/company/${encodeURIComponent(companyId)}`, { signal });
+  if (!Array.isArray(data)) return [];
+  return data
+    .filter((raw): raw is Record<string, unknown> => !!raw && typeof raw === "object" && typeof (raw as { id?: unknown }).id === "string")
+    .filter((raw) => raw.status !== false && raw.type !== "pack" && (!raw.trackingMode || raw.trackingMode === "NONE"))
+    .map((raw) => ({
+      id: raw.id as string,
+      name: textOrNull(raw.name) ?? "Producto sin nombre",
+      sku: textOrNull(raw.sku) ?? "",
+      companySku: textOrNull(raw.companySku),
+      imageUrl: textOrNull(raw.imageUrl),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "es"));
+}
+
+/** Variante de un producto para la ventana del pack: SKU, atributos y precio de venta. */
+export interface PackProductVariant {
+  id: string;
+  sku: string | null;
+  attributeValues: Record<string, string>;
+  price: number | null;
+  active: boolean;
+}
+
+/** Variantes vivas de un producto (`GET /product-variant/by-product/:id`; sin las unificadas). */
+export async function listPackProductVariants(productId: string, signal?: AbortSignal): Promise<PackProductVariant[]> {
+  const { data } = await axiosAuth.get<unknown[]>(`${products()}/product-variant/by-product/${encodeURIComponent(productId)}`, { signal });
+  if (!Array.isArray(data)) return [];
+  return data
+    .filter((raw): raw is Record<string, unknown> => !!raw && typeof raw === "object" && typeof (raw as { id?: unknown }).id === "string")
+    .filter((raw) => !textOrNull(raw.mergedInto))
+    .map((raw) => {
+      const price = Number(raw.priceVta);
+      return {
+        id: raw.id as string,
+        sku: textOrNull(raw.companySku) ?? textOrNull(raw.sku),
+        attributeValues: raw.attributeValues && typeof raw.attributeValues === "object" ? (raw.attributeValues as Record<string, string>) : {},
+        price: raw.priceVta === null || raw.priceVta === undefined || !Number.isFinite(price) ? null : price,
+        active: raw.isActive !== false,
+      };
+    });
 }
 
 /** Todos los packs de la empresa: recorre las páginas de 100 con un tope de 20 (2000 packs). */
