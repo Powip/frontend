@@ -12,6 +12,7 @@ import { InventoryItemForSale } from "@/interfaces/IProduct";
 import { initials } from "@/utils/productGrouping";
 import Thumb from "./Thumb";
 import { PackLineContents } from "@/components/packs/PackLineContents";
+import { promoBadgeLabel } from "@/app/registrar-venta/saleEnginePricing";
 
 const fmt = (n: number) => `S/ ${n.toFixed(2)}`;
 
@@ -289,6 +290,11 @@ function LineRow({
                 </button>
               </Badge>
             )}
+            {line.promoLabels?.map((label) => (
+              <Badge key={label} className="bg-pink-100 text-pink-700 hover:bg-pink-100 dark:bg-pink-500/15 dark:text-pink-300">
+                {promoBadgeLabel(label, line)}
+              </Badge>
+            ))}
             {!isPack && line.discMode && (
               <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 dark:bg-amber-500/15 dark:text-amber-300 gap-1">
                 {line.discMode === "pct"
@@ -313,7 +319,10 @@ function LineRow({
                   {k}: {v}
                 </span>
               ))}
-            <span>{line.sku}</span>
+            {/* FEAT-32 M6a: cada línea muestra su SKU (sin SKU no se puede registrar la venta nueva). */}
+            <span className={cn("font-mono", !line.sku?.trim() && "font-sans font-semibold text-destructive")}>
+              {line.sku?.trim() || "Sin SKU"}
+            </span>
           </div>
           <PackLineContents components={line.packComponents} lineQuantity={line.quantity} />
         </div>
@@ -399,7 +408,8 @@ function DiscountEditor({
     if (line.discMode === "man") return String(line.price);
     return "";
   });
-  const pvp = line.pvp ?? line.price;
+  // FEAT-32 M6a: con promo del motor, el descuento manual se aplica sobre el precio de promo.
+  const pvp = line.promoUnitPrice ?? line.pvp ?? line.price;
 
   return (
     <div className="mt-2 border border-dashed rounded-md p-2.5 bg-background space-y-2">

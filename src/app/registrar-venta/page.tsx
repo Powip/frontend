@@ -44,7 +44,10 @@ import {
 } from "@/components/registrar-venta/SaleChannelField";
 import { SaleOriginField } from "@/components/registrar-venta/SaleOriginField";
 import SuggestionsPanel from "@/components/registrar-venta/SuggestionsPanel";
-import PromoGiftsPanel from "@/components/registrar-venta/PromoGiftsPanel";
+import SaleSuggestions from "@/components/registrar-venta/SaleSuggestions";
+import SaleGiftLines from "@/components/registrar-venta/SaleGiftLines";
+import SalePromoTotals from "@/components/registrar-venta/SalePromoTotals";
+import BundleVariantPicker from "@/components/registrar-venta/BundleVariantPicker";
 import { useSaleOrigin } from "@/components/registrar-venta/useSaleOrigin";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,7 +71,7 @@ import { DeliveryType, OrderType, type SalesChannel } from "@/enum/Order.enum";
 import { ShalomAgencyField } from "@/components/shalom/ShalomAgencyField";
 import type { ShalomAgencyOption } from "@/services/shalomService";
 import { usePacksEngine } from "@/hooks/usePacksEngine";
-import { usePromoGifts } from "@/hooks/usePromoGifts";
+import { useSaleEngine } from "@/hooks/useSaleEngine";
 import { useSuggestedPrices } from "@/hooks/useSuggestedPrices";
 import { useCompanyCouriers } from "@/hooks/useCompanyCouriers";
 import type { Client, ClientType, DocumentType } from "@/interfaces/ICliente";
@@ -87,7 +90,8 @@ import ubigeos from "@/utils/json/ubigeos.json";
 import { bumpProductFrequency, getProductFrequencies } from "@/utils/productFrequency";
 import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
 import { resolveBundleVariant } from "@/utils/resolveBundleVariant";
-import { buildOrderItem, getOrderItemPricing } from "./orderItemPricing";
+import { buildOrderItem, getOrderItemPricing, loadedPromoTrace } from "./orderItemPricing";
+import { linesWithoutSku } from "./saleEnginePricing";
 import { VerifyIdentityButton } from "@/app/facturacion/components/VerifyIdentityButton";
 import {
   isClientDocumentRequired,
@@ -697,6 +701,7 @@ function RegistrarVentaContent() {
         discount: totalDiscount, // informativo/legado; buildOrderItem deriva el descuento del precio de cierre
         packId: null,
         packComponents: item.packComponents ?? null,
+        ...loadedPromoTrace(item, netUnit),
       };
     });
     setCart(mappedCart);
@@ -859,8 +864,13 @@ function RegistrarVentaContent() {
   /* ---------------- Packs & Promos (solo UI) ---------------- */
   const isAdmin = isSuperadmin(auth?.user?.email) || hasAdminAccess(auth?.user?.role);
   const { packs: localPacks } = usePacks();
-  // FEAT-24 H9: los regalos (GIFT) ya no salen del navegador; los evalúa el backend (usePromoGifts).
-  const packs = useMemo(() => localPacks.filter((pack) => pack.type !== "GIFT"), [localPacks]);
+  // FEAT-24 H9: los regalos (GIFT) ya no salen del navegador. FEAT-32 M6a: en la venta nueva tampoco el
+  // volumen (VOLUME): regalo y volumen los calcula el motor de ms-ventas (useSaleEngine).
+  const saleEngineOn = !orderId && !leadId;
+  const packs = useMemo(
+    () => localPacks.filter((pack) => pack.type !== "GIFT" && !(saleEngineOn && pack.type === "VOLUME")),
+    [localPacks, saleEngineOn],
+  );
 
   const getVariantsForProduct = useCallback(
     async (productName: string) => {
@@ -886,9 +896,19 @@ function RegistrarVentaContent() {
     getVariantsForProduct,
   });
 
-  // FEAT-24 H9: precio sugerido por la lista de la tienda y el canal, y regalos que suma el backend.
+  // FEAT-24 H9: precio sugerido por la lista de la tienda y el canal. FEAT-32 M6a: en la venta nueva el
+  // motor de promociones manda en las líneas elegibles (precio de lista, promo, regalo y sugerencias).
   useSuggestedPrices({ cart, setCart, storeId: origin.storeId, channel: orderDetails.salesChannel });
-  const promoGifts = usePromoGifts({ cart, storeId: origin.storeId, channel: orderDetails.salesChannel, enabled: !orderId && !leadId });
+  const saleEngine = useSaleEngine({
+    cart,
+    setCart,
+    storeId: origin.storeId,
+    channel: orderDetails.salesChannel,
+    inventoryId: selectedInventory,
+    enabled: saleEngineOn,
+  });
+  const saleCart = saleEngine.cart;
+  const [bundlePick, setBundlePick] = useState<BundleProductRef | null>(null);
 
   const qtyInCartByVariant = useCallback(
     (variantId: string) =>
@@ -925,6 +945,10 @@ function RegistrarVentaContent() {
       let variant: InventoryItemForSale | null;
       if ("variantId" in item) {
         variant = await resolveBundleVariant(item, scope);
+      } else if (saleEngineOn) {
+        // FEAT-32 M6a (§6.18): el vendedor elige la variante; ya no se toma sola la de más stock.
+        setBundlePick(item);
+        return;
       } else {
         const variants = await getVariantsForProduct(item.productKey);
         variant = variants.reduce<InventoryItemForSale | null>(
@@ -1422,6 +1446,14 @@ function RegistrarVentaContent() {
 
       const sellerDisplayName = `${auth?.user?.name || ""} ${auth?.user?.surname || ""}`.trim();
 
+      // FEAT-32 M6a: si el motor está recalculando se espera su precio; si cambia el total, se muestra antes.
+      const settled = await saleEngine.settle();
+      if (!isCurrentEditor()) return;
+      if (settled.changed) {
+        toast.warning("Las promociones cambiaron el total. Revísalo y vuelve a registrar el pedido.");
+        return;
+      }
+
       const payload = {
         // --- Comprobante ---
         receiptType: "BOLETA",
@@ -1458,7 +1490,7 @@ function RegistrarVentaContent() {
         customerId: activeClient.id,
 
         // --- Ítems ---
-        items: cart.map(buildOrderItem),
+        items: settled.cart.map(buildOrderItem),
 
         // The selected condition exists even when no payment has been collected.
         paymentCondition: leadId ? leadCollectionCondition : (["CONTRA_ENTREGA", "CONTRAENTREGA"].includes(paymentMethod) ? "COD" : "PREPAID"),
@@ -1952,12 +1984,12 @@ function RegistrarVentaContent() {
   /* ---------------- Totales ---------------- */
   // El bruto debe coincidir con lo enviado al backend, incluso cuando un
   // precio manual supera el PVP, para no compensar descuentos de otras líneas.
-  const subtotalBruto = cart.reduce(
+  const subtotalBruto = saleCart.reduce(
     (acc, p) => acc + getOrderItemPricing(p).unitPrice * p.quantity,
     0,
   );
-  // Subtotal neto (precio de cierre real, después de descuentos/packs)
-  const subtotal = cart.reduce((acc, p) => acc + p.price * p.quantity, 0);
+  // Subtotal neto (precio de cierre real, después de descuentos/packs; FEAT-32 M6a: el neto del motor)
+  const subtotal = saleCart.reduce((acc, p) => acc + (p.lineTotal ?? p.price * p.quantity), 0);
   // Total de descuentos por item, derivado (bruto - neto)
   const totalItemDiscounts = Math.max(0, subtotalBruto - subtotal);
   // Si INCLUIDO, los precios ya incluyen impuestos
@@ -1971,6 +2003,8 @@ function RegistrarVentaContent() {
 
   const hasValidCart =
     cart.length > 0 && cart.every((item) => item.quantity > 0 && item.price >= 0);
+  // FEAT-32 M6a (§5.10): en la venta nueva toda línea lleva SKU.
+  const linesMissingSku = saleEngineOn ? linesWithoutSku(cart) : [];
 
   // La agencia de recojo solo se puede guardar al registrar una venta nueva o en pedidos que ya
   // tienen entrega propia; un pedido antiguo sin entrega propia no la admite.
@@ -2035,12 +2069,14 @@ function RegistrarVentaContent() {
     !!orderDetails.closingChannel &&
     hasValidDelivery &&
     hasValidPayments &&
+    !linesMissingSku.length &&
     !packsEngine.pvsOpen;
 
   const checklist = [
     { ok: origin.hasStore, msg: "Selecciona la tienda de la venta" },
     { ok: origin.hasInventory, msg: "Selecciona el almacén de salida" },
     { ok: hasValidCart, msg: "Agrega al menos un producto al carrito" },
+    ...(linesMissingSku.length ? [{ ok: false, msg: `Hay productos sin SKU: ${linesMissingSku.map((line) => line.productName).join(", ")}` }] : []),
     ...(cart.some((line) => isTracked(line.trackingMode)) ? [{ ok: !validateSaleUnits(cart), msg: validateSaleUnits(cart) || "IMEI/series seleccionados" }] : []),
     {
       ok: hasValidClient,
@@ -2917,8 +2953,16 @@ function RegistrarVentaContent() {
               </Card>
             </div>
             <div className="space-y-6 min-w-0">
-              {/* Sugerencias para cerrar */}
+              {/* Sugerencias para cerrar (FEAT-32 M6a: las del motor; debajo, las de bundles anteriores) */}
+              <SaleSuggestions
+                enabled={saleEngine.enabled}
+                suggestions={saleEngine.suggestions}
+                hasProducts={cart.length > 0}
+                failed={saleEngine.failed}
+                onAddPack={saleEngine.addPack}
+              >
               <SuggestionsPanel
+                embedded={saleEngine.enabled}
                 packs={packs}
                 channel={orderDetails.salesChannel}
                 storeId={origin.storeId}
@@ -2933,6 +2977,17 @@ function RegistrarVentaContent() {
                 onAutoFillVolume={handleAutoFillVolume}
                 onAutoAddBundleItem={handleAutoAddBundleItem}
               />
+              </SaleSuggestions>
+              <BundleVariantPicker
+                item={bundlePick}
+                inventoryId={selectedInventory}
+                loadVariants={getVariantsForProduct}
+                onPick={(variant) => {
+                  addToCart(variant);
+                  toast.success(`${variant.productName} agregado`);
+                }}
+                onClose={() => setBundlePick(null)}
+              />
 
               {/* Carrito */}
               <Card>
@@ -2946,7 +3001,7 @@ function RegistrarVentaContent() {
                 </CardHeader>
                 <CardContent>
                   <CartLines
-                    cart={cart}
+                    cart={saleCart}
                     packs={packs}
                     appliedPacks={packsEngine.appliedPacks}
                     isAdmin={isAdmin}
@@ -2970,7 +3025,7 @@ function RegistrarVentaContent() {
                     onChangeGift={packsEngine.changeGift}
                     onGiftCancel={packsEngine.giftCancel}
                   />
-                  <div className="mt-3"><PromoGiftsPanel gifts={promoGifts.gifts} failed={promoGifts.failed} /></div>
+                  <div className="mt-3"><SaleGiftLines gifts={saleEngine.gifts} skipped={saleEngine.skippedGifts} /></div>
                   {orderData && <SaleUnitLifecycleActions key={orderData.id} order={orderData} onUpdated={() => { void loadOrder(); }} />}
                   {orderData && <SaleAssignmentStatus order={orderData} onRefresh={(saved) => setCart((lines) => lines.map((line) => {
                     const units = saved.items.flatMap((item) => item.units ?? []).filter((unit) => line.unitIds?.includes(unit.id));
@@ -3615,6 +3670,9 @@ function RegistrarVentaContent() {
               {/* Resumen */}
               <Card className="lg:sticky lg:top-6">
                 <CardContent className="pt-6 text-sm space-y-1">
+                  {saleEngine.enabled && !saleEngine.failed ? (
+                    <SalePromoTotals lines={saleCart} moneyPrefix={moneyPrefix} pending={saleEngine.pending} />
+                  ) : (<>
                   <div className="flex justify-between py-0.5 text-muted-foreground">
                     <span>Importe productos</span>
                     <span className="text-foreground">{moneyPrefix} {subtotalBruto.toFixed(2)}</span>
@@ -3629,6 +3687,7 @@ function RegistrarVentaContent() {
                     <span>Sub total</span>
                     <span className="text-foreground">{moneyPrefix} {subtotal.toFixed(2)}</span>
                   </div>
+                  </>)}
                   {taxMode === "AUTOMATICO" && (
                     <div className="flex justify-between py-0.5 text-muted-foreground">
                       <span>IGV 18%</span>
