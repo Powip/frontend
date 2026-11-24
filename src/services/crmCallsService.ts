@@ -4,6 +4,7 @@ import type {
   Call,
   CallDays,
   CallListParams,
+  CallProspect,
   CallStats,
   CreateCallInput,
 } from "@/types/crmCalls";
@@ -21,6 +22,11 @@ export async function listCalls(params: CallListParams): Promise<Call[]> {
       },
     })
   ).data.items;
+}
+
+/** Clientes para llamar sin tarea: link sin pagar, tibios y contra entrega sin respuesta. */
+export async function listCallProspects(assigned: "me" | "all"): Promise<CallProspect[]> {
+  return (await axiosAuth.get<CallProspect[]>(`${BASE}/prospects`, { params: { assigned } })).data;
 }
 
 export async function createCall(input: CreateCallInput): Promise<Call> {

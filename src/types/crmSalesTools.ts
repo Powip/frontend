@@ -56,6 +56,8 @@ export interface ObjectionDetection {
   label: string | null;
   confidence: number;
   suggestedResponse: string | null;
+  /** De dónde sale `suggestedResponse`: `llm` = la redactó la IA · `official` = la cargó el negocio · `generic` = texto fijo. */
+  replySource?: "llm" | "official" | "generic" | null;
   /** `llm` = IA configurada en Pau · `mock` = reglas por palabras clave. */
   source: "llm" | "mock";
   text: string;

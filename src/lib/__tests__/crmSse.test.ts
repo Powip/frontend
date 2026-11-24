@@ -222,6 +222,19 @@ describe("eventos de agenda y embudo", () => {
     applyCrmEvent(qc, { type: "conversation.updated", data: { conversation: conv() } });
     expect(spy).toHaveBeenCalledWith({ queryKey: crmKeys.boards });
   });
+
+  it("conversation.removed se reconoce y limpia la caché del chat", () => {
+    expect(
+      parseCrmEvent({ event: "conversation.removed", data: JSON.stringify({ id: "c1" }) })?.type,
+    ).toBe("conversation.removed");
+    const qc = new QueryClient();
+    qc.setQueryData(crmKeys.conversation("c1"), conv());
+    const spy = jest.spyOn(qc, "invalidateQueries");
+    applyCrmEvent(qc, { type: "conversation.removed", data: { id: "c1" } });
+    expect(qc.getQueryData(crmKeys.conversation("c1"))).toBeUndefined();
+    expect(spy).toHaveBeenCalledWith({ queryKey: crmKeys.conversations });
+    expect(spy).toHaveBeenCalledWith({ queryKey: crmKeys.summary });
+  });
 });
 
 import type { Broadcast } from "@/types/crm";
@@ -286,5 +299,24 @@ describe("broadcast.updated", () => {
     const qc = new QueryClient();
     applyCrmEvent(qc, { type: "broadcast.updated", data: { broadcast: broadcast() } });
     expect(qc.getQueryData(crmKeys.broadcasts)).toBeUndefined();
+  });
+});
+
+describe("eventos de llamadas", () => {
+  const invalidated = (event: Parameters<typeof applyCrmEvent>[1]) => {
+    const qc = new QueryClient();
+    const spy = jest.spyOn(qc, "invalidateQueries");
+    applyCrmEvent(qc, event);
+    return spy.mock.calls.map(([f]) => f?.queryKey);
+  };
+
+  it("el permiso refresca solo el de ese chat", () => {
+    const keys = invalidated({ type: "call.permission", data: { conversationId: "c1" } } as never);
+    expect(keys).toContainEqual(crmKeys.callPermission("c1"));
+    expect(keys).not.toContainEqual(crmKeys.callPermission("c2"));
+  });
+
+  it("una llamada refresca las llamadas en vivo", () => {
+    expect(invalidated({ type: "call.updated", data: {} } as never)).toContainEqual(crmKeys.callSessions);
   });
 });

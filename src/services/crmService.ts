@@ -13,6 +13,7 @@ import type {
   FollowupStats,
   Template,
   Conversation,
+  ConversationChannel,
   ConversationFollowup,
   CreateTaskInput,
   InboxSummary,
@@ -44,6 +45,7 @@ import type {
   PauUsage,
   UpdateConversationInput,
 } from "@/types/crm";
+import type { Client } from "@/interfaces/ICliente";
 import type { QuotationCatalogItem, QuotationInventory } from "@/types/quotations";
 
 const BASE = `${API.crm}/crm`;
@@ -77,6 +79,31 @@ export async function listConversations(
 
 export async function getConversation(id: string): Promise<Conversation> {
   return (await axiosAuth.get<Conversation>(conv(id))).data;
+}
+
+export interface ConversationClientInput {
+  fullName: string;
+  city: string;
+  province: string;
+  district: string;
+  address: string;
+}
+
+/** Cliente de Core del chat: el servidor usa el teléfono real. */
+export async function getConversationClient(id: string): Promise<Client | null> {
+  return (await axiosAuth.get<{ client: Client | null }>(`${conv(id)}/client`)).data.client;
+}
+
+/** Otros canales del mismo cliente (mismo teléfono), sin el del chat. */
+export async function getOtherChannels(id: string): Promise<ConversationChannel[]> {
+  return (await axiosAuth.get<{ channels: ConversationChannel[] }>(`${conv(id)}/channels`)).data.channels;
+}
+
+export async function createConversationClient(
+  id: string,
+  input: ConversationClientInput,
+): Promise<Client> {
+  return (await axiosAuth.post<{ client: Client }>(`${conv(id)}/client`, input)).data.client;
 }
 
 export async function listMessages(
@@ -511,4 +538,10 @@ export function crmError(err: unknown): CrmError {
     message: err instanceof Error ? err.message : "Error desconocido",
     unreachable: false,
   };
+}
+
+/** Baja el adjunto de un mensaje con el token del usuario (un <img src> no puede enviarlo). */
+export async function getMessageMedia(mediaUrl: string): Promise<Blob> {
+  const url = mediaUrl.startsWith("/crm/") ? `${API.crm}${mediaUrl}` : mediaUrl;
+  return (await axiosAuth.get<Blob>(url, { responseType: "blob" })).data;
 }

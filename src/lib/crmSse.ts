@@ -58,11 +58,14 @@ const KNOWN = new Set([
   "message.created",
   "message.status",
   "conversation.updated",
+  "conversation.removed",
   "order.linked",
   "sale.updated",
   "task.updated",
   "task.deleted",
   "broadcast.updated",
+  "call.permission",
+  "call.updated",
 ]);
 
 /** Convierte un frame crudo en evento tipado; null si es ping, desconocido o JSON roto. */
@@ -102,6 +105,9 @@ export const crmKeys = {
   tasks: ["crm", "tasks"] as const,
   tasksList: (params: { assigned: string; status: string; conversationId?: string }) =>
     ["crm", "tasks", params] as const,
+  callSessions: ["crm", "call-sessions"] as const,
+  callPermission: (conversationId: string) =>
+    ["crm", "call-sessions", "permission", conversationId] as const,
 };
 
 /** Agrega un mensaje sin duplicar (por id). */
@@ -135,10 +141,10 @@ export function applyCrmEvent(queryClient: QueryClient, event: CrmEvent): void {
       queryClient.invalidateQueries({ queryKey: crmKeys.conversations });
       queryClient.invalidateQueries({ queryKey: crmKeys.summary });
       queryClient.invalidateQueries({ queryKey: crmKeys.conversationFollowups(conversation.id) });
-      break;
       if (message.direction === "in" && message.type !== "reaction") {
         emitSound({ event: "msg", conversationId: conversation.id });
       }
+      break;
     }
     case "message.status": {
       const { conversationId, messageId, status, errorMessage } = event.data;
@@ -165,6 +171,16 @@ export function applyCrmEvent(queryClient: QueryClient, event: CrmEvent): void {
       queryClient.invalidateQueries({ queryKey: crmKeys.conversations });
       queryClient.invalidateQueries({ queryKey: crmKeys.summary });
       // Puede haber cambiado de etapa: refresca los tableros del Embudo.
+      queryClient.invalidateQueries({ queryKey: crmKeys.boards });
+      break;
+    }
+    case "conversation.removed": {
+      // El chat pasó a otra persona: ya no es visible para este usuario.
+      const { id } = event.data;
+      queryClient.removeQueries({ queryKey: crmKeys.conversation(id) });
+      queryClient.removeQueries({ queryKey: crmKeys.messages(id) });
+      queryClient.invalidateQueries({ queryKey: crmKeys.conversations });
+      queryClient.invalidateQueries({ queryKey: crmKeys.summary });
       queryClient.invalidateQueries({ queryKey: crmKeys.boards });
       break;
     }
@@ -213,6 +229,18 @@ export function applyCrmEvent(queryClient: QueryClient, event: CrmEvent): void {
       queryClient.invalidateQueries({ queryKey: crmKeys.quotes(conversationId) });
       queryClient.invalidateQueries({ queryKey: crmKeys.orders(conversationId) });
       queryClient.invalidateQueries({ queryKey: crmKeys.summary });
+      break;
+    }
+    case "call.permission": {
+      // El cliente aceptó o negó las llamadas: cambia el botón Llamar.
+      const { conversationId } = event.data;
+      if (conversationId) {
+        queryClient.invalidateQueries({ queryKey: crmKeys.callPermission(conversationId) });
+      }
+      break;
+    }
+    case "call.updated": {
+      queryClient.invalidateQueries({ queryKey: crmKeys.callSessions });
       break;
     }
   }

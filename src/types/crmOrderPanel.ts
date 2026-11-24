@@ -193,7 +193,9 @@ export interface UploadReceiptInput {
   operationNumber?: string;
   orderId?: string;
   quotationId?: string;
-  file: File;
+  file?: File;
+  /** Adjunto entrante de WhatsApp: ms-crm toma el archivo del mensaje, sin descargar ni resubir. */
+  messageId?: string;
 }
 
 export interface SimulatePaymentInput {

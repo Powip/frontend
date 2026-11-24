@@ -85,7 +85,8 @@ export async function uploadReceipt(conversationId: string, input: UploadReceipt
   if (input.operationNumber) form.append("operationNumber", input.operationNumber);
   if (input.orderId) form.append("orderId", input.orderId);
   if (input.quotationId) form.append("quotationId", input.quotationId);
-  form.append("file", input.file);
+  if (input.file) form.append("file", input.file);
+  if (input.messageId) form.append("messageId", input.messageId);
   return (await axiosAuth.post<PaymentReceipt>(`${conv(conversationId)}/receipts`, form)).data;
 }
 

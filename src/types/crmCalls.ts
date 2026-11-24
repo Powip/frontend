@@ -2,6 +2,20 @@ export type CallDirection = "out" | "in";
 export type CallResult = "sold" | "callback" | "no_answer" | "not_interested" | "other";
 export type CallDays = 1 | 7 | 30;
 
+/** Por qué conviene llamar a un cliente que no tiene una llamada agendada. */
+export type ProspectReason = "link" | "warm" | "cod";
+
+/** Cliente para la cola de llamadas (`GET /crm/calls/prospects`). */
+export interface CallProspect {
+  conversationId: string;
+  reason: ProspectReason;
+  contactName: string | null;
+  contactPhone: string | null;
+  assignedUserName: string | null;
+  /** Total del POWIP Link sin pagar. */
+  total: number | null;
+}
+
 /** Registro manual de una llamada hecha con el teléfono del equipo. */
 export interface Call {
   id: string;

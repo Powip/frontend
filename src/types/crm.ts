@@ -32,6 +32,8 @@ export interface Conversation {
   lastMessagePreview: string | null;
   lastMessageDirection: MessageDirection | null;
   lastInboundAt: string | null;
+  /** Último mensaje con señal de compra (zona, talla o color). */
+  hotAt?: string | null;
   windowExpiresAt: string | null;
   createdAt: string;
   /** Embudo y etapa actuales (null = aún sin etapa). */
@@ -91,6 +93,9 @@ export interface Message {
   contextExternalId?: string | null;
   mediaUrl?: string | null;
   mediaId?: string | null;
+  /** WhatsApp: tipo y nombre del adjunto entrante; mediaUrl apunta al GET autenticado de ms-crm. */
+  mediaMime?: string | null;
+  mediaName?: string | null;
   transcript?: string | null;
 }
 
@@ -356,6 +361,7 @@ export type CrmEvent =
       };
     }
   | { type: "conversation.updated"; data: { conversation: Conversation } }
+  | { type: "conversation.removed"; data: { id: string } }
   | {
       type: "order.linked";
       data: { conversationId: string; order: ConversationOrder };
@@ -363,7 +369,9 @@ export type CrmEvent =
   | { type: "sale.updated"; data: { conversationId: string } }
   | { type: "task.updated"; data: { task: Task } }
   | { type: "task.deleted"; data: { id: string } }
-  | { type: "broadcast.updated"; data: { broadcast: Broadcast } };
+  | { type: "broadcast.updated"; data: { broadcast: Broadcast } }
+  | { type: "call.permission"; data: { conversationId: string | null } }
+  | { type: "call.updated"; data: unknown };
 
 // --- Plantillas de WhatsApp ---
 
