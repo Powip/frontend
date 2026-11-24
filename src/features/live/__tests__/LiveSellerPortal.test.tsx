@@ -7,6 +7,7 @@ import {
   portalMe,
   portalProducts,
   portalSales,
+  portalSetOnAir,
   portalSetPassword,
   readPortalSession,
   savePortalSession,
@@ -26,12 +27,20 @@ jest.mock("../liveSellerPortalService", () => ({
   portalMe: jest.fn(),
   portalProducts: jest.fn(),
   portalSales: jest.fn(),
+  portalSetOnAir: jest.fn(),
 }));
 
 const TOKEN = "A".repeat(43);
 const stats = { sales: 356, units: 2, orders: 2, earned: 17.8, pendingConfirmation: 17.8, paid: 0, toPay: 17.8 };
 const me: LiveSellerPortalMe = {
-  seller: { name: "Rei Hinojosa", social: "@rei", code: "rei-1a2b", agreement: { type: "PERCENT", percent: 10 } },
+  seller: {
+    name: "Rei Hinojosa",
+    social: "@rei",
+    code: "rei-1a2b",
+    agreement: { type: "PERCENT", percent: 10 },
+    onAir: false,
+    onAirUntil: null,
+  },
   store: { name: "Kunca", slug: "kunca" },
   stats,
   today: { units: 2, orders: 2 },
@@ -168,4 +177,27 @@ test("an expired stored session is ignored", () => {
   expect(readPortalSession("kunca")).toBeNull();
   act(() => savePortalSession("kunca", null));
   expect(window.localStorage.getItem("powip-live-seller:kunca")).toBeNull();
+});
+
+// FEAT-33 C5: «Estoy en vivo» en Hoy: su catálogo pasa a los precios live del negocio; «Terminar live» lo vuelve normal.
+test("«Estoy en vivo» puts her link on live prices and «Terminar live» ends it", async () => {
+  savePortalSession("kunca", session);
+  (portalSetOnAir as jest.Mock)
+    .mockResolvedValueOnce({ onAir: true, onAirUntil: "2099-01-01T08:00:00Z" })
+    .mockResolvedValueOnce({ onAir: false, onAirUntil: null });
+  render(<LiveSellerPortal slug="kunca" />);
+  const live = await screen.findByRole("region", { name: "Tu live" });
+  expect(within(live).getByText("No estás en vivo")).toBeInTheDocument();
+  expect(within(live).getByText("Tu link sigue abierto con precios normales")).toBeInTheDocument();
+  fireEvent.click(within(live).getByRole("button", { name: "🔴 Estoy en vivo" }));
+  expect(await within(live).findByText("Estás en vivo")).toBeInTheDocument();
+  expect(within(live).getByText(/Tu catálogo muestra los precios del live del negocio/)).toBeInTheDocument();
+  expect(portalSetOnAir).toHaveBeenLastCalledWith("kunca", session.token, true);
+  fireEvent.click(within(live).getByRole("button", { name: "⏹ Terminar live" }));
+  expect(await within(live).findByText("No estás en vivo")).toBeInTheDocument();
+  expect(portalSetOnAir).toHaveBeenLastCalledWith("kunca", session.token, false);
+  expect(within(live).getByRole("link", { name: "Ver mi catálogo ↗" })).toHaveAttribute(
+    "href",
+    expect.stringContaining("?a=rei-1a2b"),
+  );
 });

@@ -207,6 +207,11 @@ export default function LiveSellersPanel({
                   <tr key={seller.id} className="border-b last:border-0">
                     <td className="py-3 pr-3">
                       <b className="font-semibold">{seller.name}</b>
+                      {seller.onAir ? (
+                        <span className="ml-2 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700">
+                          🔴 En vivo
+                        </span>
+                      ) : null}
                       {seller.social ? <small className="block text-muted-foreground">{seller.social}</small> : null}
                     </td>
                     <td className="py-3 pr-3">

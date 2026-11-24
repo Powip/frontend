@@ -92,7 +92,13 @@ describe("Vitrina con el contenido del producto (FEAT-32 M7)", () => {
     const card = await screen.findByRole("article", { name: "Blusa Sofía de lino" });
     expect(within(card).getByRole("heading", { name: "Blusa Sofía de lino" })).toBeInTheDocument();
     expect(within(card).getByText("Fresca y suelta, ideal para el verano.")).toBeInTheDocument();
-    expect(within(card).getByRole("img")).toHaveAttribute("src", "https://cdn.test/live-1.jpg");
+    // FEAT-33 B3: el cliente desliza para ver las fotos elegidas para el live; la primera es la principal.
+    const photos = within(card).getByRole("group", { name: "Fotos de Blusa Sofía de lino" });
+    expect(within(photos).getAllByRole("img").map((img) => img.getAttribute("src"))).toEqual([
+      "https://cdn.test/live-1.jpg",
+      "https://cdn.test/live-2.jpg",
+    ]);
+    expect(within(card).getByText("1/2 · desliza")).toBeInTheDocument();
     expect(screen.getAllByRole("article")).toHaveLength(1);
     expect(getPublicLiveProductContent).not.toHaveBeenCalled();
   });

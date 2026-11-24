@@ -17,6 +17,7 @@ import {
   portalMe,
   portalProducts,
   portalSales,
+  portalSetOnAir,
   portalSetPassword,
   portalStatus,
   readPortalSession,
@@ -322,6 +323,16 @@ function SetPasswordForm({
   );
 }
 
+/** «14:30» en hora de Lima. */
+function limaTime(iso: string) {
+  return new Intl.DateTimeFormat("es-PE", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "America/Lima",
+  }).format(new Date(iso));
+}
+
 type Tab = "today" | "products" | "sales" | "earnings";
 const TABS: [Tab, string][] = [
   ["today", "Hoy"],
@@ -346,6 +357,7 @@ function Portal({
   const [products, setProducts] = useState<{ agreement: LiveAgreement; products: LiveSellerPortalProduct[] } | null>(null);
   const [sales, setSales] = useState<LiveSellerPortalSales | null>(null);
   const [error, setError] = useState("");
+  const [switching, setSwitching] = useState(false);
   const fail = useCallback(
     (e: unknown) => {
       if (portalStatus(e) === 401) onExpired();
@@ -382,6 +394,21 @@ function Portal({
       </Shell>
     );
   const s = me.stats;
+  const onAir = !!me.seller.onAir;
+  // C5: «Estoy en vivo» / «Terminar live».
+  async function toggleLive() {
+    if (switching) return;
+    setSwitching(true);
+    setError("");
+    try {
+      const next = await portalSetOnAir(slug, session, !onAir);
+      setMe((current) => (current ? { ...current, seller: { ...current.seller, ...next } } : current));
+    } catch (e) {
+      fail(e);
+    } finally {
+      setSwitching(false);
+    }
+  }
   return (
     <Shell>
       <div className="mx-auto grid max-w-4xl gap-5">
@@ -421,6 +448,34 @@ function Portal({
         ) : null}
         {tab === "today" ? (
           <>
+            <section
+              aria-label="Tu live"
+              className="flex flex-wrap items-center gap-3 rounded-2xl border bg-white p-5 shadow-sm"
+            >
+              <span
+                aria-hidden="true"
+                className={`h-3 w-3 shrink-0 rounded-full ${onAir ? "bg-red-500 motion-safe:animate-pulse" : "bg-slate-400"}`}
+              />
+              <div className="min-w-[200px] flex-1">
+                <b className="block text-[17px]">{onAir ? "Estás en vivo" : "No estás en vivo"}</b>
+                <small className="block text-muted-foreground">
+                  {onAir
+                    ? `Tu catálogo muestra los precios del live del negocio${
+                        me.seller.onAirUntil ? ` · se apaga solo a las ${limaTime(me.seller.onAirUntil)}` : ""
+                      }`
+                    : "Tu link sigue abierto con precios normales"}
+                </small>
+              </div>
+              <Button variant={onAir ? "outline" : "default"} disabled={switching} onClick={() => void toggleLive()}>
+                {switching ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                {onAir ? "⏹ Terminar live" : "🔴 Estoy en vivo"}
+              </Button>
+              <Button variant="outline" asChild>
+                <a href={link} target="_blank" rel="noopener noreferrer">
+                  Ver mi catálogo ↗
+                </a>
+              </Button>
+            </section>
             <section className="grid gap-3 rounded-2xl border bg-white p-5 shadow-sm">
               <h2 className="font-semibold">Tu link para vender</h2>
               <p className="break-all rounded-xl bg-slate-100 px-3 py-2 text-sm">🔗 {link}</p>

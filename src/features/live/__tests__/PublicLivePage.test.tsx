@@ -120,3 +120,23 @@ test("a foreign WhatsApp identifies the buyer and reserves with the internationa
     ),
   );
 });
+
+// FEAT-33 C5: con la creadora en vivo, su link muestra «En vivo con {nombre}», precios live y se puede comprar aunque
+// el live de la tienda esté cerrado; sin el «Volver al live» de la tienda.
+test("her link while she is on air says «En vivo con Rei Hinojosa» even with the store live closed", async () => {
+  window.history.replaceState(null, "", `/live/${storeId}?a=rei-1a2b`);
+  (getPublicLive as jest.Mock).mockResolvedValue({
+    ...data,
+    channel: "LIVE",
+    creatorLive: { name: "Rei Hinojosa" },
+    config: { ...data.config, showBackLink: true, liveUrl: "https://www.tiktok.com/@kunca/live" },
+    session: { ...data.session, status: "CLOSED" },
+  });
+  render(<PublicLivePage storeId={storeId} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Solo quiero mirar primero" }));
+  expect(await screen.findByText("En vivo con Rei Hinojosa")).toBeInTheDocument();
+  expect(screen.getByText("Crema Centella")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Separar ·/ })).toBeEnabled();
+  expect(screen.queryByText(/Catálogo por WhatsApp/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: /Volver al live/ })).not.toBeInTheDocument();
+});
