@@ -69,6 +69,29 @@ export interface CartItem {
   lineTotal?: number;
   /** FEAT-32 M6a, pedido cargado: cantidad y precio a los que se refiere su promo; si cambian, la promo no se reenvía. */
   promoTraceFor?: { quantity: number; price: number } | null;
+  /** FEAT-32 M6b, pack «a elegir»: la variante elegida de cada componente (se manda en una línea nueva o cambiada). */
+  packChoice?: PackChoiceEntry[] | null;
+  /** FEAT-32 M6b, pedido cargado: clave de la combinación; se reenvía tal cual mientras no se cambie la elección. */
+  packKey?: string | null;
+  /** FEAT-32 M6b: la línea es de un pack «a elegir» (para reabrir «Cambiar variantes» y validar la elección). */
+  choosePack?: ChoosePackRef | null;
+}
+
+/** FEAT-32 M6b — elección de un componente de un pack «a elegir» (`packChoice` de ms-ventas). */
+export interface PackChoiceEntry {
+  /** Posición del componente (`PackView.choiceComponents[].slot`). */
+  slot: number;
+  variantId: string;
+  /** Unidades del componente con esta variante; las de un componente suman su cantidad. */
+  quantity: number;
+}
+
+/** FEAT-32 M6b — pack «a elegir» de una línea: producto del pack y unidades de cada componente. */
+export interface ChoosePackRef {
+  /** Producto del pack (`PackView.id`); `null` en una línea cargada de un pedido (se busca por la variante). */
+  packProductId: string | null;
+  /** Componentes con sus unidades; vacío en una línea cargada (su elección es la de `packKey`). */
+  slots: Array<{ slot: number; quantity: number }>;
 }
 
 /** FEAT-24 H9 — componente de un pack en una línea de pedido (`order_items.pack_components`). */
@@ -202,6 +225,8 @@ export interface OrderItem {
   listPrice?: string | number | null;
   promoId?: string | null;
   promoDiscountAmount?: string | number | null;
+  /** FEAT-32 M6b: clave de la combinación de un pack «a elegir» (`null` en las demás líneas). */
+  packKey?: string | null;
   created_at: string;
   updated_at: string;
 }
