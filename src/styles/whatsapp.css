@@ -6,7 +6,7 @@
   --wa-fg: #1a1d23;
   --wa-muted: #6b7280;
   --wa-muted-2: #9ca3af;
-  /* Azul persa del brandbook (antes morado #7c3aed). */
+  /* Azul persa del brandbook. */
   --wa-primary: var(--brand-primary, #4c2fb5);
   --wa-primary-hover: color-mix(in srgb, var(--brand-primary, #4c2fb5) 85%, #000000);
   --wa-primary-soft: color-mix(in srgb, var(--brand-primary, #4c2fb5) 8%, #ffffff);

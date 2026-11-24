@@ -22,7 +22,7 @@ jest.mock("@/services/storeChannelsService", () => ({
 jest.mock("sonner", () => ({
   toast: { success: jest.fn(), error: jest.fn() },
 }));
-const shop = { id: "shop-a", name: "LIVII", color: "#7C3AED" };
+const shop = { id: "shop-a", name: "LIVII", color: "#4C2FB5" };
 const secondShop = { id: "shop-b", name: "KUNCA", color: "#0891B2" };
 const legacy = {
   id: "old-store",
