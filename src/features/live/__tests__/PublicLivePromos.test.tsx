@@ -155,6 +155,8 @@ test("the payment summary counts bought units only and shows the promo and the g
   ]);
   expect(summary).toEqual({ units: 2, discount: 10, gift: "Medias" });
   render(<LivePayTotal units={2} products={30} shipping="Envío" total={formatMoney(38)} discount={10} gift="Medias" />);
+  // Se lee como un recibo: productos a precio live, menos la promo, más el envío = total.
+  expect(screen.getByText(/2 prendas · productos/)).toHaveTextContent(`2 prendas · productos ${liveMoney(40)}`);
   expect(screen.getByText(`Promo −${liveMoney(10)}`)).toBeInTheDocument();
   expect(screen.getByText("🎁 Regalo: Medias")).toBeInTheDocument();
 });

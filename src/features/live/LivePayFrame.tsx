@@ -125,7 +125,7 @@ export function LivePayTotal({
   products: number;
   shipping: string;
   total: string;
-  /** FEAT-33 L7b: lo que bajó el volumen del live (ya restado en `products`). */
+  /** FEAT-33 L7b: lo que bajó el volumen del live (ya restado en `products`; se muestra aparte). */
   discount?: number;
   /** FEAT-33 L7b: nombre del regalo que va gratis. */
   gift?: string | null;
@@ -135,7 +135,8 @@ export function LivePayTotal({
       <div className="min-w-0 text-xs leading-relaxed text-[var(--b-mut)]">
         <small className="block text-xs">
           {units ? `${units} prenda${units === 1 ? "" : "s"} · productos` : "Productos"}{" "}
-          {liveMoney(products)}
+          {/* FEAT-33 L7b: con promo se muestra a precio live y abajo «Promo −S/ X», así suma como un recibo. */}
+          {liveMoney(discount && discount > 0 ? Math.round((products + discount) * 100) / 100 : products)}
         </small>
         {discount && discount > 0 ? (
           <small className="block text-xs font-semibold text-[var(--acc-tx)]">{`Promo −${liveMoney(discount)}`}</small>
