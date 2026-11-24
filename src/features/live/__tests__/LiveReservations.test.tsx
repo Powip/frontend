@@ -47,7 +47,6 @@ const handlers = () => ({
   onTrust: jest.fn(),
   onTrustPhone: jest.fn().mockResolvedValue(true),
   onPaymentLink: jest.fn(),
-  onReviewPayments: jest.fn(),
 });
 const panel = (value: LiveConsoleData, h = handlers()) => {
   render(
@@ -129,17 +128,19 @@ describe("Apartados (FEAT-33 A3)", () => {
     ]);
   });
 
-  test("Pago por validar sends to the payment review", () => {
-    const h = panel(data(sample));
+  test("Pago por validar sends to Finanzas › Pagos por validar (FEAT-33 B1)", () => {
+    panel(data(sample));
     fireEvent.click(screen.getByRole("tab", { name: /Pago por validar/ }));
     const rosa = screen.getByRole("article", { name: "Rosa Paz" });
     expect(
       within(rosa).queryByRole("button", { name: /Liberar/ }),
     ).not.toBeInTheDocument();
-    fireEvent.click(
-      within(rosa).getByRole("button", { name: "Validar pago →" }),
-    );
-    expect(h.onReviewPayments).toHaveBeenCalled();
+    expect(
+      within(rosa).getByRole("link", { name: "Validar en Finanzas →" }),
+    ).toHaveAttribute("href", "/finanzas?tab=pagos&origen=live");
+    expect(
+      screen.getByText(/Se validan en Finanzas › Pagos por validar/),
+    ).toBeInTheDocument();
   });
 
   test("an empty tab says so", () => {

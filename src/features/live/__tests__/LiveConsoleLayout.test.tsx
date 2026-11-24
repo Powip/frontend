@@ -138,7 +138,6 @@ test("tabs follow the mockup order", async () => {
     "Apartados",
     "Productos del live",
     "Configuración",
-    "Pagos por revisar",
   ]);
 });
 
@@ -147,10 +146,10 @@ test("A11: validated sales read as good (teal) and pending ones as attention (am
   const validated = await screen.findByText("S/ 420.00");
   expect(validated).toHaveClass("text-teal-700");
   expect(screen.getByText("S/ 150.00")).toHaveClass("text-amber-700");
-  fireEvent.click(screen.getByRole("button", { name: "Validar pagos →" }));
-  expect(mockReplace).toHaveBeenCalledWith("/live?tab=payments", {
-    scroll: false,
-  });
+  // FEAT-33 B1: los pagos se validan solo en Finanzas.
+  expect(
+    screen.getByRole("link", { name: "validar en Finanzas →" }),
+  ).toHaveAttribute("href", "/finanzas?tab=pagos&origen=live");
 });
 
 test("A2: the catalog link has a «Copiar link» button", async () => {

@@ -277,7 +277,7 @@ test("settings discard a late response from the previous store", async () => {
 
 test("review controls are unavailable without financial capability", () => {
   render(<LiveYapeReviews storeId={id} canReview={false} />);
-  expect(screen.getByText(/rol Administrador vigente/)).toBeInTheDocument();
+  expect(screen.getByText(/rol Administrador o el permiso de Finanzas/)).toBeInTheDocument();
   expect(getLiveYapeReviews).not.toHaveBeenCalled();
 });
 

@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Square,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -50,7 +51,6 @@ import {
   LiveProductImage,
   LiveReservationTimer,
 } from "./LiveShared";
-import LiveYapeReviews from "./LiveYapeReviews";
 import { type LiveProductGroup, groupLiveProducts, isActiveReservation } from "./liveGroups";
 // FEAT-32 M7: las hasta 3 fotos del live se eligen de la galería del producto (ms-products).
 import LiveProductPhotos, { type LivePhotosChange } from "./LiveProductPhotos";
@@ -59,6 +59,7 @@ import {
   addLiveTrustedCustomer,
   createLivePaymentLink,
   getLiveConsole,
+  LIVE_PAYMENTS_HREF,
   liveError,
   liveMoney,
   platformNames,
@@ -77,13 +78,13 @@ import type {
   LiveSession,
 } from "./types";
 
-type Tab = "console" | "reservations" | "products" | "config" | "payments";
+// FEAT-33 B1: sin «Pagos por revisar»; los comprobantes se validan en Finanzas › Pagos por validar.
+type Tab = "console" | "reservations" | "products" | "config";
 const tabLabels: Record<Tab, string> = {
   console: "Consola en vivo",
   reservations: "Apartados",
   products: "Productos del live",
   config: "Configuración",
-  payments: "Pagos por revisar",
 };
 
 export default function LiveConsolePage() {
@@ -114,7 +115,7 @@ function ScopedLiveConsolePage({
   } | null>(null);
   const data = fullSnapshot?.scope === scope ? fullSnapshot.value : null;
   const reviewData = reviewSnapshot?.scope === scope ? reviewSnapshot.value : null;
-  const tab: Tab = reviewData ? "payments" : requestedTab;
+  const tab: Tab = requestedTab;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
@@ -151,10 +152,6 @@ function ScopedLiveConsolePage({
     });
     return () => cancelAnimationFrame(frame);
   }, [tab, data, configTarget]);
-  useEffect(() => {
-    if (reviewData && rawTab !== "payments")
-      router.replace("/live?tab=payments", { scroll: false });
-  }, [reviewData, rawTab, router]);
   const callbackStoreId = search.get("storeId");
   useEffect(() => {
     if (
@@ -331,7 +328,7 @@ function ScopedLiveConsolePage({
             <Radio className="h-4 w-4" />
             POWIP Live
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">{tabLabels[tab]}</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{reviewData ? "Pagos de POWIP Live" : tabLabels[tab]}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {reviewData
               ? "Revisa los comprobantes Yape del negocio y confirma cada ingreso antes de validarlo."
@@ -377,18 +374,21 @@ function ScopedLiveConsolePage({
           Cargando live…
         </div>
       ) : reviewData ? (
-        <Tabs value="payments">
-          <TabsList>
-            <TabsTrigger value="payments">Pagos por revisar</TabsTrigger>
-          </TabsList>
-          <TabsContent value="payments">
-            <LiveYapeReviews
-              key={`${auth?.company?.id}:${storeId}`}
-              storeId={storeId}
-              canReview={canReviewPayments}
-            />
-          </TabsContent>
-        </Tabs>
+        canReviewPayments ? (
+          <LivePanel
+            title="Se validan en Finanzas"
+            description="Los pagos de POWIP Live se validan en Finanzas › Pagos por validar, junto con los del resto del negocio."
+          >
+            <Button asChild>
+              <Link href={LIVE_PAYMENTS_HREF}>Ir a Pagos por validar →</Link>
+            </Button>
+          </LivePanel>
+        ) : (
+          <LiveEmpty>
+            Para validar pagos necesitas el rol Administrador o el permiso de Finanzas de tu
+            negocio.
+          </LiveEmpty>
+        )
       ) : data ? (
         <>
           {!data.paymentMethods?.length ? (
@@ -437,7 +437,6 @@ function ScopedLiveConsolePage({
           >
             <TabsList className="h-auto max-w-full flex-wrap justify-start gap-1 bg-muted/70 p-1">
               {(Object.entries(tabLabels) as [Tab, string][])
-                .filter(([value]) => value !== "payments" || canReviewPayments)
                 .map(([value, label]) => (
                   <TabsTrigger key={value} value={value} className="px-4 py-2">
                     {label}
@@ -564,7 +563,7 @@ function ScopedLiveConsolePage({
                     note: `${data.metrics.pendingPaymentCount || 0} ${(data.metrics.pendingPaymentCount || 0) === 1 ? "comprobante" : "comprobantes"} Yape`,
                     color: "text-amber-700",
                     action: canReviewPayments
-                      ? { label: "Validar pagos →", onClick: () => navigateToTab("payments") }
+                      ? { label: "validar en Finanzas →", href: LIVE_PAYMENTS_HREF }
                       : null,
                   },
                   {
@@ -592,13 +591,22 @@ function ScopedLiveConsolePage({
                       {metric.action ? (
                         <>
                           {" · "}
-                          <button
-                            type="button"
-                            onClick={metric.action.onClick}
-                            className="font-semibold text-teal-700 hover:underline"
-                          >
-                            {metric.action.label}
-                          </button>
+                          {metric.action.href ? (
+                            <Link
+                              href={metric.action.href}
+                              className="font-semibold text-teal-700 hover:underline"
+                            >
+                              {metric.action.label}
+                            </Link>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={metric.action.onClick}
+                              className="font-semibold text-teal-700 hover:underline"
+                            >
+                              {metric.action.label}
+                            </button>
+                          )}
                         </>
                       ) : null}
                     </p>
@@ -739,7 +747,6 @@ function ScopedLiveConsolePage({
                 canOperate={canOperate}
                 busy={!!busy}
                 onRelease={setReleasing}
-                onReviewPayments={() => navigateToTab("payments")}
                 onTrust={(id, remove) => {
                   if (storeId)
                     void run(
@@ -804,9 +811,6 @@ function ScopedLiveConsolePage({
                   </LiveEmpty>
                 )}
               </LivePanel>
-            </TabsContent>
-            <TabsContent value="payments">
-              <LiveYapeReviews key={storeId} storeId={storeId} canReview={canReviewPayments} />
             </TabsContent>
             <TabsContent value="config" className="space-y-5">
               <LiveReadinessPanel
