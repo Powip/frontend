@@ -6,7 +6,8 @@ import { PackageOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { PackLineContents } from "@/components/packs/PackLineContents";
-import { listPacks, type PackView } from "@/services/packsService";
+import { choiceSlots } from "@/lib/packs/choosePack";
+import { listPacks, packApproved, packTypeOf, type PackView } from "@/services/packsService";
 import { packAvailableIn, packComponentsSnapshot } from "@/lib/packs/salePack";
 import Thumb from "./Thumb";
 
@@ -18,17 +19,23 @@ const fmt = (n: number) => `S/ ${n.toFixed(2)}`;
  * que no sale en la búsqueda por almacén: se busca aparte en ms-products (`GET /packs`, solo activos) y
  * se muestra con el disponible que el backend calcula para el almacén elegido. Si la búsqueda falla, el
  * bloque no aparece (la venta de productos sigue igual).
+ *
+ * FEAT-32 M6b: un pack «a elegir» aprobado se vende eligiendo talla y color (`chooseEnabled`: venta nueva y edición
+ * de un pedido; en la confirmación de un Lead sigue deshabilitado). Los de creadora sin aprobar no se venden.
  */
 export default function SalePackResults({
   query,
   inventoryId,
   disabled,
+  chooseEnabled = false,
   qtyInCartByVariant,
   onAddPack,
 }: {
   query: string;
   inventoryId: string | null | undefined;
   disabled?: boolean;
+  /** FEAT-32 M6b: se puede vender el pack «a elegir» (`onAddPack` abre «Elige talla y color»). */
+  chooseEnabled?: boolean;
   qtyInCartByVariant: (variantId: string) => number;
   onAddPack: (pack: PackView) => void;
 }) {
@@ -62,14 +69,21 @@ export default function SalePackResults({
         const available = packAvailableIn(pack, inventoryId);
         const inCart = qtyInCartByVariant(pack.variantId);
         const oos = available !== null && available <= 0;
+        const choose = packTypeOf(pack) === "CHOOSE";
+        // FEAT-32 M5/M6b: el de creadora sin aprobar no se vende; el «a elegir», solo donde ms-ventas lo vende.
+        const blocked = !packApproved(pack)
+          ? "Pack de creadora sin aprobar: no se vende."
+          : choose && !chooseEnabled
+            ? "Pack a elegir: aquí no se puede vender."
+            : null;
         return (
           <button
             key={pack.id}
             type="button"
-            disabled={disabled}
+            disabled={disabled || !!blocked}
             onClick={() => onAddPack(pack)}
-            aria-label={`Agregar el pack ${pack.name}`}
-            title={oos ? "Sin stock de algún componente · venta bajo pedido" : undefined}
+            aria-label={choose && !blocked ? `Elegir variantes del pack ${pack.name}` : `Agregar el pack ${pack.name}`}
+            title={blocked ?? (oos ? "Sin stock de algún componente · venta bajo pedido" : undefined)}
             className={cn(
               "w-full flex items-start gap-3 rounded-lg border px-3 py-2 text-left transition-colors disabled:opacity-50",
               oos
@@ -88,7 +102,18 @@ export default function SalePackResults({
               {pack.sku || pack.productSku ? (
                 <div className="text-[11px] text-muted-foreground">{pack.sku ?? pack.productSku}</div>
               ) : null}
-              <PackLineContents components={packComponentsSnapshot(pack)} className="mt-0.5 text-[11px] text-muted-foreground" />
+              {choose ? (
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  A elegir: {choiceSlots(pack).map((component) => `${component.quantity} × ${component.productName}`).join(" · ")}
+                </div>
+              ) : (
+                <PackLineContents components={packComponentsSnapshot(pack)} className="mt-0.5 text-[11px] text-muted-foreground" />
+              )}
+              {blocked ? (
+                <div className="text-[11px] text-amber-700 dark:text-amber-300">{blocked}</div>
+              ) : choose ? (
+                <div className="text-[11px] font-semibold text-primary">Elegir variantes</div>
+              ) : null}
             </div>
             <Badge
               variant="outline"

@@ -3,6 +3,8 @@ import { AxiosError, AxiosHeaders } from "axios";
 import ProductCreateForm from "../create-product";
 import axiosAuth from "@/lib/axiosAuth";
 import { toast } from "sonner";
+import { uploadImage } from "@/services/uploadService";
+import { saveProductContent } from "@/services/productContentService";
 
 jest.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ auth: { company: { id: "company-a" }, user: { id: "user-a", role: "ADMINISTRADOR" }, accessToken: "token" } }),
@@ -20,7 +22,8 @@ jest.mock("@/hooks/useBusinessInventories", () => {
 jest.mock("@/components/header/HeaderConfig", () => ({ HeaderConfig: () => null }));
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: { get: jest.fn(), post: jest.fn(), patch: jest.fn() } }));
 jest.mock("@/services/uploadService", () => ({ uploadImage: jest.fn() }));
-jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+jest.mock("@/services/productContentService", () => ({ saveProductContent: jest.fn() }));
+jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn() } }));
 jest.mock("@/components/products/BrandSelect", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/components/ui/select", () => ({
   Select: ({ children, value, onValueChange, disabled }: { children: React.ReactNode; value: string; onValueChange: (value: string) => void; disabled?: boolean }) => (
@@ -99,6 +102,46 @@ describe("Alta de producto (FEAT-24 H4-D)", () => {
     expect(payload.variants).toEqual([
       expect.objectContaining({ attributeValues: {}, priceBase: 8, priceVta: 20, stock: 5, companySku: "TAZ-01", barcode: "7750001" }),
     ]);
+  });
+
+  it("FEAT-32 M1: alta con varias fotos: la primera es la principal y la galería completa va al contenido", async () => {
+    URL.createObjectURL = jest.fn(() => "blob:preview");
+    jest.mocked(uploadImage).mockImplementation(async (file: File) => `https://s.co/${file.name}`);
+    jest.mocked(saveProductContent).mockResolvedValue({} as never);
+    await fillBase();
+    fireEvent.change(screen.getByLabelText("Descripción"), { target: { value: "Polo de algodón\nTalla única" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Simple" }));
+    fireEvent.change(screen.getByLabelText("Precio base"), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText("Precio venta"), { target: { value: "20" } });
+    const file = (name: string, type: string) => new File(["x"], name, { type });
+    fireEvent.change(screen.getByLabelText("Fotos del producto"), { target: { files: [file("a.jpg", "image/jpeg"), file("b.png", "image/png"), file("c.gif", "image/gif")] } });
+    expect(toast.error).toHaveBeenCalledWith("«c.gif» no es JPG, PNG ni WebP.");
+    fireEvent.change(screen.getByLabelText("Más fotos del producto"), { target: { files: [file("d.webp", "image/webp")] } });
+    fireEvent.click(screen.getByRole("button", { name: "Quitar b.png" }));
+    fireEvent.click(screen.getByRole("button", { name: "Crear Producto" }));
+    await waitFor(() => expect(saveProductContent).toHaveBeenCalledTimes(1));
+    expect((post.mock.calls[0][1] as Record<string, unknown>).imageUrl).toBe("https://s.co/a.jpg");
+    const [productId, body] = jest.mocked(saveProductContent).mock.calls[0];
+    expect(productId).toBe("product");
+    expect(body).toMatchObject({ title: "Polo", descriptionHtml: "<p>Polo de algodón<br>Talla única</p>", overrides: [] });
+    expect(body.media.map((m) => [m.kind, m.url, m.origin, m.fileName])).toEqual([
+      ["photo", "https://s.co/a.jpg", "uploaded", "a.jpg"],
+      ["photo", "https://s.co/d.webp", "uploaded", "d.webp"],
+    ]);
+  });
+
+  it("FEAT-32 M1: con una sola foto no toca el contenido (el producto queda como siempre)", async () => {
+    URL.createObjectURL = jest.fn(() => "blob:preview");
+    jest.mocked(uploadImage).mockResolvedValue("https://s.co/a.jpg");
+    await fillBase();
+    fireEvent.click(screen.getByRole("radio", { name: "Simple" }));
+    fireEvent.change(screen.getByLabelText("Precio base"), { target: { value: "8" } });
+    fireEvent.change(screen.getByLabelText("Precio venta"), { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText("Fotos del producto"), { target: { files: [new File(["x"], "a.jpg", { type: "image/jpeg" })] } });
+    fireEvent.click(screen.getByRole("button", { name: "Crear Producto" }));
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect((post.mock.calls[0][1] as Record<string, unknown>).imageUrl).toBe("https://s.co/a.jpg");
+    expect(saveProductContent).not.toHaveBeenCalled();
   });
 
   it("con variantes: cada una manda su SKU (vacío = se genera) y ya no copia el del producto", async () => {

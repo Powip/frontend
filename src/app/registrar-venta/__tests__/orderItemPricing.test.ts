@@ -1,5 +1,5 @@
 import type { CartItem } from "@/interfaces/IOrder";
-import { buildOrderItem, getOrderItemPricing } from "../orderItemPricing";
+import { buildOrderItem, getOrderItemPricing, loadedPromoTrace } from "../orderItemPricing";
 
 function line(overrides: Partial<CartItem> = {}): CartItem {
   return {
@@ -83,5 +83,48 @@ describe("precios de líneas enviados al guardar una venta", () => {
       isGift: true,
       giftValue: 45,
     });
+  });
+});
+
+describe("FEAT-32 M6a — origen del precio de la línea", () => {
+  it("con motor: bruto = precio de lista, descuento = promos + manual, y manda listPrice, promoId y promoDiscountAmount", () => {
+    const item = buildOrderItem(line({
+      quantity: 3, pvp: 89, price: 63, listPrice: 89, lineTotal: 189, promoId: "promo-vol", promoDiscountAmount: 57,
+    }));
+    expect(item).toMatchObject({
+      unitPrice: 89, discountType: "FIXED", discountAmount: 78,
+      listPrice: 89, promoId: "promo-vol", promoDiscountAmount: 57,
+    });
+    expect(item.unitPrice * item.quantity - item.discountAmount).toBe(189);
+  });
+
+  it("con motor sin promo: precio de lista, sin descuento y promoId null", () => {
+    expect(buildOrderItem(line({ listPrice: 45, lineTotal: 45, promoId: null, promoDiscountAmount: 0 }))).toMatchObject({
+      unitPrice: 45, discountType: "NONE", discountAmount: 0, listPrice: 45, promoId: null, promoDiscountAmount: 0,
+    });
+  });
+
+  it("sin motor ni pedido cargado no manda nada nuevo", () => {
+    const item = buildOrderItem(line());
+    expect(item).not.toHaveProperty("listPrice");
+    expect(item).not.toHaveProperty("promoId");
+    expect(item).not.toHaveProperty("promoDiscountAmount");
+  });
+
+  it("al editar lee el origen del precio del pedido (decimales como texto) y lo devuelve si la línea no cambió", () => {
+    const trace = loadedPromoTrace({ listPrice: "45.00", promoId: "promo-cyber", promoDiscountAmount: "9.00", quantity: 1 }, 36);
+    expect(trace).toEqual({ listPrice: 45, promoId: "promo-cyber", promoDiscountAmount: 9, promoTraceFor: { quantity: 1, price: 36 } });
+    expect(buildOrderItem(line({ price: 36, ...trace }))).toMatchObject({ listPrice: 45, promoId: "promo-cyber", promoDiscountAmount: 9 });
+    expect(loadedPromoTrace({ listPrice: null, promoId: null, promoDiscountAmount: "0.00", quantity: 1 }, 45)).toEqual({});
+  });
+
+  it("al editar, si cambió la cantidad o el precio, queda solo el precio de lista", () => {
+    const trace = loadedPromoTrace({ listPrice: 45, promoId: "promo-cyber", promoDiscountAmount: 9, quantity: 1 }, 36);
+    for (const changed of [line({ price: 30, ...trace }), line({ price: 36, quantity: 2, ...trace })]) {
+      const item = buildOrderItem(changed);
+      expect(item).toMatchObject({ listPrice: 45 });
+      expect(item).not.toHaveProperty("promoId");
+      expect(item).not.toHaveProperty("promoDiscountAmount");
+    }
   });
 });

@@ -12,6 +12,7 @@ import {
   type PriceListItemsPage,
 } from "@/services/priceListsService";
 import { buildPriceWrites, inheritedPrice, mergePriceRows } from "@/lib/priceLists/priceMatrix";
+import { listPromotions, type Promotion } from "@/services/promotionsService";
 
 let mockRole = "ADMINISTRADOR";
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
@@ -30,6 +31,7 @@ jest.mock("@/services/priceListsService", () => ({
   savePriceListItems: jest.fn(),
   createPriceList: jest.fn(),
 }));
+jest.mock("@/services/promotionsService", () => ({ listPromotions: jest.fn() }));
 
 const STORE_LIST: PriceList = { id: "l-store", name: "Precios de Livii", storeId: "s1", channel: null, isDefault: false, active: true, itemCount: 1 };
 const WSP_LIST: PriceList = { id: "l-wsp", name: "Livii · WhatsApp", storeId: "s1", channel: "WHATSAPP", isDefault: false, active: true, itemCount: 0 };
@@ -49,6 +51,7 @@ function renderView() {
 beforeEach(() => {
   jest.clearAllMocks();
   mockRole = "ADMINISTRADOR";
+  jest.mocked(listPromotions).mockResolvedValue([]);
   jest.mocked(listPriceLists).mockResolvedValue([WSP_LIST, STORE_LIST, OTHER_STORE]);
   jest.mocked(getPriceListItems).mockImplementation(async (listId) =>
     listId === "l-store"
@@ -113,5 +116,68 @@ describe("Catálogo › Listas de precios", () => {
     expect(within(polo).getByText("S/ 69.90")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Guardar precios" })).not.toBeInTheDocument();
     expect(createPriceList).not.toHaveBeenCalled();
+  });
+});
+
+describe("FEAT-32 M2 — canal con regla en Listas de precios", () => {
+  const CRM_LIST: PriceList = { id: "l-crm", name: "POWIP CRM", storeId: "s1", channel: "POWIP_CRM", isDefault: false, active: true, itemCount: 1 };
+  const rule = { mode: "more" as const, unit: "amount" as const, value: 10 };
+  const withChannel = (row: PriceListItem, channel: PriceListItem["channel"]): PriceListItem => ({ ...row, channel });
+
+  beforeEach(() => {
+    jest.mocked(listPriceLists).mockResolvedValue([STORE_LIST, CRM_LIST]);
+    jest.mocked(getPriceListItems).mockImplementation(async (listId) =>
+      listId === "l-store"
+        ? pageOf(STORE_LIST, [item("v1", "Polo", 59.9, null), item("v2", "Gorra", 39.9, null), item("v3", "Medias", 9.9, null)])
+        : pageOf(CRM_LIST, [
+            withChannel(item("v1", "Polo", 59.9, null), { active: true, rule, ruleLabel: "Tienda + S/ 10.00", storePrice: 59.9, rulePrice: 69.9 }),
+            withChannel(item("v2", "Gorra", 39.9, 35), { active: true, rule, ruleLabel: "Tienda + S/ 10.00", storePrice: 39.9, rulePrice: 49.9 }),
+            withChannel(item("v3", "Medias", 9.9, null), { active: false, rule, ruleLabel: "Tienda + S/ 10.00", storePrice: 9.9, rulePrice: null }),
+          ]),
+    );
+  });
+
+  it("verde agua = sale de la regla, morado = precio propio con «Volver a la regla», y «No activado»", async () => {
+    const user = userEvent.setup();
+    renderView();
+    const polo = await screen.findByTestId("price-row-v1");
+    expect(screen.getAllByRole("columnheader").map((th) => th.textContent)).toEqual(["Variante", "Precio base", "Todos los canales", "POWIP CRM"]);
+    const poloCell = within(polo).getByTestId("price-cell-l-crm-v1");
+    expect(poloCell.className).toMatch(/bg-\[#e7f3f3\]/);
+    expect(within(poloCell).getByText("regla: tienda + s/ 10.00")).toBeInTheDocument();
+    expect(within(poloCell).getByLabelText("Precio de Polo en POWIP CRM")).toHaveAttribute("placeholder", "69.90");
+
+    const gorraCell = within(screen.getByTestId("price-row-v2")).getByTestId("price-cell-l-crm-v2");
+    expect(gorraCell.className).toMatch(/bg-\[#efecfb\]/);
+    expect(within(gorraCell).getByText(/precio propio/)).toBeInTheDocument();
+    await user.click(within(gorraCell).getByRole("button", { name: "Volver a la regla" }));
+    await waitFor(() => expect(savePriceListItems).toHaveBeenCalledWith("l-crm", [{ variantId: "v2", price: null }]));
+
+    const medias = screen.getByTestId("price-row-v3");
+    expect(within(medias).getByText("No activado")).toBeInTheDocument();
+    expect(within(medias).queryByLabelText("Precio de Medias en POWIP CRM")).not.toBeInTheDocument();
+
+    await user.type(within(poloCell).getByLabelText("Precio de Polo en POWIP CRM"), "65");
+    expect(within(poloCell).getByText("cambio sin guardar")).toBeInTheDocument();
+    expect(poloCell.className).toMatch(/bg-\[#efecfb\]/);
+  });
+});
+
+describe("FEAT-32 M3 — campaña activa en Listas de precios", () => {
+  it("la columna del canal muestra «Cyber Wow: S/ X» sobre el precio del canal; la lista no cambia", async () => {
+    const campaign = {
+      id: "c-1", name: "Cyber Wow", type: "CAMPAIGN", isActive: true, channels: ["WHATSAPP"], storeIds: ["s1"],
+      startsAt: "2020-01-01T05:00:00.000Z", endsAt: "2099-01-01T05:00:00.000Z", status: "ACTIVE", combinable: false,
+      discountType: "PERCENT", discountValue: 20, allProducts: false,
+      products: [{ productId: "p-v1", discountType: null, discountValue: null }, { productId: "p-v2", discountType: null, discountValue: null }], manualPrices: [],
+    } as unknown as Promotion;
+    jest.mocked(listPromotions).mockResolvedValue([campaign]);
+    renderView();
+    const polo = await screen.findByTestId("price-row-v1");
+    // Polo: WhatsApp hereda de la tienda (49.90) → −20% = 39.92. Gorra: precio propio en WhatsApp 35 → 28.00.
+    await waitFor(() => expect(within(polo).getByTestId("price-cell-l-wsp-v1")).toHaveTextContent("Cyber Wow: S/ 39.92"));
+    expect(within(screen.getByTestId("price-row-v2")).getByTestId("price-cell-l-wsp-v2")).toHaveTextContent("Cyber Wow: S/ 28.00");
+    // La columna de todos los canales no lleva la etiqueta (la campaña es por canal).
+    expect(within(polo).getByTestId("price-cell-l-store-v1")).not.toHaveTextContent("Cyber Wow");
   });
 });

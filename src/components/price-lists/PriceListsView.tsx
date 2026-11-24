@@ -26,8 +26,11 @@ import {
   type CellDraft,
   type PriceMatrixRow,
 } from "@/lib/priceLists/priceMatrix";
-import { ORDER_CHANNELS, channelLabel } from "@/lib/promotions/orderChannels";
+import { ORDER_CHANNELS, POWIP_PRICE_CHANNELS, channelLabel } from "@/lib/promotions/orderChannels";
+import { cn } from "@/lib/utils";
 import { soles, variantLabel } from "@/lib/packs/packMath";
+import { listPromotions } from "@/services/promotionsService";
+import { activeCampaign, promoPriceFor } from "@/lib/promotions/campaign";
 
 const PAGE_SIZE = 50;
 
@@ -36,6 +39,8 @@ const PAGE_SIZE = 50;
  * lo que hereda (`priceVta`) y la excepción de cada lista de la tienda (todos los canales y, si existen,
  * una por canal) con su precio tachado. Vacío = hereda. Leer: cualquiera; escribir: solo el Administrador.
  * No se publica nada a Shopify.
+ * FEAT-32 M3 (§7.10): en la columna de un canal con una campaña activa, la etiqueta «Cyber Wow: S/ 119.20»
+ * (la lista no cambia: la promoción va encima).
  */
 export default function PriceListsView() {
   const { auth } = useAuth();
@@ -60,6 +65,7 @@ export default function PriceListsView() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  const promos = useQuery({ queryKey: ["promotions", companyId], queryFn: ({ signal }) => listPromotions(signal), enabled: !!companyId, retry: false, staleTime: 60_000 });
   const listsQuery = useQuery({ queryKey: ["price-lists", companyId], queryFn: ({ signal }) => listPriceLists(signal), enabled: !!companyId, retry: false });
   const lists = useMemo(() => storeLists(listsQuery.data ?? [], storeId), [listsQuery.data, storeId]);
   const itemQueries = useQueries({
@@ -142,7 +148,8 @@ export default function PriceListsView() {
         delete next[list.id][row.variantId];
         return next;
       });
-      toast.success(`Vuelve a heredar ${soles(inheritedPrice(row, lists, list.id))}`);
+      const rulePrice = row.cells[list.id]?.channel?.rulePrice;
+      toast.success(rulePrice !== null && rulePrice !== undefined ? `Vuelve a la regla: ${soles(rulePrice)}` : `Vuelve a heredar ${soles(inheritedPrice(row, lists, list.id))}`);
       refresh();
     } catch (error) {
       toast.error(apiErrorInfo(error, "No se pudo quitar el precio.").message);
@@ -152,7 +159,7 @@ export default function PriceListsView() {
   return (
     <div className="space-y-4">
       <p className="max-w-3xl text-sm text-muted-foreground">
-        <b className="text-foreground">Listas de precios:</b> cada variante usa su precio base y, si hace falta, uno distinto por tienda y canal. Vacío = hereda. La venta manual y Live toman el precio de la lista de su tienda y canal. Shopify sigue siendo dueño de su precio: no se publica nada.
+        <b className="text-foreground">Listas de precios:</b> cada variante usa su precio base y, si hace falta, uno distinto por tienda y canal. Vacío = hereda. Las reglas de precio que eliges al activar un canal en la ficha (POWIP CRM y Catálogo web) se ven aquí <span className="rounded bg-[#e7f3f3] px-1 text-[#015d5e] dark:bg-teal-950/50 dark:text-teal-200">en verde agua</span>; un precio escrito a mano es propio de esa variante <span className="rounded bg-[#efecfb] px-1 text-[#4C2FB5] dark:bg-violet-950/50 dark:text-violet-200">(morado)</span> y la regla ya no lo cambia. Shopify sigue siendo dueño de su precio: no se publica nada.
       </p>
       <div className="flex flex-wrap items-end gap-3">
         <div className="space-y-1.5">
@@ -176,7 +183,7 @@ export default function PriceListsView() {
               <Label htmlFor="price-list-channel">Precio distinto por canal</Label>
               <select id="price-list-channel" className="h-9 rounded-md border bg-background px-2 text-sm" value={newChannel} onChange={(event) => setNewChannel(event.target.value)}>
                 <option value="">Elige un canal</option>
-                {ORDER_CHANNELS.filter((channel) => !usedChannels.has(channel.value)).map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}
+                {[...POWIP_PRICE_CHANNELS, ...ORDER_CHANNELS].filter((channel) => !usedChannels.has(channel.value)).map((channel) => <option key={channel.value} value={channel.value}>{channel.label}</option>)}
               </select>
             </div>
             <Button variant="outline" disabled={!newChannel} onClick={() => void createList(newChannel)}><Plus className="mr-1 h-4 w-4" />Agregar canal</Button>
@@ -233,8 +240,35 @@ export default function PriceListsView() {
                     const inherited = inheritedPrice(row, lists, list.id);
                     const draft = draftOf(list.id, row);
                     const columnName = list.channel ? channelLabel(list.channel) : "todos los canales";
+                    // FEAT-32 M2 — canal con regla: celda verde agua (sale de la regla), morada (precio propio o
+                    // cambio sin guardar) o «No activado».
+                    const channel = cell?.channel;
+                    const ruled = !!channel && channel.rule.mode !== "same";
+                    const draftDirty = !!drafts[list.id]?.[row.variantId];
+                    const campaign = list.channel && storeId ? activeCampaign(promos.data ?? [], row.productId, [storeId], list.channel) : null;
+                    const channelPrice = cell?.inList && cell.price !== null ? cell.price : channel?.rulePrice ?? inherited;
+                    const campaignPrice = campaign && list.channel ? promoPriceFor(campaign, row.productId, list.channel, channelPrice) : null;
+                    if (channel && !channel.active && !cell?.inList) {
+                      return (
+                        <td key={list.id} className="px-3 py-2 text-right">
+                          <span className="text-xs text-muted-foreground">No activado</span>
+                        </td>
+                      );
+                    }
+                    const tone = draftDirty || (ruled && cell?.inList)
+                      ? "bg-[#efecfb] dark:bg-violet-950/40"
+                      : ruled && channel?.rulePrice !== null
+                        ? "bg-[#e7f3f3] dark:bg-teal-950/40"
+                        : "";
+                    const note = draftDirty
+                      ? "cambio sin guardar"
+                      : cell?.inList
+                        ? ruled ? "precio propio" : "Precio propio"
+                        : ruled && channel?.rulePrice !== null
+                          ? `regla: ${channel!.ruleLabel.toLowerCase()}`
+                          : `hereda ${soles(inherited)}`;
                     return (
-                      <td key={list.id} className="px-3 py-2 text-right">
+                      <td key={list.id} className={cn("px-3 py-2 text-right", tone)} data-testid={`price-cell-${list.id}-${row.variantId}`}>
                         {canEdit ? (
                           <div className="ml-auto flex w-36 flex-col items-end gap-1">
                             <div className="flex items-center gap-1">
@@ -267,7 +301,20 @@ export default function PriceListsView() {
                             {soles(cell?.inList ? cell.price : inherited)}
                           </span>
                         )}
-                        <p className="text-[11px] text-muted-foreground">{cell?.inList ? "Precio propio" : `hereda ${soles(inherited)}`}</p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {note}
+                          {ruled && cell?.inList && canEdit && !draftDirty ? (
+                            <>
+                              {" · "}
+                              <button type="button" className="font-semibold text-[#4C2FB5] hover:underline dark:text-violet-300" onClick={() => void removeException(list, row)}>Volver a la regla</button>
+                            </>
+                          ) : null}
+                        </p>
+                        {campaign && campaignPrice !== null ? (
+                          <p className="mt-0.5 text-[11px]">
+                            <span className="inline-block whitespace-nowrap rounded-full bg-[#fde7f1] px-2 py-0.5 font-semibold text-[#a3185a] dark:bg-pink-950/50 dark:text-pink-200">{campaign.name}: {soles(campaignPrice)}</span>
+                          </p>
+                        ) : null}
                       </td>
                     );
                   })}

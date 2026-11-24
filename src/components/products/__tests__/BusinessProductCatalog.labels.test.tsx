@@ -20,6 +20,8 @@ jest.mock("@/services/businessProductsService", () => ({
   fetchBusinessProducts: jest.fn(),
 }));
 jest.mock("@/services/businessInventoryItemsService", () => ({ fetchBusinessInventoryItems: jest.fn().mockResolvedValue([]) }));
+jest.mock("@/services/productChannelsService", () => ({ getChannelSummary: jest.fn().mockResolvedValue({ channels: [], ownPrices: [] }) }));
+jest.mock("@/services/promotionsService", () => ({ listPromotions: jest.fn().mockResolvedValue([]) }));
 jest.mock("@/components/labels/PrintLabelsDialog", () => ({
   PrintLabelsDialog: ({ source }: { source: { productIds: string[] } }) => <div>etiquetas de: {source.productIds.join(",")}</div>,
 }));
