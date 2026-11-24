@@ -393,7 +393,7 @@ export function CcPedidosTable({
                       title="WhatsApp"
                     >
                       <WhatsAppIcon className="h-3.5 w-3.5" />
-                      <WhatsAppLastNoticeIndicator notice={parseWhatsAppLastNotice(order.waLastNotice)} />
+                      <WhatsAppLastNoticeIndicator notice={parseWhatsAppLastNotice(order.waLastNotice)} orderId={order.id} />
                     </Button>
                     {order.commercialStage !== "LEAD" && subEstado === "anulado_cc" && onRecuperar && (
                       <Button

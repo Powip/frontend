@@ -399,7 +399,7 @@ export function TransitTab({ variant, data, state, query, onState, actions }: Op
                         <OrderDetailButton orderId={sale.id} orderNumber={sale.orderNumber} />
                         <Button size="icon" variant="ghost" className="relative h-7 w-7 text-green-600 hover:text-green-700" title="WhatsApp" onClick={() => actions.onWhatsApp(sale)}>
                           <WhatsAppIcon className="h-3.5 w-3.5" />
-                          <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} />
+                          <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} orderId={sale.id} />
                         </Button>
                         {isCamino && sale.status === "EN_ENVIO" && canChangeStatus && (
                           <DropdownMenu>

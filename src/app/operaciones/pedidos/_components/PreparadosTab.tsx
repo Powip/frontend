@@ -422,7 +422,7 @@ export function PreparadosTab({
                       onClick={() => actions.onWhatsApp(sale)}
                     >
                       <WhatsAppIcon className="h-3.5 w-3.5" />
-                      <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} />
+                      <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} orderId={sale.id} />
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
