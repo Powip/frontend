@@ -19,6 +19,7 @@ import type { PauMode, PauProvider } from "@/types/crm";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import ConfirmDialog from "./ConfirmDialog";
 import PauProviderDialog from "./PauProviderDialog";
+import { PauTrainingSection } from "./PauTrainingSection";
 import { SandboxSection, UsageSection } from "./PauUsageSandbox";
 import {
   PAU_INSTRUCTIONS_MAX,
@@ -393,6 +394,7 @@ export default function PauView() {
         <>
           <ProvidersSection />
           <KnowledgeSection />
+          <PauTrainingSection />
           <UsageSection />
           <SandboxSection />
         </>
