@@ -13,6 +13,8 @@ import { LiveProductImage, LiveReservationTimer, LiveCountdown } from "./LiveSha
 import { LiveLogo, useLiveBodyLook } from "./LiveBrand";
 import { liveAppearance, liveAppearanceStyle } from "./liveAppearance";
 import LiveManualPaymentDialog from "./LiveManualPaymentDialog";
+// FEAT-32 M7: la vitrina muestra el contenido del producto (foto, título y «Ver detalle»).
+import LiveProductDetailDialog, { groupContent } from "./LiveProductDetailDialog";
 import { createLivePolling, type LivePollingController } from "./livePolling";
 import LiveCheckoutDelivery from "./LiveCheckoutDelivery";
 import {
@@ -87,6 +89,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
     quantity: number;
   } | null>(null);
   const [returningPayment, setReturningPayment] = useState(false);
+  const [detail, setDetail] = useState<LiveProduct[] | null>(null);
   const polling = useRef<LivePollingController | null>(null);
   const refresh = useCallback(async (_token: string) => {
     await polling.current?.refresh({ quiet: true, supersede: true });
@@ -116,6 +119,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
     setCart(false);
     setManualId(null);
     setManual(null);
+    setDetail(null);
     attempts.current.clear();
     const reader = createLivePolling({
       load: (signal) => getPublicLive(storeId, token, signal),
@@ -531,6 +535,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                     }
                     minutes={data?.config.reservationMinutes || 15}
                     onSeparate={separate}
+                    onDetail={() => setDetail(variants)}
                   />
                 ))}
               </div>
@@ -683,6 +688,14 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
           }}
         />
       ) : null}
+      {detail && visitor ? (
+        <LiveProductDetailDialog
+          storeId={storeId}
+          visitor={visitor}
+          variants={detail}
+          onClose={() => setDetail(null)}
+        />
+      ) : null}
       {manualId ? (
         <LiveManualPaymentDialog
           key={manualId}
@@ -707,6 +720,7 @@ function ProductCard({
   maxCart,
   minutes,
   onSeparate,
+  onDetail,
 }: {
   variants: LiveProduct[];
   featured: boolean;
@@ -714,6 +728,8 @@ function ProductCard({
   maxCart: number;
   minutes: number;
   onSeparate: (p: LiveProduct, q: number) => Promise<void>;
+  /** FEAT-32 M7: abre «Ver detalle» (fotos y descripción). */
+  onDetail?: () => void;
 }) {
   const [selection, setSelection] = useState<Record<string, string>>({}),
     [quantity, setQuantity] = useState(1);
@@ -752,9 +768,21 @@ function ProductCard({
       ? Math.round((1 - display.livePrice / display.regularPrice) * 100)
       : 0;
   const optionValue = (k: string) => selection[k];
+  // FEAT-32 M7: el contenido es del producto (igual en todas sus variantes); sin él, como antes.
+  const content = groupContent(variants);
+  const title = content?.title?.trim() || display.name;
+  // Foto: la propia de la variante elegida (la de su color). Con solo el color elegido, la de una variante de ese
+  // color. Si no, la principal del contenido; sin contenido, la de siempre.
+  const chosen = Object.entries(selection).filter(([, value]) => value);
+  const variantPhoto =
+    product?.variantImageUrl ||
+    (chosen.length
+      ? variants.find((p) => p.variantImageUrl && chosen.every(([k, value]) => p.attributes?.[k] === value))
+          ?.variantImageUrl
+      : null);
   return (
     <article
-      aria-label={display.name}
+      aria-label={title}
       className={`overflow-hidden rounded-[22px] border bg-[var(--b-card)] ${featured ? "border-[var(--acc)] shadow-[inset_0_0_0_1px_var(--acc)]" : "border-[var(--b-line)]"}`}
     >
       {featured ? (
@@ -765,6 +793,7 @@ function ProductCard({
       <div className="relative">
         <LiveProductImage
           product={display}
+          src={variantPhoto || content?.photos[0]}
           className="aspect-[4/3] w-full !rounded-none bg-[var(--b-in)]"
         />
         {discount ? (
@@ -774,7 +803,20 @@ function ProductCard({
         ) : null}
       </div>
       <div className="px-4 pb-4 pt-3.5">
-        <h2 className="text-[17px] font-semibold">{display.name}</h2>
+        <h2 className="text-[17px] font-semibold">{title}</h2>
+        {content?.shortDescription?.trim() ? (
+          <p className="mt-0.5 text-sm text-[var(--b-mut)]">{content.shortDescription}</p>
+        ) : null}
+        {content && onDetail ? (
+          <button
+            type="button"
+            className="min-h-11 text-sm font-semibold text-[var(--acc-tx)] underline-offset-2 hover:underline"
+            aria-label={`Ver detalle de ${title}`}
+            onClick={onDetail}
+          >
+            Ver detalle
+          </button>
+        ) : null}
         <p className="mb-1.5 mt-1 flex flex-wrap items-baseline gap-2.5">
           <strong className="text-2xl text-[var(--acc-tx)]">{liveMoney(display.livePrice)}</strong>
           {discount ? (

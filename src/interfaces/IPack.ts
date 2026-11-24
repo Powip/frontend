@@ -83,6 +83,8 @@ export interface BundlePack {
   /** Persistido en /bundle-promos; su ID no pertenece a /promos. */
   shared?: boolean;
   synced?: boolean;
+  /** FEAT-32 M5: el pack (producto) que lo reemplazó; el bundle queda inactivo. */
+  convertedToPackId?: string | null;
 }
 
 /** Opción de regalo: referencia una variante real de inventario (para poder

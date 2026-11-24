@@ -57,6 +57,21 @@ export async function updateBundlePromo(id: string, pack: BundlePack, token?: st
   return fromApi(data);
 }
 
+/** FEAT-32 M5 — activa o desactiva un bundle anterior (no se borra: los pedidos viejos lo referencian). */
+export async function setBundleActive(id: string, active: boolean, token?: string): Promise<BundlePack> {
+  const { data } = await axiosAuth.patch<BundlePack>(`${BASE}/${encodeURIComponent(id)}`, { active }, sessionOptions(token));
+  return fromApi(data);
+}
+
+/**
+ * FEAT-32 M5 — deja el bundle inactivo con `convertedToPackId` (`packId` = el id del producto pack de la empresa;
+ * si no, 404 «Pack no encontrado.»).
+ */
+export async function convertBundle(id: string, packId: string, token?: string): Promise<BundlePack> {
+  const { data } = await axiosAuth.post<BundlePack>(`${BASE}/${encodeURIComponent(id)}/convert`, { packId }, sessionOptions(token));
+  return fromApi(data);
+}
+
 export async function deleteBundlePromo(id: string, token?: string): Promise<void> {
   await axiosAuth.delete(`${BASE}/${encodeURIComponent(id)}`, sessionOptions(token));
 }
