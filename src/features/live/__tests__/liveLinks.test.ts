@@ -35,4 +35,12 @@ describe("liveLinks", () => {
     expect(links.advisorUrl("a b&c")).toBe("https://www.powip.tech/live/kunca?a=a%20b%26c");
     expect(liveLinks({ origin: "", slug: "kunca", storeId }).publicUrl).toBe("");
   });
+  test("L5b: the creators portal and its one-use access link (token in the fragment, never sent to the server)", () => {
+    const app = liveLinks({ origin: "https://www.powip.tech", slug: "kunca", storeId });
+    expect(app.portalUrl).toBe("https://www.powip.tech/vendedor/kunca");
+    expect(app.portalAccessUrl("A".repeat(43))).toBe(`https://www.powip.tech/vendedor/kunca#t=${"A".repeat(43)}`);
+    const sub = liveLinks({ origin: "https://www.powip.tech", slug: "kunca", storeId, subdomainBase: "powip.lat" });
+    expect(sub.portalUrl).toBe("https://kunca.powip.lat/vendedor");
+    expect(liveLinks({ origin: "https://www.powip.tech", slug: "", storeId }).portalUrl).toBe("");
+  });
 });

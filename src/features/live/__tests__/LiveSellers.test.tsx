@@ -81,7 +81,7 @@ test("shows the KPIs and one row per seller and advisor with her link and agreem
   expect(kpis.getByText("Ventas validadas de vendedores").nextSibling).toHaveTextContent(/S\/\s178\.00/);
   expect(kpis.getByText(/S\/\s10\.00 más cuando se validen sus pagos/)).toBeInTheDocument();
   expect(kpis.getByText("de 2 con link")).toBeInTheDocument();
-  const row = screen.getByText("Rei Hinojosa").closest("tr")!;
+  const row = within(screen.getByRole("table", { name: "Vendedores y su comisión" })).getByText("Rei Hinojosa").closest("tr")!;
   expect(within(row).getByText("10% sobre la venta")).toBeInTheDocument();
   expect(within(row).getByRole("button", { name: "Productos (1)" })).toBeInTheDocument();
   const advisor = screen.getByText("Lucía Paredes").closest("tr")!;

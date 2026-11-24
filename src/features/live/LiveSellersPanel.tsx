@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import LiveAgreementEditor, { agreementDraft, draftAgreement, type AgreementDraft } from "./LiveAgreementEditor";
 import LiveCopyButton from "./LiveCopyButton";
+import LiveSellerAccessCard, { IssuedLinkDialog, type IssuedLink } from "./LiveSellerAccessCard";
 import LiveSellerSalesView from "./LiveSellerSales";
 import { LiveEmpty, LiveErrorBanner, LiveFieldError, LivePanel, LiveSaveState } from "./LiveShared";
 import { agreementError, agreementText } from "./liveCommission";
@@ -22,6 +23,7 @@ import type { LiveLinks } from "./liveLinks";
 import {
   createLiveSeller,
   getLiveSellers,
+  issueLiveSellerLink,
   liveError,
   liveMoney,
   updateLiveSellerAgreement,
@@ -56,11 +58,13 @@ type InviteState = { advisor?: { id: string; name: string; code: string } };
  */
 export default function LiveSellersPanel({
   storeId,
+  storeName = "La tienda",
   products,
   links,
   canManage,
 }: {
   storeId: string;
+  storeName?: string;
   products: LiveProduct[];
   links: LiveLinks;
   canManage: boolean;
@@ -72,6 +76,7 @@ export default function LiveSellersPanel({
   const [agreementFor, setAgreementFor] = useState<LiveSeller | null>(null);
   const [productsFor, setProductsFor] = useState<LiveSeller | null>(null);
   const [invite, setInvite] = useState<InviteState | null>(null);
+  const [issued, setIssued] = useState<IssuedLink | null>(null);
   const options = useMemo(() => sellerProductOptions(products), [products]);
   const example = options[0] ?? null;
   const load = useCallback(async () => {
@@ -90,7 +95,19 @@ export default function LiveSellersPanel({
   }, [load]);
   const replace = (seller: LiveSeller) =>
     setData((current) =>
-      current ? { ...current, sellers: current.sellers.map((s) => (s.id === seller.id ? seller : s)) } : current,
+      current
+        ? {
+            ...current,
+            // Las respuestas de editar no traen el acceso: se conserva el que había.
+            sellers: current.sellers.map((s) => (s.id === seller.id ? { ...seller, access: seller.access ?? s.access } : s)),
+          }
+        : current,
+    );
+  const patch = (sellerId: string, changes: Partial<LiveSeller>) =>
+    setData((current) =>
+      current
+        ? { ...current, sellers: current.sellers.map((s) => (s.id === sellerId ? { ...s, ...changes } : s)) }
+        : current,
     );
 
   if (!data)
@@ -171,7 +188,7 @@ export default function LiveSellersPanel({
       >
         {sellers.length || data.advisors.length ? (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[920px] text-sm">
+            <table className="w-full min-w-[920px] text-sm" aria-label="Vendedores y su comisión">
               <thead className="text-left text-xs text-muted-foreground">
                 <tr className="border-b">
                   <th className="py-2 pr-3 font-medium">Vendedor</th>
@@ -265,6 +282,15 @@ export default function LiveSellersPanel({
           </LiveEmpty>
         )}
       </LivePanel>
+      {canManage && sellers.length ? (
+        <LiveSellerAccessCard
+          storeId={storeId}
+          sellers={sellers}
+          links={links}
+          onChanged={patch}
+          onIssued={setIssued}
+        />
+      ) : null}
       <SuggestedAgreement
         key={JSON.stringify(data.suggestedAgreement)}
         storeId={storeId}
@@ -297,6 +323,7 @@ export default function LiveSellersPanel({
           }}
         />
       ) : null}
+      {issued ? <IssuedLinkDialog link={issued} storeName={storeName} onClose={() => setIssued(null)} /> : null}
       {invite ? (
         <InviteDialog
           storeId={storeId}
@@ -305,13 +332,21 @@ export default function LiveSellersPanel({
           options={options}
           links={links}
           onClose={() => setInvite(null)}
-          onCreated={(seller) => {
+          onCreated={async (seller) => {
             setInvite(null);
             toast.success(
               invite.advisor
                 ? `${seller.name} ahora vende por comisión · revisa su acuerdo en ⚙ Acuerdo`
                 : `${seller.name} ya tiene su link`,
             );
+            // L5b: con correo, se genera su invitación al portal para mandársela.
+            if (seller.email && links.portalUrl)
+              try {
+                const link = await issueLiveSellerLink(storeId, seller.id, "invite");
+                setIssued({ seller, kind: link.kind, url: links.portalAccessUrl(link.token), expiresAt: link.expiresAt });
+              } catch (e) {
+                toast.error(liveError(e));
+              }
             void load();
           }}
         />
@@ -736,8 +771,9 @@ function InviteDialog({
             <LiveFieldError id={`${id}-products`} message={show("products")} />
           </fieldset>
           <p className="rounded-xl bg-teal-50 px-3 py-2 text-sm text-teal-900">
-            Se crea su link ({links.displayUrl ? `${links.displayUrl}?a=…` : "…/live?a=…"}). Su acceso al portal
-            con correo y contraseña llega en la próxima etapa.
+            Se crea su link ({links.displayUrl ? `${links.displayUrl}?a=…` : "…/live?a=…"}). Con correo, también
+            su acceso a {links.portalUrl.replace(/^https?:\/\//, "") || "su portal"}: te damos un enlace para
+            mandárselo (vence en 7 días).
           </p>
           {error ? (
             <p role="alert" className="text-sm font-medium text-red-600">

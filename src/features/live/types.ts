@@ -335,6 +335,15 @@ export interface LiveSellerStats {
   paid: number;
   toPay: number;
 }
+/** FEAT-33 L5b: acceso de la creadora a su portal (lo que ve el negocio). */
+export interface LiveSellerAccess {
+  status: "INVITED" | "ACTIVE" | "PAUSED";
+  hasPassword: boolean;
+  lastLoginAt: string | null;
+  locked: boolean;
+  lockedUntil: string | null;
+  pendingLink: { kind: "INVITE" | "RESET"; expiresAt: string } | null;
+}
 export interface LiveSeller {
   id: string;
   name: string;
@@ -348,6 +357,8 @@ export interface LiveSeller {
   createdAt: string;
   productIds: string[];
   stats: LiveSellerStats;
+  /** null = todavía no tiene acceso al portal. */
+  access?: LiveSellerAccess | null;
 }
 export interface LiveSellersData {
   sellers: LiveSeller[];
@@ -382,4 +393,31 @@ export interface LiveSellerInput {
   agreement: LiveAgreement;
   productIds: string[];
   fromAdvisorId?: string;
+}
+
+/* FEAT-33 L5b: portal de la creadora. */
+export interface LiveSellerPortalSession {
+  token: string;
+  expiresAt: string;
+  seller: { name: string };
+}
+export interface LiveSellerPortalMe {
+  seller: { name: string; social: string | null; code: string; agreement: LiveAgreement };
+  store: { name: string; slug: string };
+  stats: LiveSellerStats;
+  today: { units: number; orders: number };
+  lastPayoutAt: string | null;
+}
+export interface LiveSellerPortalProduct {
+  productId: string;
+  name: string;
+  imageUrl: string | null;
+  regularPrice: number;
+  livePrice: number;
+  available: number;
+}
+export interface LiveSellerPortalSales {
+  stats: LiveSellerStats;
+  lines: LiveSellerSaleLine[];
+  payouts: { amount: number; paidAt: string }[];
 }

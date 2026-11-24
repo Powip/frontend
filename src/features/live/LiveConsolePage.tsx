@@ -813,6 +813,7 @@ function ScopedLiveConsolePage({
               {canManage && storeId ? (
                 <LiveSellersPanel
                   storeId={storeId}
+                  storeName={data.config.appearance?.displayName || data.store?.name || "La tienda"}
                   products={data.products}
                   links={links}
                   canManage={canManage}

@@ -3,6 +3,8 @@
  * - Negocio: `…/live/{tienda}` (o `{tienda}.powip.lat/live` cuando el DNS comodín esté listo).
  * - Asesora o creadora: el mismo link con `?a=CÓDIGO` (POWIP Link, precio normal).
  * - Vendedor por comisión dentro del live: `?v=CÓDIGO`.
+ * - Portal de creadoras (L5b): `…/vendedor/{tienda}` (o `{tienda}.powip.lat/vendedor`); el enlace de acceso lleva
+ *   el token en el fragmento (`#t=`), que el navegador nunca manda al servidor.
  * El subdominio se activa con NEXT_PUBLIC_LIVE_SUBDOMAIN=powip.lat (o si la app ya corre en *.powip.lat).
  */
 export interface LiveLinks {
@@ -10,6 +12,8 @@ export interface LiveLinks {
   displayUrl: string;
   advisorUrl: (code: string) => string;
   sellerUrl: (code: string) => string;
+  portalUrl: string;
+  portalAccessUrl: (token: string) => string;
 }
 
 export function liveLinks({
@@ -37,11 +41,14 @@ export function liveLinks({
           : "";
   const withCode = (key: "a" | "v") => (code: string) =>
     publicUrl ? `${publicUrl}?${key}=${encodeURIComponent(code)}` : "";
+  const portalUrl = !origin || !name ? "" : base ? `https://${name}.${base}/vendedor` : `${origin}/vendedor/${encodeURIComponent(name)}`;
   return {
     publicUrl,
     displayUrl: publicUrl.replace(/^https?:\/\//, ""),
     advisorUrl: withCode("a"),
     sellerUrl: withCode("v"),
+    portalUrl,
+    portalAccessUrl: (token: string) => (portalUrl ? `${portalUrl}#t=${token}` : ""),
   };
 }
 

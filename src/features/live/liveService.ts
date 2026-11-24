@@ -224,6 +224,33 @@ export async function payLiveSellerCommission(
     await axiosAuth.post<LiveSeller>(`${sellersPath(storeId)}/${encodeURIComponent(sellerId)}/payouts`, input)
   ).data;
 }
+export async function updateLiveSeller(
+  storeId: string,
+  sellerId: string,
+  input: { email?: string; phone?: string; social?: string; name?: string; status?: "ACTIVE" | "REMOVED" },
+) {
+  return (await axiosAuth.patch<LiveSeller>(`${sellersPath(storeId)}/${encodeURIComponent(sellerId)}`, input)).data;
+}
+/** L5b: enlace de invitación (7 días) o de restablecer (1 hora). El token llega una sola vez. */
+export async function issueLiveSellerLink(storeId: string, sellerId: string, kind: "invite" | "reset") {
+  return (
+    await axiosAuth.post<{ token: string; kind: "INVITE" | "RESET"; expiresAt: string }>(
+      `${sellersPath(storeId)}/${encodeURIComponent(sellerId)}/access/${kind}`,
+    )
+  ).data;
+}
+export async function changeLiveSellerAccess(
+  storeId: string,
+  sellerId: string,
+  action: "pause" | "resume" | "unlock" | "remove",
+) {
+  const path = `${sellersPath(storeId)}/${encodeURIComponent(sellerId)}/access`;
+  return (
+    action === "remove"
+      ? await axiosAuth.delete<{ access: null }>(path)
+      : await axiosAuth.post<{ access: import("./types").LiveSellerAccess }>(`${path}/${action}`)
+  ).data;
+}
 export async function updateLiveSuggestedAgreement(storeId: string, agreement: LiveAgreement) {
   return (
     await axiosAuth.put<{ suggestedAgreement: LiveAgreement }>(
