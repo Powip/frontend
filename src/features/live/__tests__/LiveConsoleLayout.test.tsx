@@ -37,6 +37,8 @@ jest.mock("sonner", () => ({
 jest.mock("../liveCopy", () => ({
   copyLiveText: jest.fn().mockResolvedValue("copied"),
 }));
+// FEAT-32 M7: las fotos del live tienen su propio test (LiveConsoleProductPhotos / LiveProductPhotos).
+jest.mock("../LiveProductPhotos", () => ({ __esModule: true, default: () => null }));
 jest.mock("@/services/userService", () => ({
   getUsersByCompany: jest.fn().mockResolvedValue([]),
 }));

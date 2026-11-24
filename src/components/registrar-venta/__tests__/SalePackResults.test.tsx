@@ -57,6 +57,46 @@ describe("packs en el buscador de la venta manual (FEAT-24 H9)", () => {
     expect(listPacks).toHaveBeenCalledWith({ q: undefined, active: true, limit: 12 }, expect.anything());
   });
 
+  const CHOOSE: PackView = {
+    ...KIT, id: "p-jeans", name: "2 jeans", packType: "CHOOSE", components: [],
+    choiceComponents: [
+      { slot: 1, productId: "p-polo", productName: "Polo", quantity: 1, variants: [] },
+      { slot: 0, productId: "p-jim", productName: "Jean Jimena", quantity: 2, variants: [] },
+    ],
+  };
+
+  it("FEAT-32 M5/M6b: sin `chooseEnabled` (Lead) el «a elegir» y el de creadora sin aprobar aparecen deshabilitados con el motivo", async () => {
+    const creator: PackView = { ...KIT, id: "p-cre", name: "Look Vale", approvalStatus: "REJECTED" };
+    jest.mocked(listPacks).mockResolvedValue(page([KIT, CHOOSE, creator]));
+    const user = userEvent.setup();
+    const { onAddPack } = renderResults();
+    const jeans = await screen.findByRole("button", { name: "Agregar el pack 2 jeans" });
+    expect(jeans).toBeDisabled();
+    expect(jeans).toHaveTextContent("Pack a elegir: aquí no se puede vender.");
+    expect(screen.getByRole("button", { name: "Agregar el pack Look Vale" })).toHaveTextContent("Pack de creadora sin aprobar: no se vende.");
+    expect(screen.getByRole("button", { name: "Agregar el pack Look Vale" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Agregar el pack Kit verano" })).toBeEnabled();
+    await user.click(jeans);
+    expect(onAddPack).not.toHaveBeenCalled();
+  });
+
+  it("FEAT-32 M6b: con `chooseEnabled` el «a elegir» aprobado se habilita con «Elegir variantes»; el de creadora pendiente no", async () => {
+    const pending: PackView = { ...CHOOSE, id: "p-pend", variantId: "v-pend", name: "Look pendiente", approvalStatus: "PENDING" };
+    const approved: PackView = { ...CHOOSE, id: "p-apr", variantId: "v-apr", name: "Look aprobado", approvalStatus: "APPROVED" };
+    jest.mocked(listPacks).mockResolvedValue(page([CHOOSE, pending, approved]));
+    const { onAddPack } = renderResults({ chooseEnabled: true });
+    const jeans = await screen.findByRole("button", { name: "Elegir variantes del pack 2 jeans" });
+    expect(jeans).toBeEnabled();
+    expect(jeans).toHaveTextContent("A elegir: 2 × Jean Jimena · 1 × Polo");
+    expect(jeans).toHaveTextContent("Elegir variantes");
+    expect(screen.getByRole("button", { name: "Elegir variantes del pack Look aprobado" })).toBeEnabled();
+    const blocked = screen.getByRole("button", { name: "Agregar el pack Look pendiente" });
+    expect(blocked).toBeDisabled();
+    expect(blocked).toHaveTextContent("Pack de creadora sin aprobar: no se vende.");
+    await userEvent.click(jeans);
+    expect(onAddPack).toHaveBeenCalledWith(CHOOSE);
+  });
+
   it("al tocarlo avisa con el pack", async () => {
     jest.mocked(listPacks).mockResolvedValue(page([KIT]));
     const { onAddPack } = renderResults();
