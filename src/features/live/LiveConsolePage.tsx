@@ -52,6 +52,9 @@ import {
 } from "./LiveShared";
 import LiveYapeReviews from "./LiveYapeReviews";
 import { type LiveProductGroup, groupLiveProducts, isActiveReservation } from "./liveGroups";
+// FEAT-32 M7: las hasta 3 fotos del live se eligen de la galería del producto (ms-products).
+import LiveProductPhotos, { type LivePhotosChange } from "./LiveProductPhotos";
+import { saveLivePhotos, type LivePhotoInput } from "@/services/productContentService";
 import {
   addLiveTrustedCustomer,
   createLivePaymentLink,
@@ -838,13 +841,17 @@ function ScopedLiveConsolePage({
       {editing ? (
         <ProductGroupDialog
           group={editing}
+          storeId={storeId}
           busy={!!busy}
           onClose={() => setEditing(null)}
-          onSave={(input) => {
+          onSave={(input, photos) => {
             if (storeId)
               void run(
                 "product",
                 async () => {
+                  // FEAT-32 M7: primero las fotos (si cambiaron) y después el precio live y el máximo.
+                  const productId = editing.variants[0]?.productId;
+                  if (photos && productId) await saveLivePhotos(productId, { storeId, photos });
                   await updateLiveProducts(storeId, {
                     variantIds: editing.variants.map((item) => item.variantId),
                     ...input,
@@ -948,21 +955,29 @@ function ScopedLiveConsolePage({
 /** FEAT-33: un precio live y un máximo por cliente para todas las variantes del producto. */
 function ProductGroupDialog({
   group,
+  storeId,
   busy,
   onClose,
   onSave,
 }: {
   group: LiveProductGroup;
+  storeId: string | null;
   busy: boolean;
   onClose: () => void;
-  onSave: (input: { livePrice: number; maxPerCustomer: number | null }) => void;
+  /** `photos` null = las fotos del live no cambiaron (FEAT-32 M7). */
+  onSave: (
+    input: { livePrice: number; maxPerCustomer: number | null },
+    photos: LivePhotoInput[] | null,
+  ) => void;
 }) {
+  const productId = group.variants[0]?.productId;
   const maxes = [...new Set(group.variants.map((item) => item.maxPerCustomer ?? null))];
   const [price, setPrice] = useState(
     String(group.variants[0]?.livePrice || group.regularPrice || ""),
   );
   const [max, setMax] = useState(maxes.length === 1 && maxes[0] ? String(maxes[0]) : "");
   const [errors, setErrors] = useState<{ price?: string; max?: string }>({});
+  const [photos, setPhotos] = useState<LivePhotosChange>({ photos: null, uploading: false });
   function submit() {
     const found: typeof errors = {};
     if (!/^\d+(?:\.\d{1,2})?$/.test(price.trim()) || Number(price) <= 0)
@@ -970,17 +985,17 @@ function ProductGroupDialog({
     if (max.trim() && (!/^\d+$/.test(max.trim()) || Number(max) < 1 || Number(max) > 10000))
       found.max = "Entre 1 y 10000, o vacío para sin límite.";
     setErrors(found);
-    if (Object.keys(found).length) return;
-    onSave({ livePrice: Number(price), maxPerCustomer: max.trim() ? Number(max) : null });
+    if (Object.keys(found).length || photos.uploading) return;
+    onSave({ livePrice: Number(price), maxPerCustomer: max.trim() ? Number(max) : null }, photos.photos);
   }
   return (
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open && !busy) onClose();
+        if (!open && !busy && !photos.uploading) onClose();
       }}
     >
-      <DialogContent>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{group.name}</DialogTitle>
           <DialogDescription>
@@ -996,6 +1011,14 @@ function ProductGroupDialog({
           }}
           className="space-y-4"
         >
+          {productId && storeId ? (
+            <LiveProductPhotos
+              productId={productId}
+              storeId={storeId}
+              disabled={busy}
+              onChange={setPhotos}
+            />
+          ) : null}
           <div className="grid gap-2 text-sm font-medium">
             <label htmlFor="live-product-price">Precio live (S/)</label>
             <Input
@@ -1032,7 +1055,7 @@ function ProductGroupDialog({
             <Button type="button" variant="outline" disabled={busy} onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" disabled={busy || photos.uploading}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Guardar producto
             </Button>

@@ -4,6 +4,7 @@
  */
 import { visibleVariantAttributes } from "@/lib/variantAttributes";
 import { descendantIds, type CatalogCategoryNode } from "./categoryTree";
+import type { ChannelState, ProductChannelStates, RuleChannel } from "./productChannels";
 
 export type ProductChannel = "manual" | "shopify" | "yavendio" | "aliclik";
 export type ProductKind = "simple" | "variantes" | "pack";
@@ -90,7 +91,11 @@ export interface CatalogFilters {
   brandId: string;
   /** "all", "none" (sin categoría) o el id (incluye sus subcategorías). */
   categoryId: string;
+  /** Origen del producto (Shopify, manual…). Antes «Canal» (FEAT-32 M2 lo renombró a Origen, spec §7.1). */
   channel: "all" | ProductChannel;
+  /** FEAT-32 M2 — canal de POWIP y su estado (aparece al elegir un canal). */
+  salesChannel: "all" | RuleChannel;
+  channelState: "all" | ChannelState;
   type: "all" | ProductKind;
   status: "all" | "activo" | "inactivo";
   stock: "all" | "con" | "sin";
@@ -101,6 +106,8 @@ export const DEFAULT_CATALOG_FILTERS: CatalogFilters = {
   brandId: "all",
   categoryId: "all",
   channel: "all",
+  salesChannel: "all",
+  channelState: "all",
   type: "all",
   status: "all",
   stock: "all",
@@ -117,7 +124,12 @@ const fold = (value: unknown) =>
 export function filterCatalogProducts<T extends CatalogProductLike>(
   products: T[],
   filters: CatalogFilters,
-  context: { categoryTree?: CatalogCategoryNode[]; availableByProduct?: Map<string, number> } = {},
+  context: {
+    categoryTree?: CatalogCategoryNode[];
+    availableByProduct?: Map<string, number>;
+    /** FEAT-32 M2 — estado del producto en los canales de POWIP (para filtrar por canal y estado). */
+    channelStates?: (productId: string) => ProductChannelStates;
+  } = {},
 ): T[] {
   const query = fold(filters.search.trim());
   const branch = filters.categoryId !== "all" && filters.categoryId !== "none"
@@ -130,6 +142,9 @@ export function filterCatalogProducts<T extends CatalogProductLike>(
     if (filters.brandId === "none" ? Boolean(product.brandId) : filters.brandId !== "all" && product.brandId !== filters.brandId) return false;
     if (filters.categoryId === "none" ? Boolean(categoryId) : branch && (!categoryId || !branch.has(categoryId))) return false;
     if (filters.channel !== "all" && productChannel(product.externalSource) !== filters.channel) return false;
+    if (filters.salesChannel !== "all" && filters.channelState !== "all" && context.channelStates) {
+      if (context.channelStates(product.id).states[filters.salesChannel] !== filters.channelState) return false;
+    }
     if (filters.type !== "all" && productKind(product) !== filters.type) return false;
     if (filters.status === "activo" && product.status === false) return false;
     if (filters.status === "inactivo" && product.status !== false) return false;
