@@ -19,7 +19,7 @@ const promo = (over: Partial<Promotion>): Promotion => ({
   startsAt: "2020-11-24T05:00:00.000Z", endsAt: "2099-11-28T05:00:00.000Z", productId: null, minQty: null, maxQty: null,
   packPrice: null, giftCondition: null, minAmount: null, triggerVariantId: null, giftVariantId: null, giftQuantity: null,
   status: "ACTIVE", combinable: false, discountType: "PERCENT", discountValue: 20, allProducts: false,
-  products: [{ productId: "p1", discountType: null, discountValue: null }], manualPrices: [],
+  products: [{ productId: "p1", discountType: null, discountValue: null }], manualPrices: [], variantIds: [],
   ...over,
 }) as Promotion;
 
@@ -173,6 +173,9 @@ describe("Ficha › Canales (FEAT-32 M2)", () => {
       promo({ id: "c-2", name: "Navidad", channels: ["POWIP_CRM"], startsAt: "2099-12-20T05:00:00.000Z", endsAt: "2099-12-26T05:00:00.000Z", status: "SCHEDULED" }),
       promo({ id: "c-3", name: "De otra tienda", storeIds: ["s9"] }),
       promo({ id: "v-1", name: "Lleva 3", type: "VOLUME", productId: "p1", channels: [], startsAt: null, endsAt: null, products: [] }),
+      // FEAT-32 M4: volumen por SKUs (sin producto): aparece si uno de sus SKUs es de este producto.
+      promo({ id: "v-2", name: "Mix de tallas", type: "VOLUME", productId: null, variantIds: ["otro", "v2"], channels: [], startsAt: null, endsAt: null, products: [] }),
+      promo({ id: "v-3", name: "De otro producto", type: "VOLUME", productId: null, variantIds: ["otro"], channels: [], startsAt: null, endsAt: null, products: [] }),
     ]);
     jest.mocked(getCampaignPrices).mockResolvedValue({
       storeId: "s1", igvIncluded: true, canSeeCosts: true, fallback: false,
@@ -192,7 +195,7 @@ describe("Ficha › Canales (FEAT-32 M2)", () => {
     expect(crmRow).toHaveTextContent("Programada Navidad desde 20/12");
 
     const section = screen.getByRole("region", { name: "Promociones de este producto" });
-    expect(within(section).getByText(/También aplica/)).toHaveTextContent("También aplica: Lleva 3 (volumen).");
+    expect(within(section).getByText(/También aplica/)).toHaveTextContent("También aplican: Lleva 3 (volumen), Mix de tallas (volumen).");
     const cyber = within(section).getByTestId("product-promo-c-1");
     await waitFor(() => expect(cyber).toHaveTextContent("S/ 119.20antes S/ 149.00"));
     expect(cyber).toHaveTextContent("Activa");

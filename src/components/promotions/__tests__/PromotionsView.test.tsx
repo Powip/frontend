@@ -1,9 +1,10 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import PromotionsView from "@/components/promotions/PromotionsView";
 import { createPromotion, listPromotions, updatePromotion, type Promotion } from "@/services/promotionsService";
 import { listPurchasableProducts } from "@/services/purchasesService";
+import { getStockByVariants } from "@/services/inventoryItems.service";
 import { fetchVariantsByIds } from "@/services/variantCodesService";
 import { searchReconciliationVariants } from "@/services/reconciliationTask.service";
 import { giftBackupKey, giftMigrationKey, giftToPromotion, legacyPackKeys, migrateLocalGifts, type LocalGiftPack } from "@/lib/promotions/giftMigration";
@@ -29,8 +30,10 @@ jest.mock("@/services/promotionsService", () => ({
   updatePromotion: jest.fn(),
   deletePromotion: jest.fn(),
   getCampaignPrices: jest.fn(),
+  resolvePrices: jest.fn(),
 }));
-jest.mock("@/services/purchasesService", () => ({ listPurchasableProducts: jest.fn() }));
+jest.mock("@/services/purchasesService", () => ({ listPurchasableProducts: jest.fn(), listProductVariants: jest.fn(), getVariantCosts: jest.fn() }));
+jest.mock("@/services/inventoryItems.service", () => ({ getStockByVariants: jest.fn() }));
 jest.mock("@/services/variantCodesService", () => ({ fetchVariantsByIds: jest.fn() }));
 jest.mock("@/services/reconciliationTask.service", () => ({ searchReconciliationVariants: jest.fn() }));
 
@@ -38,7 +41,15 @@ const GIFT_PROMO: Promotion = {
   id: "pr-1", name: "Gorra de regalo", type: "GIFT", isActive: true, channels: ["WHATSAPP"], storeIds: ["s1"],
   startsAt: "2026-11-01T05:00:00.000Z", endsAt: "2026-12-01T05:00:00.000Z", productId: null, minQty: null, maxQty: null,
   packPrice: null, giftCondition: "AMOUNT", minAmount: 150, triggerVariantId: null, giftVariantId: "v-gorra", giftQuantity: 1,
-};
+  variantIds: [],
+} as unknown as Promotion;
+
+/** FEAT-32 M4 — volumen por SKUs (3 blusas Sofía a S/ 210, hasta 6). */
+const VOLUME_PROMO = {
+  ...GIFT_PROMO, id: "pr-2", name: "Lleva 3 blusas Sofía", type: "VOLUME", channels: [], storeIds: [], startsAt: null, endsAt: null,
+  giftCondition: null, minAmount: null, giftVariantId: null, giftQuantity: null, minQty: 3, maxQty: 6, packPrice: 210,
+  variantIds: ["v-sof-s", "v-sof-m", "v-sof-l"], status: "ACTIVE", combinable: false,
+} as unknown as Promotion;
 
 const localGift = (patch: Partial<LocalGiftPack> = {}): LocalGiftPack => ({
   id: "g-1", type: "GIFT", name: "Llavero", active: true, channels: ["WHATSAPP", "SHOPIFY", "RAPPI"], triggerBy: "amount", minAmount: 100,
@@ -59,6 +70,7 @@ beforeEach(() => {
   jest.mocked(fetchVariantsByIds).mockResolvedValue([
     { id: "v-gorra", sku: "G", companySku: "GOR", barcode: null, powipEan: null, attributeValues: { Color: "Negro" }, productName: "Gorra" },
   ]);
+  jest.mocked(getStockByVariants).mockResolvedValue([{ variant_id: "v-gorra", quantity: 5, reserved_quantity: 1, available: 4, inventories: [] }]);
   jest.mocked(updatePromotion).mockResolvedValue(undefined);
 });
 
@@ -82,13 +94,41 @@ describe("vigencia y reglas (H9-D5)", () => {
 });
 
 describe("Ventas › Promociones", () => {
-  it("lista la promo de regalo con su regla, tiendas, canales y vigencia", async () => {
+  it("lista la promo de regalo con su regla (SKU y monto), tiendas, canales y vigencia con hora de Lima", async () => {
     renderView();
     const card = await screen.findByRole("row", { name: /Gorra de regalo/ });
-    await waitFor(() => expect(within(card).getByText("Por compras desde S/ 150.00, regala 1 × Gorra · Negro")).toBeInTheDocument());
+    await waitFor(() => expect(within(card).getByText("Regalo GOR desde S/ 150.00")).toBeInTheDocument());
+    expect(within(card).getByText("Gorra · Negro")).toBeInTheDocument();
     expect(within(card).getByText("Livii")).toBeInTheDocument();
     expect(within(card).getByText("WhatsApp")).toBeInTheDocument();
-    expect(within(card).getByText("Del 01/11/2026 al 30/11/2026")).toBeInTheDocument();
+    expect(within(card).getByText("01/11/2026 00:00")).toBeInTheDocument();
+    expect(within(card).getByText("hasta 01/12/2026 00:00")).toBeInTheDocument();
+    expect(getStockByVariants).toHaveBeenCalledWith(["v-gorra"]);
+    expect(within(card).queryByText("Sin stock del regalo")).not.toBeInTheDocument();
+  });
+
+  it("FEAT-32 M4: un regalo sin stock dice «Sin stock del regalo»", async () => {
+    jest.mocked(getStockByVariants).mockResolvedValue([{ variant_id: "v-gorra", quantity: 2, reserved_quantity: 2, available: 0, inventories: [] }]);
+    renderView();
+    const card = await screen.findByRole("row", { name: /Gorra de regalo/ });
+    expect(await within(card).findByText("Sin stock del regalo")).toBeInTheDocument();
+  });
+
+  it("FEAT-32 M4: el volumen dice «3 por S/ 210.00 · hasta 6 u.» y nombra sus primeros SKUs", async () => {
+    jest.mocked(listPromotions).mockResolvedValue([VOLUME_PROMO]);
+    jest.mocked(fetchVariantsByIds).mockResolvedValue([
+      { id: "v-sof-s", sku: "x", companySku: "SOF-S-CRE", barcode: null, powipEan: null, attributeValues: { Talla: "S" }, productName: "Blusa Sofía" },
+      { id: "v-sof-m", sku: "y", companySku: "SOF-M-CRE", barcode: null, powipEan: null, attributeValues: { Talla: "M" }, productName: "Blusa Sofía" },
+    ]);
+    renderView();
+    const row = await screen.findByRole("row", { name: /Lleva 3 blusas Sofía/ });
+    expect(within(row).getByText("3 por S/ 210.00 · hasta 6 u.")).toBeInTheDocument();
+    expect(within(row).getByText("S/ 70.00 c/u")).toBeInTheDocument();
+    expect(await within(row).findByText("SOF-S-CRE, SOF-M-CRE y 1 más")).toBeInTheDocument();
+    expect(within(row).getByText("3 SKUs")).toBeInTheDocument();
+    expect(within(row).getByText("Sin fecha")).toBeInTheDocument();
+    // Solo pide los 2 SKUs que nombra la tabla.
+    expect(fetchVariantsByIds).toHaveBeenCalledWith(["v-sof-m", "v-sof-s"], "c1");
   });
 
   it("crea un regalo por monto con los canales reales del pedido (sin Rappi ni Pedidos Ya), tienda y vigencia", async () => {
@@ -102,23 +142,24 @@ describe("Ventas › Promociones", () => {
     await user.click(await screen.findByRole("button", { name: "Nueva promoción" }));
     await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: /^Regalo/ }));
     const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("heading", { name: "Nueva promoción · Regalo" })).toBeInTheDocument();
+    // FEAT-32 M4 (spec §6.19): la misma lista que la campaña, más POWIP Live.
     const channels = within(dialog).getByRole("group", { name: "Canales" });
     expect(within(channels).getAllByRole("button").map((button) => button.textContent)).toEqual([
-      "Tienda física", "WhatsApp", "Instagram", "Facebook", "Marketplace", "Mercado Libre", "Web / Shopify", "Google Sheets", "Otro",
+      "POWIP Live", "POWIP CRM", "Catálogo web", "Tienda física", "WhatsApp", "Instagram", "Facebook", "Marketplace", "Mercado Libre", "Web / Shopify", "Google Sheets", "Otro",
     ]);
     await user.type(within(dialog).getByLabelText("Nombre"), "Gorra gratis");
-    await user.click(within(dialog).getByLabelText("Regalo"));
     await user.click(within(within(dialog).getByRole("group", { name: "Tiendas" })).getByRole("button", { name: "Livii" }));
     await user.click(within(channels).getByRole("button", { name: "Instagram" }));
-    await user.type(within(dialog).getByLabelText(/^Hasta, incluido/), "2026-11-30");
-    await user.type(within(dialog).getByLabelText(/^Monto mínimo/), "150");
-    await user.type(within(dialog).getByLabelText("Producto que se regala"), "gor");
+    fireEvent.change(within(dialog).getByLabelText(/^Hasta/), { target: { value: "2026-11-30T23:59" } });
+    await user.type(within(dialog).getByLabelText("Compras desde (S/)"), "150");
+    await user.type(within(dialog).getByLabelText("SKU que se regala"), "gor");
     await user.click(await within(dialog).findByRole("button", { name: /Gorra/ }));
     await user.click(within(dialog).getByRole("button", { name: "Guardar" }));
     await waitFor(() =>
       expect(createPromotion).toHaveBeenCalledWith({
-        name: "Gorra gratis", type: "GIFT", channels: ["INSTAGRAM"], storeIds: ["s1"], startsAt: null, endsAt: "2026-12-01T00:00:00-05:00",
-        giftCondition: "AMOUNT", giftVariantId: "v-gorra", giftQuantity: 1, minAmount: 150,
+        name: "Gorra gratis", type: "GIFT", channels: ["INSTAGRAM"], storeIds: ["s1"], startsAt: null, endsAt: "2026-11-30T23:59:00-05:00",
+        giftCondition: "AMOUNT", giftVariantId: "v-gorra", giftQuantity: 1, minAmount: 150, combinable: false,
       }),
     );
   });

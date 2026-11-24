@@ -25,6 +25,8 @@ export interface Promotion {
   /** Exclusivo. */
   endsAt: string | null;
   productId: string | null;
+  /** FEAT-32 M4 — VOLUME: SKUs cuyas unidades se cuentan juntas (una fila vieja puede no mandarlo: `[]`). */
+  variantIds: string[];
   minQty: number | null;
   maxQty: number | null;
   packPrice: number | null;
@@ -81,8 +83,11 @@ export interface PromotionBody {
   startsAt: string | null;
   endsAt: string | null;
   productId?: string;
+  /** FEAT-32 M4 — VOLUME: SKUs que cuentan (1..500). En PATCH reemplaza la lista. */
+  variantIds?: string[];
   minQty?: number;
-  maxQty?: number;
+  /** `null` = sin tope (en PATCH lo quita). */
+  maxQty?: number | null;
   packPrice?: number;
   giftCondition?: GiftCondition;
   minAmount?: number;
@@ -133,6 +138,7 @@ export function toPromotion(raw: Record<string, unknown>): Promotion {
     startsAt: str(raw.startsAt),
     endsAt: str(raw.endsAt),
     productId: str(raw.productId),
+    variantIds: Array.isArray(raw.variantIds) ? raw.variantIds.filter((id): id is string => typeof id === "string" && id !== "") : [],
     minQty: num(raw.minQty),
     maxQty: num(raw.maxQty),
     packPrice: num(raw.packPrice),
