@@ -4,7 +4,7 @@ import type { LiveDelivery, LivePurchaseInput, StoreDeliveryOption } from "./typ
 import { liveMoney } from "./liveService";
 import LiveSearchSelect from "./LiveSearchSelect";
 export const purchaseField =
-  "mt-1 min-h-11 w-full rounded-xl border border-[var(--b-line)] bg-[var(--b-in)] p-3 text-sm text-[var(--b-ink)] focus:outline-[var(--acc)]";
+  "mt-1.5 min-h-12 w-full rounded-[14px] border-[1.5px] border-[var(--b-line)] bg-[var(--b-in)] px-3.5 py-3 text-base font-normal text-[var(--b-ink)] outline-none focus:border-[var(--acc)]";
 const norm = (s = "") =>
   s
     .trim()
@@ -153,7 +153,7 @@ export default function LiveDeliveryForm({
       ) : null}
       {delivery.type === "HOME" ? (
         <>
-          <label className="block text-sm">
+          <label className="block text-[13px] font-semibold text-[var(--b-ink2)]">
             Dirección
             <input
               aria-label="Dirección"
@@ -165,7 +165,7 @@ export default function LiveDeliveryForm({
               placeholder="Calle y número"
             />
           </label>
-          <label className="block text-sm">
+          <label className="block text-[13px] font-semibold text-[var(--b-ink2)]">
             Referencia (opcional)
             <input
               className={purchaseField}
@@ -190,7 +190,7 @@ export default function LiveDeliveryForm({
         </>
       ) : (
         <>
-          <label className="block text-sm">
+          <label className="block text-[13px] font-semibold text-[var(--b-ink2)]">
             Courier
             <select
               aria-label="Courier"
@@ -208,7 +208,7 @@ export default function LiveDeliveryForm({
               <option value="OLVA">Olva Courier</option>
             </select>
           </label>
-          <label className="block text-sm">
+          <label className="block text-[13px] font-semibold text-[var(--b-ink2)]">
             Agencia
             <select
               aria-label="Agencia"
@@ -237,7 +237,7 @@ export default function LiveDeliveryForm({
               La tienda aún no tiene agencias habilitadas de este courier en este distrito.
             </p>
           ) : null}
-          <label className="block text-sm">
+          <label className="block text-[13px] font-semibold text-[var(--b-ink2)]">
             DNI de quien recoge
             <input
               aria-label="DNI de quien recoge"
@@ -266,7 +266,7 @@ export default function LiveDeliveryForm({
       </label>
       {receipt.type === "FACTURA" ? (
         <>
-          <label className="block text-sm">
+          <label className="block text-[13px] font-semibold text-[var(--b-ink2)]">
             RUC
             <input
               aria-label="RUC"
@@ -282,7 +282,7 @@ export default function LiveDeliveryForm({
               }
             />
           </label>
-          <label className="block text-sm">
+          <label className="block text-[13px] font-semibold text-[var(--b-ink2)]">
             Razón social
             <input
               className={purchaseField}
@@ -293,7 +293,7 @@ export default function LiveDeliveryForm({
           </label>
         </>
       ) : total >= 700 && !delivery.dni ? (
-        <label className="block text-sm">
+        <label className="block text-[13px] font-semibold text-[var(--b-ink2)]">
           DNI para boleta
           <input
             aria-label="DNI para boleta"

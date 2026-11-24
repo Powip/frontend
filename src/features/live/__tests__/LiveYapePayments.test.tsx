@@ -130,7 +130,9 @@ test("proof submission remains under review and does not confirm delivery", asyn
     },
   });
   fireEvent.click(screen.getByRole("button", { name: "Confirmar pago" }));
-  expect(await screen.findByRole("heading", { name: "Validando tu pago" })).toBeInTheDocument();
+  // Pantalla final del mockup: «¡Listo, …!» con el estado «Validando tu pago».
+  expect(await screen.findByRole("heading", { name: "¡Listo, Cliente!" })).toBeInTheDocument();
+  expect(screen.getByText("Validando tu pago")).toBeInTheDocument();
   expect(
     screen.queryByRole("heading", { name: "Pago validado por el negocio" }),
   ).not.toBeInTheDocument();

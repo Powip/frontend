@@ -51,11 +51,11 @@ test("shipping that brings a saved-address boleta to S/700 reveals DNI and requo
     />,
   );
   const dni = await screen.findByLabelText("DNI para boleta");
-  expect(screen.getByRole("button", { name: "Continuar a Yape →" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: /^Continuar/ })).toBeDisabled();
   fireEvent.change(dni, { target: { value: "45678901" } });
   await waitFor(() => expect(quoteLivePurchase).toHaveBeenCalledTimes(2));
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: "Continuar a Yape →" })).toBeEnabled(),
+    expect(screen.getByRole("button", { name: /^Continuar/ })).toBeEnabled(),
   );
   expect((quoteLivePurchase as jest.Mock).mock.calls[1][2].receipt.dni).toBe("45678901");
   expect(checkoutLivePurchase).not.toHaveBeenCalled();
@@ -122,13 +122,13 @@ test("a rejected saved agency reveals delivery fields and recovers with the matc
   const district = await screen.findByLabelText("Distrito");
   expect(screen.getByRole("alert")).toHaveTextContent(shippingError.response.data.message);
   expect(screen.getByLabelText("Agencia")).toHaveValue("");
-  expect(screen.getByRole("button", { name: "Continuar a Yape →" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: /^Continuar/ })).toBeDisabled();
   fireEvent.change(district, { target: { value: "Los Baños" } });
   fireEvent.click(screen.getByRole("option", { name: "Los Baños Del Inca" }));
   expect(screen.getByLabelText("Agencia")).toHaveValue("");
   fireEvent.change(screen.getByLabelText("Agencia"), { target: { value: "247" } });
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: "Continuar a Yape →" })).toBeEnabled(),
+    expect(screen.getByRole("button", { name: /^Continuar/ })).toBeEnabled(),
   );
   expect(quoteLivePurchase).toHaveBeenCalledTimes(2);
   expect((quoteLivePurchase as jest.Mock).mock.calls[1][2].delivery).toEqual(delivery);
@@ -146,7 +146,7 @@ test("a combined shipment authorized by the server still works when its old cove
   });
   render(<SavedCheckout options={[]} />);
   await waitFor(() =>
-    expect(screen.getByRole("button", { name: "Continuar a Yape →" })).toBeEnabled(),
+    expect(screen.getByRole("button", { name: /^Continuar/ })).toBeEnabled(),
   );
   expect(screen.getByText(/No pagas envío otra vez/)).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Cambiar entrega" })).toBeInTheDocument();
@@ -163,7 +163,7 @@ test("coverage rejected during checkout reveals the saved delivery and invalidat
   });
   (checkoutLivePurchase as jest.Mock).mockRejectedValue(shippingError);
   render(<SavedCheckout />);
-  const pay = screen.getByRole("button", { name: "Continuar a Yape →" });
+  const pay = screen.getByRole("button", { name: /^Continuar/ });
   await waitFor(() => expect(pay).toBeEnabled());
   fireEvent.click(pay);
   expect(await screen.findByLabelText("Distrito")).toBeInTheDocument();

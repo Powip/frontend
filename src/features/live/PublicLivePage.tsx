@@ -690,6 +690,9 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
           visitor={visitor}
           checkoutId={manualId}
           initial={manual}
+          storeName={look.displayName}
+          continueLabel={whatsapp ? "Seguir mirando el catálogo" : "Seguir comprando en el live"}
+          combineShipping={!!data?.config.combineShipping}
           onClose={() => setManualId(null)}
           onUpdated={() => void refresh(visitor)}
         />
