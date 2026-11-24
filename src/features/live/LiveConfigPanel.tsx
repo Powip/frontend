@@ -21,6 +21,7 @@ import {
   savedAtLabel,
 } from "./liveSettingsForm";
 import type { LiveConfig, LiveReadiness } from "./types";
+import { liveLinks } from "./liveLinks";
 
 type SwitchKey =
   | "showBackLink"
@@ -72,6 +73,7 @@ export default function LiveConfigPanel({
   onSave: (changes: Partial<LiveConfig>) => Promise<boolean>;
 }) {
   // Solo se guardan las ediciones: lo que no se tocó sigue al servidor en cada actualización.
+  const [linkOrigin] = useState(() => (typeof window === "undefined" ? "" : window.location.origin));
   const [edits, setEdits] = useState<Partial<LiveConfigDraft>>({});
   const [errors, setErrors] = useState<LiveConfigErrors>({});
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -352,7 +354,7 @@ export default function LiveConfigPanel({
             id="live-slug-help"
             className="text-xs font-normal text-muted-foreground"
           >
-            {draft.slug.trim() || "tienda"}.powip.lat/live
+            {liveLinks({ origin: linkOrigin, slug: draft.slug.trim() || "tienda" }).displayUrl}
           </span>
         </div>
         <p className="text-xs text-muted-foreground">

@@ -485,10 +485,12 @@ export function liveBuyerLabel(status?: string): string {
 export function liveEntryContext() {
   if (typeof window === "undefined") return { channel: "LIVE" as const };
   const query = new URLSearchParams(window.location.search);
+  // FEAT-33 A12/D2: el link de asesora o creadora (…/live?a=CÓDIGO) y el formato viejo /catalogo son POWIP Link.
   return {
-    channel: window.location.pathname.startsWith("/catalogo")
-      ? ("WHATSAPP" as const)
-      : ("LIVE" as const),
+    channel:
+      window.location.pathname.startsWith("/catalogo") || query.has("a")
+        ? ("WHATSAPP" as const)
+        : ("LIVE" as const),
     advisorCode: query.get("a") || undefined,
     sellerCode: query.get("v") || undefined,
   };

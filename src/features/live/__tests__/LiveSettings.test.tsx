@@ -126,6 +126,14 @@ describe("Configuración del catálogo (FEAT-33 A1/B4)", () => {
     expect(screen.getByText("● Cambios sin guardar")).toBeInTheDocument();
   });
 
+  test("A12: the catalog name shows the same link POWIP shares, and follows what you type", () => {
+    renderConfig();
+    expect(screen.getByText("localhost/live/kunca")).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue("kunca"), { target: { value: "kunca-live" } });
+    expect(screen.getByText("localhost/live/kunca-live")).toBeInTheDocument();
+    expect(screen.queryByText(/powip\.lat/)).not.toBeInTheDocument();
+  });
+
   test("suggests 15 minutes under the field", () => {
     renderConfig();
     expect(minutes()).toHaveAccessibleDescription(/Sugerido 15/);

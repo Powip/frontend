@@ -11,6 +11,8 @@ interface Tracking {
   orderNumber: string;
   status: string;
   buyerStatus: string;
+  /** FEAT-33 A12: por dónde entró la compra (un servidor viejo no lo manda). */
+  origin?: "POWIP_LIVE" | "POWIP_LINK";
   businessName: string;
   customer: { fullName: string };
   items: {
@@ -77,7 +79,9 @@ export default function LiveOrderTracking({ token }: { token: string }) {
   return (
     <main className="min-h-dvh bg-[#100e1d] p-4 text-slate-100">
       <div className="mx-auto max-w-lg space-y-5 py-5">
-        <p className="text-xs font-bold uppercase tracking-widest text-emerald-300">POWIP Link</p>
+        <p data-testid="pedido-origen" className="text-xs font-bold uppercase tracking-widest text-emerald-300">
+          {data?.origin === "POWIP_LIVE" ? "POWIP Live" : data?.origin === "POWIP_LINK" ? "POWIP Link" : "POWIP"}
+        </p>
         {error ? <p role="alert">{error}</p> : null}
         {!data ? (
           <p>Cargando pedido…</p>
