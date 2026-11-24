@@ -33,6 +33,7 @@ import {
 } from "@/hooks/useCrmChat";
 import type { Conversation, Message } from "@/types/crm";
 import { CRM_UNREACHABLE } from "./ConversationList";
+import { SendImageButton } from "./SendImageButton";
 import ChannelBadge from "./ChannelBadge";
 import { ChatCallButtons } from "./ChatCallsSection";
 import { LostChatButton } from "./ChatPlanningSections";
@@ -475,6 +476,9 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
             aria-label="Mensaje"
             className="min-h-0 resize-none"
           />
+          {conversation.channel === "whatsapp" && (
+            <SendImageButton conversationId={conversation.id} disabled={!windowOpen || closed} />
+          )}
           <Button onClick={submit} disabled={!windowOpen || !text.trim()} aria-label="Enviar mensaje">
             <Send />
           </Button>
