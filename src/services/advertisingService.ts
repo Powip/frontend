@@ -562,6 +562,8 @@ export function advertisingErrorMessage(failure: unknown): string {
   switch (advertisingErrorStatus(failure)) {
     case 401:
       return "Vuelve a iniciar sesión para continuar.";
+    case 400:
+      return "Las cuentas elegidas no son válidas. Revisa la selección e inténtalo de nuevo.";
     case 403:
       return "No tienes permiso para continuar.";
     case 409: {
@@ -572,6 +574,8 @@ export function advertisingErrorMessage(failure: unknown): string {
     }
     case 429:
       return "Espera un momento e inténtalo de nuevo.";
+    case 502:
+      return "Meta devolvió datos incompletos. Espera unos minutos e inténtalo de nuevo.";
     case 503:
       return "Publicidad no está disponible. Inténtalo de nuevo.";
     default:
