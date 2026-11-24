@@ -98,6 +98,24 @@ describe("the order's Yape proof (FEAT-33 A9/B1)", () => {
     ).toBeInTheDocument();
   });
 
+  test("still shows only this order if the server ignores the filter", async () => {
+    (getLiveYapeReviews as jest.Mock).mockResolvedValue({
+      reviews: [
+        review,
+        {
+          ...review,
+          checkoutId: "other",
+          orderId: "another-order",
+          customer: { name: "Otra Clienta", phone: "911111111" },
+        },
+      ],
+      serverNow: "2026-11-24T12:00:00Z",
+    });
+    render(<LiveYapeReviews storeId={storeId} orderId={orderId} canReview />);
+    await screen.findByText("Rosa Quispe");
+    expect(screen.queryByText("Otra Clienta")).not.toBeInTheDocument();
+  });
+
   test("a cancelled order shows its proof closed, without validation buttons", async () => {
     (getLiveYapeReviews as jest.Mock).mockResolvedValue({
       reviews: [

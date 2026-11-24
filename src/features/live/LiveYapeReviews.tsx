@@ -87,7 +87,8 @@ export default function LiveYapeReviews({
         hasSnapshot = true;
         setSnapshot({
           storeId,
-          reviews: result.reviews,
+          // Respaldo por si el servidor todavía no filtra por pedido.
+          reviews: orderId ? result.reviews.filter((r) => r.orderId === orderId) : result.reviews,
           error: "",
         });
       },
