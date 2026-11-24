@@ -1,4 +1,5 @@
 "use client";
+import { saleSourceKey } from "@/utils/saleLabels";
 import { commercialLeadHref } from "@/utils/commercialOrders";
 import { toWhatsAppDigits } from "@/lib/phone";
 import { formatSalesMoney } from "@/utils/salesMoney";
@@ -234,7 +235,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
         ? (pendingPayments[0].created_at?.toString() ?? null)
         : null,
     sellerName: order.sellerName ?? null,
-    externalSource: order.externalSource ?? null,
+    externalSource: saleSourceKey(order),
     externalId: order.externalId ?? null,
     subEstadoCc: order.subEstadoCc ?? null,
     origin: saleOrigin(order),

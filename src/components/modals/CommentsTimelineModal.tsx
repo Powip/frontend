@@ -14,6 +14,7 @@ import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { shouldDisplayNote } from "@/lib/logFilters";
+import { historyActor, historyAuthor, isRawHistoryCode } from "@/lib/orderHistory";
 
 interface LogEntry {
   id: number;
@@ -24,6 +25,8 @@ interface LogEntry {
   userId: string | null;
   userName?: string | null;
   isSystemGenerated?: boolean;
+  /** FEAT-33 A7: `actor` (CUSTOMER | SYSTEM | USER) y, en entradas viejas de Live, el código de la acción. */
+  data?: { actor?: string; action?: string } | null;
 }
 
 interface CommentsTimelineModalProps {
@@ -148,11 +151,13 @@ export default function CommentsTimelineModal({
               {logs
                 .filter(
                   (log) =>
-                    !log.isSystemGenerated || shouldDisplayNote(log.comentarios),
+                    !isRawHistoryCode(log) &&
+                    (!log.isSystemGenerated || shouldDisplayNote(log.comentarios)),
                 )
                 .map((log, index, filteredLogs) => (
                   <div
                     key={log.id}
+                    data-testid="historial-entrada"
                     className={`relative pl-6 pb-4 ${
                       index < filteredLogs.length - 1
                         ? "border-l-2 border-muted ml-2"
@@ -180,8 +185,10 @@ export default function CommentsTimelineModal({
                       <div className="flex items-center gap-2">
                         <Clock className="h-3 w-3" />
                         <span>{formatDate(log.timestamp)}</span>
-                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium flex items-center gap-1 ${log.isSystemGenerated ? 'bg-muted text-muted-foreground' : 'bg-primary/20 text-primary'}`}>
-                          {log.isSystemGenerated ? (
+                        <span data-testid="historial-actor" className={`px-1.5 py-0.5 rounded text-xs font-medium flex items-center gap-1 ${historyActor(log) === 'Cliente' ? 'bg-violet-100 text-violet-700' : log.isSystemGenerated ? 'bg-muted text-muted-foreground' : 'bg-primary/20 text-primary'}`}>
+                          {historyActor(log) === "Cliente" ? (
+                            <><User className="h-3 w-3" /> Cliente</>
+                          ) : historyActor(log) ? (
                             <><Settings className="h-3 w-3" /> Sistema</>
                           ) : (
                             <><MessageCircle className="h-3 w-3" /> {OPERACION_LABELS[log.operacion] || log.operacion}</>
@@ -194,10 +201,10 @@ export default function CommentsTimelineModal({
                         )}
                       </div>
                       {/* Nombre del usuario */}
-                      {log.userName && (
+                      {historyAuthor(log) && (
                         <div className="flex items-center gap-1 text-xs font-medium text-foreground">
                           <User className="h-3 w-3" />
-                          <span>{log.userName}</span>
+                          <span>{historyAuthor(log)}</span>
                         </div>
                       )}
                     </div>
