@@ -92,17 +92,20 @@ export function PromotionFormDialog({
   stores,
   products,
   variantNames,
+  initialType,
   onClose,
 }: {
   promo: Promotion | null;
   stores: Store[];
   products: PurchasableProduct[];
   variantNames: Map<string, string>;
+  /** FEAT-32 M3: la clase elegida en «＋ Nueva promoción». */
+  initialType?: "VOLUME" | "GIFT";
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
   const [name, setName] = useState(promo?.name ?? "");
-  const [type, setType] = useState<PromoKind>(promo?.type ?? "VOLUME");
+  const [type, setType] = useState<PromoKind>(promo?.type ?? initialType ?? "VOLUME");
   const [storeIds, setStoreIds] = useState<string[]>(promo?.storeIds ?? []);
   const [channels, setChannels] = useState<string[]>(promo?.channels ?? []);
   const [from, setFrom] = useState(promo?.startsAt ? limaDate(promo.startsAt) : "");

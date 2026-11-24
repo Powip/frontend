@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import FichaChannelsTab from "@/components/catalog/ficha/FichaChannelsTab";
 import { getProductChannels, saveProductChannel, type ProductChannelsView } from "@/services/productChannelsService";
 import type { CatalogProductDetail, CatalogVariantDetail } from "@/services/catalogProductService";
+import { getCampaignPrices, listPromotions, type Promotion } from "@/services/promotionsService";
 
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }), usePathname: () => "/productos/p1" }));
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
@@ -11,6 +12,16 @@ jest.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ auth: { accessToken: "t", user: { id: "u1", role: "ADMINISTRADOR" }, company: { id: "c1", stores: [{ id: "s1", name: "KUNCA" }] } } }),
 }));
 jest.mock("@/services/productChannelsService", () => ({ getProductChannels: jest.fn(), saveProductChannel: jest.fn() }));
+jest.mock("@/services/promotionsService", () => ({ listPromotions: jest.fn(), getCampaignPrices: jest.fn() }));
+
+const promo = (over: Partial<Promotion>): Promotion => ({
+  id: "c-1", name: "Cyber Wow", type: "CAMPAIGN", isActive: true, channels: ["CATALOGO_WEB"], storeIds: [],
+  startsAt: "2020-11-24T05:00:00.000Z", endsAt: "2099-11-28T05:00:00.000Z", productId: null, minQty: null, maxQty: null,
+  packPrice: null, giftCondition: null, minAmount: null, triggerVariantId: null, giftVariantId: null, giftQuantity: null,
+  status: "ACTIVE", combinable: false, discountType: "PERCENT", discountValue: 20, allProducts: false,
+  products: [{ productId: "p1", discountType: null, discountValue: null }], manualPrices: [],
+  ...over,
+}) as Promotion;
 
 const PRODUCT = { id: "p1", name: "Pantalón Jimena", externalSource: "shopify", externalId: "99" } as unknown as CatalogProductDetail;
 const VARIANTS = [
@@ -59,7 +70,10 @@ function renderTab(view: ProductChannelsView = VIEW) {
 }
 
 describe("Ficha › Canales (FEAT-32 M2)", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(listPromotions).mockResolvedValue([]);
+  });
 
   it("muestra Live, CRM y Catálogo web con estado y precio, Shopify «Lo administra Shopify» y las variantes unidas", async () => {
     renderTab();
@@ -151,5 +165,42 @@ describe("Ficha › Canales (FEAT-32 M2)", () => {
     expect(screen.getByRole("switch", { name: "Activar en POWIP CRM" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Cambiar precio" })).not.toBeInTheDocument();
     expect(screen.getByText(/Solo el Administrador u Operaciones activan canales/)).toBeInTheDocument();
+  });
+
+  it("FEAT-32 M3: precio con la campaña activa (y el de antes tachado), la próxima programada y «Promociones de este producto»", async () => {
+    jest.mocked(listPromotions).mockResolvedValue([
+      promo({}),
+      promo({ id: "c-2", name: "Navidad", channels: ["POWIP_CRM"], startsAt: "2099-12-20T05:00:00.000Z", endsAt: "2099-12-26T05:00:00.000Z", status: "SCHEDULED" }),
+      promo({ id: "c-3", name: "De otra tienda", storeIds: ["s9"] }),
+      promo({ id: "v-1", name: "Lleva 3", type: "VOLUME", productId: "p1", channels: [], startsAt: null, endsAt: null, products: [] }),
+    ]);
+    jest.mocked(getCampaignPrices).mockResolvedValue({
+      storeId: "s1", igvIncluded: true, canSeeCosts: true, fallback: false,
+      products: [{ productId: "p1", name: "Pantalón Jimena", sku: null, imageUrl: null, inactiveChannels: [], variants: [
+        { variantId: "v1", storePrice: 149, averageCost: 140, channels: { CATALOGO_WEB: 149, POWIP_CRM: 159 } },
+        { variantId: "v2", storePrice: 149, averageCost: null, channels: { CATALOGO_WEB: 149, POWIP_CRM: 159 } },
+      ] }],
+    });
+    renderTab();
+
+    await waitFor(() => expect(screen.getByTestId("channel-price-CATALOGO_WEB")).toHaveTextContent("S/ 119.20"));
+    const webRow = screen.getByTestId("channel-price-CATALOGO_WEB").closest("tr")!;
+    expect(within(webRow).getByText("S/ 149.00")).toBeInTheDocument();
+    expect(within(webRow).getByText("Cyber Wow −20%")).toBeInTheDocument();
+    const crmRow = screen.getByTestId("channel-price-POWIP_CRM").closest("tr")!;
+    expect(screen.getByTestId("channel-price-POWIP_CRM")).toHaveTextContent("S/ 149.00");
+    expect(crmRow).toHaveTextContent("Programada Navidad desde 20/12");
+
+    const section = screen.getByRole("region", { name: "Promociones de este producto" });
+    expect(within(section).getByText(/También aplica/)).toHaveTextContent("También aplica: Lleva 3 (volumen).");
+    const cyber = within(section).getByTestId("product-promo-c-1");
+    await waitFor(() => expect(cyber).toHaveTextContent("S/ 119.20antes S/ 149.00"));
+    expect(cyber).toHaveTextContent("Activa");
+    expect(within(cyber).getByRole("link", { name: "Editar" })).toHaveAttribute("href", "/packs-promos?editar=c-1");
+    expect(within(section).getByTestId("product-promo-c-2")).toHaveTextContent("S/ 127.20antes S/ 159.00");
+    expect(within(section).queryByTestId("product-promo-c-3")).not.toBeInTheDocument();
+    expect(within(section).getByRole("link", { name: "＋ Nueva promoción" })).toHaveAttribute("href", "/packs-promos?nueva=campana&productos=p1");
+    expect(within(section).getByRole("link", { name: "Ver todas" })).toHaveAttribute("href", "/packs-promos");
+    expect(getCampaignPrices).toHaveBeenCalledWith({ storeId: "s1", channels: ["CATALOGO_WEB", "POWIP_CRM"], productIds: ["p1"] }, expect.anything());
   });
 });

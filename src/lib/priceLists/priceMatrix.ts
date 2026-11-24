@@ -15,6 +15,8 @@ export interface PriceCell {
 
 export interface PriceMatrixRow {
   variantId: string;
+  /** FEAT-32 M3 — para saber qué campaña lo incluye. */
+  productId: string;
   productName: string;
   attributeValues: Record<string, string>;
   companySku: string | null;
@@ -44,6 +46,7 @@ export function mergePriceRows(pages: Array<{ listId: string; page: PriceListIte
       if (!row) {
         row = {
           variantId: item.variantId,
+          productId: item.productId,
           productName: item.productName,
           attributeValues: item.attributeValues ?? {},
           companySku: item.companySku,

@@ -166,6 +166,12 @@ export const canEditInventory = (user?: RouteAccessUser): boolean =>
 export const canSeeProductCosts = (user?: RouteAccessUser): boolean => canEditInventory(user);
 
 /**
+ * FEAT-32 M3 (spec §6.13, `promociones.gestionar`) — ¿puede crear, editar, pausar o eliminar promociones?
+ * Administrador u Operaciones, igual que ms-ventas (`canManagePromos` de `src/promos/promo-access.ts`).
+ */
+export const canManagePromotions = (user?: RouteAccessUser): boolean => canEditInventory(user);
+
+/**
  * FEAT-24 H8-D5 — rol COURIER: el personal del courier, con su almacén asignado. Su portal es /almacen: ve el
  * stock, cuenta, recibe traslados y ve la conciliación de su almacén. Todo lo demás se le cierra (menú y
  * rutas): el backend igual valida, pero las rutas viejas siguen la regla de H6 y le dejarían ver todo.
