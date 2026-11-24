@@ -64,7 +64,7 @@ const isDev = process.env.NODE_ENV === "development";
 /**
  * Pantalla anterior de «Packs & Promos». Desde FEAT-24 H9 la ruta muestra Promociones (VOLUME y GIFT en el
  * backend) y esta vista queda solo para los bundles que todavía no se migraron a packs (`bundlesOnly`):
- * se editan, activan o eliminan, pero los combos nuevos se crean como pack en Productos › Packs.
+ * se editan, activan o eliminan, pero los combos nuevos se crean como pack en Comercial › Packs y promociones.
  */
 export function PacksPromosContent({ bundlesOnly = false }: { bundlesOnly?: boolean } = {}) {
   const { auth } = useAuth();
@@ -103,7 +103,7 @@ export function PacksPromosContent({ bundlesOnly = false }: { bundlesOnly?: bool
         <div className="flex items-start justify-between flex-wrap gap-3">
           {bundlesOnly ? (
             <p className="max-w-3xl text-sm text-muted-foreground">
-              Los <b className="text-foreground">bundles</b> siguen aplicándose en la venta mientras se migran a packs. Aquí puedes editarlos, activarlos o eliminarlos; los combos nuevos se crean como pack en Productos › Packs.
+              Los <b className="text-foreground">bundles</b> siguen aplicándose en la venta mientras se migran a packs. Aquí puedes editarlos, activarlos o eliminarlos; los combos nuevos se crean como pack en la pestaña Packs de Comercial › Packs y promociones.
             </p>
           ) : (
             <HeaderConfig

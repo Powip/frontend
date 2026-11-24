@@ -3,7 +3,7 @@
  *
  * 1. Stock por almacén: se lee y se muestra solo lo de los almacenes que ve.
  * 2. Historial (kardex): el selector recibe solo esos almacenes.
- * 3. Pestaña Pack: el disponible por almacén y su total, solo con esos almacenes.
+ * 3. Pack (Componentes y Stock por almacén): el disponible por almacén y su total, solo con esos almacenes.
  * 4. Sin asignaciones (o si /me/warehouses falla) no se filtra nada.
  */
 
@@ -11,7 +11,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ProductFicha from "@/components/catalog/ficha/ProductFicha";
-import PackFichaTab, { visiblePackAvailability } from "@/components/packs/PackFichaTab";
+import PackFichaTab, { PackStockTab, visiblePackAvailability } from "@/components/packs/PackFichaTab";
 import { getCatalogProduct, getProductVariants, type CatalogProductDetail, type CatalogVariantDetail } from "@/services/catalogProductService";
 import { fetchBusinessInventoryItems, type BusinessInventoryItem } from "@/services/businessInventoryItemsService";
 import { getPack, type PackView } from "@/services/packsService";
@@ -102,27 +102,33 @@ describe("Ficha del producto por almacenes del usuario (FEAT-24 H6)", () => {
   });
 });
 
-describe("Pestaña Pack por almacenes del usuario (FEAT-24 H6)", () => {
+describe("Pack por almacenes del usuario (FEAT-24 H6, FEAT-32 M5)", () => {
   const PACK: PackView = {
     id: "pk", variantId: "vpk", name: "Kit", description: null, sku: "KIT", productSku: "KIT", powipEan: null, barcode: null, imageUrl: null,
     price: 50, active: true, categoryId: null, brandId: null, components: [],
     available: {
       total: 9,
       byWarehouse: [
-        { inventoryId: "inv-1", inventoryName: "Principal", storeId: "s1", available: 2 },
+        { inventoryId: "inv-1", inventoryName: "Principal", storeId: "s1", available: 2, limiting: { productId: "p-gorra", variantId: "v-gorra", label: "Gorra" } },
         { inventoryId: "inv-2", inventoryName: "Surco", storeId: "s1", available: 7 },
       ],
     },
   };
 
-  it("el disponible por almacén y su total salen solo de los almacenes que ve", async () => {
+  it("Componentes: el disponible total sale solo de los almacenes que ve", async () => {
     jest.mocked(getPack).mockResolvedValue(PACK);
     wrap(<PackFichaTab productId="pk" />);
-    const list = await screen.findByText("Disponible por almacén");
-    const section = list.parentElement as HTMLElement;
-    expect(section).toHaveTextContent("Principal: 2");
-    expect(section).not.toHaveTextContent("Surco");
-    expect(screen.getByText(/^Disponible:/)).toHaveTextContent(/^Disponible: 2$/);
+    expect(await screen.findByText(/^Disponible:/)).toHaveTextContent(/^Disponible: 2$/);
+  });
+
+  it("Stock por almacén: el disponible calculado de cada almacén que ve, con el componente que limita", async () => {
+    jest.mocked(getPack).mockResolvedValue(PACK);
+    wrap(<PackStockTab productId="pk" />);
+    const table = await screen.findByRole("table", { name: "Disponible por almacén" });
+    const rows = within(table).getAllByRole("row");
+    expect(rows.map((row) => row.textContent)).toEqual(["AlmacénDisponible (calculado)Limita", "Principal2Gorra", "Total2"]);
+    expect(table).not.toHaveTextContent("Surco");
+    expect(screen.getByTestId("pack-stock-total")).toHaveTextContent("2");
   });
 
   it("visiblePackAvailability deja igual el disponible si ve todo, y respeta el «sin dato»", () => {

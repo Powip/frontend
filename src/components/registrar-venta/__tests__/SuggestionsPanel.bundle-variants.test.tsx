@@ -89,3 +89,13 @@ describe("SuggestionsPanel — componentes de bundle por variante", () => {
     expect(props.onAutoAddBundleItem.mock.calls[0][0]).not.toHaveProperty("variantId");
   });
 });
+
+describe("SuggestionsPanel — FEAT-32 M6a dentro de las sugerencias del motor", () => {
+  it("embebido: sin título propio y nada si no hay bundles que sugerir", () => {
+    const { container, rerender } = render(<SuggestionsPanel {...panelProps({ packs: [] })} embedded />);
+    expect(container).toBeEmptyDOMElement();
+    rerender(<SuggestionsPanel {...panelProps()} embedded />);
+    expect(screen.queryByText("Sugerencias para cerrar")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "+ Suplemento · 300 g" })).toBeInTheDocument();
+  });
+});
