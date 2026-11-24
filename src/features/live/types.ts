@@ -179,6 +179,8 @@ export interface LivePublicOrder {
 }
 export interface LivePublicData {
   channel?: "LIVE" | "WHATSAPP";
+  /** FEAT-33 C5: la creadora del link está en vivo (su live, con precios live). */
+  creatorLive?: { name: string } | null;
   deliveryOptions?: StoreDeliveryOption[];
   deliveryMethods?: LiveDeliveryMethod[];
   store: { id: string; name: string; logoUrl?: string | null };
@@ -359,6 +361,8 @@ export interface LiveSeller {
   stats: LiveSellerStats;
   /** null = todavía no tiene acceso al portal. */
   access?: LiveSellerAccess | null;
+  /** C5: está en vivo con su link. */
+  onAir?: boolean;
 }
 export interface LiveSellersData {
   sellers: LiveSeller[];
@@ -402,7 +406,15 @@ export interface LiveSellerPortalSession {
   seller: { name: string };
 }
 export interface LiveSellerPortalMe {
-  seller: { name: string; social: string | null; code: string; agreement: LiveAgreement };
+  seller: {
+    name: string;
+    social: string | null;
+    code: string;
+    agreement: LiveAgreement;
+    /** C5: «Estoy en vivo»; se apaga solo en `onAirUntil` (8 h). */
+    onAir?: boolean;
+    onAirUntil?: string | null;
+  };
   store: { name: string; slug: string };
   stats: LiveSellerStats;
   today: { units: number; orders: number };

@@ -89,6 +89,20 @@ test("shows the KPIs and one row per seller and advisor with her link and agreem
   expect(within(advisor).getByRole("button", { name: "Pasar a comisión" })).toBeInTheDocument();
 });
 
+// FEAT-33 C5: el negocio ve qué creadora está en vivo con su link.
+test("a creator on air shows «En vivo» in her row", async () => {
+  (getLiveSellers as jest.Mock).mockResolvedValue({ ...data, sellers: [{ ...rei, onAir: true }] });
+  panel();
+  const table = await screen.findByRole("table", { name: "Vendedores y su comisión" });
+  const row = within(table).getByText("Rei Hinojosa").closest("tr")!;
+  expect(within(row).getByText("🔴 En vivo")).toBeInTheDocument();
+});
+test("a creator off air has no «En vivo» badge", async () => {
+  panel();
+  await screen.findByRole("table", { name: "Vendedores y su comisión" });
+  expect(screen.queryByText("🔴 En vivo")).not.toBeInTheDocument();
+});
+
 test("⚙ Acuerdo shows a real example and saves the new agreement", async () => {
   (updateLiveSellerAgreement as jest.Mock).mockResolvedValue({ ...rei, agreement: { type: "PERCENT", percent: 15 } });
   panel();

@@ -258,10 +258,13 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
       Number(b.some((p) => p.variantId === data?.session?.pinnedVariantId)) -
       Number(a.some((p) => p.variantId === data?.session?.pinnedVariantId)),
   );
+  // FEAT-33 C5: el live de una creadora no depende del live de la tienda (ni de su «Volver al live»).
+  const creator = data?.creatorLive || null;
   const closed =
-    !data?.config.enabled || (data?.channel !== "WHATSAPP" && data?.session?.status === "CLOSED");
+    !data?.config.enabled ||
+    (data?.channel !== "WHATSAPP" && !creator && data?.session?.status === "CLOSED");
   const social =
-    data?.channel !== "WHATSAPP" && data?.config.showBackLink
+    data?.channel !== "WHATSAPP" && !creator && data?.config.showBackLink
       ? safeLiveUrl(data.config.liveUrl)
       : null;
   const purchases = (data?.orders || [])
@@ -289,7 +292,15 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
           <div className="min-w-0 flex-1">
             <b className="block truncate text-[15px]">{look.displayName}</b>
             <small className="flex items-center gap-1.5 text-xs text-[var(--b-mut)]">
-              {whatsapp ? (
+              {creator ? (
+                <>
+                  <i
+                    aria-hidden="true"
+                    className="inline-block h-[7px] w-[7px] rounded-full bg-[#ff4d6d] motion-safe:animate-pulse"
+                  />
+                  En vivo con {creator.name}
+                </>
+              ) : whatsapp ? (
                 "💬 Catálogo por WhatsApp"
               ) : live ? (
                 <>
@@ -713,6 +724,40 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
     </main>
   );
 }
+
+/** FEAT-33 B3: las fotos elegidas para el live (hasta 3); el cliente desliza para verlas. */
+function LivePhotoSwipe({ product, title, photos }: { product: LiveProduct; title: string; photos: string[] }) {
+  const [index, setIndex] = useState(0);
+  return (
+    <>
+      <div
+        role="group"
+        aria-label={`Fotos de ${title}`}
+        className="flex snap-x snap-mandatory overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          if (el.clientWidth) setIndex(Math.round(el.scrollLeft / el.clientWidth));
+        }}
+      >
+        {photos.map((url) => (
+          <LiveProductImage
+            key={url}
+            product={product}
+            src={url}
+            className="aspect-[4/3] w-full shrink-0 snap-start !rounded-none bg-[var(--b-in)]"
+          />
+        ))}
+      </div>
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute bottom-3 right-3 rounded-full bg-black/55 px-2 py-0.5 text-[11px] font-semibold text-white"
+      >
+        {Math.min(index, photos.length - 1) + 1}/{photos.length} · desliza
+      </span>
+    </>
+  );
+}
+
 function ProductCard({
   variants,
   featured,
@@ -791,11 +836,15 @@ function ProductCard({
         </p>
       ) : null}
       <div className="relative">
-        <LiveProductImage
-          product={display}
-          src={variantPhoto || content?.photos[0]}
-          className="aspect-[4/3] w-full !rounded-none bg-[var(--b-in)]"
-        />
+        {!variantPhoto && (content?.photos.length || 0) > 1 ? (
+          <LivePhotoSwipe product={display} title={title} photos={content!.photos} />
+        ) : (
+          <LiveProductImage
+            product={display}
+            src={variantPhoto || content?.photos[0]}
+            className="aspect-[4/3] w-full !rounded-none bg-[var(--b-in)]"
+          />
+        )}
         {discount ? (
           <span className="absolute left-3 top-3 rounded-lg bg-[#e2465f] px-2 py-0.5 text-[13px] font-bold text-white">
             −{discount}% en el live

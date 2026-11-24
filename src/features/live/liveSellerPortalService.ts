@@ -62,6 +62,16 @@ export async function portalLogout(slug: string, session: string) {
 export async function portalMe(slug: string, session: string) {
   return (await axios.get<LiveSellerPortalMe>(`${portalPath(slug)}/me`, options(session))).data;
 }
+/** FEAT-33 C5: «Estoy en vivo» (true) / «Terminar live» (false). */
+export async function portalSetOnAir(slug: string, session: string, on: boolean) {
+  return (
+    await axios.post<{ onAir: boolean; onAirUntil: string | null }>(
+      `${portalPath(slug)}/on-air`,
+      { on },
+      options(session),
+    )
+  ).data;
+}
 export async function portalProducts(slug: string, session: string) {
   return (
     await axios.get<{ agreement: LiveAgreement; products: LiveSellerPortalProduct[] }>(

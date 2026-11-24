@@ -172,13 +172,15 @@ export async function removeLiveTrustedCustomer(storeId: string, clientId: strin
   await axiosAuth.delete(`${adminPath(storeId)}/trusted-customers/${encodeURIComponent(clientId)}`);
 }
 export async function getPublicLive(storeId: string, visitor: string, signal?: AbortSignal) {
-  return (
+  const data = (
     await axios.get<LivePublicData>(publicPath(storeId), {
       ...anonymousOptions(visitor),
       ...(signal ? { signal } : {}),
       params: liveCatalogParams(),
     })
   ).data;
+  rememberCreatorLive(!!data.creatorLive);
+  return data;
 }
 /** FEAT-33 C2: con el link de una creadora (`?a=`/`?v=`) el catálogo trae solo sus productos. */
 function liveCatalogParams() {
@@ -293,7 +295,8 @@ export async function reserveLiveProduct(
   return (
     await axios.post<{ reservation: LiveReservation; serverNow: string }>(
       `${publicPath(storeId)}/reservations`,
-      { ...input, channel: liveEntryContext().channel },
+      // FEAT-33 C5: con el código del link, el servidor sabe si es el live de la creadora.
+      { ...input, ...liveEntryContext() },
       anonymousOptions(visitor),
     )
   ).data;
@@ -620,17 +623,25 @@ export function liveBuyerLabel(status?: string): string {
   );
 }
 
+let creatorOnAir = false;
+/** FEAT-33 C5: lo marca cada lectura del catálogo: la creadora del link está en vivo. */
+export function rememberCreatorLive(onAir: boolean) {
+  creatorOnAir = onAir;
+}
+
 export function liveEntryContext() {
   if (typeof window === "undefined") return { channel: "LIVE" as const };
   const query = new URLSearchParams(window.location.search);
-  // FEAT-33 A12/D2: el link de asesora o creadora (…/live?a=CÓDIGO) y el formato viejo /catalogo son POWIP Link.
+  const advisorCode = query.get("a") || undefined;
+  const sellerCode = query.get("v") || undefined;
+  // FEAT-33 A12/D2: el link de asesora o creadora (…/live?a=CÓDIGO) y el formato viejo /catalogo son POWIP Link,
+  // salvo que la creadora del link esté en vivo (C5): entonces es su live, con el precio live.
+  const link = window.location.pathname.startsWith("/catalogo") || query.has("a");
   return {
     channel:
-      window.location.pathname.startsWith("/catalogo") || query.has("a")
-        ? ("WHATSAPP" as const)
-        : ("LIVE" as const),
-    advisorCode: query.get("a") || undefined,
-    sellerCode: query.get("v") || undefined,
+      link && !(creatorOnAir && (advisorCode || sellerCode)) ? ("WHATSAPP" as const) : ("LIVE" as const),
+    advisorCode,
+    sellerCode,
   };
 }
 
