@@ -648,6 +648,15 @@ function ProductCard({
   // FEAT-32 M7: el contenido es del producto (igual en todas sus variantes); sin él, como antes.
   const content = groupContent(variants);
   const title = content?.title?.trim() || display.name;
+  // Foto: la propia de la variante elegida (la de su color). Con solo el color elegido, la de una variante de ese
+  // color. Si no, la principal del contenido; sin contenido, la de siempre.
+  const chosen = Object.entries(selection).filter(([, value]) => value);
+  const variantPhoto =
+    product?.variantImageUrl ||
+    (chosen.length
+      ? variants.find((p) => p.variantImageUrl && chosen.every(([k, value]) => p.attributes?.[k] === value))
+          ?.variantImageUrl
+      : null);
   return (
     <article
       aria-label={title}
@@ -660,7 +669,7 @@ function ProductCard({
       ) : null}
       <LiveProductImage
         product={display}
-        src={content?.photos[0]}
+        src={variantPhoto || content?.photos[0]}
         className="aspect-[4/3] w-full !rounded-none"
       />
       <div className="space-y-4 p-4">

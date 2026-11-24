@@ -97,6 +97,24 @@ describe("Vitrina con el contenido del producto (FEAT-32 M7)", () => {
     expect(getPublicLiveProductContent).not.toHaveBeenCalled();
   });
 
+  it("al elegir el color se ve su foto propia; un color sin foto propia deja la principal del contenido", async () => {
+    (getPublicLive as jest.Mock).mockResolvedValue(
+      data([
+        variant({ attributes: { Color: "Crema", Talla: "S" }, variantImageUrl: "https://cdn.test/crema.jpg", content: CONTENT }),
+        variant({ variantId: "v-m", sku: "SOF-M", attributes: { Color: "Negro", Talla: "S" }, variantImageUrl: null, content: CONTENT }),
+      ]),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Solo quiero mirar primero" }));
+    const card = await screen.findByRole("article", { name: "Blusa Sofía de lino" });
+    const photo = () => within(card).getAllByRole("img")[0];
+    expect(photo()).toHaveAttribute("src", "https://cdn.test/live-1.jpg");
+    fireEvent.click(within(card).getByRole("button", { name: "Crema" }));
+    expect(photo()).toHaveAttribute("src", "https://cdn.test/crema.jpg");
+    fireEvent.click(within(card).getByRole("button", { name: "Negro" }));
+    expect(photo()).toHaveAttribute("src", "https://cdn.test/live-1.jpg");
+  });
+
   it("sin contenido (ms-products caído) se ve como antes y sin «Ver detalle»", async () => {
     (getPublicLive as jest.Mock).mockResolvedValue(data([variant({})]));
     renderPage();

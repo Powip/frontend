@@ -44,6 +44,8 @@ export interface LiveProduct {
   name: string;
   sku: string;
   imageUrl?: string | null;
+  /** FEAT-32 M7: foto PROPIA de la variante (la de su color), sin caer en la del producto. */
+  variantImageUrl?: string | null;
   variantLabel?: string | null;
   attributes?: Record<string, string>;
   regularPrice: number;

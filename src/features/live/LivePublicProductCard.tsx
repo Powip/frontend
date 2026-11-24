@@ -75,7 +75,12 @@ export default function LivePublicProductCard({
         </p>
       ) : null}
       <div className="flex gap-4">
-        <LiveProductImage product={preview} src={content?.photos[0]} className="h-24 w-24 shrink-0" />
+        {/* Con una variante elegida que tiene foto propia (la de su color) se ve esa; si no, la principal del contenido. */}
+        <LiveProductImage
+          product={preview}
+          src={product?.variantImageUrl || content?.photos[0]}
+          className="h-24 w-24 shrink-0"
+        />
         <div className="min-w-0 flex-1">
           <h2 id={`${id}-name`} className="font-bold leading-snug">
             {title}
