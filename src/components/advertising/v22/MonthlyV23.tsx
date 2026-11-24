@@ -562,7 +562,7 @@ export function MonthlyNumbersV23({
                           ).color
                         : actualSeries === "revenue"
                           ? "#0d9488"
-                          : "#7c3aed"
+                          : "#4C2FB5"
                     }
                     fillOpacity={d.date === today ? 0.45 : 1}
                   />
