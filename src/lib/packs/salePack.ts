@@ -27,9 +27,12 @@ export function packComponentsSnapshot(pack: Pick<PackView, "components">): Pack
   }));
 }
 
-/** Línea del pack ya en el carrito (no de una promo ni un regalo). */
+/** Línea del pack ya en el carrito (no de una promo, un regalo ni un pack «a elegir», que va por combinación). */
 export function findPackLine(cart: readonly CartItem[], packVariantId: string): CartItem | undefined {
-  return cart.find((line) => line.variantId === packVariantId && !line.packId && !line.isGift && (line.packComponents?.length ?? 0) > 0);
+  return cart.find(
+    (line) =>
+      line.variantId === packVariantId && !line.packId && !line.isGift && !line.choosePack && !line.packKey && (line.packComponents?.length ?? 0) > 0,
+  );
 }
 
 /**

@@ -3,13 +3,12 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { ImagePlus, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ProductThumb, SkuConflictBadge } from "@/components/catalog/CatalogBadges";
-import { uploadImage } from "@/services/uploadService";
 import { updateCatalogVariant, type CatalogVariantDetail } from "@/services/catalogProductService";
 import { apiErrorInfo, buildVariantPatch, duplicateSkuKeys, isEmptyPatch, skuKey, type VariantCodesForm } from "@/lib/catalog/catalogPayloads";
 import { formatVariantLabel } from "@/lib/variantAttributes";
@@ -72,21 +71,6 @@ export default function FichaVariantsTab({
     }
   };
 
-  const changePhoto = async (variant: CatalogVariantDetail, file: File | undefined) => {
-    if (!file) return;
-    setBusy(variant.id);
-    try {
-      const url = await uploadImage(file);
-      await updateCatalogVariant(variant.id, { images: [url, ...(variant.images ?? []).slice(1)] });
-      toast.success("Foto de la variante guardada");
-      refresh();
-    } catch (error) {
-      toast.error(apiErrorInfo(error, "No se pudo guardar la foto.").message);
-    } finally {
-      setBusy(null);
-    }
-  };
-
   if (visible.length === 0) return <p className="text-sm text-muted-foreground">Este producto no tiene variantes.</p>;
   return (
     <div className="space-y-3">
@@ -113,15 +97,7 @@ export default function FichaVariantsTab({
               return (
                 <TableRow key={variant.id} className={variant.isActive === false ? "opacity-60" : undefined}>
                   <TableCell>
-                    <div className="flex items-center gap-2">
-                      <ProductThumb src={variant.images?.[0] || productImage} name={label} />
-                      {canEdit ? (
-                        <label className="cursor-pointer text-muted-foreground hover:text-foreground" title={variant.images?.[0] ? "Cambiar foto" : "Subir foto"}>
-                          <ImagePlus className="h-4 w-4" />
-                          <input type="file" accept="image/*" className="hidden" aria-label={`Foto de ${label}`} disabled={!editable} onChange={(event) => void changePhoto(variant, event.target.files?.[0])} />
-                        </label>
-                      ) : null}
-                    </div>
+                    <ProductThumb src={variant.images?.[0] || productImage} name={label} />
                   </TableCell>
                   <TableCell className="font-medium">{label}</TableCell>
                   <TableCell className="min-w-[12rem]">
@@ -173,7 +149,7 @@ export default function FichaVariantsTab({
           </TableBody>
         </Table>
       </div>
-      <p className="text-xs text-muted-foreground">Cada variante tiene su SKU, único en tu empresa. Si la variante no tiene foto, se usa la del producto. Las opciones y los precios se cambian en «Editar opciones y precios».</p>
+      <p className="text-xs text-muted-foreground">Cada variante tiene su SKU, único en tu empresa. La foto de cada variante sale de las fotos de su color en la pestaña Contenido (sin foto propia, se ve la principal). Las opciones y los precios se cambian en «Editar opciones y precios».</p>
     </div>
   );
 }

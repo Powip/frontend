@@ -1,5 +1,6 @@
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
+import type { PriceRule } from "@/lib/catalog/productChannels";
 
 /**
  * FEAT-24 H9 (H9-D6) — listas de precios de ms-products (JWT, empresa del token). Leer: cualquiera;
@@ -32,6 +33,19 @@ export interface PriceListItem {
   price: number | null;
   compareAtPrice: number | null;
   effectivePrice: number;
+  /**
+   * FEAT-32 M2 — solo en la lista de un canal con regla (POWIP CRM, Catálogo web): el canal del producto en la
+   * tienda, su regla, el precio de la tienda y lo que da la regla (`null` si es «igual», desactivado o ≤ 0).
+   */
+  channel?: PriceListChannelCell;
+}
+
+export interface PriceListChannelCell {
+  active: boolean;
+  rule: PriceRule;
+  ruleLabel: string;
+  storePrice: number;
+  rulePrice: number | null;
 }
 
 export interface PriceListItemsPage {

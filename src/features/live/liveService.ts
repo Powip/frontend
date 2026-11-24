@@ -7,6 +7,7 @@ import type {
   LiveConsoleData,
   LiveCustomer,
   LiveProduct,
+  LiveProductContentDetail,
   LivePublicData,
   LivePurchaseInput,
   LiveQuote,
@@ -112,6 +113,20 @@ export async function updateLiveProduct(
     )
   ).data;
 }
+/**
+ * FEAT-32 M7 — qué variantes de un producto están publicadas en el live de la tienda (ficha › Canales). JWT;
+ * 403 si el rol no lee Live o la tienda no es de la empresa (la ficha muestra entonces «Se maneja en Live»).
+ */
+export async function getLiveProductsStatus(storeId: string, variantIds: string[], signal?: AbortSignal) {
+  const { data } = await axiosAuth.post<{ enabledVariantIds: string[] }>(
+    `${adminPath(storeId)}/products/status`,
+    { variantIds: variantIds.slice(0, 500) },
+    { signal },
+  );
+  if (!data || !Array.isArray(data.enabledVariantIds))
+    throw new Error("No se pudo leer el estado del live.");
+  return data;
+}
 export async function releaseLiveReservation(storeId: string, id: string) {
   await axiosAuth.post(`${adminPath(storeId)}/reservations/${encodeURIComponent(id)}/release`, {});
 }
@@ -140,6 +155,27 @@ export async function getPublicLive(storeId: string, visitor: string, signal?: A
       ...(signal ? { signal } : {}),
       params: { channel: liveEntryContext().channel },
     })
+  ).data;
+}
+/**
+ * FEAT-32 M7 — detalle del producto en la vitrina (fotos, descripciones y características), al abrir «Ver
+ * detalle»; nunca en el polling. 404 si no está en la vitrina, 503 si ms-products no responde.
+ */
+export async function getPublicLiveProductContent(
+  storeId: string,
+  visitor: string,
+  productId: string,
+  signal?: AbortSignal,
+) {
+  return (
+    await axios.get<LiveProductContentDetail>(
+      `${publicPath(storeId)}/products/${encodeURIComponent(productId)}/content`,
+      {
+        ...anonymousOptions(visitor),
+        ...(signal ? { signal } : {}),
+        params: { channel: liveEntryContext().channel },
+      },
+    )
   ).data;
 }
 export async function reserveLiveProduct(
