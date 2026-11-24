@@ -150,11 +150,11 @@ export async function sendConversationTemplate(
 
 /** Conteos de los indicadores de la Bandeja. */
 export async function getInboxSummary(storeId?: string): Promise<InboxSummary> {
-  return (
-    await axiosAuth.get<InboxSummary>(`${BASE}/inbox/summary`, {
-      params: storeId ? { storeId } : undefined,
-    })
-  ).data;
+  const url = `${BASE}/inbox/summary`;
+  const res = storeId
+    ? await axiosAuth.get<InboxSummary>(url, { params: { storeId } })
+    : await axiosAuth.get<InboxSummary>(url);
+  return res.data;
 }
 
 /** Nivel del usuario en el CRM y tiendas activas de su empresa. */
