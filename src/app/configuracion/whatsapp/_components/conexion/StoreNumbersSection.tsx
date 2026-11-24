@@ -17,7 +17,7 @@ const UNKNOWN_LABELS = {
   forbidden: "Sin permiso para ver el estado",
 } as const;
 
-const BADGE_COLORS = ["#7C3AED", "#0891B2", "#027778", "#DB2777", "#EA580C", "#4F46E5"];
+const BADGE_COLORS = ["#4C2FB5", "#0891B2", "#027778", "#DB2777", "#EA580C", "#4F46E5"];
 
 function badgeColor(storeId: string) {
   let hash = 0;
