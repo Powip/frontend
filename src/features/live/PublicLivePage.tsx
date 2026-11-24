@@ -1,5 +1,6 @@
 "use client";
 import { isLiveReadDenied } from "./liveService";
+import { LiveGiftBanner, LiveVolumeHint, liveVolumeFor } from "./LivePromos";
 import { isValidMobilePhone, normalizePhone } from "@/lib/phone";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -37,7 +38,9 @@ import type {
   LiveDelivery,
   LivePurchaseInput,
   LiveProduct,
+  LivePromoOffer,
   LivePublicData,
+  LiveReservation,
 } from "./types";
 // FEAT-33 B5: todo color sale de las variables de la apariencia (`liveAppearanceStyle`).
 const cta =
@@ -242,10 +245,14 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
   }
   const reservations =
     data?.reservations.filter(
-      (r) => ["ACTIVE", "PENDING"].includes(r.status) && !r.checkoutId && !r.reviewHold,
+      (r) => ["ACTIVE", "PENDING"].includes(r.status) && !r.checkoutId && !r.reviewHold && !r.isGift,
     ) || [];
   const units = reservations.reduce((n, r) => n + r.quantity, 0),
-    subtotal = reservations.reduce((n, r) => n + r.quantity * r.unitPrice, 0);
+    gross = reservations.reduce((n, r) => n + r.quantity * r.unitPrice, 0);
+  // FEAT-33 L7b: el volumen del live baja el total del carrito (lo calcula el servidor por apartado).
+  const cartPromos = data?.cartPromos || null;
+  const promoDiscount = cartPromos?.discount || 0;
+  const subtotal = Math.round((gross - promoDiscount) * 100) / 100;
   const timer = reservations.find((r) => r.expiresAt) || reservations[0];
   const groups = new Map<string, LiveProduct[]>();
   for (const p of data?.products || [])
@@ -532,11 +539,18 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                 </p>
               </div>
             ) : (
+              <>
+              <LiveGiftBanner promos={data?.promos} cart={cartPromos} />
               <div className="grid gap-3.5 px-4 pt-3.5">
                 {grouped.map((variants) => (
                   <ProductCard
                     key={`${storeId}/${variants[0].productId || variants[0].variantId}`}
                     variants={variants}
+                    volume={liveVolumeFor(
+                      data?.promos,
+                      variants.map((p) => p.variantId),
+                    )}
+                    reservations={reservations}
                     featured={variants.some((p) => p.variantId === data?.session?.pinnedVariantId)}
                     busy={busy}
                     maxCart={
@@ -550,6 +564,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                   />
                 ))}
               </div>
+              </>
             )}
             {data && !closed && !grouped.length ? (
               <p className="px-4 py-10 text-center text-[var(--b-mut)]">
@@ -618,6 +633,11 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                   ) : null}
                   <div className="min-w-0 flex-1">
                     <p className="font-semibold">{r.productName || r.name}</p>
+                    {cartPromos?.lines.find((line) => line.reservationId === r.id) ? (
+                      <span className="mt-0.5 inline-block rounded-md bg-[var(--acc-soft)] px-[7px] py-px text-[11.5px] font-bold text-[var(--acc-tx)]">
+                        {`📦 Precio pack: ${cartPromos.lines.find((line) => line.reservationId === r.id)!.promoLabel}`}
+                      </span>
+                    ) : null}
                     <p className="text-sm text-[var(--b-mut)]">
                       {r.variantLabel || product?.variantLabel} · {liveMoney(r.unitPrice)}
                     </p>
@@ -663,6 +683,23 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
                 </article>
               );
             })}
+            {cartPromos?.gift ? (
+              <article
+                aria-label={`Regalo: ${cartPromos.gift.giftName}`}
+                className="flex items-center gap-3 border-b border-[var(--b-line)] py-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">{cartPromos.gift.giftName}</p>
+                  <span className="mt-0.5 inline-block rounded-md bg-[var(--acc-soft)] px-[7px] py-px text-[11.5px] font-bold text-[var(--acc-tx)]">
+                    🎁 Regalo
+                  </span>
+                </div>
+                <b className="shrink-0">{liveMoney(0)}</b>
+              </article>
+            ) : null}
+            {promoDiscount > 0 ? (
+              <p className="text-sm font-semibold text-[var(--acc-tx)]">{`Promo −${liveMoney(promoDiscount)}`}</p>
+            ) : null}
             <p className="text-xl font-bold">Productos · {liveMoney(subtotal)}</p>
             <button
               className={cta}
@@ -688,6 +725,7 @@ export default function PublicLivePage({ storeId }: { storeId: string }) {
           draft={deliveryDraft}
           onDraft={setDeliveryDraft}
           reservations={reservations}
+          promoDiscount={promoDiscount}
           options={data.deliveryOptions || []}
           methods={data.paymentMethods || []}
           onClose={() => setPay(false)}
@@ -766,7 +804,12 @@ function ProductCard({
   minutes,
   onSeparate,
   onDetail,
+  volume,
+  reservations = [],
 }: {
+  /** FEAT-33 L7b: volumen del live que incluye a este producto. */
+  volume?: LivePromoOffer["volumes"][number] | null;
+  reservations?: LiveReservation[];
   variants: LiveProduct[];
   featured: boolean;
   busy: boolean;
@@ -872,6 +915,7 @@ function ProductCard({
             <s className="text-[var(--b-mut)]">{liveMoney(display.regularPrice)}</s>
           ) : null}
         </p>
+        {volume ? <LiveVolumeHint volume={volume} reservations={reservations} /> : null}
         {keys.map((k, i) => (
           <fieldset key={k}>
             <legend className="mb-2 mt-3 text-[13px] text-[var(--b-mut)]">

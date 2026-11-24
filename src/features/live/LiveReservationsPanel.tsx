@@ -207,6 +207,11 @@ export default function LiveReservationsPanel({
                           · {item.variantLabel}
                         </span>
                       ) : null}
+                      {item.isGift ? (
+                        <span className="ml-1 font-medium text-teal-700">
+                          · 🎁 Regalo
+                        </span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

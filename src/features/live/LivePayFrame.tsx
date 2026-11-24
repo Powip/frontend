@@ -118,11 +118,17 @@ export function LivePayTotal({
   products,
   shipping,
   total,
+  discount,
+  gift,
 }: {
   units?: number | null;
   products: number;
   shipping: string;
   total: string;
+  /** FEAT-33 L7b: lo que bajó el volumen del live (ya restado en `products`). */
+  discount?: number;
+  /** FEAT-33 L7b: nombre del regalo que va gratis. */
+  gift?: string | null;
 }) {
   return (
     <div className="flex items-center justify-between gap-3">
@@ -131,6 +137,10 @@ export function LivePayTotal({
           {units ? `${units} prenda${units === 1 ? "" : "s"} · productos` : "Productos"}{" "}
           {liveMoney(products)}
         </small>
+        {discount && discount > 0 ? (
+          <small className="block text-xs font-semibold text-[var(--acc-tx)]">{`Promo −${liveMoney(discount)}`}</small>
+        ) : null}
+        {gift ? <small className="block text-xs font-semibold text-[var(--acc-tx)]">{`🎁 Regalo: ${gift}`}</small> : null}
         <small className="block text-xs">{shipping}</small>
       </div>
       <b className="shrink-0 text-2xl">{total}</b>

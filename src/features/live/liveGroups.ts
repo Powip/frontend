@@ -117,7 +117,8 @@ export function groupReservations(
       timer: null,
     };
     group.items.push(item);
-    group.units += item.quantity;
+    // FEAT-33 L7b: el regalo de una promo del live no es una unidad comprada (vale S/ 0).
+    if (!item.isGift) group.units += item.quantity;
     group.total += item.quantity * item.unitPrice;
     if (
       item.expiresAt &&

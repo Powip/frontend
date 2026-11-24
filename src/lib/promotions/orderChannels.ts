@@ -25,8 +25,12 @@ export const POWIP_PRICE_CHANNELS = [
 /** FEAT-32 M4 — canal POWIP Live: no entra en las campañas (tiene su precio live), sí en volumen y regalo (spec §6.15). */
 export const POWIP_LIVE_CHANNEL = { value: "POWIP_LIVE", label: "POWIP Live" } as const;
 
-/** FEAT-32 M7 (decisión de Octa) — aviso al marcar POWIP Live en una promoción: en el live todavía no aplican. */
-export const LIVE_NOT_YET = "POWIP Live todavía no aplica promociones: el live usa su precio live.";
+/**
+ * FEAT-33 L7b (decisión C7-5 de Octa) — aviso al marcar POWIP Live en volumen o regalo: aplica sobre el precio live,
+ * no en /catalogo ni en los links de vendedoras. Reemplaza el «todavía no aplica» de FEAT-32 M7.
+ */
+export const LIVE_PROMO_NOTE =
+  "En POWIP Live se aplica sobre el precio live. No aplica en el catálogo web del live ni en los links de vendedoras.";
 
 /**
  * FEAT-32 M4 (spec §6.19) — una sola lista de canales: la misma que la campaña (canales de POWIP y del pedido)

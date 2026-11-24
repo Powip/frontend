@@ -44,3 +44,19 @@ test("the order page gives its Yape dialog the catalog colors (FEAT-33 B5)", asy
   unmount();
   expect(document.body.style.getPropertyValue("--acc")).toBe("");
 });
+
+test("the order page marks the gift of a Live promo (FEAT-33 L7b)", async () => {
+  (axios.get as jest.Mock).mockResolvedValue({
+    data: {
+      ...tracking("POWIP_LIVE"),
+      items: [
+        { productName: "Polo", quantity: 2, unitPrice: 25, subtotal: 30 },
+        { productName: "Medias", quantity: 1, unitPrice: 0, subtotal: 0, isGift: true },
+      ],
+    },
+  });
+  render(<LiveOrderTracking token={"A".repeat(43)} />);
+  await screen.findByText("ORD-153866");
+  expect(screen.getByText("1 × Medias").parentElement).toHaveTextContent("🎁 Regalo");
+  expect(screen.getByText("2 × Polo").parentElement).not.toHaveTextContent("Regalo");
+});

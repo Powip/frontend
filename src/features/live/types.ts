@@ -107,6 +107,9 @@ export interface LiveReservation {
   ownerId?: string | null;
   createdAt: string;
   type: "TIMED" | "ACCUMULATED";
+  /** FEAT-33 L7b: regalo de una promo del live (a S/ 0; no cuenta en los topes). */
+  isGift?: boolean;
+  promoId?: string | null;
 }
 export interface LiveTrustedCustomer extends LiveCustomer {
   id: string;
@@ -177,8 +180,47 @@ export interface LivePublicOrder {
     unitPrice: number;
   }[];
 }
+/** FEAT-33 L7b: volumen y regalo de POWIP Live que ve cada producto. */
+export interface LivePromoOffer {
+  volumes: Array<{
+    id: string;
+    name: string;
+    minQty: number;
+    maxQty: number | null;
+    packPrice: number;
+    variantIds: string[];
+  }>;
+  gifts: Array<{ id: string; name: string; minAmount: number | null; giftName: string }>;
+}
+/** FEAT-33 L7b: el carrito (apartados sin pago) con el motor de promociones. */
+export interface LiveCartPromos {
+  discount: number;
+  lines: Array<{ reservationId: string; promoDiscount: number; lineTotal: number; promoId: string; promoLabel: string }>;
+  gift: { promoId: string; name: string; giftName: string } | null;
+  suggestions: Array<
+    | { kind: "VOLUME"; promoId: string; missing: number; text: string }
+    | { kind: "GIFT"; promoId: string; missingAmount: number; text: string }
+  >;
+}
+/** Línea de la cotización; con promos del live trae el neto, el descuento y el regalo a S/ 0. */
+export interface LiveQuoteItem {
+  variantId: string;
+  name: string;
+  sku: string;
+  quantity: number;
+  unitPrice: number;
+  regularPrice?: number;
+  lineTotal?: number;
+  promoDiscount?: number;
+  promoId?: string | null;
+  promoLabel?: string | null;
+  isGift?: boolean;
+}
 export interface LivePublicData {
   channel?: "LIVE" | "WHATSAPP";
+  /** FEAT-33 L7b: solo en POWIP Live (null en /catalogo y links). */
+  promos?: LivePromoOffer | null;
+  cartPromos?: LiveCartPromos | null;
   /** FEAT-33 C5: la creadora del link está en vivo (su live, con precios live). */
   creatorLive?: { name: string } | null;
   deliveryOptions?: StoreDeliveryOption[];
@@ -214,7 +256,7 @@ export interface LivePurchaseInput extends LiveQuoteInput {
 export interface LiveQuote {
   quoteId: string;
   expiresAt: string;
-  items?: { variantId: string; name: string; sku: string; quantity: number; unitPrice: number }[];
+  items?: LiveQuoteItem[];
   serverNow?: string;
   subtotal: number;
   shipping: number;

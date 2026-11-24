@@ -30,6 +30,8 @@ interface Tracking {
     unitPrice: number;
     subtotal: number;
     attributes?: Record<string, unknown> | null;
+    /** FEAT-33 L7b: regalo de una promo del live. */
+    isGift?: boolean;
   }[];
   totals: { grandTotal: number; totalPaid: number; pendingAmount: number };
   paymentReviewAmount: number;
@@ -244,6 +246,9 @@ export default function LiveOrderTracking({ token }: { token: string }) {
                       <span className="block">
                         {item.quantity} × {item.productName}
                       </span>
+                      {item.isGift ? (
+                        <small className="block text-xs font-semibold text-[var(--acc-tx)]">🎁 Regalo</small>
+                      ) : null}
                       {variantText(item.attributes) ? (
                         <small className="block text-xs text-[var(--b-mut)]">{variantText(item.attributes)}</small>
                       ) : null}
