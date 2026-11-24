@@ -75,6 +75,10 @@ interface CampaignsSectionProps {
   getSegmentCount: (values: CampaignValues) => ResourceState<WhatsAppSegmentCount>;
   now?: () => Date;
   onRetry?: () => void;
+  /** C-21: crear o editar. Devuelve `true` si se guardó, para cerrar la ventana. */
+  onSaveCampaign?: (campaign: WhatsAppCampaign | null, values: CampaignValues) => Promise<boolean>;
+  onPauseCampaign?: (campaign: WhatsAppCampaign) => void;
+  onResumeCampaign?: (campaign: WhatsAppCampaign) => void;
 }
 
 function describeSegment(campaign: WhatsAppCampaign, catalogs: WhatsAppScopeCatalogs): string {
@@ -130,6 +134,9 @@ export function CampaignsSection({
   getSegmentCount,
   now,
   onRetry,
+  onSaveCampaign,
+  onPauseCampaign,
+  onResumeCampaign,
 }: CampaignsSectionProps) {
   const sessionCounter = useRef(0);
   const [dialog, setDialog] = useState<{ key: number; mode: CampaignDialogMode } | null>(null);
@@ -214,10 +221,12 @@ export function CampaignsSection({
                         <>
                           <BlockedActionButton
                             className={waButton({ variant: "ghost", size: "icon" })}
-                            blocked={!canPersist}
+                            blocked={!canPersist || !(paused ? onResumeCampaign : onPauseCampaign)}
                             blockedReasonId={CAMPAIGNS_NOTE_ID}
                             aria-label={`${paused ? "Reanudar" : "Pausar"} ${campaign.name}`}
-                            onClick={() => undefined}
+                            onClick={() =>
+                              paused ? onResumeCampaign?.(campaign) : onPauseCampaign?.(campaign)
+                            }
                           >
                             {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
                           </BlockedActionButton>
@@ -250,6 +259,14 @@ export function CampaignsSection({
           getSegmentCount={getSegmentCount}
           now={now}
           onClose={() => setDialog(null)}
+          onSave={
+            onSaveCampaign
+              ? async (values) => {
+                  const campaign = dialog.mode.kind === "edit" ? dialog.mode.campaign : null;
+                  if (await onSaveCampaign(campaign, values)) setDialog(null);
+                }
+              : undefined
+          }
         />
       )}
       <CampaignResultsDialog campaign={resultsCampaign} onClose={() => setResultsCampaign(null)} />

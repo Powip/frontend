@@ -20,8 +20,11 @@ import {
   combineBlockReasons,
   getPermissionBlockReason,
 } from "@/features/whatsapp/utils/whatsapp-permissions.util";
+import { AlertsSection } from "./AlertsSection";
+import { AuditLogSection } from "./AuditLogSection";
 import { ForeignNumbersSection } from "./ForeignNumbersSection";
 import { OptOutsSection } from "./OptOutsSection";
+import { PermissionsSection } from "./PermissionsSection";
 import { SETTINGS_PENDING_REASON, type SettingsMutations } from "./settings-types";
 
 export interface SettingsViewProps {
@@ -50,6 +53,7 @@ export interface SettingsViewProps {
 export function SettingsView({
   stores,
   storeContext,
+  now,
   canManage,
   effectivePermissions,
   protection,
@@ -57,7 +61,15 @@ export function SettingsView({
   optOutSearch,
   onOptOutSearchChange,
   onOptOutsPageChange,
+  alertSettings,
+  recentAlerts,
+  audit,
+  auditFilters,
+  onAuditFiltersChange,
+  onAuditPageChange,
+  permissionMatrix,
   mutations,
+  onOpenTab,
   onRetry,
 }: SettingsViewProps) {
   const pending = (handler: unknown) => (handler ? null : SETTINGS_PENDING_REASON);
@@ -72,7 +84,7 @@ export function SettingsView({
       <p className="m-0 flex items-center gap-2 text-xs text-wa-muted">
         <Store className="size-4" aria-hidden="true" />
         {storeContext
-          ? `Bajas y números extranjeros de la tienda ${storeContext.name}.`
+          ? `Bajas automáticas, alertas y números extranjeros de la tienda ${storeContext.name}.`
           : "Elige una tienda en POWIP para ver su configuración."}
       </p>
       <OptOutsSection
@@ -96,17 +108,47 @@ export function SettingsView({
         )}
         mutations={mutations}
       />
-      {/* Alertas de salud, registro de cambios y permisos quedan fuera hasta que
-          POWIP tenga dónde guardarlos: no se muestran como relleno. */}
-      <ForeignNumbersSection
-        protection={protection}
+      <AlertsSection
+        settings={alertSettings}
+        recentAlerts={recentAlerts}
         storeKey={storeKey}
+        now={now}
         canEdit={canManage}
         blockedReason={combineBlockReasons(
-          pending(mutations.saveProtection),
+          pending(mutations.saveAlerts),
           getPermissionBlockReason(effectivePermissions, WHATSAPP_PERMISSION_CODES.RULES),
         )}
-        onSave={mutations.saveProtection}
+        onSave={mutations.saveAlerts}
+        onRetry={onRetry}
+        onOpenTab={onOpenTab}
+      />
+      <div className="grid grid-cols-1 items-start gap-5 min-[900px]:grid-cols-2">
+        <ForeignNumbersSection
+          protection={protection}
+          storeKey={storeKey}
+          canEdit={canManage}
+          blockedReason={combineBlockReasons(
+            pending(mutations.saveProtection),
+            getPermissionBlockReason(effectivePermissions, WHATSAPP_PERMISSION_CODES.RULES),
+          )}
+          onSave={mutations.saveProtection}
+          onRetry={onRetry}
+        />
+        <AuditLogSection
+          audit={audit}
+          filters={auditFilters}
+          onFiltersChange={onAuditFiltersChange}
+          onPageChange={onAuditPageChange}
+          onRetry={onRetry}
+          paginationBlockedReason={SETTINGS_PENDING_REASON}
+        />
+      </div>
+      <PermissionsSection
+        effective={effectivePermissions}
+        matrix={permissionMatrix}
+        canEdit={canManage}
+        blockedReason={pending(mutations.savePermissions)}
+        onSave={mutations.savePermissions}
         onRetry={onRetry}
       />
     </div>

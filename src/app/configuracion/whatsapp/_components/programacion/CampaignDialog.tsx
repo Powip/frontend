@@ -95,7 +95,7 @@ interface CampaignDialogProps {
   getSegmentCount: (values: CampaignValues) => ResourceState<WhatsAppSegmentCount>;
   now?: () => Date;
   onClose: () => void;
-  onSave?: (values: CampaignValues) => void;
+  onSave?: (values: CampaignValues) => void | Promise<void>;
 }
 
 function SelectField({

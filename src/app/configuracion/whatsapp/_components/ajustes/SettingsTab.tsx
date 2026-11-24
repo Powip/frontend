@@ -11,6 +11,16 @@ import {
 } from "@/features/whatsapp/api/optouts.api";
 import { getWhatsAppSettings, updateWhatsAppSettings } from "@/features/whatsapp/api/settings.api";
 import {
+  getMyWhatsAppPermissions,
+  getWhatsAppAlertSettings,
+  getWhatsAppPermissionSettings,
+  grantedCodes,
+  listWhatsAppAudit,
+  listWhatsAppRecentAlerts,
+  updateWhatsAppAlertSettings,
+  updateWhatsAppPermissionSettings,
+} from "@/features/whatsapp/api/settings-ops.api";
+import {
   WHATSAPP_OPT_OUT_ORIGINS,
   WHATSAPP_PERMISSION_CODES,
   type WhatsAppOptOutOrigin,
@@ -18,12 +28,20 @@ import {
 } from "@/features/whatsapp/enums/whatsapp.enums";
 import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp/models/resource-state.model";
 import type {
+  WhatsAppAlertSettings,
   WhatsAppAuditFilters,
+  WhatsAppAuditPage,
+  WhatsAppPermissionMatrix,
+  WhatsAppPermissionSettings,
+  WhatsAppRecentAlert,
   WhatsAppOptOut,
   WhatsAppOptOutPage,
   WhatsAppProtectionSettings,
 } from "@/features/whatsapp/models/settings-tab.model";
-import type { ProtectionSettingsValues } from "@/features/whatsapp/schemas/settings-tab.schema";
+import type {
+  AlertSettingsValues,
+  ProtectionSettingsValues,
+} from "@/features/whatsapp/schemas/settings-tab.schema";
 import { resolveEffectivePermissions } from "@/features/whatsapp/utils/whatsapp-permissions.util";
 import type { WhatsAppNavigate } from "@/features/whatsapp/utils/whatsapp-tab.util";
 import { SettingsView } from "./SettingsView";
@@ -64,17 +82,22 @@ export function SettingsTab({ canManage, search, onNavigate }: SettingsTabProps)
   const storeNames = useMemo(() => new Map(stores.map((s) => [s.id, s.name])), [stores]);
   const storeContext = stores.find((store) => store.id === selectedStoreId) ?? stores[0] ?? null;
   const storeId = storeContext?.id ?? null;
-  // La pestaña solo la gestionan administradores (el backend también lo exige):
-  // con acceso de gestión se habilitan bajas y números extranjeros.
-  const effectivePermissions = useMemo(
-    () =>
-      resolveEffectivePermissions(
-        canManage ? [WHATSAPP_PERMISSION_CODES.OPT_OUTS, WHATSAPP_PERMISSION_CODES.RULES] : [],
-      ),
-    [canManage],
-  );
+  // Permisos reales del usuario (C-28 · /wa/permissions/me). Mientras cargan, la
+  // pestaña solo la gestionan administradores (el backend también lo exige).
+  const myPermissionsQuery = useQuery({
+    queryKey: ["whatsapp", "permissions", "me"],
+    queryFn: getMyWhatsAppPermissions,
+  });
+  const effectivePermissions = useMemo(() => {
+    const granted = grantedCodes(myPermissionsQuery.data);
+    if (granted) return resolveEffectivePermissions(granted);
+    return resolveEffectivePermissions(
+      canManage ? [WHATSAPP_PERMISSION_CODES.OPT_OUTS, WHATSAPP_PERMISSION_CODES.RULES] : [],
+    );
+  }, [canManage, myPermissionsQuery.data]);
   const [optOutSearch, setOptOutSearch] = useState("");
   const [optOutsPage, setOptOutsPage] = useState(1);
+  const [auditPage, setAuditPage] = useState(1);
   const [auditFilters, setAuditFilters] = useState<WhatsAppAuditFilters>({
     entity: null,
     userId: null,
@@ -94,6 +117,28 @@ export function SettingsTab({ canManage, search, onNavigate }: SettingsTabProps)
         pageSize: OPT_OUTS_PAGE_SIZE,
       }),
     enabled: !!storeId,
+  });
+
+  const alertsKey = ["whatsapp", "alerts", storeId ?? "none"] as const;
+  const permissionsKey = ["whatsapp", "permissions", "matrix"] as const;
+
+  const alertSettingsQuery = useQuery({
+    queryKey: [...alertsKey, "rules"],
+    queryFn: () => getWhatsAppAlertSettings(storeId as string),
+    enabled: !!storeId,
+  });
+  const recentAlertsQuery = useQuery({
+    queryKey: [...alertsKey, "recent"],
+    queryFn: () => listWhatsAppRecentAlerts(storeId as string),
+    enabled: !!storeId,
+  });
+  const auditQuery = useQuery({
+    queryKey: ["whatsapp", "audit", storeId ?? "none", auditFilters.entity, auditFilters.userId, auditPage],
+    queryFn: () => listWhatsAppAudit({ storeId, filters: auditFilters, page: auditPage, pageSize: 20 }),
+  });
+  const permissionsQuery = useQuery({
+    queryKey: permissionsKey,
+    queryFn: getWhatsAppPermissionSettings,
   });
 
   const settingsQuery = useQuery({
@@ -143,6 +188,32 @@ export function SettingsTab({ canManage, search, onNavigate }: SettingsTabProps)
     return { kind: "loading" };
   }, [storeId, settingsQuery.data, settingsQuery.isError]);
 
+  const alertSettings: ResourceState<WhatsAppAlertSettings | null> = useMemo(() => {
+    if (!storeId) return PENDING;
+    if (alertSettingsQuery.data) return { kind: "ready", data: alertSettingsQuery.data };
+    if (alertSettingsQuery.isError) return { kind: "error", message: "No se pudieron cargar las alertas." };
+    return { kind: "loading" };
+  }, [storeId, alertSettingsQuery.data, alertSettingsQuery.isError]);
+
+  const recentAlerts: ResourceState<WhatsAppRecentAlert[]> = useMemo(() => {
+    if (!storeId) return PENDING;
+    if (recentAlertsQuery.data) return { kind: "ready", data: recentAlertsQuery.data };
+    if (recentAlertsQuery.isError) return { kind: "error", message: "No se pudieron cargar las alertas recientes." };
+    return { kind: "loading" };
+  }, [storeId, recentAlertsQuery.data, recentAlertsQuery.isError]);
+
+  const audit: ResourceState<WhatsAppAuditPage> = useMemo(() => {
+    if (auditQuery.data) return { kind: "ready", data: auditQuery.data };
+    if (auditQuery.isError) return { kind: "error", message: "No se pudo cargar la auditoría." };
+    return { kind: "loading" };
+  }, [auditQuery.data, auditQuery.isError]);
+
+  const permissionMatrix: ResourceState<WhatsAppPermissionSettings> = useMemo(() => {
+    if (permissionsQuery.data) return { kind: "ready", data: permissionsQuery.data };
+    if (permissionsQuery.isError) return { kind: "error", message: "No se pudieron cargar los permisos." };
+    return { kind: "loading" };
+  }, [permissionsQuery.data, permissionsQuery.isError]);
+
   const changeOptOutSearch = (value: string) => {
     setOptOutSearch(value);
     setOptOutsPage(1);
@@ -174,6 +245,26 @@ export function SettingsTab({ canManage, search, onNavigate }: SettingsTabProps)
         });
         await queryClient.invalidateQueries({ queryKey: optOutsKey });
       },
+      saveAlerts: async (values: AlertSettingsValues) => {
+        const current = alertSettingsQuery.data ?? (await getWhatsAppAlertSettings(storeId));
+        await updateWhatsAppAlertSettings(storeId, current.version, {
+          rules: values.rules.map((rule) => ({
+            type: rule.type,
+            enabled: rule.enabled,
+            threshold: rule.threshold.trim() === "" ? null : Number.parseInt(rule.threshold, 10),
+          })),
+          recipients: values.recipients,
+          pauseCampaignsOnRed: values.pauseCampaignsOnRed,
+        });
+        await queryClient.invalidateQueries({ queryKey: alertsKey });
+        await queryClient.invalidateQueries({ queryKey: ["whatsapp", "audit"] });
+      },
+      savePermissions: async (matrix: WhatsAppPermissionMatrix) => {
+        const current = permissionsQuery.data ?? (await getWhatsAppPermissionSettings());
+        await updateWhatsAppPermissionSettings(current.version, matrix);
+        await queryClient.invalidateQueries({ queryKey: ["whatsapp", "permissions"] });
+        await queryClient.invalidateQueries({ queryKey: ["whatsapp", "audit"] });
+      },
       reactivateOptOut: async ({ optOutId, note }) => {
         const version = optOutVersions.get(optOutId);
         if (version === undefined) throw new Error("Baja no encontrada. Recarga la lista.");
@@ -181,9 +272,16 @@ export function SettingsTab({ canManage, search, onNavigate }: SettingsTabProps)
         await queryClient.invalidateQueries({ queryKey: optOutsKey });
       },
     };
-    // optOutsKey y settingsKey se derivan de storeId.
+    // optOutsKey, settingsKey y alertsKey se derivan de storeId.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storeId, settingsQuery.data, optOutVersions, queryClient]);
+  }, [
+    storeId,
+    settingsQuery.data,
+    alertSettingsQuery.data,
+    permissionsQuery.data,
+    optOutVersions,
+    queryClient,
+  ]);
 
   const openTab = (tab: WhatsAppTab) => {
     const params = new URLSearchParams(search);
@@ -194,6 +292,10 @@ export function SettingsTab({ canManage, search, onNavigate }: SettingsTabProps)
   const retry = () => {
     void optOutsQuery.refetch();
     void settingsQuery.refetch();
+    void alertSettingsQuery.refetch();
+    void recentAlertsQuery.refetch();
+    void auditQuery.refetch();
+    void permissionsQuery.refetch();
   };
 
   return (
@@ -208,12 +310,16 @@ export function SettingsTab({ canManage, search, onNavigate }: SettingsTabProps)
       optOutSearch={optOutSearch}
       onOptOutSearchChange={changeOptOutSearch}
       onOptOutsPageChange={setOptOutsPage}
-      alertSettings={PENDING}
-      recentAlerts={PENDING}
-      audit={PENDING}
+      alertSettings={alertSettings}
+      recentAlerts={recentAlerts}
+      audit={audit}
       auditFilters={auditFilters}
-      onAuditFiltersChange={setAuditFilters}
-      permissionMatrix={PENDING}
+      onAuditFiltersChange={(filters) => {
+        setAuditFilters(filters);
+        setAuditPage(1);
+      }}
+      onAuditPageChange={setAuditPage}
+      permissionMatrix={permissionMatrix}
       mutations={mutations}
       onOpenTab={openTab}
       onRetry={retry}

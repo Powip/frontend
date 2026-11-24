@@ -24,6 +24,16 @@ describe("registro de contratos", () => {
   it("los contratos del módulo WhatsApp confirmados tienen evidencia, los demás están indisponibles", () => {
     const whatsappContracts = new Set(WHATSAPP_TAB_DEFINITIONS.flatMap((tab) => tab.contracts));
     const confirmedContracts = new Set([
+      "templateCatalog",
+      "campaigns",
+      "quickReplies",
+      "threads",
+      "inAppNotifications",
+      "permissions",
+      "auditLog",
+      "alerts",
+      "contingency",
+      "usageAndPricing",
       "templates",
       "rules",
       "settings",
@@ -51,6 +61,7 @@ describe("registro de contratos", () => {
       "conexion",
       "plantillas",
       "programacion",
+      "conversaciones",
       "historial",
       "ajustes",
     ]);

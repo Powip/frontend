@@ -76,6 +76,28 @@ jest.mock("@/features/whatsapp/api/queue.api", () => ({
   limaTodayStartIso: jest.fn(() => "2026-10-30T00:00:00Z"),
 }));
 
+jest.mock("@/features/whatsapp/api/history.api", () => ({
+  getWhatsAppHistory: jest.fn().mockResolvedValue({
+    items: [],
+    page: 1,
+    pageSize: 20,
+    total: 0,
+    hasMore: false,
+  }),
+  getWhatsAppHistoryMetrics: jest.fn().mockResolvedValue({
+    sent: 0,
+    delivered: 0,
+    read: 0,
+    trackingOpened: 0,
+    notSent: 0,
+    notSentBreakdown: [],
+    assisted: 0,
+    computedAt: new Date("2026-10-30T00:00:00Z"),
+  }),
+  downloadWhatsAppHistory: jest.fn(),
+  resendWhatsAppHistoryMessage: jest.fn(),
+}));
+
 jest.mock("@/features/whatsapp/api/optouts.api", () => ({
   listWhatsAppOptOuts: jest.fn().mockResolvedValue({
     items: [],
@@ -146,7 +168,7 @@ beforeEach(() => {
 });
 
 describe("WhatsAppSettingsPage", () => {
-  it("muestra el título y las cinco pestañas", async () => {
+  it("muestra el título y las seis pestañas", async () => {
     await renderPage();
     expect(
       screen.getByRole("heading", { level: 1, name: "Notificaciones por WhatsApp" }),
@@ -155,14 +177,18 @@ describe("WhatsAppSettingsPage", () => {
       "Conexión",
       "Plantillas",
       "Programación",
+      "Conversaciones",
       "Historial de envíos",
-      "Bajas y números extranjeros",
+      "Bajas, alertas y permisos",
     ]);
   });
 
-  it("la pestaña conversaciones (fuera del menú) vuelve a Conexión", async () => {
+  it("la pestaña conversaciones abre la bandeja de respuestas", async () => {
     await renderPage("tab=conversaciones");
-    expect(selectedTabName()).toBe("Conexión");
+    expect(selectedTabName()).toBe("Conversaciones");
+    expect(
+      screen.getByRole("searchbox", { name: "Buscar pedido, cliente o teléfono" }),
+    ).toBeEnabled();
   });
 
   it("abre la pestaña indicada en la URL aunque haya otra guardada", async () => {
@@ -220,12 +246,15 @@ describe("WhatsAppSettingsPage", () => {
     );
   });
 
-  it("bajas y números extranjeros lee datos reales y oculta alertas, registro y permisos", async () => {
+  it("bajas, alertas y permisos lee datos reales y muestra las cinco secciones", async () => {
     await renderPage("tab=ajustes");
     expect(
       await screen.findByRole("region", { name: "Clientes que no quieren avisos" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Números extranjeros" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Alertas de salud" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Registro de cambios" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /Permisos/ })).toBeInTheDocument();
     expect(screen.queryByText("Bajas pendientes de integración")).not.toBeInTheDocument();
     expect(screen.queryByText("Registro pendiente de integración")).not.toBeInTheDocument();
     expect(screen.queryByText(/Matriz propuesta en el documento/)).not.toBeInTheDocument();
@@ -289,7 +318,7 @@ describe("WhatsAppSettingsPage", () => {
     mockSearch = "tab=ajustes";
     render(<WhatsAppSettingsPage />);
     expect(screen.getAllByRole("tab", { selected: true }).map((tab) => tab.textContent)).toContain(
-      "Bajas y números extranjeros",
+      "Bajas, alertas y permisos",
     );
   });
 

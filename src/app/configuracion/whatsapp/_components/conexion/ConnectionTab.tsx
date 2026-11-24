@@ -4,24 +4,40 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { listWhatsAppTemplates } from "@/features/whatsapp/api/templates.api";
-import { sendWhatsAppTestTemplate } from "@/features/whatsapp/api/test-message.api";
+import {
+  actOnWhatsAppAssistedItem,
+  getWhatsAppContingency,
+  getWhatsAppPricing,
+  getWhatsAppTestRunStatus,
+  getWhatsAppUsage,
+  listWhatsAppAssistedQueue,
+  sendWhatsAppAccountTest,
+  updateWhatsAppContingency,
+} from "@/features/whatsapp/api/connection-ops.api";
+import { getMyWhatsAppPermissions, grantedCodes } from "@/features/whatsapp/api/settings-ops.api";
+import { useWhatsAppStoreAgents } from "@/features/whatsapp/hooks/use-whatsapp-store-agents";
+import type { ContingencyValues } from "@/features/whatsapp/schemas/connection.schema";
 import { isWhatsAppContractAvailable } from "@/features/whatsapp/constants/whatsapp-contracts";
 import {
   WHATSAPP_CONNECTION_STATES,
   WHATSAPP_CONNECTION_TYPES,
-  WHATSAPP_MESSAGE_STATUSES,
   type WhatsAppConnectionState,
   type WhatsAppConnectionType,
 } from "@/features/whatsapp/enums/whatsapp.enums";
 import { toWhatsAppTemplate } from "@/features/whatsapp/mappers/to-whatsapp-template.mapper";
 import type {
+  WhatsAppAssistedQueue,
   WhatsAppConnectionStatus,
+  WhatsAppContingencySettings,
+  WhatsAppPricing,
   WhatsAppTestRun,
+  WhatsAppUsageSummary,
 } from "@/features/whatsapp/models/connection.model";
 import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp/models/resource-state.model";
 import type { WhatsAppTemplate } from "@/features/whatsapp/models/template.model";
 import { resolveEffectivePermissions } from "@/features/whatsapp/utils/whatsapp-permissions.util";
 import { ConnectionView } from "./ConnectionView";
+import type { ConnectionMutations } from "./connection-types";
 import {
   getWhatsAppStatus,
   getWhatsAppAccounts,
@@ -57,6 +73,20 @@ const toDate = (value: unknown): Date | null => {
   }
   return null;
 };
+
+/** Resultado de react-query → estado de recurso de la vista (sin datos inventados). */
+function toResource<T>(
+  query: { data: T | undefined; isError: boolean; error: unknown },
+  fallback: string,
+): ResourceState<T> {
+  if (query.data !== undefined) return { kind: "ready", data: query.data };
+  if (query.isError) {
+    const status = (query.error as { response?: { status?: number } } | null)?.response?.status;
+    if (status === 403) return { kind: "forbidden" } as ResourceState<T>;
+    return { kind: "error", message: fallback };
+  }
+  return { kind: "loading" };
+}
 
 const KNOWN_STATES = new Set<string>(Object.values(WHATSAPP_CONNECTION_STATES));
 const KNOWN_TYPES = new Set<string>(Object.values(WHATSAPP_CONNECTION_TYPES));
@@ -110,9 +140,54 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
   const [accountState, setAccountState] = useState<any>({ kind: "loading" });
   const [accountsState, setAccountsState] = useState<any>({ kind: "loading" });
 
-  const effectivePermissions = useMemo(
-    () => resolveEffectivePermissions([WHATSAPP_PERMISSION_CODES.CONNECTION]),
-    [],
+  // Permisos reales del usuario (C-28 · /wa/permissions/me). Mientras cargan, se usa
+  // el rol de la pantalla: quien puede gestionar ve la conexión (el backend también lo exige).
+  const myPermissionsQuery = useQuery({
+    queryKey: ["whatsapp", "permissions", "me"],
+    queryFn: getMyWhatsAppPermissions,
+  });
+  const effectivePermissions = useMemo(() => {
+    const granted = grantedCodes(myPermissionsQuery.data);
+    if (granted) return resolveEffectivePermissions(granted);
+    return resolveEffectivePermissions(canManage ? [WHATSAPP_PERMISSION_CODES.CONNECTION] : []);
+  }, [canManage, myPermissionsQuery.data]);
+
+  // C-08/C-09 · uso del mes y tarifas de Meta
+  const usageQuery = useQuery({
+    queryKey: ["whatsapp", "usage", activeStoreId ?? "none"],
+    queryFn: () => getWhatsAppUsage(activeStoreId as string),
+    enabled: !!activeStoreId,
+  });
+  const pricingQuery = useQuery({
+    queryKey: ["whatsapp", "pricing"],
+    queryFn: getWhatsAppPricing,
+    staleTime: 10 * 60 * 1000,
+  });
+  // C-10 · contingencia; C-11 · bandeja de envío asistido
+  const contingencyKey = ["whatsapp", "contingency", activeStoreId ?? "none"] as const;
+  const contingencyQuery = useQuery({
+    queryKey: contingencyKey,
+    queryFn: () => getWhatsAppContingency(activeStoreId as string),
+    enabled: !!activeStoreId,
+  });
+  const assistedKey = ["whatsapp", "assisted-queue", activeStoreId ?? "none"] as const;
+  const assistedQuery = useQuery({
+    queryKey: assistedKey,
+    queryFn: () => listWhatsAppAssistedQueue(activeStoreId as string),
+    enabled: !!activeStoreId,
+    refetchInterval: 30_000,
+  });
+  const agents = useWhatsAppStoreAgents(activeStoreId, !!activeStoreId);
+
+  const usage = toResource<WhatsAppUsageSummary>(usageQuery, "No se pudo cargar el uso del mes.");
+  const pricing = toResource<WhatsAppPricing>(pricingQuery, "No se pudieron cargar las tarifas.");
+  const contingency = toResource<WhatsAppContingencySettings | null>(
+    contingencyQuery,
+    "No se pudo cargar la contingencia.",
+  );
+  const assistedQueue = toResource<WhatsAppAssistedQueue>(
+    assistedQuery,
+    "No se pudo cargar la bandeja de envío asistido.",
   );
 
   // Plantillas de la empresa (C-12): el envío de prueba solo ofrece las aprobadas.
@@ -167,9 +242,18 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       setAccountsState({ kind: "ready", data: accountsArray });
     } catch (error) {
       console.error("Error cargando datos de conexión:", error);
-      setStatusState({ kind: "pending-integration" });
-      setAccountState({ kind: "ready", data: null });
-      setAccountsState({ kind: "ready", data: [] });
+      // Un fallo no es «pendiente de integración»: se muestra el error y se puede reintentar.
+      const status = (error as { response?: { status?: number } })?.response?.status;
+      if (status === 403) {
+        setStatusState({ kind: "forbidden" });
+        setAccountState({ kind: "forbidden" });
+        setAccountsState({ kind: "forbidden" });
+      } else {
+        const message = "No se pudo cargar la conexión de WhatsApp. Intenta de nuevo.";
+        setStatusState({ kind: "error", message });
+        setAccountState({ kind: "error", message });
+        setAccountsState({ kind: "error", message });
+      }
     }
   };
 
@@ -183,71 +267,86 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
     loadConnectionData();
   }, [activeStoreId, token]);
 
-  // Definición de mutaciones reales conectadas a los botones de la interfaz
-  const mutations = {
-    refresh: async () => {
-      const accountData = accountState.kind === "ready" ? accountState.data : null;
-      if (!accountData?.id) return;
-      await refreshWhatsAppAccount(token, accountData.id);
+  const currentAccountId = (): string | null =>
+    accountState.kind === "ready" ? (accountState.data?.id ?? null) : null;
+
+  // Mutaciones reales conectadas a los botones de la interfaz
+  const mutations: ConnectionMutations = {
+    refresh: async (accountId) => {
+      const id = accountId || currentAccountId();
+      if (!id) return;
+      await refreshWhatsAppAccount(token, id);
       await reloadAfterChange();
     },
-    disconnect: async () => {
-      const accountData = accountState.kind === "ready" ? accountState.data : null;
-      if (!accountData?.id) return;
-      await disconnectWhatsAppAccount(token, accountData.id);
+    disconnect: async (accountId) => {
+      const id = accountId || currentAccountId();
+      if (!id) return;
+      await disconnectWhatsAppAccount(token, id);
       await reloadAfterChange();
     },
-    changeType: async (newType: string) => {
-      const accountData = accountState.kind === "ready" ? accountState.data : null;
-      if (!accountData?.id) return;
-      await updateWhatsAppAccount(token, accountData.id, newType);
+    changeType: async ({ accountId, connectionType }) => {
+      const id = accountId || currentAccountId();
+      if (!id) return;
+      await updateWhatsAppAccount(token, id, connectionType);
       await reloadAfterChange();
     },
-    sendTest: async ({
-      phone,
-      templateId,
-    }: {
-      accountId: string;
-      phone: string;
-      templateId: string;
-    }): Promise<WhatsAppTestRun> => {
-      const dto = templatesQuery.data?.find((template) => template.id === templateId);
-      if (!dto) throw new Error("Plantilla no encontrada. Recarga la página.");
-      const startedAt = new Date();
-      const { messageId } = await sendWhatsAppTestTemplate({
+    // C-07 · envío de prueba por la cuenta conectada; luego se consulta su estado.
+    sendTest: async ({ accountId, phone, templateId }): Promise<WhatsAppTestRun> => {
+      if (!activeStoreId) throw new Error("Elige una tienda.");
+      return sendWhatsAppAccountTest(accountId, {
         to: phone.replace(/\D/g, ""),
-        templateName: dto.name,
-        languageCode: dto.language,
+        templateId,
+        storeId: activeStoreId,
       });
-      // POWIP no devuelve todavía entregado/leído de esta prueba: queda como enviado.
-      return {
-        messageId,
-        phone,
-        templateName: dto.name,
-        status: WHATSAPP_MESSAGE_STATUSES.SENT,
-        startedAt,
-        sentAt: new Date(),
-        deliveredAt: null,
-        readAt: null,
-        failedAt: null,
-        errorMessage: null,
-      };
     },
-    saveContingency: async (settings: any) => {
-      console.log("Guardando contingencia:", settings);
+    refreshTest: getWhatsAppTestRunStatus,
+    saveContingency: async (values: ContingencyValues) => {
+      if (!activeStoreId) return;
+      const current = contingencyQuery.data ?? null;
+      await updateWhatsAppContingency(activeStoreId, current?.version ?? 0, {
+        enabled: values.enabled,
+        backupAccountId: current?.backupAccount?.id ?? null,
+        triggers: {
+          onRestrictedOrRed: values.onRestrictedOrRed,
+          onDailyLimit: values.onDailyLimit,
+          onConsecutiveFailures: {
+            enabled: values.failuresEnabled,
+            count: Number(values.failuresCount),
+            minutes: Number(values.failuresMinutes),
+          },
+          manualOnly: values.manualOnly,
+        },
+        sender: {
+          type: values.senderType,
+          userId: values.senderType === "user" ? values.senderUserId || null : null,
+        },
+      });
+      await queryClient.invalidateQueries({ queryKey: contingencyKey });
+      await queryClient.invalidateQueries({ queryKey: ["whatsapp", "status"] });
     },
-    markAssistedSent: async () => {},
-    startSignup: async (_payload: any) => {
+    markAssistedOpened: async (itemId) => {
+      await actOnWhatsAppAssistedItem(itemId, "opened");
+      await queryClient.invalidateQueries({ queryKey: assistedKey });
+    },
+    // D-72: «Marcar enviado» es el único camino a enviado.
+    markAssistedSent: async (itemId) => {
+      await actOnWhatsAppAssistedItem(itemId, "mark-sent");
+      await queryClient.invalidateQueries({ queryKey: assistedKey });
+    },
+    discardAssisted: async ({ itemId, reason }) => {
+      await actOnWhatsAppAssistedItem(itemId, "discard", reason);
+      await queryClient.invalidateQueries({ queryKey: assistedKey });
+    },
+    startSignup: async () => {
       // PENDIENTE (C-06): reemplazar por el Embedded Signup de Meta (FB.login con code).
       // Mientras tanto, solo en desarrollo local se conecta con la WABA de prueba de .env.local.
       const hasLocalTestWaba =
         !!LOCAL_TEST_WABA.wabaId && !!LOCAL_TEST_WABA.phoneNumberId && !!LOCAL_TEST_WABA.accessToken;
 
       if (process.env.NODE_ENV === "production" || !hasLocalTestWaba) {
-        window.alert(
+        throw new Error(
           "La conexión con Meta (Embedded Signup) todavía no está disponible. Configura la WABA de prueba en .env.local para desarrollo.",
         );
-        return;
       }
 
       await connectCustomWaba(token, {
@@ -259,6 +358,11 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       });
       await reloadAfterChange();
     },
+  };
+
+  const retryAll = () => {
+    void loadConnectionData();
+    void queryClient.invalidateQueries({ queryKey: ["whatsapp"] });
   };
 
   return (
@@ -274,14 +378,14 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       accounts={accountsState}
       templates={templates}
       testRun={null}
-      contingency={{ kind: "ready", data: null }}
-      agents={{ kind: "ready", data: [] }}
-      assistedQueue={{ kind: "pending-integration" } as any}
-      pricing={{ kind: "pending-integration" } as any}
-      usage={{ kind: "pending-integration" } as any}
+      contingency={contingency}
+      agents={agents}
+      assistedQueue={assistedQueue}
+      pricing={pricing}
+      usage={usage}
       signupAvailable={true}
-      mutations={mutations as any}
-      onRetry={loadConnectionData}
+      mutations={mutations}
+      onRetry={retryAll}
     />
   );
 }

@@ -1,5 +1,10 @@
+"use client";
+
 import { MessagesSquare } from "lucide-react";
 import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { getWhatsAppConversationsByOrder } from "@/features/whatsapp/api/threads.api";
+import { isWhatsAppContractAvailable } from "@/features/whatsapp/constants/whatsapp-contracts";
 import type { WhatsAppConversationDetail } from "@/features/whatsapp/models/conversation.model";
 import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp/models/resource-state.model";
 import { MessageStatusTicks } from "./MessageStatusTicks";
@@ -90,8 +95,35 @@ export function OrderWhatsAppMessagesView({
 }
 
 const PENDING = { kind: "pending-integration" } as const;
+const NO_STORE_NAMES: ReadonlyMap<string, string> = new Map();
 
 export function OrderWhatsAppMessages({ orderId }: { orderId: string | null | undefined }) {
+  const available = isWhatsAppContractAvailable("threads");
+  const [threads, setThreads] = useState<ResourceState<WhatsAppConversationDetail[]>>(
+    available ? { kind: "loading" } : PENDING,
+  );
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+
+  useEffect(() => {
+    if (!orderId || !available) return;
+    let alive = true;
+    setThreads({ kind: "loading" });
+    getWhatsAppConversationsByOrder(orderId, NO_STORE_NAMES)
+      .then((data) => alive && setThreads({ kind: "ready", data }))
+      .catch((error: Error & { status?: number }) => {
+        if (!alive) return;
+        setThreads(
+          error.status === 403
+            ? { kind: "forbidden" }
+            : { kind: "error", message: error.message || "No se pudieron cargar los mensajes." },
+        );
+      });
+    return () => {
+      alive = false;
+    };
+  }, [orderId, available, attempt]);
+
   if (!orderId) return null;
-  return <OrderWhatsAppMessagesView threads={PENDING} />;
+  return <OrderWhatsAppMessagesView threads={threads} onRetry={retry} />;
 }

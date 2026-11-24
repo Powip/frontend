@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import WhatsAppNotificationsSection from "@/app/operaciones/guias/_components/WhatsAppNotificationsSection";
 import { PublicTrackingPage } from "@/components/public-tracking/PublicTrackingPage";
@@ -14,6 +14,14 @@ import {
   publicTrackingIncompleteFixture,
 } from "@/mocks/whatsapp/whatsapp-integrations.fixtures";
 import { OrderWhatsAppMessages, OrderWhatsAppMessagesView } from "../OrderWhatsAppMessages";
+import { getWhatsAppConversationsByOrder } from "@/features/whatsapp/api/threads.api";
+
+jest.mock("@/features/whatsapp/api/threads.api", () => ({
+  getWhatsAppConversationsByOrder: jest.fn(),
+}));
+const byOrderMock = getWhatsAppConversationsByOrder as jest.MockedFunction<
+  typeof getWhatsAppConversationsByOrder
+>;
 import { WhatsAppLastNoticeIndicator } from "../WhatsAppLastNoticeIndicator";
 import {
   WhatsAppNotificationsButton,
@@ -21,14 +29,29 @@ import {
 } from "../WhatsAppNotificationsPanel";
 
 describe("Mensajes de WhatsApp en la ficha del pedido", () => {
-  it("sin contrato muestra pendiente y no aparece sin pedido real", () => {
+  it("no aparece sin pedido real y con pedido lee su conversación (C-22.7)", async () => {
+    byOrderMock.mockResolvedValueOnce(orderThreadsFixture);
     const { container, rerender } = render(<OrderWhatsAppMessages orderId={null} />);
     expect(container).toBeEmptyDOMElement();
+    expect(byOrderMock).not.toHaveBeenCalled();
     rerender(<OrderWhatsAppMessages orderId="order-1" />);
-    expect(screen.getByRole("region", { name: "Mensajes de WhatsApp" })).toHaveTextContent(
-      /Pendiente de integración/,
+    await waitFor(() => expect(byOrderMock).toHaveBeenCalledWith("order-1", expect.any(Map)));
+    expect((await screen.findAllByRole("link", { name: /Abrir conversación/ })).length).toBe(
+      orderThreadsFixture.length,
     );
-    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Pendiente de integración/)).not.toBeInTheDocument();
+  });
+
+  it("pedido sin avisos muestra vacío y un fallo deja reintentar", async () => {
+    byOrderMock.mockResolvedValueOnce([]);
+    const { unmount } = render(<OrderWhatsAppMessages orderId="order-2" />);
+    expect(
+      await screen.findByText("Aún no se enviaron avisos por WhatsApp para este pedido."),
+    ).toBeInTheDocument();
+    unmount();
+    byOrderMock.mockRejectedValueOnce(new Error("Sin conexión"));
+    render(<OrderWhatsAppMessages orderId="order-3" />);
+    expect(await screen.findByText(/No se pudieron cargar los mensajes de WhatsApp/)).toBeInTheDocument();
   });
 
   it("distingue vacío, error y contenido con acceso a la conversación real", () => {

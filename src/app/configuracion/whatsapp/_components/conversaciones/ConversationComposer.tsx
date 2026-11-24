@@ -15,10 +15,7 @@ import { BlockedActionButton } from "@/components/whatsapp/BlockedActionButton";
 import { WaCallout } from "@/components/whatsapp/ui/WaCallout";
 import { waButton, waSelectTrigger, waTextarea } from "@/components/whatsapp/ui/wa-classes";
 import { WhatsAppResourceState } from "@/components/whatsapp/WhatsAppResourceState";
-import {
-  CONVERSATION_LIMITS,
-  WHATSAPP_QUICK_REPLIES,
-} from "@/features/whatsapp/constants/whatsapp-conversation-catalog";
+import { CONVERSATION_LIMITS } from "@/features/whatsapp/constants/whatsapp-conversation-catalog";
 import type { WhatsAppConversationDetail } from "@/features/whatsapp/models/conversation.model";
 import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp/models/resource-state.model";
 import type { WhatsAppTemplate } from "@/features/whatsapp/models/template.model";
@@ -39,6 +36,7 @@ import {
   IDLE,
   toActionError,
 } from "./conversation-types";
+import { useQuickReplies } from "./quick-replies-context";
 
 type ComposerMode = "reply" | "note";
 
@@ -104,6 +102,7 @@ export function ConversationComposer({
   const noteBlockedId = useId();
   const quickReplyBlockedId = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const quickReplies = useQuickReplies();
   const [mode, setMode] = useState<ComposerMode>("reply");
   const [replyDraft, setReplyDraft] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
@@ -259,7 +258,7 @@ export function ConversationComposer({
             <div className="flex flex-col gap-1">
               <p className="sr-only">Respuestas rápidas</p>
               <div className="flex flex-wrap gap-1.5">
-                {WHATSAPP_QUICK_REPLIES.map((reply) => {
+                {quickReplies.map((reply) => {
                   const available = isQuickReplyAvailable(reply, quickReplyContext);
                   return (
                     <BlockedActionButton

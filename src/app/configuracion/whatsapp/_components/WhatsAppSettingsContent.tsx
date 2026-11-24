@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { useWhatsAppRealtime } from "@/features/whatsapp/hooks/use-whatsapp-realtime";
 import { resolveWhatsAppAccess } from "@/features/whatsapp/utils/whatsapp-access.util";
 import {
   WhatsAppPageFrame,
@@ -11,6 +12,8 @@ import { WhatsAppTabs } from "./WhatsAppTabs";
 
 export function WhatsAppSettingsContent() {
   const { auth } = useAuth();
+  // C-00.9: una sola conexión de tiempo real para todas las pestañas del módulo.
+  useWhatsAppRealtime(auth?.company?.id ?? auth?.user?.companyId ?? null, !!auth);
 
   if (!auth) return null;
 

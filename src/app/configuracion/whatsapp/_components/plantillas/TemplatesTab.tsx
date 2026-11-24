@@ -9,6 +9,10 @@ import {
   listWhatsAppTemplates,
   syncWhatsAppTemplates,
 } from "@/features/whatsapp/api/templates.api";
+import {
+  listWhatsAppTemplateSampleOrders,
+  type WhatsAppTemplateSampleOrder,
+} from "@/features/whatsapp/api/template-catalog.api";
 import { isWhatsAppContractAvailable } from "@/features/whatsapp/constants/whatsapp-contracts";
 import { WHATSAPP_TEMPLATE_HEADER_TYPES } from "@/features/whatsapp/enums/whatsapp.enums";
 import { toCreateTemplatePayload } from "@/features/whatsapp/mappers/to-create-template-payload.mapper";
@@ -88,6 +92,21 @@ export function TemplatesTab({ canManage, businessName, onActivateRule }: Templa
   const stores = auth?.company?.stores ?? [];
   const storeId =
     stores.find((store) => store.id === selectedStoreId)?.id ?? stores[0]?.id ?? null;
+
+  // C-14: pedidos reales para la vista previa del editor. Se piden al abrirlo.
+  const [sampleOrders, setSampleOrders] = useState<WhatsAppTemplateSampleOrder[] | null>(null);
+  const editorOpen = editorSession !== null;
+  useEffect(() => {
+    if (!editorOpen || !isWhatsAppContractAvailable("templateCatalog")) return;
+    let cancelled = false;
+    listWhatsAppTemplateSampleOrders(storeId).then(
+      (orders) => !cancelled && setSampleOrders(orders),
+      () => !cancelled && setSampleOrders(null),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [editorOpen, storeId]);
 
   const [templateState, setTemplateState] = useState<WhatsAppResourceState<WhatsAppTemplate[]>>({
     kind: "loading",
@@ -239,6 +258,7 @@ export function TemplatesTab({ canManage, businessName, onActivateRule }: Templa
           canPersist={true}
           onClose={() => setEditorSession(null)}
           onSubmitForReview={handleSubmitForReview}
+          sampleOrders={sampleOrders}
         />
       )}
     </>

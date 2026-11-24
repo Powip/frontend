@@ -14,6 +14,8 @@ export interface ConnectionMutations {
     phone: string;
     templateId: string;
   }) => Promise<WhatsAppTestRun>;
+  /** C-07 · GET /wa/messages/:id: estado actualizado de la prueba (enviado → entregado → leído). */
+  refreshTest?: (messageId: string) => Promise<WhatsAppTestRun>;
   startSignup?: (input: { storeId: string; mode: "api" | "coex" }) => Promise<void>;
   saveContingency?: (values: ContingencyValues) => Promise<void>;
   markAssistedOpened?: (itemId: string) => Promise<void>;

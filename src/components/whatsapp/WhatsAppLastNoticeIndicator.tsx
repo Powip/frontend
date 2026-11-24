@@ -1,3 +1,11 @@
+"use client";
+
+import { useEffect, useSyncExternalStore } from "react";
+import {
+  readWhatsAppLastNotice,
+  requestWhatsAppLastNotice,
+  subscribeWhatsAppLastNotice,
+} from "@/features/whatsapp/api/last-notices.api";
 import {
   describeLastNotice,
   type WhatsAppLastNotice,
@@ -8,13 +16,29 @@ import { MessageStatusTicks } from "./MessageStatusTicks";
 
 interface WhatsAppLastNoticeIndicatorProps {
   notice: WhatsAppLastNotice | null | undefined;
+  /** Con el id del pedido, si la lista no trae el aviso, se pide a wa-hub (C-29). */
+  orderId?: string | null;
   className?: string;
 }
 
+const noopSubscribe = () => () => {};
+const readNothing = () => null;
+
 export function WhatsAppLastNoticeIndicator({
-  notice,
+  notice: given,
+  orderId,
   className,
 }: WhatsAppLastNoticeIndicatorProps) {
+  const lookup = !given && orderId ? orderId : null;
+  useEffect(() => {
+    if (lookup) requestWhatsAppLastNotice(lookup);
+  }, [lookup]);
+  const fetched = useSyncExternalStore(
+    lookup ? (listener) => subscribeWhatsAppLastNotice(lookup, listener) : noopSubscribe,
+    lookup ? () => readWhatsAppLastNotice(lookup) : readNothing,
+    readNothing,
+  );
+  const notice = given ?? fetched;
   if (!notice) return null;
   const failed = isNotSentStatus(notice.status);
   return (

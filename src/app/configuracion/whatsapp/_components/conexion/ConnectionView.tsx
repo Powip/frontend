@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Select,
   SelectContent,
@@ -27,11 +27,13 @@ import type { WhatsAppAgentOption } from "@/features/whatsapp/models/conversatio
 import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp/models/resource-state.model";
 import type { WhatsAppEffectivePermissions } from "@/features/whatsapp/models/settings-tab.model";
 import type { WhatsAppTemplate } from "@/features/whatsapp/models/template.model";
-import { describeConnectionStatus } from "@/features/whatsapp/utils/connection.util";
+import {
+  describeConnectionStatus,
+  resolveTestProgress,
+} from "@/features/whatsapp/utils/connection.util";
 import {
   combineBlockReasons,
   getPermissionBlockReason,
-  UNDEFINED_PERMISSION_REASON,
 } from "@/features/whatsapp/utils/whatsapp-permissions.util";
 import { cn } from "@/lib/utils";
 import { AssistedQueueSection } from "./AssistedQueueSection";
@@ -97,6 +99,26 @@ export function ConnectionView({
     initialSignup,
   );
   const [testRun, setTestRun] = useState<WhatsAppTestRun | null>(initialTestRun);
+  const refreshTest = mutations.refreshTest;
+  const testInProgress =
+    !!testRun?.messageId && resolveTestProgress(testRun, now).kind === "in-progress";
+  // Mientras la prueba no llegue a leído/fallido, se consulta su estado cada 2 s.
+  useEffect(() => {
+    if (!refreshTest || !testInProgress || !testRun?.messageId) return;
+    const messageId = testRun.messageId;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      refreshTest(messageId)
+        .then((next) => {
+          if (!cancelled) setTestRun(next);
+        })
+        .catch(() => undefined);
+    }, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [refreshTest, testInProgress, testRun?.messageId]);
   const store = stores.find((item) => item.id === storeId) ?? null;
   const connectionPermission = getPermissionBlockReason(
     effectivePermissions,
@@ -243,7 +265,7 @@ export function ConnectionView({
             }
             blockedReason={combineBlockReasons(
               pending(mutations.markAssistedSent),
-              UNDEFINED_PERMISSION_REASON,
+              getPermissionBlockReason(effectivePermissions, WHATSAPP_PERMISSION_CODES.REPLY),
             )}
             mutations={mutations}
             onRetry={onRetry}

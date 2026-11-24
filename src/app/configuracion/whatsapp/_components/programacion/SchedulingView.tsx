@@ -61,6 +61,11 @@ export interface SchedulingViewProps {
   onActivateRule?: WhatsAppActivateRule;
   onDeactivateRule?: WhatsAppDeactivateRule;
   onRetryRules?: () => void;
+  /** C-21: programar, editar, pausar y reanudar envíos. */
+  onSaveCampaign?: (campaign: WhatsAppCampaign | null, values: CampaignValues) => Promise<boolean>;
+  onPauseCampaign?: (campaign: WhatsAppCampaign) => void;
+  onResumeCampaign?: (campaign: WhatsAppCampaign) => void;
+  onRetryCampaigns?: () => void;
 }
 
 export function SchedulingView({
@@ -84,6 +89,10 @@ export function SchedulingView({
   onActivateRule,
   onDeactivateRule,
   onRetryRules,
+  onSaveCampaign,
+  onPauseCampaign,
+  onResumeCampaign,
+  onRetryCampaigns,
   now,
 }: SchedulingViewProps) {
   return (
@@ -128,6 +137,10 @@ export function SchedulingView({
         canPersist={canPersist.campaigns}
         getSegmentCount={getSegmentCount}
         now={now}
+        onRetry={onRetryCampaigns}
+        onSaveCampaign={onSaveCampaign}
+        onPauseCampaign={onPauseCampaign}
+        onResumeCampaign={onResumeCampaign}
       />
     </div>
   );

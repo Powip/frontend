@@ -50,6 +50,7 @@ import {
 } from "@/features/whatsapp/utils/promotional-language.util";
 import { cn } from "@/lib/utils";
 import { TemplateEditorFields } from "./TemplateEditorFields";
+import type { WhatsAppTemplateSampleOrder } from "@/features/whatsapp/api/template-catalog.api";
 import { TemplateEditorPreview } from "./TemplateEditorPreview";
 import { TemplatePromotionalWarning } from "./TemplatePromotionalWarning";
 import { TemplateStatusNotice } from "./TemplateStatusNotice";
@@ -68,6 +69,8 @@ interface TemplateEditorDialogProps {
   onClose: () => void;
   onSaveDraft?: (values: TemplateEditorValues) => void;
   onSubmitForReview?: (values: TemplateEditorValues) => void;
+  /** C-14: pedidos reales para la vista previa. */
+  sampleOrders?: WhatsAppTemplateSampleOrder[] | null;
 }
 
 const PENDING_PERSISTENCE_ID = "template-editor-pending-persistence";
@@ -87,6 +90,7 @@ export function TemplateEditorDialog({
   onClose,
   onSaveDraft,
   onSubmitForReview,
+  sampleOrders,
 }: TemplateEditorDialogProps) {
   const sourceTemplate = mode.kind === "new" ? null : mode.template;
   const inReview =
@@ -218,6 +222,7 @@ export function TemplateEditorDialog({
                       businessName={businessName}
                       variant={previewVariant}
                       onVariantChange={setPreviewVariant}
+                      sampleOrders={sampleOrders}
                     />
                   </div>
                 </div>
