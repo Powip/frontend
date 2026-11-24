@@ -1695,7 +1695,7 @@ Estado: ${sale.status}
                         }
                       >
                         <WhatsAppIcon className="h-4 w-4" />
-                        <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} />
+                        <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} orderId={sale.id} />
                       </Button>
                       <Button
                         size="icon"
@@ -1963,7 +1963,7 @@ Estado: ${sale.status}
                         }
                       >
                         <WhatsAppIcon className="h-4 w-4" />
-                        <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} />
+                        <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} orderId={sale.id} />
                       </Button>
                       <Button
                         size="icon"
