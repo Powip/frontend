@@ -97,6 +97,14 @@ export async function sendMessage(id: string, body: string): Promise<Message> {
   return (await axiosAuth.post<Message>(`${conv(id)}/messages`, { body })).data;
 }
 
+/** Foto saliente por WhatsApp (JPG, PNG o WebP de hasta 5 MB) con pie opcional. */
+export async function sendImageMessage(id: string, file: File, caption?: string): Promise<Message> {
+  const form = new FormData();
+  form.append("file", file);
+  if (caption?.trim()) form.append("caption", caption.trim());
+  return (await axiosAuth.post<Message>(`${conv(id)}/messages/image`, form)).data;
+}
+
 /** Nota interna: la ve solo el equipo, no se envía al cliente. Sirve con la ventana cerrada. */
 export async function sendNote(id: string, body: string): Promise<Message> {
   return (await axiosAuth.post<Message>(`${conv(id)}/notes`, { body })).data;
