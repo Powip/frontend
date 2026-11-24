@@ -175,7 +175,12 @@ function setup(cv: Conversation = conv(), messages: Message[] = [msg()]) {
     </QueryClientProvider>,
   );
 }
-const panel = async () => within(await screen.findByRole("complementary", { name: "Cliente y pedido" }));
+/** Panel derecho, en la pestaña indicada (Pedido, Cliente o Seguimiento). */
+const panel = async (tab?: "Pedido" | "Cliente" | "Seguimiento") => {
+  const aside = within(await screen.findByRole("complementary", { name: "Cliente y pedido" }));
+  if (tab) fireEvent.click(await aside.findByRole("tab", { name: tab }));
+  return aside;
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -244,6 +249,17 @@ describe("Indicadores de la Bandeja", () => {
     expect(screen.queryByRole("group", { name: "Indicadores de la bandeja" })).not.toBeInTheDocument();
   });
 
+  it("«Links por cobrar» y «Cobrado hoy» van como tarjetas KPI", async () => {
+    s.getInboxSummary.mockResolvedValue(
+      summary({ pendingLinks: 2, pendingLinksAmount: 150, collectedToday: 80 }),
+    );
+    setup();
+    const cobros = within(await screen.findByRole("group", { name: "Cobros del chat" }));
+    expect(cobros.getByText("Links por cobrar").parentElement).toHaveTextContent("2");
+    expect(cobros.getByText("Links por cobrar").parentElement).toHaveTextContent("S/ 150.00");
+    expect(cobros.getByText("Cobrado hoy").parentElement).toHaveTextContent("S/ 80.00");
+  });
+
   it("si el resumen falla no pinta la franja", async () => {
     s.getInboxSummary.mockRejectedValue(new Error("down"));
     setup();
@@ -276,7 +292,7 @@ describe("Nota interna", () => {
     const note = await screen.findByTestId("internal-note");
     expect(note).toHaveTextContent("Nota interna · Jairo R");
     expect(note).toHaveTextContent("Revisar stock antes de ofrecer");
-    expect(note.className).toContain("bg-amber-50");
+    expect(note.className).toContain("bg-crm-note");
     expect(note.className).not.toContain("bg-primary");
     expect(screen.queryByTestId("system-message")).not.toBeInTheDocument();
   });
@@ -476,7 +492,7 @@ describe("Etiquetas en el panel", () => {
     s.listTags.mockResolvedValue(["VIP", "Mayorista", "Reclamo"]);
     s.updateConversation.mockResolvedValue(conv({ tags: ["VIP", "Mayorista"] }));
     setup(conv({ tags: ["VIP"] }));
-    const p = await panel();
+    const p = await panel("Cliente");
     expect(await p.findByText("VIP")).toBeInTheDocument();
     fireEvent.click(await p.findByRole("button", { name: "+ Mayorista" }));
     await waitFor(() => expect(s.updateConversation).toHaveBeenCalledWith("c1", { tags: ["VIP", "Mayorista"] }));
@@ -485,7 +501,7 @@ describe("Etiquetas en el panel", () => {
 
   it("añade una etiqueta nueva escrita a mano y no repite una existente", async () => {
     setup(conv({ tags: ["VIP"] }));
-    const p = await panel();
+    const p = await panel("Cliente");
     const box = await p.findByLabelText("Nueva etiqueta");
     fireEvent.change(box, { target: { value: "vip" } });
     fireEvent.click(p.getByRole("button", { name: /Añadir/ }));
@@ -497,7 +513,7 @@ describe("Etiquetas en el panel", () => {
 
   it("quita una etiqueta", async () => {
     setup(conv({ tags: ["VIP", "Reclamo"] }));
-    const p = await panel();
+    const p = await panel("Cliente");
     fireEvent.click(await p.findByRole("button", { name: "Quitar etiqueta VIP" }));
     await waitFor(() => expect(s.updateConversation).toHaveBeenCalledWith("c1", { tags: ["Reclamo"] }));
   });
@@ -529,7 +545,7 @@ describe("Próximos seguimientos en el panel", () => {
       f({ ruleId: "r2", ruleName: "Cobranza día 2", objective: "collection", viaTemplate: true }),
     ]);
     setup();
-    const p = await panel();
+    const p = await panel("Seguimiento");
     const items = await p.findAllByTestId("followup-item");
     expect(items).toHaveLength(2);
     expect(items[0]).toHaveTextContent("Seguimiento +2 h");
@@ -542,7 +558,7 @@ describe("Próximos seguimientos en el panel", () => {
 
   it("vacío muestra el mensaje", async () => {
     setup();
-    const p = await panel();
+    const p = await panel("Seguimiento");
     expect(
       await p.findByText("No hay seguimientos automáticos programados para este chat."),
     ).toBeInTheDocument();

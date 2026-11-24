@@ -2,9 +2,12 @@ import React from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import LlamadasView from "@/components/ventas-chat/LlamadasView";
+import { callContact } from "@/components/ventas-chat/calls";
 import { VENTAS_CHAT_TABS } from "@/app/comercial/ventas-chat/tabs";
 import * as crm from "@/services/crmService";
 import * as callsSvc from "@/services/crmCallsService";
+import * as sessions from "@/services/crmCallSessionsService";
+import { toast } from "sonner";
 import type { Task } from "@/types/crm";
 import type { Call, CallStats } from "@/types/crmCalls";
 
@@ -35,9 +38,15 @@ jest.mock("@/services/crmService", () => ({
 jest.mock("@/services/crmCallsService", () => ({
   listCalls: jest.fn(),
   getCallStats: jest.fn(),
+  listCallProspects: jest.fn(),
   createCall: jest.fn(),
   deleteCall: jest.fn(),
 }));
+jest.mock("@/services/crmCallSessionsService", () => ({
+  ...jest.requireActual("@/services/crmCallSessionsService"),
+  getCallPermission: jest.fn(),
+}));
+const permission = sessions.getCallPermission as jest.Mock;
 const s = crm as jest.Mocked<typeof crm>;
 const c = callsSvc as jest.Mocked<typeof callsSvc>;
 
@@ -107,6 +116,8 @@ function setup() {
 beforeEach(() => {
   jest.clearAllMocks();
   c.getCallStats.mockResolvedValue(stats());
+  c.listCallProspects.mockResolvedValue([]);
+  permission.mockResolvedValue({ status: "none", expiresAt: null, canCall: false, canRequest: true, simulated: true });
   c.listCalls.mockResolvedValue([call()]);
   c.createCall.mockResolvedValue(call());
   c.deleteCall.mockResolvedValue(undefined);
@@ -125,9 +136,9 @@ describe("Pestaña Llamadas", () => {
     expect(VENTAS_CHAT_TABS.find((t) => t.label === "Llamadas")?.adminOnly).toBeFalsy();
   });
 
-  it("avisa que es un registro manual y que Powip no hace llamadas", async () => {
+  it("explica que se llama por WhatsApp desde Powip y que las del teléfono se registran a mano", async () => {
     setup();
-    expect(await screen.findByRole("note")).toHaveTextContent(/Powip todavía no hace ni recibe llamadas/);
+    expect(await screen.findByRole("note")).toHaveTextContent(/Contesta y haz llamadas por WhatsApp desde Powip.*registras a mano/);
   });
 
   it("muestra los KPIs y cambia de periodo", async () => {
@@ -232,6 +243,13 @@ describe("Pestaña Llamadas", () => {
     expect(c.deleteCall.mock.calls[0][0]).toBe("k1");
   });
 
+  it("sin nombre, el historial oculta el teléfono a quien no puede verlo completo", () => {
+    const sinNombre = { contactName: null, contactPhone: "51999111222" };
+    expect(callContact(sinNombre, true)).toBe("+51 999 *** 222");
+    expect(callContact(sinNombre)).toBe("51999111222");
+    expect(callContact({ contactName: null, contactPhone: null }, true)).toBe("Sin contacto");
+  });
+
   it("no ofrece eliminar llamadas de otra persona si no eres administrador", async () => {
     c.listCalls.mockResolvedValue([call({ userId: "u2", userName: "Luis" })]);
     setup();
@@ -244,5 +262,36 @@ describe("Pestaña Llamadas", () => {
     setup();
     const alerts = await screen.findAllByRole("alert");
     expect(alerts.some((a) => /ms-crm caído/.test(a.textContent ?? ""))).toBe(true);
+  });
+});
+
+describe("Cola por probabilidad de compra", () => {
+  const prospect = { conversationId: "c5", reason: "link" as const, contactName: "Rosa", contactPhone: "51988777666", assignedUserName: "Laura", total: 89 };
+  const queue = async () => within(await screen.findByRole("region", { name: "Cola de llamadas" }));
+
+  it("pone los chats por llamar después de las agendadas", async () => {
+    c.listCallProspects.mockResolvedValue([prospect]);
+    setup();
+    await waitFor(async () => expect((await queue()).getAllByTestId("queue-row")).toHaveLength(2));
+    const rows = (await queue()).getAllByTestId("queue-row");
+    expect(rows[0]).toHaveTextContent("Ana Pérez");
+    expect(rows[1]).toHaveTextContent("Rosa");
+    expect(rows[1]).toHaveTextContent("Link sin pagar · S/ 89.00");
+  });
+
+  it("vacía explica cuándo aparecen y no deja empezar sin avisar", async () => {
+    s.listTasks.mockResolvedValue([]);
+    setup();
+    expect(await screen.findByText("No hay llamadas pendientes.")).toBeInTheDocument();
+  });
+
+  it("«Empezar a llamar» avisa si nadie de la cola aceptó llamadas", async () => {
+    setup();
+    await (await queue()).findAllByTestId("queue-row");
+    fireEvent.click(screen.getByRole("button", { name: /Empezar a llamar/ }));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith("Ningún cliente de la cola aceptó llamadas todavía."),
+    );
+    expect(permission).toHaveBeenCalledWith("c1");
   });
 });

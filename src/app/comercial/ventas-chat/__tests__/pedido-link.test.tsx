@@ -129,7 +129,7 @@ beforeEach(() => {
 
 describe("Armar pedido (POWIP Link)", () => {
   async function openAndAdd() {
-    fireEvent.click(await screen.findByRole("button", { name: /Armar pedido/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Armar pedido" }));
     const items = await screen.findAllByTestId("catalog-item");
     expect(within(items[0]).getByText(/S\/50\.00/)).toBeInTheDocument();
     expect(within(items[0]).getByText(/Stock 5/)).toBeInTheDocument();

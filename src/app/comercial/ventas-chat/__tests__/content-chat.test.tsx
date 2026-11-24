@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Bandeja from "@/components/ventas-chat/Bandeja";
 import { fillName, firstName, stepText } from "@/components/ventas-chat/ContentLib";
+import { ENVIO_TEXT, PAGO_TEXT, dispatchText, windowHoursLeft } from "@/components/ventas-chat/ChatSaleGuide";
+import axiosAuth from "@/lib/axiosAuth";
 import * as svc from "@/services/crmService";
 import * as content from "@/services/crmContentService";
 import type { Conversation, Message } from "@/types/crm";
@@ -55,6 +57,7 @@ jest.mock("@/services/crmContentService", () => ({
 }));
 const s = svc as jest.Mocked<typeof svc>;
 const c = content as jest.Mocked<typeof content>;
+const detect = axiosAuth.post as jest.Mock;
 import { fetchClientByPhone } from "@/services/clients.service";
 
 beforeAll(() => {
@@ -157,6 +160,7 @@ const box = () => screen.findByLabelText("Mensaje") as Promise<HTMLTextAreaEleme
 
 beforeEach(() => {
   jest.clearAllMocks();
+  detect.mockReset();
   s.listConversationOrders.mockResolvedValue([]);
   s.listConversationQuotes.mockResolvedValue([]);
   s.listPipelines.mockResolvedValue([]);
@@ -201,8 +205,8 @@ describe("Chat · guion y respuestas", () => {
 
   it("clic en un paso rellena la caja con el nombre, hace PATCH scriptStep y no envía", async () => {
     setup();
-    const bar = within(await screen.findByRole("region", { name: "Guion" }));
-    fireEvent.click(await bar.findByRole("button", { name: /1\. Saludo/ }));
+    const bar = within(await screen.findByRole("region", { name: "Venta en 1 minuto" }));
+    fireEvent.click(await bar.findByRole("button", { name: "Paso 1: Saludo" }));
     expect(await box()).toHaveValue("Hola Ana, bienvenida\n¿Qué buscas?");
     await waitFor(() => expect(s.updateConversation).toHaveBeenCalledWith("c1", { scriptStep: 0 }));
     expect(s.sendMessage).not.toHaveBeenCalled();
@@ -210,23 +214,23 @@ describe("Chat · guion y respuestas", () => {
 
   it("el paso actual se ve resaltado", async () => {
     setup({ scriptStep: 1 });
-    const bar = within(await screen.findByRole("region", { name: "Guion" }));
-    expect(await bar.findByRole("button", { name: /2\. Precio/ })).toHaveAttribute("aria-current", "step");
-    expect(bar.getByRole("button", { name: /1\. Saludo/ })).not.toHaveAttribute("aria-current");
+    const bar = within(await screen.findByRole("region", { name: "Venta en 1 minuto" }));
+    expect(await bar.findByRole("button", { name: "Paso 2: Precio" })).toHaveAttribute("aria-current", "step");
+    expect(bar.getByRole("button", { name: "Paso 1: Saludo" })).not.toHaveAttribute("aria-current");
   });
 
   it("con texto previo pide confirmación; cancelar conserva el texto y confirmar lo reemplaza", async () => {
     setup();
-    const bar = within(await screen.findByRole("region", { name: "Guion" }));
+    const bar = within(await screen.findByRole("region", { name: "Venta en 1 minuto" }));
     fireEvent.change(await box(), { target: { value: "algo que escribí" } });
-    fireEvent.click(await bar.findByRole("button", { name: /2\. Precio/ }));
+    fireEvent.click(await bar.findByRole("button", { name: "Paso 2: Precio" }));
     let dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent("¿Reemplazar lo que escribiste?");
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
     expect(await box()).toHaveValue("algo que escribí");
     expect(s.updateConversation).not.toHaveBeenCalled();
 
-    fireEvent.click(bar.getByRole("button", { name: /2\. Precio/ }));
+    fireEvent.click(bar.getByRole("button", { name: "Paso 2: Precio" }));
     dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Reemplazar" }));
     expect(await box()).toHaveValue("Cuesta S/ 50");
@@ -247,7 +251,7 @@ describe("Chat · guion y respuestas", () => {
   it("un material del negocio inserta «título: url» en la caja", async () => {
     setup();
     fireEvent.click(await screen.findByRole("button", { name: /Respuestas/ }));
-    fireEvent.click(await screen.findByRole("button", { name: /Catálogo/ }));
+    fireEvent.click(await within(await screen.findByRole("region", { name: "Material" })).findByRole("button", { name: /Catálogo/ }));
     expect(await box()).toHaveValue("Catálogo: https://x.pe/cat.pdf");
     expect(s.sendMessage).not.toHaveBeenCalled();
   });
@@ -256,7 +260,7 @@ describe("Chat · guion y respuestas", () => {
     setup();
     fireEvent.change(await box(), { target: { value: "Mira esto" } });
     fireEvent.click(await screen.findByRole("button", { name: /Respuestas/ }));
-    fireEvent.click(await screen.findByRole("button", { name: /Catálogo/ }));
+    fireEvent.click(await within(await screen.findByRole("region", { name: "Material" })).findByRole("button", { name: /Catálogo/ }));
     expect(await box()).toHaveValue("Mira esto\nCatálogo: https://x.pe/cat.pdf");
   });
 
@@ -277,5 +281,120 @@ describe("Chat · guion y respuestas", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Respuestas/ }));
     fireEvent.click(await screen.findByRole("button", { name: /Foto frontal/ }));
     expect(await box()).toHaveValue("Polo básico: S/ 50\nAlgodón pima\nFoto frontal: https://x.pe/f.jpg");
+  });
+});
+
+describe("Chat · pantalla del mockup 152", () => {
+  const RULES = { cutoffTime: "13:00", lastUnits: 3, instantReply: true, promo: "2x1 en polos hoy" };
+
+  it("windowHoursLeft redondea hacia arriba y da 0 si cerró", () => {
+    const now = Date.parse("2026-11-23T10:00:00.000Z");
+    expect(windowHoursLeft({ windowExpiresAt: "2026-11-24T08:30:00.000Z" }, now)).toBe(23);
+    expect(windowHoursLeft({ windowExpiresAt: "2026-11-23T09:00:00.000Z" }, now)).toBe(0);
+    expect(windowHoursLeft({ windowExpiresAt: null }, now)).toBe(0);
+  });
+
+  it("dispatchText usa la hora de Lima contra la hora de corte", () => {
+    // 15:00 UTC = 10:00 en Lima; 20:00 UTC = 15:00 en Lima.
+    expect(dispatchText(RULES, new Date("2026-11-23T15:00:00.000Z"))).toBe("Despacho hoy si confirma antes de 13:00");
+    expect(dispatchText(RULES, new Date("2026-11-23T20:00:00.000Z"))).toBe("Despacho mañana");
+    expect(dispatchText({ cutoffTime: "" })).toBeNull();
+  });
+
+  it("barra «Venta en 1 minuto»: pasos hechos, actual con nombre y el resto solo número", async () => {
+    setup({ scriptStep: 1 });
+    const bar = within(await screen.findByRole("region", { name: "Venta en 1 minuto" }));
+    const cur = await bar.findByRole("button", { name: "Paso 2: Precio" });
+    expect(cur).toHaveAttribute("aria-current", "step");
+    expect(cur).toHaveTextContent("Precio");
+    expect(bar.getByRole("button", { name: "Paso 1: Saludo" })).not.toHaveTextContent("Saludo");
+  });
+
+  it("aviso de ventana abierta con horas que quedan y promo del día con «Ofrecer»", async () => {
+    c.getScript.mockResolvedValue({ ...SCRIPT, closingRules: RULES } as Script);
+    setup();
+    expect(await screen.findByTestId("window-banner")).toHaveTextContent("Ventana abierta · quedan 3 h. Tus mensajes no tienen costo.");
+    const promo = within(await screen.findByTestId("promo-banner"));
+    expect(promo.getByText(/2x1 en polos hoy/)).toBeInTheDocument();
+    fireEvent.click(promo.getByRole("button", { name: "Ofrecer" }));
+    expect(await box()).toHaveValue("2x1 en polos hoy");
+    expect(s.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("sin ventana no hay aviso verde ni promo", async () => {
+    c.getScript.mockResolvedValue({ ...SCRIPT, closingRules: RULES } as Script);
+    setup({ windowExpiresAt: new Date(Date.now() - 1000).toISOString() });
+    await box();
+    await waitFor(() => expect(c.getScript).toHaveBeenCalled());
+    expect(screen.queryByTestId("window-banner")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("promo-banner")).not.toBeInTheDocument();
+  });
+
+  it("tarjeta «Sugerencia · paso N de M»: Usar llena la caja, Descartar la quita, nada se envía", async () => {
+    setup({ scriptStep: 1 });
+    const card = within(await screen.findByTestId("suggestion-card"));
+    expect(card.getByText("Sugerencia · paso 2 de 2")).toBeInTheDocument();
+    expect(card.getByText("Cuesta S/ 50")).toBeInTheDocument();
+    expect(card.getByText(/Enviar también/)).toBeInTheDocument();
+    fireEvent.click(card.getByRole("button", { name: "Usar" }));
+    expect(await box()).toHaveValue("Cuesta S/ 50");
+    expect(screen.queryByTestId("suggestion-card")).not.toBeInTheDocument();
+    expect(s.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["llm", "IA"],
+    ["mock", "Reglas"],
+  ] as const)("la respuesta a la objeción dice de dónde sale: %s → %s", async (source, label) => {
+    detect.mockResolvedValue({
+      data: {
+        objectionId: "o1",
+        label: "Está caro",
+        confidence: 0.9,
+        suggestedResponse: "Mira todo lo que incluye",
+        replySource: source === "llm" ? "llm" : "official",
+        source,
+        text: "muy caro",
+      },
+    });
+    setup();
+    const card = within(await screen.findByTestId("suggestion-card"));
+    expect(await card.findByText("Responde la objeción del cliente")).toBeInTheDocument();
+    expect(card.getByTestId("suggestion-source")).toHaveTextContent(label);
+  });
+
+  it("sin objeción la sugerencia sale del guion: Reglas", async () => {
+    setup();
+    const card = within(await screen.findByTestId("suggestion-card"));
+    expect(card.getByTestId("suggestion-source")).toHaveTextContent("Reglas");
+  });
+
+  it("Descartar oculta la sugerencia sin tocar la caja", async () => {
+    setup();
+    const card = within(await screen.findByTestId("suggestion-card"));
+    fireEvent.click(card.getByRole("button", { name: "Descartar" }));
+    expect(screen.queryByTestId("suggestion-card")).not.toBeInTheDocument();
+    expect(await box()).toHaveValue("");
+  });
+
+  it("atajos Guion · paso N, /envío y /pago dejan el texto en la caja", async () => {
+    setup();
+    const chips = within(await screen.findByTestId("quick-chips"));
+    fireEvent.click(await chips.findByRole("button", { name: "Guion · paso 1" }));
+    expect(await box()).toHaveValue("Hola Ana, bienvenida\n¿Qué buscas?");
+    fireEvent.click(chips.getByRole("button", { name: "/envío" }));
+    fireEvent.click(chips.getByRole("button", { name: "/pago" }));
+    expect(await box()).toHaveValue(`Hola Ana, bienvenida\n¿Qué buscas?\n${ENVIO_TEXT}\n${PAGO_TEXT}`);
+    expect(s.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("panel derecho con pestañas Pedido, Cliente y Seguimiento; abre en Pedido", async () => {
+    setup();
+    const aside = within(await screen.findByRole("complementary", { name: "Cliente y pedido" }));
+    expect(await aside.findByRole("tab", { name: "Pedido" })).toHaveAttribute("aria-selected", "true");
+    expect(aside.getByRole("button", { name: /Armar pedido leyendo el chat/ })).toBeInTheDocument();
+    fireEvent.click(aside.getByRole("tab", { name: "Seguimiento" }));
+    expect(aside.getByRole("tab", { name: "Seguimiento" })).toHaveAttribute("aria-selected", "true");
+    expect(aside.queryByRole("button", { name: /Armar pedido leyendo el chat/ })).not.toBeInTheDocument();
   });
 });

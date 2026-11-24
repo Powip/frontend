@@ -89,11 +89,13 @@ beforeEach(() => {
 describe("Panel · No enviar promociones", () => {
   it("el interruptor refleja marketingOptOut", () => {
     setup({ ...conv, marketingOptOut: true });
+    fireEvent.click(screen.getByRole("tab", { name: "Cliente" }));
     expect(screen.getByRole("switch", { name: "No enviar promociones" })).toBeChecked();
   });
 
   it("al activarlo manda PATCH con marketingOptOut", async () => {
     setup(conv);
+    fireEvent.click(screen.getByRole("tab", { name: "Cliente" }));
     const sw = screen.getByRole("switch", { name: "No enviar promociones" });
     expect(sw).not.toBeChecked();
     fireEvent.click(sw);

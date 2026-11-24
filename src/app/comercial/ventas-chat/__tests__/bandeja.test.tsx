@@ -2,6 +2,12 @@ import React from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import Bandeja from "@/components/ventas-chat/Bandeja";
+
+/** El panel derecho abre en «Pedido»: los datos del cliente están en la pestaña «Cliente». */
+async function openClientTab() {
+  const aside = within(await screen.findByRole("complementary", { name: "Cliente y pedido" }));
+  fireEvent.click(await aside.findByRole("tab", { name: "Cliente" }));
+}
 import { applyCrmEvent } from "@/lib/crmSse";
 import * as svc from "@/services/crmService";
 import type { Conversation, Message } from "@/types/crm";
@@ -196,7 +202,7 @@ describe("Bandeja", () => {
     fireEvent.click(await screen.findByText("Ana Pérez"));
     const box = await screen.findByLabelText("Mensaje");
     expect(box).toBeDisabled();
-    expect(screen.getByText(/Pasaron 24 h desde el último mensaje del cliente/)).toBeInTheDocument();
+    expect(screen.getByText(/Pasaron más de 24 h desde el último mensaje del cliente/)).toBeInTheDocument();
     expect(screen.getByLabelText("Enviar mensaje")).toBeDisabled();
   });
 
@@ -303,7 +309,7 @@ describe("Bandeja", () => {
     expect(screen.getByText("Automático · Seguimiento +2 h")).toBeInTheDocument();
     expect(screen.getByText("Automático · Difusión de noviembre")).toBeInTheDocument();
     const bubble = screen.getByText("Ana, ¿te ayudo a separarla?").closest("div");
-    expect(bubble?.className).toContain("bg-primary");
+    expect(bubble?.className).toContain("bg-crm-bubble-out");
   });
 });
 
@@ -336,6 +342,7 @@ describe("Panel Cliente y pedido", () => {
     fetchClient.mockResolvedValue(client);
     setup();
     fireEvent.click(await screen.findByText("Ana Pérez"));
+    await openClientTab();
     const [card] = await screen.findAllByTestId("client-card");
     expect(card).toHaveTextContent("Ana Pérez Rojas");
     expect(card).toHaveTextContent("DNI 12345678");
@@ -350,6 +357,7 @@ describe("Panel Cliente y pedido", () => {
     fetchClient.mockResolvedValue(client);
     setup(conv({ clientId: "cl1" }));
     fireEvent.click(await screen.findByText("Ana Pérez"));
+    await openClientTab();
     await screen.findAllByTestId("client-card");
     expect(s.updateConversation).not.toHaveBeenCalled();
   });
@@ -358,6 +366,7 @@ describe("Panel Cliente y pedido", () => {
     fetchClient.mockResolvedValue(null);
     setup();
     fireEvent.click(await screen.findByText("Ana Pérez"));
+    await openClientTab();
     expect(
       (await screen.findAllByText("Este número no está en Clientes")).length,
     ).toBeGreaterThan(0);
@@ -454,6 +463,7 @@ describe("Bandeja · canales Messenger e Instagram", () => {
   it("un chat de Instagram no muestra el identificador como teléfono y pide el número", async () => {
     setup(ig());
     fireEvent.click(await screen.findByText("Luz Mora"));
+    await openClientTab();
     expect(await screen.findByText(/Pide el número al cliente para vincularlo/)).toBeInTheDocument();
     expect(document.body.textContent).not.toContain(IG_ID);
     await waitFor(() => expect(s.listConversationOrders).toHaveBeenCalled());
@@ -465,6 +475,7 @@ describe("Bandeja · canales Messenger e Instagram", () => {
     s.updateConversation.mockResolvedValue(ig({ customerPhone: "+51 999 111 222" }));
     setup(ig());
     fireEvent.click(await screen.findByText("Luz Mora"));
+    await openClientTab();
     fireEvent.change(await screen.findByLabelText("Teléfono del cliente"), {
       target: { value: "+51 999 111 222" },
     });
@@ -488,22 +499,22 @@ describe("Bandeja · canales Messenger e Instagram", () => {
     setup(ig({ windowExpiresAt: PAST }));
     fireEvent.click(await screen.findByText("Luz Mora"));
     expect(await screen.findByText(/Pasaron 7 días desde el último mensaje del cliente/)).toBeInTheDocument();
-    expect(screen.queryByText(/Pasaron 24 h/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Pasaron más de 24 h/)).not.toBeInTheDocument();
     expect(await screen.findByLabelText("Mensaje")).toBeDisabled();
   });
 
   it("con teléfono guardado «Llamar» es un enlace tel:", async () => {
     setup(ig({ customerPhone: "988777666" }));
     fireEvent.click(await screen.findByText("Luz Mora"));
-    const link = await screen.findByRole("link", { name: /Llamar/ });
+    const link = await screen.findByRole("link", { name: /Llamar por teléfono/ });
     expect(link).toHaveAttribute("href", "tel:+51988777666");
   });
 
   it("sin teléfono guardado «Llamar» está desactivado", async () => {
     setup(ig());
     fireEvent.click(await screen.findByText("Luz Mora"));
-    const btn = await screen.findByRole("button", { name: /Llamar/ });
+    const btn = await screen.findByRole("button", { name: /Llamar por teléfono/ });
     expect(btn).toBeDisabled();
-    expect(screen.queryByRole("link", { name: /Llamar/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Llamar por teléfono/ })).not.toBeInTheDocument();
   });
 });

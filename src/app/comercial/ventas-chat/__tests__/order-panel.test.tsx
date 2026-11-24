@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AxiosError, AxiosHeaders } from "axios";
-import ArmarPedidoTools, { type ToolCartLine } from "@/components/ventas-chat/ArmarPedidoTools";
+import ArmarPedidoTools from "@/components/ventas-chat/ArmarPedidoTools";
+import type { CartLine } from "@/components/ventas-chat/chatQuote";
 import {
   CodSection,
   FinanceQueueSection,
@@ -165,7 +166,7 @@ function wrap(ui: React.ReactElement) {
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
-const POLO: ToolCartLine = {
+const POLO: CartLine = {
   productVariantId: "v1",
   name: "Polo básico",
   variant: "M",
@@ -175,8 +176,16 @@ const POLO: ToolCartLine = {
   stock: 5,
 };
 
-function ToolsHarness({ initial = [], onInsert }: { initial?: ToolCartLine[]; onInsert?: (t: string) => void }) {
-  const [cart, setCart] = useState<ToolCartLine[]>(initial);
+function ToolsHarness({
+  initial = [],
+  onInsert,
+  autoAi = false,
+}: {
+  initial?: CartLine[];
+  onInsert?: (t: string) => void;
+  autoAi?: boolean;
+}) {
+  const [cart, setCart] = useState<CartLine[]>(initial);
   return (
     <>
       <ArmarPedidoTools
@@ -186,6 +195,7 @@ function ToolsHarness({ initial = [], onInsert }: { initial?: ToolCartLine[]; on
         cart={cart}
         setCart={setCart}
         onInsertMessage={onInsert}
+        autoAi={autoAi}
       />
       <ul aria-label="carrito">
         {cart.map((l) => (
@@ -243,6 +253,13 @@ describe("ArmarPedidoTools (filas 23 y 24)", () => {
     expect(screen.getByText("Sin llave de IA: se usó el lector local.")).toBeInTheDocument();
     expect(within(screen.getByLabelText("Lo que leyó la IA")).getByText(/quiero 3 polos/)).toBeInTheDocument();
     expect(within(screen.getByLabelText("carrito")).getByText("Polo básico|3|50")).toBeInTheDocument();
+  });
+
+  it("«Armar pedido leyendo el chat» corre la IA sola una vez al abrir", async () => {
+    p.buildAiCart.mockResolvedValue({ source: "mock", model: null, warning: null, storeId: "st1", lines: [] });
+    wrap(<ToolsHarness autoAi />);
+    await waitFor(() => expect(p.buildAiCart).toHaveBeenCalledWith("c1", { storeId: "st1", inventoryId: "inv1" }));
+    expect(p.buildAiCart).toHaveBeenCalledTimes(1);
   });
 
   it("aplica el descuento dentro del tope sobre el precio de lista y lo quita", async () => {
