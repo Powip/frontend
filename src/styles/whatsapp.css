@@ -6,9 +6,10 @@
   --wa-fg: #1a1d23;
   --wa-muted: #6b7280;
   --wa-muted-2: #9ca3af;
-  --wa-primary: #7c3aed;
-  --wa-primary-hover: #6d28d9;
-  --wa-primary-soft: #f3eeff;
+  /* Azul persa del brandbook (antes morado #7c3aed). */
+  --wa-primary: var(--brand-primary, #4c2fb5);
+  --wa-primary-hover: color-mix(in srgb, var(--brand-primary, #4c2fb5) 85%, #000000);
+  --wa-primary-soft: color-mix(in srgb, var(--brand-primary, #4c2fb5) 8%, #ffffff);
   --wa-primary-fg: #ffffff;
   --wa-teal: #027778;
   --wa-teal-soft: #e6f4f4;
@@ -40,9 +41,9 @@
   --wa-fg: #e8eaed;
   --wa-muted: #9aa1ad;
   --wa-muted-2: #6b7280;
-  --wa-primary: #a78bfa;
-  --wa-primary-hover: #c4b5fd;
-  --wa-primary-soft: #271e40;
+  --wa-primary: color-mix(in srgb, var(--brand-primary, #4c2fb5) 60%, #ffffff);
+  --wa-primary-hover: color-mix(in srgb, var(--brand-primary, #4c2fb5) 45%, #ffffff);
+  --wa-primary-soft: color-mix(in srgb, var(--brand-primary, #4c2fb5) 25%, #0f1719);
   --wa-primary-fg: #14101f;
   --wa-teal: #2bb3b4;
   --wa-teal-soft: #10302f;

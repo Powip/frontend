@@ -1,0 +1,31 @@
+/*
+ * CRM · Ventas por chat: tokens del chat estilo WhatsApp (mockup 152).
+ * Fondo beige, burbuja saliente verde y entrante blanca; nota interna en ámbar.
+ * Solo colores del área de mensajes: botones, inputs y badges siguen el brandbook.
+ */
+:root {
+  --crm-chat-bg: #efe7dd;
+  --crm-bubble-in: #ffffff;
+  --crm-bubble-out: #d9fdd3;
+  --crm-bubble-fg: #111b21;
+  --crm-note: #fef3c7;
+  --crm-note-fg: #78350f;
+}
+
+.dark {
+  --crm-chat-bg: #0b141a;
+  --crm-bubble-in: #202c33;
+  --crm-bubble-out: #005c4b;
+  --crm-bubble-fg: #e9edef;
+  --crm-note: #3a2e0e;
+  --crm-note-fg: #fcd34d;
+}
+
+@theme inline {
+  --color-crm-chat-bg: var(--crm-chat-bg);
+  --color-crm-bubble-in: var(--crm-bubble-in);
+  --color-crm-bubble-out: var(--crm-bubble-out);
+  --color-crm-bubble-fg: var(--crm-bubble-fg);
+  --color-crm-note: var(--crm-note);
+  --color-crm-note-fg: var(--crm-note-fg);
+}
