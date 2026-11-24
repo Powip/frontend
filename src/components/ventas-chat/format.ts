@@ -1,3 +1,4 @@
+import { isMaskedPhone } from "@/lib/crmPhone";
 import type { Conversation, ConversationChannel, Message } from "@/types/crm";
 
 export const BANDEJA_PATH = "/comercial/ventas-chat/bandeja";
@@ -34,9 +35,10 @@ export function phoneForCustomer(c: PhoneSource): string | null {
 /** Ruta de registrar-venta para vender desde una conversación. */
 export function crearPedidoUrl(conversation: PhoneSource & Pick<Conversation, "id">) {
   const phone = phoneForCustomer(conversation);
+  const usable = phone && !isMaskedPhone(phone);
   const q = new URLSearchParams({
     crmConversationId: conversation.id,
-    ...(phone ? { crmPhone: phone } : {}),
+    ...(usable ? { crmPhone: phone } : {}),
     returnTo: bandejaUrl(conversation.id),
   });
   return `/registrar-venta?${q.toString()}`;
@@ -68,7 +70,12 @@ export function formatMoney(amount: number | string, currency?: string | null) {
 const TZ = "America/Lima";
 
 export const WINDOW_CLOSED_NOTICE =
-  "Pasaron 24 h desde el último mensaje del cliente. WhatsApp solo permite responder con una plantilla aprobada.";
+  "Pasaron más de 24 h desde el último mensaje del cliente. Solo puedes enviar una plantilla.";
+
+/** WhatsApp con la ventana cerrada: cómo retomar el chat. */
+export function retakeNotice(canCall: boolean) {
+  return `Para retomar, envía una plantilla${canCall ? " o llama" : ""}. Si el cliente responde, vuelves a escribir gratis.`;
+}
 
 export const META_WINDOW_CLOSED_NOTICE =
   "Pasaron 7 días desde el último mensaje del cliente. En Messenger e Instagram ya no se puede responder hasta que el cliente vuelva a escribir (no hay plantillas en estos canales).";
@@ -87,6 +94,7 @@ export function windowClosedNotice(c: Partial<Pick<Conversation, "channel">>) {
  * Solo cambia lo que se muestra; llamar o vender usa el número completo.
  */
 export function maskPhone(phone: string | null | undefined): string {
+  if (phone && isMaskedPhone(phone)) return phone;
   const digits = (phone ?? "").replace(/\D/g, "");
   if (!digits) return phone ?? "";
   if (digits.length < 6) return "***";

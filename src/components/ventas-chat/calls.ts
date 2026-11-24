@@ -1,4 +1,5 @@
 import type { Call, CallDays, CallDirection, CallResult } from "@/types/crmCalls";
+import { showPhone } from "./format";
 
 export const CALL_RESULT_LABEL: Record<CallResult, string> = {
   sold: "Vendido",
@@ -61,6 +62,7 @@ export function answeredPercent(calls: number, answered: number) {
   return calls > 0 ? Math.round((answered / calls) * 100) : 0;
 }
 
-export function callContact(c: Pick<Call, "contactName" | "contactPhone">) {
-  return c.contactName?.trim() || c.contactPhone || "Sin contacto";
+/** Nombre del contacto o su teléfono (oculto si la vendedora no puede verlo completo). */
+export function callContact(c: Pick<Call, "contactName" | "contactPhone">, masked = false) {
+  return c.contactName?.trim() || showPhone(c.contactPhone, masked) || "Sin contacto";
 }
