@@ -3,6 +3,7 @@ import {
   WHATSAPP_TEMPLATE_HEADER_TYPES,
   WHATSAPP_TEMPLATE_USAGES,
 } from "../../enums/whatsapp.enums";
+import { WHATSAPP_TEMPLATE_USAGE_DEFINITIONS } from "../../constants/whatsapp-template-catalog";
 import { createTemplateEditorDefaultValues } from "../template-editor.defaults";
 import { type TemplateEditorValues, templateEditorSchema } from "../template-editor.schema";
 
@@ -10,7 +11,7 @@ function validValues(overrides: Partial<TemplateEditorValues> = {}): TemplateEdi
   return {
     ...createTemplateEditorDefaultValues(),
     displayName: "Pedido en camino",
-    body: "Hola {{cliente}}, tu pedido *{{orden}}* va con {{courier}}.",
+    body: "Hola {{cliente}}, tu pedido *{{orden}}* va con {{courier}} hoy.",
     ...overrides,
   };
 }
@@ -90,11 +91,70 @@ describe("templateEditorSchema", () => {
     });
   });
 
+  it.each([
+    "{{cliente}}, tu pedido va en camino",
+    "¡{{cliente}}, tu pedido va en camino",
+    "Gracias por comprar en {{tienda}}",
+    "Gracias por comprar en {{tienda}}!",
+    "Gracias por comprar en {{tienda}}. ",
+  ])("rechaza un mensaje que empieza o termina con una variable (%s)", (body) => {
+    expect(errorsOf(validValues({ body })).body).toBe(
+      "Meta no acepta un mensaje que empiece o termine con una variable. Agrega texto antes o después.",
+    );
+  });
+
+  it("acepta variables en medio del mensaje aunque haya signos al final", () => {
+    expect(
+      errorsOf(validValues({ body: "Gracias por comprar en {{tienda}}, te esperamos pronto!" })),
+    ).toEqual({});
+  });
+
+  it("los textos sugeridos de cada uso pasan la validación", () => {
+    for (const definition of WHATSAPP_TEMPLATE_USAGE_DEFINITIONS) {
+      if (!definition.suggestion) continue;
+      const errors = errorsOf(
+        validValues({
+          usage: definition.value,
+          body: definition.suggestion.body,
+          buttonText: definition.suggestion.buttonText,
+          headerType: definition.suggestion.headerText
+            ? WHATSAPP_TEMPLATE_HEADER_TYPES.TEXT
+            : WHATSAPP_TEMPLATE_HEADER_TYPES.NONE,
+          headerText: definition.suggestion.headerText ?? "",
+        }),
+      );
+      expect({ usage: definition.value, errors }).toEqual({ usage: definition.value, errors: {} });
+    }
+  });
+
   it("exige texto si el encabezado es de texto", () => {
     expect(
       errorsOf(validValues({ headerType: WHATSAPP_TEMPLATE_HEADER_TYPES.TEXT, headerText: " " }))
         .headerText,
     ).toBe("Escribe el encabezado o elige «Ninguno».");
+  });
+
+  it.each(["📦 Tu pedido va en camino", "Tu *pedido*", "Línea 1\nLínea 2"])(
+    "rechaza emojis, formato o saltos de línea en el encabezado (%s)",
+    (headerText) => {
+      expect(
+        errorsOf(validValues({ headerType: WHATSAPP_TEMPLATE_HEADER_TYPES.TEXT, headerText }))
+          .headerText,
+      ).toBe(
+        "El encabezado no admite emojis, saltos de línea ni formato (*, _, ~). Ponlos en el mensaje.",
+      );
+    },
+  );
+
+  it("acepta un encabezado de texto con tildes y una variable", () => {
+    expect(
+      errorsOf(
+        validValues({
+          headerType: WHATSAPP_TEMPLATE_HEADER_TYPES.TEXT,
+          headerText: "Tu pedido va en camino, {{cliente}}",
+        }),
+      ).headerText,
+    ).toBeUndefined();
   });
 
   it("permite el encabezado PDF solo para Comprobante emitido", () => {
@@ -131,7 +191,7 @@ describe("templateEditorSchema", () => {
       errorsOf(
         validValues({
           category: WHATSAPP_TEMPLATE_CATEGORIES.UTILITY,
-          body: "Usa el código VUELVE10 y llévate 10% de descuento, {{cliente}}",
+          body: "Usa el código VUELVE10 y llévate 10% de descuento, {{cliente}}. ¡Aprovecha!",
         }),
       ),
     ).toEqual({});

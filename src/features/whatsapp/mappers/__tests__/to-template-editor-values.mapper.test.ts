@@ -4,6 +4,8 @@ import {
 } from "@/mocks/whatsapp/whatsapp-templates.fixtures";
 import { WHATSAPP_TEMPLATE_USAGES } from "../../enums/whatsapp.enums";
 import { toTemplateDisplayName, toTemplateEditorValues } from "../to-template-editor-values.mapper";
+import { toWhatsAppTemplate } from "../to-whatsapp-template.mapper";
+import type { WhatsAppTemplateDto } from "../../api/templates.api";
 
 describe("toTemplateEditorValues", () => {
   it("convierte una plantilla con A/B a valores del editor", () => {
@@ -39,5 +41,36 @@ describe("toTemplateEditorValues", () => {
 
   it("muestra el nombre técnico como nombre legible", () => {
     expect(toTemplateDisplayName("pedido__en_camino_")).toBe("Pedido en camino");
+  });
+});
+
+describe("plantilla traída de Meta al editor", () => {
+  const dto: WhatsAppTemplateDto = {
+    id: "tpl-1",
+    name: "hello_world",
+    language: "en_US",
+    category: "UTILITY",
+    status: "APPROVED",
+    components: [
+      { type: "HEADER", format: "TEXT", text: "Hello World" },
+      { type: "BODY", text: "Welcome and congratulations!!" },
+      { type: "FOOTER", text: "WhatsApp Business Platform sample message" },
+    ],
+    updatedAt: "2026-11-24T22:00:00.000Z",
+  } as WhatsAppTemplateDto;
+
+  it("carga mensaje, encabezado y pie desde los componentes de Meta", () => {
+    const values = toTemplateEditorValues(toWhatsAppTemplate(dto));
+    expect(values.body).toBe("Welcome and congratulations!!");
+    expect(values.headerType).toBe("text");
+    expect(values.headerText).toBe("Hello World");
+    expect(values.footer).toBe("WhatsApp Business Platform sample message");
+  });
+
+  it("no cambia a español un idioma que el editor no ofrece", () => {
+    expect(toWhatsAppTemplate(dto).language).toBeNull();
+    expect(toTemplateEditorValues(toWhatsAppTemplate(dto)).language).toBe("");
+    expect(toTemplateEditorValues(toWhatsAppTemplate(dto), "duplicate").language).toBe("es_PE");
+    expect(toWhatsAppTemplate({ ...dto, language: "es_PE" }).language).toBe("es_PE");
   });
 });

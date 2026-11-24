@@ -17,6 +17,16 @@ import {
 } from "../utils/template-render.util";
 import { getAllowedTemplateVariableKeys } from "../utils/template-variables.util";
 
+/** Meta no acepta en el encabezado de texto: emojis, saltos de línea ni marcas de formato. */
+const HEADER_FORBIDDEN_CONTENT = /[\p{Extended_Pictographic}\r\n*_~`]/u;
+
+/**
+ * Meta rechaza el mensaje si empieza o termina con una variable («No se permite incluir parámetros
+ * al principio ni al final»). Cuenta como final una variable seguida solo de signos o espacios.
+ */
+const VARIABLE_AT_START = /^[\s\p{P}\p{S}]*\{\{[^{}]+\}\}/u;
+const VARIABLE_AT_END = /\{\{[^{}]+\}\}[\s\p{P}\p{S}]*$/u;
+
 export const templateEditorSchema = z
   .object({
     displayName: z.string(),
@@ -65,6 +75,13 @@ export const templateEditorSchema = z
         addIssue(path, `Máximo ${WHATSAPP_TEMPLATE_LIMITS.body} caracteres.`);
         return;
       }
+      if (VARIABLE_AT_START.test(text) || VARIABLE_AT_END.test(text)) {
+        addIssue(
+          path,
+          "Meta no acepta un mensaje que empiece o termine con una variable. Agrega texto antes o después.",
+        );
+        return;
+      }
       checkVariables(path, text);
     };
 
@@ -81,6 +98,12 @@ export const templateEditorSchema = z
         addIssue("headerText", "Escribe el encabezado o elige «Ninguno».");
       } else if (values.headerText.length > WHATSAPP_TEMPLATE_LIMITS.headerText) {
         addIssue("headerText", `Máximo ${WHATSAPP_TEMPLATE_LIMITS.headerText} caracteres.`);
+      } else if (HEADER_FORBIDDEN_CONTENT.test(values.headerText)) {
+        // Meta rechaza el encabezado con «Invalid parameter» (subcódigo 2388072) si los trae.
+        addIssue(
+          "headerText",
+          "El encabezado no admite emojis, saltos de línea ni formato (*, _, ~). Ponlos en el mensaje.",
+        );
       } else if (
         extractTemplateVariables(values.headerText).length >
         WHATSAPP_TEMPLATE_LIMITS.headerVariables

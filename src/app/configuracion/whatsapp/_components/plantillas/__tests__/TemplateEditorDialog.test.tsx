@@ -180,8 +180,19 @@ describe("TemplateEditorDialog · nueva plantilla", () => {
     );
     expect(bodyField().value).toMatch(/^Hola \{\{cliente\}\}, tu pedido/);
     expect(screen.getByRole("textbox", { name: "Texto del encabezado" })).toHaveValue(
-      "📦 Tu pedido va en camino",
+      "Tu pedido va en camino",
     );
+  });
+
+  it("el texto sugerido de «Comprobante emitido» no elige el encabezado PDF", async () => {
+    const { user } = renderEditor();
+    await user.click(screen.getByRole("combobox", { name: "Se usa en" }));
+    await user.click(await screen.findByRole("option", { name: "Comprobante emitido" }));
+    await user.click(
+      screen.getByRole("button", { name: /Usar texto sugerido para «Comprobante emitido»/ }),
+    );
+    expect(bodyField().value).toMatch(/\{\{tipo_comprobante\}\} \{\{serie_numero\}\}/);
+    expect(screen.getByRole("radio", { name: "Ninguno" })).toBeChecked();
   });
 });
 

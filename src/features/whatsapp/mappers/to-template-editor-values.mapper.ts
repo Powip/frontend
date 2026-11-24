@@ -20,7 +20,11 @@ export function toTemplateEditorValues(
     displayName: mode === "duplicate" ? `${displayName} copia` : displayName,
     usage: template.usage ?? WHATSAPP_TEMPLATE_USAGES.SCHEDULED_ONLY,
     category: template.category,
-    language: template.language,
+    // Idioma que el editor no ofrece: al duplicar se usa el de siempre; al editar queda vacío para
+    // que la validación pida elegirlo y no se cree en silencio otra plantilla en otro idioma.
+    language:
+      template.language ??
+      (mode === "duplicate" ? defaults.language : ("" as TemplateEditorValues["language"])),
     headerType: template.header?.type,
     headerText: template.header?.text ?? "",
     body: template.body,

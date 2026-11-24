@@ -55,7 +55,8 @@ export interface WhatsAppTemplate extends WhatsAppTemplateContent {
   name: string;
   usage: WhatsAppTemplateUsage | null;
   category: WhatsAppTemplateCategory;
-  language: WhatsAppTemplateLanguage;
+  /** null: idioma de Meta que el editor no ofrece (p. ej. en_US). */
+  language: WhatsAppTemplateLanguage | null;
   status: WhatsAppTemplateStatus;
   metaReason: string | null;
   abTest: WhatsAppTemplateAbTest | null;

@@ -32,10 +32,14 @@ function toCategory(category: string): WhatsAppTemplateCategory {
     : WHATSAPP_TEMPLATE_CATEGORIES.UTILITY;
 }
 
-function toLanguage(language: string): WhatsAppTemplateLanguage {
-  return language === WHATSAPP_TEMPLATE_LANGUAGES.SPANISH_PERU
-    ? WHATSAPP_TEMPLATE_LANGUAGES.SPANISH_PERU
-    : WHATSAPP_TEMPLATE_LANGUAGES.SPANISH;
+/**
+ * null si Meta la tiene en un idioma que el editor no ofrece (p. ej. en_US): no se cambia a español
+ * en silencio, porque al reenviarla se crearía otra plantilla en otro idioma.
+ */
+function toLanguage(language: string): WhatsAppTemplateLanguage | null {
+  return (Object.values(WHATSAPP_TEMPLATE_LANGUAGES) as string[]).includes(language)
+    ? (language as WhatsAppTemplateLanguage)
+    : null;
 }
 
 function toHeader(component: WhatsAppTemplateComponentDto | undefined): WhatsAppTemplateHeader {

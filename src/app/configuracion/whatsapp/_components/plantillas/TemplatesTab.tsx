@@ -14,8 +14,12 @@ import {
   type WhatsAppTemplateSampleOrder,
 } from "@/features/whatsapp/api/template-catalog.api";
 import { isWhatsAppContractAvailable } from "@/features/whatsapp/constants/whatsapp-contracts";
-import { WHATSAPP_TEMPLATE_HEADER_TYPES } from "@/features/whatsapp/enums/whatsapp.enums";
+import {
+  WHATSAPP_TEMPLATE_HEADER_TYPES,
+  type WhatsAppTemplateUsage,
+} from "@/features/whatsapp/enums/whatsapp.enums";
 import { toCreateTemplatePayload } from "@/features/whatsapp/mappers/to-create-template-payload.mapper";
+import { toWhatsAppTemplate } from "@/features/whatsapp/mappers/to-whatsapp-template.mapper";
 import type { WhatsAppResourceState } from "@/features/whatsapp/models/resource-state.model";
 import type { WhatsAppTemplate } from "@/features/whatsapp/models/template.model";
 import type { TemplateEditorValues } from "@/features/whatsapp/schemas/template-editor.schema";
@@ -63,12 +67,14 @@ function describeError(error: unknown): string {
  * Las claves de las reglas son los mismos valores que los usos de plantilla (C-16/D-49).
  * Si las reglas no cargan, la columna queda en "Sin asignar" sin romper la lista.
  */
-async function loadUsageByTemplate(storeId: string | null): Promise<Map<string, string>> {
-  const usage = new Map<string, string>();
+async function loadUsageByTemplate(
+  storeId: string | null,
+): Promise<Map<string, WhatsAppTemplateUsage>> {
+  const usage = new Map<string, WhatsAppTemplateUsage>();
   if (!storeId || !isWhatsAppContractAvailable("rules")) return usage;
   try {
     const response = (await getWhatsAppRules(storeId)) as unknown as {
-      items?: Array<{ key: string; templateId: string | null }>;
+      items?: Array<{ key: WhatsAppTemplateUsage; templateId: string | null }>;
     };
     for (const rule of response.items ?? []) {
       if (rule.templateId && !usage.has(rule.templateId)) usage.set(rule.templateId, rule.key);
@@ -123,14 +129,12 @@ export function TemplatesTab({ canManage, businessName, onActivateRule }: Templa
         listWhatsAppTemplates(),
         loadUsageByTemplate(storeId),
       ]);
-      const withUsage = templates.map((template) => ({
-        ...template,
-        usage: usageByTemplate.get(template.id) ?? null,
+      // La API devuelve los componentes de Meta; el editor necesita el modelo (mensaje, encabezado, idioma).
+      const withUsage: WhatsAppTemplate[] = templates.map((dto) => ({
+        ...toWhatsAppTemplate(dto),
+        usage: usageByTemplate.get(dto.id) ?? null,
       }));
-      setTemplateState({
-        kind: "ready",
-        data: withUsage as unknown as WhatsAppTemplate[],
-      });
+      setTemplateState({ kind: "ready", data: withUsage });
     } catch (error) {
       console.error("Error al cargar plantillas:", error);
       setTemplateState({

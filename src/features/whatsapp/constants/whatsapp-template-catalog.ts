@@ -89,7 +89,7 @@ export const WHATSAPP_TEMPLATE_USAGE_DEFINITIONS: WhatsAppTemplateUsageDefinitio
     allowsDocumentHeader: false,
     variableKeys: BASE_VARIABLE_KEYS,
     suggestion: {
-      headerText: "📦 Tu pedido va en camino",
+      headerText: "Tu pedido va en camino",
       body: "Hola {{cliente}}, tu pedido *{{orden}}* ya está en camino con {{courier}}. Te avisaremos cuando esté por llegar.",
       buttonText: "Rastrear mi pedido",
     },
@@ -123,7 +123,7 @@ export const WHATSAPP_TEMPLATE_USAGE_DEFINITIONS: WhatsAppTemplateUsageDefinitio
     variableKeys: BASE_VARIABLE_KEYS,
     suggestion: {
       headerText: null,
-      body: "Hola {{cliente}}, confirmamos la entrega de tu pedido *{{orden}}*. ¡Gracias por comprar en {{tienda}}!",
+      body: "Hola {{cliente}}, confirmamos la entrega de tu pedido *{{orden}}*. ¡Gracias por comprar en {{tienda}}, te esperamos pronto!",
       buttonText: "Ver detalle del pedido",
     },
   },

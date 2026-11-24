@@ -132,9 +132,9 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
     if (!suggestion) return;
     setFieldValue("body", suggestion.body);
     setFieldValue("buttonText", suggestion.buttonText);
-    if (allowsDocumentHeader) {
-      setFieldValue("headerType", WHATSAPP_TEMPLATE_HEADER_TYPES.DOCUMENT);
-    } else if (suggestion.headerText) {
+    // El encabezado PDF aún no se puede enviar a Meta (falta el PDF del comprobante en el envío):
+    // el texto sugerido no lo elige solo, para no dejar la plantilla bloqueada al enviarla.
+    if (suggestion.headerText) {
       setFieldValue("headerType", WHATSAPP_TEMPLATE_HEADER_TYPES.TEXT);
       setFieldValue("headerText", suggestion.headerText);
     }
