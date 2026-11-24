@@ -7,6 +7,7 @@ import {
   CheckCheck,
   Clock,
   Loader2,
+  Lock,
   PanelRight,
   Send,
   Sparkles,
@@ -196,7 +197,7 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
   const { auth } = useAuth();
   const companyId = auth?.company?.id;
   const [panelOpen, setPanelOpen] = useState(false);
-  const { isAdmin, phoneMasked } = useCrmMe();
+  const { isAdmin, isSupervisor, phoneMasked } = useCrmMe();
   const adminSettings = useCrmSettings(isAdmin);
   const me = {
     id: auth?.user.id,
@@ -276,10 +277,13 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
   const mine = !!me.id && conversation.assignedUserId === me.id;
   const windowOpen = isWindowOpen(conversation);
   const closed = conversation.status === "closed";
+  // Chat asignado a otra persona: el agente solo lo ve; puede tomarlo con el botón del aviso.
+  const readOnlyOther = !isSupervisor && !!conversation.assignedUserId && !mine;
+  const canType = windowOpen && !readOnlyOther;
 
   const submit = () => {
     const body = text.trim();
-    if (!body || !windowOpen || send.isPending) return;
+    if (!body || !canType || send.isPending) return;
     setText("");
     send.mutate({ body, tempId: `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` });
   };
@@ -461,6 +465,23 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
           </div>
           {!isNote && <QuickChips conversation={conversation} client={clientQuery.data} onInsert={insertInMessage} disabled={!windowOpen} />}
         </div>
+        {!isNote && readOnlyOther && (
+          <div role="status" className="mb-2 flex flex-wrap items-center gap-2 rounded-md border bg-muted p-2 text-xs text-muted-foreground">
+            <Lock className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              Este chat es de otra persona: puedes verlo, pero no escribir en él.
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={update.isPending || !me.id}
+              onClick={() => update.mutate({ assignedUserId: me.id ?? null })}
+            >
+              Tomar conversación
+            </Button>
+          </div>
+        )}
         {!isNote && !windowOpen && (
           <div role="status" className="mb-2 space-y-2 rounded-md border bg-muted p-2 text-xs text-muted-foreground">
             <p>{canTemplate ? retakeNotice(canCall) : windowClosedNotice(conversation)}</p>
@@ -504,9 +525,9 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
           </>
         ) : (
         <>
-        {isSocialChannel(conversation) && <SocialComposer conversationId={conversation.id} disabled={!windowOpen} />}
-        <ContentChatBar conversation={conversation} text={text} onFill={setText} windowOpen={windowOpen} compact />
-        <PauChatBar conversation={conversation} text={text} onFill={setText} windowOpen={windowOpen} />
+        {isSocialChannel(conversation) && <SocialComposer conversationId={conversation.id} disabled={!canType} />}
+        <ContentChatBar conversation={conversation} text={text} onFill={setText} windowOpen={canType} compact />
+        <PauChatBar conversation={conversation} text={text} onFill={setText} windowOpen={canType} />
         <div className="flex items-end gap-2">
           <Textarea
             ref={boxRef}
@@ -523,20 +544,26 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
                 suggestion.use();
               }
             }}
-            disabled={!windowOpen}
+            disabled={!canType}
             rows={2}
-            placeholder={windowOpen ? "Escribe un mensaje (Enter envía, Tab usa la sugerencia)" : "Respuesta bloqueada"}
+            placeholder={
+              readOnlyOther
+                ? "Chat de otra persona"
+                : windowOpen
+                  ? "Escribe un mensaje (Enter envía, Tab usa la sugerencia)"
+                  : "Respuesta bloqueada"
+            }
             aria-label="Mensaje"
             className="min-h-0 resize-none"
           />
           {conversation.channel === "whatsapp" && (
-            <SendImageButton conversationId={conversation.id} disabled={!windowOpen || closed} />
+            <SendImageButton conversationId={conversation.id} disabled={!canType || closed} />
           )}
-          <Button onClick={submit} disabled={!windowOpen || !text.trim()} aria-label="Enviar mensaje">
+          <Button onClick={submit} disabled={!canType || !text.trim()} aria-label="Enviar mensaje">
             <Send />
           </Button>
         </div>
-        <SendLinkButton conversation={conversation} onInsert={insertInMessage} disabled={!windowOpen} />
+        <SendLinkButton conversation={conversation} onInsert={insertInMessage} disabled={!canType} />
         </>
         )}
       </div>
