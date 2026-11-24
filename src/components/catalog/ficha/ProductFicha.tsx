@@ -3,7 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Printer } from "lucide-react";
+import { ArrowLeft, PackageOpen, Printer } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBusinessScope } from "@/contexts/BusinessScopeContext";
 import { useBusinessInventories } from "@/hooks/useBusinessInventories";
@@ -13,7 +13,7 @@ import { useCatalogCategories } from "@/hooks/useCatalogCategories";
 import { getCatalogProduct, getProductVariants } from "@/services/catalogProductService";
 import { fetchBusinessInventoryItems } from "@/services/businessInventoryItemsService";
 import { getVariantCosts } from "@/services/purchasesService";
-import { canSeeProductCosts } from "@/config/permissions.config";
+import { canManagePacks, canSeeProductCosts } from "@/config/permissions.config";
 import { isCompanyAdminRole } from "@/lib/purchaseOrders";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,11 +34,13 @@ import FichaStockTab from "./FichaStockTab";
 import FichaChannelsTab from "./FichaChannelsTab";
 // FEAT-32 M1: pestaña Contenido (galería, textos y lo propio de cada canal).
 import FichaContentTab from "./FichaContentTab";
-import PackFichaTab from "@/components/packs/PackFichaTab";
+import PackFichaTab, { PackStockTab, usePack } from "@/components/packs/PackFichaTab";
+import { PackFormDialog } from "@/components/packs/PackFormDialog";
+import { packComponentCount, packTypeOf } from "@/services/packsService";
 // FEAT-24 H5-L: lotes con vencimiento de las variantes.
 import FichaLotsTab from "@/components/lots/FichaLotsTab";
 
-export type FichaTab = "general" | "pack" | "variantes" | "lotes" | "contenido" | "stock" | "canales" | "historial";
+export type FichaTab = "general" | "componentes" | "variantes" | "lotes" | "contenido" | "stock" | "canales" | "historial";
 
 /**
  * FEAT-24 H4 (H4-D11) — ficha del producto en pestañas (spec §6.1, mockup `vFicha`): General, Variantes,
@@ -90,8 +92,13 @@ export default function ProductFicha({ productId, actions }: { productId: string
   const live = liveVariants(variants);
   const kind = product ? productKind({ ...product, variants }) : "variantes";
   const isSimple = kind === "simple";
-  // FEAT-24 H9: un pack tiene su pestaña con componentes, margen y disponible calculado.
+  // FEAT-24 H9 y FEAT-32 M5 (§7.15): un pack muestra «Componentes (N)» en lugar de Variantes, su stock calculado
+  // por almacén y el precio de solo lectura; se edita con «Editar pack» (la ventana del pack).
   const isPack = kind === "pack";
+  const packQuery = usePack(productId, enabled && isPack);
+  const pack = packQuery.data;
+  const [editingPack, setEditingPack] = useState(false);
+  const canEditPack = canManagePacks(auth?.user);
   const stockView = useMemo(
     () => buildFichaStock((stockQuery.data ?? []).filter((row) => myWarehouses.canSee(row.inventoryId)), productId, variants),
     [stockQuery.data, productId, variants, myWarehouses],
@@ -103,11 +110,12 @@ export default function ProductFicha({ productId, actions }: { productId: string
   const costsQuery = useQuery({
     queryKey: ["variant-costs", companyId, variantIds],
     queryFn: async () => new Map((await getVariantCosts(variantIds)).map((cost) => [cost.variantId, cost.averageCost] as const)),
-    enabled: canSeeCosts && variantIds.length > 0,
+    enabled: canSeeCosts && !isPack && variantIds.length > 0,
     retry: false,
   });
   const queryClient = useQueryClient();
-  const costs: FichaCosts | undefined = canSeeCosts
+  // Un pack no tiene costo propio: es la suma del de sus componentes.
+  const costs: FichaCosts | undefined = canSeeCosts && !isPack
     ? {
         byVariant: costsQuery.error ? "error" : costsQuery.data,
         canEdit: isCompanyAdminRole(auth?.user?.role),
@@ -141,10 +149,13 @@ export default function ProductFicha({ productId, actions }: { productId: string
   const brand = product.brandId ? brands.find((item) => item.id === product.brandId)?.name : undefined;
   const category = categoryPath(categories.tree, product.categoryId ?? product.category?.id) ?? product.category?.name;
   const conflict = Boolean(product.skuConflict) || live.some((variant) => variant.skuConflict);
-  const editHref = live[0] ? `/productos?edit=${encodeURIComponent(live[0].id)}` : null;
+  // El precio de un pack se cambia en su ventana, no en «Editar opciones y precios».
+  const editHref = live[0] && !isPack ? `/productos?edit=${encodeURIComponent(live[0].id)}` : null;
   // FEAT-24 H5-L: pestaña «Lotes y vencimiento» solo si el producto maneja lotes (mockup vFicha).
   const tracksLots = product.tracksLots === true && !isPack;
-  const activeTab: FichaTab = (isSimple && tab === "variantes") || (!isPack && tab === "pack") || (!tracksLots && tab === "lotes") ? "general" : tab;
+  const activeTab: FichaTab =
+    ((isSimple || isPack) && tab === "variantes") || (!isPack && tab === "componentes") || (!tracksLots && tab === "lotes") ? "general" : tab;
+  const componentCount = pack ? packComponentCount(pack) : null;
 
   return (
     <div className="space-y-4 p-6">
@@ -176,11 +187,23 @@ export default function ProductFicha({ productId, actions }: { productId: string
           </div>
         </CardHeader>
         <CardContent>
+          {isPack ? (
+            <div role="note" className="mb-4 flex flex-wrap items-center gap-3 rounded-xl bg-[#e7f3f3] px-4 py-3 text-sm text-[#015d5e] dark:bg-teal-950/40 dark:text-teal-100">
+              <PackageOpen className="h-5 w-5 shrink-0" aria-hidden="true" />
+              <span className="min-w-[220px] flex-1">
+                <b>Este producto es un pack</b>
+                {pack ? ` ${packTypeOf(pack) === "CHOOSE" ? "a elegir" : "fijo"}` : ""}. Sus componentes, su tipo y su precio se cambian en «Editar pack».
+              </span>
+              {canEditPack ? (
+                <Button type="button" variant="outline" size="sm" disabled={!pack} onClick={() => setEditingPack(true)}>Editar pack</Button>
+              ) : null}
+            </div>
+          ) : null}
           <Tabs value={activeTab} onValueChange={(next) => openTab(next as FichaTab)}>
             <TabsList className="mb-4 h-auto flex-wrap">
               <TabsTrigger value="general">General</TabsTrigger>
-              {isPack ? <TabsTrigger value="pack">Pack</TabsTrigger> : null}
-              {!isSimple ? <TabsTrigger value="variantes">Variantes ({live.length})</TabsTrigger> : null}
+              {isPack ? <TabsTrigger value="componentes">{componentCount === null ? "Componentes" : `Componentes (${componentCount})`}</TabsTrigger> : null}
+              {!isSimple && !isPack ? <TabsTrigger value="variantes">Variantes ({live.length})</TabsTrigger> : null}
               {tracksLots ? <TabsTrigger value="lotes">Lotes y vencimiento</TabsTrigger> : null}
               <TabsTrigger value="contenido" className="gap-1.5">
                 Contenido
@@ -191,14 +214,24 @@ export default function ProductFicha({ productId, actions }: { productId: string
               <TabsTrigger value="historial">Historial</TabsTrigger>
             </TabsList>
             <TabsContent value="general">
-              <FichaGeneralTab key={product.id} product={product} simpleVariant={isSimple ? live[0] ?? null : null} categoryTree={categories.tree} canEdit costs={costs} onGoToContent={() => openTab("contenido")} />
+              <FichaGeneralTab
+                key={product.id}
+                product={product}
+                // Un pack es un producto de una variante: su SKU y su código de barras van acá (no tiene Variantes).
+                simpleVariant={isSimple || isPack ? live[0] ?? null : null}
+                categoryTree={categories.tree}
+                canEdit
+                costs={costs}
+                onGoToContent={() => openTab("contenido")}
+                packPrice={isPack ? { price: pack?.price ?? null, onEdit: canEditPack && pack ? () => setEditingPack(true) : undefined } : undefined}
+              />
             </TabsContent>
             {isPack ? (
-              <TabsContent value="pack">
+              <TabsContent value="componentes">
                 <PackFichaTab productId={product.id} />
               </TabsContent>
             ) : null}
-            {!isSimple ? (
+            {!isSimple && !isPack ? (
               <TabsContent value="variantes">
                 <FichaVariantsTab productId={product.id} productImage={product.imageUrl} variants={variants} canEdit costs={costs} />
               </TabsContent>
@@ -216,7 +249,8 @@ export default function ProductFicha({ productId, actions }: { productId: string
               </TabsContent>
             ) : null}
             <TabsContent value="stock">
-              {stockQuery.error || warehouses.error ? <p role="alert">No se pudo leer el stock. <Button variant="outline" size="sm" onClick={() => void stockQuery.refetch()}>Reintentar</Button></p>
+              {isPack ? <PackStockTab productId={product.id} />
+                : stockQuery.error || warehouses.error ? <p role="alert">No se pudo leer el stock. <Button variant="outline" size="sm" onClick={() => void stockQuery.refetch()}>Reintentar</Button></p>
                 : stockQuery.isPending ? <p role="status">Cargando stock...</p>
                 : <FichaStockTab view={stockView} showVariant={!isSimple} />}
             </TabsContent>
@@ -232,13 +266,24 @@ export default function ProductFicha({ productId, actions }: { productId: string
           </Tabs>
         </CardContent>
       </Card>
-      {/* FEAT-24 H9 + H13: un pack no se compra (su costo y su stock salen de los componentes, pestaña Pack). */}
+      {/* FEAT-24 H9 + H13: un pack no se compra (su costo y su stock salen de los componentes). */}
       {!isPack ? (
         <FichaSupplierPrices
           variants={variants
             .filter((variant) => !variant.mergedInto)
             .map((variant) => ({ id: variant.id, label: kardexVariants.find((candidate) => candidate.id === variant.id)?.label ?? variant.id }))}
           linkOrders={canSeeCosts}
+        />
+      ) : null}
+      {editingPack && pack ? (
+        <PackFormDialog
+          pack={pack}
+          onClose={() => setEditingPack(false)}
+          onSaved={() => {
+            void packQuery.refetch();
+            void productQuery.refetch();
+            void variantsQuery.refetch();
+          }}
         />
       ) : null}
       {printingLabels ? (

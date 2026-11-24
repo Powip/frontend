@@ -6,7 +6,7 @@ import { PackageOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { PackLineContents } from "@/components/packs/PackLineContents";
-import { listPacks, type PackView } from "@/services/packsService";
+import { listPacks, packSellable, type PackView } from "@/services/packsService";
 import { packAvailableIn, packComponentsSnapshot } from "@/lib/packs/salePack";
 import Thumb from "./Thumb";
 
@@ -62,14 +62,20 @@ export default function SalePackResults({
         const available = packAvailableIn(pack, inventoryId);
         const inCart = qtyInCartByVariant(pack.variantId);
         const oos = available !== null && available <= 0;
+        // FEAT-32 M5: un pack a elegir (o de creadora sin aprobar) todavía no se vende; ms-ventas lo rechaza.
+        const blocked = packSellable(pack)
+          ? null
+          : pack.approvalStatus && pack.approvalStatus !== "APPROVED"
+            ? "Pack de creadora sin aprobar: no se vende."
+            : "Pack a elegir: pronto se podrá vender aquí.";
         return (
           <button
             key={pack.id}
             type="button"
-            disabled={disabled}
+            disabled={disabled || !!blocked}
             onClick={() => onAddPack(pack)}
             aria-label={`Agregar el pack ${pack.name}`}
-            title={oos ? "Sin stock de algún componente · venta bajo pedido" : undefined}
+            title={blocked ?? (oos ? "Sin stock de algún componente · venta bajo pedido" : undefined)}
             className={cn(
               "w-full flex items-start gap-3 rounded-lg border px-3 py-2 text-left transition-colors disabled:opacity-50",
               oos
@@ -89,6 +95,7 @@ export default function SalePackResults({
                 <div className="text-[11px] text-muted-foreground">{pack.sku ?? pack.productSku}</div>
               ) : null}
               <PackLineContents components={packComponentsSnapshot(pack)} className="mt-0.5 text-[11px] text-muted-foreground" />
+              {blocked ? <div className="text-[11px] text-amber-700 dark:text-amber-300">{blocked}</div> : null}
             </div>
             <Badge
               variant="outline"

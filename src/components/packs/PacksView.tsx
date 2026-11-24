@@ -3,20 +3,56 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Pencil, Plus, Search } from "lucide-react";
+import { AlertTriangle, Plus, Search } from "lucide-react";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ProductThumb } from "@/components/catalog/CatalogBadges";
+import { ChannelChip } from "@/components/catalog/ChannelIcons";
 import { useAuth } from "@/contexts/AuthContext";
-import { canSeeProductCosts, hasAdminAccess, isSuperadmin } from "@/config/permissions.config";
-import { getPackMarginRules, listPacks, savePackMinMargin, type PackView } from "@/services/packsService";
+import { canManagePacks, canSeeProductCosts, hasAdminAccess, isSuperadmin } from "@/config/permissions.config";
+import {
+  getPackMarginRules,
+  listPacks,
+  packTypeOf,
+  savePackMinMargin,
+  setPackApproval,
+  type ListPacksParams,
+  type PackView,
+} from "@/services/packsService";
+import { getChannelSummary } from "@/services/productChannelsService";
 import { apiErrorInfo } from "@/lib/catalog/catalogPayloads";
+import { POWIP_CHANNELS, RULE_CHANNELS, productChannelStates } from "@/lib/catalog/productChannels";
+import { cn } from "@/lib/utils";
 import { needsMarginConfirmation, percent, soles, variantLabel } from "@/lib/packs/packMath";
 import { PackFormDialog } from "./PackFormDialog";
 
 const PAGE_SIZE = 50;
 const MASK = "••••";
+const pill = "inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold";
+const CHIP = "rounded-full border px-3 py-1 text-sm font-medium";
+const CHIP_ON = "border-[#027778] bg-[#e7f3f3] text-[#015d5e] dark:bg-teal-950/40 dark:text-teal-100";
+
+export type PackFilter = "all" | "FIXED" | "CHOOSE" | "creators";
+
+/** Parámetros de `GET /packs` para cada filtro de la pestaña. */
+export function packFilterParams(filter: PackFilter): Pick<ListPacksParams, "packType" | "origin"> {
+  if (filter === "FIXED" || filter === "CHOOSE") return { packType: filter };
+  if (filter === "creators") return { origin: "creators" };
+  return {};
+}
+
+const pendingText = (count: number) => `${count} pendiente${count === 1 ? "" : "s"}`;
 
 /** Disponible del pack: total y, en el título, cada almacén. */
 export function PackAvailability({ pack }: { pack: Pick<PackView, "available"> }) {
@@ -38,6 +74,15 @@ export function PackMarginCell({ pack, seeCosts }: { pack: PackView; seeCosts: b
       {low ? <span className="sr-only"> margen bajo</span> : null}
     </span>
   );
+}
+
+/** Estado del pack: los de creadoras pendientes o rechazados no se venden ni se publican. */
+export function PackStatus({ pack }: { pack: Pick<PackView, "active" | "approvalStatus"> }) {
+  if (pack.approvalStatus === "PENDING") return <span className={cn(pill, "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-200")}>Por aprobar</span>;
+  if (pack.approvalStatus === "REJECTED") return <span className={cn(pill, "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-200")}>Rechazado</span>;
+  return pack.active
+    ? <span className={cn(pill, "bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200")}>Activo</span>
+    : <span className={cn(pill, "bg-muted text-muted-foreground")}>Inactivo</span>;
 }
 
 function MinMarginEditor({ canEdit }: { canEdit: boolean }) {
@@ -84,47 +129,127 @@ function MinMarginEditor({ canEdit }: { canEdit: boolean }) {
   );
 }
 
+/** Componentes de la fila: FIXED «2 × Polo · M» con su SKU; CHOOSE «2 × Jean Jimena (3 variantes)». */
+function PackComponentsCell({ pack }: { pack: PackView }) {
+  if (packTypeOf(pack) === "CHOOSE") {
+    return (
+      <>
+        {(pack.choiceComponents ?? []).map((component) => (
+          <div key={component.slot}>
+            {component.quantity} × {component.productName}{" "}
+            <small className="text-xs text-muted-foreground">({component.variants.length} variante{component.variants.length === 1 ? "" : "s"})</small>
+          </div>
+        ))}
+      </>
+    );
+  }
+  return (
+    <>
+      {pack.components.map((component) => (
+        <div key={component.variantId} className={component.active ? "" : "text-destructive"}>
+          <span>{component.quantity} × {variantLabel(component.productName, component.attributeValues)}</span>
+          {component.sku ? <span className="ml-1 font-mono text-xs text-muted-foreground">{component.sku}</span> : null}
+          {component.active ? null : " (inactivo)"}
+        </div>
+      ))}
+    </>
+  );
+}
+
 /**
- * FEAT-24 H9 (H9-D1/D3) — Packs (mockup `vPacks`): margen con alerta bajo el mínimo y stock calculado (mínimo de
- * los componentes). Sin permiso de costos, costo y margen van enmascarados. Desde FEAT-32 M4 es la pestaña Packs
- * de Comercial › Packs y promociones.
+ * FEAT-24 H9 y FEAT-32 M5 (spec §7.15) — pestaña Packs de Comercial › Packs y promociones: filtros Todos · Fijos ·
+ * A elegir · De creadoras (con los pendientes), tabla con el tipo, los componentes, el precio, la suma de
+ * componentes, el stock calculado con el componente que limita, los canales de POWIP y el estado. Crear, editar y
+ * aprobar o rechazar los de creadoras: Administrador u Operaciones. Sin permiso de costos, el margen va enmascarado.
  */
 export default function PacksView() {
   const { auth } = useAuth();
   const companyId = auth?.company?.id ?? "";
   const seeCosts = canSeeProductCosts(auth?.user);
+  const canManage = canManagePacks(auth?.user);
   const isAdmin = isSuperadmin(auth?.user?.email) || hasAdminAccess(auth?.user?.role);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
+  const [filter, setFilter] = useState<PackFilter>("all");
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<PackView | "new" | null>(null);
+  const [rejecting, setRejecting] = useState<PackView | null>(null);
+  const [deciding, setDeciding] = useState<string | null>(null);
   useEffect(() => {
     const timer = setTimeout(() => { setDebounced(search.trim()); setPage(1); }, 300);
     return () => clearTimeout(timer);
   }, [search]);
 
   const packs = useQuery({
-    queryKey: ["packs", companyId, debounced, page],
-    queryFn: ({ signal }) => listPacks({ q: debounced || undefined, page, limit: PAGE_SIZE }, signal),
+    queryKey: ["packs", companyId, debounced, filter, page],
+    queryFn: ({ signal }) => listPacks({ q: debounced || undefined, page, limit: PAGE_SIZE, ...packFilterParams(filter) }, signal),
     enabled: !!companyId,
     placeholderData: keepPreviousData,
     retry: false,
   });
+  // Canales de POWIP de cada pack (sin fila = activo). Si falla, la columna queda en «—».
+  const channelSummary = useQuery({
+    queryKey: ["product-channel-summary", companyId],
+    queryFn: ({ signal }) => getChannelSummary(signal),
+    enabled: !!companyId,
+    retry: false,
+    staleTime: 60_000,
+  });
+  // Una tienda sin fila tiene el canal activo: se miran todas las tiendas de la empresa.
+  const storeIds = (auth?.company?.stores ?? []).map((store) => store.id);
   const rows = packs.data?.data ?? [];
   const totalPages = packs.data?.meta.totalPages ?? 0;
+  const pendingCount = packs.data?.meta.pendingCount ?? 0;
+
+  const decide = async (pack: PackView, decision: "APPROVED" | "REJECTED") => {
+    setDeciding(pack.id);
+    try {
+      await setPackApproval(pack.id, decision);
+      toast.success(decision === "APPROVED" ? `«${pack.name}» aprobado: ya se vende y se publica.` : `«${pack.name}» rechazado: no se vende ni se publica.`);
+      setRejecting(null);
+      void queryClient.invalidateQueries({ queryKey: ["packs"] });
+      void queryClient.invalidateQueries({ queryKey: ["pack"] });
+    } catch (error) {
+      toast.error(apiErrorInfo(error, "No se pudo guardar la decisión.").message);
+    } finally {
+      setDeciding(null);
+    }
+  };
+
+  const channelsCell = (pack: PackView) => {
+    if (!channelSummary.data) return <span className="text-xs text-muted-foreground">—</span>;
+    const { states } = productChannelStates(channelSummary.data, pack.id, storeIds);
+    const on = RULE_CHANNELS.filter((channel) => states[channel] === "al_dia");
+    if (!on.length) return <span className="text-xs text-muted-foreground">Ninguno</span>;
+    return (
+      <div className="flex flex-wrap gap-1">
+        {on.map((channel) => {
+          const meta = POWIP_CHANNELS.find((item) => item.code === channel)!;
+          return <span key={channel} title={meta.name} aria-label={meta.name} role="img"><ChannelChip label={meta.short} color={meta.color} /></span>;
+        })}
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="max-w-3xl space-y-1 text-sm text-muted-foreground">
-          <p>
-            <b className="text-foreground">Pack = producto.</b> Tiene SKU y código propios (Shopify lo vende como un SKU y se une en Unificación). No tiene stock propio: al vender reserva y despacha sus componentes. Si el precio deja un margen menor al mínimo configurado, avisa.
-          </p>
-          <p>Las promociones (campaña, volumen y regalo) están en la pestaña <Link className="underline" href="/packs-promos?tab=promociones">Promociones</Link>.</p>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filtrar packs">
+          {([["all", "Todos"], ["FIXED", "Fijos"], ["CHOOSE", "A elegir"], ["creators", "De creadoras"]] as const).map(([key, label]) => (
+            <button key={key} type="button" aria-pressed={filter === key} onClick={() => { setFilter(key); setPage(1); }} className={cn(CHIP, filter === key ? CHIP_ON : "bg-background text-muted-foreground hover:bg-muted")}>
+              {label}
+              {key === "creators" && pendingCount > 0 ? ` (${pendingText(pendingCount)})` : ""}
+            </button>
+          ))}
         </div>
-        {seeCosts ? (
-          <Button onClick={() => setEditing("new")}><Plus className="mr-1 h-4 w-4" />Nuevo pack</Button>
-        ) : null}
+        {canManage ? <Button onClick={() => setEditing("new")}><Plus className="mr-1 h-4 w-4" />Nuevo pack</Button> : null}
+      </div>
+      <div className="max-w-3xl space-y-1 text-sm text-muted-foreground">
+        <p>
+          <b className="text-foreground">Un pack es un producto con SKU propio:</b> también aparece en Productos › Lista de productos (tipo Pack), tiene su ficha con fotos y canales, y se vende en tus canales. No tiene stock propio: al vender reserva y despacha sus componentes.
+        </p>
+        <p>Las promociones (campaña, volumen y regalo) están en la pestaña <Link className="underline" href="/packs-promos?tab=promociones">Promociones</Link>.</p>
       </div>
       {seeCosts ? <MinMarginEditor canEdit={isAdmin} /> : null}
       <div className="relative max-w-sm">
@@ -141,7 +266,7 @@ export default function PacksView() {
         <p role="status" className="text-sm text-muted-foreground">Cargando packs…</p>
       ) : rows.length === 0 ? (
         <p className="rounded-md border border-dashed py-10 text-center text-sm text-muted-foreground">
-          {debounced ? "Ningún pack coincide con la búsqueda." : "Todavía no hay packs."}
+          {debounced ? "Ningún pack coincide con la búsqueda." : filter === "all" ? "Todavía no hay packs." : "No hay packs en este filtro."}
         </p>
       ) : (
         <div className="overflow-x-auto rounded-md border">
@@ -149,49 +274,63 @@ export default function PacksView() {
             <thead>
               <tr className="bg-muted/50 text-left text-xs font-medium text-muted-foreground">
                 <th className="px-3 py-2">Pack</th>
+                <th className="px-3 py-2">Tipo</th>
                 <th className="px-3 py-2">Componentes</th>
-                <th className="px-3 py-2 text-right">Disponible</th>
-                <th className="px-3 py-2 text-right">Costo</th>
                 <th className="px-3 py-2 text-right">Precio</th>
+                <th className="px-3 py-2 text-right">Suma de componentes</th>
                 <th className="px-3 py-2 text-right">Margen</th>
+                <th className="px-3 py-2 text-right">Stock</th>
+                <th className="px-3 py-2">Canales</th>
                 <th className="px-3 py-2">Estado</th>
                 <th className="px-3 py-2" aria-label="Acciones" />
               </tr>
             </thead>
             <tbody>
-              {rows.map((pack) => (
-                <tr key={pack.id} className="border-t align-top" data-testid={`pack-row-${pack.id}`}>
-                  <td className="px-3 py-2">
-                    <div className="flex items-start gap-2">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-primary/30 bg-primary/10 text-xs font-semibold text-primary">PK</span>
-                      <div className="min-w-0">
-                        <Link href={`/productos/${pack.id}`} className="font-medium hover:underline">{pack.name}</Link>
-                        <p className="font-mono text-xs text-muted-foreground">{[pack.sku || pack.productSku, pack.powipEan].filter(Boolean).join(" · ")}</p>
+              {rows.map((pack) => {
+                const creator = pack.approvalStatus != null;
+                const limiting = pack.available?.limiting?.label;
+                return (
+                  <tr key={pack.id} className="border-t align-top" data-testid={`pack-row-${pack.id}`}>
+                    <td className="min-w-[220px] px-3 py-2">
+                      <div className="flex items-start gap-2">
+                        <ProductThumb src={pack.imageUrl} name={pack.name} size={36} />
+                        <div className="min-w-0">
+                          <Link href={`/productos/${pack.id}`} className="font-medium hover:underline">{pack.name}</Link>
+                          <p className="font-mono text-xs text-muted-foreground">{[pack.sku || pack.productSku, pack.powipEan].filter(Boolean).join(" · ")}</p>
+                          {creator ? <p className="text-xs text-muted-foreground">De creadora</p> : null}
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-3 py-2">
-                    {pack.components.map((component) => (
-                      <div key={component.variantId} className={component.active ? "" : "text-destructive"}>
-                        {component.quantity} × {variantLabel(component.productName, component.attributeValues)}
-                        {component.active ? null : " (inactivo)"}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={cn(pill, "bg-primary/10 text-primary")}>{packTypeOf(pack) === "CHOOSE" ? "A elegir" : "Fijo"}</span>
+                    </td>
+                    <td className="px-3 py-2"><PackComponentsCell pack={pack} /></td>
+                    <td className="px-3 py-2 text-right tabular-nums">{soles(pack.price)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{soles(pack.componentsTotal ?? null)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums"><PackMarginCell pack={pack} seeCosts={seeCosts} /></td>
+                    <td className={cn("px-3 py-2 text-right tabular-nums", pack.available && pack.available.total <= 0 && "text-destructive")}>
+                      <PackAvailability pack={pack} />
+                      {limiting ? <small className="ml-auto block max-w-[180px] text-xs text-muted-foreground">Limita: {limiting}</small> : null}
+                    </td>
+                    <td className="px-3 py-2">{channelsCell(pack)}</td>
+                    <td className="px-3 py-2"><PackStatus pack={pack} /></td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-nowrap justify-end gap-1.5">
+                        {canManage && creator && pack.approvalStatus !== "APPROVED" ? (
+                          <Button size="sm" disabled={deciding === pack.id} aria-label={`Aprobar ${pack.name}`} onClick={() => void decide(pack, "APPROVED")}>Aprobar</Button>
+                        ) : null}
+                        {canManage && creator && pack.approvalStatus !== "REJECTED" ? (
+                          <Button size="sm" variant="outline" className="border-red-300 text-red-700 hover:bg-red-50" disabled={deciding === pack.id} aria-label={`Rechazar ${pack.name}`} onClick={() => setRejecting(pack)}>Rechazar</Button>
+                        ) : null}
+                        {canManage && pack.approvalStatus !== "PENDING" ? (
+                          <Button size="sm" variant="outline" aria-label={`Editar ${pack.name}`} onClick={() => setEditing(pack)}>Editar</Button>
+                        ) : null}
+                        <Button size="sm" variant="outline" asChild><Link href={`/productos/${pack.id}`} aria-label={`Ver ficha de ${pack.name}`}>Ver ficha</Link></Button>
                       </div>
-                    ))}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums"><PackAvailability pack={pack} /></td>
-                  <td className="px-3 py-2 text-right tabular-nums">{seeCosts ? soles(pack.cost ?? null) : <span className="text-muted-foreground">{MASK}</span>}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{soles(pack.price)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums"><PackMarginCell pack={pack} seeCosts={seeCosts} /></td>
-                  <td className="px-3 py-2"><Badge variant={pack.active ? "default" : "outline"}>{pack.active ? "Activo" : "Inactivo"}</Badge></td>
-                  <td className="px-3 py-2 text-right">
-                    {seeCosts ? (
-                      <Button variant="ghost" size="icon" aria-label={`Editar ${pack.name}`} onClick={() => setEditing(pack)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -204,6 +343,26 @@ export default function PacksView() {
         </div>
       ) : null}
       {editing ? <PackFormDialog key={editing === "new" ? "new" : editing.id} pack={editing === "new" ? null : editing} onClose={() => setEditing(null)} /> : null}
+      <AlertDialog open={!!rejecting} onOpenChange={(open) => !open && !deciding && setRejecting(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Rechazar «{rejecting?.name}»?</AlertDialogTitle>
+            <AlertDialogDescription>Un pack rechazado no se vende ni se publica. Puedes aprobarlo después si cambias de opinión.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!deciding}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={!!deciding}
+              onClick={(event) => {
+                event.preventDefault();
+                if (rejecting) void decide(rejecting, "REJECTED");
+              }}
+            >
+              Sí, rechazar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
