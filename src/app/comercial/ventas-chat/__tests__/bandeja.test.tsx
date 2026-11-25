@@ -33,6 +33,8 @@ jest.mock("@/services/clients.service", () => ({
   fetchClientByPhone: jest.fn(),
   createClient: jest.fn(),
 }));
+// The resend button has its own test; here it would consume the mocked HTTP calls.
+jest.mock("@/components/facturacion/ReenviarPdfWhatsAppButton", () => ({ ReenviarPdfWhatsAppButton: () => null }));
 jest.mock("@/components/modals/PaymentVerificationModal", () => ({
   __esModule: true,
   default: ({ orderId }: { orderId: string }) => <div data-testid="pay-modal">{orderId}</div>,

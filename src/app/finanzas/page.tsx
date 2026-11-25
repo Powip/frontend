@@ -40,6 +40,7 @@ import {
 } from "@/components/orders/OrderDetailModal";
 import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
+import { ReenviarPdfWhatsAppButton } from "@/components/facturacion/ReenviarPdfWhatsAppButton";
 import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
@@ -851,6 +852,11 @@ Estado: ${sale.status}
                 >
                   <WhatsAppIcon className="h-4 w-4" />
                 </Button>
+                <ReenviarPdfWhatsAppButton
+                  orderId={sale.id}
+                  phone={sale.phoneNumber}
+                  customerName={sale.clientName}
+                />
                 <Button
                   size="icon"
                   variant="outline"
@@ -1037,6 +1043,11 @@ Estado: ${sale.status}
                 >
                   <WhatsAppIcon className="h-4 w-4" />
                 </Button>
+                <ReenviarPdfWhatsAppButton
+                  orderId={sale.id}
+                  phone={sale.phoneNumber}
+                  customerName={sale.clientName}
+                />
                 <Button
                   size="icon"
                   variant="outline"
@@ -1391,6 +1402,13 @@ Estado: ${sale.status}
                               >
                                 <WhatsAppIcon className="h-4 w-4" />
                               </Button>}
+                              {!sale.withoutOrder && (
+                                <ReenviarPdfWhatsAppButton
+                                  orderId={sale.id}
+                                  phone={sale.phoneNumber}
+                                  customerName={sale.clientName}
+                                />
+                              )}
                               {receipts && sale.withoutOrder ? (
                                 // Solo comprobante de Pau sin pedido: no hay pedido que abrir en Gestionar Pagos.
                                 receipts.map((receipt) => <CrmPauActions key={receipt.id} receipt={receipt} onReviewed={fetchOrders} />)

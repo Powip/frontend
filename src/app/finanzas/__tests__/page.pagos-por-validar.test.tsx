@@ -75,6 +75,8 @@ jest.mock("@/components/modals/CustomerServiceModal", () => ({
   __esModule: true,
   default: () => null,
 }));
+// The resend button has its own test; here it would consume the mocked HTTP calls.
+jest.mock("@/components/facturacion/ReenviarPdfWhatsAppButton", () => ({ ReenviarPdfWhatsAppButton: () => null }));
 jest.mock("@/components/modals/CommentsTimelineModal", () => ({
   __esModule: true,
   default: () => null,

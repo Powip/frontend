@@ -1,4 +1,5 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { WHATSAPP_NOTIFICATIONS_QUERY_KEY } from "@/components/whatsapp/WhatsAppNotificationsBell";
 import {
   getTaxDocumentWhatsAppAvailabilityApi,
   type SendTaxDocumentWhatsAppRequest,
@@ -22,7 +23,10 @@ export function useTaxDocumentWhatsAppAvailability(enabled: boolean) {
 }
 
 export function useSendTaxDocumentWhatsApp() {
+  const queryClient = useQueryClient();
   return useMutation<SendTaxDocumentWhatsAppResponse, Error, SendTaxDocumentWhatsAppRequest>({
     mutationFn: sendTaxDocumentWhatsAppApi,
+    // Every send, ok or failed, leaves a notice in the sidebar bell: show it now, not in 60 s.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: WHATSAPP_NOTIFICATIONS_QUERY_KEY }),
   });
 }

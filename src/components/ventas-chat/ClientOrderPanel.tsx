@@ -23,6 +23,7 @@ import { PipelineSection, TasksSection } from "./ChatPlanningSections";
 import CustomerPhoneField from "./CustomerPhoneField";
 import CrearClienteDialog from "./CrearClienteDialog";
 import PedidoLinkSection from "./PedidoLinkSection";
+import { ReenviarPdfWhatsAppButton } from "@/components/facturacion/ReenviarPdfWhatsAppButton";
 import {
   CodSection,
   DiscountApprovalsSection,
@@ -215,6 +216,14 @@ function OrderRow({
         >
           <ExternalLink /> Abrir pedido
         </Button>
+        {order && (
+          <ReenviarPdfWhatsAppButton
+            orderId={link.orderId}
+            phone={order.customer?.phoneNumber}
+            customerName={order.customer?.fullName}
+            size="sm"
+          />
+        )}
       </div>
     </li>
   );
