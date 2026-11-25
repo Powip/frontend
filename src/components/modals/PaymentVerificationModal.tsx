@@ -35,7 +35,9 @@ import {
 import axios from "axios";
 import axiosAuth from "@/lib/axiosAuth";
 import { toast } from "sonner";
-import { reviewCorePayment, updateCorePaymentReceiptAmount } from "@/services/crmOrderPanelService";
+import { reviewCorePayment, updateCorePaymentReceiptAmount, listFinanceQueue } from "@/services/crmOrderPanelService";
+import { CRM_PAU_QUEUE_KEY } from "@/components/finanzas/CrmPauReceipts";
+import { useQuery } from "@tanstack/react-query";
 import {
   getLeadPaymentCapabilities,
   captureLeadPayment,
@@ -62,11 +64,6 @@ interface Payment {
   leadId?: string | null;
   leadPaymentVersion?: number | null;
 }
-
-// Pago que subió Pau (comprobante validado en el chat): su nota lo marca al crearlo (ms-crm attachPauPayment).
-const PAU_PAYMENT_NOTE_PREFIX = "Comprobante validado por Pau";
-const isPauPayment = (payment: { notes?: string | null }) =>
-  (payment.notes ?? "").startsWith(PAU_PAYMENT_NOTE_PREFIX);
 
 // Mismo detalle del pedido que abre Ventas (columna Resumen → Ver). Se reutiliza, no se copia.
 const OrderDetailModal = lazy(() => import("@/components/modals/CustomerServiceModal"));
@@ -166,6 +163,18 @@ export default function PaymentVerificationModal({
   const [leadPaymentCaps, setLeadPaymentCaps] = useState<LeadPaymentCapabilities | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [orderDetailOpen, setOrderDetailOpen] = useState(false);
+  // Pagos del Core que vienen de un comprobante de Pau: se decide por el id del pago, no por texto.
+  const pauReceiptsQuery = useQuery({
+    queryKey: CRM_PAU_QUEUE_KEY,
+    queryFn: () => listFinanceQueue("porval", "pau"),
+    enabled: open,
+    retry: false,
+    staleTime: 15_000,
+  });
+  const pauCorePaymentIds = new Set(
+    (pauReceiptsQuery.data ?? []).map((r) => r.corePaymentId).filter((id): id is string => !!id),
+  );
+  const isPauPayment = (payment: { id: string }) => pauCorePaymentIds.has(payment.id);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingProofForId, setUploadingProofForId] = useState<string | null>(
     null,

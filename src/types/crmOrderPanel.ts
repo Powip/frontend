@@ -167,6 +167,8 @@ export type ReceiptStatus = "porval" | "aprobado" | "rechazado";
 export interface PaymentReceipt {
   id: string;
   conversationId: string;
+  /** Id del pago en el Core (si ya se subió). */
+  corePaymentId?: string | null;
   orderId: string | null;
   orderNumber: string | null;
   quotationId: string | null;
