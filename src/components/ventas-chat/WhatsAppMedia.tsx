@@ -42,7 +42,7 @@ function useBlobUrl(mediaUrl: string | null | undefined) {
   return { url, failed };
 }
 
-export function WhatsAppMedia({ message }: { message: Message }) {
+export function WhatsAppMedia({ message, readOnly = false }: { message: Message; readOnly?: boolean }) {
   const mime = (message.mediaMime ?? "").toLowerCase();
   const isImage = mime.startsWith("image/");
   const isAudio = mime.startsWith("audio/");
@@ -89,7 +89,7 @@ export function WhatsAppMedia({ message }: { message: Message }) {
           <FileText className="h-4 w-4" aria-hidden /> {name}
         </a>
       )}
-      {canBeReceipt(message) && (
+      {!readOnly && canBeReceipt(message) && (
         <Button
           type="button"
           size="sm"

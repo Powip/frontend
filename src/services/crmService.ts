@@ -122,6 +122,29 @@ export async function listMessages(
   ).data;
 }
 
+/** Chat de Ventas por chat del que salió un pedido del Core (null = la venta no vino de un chat). */
+export async function getOrderConversation(orderId: string): Promise<Conversation | null> {
+  return (
+    await axiosAuth.get<{ conversation: Conversation | null }>(
+      `${BASE}/orders/${encodeURIComponent(orderId)}/conversation`,
+    )
+  ).data.conversation;
+}
+
+/** Todo el historial de un chat, del más antiguo al más nuevo (con tope para chats enormes). */
+export async function listAllMessages(id: string, max = 1000): Promise<MessagePage> {
+  const items: Message[] = [];
+  let before: string | undefined;
+  for (;;) {
+    const page = await listMessages(id, { before, limit: 100 });
+    items.unshift(...page.items);
+    if (!page.hasMore || page.items.length === 0 || items.length >= max) {
+      return { items, hasMore: page.hasMore };
+    }
+    before = page.items[0].createdAt;
+  }
+}
+
 export async function sendMessage(id: string, body: string): Promise<Message> {
   return (await axiosAuth.post<Message>(`${conv(id)}/messages`, { body })).data;
 }
