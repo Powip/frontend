@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, FileText, Sparkles, X } from "lucide-react";
+import { FileText, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { getReceiptFile, listFinanceQueue, reviewReceipt } from "@/services/crmOrderPanelService";
@@ -45,18 +45,53 @@ async function openFile(id: string) {
   }
 }
 
-function ReceiptCard({ receipt }: { receipt: PaymentReceipt }) {
+/** Detalle del 1er filtro de Pau, dentro de la celda del monto (como el detalle Yape de Live). */
+export function CrmPauDetail({ receipt }: { receipt: PaymentReceipt }) {
+  const checks = receipt.pauChecks;
+  const failed = checks ? CHECKS.filter((key) => !checks[key]) : [];
+  return (
+    <div className="mt-1 space-y-1 text-xs font-normal text-foreground" data-testid="crm-pau-detail">
+      <Badge variant="secondary" className="gap-1">
+        <Sparkles className="h-3 w-3" aria-hidden /> Validado por Pau
+      </Badge>
+      <p>
+        {formatSalesMoney(receipt.amount, "PEN")} · {receipt.methodLabel}
+        {receipt.operationNumber ? ` · Op. ${receipt.operationNumber}` : ""}
+        {checks?.read.date ? ` · ${checks.read.date}` : ""}
+      </p>
+      {checks && (
+        <p className="text-muted-foreground" title={CHECKS.map((key) => `${checks[key] ? "✓" : "✗"} ${PAU_CHECK_LABEL[key]}`).join("\n")}>
+          {CHECKS.length - failed.length} de {CHECKS.length} controles de Pau
+        </p>
+      )}
+      {failed.map((key) => (
+        <p key={key} className="rounded-full bg-red-50 px-2 py-0.5 text-red-800">
+          Falla: {PAU_CHECK_LABEL[key]}
+        </p>
+      ))}
+      {!receipt.orderId && receipt.destination !== "simulated" && (
+        <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900">
+          Sin pedido en Powip. {receipt.coreError ?? "Todavía no se creó el pedido de esta venta."}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** 2do filtro: el jefe abre el comprobante y acepta, o rechaza con un motivo que Pau avisa. */
+export function CrmPauActions({ receipt, onReviewed }: { receipt: PaymentReceipt; onReviewed: () => void }) {
   const queryClient = useQueryClient();
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState<ReceiptRejectReason>("no_llego");
   const [note, setNote] = useState("");
-  const checks = receipt.pauChecks;
   const review = useMutation({
     mutationFn: (approve: boolean) =>
       reviewReceipt(receipt.id, approve, approve ? undefined : note.trim() || undefined, approve ? undefined : reason),
     onSuccess: (_, approve) => {
       toast.success(approve ? "Pago aceptado. Pau avisa al cliente." : "Comprobante rechazado. Pau avisa al cliente el motivo.");
+      setRejecting(false);
       void queryClient.invalidateQueries({ queryKey: CRM_PAU_QUEUE_KEY });
+      onReviewed();
     },
     // El CRM explica por qué no se puede (por ejemplo, el chat no tiene tienda).
     onError: (error) =>
@@ -64,58 +99,26 @@ function ReceiptCard({ receipt }: { receipt: PaymentReceipt }) {
   });
 
   return (
-    <li className="rounded-xl border bg-card p-4" data-testid="crm-pau-receipt">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <b>{receipt.pauSale?.customerName ?? "Cliente del chat"}</b>
-            <Badge variant="secondary" className="gap-1">
-              <Sparkles className="h-3 w-3" aria-hidden /> Validado por Pau
-            </Badge>
-          </div>
-          <p className="text-sm text-muted-foreground">
-            {receipt.pauSale?.items ?? "Venta del CRM"}
-            {receipt.pauSale?.district ? ` · ${receipt.pauSale.district}` : ""}
-          </p>
-          <p className="text-sm">
-            <b>{formatSalesMoney(receipt.amount, "PEN")}</b> · {receipt.methodLabel}
-            {receipt.operationNumber ? ` · Op. ${receipt.operationNumber}` : ""}
-            {checks?.read.date ? ` · ${checks.read.date}` : ""}
-          </p>
-        </div>
-        {receipt.hasFile && (
-          <Button size="sm" variant="outline" onClick={() => void openFile(receipt.id)}>
-            <FileText className="mr-1 h-4 w-4" aria-hidden /> Ver comprobante
-          </Button>
-        )}
-      </div>
-
-      {checks && (
-        <ul className="mt-3 flex flex-wrap gap-2" aria-label="1er filtro de Pau">
-          {CHECKS.map((key) => (
-            <li
-              key={key}
-              className={
-                checks[key]
-                  ? "inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-800"
-                  : "inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-800"
-              }
-            >
-              {checks[key] ? <Check className="h-3 w-3" aria-hidden /> : <X className="h-3 w-3" aria-hidden />}
-              {PAU_CHECK_LABEL[key]}
-            </li>
-          ))}
-        </ul>
+    <>
+      {receipt.hasFile && (
+        <Button size="icon" variant="outline" title="Ver comprobante" aria-label="Ver comprobante" onClick={() => void openFile(receipt.id)}>
+          <FileText className="h-4 w-4" aria-hidden />
+        </Button>
       )}
-
-      {!receipt.orderId && receipt.destination !== "simulated" && (
-        <p role="alert" className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">
-          Sin pedido en Powip. {receipt.coreError ?? "Todavía no se creó el pedido de esta venta."}
-        </p>
-      )}
-
-      {rejecting ? (
-        <div className="mt-3 space-y-3 rounded-lg border p-3">
+      <Button size="sm" onClick={() => review.mutate(true)} disabled={review.isPending}>
+        Aceptar pago
+      </Button>
+      <Button size="sm" variant="outline" onClick={() => setRejecting(true)} disabled={review.isPending}>
+        Rechazar
+      </Button>
+      <Dialog open={rejecting} onOpenChange={setRejecting}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rechazar comprobante</DialogTitle>
+            <DialogDescription>
+              {receipt.pauSale?.customerName ?? "Cliente del chat"} · {formatSalesMoney(receipt.amount, "PEN")}. Pau avisa el motivo al cliente.
+            </DialogDescription>
+          </DialogHeader>
           <div role="radiogroup" aria-label="Motivo del rechazo" className="flex flex-wrap gap-2">
             {RECEIPT_REJECT_REASONS.map(([value, label]) => (
               <Button
@@ -142,50 +145,8 @@ function ReceiptCard({ receipt }: { receipt: PaymentReceipt }) {
               Rechazar y avisar
             </Button>
           </div>
-        </div>
-      ) : (
-        <div className="mt-3 flex justify-end gap-2">
-          <Button size="sm" variant="outline" onClick={() => setRejecting(true)} disabled={review.isPending}>
-            Rechazar
-          </Button>
-          <Button size="sm" onClick={() => review.mutate(true)} disabled={review.isPending}>
-            Aceptar pago
-          </Button>
-        </div>
-      )}
-    </li>
-  );
-}
-
-/**
- * Filtro «CRM · Pau» en Pagos por validar: 2do filtro de las ventas que Pau cerró en el chat.
- * El jefe ve lo que Pau revisó, abre el comprobante y acepta o rechaza con un motivo.
- */
-export function CrmPauReceiptsSection({ receipts, loading, error }: { receipts: PaymentReceipt[]; loading: boolean; error: boolean }) {
-  if (!loading && !error && receipts.length === 0) return null;
-  return (
-    <Card className="mb-4" data-testid="crm-pau-receipts">
-      <CardHeader>
-        <CardTitle className="text-base">CRM · Pau ({receipts.length})</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Ventas que Pau cerró en el chat. Pau ya revisó el comprobante; tú das el visto final.
-        </p>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Cargando comprobantes del CRM…</p>
-        ) : error ? (
-          <p role="alert" className="text-sm text-muted-foreground">
-            No se pudieron cargar los comprobantes del CRM.
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {receipts.map((r) => (
-              <ReceiptCard key={r.id} receipt={r} />
-            ))}
-          </ul>
-        )}
-      </CardContent>
-    </Card>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

@@ -374,9 +374,12 @@ describe("Finanzas › Pagos por validar (FEAT-33 B1)", () => {
     fireEvent.click(screen.getByRole("button", { name: "CRM · Pau" }));
     expect(screen.getByRole("button", { name: "CRM · Pau" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("ORD-153900")).not.toBeInTheDocument();
-    const card = screen.getByTestId("crm-pau-receipt");
+    // La venta del chat es una fila de la misma tabla, sin apartado propio.
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+    const card = screen.getByText("Ana Pérez").closest("tr") as HTMLElement;
+    expect(within(card).getByText("CRM · Pau")).toBeInTheDocument();
     expect(within(card).getByText("Validado por Pau")).toBeInTheDocument();
-    expect(within(card).getByText("Monto igual a la venta")).toBeInTheDocument();
+    expect(within(card).getByText("5 de 5 controles de Pau")).toBeInTheDocument();
     fireEvent.click(within(card).getByRole("button", { name: "Aceptar pago" }));
     await waitFor(() =>
       expect(mockedAxios.patch).toHaveBeenCalledWith(expect.stringContaining("/receipts/rcpt-1/review"), { approve: true }),
@@ -395,13 +398,46 @@ describe("Finanzas › Pagos por validar (FEAT-33 B1)", () => {
     mockedAxios.patch.mockResolvedValue({ data: {} });
     mockSearch = "origen=pau";
     render(<FinanzasPage />);
-    const card = await screen.findByTestId("crm-pau-receipt");
+    const card = (await screen.findByText("Cliente del chat")).closest("tr") as HTMLElement;
     fireEvent.click(within(card).getByRole("button", { name: "Rechazar" }));
-    fireEvent.click(within(card).getByRole("radio", { name: "Monto distinto" }));
-    fireEvent.click(within(card).getByRole("button", { name: "Rechazar y avisar" }));
+    const dialog = await screen.findByRole("dialog", { name: "Rechazar comprobante" });
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Monto distinto" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Rechazar y avisar" }));
     await waitFor(() =>
       expect(mockedAxios.patch).toHaveBeenCalledWith(expect.stringContaining("/receipts/rcpt-2/review"), { approve: false, reason: "monto" }),
     );
+  });
+
+  it("a chat sale with its order and its CRM receipt is one row and counts once", async () => {
+    asReviewer();
+    const pauOrder = makeOrderHeader({
+      id: "order-pau",
+      orderNumber: "ORD-000012",
+      externalSource: "crm_pau",
+      status: "INCOMPLETE",
+    } as Partial<OrderHeader>);
+    mockQueue([pauOrder, manualOrder()]);
+    const base = mockedAxios.get.getMockImplementation()!;
+    mockedAxios.get.mockImplementation((url: string, config?: unknown) =>
+      url.includes("/receipts/queue")
+        ? Promise.resolve({ data: { items: [{ id: "rcpt-3", orderId: "order-pau", amount: 100, methodLabel: "Yape", hasFile: false, pauChecks: null, pauSale: null, validatedBy: "pau" }] } })
+        : base(url, config),
+    );
+    render(<FinanzasPage />);
+    expect(await screen.findByRole("tab", { name: "Pagos por validar (2)" })).toBeInTheDocument();
+    expect(await screen.findByText("Validado por Pau")).toBeInTheDocument();
+    expect(screen.getAllByText("ORD-000012")).toHaveLength(1);
+    expect(within(rowOf("ORD-000012")).getByText("CRM · Pau")).toBeInTheDocument();
+    expect(within(rowOf("ORD-000012")).getByRole("button", { name: "Aceptar pago" })).toBeInTheDocument();
+    expect(within(rowOf("ORD-000012")).queryByRole("button", { name: /Gestionar Pagos/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Otros orígenes" }));
+    expect(screen.queryByText("ORD-000012")).not.toBeInTheDocument();
+    expect(screen.getByText("ORD-153900")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "CRM · Pau" }));
+    expect(screen.getByText("ORD-000012")).toBeInTheDocument();
+    expect(screen.queryByText("ORD-153900")).not.toBeInTheDocument();
   });
 
   it("opens already filtered from the Live console link", async () => {
