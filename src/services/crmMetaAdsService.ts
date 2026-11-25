@@ -149,6 +149,8 @@ export interface AdResults {
   attributionDays: number;
   simulated: boolean;
   spendError: string | null;
+  /** "imported": gasto leído de Publicidad (ms-integrations) porque no hay token propio de Meta. */
+  spendSource?: "meta" | "imported" | null;
   totals: {
     spend: number | null;
     chats: number;

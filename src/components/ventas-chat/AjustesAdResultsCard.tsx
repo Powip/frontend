@@ -117,6 +117,11 @@ export default function AdResultsCard() {
           Modo de prueba: Meta está simulado en este servidor. El gasto es de ejemplo.
         </p>
       )}
+      {data?.spendSource === "imported" && (
+        <p className="text-xs text-muted-foreground" data-testid="ad-results-spend-imported">
+          Gasto tomado de Publicidad (importado de Meta cada día).
+        </p>
+      )}
       {data?.spendError && (
         <p role="status" className="text-xs text-amber-700" data-testid="ad-results-spend-error">
           {data.spendError} Se muestran solo los datos del CRM.

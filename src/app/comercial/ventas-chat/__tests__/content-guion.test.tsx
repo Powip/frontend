@@ -33,6 +33,16 @@ jest.mock("@/services/crmContentService", () => ({
   listSheets: jest.fn(),
   createSheet: jest.fn(),
 }));
+jest.mock("@/services/crmBlockDKService", () => ({
+  listTestimonies: jest.fn().mockResolvedValue({ items: [], pending: 0 }),
+  proposeTestimony: jest.fn(),
+  reviewMaterial: jest.fn(),
+  getCatalogSettings: jest.fn().mockResolvedValue({ attributionDays: 7, showSoldOut: false, pdfGeneratedAt: null, updatedByName: null }),
+  saveCatalogSettings: jest.fn(),
+  saveAttributionDays: jest.fn(),
+  getCatalogAttribution: jest.fn().mockResolvedValue({ days: 7, since: "", orders: 0, billed: 0, bySeller: 0, withoutSeller: 0, sellers: [] }),
+  generateCatalogPdf: jest.fn(),
+}));
 jest.mock("@/services/crmService", () => ({
   ...jest.requireActual("@/services/crmService"),
   getCrmMe: jest.fn(),

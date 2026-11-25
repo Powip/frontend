@@ -3,6 +3,7 @@ import { useCrmMe } from "@/hooks/useCrmMe";
 import { useGeneralMaterials, useScript } from "@/hooks/useCrmContent";
 import ContentAdminGate from "./ContentAdminGate";
 import { ContentError, ContentLoading } from "./ContentStatus";
+import GuionCatalogBox from "./GuionCatalogBox";
 import GuionEditor from "./GuionEditor";
 import GuionMaterialList from "./GuionMaterialList";
 import GuionPlaybook from "./GuionPlaybook";
@@ -10,6 +11,7 @@ import GuionProductMaterial from "./GuionProductMaterial";
 import { FichaObjections } from "./FichaProduct";
 import GuionReads from "./GuionReads";
 import GuionSheetsManager from "./GuionSheetsManager";
+import GuionTestimonies from "./GuionTestimonies";
 
 function GuionBody() {
   const { isAdmin } = useCrmMe();
@@ -35,6 +37,7 @@ function GuionBody() {
             Catálogo, métodos de pago y políticas: enlaces que las vendedoras copian al chat desde «Respuestas».
           </p>
         </div>
+        {isAdmin && <GuionCatalogBox />}
         {general.isLoading && <ContentLoading />}
         {general.isError && <ContentError error={general.error} onRetry={() => general.refetch()} />}
         {general.data && (
@@ -51,6 +54,7 @@ function GuionBody() {
         )}
       </section>
 
+      {isAdmin && <GuionTestimonies />}
       {isAdmin && <GuionProductMaterial />}
       {isAdmin && <FichaObjections />}
 
