@@ -5,7 +5,14 @@ import type { Client } from "@/interfaces/ICliente";
 import { cn } from "@/lib/utils";
 import type { Conversation } from "@/types/crm";
 import { CHANNEL_LABEL, formatMoney, phoneForCustomer } from "./format";
-import { channelsText, lastPurchaseText } from "./clientProfile";
+import { Badge } from "@/components/ui/badge";
+import { channelsText, codScore, lastPurchaseText } from "./clientProfile";
+
+const SCORE_BADGE = {
+  bajo: { variant: "success", label: "Bajo" },
+  medio: { variant: "outline", label: "Medio" },
+  alto: { variant: "error", label: "Alto" },
+} as const;
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -50,6 +57,16 @@ function Stat({ label, value, alert }: { label: string; value: string | number; 
   );
 }
 
+function ScoreRow({ score }: { score: ReturnType<typeof codScore> }) {
+  const b = SCORE_BADGE[score];
+  return (
+    <p className="flex items-center justify-between gap-2 text-sm">
+      <span className="text-muted-foreground">Score COD</span>
+      <Badge variant={b.variant}>{b.label}</Badge>
+    </p>
+  );
+}
+
 /** Compras, rechazos y gasto del cliente con la empresa. Sin datos de Core no inventa ceros. */
 export function ClientHistorySection({ clientId }: { clientId: string }) {
   const { data } = useClientHistory(clientId);
@@ -63,6 +80,7 @@ export function ClientHistorySection({ clientId }: { clientId: string }) {
         <Stat label="Gastado" value={formatMoney(data.spent)} />
       </div>
       <p className="text-xs text-muted-foreground">{lastPurchaseText(data.lastPurchaseAt)}</p>
+      <ScoreRow score={codScore(data.purchases, data.rejections)} />
     </section>
   );
 }

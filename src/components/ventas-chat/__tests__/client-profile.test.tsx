@@ -2,7 +2,7 @@ import React from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import ClientOrderPanel from "@/components/ventas-chat/ClientOrderPanel";
-import { channelsText, lastPurchaseText } from "@/components/ventas-chat/clientProfile";
+import { channelsText, codScore, lastPurchaseText } from "@/components/ventas-chat/clientProfile";
 import axiosAuth from "@/lib/axiosAuth";
 import * as crm from "@/services/crmService";
 import * as ads from "@/services/crmMetaAdsService";
@@ -114,6 +114,16 @@ describe("Pestaña Cliente", () => {
     expect(box.getByText("1")).toHaveClass("text-destructive");
     expect(box.getByText("S/ 250.00")).toBeInTheDocument();
     expect(box.getByText("Última compra hace 3 días.")).toBeInTheDocument();
+    expect(box.getByText("Alto")).toBeInTheDocument();
+  });
+
+  it("Score COD: rechazo = alto, 2+ compras sin rechazo = bajo, resto = medio (mockup 152)", () => {
+    expect(codScore(2, 2)).toBe("alto");
+    expect(codScore(1, 1)).toBe("alto");
+    expect(codScore(3, 0)).toBe("bajo");
+    expect(codScore(2, 0)).toBe("bajo");
+    expect(codScore(1, 0)).toBe("medio");
+    expect(codScore(0, 0)).toBe("medio");
   });
 
   it("si Core no da historial no inventa ceros", async () => {
