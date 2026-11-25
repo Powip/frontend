@@ -200,7 +200,8 @@ describe("Chat · guion y respuestas", () => {
     await waitFor(() => expect(c.getScript).toHaveBeenCalled());
     await waitFor(() => expect(c.listSheets).toHaveBeenCalled());
     expect(screen.queryByRole("region", { name: "Guion" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Respuestas/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Material de venta" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Respuestas a objeciones" })).not.toBeInTheDocument();
   });
 
   it("clic en un paso rellena la caja con el nombre, hace PATCH scriptStep y no envía", async () => {
@@ -239,7 +240,7 @@ describe("Chat · guion y respuestas", () => {
 
   it("una objeción activa inserta su respuesta y registra el uso", async () => {
     setup();
-    fireEvent.click(await screen.findByRole("button", { name: /Respuestas/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Respuestas a objeciones" }));
     const list = within(await screen.findByRole("region", { name: "Objeciones" }));
     expect(list.queryByText("Inactiva")).not.toBeInTheDocument();
     fireEvent.click(list.getByRole("button", { name: /Está caro/ }));
@@ -250,7 +251,7 @@ describe("Chat · guion y respuestas", () => {
 
   it("un material del negocio inserta «título: url» en la caja", async () => {
     setup();
-    fireEvent.click(await screen.findByRole("button", { name: /Respuestas/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Material de venta" }));
     fireEvent.click(await within(await screen.findByRole("region", { name: "Material" })).findByRole("button", { name: /Catálogo/ }));
     expect(await box()).toHaveValue("Catálogo: https://x.pe/cat.pdf");
     expect(s.sendMessage).not.toHaveBeenCalled();
@@ -259,14 +260,14 @@ describe("Chat · guion y respuestas", () => {
   it("con texto previo, el material se añade en otra línea sin borrar lo escrito", async () => {
     setup();
     fireEvent.change(await box(), { target: { value: "Mira esto" } });
-    fireEvent.click(await screen.findByRole("button", { name: /Respuestas/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Material de venta" }));
     fireEvent.click(await within(await screen.findByRole("region", { name: "Material" })).findByRole("button", { name: /Catálogo/ }));
     expect(await box()).toHaveValue("Mira esto\nCatálogo: https://x.pe/cat.pdf");
   });
 
   it("buscador de productos: precio, qué destacar y material de la ficha", async () => {
     setup();
-    fireEvent.click(await screen.findByRole("button", { name: /Respuestas/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Material de venta" }));
     fireEvent.change(await screen.findByLabelText("Buscar producto"), { target: { value: "polo" } });
     await waitFor(() => expect(c.listSheets).toHaveBeenCalledWith("polo"));
     const card = within(await screen.findByTestId("chat-sheet"));
@@ -274,11 +275,11 @@ describe("Chat · guion y respuestas", () => {
     fireEvent.click(card.getByRole("button", { name: "Insertar precio de Polo básico" }));
     expect(await box()).toHaveValue("Polo básico: S/ 50");
 
-    fireEvent.click(await screen.findByRole("button", { name: /Respuestas/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Material de venta" }));
     fireEvent.click(await screen.findByRole("button", { name: "Insertar qué destacar de Polo básico" }));
     expect(await box()).toHaveValue("Polo básico: S/ 50\nAlgodón pima");
 
-    fireEvent.click(await screen.findByRole("button", { name: /Respuestas/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "Material de venta" }));
     fireEvent.click(await screen.findByRole("button", { name: /Foto frontal/ }));
     expect(await box()).toHaveValue("Polo básico: S/ 50\nAlgodón pima\nFoto frontal: https://x.pe/f.jpg");
   });

@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useState } from "react";
-import { BookOpen, ExternalLink, MessageSquareQuote, Search, Sparkles, X } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { BookOpen, ExternalLink, ImageIcon, MessageSquareQuote, Search, Sparkles, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -41,7 +41,7 @@ export default function ContentChatBar({ conversation, text, onFill, windowOpen,
   const general = useGeneralMaterials();
   const update = useUpdateConversation(conversation.id);
   const registerUse = useRegisterObjectionUse(conversation.id);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState<false | "all" | "material" | "objections">(false);
   const [search, setSearch] = useState("");
   const [debounced, setDebounced] = useState("");
   const [pendingStep, setPendingStep] = useState<number | null>(null);
@@ -100,6 +100,97 @@ export default function ContentChatBar({ conversation, text, onFill, windowOpen,
     </button>
   );
 
+  const objectionsSection = (
+    <section aria-label="Objeciones" className="space-y-1.5">
+      <h3 className="text-xs font-semibold uppercase text-muted-foreground">Objeciones</h3>
+      {activeObjections.length === 0 && <p className="text-xs text-muted-foreground">No hay objeciones activas.</p>}
+      {activeObjections.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          onClick={() => {
+            insert(o.response);
+            registerUse.mutate(o.id);
+          }}
+          className="block w-full rounded-md border px-2 py-1.5 text-left hover:bg-accent/50"
+        >
+          <span className="block text-xs font-medium">{o.name}</span>
+          <span className="sm:line-clamp-2 text-xs text-muted-foreground">{o.response}</span>
+        </button>
+      ))}
+    </section>
+  );
+  const materialSection = (
+    <section aria-label="Material" className="space-y-1.5">
+      <h3 className="text-xs font-semibold uppercase text-muted-foreground">Material</h3>
+      {generalItems.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium">Del negocio</p>
+          {generalItems.map(materialButton)}
+        </div>
+      )}
+      <Input
+        icon={Search}
+        aria-label="Buscar producto"
+        placeholder="Buscar producto…"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
+      {sheetItems.length === 0 && debounced !== "" && (
+        <p className="text-xs text-muted-foreground">Ningún producto coincide.</p>
+      )}
+      {sheetItems.map((s) => (
+        <div key={s.id} className="space-y-1 rounded-md border p-2" data-testid="chat-sheet">
+          <p className="text-xs font-semibold">{s.name}</p>
+          {s.price && (
+            <button
+              type="button"
+              aria-label={`Insertar precio de ${s.name}`}
+              onClick={() => insert(`${s.name}: ${s.price}`)}
+              className="block w-full rounded border px-2 py-1 text-left text-xs hover:bg-accent/50"
+            >
+              <span className="font-medium">Precio:</span> {s.price}
+            </button>
+          )}
+          {s.highlights && (
+            <button
+              type="button"
+              aria-label={`Insertar qué destacar de ${s.name}`}
+              onClick={() => insert(s.highlights)}
+              className="block w-full rounded border px-2 py-1 text-left text-xs hover:bg-accent/50"
+            >
+              <span className="font-medium">Destacar:</span> {s.highlights}
+            </button>
+          )}
+          {s.materials.map(materialButton)}
+        </div>
+      ))}
+    </section>
+  );
+
+  // En el chat (compact): dos íconos junto a la caja, como el mockup 152.
+  if (compact) {
+    const iconPopover = (label: string, icon: ReactNode, body: ReactNode, isOpen: boolean, setIsOpen: (v: boolean) => void) => (
+      <Popover open={isOpen} onOpenChange={setIsOpen}>
+        <PopoverTrigger asChild>
+          <Button size="icon" variant="outline" aria-label={label} title={label} disabled={!windowOpen}>
+            {icon}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="max-h-[70vh] w-[min(26rem,90vw)] space-y-4 overflow-y-auto">
+          <h3 className="text-sm font-semibold">{label}</h3>
+          {body}
+        </PopoverContent>
+      </Popover>
+    );
+    return (
+      <>
+        {iconPopover("Material de venta", <ImageIcon />, materialSection, open === "material", (v) => setOpen(v ? "material" : false))}
+        {iconPopover("Respuestas a objeciones", <TriangleAlert />, objectionsSection, open === "objections", (v) => setOpen(v ? "objections" : false))}
+      </>
+    );
+  }
+
   return (
     <div role="region" aria-label="Guion" className="mb-2" data-testid="content-bar">
       <div className="flex flex-wrap items-center gap-1.5 rounded-md border bg-muted/40 px-2 py-1.5">
@@ -134,76 +225,15 @@ export default function ContentChatBar({ conversation, text, onFill, windowOpen,
           </>
         )}
         {hasReplies && (
-          <Popover open={open} onOpenChange={setOpen}>
+          <Popover open={open === "all"} onOpenChange={(v) => setOpen(v ? "all" : false)}>
             <PopoverTrigger asChild>
               <Button size="sm" variant="outline" className="ml-auto" disabled={!windowOpen}>
                 <MessageSquareQuote /> Respuestas
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="max-h-[70vh] w-[min(26rem,90vw)] space-y-4 overflow-y-auto">
-              <section aria-label="Objeciones" className="space-y-1.5">
-                <h3 className="text-xs font-semibold uppercase text-muted-foreground">Objeciones</h3>
-                {activeObjections.length === 0 && <p className="text-xs text-muted-foreground">No hay objeciones activas.</p>}
-                {activeObjections.map((o) => (
-                  <button
-                    key={o.id}
-                    type="button"
-                    onClick={() => {
-                      insert(o.response);
-                      registerUse.mutate(o.id);
-                    }}
-                    className="block w-full rounded-md border px-2 py-1.5 text-left hover:bg-accent/50"
-                  >
-                    <span className="block text-xs font-medium">{o.name}</span>
-                    <span className="sm:line-clamp-2 text-xs text-muted-foreground">{o.response}</span>
-                  </button>
-                ))}
-              </section>
-              <section aria-label="Material" className="space-y-1.5">
-                <h3 className="text-xs font-semibold uppercase text-muted-foreground">Material</h3>
-                {generalItems.length > 0 && (
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium">Del negocio</p>
-                    {generalItems.map(materialButton)}
-                  </div>
-                )}
-                <Input
-                  icon={Search}
-                  aria-label="Buscar producto"
-                  placeholder="Buscar producto…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-                {sheetItems.length === 0 && debounced !== "" && (
-                  <p className="text-xs text-muted-foreground">Ningún producto coincide.</p>
-                )}
-                {sheetItems.map((s) => (
-                  <div key={s.id} className="space-y-1 rounded-md border p-2" data-testid="chat-sheet">
-                    <p className="text-xs font-semibold">{s.name}</p>
-                    {s.price && (
-                      <button
-                        type="button"
-                        aria-label={`Insertar precio de ${s.name}`}
-                        onClick={() => insert(`${s.name}: ${s.price}`)}
-                        className="block w-full rounded border px-2 py-1 text-left text-xs hover:bg-accent/50"
-                      >
-                        <span className="font-medium">Precio:</span> {s.price}
-                      </button>
-                    )}
-                    {s.highlights && (
-                      <button
-                        type="button"
-                        aria-label={`Insertar qué destacar de ${s.name}`}
-                        onClick={() => insert(s.highlights)}
-                        className="block w-full rounded border px-2 py-1 text-left text-xs hover:bg-accent/50"
-                      >
-                        <span className="font-medium">Destacar:</span> {s.highlights}
-                      </button>
-                    )}
-                    {s.materials.map(materialButton)}
-                  </div>
-                ))}
-              </section>
+              {objectionsSection}
+              {materialSection}
             </PopoverContent>
           </Popover>
         )}

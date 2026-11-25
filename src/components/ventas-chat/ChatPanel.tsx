@@ -473,7 +473,6 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
         ) : (
         <>
         {isSocialChannel(conversation) && <SocialComposer conversationId={conversation.id} disabled={!canType} />}
-        <ContentChatBar conversation={conversation} text={text} onFill={setText} windowOpen={canType} compact />
         <PauChatBar conversation={conversation} text={text} onFill={setText} windowOpen={canType} />
         <div className="flex items-end gap-2">
           <Textarea
@@ -503,6 +502,7 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
             aria-label="Mensaje"
             className="min-h-0 resize-none"
           />
+          <ContentChatBar conversation={conversation} text={text} onFill={setText} windowOpen={canType} compact />
           {conversation.channel === "whatsapp" && (
             <SendImageButton conversationId={conversation.id} disabled={!canType || closed} />
           )}
