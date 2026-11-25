@@ -38,6 +38,7 @@ import {
   ChevronDown,
   Package,
   FileText,
+  Wallet,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -390,6 +391,8 @@ function VentasContent() {
   const [todasWindow, setTodasWindow] = useState<DateWindow>(() => ({ fromDate: ventasRecentFrom(today), toDate: "" }));
   // Pendientes: los recientes (30 días) o los antiguos, que se bajan solo mientras están elegidos
   const [pendientesView, setPendientesView] = useState<"recientes" | "antiguos">("recientes");
+  // «Por cobrar total» abre Todas con saldo pendiente y sin anuladas; la insignia lo deja quitar
+  const [todasExcludeCancelled, setTodasExcludeCancelled] = useState(false);
 
   // Paginación para Todas las Ventas
   const [pageAll, setPageAll] = useState(1);
@@ -532,6 +535,7 @@ function VentasContent() {
     limit: ITEMS_PER_PAGE,
     sort: activeTab === "pendientes" && pendientesView === "antiguos" ? "updated_asc" : "created_desc",
     kpiDateFrom, kpiDateTo,
+    ...(activeTab === "todas" && todasExcludeCancelled ? { excludeCancelled: "yes" as const } : {}),
   };
   const salesScope = JSON.stringify([scopeKey, salesQuery]);
   const pageSessionScope = `${printScope}:${salesScope}`;
@@ -2051,6 +2055,16 @@ Estado: ${sale.status}
     pendientes: salesPage?.kpis?.pendientes ?? 0,
     anuladas: salesPage?.kpis?.anuladas ?? 0,
     currencyBalances: salesPage?.kpis?.amounts ?? [],
+    pendingTotal: salesPage?.kpis?.pendingTotal ?? [],
+  };
+  // Clic en «Por cobrar total»: Todas con saldo pendiente, sin anuladas y con el rango de fechas de las tarjetas
+  const showPendingTotalSales = () => {
+    setFiltersAll({ ...emptySalesFilters, hasPendingBalance: "yes" });
+    setTodasWindow({ fromDate: kpiDateFrom, toDate: kpiDateTo });
+    setTodasExcludeCancelled(true);
+    setSelectedTodasIds(new Set());
+    setPageAll(1);
+    setActiveTab("todas");
   };
   const pendientesPage = pagePendientes;
   const anuladosPage = pageAnulados;
@@ -2139,7 +2153,7 @@ Estado: ${sale.status}
               </Button>
             </div>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-4">
             <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
@@ -2199,6 +2213,43 @@ Estado: ${sale.status}
                   </div>
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400">
                     <CheckCircle2 className="h-5 w-5" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card
+              role="button"
+              tabIndex={0}
+              aria-label="Por cobrar total: ver las ventas con saldo pendiente"
+              data-testid="kpi-por-cobrar-total"
+              onClick={showPendingTotalSales}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  showPendingTotalSales();
+                }
+              }}
+              className="cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm text-muted-foreground">Por cobrar total</p>
+                    <h3 className="mt-2 text-3xl font-bold tracking-tight">
+                      {ventas.kpis.loading || ventas.kpis.error ? kpiText("") : kpis.pendingTotal.length ? kpis.pendingTotal.map((group) => <span key={group.currency ?? "UNKNOWN"} className="block">{formatSalesMoney(group.pending, group.currency)}</span>) : "0.00"}
+                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Todas las ventas con saldo, menos anuladas
+                    </p>
+                    {!ventas.kpis.loading && !ventas.kpis.error && kpis.pendingTotal.length > 0 && (
+                      <p data-testid="kpi-por-cobrar-total-count" className="text-xs font-medium text-primary">
+                        {kpis.pendingTotal.reduce((sum, group) => sum + group.count, 0)} ventas
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Wallet className="h-5 w-5" />
                   </div>
                 </div>
               </CardContent>
@@ -2538,6 +2589,18 @@ Estado: ${sale.status}
                   </div>
                 </CardHeader>
                 <CardContent>
+                  {todasExcludeCancelled && (
+                    <div className="mb-3">
+                      <button
+                        type="button"
+                        data-testid="chip-sin-anuladas"
+                        onClick={() => { setTodasExcludeCancelled(false); setPageAll(1); }}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/20"
+                      >
+                        Sin anuladas ✕
+                      </button>
+                    </div>
+                  )}
                   <SalesTableFilters
                     filters={filtersAll}
                     onFiltersChange={(newFilters) => {
