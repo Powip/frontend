@@ -693,4 +693,42 @@ export interface PauSandboxResult {
   refused: boolean;
   model: string;
   toolCalls: PauSandboxToolCall[];
+  /** Algún proveedor falló y respondió el respaldo. Solo para el equipo. */
+  providerNotice?: PauProviderNotice | null;
+}
+
+/** Motivo del fallo de un proveedor de IA (lo clasifica ms-crm). */
+export type PauFailureReason =
+  | "rate_limit"
+  | "no_credits"
+  | "invalid_key"
+  | "model_unavailable"
+  | "provider_down"
+  | "timeout"
+  | "other";
+
+export interface PauProviderFailure {
+  providerId: string;
+  label: string;
+  reason: PauFailureReason;
+  reasonText: string;
+  detail: string;
+}
+
+/** «El proveedor X falló: <motivo>. Se está continuando con Y.» */
+export interface PauProviderNotice {
+  failed: PauProviderFailure[];
+  /** `null` = fallaron todos. */
+  continuedWith: { providerId: string; label: string } | null;
+  message: string;
+}
+
+/** Aviso guardado: también sale de respuestas automáticas. Repetido = un aviso con `count`. */
+export interface PauProviderAlert extends PauProviderNotice {
+  id: string;
+  conversationId: string | null;
+  kind: "suggest" | "auto" | "sandbox" | "test";
+  count: number;
+  firstAt: string;
+  lastAt: string;
 }

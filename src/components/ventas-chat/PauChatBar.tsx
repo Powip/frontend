@@ -8,6 +8,7 @@ import { useMessages, useUpdateConversation } from "@/hooks/useCrmChat";
 import type { Conversation } from "@/types/crm";
 import ConfirmDialog from "./ConfirmDialog";
 import TeachPauDialog from "./TeachPauDialog";
+import PauProviderAlerts from "./PauProviderAlerts";
 import { lastCustomerText } from "./format";
 
 interface Props {
@@ -70,6 +71,7 @@ export default function PauChatBar({ conversation, text, onFill, windowOpen }: P
           <span>Pau pidió ayuda: {conversation.pauHelpReason}</span>
         </p>
       )}
+      <PauProviderAlerts conversationId={conversation.id} limit={1} />
       {!showBar && (
         <Button size="sm" variant="outline" onClick={() => setTeaching(true)}>
           Enseñarle la respuesta

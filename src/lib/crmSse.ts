@@ -102,6 +102,7 @@ export const crmKeys = {
   pauSettings: ["crm", "pau", "settings"] as const,
   pauProviders: ["crm", "pau", "providers"] as const,
   pauUsage: ["crm", "pau", "usage"] as const,
+  pauProviderAlerts: ["crm", "pau", "provider-alerts"] as const,
   tasks: ["crm", "tasks"] as const,
   tasksList: (params: { assigned: string; status: string; conversationId?: string }) =>
     ["crm", "tasks", params] as const,

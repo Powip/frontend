@@ -9,6 +9,7 @@ import ConversationList from "./ConversationList";
 import InboxIndicators, { type InboxIndicator } from "./InboxIndicators";
 import MyDay from "./MyDay";
 import ChatPanel from "./ChatPanel";
+import PauProviderAlerts from "./PauProviderAlerts";
 import SoundsControl from "./SoundsControl";
 import { useVista } from "./VistaContext";
 
@@ -56,6 +57,9 @@ export default function Bandeja() {
           {live === "live" ? "En vivo" : "Reconectando…"}
         </span>
       </div>
+
+      {/* Pau cambió de proveedor de IA (o fallaron todos): aviso solo para el equipo. */}
+      <PauProviderAlerts excludeConversationId={selectedId} limit={2} />
 
       <MyDay onOpenChat={(id) => select(id)} compact={focused} />
 

@@ -39,6 +39,8 @@ import type {
   PauProviderTest,
   PauProviderUpdate,
   PauSandboxResult,
+  PauProviderAlert,
+  PauProviderNotice,
   PauSandboxTurn,
   PauSettings,
   PauSettingsInput,
@@ -526,12 +528,30 @@ export async function pauSandbox(turns: PauSandboxTurn[]): Promise<PauSandboxRes
 }
 
 /** Pau redacta una respuesta para la vendedora; no la envía. */
-export async function suggestPauReply(conversationId: string): Promise<{ text: string }> {
+export async function suggestPauReply(
+  conversationId: string,
+): Promise<{ text: string; providerNotice?: PauProviderNotice | null }> {
   return (
-    await axiosAuth.post<{ text: string }>(`${conv(conversationId)}/pau/suggest`, undefined, {
-      timeout: PAU_TIMEOUT_MS,
+    await axiosAuth.post<{ text: string; providerNotice?: PauProviderNotice | null }>(
+      `${conv(conversationId)}/pau/suggest`,
+      undefined,
+      { timeout: PAU_TIMEOUT_MS },
+    )
+  ).data;
+}
+
+/** Avisos de respaldo de proveedores de IA abiertos (últimas 24 h). */
+export async function getPauProviderAlerts(conversationId?: string): Promise<PauProviderAlert[]> {
+  return (
+    await axiosAuth.get<PauProviderAlert[]>(`${PAU}/provider-alerts`, {
+      params: conversationId ? { conversationId } : undefined,
     })
   ).data;
+}
+
+/** «Entendido»: cierra el aviso. */
+export async function dismissPauProviderAlert(id: string): Promise<void> {
+  await axiosAuth.post(`${PAU}/provider-alerts/${encodeURIComponent(id)}/dismiss`);
 }
 
 export interface CrmError {

@@ -55,6 +55,7 @@ import {
   storeMode,
 } from "./pau";
 import { relativeTime } from "./format";
+import PauProviderAlerts from "./PauProviderAlerts";
 
 const MODE_ICON: Record<PauMode, LucideIcon> = { off: MessageSquare, copilot: Sparkles, auto: Bot };
 
@@ -605,6 +606,7 @@ export default function PauView({ defaultTab = "modo" }: { defaultTab?: PauTab }
         {current === "perm" && <CapabilitiesSection />}
         {current === "prov" && (
           <>
+            <PauProviderAlerts limit={5} />
             <ProvidersSection />
             <ProviderRulesSection />
           </>
