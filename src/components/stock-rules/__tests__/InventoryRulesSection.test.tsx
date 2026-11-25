@@ -124,7 +124,7 @@ describe("Reglas de inventario (FEAT-24 H2-F)", () => {
     mockSave.mockResolvedValue({ releaseAfterDays: 7, pickingRequired: false, igvAffected: true, allowPurchaseToCourier: false, stockControl: "estricto", defaultReleaseAfterDays: 30 });
     renderSection();
     await user.click(await screen.findByRole("radio", { name: "Estricto" }));
-    expect(screen.getByText("No permite salidas por debajo de 0 ni trasladar más que el disponible.")).toBeInTheDocument();
+    expect(screen.getByText("Una venta sin stock disponible no reserva y queda en «Pedidos sin stock». No permite salidas por debajo de 0 ni trasladar más que el disponible.")).toBeInTheDocument();
     expect(screen.queryByText(/Permite registrar salidas que dejan el stock en negativo/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Guardar reglas de inventario" }));
     await waitFor(() =>

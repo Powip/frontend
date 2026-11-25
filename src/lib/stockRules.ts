@@ -214,6 +214,6 @@ export const STOCK_CONTROL_LABEL: Record<StockControlMode, string> = {
 };
 
 export const STOCK_CONTROL_HELP: Record<StockControlMode, string> = {
-  flexible: "Permite registrar salidas que dejan el stock en negativo, con confirmación. Las reservas no frenan traslados.",
-  estricto: "No permite salidas por debajo de 0 ni trasladar más que el disponible.",
+  flexible: "Las ventas reservan aunque no haya stock. Permite registrar salidas que dejan el stock en negativo, con confirmación, y las reservas no frenan traslados.",
+  estricto: "Una venta sin stock disponible no reserva y queda en «Pedidos sin stock». No permite salidas por debajo de 0 ni trasladar más que el disponible.",
 };

@@ -180,8 +180,8 @@ describe("reglas de inventario (FEAT-24 H2-F)", () => {
 
   it("una línea de ayuda por modo de control de stock (FEAT-24 C-D3)", () => {
     expect(STOCK_CONTROL_HELP.flexible).toBe(
-      "Permite registrar salidas que dejan el stock en negativo, con confirmación. Las reservas no frenan traslados.",
+      "Las ventas reservan aunque no haya stock. Permite registrar salidas que dejan el stock en negativo, con confirmación, y las reservas no frenan traslados.",
     );
-    expect(STOCK_CONTROL_HELP.estricto).toBe("No permite salidas por debajo de 0 ni trasladar más que el disponible.");
+    expect(STOCK_CONTROL_HELP.estricto).toBe("Una venta sin stock disponible no reserva y queda en «Pedidos sin stock». No permite salidas por debajo de 0 ni trasladar más que el disponible.");
   });
 });
