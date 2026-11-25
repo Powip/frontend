@@ -15,6 +15,7 @@ import { INDICATOR_PARAMS, type InboxIndicator } from "./InboxIndicators";
 import { contactLabel, relativeTime } from "./format";
 import { StoreBadge } from "./ChatHeader";
 import { formatWait, initials, waitMinutes, waitTone } from "./conversationWait";
+import { PresenceFlag, usePresenceViewers } from "./Presence";
 
 export const CRM_UNREACHABLE = "No se pudo conectar con el servicio de chat";
 
@@ -121,6 +122,7 @@ export default function ConversationList({
   });
 
   const items = data?.items ?? [];
+  const viewers = usePresenceViewers(items.map((c) => c.id));
   const err = isError ? crmError(error) : null;
 
   return (
@@ -236,6 +238,7 @@ export default function ConversationList({
                   <ConversationPills conversation={c} />
                   {store && <StoreBadge name={store} />}
                 </span>
+                <PresenceFlag viewers={viewers[c.id]} />
                 {c.pauHelpReason && (
                   <span
                     className="flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-400"

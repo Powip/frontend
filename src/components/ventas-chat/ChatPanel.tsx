@@ -44,6 +44,7 @@ import SaveTestimonyButton, { canSaveAsTestimony } from "./SaveTestimonyButton";
 import { SendImageButton } from "./SendImageButton";
 import { appendLine } from "./quotes";
 import ContentChatBar from "./ContentChatBar";
+import { PresenceBanner } from "./Presence";
 import ChatBanners from "./ChatBanners";
 import { QuickChips, SaleStepsBar } from "./ChatSaleGuide";
 import SendLinkButton from "./SendLinkButton";
@@ -331,6 +332,7 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
       )}
 
       <SaleStepsBar conversation={conversation} text={text} onFill={setText} windowOpen={windowOpen && !closed} />
+      <PresenceBanner conversation={conversation} />
       <ChatBanners
         conversation={conversation}
         windowOpen={windowOpen}
