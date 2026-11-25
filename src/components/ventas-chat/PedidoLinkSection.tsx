@@ -146,11 +146,14 @@ export default function PedidoLinkSection({ conversation, client, onInsertMessag
       >
         {ai.loading ? <Loader2 className="animate-spin" /> : <Sparkles />} Armar pedido leyendo el chat
       </Button>
-      <Button size="sm" className="w-full" onClick={() => setBuilding({ cart: [] })}>
-        <PackagePlus /> Armar pedido
-      </Button>
+      {!building && (
+        <Button size="sm" className="w-full" onClick={() => setBuilding({ cart: [] })}>
+          <PackagePlus /> Armar pedido
+        </Button>
+      )}
       {building && (
         <ArmarPedidoDialog
+          inline
           conversation={conversation}
           client={client}
           autoAi={!building.cart}

@@ -171,7 +171,7 @@ describe("Cierre automático «solo cotizar»", () => {
       }),
     );
     expect(toastMock.info).toHaveBeenCalledWith("Chat leído con IA.");
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Armar pedido" })).not.toBeInTheDocument();
   });
 
   it("dice «reglas» y muestra el aviso cuando no leyó la IA", async () => {
@@ -186,7 +186,7 @@ describe("Cierre automático «solo cotizar»", () => {
     p.buildAiCart.mockResolvedValue(reading({}, 1));
     setup();
     await quoteFromChat();
-    const dialog = within(await screen.findByRole("dialog"));
+    const dialog = within(await screen.findByRole("region", { name: "Armar pedido" }));
     expect((await dialog.findAllByText(/Polo básico/)).length).toBeGreaterThan(0);
     expect(toastMock.info).toHaveBeenCalledWith(expect.stringMatching(/IA\. Hay productos sin stock/));
     expect(c.createChatQuote).not.toHaveBeenCalled();
@@ -197,7 +197,7 @@ describe("Cierre automático «solo cotizar»", () => {
     c.getCrmSalesInventories.mockResolvedValue([inventory("inv1"), inventory("inv2")] as never);
     setup();
     await quoteFromChat();
-    const dialog = within(await screen.findByRole("dialog"));
+    const dialog = within(await screen.findByRole("region", { name: "Armar pedido" }));
     const select = dialog.getByLabelText("Almacén");
     await waitFor(() => expect(select).toBeEnabled());
     expect(p.buildAiCart).not.toHaveBeenCalled();
@@ -210,7 +210,7 @@ describe("Cierre automático «solo cotizar»", () => {
   it("sin teléfono avisa y no crea nada", async () => {
     setup({ channel: "instagram", contactPhone: null } as never);
     await quoteFromChat();
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Armar pedido" })).toBeInTheDocument();
     expect(toastMock.info).toHaveBeenCalledWith("Guarda el teléfono del cliente antes de armar el pedido.");
     expect(c.createChatQuote).not.toHaveBeenCalled();
   });
@@ -219,7 +219,7 @@ describe("Cierre automático «solo cotizar»", () => {
     p.buildAiCart.mockRejectedValue(new Error("sin servicio"));
     setup();
     await quoteFromChat();
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Armar pedido" })).toBeInTheDocument();
     await waitFor(() => expect(toastMock.info).toHaveBeenCalled());
     expect(p.buildAiCart).toHaveBeenCalledTimes(1);
     expect(c.createChatQuote).not.toHaveBeenCalled();

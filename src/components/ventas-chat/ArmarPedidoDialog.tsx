@@ -39,6 +39,8 @@ interface Props {
   autoAi?: boolean;
   /** Carrito que ya se leyó del chat. */
   initialCart?: CartLine[];
+  /** En el panel del chat (mockup 152): se arma en línea, sin ventana encima del chat. */
+  inline?: boolean;
 }
 
 /**
@@ -53,6 +55,7 @@ export default function ArmarPedidoDialog({
   onInsertMessage,
   autoAi = false,
   initialCart = [],
+  inline = false,
 }: Props) {
   const { phoneMasked } = useCrmMe();
   const phone = phoneForCustomer(conversation);
@@ -181,22 +184,9 @@ export default function ArmarPedidoDialog({
 
   const locked = cart.length > 0 || quote.isLinkPending();
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open && !saving) onClose();
-      }}
-    >
-      <DialogContent className="max-h-[92vh] overflow-y-auto rounded-2xl sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Armar pedido</DialogTitle>
-          <DialogDescription>
-            Arma el pedido y obtén un POWIP Link: el cliente lo abre, confirma su dirección y paga
-            por Yape o transferencia.
-          </DialogDescription>
-        </DialogHeader>
+    <Shell inline={inline} saving={saving} onClose={onClose}>
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className={inline ? "grid gap-3" : "grid gap-3 sm:grid-cols-2"}>
           <div className="space-y-1.5">
             <Label htmlFor="armar-tienda">Tienda</Label>
             <select
@@ -240,7 +230,7 @@ export default function ArmarPedidoDialog({
           </div>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className={inline ? "grid gap-4" : "grid gap-4 lg:grid-cols-2"}>
           <div className="space-y-2">
             <Label htmlFor="armar-buscar">Buscar producto</Label>
             <div className="relative">
@@ -391,7 +381,7 @@ export default function ArmarPedidoDialog({
           }}
         />
 
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className={inline ? "grid gap-3" : "grid gap-3 sm:grid-cols-2"}>
           <div className="space-y-1.5">
             <Label htmlFor="armar-nombre">Cliente</Label>
             <Input id="armar-nombre" value={name} onChange={(e) => setName(e.target.value)} />
@@ -447,6 +437,53 @@ export default function ArmarPedidoDialog({
             {saving && <Loader2 className="animate-spin" />} Crear POWIP Link
           </Button>
         </div>
+    </Shell>
+  );
+}
+
+const INTRO =
+  "Arma el pedido y obtén un POWIP Link: el cliente lo abre, confirma su dirección y paga por Yape o transferencia.";
+
+/** Ventana (fuera del chat) o bloque en línea dentro del panel del chat. */
+function Shell({
+  inline,
+  saving,
+  onClose,
+  children,
+}: {
+  inline: boolean;
+  saving: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  if (inline) {
+    return (
+      <section
+        aria-label="Armar pedido"
+        className="armar-inline space-y-3 rounded-xl border bg-card p-3"
+        data-testid="armar-pedido-inline"
+      >
+        <div>
+          <h4 className="text-sm font-semibold">Armar pedido</h4>
+          <p className="text-xs text-muted-foreground">{INTRO}</p>
+        </div>
+        {children}
+      </section>
+    );
+  }
+  return (
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !saving) onClose();
+      }}
+    >
+      <DialogContent className="max-h-[92vh] overflow-y-auto rounded-2xl sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Armar pedido</DialogTitle>
+          <DialogDescription>{INTRO}</DialogDescription>
+        </DialogHeader>
+        {children}
       </DialogContent>
     </Dialog>
   );
