@@ -46,9 +46,10 @@ import {
   WhatsAppIcon,
   formatDateTime,
   guessFailureReason,
+  isShalomRegistrationError,
 } from "./shared";
 
-type AtencionSubView = "trabados" | "reprogramados" | "devoluciones";
+type AtencionSubView = "trabados" | "registro-shalom" | "reprogramados" | "devoluciones";
 
 /**
  * Clasificación de sub-vista dentro de "Necesita Atención".
@@ -57,10 +58,13 @@ type AtencionSubView = "trabados" | "reprogramados" | "devoluciones";
  * entrega" separado de `callbackAt` (ver operations-pedidos-tabs.ts) — acá
  * se usa la misma señal: si tiene `callbackAt` seteado y no es una
  * devolución, se considera "reprogramado". Devoluciones = shalomStatus
- * DEVUELTO. Todo lo demás con error de courier cae en "Trabados".
+ * DEVUELTO. Los registros fallidos en Shalom (shalomStatus FALLIDO con
+ * mensaje de Shalom) van aparte en "Error al registrar en Shalom": no son
+ * entregas fallidas. Todo lo demás con error de courier cae en "Trabados".
  */
 function classify(sale: Sale): AtencionSubView {
   if (sale.shalomStatus === "DEVUELTO") return "devoluciones";
+  if (isShalomRegistrationError(sale)) return "registro-shalom";
   if (sale.callbackAt) return "reprogramados";
   return "trabados";
 }
@@ -72,6 +76,7 @@ function isVencido(sale: Sale): boolean {
 
 const SUB_VIEWS: { value: AtencionSubView; label: string }[] = [
   { value: "trabados", label: "Trabados" },
+  { value: "registro-shalom", label: "Error al registrar en Shalom" },
   { value: "reprogramados", label: "Reprogramados" },
   { value: "devoluciones", label: "Devoluciones" },
 ];
@@ -98,7 +103,9 @@ export function AtencionTab({
     initialQf === "fallidos"
       ? "devoluciones"
       : initialQf === "errores-agencia"
-        ? "trabados"
+        ? sales.some(isShalomRegistrationError)
+          ? "registro-shalom"
+          : "trabados"
         : "trabados",
   );
   const [motivoChip, setMotivoChip] = useState("");
@@ -218,6 +225,21 @@ export function AtencionTab({
             <b>{money(enJuego)} en juego</b> — valor total de los{" "}
             {bySubView.length} pedidos trabados en agencia o con error del
             courier.
+          </div>
+        </div>
+      )}
+
+      {subView === "registro-shalom" && bySubView.length > 0 && (
+        <div
+          className="flex items-start gap-2 rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200"
+          data-testid="shalom-registration-info"
+        >
+          <span>⚠️</span>
+          <div>
+            <b>{bySubView.length} pedidos no se registraron en Shalom.</b> No son entregas
+            fallidas: Shalom rechazó el registro del envío y el paquete no tiene orden de
+            servicio. Revisa el mensaje de Shalom de cada pedido y vuelve a enviarlo desde la
+            guía.
           </div>
         </div>
       )}
@@ -380,11 +402,13 @@ export function AtencionTab({
                       </span>
                     ) : subView === "devoluciones" ? (
                       <FailureBadge
+                        shalomStatus={sale.shalomStatus}
                         shalomError={sale.shalomError}
                         syncErrors={sale.syncErrors}
                       />
                     ) : (
                       <FailureBadge
+                        shalomStatus={sale.shalomStatus}
                         shalomError={sale.shalomError}
                         syncErrors={sale.syncErrors}
                       />

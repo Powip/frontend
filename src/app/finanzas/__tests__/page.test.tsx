@@ -262,7 +262,7 @@ describe('FinanzasPage — fetchOrders (merge con leads-cod)', () => {
     render(<FinanzasPage />);
 
     // 2 pedidos en total (order-1 + order-2), no 3: se dedupea por id.
-    expect(await screen.findByText('Pagos Pendientes (2)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (2)')).toBeInTheDocument();
     // La versión de leads-cod ganó sobre la de order-header para el mismo id.
     expect(screen.getByText('Juan Duplicado COD')).toBeInTheDocument();
     expect(screen.queryByText('Juan Original')).not.toBeInTheDocument();
@@ -277,7 +277,7 @@ describe('FinanzasPage — fetchOrders (merge con leads-cod)', () => {
 
     render(<FinanzasPage />);
 
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('Juan Pérez')).toBeInTheDocument();
   });
 
@@ -308,7 +308,7 @@ describe('FinanzasPage — fetchOrders (merge con leads-cod)', () => {
     );
     // La tabla queda vacía: no se pudo mergear ninguna fuente.
     expect(screen.getByRole('alert')).toHaveTextContent('No se pudieron cargar');
-    expect(screen.queryByText('Pagos Pendientes (0)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Pagos por validar (0)')).not.toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
@@ -345,7 +345,7 @@ describe('FinanzasPage — fetchOrders (merge con leads-cod)', () => {
     render(<FinanzasPage />);
 
     // La tabla se pobla igual con order-header + leads-cod.
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('Cliente Con Guia Caida')).toBeInTheDocument();
 
     await waitFor(() =>
@@ -382,7 +382,7 @@ describe('FinanzasPage — fetchOrders (merge con leads-cod)', () => {
     render(<FinanzasPage />);
 
     // La página no crashea y la fila aparece (tiene un pago PENDING).
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('ORD-LIGHT')).toBeInTheDocument();
     // clientName cae al fallback "—" (customer ausente).
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
@@ -421,7 +421,7 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
 
     render(<FinanzasPage />);
 
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('Recien Registrada')).toBeInTheDocument();
   });
 
@@ -438,7 +438,7 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
 
     render(<FinanzasPage />);
 
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('Control Cuenta')).toBeInTheDocument();
     expect(screen.queryByText('Borrador Preventa')).not.toBeInTheDocument();
   });
@@ -459,7 +459,7 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
 
     render(<FinanzasPage />);
 
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('Control Cuenta')).toBeInTheDocument();
     expect(screen.queryByText('Borrador Incomplete')).not.toBeInTheDocument();
   });
@@ -477,7 +477,7 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
 
     render(<FinanzasPage />);
 
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('Control Cuenta')).toBeInTheDocument();
     expect(screen.queryByText('Pedido Anulado')).not.toBeInTheDocument();
   });
@@ -495,7 +495,7 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
 
     render(<FinanzasPage />);
 
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('Sin Gestion CC')).toBeInTheDocument();
   });
 
@@ -513,7 +513,7 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
 
     render(<FinanzasPage />);
 
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('Control Cuenta')).toBeInTheDocument();
     expect(screen.queryByText('CC Por Confirmar')).not.toBeInTheDocument();
   });
@@ -535,7 +535,7 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
 
     render(<FinanzasPage />);
 
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('Venta Confirmada Vendedor')).toBeInTheDocument();
   });
 
@@ -554,7 +554,7 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
 
     render(<FinanzasPage />);
 
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('Control Cuenta')).toBeInTheDocument();
     expect(screen.queryByText('Venta Incompleta')).not.toBeInTheDocument();
   });
@@ -573,7 +573,7 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
 
     render(<FinanzasPage />);
 
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('Control Cuenta')).toBeInTheDocument();
     expect(screen.queryByText('CC Anulado')).not.toBeInTheDocument();
   });
@@ -591,7 +591,7 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
 
     render(<FinanzasPage />);
 
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('CC Confirmado')).toBeInTheDocument();
   });
 
@@ -608,7 +608,7 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
 
     render(<FinanzasPage />);
 
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('CC Reprogramado')).toBeInTheDocument();
   });
 
@@ -626,7 +626,7 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
 
     render(<FinanzasPage />);
 
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('Control Cuenta')).toBeInTheDocument();
     expect(screen.queryByText('Carrito Recuperado')).not.toBeInTheDocument();
   });
@@ -653,7 +653,7 @@ describe('FinanzasPage — leads COD del endpoint /leads-cod', () => {
 
     render(<FinanzasPage />);
 
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('Lead Reprogramado')).toBeInTheDocument();
     expect(screen.queryByText('Lead Contactado')).not.toBeInTheDocument();
     expect(screen.queryByText('Lead Por Confirmar')).not.toBeInTheDocument();
@@ -683,11 +683,11 @@ describe('Finanzas — alcance del negocio', () => {
       return { data: url.endsWith('/WEB') ? [makeOrderHeader({ storeId: 'WEB' })] : [] };
     });
     const view = render(<FinanzasPage />);
-    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (1)')).toBeInTheDocument();
     expect(screen.getByText('Juan Pérez')).toBeInTheDocument();
     scopedStoreIds = ['KUNCA'];
     view.rerender(<FinanzasPage />);
-    expect(await screen.findByText('Pagos Pendientes (0)')).toBeInTheDocument();
+    expect(await screen.findByText('Pagos por validar (0)')).toBeInTheDocument();
     expect(screen.queryByText('Juan Pérez')).not.toBeInTheDocument();
   });
 
@@ -701,7 +701,7 @@ describe('Finanzas — alcance del negocio', () => {
     render(<FinanzasPage />);
     expect(await screen.findByRole('alert')).toHaveTextContent('No se pudieron cargar');
     expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
-    expect(screen.queryByText('Pagos Pendientes (1)')).not.toBeInTheDocument();
+    expect(screen.queryByText('Pagos por validar (1)')).not.toBeInTheDocument();
   });
 });
 

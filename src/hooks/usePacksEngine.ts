@@ -21,6 +21,19 @@ export function packNetUnit(p: VolumePack): number {
   return p.packPrice / p.minQty;
 }
 
+/**
+ * FEAT-33 D6: el precio de la promo se reparte en proporción al precio normal de cada línea (como el pack de
+ * productos distintos). Con precios iguales da lo mismo que antes (precio de la promo ÷ mínimo).
+ */
+export function volumeNetPrices(p: VolumePack, lines: Array<{ pvp: number; quantity: number }>): number[] {
+  const unit = packNetUnit(p);
+  const units = lines.reduce((sum, line) => sum + line.quantity, 0);
+  const gross = lines.reduce((sum, line) => sum + line.pvp * line.quantity, 0);
+  if (!(gross > 0)) return lines.map(() => unit);
+  const ratio = (unit * units) / gross;
+  return lines.map((line) => line.pvp * ratio);
+}
+
 function bundleNetPerItem(p: BundlePack): Record<string, number> {
   const sumPvp = p.items.reduce((a, i) => a + i.price, 0);
   const perItem: Record<string, number> = {};
@@ -192,14 +205,16 @@ export function usePacksEngine({
 
   const doApplyVolume = useCallback(
     (p: VolumePack) => {
-      const net = packNetUnit(p);
-      setCart((prev) =>
-        prev.map((l) =>
-          l.productName === p.product.productKey && !l.isGift
-            ? { ...l, pvp: l.pvp ?? l.price, price: net, packId: p.id, discount: 0 }
+      setCart((prev) => {
+        const inPack = (l: CartItem) => l.productName === p.product.productKey && !l.isGift;
+        const lines = prev.filter(inPack);
+        const nets = volumeNetPrices(p, lines.map((l) => ({ pvp: l.pvp ?? l.price, quantity: l.quantity })));
+        return prev.map((l) =>
+          inPack(l)
+            ? { ...l, pvp: l.pvp ?? l.price, price: nets[lines.indexOf(l)], packId: p.id, discount: 0 }
             : l,
-        ),
-      );
+        );
+      });
       setAppliedPacks((prev) => ({ ...prev, [p.id]: { type: "VOLUME" } }));
     },
     [setCart],
@@ -277,13 +292,15 @@ export function usePacksEngine({
     const total = pvsTotal(pvsOpen);
     if (total !== pack.minQty) return false;
 
-    const net = packNetUnit(pack);
+    const chosen = Object.entries(pvsOpen.dist)
+      .filter(([, qty]) => qty > 0)
+      .map(([variantId, qty]) => ({ variant: pvsOpen.variants.find((v) => v.variantId === variantId)!, qty }));
+    const nets = volumeNetPrices(pack, chosen.map(({ variant, qty }) => ({ pvp: variant.price, quantity: qty })));
     setCart((prev) => {
       const withoutModel = prev.filter((l) => l.productName !== pvsOpen.productKey);
-      const newLines: CartItem[] = Object.entries(pvsOpen.dist)
-        .filter(([, qty]) => qty > 0)
-        .map(([variantId, qty]) => {
-          const variant = pvsOpen.variants.find((v) => v.variantId === variantId)!;
+      const newLines: CartItem[] = chosen
+        .map(({ variant, qty }, index) => {
+          const net = nets[index];
           return {
             id: crypto.randomUUID(),
             inventoryItemId: variant.inventoryItemId,

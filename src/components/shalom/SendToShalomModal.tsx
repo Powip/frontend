@@ -51,6 +51,8 @@ import {
   normalizeAgencyQuery,
   AGENCY_SEARCH_MIN_CHARS,
 } from "@/components/shalom/useShalomAgencySearch";
+import ShalomDniRetryForm from "@/components/shalom/ShalomDniRetryForm";
+import { needsDniForDeclaracion } from "@/components/shalom/shalomPersonaNaturalFix";
 
 // Sentinel para representar el valor vacío "" que exige la API de Shalom.
 // Radix Select no admite value="" en SelectItem — usar este sentinel y mapear al enviar.
@@ -136,6 +138,8 @@ interface ShalomShipmentError {
   index?: number;
   shipmentInfo?: { recipientDoc?: string; recipientName?: string };
   orderNumber?: string | null;
+  /** Pedido de Powip al que pertenece el error (ms-courier lo envía; si no, se deduce). */
+  orderId?: string | null;
 }
 
 interface SendToShalomModalProps {
@@ -620,14 +624,25 @@ export default function SendToShalomModal({
       const summary = res.data.summary || {};
       const rawErrors: ShalomShipmentError[] = res.data.errors || [];
 
-      // Enriquecer errores con el nro de orden cruzando por recipientDoc (dni) o por index
+      // Enriquecer errores con el pedido: primero el orderId que manda ms-courier; si no viene,
+      // por el documento enviado en este lote, luego por DNI del cliente y al final por index.
       const enrichedErrors: ShalomShipmentError[] = rawErrors.map((e) => {
+        const byId = e.orderId ? orders.find((o) => o.id === e.orderId) : undefined;
+        const sentDoc = e.shipmentInfo?.recipientDoc;
+        const bySentDoc = sentDoc
+          ? orders.filter((o) => packageDetails[o.id]?.recipientDoc === sentDoc)
+          : [];
         const byDoc = orders.find(
-          (o) => o.customer?.dni && o.customer.dni === e.shipmentInfo?.recipientDoc,
+          (o) => o.customer?.dni && o.customer.dni === sentDoc,
         );
         const byIndex = typeof e.index === "number" ? orders[e.index] : undefined;
-        const matchedOrder = byDoc || byIndex;
-        return { ...e, orderNumber: matchedOrder?.orderNumber || null };
+        const matchedOrder =
+          byId || (bySentDoc.length === 1 ? bySentDoc[0] : undefined) || byDoc || byIndex;
+        return {
+          ...e,
+          orderNumber: matchedOrder?.orderNumber || null,
+          orderId: matchedOrder?.id || null,
+        };
       });
 
       const successfulCount = summary.successful || 0;
@@ -733,6 +748,135 @@ export default function SendToShalomModal({
       setSending(false);
     }
   };
+
+  // Reenvía a Shalom un solo pedido que falló por «declaración jurada solo para persona natural»,
+  // usando el DNI que escribió el usuario en lugar del RUC. El DNI solo va en este envío: no se
+  // guarda en el cliente (su RUC sigue para la facturación) y ms-courier solo acepta pedidos en
+  // FALLIDO (`onlyOrderIds`), así no se duplica ninguno ya registrado.
+  const handleRetryWithDni = async (orderId: string, dni: string) => {
+    const order = orders.find((o) => o.id === orderId);
+    const data = shipmentsData[orderId];
+    if (!order || !data || !guideId) return;
+
+    const originAgencyObj = originAgencies.find((a) => a.api_name === originAgency);
+    const destAgencyObj = data.destinationAgencies?.find(
+      (a: Agency) => a.api_name === data.destinationAgencyId,
+    );
+
+    const payload = {
+      companyId: auth?.company?.id,
+      id: guideId,
+      originAgencyId: originAgency,
+      originAgencyName: originAgencyObj?.api_name || originAgency,
+      orderDestinations: { [orderId]: data.destinationAgencyId },
+      orderDestinationNames: {
+        [orderId]: destAgencyObj?.api_name || data.destinationAgencyId,
+      },
+      packageDetails: {
+        [orderId]: {
+          weight: data.packageDetails.weight,
+          height: data.packageDetails.height,
+          width: data.packageDetails.width,
+          length: data.packageDetails.length,
+          content: data.content,
+          recipientDoc: dni,
+          recipientPhone: data.recipientPhone,
+          quantity: data.packageDetails.quantity,
+          securityCode: data.securityCode,
+          aereo: data.aereo ?? false,
+        },
+      },
+      securityCode: data.securityCode,
+      quotedCurrency: "PEN",
+      declaracionJurada: declaracionJurada === DECLARACION_JURADA_NINGUNA ? "" : declaracionJurada,
+      onlyOrderIds: [orderId],
+    };
+
+    try {
+      const res = await axios.post(
+        `${API.courier}/shipping-guides/${guideId}/send-to-shalom`,
+        payload,
+      );
+      const registered = (res.data.summary?.successful || 0) > 0;
+      if (registered) {
+        const results: ShalomRegisteredShipment[] = res.data.data || [];
+        setRegisteredShipments((prev) => [
+          ...prev.filter((r) => r.orderId !== orderId),
+          ...results,
+        ]);
+        setRegisteredTrackingData((prev) => ({ ...prev, ...(res.data.trackingData || {}) }));
+        // Solo el estado local del envío; el cliente no se modifica.
+        setShipmentsData((prev) => ({ ...prev, [orderId]: { ...prev[orderId], recipientDoc: dni } }));
+        setSuccessSummary((prev) =>
+          prev
+            ? {
+                ...prev,
+                successful: prev.successful + 1,
+                failed: Math.max(0, prev.failed - 1),
+                errors: prev.errors.filter((e) => e.orderId !== orderId),
+              }
+            : prev,
+        );
+        toast.success(`Pedido ${order.orderNumber} registrado en Shalom con el DNI.`);
+        setIsSuccess(true);
+        onSuccess?.();
+        return;
+      }
+      const newError: ShalomShipmentError | undefined = res.data.errors?.[0];
+      // Se conserva el documento original (RUC) para que el formulario siga visible si Shalom
+      // vuelve a pedir persona natural; si el error es otro, el formulario se oculta solo.
+      setSuccessSummary((prev) =>
+        prev
+          ? {
+              ...prev,
+              errors: prev.errors.map((e) =>
+                e.orderId === orderId ? { ...e, error: newError?.error || e.error } : e,
+              ),
+            }
+          : prev,
+      );
+      toast.error(
+        `[${order.orderNumber}] ${extractShalomErrorMessage(newError?.error || "")}`,
+      );
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "No se pudo reenviar el pedido a Shalom");
+    }
+  };
+
+  const renderShalomErrors = (errors: ShalomShipmentError[]) =>
+    errors.map((e, idx: number) => {
+      const sentDoc =
+        e.shipmentInfo?.recipientDoc ?? (e.orderId ? shipmentsData[e.orderId]?.recipientDoc : "");
+      const showDniForm =
+        !!e.orderId &&
+        needsDniForDeclaracion({
+          error: e.error,
+          recipientDoc: sentDoc,
+          declaracionJurada:
+            declaracionJurada === DECLARACION_JURADA_NINGUNA ? "" : declaracionJurada,
+        });
+      return (
+        <div key={e.orderId || idx} className="flex items-start gap-2" data-testid="shalom-send-error">
+          <span className="font-mono text-amber-600 dark:text-amber-400">•</span>
+          <div className="flex-1">
+            <span className="font-semibold">
+              {e.orderNumber
+                ? `${e.orderNumber} — ${e.shipmentInfo?.recipientName || "Sin nombre"}`
+                : e.shipmentInfo?.recipientName || "Sin nombre"}
+              :
+            </span>{" "}
+            {extractShalomErrorMessage(e.error)}
+            {showDniForm && e.orderId && (
+              <ShalomDniRetryForm
+                idPrefix={`shalom-${e.orderId}`}
+                disabled={sending}
+                onSubmit={(dni) => handleRetryWithDni(e.orderId as string, dni)}
+              />
+            )}
+          </div>
+        </div>
+      );
+    });
 
   const allDestinationsSet = useMemo(() => {
     if (!originAgency) return false;
@@ -1015,28 +1159,8 @@ export default function SendToShalomModal({
                             <p className="text-amber-800 dark:text-amber-400 font-bold text-sm mb-2">
                               ⚠️ {successSummary.failed} envíos fallaron:
                             </p>
-                            <div className="text-xs text-amber-700 dark:text-amber-500 space-y-1 text-left max-h-32 overflow-y-auto">
-                              {successSummary.errors.map(
-                                (e, idx: number) => (
-                                  <div
-                                    key={idx}
-                                    className="flex items-start gap-2"
-                                  >
-                                    <span className="font-mono text-amber-600 dark:text-amber-400">
-                                      •
-                                    </span>
-                                    <span>
-                                      <span className="font-semibold">
-                                        {e.orderNumber
-                                          ? `${e.orderNumber} — ${e.shipmentInfo?.recipientName || "Sin nombre"}`
-                                          : e.shipmentInfo?.recipientName || "Sin nombre"}
-                                        :
-                                      </span>{" "}
-                                      {extractShalomErrorMessage(e.error)}
-                                    </span>
-                                  </div>
-                                ),
-                              )}
+                            <div className="text-xs text-amber-700 dark:text-amber-500 space-y-1 text-left max-h-64 overflow-y-auto">
+                              {renderShalomErrors(successSummary.errors)}
                             </div>
                           </div>
                         )}
@@ -1175,6 +1299,21 @@ export default function SendToShalomModal({
                 </div>
               ) : (
                 <>
+                  {/* Fallo total: el modal sigue en configuración; se listan los errores de
+                      Shalom para corregir y, si aplica, reenviar con DNI. */}
+                  {successSummary && successSummary.errors.length > 0 && (
+                    <div
+                      className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg"
+                      data-testid="shalom-send-errors-panel"
+                    >
+                      <p className="text-amber-800 dark:text-amber-400 font-bold text-sm mb-2">
+                        ⚠️ {successSummary.errors.length} envíos fallaron en Shalom:
+                      </p>
+                      <div className="text-xs text-amber-700 dark:text-amber-500 space-y-2 max-h-64 overflow-y-auto">
+                        {renderShalomErrors(successSummary.errors)}
+                      </div>
+                    </div>
+                  )}
                   {/* Configuración Global */}
                   <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-6 mb-8 space-y-6">
                     <AgencySelector

@@ -70,8 +70,9 @@ export function buildPendingOrderDetail(order: OrderHeader): OrderReceipt {
       status: payment.status,
     })),
     totals: {
+      // FEAT-33 A5: precios normales; el descuento va aparte (Productos − Descuentos + Envío = Total).
       productsTotal: roundMoney(
-        items.reduce((sum, item) => sum + amount(item.subtotal), 0),
+        items.reduce((sum, item) => sum + amount(item.unitPrice) * item.quantity, 0),
       ),
       taxTotal: amount(order.taxTotal),
       shippingTotal: amount(order.shippingTotal),

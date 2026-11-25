@@ -62,8 +62,9 @@ beforeEach(() => {
 });
 test("shows actual catalog and disables payment when store has no gateway", async () => {
   render(<PublicLivePage storeId={storeId} />);
+  // La bienvenida es una pantalla (mockup): el catálogo aparece al entrar o al «solo mirar».
+  fireEvent.click(await screen.findByRole("button", { name: "Solo quiero mirar primero" }));
   expect(await screen.findByText("Crema Centella")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Solo quiero mirar primero" }));
   expect(screen.queryByRole("button", { name: "Comprar ahora" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: /Separar ·/ })).toBeEnabled();
 });
@@ -81,7 +82,7 @@ test("retries a failed reserve with same idempotency key", async () => {
     customer: { name: "María Torres", phone: "987654321" },
   });
   render(<PublicLivePage storeId={storeId} />);
-  await screen.findByText("Crema Centella");
+  await screen.findByRole("heading", { name: "Compra lo que ves en el live" });
   fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "987654321" } });
   fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "María Torres" } });
   fireEvent.click(screen.getByRole("button", { name: "Entrar a comprar" }));
@@ -104,7 +105,7 @@ test("a foreign WhatsApp identifies the buyer and reserves with the internationa
     customer: { name: "Clara Gómez", phone: "+5491123456789" },
   });
   render(<PublicLivePage storeId={storeId} />);
-  await screen.findByText("Crema Centella");
+  await screen.findByRole("heading", { name: "Compra lo que ves en el live" });
   // Antes de un número válido no se pide el nombre
   expect(screen.queryByLabelText("Nombre")).not.toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("WhatsApp"), { target: { value: "+54 9 11 2345-6789" } });
@@ -118,4 +119,24 @@ test("a foreign WhatsApp identifies the buyer and reserves with the internationa
       expect.objectContaining({ phone: "+5491123456789" }),
     ),
   );
+});
+
+// FEAT-33 C5: con la creadora en vivo, su link muestra «En vivo con {nombre}», precios live y se puede comprar aunque
+// el live de la tienda esté cerrado; sin el «Volver al live» de la tienda.
+test("her link while she is on air says «En vivo con Rei Hinojosa» even with the store live closed", async () => {
+  window.history.replaceState(null, "", `/live/${storeId}?a=rei-1a2b`);
+  (getPublicLive as jest.Mock).mockResolvedValue({
+    ...data,
+    channel: "LIVE",
+    creatorLive: { name: "Rei Hinojosa" },
+    config: { ...data.config, showBackLink: true, liveUrl: "https://www.tiktok.com/@kunca/live" },
+    session: { ...data.session, status: "CLOSED" },
+  });
+  render(<PublicLivePage storeId={storeId} />);
+  fireEvent.click(await screen.findByRole("button", { name: "Solo quiero mirar primero" }));
+  expect(await screen.findByText("En vivo con Rei Hinojosa")).toBeInTheDocument();
+  expect(screen.getByText("Crema Centella")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Separar ·/ })).toBeEnabled();
+  expect(screen.queryByText(/Catálogo por WhatsApp/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: /Volver al live/ })).not.toBeInTheDocument();
 });

@@ -51,7 +51,6 @@ import {
   ScanLine,
   Smartphone,
   Barcode,
-  Boxes,
   BadgeDollarSign,
 } from "lucide-react";
 
@@ -234,10 +233,12 @@ export function Sidebar({ className }: SidebarProps) {
             icon: FileText,
           },
           {
-            // FEAT-24 H9: los packs pasan a Productos › Packs; acá quedan las promociones.
-            name: "Promociones",
+            // FEAT-32 M4 (spec §7.0): packs, promociones y bundles anteriores en un solo lugar.
+            name: "Packs y promociones",
             href: "/packs-promos",
             icon: PackagePlus,
+            badge: "Nuevo",
+            badgeUntil: "2026-12-24T23:59:59-05:00",
           },
           { name: "Clientes", href: "/clientes", icon: Users },
           ...(canAccessLive ? [{ name: "POWIP Live", href: "/live", icon: Radio }] : []),
@@ -292,8 +293,7 @@ export function Sidebar({ className }: SidebarProps) {
           { name: "Lista de productos", href: "/productos", icon: Tags },
           { name: "Categorías", href: "/productos/categorias", icon: LayoutList },
           { name: "Etiquetas", href: "/productos/etiquetas", icon: Barcode },
-          // FEAT-24 H9: packs y listas de precios.
-          { name: "Packs", href: "/productos/packs", icon: Boxes },
+          // FEAT-24 H9: listas de precios. Los packs pasaron a Comercial › Packs y promociones (FEAT-32 M4).
           { name: "Listas de precios", href: "/productos/listas-precios", icon: BadgeDollarSign },
           { name: "Inventario", href: "/inventario", icon: Package },
           // FEAT-24 H6: la app del celular para el almacén (PWA instalable).

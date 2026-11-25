@@ -24,17 +24,19 @@ const props = {
 };
 beforeEach(() => jest.clearAllMocks());
 
+// FEAT-33 A11: cada requisito pendiente muestra «Resolver →», como el mockup.
 test.each([
-  ["YAPE", "Yape", "Configurar Yape", "config"],
-  ["PRODUCTS", "Productos y precios", "Agregar productos", "products"],
-  ["STOCK", "Stock disponible", "Revisar stock", "products"],
-  ["SHIPPING", "Envío", "Configurar envío", "config"],
+  ["YAPE", "Yape", "Resolver Yape", "config"],
+  ["PRODUCTS", "Productos y precios", "Resolver Productos y precios", "products"],
+  ["STOCK", "Stock disponible", "Resolver Stock disponible", "products"],
+  ["SHIPPING", "Envío", "Resolver Envío", "config"],
 ] as const)("explains missing %s and opens the correct tab", (code, label, buttonLabel, action) => {
   render(<LiveReadinessPanel {...props} readiness={readiness([code])} />);
   expect(screen.getByRole("status")).toHaveTextContent(`Falta completar: ${label}.`);
   expect(screen.getByText(`Falta ${code}`)).toBeInTheDocument();
   expect(screen.getByText("3 de 4 requisitos listos")).toBeInTheDocument();
   const button = screen.getByRole("button", { name: buttonLabel });
+  expect(button).toHaveTextContent("Resolver →");
   expect(document.getElementById(button.getAttribute("aria-describedby") || "")).toHaveTextContent(
     `Falta ${code}`,
   );

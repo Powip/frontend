@@ -69,15 +69,18 @@ beforeEach(() => {
   });
 });
 
-test("server-scoped review payload exposes no console configuration or sales", async () => {
+test("a payments-only user is sent to Finanzas and sees no console configuration or sales", async () => {
   render(<LiveConsolePage />);
-  await screen.findByText("No hay comprobantes pendientes de revisión.");
-  expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Pagos por revisar"]);
+  expect(
+    await screen.findByRole("link", { name: "Ir a Pagos por validar →" }),
+  ).toHaveAttribute("href", "/finanzas?tab=pagos&origen=live");
+  expect(screen.getByText(/Los pagos de POWIP Live se validan en Finanzas/)).toBeInTheDocument();
+  expect(screen.queryByRole("tab")).not.toBeInTheDocument();
   expect(screen.queryByText("Configuración")).not.toBeInTheDocument();
   expect(screen.queryByText("Ventas del live")).not.toBeInTheDocument();
   expect(screen.queryByText("Conectar Mercado Pago")).not.toBeInTheDocument();
-  expect(mockReplace).toHaveBeenCalledWith("/live?tab=payments", { scroll: false });
-  expect(getLiveYapeReviews).toHaveBeenCalledWith("store-a", expect.any(AbortSignal));
+  expect(mockReplace).not.toHaveBeenCalledWith("/live?tab=payments", { scroll: false });
+  expect(getLiveYapeReviews).not.toHaveBeenCalled();
 });
 
 function fullConsole(ready: boolean, enabled = false): LiveConsoleData {
@@ -160,7 +163,7 @@ test("configuration remains editable while purchases are off and enable requires
     "href",
     "/configuracion/tiendas",
   );
-  expect(screen.getByRole("button", { name: "Guardar configuración" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Guardar configuración" })).toBeDisabled();
   (getLiveConsole as jest.Mock).mockResolvedValue(fullConsole(true));
   fireEvent.click(screen.getByRole("button", { name: "Actualizar live" }));
   await waitFor(() => expect(toggle).toBeEnabled());
@@ -236,7 +239,7 @@ test("save shipping, enable purchases and save activation before opening; refres
   });
   const view = render(<LiveConsolePage />);
   const toggle = await screen.findByRole("switch", { name: /^Habilitar compras del live/ });
-  fireEvent.click(screen.getByRole("button", { name: "Configurar envío" }));
+  fireEvent.click(screen.getByRole("button", { name: "Resolver Envío" }));
   await waitFor(() => expect(document.getElementById("live-shipping-settings")).toHaveFocus());
   expect(toggle).toBeDisabled();
   expect(screen.getByRole("link", { name: /Configuración de tienda/ })).toHaveAttribute(
@@ -317,7 +320,8 @@ test("finance role cannot override server denial of payment review", async () =>
     capabilities: { ...minimal().capabilities, reviewPayments: false },
   });
   render(<LiveConsolePage />);
-  await screen.findByText(/rol Administrador vigente/);
+  await screen.findByText(/rol Administrador o el permiso de Finanzas/);
+  expect(screen.queryByRole("link", { name: "Ir a Pagos por validar →" })).not.toBeInTheDocument();
   expect(getLiveYapeReviews).not.toHaveBeenCalled();
 });
 
@@ -333,17 +337,15 @@ test("late console authorization for previous store cannot replace current store
   const view = render(<LiveConsolePage />);
   mockStore = "store-b";
   view.rerender(<LiveConsolePage />);
-  await screen.findByText("No hay comprobantes pendientes de revisión.");
+  await screen.findByRole("link", { name: "Ir a Pagos por validar →" });
   await act(async () =>
     resolveOld({
       ...minimal(),
       capabilities: { ...minimal().capabilities, reviewPayments: false },
     }),
   );
-  await waitFor(() =>
-    expect(getLiveYapeReviews).toHaveBeenCalledWith("store-b", expect.any(AbortSignal)),
-  );
-  expect(screen.queryByText(/rol Administrador vigente/)).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Ir a Pagos por validar →" })).toBeInTheDocument();
+  expect(screen.queryByText(/rol Administrador o el permiso de Finanzas/)).not.toBeInTheDocument();
 });
 
 test("a late authorization response from the previous account cannot replace the current account", async () => {
@@ -361,10 +363,10 @@ test("a late authorization response from the previous account cannot replace the
   const view = render(<LiveConsolePage />);
   mockUserId = "other-account";
   view.rerender(<LiveConsolePage />);
-  await screen.findByText(/rol Administrador vigente/);
+  await screen.findByText(/rol Administrador o el permiso de Finanzas/);
   await act(async () => resolveOld(minimal()));
-  expect(getLiveYapeReviews).not.toHaveBeenCalled();
-  expect(screen.getByText(/rol Administrador vigente/)).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "Ir a Pagos por validar →" })).not.toBeInTheDocument();
+  expect(screen.getByText(/rol Administrador o el permiso de Finanzas/)).toBeInTheDocument();
 });
 
 test("administrator config links to centralized delivery settings without inventing fees", async () => {
@@ -413,11 +415,12 @@ test("administrator config links to centralized delivery settings without invent
   expect(screen.queryByLabelText("Envío a domicilio")).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Envío a agencia")).not.toBeInTheDocument();
   expect(screen.getByRole("switch", { name: "Juntar compras en un envío" })).toBeEnabled();
+  // FEAT-33 A1: sin cambios no hay nada que guardar, y se manda solo lo que cambió
+  // (nunca tarifas de envío: viven en Configuración de tienda).
+  expect(screen.getByRole("button", { name: "Guardar configuración" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("switch", { name: "Juntar compras en un envío" }));
   fireEvent.click(screen.getByRole("button", { name: "Guardar configuración" }));
   await waitFor(() =>
-    expect(updateLiveConfig).toHaveBeenCalledWith(
-      "store-a",
-      expect.objectContaining({ homeShipping: null, agencyShipping: null }),
-    ),
+    expect(updateLiveConfig).toHaveBeenCalledWith("store-a", { combineShipping: true }),
   );
 });

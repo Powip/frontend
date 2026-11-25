@@ -2,8 +2,9 @@
 import ubigeo from "@/utils/json/ubigeos.json";
 import type { LiveDelivery, LivePurchaseInput, StoreDeliveryOption } from "./types";
 import { liveMoney } from "./liveService";
+import LiveSearchSelect from "./LiveSearchSelect";
 export const purchaseField =
-  "mt-1 min-h-11 w-full rounded-xl border border-white/20 bg-slate-900 p-3 text-sm text-white focus:outline-emerald-300";
+  "mt-1.5 min-h-12 w-full rounded-[14px] border-[1.5px] border-[var(--b-line)] bg-[var(--b-in)] px-3.5 py-3 text-base font-normal text-[var(--b-ink)] outline-none focus:border-[var(--acc)]";
 const norm = (s = "") =>
   s
     .trim()
@@ -66,6 +67,7 @@ export default function LiveDeliveryForm({
   onReceipt: (r: LivePurchaseInput["receipt"]) => void;
 }) {
   const departments = ubigeo[0].departments;
+  const departmentNames = departments.map((d) => d.name);
   const provinces = departments.find((d) => d.name === delivery.department)?.provinces || [];
   const districts = provinces.find((p) => p.name === delivery.province)?.districts || [];
   const agencies = availableAgencies(delivery, options);
@@ -73,107 +75,85 @@ export default function LiveDeliveryForm({
   const set = (patch: Partial<LiveDelivery>) => onDelivery({ ...delivery, ...patch });
   return (
     <div className="space-y-4">
-      <label className="block text-sm">
-        Departamento
-        <select
-          aria-label="Departamento"
-          className={purchaseField}
-          value={delivery.department || ""}
-          onChange={(e) =>
-            set({
-              department: e.target.value,
-              province: "",
-              district: "",
-              agencyId: "",
-              agency: "",
-              type: "AGENCY",
-            })
-          }
-        >
-          <option value="">Elige tu departamento</option>
-          {departments.map((d) => (
-            <option key={d.name}>{d.name}</option>
-          ))}
-        </select>
-      </label>
-      <label className="block text-sm">
-        Provincia
-        <select
-          aria-label="Provincia"
-          className={purchaseField}
-          disabled={!delivery.department}
-          value={delivery.province || ""}
-          onChange={(e) => {
-            const d = {
-              ...delivery,
-              province: e.target.value,
-              district: "",
-              agencyId: "",
-              agency: "",
-            };
-            onDelivery({
-              ...d,
-              type: isMetro(d) ? "HOME" : "AGENCY",
-              courier: isMetro(d) ? "MOTORIZADO" : "SHALOM",
-            });
-          }}
-        >
-          <option value="">Elige tu provincia</option>
-          {provinces.map((p) => (
-            <option key={p.name}>{p.name}</option>
-          ))}
-        </select>
-      </label>
-      <label className="block text-sm">
-        Distrito
-        <select
-          aria-label="Distrito"
-          className={purchaseField}
-          disabled={!delivery.province}
-          value={delivery.district || ""}
-          onChange={(e) => set({ district: e.target.value, agencyId: "", agency: "" })}
-        >
-          <option value="">Elige tu distrito</option>
-          {districts.map((d) => (
-            <option key={d}>{d}</option>
-          ))}
-        </select>
-      </label>
+      <LiveSearchSelect
+        label="Departamento"
+        placeholder="Escribe o elige tu departamento"
+        options={departmentNames}
+        value={delivery.department || ""}
+        onChange={(department) =>
+          set({
+            department,
+            province: "",
+            district: "",
+            agencyId: "",
+            agency: "",
+            type: "AGENCY",
+            courier: "SHALOM",
+          })
+        }
+      />
+      <LiveSearchSelect
+        label="Provincia"
+        placeholder={delivery.department ? "Escribe o elige tu provincia" : "Primero el departamento"}
+        options={provinces.map((p) => p.name)}
+        value={delivery.province || ""}
+        disabled={!delivery.department}
+        onChange={(province) => {
+          const d = { ...delivery, province, district: "", agencyId: "", agency: "" };
+          onDelivery({
+            ...d,
+            type: isMetro(d) ? "HOME" : "AGENCY",
+            courier: isMetro(d) ? "MOTORIZADO" : "SHALOM",
+          });
+        }}
+      />
+      <LiveSearchSelect
+        label="Distrito"
+        placeholder={delivery.province ? "Escribe o elige tu distrito" : "Primero la provincia"}
+        options={districts}
+        value={delivery.district || ""}
+        disabled={!delivery.province}
+        onChange={(district) => set({ district, agencyId: "", agency: "" })}
+      />
       {delivery.province ? (
         isMetro(delivery) ? (
-          <fieldset className="flex gap-3">
-            <legend className="mb-2 text-sm">¿Cómo lo recibes?</legend>
-            {(["HOME", "AGENCY"] as const).map((type) => (
-              <label
-                key={type}
-                className="flex min-h-11 flex-1 items-center gap-2 rounded-xl border border-white/20 p-3 text-sm"
-              >
-                <input
-                  type="radio"
-                  name="delivery"
-                  checked={delivery.type === type}
-                  onChange={() =>
-                    set({
-                      type,
-                      courier: type === "HOME" ? "MOTORIZADO" : "SHALOM",
-                      agencyId: "",
-                      agency: "",
-                    })
-                  }
-                />
-                {type === "HOME" ? "A domicilio" : "Recojo en tienda courier"}
-              </label>
-            ))}
+          <fieldset>
+            <legend className="mb-1.5 text-[13px] font-semibold text-[var(--b-ink2)]">¿Cómo lo recibes?</legend>
+            <div className="grid grid-cols-2 gap-2">
+              {(["HOME", "AGENCY"] as const).map((type) => (
+                <label
+                  key={type}
+                  className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-[14px] border-[1.5px] border-[var(--b-line)] bg-[var(--b-in)] p-3 text-center text-sm font-semibold has-[:checked]:border-[var(--acc)] has-[:checked]:bg-[var(--acc-soft)] has-[:checked]:text-[var(--acc-tx)] has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-[var(--acc)]"
+                >
+                  <input
+                    type="radio"
+                    name="delivery"
+                    className="sr-only"
+                    checked={delivery.type === type}
+                    onChange={() =>
+                      set({
+                        type,
+                        courier: type === "HOME" ? "MOTORIZADO" : "SHALOM",
+                        agencyId: "",
+                        agency: "",
+                      })
+                    }
+                  />
+                  {type === "HOME" ? "🛵 A domicilio" : "🏢 Recojo en agencia"}
+                </label>
+              ))}
+            </div>
           </fieldset>
         ) : (
-          <p className="rounded-xl bg-blue-400/10 p-3 text-sm text-blue-100">
-            A esta provincia enviamos a una agencia.
+          <p className="rounded-xl bg-[var(--b-pur-bg)] p-3 text-sm text-[var(--b-pur)]">
+            Para {delivery.department} el envío es a una agencia: eliges el courier y la agencia donde
+            recoges.
           </p>
         )
       ) : null}
       {delivery.type === "HOME" ? (
         <>
-          <label className="block text-sm">
+          <label className="block text-[13px] font-semibold text-[var(--b-ink2)]">
             Dirección
             <input
               aria-label="Dirección"
@@ -185,7 +165,7 @@ export default function LiveDeliveryForm({
               placeholder="Calle y número"
             />
           </label>
-          <label className="block text-sm">
+          <label className="block text-[13px] font-semibold text-[var(--b-ink2)]">
             Referencia (opcional)
             <input
               className={purchaseField}
@@ -196,7 +176,7 @@ export default function LiveDeliveryForm({
           </label>
           <button
             type="button"
-            className="min-h-11 rounded-xl border border-white/20 px-4 text-sm"
+            className="min-h-11 rounded-xl border border-[var(--b-line)] px-4 text-sm"
             onClick={() =>
               navigator.geolocation?.getCurrentPosition(
                 (p) => set({ lat: p.coords.latitude, lng: p.coords.longitude }),
@@ -210,7 +190,7 @@ export default function LiveDeliveryForm({
         </>
       ) : (
         <>
-          <label className="block text-sm">
+          <label className="block text-[13px] font-semibold text-[var(--b-ink2)]">
             Courier
             <select
               aria-label="Courier"
@@ -228,7 +208,7 @@ export default function LiveDeliveryForm({
               <option value="OLVA">Olva Courier</option>
             </select>
           </label>
-          <label className="block text-sm">
+          <label className="block text-[13px] font-semibold text-[var(--b-ink2)]">
             Agencia
             <select
               aria-label="Agencia"
@@ -249,15 +229,15 @@ export default function LiveDeliveryForm({
             </select>
           </label>
           {selectedAgency ? (
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-[var(--b-mut)]">
               {selectedAgency.address} · {selectedAgency.hours}
             </p>
           ) : delivery.district && !agencies.length ? (
-            <p className="text-sm text-amber-200">
+            <p className="text-sm text-[var(--b-warn)]">
               La tienda aún no tiene agencias habilitadas de este courier en este distrito.
             </p>
           ) : null}
-          <label className="block text-sm">
+          <label className="block text-[13px] font-semibold text-[var(--b-ink2)]">
             DNI de quien recoge
             <input
               aria-label="DNI de quien recoge"
@@ -286,7 +266,7 @@ export default function LiveDeliveryForm({
       </label>
       {receipt.type === "FACTURA" ? (
         <>
-          <label className="block text-sm">
+          <label className="block text-[13px] font-semibold text-[var(--b-ink2)]">
             RUC
             <input
               aria-label="RUC"
@@ -302,7 +282,7 @@ export default function LiveDeliveryForm({
               }
             />
           </label>
-          <label className="block text-sm">
+          <label className="block text-[13px] font-semibold text-[var(--b-ink2)]">
             Razón social
             <input
               className={purchaseField}
@@ -313,7 +293,7 @@ export default function LiveDeliveryForm({
           </label>
         </>
       ) : total >= 700 && !delivery.dni ? (
-        <label className="block text-sm">
+        <label className="block text-[13px] font-semibold text-[var(--b-ink2)]">
           DNI para boleta
           <input
             aria-label="DNI para boleta"

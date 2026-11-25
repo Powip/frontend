@@ -36,6 +36,7 @@ import {
   type AliclikCourierOption,
   type AliclikCreateOrderResult,
 } from "@/services/aliclikService";
+import AliclikMissingCoordsForm from "./AliclikMissingCoordsForm";
 
 // ─── TIPOS ──────────────────────────────────────────────
 
@@ -190,6 +191,45 @@ export default function SendToAliclikGuideModal({
   const [isSuccess, setIsSuccess] = useState(false);
   const [sendResults, setSendResults] = useState<OrderSendResult[]>([]);
 
+  // Cotiza un pedido y guarda su estado. Se usa al abrir y al volver a cotizar
+  // un pedido después de cargarle las coordenadas que faltaban.
+  const quoteOrder = async (orderId: string) => {
+    setOrderStates((prev) => ({
+      ...prev,
+      [orderId]: {
+        quoting: true,
+        quoteError: null,
+        quote: prev[orderId]?.quote ?? null,
+        warehouseStates: prev[orderId]?.warehouseStates ?? {},
+      },
+    }));
+    try {
+      const data = await quoteAliclikOrder(token, companyId, orderId);
+      setOrderStates((prev) => ({
+        ...prev,
+        [orderId]: {
+          quoting: false,
+          quoteError: null,
+          quote: data,
+          warehouseStates: buildInitialWarehouseStates(data),
+        },
+      }));
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response
+          ?.data?.message ?? "Error al cotizar";
+      setOrderStates((prev) => ({
+        ...prev,
+        [orderId]: {
+          quoting: false,
+          quoteError: msg,
+          quote: null,
+          warehouseStates: {},
+        },
+      }));
+    }
+  };
+
   // ─── EFECTO: cotizar al abrir ────────────────────────
 
   // Deps intencionalmente limitadas a [open]: el padre (GuideDetailsModal)
@@ -225,32 +265,7 @@ export default function SendToAliclikGuideModal({
 
     // Cotizar todos en paralelo
     orders.forEach((order) => {
-      quoteAliclikOrder(token, companyId, order.id)
-        .then((data) => {
-          setOrderStates((prev) => ({
-            ...prev,
-            [order.id]: {
-              quoting: false,
-              quoteError: null,
-              quote: data,
-              warehouseStates: buildInitialWarehouseStates(data),
-            },
-          }));
-        })
-        .catch((err: unknown) => {
-          const msg =
-            (err as { response?: { data?: { message?: string } } })?.response
-              ?.data?.message ?? "Error al cotizar";
-          setOrderStates((prev) => ({
-            ...prev,
-            [order.id]: {
-              quoting: false,
-              quoteError: msg,
-              quote: null,
-              warehouseStates: {},
-            },
-          }));
-        });
+      void quoteOrder(order.id);
     });
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -608,23 +623,15 @@ export default function SendToAliclikGuideModal({
                                   </div>
                                 )}
 
-                                {/* Banner coordenadas faltantes — BLOQUEANTE */}
+                                {/* Coordenadas faltantes — BLOQUEANTE: se cargan aquí y se vuelve a cotizar solo este pedido */}
                                 {orderHasMissingCoords(state.quote) && (
-                                  <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg flex gap-3">
-                                    <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                                    <div>
-                                      <p className="text-xs font-bold text-amber-800 dark:text-amber-400 mb-1">
-                                        Faltan coordenadas del cliente
-                                        (lat/lng)
-                                      </p>
-                                      <p className="text-xs text-amber-700 dark:text-amber-500">
-                                        Aliclik requiere la ubicación exacta
-                                        del cliente para crear el pedido.
-                                        Cargalas en la venta antes de enviar
-                                        a Aliclik.
-                                      </p>
-                                    </div>
-                                  </div>
+                                  <AliclikMissingCoordsForm
+                                    idPrefix={`aliclik-guide-${order.id}`}
+                                    orderId={order.id}
+                                    companyId={companyId}
+                                    disabled={sending}
+                                    onSaved={() => quoteOrder(order.id)}
+                                  />
                                 )}
 
                                 {/* Almacenes y couriers */}

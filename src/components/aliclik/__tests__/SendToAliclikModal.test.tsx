@@ -982,6 +982,34 @@ describe('SendToAliclikModal', () => {
       });
     });
 
+    // ── Caso 2b: cotización sin coords (missingCoordinates) → guardar y re-cotizar ──
+
+    it('con missingCoordinates: guarda coords y vuelve a cotizar sin llamar a createAliclikOrder', async () => {
+      const sinCoords = {
+        ...MOCK_QUOTE_NO_COORDS,
+        customer: { ...MOCK_QUOTE_NO_COORDS.customer, lat: null, lng: null },
+        missingCoordinates: true,
+        warehouses: MOCK_QUOTE_NO_COORDS.warehouses.map((w) => ({ ...w, couriers: [], ubigeo: null })),
+      };
+      mockQuote.mockResolvedValueOnce(sinCoords as never);
+      mockQuote.mockResolvedValueOnce(MOCK_QUOTE_SINGLE_WAREHOUSE);
+      renderModal({ clientId: 'client-42' });
+      await screen.findByText('María García');
+      expect(screen.getByText(/faltan coordenadas/i)).toBeInTheDocument();
+
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText(/latitud/i), '-12.046374');
+      await user.type(screen.getByLabelText(/longitud/i), '-77.042793');
+      await user.click(screen.getByRole('button', { name: /guardar y volver a cotizar/i }));
+
+      await waitFor(() => expect(mockQuote).toHaveBeenCalledTimes(2));
+      expect(mockUpdateClient).toHaveBeenCalled();
+      expect(mockCreate).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(screen.queryByLabelText(/latitud/i)).not.toBeInTheDocument();
+      });
+    });
+
     // ── Caso 3: coords faltantes + clientId presente → updateClient antes de create ──
 
     it('llama a updateClient con clientId, companyId, latitude y longitude antes de createAliclikOrder', async () => {

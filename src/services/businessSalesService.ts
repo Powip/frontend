@@ -11,6 +11,8 @@ export interface BusinessSalesQuery extends Partial<SalesFilters> {
   kpiDateFrom?: string;
   kpiDateTo?: string;
   includeSummary?: boolean;
+  /** «Por cobrar total»: deja fuera las ventas anuladas de la lista. */
+  excludeCancelled?: "yes";
   checkStock?: boolean;
   sort?: "created_desc" | "updated_asc";
 }
@@ -30,6 +32,8 @@ export interface BusinessSalesPage {
     pendientes: number;
     anuladas: number;
     amounts: { currency: string | null; paid: number; pending: number }[];
+    /** Saldo y cantidad de ventas con saldo > 0 (sin anuladas) del rango de KPIs, por moneda. */
+    pendingTotal?: { currency: string | null; pending: number; count: number }[];
   } | null;
   metadata?: { couriers: string[]; statuses: string[]; channels: string[]; products?: { value: string; label: string }[] };
 }

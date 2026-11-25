@@ -1,13 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import LivePayFrame, { COURIER_NAMES, LivePayTotal, payCta, payGhost, payTiny } from "./LivePayFrame";
 import LiveDeliveryForm, { deliveryError } from "./LiveDeliveryForm";
+import { livePromoSummary } from "./LivePromos";
 import {
   checkoutLivePurchase,
   liveError,
@@ -32,6 +27,7 @@ export default function LiveCheckoutDelivery({
   draft,
   onDraft,
   reservations,
+  promoDiscount = 0,
   options,
   methods,
   onClose,
@@ -43,6 +39,8 @@ export default function LiveCheckoutDelivery({
   draft?: { delivery: LiveDelivery; receipt: LivePurchaseInput["receipt"] } | null;
   onDraft?: (value: { delivery: LiveDelivery; receipt: LivePurchaseInput["receipt"] }) => void;
   reservations: LiveReservation[];
+  /** FEAT-33 L7b: descuento del volumen del live en el carrito, hasta que llegue la cotización. */
+  promoDiscount?: number;
   options: StoreDeliveryOption[];
   methods: LivePaymentMethod[];
   onClose: () => void;
@@ -63,7 +61,8 @@ export default function LiveCheckoutDelivery({
   const lock = useRef(false),
     alive = useRef(true),
     attempt = useRef<{ body: string; key: string } | null>(null);
-  const subtotal = reservations.reduce((n, r) => n + r.quantity * r.unitPrice, 0);
+  const subtotal =
+    Math.round((reservations.reduce((n, r) => n + r.quantity * r.unitPrice, 0) - promoDiscount) * 100) / 100;
   const fingerprint = JSON.stringify({
     customer: { name: customer.name, phone: customer.phone },
     reservationIds: reservations.map((r) => r.id),
@@ -168,28 +167,100 @@ export default function LiveCheckoutDelivery({
       if (alive.current) setBusy(false);
     }
   }
+  // FEAT-33 L7b: con la cotización, las prendas compradas (sin el regalo), el descuento y el regalo.
+  const summary = quote ? livePromoSummary(quote.items) : null;
+  const units = summary?.units || reservations.reduce((n, r) => n + r.quantity, 0);
+  const home = delivery.type === "HOME";
+  const courierName = COURIER_NAMES[delivery.courier || ""] || delivery.courier || "";
+  const shippingText = !quote
+    ? "Envío según entrega"
+    : quote.combinedOrderNumber
+      ? "Envío ya pagado hoy"
+      : `Envío ${liveMoney(quote.shipping)} · ${home ? "domicilio" : courierName}`;
   return (
-    <Dialog
-      open
-      onOpenChange={(o) => {
-        if (!o && !busy) onClose();
-      }}
-    >
-      <DialogContent className="max-h-[94dvh] overflow-y-auto border-white/15 bg-[#171428] text-slate-100 sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>1 Entrega · 2 Paga · 3 Confirma</DialogTitle>
-          <DialogDescription className="text-slate-300">
-            Elige dónde recibir tu pedido.
-          </DialogDescription>
-        </DialogHeader>
-        {saved ? (
-          <div className="rounded-xl border border-emerald-300/30 p-4">
-            <p>Enviar a {delivery.address || delivery.agency}</p>
-            <p className="text-sm text-slate-300">
-              {delivery.district}, {delivery.province}, {delivery.department}
+    <LivePayFrame
+      title="¿Dónde te lo enviamos?"
+      description="Paso 1 de 3: elige dónde recibir tu pedido."
+      step={1}
+      onBack={onClose}
+      onClose={onClose}
+      busy={busy}
+      footer={
+        <>
+          <LivePayTotal
+            units={units}
+            products={quote ? quote.subtotal : subtotal}
+            discount={summary ? summary.discount : promoDiscount}
+            gift={summary?.gift}
+            shipping={shippingText}
+            total={quote ? liveMoney(quote.total) : `${liveMoney(subtotal)} + envío`}
+          />
+          {quoting ? (
+            <p role="status" className={payTiny}>
+              Actualizando total…
             </p>
-            <button className="mt-2 min-h-11 text-emerald-300" onClick={() => setSaved(false)}>
-              Cambiar entrega
+          ) : null}
+          {methods.map((m, index) => (
+            <button
+              key={m}
+              className={index === 0 ? payCta : payGhost}
+              disabled={busy || quoting || !quote || !!invalid}
+              onClick={() => void proceed(m)}
+            >
+              {busy
+                ? "Guardando…"
+                : m === "yape"
+                  ? quote
+                    ? `Continuar · ${liveMoney(quote.total)}`
+                    : "Continuar"
+                  : "Pagar con Mercado Pago"}
+            </button>
+          ))}
+          {!methods.length ? (
+            <p className="text-sm text-[var(--b-warn)]">
+              La tienda todavía no habilitó un medio de pago.
+            </p>
+          ) : null}
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {quote?.combinedOrderNumber ? (
+          <p className="rounded-xl bg-[var(--b-ok-bg)] p-3 text-[13px] leading-relaxed text-[var(--b-ok)]">
+            📦 Se suma a tu envío de hoy ({quote.combinedOrderNumber}).{" "}
+            <b>No pagas envío otra vez.</b>
+          </p>
+        ) : null}
+        {saved ? (
+          <div
+            data-testid="saved-delivery"
+            className="flex items-start gap-3 rounded-2xl border-[1.5px] border-[var(--acc)] bg-[var(--b-card)] p-3.5"
+          >
+            <div className="min-w-0 flex-1 space-y-0.5 text-sm">
+              <small className="block text-xs text-[var(--b-mut)]">
+                {home ? "🛵 Enviar a domicilio" : `🏢 Recoger en agencia ${courierName}`}
+              </small>
+              <b className="block text-[15px]">{home ? delivery.address : delivery.agency}</b>
+              <span className="block text-[var(--b-mut)]">
+                {delivery.district}, {delivery.province} · {delivery.department}
+              </span>
+              {home && delivery.reference ? (
+                <span className="block text-[var(--b-mut)]">Ref.: {delivery.reference}</span>
+              ) : null}
+              {home && delivery.lat ? (
+                <span className="block text-[var(--b-mut)]">📍 Con ubicación</span>
+              ) : null}
+              <span className="block text-[var(--b-mut)]">
+                Recibe: {customer.name} · {customer.phone}
+              </span>
+            </div>
+            <button
+              type="button"
+              aria-label="Cambiar entrega"
+              className="min-h-11 shrink-0 px-2 text-sm font-semibold text-[var(--acc-tx)]"
+              onClick={() => setSaved(false)}
+            >
+              Cambiar
             </button>
           </div>
         ) : (
@@ -204,51 +275,13 @@ export default function LiveCheckoutDelivery({
           />
         )}
         {error ? (
-          <p role="alert" className="text-sm text-rose-200">
+          <p role="alert" className="rounded-xl bg-[var(--b-bad-bg)] p-3 text-sm text-[var(--b-err)]">
             {error}
           </p>
         ) : invalid ? (
-          <p className="text-sm text-slate-300">{invalid}</p>
+          <p className="text-sm text-[var(--b-mut)]">{invalid}</p>
         ) : null}
-        {quote?.combinedOrderNumber ? (
-          <p className="rounded-xl bg-emerald-400/10 p-3 text-sm text-emerald-200">
-            Se suma a {quote.combinedOrderNumber}. No pagas envío otra vez.
-          </p>
-        ) : null}
-        <footer className="sticky -bottom-6 space-y-3 border-t border-white/15 bg-[#171428] py-4">
-          <p className="flex justify-between text-sm">
-            <span>Productos {liveMoney(subtotal)}</span>
-            <span>Envío {quote ? liveMoney(quote.shipping) : "según entrega"}</span>
-          </p>
-          <p className="flex justify-between text-xl font-bold">
-            <span>Total</span>
-            <span>
-              {liveMoney(quote?.total ?? subtotal)}
-              {!quote ? " + envío" : ""}
-            </span>
-          </p>
-          {quoting ? (
-            <p role="status" className="text-sm">
-              Actualizando total…
-            </p>
-          ) : null}
-          {methods.map((m) => (
-            <button
-              key={m}
-              className="min-h-12 w-full rounded-xl bg-emerald-400 p-3 font-bold text-slate-950 disabled:opacity-40"
-              disabled={busy || quoting || !quote || !!invalid}
-              onClick={() => void proceed(m)}
-            >
-              {busy ? "Guardando…" : m === "yape" ? "Continuar a Yape →" : "Pagar con Mercado Pago"}
-            </button>
-          ))}
-          {!methods.length ? (
-            <p className="text-sm text-amber-200">
-              La tienda todavía no habilitó un medio de pago.
-            </p>
-          ) : null}
-        </footer>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </LivePayFrame>
   );
 }

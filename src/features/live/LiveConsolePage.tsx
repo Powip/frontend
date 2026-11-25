@@ -4,10 +4,11 @@ import { toWhatsAppDigits } from "@/lib/phone";
 import { createLivePolling, type LivePollingController } from "./livePolling";
 import { liveAdminError } from "./liveService";
 import LiveAdvisors from "./LiveAdvisors";
+import LiveSellersPanel from "./LiveSellersPanel";
+import { liveLinks } from "./liveLinks";
 import LiveProductsTable from "./LiveProductsTable";
 
 import {
-  Copy,
   ExternalLink,
   Link2,
   Loader2,
@@ -17,11 +18,9 @@ import {
   QrCode,
   Radio,
   RefreshCw,
-  Settings2,
   Square,
-  Star,
-  Trash2,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -35,65 +34,62 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import LiveReadinessPanel, {
   getLiveOpeningStatus,
   type LiveConfigTarget,
 } from "./LiveReadinessPanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
+import LiveAddProductsDialog from "./LiveAddProductsDialog";
+import LiveConfigPanel from "./LiveConfigPanel";
+import LiveCopyButton from "./LiveCopyButton";
 import LivePaymentSettings from "./LivePaymentSettings";
+import LiveReservationsPanel from "./LiveReservationsPanel";
 import {
   LiveEmpty,
   LiveErrorBanner,
+  LiveFieldError,
   LivePanel,
   LiveProductImage,
   LiveReservationTimer,
 } from "./LiveShared";
-import LiveYapeReviews from "./LiveYapeReviews";
+import { type LiveProductGroup, groupLiveProducts, isActiveReservation } from "./liveGroups";
+// FEAT-32 M7: las hasta 3 fotos del live se eligen de la galería del producto (ms-products).
+import LiveProductPhotos, { type LivePhotosChange } from "./LiveProductPhotos";
+import { saveLivePhotos, type LivePhotoInput } from "@/services/productContentService";
 import {
+  addLiveTrustedCustomer,
   createLivePaymentLink,
-  getLiveCatalog,
   getLiveConsole,
+  LIVE_PAYMENTS_HREF,
   liveError,
   liveMoney,
   platformNames,
   releaseLiveReservation,
   removeLiveTrustedCustomer,
-  safeLiveUrl,
   saveLiveTrustedCustomer,
+  removeLiveLogo,
   updateLiveConfig,
-  updateLiveProduct,
+  updateLiveProducts,
+  uploadLiveLogo,
   updateLiveSession,
 } from "./liveService";
 import type {
-  LiveConfig,
-  LiveReadiness,
   LiveConsoleData,
   LivePlatform,
-  LiveProduct,
   LiveReservation,
   LiveReviewConsoleData,
   LiveSession,
 } from "./types";
 
-type Tab = "console" | "reservations" | "products" | "config" | "payments";
+// FEAT-33 B1: sin «Pagos por revisar»; los comprobantes se validan en Finanzas › Pagos por validar.
+type Tab = "console" | "reservations" | "products" | "sellers" | "config";
 const tabLabels: Record<Tab, string> = {
   console: "Consola en vivo",
   reservations: "Apartados",
   products: "Productos del live",
+  sellers: "Vendedores y comisiones",
   config: "Configuración",
-  payments: "Pagos por revisar",
-};
-const activeReservation = (reservation: LiveReservation) =>
-  ["PENDING", "ACTIVE", "RELEASING"].includes(reservation.status);
-const statusLabels = {
-  ACTIVE: "Apartado",
-  PENDING: "Procesando",
-  PAID: "Pagado",
-  RELEASED: "Liberado",
-  EXPIRED: "Vencido",
-  RELEASING: "Liberando",
 };
 
 export default function LiveConsolePage() {
@@ -124,11 +120,11 @@ function ScopedLiveConsolePage({
   } | null>(null);
   const data = fullSnapshot?.scope === scope ? fullSnapshot.value : null;
   const reviewData = reviewSnapshot?.scope === scope ? reviewSnapshot.value : null;
-  const tab: Tab = reviewData ? "payments" : requestedTab;
+  const tab: Tab = requestedTab;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
-  const [product, setProduct] = useState<LiveProduct | null>(null);
+  const [editing, setEditing] = useState<LiveProductGroup | null>(null);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [configTarget, setConfigTarget] = useState<LiveConfigTarget | null>(null);
   const [releasing, setReleasing] = useState<LiveReservation[]>([]);
@@ -142,7 +138,7 @@ function ScopedLiveConsolePage({
   const mutationLock = useRef<number | null>(null);
   const polling = useRef<LivePollingController | null>(null);
   const pollingScope = useRef<string | null>(null);
-  const overlayPaused = Boolean(product || catalogOpen || releasing.length || paymentLink);
+  const overlayPaused = Boolean(editing || catalogOpen || releasing.length || paymentLink);
   const overlayPausedRef = useRef(overlayPaused);
   overlayPausedRef.current = overlayPaused;
   const canManage = data?.capabilities.manage === true;
@@ -161,10 +157,6 @@ function ScopedLiveConsolePage({
     });
     return () => cancelAnimationFrame(frame);
   }, [tab, data, configTarget]);
-  useEffect(() => {
-    if (reviewData && rawTab !== "payments")
-      router.replace("/live?tab=payments", { scroll: false });
-  }, [reviewData, rawTab, router]);
   const callbackStoreId = search.get("storeId");
   useEffect(() => {
     if (
@@ -176,17 +168,9 @@ function ScopedLiveConsolePage({
   }, [callbackStoreId, selectedStoreId, auth?.company?.stores, setSelectedStore]);
   const storeId = selectedStoreId;
   const slug = data?.config.slug;
-  const publicUrl =
-    storeId && origin
-      ? slug
-        ? origin.endsWith(".powip.lat") || origin === "https://powip.lat"
-          ? `https://${slug}.powip.lat/live`
-          : `${origin}/live/${slug}`
-        : `${origin}/live/${encodeURIComponent(storeId)}`
-      : "";
-  const catalogUrl = publicUrl.includes(".powip.lat/live")
-    ? publicUrl.replace(/\/live$/, "/catalogo")
-    : publicUrl.replace("/live/", "/catalogo/");
+  // FEAT-33 A12: todos los links del live salen de liveLinks (un solo formato).
+  const links = liveLinks({ origin: storeId ? origin : "", slug, storeId });
+  const publicUrl = links.publicUrl;
 
   const refresh = useCallback(
     (quiet = false) =>
@@ -200,7 +184,7 @@ function ScopedLiveConsolePage({
     setFullSnapshot(null);
     setReviewSnapshot(null);
     setError("");
-    setProduct(null);
+    setEditing(null);
     setCatalogOpen(false);
     setReleasing([]);
     setPaymentLink(null);
@@ -224,7 +208,7 @@ function ScopedLiveConsolePage({
           interval = 15000;
           setFullSnapshot(null);
           setReviewSnapshot({ scope, value: result as LiveReviewConsoleData });
-          setProduct(null);
+          setEditing(null);
           setCatalogOpen(false);
           setReleasing([]);
           setPaymentLink(null);
@@ -236,7 +220,7 @@ function ScopedLiveConsolePage({
           hasSnapshot = false;
           setFullSnapshot(null);
           setReviewSnapshot(null);
-          setProduct(null);
+          setEditing(null);
           setCatalogOpen(false);
           setReleasing([]);
           setPaymentLink(null);
@@ -288,14 +272,6 @@ function ScopedLiveConsolePage({
       }
     }
   }
-  async function copy(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success("Copiado al portapapeles");
-    } catch {
-      toast.error("No se pudo copiar. Selecciona el enlace y cópialo manualmente.");
-    }
-  }
   async function downloadQr() {
     try {
       const QRCode = await import("qrcode");
@@ -312,7 +288,7 @@ function ScopedLiveConsolePage({
     storeId
       ? run("session", () => updateLiveSession(storeId, input), "Live actualizado")
       : Promise.resolve();
-  const active = data?.reservations.filter(activeReservation) ?? [];
+  const active = data?.reservations.filter(isActiveReservation) ?? [];
   const pinned = data?.products.find((item) => item.variantId === data.session?.pinnedVariantId);
   const transmitting = data?.session?.status === "LIVE";
   const readyToOpen = data?.readiness?.ready === true && data.config.enabled;
@@ -349,7 +325,7 @@ function ScopedLiveConsolePage({
             <Radio className="h-4 w-4" />
             POWIP Live
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">{tabLabels[tab]}</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{reviewData ? "Pagos de POWIP Live" : tabLabels[tab]}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {reviewData
               ? "Revisa los comprobantes Yape del negocio y confirma cada ingreso antes de validarlo."
@@ -395,18 +371,21 @@ function ScopedLiveConsolePage({
           Cargando live…
         </div>
       ) : reviewData ? (
-        <Tabs value="payments">
-          <TabsList>
-            <TabsTrigger value="payments">Pagos por revisar</TabsTrigger>
-          </TabsList>
-          <TabsContent value="payments">
-            <LiveYapeReviews
-              key={`${auth?.company?.id}:${storeId}`}
-              storeId={storeId}
-              canReview={canReviewPayments}
-            />
-          </TabsContent>
-        </Tabs>
+        canReviewPayments ? (
+          <LivePanel
+            title="Se validan en Finanzas"
+            description="Los pagos de POWIP Live se validan en Finanzas › Pagos por validar, junto con los del resto del negocio."
+          >
+            <Button asChild>
+              <Link href={LIVE_PAYMENTS_HREF}>Ir a Pagos por validar →</Link>
+            </Button>
+          </LivePanel>
+        ) : (
+          <LiveEmpty>
+            Para validar pagos necesitas el rol Administrador o el permiso de Finanzas de tu
+            negocio.
+          </LiveEmpty>
+        )
       ) : data ? (
         <>
           {!data.paymentMethods?.length ? (
@@ -455,7 +434,6 @@ function ScopedLiveConsolePage({
           >
             <TabsList className="h-auto max-w-full flex-wrap justify-start gap-1 bg-muted/70 p-1">
               {(Object.entries(tabLabels) as [Tab, string][])
-                .filter(([value]) => value !== "payments" || canReviewPayments)
                 .map(([value, label]) => (
                   <TabsTrigger key={value} value={value} className="px-4 py-2">
                     {label}
@@ -479,7 +457,7 @@ function ScopedLiveConsolePage({
               <LiveAdvisors
                 config={data.config}
                 disabled={!canManage || !!busy}
-                catalogUrl={catalogUrl}
+                links={links}
                 onSave={(config) =>
                   void run("config", () => updateLiveConfig(storeId, config), "Asesora guardada")
                 }
@@ -571,26 +549,33 @@ function ScopedLiveConsolePage({
                   {
                     label: "Ventas validadas",
                     value: liveMoney(data.metrics.totalSales),
-                    note: `${data.metrics.orderCount} pedidos`,
-                    color: "text-rose-600",
+                    note: `${data.metrics.orderCount} ${data.metrics.orderCount === 1 ? "pedido" : "pedidos"} con pago confirmado`,
+                    // FEAT-33 A11: verde agua = bien, ámbar = atención.
+                    color: "text-teal-700",
+                    action: null,
                   },
                   {
                     label: "Por validar",
                     value: liveMoney(data.metrics.pendingSales || 0),
-                    note: `${data.metrics.pendingPaymentCount || 0} pagos pendientes`,
-                    color: "text-emerald-600",
+                    note: `${data.metrics.pendingPaymentCount || 0} ${(data.metrics.pendingPaymentCount || 0) === 1 ? "comprobante" : "comprobantes"} Yape`,
+                    color: "text-amber-700",
+                    action: canReviewPayments
+                      ? { label: "validar en Finanzas →", href: LIVE_PAYMENTS_HREF }
+                      : null,
                   },
                   {
                     label: "Apartados por pagar",
                     value: data.metrics.activeReservations.toString(),
                     note: "Stock reservado",
-                    color: "text-amber-600",
+                    color: "text-foreground",
+                    action: { label: "Ver apartados", onClick: () => navigateToTab("reservations") },
                   },
                   {
                     label: "Visitas al catálogo",
                     value: data.metrics.visits.toLocaleString("es-PE"),
                     note: "Audiencia que abrió el link",
-                    color: "text-teal-600",
+                    color: "text-teal-700",
+                    action: null,
                   },
                 ].map((metric) => (
                   <LivePanel key={metric.label}>
@@ -598,7 +583,30 @@ function ScopedLiveConsolePage({
                     <p className={`mt-2 text-2xl font-bold tabular-nums ${metric.color}`}>
                       {metric.value}
                     </p>
-                    <p className="mt-1 text-xs text-muted-foreground">{metric.note}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {metric.note}
+                      {metric.action ? (
+                        <>
+                          {" · "}
+                          {metric.action.href ? (
+                            <Link
+                              href={metric.action.href}
+                              className="font-semibold text-teal-700 hover:underline"
+                            >
+                              {metric.action.label}
+                            </Link>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={metric.action.onClick}
+                              className="font-semibold text-teal-700 hover:underline"
+                            >
+                              {metric.action.label}
+                            </button>
+                          )}
+                        </>
+                      ) : null}
+                    </p>
                   </LivePanel>
                 ))}
               </div>
@@ -625,32 +633,17 @@ function ScopedLiveConsolePage({
                       </Button>
                     ))}
                   </div>
-                  <div className="flex items-center gap-2 rounded-xl border bg-muted/30 p-3">
-                    <Link2 className="h-4 w-4 shrink-0 text-teal-600" />
-                    <input
-                      readOnly
-                      value={publicUrl}
-                      aria-label="Enlace del catálogo del live"
-                      className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                    />
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      aria-label="Copiar enlace del live"
-                      onClick={() => void copy(publicUrl)}
-                    >
-                      <Copy className="h-4 w-4" />
-                    </Button>
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/30 p-3">
+                    <Link2 className="h-4 w-4 shrink-0 text-teal-600" aria-hidden="true" />
+                    <span className="min-w-0 flex-1 break-all text-sm">{publicUrl}</span>
+                    <LiveCopyButton text={publicUrl} label="Copiar link" />
                   </div>
-                  <div className="mt-3 flex gap-2">
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <Button variant="outline" size="sm" onClick={() => void downloadQr()}>
                       <QrCode className="h-4 w-4" />
                       Descargar QR
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => void copy(pinText)}>
-                      <Copy className="h-4 w-4" />
-                      Copiar comentario
-                    </Button>
+                    <LiveCopyButton text={pinText} label="Copiar comentario" />
                   </div>
                   <p className="mt-3 rounded-xl bg-teal-50 p-3 text-xs leading-relaxed text-teal-900">
                     {pinText}
@@ -745,7 +738,7 @@ function ScopedLiveConsolePage({
               </LivePanel>
             </TabsContent>
             <TabsContent value="reservations">
-              <ReservationsPanel
+              <LiveReservationsPanel
                 data={data}
                 canManage={canManage}
                 canOperate={canOperate}
@@ -762,6 +755,15 @@ function ScopedLiveConsolePage({
                       remove ? "Cliente de confianza retirado" : "Cliente de confianza habilitado",
                     );
                 }}
+                onTrustPhone={(input) =>
+                  storeId
+                    ? run(
+                        "trust",
+                        () => addLiveTrustedCustomer(storeId, input),
+                        "Cliente de confianza agregado",
+                      )
+                    : Promise.resolve(false)
+                }
                 onPaymentLink={(reservation) => {
                   if (storeId)
                     void run("link", async () => {
@@ -778,39 +780,47 @@ function ScopedLiveConsolePage({
             <TabsContent value="products">
               <LivePanel
                 title="Productos del live"
-                description="El precio live solo se aplica mientras el catálogo del live está abierto."
-              >
-                <div className="mb-4 flex justify-end">
+                description="Agrupados por producto. El precio live solo aplica mientras el catálogo del live está abierto."
+                aside={
                   <Button disabled={!canManage || !!busy} onClick={() => setCatalogOpen(true)}>
                     <Plus className="h-4 w-4" />
                     Agregar producto
                   </Button>
-                </div>
+                }
+              >
                 {data.products.length ? (
                   <LiveProductsTable
                     products={data.products}
+                    hideSoldOut={data.config.hideSoldOut === true}
                     disabled={!canManage || !!busy}
-                    onEdit={setProduct}
-                    onPublish={(item, enabled) =>
+                    onEdit={setEditing}
+                    onPublish={(variantIds, enabled) =>
                       void run(
                         "product",
-                        () =>
-                          updateLiveProduct(storeId, item.variantId, {
-                            enabled,
-                          }),
+                        () => updateLiveProducts(storeId, { variantIds, enabled }),
                         enabled ? "Producto publicado" : "Producto retirado",
                       )
                     }
                   />
                 ) : (
                   <LiveEmpty>
-                    No hay productos publicados. Agrega una variante de tu catálogo.
+                    No hay productos en el live. Pulsa «Agregar producto» y elige sus colores y tallas.
                   </LiveEmpty>
                 )}
               </LivePanel>
             </TabsContent>
-            <TabsContent value="payments">
-              <LiveYapeReviews key={storeId} storeId={storeId} canReview={canReviewPayments} />
+            <TabsContent value="sellers" className="space-y-5">
+              {canManage && storeId ? (
+                <LiveSellersPanel
+                  storeId={storeId}
+                  storeName={data.config.appearance?.displayName || data.store?.name || "La tienda"}
+                  products={data.products}
+                  links={links}
+                  canManage={canManage}
+                />
+              ) : (
+                <LiveEmpty>Solo un administrador ve los vendedores y sus comisiones.</LiveEmpty>
+              )}
             </TabsContent>
             <TabsContent value="config" className="space-y-5">
               <LiveReadinessPanel
@@ -834,11 +844,15 @@ function ScopedLiveConsolePage({
                 onConsole={() => navigateToTab("console")}
                 canManage={canManage}
                 busy={!!busy}
-                onSave={(input) =>
-                  void run(
+                storeName={data.store?.name}
+                onSave={(changes) =>
+                  run("config", () => updateLiveConfig(storeId, changes), "✓ Configuración guardada")
+                }
+                onLogo={(file) =>
+                  run(
                     "config",
-                    () => updateLiveConfig(storeId, input),
-                    "Configuración guardada",
+                    () => (file ? uploadLiveLogo(storeId, file) : removeLiveLogo(storeId)),
+                    file ? "✓ Logo guardado" : "Logo quitado",
                   )
                 }
               />
@@ -846,18 +860,25 @@ function ScopedLiveConsolePage({
           </Tabs>
         </>
       ) : null}
-      {product ? (
-        <ProductDialog
-          product={product}
+      {editing ? (
+        <ProductGroupDialog
+          group={editing}
+          storeId={storeId}
           busy={!!busy}
-          onClose={() => setProduct(null)}
-          onSave={(input) => {
+          onClose={() => setEditing(null)}
+          onSave={(input, photos) => {
             if (storeId)
               void run(
                 "product",
                 async () => {
-                  await updateLiveProduct(storeId, product.variantId, input);
-                  setProduct(null);
+                  // FEAT-32 M7: primero las fotos (si cambiaron) y después el precio live y el máximo.
+                  const productId = editing.variants[0]?.productId;
+                  if (photos && productId) await saveLivePhotos(productId, { storeId, photos });
+                  await updateLiveProducts(storeId, {
+                    variantIds: editing.variants.map((item) => item.variantId),
+                    ...input,
+                  });
+                  setEditing(null);
                 },
                 "Producto guardado",
               );
@@ -865,12 +886,17 @@ function ScopedLiveConsolePage({
         />
       ) : null}
       {catalogOpen && storeId ? (
-        <CatalogDialog
+        <LiveAddProductsDialog
           storeId={storeId}
           onClose={() => setCatalogOpen(false)}
-          onSelect={(item) => {
+          onAdded={() => {
             setCatalogOpen(false);
-            setProduct({ ...item, enabled: true });
+            void refresh(true);
+          }}
+          onEdit={(key) => {
+            setCatalogOpen(false);
+            const group = groupLiveProducts(data?.products ?? []).find((item) => item.key === key);
+            if (group) setEditing(group);
           }}
         />
       ) : null}
@@ -930,10 +956,7 @@ function ScopedLiveConsolePage({
           </DialogHeader>
           <Input value={paymentLink?.url ?? ""} readOnly aria-label="Enlace privado de pago" />
           <DialogFooter>
-            <Button variant="outline" onClick={() => void copy(paymentLink?.url ?? "")}>
-              <Copy className="h-4 w-4" />
-              Copiar enlace
-            </Button>
+            <LiveCopyButton text={paymentLink?.url ?? ""} label="Copiar enlace" size="default" />
             <Button asChild>
               <a
                 href={`https://wa.me/${toWhatsAppDigits(paymentLink?.phone)}?text=${encodeURIComponent(`Hola ${paymentLink?.name}, paga tus apartados aquí: ${paymentLink?.url}`)}`}
@@ -951,251 +974,110 @@ function ScopedLiveConsolePage({
   );
 }
 
-function ReservationsPanel({
-  data,
-  canManage,
-  canOperate,
-  busy,
-  onRelease,
-  onTrust,
-  onPaymentLink,
-}: {
-  data: LiveConsoleData;
-  canManage: boolean;
-  canOperate: boolean;
-  busy: boolean;
-  onRelease: (items: LiveReservation[]) => void;
-  onTrust: (id: string, remove?: boolean) => void;
-  onPaymentLink: (item: LiveReservation) => void;
-}) {
-  const [filter, setFilter] = useState("ACCUMULATED");
-  const trustedIds = new Set(data.trustedCustomers.map((customer) => customer.id));
-  const filtered = data.reservations.filter((reservation) =>
-    filter === "PAID"
-      ? reservation.status === "PAID"
-      : activeReservation(reservation) && reservation.type === filter,
-  );
-  const groups = new Map<string, LiveReservation[]>();
-  for (const reservation of filtered) {
-    const key = `${reservation.customer.id ?? reservation.id}|${reservation.ownerId ?? "store"}`;
-    groups.set(key, [...(groups.get(key) ?? []), reservation]);
-  }
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap gap-2">
-        {[
-          ["ACCUMULATED", "Acumulados"],
-          ["TIMED", "Con tiempo"],
-          ["PAID", "Pagados"],
-        ].map(([value, label]) => (
-          <Button
-            key={value}
-            variant={filter === value ? "default" : "outline"}
-            size="sm"
-            onClick={() => setFilter(value)}
-          >
-            {label}
-          </Button>
-        ))}
-      </div>
-      <div className="rounded-xl border border-teal-100 bg-teal-50 p-4 text-sm text-teal-900">
-        Los clientes de confianza acumulan sin vencimiento. Cada cliente y dueño del live conserva
-        su propio grupo de apartados.
-      </div>
-      {groups.size ? (
-        [...groups.entries()].map(([key, items]) => (
-          <LivePanel key={key}>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <h2 className="font-semibold">{items[0].customer.name}</h2>
-                <p className="text-xs text-muted-foreground">
-                  {items[0].customer.phone} · {items.reduce((sum, item) => sum + item.quantity, 0)}{" "}
-                  unidades · {items[0].ownerId ? "Live de vendedor" : "Live del negocio"}
-                </p>
-              </div>
-              <p className="text-lg font-bold tabular-nums">
-                {liveMoney(items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0))}
-              </p>
-            </div>
-            <div className="my-3 divide-y">
-              {items.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex flex-wrap items-center justify-between gap-2 py-3 text-sm"
-                >
-                  <div>
-                    {item.quantity} ×{" "}
-                    {item.productName ||
-                      item.name ||
-                      data.products.find((product) => product.variantId === item.variantId)?.name ||
-                      "Producto"}
-                    {item.variantLabel ? (
-                      <span className="ml-1 text-muted-foreground">· {item.variantLabel}</span>
-                    ) : null}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      {statusLabels[item.status]}
-                    </span>
-                    {item.status !== "PAID" ? (
-                      <LiveReservationTimer reservation={item} serverNow={data.serverNow} />
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {filter !== "PAID" ? (
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  disabled={!canOperate || busy}
-                  onClick={() => onPaymentLink(items[0])}
-                >
-                  <Link2 className="h-4 w-4" />
-                  Link de pago
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={!canOperate || busy || items.every((item) => !!item.checkoutId)}
-                  onClick={() => onRelease(items.filter((item) => !item.checkoutId))}
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Liberar
-                </Button>
-                {items[0].customer.id && !trustedIds.has(items[0].customer.id) ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={!canManage || busy}
-                    onClick={() => {
-                      const id = items[0].customer.id;
-                      if (id) onTrust(id);
-                    }}
-                  >
-                    <Star className="h-4 w-4" />
-                    Marcar de confianza
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
-          </LivePanel>
-        ))
-      ) : (
-        <LiveEmpty>
-          {filter === "PAID" ? "No hay apartados pagados." : "No hay apartados en esta sección."}
-        </LiveEmpty>
-      )}
-      <LivePanel
-        title="Clientes de confianza"
-        description="Solo estos clientes pueden acumular sin vencimiento. Puedes habilitarlos desde uno de sus apartados."
-      >
-        {data.trustedCustomers.length ? (
-          <div className="divide-y">
-            {data.trustedCustomers.map((customer) => (
-              <div key={customer.id} className="flex items-center gap-3 py-3">
-                <Star className="h-5 w-5 text-amber-500" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium">{customer.name}</p>
-                  <p className="text-xs text-muted-foreground">{customer.phone}</p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={!canManage || busy}
-                  onClick={() => onTrust(customer.id, true)}
-                >
-                  Quitar
-                </Button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <LiveEmpty>Aún no hay clientes de confianza.</LiveEmpty>
-        )}
-      </LivePanel>
-    </div>
-  );
-}
-
-function ProductDialog({
-  product,
+/** FEAT-33: un precio live y un máximo por cliente para todas las variantes del producto. */
+function ProductGroupDialog({
+  group,
+  storeId,
   busy,
   onClose,
   onSave,
 }: {
-  product: LiveProduct;
+  group: LiveProductGroup;
+  storeId: string | null;
   busy: boolean;
   onClose: () => void;
-  onSave: (input: Partial<LiveProduct>) => void;
+  /** `photos` null = las fotos del live no cambiaron (FEAT-32 M7). */
+  onSave: (
+    input: { livePrice: number; maxPerCustomer: number | null },
+    photos: LivePhotoInput[] | null,
+  ) => void;
 }) {
-  const [price, setPrice] = useState(String(product.livePrice || product.regularPrice || ""));
-  const [max, setMax] = useState(product.maxPerCustomer?.toString() ?? "");
-  const valid =
-    Number(price) > 0 &&
-    Number.isFinite(Number(price)) &&
-    (max === "" || (Number.isInteger(Number(max)) && Number(max) > 0));
+  const productId = group.variants[0]?.productId;
+  const maxes = [...new Set(group.variants.map((item) => item.maxPerCustomer ?? null))];
+  const [price, setPrice] = useState(
+    String(group.variants[0]?.livePrice || group.regularPrice || ""),
+  );
+  const [max, setMax] = useState(maxes.length === 1 && maxes[0] ? String(maxes[0]) : "");
+  const [errors, setErrors] = useState<{ price?: string; max?: string }>({});
+  const [photos, setPhotos] = useState<LivePhotosChange>({ photos: null, uploading: false });
+  function submit() {
+    const found: typeof errors = {};
+    if (!/^\d+(?:\.\d{1,2})?$/.test(price.trim()) || Number(price) <= 0)
+      found.price = "Escribe un precio live mayor a 0.";
+    if (max.trim() && (!/^\d+$/.test(max.trim()) || Number(max) < 1 || Number(max) > 10000))
+      found.max = "Entre 1 y 10000, o vacío para sin límite.";
+    setErrors(found);
+    if (Object.keys(found).length || photos.uploading) return;
+    onSave({ livePrice: Number(price), maxPerCustomer: max.trim() ? Number(max) : null }, photos.photos);
+  }
   return (
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open && !busy) onClose();
+        if (!open && !busy && !photos.uploading) onClose();
       }}
     >
-      <DialogContent>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>{product.name}</DialogTitle>
+          <DialogTitle>{group.name}</DialogTitle>
           <DialogDescription>
-            {product.sku}
-            {product.variantLabel ? ` · ${product.variantLabel}` : ""} · {product.availableStock}{" "}
-            unidades disponibles
+            {group.variants.length} {group.variants.length === 1 ? "variante" : "variantes"} ·{" "}
+            {group.totalStock} disponibles · Tienda {liveMoney(group.regularPrice)}
           </DialogDescription>
         </DialogHeader>
         <form
+          noValidate
           onSubmit={(event) => {
             event.preventDefault();
-            if (valid)
-              onSave({
-                livePrice: Number(price),
-                maxPerCustomer: max ? Number(max) : null,
-                enabled: product.enabled,
-              });
+            submit();
           }}
           className="space-y-4"
         >
-          <label htmlFor="live-product-price" className="grid gap-2 text-sm font-medium">
-            Precio live (S/)
+          {productId && storeId ? (
+            <LiveProductPhotos
+              productId={productId}
+              storeId={storeId}
+              disabled={busy}
+              onChange={setPhotos}
+            />
+          ) : null}
+          <div className="grid gap-2 text-sm font-medium">
+            <label htmlFor="live-product-price">Precio live (S/)</label>
             <Input
               id="live-product-price"
-              type="number"
-              min="0.01"
-              step="0.01"
-              required
+              inputMode="decimal"
               value={price}
+              aria-invalid={errors.price ? true : undefined}
+              aria-describedby={errors.price ? "live-product-price-error" : undefined}
               onChange={(event) => setPrice(event.target.value)}
             />
-          </label>
-          <label htmlFor="live-product-max" className="grid gap-2 text-sm font-medium">
-            Máximo por cliente
+            <LiveFieldError id="live-product-price-error" message={errors.price} />
+          </div>
+          <div className="grid gap-2 text-sm font-medium">
+            <label htmlFor="live-product-max">Máximo por cliente</label>
             <Input
-              type="number"
               id="live-product-max"
-              min="1"
-              max="10000"
-              step="1"
+              inputMode="numeric"
               value={max}
-              placeholder="Sin límite"
+              placeholder={maxes.length > 1 ? "Varía por variante" : "Sin límite"}
+              aria-invalid={errors.max ? true : undefined}
+              aria-describedby={
+                errors.max
+                  ? "live-product-max-error live-product-max-help"
+                  : "live-product-max-help"
+              }
               onChange={(event) => setMax(event.target.value)}
             />
-            <span className="text-xs font-normal text-muted-foreground">
-              Cuenta compras y apartados del mismo live.
+            <LiveFieldError id="live-product-max-error" message={errors.max} />
+            <span id="live-product-max-help" className="text-xs font-normal text-muted-foreground">
+              Se aplica a todas las variantes. Cuenta compras y apartados del mismo live.
             </span>
-          </label>
+          </div>
           <DialogFooter>
             <Button type="button" variant="outline" disabled={busy} onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={busy || !valid}>
+            <Button type="submit" disabled={busy || photos.uploading}>
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               Guardar producto
             </Button>
@@ -1203,373 +1085,5 @@ function ProductDialog({
         </form>
       </DialogContent>
     </Dialog>
-  );
-}
-function CatalogDialog({
-  storeId,
-  onClose,
-  onSelect,
-}: {
-  storeId: string;
-  onClose: () => void;
-  onSelect: (item: LiveProduct) => void;
-}) {
-  const [search, setSearch] = useState("");
-  const [items, setItems] = useState<LiveProduct[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      setLoading(true);
-      try {
-        const result = await getLiveCatalog(storeId, search);
-        if (!cancelled) {
-          setItems(
-            result.products.filter((item) =>
-              `${item.name} ${item.sku} ${item.variantLabel ?? ""}`
-                .toLocaleLowerCase()
-                .includes(search.toLocaleLowerCase()),
-            ),
-          );
-          setError("");
-        }
-      } catch (cause) {
-        if (!cancelled) setError(liveError(cause));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }, 250);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [storeId, search]);
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      <DialogContent className="max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Agregar al live</DialogTitle>
-          <DialogDescription>
-            Selecciona una variante de tu catálogo y define su precio live.
-          </DialogDescription>
-        </DialogHeader>
-        <Input
-          placeholder="Buscar por nombre o SKU"
-          aria-label="Buscar producto para live"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
-        {error ? (
-          <LiveErrorBanner message={error} />
-        ) : loading ? (
-          <div className="flex justify-center p-6">
-            <Loader2 className="animate-spin" />
-          </div>
-        ) : items.length ? (
-          <div className="divide-y">
-            {items.map((item) => (
-              <button
-                key={item.variantId}
-                type="button"
-                onClick={() => onSelect(item)}
-                className="flex w-full items-center gap-3 rounded-xl p-3 text-left hover:bg-muted"
-              >
-                <LiveProductImage product={item} className="h-12 w-12" />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold">{item.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {item.variantLabel || item.sku} · {liveMoney(item.regularPrice)} ·{" "}
-                    {item.availableStock} disp.
-                  </p>
-                </div>
-                <Plus className="h-4 w-4" />
-              </button>
-            ))}
-          </div>
-        ) : (
-          <LiveEmpty>No se encontraron variantes.</LiveEmpty>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-function LiveConfigPanel({
-  config,
-  readiness,
-  onConsole,
-  canManage,
-  busy,
-  onSave,
-}: {
-  config: LiveConfig;
-  readiness?: LiveReadiness;
-  onConsole: () => void;
-  canManage: boolean;
-  busy: boolean;
-  onSave: (config: LiveConfig) => void;
-}) {
-  const [draft, setDraft] = useState(config);
-  const activationPending = draft.enabled && !config.enabled;
-  const deactivationPending = !draft.enabled && config.enabled;
-  const shippingPending = readiness?.checks.some(
-    (check) => check.code === "SHIPPING" && !check.ready,
-  );
-  const activationMessage = activationPending
-    ? "Activación sin guardar. Guarda esta configuración para habilitar las compras y poder abrir el catálogo."
-    : deactivationPending
-      ? "Desactivación sin guardar. Las compras siguen habilitadas hasta que guardes esta configuración."
-      : readiness?.ready !== true
-        ? shippingPending
-          ? "Configura las tarifas en Configuración de tienda → Envíos. Después de completar los demás requisitos podrás habilitar las compras."
-          : "Completa los requisitos pendientes de arriba. Puedes guardar esta configuración con las compras desactivadas."
-        : config.enabled
-          ? "Compras habilitadas. Vuelve a Consola en vivo para gestionar el catálogo."
-          : "Todo listo. Activa «Habilitar compras del live» y guarda para poder abrir el catálogo.";
-  const choices: {
-    key: keyof Pick<
-      LiveConfig,
-      | "hideSoldOut"
-      | "allowReservations"
-      | "combineShipping"
-      | "reminderEnabled"
-      | "showBackLink"
-      | "allowAccumulation"
-      | "allowSellerLive"
-    >;
-    title: string;
-    text: string;
-  }[] = [
-    {
-      key: "hideSoldOut",
-      title: "Ocultar variantes agotadas",
-      text: "Solo muestra combinaciones con stock disponible.",
-    },
-    {
-      key: "allowReservations",
-      title: "Apartar productos",
-      text: "Reserva stock mientras el cliente completa el pago.",
-    },
-    {
-      key: "combineShipping",
-      title: "Juntar compras en un envío",
-      text: "Suma las compras del día al pedido que aún no se despachó.",
-    },
-    {
-      key: "reminderEnabled",
-      title: "Recordatorio por WhatsApp",
-      text: "Disponible al conectar la integración de mensajes de Live.",
-    },
-    {
-      key: "showBackLink",
-      title: "Mostrar “Volver al live”",
-      text: "Lleva al cliente de vuelta a tu transmisión.",
-    },
-    {
-      key: "allowAccumulation",
-      title: "Acumulados de clientes de confianza",
-      text: "Permite apartar sin vencimiento a los clientes que autorices.",
-    },
-    {
-      key: "allowSellerLive",
-      title: "Live de vendedores",
-      text: "Disponible al implementar el módulo de vendedores por comisión.",
-    },
-  ];
-  const valid =
-    Number.isInteger(draft.reservationMinutes) &&
-    draft.reservationMinutes >= 1 &&
-    draft.reservationMinutes <= 120 &&
-    Number.isInteger(draft.maxReservedUnits) &&
-    draft.maxReservedUnits >= 1 &&
-    draft.maxReservedUnits <= 1000 &&
-    (!draft.liveUrl || !!safeLiveUrl(draft.liveUrl));
-  return (
-    <LivePanel
-      title="Configura tu catálogo del live"
-      description="El video se transmite en la red social. Aquí gestionas las compras y el stock."
-    >
-      <form
-        className="space-y-6"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (valid) onSave(draft);
-        }}
-      >
-        <label
-          htmlFor="live-enabled"
-          className="flex items-center justify-between gap-4 rounded-xl border p-4 text-sm font-semibold"
-        >
-          <span>
-            Habilitar compras del live
-            <span className="mt-1 block text-xs font-normal text-muted-foreground">
-              Actívalo y guarda después de completar Yape, productos con stock y envío.
-            </span>
-          </span>
-          <Switch
-            id="live-enabled"
-            checked={draft.enabled}
-            aria-describedby="live-activation-help"
-            disabled={!canManage || busy || (!draft.enabled && readiness?.ready !== true)}
-            onCheckedChange={(enabled) => setDraft((value) => ({ ...value, enabled }))}
-          />
-        </label>
-        <div className="space-y-3 rounded-xl border bg-muted/30 p-4">
-          <p id="live-activation-help" className="text-sm text-muted-foreground">
-            {activationMessage}
-          </p>
-          {config.enabled && draft.enabled && readiness?.ready && canManage ? (
-            <Button type="button" variant="outline" size="sm" onClick={onConsole} disabled={busy}>
-              Ir a Consola en vivo
-            </Button>
-          ) : null}
-        </div>
-        <label className="grid gap-2 text-sm font-medium">
-          Nombre del enlace público
-          <Input
-            aria-label="Nombre del enlace público"
-            value={draft.slug || ""}
-            pattern="[a-z0-9][a-z0-9-]{1,48}[a-z0-9]"
-            disabled={!canManage || busy}
-            onChange={(e) =>
-              setDraft((value) => ({
-                ...value,
-                slug: e.target.value.toLowerCase(),
-              }))
-            }
-          />
-          <span className="text-xs font-normal text-muted-foreground">
-            {draft.slug || "tienda"}.powip.lat/live
-          </span>
-        </label>
-        <p id="live-shipping-settings" tabIndex={-1} className="text-sm text-muted-foreground">
-          Los envíos usan las coberturas y tarifas de{" "}
-          <a className="underline" href="/configuracion/tiendas">
-            Configuración de tienda → Envíos
-          </a>
-          .
-        </p>
-        <label htmlFor="live-url" className="grid gap-2 text-sm font-medium">
-          Link de tu live o perfil
-          <Input
-            id="live-url"
-            placeholder="https://www.tiktok.com/@tunegocio/live"
-            value={draft.liveUrl ?? ""}
-            onChange={(event) => setDraft((value) => ({ ...value, liveUrl: event.target.value }))}
-            disabled={!canManage || busy}
-          />
-          <span className="text-xs font-normal text-muted-foreground">
-            Usa un enlace HTTPS de tu red social.
-          </span>
-        </label>
-        <div className="divide-y">
-          {choices.map((choice) => (
-            <label
-              htmlFor={`live-setting-${choice.key}`}
-              key={choice.key}
-              className="flex items-center justify-between gap-4 py-4"
-            >
-              <span>
-                <span className="block text-sm font-semibold">{choice.title}</span>
-                <span className="mt-1 block text-xs text-muted-foreground">{choice.text}</span>
-              </span>
-              <Switch
-                id={`live-setting-${choice.key}`}
-                checked={draft[choice.key]}
-                aria-label={choice.title}
-                disabled={
-                  !canManage || busy || ["reminderEnabled", "allowSellerLive"].includes(choice.key)
-                }
-                onCheckedChange={(checked) =>
-                  setDraft((value) => ({ ...value, [choice.key]: checked }))
-                }
-              />
-            </label>
-          ))}
-        </div>
-        <div className="grid gap-4 md:grid-cols-3">
-          <label htmlFor="live-reservation-minutes" className="grid gap-2 text-sm font-medium">
-            Minutos para pagar
-            <Input
-              type="number"
-              min="1"
-              max="120"
-              step="1"
-              id="live-reservation-minutes"
-              value={draft.reservationMinutes}
-              disabled={!canManage || busy}
-              onChange={(event) =>
-                setDraft((value) => ({
-                  ...value,
-                  reservationMinutes: Number(event.target.value),
-                }))
-              }
-              required
-            />
-          </label>
-          <label htmlFor="live-max-reserved" className="grid gap-2 text-sm font-medium">
-            Máximo de unidades apartadas
-            <Input
-              type="number"
-              min="1"
-              max="1000"
-              step="1"
-              id="live-max-reserved"
-              value={draft.maxReservedUnits}
-              disabled={!canManage || busy}
-              onChange={(event) =>
-                setDraft((value) => ({
-                  ...value,
-                  maxReservedUnits: Number(event.target.value),
-                }))
-              }
-              required
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium">
-            Catálogo después del live
-            <select
-              className="h-9 rounded-lg border bg-background px-3 text-sm"
-              value={draft.closePolicy}
-              disabled={!canManage || busy}
-              onChange={(event) =>
-                setDraft((value) => ({
-                  ...value,
-                  closePolicy: event.target.value as LiveConfig["closePolicy"],
-                }))
-              }
-            >
-              <option value="END_OF_DAY">Hasta las 11:59 pm</option>
-              <option value="24_HOURS">24 horas</option>
-              <option value="MANUAL">Hasta que lo cierre</option>
-            </select>
-          </label>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          El tope de unidades apartadas no se aplica a clientes de confianza. El límite por producto
-          se configura en Productos del live.
-        </p>
-        <div className="flex flex-wrap items-center gap-3 border-t pt-4">
-          <Button type="submit" disabled={!canManage || busy || !valid}>
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            {busy
-              ? "Guardando configuración…"
-              : activationPending
-                ? "Guardar y habilitar compras"
-                : deactivationPending
-                  ? "Guardar y desactivar compras"
-                  : "Guardar configuración"}
-          </Button>
-          {activationPending || deactivationPending ? (
-            <p className="text-sm text-amber-800">Tienes cambios de activación sin guardar.</p>
-          ) : null}
-        </div>
-      </form>
-    </LivePanel>
   );
 }

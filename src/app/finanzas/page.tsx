@@ -1,4 +1,5 @@
 "use client";
+import { saleSourceKey } from "@/utils/saleLabels";
 import { commercialLeadHref } from "@/utils/commercialOrders";
 import { toWhatsAppDigits } from "@/lib/phone";
 import { formatSalesMoney } from "@/utils/salesMoney";
@@ -58,7 +59,9 @@ import CancellationModal, {
 import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
 import { openPrintWindow, printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
-import LiveYapeReviews from "@/features/live/LiveYapeReviews";
+import { ReviewDialog } from "@/features/live/LiveYapeReviews";
+import { canReviewLivePayments, getLiveYapeReviews } from "@/features/live/liveService";
+import type { LiveYapeReview } from "@/features/live/types";
 import LeadPaymentsTab from "@/components/finanzas/LeadPaymentsTab";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
@@ -142,6 +145,23 @@ export interface Sale extends UnitAssignmentState {
   externalSource?: string | null;
   externalId?: string | null;
   subEstadoCc?: SubEstadoCc | null;
+  /** FEAT-33 B1: origen de la venta para el filtro de Pagos por validar. */
+  origin: string;
+  isLive: boolean;
+}
+
+type PaymentOrigin = "todos" | "live" | "otros";
+const PAYMENT_ORIGINS: [PaymentOrigin, string][] = [
+  ["todos", "Todos"],
+  ["live", "POWIP Live y Link"],
+  ["otros", "Otros orígenes"],
+];
+const prettyOrigin = (value?: string | null) =>
+  value ? value.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase()) : "—";
+function saleOrigin(order: OrderHeader) {
+  if (order.externalSource === "POWIP_LIVE")
+    return order.closingChannel === "POWIP_LINK" ? "POWIP Link" : "POWIP Live";
+  return prettyOrigin(order.externalSource || order.salesChannel);
 }
 
 /** Forma mínima de una guía de ms-courier usada solo para enriquecer la tabla. */
@@ -215,9 +235,11 @@ function mapOrderToSale(order: OrderHeader): Sale {
         ? (pendingPayments[0].created_at?.toString() ?? null)
         : null,
     sellerName: order.sellerName ?? null,
-    externalSource: order.externalSource ?? null,
+    externalSource: saleSourceKey(order),
     externalId: order.externalId ?? null,
     subEstadoCc: order.subEstadoCc ?? null,
+    origin: saleOrigin(order),
+    isLive: order.externalSource === "POWIP_LIVE",
   };
 }
 
@@ -274,6 +296,20 @@ function FinanzasContent() {
   const searchParams = useSearchParams();
   const requestedLeadId = searchParams.get("leadId") ?? "";
   const [leadPaymentsOpen, setLeadPaymentsOpen] = useState(searchParams.get("tab") === "anticiposLeads");
+  // FEAT-33 B1: la consola de Live abre `?tab=pagos&origen=live`, ya filtrado.
+  const [activeTab, setActiveTab] = useState(() => {
+    const requested = searchParams.get("tab");
+    return requested === "entregados" || requested === "liquidacionesCourier" ? requested : "pagosPendientes";
+  });
+  const [paymentOrigin, setPaymentOrigin] = useState<PaymentOrigin>(() => {
+    const requested = searchParams.get("origen");
+    return requested === "live" || requested === "otros" ? requested : "todos";
+  });
+  const [liveDecision, setLiveDecision] = useState<{
+    storeId: string;
+    review: LiveYapeReview;
+    decision: "approve" | "reject";
+  } | null>(null);
 
   const { storeIds, canFetch, scopeKey } = useBusinessScope();
   const ordersQuery = useBusinessOrders(undefined, undefined, {includeCcLeads: true, includeCommercialLeads: true});
@@ -291,6 +327,33 @@ function FinanzasContent() {
     },
     retry: false,
   });
+  // FEAT-33 A9/D4: el detalle Yape (operación y plazo) de cada comprobante Live en revisión.
+  const canReviewLive = canReviewLivePayments(auth?.user);
+  const liveReviewsQuery = useQuery({
+    queryKey: ["finance-live-reviews", scopeKey],
+    enabled: canFetch && canReviewLive,
+    queryFn: async ({ signal }) => {
+      const results = await Promise.allSettled(
+        storeIds.map((storeId) =>
+          getLiveYapeReviews(storeId, signal).then((result) =>
+            result.reviews.map((review) => ({ storeId, review })),
+          ),
+        ),
+      );
+      return results.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+    },
+    retry: false,
+  });
+  const liveReviewByOrder = useMemo(
+    () =>
+      new Map(
+        (liveReviewsQuery.data ?? []).flatMap((entry) =>
+          entry.review.orderId ? [[entry.review.orderId, entry] as const] : [],
+        ),
+      ),
+    [liveReviewsQuery.data],
+  );
+  const refetchLiveReviews = liveReviewsQuery.refetch;
   const loading = ordersQuery.loading || (canFetch && leadsQuery.isPending) || guidesQuery.loading;
   const loadError = ordersQuery.error || leadsQuery.isError;
   const sales = useMemo(() => {
@@ -962,6 +1025,13 @@ Estado: ${sale.status}
     );
     return applyFilters(filtered, filtersPagosPendientes);
   }, [sales, filtersPagosPendientes]);
+  const pagosPorValidar = useMemo(
+    () =>
+      paymentOrigin === "todos"
+        ? pagosPendientes
+        : pagosPendientes.filter((sale) => (paymentOrigin === "live") === sale.isLive),
+    [pagosPendientes, paymentOrigin],
+  );
 
   const entregados = useMemo(() => {
     const statusFiltered = sales.filter(
@@ -997,11 +1067,10 @@ Estado: ${sale.status}
           ) : loadError ? (
             <div role="alert" className="space-y-3"><p>No se pudieron cargar los datos de Finanzas del alcance seleccionado.</p><Button onClick={fetchOrders}>Reintentar</Button></div>
           ) : (
-          <Tabs defaultValue="pagosPendientes" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="mb-4">
-              <TabsTrigger value="validacionLive">Validación de pagos · POWIP Live</TabsTrigger>
               <TabsTrigger value="pagosPendientes">
-                Pagos Pendientes ({pagosPendientes.length})
+                Pagos por validar ({pagosPendientes.length})
               </TabsTrigger>
               <TabsTrigger value="entregados">
                 Entregados ({entregados.length})
@@ -1011,31 +1080,43 @@ Estado: ${sale.status}
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="validacionLive">{storeIds.length ? storeIds.map(id => <LiveYapeReviews key={id} storeId={id} canReview={auth?.user?.role?.toUpperCase() === "ADMINISTRADOR"} onUpdated={fetchOrders}/>) : <p>Selecciona una tienda.</p>}</TabsContent>
-            {/* Tab Pagos Pendientes */}
+            {/* Tab Pagos por validar (FEAT-33 B1: la única cola de pagos del negocio) */}
             <TabsContent value="pagosPendientes">
               <Card>
                 <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                   <div>
-                    <CardTitle>Pagos Pendientes de Aprobación</CardTitle>
+                    <CardTitle>Pagos por validar</CardTitle>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Ventas con comprobantes de pago por verificar
+                      Todos los comprobantes del negocio en un solo lugar, también los de POWIP Live y POWIP Link.
                     </p>
+                    <div className="mt-3 flex flex-wrap gap-1" aria-label="Origen de la venta">
+                      {PAYMENT_ORIGINS.map(([value, label]) => (
+                        <Button
+                          key={value}
+                          size="sm"
+                          variant={paymentOrigin === value ? "default" : "outline"}
+                          aria-pressed={paymentOrigin === value}
+                          onClick={() => setPaymentOrigin(value)}
+                        >
+                          {label}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
                   <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
                     <Button
                       variant="outline"
                       className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
                       disabled={
-                        pagosPendientes.filter((s) => selectedSaleIds.has(s.id))
+                        pagosPorValidar.filter((s) => selectedSaleIds.has(s.id))
                           .length === 0
                       }
-                      onClick={() => handleBulkWhatsApp(pagosPendientes)}
+                      onClick={() => handleBulkWhatsApp(pagosPorValidar)}
                     >
                       <WhatsAppIcon className="h-4 w-4 mr-2" />
                       WhatsApp Masivo (
                       {
-                        pagosPendientes.filter((s) => selectedSaleIds.has(s.id))
+                        pagosPorValidar.filter((s) => selectedSaleIds.has(s.id))
                           .length
                       }
                       )
@@ -1045,7 +1126,7 @@ Estado: ${sale.status}
                         variant="outline"
                         className="w-full lg:w-auto"
                         onClick={() =>
-                          handleExportExcel(pagosPendientes, "pagos_pendientes")
+                          handleExportExcel(pagosPorValidar, "pagos_por_validar")
                         }
                       >
                         <Download className="h-4 w-4 mr-2" />
@@ -1055,6 +1136,9 @@ Estado: ${sale.status}
                   </div>
                 </CardHeader>
                 <CardContent>
+                  <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    Comprueba cada ingreso en la cuenta del negocio. El comprobante queda pendiente hasta que lo valides o rechaces; en POWIP Live el stock sigue reservado mientras tanto.
+                  </p>
                   <SalesTableFilters
                     filters={filtersPagosPendientes}
                     onFiltersChange={setFiltersPagosPendientes}
@@ -1067,6 +1151,9 @@ Estado: ${sale.status}
                         </TableHead>
                         <TableHead className="w-[100px] min-w-[100px]">
                           ID Externo
+                        </TableHead>
+                        <TableHead className="w-[110px] min-w-[110px]">
+                          Origen
                         </TableHead>
                         <TableHead className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-20 bg-background border-r">
                           Cliente
@@ -1110,7 +1197,10 @@ Estado: ${sale.status}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {pagosPendientes.map((sale) => (
+                      {pagosPorValidar.map((sale) => {
+                        const live = sale.isLive ? liveReviewByOrder.get(sale.id) : undefined;
+                        const manual = live?.review.manualPayment;
+                        return (
                         <TableRow key={sale.id}>
                           <TableCell className="font-medium w-[100px] min-w-[100px]">
                             {sale.orderNumber}
@@ -1118,6 +1208,11 @@ Estado: ${sale.status}
                           </TableCell>
                           <TableCell className="w-[100px] min-w-[100px] text-xs text-muted-foreground truncate max-w-[100px]">
                             {sale.externalId || "-"}
+                          </TableCell>
+                          <TableCell className="w-[110px] min-w-[110px]">
+                            <Badge variant="outline" className={sale.isLive ? "border-violet-200 bg-violet-50 text-violet-700" : undefined}>
+                              {sale.origin}
+                            </Badge>
                           </TableCell>
                           <TableCell className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-10 bg-background border-r">
                             {sale.clientName}
@@ -1155,6 +1250,20 @@ Estado: ${sale.status}
                           </TableCell>
                           <TableCell className="font-medium text-amber-600 w-[140px] min-w-[140px]">
                             {formatSalesMoney(sale.pendingPaymentsAmount, sale.currency)}
+                            {manual ? (
+                              <div className="mt-1 space-y-1 text-xs font-normal text-foreground">
+                                <p>Operación {manual.operationNumber || "sin número"}</p>
+                                {manual.overdue ? (
+                                  <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-900">
+                                    Plazo vencido · requiere una decisión
+                                  </span>
+                                ) : manual.reviewDeadlineAt ? (
+                                  <p className="text-muted-foreground">
+                                    Revisar hasta {new Date(manual.reviewDeadlineAt).toLocaleString("es-PE")}
+                                  </p>
+                                ) : null}
+                              </div>
+                            ) : null}
                           </TableCell>
                           <TableCell className="w-[120px] min-w-[120px] text-xs">
                             {sale.sellerName || "—"}
@@ -1191,25 +1300,44 @@ Estado: ${sale.status}
                               >
                                 <WhatsAppIcon className="h-4 w-4" />
                               </Button>
-                              <Button
-                                size="sm"
-                                className="bg-amber-500 hover:bg-amber-600 text-white"
-                                onClick={() => {
-                                  setSelectedSaleForPayment(sale);
-                                  setPaymentModalOpen(true);
-                                }}
-                              >
-                                <DollarSign className="h-4 w-4 mr-1" />
-                                Gestionar Pagos
-                              </Button>
+                              {live && canReviewLive && manual?.status === "UNDER_REVIEW" ? (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => setLiveDecision({ ...live, decision: "approve" })}
+                                  >
+                                    Revisar y validar
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setLiveDecision({ ...live, decision: "reject" })}
+                                  >
+                                    Rechazar comprobante
+                                  </Button>
+                                </>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  className="bg-amber-500 hover:bg-amber-600 text-white"
+                                  onClick={() => {
+                                    setSelectedSaleForPayment(sale);
+                                    setPaymentModalOpen(true);
+                                  }}
+                                >
+                                  <DollarSign className="h-4 w-4 mr-1" />
+                                  Gestionar Pagos
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
-                      ))}
-                      {pagosPendientes.length === 0 && (
+                        );
+                      })}
+                      {pagosPorValidar.length === 0 && (
                         <TableRow>
                           <TableCell
-                            colSpan={13}
+                            colSpan={14}
                             className="text-center text-muted-foreground py-6"
                           >
                             No hay pagos pendientes de aprobación
@@ -1221,8 +1349,8 @@ Estado: ${sale.status}
                 </CardContent>
                 <Pagination
                   currentPage={1}
-                  totalPages={Math.ceil(pagosPendientes.length / 10) || 1}
-                  totalItems={pagosPendientes.length}
+                  totalPages={Math.ceil(pagosPorValidar.length / 10) || 1}
+                  totalItems={pagosPorValidar.length}
                   itemsPerPage={10}
                   onPageChange={() => {}}
                   itemName="ventas"
@@ -1346,9 +1474,31 @@ Estado: ${sale.status}
           }}
           orderId={selectedSaleForPayment?.id || ""}
           orderNumber={selectedSaleForPayment?.orderNumber || ""}
-          onPaymentUpdated={fetchOrders}
+          onPaymentUpdated={() => {
+            fetchOrders();
+            void refetchLiveReviews();
+          }}
           canApprove={true}
         />
+        {liveDecision ? (
+          <ReviewDialog
+            key={`${liveDecision.storeId}/${liveDecision.review.checkoutId}/${liveDecision.decision}`}
+            storeId={liveDecision.storeId}
+            review={liveDecision.review}
+            decision={liveDecision.decision}
+            onClose={() => setLiveDecision(null)}
+            onComplete={() => {
+              toast.success(
+                liveDecision.decision === "approve"
+                  ? "Pago validado. El pedido ya figura como pagado."
+                  : "Comprobante rechazado. El cliente verá el motivo en su pedido.",
+              );
+              setLiveDecision(null);
+              fetchOrders();
+              void refetchLiveReviews();
+            }}
+          />
+        ) : null}
       </div>
     </OrderDetailModalProvider>
   );

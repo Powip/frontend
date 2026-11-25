@@ -21,7 +21,7 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
 export async function middleware(request: NextRequest) {
   const hostname = request.nextUrl.hostname.toLowerCase();
   const match = /^([a-z0-9][a-z0-9-]{1,48}[a-z0-9])\.powip\.lat$/.exec(hostname);
-  if (match && !["www", "app", "api", "admin"].includes(match[1]) && ["/live", "/catalogo"].includes(request.nextUrl.pathname)) {
+  if (match && !["www", "app", "api", "admin"].includes(match[1]) && ["/live", "/catalogo", "/vendedor"].includes(request.nextUrl.pathname)) {
     const url = request.nextUrl.clone(); url.pathname = `${url.pathname}/${match[1]}`;
     return NextResponse.rewrite(url);
   }
@@ -66,5 +66,6 @@ export const config = {
     "/api/superadmin/:path*",
     "/live",
     "/catalogo",
+    "/vendedor",
   ],
 };

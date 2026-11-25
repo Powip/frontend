@@ -8,7 +8,9 @@ import { toWhatsAppDigits } from "@/lib/phone";
 import { formatSalesMoney } from "@/utils/salesMoney";
 import { operationalStatus, orderFinancialState } from "@/utils/orderState";
 import { shouldShowReprogramado } from "@/utils/domain/reprogramado";
-import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
+import { SaleAmounts } from "@/components/shared/SaleAmounts";
+import { deliveryLabel, saleSourceKey } from "@/utils/saleLabels";
+import { paymentAttention, pendingApprovalSummary, type PendingApprovalSummary } from "@/utils/pendingApproval";
 import { StockStateBadge } from "@/components/orders/StockStateBadge";
 
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
@@ -36,6 +38,7 @@ import {
   ChevronDown,
   Package,
   FileText,
+  Wallet,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -206,6 +209,8 @@ export interface Sale extends UnitAssignmentState {
   status: OrderStatus;
   paymentMethod: string;
   deliveryType: string;
+  /** FEAT-33 A6: «AGENCIA SHALOM», «AGENCIA OLVA COURIER», «DOMICILIO». */
+  deliveryLabel: string;
   salesRegion: "LIMA" | "PROVINCIA";
   district: string;
   city: string;
@@ -217,6 +222,8 @@ export interface Sale extends UnitAssignmentState {
   pendingPayment: number;
   hasStockIssue?: boolean;
   hasPendingApprovalPayments: boolean;
+  /** FEAT-33 A4/D5: lo enviado y sin validar, con su método («Yape por validar»). */
+  awaitingApprovalSummary: PendingApprovalSummary;
   /** Adelanto registrado pero sin aprobar (pagos PENDING): no resta del cobro. Alimenta el aviso previo al despacho. */
   awaitingApprovalAmount?: number;
   /** Lo que cobraría el courier hoy (total − aprobado). */
@@ -278,6 +285,9 @@ function ReprogramadoChip({ sale }: { sale: Pick<Sale, "status" | "callStatus" |
    Mapper
 ----------------------------------------- */
 
+const attentionOf = (sale: Sale) =>
+  paymentAttention({ awaitingApproval: sale.awaitingApprovalSummary.amount, debt: sale.pendingPayment });
+
 function mapOrderToSale(order: BusinessSalesOrder): Sale {
   const total = Number(order.grandTotal);
   const { totalPaid: advancePayment, pendingAmount: pendingPayment } = orderFinancialState(order);
@@ -315,6 +325,7 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     paymentMethod:
       order.payments.length > 0 ? order.payments[0].paymentMethod : "—",
     deliveryType: order.deliveryType.replace("_", " "),
+    deliveryLabel: deliveryLabel(order),
     salesRegion: order.salesRegion,
     district: order.customer.district ?? "",
     city: order.customer.city ?? "",
@@ -333,6 +344,7 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     confirmedStockVersion: order.confirmedStockVersion,
     stockVersion: order.stockVersion,
     hasPendingApprovalPayments,
+    awaitingApprovalSummary: pendingApprovalSummary(order.payments),
     awaitingApprovalAmount: guideBalance.awaitingApproval,
     collectAmount: guideBalance.pending,
     externalTrackingNumber: order.externalTrackingNumber || "",
@@ -341,7 +353,7 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     shippingOffice: order.shippingOffice || "",
     sellerName: order.sellerName ?? null,
     items: order.items || [],
-    externalSource: order.externalSource === "POWIP_LIVE" && order.closingChannel === "POWIP_LINK" ? "POWIP_LINK" : order.externalSource ?? null,
+    externalSource: saleSourceKey(order),
     shopifyCancelledAt: order.shopifyCancelledAt ?? null,
     shopifyCancelReason: order.shopifyCancelReason ?? null,
     externalId: order.externalId ?? null,
@@ -389,6 +401,8 @@ function VentasContent() {
   const [todasWindow, setTodasWindow] = useState<DateWindow>(() => ({ fromDate: ventasRecentFrom(today), toDate: "" }));
   // Pendientes: los recientes (30 días) o los antiguos, que se bajan solo mientras están elegidos
   const [pendientesView, setPendientesView] = useState<"recientes" | "antiguos">("recientes");
+  // «Por cobrar total» abre Todas con saldo pendiente y sin anuladas; la insignia lo deja quitar
+  const [todasExcludeCancelled, setTodasExcludeCancelled] = useState(false);
 
   // Paginación para Todas las Ventas
   const [pageAll, setPageAll] = useState(1);
@@ -535,6 +549,7 @@ function VentasContent() {
     limit: ITEMS_PER_PAGE,
     sort: activeTab === "pendientes" && pendientesView === "antiguos" ? "updated_asc" : "created_desc",
     kpiDateFrom, kpiDateTo,
+    ...(activeTab === "todas" && todasExcludeCancelled ? { excludeCancelled: "yes" as const } : {}),
   };
   const salesScope = JSON.stringify([scopeKey, salesQuery]);
   const pageSessionScope = `${printScope}:${salesScope}`;
@@ -1594,20 +1609,18 @@ Estado: ${sale.status}
                   <TableCell className="text-xs">
                     <div>{sale.paymentMethod}</div>
                     <div className="text-muted-foreground">
-                      {sale.deliveryType}
+                      {sale.deliveryLabel}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs text-right tabular-nums">
-                    <div className="font-semibold">
-                      {formatSalesMoney(sale.total, sale.currency)}
-                    </div>
-                    <div className="text-green-600">
-                      Adel: {formatSalesMoney(sale.advancePayment, sale.currency)}
-                    </div>
-                    <div className="text-red-600">
-                      Debe: {formatSalesMoney(sale.pendingPayment, sale.currency)}
-                    </div>
-                    <FinancialStatusBadge pendingAmount={sale.pendingPayment} status={sale.status} />
+                    <SaleAmounts
+                      total={sale.total}
+                      advancePayment={sale.advancePayment}
+                      pendingPayment={sale.pendingPayment}
+                      awaitingApproval={sale.awaitingApprovalSummary}
+                      status={sale.status}
+                      currency={sale.currency}
+                    />
                   </TableCell>
                   <TableCell className="text-xs">
                     <span className="inline-flex items-center gap-1">
@@ -1674,15 +1687,20 @@ Estado: ${sale.status}
                           setPaymentModalOpen(true);
                         }}
                         title={
-                          sale.hasPendingApprovalPayments
+                          attentionOf(sale) === "review"
                             ? "Pagos pendientes de aprobación"
-                            : "Gestión de Pagos"
+                            : attentionOf(sale) === "balance"
+                              ? "Pedido con saldo"
+                              : "Gestión de Pagos"
                         }
                       >
                         <DollarSign className="h-4 w-4" />
-                        {sale.hasPendingApprovalPayments && (
-                          <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        {/* FEAT-33 A4: punto rojo si hay algo por validar (late) o saldo. */}
+                        {attentionOf(sale) && (
+                          <span className="absolute -top-1 -right-1 flex h-3 w-3" data-testid="payment-attention">
+                            {attentionOf(sale) === "review" ? (
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                            ) : null}
                             <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
                           </span>
                         )}
@@ -1890,20 +1908,18 @@ Estado: ${sale.status}
                   <TableCell className="text-xs">
                     <div>{sale.paymentMethod}</div>
                     <div className="text-muted-foreground">
-                      {sale.deliveryType}
+                      {sale.deliveryLabel}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs text-right tabular-nums">
-                    <div className="font-semibold">
-                      {formatSalesMoney(sale.total, sale.currency)}
-                    </div>
-                    <div className="text-green-600">
-                      Adel: {formatSalesMoney(sale.advancePayment, sale.currency)}
-                    </div>
-                    <div className="text-red-600">
-                      Debe: {formatSalesMoney(sale.pendingPayment, sale.currency)}
-                    </div>
-                    <FinancialStatusBadge pendingAmount={sale.pendingPayment} status={sale.status} />
+                    <SaleAmounts
+                      total={sale.total}
+                      advancePayment={sale.advancePayment}
+                      pendingPayment={sale.pendingPayment}
+                      awaitingApproval={sale.awaitingApprovalSummary}
+                      status={sale.status}
+                      currency={sale.currency}
+                    />
                   </TableCell>
                   <TableCell className="text-xs">
                     <span className="inline-flex items-center gap-1">
@@ -2055,6 +2071,16 @@ Estado: ${sale.status}
     pendientes: salesPage?.kpis?.pendientes ?? 0,
     anuladas: salesPage?.kpis?.anuladas ?? 0,
     currencyBalances: salesPage?.kpis?.amounts ?? [],
+    pendingTotal: salesPage?.kpis?.pendingTotal ?? [],
+  };
+  // Clic en «Por cobrar total»: Todas con saldo pendiente, sin anuladas y con el rango de fechas de las tarjetas
+  const showPendingTotalSales = () => {
+    setFiltersAll({ ...emptySalesFilters, hasPendingBalance: "yes" });
+    setTodasWindow({ fromDate: kpiDateFrom, toDate: kpiDateTo });
+    setTodasExcludeCancelled(true);
+    setSelectedTodasIds(new Set());
+    setPageAll(1);
+    setActiveTab("todas");
   };
   const pendientesPage = pagePendientes;
   const anuladosPage = pageAnulados;
@@ -2143,7 +2169,7 @@ Estado: ${sale.status}
               </Button>
             </div>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-4">
             <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
@@ -2203,6 +2229,43 @@ Estado: ${sale.status}
                   </div>
                   <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400">
                     <CheckCircle2 className="h-5 w-5" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card
+              role="button"
+              tabIndex={0}
+              aria-label="Por cobrar total: ver las ventas con saldo pendiente"
+              data-testid="kpi-por-cobrar-total"
+              onClick={showPendingTotalSales}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  showPendingTotalSales();
+                }
+              }}
+              className="cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm text-muted-foreground">Por cobrar total</p>
+                    <h3 className="mt-2 text-3xl font-bold tracking-tight">
+                      {ventas.kpis.loading || ventas.kpis.error ? kpiText("") : kpis.pendingTotal.length ? kpis.pendingTotal.map((group) => <span key={group.currency ?? "UNKNOWN"} className="block">{formatSalesMoney(group.pending, group.currency)}</span>) : "0.00"}
+                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Todas las ventas con saldo, menos anuladas
+                    </p>
+                    {!ventas.kpis.loading && !ventas.kpis.error && kpis.pendingTotal.length > 0 && (
+                      <p data-testid="kpi-por-cobrar-total-count" className="text-xs font-medium text-primary">
+                        {kpis.pendingTotal.reduce((sum, group) => sum + group.count, 0)} ventas
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Wallet className="h-5 w-5" />
                   </div>
                 </div>
               </CardContent>
@@ -2556,6 +2619,18 @@ Estado: ${sale.status}
                   </div>
                 </CardHeader>
                 <CardContent>
+                  {todasExcludeCancelled && (
+                    <div className="mb-3">
+                      <button
+                        type="button"
+                        data-testid="chip-sin-anuladas"
+                        onClick={() => { setTodasExcludeCancelled(false); setPageAll(1); }}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/20"
+                      >
+                        Sin anuladas ✕
+                      </button>
+                    </div>
+                  )}
                   <SalesTableFilters
                     filters={filtersAll}
                     onFiltersChange={(newFilters) => {

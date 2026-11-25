@@ -42,6 +42,10 @@ jest.mock('@/services/aliclikService', () => ({
   createAliclikOrder: jest.fn(),
 }));
 
+jest.mock('@/services/orderDeliveryService', () => ({
+  saveAliclikDestinationCoordinates: jest.fn(),
+}));
+
 /**
  * Mock de Radix Select → <select> nativo.
  * Idéntico al usado en SendToAliclikModal.test.tsx.
@@ -225,6 +229,7 @@ jest.mock('@/lib/utils', () => ({
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { quoteAliclikOrder, createAliclikOrder } from '@/services/aliclikService';
+import { saveAliclikDestinationCoordinates } from '@/services/orderDeliveryService';
 import SendToAliclikGuideModal, {
   type AliclikGuideOrderItem,
 } from '../SendToAliclikGuideModal';
@@ -234,6 +239,7 @@ import SendToAliclikGuideModal, {
 const mockUseAuth = jest.mocked(useAuth);
 const mockQuote = jest.mocked(quoteAliclikOrder);
 const mockCreate = jest.mocked(createAliclikOrder);
+const mockSaveCoords = jest.mocked(saveAliclikDestinationCoordinates);
 const mockToast = toast as jest.Mocked<typeof toast>;
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -845,20 +851,51 @@ describe('SendToAliclikGuideModal', () => {
         );
       });
 
-      it('muestra el banner "Faltan coordenadas del cliente (lat/lng)"', async () => {
+      it('muestra en el mismo momento el formulario de coordenadas (link de Maps o lat/lng)', async () => {
         renderModal({ orders: [ORDER_1] });
         await waitForQuotesLoaded();
         expect(
-          screen.getByText(/faltan coordenadas del cliente \(lat\/lng\)/i),
+          screen.getByText(/faltan las coordenadas de entrega\. aliclik no cotiza sin ellas/i),
         ).toBeInTheDocument();
+        expect(document.getElementById('aliclik-guide-order-1-maps-link')).toBeInTheDocument();
+        expect(document.getElementById('aliclik-guide-order-1-lat')).toBeInTheDocument();
+        expect(document.getElementById('aliclik-guide-order-1-lng')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /guardar y volver a cotizar/i })).toBeDisabled();
       });
 
-      it('muestra el texto de acción "Cargalas en la venta antes de enviar a Aliclik"', async () => {
+      it('al guardar las coordenadas vuelve a cotizar solo ese pedido y desbloquea el envío', async () => {
+        const user = userEvent.setup();
+        mockSaveCoords.mockResolvedValue(undefined);
         renderModal({ orders: [ORDER_1] });
         await waitForQuotesLoaded();
-        expect(
-          screen.getByText(/cargalas en la venta antes de enviar a aliclik/i),
-        ).toBeInTheDocument();
+        expect(mockQuote).toHaveBeenCalledTimes(1);
+        expect(mockCreate).not.toHaveBeenCalled();
+
+        // La siguiente cotización ya trae coordenadas.
+        mockQuote.mockImplementation((_, __, orderId) =>
+          Promise.resolve(
+            makeMockQuoteWithMissingCoords(orderId as string, 'ORD-001', {
+              lat: -12.1,
+              lng: -77.03,
+            }),
+          ),
+        );
+        await user.type(
+          document.getElementById('aliclik-guide-order-1-maps-link') as HTMLElement,
+          'https://www.google.com/maps/place/x/@-12.1,-77.03,17z',
+        );
+        await user.click(screen.getByRole('button', { name: /guardar y volver a cotizar/i }));
+
+        await waitFor(() =>
+          expect(mockSaveCoords).toHaveBeenCalledWith('order-1', 'company-1', undefined, -12.1, -77.03),
+        );
+        await waitFor(() => expect(mockQuote).toHaveBeenCalledTimes(2));
+        await waitFor(() =>
+          expect(
+            screen.queryByText(/faltan las coordenadas de entrega/i),
+          ).not.toBeInTheDocument(),
+        );
+        expect(mockCreate).not.toHaveBeenCalled();
       });
 
       it('muestra el indicador "Bloqueado — faltan coordenadas en la venta"', async () => {
@@ -967,11 +1004,11 @@ describe('SendToAliclikGuideModal', () => {
         );
       });
 
-      it('trata lat=0/lng=0 como faltante y muestra el banner de coordenadas', async () => {
+      it('trata lat=0/lng=0 como faltante y muestra el formulario de coordenadas', async () => {
         renderModal({ orders: [ORDER_1] });
         await waitForQuotesLoaded();
         expect(
-          screen.getByText(/faltan coordenadas del cliente \(lat\/lng\)/i),
+          screen.getByText(/faltan las coordenadas de entrega\. aliclik no cotiza sin ellas/i),
         ).toBeInTheDocument();
       });
 

@@ -137,7 +137,7 @@ test("changing review scope aborts stale reads and permission removal clears the
   expect(screen.queryByText("Cliente A")).not.toBeInTheDocument();
   view.rerender(<LiveYapeReviews storeId="store-b" canReview={false} />);
   expect(screen.queryByText("Cliente B")).not.toBeInTheDocument();
-  expect(screen.getByText(/rol Administrador vigente/)).toBeInTheDocument();
+  expect(screen.getByText(/rol Administrador o el permiso de Finanzas/)).toBeInTheDocument();
   await tick(30000);
   act(() => window.dispatchEvent(new Event("focus")));
   await flush();

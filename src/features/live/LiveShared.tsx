@@ -7,21 +7,25 @@ import type { LiveProduct } from "./types";
 
 export function LiveProductImage({
   product,
+  src,
   className = "",
 }: {
   product: LiveProduct;
+  /** FEAT-32 M7: foto del contenido del producto (la principal del canal); sin ella, la de la variante. */
+  src?: string | null;
   className?: string;
 }) {
+  const url = src || product.imageUrl;
   return (
     <div
       className={`grid shrink-0 place-items-center overflow-hidden rounded-xl bg-slate-100 text-slate-400 ${className}`}
     >
-      {product.imageUrl ? (
+      {url ? (
         <Image
           width={128}
           height={128}
           unoptimized
-          src={product.imageUrl}
+          src={url}
           alt={product.name}
           className="h-full w-full object-cover"
           loading="lazy"
@@ -67,29 +71,75 @@ export function LiveCountdown({
     >
       {seconds <= 0
         ? "Vencido"
-        : `${Math.floor(seconds / 60)
-            .toString()
-            .padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`}
+        : seconds >= 3600
+          ? `${Math.floor(seconds / 3600)} h ${Math.floor((seconds % 3600) / 60)
+              .toString()
+              .padStart(2, "0")} min`
+          : `${Math.floor(seconds / 60)
+              .toString()
+              .padStart(2, "0")}:${(seconds % 60).toString().padStart(2, "0")}`}
     </span>
   );
 }
 export function LivePanel({
   title,
   description,
+  aside,
   children,
   className = "",
 }: {
   title?: string;
   description?: string;
+  /** Algo a la derecha del título, p. ej. «✓ Guardado 4:10 p. m.». */
+  aside?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
   return (
     <section className={`rounded-2xl border bg-card p-5 shadow-sm ${className}`}>
-      {title ? <h2 className="text-base font-semibold">{title}</h2> : null}
+      {title ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold">{title}</h2>
+          {aside}
+        </div>
+      ) : null}
       {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
       <div className={title ? "mt-4" : ""}>{children}</div>
     </section>
+  );
+}
+/** FEAT-33 A1: estado de guardado junto al título, como el mockup. */
+export function LiveSaveState({ dirty, savedAt }: { dirty: boolean; savedAt: string | null }) {
+  if (dirty)
+    return (
+      <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
+        ● Cambios sin guardar
+      </span>
+    );
+  return savedAt ? (
+    <span
+      role="status"
+      className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800"
+    >
+      ✓ Guardado {savedAt}
+    </span>
+  ) : null;
+}
+/** FEAT-33 A1: el error va debajo de su campo. */
+export function LiveFieldError({ id, message }: { id: string; message?: string }) {
+  return message ? (
+    <span id={id} className="text-xs font-medium text-red-600">
+      {message}
+    </span>
+  ) : null;
+}
+/** FEAT-33 A1: barra fija abajo mientras haya cambios sin guardar. */
+export function LiveSaveBar({ message, children }: { message: string; children: ReactNode }) {
+  return (
+    <div className="sticky bottom-3 z-20 flex flex-wrap items-center gap-3 rounded-2xl bg-slate-900 px-4 py-3 text-sm text-white shadow-xl">
+      <span className="min-w-48 flex-1">{message}</span>
+      {children}
+    </div>
   );
 }
 export function LiveEmpty({ children }: { children: ReactNode }) {
