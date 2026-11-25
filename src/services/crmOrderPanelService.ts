@@ -1,3 +1,4 @@
+import axios from "axios";
 import axiosAuth from "@/lib/axiosAuth";
 import { API } from "@/lib/api";
 import type {
@@ -123,6 +124,40 @@ export async function reviewReceipt(
       ...(reason ? { reason } : {}),
     })
   ).data;
+}
+
+/**
+ * Aprueba o rechaza un pago del Core que viene de un comprobante de Pau (mismo efecto que «Aceptar»
+ * en el chat). Devuelve null si el pago no es de Pau: el llamador sigue con el flujo normal de pagos.
+ */
+export async function reviewCorePayment(
+  paymentId: string,
+  approve: boolean,
+  note?: string,
+  reason?: ReceiptRejectReason,
+): Promise<PaymentReceipt | null> {
+  try {
+    return (
+      await axiosAuth.patch<PaymentReceipt>(`${PANEL}/payments/${encodeURIComponent(paymentId)}/review`, {
+        approve,
+        ...(note ? { note } : {}),
+        ...(reason ? { reason } : {}),
+      })
+    ).data;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) return null;
+    throw error;
+  }
+}
+
+/** Monto nuevo del pago de Pau (si el pago del Core es de Pau). Sin comprobante de Pau no hace nada. */
+export async function updateCorePaymentReceiptAmount(paymentId: string, amount: number): Promise<void> {
+  try {
+    await axiosAuth.patch(`${PANEL}/payments/${encodeURIComponent(paymentId)}/amount`, { amount });
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) return;
+    throw error;
+  }
 }
 
 // ---------- Contra entrega con Gestión CC (fila 27) ----------

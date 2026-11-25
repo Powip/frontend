@@ -1391,7 +1391,8 @@ Estado: ${sale.status}
                               >
                                 <WhatsAppIcon className="h-4 w-4" />
                               </Button>}
-                              {receipts ? (
+                              {receipts && sale.withoutOrder ? (
+                                // Solo comprobante de Pau sin pedido: no hay pedido que abrir en Gestionar Pagos.
                                 receipts.map((receipt) => <CrmPauActions key={receipt.id} receipt={receipt} onReviewed={fetchOrders} />)
                               ) : live && canReviewLive && manual?.status === "UNDER_REVIEW" ? (
                                 <>
