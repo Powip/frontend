@@ -9,8 +9,9 @@ import { fireEvent, render, screen, within, waitFor } from "@testing-library/rea
  * 4. Exportar manda solo las órdenes filtradas, con "Productos" completo.
  */
 
+let mockChatSalesSolo = false;
 jest.mock("@/hooks/useChatSalesFilter", () => ({
-  useChatSalesFilter: () => ({ hasCrm: false, solo: false, checked: false, setChecked: jest.fn(), active: false }),
+  useChatSalesFilter: () => ({ hasCrm: false, solo: mockChatSalesSolo, checked: false, setChecked: jest.fn(), active: false }),
 }));
 jest.mock("axios", () => ({
   default: { get: jest.fn(), patch: jest.fn(), post: jest.fn() },
@@ -273,5 +274,18 @@ describe('Ventas — lectura de todas las tiendas y origen', () => {
     mockUseAuth.mockReturnValue({ auth: { user: { role: 'ADMIN' }, company: { id: 'company-1', stores: [{ id: 'KUNCA', name: 'KUNCA' }, { id: 'WEB', name: 'Kunca COD - web' }] } }, selectedStoreId: 'KUNCA' } as unknown as ReturnType<typeof useAuth>);
     render(<VentasPage />);
     expect(screen.getByRole('button', { name: 'Importar Excel a KUNCA' })).toBeEnabled();
+  });
+
+  it('cuenta Solo CRM usa la cabecera de main y muestra Importar Excel', () => {
+    mockChatSalesSolo = true;
+    try {
+      mockUseAuth.mockReturnValue({ auth: { user: { role: 'ADMIN' }, company: { id: 'company-1', stores: [{ id: 'KUNCA', name: 'KUNCA' }] } }, selectedStoreId: 'KUNCA' } as unknown as ReturnType<typeof useAuth>);
+      render(<VentasPage />);
+      expect(screen.getByText('Gestión de ventas pendientes y anuladas — todo en un solo panel.')).toBeInTheDocument();
+      expect(screen.queryByText(/Mismo módulo de Core/)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Importar Excel a KUNCA' })).toBeEnabled();
+    } finally {
+      mockChatSalesSolo = false;
+    }
   });
 });

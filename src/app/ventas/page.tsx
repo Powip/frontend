@@ -2169,23 +2169,17 @@ Estado: ${sale.status}
         <main className="min-w-0 flex-1 p-3 sm:p-6 space-y-6 overflow-auto">
           <HeaderConfig
             title="Ventas"
-            description={
-              chatFilter.solo
-                ? "Mismo módulo de Core, en tu cuenta Solo CRM: ves las ventas del chat, cobros y saldos. Despacho y SUNAT llegan con Core."
-                : "Gestión de ventas pendientes y anuladas — todo en un solo panel."
-            }
+            description="Gestión de ventas pendientes y anuladas — todo en un solo panel."
           >
-            {!chatFilter.solo && (
-              <Button
-                variant="outline"
-                className="h-auto min-h-9 w-full max-w-full whitespace-normal text-center lg:w-auto"
-                disabled={!importStore}
-                onClick={() => { if (importStore) setImportModalOpen(true); }}
-              >
-                <UploadCloud className="h-4 w-4 mr-2" />
-                {importStore ? `Importar Excel a ${importStore.name}` : "Selecciona una tienda para importar"}
-              </Button>
-            )}
+            <Button
+              variant="outline"
+              className="h-auto min-h-9 w-full max-w-full whitespace-normal text-center lg:w-auto"
+              disabled={!importStore}
+              onClick={() => { if (importStore) setImportModalOpen(true); }}
+            >
+              <UploadCloud className="h-4 w-4 mr-2" />
+              {importStore ? `Importar Excel a ${importStore.name}` : "Selecciona una tienda para importar"}
+            </Button>
             <Link href="/registrar-venta" className="w-full lg:w-auto">
               <Button
                 size="lg"
