@@ -83,11 +83,13 @@ function RowActions({ row, extra }: { row: SalesBoardRow; extra?: SalesBoardExtr
   const refresh = useRefreshQuote();
   const [pdfBusy, setPdfBusy] = useState(false);
   return (
-    <div className="flex flex-wrap justify-end gap-1">
+    <div className="ml-auto flex max-w-[7.5rem] flex-wrap justify-end gap-0.5">
       <Button
         type="button"
         size="sm"
         variant="ghost"
+        className="px-2"
+        title="Descargar PDF"
         aria-label={`Descargar PDF de ${row.number ?? row.coreId}`}
         disabled={pdfBusy}
         onClick={async () => {
@@ -102,13 +104,15 @@ function RowActions({ row, extra }: { row: SalesBoardRow; extra?: SalesBoardExtr
         }}
       >
         {pdfBusy ? <Loader2 className="animate-spin" /> : <FileDown />}
-        PDF
+        <span className="sr-only">PDF</span>
       </Button>
       {row.publicUrl && (
         <Button
           type="button"
           size="sm"
           variant="ghost"
+          className="px-2"
+          title="Copiar enlace"
           aria-label={`Copiar enlace de ${row.number ?? row.coreId}`}
           onClick={async () => {
             try {
@@ -120,7 +124,7 @@ function RowActions({ row, extra }: { row: SalesBoardRow; extra?: SalesBoardExtr
           }}
         >
           <Copy />
-          Enlace
+          <span className="sr-only">Enlace</span>
         </Button>
       )}
       {row.kind === "quote" && (
@@ -128,6 +132,8 @@ function RowActions({ row, extra }: { row: SalesBoardRow; extra?: SalesBoardExtr
           type="button"
           size="sm"
           variant="ghost"
+          className="px-2"
+          title="Actualizar desde el Core"
           aria-label={`Actualizar ${row.number ?? row.coreId} desde el Core`}
           disabled={refresh.isPending}
           onClick={() => refresh.mutate(row.id)}
@@ -136,10 +142,14 @@ function RowActions({ row, extra }: { row: SalesBoardRow; extra?: SalesBoardExtr
         </Button>
       )}
       <ExtraActions row={row} extra={extra} />
-      <Button asChild size="sm" variant="ghost">
-        <Link href={bandejaUrl(row.conversationId)} aria-label={`Abrir chat de ${row.contactName ?? "cliente"}`}>
+      <Button asChild size="sm" variant="ghost" className="px-2">
+        <Link
+          href={bandejaUrl(row.conversationId)}
+          title={row.channel === "whatsapp" ? "Abrir chat de WhatsApp" : "Abrir chat"}
+          aria-label={`Abrir chat de ${row.contactName ?? "cliente"}`}
+        >
           <MessageSquare />
-          {row.channel === "whatsapp" ? "WhatsApp" : "Chat"}
+          <span className="sr-only">{row.channel === "whatsapp" ? "WhatsApp" : "Chat"}</span>
         </Link>
       </Button>
     </div>
@@ -273,51 +283,58 @@ export default function VentasView() {
           <table className="w-full text-sm">
             <thead className="bg-muted/40 text-left text-xs text-muted-foreground">
               <tr>
-                <th className="px-2 py-1.5 font-medium">Documento</th>
-                <th className="px-2 py-1.5 font-medium">Cliente</th>
-                <th className="px-2 py-1.5 font-medium">Ciudad / provincia</th>
-                <th className="px-2 py-1.5 font-medium">Pago / envío</th>
-                <th className="px-2 py-1.5 font-medium">Origen</th>
-                <th className="px-2 py-1.5 font-medium">Vendedora</th>
-                <th className="px-2 py-1.5 font-medium">Fecha</th>
-                <th className="px-2 py-1.5 text-right font-medium">Total</th>
-                <th className="px-2 py-1.5 text-right font-medium">Pagado</th>
-                <th className="px-2 py-1.5 text-right font-medium">Saldo</th>
-                <th className="px-2 py-1.5 font-medium">Estado</th>
-                <th className="px-2 py-1.5 text-right font-medium">Acciones</th>
+                <th className="px-1.5 py-1.5 font-medium">Documento</th>
+                <th className="px-1.5 py-1.5 font-medium">Cliente</th>
+                <th className="px-1.5 py-1.5 font-medium">Ciudad / provincia</th>
+                <th className="px-1.5 py-1.5 font-medium">Pago / envío</th>
+                <th className="px-1.5 py-1.5 font-medium">Origen</th>
+                <th className="px-1.5 py-1.5 font-medium">Vendedora</th>
+                <th className="px-1.5 py-1.5 font-medium">Fecha</th>
+                <th className="px-1.5 py-1.5 text-right font-medium">Total</th>
+                <th className="px-1.5 py-1.5 text-right font-medium">Pagado</th>
+                <th className="px-1.5 py-1.5 text-right font-medium">Saldo</th>
+                <th className="px-1.5 py-1.5 font-medium">Estado</th>
+                <th className="px-1.5 py-1.5 text-right font-medium">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={`${r.kind}-${r.id}`} className="border-t" data-testid="sales-row">
-                  <td className="px-2 py-1.5">
-                    <span className="font-medium">{r.kind === "quote" ? "Cotización" : "Pedido"}</span>{" "}
-                    <span className="text-muted-foreground">{r.number ?? r.coreId}</span>
+                  <td className="px-1.5 py-1.5">
+                    <span className="block font-medium">{r.kind === "quote" ? "Cotización" : "Pedido"}</span>
+                    <span className="block whitespace-nowrap text-xs text-muted-foreground">{r.number ?? r.coreId}</span>
                   </td>
-                  <td className="px-2 py-1.5">
-                    {r.contactName ?? "Sin nombre"}
-                    {extraOf(r)?.phone && <span className="block text-xs text-muted-foreground">{extraOf(r)?.phone}</span>}
+                  <td className="px-1.5 py-1.5">
+                    <span className="block max-w-[9rem] truncate" title={r.contactName ?? undefined}>
+                      {r.contactName ?? "Sin nombre"}
+                    </span>
+                    {extraOf(r)?.phone && <span className="block whitespace-nowrap text-xs text-muted-foreground">{extraOf(r)?.phone}</span>}
                   </td>
-                  <td className="px-2 py-1.5" data-testid="row-city">
+                  <td className="px-1.5 py-1.5" data-testid="row-city">
                     <CityCell extra={extraOf(r)} loading={!!r.orderId && extrasLoading} />
                   </td>
-                  <td className="px-2 py-1.5" data-testid="row-payship">
+                  <td className="px-1.5 py-1.5" data-testid="row-payship">
                     <PayShipCell extra={extraOf(r)} loading={!!r.orderId && extrasLoading} />
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-1.5 py-1.5">
                     {r.channel ? (CHANNEL_LABEL[r.channel] ?? r.channel) : "Chat"}
                   </td>
-                  <td className="px-2 py-1.5">{r.sellerName ?? "—"}</td>
-                  <td className="px-2 py-1.5 whitespace-nowrap">{formatDate(r.createdAt)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{r.total === null ? "—" : formatMoney(r.total)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{r.kind === "order" ? formatMoney(r.paid) : "—"}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums" data-testid="row-balance">
+                  <td className="px-1.5 py-1.5">
+                    {/* Sin nombre la vendedora llega como correo: se corta para que la tabla entre a 1440 sin scroll. */}
+                    <span className="block max-w-[7rem] truncate" title={r.sellerName ?? undefined}>
+                      {r.sellerName ?? "—"}
+                    </span>
+                  </td>
+                  <td className="px-1.5 py-1.5">{formatDate(r.createdAt)}</td>
+                  <td className="px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap">{r.total === null ? "—" : formatMoney(r.total)}</td>
+                  <td className="px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap">{r.kind === "order" ? formatMoney(r.paid) : "—"}</td>
+                  <td className="px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap" data-testid="row-balance">
                     {r.kind === "order" && r.total !== null ? formatMoney(Math.max(r.total - r.paid, 0)) : "—"}
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-1.5 py-1.5 whitespace-nowrap">
                     <Badge variant={BUCKET_VARIANT[r.bucket]}>{BUCKET_LABEL[r.bucket]}</Badge>
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-1.5 py-1.5">
                     <RowActions row={r} extra={extraOf(r)} />
                   </td>
                 </tr>
@@ -325,11 +342,11 @@ export default function VentasView() {
             </tbody>
             <tfoot>
               <tr className="border-t font-medium">
-                <td className="px-2 py-1.5" colSpan={7}>
+                <td className="px-1.5 py-1.5" colSpan={7}>
                   {rows.length} documento{rows.length === 1 ? "" : "s"}
                 </td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(totals.total)}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(totals.paid)}</td>
+                <td className="px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap">{formatMoney(totals.total)}</td>
+                <td className="px-1.5 py-1.5 text-right tabular-nums whitespace-nowrap">{formatMoney(totals.paid)}</td>
                 <td />
                 <td colSpan={2} />
               </tr>

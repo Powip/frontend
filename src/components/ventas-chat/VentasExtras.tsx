@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { CreditCard, ExternalLink, Pencil, Truck } from "lucide-react";
+import { CreditCard, Pencil, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { SalesBoardExtra } from "@/types/crmAjustesE";
@@ -97,22 +97,21 @@ export function ExtraActions({ row, extra }: { row: SalesBoardRow; extra?: Sales
   if (!row.orderId) return null;
   return (
     <>
-      <Button type="button" size="sm" variant="ghost" aria-label={`Ver pagos de ${ref}`} onClick={() => setOpen(true)}>
+      <Button type="button" size="sm" variant="ghost" className="px-2" title="Ver pagos" aria-label={`Ver pagos de ${ref}`} onClick={() => setOpen(true)}>
         <CreditCard />
-        Pagos
+        <span className="sr-only">Pagos</span>
       </Button>
-      <Button asChild size="sm" variant="ghost">
-        <Link href={`/registrar-venta?orderId=${encodeURIComponent(row.orderId)}`} aria-label={`Editar ${ref} en el Core`}>
+      <Button asChild size="sm" variant="ghost" className="px-2">
+        <Link href={`/registrar-venta?orderId=${encodeURIComponent(row.orderId)}`} title="Editar en el Core" aria-label={`Editar ${ref} en el Core`}>
           <Pencil />
-          Editar
+          <span className="sr-only">Editar</span>
         </Link>
       </Button>
       {extra?.trackingUrl ? (
-        <Button asChild size="sm" variant="ghost">
-          <a href={extra.trackingUrl} target="_blank" rel="noreferrer" aria-label={`Seguimiento de ${ref}`}>
+        <Button asChild size="sm" variant="ghost" className="px-2">
+          <a href={extra.trackingUrl} target="_blank" rel="noreferrer" title="Seguimiento del envío" aria-label={`Seguimiento de ${ref}`}>
             <Truck />
-            Seguimiento
-            <ExternalLink className="h-3 w-3" />
+            <span className="sr-only">Seguimiento</span>
           </a>
         </Button>
       ) : (
@@ -121,11 +120,12 @@ export function ExtraActions({ row, extra }: { row: SalesBoardRow; extra?: Sales
           size="sm"
           variant="ghost"
           disabled
+          className="px-2"
           aria-label={`Seguimiento de ${ref}`}
           title={extra?.guideNumber ? `Guía ${extra.guideNumber}: sin enlace de seguimiento` : "Aún no tiene envío con seguimiento"}
         >
           <Truck />
-          Seguimiento
+          <span className="sr-only">Seguimiento</span>
         </Button>
       )}
       {open && <PaymentsDialog row={row} extra={extra} onClose={() => setOpen(false)} />}
