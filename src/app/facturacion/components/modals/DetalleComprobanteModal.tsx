@@ -4,6 +4,7 @@ import { Download, Link2, Loader2, Mail, MessageCircle, Receipt, Trash2 } from "
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { ProximamenteButton } from "@/app/facturacion/components/ProximamenteButton";
+import { enviarPdfPorWhatsApp } from "@/app/facturacion/lib/enviar-pdf-whatsapp";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,10 +25,6 @@ import {
   TAX_DOCUMENT_STATUSES,
   type TaxDocumentStatus,
 } from "@/features/sunat/shared/types/sunat.types";
-import {
-  getTaxDocumentWhatsAppErrorCode,
-  TAX_DOCUMENT_WHATSAPP_ERRORS,
-} from "@/features/sunat/sunat-document/api/tax-document-whatsapp.api";
 import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-document-pdf";
 import {
   useSendTaxDocumentWhatsApp,
@@ -151,49 +148,17 @@ export default function DetalleComprobanteModal({
       return;
     }
 
-    const phone = sale.customer.phoneNumber?.replace(/\D/g, "");
-
-    if (!phone) {
-      toast.error("Esta venta no tiene un teléfono de contacto registrado");
-      return;
-    }
-
     sendingRef.current = true;
 
     try {
-      const result = await sendTaxDocumentWhatsApp({
+      await enviarPdfPorWhatsApp({
+        send: sendTaxDocumentWhatsApp,
         sunatDocumentId: taxDocument.id,
-        to: phone,
-        customerName: sale.customer.fullName ?? undefined,
+        phone: sale.customer.phoneNumber,
+        customerName: sale.customer.fullName,
+        onSent: () => onAction?.(sale.id, "wa"),
+        onFallbackToText: openWhatsAppWithText,
       });
-
-      toast.success(
-        result.deduplicated
-          ? "Este comprobante ya se envió por WhatsApp hace un momento"
-          : `PDF enviado por WhatsApp a +${result.to}`,
-      );
-
-      onAction?.(sale.id, "wa");
-    } catch (error) {
-      const code = getTaxDocumentWhatsAppErrorCode(error);
-
-      if (code === TAX_DOCUMENT_WHATSAPP_ERRORS.OWN_NUMBER_NOT_CONNECTED) {
-        toast.info(
-          "Tu número de WhatsApp ya no está conectado: se abrirá WhatsApp con el texto, sin el PDF",
-        );
-        openWhatsAppWithText();
-      } else if (code === TAX_DOCUMENT_WHATSAPP_ERRORS.TEMPLATE_NOT_APPROVED) {
-        toast.error(
-          "El cliente no escribió en las últimas 24 h y la plantilla «comprobante_pdf» aún no está aprobada por Meta",
-        );
-      } else if (code === TAX_DOCUMENT_WHATSAPP_ERRORS.SEND_IN_PROGRESS) {
-        toast.info("El comprobante ya se está enviando");
-      } else if (code === TAX_DOCUMENT_WHATSAPP_ERRORS.INVALID_RECIPIENT) {
-        toast.error("El teléfono del cliente no es un número de WhatsApp válido");
-      } else {
-        console.error("Error sending tax document by WhatsApp:", error);
-        toast.error("No se pudo enviar el comprobante por WhatsApp");
-      }
     } finally {
       sendingRef.current = false;
     }
