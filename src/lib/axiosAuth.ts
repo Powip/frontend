@@ -1,4 +1,8 @@
-import axios, { CanceledError, type InternalAxiosRequestConfig } from "axios";
+import axios, {
+  CanceledError,
+  type AxiosInstance,
+  type InternalAxiosRequestConfig,
+} from "axios";
 import { renewCurrentSession } from "./sessionRefresh";
 import { type SessionSnapshot, tokenStore } from "./tokenStore";
 
@@ -71,5 +75,25 @@ axiosAuth.interceptors.response.use(undefined, async (error: unknown) => {
   config.headers.set("Authorization", `Bearer ${renewed.token}`);
   return axiosAuth.request(config);
 });
+
+/**
+ * Para clientes sin renovación propia: ante un 401 con el bearer vigente comprueba
+ * la sesión. No reintenta ni cambia el error que recibe quien llamó.
+ */
+export function observeUnauthorized(client: AxiosInstance): () => void {
+  const id = client.interceptors.response.use(undefined, (error: unknown) => {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      const session = tokenStore.snapshot();
+      const sent = error.config?.headers?.Authorization;
+      if (
+        session.token &&
+        sent === `Bearer ${session.token}` &&
+        !AUTH_SESSION_ENDPOINT.test(error.config?.url ?? "")
+      ) void renewCurrentSession(session);
+    }
+    return Promise.reject(error);
+  });
+  return () => client.interceptors.response.eject(id);
+}
 
 export default axiosAuth;

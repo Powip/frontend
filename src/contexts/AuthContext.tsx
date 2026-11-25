@@ -20,6 +20,7 @@ import axios from "axios";
 import { GATEWAY } from "@/lib/gateway";
 import { isSuperadmin } from "@/config/permissions.config";
 import { tokenStore } from "@/lib/tokenStore";
+import { markManualLogout, markSessionStarted } from "@/lib/sessionExpiry";
 import {
   cancelSessionRefresh,
   registerSessionRefresher,
@@ -412,6 +413,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     if (loggingInSession !== sessionVersion.current) return null;
 
+    markSessionStarted();
     setSession(newAuth, true);
     setPreferredStoreId(defaultStore);
 
@@ -437,6 +439,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const accessToken = tokenStore.get();
     // A late refresh response must not restore the cookie after logout.
     cancelSessionRefresh();
+    // Antes de vaciar la sesión: AuthGuard no debe guardar destino de retorno.
+    markManualLogout();
     ++sessionVersion.current;
     setSession(null, true);
     setPreferredStoreId(null);
