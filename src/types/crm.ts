@@ -138,6 +138,8 @@ export interface InboxSummary {
   pendingLinksAmount?: number;
   /** Cobrado hoy en pedidos nacidos del chat. */
   collectedToday?: number;
+  /** Ventas distintas cobradas hoy por chat. */
+  collectedTodayCount?: number;
 }
 
 export interface SendTemplateInput {

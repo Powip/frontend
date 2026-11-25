@@ -63,6 +63,7 @@ export default function InboxIndicators({ active, onChange, storeId }: Props) {
   const links = n(d.pendingLinks);
   const linksAmount = n(d.pendingLinksAmount);
   const collected = n(d.collectedToday);
+  const collectedCount = n(d.collectedTodayCount);
 
   return (
     <div className="space-y-2">
@@ -92,7 +93,7 @@ export default function InboxIndicators({ active, onChange, storeId }: Props) {
           label="Cobrado hoy por chat"
           value={money(collected)}
           tone={collected > 0 ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}
-          detail="Pedidos pagados por link"
+          detail={`${collectedCount} ${collectedCount === 1 ? "pedido pagado" : "pedidos pagados"} por link`}
         />
       </div>
       <div role="group" aria-label="Más filtros" className="flex flex-wrap items-center gap-1.5">
