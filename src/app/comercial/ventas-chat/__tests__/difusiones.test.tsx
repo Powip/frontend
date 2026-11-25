@@ -14,6 +14,15 @@ jest.mock("@/lib/axiosAuth", () => ({
   __esModule: true,
   default: { get: jest.fn(), post: jest.fn(), patch: jest.fn(), delete: jest.fn() },
 }));
+let mockRole = "ADMIN";
+jest.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({
+    auth: { accessToken: "t", user: { id: "u1", name: "Jairo", role: mockRole }, company: { id: "co1" } },
+  }),
+}));
+jest.mock("@/config/permissions.config", () => ({
+  hasAdminAccess: (role?: string) => role === "ADMIN",
+}));
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 jest.mock("@/services/crmService", () => ({
   ...jest.requireActual("@/services/crmService"),
@@ -98,8 +107,9 @@ function setup() {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockRole = "ADMIN";
   s.listBroadcasts.mockResolvedValue([
-    bc(),
+    { ...bc(), replies: 12, sales: 3, salesAmount: 459 } as Broadcast,
     bc({ id: "b2", name: "Borrador de prueba", status: "draft", total: 0, sentCount: 0, failedCount: 0, deliveredCount: 0, readCount: 0 }),
   ]);
   s.listPipelines.mockResolvedValue([pipeline]);
@@ -122,13 +132,16 @@ describe("Difusiones · lista", () => {
     expect(first.getByText(/Etapa «Cotizado»/)).toBeInTheDocument();
     expect(first.getByText("80")).toBeInTheDocument();
     expect(first.getByText("200")).toBeInTheDocument();
-    expect(first.getByText(/entregados/).textContent).toContain("60");
-    expect(first.getByText(/leídos/).textContent).toContain("30");
+    expect(first.getByTestId("bc-delivered")).toHaveTextContent("60");
+    expect(first.getByTestId("bc-read")).toHaveTextContent("30");
+    expect(first.getByTestId("bc-replies")).toHaveTextContent("12");
+    expect(first.getByTestId("bc-sales")).toHaveTextContent(/^3 · S\/\s?459/);
     expect(first.getByText(/fallidos/).textContent).toContain("4");
     expect(first.getByRole("progressbar", { name: "Progreso de Nueva colección" })).toBeInTheDocument();
     const second = within(rows[1]);
     expect(second.getByText("Borrador")).toBeInTheDocument();
-    expect(second.getByRole("button", { name: /Editar/ })).toBeInTheDocument();
+    expect(second.getByRole("button", { name: /Continuar/ })).toBeInTheDocument();
+    expect(second.getByTestId("bc-sales")).toHaveTextContent("—");
     expect(second.getByRole("button", { name: /Enviar/ })).toBeInTheDocument();
     expect(second.queryByRole("progressbar")).not.toBeInTheDocument();
   });
@@ -175,6 +188,19 @@ describe("Difusiones · lista", () => {
     });
     const first = within((await screen.findAllByTestId("broadcast-row"))[0]);
     await waitFor(() => expect(first.getByText("150")).toBeInTheDocument());
+  });
+});
+
+describe("Difusiones · vendedora (R4)", () => {
+  it("ve resultados pero no crea ni maneja difusiones", async () => {
+    mockRole = "SELLER";
+    setup();
+    const rows = await screen.findAllByTestId("broadcast-row");
+    expect(rows).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /Nueva difusión/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Solo el administrador crea difusiones")).toBeInTheDocument();
+    expect(within(rows[0]).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(rows[1]).queryByRole("button")).not.toBeInTheDocument();
   });
 });
 

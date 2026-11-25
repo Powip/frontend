@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Copy, Info, Loader2, Pencil, Plus, Sparkles, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, Info, Loader2, Pencil, Plus, Send, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,7 @@ import {
 import { usePipelines } from "@/hooks/useCrmPlanning";
 import { useCrmMe } from "@/hooks/useCrmMe";
 import { useCrmSettings } from "@/hooks/useCrmTeam";
-import type { FollowupMonthStats, FollowupRule, FollowupRun, FollowupStats, Stage } from "@/types/crm";
+import type { FollowupMonthStats, FollowupRule, FollowupRun, FollowupStats, Stage, Template } from "@/types/crm";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import ConfirmDialog from "./ConfirmDialog";
 import { FollowupLimitsCard } from "./AjustesCards";
@@ -35,6 +35,8 @@ import RuleDialog from "./RuleDialog";
 import {
   OBJECTIVES,
   OBJECTIVE_LABEL,
+  CATEGORY_LABEL,
+  COST_PER_MESSAGE,
   PRESETS,
   RESULT_INFO,
   TONE_CLASS,
@@ -48,7 +50,12 @@ import {
   templateKey,
   type Preset,
 } from "./engagement";
-import { NATIVE_SELECT_CLASS, bandejaUrl, contactLabel, formatMoney, relativeTime } from "./format";
+import { CHANNEL_LABEL, NATIVE_SELECT_CLASS, bandejaUrl, contactLabel, formatMoney, relativeTime } from "./format";
+import { PDF_PRESETS, presetStage } from "./seguimientosPresets";
+import { useUpcomingFollowups, useUpcomingMutations } from "./seguimientosUpcoming";
+
+/** Secuencias del PDF + «Sin respuesta del equipo» (recordatorio interno). */
+const SEQUENCES: Preset[] = [...PDF_PRESETS, ...PRESETS.filter((p) => p.key === "equipo-sin-respuesta")];
 
 function StatCard({ label, value, hint }: { label: string; value: number; hint?: string }) {
   return (
@@ -282,9 +289,66 @@ function PresetConfirm({ preset, wonStage, onClose }: PresetProps) {
   );
 }
 
-function RuleCard({
+/** Costo por envío, como la columna «Costo» del mockup 152. */
+function ruleCost(rule: FollowupRule, templates: Template[] | undefined): { label: string; tone: "ok" | "warn" | "info" } {
+  if (rule.target === "agent") return { label: "Interno · gratis", tone: "info" };
+  if (!rule.templateName) return { label: "Gratis", tone: "ok" };
+  const tpl = templates?.find((t) => t.name === rule.templateName);
+  const unit = tpl ? COST_PER_MESSAGE[tpl.category] : undefined;
+  return {
+    label: `Gratis en ventana · plantilla${unit !== undefined ? ` (S/ ${unit.toFixed(2)})` : ""}`,
+    tone: "warn",
+  };
+}
+
+const PILL: Record<"ok" | "warn" | "info", string> = {
+  ok: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+  warn: "bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+  info: "bg-[#4C2FB5]/10 text-[#4C2FB5] dark:text-violet-300",
+};
+
+function Pill({ tone, children }: { tone: keyof typeof PILL; children: React.ReactNode }) {
+  return (
+    <span className={cn("inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium", PILL[tone])}>
+      {children}
+    </span>
+  );
+}
+
+function Card({
+  title,
+  description,
+  action,
+  children,
+  label,
+  testId,
+}: {
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+  label?: string;
+  testId?: string;
+}) {
+  return (
+    <section aria-label={label ?? title} data-testid={testId} className="space-y-3 rounded-lg border bg-card p-4">
+      <div className="flex flex-wrap items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold">{title}</h2>
+          {description && <p className="text-xs text-muted-foreground">{description}</p>}
+        </div>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function RuleRow({
   rule,
   stages,
+  templates,
+  isAdmin,
   onToggle,
   onEdit,
   onDuplicate,
@@ -292,51 +356,83 @@ function RuleCard({
 }: {
   rule: FollowupRule;
   stages: Stage[];
+  templates: Template[] | undefined;
+  isAdmin: boolean;
   onToggle: (r: FollowupRule, active: boolean) => void;
   onEdit: (r: FollowupRule) => void;
   onDuplicate: (r: FollowupRule) => void;
   onDelete: (r: FollowupRule) => void;
 }) {
+  const cost = ruleCost(rule, templates);
   return (
-    <li
-      data-testid="rule-row"
-      className={cn("space-y-1.5 rounded-md border bg-card p-3 text-sm", !rule.active && "opacity-80")}
-    >
-      <div className="flex flex-wrap items-center gap-2">
+    <tr data-testid="rule-row" className={cn("border-t align-top", !rule.active && "opacity-80")}>
+      <td className="px-3 py-2">
         <span className="font-medium">{rule.name}</span>
-        <Badge variant="outline">{rule.active ? "Activa" : "Pausada"}</Badge>
-        <div className="ml-auto flex items-center gap-2">
+        <span className="block text-[11px] text-muted-foreground">
+          {summarizeRule(rule, stageNameOf(stages, rule.stageId))}
+        </span>
+      </td>
+      <td className="px-3 py-2 text-xs">{stageNameOf(stages, rule.stageId) ?? "Etapas abiertas"}</td>
+      <td className="whitespace-nowrap px-3 py-2 text-xs">
+        {rule.trigger === "stage_idle" ? "en etapa " : "sin respuesta "}
+        {formatWait(rule.waitMinutes)}
+      </td>
+      <td className="px-3 py-2 text-xs">
+        <Pill tone={rule.target === "agent" ? "info" : "ok"}>
+          {rule.target === "agent" ? "Vendedora" : "Cliente"}
+        </Pill>
+      </td>
+      <td className="max-w-[340px] px-3 py-2 text-xs">
+        <span className="line-clamp-2 whitespace-pre-wrap">{rule.message}</span>
+      </td>
+      <td className="px-3 py-2">
+        <Pill tone={cost.tone}>{cost.label}</Pill>
+      </td>
+      <td className="px-3 py-2">
+        {isAdmin ? (
           <Switch
             checked={rule.active}
             aria-label={`Activar ${rule.name}`}
             onCheckedChange={(v) => onToggle(rule, v)}
           />
-        </div>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {summarizeRule(rule, stageNameOf(stages, rule.stageId))}
-      </p>
-      <p className="sm:line-clamp-2 whitespace-pre-wrap text-xs">{rule.message}</p>
-      <div className="flex flex-wrap gap-2 pt-1">
-        <Button type="button" size="sm" variant="outline" onClick={() => onEdit(rule)}>
-          <Pencil /> Editar
-        </Button>
-        <Button type="button" size="sm" variant="outline" onClick={() => onDuplicate(rule)}>
-          <Copy /> Duplicar
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          aria-label={`Eliminar regla ${rule.name}`}
-          onClick={() => onDelete(rule)}
-        >
-          <Trash2 /> Eliminar
-        </Button>
-      </div>
-    </li>
+        ) : (
+          <Badge variant="outline">{rule.active ? "Activa" : "Pausada"}</Badge>
+        )}
+      </td>
+      <td className="whitespace-nowrap px-3 py-2 text-right">
+        {isAdmin ? (
+          <div className="flex justify-end gap-1">
+            <Button type="button" size="sm" variant="outline" onClick={() => onEdit(rule)}>
+              <Pencil /> Editar
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              aria-label={`Duplicar ${rule.name}`}
+              onClick={() => onDuplicate(rule)}
+            >
+              <Copy />
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              aria-label={`Eliminar regla ${rule.name}`}
+              onClick={() => onDelete(rule)}
+            >
+              <Trash2 />
+            </Button>
+          </div>
+        ) : (
+          <span className="text-[11px] text-muted-foreground">Solo el administrador</span>
+        )}
+      </td>
+    </tr>
   );
 }
+
+const RULE_HEAD = ["Regla", "Etapa", "Cuándo", "A quién", "Mensaje", "Costo", "Activa", ""];
 
 function RunsTable({ runs }: { runs: FollowupRun[] }) {
   return (
@@ -353,7 +449,7 @@ function RunsTable({ runs }: { runs: FollowupRun[] }) {
         </thead>
         <tbody>
           {runs.map((r) => {
-            const info = RESULT_INFO[r.result];
+            const info = RESULT_INFO[r.result] ?? { label: r.result, tone: "muted" as const };
             const rel = relativeTime(r.createdAt);
             return (
               <tr key={r.id} data-testid="run-row" className="border-t align-top">
@@ -387,9 +483,202 @@ function RunsTable({ runs }: { runs: FollowupRun[] }) {
   );
 }
 
+const STATUS_PILL: Record<string, { label: string; tone: keyof typeof PILL }> = {
+  APPROVED: { label: "Aprobada", tone: "ok" },
+  PENDING: { label: "En revisión", tone: "warn" },
+  REJECTED: { label: "Rechazada", tone: "warn" },
+  PAUSED: { label: "Pausada", tone: "warn" },
+  DISABLED: { label: "Desactivada", tone: "warn" },
+};
+
+/** Biblioteca de plantillas de WhatsApp (la misma de Notificaciones). Solo lectura. */
+function TemplatesSection({
+  templates,
+  rules,
+  error,
+}: {
+  templates: Template[] | undefined;
+  rules: FollowupRule[];
+  error: string | null;
+}) {
+  return (
+    <Card
+      title="Plantillas de WhatsApp"
+      description="Es la misma biblioteca del módulo de Notificaciones. Las de venta y las de envío viven juntas, con su aprobación de Meta."
+      action={
+        <Button asChild size="sm" variant="outline">
+          <Link href="/comercial/notificaciones">
+            <ExternalLink /> Gestionar en Notificaciones
+          </Link>
+        </Button>
+      }
+    >
+      {error && <p className="text-xs text-muted-foreground">No se pudieron cargar las plantillas: {error}</p>}
+      {templates && templates.length === 0 && (
+        <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
+          Aún no hay plantillas. Créalas en Notificaciones y espera la aprobación de Meta.
+        </p>
+      )}
+      {templates && templates.length > 0 && (
+        <div className="overflow-x-auto rounded-md border">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-muted/50 text-xs text-muted-foreground">
+              <tr>
+                <th className="px-3 py-2 font-medium">Plantilla</th>
+                <th className="px-3 py-2 font-medium">Categoría</th>
+                <th className="px-3 py-2 font-medium">Estado en Meta</th>
+                <th className="px-3 py-2 text-right font-medium">Costo aprox.</th>
+                <th className="px-3 py-2 font-medium">Dónde se usa</th>
+              </tr>
+            </thead>
+            <tbody>
+              {templates.map((t) => {
+                const st = STATUS_PILL[t.status] ?? { label: t.status, tone: "warn" as const };
+                const unit = COST_PER_MESSAGE[t.category];
+                const usedBy = rules.filter((r) => r.templateName === t.name).map((r) => r.name);
+                return (
+                  <tr key={templateKey(t)} data-testid="template-row" className="border-t align-top">
+                    <td className="px-3 py-2">
+                      <span className="font-medium">{t.name}</span>
+                      <span className="block text-[11px] text-muted-foreground">{t.language}</span>
+                    </td>
+                    <td className="px-3 py-2 text-xs">{CATEGORY_LABEL[t.category] ?? t.category}</td>
+                    <td className="px-3 py-2">
+                      <Pill tone={st.tone}>{st.label}</Pill>
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs tabular-nums">
+                      {unit !== undefined ? `S/ ${unit.toFixed(2)}` : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                      {usedBy.length ? usedBy.join(", ") : "Sin reglas"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function UpcomingSection({ isAdmin, templates }: { isAdmin: boolean; templates: Template[] | undefined }) {
+  const q = useUpcomingFollowups();
+  const { sendNow, cancel } = useUpcomingMutations();
+  const items = q.data ?? [];
+  const hour = (iso: string) =>
+    new Date(iso).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit", timeZone: "America/Lima" });
+  return (
+    <Card
+      title="Programados para hoy"
+      description="Puedes adelantarlos o cancelarlos uno por uno."
+      testId="upcoming"
+      action={<Pill tone="info">{items.length} pendientes</Pill>}
+    >
+      {q.isError && (
+        <p role="alert" className="text-xs text-destructive">
+          {crmError(q.error).message}
+        </p>
+      )}
+      <div className="overflow-x-auto rounded-md border">
+        <table className="w-full text-left text-sm">
+          <thead className="bg-muted/50 text-xs text-muted-foreground">
+            <tr>
+              <th className="px-3 py-2 font-medium">Hora</th>
+              <th className="px-3 py-2 font-medium">Cliente</th>
+              <th className="px-3 py-2 font-medium">Regla</th>
+              <th className="px-3 py-2 font-medium">Canal</th>
+              <th className="px-3 py-2 font-medium">Costo</th>
+              <th className="px-3 py-2 text-right font-medium">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.length === 0 && (
+              <tr>
+                <td colSpan={6} className="px-3 py-6 text-center">
+                  <p className="text-sm font-medium">No hay envíos programados para hoy</p>
+                  <p className="text-xs text-muted-foreground">
+                    Cuando un cliente lea y no responda, aparecerá aquí.
+                  </p>
+                </td>
+              </tr>
+            )}
+            {items.map((u) => {
+              const tpl = u.templateName ? templates?.find((t) => t.name === u.templateName) : undefined;
+              const unit = tpl ? COST_PER_MESSAGE[tpl.category] : undefined;
+              return (
+                <tr key={`${u.ruleId}:${u.conversationId}`} data-testid="upcoming-row" className="border-t">
+                  <td className="px-3 py-2 font-semibold tabular-nums">{hour(u.dueAt)}</td>
+                  <td className="px-3 py-2">
+                    <Link
+                      href={bandejaUrl(u.conversationId)}
+                      className="text-primary underline-offset-2 hover:underline"
+                    >
+                      {u.contactName ?? "Contacto"}
+                    </Link>
+                  </td>
+                  <td className="px-3 py-2 text-xs">{u.ruleName}</td>
+                  <td className="px-3 py-2 text-xs">
+                    {CHANNEL_LABEL[u.channel as keyof typeof CHANNEL_LABEL] ?? u.channel}
+                  </td>
+                  <td className="px-3 py-2">
+                    {u.target === "agent" ? (
+                      <Pill tone="info">Interno</Pill>
+                    ) : u.viaTemplate ? (
+                      <Pill tone="warn">{unit !== undefined ? `S/ ${unit.toFixed(2)}` : "Plantilla"}</Pill>
+                    ) : (
+                      <Pill tone="ok">Gratis</Pill>
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2 text-right">
+                    {isAdmin ? (
+                      <>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={sendNow.isPending}
+                          aria-label={`Enviar ahora a ${u.contactName ?? "contacto"}`}
+                          onClick={() =>
+                            sendNow.mutate(u, {
+                              onSuccess: (r) =>
+                                toast.success(r.detail ? `Listo: ${r.detail}` : "Seguimiento enviado."),
+                            })
+                          }
+                        >
+                          <Send /> Enviar ahora
+                        </Button>{" "}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={cancel.isPending}
+                          aria-label={`Cancelar envío a ${u.contactName ?? "contacto"}`}
+                          onClick={() =>
+                            cancel.mutate(u, { onSuccess: () => toast.success("Envío cancelado.") })
+                          }
+                        >
+                          Cancelar
+                        </Button>
+                      </>
+                    ) : (
+                      <span className="text-[11px] text-muted-foreground">Solo el administrador</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
 type RuleDialogState = { rule?: FollowupRule } | null;
 
-/** Pestaña Seguimientos: reglas automáticas, secuencias rápidas y actividad reciente. */
+/** Pestaña Seguimientos (mockup 152): mes, límites, reglas, secuencias, plantillas y programados. */
 export default function SeguimientosView() {
   const rulesQ = useFollowupRules();
   const statsQ = useFollowupStats();
@@ -406,73 +695,56 @@ export default function SeguimientosView() {
   const wonStage = useMemo(() => firstWonStage(pipelines.data), [pipelines.data]);
   const rules = rulesQ.data ?? [];
   const err = rulesQ.isError ? crmError(rulesQ.error) : null;
+  const tplError = templates.isError ? crmError(templates.error).message : null;
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-2">
-        <p className="text-sm text-muted-foreground">
-          Mensajes y tareas automáticas cuando una conversación se enfría.
-        </p>
-        <Button
-          type="button"
-          size="sm"
-          className="ml-auto"
-          onClick={() => setDialog({})}
-        >
-          <Plus /> Nueva regla
-        </Button>
-      </div>
-
+    <div className="space-y-4">
       <HowItWorks />
 
-      {isAdmin && <LimitsSection />}
+      <div className="grid gap-4 lg:grid-cols-2">
+        {statsQ.data?.month ? (
+          <MonthSection month={statsQ.data.month} />
+        ) : (
+          <StatsSection
+            stats={statsQ.data}
+            loading={statsQ.isLoading}
+            error={statsQ.isError ? crmError(statsQ.error).message : null}
+          />
+        )}
+        {isAdmin ? (
+          <LimitsSection />
+        ) : (
+          <Card
+            title="Límites para no cansar al cliente"
+            description="Los define el administrador. Se aplican a todas las reglas."
+            testId="limits-readonly"
+          >
+            <p className="text-xs text-muted-foreground">
+              Si el cliente responde, paga o pide baja, el seguimiento pendiente se cancela y tú retomas la
+              conversación.
+            </p>
+          </Card>
+        )}
+      </div>
 
-      {statsQ.data?.month && <MonthSection month={statsQ.data.month} />}
+      {statsQ.data?.month && (
+        <StatsSection stats={statsQ.data} loading={false} error={null} />
+      )}
 
-      <StatsSection
-        stats={statsQ.data}
-        loading={statsQ.isLoading}
-        error={statsQ.isError ? crmError(statsQ.error).message : null}
-      />
-
-      <section aria-label="Secuencias rápidas" className="space-y-2">
-        <h2 className="flex items-center gap-1.5 text-sm font-semibold">
-          <Sparkles className="h-4 w-4" /> Secuencias rápidas
-        </h2>
-        <p className="text-xs text-muted-foreground">
-          Crean varias reglas de una vez. Quedan pausadas hasta que las actives.
-        </p>
-        <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-4">
-          {PRESETS.map((p) => {
-            const blocked = p.needsWonStage && !wonStage;
-            return (
-              <div key={p.key} className="flex flex-col gap-1.5 rounded-md border bg-card p-3">
-                <Badge variant="secondary">{OBJECTIVE_LABEL[p.objective]}</Badge>
-                <p className="text-sm font-medium">{p.name}</p>
-                <p className="flex-1 text-xs text-muted-foreground">{p.description}</p>
-                {blocked && (
-                  <p className="text-[11px] text-amber-700 dark:text-amber-300">
-                    Necesitas una etapa de tipo Ganado en el Embudo.
-                  </p>
-                )}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={blocked}
-                  aria-label={`Crear secuencia ${p.name}`}
-                  onClick={() => setPreset(p)}
-                >
-                  <Plus /> Crear reglas
-                </Button>
-              </div>
-            );
-          })}
-        </div>
-      </section>
-
-      <section aria-label="Reglas" className="space-y-3">
-        <h2 className="text-sm font-semibold">Reglas</h2>
+      <Card
+        title="Reglas de seguimiento"
+        description="Rompe-vistos al cliente y recordatorios internos para la vendedora, por etapa del embudo."
+        label="Reglas"
+        action={
+          isAdmin ? (
+            <Button type="button" size="sm" onClick={() => setDialog({})}>
+              <Plus /> Nueva regla
+            </Button>
+          ) : (
+            <Pill tone="info">Solo el administrador crea o cambia reglas</Pill>
+          )
+        }
+      >
         {rulesQ.isLoading && (
           <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Cargando reglas…
@@ -490,50 +762,108 @@ export default function SeguimientosView() {
         )}
         {rulesQ.data && rules.length === 0 && (
           <p className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-            Aún no hay reglas. Crea una o usa una secuencia rápida.
+            Aún no hay reglas.{isAdmin ? " Crea una o usa una secuencia rápida." : ""}
           </p>
         )}
-        {rulesQ.data &&
-          OBJECTIVES.map((o) => {
-            const list = rules
-              .filter((r) => r.objective === o)
-              .sort((a, b) => a.waitMinutes - b.waitMinutes);
-            if (list.length === 0) return null;
-            return (
-              <div key={o} role="group" aria-label={OBJECTIVE_LABEL[o]} className="space-y-2">
-                <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  {OBJECTIVE_LABEL[o]}
-                  <Badge variant="secondary">{list.length}</Badge>
-                </h3>
-                <ul className="grid gap-2 lg:grid-cols-2">
-                  {list.map((r) => (
-                    <RuleCard
-                      key={r.id}
-                      rule={r}
-                      stages={stages}
-                      onToggle={(rule, active) =>
-                        m.update.mutate(
-                          { id: rule.id, input: { active } },
-                          { onSuccess: () => toast.success(`${rule.name} ${active ? "activada" : "pausada"}`) },
-                        )
-                      }
-                      onEdit={(rule) => setDialog({ rule })}
-                      onDuplicate={(rule) => {
-                        m.create.mutate(duplicateRuleInput(rule), {
-                          onSuccess: () => toast.success("Copia creada, pausada."),
-                        });
-                      }}
-                      onDelete={setDeleting}
-                    />
+        {rulesQ.data && rules.length > 0 && (
+          <div className="overflow-x-auto rounded-md border">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-muted/50 text-xs text-muted-foreground">
+                <tr>
+                  {RULE_HEAD.map((h, i) => (
+                    <th key={i} className="px-3 py-2 font-medium">
+                      {h}
+                    </th>
                   ))}
-                </ul>
+                </tr>
+              </thead>
+              {OBJECTIVES.map((o) => {
+                const list = rules
+                  .filter((r) => r.objective === o)
+                  .sort((a, b) => a.waitMinutes - b.waitMinutes);
+                if (list.length === 0) return null;
+                return (
+                  <tbody key={o} role="group" aria-label={OBJECTIVE_LABEL[o]}>
+                    <tr className="border-t bg-muted/30">
+                      <td colSpan={RULE_HEAD.length} className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                        {OBJECTIVE_LABEL[o]} · {list.length}
+                      </td>
+                    </tr>
+                    {list.map((r) => (
+                      <RuleRow
+                        key={r.id}
+                        rule={r}
+                        stages={stages}
+                        templates={templates.data}
+                        isAdmin={isAdmin}
+                        onToggle={(rule, active) =>
+                          m.update.mutate(
+                            { id: rule.id, input: { active } },
+                            { onSuccess: () => toast.success(`${rule.name} ${active ? "activada" : "pausada"}`) },
+                          )
+                        }
+                        onEdit={(rule) => setDialog({ rule })}
+                        onDuplicate={(rule) => {
+                          m.create.mutate(duplicateRuleInput(rule), {
+                            onSuccess: () => toast.success("Copia creada, pausada."),
+                          });
+                        }}
+                        onDelete={setDeleting}
+                      />
+                    ))}
+                  </tbody>
+                );
+              })}
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card
+        title="Secuencias rápidas"
+        description="Tiempos de la Metodología de Venta por Impulso. Crean varias reglas de una vez; quedan pausadas hasta que las actives."
+        label="Secuencias rápidas"
+        action={<Sparkles className="h-4 w-4 text-[#4C2FB5]" />}
+      >
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {SEQUENCES.map((p) => {
+            const stage = presetStage(p.key, stages, wonStage);
+            const blocked = p.needsWonStage && !stage;
+            return (
+              <div key={p.key} className="flex flex-col gap-1.5 rounded-md border bg-background p-3">
+                <Badge variant="secondary" className="w-fit">
+                  {OBJECTIVE_LABEL[p.objective]}
+                </Badge>
+                <p className="text-sm font-medium">{p.name}</p>
+                <p className="flex-1 text-xs text-muted-foreground">{p.description}</p>
+                {blocked && (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-300">
+                    Necesitas una etapa de tipo Ganado en el Embudo.
+                  </p>
+                )}
+                {isAdmin && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={blocked}
+                    aria-label={`Crear secuencia ${p.name}`}
+                    onClick={() => setPreset(p)}
+                  >
+                    <Plus /> Usar
+                  </Button>
+                )}
               </div>
             );
           })}
-      </section>
+        </div>
+      </Card>
 
-      <section aria-label="Actividad reciente" className="space-y-2">
-        <h2 className="text-sm font-semibold">Actividad reciente</h2>
+      <TemplatesSection templates={templates.data} rules={rules} error={tplError} />
+
+      <UpcomingSection isAdmin={isAdmin} templates={templates.data} />
+
+      <Card title="Actividad reciente" description="Lo último que hicieron las reglas.">
         {runsQ.isLoading && (
           <p role="status" className="text-sm text-muted-foreground">
             Cargando actividad…
@@ -550,19 +880,24 @@ export default function SeguimientosView() {
           </p>
         )}
         {runsQ.data && runsQ.data.length > 0 && <RunsTable runs={runsQ.data} />}
-      </section>
+      </Card>
 
-      {dialog && (
+      {isAdmin && dialog && (
         <RuleDialog
           open
           rule={dialog.rule}
           stages={stages}
           templates={templates.data}
-          templatesError={templates.isError ? crmError(templates.error).message : null}
+          templatesError={tplError}
           onOpenChange={(o) => !o && setDialog(null)}
         />
       )}
-      <PresetConfirm key={preset?.key ?? "none"} preset={preset} wonStage={wonStage} onClose={() => setPreset(null)} />
+      <PresetConfirm
+        key={preset?.key ?? "none"}
+        preset={preset}
+        wonStage={preset ? presetStage(preset.key, stages, wonStage) : wonStage}
+        onClose={() => setPreset(null)}
+      />
       <ConfirmDialog
         open={!!deleting}
         title="Eliminar regla"

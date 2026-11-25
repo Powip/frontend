@@ -15,6 +15,8 @@ import type {
   Template,
 } from "@/types/crm";
 
+import axiosAuth from "@/lib/axiosAuth";
+
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
   usePathname: () => "/comercial/ventas-chat/seguimientos",
@@ -255,6 +257,7 @@ describe("Seguimientos · lista", () => {
   });
 
   it("activar y pausar llama al PATCH con active", async () => {
+    mockRole = "ADMIN";
     setup();
     fireEvent.click(await screen.findByRole("switch", { name: "Activar +2 h · recordatorio" }));
     await waitFor(() => expect(s.updateFollowupRule).toHaveBeenCalledWith("r1", { active: false }));
@@ -265,6 +268,7 @@ describe("Seguimientos · lista", () => {
   });
 
   it("eliminar pide confirmación", async () => {
+    mockRole = "ADMIN";
     setup();
     fireEvent.click(await screen.findByRole("button", { name: "Eliminar regla Saldo · aviso" }));
     expect(s.deleteFollowupRule).not.toHaveBeenCalled();
@@ -274,6 +278,7 @@ describe("Seguimientos · lista", () => {
   });
 
   it("duplicar crea una copia pausada", async () => {
+    mockRole = "ADMIN";
     setup();
     const row = (await screen.findAllByTestId("rule-row"))[0];
     fireEvent.click(within(row).getByRole("button", { name: /Duplicar/ }));
@@ -287,6 +292,7 @@ describe("Seguimientos · lista", () => {
 
 describe("Seguimientos · crear regla", () => {
   const open = async () => {
+    mockRole = "ADMIN";
     setup();
     fireEvent.click(await screen.findByRole("button", { name: /Nueva regla/ }));
     return within(await screen.findByRole("dialog"));
@@ -371,6 +377,7 @@ describe("Seguimientos · crear regla", () => {
 
 describe("Seguimientos · secuencias rápidas", () => {
   it("pide confirmación, avisa que quedan pausadas y crea reglas inactivas", async () => {
+    mockRole = "ADMIN";
     setup();
     fireEvent.click(await screen.findByRole("button", { name: "Crear secuencia Sin respuesta del equipo" }));
     const dlg = within(await screen.findByRole("dialog"));
@@ -393,9 +400,10 @@ describe("Seguimientos · secuencias rápidas", () => {
     );
   });
 
-  it("la secuencia de venta usa la plantilla elegida solo en los pasos de plantilla", async () => {
+  it("la recuperación del PDF (+3 h, +8 h, días 2-4) usa la plantilla solo en los pasos de plantilla", async () => {
+    mockRole = "ADMIN";
     setup();
-    fireEvent.click(await screen.findByRole("button", { name: "Crear secuencia Seguimiento de venta de 6 días" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Crear secuencia Recuperación de 4 días" }));
     const dlg = within(await screen.findByRole("dialog"));
     await waitFor(() => expect(within(dlg.getByLabelText(/Plantilla para los/)).getAllByRole("option").length).toBe(2));
     fireEvent.change(dlg.getByLabelText(/Plantilla para los/), {
@@ -411,7 +419,62 @@ describe("Seguimientos · secuencias rápidas", () => {
       "seguimiento_consulta",
       "seguimiento_consulta",
     ]);
+    expect(calls.map((c) => c.waitMinutes)).toEqual([180, 480, 2880, 4320, 5760]);
     expect(calls.every((c) => c.active === false)).toBe(true);
+  });
+});
+
+describe("Seguimientos · vendedora (R3)", () => {
+  it("ve las reglas pero no puede crear, editar, activar ni eliminar", async () => {
+    setup();
+    await screen.findAllByTestId("rule-row");
+    expect(screen.queryByRole("button", { name: /Nueva regla/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Eliminar regla/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Editar/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Crear secuencia/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText("Solo el administrador").length).toBeGreaterThan(0);
+  });
+});
+
+describe("Seguimientos · programados para hoy (S5)", () => {
+  const UP = {
+    ruleId: "r1",
+    ruleName: "+2 h · recordatorio",
+    objective: "sale",
+    target: "customer",
+    conversationId: "c9",
+    contactName: "Rosa Díaz",
+    channel: "whatsapp",
+    dueAt: "2026-11-24T20:30:00Z",
+    viaTemplate: false,
+    templateName: null,
+  };
+  beforeEach(() => {
+    (axiosAuth.get as jest.Mock).mockImplementation(async (url: string) =>
+      url.endsWith("/followup-rules/upcoming") ? { data: { items: [UP] } } : { data: {} },
+    );
+    (axiosAuth.post as jest.Mock).mockResolvedValue({ data: { result: "sent", detail: null } });
+  });
+  it("el administrador adelanta o cancela un envío", async () => {
+    mockRole = "ADMIN";
+    setup();
+    const row = await screen.findByTestId("upcoming-row");
+    expect(within(row).getByText("Rosa Díaz")).toBeInTheDocument();
+    expect(within(row).getByText("Gratis")).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: "Enviar ahora a Rosa Díaz" }));
+    await waitFor(() =>
+      expect(axiosAuth.post).toHaveBeenCalledWith(expect.stringContaining("/followup-rules/r1/conversations/c9/send-now")),
+    );
+    fireEvent.click(within(row).getByRole("button", { name: "Cancelar envío a Rosa Díaz" }));
+    await waitFor(() =>
+      expect(axiosAuth.post).toHaveBeenCalledWith(expect.stringContaining("/followup-rules/r1/conversations/c9/cancel")),
+    );
+  });
+  it("la vendedora ve la lista pero sin botones", async () => {
+    setup();
+    const row = await screen.findByTestId("upcoming-row");
+    expect(within(row).queryByRole("button")).not.toBeInTheDocument();
   });
 });
 
