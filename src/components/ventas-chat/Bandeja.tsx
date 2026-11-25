@@ -40,8 +40,8 @@ export default function Bandeja() {
 
   return (
     <div className="space-y-2">
+      <SoundsControl openConversationId={selectedId} showButton={false} />
       <div className="flex items-center justify-end gap-3">
-        <SoundsControl openConversationId={selectedId} showButton={false} />
         {stores.length > 1 && (
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             Tienda

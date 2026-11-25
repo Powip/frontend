@@ -206,7 +206,7 @@ export function SoundsDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl [&>*]:min-w-0">
         <DialogHeader>
           <DialogTitle>Sonidos y avisos</DialogTitle>
           <DialogDescription>
@@ -231,7 +231,7 @@ export function SoundsDialog({ onClose }: { onClose: () => void }) {
         {tab === "team" && isAdmin && teamValue && (
           <PrefsEditor value={teamValue} onChange={setTeam} lockedForUser={false} />
         )}
-        <DialogFooter className="gap-2 sm:justify-between">
+        <DialogFooter className="flex-wrap gap-2 sm:justify-between">
           {tab === "mine" ? (
             <Button
               variant="outline"
@@ -278,9 +278,23 @@ export default function SoundsControl({
   return (
     <>
       {!unlocked && prefs?.on && (
-        <Button size="sm" variant="outline" data-testid="activar-sonidos" onClick={() => void unlock()}>
-          <BellOff /> Activar sonidos
-        </Button>
+        <div
+          role="region"
+          aria-label="Activa los sonidos"
+          className="flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
+        >
+          <BellOff className="h-4 w-4 shrink-0" aria-hidden />
+          <span className="min-w-[12rem] flex-1">
+            <b>Activa los sonidos</b> para enterarte cuando un cliente está listo para comprar o se demora
+            una respuesta.
+          </span>
+          <Button size="sm" data-testid="activar-sonidos" onClick={() => void unlock()}>
+            Activar sonidos
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+            Configurar
+          </Button>
+        </div>
       )}
       {showButton && (
         <Button size="sm" variant="outline" aria-label="Sonidos y avisos" onClick={() => setOpen(true)}>
