@@ -4,7 +4,10 @@ import {
   inventoryRulesChanged,
   moveRule,
   parseReleaseDays,
-  releaseDaysToText,
+  defaultReleaseText,
+  releaseAfterDaysFrom,
+  releaseFormFrom,
+  STOCK_CONTROL_HELP,
   rulesChanged,
   rulesToDrafts,
   shadowedRuleKeys,
@@ -128,24 +131,57 @@ describe("reglas de reserva por región (FEAT-24 H2-F)", () => {
 });
 
 describe("reglas de inventario (FEAT-24 H2-F)", () => {
-  it("vacío = nunca; 1..365 entero", () => {
-    expect(parseReleaseDays("")).toEqual({ ok: true, value: null });
-    expect(parseReleaseDays("  ")).toEqual({ ok: true, value: null });
+  it("los días: entero de 1 a 365; vacío ya no vale «nunca» (FEAT-24 C-D4)", () => {
     expect(parseReleaseDays("7")).toEqual({ ok: true, value: 7 });
-    expect(parseReleaseDays("365")).toEqual({ ok: true, value: 365 });
+    expect(parseReleaseDays(" 365 ")).toEqual({ ok: true, value: 365 });
+    expect(parseReleaseDays("")).toMatchObject({ ok: false, error: expect.stringMatching(/de 1 a 365/) });
     expect(parseReleaseDays("0")).toMatchObject({ ok: false, error: expect.stringMatching(/de 1 a 365/) });
     expect(parseReleaseDays("366")).toMatchObject({ ok: false });
     expect(parseReleaseDays("2.5")).toMatchObject({ ok: false, error: expect.stringMatching(/entero/) });
     expect(parseReleaseDays("-3")).toMatchObject({ ok: false });
   });
 
-  it("muestra los días guardados y detecta cambios", () => {
-    expect(releaseDaysToText(null)).toBe("");
-    expect(releaseDaysToText(7)).toBe("7");
-    const saved = { releaseAfterDays: 7, pickingRequired: false };
-    expect(inventoryRulesChanged({ releaseDays: "7", pickingRequired: false }, saved)).toBe(false);
-    expect(inventoryRulesChanged({ releaseDays: "", pickingRequired: false }, saved)).toBe(true);
-    expect(inventoryRulesChanged({ releaseDays: "7", pickingRequired: true }, saved)).toBe(true);
-    expect(inventoryRulesChanged({ releaseDays: "abc", pickingRequired: false }, saved)).toBe(true);
+  it("guardado → formulario: null = por defecto, 0 = nunca, N = N días (FEAT-24 C-D4)", () => {
+    expect(releaseFormFrom(null)).toEqual({ releaseMode: "default", releaseDays: "" });
+    expect(releaseFormFrom(undefined)).toEqual({ releaseMode: "default", releaseDays: "" });
+    expect(releaseFormFrom(0)).toEqual({ releaseMode: "never", releaseDays: "" });
+    expect(releaseFormFrom(7)).toEqual({ releaseMode: "days", releaseDays: "7" });
+  });
+
+  it("formulario → PUT: por defecto = null, nunca = 0, días = 1..365", () => {
+    expect(releaseAfterDaysFrom({ releaseMode: "default", releaseDays: "9" })).toEqual({ ok: true, value: null });
+    expect(releaseAfterDaysFrom({ releaseMode: "never", releaseDays: "9" })).toEqual({ ok: true, value: 0 });
+    expect(releaseAfterDaysFrom({ releaseMode: "days", releaseDays: "9" })).toEqual({ ok: true, value: 9 });
+    expect(releaseAfterDaysFrom({ releaseMode: "days", releaseDays: "" })).toMatchObject({ ok: false });
+  });
+
+  it("el texto del valor por defecto", () => {
+    expect(defaultReleaseText(30)).toBe("30 días");
+    expect(defaultReleaseText(1)).toBe("1 día");
+    expect(defaultReleaseText(null)).toBe("nunca");
+    expect(defaultReleaseText(undefined)).toBe("nunca");
+  });
+
+  it("detecta cambios en los días, el picking y el control de stock", () => {
+    const saved = { releaseAfterDays: 7, pickingRequired: false, stockControl: "flexible" as const };
+    const form = { releaseMode: "days" as const, releaseDays: "7", pickingRequired: false, stockControl: "flexible" as const };
+    expect(inventoryRulesChanged(form, saved)).toBe(false);
+    expect(inventoryRulesChanged({ ...form, releaseMode: "default" }, saved)).toBe(true);
+    expect(inventoryRulesChanged({ ...form, releaseMode: "never" }, saved)).toBe(true);
+    expect(inventoryRulesChanged({ ...form, pickingRequired: true }, saved)).toBe(true);
+    expect(inventoryRulesChanged({ ...form, releaseDays: "abc" }, saved)).toBe(true);
+    expect(inventoryRulesChanged({ ...form, stockControl: "estricto" }, saved)).toBe(true);
+    // Sin el dato guardado, el control de stock es flexible.
+    expect(inventoryRulesChanged(form, { releaseAfterDays: 7, pickingRequired: false })).toBe(false);
+    // null = por defecto y 0 = nunca son distintos.
+    expect(inventoryRulesChanged({ ...form, releaseMode: "never" }, { ...saved, releaseAfterDays: 0 })).toBe(false);
+    expect(inventoryRulesChanged({ ...form, releaseMode: "default" }, { ...saved, releaseAfterDays: 0 })).toBe(true);
+  });
+
+  it("una línea de ayuda por modo de control de stock (FEAT-24 C-D3)", () => {
+    expect(STOCK_CONTROL_HELP.flexible).toBe(
+      "Permite registrar salidas que dejan el stock en negativo, con confirmación. Las reservas no frenan traslados.",
+    );
+    expect(STOCK_CONTROL_HELP.estricto).toBe("No permite salidas por debajo de 0 ni trasladar más que el disponible.");
   });
 });
