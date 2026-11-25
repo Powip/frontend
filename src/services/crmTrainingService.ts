@@ -25,12 +25,15 @@ export interface ExamCaseResult {
   toolCalls: string[];
   checks: { check: ExamCheck; pass: boolean; detail?: string }[];
   pass: boolean;
+  /** «No se pudo evaluar»: el proveedor falló en los 2 intentos. No cuenta como reprobado. */
   error?: string;
 }
 
 export interface ExamReport {
   passed: boolean;
   critical: { total: number; failed: number };
+  /** Casos que no se pudieron evaluar (fallo del proveedor). Con alguno, el examen no aprueba. */
+  unevaluated?: number;
   style: { total: number; passed: number; rate: number };
   cases: ExamCaseResult[];
   ranAt: string;
@@ -47,6 +50,10 @@ export interface PauTrainingVersion {
     sheets: number;
     objections: number;
     scriptSteps: number;
+    /** «own» = guion propio de la empresa; «methodology» = Pau usa el guion base. */
+    scriptSource?: "own" | "methodology";
+    /** Tiendas con guion propio. */
+    storeScripts?: number;
     materials: number;
     policies: number;
     photos: number;

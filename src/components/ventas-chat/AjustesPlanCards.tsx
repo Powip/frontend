@@ -1,5 +1,6 @@
 "use client";
 import { useState, type ReactNode } from "react";
+import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,13 +9,13 @@ import { crmError } from "@/services/crmService";
 import { useCrmMe } from "@/hooks/useCrmMe";
 import {
   useChannelAccounts,
+  useCrmAccess,
   useCrmPlan,
   useDisconnectChannelAccount,
   useReconnectChannelAccount,
   useUpdateChannelAccount,
-  useUpdateCrmPlan,
 } from "@/hooks/useCrmPlan";
-import type { ChannelAccount, CrmAccountType } from "@/services/crmPlanService";
+import type { ChannelAccount } from "@/services/crmPlanService";
 import { NATIVE_SELECT_CLASS } from "./format";
 
 const soles = (value: number) => `S/ ${Number.isInteger(value) ? value : value.toFixed(2)}`;
@@ -36,45 +37,20 @@ function Section({ id, title, description, children }: {
   );
 }
 
-function PlanBox({ title, price, detail, active, testId }: {
-  title: string;
-  price: string;
-  detail: string;
-  active: boolean;
-  testId: string;
-}) {
-  return (
-    <div
-      data-testid={testId}
-      aria-current={active ? "true" : undefined}
-      className={cn("rounded-md border p-3", active && "border-primary bg-primary/5")}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-sm font-medium">{title}</p>
-        {active && (
-          <span className="rounded bg-primary px-1.5 py-0.5 text-[11px] font-medium text-primary-foreground">
-            Tu plan
-          </span>
-        )}
-      </div>
-      <p className="text-lg font-semibold tabular-nums">
-        {price} <span className="text-xs font-normal text-muted-foreground">/ mes</span>
-      </p>
-      <p className="text-[11px] text-muted-foreground">{detail}</p>
-    </div>
-  );
-}
+const fecha = (iso: string) => {
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  return `${d}/${m}/${y}`;
+};
 
 /**
- * «Plan y vendedoras»: CRM + Pau o solo CRM, asientos incluidos y tipo de cuenta
- * (Core + CRM en app.powip.lat o Solo CRM en crm.powip.lat). Precios del .env de ms-crm;
- * aquí no se cobra nada.
+ * «Plan y vendedoras»: solo lectura. El plan (CRM o CRM + Pau) sale del pago confirmado en
+ * ms-subscription; aquí no se elige ni se cambia. Para contratar o cambiar: Configuración › Mi plan.
  */
 export function PlanCard() {
   const plan = useCrmPlan();
-  const update = useUpdateCrmPlan();
+  const access = useCrmAccess();
 
-  if (plan.isLoading) {
+  if (plan.isLoading || access.isLoading) {
     return (
       <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" /> Cargando plan…
@@ -89,32 +65,28 @@ export function PlanCard() {
     );
   }
   const q = plan.data;
+  const a = access.data;
   const overSeats = q.seats.used > q.seats.included;
-  const setType = (accountType: CrmAccountType) => {
-    if (accountType !== q.accountType) update.mutate({ accountType });
-  };
+  const paidName = a?.pau ? "CRM + Pau" : a?.crm ? "Solo CRM" : "Sin plan activo";
 
   return (
     <Section
       id="crm-plan"
       title="Plan y vendedoras"
-      description="Elige si tu equipo usa a Pau. Sin Pau, el CRM sigue igual y Pau queda apagado."
+      description="Tu plan sale de lo que pagaste. Para agregar Pau o cambiar de plan, ve a Mi plan."
     >
-      <div className="grid gap-2 sm:grid-cols-2">
-        <PlanBox
-          testId="plan-bundle"
-          title="CRM + Pau"
-          price={soles(q.prices.bundle)}
-          detail={q.bundleSavings > 0 ? `Ahorras ${soles(q.bundleSavings)} frente a comprarlos por separado` : "CRM y Pau juntos"}
-          active={q.pauOn}
-        />
-        <PlanBox
-          testId="plan-crm"
-          title="Solo CRM"
-          price={soles(q.prices.crm)}
-          detail={`Pau se agrega luego por ${soles(q.prices.pau)} al mes`}
-          active={!q.pauOn}
-        />
+      <div className="flex items-center justify-between rounded-md border px-3 py-2" data-testid="plan-paid">
+        <div>
+          <p className="text-sm font-medium">{paidName}</p>
+          {a?.until && (
+            <p className="text-[11px] text-muted-foreground">
+              {a.via === "MANUAL" ? "Activado por POWIP" : "Pagado"} hasta el {fecha(a.until)}
+            </p>
+          )}
+        </div>
+        <Button asChild size="sm" variant="outline">
+          <Link href="/configuracion/plan">Ver Mi plan</Link>
+        </Button>
       </div>
 
       <div className="space-y-1">
@@ -135,55 +107,6 @@ export function PlanCard() {
             {q.seats.extra} vendedora{q.seats.extra === 1 ? "" : "s"} extra × {soles(q.prices.extraSeat)}
           </p>
         )}
-      </div>
-
-      <div className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-2 text-sm">
-        <span>Total al mes</span>
-        <span className="font-semibold tabular-nums" data-testid="plan-total">{soles(q.monthlyTotal)}</span>
-      </div>
-
-      <div className="space-y-1">
-        <p className="text-xs text-muted-foreground">Tipo de cuenta</p>
-        <div role="radiogroup" aria-label="Tipo de cuenta" className="inline-flex rounded-md border p-0.5">
-          {(
-            [
-              ["core", "Core + CRM"],
-              ["solo", "Solo CRM"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              role="radio"
-              aria-checked={q.accountType === value}
-              disabled={update.isPending}
-              onClick={() => setType(value)}
-              className={cn(
-                "rounded px-3 py-1 text-xs font-medium",
-                q.accountType === value ? "bg-primary text-primary-foreground" : "text-muted-foreground",
-              )}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <p className="text-[11px] text-muted-foreground" data-testid="plan-domain">
-          Entras por {q.domain}
-          {q.accountType === "solo" ? " · solo el CRM de ventas por chat" : " · con todos los módulos de POWIP"}
-        </p>
-      </div>
-
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          size="sm"
-          variant={q.pauOn ? "outline" : "default"}
-          disabled={update.isPending}
-          onClick={() => update.mutate({ pauOn: !q.pauOn })}
-        >
-          {update.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
-          {q.pauOn ? "Cambiar a solo CRM" : `Agregar Pau · ${soles(q.prices.pau)}`}
-        </Button>
       </div>
     </Section>
   );

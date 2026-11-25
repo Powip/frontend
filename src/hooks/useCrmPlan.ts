@@ -2,21 +2,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { crmKeys } from "@/lib/crmSse";
+import { useAuth } from "@/contexts/AuthContext";
 import { crmError } from "@/services/crmService";
 import {
   disconnectChannelAccount,
+  getCrmAccess,
   getCrmPlan,
   listChannelAccounts,
   reconnectChannelAccount,
   updateChannelAccount,
-  updateCrmPlan,
   type ChannelAccount,
   type UpdateChannelAccountInput,
-  type UpdateCrmPlanInput,
 } from "@/services/crmPlanService";
 
 export const planKeys = {
   plan: ["crm", "plan"] as const,
+  access: ["crm", "access"] as const,
   channels: ["crm", "channels"] as const,
 };
 
@@ -26,29 +27,19 @@ export function useCrmPlan() {
   return useQuery({ queryKey: planKeys.plan, queryFn: getCrmPlan, retry: false });
 }
 
-export function useUpdateCrmPlan() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: UpdateCrmPlanInput) => updateCrmPlan(input),
-    onSuccess: (data, input) => {
-      qc.setQueryData(planKeys.plan, data);
-      // Quitar Pau apaga su modo en el servidor: refresca la pantalla de Pau.
-      qc.invalidateQueries({ queryKey: crmKeys.pauSettings });
-      if (input.pauOn !== undefined) {
-        toast.success(
-          data.pauOn
-            ? `Plan CRM + Pau · S/ ${data.prices.bundle}`
-            : "Plan solo CRM · Pau queda en «Solo CRM»",
-        );
-      } else if (input.accountType !== undefined) {
-        toast.success(
-          data.accountType === "solo"
-            ? `Cuenta Solo POWIP CRM · ${data.domain}`
-            : `Cuenta POWIP Core + CRM · ${data.domain}`,
-        );
-      }
-    },
-    onError,
+/**
+ * Acceso al CRM (correo permitido y pago confirmado). Si la consulta falla, quien la usa
+ * trata el CRM como cerrado: el menú y la ruta no se muestran sin una respuesta «allowed».
+ */
+export function useCrmAccess(enabled = true) {
+  const { auth } = useAuth();
+  return useQuery({
+    // Por usuario y empresa: al cambiar de cuenta no se reusa el acceso de otra.
+    queryKey: [...planKeys.access, auth?.user?.id ?? null, auth?.company?.id ?? null],
+    queryFn: getCrmAccess,
+    enabled: enabled && !!auth?.accessToken,
+    retry: false,
+    staleTime: 60_000,
   });
 }
 

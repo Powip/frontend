@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { CheckCircle2, Download, FileText, GraduationCap, Info, Loader2, Plus, XCircle } from "lucide-react";
+import { CheckCircle2, CircleHelp, Download, FileText, GraduationCap, Info, Loader2, Plus, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,19 +54,28 @@ function ExamResult({ exam }: { exam: ExamReport }) {
         Reglas críticas: {exam.critical.total - exam.critical.failed} / {exam.critical.total} · Estilo:{" "}
         {Math.round(exam.style.rate * 100)} % (mínimo 80 %){exam.model ? ` · Modelo: ${exam.model}` : ""}
       </p>
+      {(exam.unevaluated ?? 0) > 0 && (
+        <p className="text-sm text-amber-700" data-testid="exam-unevaluated">
+          {exam.unevaluated} caso{exam.unevaluated === 1 ? "" : "s"} no se pudo evaluar. Vuelve a rendir el examen.
+        </p>
+      )}
       <ul className="space-y-1.5">
         {exam.cases.map((c) => (
           <li key={c.caseId} className="rounded-md border p-2 text-sm">
             <div className="flex items-center gap-2 font-medium">
               {c.pass ? (
                 <CheckCircle2 className="h-4 w-4 text-accent" aria-label="Aprobado" />
+              ) : c.error ? (
+                <CircleHelp className="h-4 w-4 text-amber-600" aria-label="No se pudo evaluar" />
               ) : (
                 <XCircle className="h-4 w-4 text-destructive" aria-label="Reprobado" />
               )}
               {c.title}
             </div>
             {c.error ? (
-              <p className="mt-1 text-destructive">Error: {c.error}</p>
+              <p className="mt-1 text-amber-700" data-testid="case-unevaluated">
+                No se pudo evaluar: {c.error}
+              </p>
             ) : (
               <>
                 <p className="mt-1 whitespace-pre-wrap text-muted-foreground">{c.answer || "(sin texto)"}</p>
@@ -123,7 +132,9 @@ function VersionRow({ v }: { v: PauTrainingVersion }) {
         </span>
       </div>
       <p className="text-xs text-muted-foreground">
-        {s.sheets} fichas · {s.objections} objeciones · {s.scriptSteps} pasos de guion · {s.policies} config. de tienda ·{" "}
+        {s.sheets} fichas · {s.objections} objeciones · {s.scriptSteps} pasos de guion
+        {s.scriptSource === "methodology" ? " (guion base)" : s.scriptSource === "own" ? " (guion propio)" : ""}
+        {s.storeScripts ? ` · ${s.storeScripts} tienda${s.storeScripts === 1 ? "" : "s"} con guion propio` : ""} · {s.policies} config. de tienda ·{" "}
         {s.photos} fotos
       </p>
       <div className="flex flex-wrap gap-2">

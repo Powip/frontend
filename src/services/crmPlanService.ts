@@ -2,11 +2,12 @@ import axiosAuth from "@/lib/axiosAuth";
 import { API } from "@/lib/api";
 
 const PLAN = `${API.crm}/crm/plan`;
+const ACCESS = `${API.crm}/crm/access`;
 const CHANNELS = `${API.crm}/crm/channels`;
 
 export type CrmAccountType = "core" | "solo";
 
-/** Plan del CRM con precios del .env de ms-crm. Solo muestra precios; no cobra. */
+/** Plan del CRM: lo pagado en ms-subscription y precios provisionales (CRM_PLAN_*). Solo lectura. */
 export interface CrmPlanQuote {
   pauOn: boolean;
   accountType: CrmAccountType;
@@ -19,9 +20,19 @@ export interface CrmPlanQuote {
   monthlyTotal: number;
 }
 
-export interface UpdateCrmPlanInput {
-  pauOn?: boolean;
-  accountType?: CrmAccountType;
+export type CrmDenyReason = "no_company" | "email" | "email_unverified" | "role" | "not_paid" | "unavailable";
+
+/** Quién puede entrar al CRM y qué pagó la empresa. Lo decide ms-crm (correo permitido + pago). */
+export interface CrmAccess {
+  allowed: boolean;
+  reason?: CrmDenyReason;
+  level: string | null;
+  crm: boolean;
+  pau: boolean;
+  until: string | null;
+  source: string | null;
+  /** MANUAL = activado por POWIP sin cobro; FLOW / MERCADOPAGO = pagado. */
+  via?: string | null;
 }
 
 export interface ChannelAccount {
@@ -43,8 +54,8 @@ export async function getCrmPlan(): Promise<CrmPlanQuote> {
   return (await axiosAuth.get<CrmPlanQuote>(PLAN)).data;
 }
 
-export async function updateCrmPlan(input: UpdateCrmPlanInput): Promise<CrmPlanQuote> {
-  return (await axiosAuth.patch<CrmPlanQuote>(PLAN, input)).data;
+export async function getCrmAccess(): Promise<CrmAccess> {
+  return (await axiosAuth.get<CrmAccess>(ACCESS)).data;
 }
 
 export async function listChannelAccounts(): Promise<ChannelAccount[]> {

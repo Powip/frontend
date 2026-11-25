@@ -9,6 +9,9 @@ jest.mock("@/lib/axiosAuth", () => ({
   __esModule: true,
   default: { get: jest.fn(), post: jest.fn(), put: jest.fn(), patch: jest.fn(), delete: jest.fn() },
 }));
+jest.mock("@/contexts/AuthContext", () => ({
+  useAuth: () => ({ auth: { accessToken: "t", user: { id: "u1" }, company: { id: "co1" } } }),
+}));
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 jest.mock("@/hooks/useCrmMe", () => ({
   useCrmMe: () => ({
@@ -26,7 +29,7 @@ jest.mock("@/hooks/useCrmMe", () => ({
 jest.mock("@/services/crmPlanService", () => ({
   ...jest.requireActual("@/services/crmPlanService"),
   getCrmPlan: jest.fn(),
-  updateCrmPlan: jest.fn(),
+  getCrmAccess: jest.fn(),
   listChannelAccounts: jest.fn(),
   updateChannelAccount: jest.fn(),
   disconnectChannelAccount: jest.fn(),
@@ -48,6 +51,16 @@ const quote = (over: Partial<svc.CrmPlanQuote> = {}): svc.CrmPlanQuote => ({
   ...over,
 });
 
+const access = (over: Partial<svc.CrmAccess> = {}): svc.CrmAccess => ({
+  allowed: true,
+  level: "admin",
+  crm: true,
+  pau: true,
+  until: "2026-12-23",
+  source: "subscription",
+  ...over,
+});
+
 const account = (over: Partial<svc.ChannelAccount> = {}): svc.ChannelAccount => ({
   id: "a1",
   channel: "whatsapp",
@@ -66,63 +79,34 @@ const renderWith = (ui: React.ReactElement) => {
 
 beforeEach(() => jest.clearAllMocks());
 
-describe("PlanCard", () => {
-  it("muestra CRM + Pau, vendedoras y total", async () => {
+describe("PlanCard (solo lectura: el plan sale del pago)", () => {
+  it("muestra lo pagado, hasta cuándo y las vendedoras; sin botones para cambiar el plan", async () => {
     m.getCrmPlan.mockResolvedValue(quote());
+    m.getCrmAccess.mockResolvedValue(access());
     renderWith(<PlanCard />);
-    const bundle = await screen.findByTestId("plan-bundle");
-    expect(bundle).toHaveAttribute("aria-current", "true");
-    expect(within(bundle).getByText(/S\/ 119/)).toBeInTheDocument();
-    expect(within(bundle).getByText(/Ahorras S\/ 9/)).toBeInTheDocument();
+    const paid = await screen.findByTestId("plan-paid");
+    expect(paid).toHaveTextContent("CRM + Pau");
+    expect(paid).toHaveTextContent("Pagado hasta el 23/12/2026");
+    expect(within(paid).getByRole("link", { name: "Ver Mi plan" })).toHaveAttribute("href", "/configuracion/plan");
     expect(screen.getByTestId("plan-seats")).toHaveTextContent("3 / 5 incluidas");
-    expect(screen.getByTestId("plan-total")).toHaveTextContent("S/ 119");
-    expect(screen.getByTestId("plan-domain")).toHaveTextContent("app.powip.lat");
-    expect(screen.getByRole("radio", { name: "Core + CRM" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Agregar Pau|Cambiar a solo CRM/ })).not.toBeInTheDocument();
   });
 
-  it("«Cambiar a solo CRM» manda pauOn false y avisa", async () => {
-    m.getCrmPlan.mockResolvedValue(quote());
-    m.updateCrmPlan.mockResolvedValue(quote({ pauOn: false, basePrice: 79, monthlyTotal: 79 }));
+  it("solo CRM y activación manual", async () => {
+    m.getCrmPlan.mockResolvedValue(quote({ pauOn: false }));
+    m.getCrmAccess.mockResolvedValue(access({ pau: false, via: "MANUAL" }));
     renderWith(<PlanCard />);
-    fireEvent.click(await screen.findByRole("button", { name: "Cambiar a solo CRM" }));
-    await waitFor(() => expect(m.updateCrmPlan).toHaveBeenCalledWith({ pauOn: false }));
-    await waitFor(() => expect(t.success).toHaveBeenCalledWith("Plan solo CRM · Pau queda en «Solo CRM»"));
-    expect(await screen.findByRole("button", { name: "Agregar Pau · S/ 49" })).toBeInTheDocument();
-    expect(screen.getByTestId("plan-crm")).toHaveAttribute("aria-current", "true");
-    expect(screen.getByTestId("plan-total")).toHaveTextContent("S/ 79");
-  });
-
-  it("«Agregar Pau» avisa el precio del paquete", async () => {
-    m.getCrmPlan.mockResolvedValue(quote({ pauOn: false, basePrice: 79, monthlyTotal: 79 }));
-    m.updateCrmPlan.mockResolvedValue(quote());
-    renderWith(<PlanCard />);
-    fireEvent.click(await screen.findByRole("button", { name: "Agregar Pau · S/ 49" }));
-    await waitFor(() => expect(m.updateCrmPlan).toHaveBeenCalledWith({ pauOn: true }));
-    await waitFor(() => expect(t.success).toHaveBeenCalledWith("Plan CRM + Pau · S/ 119"));
+    const paid = await screen.findByTestId("plan-paid");
+    expect(paid).toHaveTextContent("Solo CRM");
+    expect(paid).toHaveTextContent("Activado por POWIP hasta el 23/12/2026");
   });
 
   it("muestra vendedoras extra", async () => {
-    m.getCrmPlan.mockResolvedValue(quote({ seats: { used: 7, included: 5, extra: 2 }, monthlyTotal: 139 }));
+    m.getCrmPlan.mockResolvedValue(quote({ seats: { used: 7, included: 5, extra: 2 } }));
+    m.getCrmAccess.mockResolvedValue(access());
     renderWith(<PlanCard />);
-    expect(await screen.findByText("2 vendedoras extra × S/ 10")).toBeInTheDocument();
-    expect(screen.getByTestId("plan-total")).toHaveTextContent("S/ 139");
-  });
-
-  it("cambia a cuenta Solo CRM con su dominio", async () => {
-    m.getCrmPlan.mockResolvedValue(quote());
-    m.updateCrmPlan.mockResolvedValue(quote({ accountType: "solo", domain: "crm.powip.lat" }));
-    renderWith(<PlanCard />);
-    fireEvent.click(await screen.findByRole("radio", { name: "Solo CRM" }));
-    await waitFor(() => expect(m.updateCrmPlan).toHaveBeenCalledWith({ accountType: "solo" }));
-    await waitFor(() => expect(t.success).toHaveBeenCalledWith("Cuenta Solo POWIP CRM · crm.powip.lat"));
-    expect(await screen.findByTestId("plan-domain")).toHaveTextContent("crm.powip.lat");
-  });
-
-  it("no manda nada al tocar el tipo de cuenta actual", async () => {
-    m.getCrmPlan.mockResolvedValue(quote());
-    renderWith(<PlanCard />);
-    fireEvent.click(await screen.findByRole("radio", { name: "Core + CRM" }));
-    expect(m.updateCrmPlan).not.toHaveBeenCalled();
+    expect(await screen.findByText(/2 vendedoras extra × S\/ 10/)).toBeInTheDocument();
   });
 });
 

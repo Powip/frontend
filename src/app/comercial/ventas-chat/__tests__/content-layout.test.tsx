@@ -5,8 +5,10 @@ import VentasChatLayout from "@/app/comercial/ventas-chat/layout";
 import GuionView from "@/components/ventas-chat/GuionView";
 import ObjecionesView from "@/components/ventas-chat/ObjecionesView";
 import * as content from "@/services/crmContentService";
+import * as plan from "@/services/crmPlanService";
 
 let mockRole = "ADMIN";
+let mockPath = "/comercial/ventas-chat/bandeja";
 jest.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
     auth: { accessToken: "t", user: { id: "u1", name: "Jairo", role: mockRole }, company: { id: "co1" } },
@@ -16,7 +18,7 @@ jest.mock("@/config/permissions.config", () => ({
   hasAdminAccess: (role?: string) => role === "ADMIN",
 }));
 jest.mock("next/navigation", () => ({
-  usePathname: () => "/comercial/ventas-chat/bandeja",
+  usePathname: () => mockPath,
 }));
 jest.mock("@/lib/axiosAuth", () => ({
   __esModule: true,
@@ -32,7 +34,15 @@ jest.mock("@/services/crmContentService", () => ({
   listObjections: jest.fn(),
   getObjectionStats: jest.fn(),
 }));
+jest.mock("@/services/crmPlanService", () => ({
+  ...jest.requireActual("@/services/crmPlanService"),
+  getCrmAccess: jest.fn(),
+}));
 const c = content as jest.Mocked<typeof content>;
+const p = plan as jest.Mocked<typeof plan>;
+const allowed = (over: Partial<plan.CrmAccess> = {}): plan.CrmAccess => ({
+  allowed: true, level: "admin", crm: true, pau: true, until: "2026-12-23", source: "subscription", ...over,
+});
 
 const wrap = (ui: React.ReactNode) =>
   render(
@@ -44,25 +54,63 @@ const wrap = (ui: React.ReactNode) =>
 beforeEach(() => {
   jest.clearAllMocks();
   mockRole = "ADMIN";
+  mockPath = "/comercial/ventas-chat/bandeja";
+  p.getCrmAccess.mockResolvedValue(allowed());
 });
 
 describe("Ventas por chat · pestañas por rol", () => {
-  it("el administrador ve todas las pestañas", () => {
+  it("el administrador ve todas las pestañas", async () => {
     wrap(<VentasChatLayout>x</VentasChatLayout>);
-    const nav = screen.getByRole("navigation", { name: "Secciones de Ventas por chat" });
-    for (const label of ["Bandeja", "Ficha de venta", "Guion y material", "Objeciones", "Equipo", "Auditoría", "Ajustes"]) {
+    const nav = await screen.findByRole("navigation", { name: "Secciones de Ventas por chat" });
+    for (const label of ["Bandeja", "Pau", "Ficha de venta", "Guion y material", "Objeciones", "Equipo", "Auditoría", "Ajustes"]) {
       expect(nav).toHaveTextContent(label);
     }
   });
 
-  it("quien no es administrador no ve las pestañas adminOnly, pero sí las demás", () => {
+  it("quien no es administrador no ve las pestañas adminOnly, pero sí las demás", async () => {
     mockRole = "VENTAS";
     wrap(<VentasChatLayout>x</VentasChatLayout>);
-    expect(screen.getByRole("link", { name: "Bandeja" })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Bandeja" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ficha de venta" })).toBeInTheDocument();
     for (const label of ["Guion y material", "Objeciones", "Equipo", "Auditoría", "Ajustes"]) {
       expect(screen.queryByRole("link", { name: label })).not.toBeInTheDocument();
     }
+  });
+});
+
+describe("Ventas por chat · acceso y pago", () => {
+  it("sin pago: muestra la pantalla de pago con enlace a Mi plan y no el contenido", async () => {
+    p.getCrmAccess.mockResolvedValue(allowed({ allowed: false, reason: "not_paid", crm: false, pau: false, level: null }));
+    wrap(<VentasChatLayout>contenido</VentasChatLayout>);
+    const wall = await screen.findByTestId("crm-paywall");
+    expect(wall).toHaveAttribute("data-reason", "not_paid");
+    expect(screen.getByRole("link", { name: "Ver planes y pagar" })).toHaveAttribute("href", "/configuracion/plan");
+    expect(screen.queryByText("contenido")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Secciones de Ventas por chat" })).not.toBeInTheDocument();
+  });
+
+  it("correo no permitido: bloqueado sin ofrecer pago", async () => {
+    p.getCrmAccess.mockResolvedValue(allowed({ allowed: false, reason: "email", crm: false, pau: false }));
+    wrap(<VentasChatLayout>contenido</VentasChatLayout>);
+    expect(await screen.findByTestId("crm-paywall")).toHaveAttribute("data-reason", "email");
+    expect(screen.queryByRole("link", { name: "Ver planes y pagar" })).not.toBeInTheDocument();
+    expect(screen.queryByText("contenido")).not.toBeInTheDocument();
+  });
+
+  it("si la consulta falla, el CRM queda cerrado", async () => {
+    p.getCrmAccess.mockRejectedValue(new Error("down"));
+    wrap(<VentasChatLayout>contenido</VentasChatLayout>);
+    expect(await screen.findByText("No pudimos confirmar tu plan")).toBeInTheDocument();
+    expect(screen.queryByText("contenido")).not.toBeInTheDocument();
+  });
+
+  it("solo CRM: sin pestaña Pau y la ruta de Pau enseña cómo agregarlo", async () => {
+    p.getCrmAccess.mockResolvedValue(allowed({ pau: false }));
+    mockPath = "/comercial/ventas-chat/pau";
+    wrap(<VentasChatLayout>pantalla de pau</VentasChatLayout>);
+    expect(await screen.findByTestId("pau-paywall")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Pau" })).not.toBeInTheDocument();
+    expect(screen.queryByText("pantalla de pau")).not.toBeInTheDocument();
   });
 });
 

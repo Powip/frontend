@@ -108,6 +108,35 @@ describe("PauTrainingSection", () => {
     await waitFor(() => expect(activatePauTraining).toHaveBeenCalledWith("t1"));
   });
 
+  it("un caso que falló por el proveedor sale «No se pudo evaluar» con el motivo, y el guion base se nombra", async () => {
+    const exam = {
+      passed: false,
+      critical: { total: 1, failed: 0 },
+      unevaluated: 1,
+      style: { total: 0, passed: 0, rate: 1 },
+      cases: [
+        { caseId: "precio", title: "Pregunta el precio", answer: "", toolCalls: [], checks: [], pass: false, error: "timeout de 60 s" },
+      ],
+      ranAt: "2026-11-25T10:00:00.000Z",
+      model: null,
+    };
+    (getPauTrainings as jest.Mock).mockResolvedValue(
+      overview([
+        version({
+          status: "failed",
+          exam,
+          sources: { sheets: 2, objections: 3, scriptSteps: 6, scriptSource: "methodology", storeScripts: 1, materials: 1, policies: 1, photos: 1 },
+        }),
+      ]),
+    );
+    renderIt();
+    expect(await screen.findByText(/6 pasos de guion/)).toHaveTextContent("(guion base)");
+    expect(screen.getByText(/1 tienda con guion propio/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Ver examen" }));
+    expect(screen.getByTestId("exam-unevaluated")).toHaveTextContent("1 caso no se pudo evaluar");
+    expect(screen.getByTestId("case-unevaluated")).toHaveTextContent("No se pudo evaluar: timeout de 60 s");
+  });
+
   it("avisa si el contenido cambió desde la versión activa", async () => {
     (getPauTrainings as jest.Mock).mockResolvedValue(
       overview([version({ status: "active" })], { outdated: true }),

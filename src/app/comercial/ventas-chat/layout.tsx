@@ -5,10 +5,12 @@ import { useState, type ReactNode } from "react";
 import { Bell, Maximize2, Minimize2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCrmMe } from "@/hooks/useCrmMe";
+import { useCrmAccess } from "@/hooks/useCrmPlan";
+import { CrmPaywall, PauPaywall } from "@/components/ventas-chat/CrmPaywall";
 import WhatsAppCallOverlay from "@/components/ventas-chat/WhatsAppCallOverlay";
 import { SoundsDialog } from "@/components/ventas-chat/SoundsControl";
 import { VistaProvider, useVista } from "@/components/ventas-chat/VistaContext";
-import { VENTAS_CHAT_TABS } from "./tabs";
+import { PAU_TAB_HREF, VENTAS_CHAT_TABS } from "./tabs";
 
 /** Control de la cabecera (mockup 152): Vista completa / Vista enfocada + campanita de sonidos. */
 function ViewModeControl() {
@@ -47,7 +49,15 @@ function VentasChatShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { isAdmin } = useCrmMe();
   const { focused } = useVista();
-  const tabs = VENTAS_CHAT_TABS.filter((t) => !t.adminOnly || isAdmin);
+  const access = useCrmAccess();
+  // Sin Pau pagado la pestaña de Pau no se muestra (y su ruta enseña cómo agregarlo).
+  const pauPaid = access.data?.pau === true;
+  const tabs = VENTAS_CHAT_TABS.filter((t) => (!t.adminOnly || isAdmin) && (t.href !== PAU_TAB_HREF || pauPaid));
+  const onPau = pathname === PAU_TAB_HREF || pathname.startsWith(`${PAU_TAB_HREF}/`);
+  // Sin respuesta «allowed» (error, sin pago, correo no permitido) el CRM queda cerrado.
+  if (access.isLoading || access.data?.allowed !== true) {
+    return <CrmPaywall access={access.data} loading={access.isLoading} />;
+  }
   const nav = (
     // Control segmentado (mockup 152): pastillas con ícono dentro de una franja suave.
     // En escritorio las pestañas bajan a otra fila (sin scroll horizontal), como el mockup v8.
@@ -101,7 +111,7 @@ function VentasChatShell({ children }: { children: ReactNode }) {
           <div className="mt-2 flex w-full justify-center">{nav}</div>
         </div>
       )}
-      {children}
+      {onPau && !pauPaid ? <PauPaywall /> : children}
       {/* Llamadas reales de WhatsApp: entrantes, salientes y resultado. */}
       <WhatsAppCallOverlay />
     </div>

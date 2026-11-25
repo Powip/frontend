@@ -65,6 +65,7 @@ import {
 } from "@/components/ui/layout/avatar";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCrmAccess } from "@/hooks/useCrmPlan";
 import { CRM_VIEW_EVENT, readCrmFocused } from "@/components/ventas-chat/VistaContext";
 import { useRouter, usePathname } from "next/navigation";
 import {
@@ -159,6 +160,10 @@ export function Sidebar({ className }: SidebarProps) {
     gcTime: 0,
   });
   const canAccessLive = liveAccess.isSuccess && liveAccess.data?.available === true;
+  // «Ventas por chat» solo con acceso confirmado por ms-crm (correo permitido y pago); si la
+  // consulta falla o tarda, el menú no lo muestra.
+  const crmAccess = useCrmAccess(!!auth?.company?.id);
+  const canAccessCrm = crmAccess.isSuccess && crmAccess.data?.allowed === true;
   const commercialAccess = useQuery({
     queryKey: ["commercial-leads-capabilities", auth?.user.id, auth?.company?.id, auth?.user.role, auth?.user.permissions],
     queryFn: getCommercialLeadCapabilities,
@@ -213,12 +218,16 @@ export function Sidebar({ className }: SidebarProps) {
             href: "/ventas",
             icon: ShoppingCart,
           },
-          {
-            name: "Ventas por chat",
-            href: "/comercial/ventas-chat",
-            icon: MessageCircle,
-            addon: true,
-          },
+          ...(canAccessCrm
+            ? [
+                {
+                  name: "Ventas por chat",
+                  href: "/comercial/ventas-chat",
+                  icon: MessageCircle,
+                  addon: true,
+                },
+              ]
+            : []),
           {
             name: "Cotizaciones",
             href: "/cotizaciones",
@@ -404,7 +413,7 @@ export function Sidebar({ className }: SidebarProps) {
         href: "/superadmin",
       },
     ],
-    [canViewCommercialLeads, canManageCommercialLeadTypes, canAccessLive],
+    [canViewCommercialLeads, canManageCommercialLeadTypes, canAccessLive, canAccessCrm],
   );
 
   // Auto-colapsar en móviles y en la vista enfocada de Ventas por chat (barra de íconos).
