@@ -144,7 +144,15 @@ export async function updateTransfer(transferId: string, body: SaveTransferBody)
   return data;
 }
 
-export async function dispatchTransfer(transferId: string, body: { operationId: string }, timeoutMs?: number): Promise<TransferOperationResult> {
+/**
+ * Despacha el borrador. FEAT-24 C-D3: `allowNegative: true` confirma que el físico del origen queda en negativo (solo
+ * con control de stock flexible); se manda solo cuando es `true`. Sin él, 409 `STOCK_NEGATIVO_CONFIRMAR`.
+ */
+export async function dispatchTransfer(
+  transferId: string,
+  body: { operationId: string; allowNegative?: true },
+  timeoutMs?: number,
+): Promise<TransferOperationResult> {
   const { data } = await axiosAuth.post<TransferOperationResult>(`${transfers()}/${id(transferId)}/dispatch`, body, ...opArgs(body.operationId, timeoutMs));
   return data;
 }
@@ -219,6 +227,11 @@ export interface CreateAdjustmentBody {
   /** FEAT-24 H5-L: `lotId` opcional (salida sin él: el que vence antes; entrada sin él: «sin lote»). */
   lines: Array<{ variantId: string; quantity: number; direction?: "IN" | "OUT"; lotId?: string }>;
   operationId: string;
+  /**
+   * FEAT-24 C-D3: confirma las salidas que dejan el físico en negativo (solo cuenta con control de stock flexible y si
+   * el ajuste se aplica en el acto). Solo se manda cuando es `true`; sin él, 409 `STOCK_NEGATIVO_CONFIRMAR`.
+   */
+  allowNegative?: true;
 }
 
 export interface AdjustmentResult {

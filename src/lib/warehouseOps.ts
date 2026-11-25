@@ -445,7 +445,8 @@ export function adjustmentFormProblem(form: AdjustmentForm): string | null {
   return bad ? `Revisa la cantidad de ${bad.label}: entero entre 1 y 10.000.` : null;
 }
 
-export function buildAdjustmentBody(form: AdjustmentForm, operationId: string): CreateAdjustmentBody {
+/** `allowNegative` (FEAT-24 C-D3): las salidas que dejan el físico en negativo están confirmadas; solo viaja si es `true`. */
+export function buildAdjustmentBody(form: AdjustmentForm, operationId: string, allowNegative = false): CreateAdjustmentBody {
   const kind: AdjustmentKind = form.type === "merma" ? "merma" : "ajuste";
   const direction = form.type === "positivo" ? "IN" : "OUT";
   return {
@@ -460,6 +461,7 @@ export function buildAdjustmentBody(form: AdjustmentForm, operationId: string): 
       ...(line.lotId ? { lotId: line.lotId } : {}),
     })),
     operationId,
+    ...(allowNegative ? { allowNegative: true as const } : {}),
   };
 }
 

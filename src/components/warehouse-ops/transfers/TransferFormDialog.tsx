@@ -31,8 +31,16 @@ import {
   transferFormProblem,
   type TransferForm,
 } from "@/lib/warehouseOps";
+import {
+  formatSignedStock,
+  isNegativeStockConfirmError,
+  negativeAfterExit,
+  negativeStockConfirmMessage,
+} from "@/lib/stockControl";
+import { useStockControl } from "@/hooks/useStockControl";
 import { getStockByVariants } from "@/services/inventoryItems.service";
 import { createTransfer, dispatchTransfer, updateTransfer, type Transfer } from "@/services/warehouseOpsService";
+import NegativeStockConfirm from "@/components/inventory/NegativeStockConfirm";
 import { ErrorBox, SELECT_CLASS } from "../OpsBits";
 import { useCompanyWarehouses } from "@/hooks/useCompanyWarehouses";
 import VariantLinePicker from "../VariantLinePicker";
@@ -42,6 +50,10 @@ import VariantLinePicker from "../VariantLinePicker";
 // logístico, no va al costo), guía de remisión y la grilla de variantes con el
 // disponible en el origen y el saldo que queda. «Despachar ahora» guarda y
 // despacha: el stock sale del origen y queda «en camino».
+// FEAT-24 C-D3 — con control de stock estricto no se envía más que el
+// disponible (como antes). En flexible, superar el disponible solo avisa (las
+// reservas viejas no frenan el traslado) y, si el físico del origen queda en
+// negativo, despachar pide una casilla y manda `allowNegative`.
 
 /** Se guardó el borrador pero no se pudo despachar: el reintento usa el mismo borrador y la misma clave. */
 class NotDispatchedError extends Error {
@@ -68,9 +80,15 @@ export default function TransferFormDialog({ companyId, transfer, defaultOriginI
   const { warehouses, query: warehousesQuery } = useCompanyWarehouses();
   const [form, setForm] = useState<TransferForm>(() => (transfer ? transferFormFrom(transfer) : emptyTransferForm(defaultOriginId ?? "", defaultDestinationId ?? "")));
   const [savedId, setSavedId] = useState<string | null>(transfer?.id ?? null);
-  const [dispatchKey] = useState(() => newOperationId());
+  const stockControl = useStockControl();
+  const flexible = stockControl === "flexible";
+  const [dispatchKey, setDispatchKey] = useState(() => newOperationId());
   const [touched, setTouched] = useState(false);
+  const [triedDispatch, setTriedDispatch] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [negativeConfirmed, setNegativeConfirmed] = useState(false);
+  // Mensaje del 409 `STOCK_NEGATIVO_CONFIRMAR` al despachar.
+  const [serverConfirm, setServerConfirm] = useState<string | null>(null);
 
   const active = useMemo(() => warehouses.filter((warehouse) => warehouse.status || warehouse.id === transfer?.originInventoryId), [warehouses, transfer]);
   const origins = useMemo(() => scope.operable(active), [scope, active]);
@@ -104,11 +122,27 @@ export default function TransferFormDialog({ companyId, transfer, defaultOriginI
     return map;
   }, [stockQuery.data, stockAt, form.lines, form.originInventoryId]);
 
-  const problem = transferFormProblem(form, availableInOrigin);
+  // FEAT-24 C-D3: el tope del disponible solo frena en estricto; en flexible es informativo.
+  const problem = transferFormProblem(form, flexible ? undefined : availableInOrigin);
+  const negativeLines = useMemo(() => {
+    if (!stockQuery.data || !form.originInventoryId) return new Map<string, number>();
+    const physical = new Map(form.lines.map((line) => [line.variantId, stockAt.get(`${line.variantId}|${form.originInventoryId}`)?.physical ?? 0]));
+    return negativeAfterExit(
+      form.lines.map((line) => ({ variantId: line.variantId, quantity: parseQuantity(line.quantity, 0) ?? 0 })),
+      physical,
+    );
+  }, [stockQuery.data, stockAt, form.lines, form.originInventoryId]);
+  const needsNegativeConfirm = (flexible && negativeLines.size > 0) || serverConfirm !== null;
+  const confirmProblem = needsNegativeConfirm && !negativeConfirmed ? "Para despachar, confirma que el físico del origen quedará en negativo." : null;
   const totalUnits = form.lines.reduce((sum, line) => sum + (parseQuantity(line.quantity, 1) ?? 0), 0);
 
   const change = (patch: Partial<TransferForm>) => {
     setServerError(null);
+    // Otro origen o líneas: lo confirmado ya no es lo mismo.
+    if (patch.lines !== undefined || patch.originInventoryId !== undefined) {
+      setNegativeConfirmed(false);
+      setServerConfirm(null);
+    }
     setForm((current) => ({ ...current, ...patch }));
   };
 
@@ -119,7 +153,10 @@ export default function TransferFormDialog({ companyId, transfer, defaultOriginI
       setSavedId(saved.id);
       if (!dispatch) return { transfer: saved, dispatched: false };
       try {
-        const result = await dispatchTransfer(saved.id, { operationId: dispatchKey });
+        const result = await dispatchTransfer(saved.id, {
+          operationId: dispatchKey,
+          ...(needsNegativeConfirm && negativeConfirmed ? { allowNegative: true as const } : {}),
+        });
         return { transfer: result.transfer, dispatched: true };
       } catch (cause) {
         throw new NotDispatchedError(saved, cause);
@@ -132,6 +169,13 @@ export default function TransferFormDialog({ companyId, transfer, defaultOriginI
       onSaved(saved, dispatched);
     },
     onError: (error) => {
+      if (error instanceof NotDispatchedError && isNegativeStockConfirmError(error.failure)) {
+        // El despacho rechazado no quedó registrado: el que sigue, con la confirmación, lleva otra clave.
+        setDispatchKey(newOperationId());
+        setNegativeConfirmed(false);
+        setServerConfirm(`${error.transfer.number} quedó guardado como borrador. ${negativeStockConfirmMessage(error.failure)}`);
+        return;
+      }
       if (error instanceof NotDispatchedError) {
         setServerError(`${error.transfer.number} quedó guardado como borrador, pero no se pudo despachar: ${opsErrorMessage(error.failure, "inténtalo de nuevo.")}`);
         return;
@@ -142,7 +186,8 @@ export default function TransferFormDialog({ companyId, transfer, defaultOriginI
   const busy = save.isPending;
   const submit = (dispatch: boolean) => {
     setTouched(true);
-    if (problem) return;
+    setTriedDispatch(dispatch);
+    if (problem || (dispatch && confirmProblem)) return;
     save.mutate(dispatch);
   };
 
@@ -270,6 +315,7 @@ export default function TransferFormDialog({ companyId, transfer, defaultOriginI
                   const available = stockQuery.data && form.originInventoryId ? (origin ? origin.physical - origin.reserved : 0) : null;
                   const quantity = parseQuantity(line.quantity, 0) ?? 0;
                   const over = available !== null && quantity > available;
+                  const negative = negativeLines.get(line.variantId);
                   const today = stockQuery.data && form.destinationInventoryId ? (destination?.physical ?? 0) : null;
                   return (
                     <tr key={line.variantId} className="border-t" data-testid={`tr-line-${line.variantId}`}>
@@ -305,11 +351,19 @@ export default function TransferFormDialog({ companyId, transfer, defaultOriginI
                           }
                         />
                       </td>
-                      <td className={`px-3 py-2 text-right font-semibold tabular-nums ${over ? "text-destructive" : ""}`}>{available !== null ? available - quantity : "—"}</td>
+                      <td className={`px-3 py-2 text-right font-semibold tabular-nums ${over ? (flexible ? "text-amber-600" : "text-destructive") : ""}`}>
+                        {available !== null ? available - quantity : "—"}
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums">{today ?? "—"}</td>
                       <td className="px-3 py-2 text-right font-semibold tabular-nums">{today !== null ? today + quantity : "—"}</td>
                       <td className="px-3 py-2 text-right">
-                        {over ? <span className="mr-2 text-xs text-destructive">Supera el disponible</span> : null}
+                        {over && !flexible ? <span className="mr-2 text-xs text-destructive">Supera el disponible</span> : null}
+                        {over && flexible ? (
+                          <span className="mr-2 text-xs text-amber-600">Supera el disponible: hay reservas que quedarán sin stock</span>
+                        ) : null}
+                        {negative !== undefined ? (
+                          <span className="mr-2 block text-xs font-medium text-destructive">El físico queda en {formatSignedStock(negative)}</span>
+                        ) : null}
                         <Button
                           type="button"
                           variant="ghost"
@@ -338,7 +392,19 @@ export default function TransferFormDialog({ companyId, transfer, defaultOriginI
           </span>
         </div>
 
-        {touched && problem ? <ErrorBox>{problem}</ErrorBox> : null}
+        {needsNegativeConfirm ? (
+          <NegativeStockConfirm
+            id="tr-allow-negative"
+            message={serverConfirm}
+            label="Confirmo que el físico del origen quedará en negativo"
+            checked={negativeConfirmed}
+            disabled={busy}
+            onCheckedChange={setNegativeConfirmed}
+          />
+        ) : null}
+        {touched && (problem ?? (triedDispatch ? confirmProblem : null)) ? (
+          <ErrorBox>{problem ?? confirmProblem}</ErrorBox>
+        ) : null}
         <ErrorBox>{serverError}</ErrorBox>
 
         <DialogFooter>

@@ -10,8 +10,17 @@ import { toast } from "sonner";
 import type { InventoryItemForSale } from "@/interfaces/IProduct";
 import { formatVariantLabel } from "@/lib/variantAttributes";
 import { MAX_ITEM_UNITS, MAX_ITEM_UNITS_MESSAGE, largeQuantityConfirmText, needsQuantityConfirmation } from "@/lib/stockLimits";
+import {
+  STRICT_NEGATIVE_MESSAGE,
+  formatSignedStock,
+  isNegativeStockConfirmError,
+  negativeConfirmLabel,
+  negativeStockConfirmMessage,
+} from "@/lib/stockControl";
+import { useStockControl } from "@/hooks/useStockControl";
 import { trackingError } from "@/services/inventoryTrackingService";
 import { ADJUSTMENT_REASON_LABELS, adjustStock, type AdjustmentReason } from "@/services/stockAdjustmentService";
+import NegativeStockConfirm from "@/components/inventory/NegativeStockConfirm";
 
 interface Props {
   open: boolean;
@@ -20,35 +29,72 @@ interface Props {
   onSuccess?: () => void;
 }
 
-/** FEAT-24 H0 — ajuste de stock en más o en menos, con motivo obligatorio. No muestra el costo. */
+/** «Entrada», «Salida» o «Fijar en» (FEAT-24 C-D6: se escribe la cantidad real y el modal calcula el movimiento). */
+type AdjustMode = "IN" | "OUT" | "SET";
+
+const MODE_LABEL: Record<AdjustMode, string> = { IN: "Entrada", OUT: "Salida", SET: "Fijar en" };
+
+/**
+ * FEAT-24 H0 — ajuste de stock en más o en menos, con motivo obligatorio. No muestra el costo.
+ * FEAT-24 C-D3/C-D6 — suma «Fijar en» y, con control de stock flexible, una salida puede dejar el físico en negativo
+ * si se confirma con la casilla (se manda `allowNegative`); en estricto, se bloquea como antes.
+ */
 export default function AdjustStockModal({ open, item, onClose, onSuccess }: Props) {
-  const [direction, setDirection] = useState<"IN" | "OUT">("IN");
+  const stockControl = useStockControl();
+  const [mode, setMode] = useState<AdjustMode>("IN");
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState<AdjustmentReason | "">("");
   const [note, setNote] = useState("");
   const [confirmingLarge, setConfirmingLarge] = useState(false);
+  const [negativeConfirmed, setNegativeConfirmed] = useState(false);
+  // Mensaje del 409 `STOCK_NEGATIVO_CONFIRMAR`: el servidor pide la confirmación aunque la pantalla no lo previera.
+  const [serverConfirm, setServerConfirm] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!item) return null;
 
-  const amount = Number(quantity);
-  const validAmount = Number.isInteger(amount) && amount >= 1;
+  const physical = item.physicalStock;
   const reserved = item.reservedStock ?? 0;
-  const next = validAmount ? (direction === "IN" ? item.physicalStock + amount : item.physicalStock - amount) : item.physicalStock;
+  const typed = Number(quantity);
+  const isInteger = quantity.trim() !== "" && Number.isInteger(typed);
+  // «Fijar en»: la cantidad real (0..10.000) define el sentido y la cantidad del movimiento.
+  const target = mode === "SET" && isInteger && typed >= 0 ? typed : null;
+  const targetTooBig = target !== null && target > MAX_ITEM_UNITS;
+  const unchanged = target !== null && target === physical;
+  const targetInvalid = mode === "SET" && quantity.trim() !== "" && target === null;
+  const direction: "IN" | "OUT" = mode === "SET" ? (target !== null && target < physical ? "OUT" : "IN") : mode;
+  const amount = mode === "SET" ? (target !== null ? Math.abs(target - physical) : 0) : typed;
+  const validAmount = mode === "SET" ? target !== null && !targetTooBig && !unchanged : isInteger && typed >= 1;
+  const next = validAmount ? (direction === "IN" ? physical + amount : physical - amount) : physical;
   const goesNegative = validAmount && direction === "OUT" && next < 0;
-  const exceedsMax = validAmount && direction === "IN" && next > MAX_ITEM_UNITS;
-  const reservedWithoutStock = validAmount && !goesNegative ? Math.max(0, reserved - next) : 0;
+  const strictBlocked = goesNegative && stockControl === "estricto" && !serverConfirm;
+  const needsNegativeConfirm = (goesNegative && !strictBlocked) || serverConfirm !== null;
+  const exceedsMax = targetTooBig || (validAmount && direction === "IN" && next > MAX_ITEM_UNITS);
+  const reservedWithoutStock = validAmount && !strictBlocked ? Math.max(0, reserved - Math.max(next, 0)) : 0;
   const trimmedNote = note.trim();
   const noteMissing = reason === "otro" && !trimmedNote;
-  const canSubmit = validAmount && reason !== "" && !goesNegative && !exceedsMax && !noteMissing && !isSubmitting;
+  const canSubmit =
+    validAmount &&
+    reason !== "" &&
+    !strictBlocked &&
+    !(needsNegativeConfirm && !negativeConfirmed) &&
+    !exceedsMax &&
+    !noteMissing &&
+    !isSubmitting;
   const variantLabel = formatVariantLabel(item.attributes);
 
+  // Cambiar el sentido o la cantidad cambia lo que se confirma: se vuelve a pedir.
+  const resetConfirmations = () => {
+    setConfirmingLarge(false);
+    setNegativeConfirmed(false);
+    setServerConfirm(null);
+  };
   const reset = () => {
-    setDirection("IN");
+    setMode("IN");
     setQuantity("");
     setReason("");
     setNote("");
-    setConfirmingLarge(false);
+    resetConfirmations();
   };
   const handleClose = () => {
     reset();
@@ -65,12 +111,19 @@ export default function AdjustStockModal({ open, item, onClose, onSuccess }: Pro
         quantity: amount,
         reason,
         ...(trimmedNote ? { note: trimmedNote } : {}),
+        ...(needsNegativeConfirm && negativeConfirmed ? { allowNegative: true as const } : {}),
       });
       toast.success(`Stock de "${item.productName}" ajustado`);
       onSuccess?.();
       handleClose();
     } catch (error) {
-      toast.error(trackingError(error, "No se pudo ajustar el stock."));
+      if (isNegativeStockConfirmError(error)) {
+        setConfirmingLarge(false);
+        setNegativeConfirmed(false);
+        setServerConfirm(negativeStockConfirmMessage(error));
+      } else {
+        toast.error(trackingError(error, "No se pudo ajustar el stock."));
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -102,7 +155,7 @@ export default function AdjustStockModal({ open, item, onClose, onSuccess }: Pro
           <div className="grid grid-cols-2 gap-3 text-center">
             <div className="rounded-lg border p-3">
               <p className="text-xs text-muted-foreground">Físico actual</p>
-              <p className="text-xl font-bold">{item.physicalStock}</p>
+              <p className="text-xl font-bold">{physical}</p>
             </div>
             <div className="rounded-lg border p-3">
               <p className="text-xs text-muted-foreground">Reservado</p>
@@ -111,36 +164,39 @@ export default function AdjustStockModal({ open, item, onClose, onSuccess }: Pro
           </div>
 
           <div className="flex gap-2" role="group" aria-label="Tipo de ajuste">
-            {(["IN", "OUT"] as const).map((value) => (
+            {(["IN", "OUT", "SET"] as const).map((value) => (
               <Button
                 key={value}
                 type="button"
-                variant={direction === value ? "default" : "outline"}
-                aria-pressed={direction === value}
+                variant={mode === value ? "default" : "outline"}
+                aria-pressed={mode === value}
                 className="flex-1"
                 onClick={() => {
-                  setDirection(value);
-                  setConfirmingLarge(false);
+                  setMode(value);
+                  resetConfirmations();
                 }}
               >
-                {value === "IN" ? "Entrada" : "Salida"}
+                {MODE_LABEL[value]}
               </Button>
             ))}
           </div>
 
           <div className="space-y-1">
-            <Label htmlFor="adjust-quantity">Cantidad</Label>
+            <Label htmlFor="adjust-quantity">{mode === "SET" ? "Cantidad real" : "Cantidad"}</Label>
             <Input
               id="adjust-quantity"
               type="number"
-              min={1}
+              min={mode === "SET" ? 0 : 1}
               max={MAX_ITEM_UNITS}
               value={quantity}
               onChange={(event) => {
                 setQuantity(event.target.value);
-                setConfirmingLarge(false);
+                resetConfirmations();
               }}
             />
+            {mode === "SET" ? (
+              <p className="text-xs text-muted-foreground">Escribe cuántas unidades hay de verdad (de 0 a 10,000): se registra la diferencia.</p>
+            ) : null}
           </div>
 
           <div className="space-y-1">
@@ -165,13 +221,30 @@ export default function AdjustStockModal({ open, item, onClose, onSuccess }: Pro
             <Textarea id="adjust-note" maxLength={300} value={note} onChange={(event) => setNote(event.target.value)} />
           </div>
 
-          {validAmount && !goesNegative && !exceedsMax ? (
-            <p className="text-sm font-medium">El físico queda en {next}</p>
+          {mode === "SET" && validAmount ? (
+            <p className="text-sm font-medium">{direction === "IN" ? `Entrada de ${amount}` : `Salida de ${amount}`}</p>
           ) : null}
-          {goesNegative ? <p className="text-sm text-destructive">La salida deja el físico en negativo.</p> : null}
+          {targetInvalid ? <p className="text-sm text-destructive">Escribe un número entero de 0 a 10,000.</p> : null}
+          {unchanged ? (
+            <p className="text-sm text-muted-foreground">El físico ya está en {physical}: no hay nada que ajustar.</p>
+          ) : null}
+          {validAmount && !strictBlocked && !exceedsMax ? (
+            <p className={`text-sm font-medium ${next < 0 ? "text-destructive" : ""}`}>El físico queda en {formatSignedStock(next)}</p>
+          ) : null}
+          {strictBlocked ? <p className="text-sm text-destructive">{STRICT_NEGATIVE_MESSAGE}</p> : null}
           {exceedsMax ? <p className="text-sm text-destructive">{MAX_ITEM_UNITS_MESSAGE}</p> : null}
           {reservedWithoutStock > 0 ? (
             <p className="text-sm text-amber-600">{reservedWithoutStock} unidades reservadas quedan sin stock</p>
+          ) : null}
+          {needsNegativeConfirm && validAmount ? (
+            <NegativeStockConfirm
+              id="adjust-allow-negative"
+              message={serverConfirm ?? "La salida deja el físico en negativo."}
+              label={negativeConfirmLabel(goesNegative ? next : null)}
+              checked={negativeConfirmed}
+              disabled={isSubmitting}
+              onCheckedChange={setNegativeConfirmed}
+            />
           ) : null}
           {confirmingLarge ? (
             <div className="rounded-md border border-amber-300 p-3 text-sm">

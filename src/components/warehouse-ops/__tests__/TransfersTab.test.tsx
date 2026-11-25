@@ -10,14 +10,18 @@
  * 6. Sin rol de costos, el valor de las líneas sale como «••••».
  * 7. FEAT-24 H12: el detalle de un traslado sin recibir ofrece emitir la guía de remisión (motivo 04)
  *    a quien opera el origen.
+ * 8. FEAT-24 C-D3: en estricto no se envía más que el disponible; en flexible el disponible solo avisa y, si el
+ *    físico del origen queda en negativo, despachar pide la casilla y manda allowNegative. El 409
+ *    STOCK_NEGATIVO_CONFIRMAR muestra su mensaje y la casilla; el reintento va con otra clave.
  */
 
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { cancelTransfer, dispatchTransfer, listTransfers, receiveTransfer } from "@/services/warehouseOpsService";
-import { listWarehouses } from "@/services/warehousesService";
+import { cancelTransfer, dispatchTransfer, listTransfers, receiveTransfer, updateTransfer } from "@/services/warehouseOpsService";
+import { getInventoryRules, listWarehouses } from "@/services/warehousesService";
+import { getStockByVariants } from "@/services/inventoryItems.service";
 import TransfersTab from "../transfers/TransfersTab";
 import { apiError, transfer, transferLine, WAREHOUSES } from "./fixtures";
 
@@ -35,8 +39,8 @@ jest.mock("@/services/warehouseOpsService", () => ({
   createTransfer: jest.fn(),
   updateTransfer: jest.fn(),
 }));
-jest.mock("@/services/warehousesService", () => ({ listWarehouses: jest.fn() }));
-jest.mock("@/services/variantCodesService", () => ({ lookupVariantsByCodes: jest.fn() }));
+jest.mock("@/services/warehousesService", () => ({ listWarehouses: jest.fn(), getInventoryRules: jest.fn() }));
+jest.mock("@/services/variantCodesService", () => ({ lookupVariantsByCodes: jest.fn(), fetchVariantsByIds: jest.fn().mockResolvedValue([]) }));
 jest.mock("@/services/purchasesService", () => ({ listPurchasableProducts: jest.fn().mockResolvedValue([]), listProductVariants: jest.fn() }));
 jest.mock("@/services/inventoryItems.service", () => ({ getStockByVariants: jest.fn().mockResolvedValue([]) }));
 jest.mock("@/components/gre/GreIssueDialog", () => ({
@@ -83,7 +87,30 @@ beforeEach(() => {
   __setMyWarehouses(null);
   jest.mocked(listWarehouses).mockResolvedValue({ warehouses: WAREHOUSES, links: [] });
   jest.mocked(listTransfers).mockResolvedValue([draft, onTheWay, incoming]);
+  jest.mocked(getInventoryRules).mockResolvedValue({ releaseAfterDays: null, pickingRequired: false, igvAffected: true, allowPurchaseToCourier: false, stockControl: "estricto" });
+  jest.mocked(getStockByVariants).mockResolvedValue([]);
 });
+
+const rulesWith = (stockControl: "flexible" | "estricto") =>
+  jest.mocked(getInventoryRules).mockResolvedValue({ releaseAfterDays: null, pickingRequired: false, igvAffected: true, allowPurchaseToCourier: false, stockControl });
+
+const confirm409 = (message: string) =>
+  apiError(409, message, { code: "STOCK_NEGATIVO_CONFIRMAR" });
+
+/** TR-0001 sale de Central (w-1): Polo ×2 con 1 de físico (queda en −1) y Gorra ×1 con 5 de físico, todos reservados. */
+const ORIGIN_STOCK = [
+  { variant_id: "v-1", quantity: 1, reserved_quantity: 0, available: 1, inventories: [{ inventory_id: "w-1", inventory_name: "Central", store_id: null, quantity: 1, reserved_quantity: 0 }] },
+  { variant_id: "v-2", quantity: 5, reserved_quantity: 5, available: 0, inventories: [{ inventory_id: "w-1", inventory_name: "Central", store_id: null, quantity: 5, reserved_quantity: 5 }] },
+];
+
+async function openEditDraft(user: ReturnType<typeof userEvent.setup>) {
+  jest.mocked(getStockByVariants).mockResolvedValue(ORIGIN_STOCK);
+  setup();
+  await user.click(within(await row("TR-0001")).getByRole("button", { name: "Editar" }));
+  const dialog = await screen.findByRole("dialog", { name: "Editar TR-0001" });
+  await within(dialog).findByText("El físico queda en −1");
+  return dialog;
+}
 
 describe("Traslados", () => {
   it("Ventas ve la lista sin botones de acción", async () => {
@@ -156,6 +183,90 @@ describe("Traslados", () => {
     expect(second[1].operationId).toBe(first[1].operationId);
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("TR-0001 en camino", expect.anything()));
     alertsRefreshed();
+  });
+
+  it("despachar: si el servidor pide confirmar el negativo, muestra su mensaje y la casilla; el reintento manda allowNegative con otra clave", async () => {
+    const user = userEvent.setup();
+    jest.mocked(dispatchTransfer)
+      .mockRejectedValueOnce(confirm409("Polo queda en −1 en Central: confirma para seguir."))
+      .mockResolvedValueOnce({ duplicate: false, transfer: { ...draft, status: "en_camino" } });
+    setup();
+    await user.click(within(await row("TR-0001")).getByRole("button", { name: "Despachar" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Despachar" }));
+    expect(await within(dialog).findByText("Polo queda en −1 en Central: confirma para seguir.")).toBeInTheDocument();
+    const button = within(dialog).getByRole("button", { name: "Despachar" });
+    expect(button).toBeDisabled();
+    await user.click(within(dialog).getByRole("checkbox", { name: "Confirmo que el físico del origen quedará en negativo" }));
+    await user.click(button);
+    await waitFor(() => expect(dispatchTransfer).toHaveBeenCalledTimes(2));
+    const [first, second] = jest.mocked(dispatchTransfer).mock.calls;
+    expect(first[1]).not.toHaveProperty("allowNegative");
+    expect(second[1]).toMatchObject({ allowNegative: true });
+    expect(second[1].operationId).not.toBe(first[1].operationId);
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("TR-0001 en camino", expect.anything()));
+  });
+
+  it("estricto: el formulario no deja enviar más que el disponible (como antes)", async () => {
+    const user = userEvent.setup();
+    const dialog = await openEditDraft(user);
+    expect(within(dialog).getAllByText("Supera el disponible")).toHaveLength(2);
+    expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Despachar ahora" }));
+    expect(await within(dialog).findByText("Polo: solo hay 1 disponibles en el origen.")).toBeInTheDocument();
+    expect(updateTransfer).not.toHaveBeenCalled();
+    expect(dispatchTransfer).not.toHaveBeenCalled();
+  });
+
+  it("flexible: superar el disponible solo avisa; el físico negativo pide la casilla para despachar y manda allowNegative", async () => {
+    const user = userEvent.setup();
+    rulesWith("flexible");
+    jest.mocked(updateTransfer).mockResolvedValue(draft);
+    jest.mocked(dispatchTransfer).mockResolvedValue({ duplicate: false, transfer: { ...draft, status: "en_camino" } });
+    const dialog = await openEditDraft(user);
+    expect(await within(dialog).findAllByText("Supera el disponible: hay reservas que quedarán sin stock")).toHaveLength(2);
+    expect(within(dialog).queryByText("Supera el disponible")).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Despachar ahora" }));
+    expect(await within(dialog).findByText("Para despachar, confirma que el físico del origen quedará en negativo.")).toBeInTheDocument();
+    expect(updateTransfer).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("checkbox", { name: "Confirmo que el físico del origen quedará en negativo" }));
+    await user.click(within(dialog).getByRole("button", { name: "Despachar ahora" }));
+    await waitFor(() => expect(dispatchTransfer).toHaveBeenCalledTimes(1));
+    expect(updateTransfer).toHaveBeenCalledWith("t-1", expect.objectContaining({ originInventoryId: "w-1" }));
+    expect(jest.mocked(dispatchTransfer).mock.calls[0][1]).toEqual({ operationId: expect.any(String), allowNegative: true });
+  });
+
+  it("flexible: guardar el borrador no pide la casilla (no mueve stock)", async () => {
+    const user = userEvent.setup();
+    rulesWith("flexible");
+    jest.mocked(updateTransfer).mockResolvedValue(draft);
+    const dialog = await openEditDraft(user);
+    await within(dialog).findByRole("checkbox", { name: "Confirmo que el físico del origen quedará en negativo" });
+    await user.click(within(dialog).getByRole("button", { name: "Guardar borrador" }));
+    await waitFor(() => expect(updateTransfer).toHaveBeenCalledTimes(1));
+    expect(dispatchTransfer).not.toHaveBeenCalled();
+  });
+
+  it("el formulario: si el despacho pide confirmar (409), queda el borrador y el reintento manda allowNegative con otra clave", async () => {
+    const user = userEvent.setup();
+    jest.mocked(updateTransfer).mockResolvedValue(draft);
+    jest.mocked(dispatchTransfer)
+      .mockRejectedValueOnce(confirm409("Gorra queda en −1: confirma para seguir."))
+      .mockResolvedValueOnce({ duplicate: false, transfer: { ...draft, status: "en_camino" } });
+    // Sin el stock del origen (no se pudo leer) la pantalla no lo prevé: lo pide el servidor.
+    jest.mocked(getStockByVariants).mockRejectedValue(new Error("503"));
+    setup();
+    await user.click(within(await row("TR-0001")).getByRole("button", { name: "Editar" }));
+    const dialog = await screen.findByRole("dialog", { name: "Editar TR-0001" });
+    await user.click(within(dialog).getByRole("button", { name: "Despachar ahora" }));
+    expect(await within(dialog).findByText("TR-0001 quedó guardado como borrador. Gorra queda en −1: confirma para seguir.")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("checkbox", { name: "Confirmo que el físico del origen quedará en negativo" }));
+    await user.click(within(dialog).getByRole("button", { name: "Despachar ahora" }));
+    await waitFor(() => expect(dispatchTransfer).toHaveBeenCalledTimes(2));
+    const [first, second] = jest.mocked(dispatchTransfer).mock.calls;
+    expect(first[1]).not.toHaveProperty("allowNegative");
+    expect(second[1]).toMatchObject({ allowNegative: true });
+    expect(second[1].operationId).not.toBe(first[1].operationId);
   });
 
   it("recibir sin acceso al almacén muestra el 403 del servidor", async () => {

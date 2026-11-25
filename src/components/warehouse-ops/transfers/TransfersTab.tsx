@@ -30,7 +30,9 @@ import {
   warehouseOpsAccess,
   whoDid,
 } from "@/lib/warehouseOps";
+import { isNegativeStockConfirmError, negativeStockConfirmMessage } from "@/lib/stockControl";
 import { cancelTransfer, dispatchTransfer, listTransfers, type Transfer, type TransferStatus } from "@/services/warehouseOpsService";
+import NegativeStockConfirm from "@/components/inventory/NegativeStockConfirm";
 import { ErrorBox, ReasonDialog, RuleNote, SELECT_CLASS, StatusPill } from "../OpsBits";
 import { useCompanyWarehouses } from "@/hooks/useCompanyWarehouses";
 import { invalidateInventoryAlerts } from "@/hooks/useInventoryAlerts";
@@ -43,6 +45,10 @@ import TransferFormDialog from "./TransferFormDialog";
 // del origen y queda «en camino»); recibir (por línea, con diferencias) y anular.
 // Los botones dependen del rol y de los almacenes que el usuario opera; el
 // backend igual valida.
+// FEAT-24 C-D3 — si al despachar el servidor pide confirmar que el físico del
+// origen queda en negativo (409 `STOCK_NEGATIVO_CONFIRMAR`, control flexible),
+// se muestra su mensaje y una casilla; el reintento manda `allowNegative` con
+// otra clave.
 
 export const TRANSFERS_KEY = "stock-transfers";
 
@@ -69,6 +75,8 @@ export default function TransfersTab({ companyId }: { companyId: string }) {
   const [destinationId, setDestinationId] = useState("");
   const [dialog, setDialog] = useState<DialogState>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const [dispatchConfirm, setDispatchConfirm] = useState<string | null>(null);
+  const [dispatchConfirmed, setDispatchConfirmed] = useState(false);
 
   const query = useQuery({
     queryKey: [TRANSFERS_KEY, companyId, status],
@@ -92,7 +100,11 @@ export default function TransfersTab({ companyId }: { companyId: string }) {
   };
 
   const dispatch = useMutation({
-    mutationFn: (transfer: Transfer) => dispatchTransfer(transfer.id, { operationId: keys.get(`dispatch:${transfer.id}`) }),
+    mutationFn: (transfer: Transfer) =>
+      dispatchTransfer(transfer.id, {
+        operationId: keys.get(`dispatch:${transfer.id}`),
+        ...(dispatchConfirm !== null && dispatchConfirmed ? { allowNegative: true as const } : {}),
+      }),
     onSuccess: (result, transfer) => {
       keys.release(`dispatch:${transfer.id}`);
       setDialog(null);
@@ -102,7 +114,17 @@ export default function TransfersTab({ companyId }: { companyId: string }) {
       );
       refresh();
     },
-    onError: (error) => setDispatchError(opsErrorMessage(error, "No se pudo despachar el traslado. Inténtalo de nuevo.")),
+    onError: (error, transfer) => {
+      if (isNegativeStockConfirmError(error)) {
+        // El despacho rechazado no quedó registrado: el que sigue, con la confirmación, lleva otra clave.
+        keys.release(`dispatch:${transfer.id}`);
+        setDispatchError(null);
+        setDispatchConfirmed(false);
+        setDispatchConfirm(negativeStockConfirmMessage(error));
+        return;
+      }
+      setDispatchError(opsErrorMessage(error, "No se pudo despachar el traslado. Inténtalo de nuevo."));
+    },
   });
 
   const canDispatch = (transfer: Transfer) => access.operate && transfer.status === "borrador" && scope.canOperate(transfer.originInventoryId);
@@ -130,6 +152,8 @@ export default function TransfersTab({ companyId }: { companyId: string }) {
           size="sm"
           onClick={() => {
             setDispatchError(null);
+            setDispatchConfirm(null);
+            setDispatchConfirmed(false);
             setDialog({ kind: "dispatch", transfer });
           }}
         >
@@ -329,10 +353,24 @@ export default function TransfersTab({ companyId }: { companyId: string }) {
                 {nameOf(dialog.transfer.destinationInventoryId)} las reciba.
               </AlertDialogDescription>
             </AlertDialogHeader>
+            {dispatchConfirm !== null ? (
+              <NegativeStockConfirm
+                id="dispatch-allow-negative"
+                message={dispatchConfirm}
+                label="Confirmo que el físico del origen quedará en negativo"
+                checked={dispatchConfirmed}
+                disabled={dispatch.isPending}
+                onCheckedChange={setDispatchConfirmed}
+              />
+            ) : null}
             <ErrorBox>{dispatchError}</ErrorBox>
             <AlertDialogFooter>
               <AlertDialogCancel disabled={dispatch.isPending}>Volver</AlertDialogCancel>
-              <Button type="button" disabled={dispatch.isPending} onClick={() => dispatch.mutate(dialog.transfer)}>
+              <Button
+                type="button"
+                disabled={dispatch.isPending || (dispatchConfirm !== null && !dispatchConfirmed)}
+                onClick={() => dispatch.mutate(dialog.transfer)}
+              >
                 {dispatch.isPending ? "Despachando…" : dispatchError ? "Reintentar" : "Despachar"}
               </Button>
             </AlertDialogFooter>
