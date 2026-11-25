@@ -83,16 +83,19 @@ beforeEach(() => {
 afterEach(() => jest.restoreAllMocks());
 
 describe("Agenda", () => {
-  it("agrupa en Vencidas, Hoy y Próximas con tipo, nota y contacto", async () => {
+  it("agrupa en Vencidos, Hoy en tu turno y Próximos días con tipo, nota y contacto", async () => {
     setup();
-    const venc = within(await screen.findByRole("region", { name: "Vencidas" }));
-    const hoy = within(screen.getByRole("region", { name: "Hoy" }));
-    const prox = within(screen.getByRole("region", { name: "Próximas" }));
+    const venc = within(await screen.findByRole("region", { name: "Vencidos" }));
+    const hoy = within(screen.getByRole("region", { name: "Hoy en tu turno" }));
+    const prox = within(screen.getByRole("region", { name: "Próximos días" }));
     expect(venc.getByText("Llamada vencida")).toBeInTheDocument();
     expect(venc.getByText("Llamada")).toBeInTheDocument();
     expect(hoy.getByText("Enviar cotización")).toBeInTheDocument();
     expect(hoy.getByText("Pidió 2 unidades")).toBeInTheDocument();
     expect(hoy.getByText("Hoy 17:00")).toBeInTheDocument();
+    expect(hoy.getByRole("button", { name: "Enviar" })).toBeInTheDocument();
+    expect(venc.getByRole("button", { name: "Llamar" })).toBeInTheDocument();
+    expect(prox.queryByRole("button", { name: "Posponer" })).not.toBeInTheDocument();
     expect(hoy.getByText(/Ana Pérez/)).toBeInTheDocument();
     expect(prox.getByText("Retomar la próxima semana")).toBeInTheDocument();
     expect(s.listTasks).toHaveBeenCalledWith({ assigned: "me", status: "pending" });
@@ -102,24 +105,24 @@ describe("Agenda", () => {
     setup();
     await screen.findByText("Enviar cotización");
     expect(screen.getAllByRole("button", { name: "Abrir chat" })).toHaveLength(2);
-    const hoy = within(screen.getByRole("region", { name: "Hoy" }));
+    const hoy = within(screen.getByRole("region", { name: "Hoy en tu turno" }));
     fireEvent.click(hoy.getByRole("button", { name: "Abrir chat" }));
     expect(mockPush).toHaveBeenCalledWith("/comercial/ventas-chat/bandeja?c=c1");
   });
 
   it("«Hecha» marca la tarea como hecha", async () => {
     setup();
-    const hoy = within(await screen.findByRole("region", { name: "Hoy" }));
+    const hoy = within(await screen.findByRole("region", { name: "Hoy en tu turno" }));
     fireEvent.click(hoy.getByRole("button", { name: "Hecha" }));
     await waitFor(() =>
       expect(s.updateTask).toHaveBeenCalledWith("t1", { status: "done" }),
     );
   });
 
-  it("Mías/Todas cambia el filtro", async () => {
+  it("«Agenda de» cambia el filtro", async () => {
     setup();
     await screen.findByText("Enviar cotización");
-    fireEvent.click(screen.getByRole("button", { name: "Todas" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Agenda de" }), { target: { value: "all" } });
     await waitFor(() =>
       expect(s.listTasks).toHaveBeenCalledWith({ assigned: "all", status: "pending" }),
     );
@@ -149,8 +152,8 @@ describe("Agenda", () => {
 
   it("reprogramar manda solo la fecha nueva", async () => {
     setup();
-    const hoy = within(await screen.findByRole("region", { name: "Hoy" }));
-    fireEvent.click(hoy.getByRole("button", { name: "Reprogramar" }));
+    const hoy = within(await screen.findByRole("region", { name: "Hoy en tu turno" }));
+    fireEvent.click(hoy.getByRole("button", { name: "Posponer" }));
     const dialog = await screen.findByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Fecha y hora"), {
       target: { value: "2026-11-21T09:00" },
@@ -163,7 +166,7 @@ describe("Agenda", () => {
 
   it("eliminar pide confirmación", async () => {
     setup();
-    const hoy = within(await screen.findByRole("region", { name: "Hoy" }));
+    const hoy = within(await screen.findByRole("region", { name: "Hoy en tu turno" }));
     fireEvent.click(hoy.getByRole("button", { name: "Eliminar tarea Enviar cotización" }));
     expect(s.deleteTask).not.toHaveBeenCalled();
     const confirm = await screen.findByRole("alertdialog");

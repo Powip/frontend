@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Check, ChevronDown, ChevronRight, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, Check, ChevronDown, ChevronRight, Loader2, MessageCircle, Pencil, Phone, Plus, Send, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -9,6 +9,7 @@ import { crmError } from "@/services/crmService";
 import { useCrmEvents } from "@/hooks/useCrmChat";
 import { useCrmMe } from "@/hooks/useCrmMe";
 import { useTaskMutations, useTasks } from "@/hooks/useCrmPlanning";
+import { useCrmSettings, useTeamMembers } from "@/hooks/useCrmTeam";
 import type { Task } from "@/types/crm";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import ConfirmDialog from "./ConfirmDialog";
@@ -35,9 +36,20 @@ interface RowProps {
   onEdit: (t: Task) => void;
   onDelete: (t: Task) => void;
   onOpenChat: (id: string) => void;
+  /** Próximos días no muestran «Posponer» (mockup 152). */
+  canPostpone?: boolean;
 }
 
-function TaskRow({ task, now, overdue, onDone, onReschedule, onEdit, onDelete, onOpenChat }: RowProps) {
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("");
+}
+
+function TaskRow({ task, now, overdue, canPostpone = true, onDone, onReschedule, onEdit, onDelete, onOpenChat }: RowProps) {
   const { phoneMasked } = useCrmMe();
   const contact = task.contactName || showPhone(task.contactPhone, phoneMasked);
   return (
@@ -48,28 +60,58 @@ function TaskRow({ task, now, overdue, onDone, onReschedule, onEdit, onDelete, o
         overdue && "border-destructive/50",
       )}
     >
-      <div className="flex flex-wrap items-center gap-2">
-        <Badge variant="secondary">{TASK_TYPE_LABEL[task.type]}</Badge>
-        <span className="font-medium">{task.title}</span>
-        <span className={cn("ml-auto text-xs", overdue ? "font-medium text-destructive" : "text-muted-foreground")}>
+      <div className="flex items-center gap-2">
+        <span
+          aria-hidden
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#4C2FB5]/10 text-xs font-semibold text-[#4C2FB5] dark:text-violet-300"
+        >
+          {initials(contact || task.title)}
+        </span>
+        <span className="min-w-0 flex-1 truncate font-medium">{contact || task.title}</span>
+        <Badge variant="secondary" className={task.type === "call" ? "bg-[#4C2FB5]/10 text-[#4C2FB5] dark:text-violet-300" : undefined}>
+          {TASK_TYPE_LABEL[task.type]}
+        </Badge>
+      </div>
+      <p className="text-xs">
+        <span className={cn(overdue ? "font-medium text-destructive" : "text-muted-foreground")}>
           {formatDue(task.dueAt, now)}
         </span>
-      </div>
-      {task.note && <p className="whitespace-pre-wrap text-xs text-muted-foreground">{task.note}</p>}
-      {(contact || task.assignedUserName) && (
-        <p className="text-xs text-muted-foreground">
-          {contact}
-          {contact && task.assignedUserName ? " · " : ""}
-          {task.assignedUserName ? `Asignada a ${task.assignedUserName}` : ""}
-        </p>
+        {" · "}
+        <span className="font-medium">{task.title}</span>
+      </p>
+      {task.note && (
+        <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">{task.note}</p>
+      )}
+      {task.assignedUserName && (
+        <p className="text-xs text-muted-foreground">{`Asignada a ${task.assignedUserName}`}</p>
       )}
       <div className="flex flex-wrap gap-2 pt-1">
-        <Button type="button" size="sm" onClick={() => onDone(task)}>
+        {task.conversationId && task.type !== "other" && (
+          <Button
+            type="button"
+            size="sm"
+            className="bg-[#4C2FB5] text-white hover:bg-[#4C2FB5]/90"
+            onClick={() => onOpenChat(task.conversationId!)}
+          >
+            {task.type === "call" ? (
+              <>
+                <Phone /> Llamar
+              </>
+            ) : (
+              <>
+                <Send /> Enviar
+              </>
+            )}
+          </Button>
+        )}
+        <Button type="button" size="sm" variant="outline" onClick={() => onDone(task)}>
           <Check /> Hecha
         </Button>
-        <Button type="button" size="sm" variant="outline" onClick={() => onReschedule(task)}>
-          <CalendarClock /> Reprogramar
-        </Button>
+        {canPostpone && (
+          <Button type="button" size="sm" variant="outline" onClick={() => onReschedule(task)}>
+            <CalendarClock /> Posponer
+          </Button>
+        )}
         <Button type="button" size="sm" variant="outline" onClick={() => onEdit(task)}>
           <Pencil /> Editar
         </Button>
@@ -80,7 +122,7 @@ function TaskRow({ task, now, overdue, onDone, onReschedule, onEdit, onDelete, o
             variant="outline"
             onClick={() => onOpenChat(task.conversationId!)}
           >
-            Abrir chat
+            <MessageCircle /> Abrir chat
           </Button>
         )}
         <Button
@@ -102,8 +144,13 @@ export default function AgendaView() {
   const router = useRouter();
   const live = useCrmEvents();
   const now = useNow();
-  const { phoneMasked } = useCrmMe();
-  const [assigned, setAssigned] = useState<"me" | "all">("me");
+  const { phoneMasked, isAdmin } = useCrmMe();
+  // "me", "all" o el id de una vendedora (filtro en la lista de todo el equipo).
+  const [who, setWho] = useState<string>("me");
+  const assigned: "me" | "all" = who === "me" ? "me" : "all";
+  const members = useTeamMembers();
+  const settings = useCrmSettings(isAdmin);
+  const hours = settings.data?.hours;
   const [showDone, setShowDone] = useState(false);
   const [dialog, setDialog] = useState<{ mode: TaskDialogMode; task?: Task } | null>(null);
   const [deleting, setDeleting] = useState<Task | null>(null);
@@ -111,7 +158,8 @@ export default function AgendaView() {
   const done = useTasks({ assigned, status: "done" }, showDone);
   const m = useTaskMutations();
 
-  const groups = groupTasks(pending.data ?? [], now);
+  const visible = (pending.data ?? []).filter((t) => who === "me" || who === "all" || t.assignedUserId === who);
+  const groups = groupTasks(visible, now);
   const err = pending.isError ? crmError(pending.error) : null;
   const handlers = {
     now,
@@ -122,34 +170,37 @@ export default function AgendaView() {
     onOpenChat: (id: string) => router.push(bandejaUrl(id)),
   };
 
-  const sections: Array<{ key: keyof typeof groups; title: string; empty: string }> = [
-    { key: "overdue", title: "Vencidas", empty: "Nada vencido." },
-    { key: "today", title: "Hoy", empty: "Sin pendientes para hoy." },
-    { key: "upcoming", title: "Próximas", empty: "Sin pendientes próximos." },
+  const sections: Array<{ key: keyof typeof groups; title: string; empty: string; tone: string }> = [
+    { key: "overdue", title: "Vencidos", empty: "Nada vencido. ¡Bien!", tone: "border-t-destructive text-destructive" },
+    { key: "today", title: "Hoy en tu turno", empty: "Sin pendientes para hoy", tone: "border-t-[#4C2FB5] text-[#4C2FB5] dark:text-violet-300" },
+    { key: "upcoming", title: "Próximos días", empty: "Sin pendientes próximos", tone: "border-t-teal-600 text-teal-700 dark:text-teal-400" },
   ];
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <div role="group" aria-label="Tareas de" className="flex gap-1">
-          {(
-            [
-              ["me", "Mías"],
-              ["all", "Todas"],
-            ] as const
-          ).map(([value, label]) => (
-            <Button
-              key={value}
-              type="button"
-              size="sm"
-              variant={assigned === value ? "default" : "outline"}
-              aria-pressed={assigned === value}
-              onClick={() => setAssigned(value)}
-            >
-              {label}
-            </Button>
-          ))}
-        </div>
+        <label className="flex items-center gap-2 text-sm font-medium">
+          Agenda de
+          <select
+            aria-label="Agenda de"
+            className="h-8 rounded-md border bg-background px-2 text-sm"
+            value={who}
+            onChange={(e) => setWho(e.target.value)}
+          >
+            <option value="me">Mis pendientes</option>
+            <option value="all">Todo el equipo</option>
+            {(members.data ?? []).map((p) => (
+              <option key={p.userId} value={p.userId}>
+                {p.userName}
+              </option>
+            ))}
+          </select>
+        </label>
+        {hours && (
+          <span className="rounded-full bg-[#4C2FB5]/10 px-2 py-0.5 text-xs font-medium text-[#4C2FB5] dark:text-violet-300">
+            Turno: {hours.start} – {hours.end}
+          </span>
+        )}
         <Button type="button" size="sm" onClick={() => setDialog({ mode: "create" })}>
           <Plus /> Nueva tarea
         </Button>
@@ -177,13 +228,12 @@ export default function AgendaView() {
       {pending.data && (
         <div className="grid gap-4 lg:grid-cols-3">
           {sections.map((s) => (
-            <section key={s.key} aria-label={s.title} className="space-y-2">
-              <h2
-                className={cn(
-                  "flex items-center gap-2 text-sm font-semibold",
-                  s.key === "overdue" && "text-destructive",
-                )}
-              >
+            <section
+              key={s.key}
+              aria-label={s.title}
+              className={cn("space-y-2 rounded-lg border border-t-4 bg-card p-3", s.tone.split(" ")[0])}
+            >
+              <h2 className={cn("flex items-center gap-2 text-sm font-semibold", s.tone.split(" ").slice(1).join(" "))}>
                 {s.title}
                 <Badge variant="secondary">{groups[s.key].length}</Badge>
               </h2>
@@ -194,7 +244,7 @@ export default function AgendaView() {
               ) : (
                 <ul className="space-y-2">
                   {groups[s.key].map((t) => (
-                    <TaskRow key={t.id} task={t} overdue={s.key === "overdue"} {...handlers} />
+                    <TaskRow key={t.id} task={t} overdue={s.key === "overdue"} canPostpone={s.key !== "upcoming"} {...handlers} />
                   ))}
                 </ul>
               )}
