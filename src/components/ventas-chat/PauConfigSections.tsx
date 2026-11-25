@@ -108,7 +108,7 @@ function Row({ label, hint, children }: { label: ReactNode; hint?: string; child
         <div className="text-sm font-medium">{label}</div>
         {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2">{children}</div>
+      <div className="flex max-w-full shrink-0 items-center gap-2 [&>*]:shrink-0">{children}</div>
     </div>
   );
 }
@@ -395,17 +395,17 @@ export function CapabilitiesSection() {
         <Card id="pau-escalera" title="Cobranza · escalera de recordatorios" subtitle="Lo que Pau envía si el cliente no paga.">
           <ol className="space-y-2">
             {reminders.map((r, i) => (
-              <li key={i} className="flex flex-wrap items-center gap-2">
+              <li key={i} className="grid grid-cols-[5.5rem_minmax(0,1fr)] items-center gap-2">
                 <Input
                   aria-label={`Cuándo, paso ${i + 1}`}
-                  className="h-9 w-24"
+                  className="h-9 w-full"
                   maxLength={20}
                   value={r.after}
                   onChange={(e) => setSteps(reminders.map((x, j) => (j === i ? { ...x, after: e.target.value } : x)))}
                 />
                 <Input
                   aria-label={`Qué envía, paso ${i + 1}`}
-                  className="h-9 min-w-[12rem] flex-1"
+                  className="h-9"
                   maxLength={500}
                   value={r.text}
                   onChange={(e) => setSteps(reminders.map((x, j) => (j === i ? { ...x, text: e.target.value } : x)))}
