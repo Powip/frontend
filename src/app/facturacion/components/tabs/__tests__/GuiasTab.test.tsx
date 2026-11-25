@@ -286,6 +286,20 @@ describe("GuiasTab", () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("La guía de remisión electrónica todavía no está habilitada para tu empresa."));
   });
 
+  it("habilitación automática: no habilitada y sin credenciales pide cargarlas, no dice «todavía no está habilitada»", async () => {
+    jest.mocked(getGreSettingsApi).mockResolvedValue({
+      ...SETTINGS,
+      enabledForCompany: false,
+      autoEnableByCredentials: true,
+      profiles: [{ ...SETTINGS.profiles[0], configured: false }],
+    });
+    setup();
+    const banner = await screen.findByTestId("gre-mode-banner");
+    expect(banner).toHaveTextContent("Falta configurar las credenciales GRE.");
+    expect(banner).not.toHaveTextContent("todavía no está habilitada");
+    expect(screen.getByRole("button", { name: /Emitir guía de remisión/ })).toBeDisabled();
+  });
+
   it("con SUNAT pero sin credenciales avisa que faltan", async () => {
     jest.mocked(getGreSettingsApi).mockResolvedValue({ ...SETTINGS, profiles: [{ ...SETTINGS.profiles[0], configured: false }] });
     setup();
