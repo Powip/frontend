@@ -1,14 +1,34 @@
 "use client";
 
 import { Play } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import type { AdvertisingAccountWire } from "@/services/advertisingService";
+import type {
+  AdvertisingAccountWire,
+  AdvertisingDiscoveredAccount,
+} from "@/services/advertisingService";
+import {
+  accountCampaignsLabel,
+  accountStatusLabel,
+  accountStatusState,
+  matchesSearch,
+  matchesStatusFilter,
+  type MetaStatusFilter,
+  statusCounts,
+} from "./advertising-meta-status";
+import { AdvertisingMetaStatusFilter, MetaStatusBadge } from "./AdvertisingMetaStatusFilter";
 
-type Phase = "not_requested" | "queued" | "running" | "retrying" | "succeeded" | "failed" | "paused";
+type Phase =
+  | "not_requested"
+  | "queued"
+  | "running"
+  | "retrying"
+  | "succeeded"
+  | "failed"
+  | "paused";
 
 /** Plain-language status of one Meta account: spend history plus per-ad import. */
 export function advertisingImportStatus(account: AdvertisingAccountWire): {
@@ -101,11 +121,14 @@ export function AdvertisingStartImport({
   canManage,
   busy,
   onStart,
+  loadStatuses,
 }: {
   accounts: AdvertisingAccountWire[];
   canManage: boolean;
   busy: boolean;
   onStart: (accountIds: string[]) => void;
+  /** Read-only Meta account_status lookup. Never starts an import. */
+  loadStatuses?: (signal: AbortSignal) => Promise<AdvertisingDiscoveredAccount[]>;
 }) {
   const metaAccounts = useMemo(
     () =>
@@ -115,8 +138,39 @@ export function AdvertisingStartImport({
     [accounts],
   );
   const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const [statusFilter, setStatusFilter] = useState<MetaStatusFilter>("all");
+  const [search, setSearch] = useState("");
+  const [statuses, setStatuses] = useState<Map<string, AdvertisingDiscoveredAccount> | null>(null);
+  const [statusError, setStatusError] = useState(false);
+  const hasAccounts = metaAccounts.length > 0;
+  useEffect(() => {
+    if (!loadStatuses || !hasAccounts) return;
+    const controller = new AbortController();
+    let active = true;
+    setStatusError(false);
+    loadStatuses(controller.signal)
+      .then((found) => {
+        if (active) setStatuses(new Map(found.map((account) => [account.externalId, account])));
+      })
+      .catch(() => {
+        if (active) setStatusError(true);
+      });
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [loadStatuses, hasAccounts]);
+  const stateOf = (account: AdvertisingAccountWire) =>
+    accountStatusState(statuses?.get(account.externalId)?.metaStatus);
+  const counts = statusCounts(metaAccounts, stateOf);
   if (!metaAccounts.length) return null;
+  const listed = metaAccounts.filter(
+    (account) =>
+      matchesStatusFilter(stateOf(account), statusFilter) &&
+      matchesSearch(search, account.name, account.externalId),
+  );
   const visibleChosen = metaAccounts.filter((account) => chosen.has(account.id));
+  const hiddenChosen = visibleChosen.filter((account) => !listed.includes(account)).length;
   const toggle = (id: string, on: boolean) =>
     setChosen((current) => {
       const next = new Set(current);
@@ -139,6 +193,23 @@ export function AdvertisingStartImport({
           «Comenzar importación». Solo esas cuentas se importan y se actualizan solas después.
         </p>
       </div>
+      <AdvertisingMetaStatusFilter
+        label="Cuentas para importar"
+        filter={statusFilter}
+        onFilter={setStatusFilter}
+        query={search}
+        onQuery={setSearch}
+        counts={counts}
+      />
+      {loadStatuses && !statuses && !statusError ? (
+        <p role="status" className="text-xs text-muted-foreground">
+          Leyendo el estado de las cuentas en Meta…
+        </p>
+      ) : statusError ? (
+        <p className="text-xs text-muted-foreground">
+          No pudimos leer el estado en Meta. Se muestran como «Estado no informado».
+        </p>
+      ) : null}
       {canManage ? (
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           <Checkbox
@@ -151,9 +222,20 @@ export function AdvertisingStartImport({
           Marcar todas ({metaAccounts.length})
         </label>
       ) : null}
+      {hiddenChosen > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {hiddenChosen}{" "}
+          {hiddenChosen === 1 ? "cuenta marcada está oculta" : "cuentas marcadas están ocultas"} por
+          el filtro.
+        </p>
+      ) : null}
+      {listed.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Ninguna cuenta coincide con el filtro.</p>
+      ) : null}
       <ul className="max-h-80 space-y-2 overflow-y-auto pr-1">
-        {metaAccounts.map((account) => {
+        {listed.map((account) => {
           const status = advertisingImportStatus(account);
+          const meta = statuses?.get(account.externalId);
           return (
             <li key={account.id} className="space-y-1 rounded-md border border-border p-2">
               <div className="flex flex-wrap items-center gap-2">
@@ -165,12 +247,27 @@ export function AdvertisingStartImport({
                   />
                 ) : null}
                 <span className="min-w-0 flex-1 truncate text-sm">{account.name}</span>
+                {loadStatuses ? (
+                  <MetaStatusBadge
+                    state={accountStatusState(meta?.metaStatus)}
+                    label={accountStatusLabel(meta?.metaStatus)}
+                  />
+                ) : null}
                 <Badge
-                  variant={status.phase === "failed" || status.phase === "retrying" ? "destructive" : "outline"}
+                  variant={
+                    status.phase === "failed" || status.phase === "retrying"
+                      ? "destructive"
+                      : "outline"
+                  }
                 >
                   {status.label}
                 </Badge>
               </div>
+              {loadStatuses && statuses ? (
+                <p className="text-xs text-muted-foreground">
+                  {accountCampaignsLabel(meta?.campaigns)}
+                </p>
+              ) : null}
               {status.progress !== null && ACTIVE.includes(status.phase) ? (
                 <Progress
                   value={status.progress}

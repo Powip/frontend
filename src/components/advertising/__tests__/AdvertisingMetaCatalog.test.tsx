@@ -628,3 +628,24 @@ it("distinguishes explicit zero from unavailable results and preserves filters w
   );
   expect(within(table).getByText(/0\.00/)).toBeVisible();
 });
+
+it("sends the Meta delivery filter and search to the server and shows each row's effective_status", async () => {
+  jest.useFakeTimers({ advanceTimers: true });
+  const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+  const catalog = data();
+  catalog.rows[0] = { ...catalog.rows[0], effectiveStatus: "CAMPAIGN_PAUSED" };
+  mockCatalog(catalog);
+  mount("campaign");
+  expect(query).toHaveBeenLastCalledWith(expect.objectContaining({ deliveryStatus: "all" }));
+  expect(screen.getAllByText("Meta: Pausado por la campaña")[0]).toHaveAttribute("data-meta-status", "inactive");
+  await user.click(screen.getByRole("button", { name: "Activas" }));
+  expect(query).toHaveBeenLastCalledWith(
+    expect.objectContaining({ deliveryStatus: "active", page: 1 }),
+  );
+  await user.type(screen.getByRole("searchbox", { name: "Buscar en campañas" }), "navidad");
+  await waitFor(() =>
+    expect(query).toHaveBeenLastCalledWith(expect.objectContaining({ search: "navidad" })),
+  );
+  expect(sync).not.toHaveBeenCalled();
+  jest.useRealTimers();
+});

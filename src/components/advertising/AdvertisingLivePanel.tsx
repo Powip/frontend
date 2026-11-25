@@ -17,6 +17,7 @@ import {
   advertisingErrorMessage,
   advertisingErrorStatus,
   advertisingSelectionConflictCode,
+  discoverAdvertisingAccounts,
   importAdvertisingHistory,
   pauseAdvertisingUpdates,
   selectAdvertisingAccounts,
@@ -82,6 +83,17 @@ export function AdvertisingLivePanel({
 }: Props) {
   const queryClient = useQueryClient();
   const query = useAdvertisingSnapshot({ token, actorId, companyId, from, to });
+  // Read-only: Meta account_status plus local campaign counts. It never queues an import.
+  const loadMetaStatuses = useMemo(
+    () =>
+      token && companyId
+        ? (signal: AbortSignal) =>
+            discoverAdvertisingAccounts(token, companyId, "meta", signal).then(
+              (result) => result.accounts,
+            )
+        : undefined,
+    [token, companyId],
+  );
   const [dialogProvider, setDialogProvider] = useState<AdvertisingProviderWire | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -486,6 +498,7 @@ export function AdvertisingLivePanel({
             canManage={manage}
             busy={pending !== null || query.isFetching}
             onStart={(accountIds) => void startImport(accountIds)}
+            loadStatuses={loadMetaStatuses}
           />
         )}
         {!manage && Object.values(wire.providers).some((provider) => provider.available) && (

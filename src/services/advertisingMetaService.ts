@@ -132,6 +132,9 @@ export interface MetaCatalogFilters {
   resultType?: MetaResultType;
   sortBy?: MetaCatalogSort;
   sortOrder?: "asc" | "desc";
+  /** Meta effective_status from the local catalog. Listing never imports. */
+  deliveryStatus?: "active" | "inactive" | "all";
+  search?: string;
   page: number;
   pageSize: number;
 }

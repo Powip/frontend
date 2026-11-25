@@ -37,6 +37,8 @@ import { useAdvertisingStoreFilter } from "../AdvertisingStoreFilterContext";
 import { useAdvertisingAccountFilter } from "../AdvertisingAccountFilterContext";
 import {
   isActiveAd,
+  isInactiveAd,
+  hasMetaObjectStatus,
   lastSpendAt,
   lastSpendLabel,
   sortAdItems,
@@ -45,6 +47,7 @@ import {
 import { useAdsQuery, useAdsV22, useRefreshAds } from "./context";
 import {
   adAge,
+  metaStatusLabel,
   createAdFinancialCalculator,
   financialBasis,
   financialCauses,
@@ -83,6 +86,8 @@ import { AdvertisingAdDetail } from "./AdDetail";
 import { AdThumbnail } from "./Thumbnail";
 import { AdvertisingDataNotice } from "./DataNotice";
 import { advertisingSectionHref } from "../advertising-sections";
+import { effectiveStatusState, matchesSearch } from "../advertising-meta-status";
+import { MetaStatusBadge } from "../AdvertisingMetaStatusFilter";
 
 const LEVELS: Array<{ value: AdsLevel; label: string }> = [
   { value: "store", label: "Tienda" },
@@ -364,15 +369,12 @@ export function AdvertisingAds() {
     () =>
       baseItems
         .filter((item) => channel === "all" || item.channels.has(channel))
-        .filter(
-          (item) =>
-            !search ||
-            item.row.name.toLocaleLowerCase("es").includes(search.toLocaleLowerCase("es")),
-        ),
+        .filter((item) => matchesSearch(search, item.row.name, item.row.id)),
     [baseItems, channel, search],
   );
   const populationCounts = {
     active: populationItems.filter((item) => isActiveAd(item.row)).length,
+    inactive: populationItems.filter((item) => isInactiveAd(item.row)).length,
     spend: populationItems.filter((item) => (numeric(item.row.insights.spend) ?? 0) > 0).length,
     all: populationItems.length,
   };
@@ -384,7 +386,9 @@ export function AdvertisingAds() {
             (population === "all" ||
               (population === "active"
                 ? isActiveAd(item.row)
-                : (numeric(item.row.insights.spend) ?? 0) > 0)) &&
+                : population === "inactive"
+                  ? isInactiveAd(item.row)
+                  : (numeric(item.row.insights.spend) ?? 0) > 0)) &&
             (state === "Todos" ||
               (state === "Para escalar"
                 ? item.scalable
@@ -800,7 +804,7 @@ export function AdvertisingAds() {
           <Input
             className="pl-9"
             aria-label="Buscar anuncios"
-            placeholder="Buscar por nombre"
+            placeholder="Buscar por nombre o ID"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
@@ -891,6 +895,7 @@ export function AdvertisingAds() {
           onChange={setPopulation}
           options={[
             { value: "active", label: `Activos (${populationCounts.active})` },
+            { value: "inactive", label: `Inactivos (${populationCounts.inactive})` },
             { value: "spend", label: `Con gasto en el período (${populationCounts.spend})` },
             { value: "all", label: `Todos (${populationCounts.all})` },
           ]}
@@ -1115,6 +1120,12 @@ export function AdvertisingAds() {
                   </div>
                   <div className="space-y-3 p-4">
                     <h3 className="font-medium">{row.name}</h3>
+                    {hasMetaObjectStatus(row) && (
+                      <MetaStatusBadge
+                        state={effectiveStatusState(row.effectiveStatus ?? row.status)}
+                        label={`Meta: ${metaStatusLabel(row)}`}
+                      />
+                    )}
                     <p className="text-xs text-muted-foreground">
                       {row.store?.name} · {row.creative?.format}
                     </p>
@@ -1219,6 +1230,14 @@ export function AdvertisingAds() {
                               )}
                               <span>
                                 <span className="block font-medium text-primary">{row.name}</span>
+                                {hasMetaObjectStatus(row) && (
+                                  <span className="mt-0.5 block">
+                                    <MetaStatusBadge
+                                      state={effectiveStatusState(row.effectiveStatus ?? row.status)}
+                                      label={`Meta: ${metaStatusLabel(row)}`}
+                                    />
+                                  </span>
+                                )}
                                 <span className="block text-xs text-muted-foreground">
                                   {row.store?.name ?? "Sin tienda"}
                                   {row.product ? ` · ${row.product.name}` : ""}
@@ -1518,7 +1537,9 @@ export function AdvertisingAds() {
                     ? "Falta conectar una cuenta publicitaria."
                     : population === "active"
                       ? "Sin anuncios activos para estos filtros. Revisa Con gasto en el período o Todos."
-                      : population === "spend"
+                      : population === "inactive"
+                        ? "Sin anuncios inactivos para estos filtros."
+                        : population === "spend"
                         ? "Sin anuncios con gasto en este período."
                         : "No hay anuncios para estos filtros."}
                 </p>

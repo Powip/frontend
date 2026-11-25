@@ -1,5 +1,9 @@
 import axios from "axios";
 import type { EffectiveAdvertisingSpendWire } from "@/types/advertisingEffective";
+import type {
+  MetaAccountCampaignsWire,
+  MetaAccountStatusWire,
+} from "@/components/advertising/advertising-meta-status";
 
 export type AdvertisingProviderWire = "meta" | "tiktok";
 export type AdvertisingConnectionStatusWire =
@@ -171,6 +175,10 @@ export interface AdvertisingDiscoveredAccount {
   enabled?: boolean;
   selectable?: boolean;
   selectionBlockedReason?: "linked-other-company" | "metadata-changed" | null;
+  /** Meta only: account_status as read now. Absent for TikTok. */
+  metaStatus?: MetaAccountStatusWire;
+  /** Meta only: campaigns from the local catalog; separate from the account status. */
+  campaigns?: MetaAccountCampaignsWire;
 }
 
 export function advertisingAccountSelectable(account: AdvertisingDiscoveredAccount): boolean {
