@@ -83,6 +83,8 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
+import { WhatsAppNotificationsBell } from "@/components/whatsapp/WhatsAppNotificationsBell";
+import { isCompanyAdminRole } from "@/lib/purchaseOrders";
 import PowipLogoMini from "./logo-mini";
 import PowipLogo from "./logo";
 
@@ -433,6 +435,8 @@ export function Sidebar({ className }: SidebarProps) {
 
   // FEAT-24 H8-D5: al rol COURIER solo le queda su portal (Modo almacén); el resto del menú se le cierra.
   const courierOnly = isCourierRole(auth?.user.role);
+  // Campanita de alertas de WhatsApp (X5): solo administradores mientras C-28 no defina otro permiso.
+  const showWhatsAppBell = isCompanyAdminRole(auth?.user.role);
 
   // Filtrar navegación por permisos y mostrar Superadmin solo a autorizados
   const filteredNavigation = navigation
@@ -506,6 +510,7 @@ export function Sidebar({ className }: SidebarProps) {
             >
               <PowipLogoMini className="size-6 text-primary" />
             </Link>
+            {showWhatsAppBell && <WhatsAppNotificationsBell />}
             <Button
               variant="ghost"
               size="icon"
@@ -520,14 +525,17 @@ export function Sidebar({ className }: SidebarProps) {
             <Link href="/" className="flex items-center pl-3">
               <PowipLogo className="w-[90px] h-auto text-primary" />
             </Link>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className="h-7 w-7"
-            >
-              <Menu className="h-4 w-4 text-primary" />
-            </Button>
+            <div className="flex items-center gap-1">
+              {showWhatsAppBell && <WhatsAppNotificationsBell />}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsCollapsed(!isCollapsed)}
+                className="h-7 w-7"
+              >
+                <Menu className="h-4 w-4 text-primary" />
+              </Button>
+            </div>
           </>
         )}
       </div>

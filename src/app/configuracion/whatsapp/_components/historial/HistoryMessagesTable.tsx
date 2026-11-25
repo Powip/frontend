@@ -46,6 +46,18 @@ interface HistoryMessagesTableProps {
   paginationBlockedReason: string;
 }
 
+/** La fila muestra la hora de envío; si el aviso esperó en cola, se indica cuándo entró. */
+function QueuedAtNote({ message }: { message: WhatsAppHistoryMessage }) {
+  const { sentAt, queuedAt } = message.timeline;
+  if (!sentAt || !queuedAt) return null;
+  if (sentAt.getTime() - queuedAt.getTime() < 60_000) return null;
+  return (
+    <span className="wa-num block text-xs text-wa-muted">
+      En cola desde {formatLimaDateTime(queuedAt)}
+    </span>
+  );
+}
+
 function StatusCell({ message }: { message: WhatsAppHistoryMessage }) {
   if (message.status === WHATSAPP_MESSAGE_STATUSES.ASSISTED) {
     return (
@@ -207,7 +219,7 @@ export function HistoryMessagesTable({
                         onClick={() => setExpanded(isExpanded ? null : message.id)}
                         className="wa-num inline-flex cursor-pointer items-center gap-1.5 rounded text-left outline-none hover:text-wa-primary focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-wa-primary"
                       >
-                        {formatLimaDateTime(message.createdAt)}
+                        {formatLimaDateTime(message.timeline.sentAt ?? message.createdAt)}
                         <ChevronDown
                           className={cn(
                             "size-4 text-wa-muted-2 transition-transform",
@@ -217,6 +229,7 @@ export function HistoryMessagesTable({
                         />
                         <span className="sr-only">, ver línea de tiempo</span>
                       </button>
+                      <QueuedAtNote message={message} />
                     </TableCell>
                     <TableCell className={cn(waTd, "whitespace-nowrap")}>
                       <b className="font-semibold">{message.orderNumber ?? "Sin pedido"}</b>

@@ -69,7 +69,8 @@ export type WhatsAppAuditValue =
 export interface WhatsAppAuditEntry {
   id: string;
   createdAt: Date;
-  user: WhatsAppMessageAuthor | null;
+  /** El nombre va primero; el correo es solo un dato secundario (registros antiguos no lo traen). */
+  user: (WhatsAppMessageAuthor & { email?: string | null }) | null;
   entity: WhatsAppAuditEntity;
   entityId: string | null;
   action: string;

@@ -28,6 +28,8 @@ jest.mock("@/features/whatsapp/api/templates.api", () => ({
   listWhatsAppTemplates: jest.fn().mockResolvedValue([]),
   syncWhatsAppTemplates: jest.fn().mockResolvedValue([]),
   createWhatsAppTemplate: jest.fn(),
+  updateWhatsAppTemplate: jest.fn(),
+  EDITABLE_IN_META_STATUSES: ["APPROVED", "REJECTED", "PAUSED"],
 }));
 
 jest.mock("@/features/whatsapp/api/rules.api", () => ({

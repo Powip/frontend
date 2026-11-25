@@ -24,6 +24,8 @@ import type {
 } from "@/features/whatsapp/models/settings-tab.model";
 import {
   type AuditChange,
+  auditActionLabel,
+  auditUserLabel,
   buildAuditChanges,
   truncateAuditText,
 } from "@/features/whatsapp/utils/audit-format.util";
@@ -97,6 +99,7 @@ function AuditRow({ entry }: { entry: WhatsAppAuditEntry }) {
   const detailId = useId();
   const [open, setOpen] = useState(false);
   const changes = buildAuditChanges(entry.before, entry.after);
+  const who = auditUserLabel(entry.user);
   return (
     <li className="flex flex-col gap-2 border-t border-wa-border py-3 first:border-t-0 first:pt-0">
       <div className="flex flex-wrap items-start gap-3">
@@ -107,8 +110,13 @@ function AuditRow({ entry }: { entry: WhatsAppAuditEntry }) {
         </WaMini>
         <div className="min-w-[180px] flex-1 text-[13px]">
           <p className="m-0">
-            <b className="font-semibold">{entry.user?.name ?? "Usuario sin informar"}</b>{" "}
-            <span className="[overflow-wrap:anywhere]">{entry.action}</span>
+            <b className="font-semibold">{who.name}</b>{" "}
+            <span className="[overflow-wrap:anywhere]">{auditActionLabel(entry.action)}</span>
+            {who.email && (
+              <span className="ml-1 text-xs text-wa-muted [overflow-wrap:anywhere]">
+                · {who.email}
+              </span>
+            )}
           </p>
           <p className="m-0 text-xs text-wa-muted">
             {AUDIT_ENTITY_LABELS[entry.entity]}

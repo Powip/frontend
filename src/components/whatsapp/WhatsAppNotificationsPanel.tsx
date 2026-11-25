@@ -38,6 +38,8 @@ interface WhatsAppNotificationsListProps {
   now: Date;
   onMarkAllRead?: () => Promise<void>;
   onRetry?: () => void;
+  /** Al abrir «Ver» de una alerta sin leer: se marca como leída. */
+  onItemOpen?: (id: string) => void;
 }
 
 export function WhatsAppNotificationsList({
@@ -45,6 +47,7 @@ export function WhatsAppNotificationsList({
   now,
   onMarkAllRead,
   onRetry,
+  onItemOpen,
 }: WhatsAppNotificationsListProps) {
   const reasonId = useId();
   const [state, setState] = useState<
@@ -133,6 +136,9 @@ export function WhatsAppNotificationsList({
                   {href && tab ? (
                     <Link
                       href={href}
+                      onClick={() => {
+                        if (!item.readAt) onItemOpen?.(item.id);
+                      }}
                       className="shrink-0 text-sm font-medium text-primary hover:underline"
                     >
                       Ver

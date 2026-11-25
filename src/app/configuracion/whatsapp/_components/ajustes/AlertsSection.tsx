@@ -3,7 +3,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   BarChart3,
-  BellOff,
   FileText,
   Info,
   type LucideIcon,
@@ -241,9 +240,9 @@ function AlertRulesForm({
                 </SelectContent>
               </Select>
               <p className="m-0 flex items-start gap-1.5 text-xs text-wa-muted">
-                <BellOff className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                La campanita de POWIP todavía no existe: hasta que esté disponible, las alertas no
-                se verán dentro de POWIP.
+                <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+                Las alertas salen en la campanita de POWIP de los administradores. El aviso por
+                WhatsApp a administradores todavía no se envía.
               </p>
             </FormItem>
           )}

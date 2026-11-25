@@ -74,7 +74,7 @@ export async function listWhatsAppRecentAlerts(storeId: string): Promise<WhatsAp
 interface AuditEntryDto {
   id: string;
   createdAt: string;
-  user: { id: string; name: string } | null;
+  user: { id: string; name: string; email?: string | null } | null;
   entity: WhatsAppAuditEntity;
   entityId: string | null;
   action: string;

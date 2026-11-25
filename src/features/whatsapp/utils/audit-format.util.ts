@@ -7,6 +7,51 @@ export const REDACTED_LABEL = "Oculto por seguridad";
 export const MISSING_VALUE_LABEL = "Sin dato";
 export const AUDIT_VALUE_PREVIEW_LENGTH = 120;
 
+/** Acción del registro de cambios en español (el backend guarda un código, p. ej. «update»). */
+const AUDIT_ACTION_LABELS: Record<string, string> = {
+  create: "creó",
+  update: "editó",
+  delete: "borró",
+  activate: "activó",
+  deactivate: "desactivó",
+  auto_activate: "activó automáticamente",
+  reactivate: "reactivó",
+  connect: "conectó",
+  disconnect: "desconectó",
+  pause: "pausó",
+  resume: "reanudó",
+  test_send: "envió una prueba",
+  resend: "reenvió un aviso",
+  reply: "respondió",
+  template: "envió una plantilla",
+  assign: "asignó",
+  attend: "marcó como atendida",
+  contingency_update: "editó la contingencia",
+  contingency_activate: "activó la contingencia",
+  contingency_deactivate: "desactivó la contingencia",
+  protection_update: "editó la protección",
+  assisted_open: "abrió un aviso asistido",
+  "assisted_mark-sent": "marcó como enviado",
+  assisted_discard: "descartó un aviso asistido",
+};
+
+export function auditActionLabel(action: string): string {
+  const label = AUDIT_ACTION_LABELS[action];
+  if (label) return label;
+  // Un código desconocido (solo letras sin tilde, guiones) nunca se muestra en inglés.
+  return /^[a-z0-9_.-]+$/i.test(action) ? "hizo un cambio" : action;
+}
+
+/** Nombre de quien hizo el cambio y, aparte, su correo si es un dato distinto del nombre. */
+export function auditUserLabel(user: { name?: string | null; email?: string | null } | null): {
+  name: string;
+  email: string | null;
+} {
+  const name = user?.name?.trim() || user?.email?.trim() || "Usuario sin informar";
+  const email = user?.email?.trim() || null;
+  return { name, email: email && email !== name ? email : null };
+}
+
 export function isSensitiveKey(key: string): boolean {
   return SENSITIVE_KEY_PATTERN.test(key);
 }

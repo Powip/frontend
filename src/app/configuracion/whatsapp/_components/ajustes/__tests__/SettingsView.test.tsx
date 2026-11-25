@@ -221,7 +221,7 @@ describe("Alertas", () => {
       "true",
     );
     expect(within(alerts).getByText(/esta pantalla no pausa nada/)).toBeInTheDocument();
-    expect(within(alerts).getByText(/La campanita de POWIP todavía no existe/)).toBeInTheDocument();
+    expect(within(alerts).getByText(/Las alertas salen en la campanita de POWIP/)).toBeInTheDocument();
   });
 
   it("«Ver» lleva solo a la pestaña relacionada", async () => {

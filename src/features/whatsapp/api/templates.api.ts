@@ -56,6 +56,25 @@ export async function syncWhatsAppTemplates(): Promise<WhatsAppTemplatesSyncResu
   return data;
 }
 
+/** Estados en que Meta deja editar una plantilla ya registrada (POST /{template_id}). */
+export const EDITABLE_IN_META_STATUSES: readonly string[] = ["APPROVED", "REJECTED", "PAUSED"];
+
+/**
+ * C-12 · «Guardar y reenviar a revisión»: edita la plantilla en Meta (PUT /whatsapp/templates/:id).
+ * El nombre y el idioma no cambian; Meta la vuelve a revisar.
+ */
+export async function updateWhatsAppTemplate(
+  id: string,
+  payload: Pick<CreateTemplatePayload, "category" | "components">,
+): Promise<WhatsAppTemplateDto> {
+  assertWhatsAppContractAvailable("templates");
+  const { data } = await axiosAuth.put<{ data?: WhatsAppTemplateDto } | WhatsAppTemplateDto>(
+    `${API.integrations}/whatsapp/templates/${encodeURIComponent(id)}`,
+    { category: payload.category, components: payload.components },
+  );
+  return "data" in data && data.data ? data.data : (data as WhatsAppTemplateDto);
+}
+
 /** C-12 · Crea la plantilla y la envía a revisión de Meta. */
 export async function createWhatsAppTemplate(
   payload: CreateTemplatePayload,

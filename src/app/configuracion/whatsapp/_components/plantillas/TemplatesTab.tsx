@@ -6,8 +6,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { getWhatsAppRules } from "@/features/whatsapp/api/rules.api";
 import {
   createWhatsAppTemplate,
+  EDITABLE_IN_META_STATUSES,
   listWhatsAppTemplates,
   syncWhatsAppTemplates,
+  updateWhatsAppTemplate,
 } from "@/features/whatsapp/api/templates.api";
 import {
   listWhatsAppTemplateSampleOrders,
@@ -83,6 +85,15 @@ async function loadUsageByTemplate(
     console.error("No se pudieron cargar las reglas para «Se usa en»:", error);
   }
   return usage;
+}
+
+/**
+ * «Guardar y reenviar a revisión»: si el editor abrió una plantilla que Meta deja editar
+ * (aprobada, rechazada o pausada), se edita esa misma; si no, se crea una nueva.
+ */
+export function templateToEditInMeta(mode: TemplateEditorMode | undefined): WhatsAppTemplate | null {
+  if (mode?.kind !== "edit") return null;
+  return EDITABLE_IN_META_STATUSES.includes(mode.template.status) ? mode.template : null;
 }
 
 export function TemplatesTab({ canManage, businessName, onActivateRule }: TemplatesTabProps) {
@@ -180,13 +191,21 @@ export function TemplatesTab({ canManage, businessName, onActivateRule }: Templa
       );
       return;
     }
+    // Editar una plantilla que ya existe en Meta: se edita la misma (no se crea otra con el mismo nombre).
+    const editing = templateToEditInMeta(editorSession?.mode);
     try {
       const payload = toCreateTemplatePayload(values);
-      await createWhatsAppTemplate(payload);
+      if (editing) {
+        await updateWhatsAppTemplate(editing.id, payload);
+      } else {
+        await createWhatsAppTemplate(payload);
+      }
       setEditorSession(null);
       setSyncNotice({
         kind: "success",
-        text: `«${payload.name}» se envió a revisión de Meta. Usa «Actualizar desde Meta» para ver si ya la aprobaron.`,
+        text: editing
+          ? `«${editing.name}» se guardó y volvió a revisión de Meta. Usa «Actualizar desde Meta» para ver si ya la aprobaron.`
+          : `«${payload.name}» se envió a revisión de Meta. Usa «Actualizar desde Meta» para ver si ya la aprobaron.`,
       });
       fetchTemplates();
     } catch (error) {
