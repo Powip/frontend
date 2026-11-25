@@ -12,6 +12,7 @@ import { useCrmMe } from "@/hooks/useCrmMe";
 import { usePauLearning } from "@/hooks/useCrmPauLearning";
 import type { AssignedFilter, ConversationChannel, ConversationStatus } from "@/types/crm";
 import ChannelBadge from "./ChannelBadge";
+import CodNote from "./CodNote";
 import ConversationPills from "./ConversationPills";
 import { INDICATOR_PARAMS, type InboxIndicator } from "./InboxIndicators";
 import { contactLabel, relativeTime } from "./format";
@@ -191,6 +192,8 @@ export default function ConversationList({
             ))}
           </select>
         </div>
+        {/* B5: aviso de pedidos COD que van a Gestión CC (dato de ms-ventas). */}
+        <CodNote storeIds={storeId ? [storeId] : stores.map((st) => st.id)} />
         <div role="group" aria-label="Filtros" className="flex flex-wrap gap-1">
           {CHIPS.filter((c) => c.key !== "learned" || isSupervisor).map((c) => (
             <button
