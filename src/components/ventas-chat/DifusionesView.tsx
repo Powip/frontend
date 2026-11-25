@@ -264,7 +264,7 @@ export default function DifusionesView() {
         </p>
       )}
       {list.data && list.data.length > 0 && (
-        <div className="overflow-x-auto rounded-md border">
+        <div className="relative overflow-x-auto rounded-md border">
           <table className="w-full text-left text-sm">
             <thead className="bg-muted/50 text-xs text-muted-foreground">
               <tr>

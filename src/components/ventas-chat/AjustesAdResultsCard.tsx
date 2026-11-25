@@ -152,7 +152,7 @@ export default function AdResultsCard() {
               No hay chats ni gasto de anuncios en estas fechas.
             </p>
           ) : (
-            <div className="overflow-x-auto rounded-md border">
+            <div className="relative overflow-x-auto rounded-md border">
               <table className="w-full text-xs" data-testid="ad-results-table">
                 <thead className="bg-muted/40">
                   <tr>

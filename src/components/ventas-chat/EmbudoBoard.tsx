@@ -342,7 +342,7 @@ export default function EmbudoBoard() {
           <p className="text-xs text-muted-foreground">
             Arrastra la tarjeta para cambiar la etapa. Venta y Entregado los mueve el sistema al confirmarse el pago y la entrega.
           </p>
-          <div className="flex items-start gap-3 overflow-x-auto pb-2" data-testid="board">
+          <div className="relative flex items-start gap-3 overflow-x-auto pb-2" data-testid="board">
             {board.columns.map((col) => (
               <Column
                 key={col.stage.id}

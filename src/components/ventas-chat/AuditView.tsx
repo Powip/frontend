@@ -125,7 +125,7 @@ function Sheets({ sheets }: { sheets: Audit["sheets"] }) {
           Todavía no hay fichas de producto.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
+        <div className="relative overflow-x-auto rounded-md border">
           <table className="w-full text-sm" data-testid="sheets">
             <thead className="bg-muted/40 text-xs">
               <tr>
@@ -188,7 +188,7 @@ function ScriptReaders({ script }: { script: Audit["script"] }) {
           Todavía no hay personas del equipo para revisar.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
+        <div className="relative overflow-x-auto rounded-md border">
           <table className="w-full text-sm" data-testid="script-readers">
             <thead className="bg-muted/40 text-xs">
               <tr>

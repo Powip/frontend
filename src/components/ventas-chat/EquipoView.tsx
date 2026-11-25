@@ -201,7 +201,7 @@ function Ranking({ members }: { members: TeamMember[] }) {
           Todavía no hay actividad del equipo en este periodo.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
+        <div className="relative overflow-x-auto rounded-md border">
           <table className="w-full text-sm" data-testid="ranking">
             <thead className="bg-muted/40 text-xs">
               <tr>
@@ -408,7 +408,7 @@ function ChannelResults({ rows }: { rows: TeamChannelResult[] }) {
           No hubo chats en este periodo.
         </p>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
+        <div className="relative overflow-x-auto rounded-md border">
           <table className="w-full text-sm" data-testid="channel-results">
             <thead className="bg-muted/40 text-xs">
               <tr>

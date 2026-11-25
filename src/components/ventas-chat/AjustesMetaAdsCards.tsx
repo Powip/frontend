@@ -155,7 +155,7 @@ export function MetaCapiCard() {
             Todavía no hay ventas de chats que vinieron de anuncios.
           </p>
         ) : (
-          <div className="overflow-x-auto rounded-md border">
+          <div className="relative overflow-x-auto rounded-md border">
             <table className="w-full text-xs" data-testid="capi-log">
               <thead className="bg-muted/40">
                 <tr>
@@ -338,7 +338,7 @@ export function MetaAudienceCard() {
         ) : rows.length === 0 ? (
           <p className="text-xs text-muted-foreground">Todavía no se envió ningún público.</p>
         ) : (
-          <div className="overflow-x-auto rounded-md border">
+          <div className="relative overflow-x-auto rounded-md border">
             <table className="w-full text-xs" data-testid="audience-log">
               <thead className="bg-muted/40">
                 <tr>

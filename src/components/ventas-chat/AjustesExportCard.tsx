@@ -192,7 +192,7 @@ export default function AjustesExportCard() {
         ) : items.length === 0 ? (
           <p className="text-xs text-muted-foreground">Todavía nadie descargó la base.</p>
         ) : (
-          <div className="overflow-x-auto rounded-md border">
+          <div className="relative overflow-x-auto rounded-md border">
             <table className="w-full text-xs" data-testid="export-log">
               <thead className="bg-muted/40">
                 <tr>
