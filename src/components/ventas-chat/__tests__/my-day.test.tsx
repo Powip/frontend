@@ -66,6 +66,21 @@ describe("Mi día (mockup 152)", () => {
     await waitFor(() => expect(getTeamDay).toHaveBeenCalledWith("pau"));
   });
 
+  it("el desplegable muestra las ventas de cada vendedora contra su meta", async () => {
+    (getTeamDay as jest.Mock).mockResolvedValue(
+      day({
+        sellers: [
+          { userId: "u1", userName: "Karla Alva", count: 2, billed: 370, goal: 1000 },
+          { userId: "pau", userName: "Pau", count: 1, billed: 230, goal: 1000 },
+        ],
+      }),
+    );
+    setup();
+    const sel = await screen.findByLabelText("Ver números de");
+    expect(within(sel).getByRole("option", { name: "Karla Alva · S/ 370 de S/ 1,000" })).toBeInTheDocument();
+    expect(within(sel).getByRole("option", { name: "Pau · S/ 230 de S/ 1,000" })).toBeInTheDocument();
+  });
+
   it("la vendedora no elige: ve solo lo suyo", async () => {
     me.isSupervisor = false;
     (getTeamDay as jest.Mock).mockResolvedValue(day({ who: "u1" }));

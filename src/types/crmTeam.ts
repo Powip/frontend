@@ -309,6 +309,7 @@ export interface TeamDay {
   pending: number;
   pendingToValidate: number;
   pendingOnDelivery: number;
-  sellers: TeamPerson[];
+  /** Solo para supervisor: cada persona trae sus ventas y su meta de hoy. */
+  sellers: Array<TeamPerson & { count?: number; billed?: number; goal?: number }>;
   orders: TeamDayOrder[];
 }

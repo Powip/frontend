@@ -107,7 +107,10 @@ export default function MyDay({ onOpenChat, compact = false }: Props) {
             >
               {d.sellers.map((s) => (
                 <option key={s.userId} value={s.userId}>
-                  {s.userName}
+                  {/* Ventas de hoy contra la meta de cada vendedora (pedido de Jairo, 25-nov). */}
+                  {typeof s.billed === "number" && typeof s.goal === "number"
+                    ? `${s.userName} · ${fmt(s.billed)} de ${fmt(s.goal)}`
+                    : s.userName}
                 </option>
               ))}
               <option value="all">Todo el equipo</option>
