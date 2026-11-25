@@ -487,7 +487,7 @@ export function greErrorMessage(error: unknown, fallback = "No se pudo completar
     case "GRE_NO_HABILITADA":
       return GRE_NOT_ENABLED_NOTICE;
     case "GRE_CREDENTIALS_NOT_CONFIGURED":
-      return "Este RUC no tiene credenciales GRE (client_id y client_secret de SOL). Cárgalas en Facturación › Certificado Digital.";
+      return "Faltan credenciales GRE (client_id y client_secret de SOL). Cárgalas en Facturación › Certificado Digital.";
     case "GRE_CREDENTIALS_NOT_FOUND":
       return "Este RUC todavía no tiene credenciales GRE.";
     case "GRE_SEQUENCE_CANNOT_MOVE_BACK":
@@ -534,12 +534,22 @@ export function greErrorMessage(error: unknown, fallback = "No se pudo completar
 export interface GreSettingsLike {
   sunatConnection: "NOT_CONFIGURED" | "SUNAT_PRODUCTION" | "OTHER";
   enabledForCompany: boolean;
+  autoEnableByCredentials?: boolean;
   profiles: Array<{ sunatProfileId: string; configured: boolean; isActive: boolean }>;
+}
+
+/**
+ * La empresa no puede emitir solo porque está fuera de la lista de
+ * habilitadas (modo solo lista). Con la habilitación automática, no estar
+ * habilitada significa que faltan credenciales GRE.
+ */
+export function greBlockedByList(settings: GreSettingsLike): boolean {
+  return !settings.enabledForCompany && settings.autoEnableByCredentials !== true;
 }
 
 export const GRE_PILOT_NOTICE = "La emisión real de guías de remisión se habilita con la empresa piloto.";
 
-/** Texto del 403 GRE_NO_HABILITADA de ms-sunat (la empresa no está en la lista de habilitadas). */
+/** Texto del 403 GRE_NO_HABILITADA de ms-sunat (modo solo lista y la empresa no está en ella). */
 export const GRE_NOT_ENABLED_NOTICE = "La guía de remisión electrónica todavía no está habilitada para tu empresa.";
 
 /**
@@ -551,8 +561,8 @@ export function greEmissionBlockReason(settings: GreSettingsLike | null | undefi
   if (!settings) return "Cargando la configuración de guías de remisión…";
   if (settings.sunatConnection === "NOT_CONFIGURED")
     return `Powip todavía no envía guías de remisión a SUNAT. ${GRE_PILOT_NOTICE}`;
-  if (!settings.enabledForCompany) return GRE_NOT_ENABLED_NOTICE;
-  if (!settings.profiles.some((profile) => profile.isActive && profile.configured))
+  if (greBlockedByList(settings)) return GRE_NOT_ENABLED_NOTICE;
+  if (!settings.enabledForCompany || !settings.profiles.some((profile) => profile.isActive && profile.configured))
     return "Primero carga las credenciales GRE (client_id y client_secret de SOL) de tu RUC en Facturación › Certificado Digital.";
   return null;
 }

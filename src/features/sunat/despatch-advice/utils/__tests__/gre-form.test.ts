@@ -191,6 +191,9 @@ describe("habilitación y mensajes", () => {
   });
 
   it("con SUNAT producción, una empresa no habilitada no emite aunque tenga credenciales", () => {
+    expect(
+      greEmissionBlockReason({ sunatConnection: "SUNAT_PRODUCTION", enabledForCompany: false, autoEnableByCredentials: true, profiles: [{ ...profile, configured: false }] }),
+    ).toMatch(/credenciales GRE/);
     expect(greEmissionBlockReason({ sunatConnection: "SUNAT_PRODUCTION", enabledForCompany: false, profiles: [profile] })).toBe(
       "La guía de remisión electrónica todavía no está habilitada para tu empresa.",
     );

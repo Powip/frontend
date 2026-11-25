@@ -133,11 +133,19 @@ export interface GreProfileSettings {
 export interface GreSettings {
   sunatConnection: SunatGreConnection;
   /**
-   * false si las guías van a SUNAT producción y la empresa no está habilitada
-   * (SUNAT_GRE_ALLOWED_COMPANY_IDS): emitir y reenviar responden 403
-   * GRE_NO_HABILITADA. Siempre true contra un simulador o sin conexión.
+   * false si las guías van a SUNAT producción y la empresa no está habilitada:
+   * no está en SUNAT_GRE_ALLOWED_COMPANY_IDS y (con autoEnableByCredentials)
+   * ningún perfil activo tiene credenciales GRE completas. Siempre true contra
+   * un simulador o sin conexión.
    */
   enabledForCompany: boolean;
+  /**
+   * SUNAT_GRE_AUTO_ENABLE de ms-sunat. true: las credenciales completas
+   * habilitan a la empresa, así que si no está habilitada solo le faltan
+   * credenciales (409 GRE_CREDENTIALS_NOT_CONFIGURED). false o ausente: solo
+   * la lista habilita (403 GRE_NO_HABILITADA).
+   */
+  autoEnableByCredentials?: boolean;
   profiles: GreProfileSettings[];
 }
 
