@@ -24,7 +24,14 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 /** Botón «Perdido» del chat: pide el motivo y mueve a la etapa «perdida» del embudo. */
-export function LostChatButton({ conversation }: { conversation: Conversation }) {
+export function LostChatButton({
+  conversation,
+  compact = false,
+}: {
+  conversation: Conversation;
+  /** Solo ícono (cabecera del chat); el nombre queda en `aria-label`. */
+  compact?: boolean;
+}) {
   const { phoneMasked } = useCrmMe();
   const pipelines = usePipelines();
   const update = useUpdateConversation(conversation.id);
@@ -35,8 +42,16 @@ export function LostChatButton({ conversation }: { conversation: Conversation })
   if (!lostStage || current?.kind === "lost") return null;
   return (
     <>
-      <Button size="sm" variant="outline" disabled={update.isPending} onClick={() => setOpen(true)}>
-        <XCircle /> Perdido
+      <Button
+        size={compact ? "icon-sm" : "sm"}
+        variant="outline"
+        aria-label={compact ? "Perdido" : undefined}
+        title={compact ? "Perdido" : undefined}
+        className={compact ? "text-destructive" : undefined}
+        disabled={update.isPending}
+        onClick={() => setOpen(true)}
+      >
+        <XCircle /> {!compact && "Perdido"}
       </Button>
       {open && (
         <LostReasonDialog

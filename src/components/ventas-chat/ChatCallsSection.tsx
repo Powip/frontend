@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Loader2, PhoneCall } from "lucide-react";
+import { Loader2, PhoneCall, PhoneForwarded } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -16,7 +16,14 @@ import { CALL_DIRECTION_LABEL, CALL_RESULT_LABEL, CALL_RESULT_TONE, formatCallDu
 import { contactLabel, phoneForCustomer } from "./format";
 
 /** Botones «Llamar» y «Registrar llamada» de la cabecera del chat. */
-export function ChatCallButtons({ conversation }: { conversation: Conversation }) {
+export function ChatCallButtons({
+  conversation,
+  compact = false,
+}: {
+  conversation: Conversation;
+  /** Teléfono y «Registrar llamada» solo como íconos (cabecera compacta). */
+  compact?: boolean;
+}) {
   const { phoneMasked } = useCrmMe();
   const [open, setOpen] = useState(false);
   const phone = phoneForCustomer(conversation);
@@ -29,28 +36,36 @@ export function ChatCallButtons({ conversation }: { conversation: Conversation }
         available={conversation.channel === "whatsapp"}
       />
       {href ? (
-        <Button asChild size="sm" variant="outline">
-          <a href={href}>
-            <PhoneCall /> Llamar por teléfono
+        <Button asChild size={compact ? "icon-sm" : "sm"} variant="outline">
+          <a href={href} aria-label={compact ? "Llamar por teléfono" : undefined} title="Llamar por teléfono">
+            <PhoneCall /> {!compact && "Llamar por teléfono"}
           </a>
         </Button>
       ) : (
         <Button
           type="button"
-          size="sm"
+          size={compact ? "icon-sm" : "sm"}
           variant="outline"
           disabled
+          aria-label={compact ? "Llamar por teléfono" : undefined}
           title={
             isMaskedPhone(phone)
               ? "El teléfono está oculto: llama por WhatsApp"
               : "Guarda el teléfono del cliente para poder llamar"
           }
         >
-          <PhoneCall /> Llamar por teléfono
+          <PhoneCall /> {!compact && "Llamar por teléfono"}
         </Button>
       )}
-      <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
-        Registrar llamada
+      <Button
+        type="button"
+        size={compact ? "icon-sm" : "sm"}
+        variant="outline"
+        aria-label={compact ? "Registrar llamada" : undefined}
+        title="Registrar llamada"
+        onClick={() => setOpen(true)}
+      >
+        {compact ? <PhoneForwarded /> : "Registrar llamada"}
       </Button>
       {open && (
         <CallDialog

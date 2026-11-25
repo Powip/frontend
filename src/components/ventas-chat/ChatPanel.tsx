@@ -8,7 +8,6 @@ import {
   Clock,
   Loader2,
   Lock,
-  PanelRight,
   Send,
   Sparkles,
   StickyNote,
@@ -19,7 +18,6 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCrmMe } from "@/hooks/useCrmMe";
-import { useCrmSettings } from "@/hooks/useCrmTeam";
 import { crmError } from "@/services/crmService";
 import {
   useAutoLinkClient,
@@ -36,11 +34,9 @@ import { useCallPermission } from "@/hooks/useCallSessions";
 import { useChatSuggestion } from "@/hooks/useChatSuggestion";
 import type { Conversation, Message } from "@/types/crm";
 import { CRM_UNREACHABLE } from "./ConversationList";
-import ChannelBadge from "./ChannelBadge";
+import ChatHeader from "./ChatHeader";
 import { CallBubble, isCallNote } from "./CallBubble";
-import { ChatCallButtons } from "./ChatCallsSection";
 import WhatsAppCallButton from "./WhatsAppCallButton";
-import { LostChatButton } from "./ChatPlanningSections";
 import ClientOrderPanel from "./ClientOrderPanel";
 import { isWhatsAppMedia, WhatsAppMedia } from "./WhatsAppMedia";
 import { SendImageButton } from "./SendImageButton";
@@ -52,7 +48,6 @@ import SendLinkButton from "./SendLinkButton";
 import SuggestionCard from "./SuggestionCard";
 import PauChatBar from "./PauChatBar";
 import TemplateDialog from "./TemplateDialog";
-import ThinkingButton from "./ThinkingButton";
 import {
   ReactButton,
   ReactionBadges,
@@ -63,7 +58,6 @@ import {
 } from "./SocialParts";
 import {
   STATUS_LABEL,
-  contactLabel,
   formatResumeAt,
   formatTime,
   isInternalNote,
@@ -72,7 +66,6 @@ import {
   isWindowOpen,
   messageText,
   phoneForCustomer,
-  showPhone,
   retakeNotice,
   windowClosedNotice,
 } from "./format";
@@ -197,8 +190,7 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
   const { auth } = useAuth();
   const companyId = auth?.company?.id;
   const [panelOpen, setPanelOpen] = useState(false);
-  const { isAdmin, isSupervisor, phoneMasked } = useCrmMe();
-  const adminSettings = useCrmSettings(isAdmin);
+  const { isSupervisor } = useCrmMe();
   const me = {
     id: auth?.user.id,
     name: [auth?.user.name, auth?.user.surname].filter(Boolean).join(" ") || undefined,
@@ -303,52 +295,7 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
   return (
     <div className="flex h-full min-h-0">
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-      <header className="flex flex-wrap items-center gap-2 border-b p-3">
-        <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={onBack} aria-label="Volver a la lista">
-          <ArrowLeft />
-        </Button>
-        <div className="min-w-[11rem] flex-1">
-          <h2 className="flex flex-wrap items-center gap-2 text-sm font-semibold">
-            <span className="min-w-0 break-words sm:truncate">{contactLabel(conversation, phoneMasked)}</span>
-            <ChannelBadge channel={conversation.channel} />
-          </h2>
-          <p className="break-words text-xs text-muted-foreground sm:truncate">
-            {isMetaChannel(conversation)
-              ? (showPhone(conversation.customerPhone, phoneMasked) ?? "Sin teléfono")
-              : showPhone(conversation.contactPhone, phoneMasked)}
-            {isAdmin && adminSettings.data?.maskPhone ? " · Las vendedoras ven el número oculto" : ""}
-            {conversation.assignedUserName ? ` · Asignada a ${conversation.assignedUserName}` : " · Sin asignar"}
-          </p>
-        </div>
-        <ChatCallButtons conversation={conversation} />
-        <Button
-          size="icon-sm"
-          variant="outline"
-          className="xl:hidden"
-          aria-label="Cliente y pedido"
-          onClick={() => setPanelOpen(true)}
-        >
-          <PanelRight />
-        </Button>
-        <ThinkingButton conversation={conversation} />
-        {!closed && <LostChatButton conversation={conversation} />}
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={update.isPending || !me.id}
-          onClick={() => update.mutate({ assignedUserId: mine ? null : (me.id ?? null) })}
-        >
-          {mine ? "Soltar" : "Tomar"}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={update.isPending}
-          onClick={() => update.mutate({ status: closed ? "open" : "closed" })}
-        >
-          {closed ? "Reabrir" : "Cerrar"}
-        </Button>
-      </header>
+      <ChatHeader conversation={conversation} onBack={onBack} onOpenPanel={() => setPanelOpen(true)} />
 
       {conversation.resumeAt && (
         <div

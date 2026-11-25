@@ -6,13 +6,15 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { crmError } from "@/services/crmService";
 import { NATIVE_SELECT_CLASS } from "./format";
-import { useConversations } from "@/hooks/useCrmChat";
+import { useConversations, useInboxSummary } from "@/hooks/useCrmChat";
 import { useCrmMe } from "@/hooks/useCrmMe";
 import type { AssignedFilter, ConversationChannel, ConversationStatus } from "@/types/crm";
 import ChannelBadge from "./ChannelBadge";
 import ConversationPills from "./ConversationPills";
 import { INDICATOR_PARAMS, type InboxIndicator } from "./InboxIndicators";
 import { contactLabel, relativeTime } from "./format";
+import { StoreBadge } from "./ChatHeader";
+import { formatWait, initials, waitMinutes, waitTone } from "./conversationWait";
 
 export const CRM_UNREACHABLE = "No se pudo conectar con el servicio de chat";
 
@@ -89,7 +91,9 @@ export default function ConversationList({
   onIndicatorChange,
   storeId,
 }: Props) {
-  const { phoneMasked } = useCrmMe();
+  const { phoneMasked, stores } = useCrmMe();
+  const slaMinutes = useInboxSummary().data?.slaMinutes ?? 15;
+  const storeName = (id?: string | null) => (id ? stores.find((st) => st.id === id)?.name : undefined);
   const [status, setStatus] = useState<ConversationStatus>("open");
   const [assigned, setAssigned] = useState<AssignedFilter>("all");
   const [channel, setChannel] = useState<ChannelFilter>("all");
@@ -189,17 +193,31 @@ export default function ConversationList({
         )}
 
         <ul>
-          {items.map((c) => (
+          {items.map((c) => {
+            const wait = c.status === "open" ? waitMinutes(c) : null;
+            const tone = waitTone(wait, slaMinutes);
+            const store = storeName(c.storeId);
+            return (
             <li key={c.id}>
               <button
                 type="button"
                 onClick={() => onSelect(c.id)}
                 aria-current={c.id === selectedId ? "true" : undefined}
+                data-wait={tone ?? undefined}
                 className={cn(
-                  "flex w-full flex-col gap-1 border-b px-3 py-3 text-left transition-colors hover:bg-accent/50",
-                  c.id === selectedId && "bg-accent",
+                  "grid w-full grid-cols-[2.25rem_minmax(0,1fr)_auto] gap-x-2.5 border-b border-l-[3px] border-l-transparent px-3 py-2.5 text-left transition-colors hover:bg-accent/50",
+                  c.id === selectedId && "border-l-primary bg-accent",
+                  tone === "bad" && "border-l-red-500 bg-red-50/60 dark:bg-red-950/20",
+                  tone === "warn" && c.id !== selectedId && "border-l-amber-400",
                 )}
               >
+                <span
+                  aria-hidden
+                  className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-full bg-teal-100 text-xs font-semibold text-teal-800 dark:bg-teal-900 dark:text-teal-100"
+                >
+                  {initials(contactLabel(c, phoneMasked))}
+                </span>
+                <span className="flex min-w-0 flex-col gap-1">
                 <span className="flex items-center justify-between gap-2">
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className={cn("truncate text-sm", c.unreadCount > 0 ? "font-semibold" : "font-medium")}>
@@ -207,25 +225,17 @@ export default function ConversationList({
                     </span>
                     <ChannelBadge channel={c.channel} />
                   </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
-                    {relativeTime(c.lastMessageAt)}
-                  </span>
                 </span>
                 <span className="flex items-center justify-between gap-2">
                   <span className="truncate text-xs text-muted-foreground">
                     {c.lastMessageDirection === "out" ? "Tú: " : ""}
                     {c.lastMessagePreview ?? "Sin mensajes"}
                   </span>
-                  {c.unreadCount > 0 && (
-                    <span
-                      aria-label={`${c.unreadCount} sin leer`}
-                      className="min-w-5 shrink-0 rounded-full bg-primary px-1.5 text-center text-xs font-medium text-primary-foreground"
-                    >
-                      {c.unreadCount}
-                    </span>
-                  )}
                 </span>
-                <ConversationPills conversation={c} />
+                <span className="flex flex-wrap items-center gap-1">
+                  <ConversationPills conversation={c} />
+                  {store && <StoreBadge name={store} />}
+                </span>
                 {c.pauHelpReason && (
                   <span
                     className="flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-400"
@@ -258,9 +268,47 @@ export default function ConversationList({
                     Asignada a {c.assignedUserName.split("@")[0]}
                   </span>
                 )}
+                </span>
+                <span className="flex flex-col items-end gap-1 text-[11px] text-muted-foreground">
+                  {wait != null && tone ? (
+                    <span
+                      data-testid="wait-pill"
+                      title="Minutos esperando respuesta"
+                      className={cn(
+                        "inline-flex items-center gap-1 whitespace-nowrap rounded-full px-1.5 py-px font-bold",
+                        tone === "ok" && "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300",
+                        tone === "warn" && "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300",
+                        tone === "bad" && "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300",
+                      )}
+                    >
+                      <Clock className="h-3 w-3" aria-hidden /> {formatWait(wait)}
+                    </span>
+                  ) : (
+                    <span className="whitespace-nowrap">{relativeTime(c.lastMessageAt)}</span>
+                  )}
+                  {c.unreadCount > 0 && (
+                    <span
+                      aria-label={`${c.unreadCount} sin leer`}
+                      className="min-w-5 shrink-0 rounded-full bg-primary px-1.5 text-center text-xs font-medium text-primary-foreground"
+                    >
+                      {c.unreadCount}
+                    </span>
+                  )}
+                  <span
+                    title={c.assignedUserName ? c.assignedUserName.split("@")[0] : "Sin asignar"}
+                    className={cn(
+                      "flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-semibold",
+                      c.assignedUserName ? "bg-muted text-foreground" : "border border-dashed",
+                    )}
+                    aria-hidden
+                  >
+                    {c.assignedUserName ? initials(c.assignedUserName.split("@")[0]) : "?"}
+                  </span>
+                </span>
               </button>
             </li>
-          ))}
+            );
+          })}
         </ul>
       </div>
     </div>
