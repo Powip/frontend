@@ -259,9 +259,12 @@ function AccountRow({ account }: { account: ChannelAccount }) {
           <Button
             type="button"
             size="sm"
-            disabled={!dirty || busy || !name.trim()}
+            disabled={!dirty || busy}
             onClick={() =>
-              update.mutate({ id: account.id, input: { name: name.trim(), storeId: storeId || null } })
+              update.mutate({
+                id: account.id,
+                input: { ...(name.trim() ? { name: name.trim() } : {}), storeId: storeId || null },
+              })
             }
           >
             {update.isPending && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />}
@@ -280,12 +283,19 @@ function AccountRow({ account }: { account: ChannelAccount }) {
 export function ChannelAccountsCard() {
   const accounts = useChannelAccounts();
   const rows = accounts.data ?? [];
+  const noStore = rows.filter((a) => a.isActive && !a.storeId).length;
   return (
     <Section
       id="channel-accounts"
       title="Cuentas conectadas"
       description="Ponle nombre a cada número o página y elige su tienda. Sus chats pasan a esa tienda."
     >
+      {noStore > 0 && (
+        <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900">
+          {noStore === 1 ? "1 cuenta sin tienda" : `${noStore} cuentas sin tienda`}: las ventas de sus chats no crean
+          pedido en Powip. Elige la tienda y guarda.
+        </p>
+      )}
       {accounts.isLoading ? (
         <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="h-3.5 w-3.5 animate-spin" /> Cargando cuentas…

@@ -58,7 +58,9 @@ function ReceiptCard({ receipt }: { receipt: PaymentReceipt }) {
       toast.success(approve ? "Pago aceptado. Pau avisa al cliente." : "Comprobante rechazado. Pau avisa al cliente el motivo.");
       void queryClient.invalidateQueries({ queryKey: CRM_PAU_QUEUE_KEY });
     },
-    onError: () => toast.error("No se pudo guardar la revisión."),
+    // El CRM explica por qué no se puede (por ejemplo, el chat no tiene tienda).
+    onError: (error) =>
+      toast.error((error as { response?: { data?: { message?: string } } }).response?.data?.message ?? "No se pudo guardar la revisión."),
   });
 
   return (
@@ -104,6 +106,12 @@ function ReceiptCard({ receipt }: { receipt: PaymentReceipt }) {
             </li>
           ))}
         </ul>
+      )}
+
+      {!receipt.orderId && receipt.destination !== "simulated" && (
+        <p role="alert" className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">
+          Sin pedido en Powip. {receipt.coreError ?? "Todavía no se creó el pedido de esta venta."}
+        </p>
       )}
 
       {rejecting ? (
