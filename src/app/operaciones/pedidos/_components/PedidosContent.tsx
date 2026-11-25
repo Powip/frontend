@@ -568,7 +568,7 @@ export function PedidosContent() {
         setIsCreatingGuide(false);
       }
     },
-    [getUserInfo, fetchOrders, invalidateBusinessData, createGuideOrders, salesById, patchOrderWithAssignment],
+    [getUserInfo, fetchOrders, invalidateBusinessData, createGuideOrders, salesById, patchOrderWithAssignment, markAssignedToGuide],
   );
 
   const handleAddToGuideConfirm = useCallback(
@@ -636,7 +636,7 @@ export function PedidosContent() {
         setIsAddingToGuide(false);
       }
     },
-    [addToGuideOrders, getUserInfo, fetchOrders, patchOrderWithAssignment],
+    [addToGuideOrders, getUserInfo, fetchOrders, patchOrderWithAssignment, markAssignedToGuide],
   );
 
   const handleReassignSellerConfirm = useCallback(
