@@ -93,9 +93,20 @@ function RuleRow({ title, help, children }: { title: string; help: string; child
   );
 }
 
-function ClosingCard({ rules, editable }: { rules: ScriptClosingRules; editable: boolean }) {
+function ClosingCard({
+  rules,
+  activePromo,
+  editable,
+}: {
+  rules: ScriptClosingRules;
+  activePromo?: string;
+  editable: boolean;
+}) {
   const m = useSaveScriptPlaybook();
   const { draft, setDraft, dirty } = useDraft(rules);
+  // La promo guardada ya pasó las 23:59 de su día: se puede volver a activar sin cambiar el texto.
+  const savedPromo = rules.promo?.trim() ?? "";
+  const promoExpired = !!savedPromo && !activePromo?.trim();
   const cutoffOk = CUTOFF_RE.test(draft.cutoffTime);
   const unitsOk = Number.isInteger(draft.lastUnits) && draft.lastUnits >= 0 && draft.lastUnits <= 999;
   const valid = cutoffOk && unitsOk;
@@ -161,14 +172,32 @@ function ClosingCard({ rules, editable }: { rules: ScriptClosingRules; editable:
             value={draft.promo}
             onChange={(e) => setDraft((c) => ({ ...c, promo: e.target.value }))}
           />
-          <p className="text-xs text-muted-foreground">Visible en todos los chats para que todas ofrezcan lo mismo.</p>
+          <p className="text-xs text-muted-foreground">
+            Visible en todos los chats para que todas ofrezcan lo mismo. Vence hoy a las 23:59; al guardar queda activa
+            por el día.
+          </p>
+          {promoExpired && (
+            <p className="text-xs font-medium text-amber-700" data-testid="promo-expired">
+              La promo «{savedPromo}» ya venció y no se muestra en los chats. Guarda para ofrecerla hoy.
+            </p>
+          )}
         </div>
       </div>
       {editable && (
         <SaveRow
-          canSave={dirty && valid}
+          canSave={(dirty || promoExpired) && valid}
           saving={m.isPending}
-          onSave={() => m.mutate({ closingRules: { ...draft, promo: draft.promo.trim() } })}
+          onSave={() =>
+            m.mutate({
+              // promoDate lo pone el servidor al guardar.
+              closingRules: {
+                cutoffTime: draft.cutoffTime,
+                lastUnits: draft.lastUnits,
+                instantReply: draft.instantReply,
+                promo: draft.promo.trim(),
+              },
+            })
+          }
           hint={
             !cutoffOk ? "Elige la hora de corte." : !unitsOk ? "Las unidades deben ser un número entre 0 y 999." : null
           }
@@ -183,7 +212,7 @@ export default function GuionPlaybook({ script, editable }: { script: Script; ed
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <TemperatureCard items={script.temperature} editable={editable} />
-      <ClosingCard rules={script.closingRules} editable={editable} />
+      <ClosingCard rules={script.closingRules} activePromo={script.activePromo} editable={editable} />
     </div>
   );
 }

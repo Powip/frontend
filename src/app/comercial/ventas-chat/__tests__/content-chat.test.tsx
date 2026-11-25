@@ -324,18 +324,26 @@ describe("Chat · pantalla del mockup 152", () => {
   });
 
   it("aviso de ventana abierta con horas que quedan y promo del día con «Ofrecer»", async () => {
-    c.getScript.mockResolvedValue({ ...SCRIPT, closingRules: RULES } as Script);
+    c.getScript.mockResolvedValue({ ...SCRIPT, closingRules: RULES, activePromo: RULES.promo } as Script);
     setup();
     expect(await screen.findByTestId("window-banner")).toHaveTextContent("Ventana abierta · quedan 3 h. Tus mensajes no tienen costo.");
     const promo = within(await screen.findByTestId("promo-banner"));
     expect(promo.getByText(/2x1 en polos hoy/)).toBeInTheDocument();
     fireEvent.click(promo.getByRole("button", { name: "Ofrecer" }));
-    expect(await box()).toHaveValue("2x1 en polos hoy");
+    expect(await box()).toHaveValue("🎁 Promo de hoy: 2x1 en polos hoy. ¿Te separo las tuyas?");
     expect(s.sendMessage).not.toHaveBeenCalled();
   });
 
+  it("la promo vencida (pasó las 23:59 de su día) no aparece en el chat", async () => {
+    c.getScript.mockResolvedValue({ ...SCRIPT, closingRules: RULES, activePromo: "" } as Script);
+    setup();
+    expect(await screen.findByTestId("window-banner")).toBeInTheDocument();
+    await waitFor(() => expect(c.getScript).toHaveBeenCalled());
+    expect(screen.queryByTestId("promo-banner")).not.toBeInTheDocument();
+  });
+
   it("sin ventana no hay aviso verde ni promo", async () => {
-    c.getScript.mockResolvedValue({ ...SCRIPT, closingRules: RULES } as Script);
+    c.getScript.mockResolvedValue({ ...SCRIPT, closingRules: RULES, activePromo: RULES.promo } as Script);
     setup({ windowExpiresAt: new Date(Date.now() - 1000).toISOString() });
     await box();
     await waitFor(() => expect(c.getScript).toHaveBeenCalled());

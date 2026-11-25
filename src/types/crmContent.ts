@@ -25,6 +25,8 @@ export interface ScriptClosingRules {
   instantReply: boolean;
   /** Promo del día, la misma para todas las vendedoras. */
   promo: string;
+  /** Día de Lima (YYYY-MM-DD) en que se guardó: vence ese día a las 23:59. */
+  promoDate?: string | null;
 }
 
 export interface ScriptPlaybookInput {
@@ -36,6 +38,8 @@ export interface Script {
   steps: ScriptStep[];
   temperature: ScriptTemperature[];
   closingRules: ScriptClosingRules;
+  /** Promo vigente hoy; vacía si no hay o ya venció. */
+  activePromo?: string;
   /** 0 y sin pasos = aún no hay guion. */
   version: number;
   note: string | null;

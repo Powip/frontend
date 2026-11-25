@@ -78,7 +78,7 @@ beforeEach(() => {
   c.listConversationOrders.mockResolvedValue([]);
   c.listConversationQuotes.mockResolvedValue([]);
   c.updateConversation.mockResolvedValue(conv());
-  (content.getScript as jest.Mock).mockResolvedValue({ steps: [], closingRules: { promo: "2x1 en polos", lastUnits: 3 } });
+  (content.getScript as jest.Mock).mockResolvedValue({ steps: [], closingRules: { promo: "2x1 en polos", lastUnits: 3 }, activePromo: "2x1 en polos" });
   (quotations.getQuotation as jest.Mock).mockResolvedValue(undefined);
 });
 
@@ -93,7 +93,7 @@ describe("Avisos del chat", () => {
     const { onInsert } = banners({});
     expect(screen.getByTestId("window-banner")).toHaveTextContent("quedan 5 h");
     fireEvent.click(await screen.findByRole("button", { name: "Ofrecer" }));
-    expect(onInsert).toHaveBeenCalledWith("2x1 en polos");
+    expect(onInsert).toHaveBeenCalledWith("🎁 Promo de hoy: 2x1 en polos. ¿Te separo las tuyas?");
   });
 
   it("ventana cerrada: plantilla, y llamar solo si el cliente aceptó", async () => {

@@ -113,8 +113,12 @@ function CommentBanner({ channel }: Pick<Conversation, "channel">) {
   );
 }
 
+/** Mensaje que propone «Ofrecer» (mockup 152). */
+export const promoOffer = (promo: string) => `🎁 Promo de hoy: ${promo}. ¿Te separo las tuyas?`;
+
 function PromoBanner({ onInsert }: { onInsert: (text: string) => void }) {
-  const promo = useScript().data?.closingRules?.promo?.trim();
+  // Solo la promo vigente: vence a las 23:59 de Lima del día en que se guardó.
+  const promo = useScript().data?.activePromo?.trim();
   if (!promo) return null;
   return (
     <Banner
@@ -122,7 +126,7 @@ function PromoBanner({ onInsert }: { onInsert: (text: string) => void }) {
       icon={Gift}
       testId="promo-banner"
       action={
-        <Button size="sm" variant="outline" onClick={() => onInsert(promo)}>
+        <Button size="sm" variant="outline" onClick={() => onInsert(promoOffer(promo))}>
           Ofrecer
         </Button>
       }

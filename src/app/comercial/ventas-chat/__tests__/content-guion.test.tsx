@@ -329,6 +329,24 @@ describe("Guion y material", () => {
     });
   });
 
+  it("promo vencida: avisa y deja guardar sin cambiar el texto para reactivarla hoy", async () => {
+    c.getScript.mockResolvedValue(
+      script({
+        closingRules: { cutoffTime: "13:00", lastUnits: 3, instantReply: true, promo: "2x1", promoDate: "2026-11-01" },
+        activePromo: "",
+      }),
+    );
+    setup();
+    const card = await screen.findByRole("region", { name: "Reglas de cierre" });
+    expect(await within(card).findByTestId("promo-expired")).toHaveTextContent("La promo «2x1» ya venció");
+    fireEvent.click(within(card).getByRole("button", { name: "Guardar" }));
+    await waitFor(() => expect(c.saveScriptPlaybook).toHaveBeenCalledTimes(1));
+    // promoDate no viaja: lo pone el servidor.
+    expect(c.saveScriptPlaybook.mock.calls[0][0]).toEqual({
+      closingRules: { cutoffTime: "13:00", lastUnits: 3, instantReply: true, promo: "2x1" },
+    });
+  });
+
   it("métodos de pago: lista aparte del material del negocio", async () => {
     c.listMaterials.mockResolvedValue([mat(), mat({ id: "m3", title: "Yape", kind: "link", url: "https://x.pe/yape", payment: true })]);
     setup();
