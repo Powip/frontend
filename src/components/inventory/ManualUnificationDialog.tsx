@@ -294,6 +294,14 @@ export function ManualUnificationDialog({ open, initialOrigin = null, onClose, o
       ? String(check.finalQuantity)
       : "—";
 
+  // FEAT-24 C-D2: quedan reservas sin stock; avisa, no bloquea.
+  const stockWarning = check.warning ? (
+    <p role="status" className="flex items-start gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
+      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+      {check.warning}
+    </p>
+  ) : null;
+
   const warningList = warnings.length > 0 ? (
     <div role="status" className="space-y-1 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/20 dark:text-amber-200">
       {warnings.map((warning) => (
@@ -404,6 +412,7 @@ export function ManualUnificationDialog({ open, initialOrigin = null, onClose, o
                 <p className="text-xs text-muted-foreground">Reservas que pasan a la madre: {sides.loserReserved}</p>
               ) : null}
               {check.error ? <p role="alert" className="text-xs font-medium text-destructive">{check.error}</p> : null}
+              {stockWarning}
             </div>
           ) : null}
 
@@ -420,6 +429,7 @@ export function ManualUnificationDialog({ open, initialOrigin = null, onClose, o
                   Stock de la madre: {stockLoaded ? sides.winnerQuantity : "—"} → <span className="font-semibold text-foreground">{finalText}</span>
                 </p>
               </div>
+              {stockWarning}
               <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
                 <li>La variante que se une queda desactivada y unida a la madre.</li>
                 <li>Sus reservas, pedidos abiertos y vínculos con los canales pasan a la madre, y sus próximas ventas descuentan de ella.</li>

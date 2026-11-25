@@ -82,6 +82,13 @@ describe("ajustes y conteos", () => {
     expect(buildAdjustmentBody({ ...form, type: "positivo" }, "op-2").kind).toBe("ajuste");
   });
 
+  it("FEAT-24 C-D3: allowNegative viaja solo cuando es true", () => {
+    const form = { inventoryId: "w-1", type: "negativo" as const, reason: "error_registro" as const, note: "", lines: [{ variantId: "v-1", label: "Polo", sku: "P", quantity: "3" }] };
+    expect(buildAdjustmentBody(form, "op-1", true)).toMatchObject({ operationId: "op-1", allowNegative: true });
+    expect(buildAdjustmentBody(form, "op-1", false)).not.toHaveProperty("allowNegative");
+    expect(buildAdjustmentBody(form, "op-1")).not.toHaveProperty("allowNegative");
+  });
+
   it("FEAT-24 H5-L: el lote elegido viaja como lotId; sin elegir, no va (automático)", () => {
     const lines = [
       { variantId: "v-1", label: "Crema", sku: "C", quantity: "3", lotId: "l-1" },

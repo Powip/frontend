@@ -20,6 +20,11 @@ export interface StockAdjustmentInput {
   quantity: number;
   reason: AdjustmentReason;
   note?: string;
+  /**
+   * FEAT-24 C-D3: confirma una salida que deja el físico en negativo (solo cuenta con control de stock flexible).
+   * Se manda solo cuando es `true`; sin él, el servidor responde 409 `STOCK_NEGATIVO_CONFIRMAR`.
+   */
+  allowNegative?: true;
 }
 
 export interface StockAdjustmentResult {

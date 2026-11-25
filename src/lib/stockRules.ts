@@ -1,4 +1,9 @@
-import type { InventoryRules, ReservationRule, ReservationRuleInput } from "@/services/warehousesService";
+import type {
+  InventoryRules,
+  ReservationRule,
+  ReservationRuleInput,
+  StockControlMode,
+} from "@/services/warehousesService";
 
 // FEAT-24 H2-F — reglas de reserva por región y reglas de inventario
 // (Configuración › Tiendas y almacenes). Lógica pura: la pantalla solo dibuja.
@@ -146,24 +151,69 @@ export function withNames(message: string, names: ReadonlyMap<string, string>): 
 export const RELEASE_AFTER_DAYS_MIN = 1;
 export const RELEASE_AFTER_DAYS_MAX = 365;
 
-/** Lo que se muestra en el campo de días: vacío = nunca. */
-export function releaseDaysToText(days: number | null): string {
-  return days === null ? "" : String(days);
+/**
+ * FEAT-24 C-D4 — cuándo se liberan las reservas sin despachar: el valor por defecto de Powip (`null` en el
+ * servidor), nunca (`0`) o una cantidad de días (1..365).
+ */
+export type ReleaseMode = "default" | "never" | "days";
+
+export interface ReleaseForm {
+  releaseMode: ReleaseMode;
+  /** Los días como se tipean; solo cuenta con `releaseMode = "days"`. */
+  releaseDays: string;
 }
 
-/** Lee el campo de días: vacío → `null` (nunca); si no es un entero 1..365, devuelve el error. */
-export function parseReleaseDays(text: string): { ok: true; value: number | null } | { ok: false; error: string } {
+/** Del valor guardado al formulario: `null` = por defecto, `0` = nunca, N = N días. */
+export function releaseFormFrom(days: number | null | undefined): ReleaseForm {
+  if (days === null || days === undefined) return { releaseMode: "default", releaseDays: "" };
+  if (days === 0) return { releaseMode: "never", releaseDays: "" };
+  return { releaseMode: "days", releaseDays: String(days) };
+}
+
+/** Lee el campo de días: un entero de 1 a 365; si no, devuelve el error. */
+export function parseReleaseDays(text: string): { ok: true; value: number } | { ok: false; error: string } {
   const trimmed = text.trim();
-  if (trimmed === "") return { ok: true, value: null };
-  if (!/^\d+$/.test(trimmed)) return { ok: false, error: "Escribe un número entero de días, o déjalo vacío para no liberar nunca." };
+  if (trimmed === "") return { ok: false, error: `Escribe cuántos días (de ${RELEASE_AFTER_DAYS_MIN} a ${RELEASE_AFTER_DAYS_MAX}).` };
+  if (!/^\d+$/.test(trimmed)) return { ok: false, error: "Escribe un número entero de días." };
   const value = Number(trimmed);
   if (value < RELEASE_AFTER_DAYS_MIN || value > RELEASE_AFTER_DAYS_MAX)
-    return { ok: false, error: `Los días van de ${RELEASE_AFTER_DAYS_MIN} a ${RELEASE_AFTER_DAYS_MAX} (o vacío = nunca).` };
+    return { ok: false, error: `Los días van de ${RELEASE_AFTER_DAYS_MIN} a ${RELEASE_AFTER_DAYS_MAX}.` };
   return { ok: true, value };
 }
 
-export function inventoryRulesChanged(form: { releaseDays: string; pickingRequired: boolean }, saved: InventoryRules): boolean {
-  const parsed = parseReleaseDays(form.releaseDays);
-  if (!parsed.ok) return true;
-  return parsed.value !== saved.releaseAfterDays || form.pickingRequired !== saved.pickingRequired;
+/** Del formulario al `releaseAfterDays` del PUT: por defecto → `null`, nunca → `0`, días → 1..365. */
+export function releaseAfterDaysFrom(form: ReleaseForm): { ok: true; value: number | null } | { ok: false; error: string } {
+  if (form.releaseMode === "default") return { ok: true, value: null };
+  if (form.releaseMode === "never") return { ok: true, value: 0 };
+  return parseReleaseDays(form.releaseDays);
 }
+
+/** Lo que vale hoy «por defecto»: «30 días», «1 día» o «nunca» (`null`). */
+export function defaultReleaseText(days: number | null | undefined): string {
+  if (days === null || days === undefined || days <= 0) return "nunca";
+  return days === 1 ? "1 día" : `${days} días`;
+}
+
+export function inventoryRulesChanged(
+  form: ReleaseForm & { pickingRequired: boolean; stockControl: StockControlMode },
+  saved: Pick<InventoryRules, "releaseAfterDays" | "pickingRequired" | "stockControl">,
+): boolean {
+  const parsed = releaseAfterDaysFrom(form);
+  if (!parsed.ok) return true;
+  return (
+    parsed.value !== saved.releaseAfterDays ||
+    form.pickingRequired !== saved.pickingRequired ||
+    form.stockControl !== (saved.stockControl ?? "flexible")
+  );
+}
+
+/** FEAT-24 C-D3: textos del control de stock (una línea de ayuda por modo). */
+export const STOCK_CONTROL_LABEL: Record<StockControlMode, string> = {
+  flexible: "Flexible",
+  estricto: "Estricto",
+};
+
+export const STOCK_CONTROL_HELP: Record<StockControlMode, string> = {
+  flexible: "Las ventas reservan aunque no haya stock. Permite registrar salidas que dejan el stock en negativo, con confirmación, y las reservas no frenan traslados.",
+  estricto: "Una venta sin stock disponible no reserva y queda en «Pedidos sin stock». No permite salidas por debajo de 0 ni trasladar más que el disponible.",
+};
