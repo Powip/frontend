@@ -327,7 +327,7 @@ function renderTab(
 ) {
   const onState = extra.onState ?? jest.fn();
   const state = extra.state ?? emptyTabState();
-  const ui = (list: Sale[]) => (
+  const ui = (list: Sale[], assignedToGuide?: { ids: string[]; n: number } | null) => (
     <PreparadosTab
       data={makeData(list, extra.data)}
       state={state}
@@ -336,10 +336,11 @@ function renderTab(
       actions={actions}
       guideReturn={extra.guideReturn}
       onGuideReturnHandled={extra.onGuideReturnHandled}
+      assignedToGuide={assignedToGuide}
     />
   );
   const view = render(ui(sales), { wrapper: OrderDetailModalProvider });
-  return { ...view, rerenderWith: (list: Sale[]) => view.rerender(ui(list)), onState };
+  return { ...view, rerenderWith: (list: Sale[], assignedToGuide?: { ids: string[]; n: number } | null) => view.rerender(ui(list, assignedToGuide)), onState };
 }
 
 /** Selecciona el checkbox de la última fila de la tabla (los de fila van
@@ -549,6 +550,34 @@ describe("PreparadosTab — asignar a guía", () => {
       expect.objectContaining({ selectedIds: ["s-a", "s-b"] }),
     );
     expect(actions.onOpenCreateGuide).not.toHaveBeenCalled();
+  });
+});
+
+describe("PreparadosTab — selección tras crear una guía", () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("los pedidos que entraron a una guía salen de la selección: la guía siguiente no los arrastra (bug SACREDGAIABYORGANICA)", async () => {
+    const user = userEvent.setup();
+    const a = makeSale({ id: "s-a", orderNumber: "ORD-A" });
+    const b = makeSale({ id: "s-b", orderNumber: "ORD-B" });
+    const c = makeSale({ id: "s-c", orderNumber: "ORD-C" });
+    const actions = makeActions();
+    const { rerenderWith } = renderTab([a, b, c], actions);
+
+    const boxes = screen.getAllByRole("checkbox"); // [cabecera, A, B, C]
+    await user.click(boxes[1]);
+    await user.click(boxes[2]);
+    expect(bulkGuideButton("2")).toBeEnabled();
+
+    // Se crea la guía con A y B: salen de la pestaña (ya no vienen en la página) y el padre avisa.
+    rerenderWith([c], { ids: ["s-a", "s-b"], n: 1 });
+    expect(screen.queryByRole("button", { name: /asignar a guía \(\d/i })).not.toBeEnabled?.();
+
+    // Se marca otro pedido: la nueva guía debe llevar solo ese.
+    await user.click(screen.getAllByRole("checkbox")[1]);
+    await user.click(bulkGuideButton("1"));
+    expect(actions.onOpenCreateGuide).toHaveBeenCalledWith([expect.objectContaining({ id: "s-c" })]);
+    expect((actions.onOpenCreateGuide as jest.Mock).mock.calls[0][0]).toHaveLength(1);
   });
 });
 
