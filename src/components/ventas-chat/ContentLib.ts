@@ -17,19 +17,30 @@ export const MIN_CONVERSATIONS_FOR_RATE = 5;
 
 export const ADMIN_ONLY_NOTICE = "Solo un administrador puede ver esta sección";
 
+/**
+ * Tipos de material del mockup 152 que ms-crm ya acepta (tabla de medidas y
+ * testimonio). `MaterialKind` de types/crmContent aún no los lista; por eso
+ * se declaran aquí y se pasan como MaterialKind al formulario.
+ */
+export type MaterialKindAll = MaterialKind | "sizes" | "testimony";
+
 export const MATERIAL_KIND_OPTIONS: Array<{ value: MaterialKind; label: string }> = [
   { value: "photo", label: "Foto" },
   { value: "video", label: "Video" },
   { value: "audio", label: "Audio" },
   { value: "pdf", label: "PDF" },
   { value: "link", label: "Enlace" },
+  { value: "sizes" as MaterialKind, label: "Tabla de medidas" },
+  { value: "testimony" as MaterialKind, label: "Testimonio" },
 ];
-export const MATERIAL_KIND_LABEL: Record<MaterialKind, string> = {
+export const MATERIAL_KIND_LABEL: Record<MaterialKindAll, string> = {
   photo: "Foto",
   video: "Video",
   audio: "Audio",
   pdf: "PDF",
   link: "Enlace",
+  sizes: "Tabla de medidas",
+  testimony: "Testimonio",
 };
 
 /** Primer nombre del contacto; vacío si el chat solo tiene teléfono. */

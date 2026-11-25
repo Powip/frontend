@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { crmError } from "@/services/crmService";
+import { useCrmMe } from "@/hooks/useCrmMe";
+import { useTeamBoard } from "@/hooks/useCrmBlockD";
 import {
   useReassignConversation,
   useSetDailyGoal,
@@ -18,6 +20,9 @@ import type { TeamChannelResult, TeamDays, TeamMember, TeamStats, TeamToday } fr
 import { CRM_UNREACHABLE } from "./ConversationList";
 import CommissionsSection from "./CommissionsSection";
 import EquipoAdminGate from "./EquipoAdminGate";
+import AdResultsCard from "./AjustesAdResultsCard";
+import { MetaAudienceCard } from "./AjustesMetaAdsCards";
+import { BoardKpis, BoardWaiting, NightReview, SellersTable } from "./EquipoBoard";
 import { CHANNEL_LABEL, NATIVE_SELECT_CLASS, bandejaUrl, contactLabel, formatMoney } from "./format";
 
 /** «—», «12 min», «2 h 5 min». */
@@ -269,7 +274,12 @@ function LostReasons({ reasons }: { reasons: TeamStats["lostReasons"] }) {
   const max = Math.max(1, ...reasons.map((r) => r.count));
   return (
     <section aria-label="Motivos de pérdida" className="space-y-2">
-      <h2 className="text-sm font-semibold">Motivos de pérdida</h2>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-sm font-semibold">Motivos de pérdida · por qué se pierden los clientes</h2>
+        <Link href="/comercial/ventas-chat/objeciones" className="text-xs font-medium text-primary hover:underline">
+          Ver cómo responderlas en Objeciones
+        </Link>
+      </div>
       {reasons.length === 0 ? (
         <p className="rounded-md border p-3 text-sm text-muted-foreground">
           No hubo chats perdidos en este periodo.
@@ -433,12 +443,42 @@ function ChannelResults({ rows }: { rows: TeamChannelResult[] }) {
 
 function EquipoContent() {
   const [days, setDays] = useState<TeamDays>(7);
+  const [storeId, setStoreId] = useState("");
+  const { stores } = useCrmMe();
+  const board = useTeamBoard(storeId);
   const { data, isLoading, isError, error, refetch } = useTeamStats(days);
   const err = isError ? crmError(error) : null;
   return (
-    <div className="mx-auto max-w-5xl space-y-5">
+    <div className="w-full space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-lg font-semibold">Equipo</h1>
+        <div>
+          <h1 className="text-lg font-semibold">Equipo</h1>
+          <p className="text-xs text-muted-foreground">Para el equipo · vista de supervisor</p>
+        </div>
+        {stores.length > 1 && (
+          <select
+            aria-label="Tienda del tablero"
+            className={cn(NATIVE_SELECT_CLASS, "w-48")}
+            value={storeId}
+            onChange={(e) => setStoreId(e.target.value)}
+          >
+            <option value="">Todas las tiendas</option>
+            {stores.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+      {board.data && (
+        <>
+          <BoardKpis board={board.data} />
+          <BoardWaiting board={board.data} onDone={() => board.refetch()} />
+        </>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4">
+        <h2 className="text-sm font-semibold">Actividad del periodo</h2>
         <div role="group" aria-label="Periodo" className="inline-flex rounded-md border p-0.5">
           {([7, 30] as const).map((d) => (
             <Button
@@ -491,11 +531,19 @@ function EquipoContent() {
             <Kpi label="Mensajes enviados" value={data.kpis.messagesSent} />
           </section>
           {data.today && <DailyGoal today={data.today} />}
+          {board.data && <SellersTable board={board.data} stores={stores} />}
           <WaitingSection stats={data} />
           <Ranking members={data.members} />
           <CommissionsSection />
-          {data.byChannel && <ChannelResults rows={data.byChannel} />}
+          {board.data && <NightReview board={board.data} />}
+          {board.data && (
+            <div className="grid gap-4 xl:grid-cols-2">
+              <AdResultsCard />
+              <MetaAudienceCard />
+            </div>
+          )}
           <LostReasons reasons={data.lostReasons} />
+          {data.byChannel && <ChannelResults rows={data.byChannel} />}
         </>
       )}
     </div>

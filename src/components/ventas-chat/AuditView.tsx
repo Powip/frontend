@@ -6,10 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { crmError } from "@/services/crmService";
-import { useAudit, useRemindScript } from "@/hooks/useCrmTeam";
+import { useRemindScript } from "@/hooks/useCrmTeam";
+import { useAuditD, useAuditFallback } from "@/hooks/useCrmBlockD";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import type { Audit, AuditProblem, AuditSeverity } from "@/types/crmTeam";
+import type { AuditD } from "@/types/crmBlockD";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import EquipoAdminGate from "./EquipoAdminGate";
+import { ProductsAudit, ReadinessKpis, ReadsByStore } from "./AuditProducts";
+import { NATIVE_SELECT_CLASS } from "./format";
 
 const SEVERITY_ORDER: Record<AuditSeverity, number> = { bad: 0, warn: 1, info: 2 };
 
@@ -242,11 +247,42 @@ function ScriptReaders({ script }: { script: Audit["script"] }) {
 }
 
 function AuditContent() {
-  const { data, isLoading, isError, error, refetch } = useAudit();
+  const { stores } = useCrmMe();
+  const [storeId, setStoreId] = useState("");
+  // Auditoría por producto y tienda (bloque D). Si el servidor todavía no la
+  // tiene, se cae a la de antes.
+  const auditD = useAuditD(storeId);
+  const legacy = useAuditFallback(auditD.isError);
+  const full: AuditD | undefined = auditD.data;
+  const data: Audit | undefined = full ?? legacy.data;
+  const isLoading = auditD.isLoading || legacy.isLoading;
+  const isError = auditD.isError && legacy.isError;
+  const error = legacy.error;
+  const refetch = () => {
+    auditD.refetch();
+    legacy.refetch();
+  };
   const err = isError ? crmError(error) : null;
   return (
-    <div className="mx-auto max-w-4xl space-y-5">
-      <h1 className="text-lg font-semibold">Auditoría</h1>
+    <div className="w-full space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-lg font-semibold">Auditoría</h1>
+        {stores.length > 1 && (
+          <select
+            aria-label="Tienda"
+            className={cn(NATIVE_SELECT_CLASS, "w-48")}
+            value={storeId}
+            onChange={(e) => setStoreId(e.target.value)}
+          >
+            <option value="">Todas las tiendas</option>
+            {stores.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
       {isLoading && (
         <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" /> Revisando el CRM…
@@ -264,10 +300,14 @@ function AuditContent() {
       )}
       {data && (
         <>
-          <ScoreCard audit={data} />
-          <Problems problems={data.problems} />
-          <Sheets sheets={data.sheets} />
+          {full && <ReadinessKpis audit={full} />}
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
+            <ScoreCard audit={data} />
+            <Problems problems={data.problems} />
+          </div>
+          {full ? <ProductsAudit audit={full} stores={stores} /> : <Sheets sheets={data.sheets} />}
           <ScriptReaders script={data.script} />
+          {full && <ReadsByStore audit={full} stores={stores} />}
         </>
       )}
     </div>

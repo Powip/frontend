@@ -6,6 +6,8 @@ import { ContentError, ContentLoading } from "./ContentStatus";
 import GuionEditor from "./GuionEditor";
 import GuionMaterialList from "./GuionMaterialList";
 import GuionPlaybook from "./GuionPlaybook";
+import GuionProductMaterial from "./GuionProductMaterial";
+import { FichaObjections } from "./FichaProduct";
 import GuionReads from "./GuionReads";
 import GuionSheetsManager from "./GuionSheetsManager";
 
@@ -48,6 +50,9 @@ function GuionBody() {
           </>
         )}
       </section>
+
+      {isAdmin && <GuionProductMaterial />}
+      {isAdmin && <FichaObjections />}
 
       <GuionSheetsManager />
     </div>

@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Copy, ExternalLink, Search } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -7,10 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useGeneralMaterials, useMarkScriptRead, useScript, useSheets } from "@/hooks/useCrmContent";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import type { Material, Sheet } from "@/types/crmContent";
 import { MATERIAL_KIND_LABEL } from "./ContentLib";
 import { ContentError, ContentLoading } from "./ContentStatus";
 import { FichaAlbum, FichaCoreStock } from "./FichaCoreSection";
+import { FichaObjections, MaterialCards, ProductScript, VIEW_AS_LABEL, type ViewAs } from "./FichaProduct";
+import { NATIVE_SELECT_CLASS } from "./format";
 
 export function FichaCopyButton({ text, label }: { text: string; label: string }) {
   const copy = async () => {
@@ -113,23 +117,36 @@ function ScriptBanner() {
   );
 }
 
-function SheetDetail({ sheet }: { sheet: Sheet }) {
+function SheetDetail({ sheet, viewAs, storeName }: { sheet: Sheet; viewAs: ViewAs; storeName: string | null }) {
   return (
     <article aria-label={sheet.name} className="space-y-3 rounded-md border bg-card p-4">
-      <h2 className="text-lg font-semibold">{sheet.name}</h2>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold">{sheet.name}</h2>
+          {(storeName || sheet.category) && (
+            <p className="text-xs text-muted-foreground">{[storeName, sheet.category].filter(Boolean).join(" · ")}</p>
+          )}
+        </div>
+        {viewAs === "admin" && (
+          <Button asChild size="sm" variant="outline">
+            <Link href="/comercial/ventas-chat/guion">Editar en Guion y material</Link>
+          </Button>
+        )}
+      </div>
+      {viewAs === "pau" && (
+        <p className="rounded-md bg-primary/5 p-2 text-xs text-primary">
+          Así lo lee Pau: los datos de la ficha, el guion de este producto y las respuestas a objeciones activas.
+        </p>
+      )}
       <Field label="Precio" value={sheet.price} />
       <Field label="Para quién es" value={sheet.forWhom} />
       <Field label="Qué destacar" value={sheet.highlights} />
       <Field label="Alternativas" value={sheet.alternatives} />
       <Field label="Complementos" value={sheet.complements} />
-      {sheet.materials.length > 0 && (
-        <div className="space-y-1">
-          <h3 className="text-sm font-semibold">Material</h3>
-          <MaterialLinks items={sheet.materials} label={`Material de ${sheet.name}`} />
-        </div>
-      )}
+      <ProductScript sheet={sheet} />
+      <MaterialCards sheet={sheet} />
       <FichaCoreStock sheetId={sheet.id} linked={!!sheet.coreProductId} />
-      <FichaAlbum sheetId={sheet.id} sheetName={sheet.name} />
+      {viewAs !== "pau" && <FichaAlbum sheetId={sheet.id} sheetName={sheet.name} />}
     </article>
   );
 }
@@ -137,23 +154,69 @@ function SheetDetail({ sheet }: { sheet: Sheet }) {
 export default function FichaView() {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { isAdmin, stores } = useCrmMe();
+  const [viewAs, setViewAs] = useState<ViewAs>("seller");
+  const [storeId, setStoreId] = useState("");
   const sheets = useSheets(search);
   const general = useGeneralMaterials();
-  const active = (sheets.data ?? []).filter((s) => s.active);
+  const active = (sheets.data ?? []).filter((s) => s.active && (!storeId || !s.storeId || s.storeId === storeId));
   const selected = active.find((s) => s.id === selectedId) ?? active[0];
+  const storeName = (id?: string | null) => (id ? stores.find((st) => st.id === id)?.name ?? null : null);
+
+  // Enlace directo desde Auditoría: /ficha?producto=<id>.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("producto");
+    if (id) setSelectedId(id);
+  }, []);
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">
-        Pau lee automáticamente el guion, las objeciones activas y las fichas activas, además de su «Conocimiento».
-      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="min-w-0 flex-1 text-xs text-muted-foreground">
+          Pau lee automáticamente el guion, las objeciones activas y las fichas activas, además de su «Conocimiento».
+        </p>
+        <label className="flex items-center gap-2 text-xs">
+          <span className="font-medium">Ver como</span>
+          <select
+            aria-label="Ver como"
+            className={cn(NATIVE_SELECT_CLASS, "w-40")}
+            value={viewAs}
+            onChange={(e) => setViewAs(e.target.value as ViewAs)}
+          >
+            {(["seller", "pau", ...(isAdmin ? (["admin"] as const) : [])] as ViewAs[]).map((v) => (
+              <option key={v} value={v}>
+                {VIEW_AS_LABEL[v]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       <ScriptBanner />
 
       <section aria-labelledby="ficha-productos" className="space-y-3">
         <h2 id="ficha-productos" className="text-base font-semibold">
           Productos
         </h2>
-        <Input icon={Search} aria-label="Buscar producto" placeholder="Buscar producto…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div className="flex flex-wrap gap-2">
+          <div className="min-w-0 flex-1">
+            <Input icon={Search} aria-label="Buscar producto" placeholder="Buscar producto…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          {stores.length > 1 && (
+            <select
+              aria-label="Tienda"
+              className={cn(NATIVE_SELECT_CLASS, "w-48")}
+              value={storeId}
+              onChange={(e) => setStoreId(e.target.value)}
+            >
+              <option value="">Todas las tiendas</option>
+              {stores.map((st) => (
+                <option key={st.id} value={st.id}>
+                  {st.name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
         {sheets.isLoading && <ContentLoading />}
         {sheets.isError && <ContentError error={sheets.error} onRetry={() => sheets.refetch()} />}
         {sheets.data && active.length === 0 && (
@@ -175,16 +238,25 @@ export default function FichaView() {
                       selected?.id === s.id && "border-primary bg-accent",
                     )}
                   >
-                    <span className="min-w-0 break-words sm:truncate font-medium">{s.name}</span>
+                    <span className="min-w-0">
+                      <span className="block break-words sm:truncate font-medium">{s.name}</span>
+                      {(storeName(s.storeId) || s.category) && (
+                        <span className="block truncate text-[11px] text-muted-foreground">
+                          {[storeName(s.storeId), s.category].filter(Boolean).join(" · ")}
+                        </span>
+                      )}
+                    </span>
                     {s.price && <span className="shrink-0 text-xs text-muted-foreground">{s.price}</span>}
                   </button>
                 </li>
               ))}
             </ul>
-            {selected && <SheetDetail sheet={selected} />}
+            {selected && <SheetDetail sheet={selected} viewAs={viewAs} storeName={storeName(selected.storeId)} />}
           </div>
         )}
       </section>
+
+      <FichaObjections />
 
       {general.data && general.data.length > 0 && (
         <section aria-labelledby="ficha-negocio" className="space-y-2 rounded-md border bg-card p-4">

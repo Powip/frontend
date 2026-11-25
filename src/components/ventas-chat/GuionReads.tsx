@@ -2,11 +2,17 @@
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useScriptReads } from "@/hooks/useCrmContent";
+import { useAuditD } from "@/hooks/useCrmBlockD";
+import { useCrmMe } from "@/hooks/useCrmMe";
+import { ReadsByStore } from "./AuditProducts";
 import { ContentError, ContentLoading, formatDateTime } from "./ContentStatus";
 
 /** ¿Leyeron el último guion? Tabla por vendedora. */
 export default function GuionReads({ enabled }: { enabled: boolean }) {
   const q = useScriptReads(enabled);
+  const { stores } = useCrmMe();
+  // Lectura por tienda (K6): sale de la auditoría; si no responde, no se muestra.
+  const audit = useAuditD("", enabled);
   return (
     <section aria-labelledby="guion-reads" className="space-y-3 rounded-md border bg-card p-4">
       <h2 id="guion-reads" className="text-base font-semibold">
@@ -41,6 +47,7 @@ export default function GuionReads({ enabled }: { enabled: boolean }) {
           </TableBody>
         </Table>
       )}
+      {enabled && audit.data && <ReadsByStore audit={audit.data} stores={stores} />}
     </section>
   );
 }

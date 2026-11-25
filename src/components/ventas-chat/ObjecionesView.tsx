@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, Check, Info, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, BookOpen, Check, CheckCircle2, Info, Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,7 +18,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useCrmMe } from "@/hooks/useCrmMe";
 import { useObjectionActions, useObjectionStats, useObjections } from "@/hooks/useCrmContent";
+import { useObjectionBlockDActions, useObjectionStatsD } from "@/hooks/useCrmBlockD";
+import { cn } from "@/lib/utils";
 import type { Objection, ObjectionStat } from "@/types/crmContent";
+import { OBJECTION_FAMILIES, type ObjectionFamily, type ObjectionStatD } from "@/types/crmBlockD";
+import ObjectionDetail, { FamilyBadge, trendLabel, type ObjectionWithExtra } from "./ObjectionDetail";
+import { NATIVE_SELECT_CLASS } from "./format";
 import ConfirmDialog from "./ConfirmDialog";
 import ContentAdminGate from "./ContentAdminGate";
 import ObjectionTester from "./ObjectionTester";
@@ -33,9 +38,14 @@ import { ContentError, ContentLoading } from "./ContentStatus";
 
 const STATS_DAYS = 30;
 
-function topUser(s: ObjectionStat | undefined): string {
+type AnyStat = Omit<ObjectionStat, "byUser"> &
+  Partial<Pick<ObjectionStatD, "previousUses" | "phrases" | "family">> & {
+    byUser: { userId: string; userName: string; uses: number; won?: number }[];
+  };
+
+function topUser(s: AnyStat | undefined): string {
   if (!s || s.byUser.length === 0) return "—";
-  return [...s.byUser].sort((a, b) => b.uses - a.uses)[0].userName;
+  return [...s.byUser].sort((a, b) => (b.won ?? 0) - (a.won ?? 0) || b.uses - a.uses)[0].userName;
 }
 
 interface FormProps {
@@ -88,10 +98,18 @@ function ObjectionForm({ objection, busy, onSave, onClose }: FormProps) {
 }
 
 function ObjecionesBody() {
-  const { isAdmin } = useCrmMe();
+  const { isAdmin, stores } = useCrmMe();
+  const [storeId, setStoreId] = useState("");
+  const [familyFilter, setFamilyFilter] = useState<ObjectionFamily | "">("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const list = useObjections(isAdmin);
-  const stats = useObjectionStats(STATS_DAYS, isAdmin);
+  // Estadísticas del bloque D (tendencia, frases y filtro por tienda). Si el
+  // servidor todavía no las tiene, se usan las de antes.
+  const statsD = useObjectionStatsD(STATS_DAYS, storeId, isAdmin);
+  const legacy = useObjectionStats(STATS_DAYS, isAdmin && statsD.isError);
+  const stats = statsD.data ? statsD : legacy;
   const actions = useObjectionActions();
+  const blockD = useObjectionBlockDActions();
   const [editing, setEditing] = useState<Objection | "new" | null>(null);
   const [deleting, setDeleting] = useState<Objection | null>(null);
   const [discarding, setDiscarding] = useState<Objection | null>(null);
@@ -102,7 +120,18 @@ function ObjecionesBody() {
   const proposals = useMemo(() => (list.data ?? []).filter(isPending), [list.data]);
   const rows = useMemo(() => (list.data ?? []).filter((o) => !isPending(o)), [list.data]);
 
-  const byId = useMemo(() => new Map((stats.data?.items ?? []).map((s) => [s.objectionId, s])), [stats.data]);
+  const byId = useMemo(
+    () => new Map<string, AnyStat>(((stats.data?.items ?? []) as AnyStat[]).map((s) => [s.objectionId, s])),
+    [stats.data],
+  );
+  const visibleRows = useMemo(
+    () => (familyFilter ? rows.filter((o) => (o as ObjectionWithExtra).family === familyFilter) : rows),
+    [rows, familyFilter],
+  );
+  const selected = rows.find((o) => o.id === selectedId) as ObjectionWithExtra | undefined;
+  const wonAll = (stats.data?.items ?? []).reduce((n, s) => n + s.won, 0);
+  const chatsAll = (stats.data?.items ?? []).reduce((n, s) => n + s.conversations, 0);
+  const previousTotal = statsD.data?.previousTotal;
   const mostUsed = useMemo(() => {
     const items = (stats.data?.items ?? []).filter((s) => s.uses > 0);
     return items.length ? [...items].sort((a, b) => b.uses - a.uses)[0] : undefined;
@@ -136,13 +165,54 @@ function ObjecionesBody() {
         </span>
       </p>
 
-      <section aria-label={`Resumen de los últimos ${STATS_DAYS} días`} className="grid gap-3 md:grid-cols-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {stores.length > 1 && (
+          <select
+            aria-label="Tienda"
+            className={cn(NATIVE_SELECT_CLASS, "w-48")}
+            value={storeId}
+            onChange={(e) => setStoreId(e.target.value)}
+          >
+            <option value="">Todas las tiendas</option>
+            {stores.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        )}
+        <select
+          aria-label="Familia"
+          className={cn(NATIVE_SELECT_CLASS, "w-44")}
+          value={familyFilter}
+          onChange={(e) => setFamilyFilter(e.target.value as ObjectionFamily | "")}
+        >
+          <option value="">Todas las familias</option>
+          {(Object.keys(OBJECTION_FAMILIES) as ObjectionFamily[]).map((f) => (
+            <option key={f} value={f}>
+              {OBJECTION_FAMILIES[f].label}
+            </option>
+          ))}
+        </select>
+        <Button
+          size="sm"
+          variant="outline"
+          className="ml-auto"
+          disabled={blockD.library.isPending}
+          onClick={() => blockD.library.mutate()}
+        >
+          <BookOpen /> Cargar respuestas de la metodología (VRPC)
+        </Button>
+      </div>
+
+      <section aria-label={`Resumen de los últimos ${STATS_DAYS} días`} className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <div className="rounded-md border bg-card p-4" data-testid="card-total">
-          <p className="text-xs text-muted-foreground">Usos en {STATS_DAYS} días</p>
+          <p className="text-xs text-muted-foreground">Objeciones en {STATS_DAYS} días</p>
           <p className="text-2xl font-semibold">{stats.data ? stats.data.total : "—"}</p>
+          {previousTotal != null && <p className="text-xs text-muted-foreground">Periodo anterior: {previousTotal}</p>}
         </div>
         <div className="rounded-md border bg-card p-4" data-testid="card-top">
-          <p className="text-xs text-muted-foreground">La más usada</p>
+          <p className="text-xs text-muted-foreground">La más común</p>
           <p className="break-words sm:truncate text-lg font-semibold">{mostUsed?.name ?? "—"}</p>
           {mostUsed && <p className="text-xs text-muted-foreground">{mostUsed.uses} usos</p>}
         </div>
@@ -154,6 +224,14 @@ function ObjecionesBody() {
               ? `${formatRate(bestCloser.won, bestCloser.conversations)} de ${bestCloser.conversations} conversaciones`
               : `Hace falta al menos ${MIN_CONVERSATIONS_FOR_RATE} conversaciones por objeción.`}
           </p>
+          {chatsAll > 0 && (
+            <p className="text-[11px] text-muted-foreground">En total: {formatRate(wonAll, chatsAll)} termina en venta</p>
+          )}
+        </div>
+        <div className="rounded-md border bg-card p-4" data-testid="card-proposals">
+          <p className="text-xs text-muted-foreground">Nuevas sin respuesta aprobada</p>
+          <p className="text-2xl font-semibold">{list.data ? proposals.length : "—"}</p>
+          <p className="text-xs text-muted-foreground">Propuestas desde el chat</p>
         </div>
       </section>
       {stats.isError && <ContentError error={stats.error} onRetry={() => stats.refetch()} />}
@@ -214,14 +292,18 @@ function ObjecionesBody() {
           <p className="text-sm text-muted-foreground">Aún no hay objeciones. Crea la primera.</p>
         )}
         {list.data && rows.length > 0 && (
+          <div className={cn("grid gap-4", selected && "xl:grid-cols-[minmax(0,1fr)_380px]")}>
+          <div className="min-w-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Objeción</TableHead>
-                <TableHead>Usos</TableHead>
-                <TableHead>Conversaciones</TableHead>
-                <TableHead>% con venta</TableHead>
-                <TableHead>La usa más</TableHead>
+                <TableHead>Veces</TableHead>
+                <TableHead>vs periodo anterior</TableHead>
+                <TableHead>Chats</TableHead>
+                <TableHead>Terminó en venta</TableHead>
+                <TableHead>La levanta mejor</TableHead>
+                <TableHead>Qué puede hacer el negocio</TableHead>
                 <TableHead>Activa</TableHead>
                 <TableHead>
                   <span className="sr-only">Acciones</span>
@@ -229,20 +311,52 @@ function ObjecionesBody() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((o, i) => {
+              {visibleRows.map((o) => {
+                const i = rows.indexOf(o);
                 const s = byId.get(o.id);
+                const x = o as ObjectionWithExtra;
+                const trend = s?.previousUses != null ? trendLabel(s.uses, s.previousUses) : null;
                 return (
-                  <TableRow key={o.id} data-testid="objection-row">
+                  <TableRow
+                    key={o.id}
+                    data-testid="objection-row"
+                    className={cn("cursor-pointer", selectedId === o.id && "bg-primary/5")}
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).closest("button")) return;
+                      setSelectedId(o.id === selectedId ? null : o.id);
+                    }}
+                  >
                     <TableCell className="max-w-xs">
                       <p className="font-medium">
-                        {o.name} {!o.active && <Badge variant="outline">Inactiva</Badge>}
+                        {o.name} {!o.active && <Badge variant="outline">Inactiva</Badge>} <FamilyBadge family={x.family} />
                       </p>
                       <p className="break-words sm:truncate text-xs text-muted-foreground">{o.response}</p>
                     </TableCell>
                     <TableCell>{s?.uses ?? 0}</TableCell>
+                    <TableCell
+                      className={cn(
+                        "tabular-nums",
+                        trend?.tone === "up" && "text-destructive",
+                        trend?.tone === "down" && "text-emerald-700",
+                      )}
+                    >
+                      {trend?.text ?? "—"}
+                    </TableCell>
                     <TableCell>{s?.conversations ?? 0}</TableCell>
                     <TableCell data-testid="obj-rate">{formatRate(s?.won ?? 0, s?.conversations ?? 0)}</TableCell>
                     <TableCell>{topUser(s)}</TableCell>
+                    <TableCell className="max-w-[220px] text-xs">
+                      {x.businessAction ? (
+                        <span className={cn(x.actionDoneAt && "text-emerald-700")}>
+                          {x.actionDoneAt && <CheckCircle2 className="mr-1 inline h-3 w-3" />}
+                          {x.businessAction}
+                        </span>
+                      ) : x.family ? (
+                        <span className="text-muted-foreground">{OBJECTION_FAMILIES[x.family].lever}</span>
+                      ) : (
+                        "—"
+                      )}
+                    </TableCell>
                     <TableCell>
                       <Switch
                         aria-label={`Activar ${o.name}`}
@@ -272,6 +386,17 @@ function ObjecionesBody() {
               })}
             </TableBody>
           </Table>
+          </div>
+          {selected && (
+            <ObjectionDetail
+              key={selected.id}
+              objection={selected}
+              stat={byId.get(selected.id) as ObjectionStatD | undefined}
+              onEdit={() => setEditing(selected)}
+              onClose={() => setSelectedId(null)}
+            />
+          )}
+          </div>
         )}
       </section>
 
