@@ -15,6 +15,8 @@ interface FactSources {
   sheet?: Sheet;
   policy?: StorePolicy;
   rules?: ScriptClosingRules;
+  /** Promo vigente hoy (vence a las 23:59 de Lima); la guardada ayer ya no se ofrece. */
+  promo?: string | null;
 }
 
 function labelled(label: string, value: string | null | undefined): string | null {
@@ -27,7 +29,7 @@ function shippingText(policy: StorePolicy | undefined): string | null {
 }
 
 /** Datos reales detrás de la sugerencia; los que no se conocen no salen. */
-function factsOf({ line, sheet, policy, rules }: FactSources): string[] {
+function factsOf({ line, sheet, policy, rules, promo }: FactSources): string[] {
   const variant = line.variant ? `${line.variant}: ` : "";
   const highlight = sheet?.highlights?.split(/\r?\n|·|;/)[0].trim();
   const facts = [
@@ -35,7 +37,7 @@ function factsOf({ line, sheet, policy, rules }: FactSources): string[] {
     labelled(`Stock ${variant}`, stockText(line, rules?.lastUnits)),
     shippingText(policy),
     dispatchText(rules),
-    labelled("Promo ", rules?.promo?.trim()),
+    labelled("Promo ", promo?.trim()),
     labelled("Destaca: ", highlight),
   ];
   return facts.filter((f): f is string => !!f);
@@ -44,14 +46,15 @@ function factsOf({ line, sheet, policy, rules }: FactSources): string[] {
 /** «Usa: Ficha X · precio · stock · envío…»: de dónde sale lo que se le dice al cliente. */
 export default function SuggestionFacts({ conversationId }: { conversationId: string }) {
   const { line, storeId } = useChatCart(conversationId);
-  const rules = useScript().data?.closingRules;
+  const script = useScript().data;
+  const rules = script?.closingRules;
   const policy = useStorePolicy(storeId, !!line && !!storeId).data;
   const sheets = useSheets("", !!line).data;
   if (!line) return null;
   const sheet = sheets?.find((s) => !!s.coreProductId && s.coreProductId === line.productId);
   return (
     <span className="text-xs text-muted-foreground" data-testid="suggestion-facts">
-      Usa: <b>{sheet ? `Ficha ${sheet.name}` : line.name}</b> · {factsOf({ line, sheet, policy, rules }).join(" · ")}
+      Usa: <b>{sheet ? `Ficha ${sheet.name}` : line.name}</b> · {factsOf({ line, sheet, policy, rules, promo: script?.activePromo }).join(" · ")}
       {sheet && (
         <Link href="/comercial/ventas-chat/ficha" className="ml-1.5 font-semibold text-primary underline">
           Ver ficha
