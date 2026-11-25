@@ -28,8 +28,14 @@ jest.mock("@/app/facturacion/components/modals/RechazadoModal", () => ({
 jest.mock("@/components/pdf/PdfPreviewDialog", () => ({
   PdfPreviewDialog: () => null,
 }));
+const pdfFile = { blob: new Blob(["%PDF"]), filename: "B002-00000015.pdf" };
+const downloadPdfMock = jest.fn();
+const downloadFileMock = jest.fn();
 jest.mock("@/features/sunat/sunat-document/hooks/use-sunat-document-pdf", () => ({
-  useSunatDocumentPdf: () => ({ mutateAsync: jest.fn() }),
+  useSunatDocumentPdf: () => ({ mutateAsync: downloadPdfMock }),
+}));
+jest.mock("@/utils/http/download-file", () => ({
+  downloadFile: (...args: unknown[]) => downloadFileMock(...args),
 }));
 jest.mock("@/features/sunat/sunat-document/hooks/use-sunat-documents-bulk-pdf", () => ({
   useSunatDocumentsBulkPdf: () => ({
@@ -148,16 +154,19 @@ describe("TaxDocumentsTab: ícono WhatsApp de la fila", () => {
     expect(openMock).not.toHaveBeenCalled();
   });
 
-  it("sin número propio abre wa.me con el texto y avisa que no va el PDF", async () => {
+  it("sin número propio descarga el PDF, abre el chat y pide adjuntarlo", async () => {
     mockAvailability(false);
+    downloadPdfMock.mockResolvedValue(pdfFile);
 
     renderTab();
     const button = screen.getByTestId("fila-whatsapp-sale-1");
-    expect(button).toHaveAttribute("title", expect.stringContaining("sin PDF"));
+    expect(button).toHaveAttribute("title", expect.stringContaining("Descargar PDF"));
     await userEvent.click(button);
 
     expect(sendMock).not.toHaveBeenCalled();
-    expect(toast.info).toHaveBeenCalledWith(expect.stringContaining("sin el PDF"));
+    await waitFor(() => expect(downloadFileMock).toHaveBeenCalledWith(pdfFile));
+    expect(downloadPdfMock).toHaveBeenCalledWith("doc-1");
+    expect(toast.info).toHaveBeenCalledWith(expect.stringContaining("Adjunta el PDF"));
     expect(openMock).toHaveBeenCalledWith(
       expect.stringContaining("https://api.whatsapp.com/send?phone=51987654321"),
       "_blank",

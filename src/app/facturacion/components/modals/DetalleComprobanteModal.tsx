@@ -4,7 +4,7 @@ import { Download, Link2, Loader2, Mail, MessageCircle, Receipt, Trash2 } from "
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { ProximamenteButton } from "@/app/facturacion/components/ProximamenteButton";
-import { enviarPdfPorWhatsApp } from "@/app/facturacion/lib/enviar-pdf-whatsapp";
+import { descargarPdfYAbrirChat, enviarPdfPorWhatsApp } from "@/app/facturacion/lib/enviar-pdf-whatsapp";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -157,11 +157,25 @@ export default function DetalleComprobanteModal({
         phone: sale.customer.phoneNumber,
         customerName: sale.customer.fullName,
         onSent: () => onAction?.(sale.id, "wa"),
-        onFallbackToText: openWhatsAppWithText,
+        onFallbackToText: () => void downloadPdfAndOpenChat(),
       });
     } finally {
       sendingRef.current = false;
     }
+  };
+
+  // Without own number: download the PDF and open the chat so the seller attaches it.
+  const downloadPdfAndOpenChat = async () => {
+    if (!taxDocument || !sale.customer.phoneNumber?.replace(/\D/g, "")) {
+      openWhatsAppWithText();
+      return;
+    }
+
+    await descargarPdfYAbrirChat({
+      download: downloadSunatDocumentPdf,
+      sunatDocumentId: taxDocument.id,
+      openChat: openWhatsAppWithText,
+    });
   };
 
   const shareWhatsApp = () => {
@@ -170,7 +184,7 @@ export default function DetalleComprobanteModal({
       return;
     }
 
-    openWhatsAppWithText();
+    void downloadPdfAndOpenChat();
   };
 
   const downloadPdf = async () => {
@@ -408,7 +422,7 @@ export default function DetalleComprobanteModal({
                         ? ` +${whatsAppAvailability.businessPhoneNumber}`
                         : ""
                     }.`
-                  : "WhatsApp: tu empresa no tiene un número de WhatsApp Business conectado. Se abrirá WhatsApp con el texto del comprobante, sin el PDF."}
+                  : "WhatsApp: tu empresa no tiene un número de WhatsApp Business conectado. Se descargará el PDF y se abrirá el chat del cliente para que lo adjuntes."}
               </p>
             )}
 

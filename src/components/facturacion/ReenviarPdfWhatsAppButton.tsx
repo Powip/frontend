@@ -1,13 +1,20 @@
 "use client";
 
 import { FileText, Loader2 } from "lucide-react";
-import { enviarPdfPorWhatsApp } from "@/app/facturacion/lib/enviar-pdf-whatsapp";
+import { useRef, useState } from "react";
+import { toast } from "sonner";
+import {
+  descargarPdfYAbrirChat,
+  enviarPdfPorWhatsApp,
+} from "@/app/facturacion/lib/enviar-pdf-whatsapp";
 import { Button } from "@/components/ui/button";
 import { useActiveTaxDocumentForOrder } from "@/features/sunat/sunat-document/hooks/use-active-tax-document-for-order";
+import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-document-pdf";
 import {
   useSendTaxDocumentWhatsApp,
   useTaxDocumentWhatsAppAvailability,
 } from "@/features/sunat/sunat-document/hooks/use-tax-document-whatsapp";
+import { toWhatsAppDigits } from "@/lib/phone";
 
 const SENDABLE_STATUSES: readonly string[] = ["ACCEPTED", "ACCEPTED_WITH_OBSERVATION"];
 
@@ -20,9 +27,10 @@ interface ReenviarPdfWhatsAppButtonProps {
 }
 
 /**
- * Resends the accepted tax document PDF of an order from the company's own
- * WhatsApp number. Hidden without own number or without an accepted document:
- * then there is nothing to resend from Powip.
+ * Resends the accepted tax document PDF of an order by WhatsApp.
+ * With the company's own number Powip sends it; without it the PDF is downloaded
+ * and the customer's chat opens so the seller attaches it. Hidden without an
+ * accepted document.
  */
 export function ReenviarPdfWhatsAppButton({
   orderId,
@@ -33,27 +41,63 @@ export function ReenviarPdfWhatsAppButton({
   const availability = useTaxDocumentWhatsAppAvailability(true);
   const document = useActiveTaxDocumentForOrder(orderId);
   const sendPdf = useSendTaxDocumentWhatsApp();
+  const { mutateAsync: downloadPdf } = useSunatDocumentPdf();
+  const busyRef = useRef(false);
+  const [busy, setBusy] = useState(false);
 
-  if (
-    !availability.data?.connected ||
-    !document ||
-    !SENDABLE_STATUSES.includes(document.cdrStatus)
-  ) {
+  const availabilityKnown = availability.isSuccess || availability.isError;
+  if (!availabilityKnown || !document || !SENDABLE_STATUSES.includes(document.cdrStatus)) {
     return null;
   }
 
-  const label = `Reenviar PDF ${document.series}-${document.correlative} por WhatsApp`;
-  const handleClick = () =>
-    enviarPdfPorWhatsApp({
-      send: sendPdf.mutateAsync,
-      sunatDocumentId: document.id,
-      phone,
-      customerName,
-      // The helper already told the user the number is gone; the button hides on the next check.
-      onFallbackToText: () => availability.refetch(),
-    });
+  const connected = availability.data?.connected === true;
+  const number = `${document.series}-${document.correlative}`;
+  const label = connected
+    ? `Reenviar PDF ${number} por WhatsApp`
+    : `Descargar PDF ${number} y abrir el chat del cliente`;
 
-  const icon = sendPdf.isPending ? (
+  const openChat = () => {
+    const to = toWhatsAppDigits(phone);
+    const text = encodeURIComponent(
+      `Hola ${customerName?.trim() ?? ""}, adjuntamos su comprobante ${number}.`,
+    );
+    window.open(`https://wa.me/${to}?text=${text}`, "_blank", "noopener,noreferrer");
+  };
+
+  const downloadAndOpenChat = () =>
+    descargarPdfYAbrirChat({ download: downloadPdf, sunatDocumentId: document.id, openChat });
+
+  const handleClick = async () => {
+    if (busyRef.current) return;
+    if (!toWhatsAppDigits(phone)) {
+      toast.error("Esta venta no tiene un teléfono de contacto registrado");
+      return;
+    }
+
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      if (connected) {
+        await enviarPdfPorWhatsApp({
+          send: sendPdf.mutateAsync,
+          sunatDocumentId: document.id,
+          phone,
+          customerName,
+          onFallbackToText: () => {
+            void availability.refetch();
+            void downloadAndOpenChat();
+          },
+        });
+      } else {
+        await downloadAndOpenChat();
+      }
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  const icon = busy ? (
     <Loader2 className="h-4 w-4 animate-spin" />
   ) : (
     <FileText className="h-4 w-4" />
@@ -61,13 +105,7 @@ export function ReenviarPdfWhatsAppButton({
 
   if (size === "sm") {
     return (
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={sendPdf.isPending}
-        onClick={handleClick}
-        title={label}
-      >
+      <Button size="sm" variant="outline" disabled={busy} onClick={handleClick} title={label}>
         {icon} Reenviar PDF
       </Button>
     );
@@ -78,7 +116,7 @@ export function ReenviarPdfWhatsAppButton({
       size="icon"
       variant="outline"
       className="border-green-600 text-green-700 hover:bg-green-50"
-      disabled={sendPdf.isPending}
+      disabled={busy}
       onClick={handleClick}
       title={label}
       aria-label={label}

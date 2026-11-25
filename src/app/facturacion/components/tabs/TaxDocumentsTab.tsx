@@ -23,7 +23,7 @@ import EmitirComprobanteModal from "@/app/facturacion/components/modals/EmitirCo
 import LoteEmisionModal from "@/app/facturacion/components/modals/LoteEmisionModal";
 import RechazadoModal from "@/app/facturacion/components/modals/RechazadoModal";
 import {
-  AVISO_SIN_NUMERO_PROPIO,
+  descargarPdfYAbrirChat,
   enviarPdfPorWhatsApp,
 } from "@/app/facturacion/lib/enviar-pdf-whatsapp";
 import { getNumeroComprobanteEmitido } from "@/app/facturacion/lib/numero-comprobante";
@@ -430,12 +430,26 @@ export function TaxDocumentsTab({
         phone: row.sale.customer.phoneNumber,
         customerName: row.sale.customer.fullName,
         onSent: () => markWhatsAppSent(row),
-        onFallbackToText: () => openWhatsAppWithText(row, whatsappUrl),
+        onFallbackToText: () => void downloadPdfAndOpenChat(row, whatsappUrl),
       });
     } finally {
       sendingWhatsAppRef.current = false;
       setSendingWhatsAppId(null);
     }
+  };
+
+  // Without own number: download the PDF and open the chat so the seller attaches it.
+  const downloadPdfAndOpenChat = async (row: TaxDocumentRow, whatsappUrl: string) => {
+    if (!row.taxDocument) {
+      openWhatsAppWithText(row, whatsappUrl);
+      return;
+    }
+
+    await descargarPdfYAbrirChat({
+      download: fetchTaxDocumentPdf,
+      sunatDocumentId: row.taxDocument.id,
+      openChat: () => openWhatsAppWithText(row, whatsappUrl),
+    });
   };
 
   const handleWhatsApp = (row: TaxDocumentRow) => {
@@ -454,8 +468,7 @@ export function TaxDocumentsTab({
       return;
     }
 
-    toast.info(AVISO_SIN_NUMERO_PROPIO);
-    openWhatsAppWithText(row, whatsappUrl);
+    void downloadPdfAndOpenChat(row, whatsappUrl);
   };
 
   const getDistributionIcons = (row: TaxDocumentRow) => {
@@ -486,7 +499,7 @@ export function TaxDocumentsTab({
                 ? "Teléfono no válido"
                 : canSendPdf
                   ? "Enviar PDF por WhatsApp desde tu número"
-                  : "Enviar por WhatsApp (sin PDF: tu empresa no tiene número de WhatsApp Business conectado)"
+                  : "Descargar PDF y abrir el chat del cliente (tu empresa no tiene número de WhatsApp Business conectado: adjunta el PDF en el chat)"
             }
             disabled={checkingWhatsApp || isThisRowSendingWhatsApp}
             onClick={() => handleWhatsApp(row)}
