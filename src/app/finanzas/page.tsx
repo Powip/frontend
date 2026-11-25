@@ -1369,6 +1369,7 @@ Estado: ${sale.status}
                   </>
                   )}
                 </CardContent>
+                {paymentOrigin !== "pau" && (
                 <Pagination
                   currentPage={1}
                   totalPages={Math.ceil(pagosPorValidar.length / 10) || 1}
@@ -1377,6 +1378,7 @@ Estado: ${sale.status}
                   onPageChange={() => {}}
                   itemName="ventas"
                 />
+                )}
               </Card>
             </TabsContent>
 

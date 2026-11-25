@@ -76,7 +76,7 @@ function ReceiptCard({ receipt }: { receipt: PaymentReceipt }) {
             {receipt.pauSale?.district ? ` · ${receipt.pauSale.district}` : ""}
           </p>
           <p className="text-sm">
-            <b>{formatSalesMoney(receipt.amount)}</b> · {receipt.methodLabel}
+            <b>{formatSalesMoney(receipt.amount, "PEN")}</b> · {receipt.methodLabel}
             {receipt.operationNumber ? ` · Op. ${receipt.operationNumber}` : ""}
             {checks?.read.date ? ` · ${checks.read.date}` : ""}
           </p>
