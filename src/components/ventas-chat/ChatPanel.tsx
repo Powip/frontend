@@ -40,6 +40,7 @@ import WhatsAppCallButton from "./WhatsAppCallButton";
 import ClientOrderPanel from "./ClientOrderPanel";
 import { useVista } from "./VistaContext";
 import { isWhatsAppMedia, WhatsAppMedia } from "./WhatsAppMedia";
+import SaveTestimonyButton, { canSaveAsTestimony } from "./SaveTestimonyButton";
 import { SendImageButton } from "./SendImageButton";
 import { appendLine } from "./quotes";
 import ContentChatBar from "./ContentChatBar";
@@ -155,6 +156,7 @@ function Bubble({
         ) : isWhatsAppMedia(message) ? (
           <div className="space-y-1">
             <WhatsAppMedia message={message} />
+            {canSaveAsTestimony(message) && <SaveTestimonyButton message={message} />}
             {message.body?.trim() && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
           </div>
         ) : (

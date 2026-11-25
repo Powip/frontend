@@ -128,11 +128,11 @@ export async function listMaterials(sheetId: string): Promise<Material[]> {
   ).data.items;
 }
 
-export async function createMaterial(input: MaterialInput): Promise<Material> {
+export async function createMaterial(input: MaterialInput): Promise<Material & { status?: "published" | "pending" }> {
   return (await axiosAuth.post<Material>(`${BASE}/content/materials`, input)).data;
 }
 
-export async function updateMaterial(id: string, input: MaterialUpdate): Promise<Material> {
+export async function updateMaterial(id: string, input: MaterialUpdate): Promise<Material & { status?: "published" | "pending" }> {
   return (await axiosAuth.patch<Material>(`${BASE}/content/materials/${enc(id)}`, input)).data;
 }
 
@@ -141,3 +141,29 @@ export async function deleteMaterial(id: string): Promise<void> {
 }
 
 export { crmError as crmContentError } from "@/services/crmService";
+
+// --- Testimonio guardado desde una foto del chat (mockup 152) ---
+
+export interface ChatTestimonyMark {
+  messageId: string;
+  materialId: string;
+  status: "published" | "pending";
+}
+
+/** Fotos de esta conversación que ya son testimonio (guardado o por aprobar). */
+export async function listChatTestimonies(conversationId: string): Promise<ChatTestimonyMark[]> {
+  const { data } = await axiosAuth.get<{ items: ChatTestimonyMark[] }>(
+    `${BASE}/conversations/${enc(conversationId)}/testimonies`,
+  );
+  return data.items;
+}
+
+/** Copia la foto del cliente al CRM y crea el testimonio. La vendedora lo deja por aprobar. */
+export async function saveChatTestimony(
+  conversationId: string,
+  messageId: string,
+  input: { sheetId: string; title: string },
+): Promise<Material & { status?: "published" | "pending" }> {
+  const url = `${BASE}/conversations/${enc(conversationId)}/messages/${enc(messageId)}/testimony`;
+  return (await axiosAuth.post<Material & { status?: "published" | "pending" }>(url, input)).data;
+}

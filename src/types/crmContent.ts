@@ -132,6 +132,10 @@ export interface Material {
   position: number;
   /** Método de pago del negocio (Yape, cuenta bancaria…). */
   payment?: boolean;
+  /** Foto guardada en el CRM (desde el chat): `url` es un enlace firmado que vence. */
+  storedMedia?: boolean;
+  /** Mensaje del chat del que salió el testimonio. */
+  sourceMessageId?: string | null;
 }
 
 export interface MaterialInput {
