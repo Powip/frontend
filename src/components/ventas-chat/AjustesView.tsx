@@ -12,6 +12,7 @@ import AjustesExportCard from "./AjustesExportCard";
 import AdResultsCard from "./AjustesAdResultsCard";
 import { MetaAudienceCard, MetaCapiCard } from "./AjustesMetaAdsCards";
 import { ChannelAccountsCard, PlanCard } from "./AjustesPlanCards";
+import { AjustesMapa, PorQuePowip } from "./AjustesMapa";
 import {
   AssignCard,
   CallsCard,
@@ -27,13 +28,22 @@ function AjustesContent() {
   const { data, isLoading, isError, error, refetch } = useCrmSettings();
   const err = isError ? crmError(error) : null;
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="w-full space-y-4">
       <h1 className="text-lg font-semibold">Ajustes</h1>
-      <PlanCard />
-      <AjustesWhatsAppCard />
-      <AjustesMetaCard />
-      <AjustesTikTokCard />
-      <ChannelAccountsCard />
+      {/* J1: mapa arriba; J15: todo el ancho, en secciones. */}
+      <AjustesMapa />
+      <div className="grid items-start gap-4 xl:grid-cols-2">
+        <div id="aj-plan" className="scroll-mt-4 space-y-4">
+          <PlanCard />
+          <PorQuePowip />
+        </div>
+        <div id="aj-canales" className="scroll-mt-4 space-y-4">
+          <AjustesWhatsAppCard />
+          <AjustesMetaCard />
+          <AjustesTikTokCard />
+          <ChannelAccountsCard />
+        </div>
+      </div>
       {isLoading && (
         <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" /> Cargando ajustes…
@@ -50,20 +60,30 @@ function AjustesContent() {
         </div>
       )}
       {data && (
-        <>
-          <SlaCard settings={data} />
-          <HoursCard settings={data} />
-          <WelcomeCard settings={data} />
-          <AssignCard settings={data} />
-          <MaskPhoneCard settings={data} />
-          <CommentsCard settings={data} />
-          <CallsCard settings={data} />
-        </>
+        <div className="grid items-start gap-4 xl:grid-cols-2">
+          <div id="aj-atencion" className="scroll-mt-4 space-y-4">
+            <SlaCard settings={data} />
+            <HoursCard settings={data} />
+            <WelcomeCard settings={data} />
+            <AssignCard settings={data} />
+          </div>
+          <div className="space-y-4">
+            <div id="aj-privacidad" className="scroll-mt-4 space-y-4">
+              <MaskPhoneCard settings={data} />
+              <CommentsCard settings={data} />
+            </div>
+            <div id="aj-llamadas" className="scroll-mt-4">
+              <CallsCard settings={data} />
+            </div>
+          </div>
+        </div>
       )}
-      <AjustesExportCard />
-      <MetaCapiCard />
-      <MetaAudienceCard />
-      <AdResultsCard />
+      <div id="aj-datos" className="grid scroll-mt-4 items-start gap-4 xl:grid-cols-2">
+        <AjustesExportCard />
+        <MetaCapiCard />
+        <MetaAudienceCard />
+        <AdResultsCard />
+      </div>
       <WhereCard />
     </div>
   );
