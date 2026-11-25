@@ -8,12 +8,21 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import ImportSalesModal from "@/components/modals/ImportSalesModal";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import { useRefreshQuote, useSalesBoard } from "@/hooks/useCrmSalesTools";
 import { usePdfDownload } from "@/hooks/usePdfDownload";
 import { crmError } from "@/services/crmService";
 import type { PdfDocSpec } from "@/lib/pdf/document";
 import type { SalesBoardRow, SalesBucket, SalesFilter } from "@/types/crmSalesTools";
 import { NATIVE_SELECT_CLASS, bandejaUrl, formatMoney } from "./format";
+
+const CHANNEL_LABEL: Record<string, string> = {
+  whatsapp: "WhatsApp",
+  instagram: "Instagram",
+  messenger: "Messenger",
+  facebook: "Facebook",
+  tiktok: "TikTok",
+};
 
 const FILTERS: Array<{ value: SalesFilter; label: string }> = [
   { value: "pending", label: "Pendientes" },
@@ -138,6 +147,18 @@ export default function VentasView() {
   const [status, setStatus] = useState<SalesFilter>("pending");
   const [days, setDays] = useState(60);
   const { data, isLoading, isError, error, refetch } = useSalesBoard(status, days);
+  // Contadores de las pestañas (mockup 152): una sola consulta «Todas» del mismo periodo.
+  const allQuery = useSalesBoard("all", days);
+  const counts = useMemo(() => {
+    const list = allQuery.data ?? [];
+    return {
+      pending: list.filter((r) => r.bucket === "pending").length,
+      cancelled: list.filter((r) => r.bucket === "cancelled").length,
+      all: list.length,
+    } satisfies Record<SalesFilter, number>;
+  }, [allQuery.data]);
+  // R5: solo el administrador importa ventas desde Excel.
+  const { isAdmin } = useCrmMe();
   const err = isError ? crmError(error) : null;
 
   const { auth } = useAuth();
@@ -154,7 +175,7 @@ export default function VentasView() {
   );
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    <div className="w-full space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-lg font-semibold">Ventas</h1>
         <div className="flex flex-wrap items-center gap-2">
@@ -164,10 +185,12 @@ export default function VentasView() {
               Nueva venta
             </Link>
           </Button>
-          <Button type="button" size="sm" variant="outline" disabled={!store} onClick={() => setImportOpen(true)}>
-            <FileSpreadsheet />
-            Importar Excel
-          </Button>
+          {isAdmin && (
+            <Button type="button" size="sm" variant="outline" disabled={!store} onClick={() => setImportOpen(true)}>
+              <FileSpreadsheet />
+              {store ? `Importar Excel a ${store.name}` : "Importar Excel"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -183,6 +206,11 @@ export default function VentasView() {
               onClick={() => setStatus(f.value)}
             >
               {f.label}
+              {allQuery.data && (
+                <span aria-hidden title={`${counts[f.value]} documentos`} className="ml-1 rounded-full bg-muted px-1.5 text-[11px] tabular-nums text-foreground" data-testid={`count-${f.value}`}>
+                  {counts[f.value]}
+                </span>
+              )}
             </Button>
           ))}
         </div>
@@ -195,7 +223,7 @@ export default function VentasView() {
             <option value={90}>Últimos 90 días</option>
           </select>
         </div>
-        {stores.length > 1 && (
+        {isAdmin && stores.length > 1 && (
           <div className="w-44 space-y-1">
             <Label htmlFor="ventas-store">Tienda para importar</Label>
             <select
@@ -239,10 +267,12 @@ export default function VentasView() {
               <tr>
                 <th className="px-2 py-1.5 font-medium">Documento</th>
                 <th className="px-2 py-1.5 font-medium">Cliente</th>
+                <th className="px-2 py-1.5 font-medium">Origen</th>
                 <th className="px-2 py-1.5 font-medium">Vendedora</th>
                 <th className="px-2 py-1.5 font-medium">Fecha</th>
                 <th className="px-2 py-1.5 text-right font-medium">Total</th>
                 <th className="px-2 py-1.5 text-right font-medium">Pagado</th>
+                <th className="px-2 py-1.5 text-right font-medium">Saldo</th>
                 <th className="px-2 py-1.5 font-medium">Estado</th>
                 <th className="px-2 py-1.5 text-right font-medium">Acciones</th>
               </tr>
@@ -255,10 +285,16 @@ export default function VentasView() {
                     <span className="text-muted-foreground">{r.number ?? r.coreId}</span>
                   </td>
                   <td className="px-2 py-1.5">{r.contactName ?? "Sin nombre"}</td>
+                  <td className="px-2 py-1.5">
+                    {r.channel ? (CHANNEL_LABEL[r.channel] ?? r.channel) : "Chat"}
+                  </td>
                   <td className="px-2 py-1.5">{r.sellerName ?? "—"}</td>
                   <td className="px-2 py-1.5 whitespace-nowrap">{formatDate(r.createdAt)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{r.total === null ? "—" : formatMoney(r.total)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{r.kind === "order" ? formatMoney(r.paid) : "—"}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums" data-testid="row-balance">
+                    {r.kind === "order" && r.total !== null ? formatMoney(Math.max(r.total - r.paid, 0)) : "—"}
+                  </td>
                   <td className="px-2 py-1.5">
                     <Badge variant={BUCKET_VARIANT[r.bucket]}>{BUCKET_LABEL[r.bucket]}</Badge>
                   </td>
@@ -270,11 +306,12 @@ export default function VentasView() {
             </tbody>
             <tfoot>
               <tr className="border-t font-medium">
-                <td className="px-2 py-1.5" colSpan={4}>
+                <td className="px-2 py-1.5" colSpan={5}>
                   {rows.length} documento{rows.length === 1 ? "" : "s"}
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(totals.total)}</td>
                 <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(totals.paid)}</td>
+                <td />
                 <td colSpan={2} />
               </tr>
             </tfoot>
@@ -282,7 +319,7 @@ export default function VentasView() {
         </div>
       )}
 
-      {store && (
+      {isAdmin && store && (
         <ImportSalesModal
           isOpen={importOpen}
           onClose={() => setImportOpen(false)}
