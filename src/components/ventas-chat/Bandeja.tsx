@@ -40,7 +40,6 @@ export default function Bandeja() {
 
   return (
     <div className="space-y-2">
-      <SoundsControl openConversationId={selectedId} showButton={false} />
       <div className="flex items-center justify-end gap-3">
         {stores.length > 1 && (
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -81,6 +80,8 @@ export default function Bandeja() {
       {!focused && (
         <InboxIndicators active={indicator} onChange={setIndicator} storeId={storeId} />
       )}
+
+      <SoundsControl openConversationId={selectedId} showButton={false} />
 
       {/* Alto del mockup 152: la bandeja ocupa toda la ventana (mín. 780 px) y cada columna
           tiene su propio scroll; en celular, el alto visible menos la cabecera. */}

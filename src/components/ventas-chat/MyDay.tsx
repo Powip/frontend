@@ -103,7 +103,7 @@ export default function MyDay({ onOpenChat, compact = false }: Props) {
               aria-label="Ver números de"
               value={who ?? "all"}
               onChange={(e) => setWho(e.target.value)}
-              className={cn(NATIVE_SELECT_CLASS, "w-auto min-w-[170px] py-1.5 text-[13px]")}
+              className={cn(NATIVE_SELECT_CLASS, "w-auto min-w-[170px] max-w-[220px] truncate py-1.5 text-[13px]")}
             >
               {d.sellers.map((s) => (
                 <option key={s.userId} value={s.userId}>
