@@ -460,10 +460,44 @@ export function CapabilitiesSection() {
   );
 }
 
+const soles = (n: number) => `S/ ${n.toFixed(2)}`;
+
+/** Gasto estimado del mes contra el tope (mockup 152): barra, % y aviso al 80 %. */
+export function SpendMeter({ spent, cap }: { spent: number | null; cap: number | null }) {
+  const month = new Date().toLocaleDateString("es-PE", { month: "long" });
+  if (spent === null) {
+    return (
+      <p className="text-sm text-muted-foreground" data-testid="pau-spend-meter">
+        Pon el precio de tus proveedores para ver el gasto estimado de {month}.
+      </p>
+    );
+  }
+  const pct = cap ? Math.min(100, Math.round((spent / cap) * 100)) : 0;
+  return (
+    <div className="space-y-1.5" data-testid="pau-spend-meter">
+      <p className="flex items-center justify-between gap-2 text-sm">
+        <span>Gasto estimado de {month}</span>
+        <b className="tabular-nums">{cap ? `${soles(spent)} de ${soles(cap)}` : soles(spent)}</b>
+      </p>
+      {cap ? (
+        <>
+          <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Gasto del tope">
+            <div className={cn("h-full rounded-full", pct >= 80 ? "bg-destructive" : "bg-primary")} style={{ width: `${pct}%` }} />
+          </div>
+          <p className={cn("text-xs", pct >= 80 ? "text-destructive" : "text-muted-foreground")}>
+            {pct >= 100 ? "Tope alcanzado" : `${pct} % del tope`} · aviso al 80 %
+          </p>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 /** P9: orden de uso, tiempo de espera, respaldo, tope de gasto y modelo por tarea. */
 export function ProviderRulesSection() {
   const { config, loading, save, saving } = useConfig();
   const providers = usePauProviders().data ?? [];
+  const usage = usePauUsage();
   if (loading) return <Loading />;
   if (!config || providers.length === 0) return null;
   const rules = config.providers;
@@ -542,6 +576,7 @@ export function ProviderRulesSection() {
         </div>
       </Card>
       <Card id="pau-tope" title="Tope de gasto mensual" subtitle="Para que el consumo de IA nunca te sorprenda">
+        <SpendMeter spent={usage.data?.spentSoles ?? null} cap={rules.monthlyCapSoles} />
         <div>
           <Row label="Tope por mes">
             <span className="text-xs text-muted-foreground">S/</span>
@@ -575,6 +610,35 @@ export function ProviderRulesSection() {
               <option value="notify">Solo avisar</option>
             </select>
           </Row>
+          {ordered.map((p) => {
+            const price = rules.pricePerMTokens?.[p.id];
+            return (
+              <Row key={p.id} label={`Precio de ${p.label} (S/ por millón de tokens)`}>
+                <span className="text-xs text-muted-foreground">S/</span>
+                <Input
+                  type="number"
+                  aria-label={`Precio por millón de tokens de ${p.label}`}
+                  className="h-9 w-28"
+                  min={0}
+                  step="0.01"
+                  placeholder="Sin precio"
+                  defaultValue={price ?? ""}
+                  key={`p-${p.id}-${price}`}
+                  onBlur={(e) => {
+                    const raw = e.target.value.trim();
+                    const next = { ...(rules.pricePerMTokens ?? {}) };
+                    if (raw === "") delete next[p.id];
+                    else if (Number.isFinite(Number(raw)) && Number(raw) >= 0) next[p.id] = Number(raw);
+                    else return;
+                    if (next[p.id] !== price) save({ providers: { pricePerMTokens: next } }, "Precio guardado");
+                  }}
+                />
+              </Row>
+            );
+          })}
+          <p className="pt-2 text-xs text-muted-foreground">
+            El precio lo ves en la página de tu proveedor. Sin precio, ese proveedor no suma al gasto estimado.
+          </p>
         </div>
       </Card>
       <Card id="pau-tareas" title="Modelo por tarea" subtitle="Usa el modelo más barato donde alcanza">
@@ -611,7 +675,7 @@ export function UsageByProviderSection() {
   if (!rows) return null;
   const fmt = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(2)} M` : n.toLocaleString("es-PE"));
   return (
-    <Card id="pau-uso-prov" title="Uso por proveedor" subtitle="El costo exacto lo ves en tu cuenta de cada proveedor">
+    <Card id="pau-uso-prov" title="Uso por proveedor" subtitle="Estimado con el precio que pusiste. El costo exacto lo ves en tu cuenta de cada proveedor">
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">Aún no hay uso este mes.</p>
       ) : (
@@ -635,8 +699,12 @@ export function UsageByProviderSection() {
                   <td className="py-2 text-right tabular-nums">{fmt(r.tasks)}</td>
                   <td className="py-2 text-right tabular-nums">{fmt(r.messages)}</td>
                   <td className="py-2 text-right tabular-nums">{fmt(r.tokens)}</td>
-                  <td className="py-2 text-right text-xs text-muted-foreground" title="El precio por token depende de tu proveedor">
-                    En tu proveedor
+                  <td className="py-2 text-right tabular-nums">
+                    {r.estimatedSoles == null ? (
+                      <span className="text-xs text-muted-foreground" title="Pon su precio en «Tope de gasto mensual»">Sin precio</span>
+                    ) : (
+                      soles(r.estimatedSoles)
+                    )}
                   </td>
                 </tr>
               ))}

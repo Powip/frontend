@@ -210,6 +210,21 @@ describe("Pau · proveedores y consumo (P9, P11)", () => {
     setup("cons");
     const table = await screen.findByTestId("pau-usage-by-provider");
     expect(within(table).getByText("Principal")).toBeInTheDocument();
-    expect(within(table).getByText("En tu proveedor")).toBeInTheDocument();
+    expect(within(table).getByText("Sin precio")).toBeInTheDocument();
+  });
+
+  it("precio por proveedor se guarda y el medidor compara el gasto con el tope", async () => {
+    s.getPauUsage.mockResolvedValue({ ...USAGE, spentSoles: 42, monthlyCapSoles: 50 });
+    s.getPauSettings.mockResolvedValue({ ...settings, config: { ...settings.config, providers: { ...settings.config.providers, monthlyCapSoles: 50 } } });
+    setup("prov");
+    const meter = await screen.findByTestId("pau-spend-meter");
+    await waitFor(() => expect(meter).toHaveTextContent("S/ 42.00 de S/ 50.00"));
+    expect(meter).toHaveTextContent("84 % del tope · aviso al 80 %");
+    const price = await screen.findByLabelText("Precio por millón de tokens de Principal");
+    fireEvent.change(price, { target: { value: "12.5" } });
+    fireEvent.blur(price);
+    await waitFor(() =>
+      expect(s.updatePauSettings).toHaveBeenCalledWith({ config: { providers: { pricePerMTokens: { p1: 12.5 } } } }),
+    );
   });
 });

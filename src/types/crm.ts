@@ -581,6 +581,8 @@ export interface PauConfig {
     monthlyCapSoles: number | null;
     capAction: "copilot" | "pause" | "notify";
     modelByTask: Partial<Record<PauModelTask, string>>;
+    /** Soles por millón de tokens de cada proveedor (id): estima el gasto y aplica el tope. */
+    pricePerMTokens?: Record<string, number>;
   };
 }
 
@@ -657,7 +659,12 @@ export interface PauUsage {
     tasks: number;
     messages: number;
     tokens: number;
+    /** Null si el proveedor no tiene precio cargado. */
+    estimatedSoles?: number | null;
   }>;
+  /** Gasto estimado del mes en soles; null si ningún proveedor tiene precio. */
+  spentSoles?: number | null;
+  monthlyCapSoles?: number | null;
   byKind: Array<{
     kind: PauUsageKind;
     calls: number;
