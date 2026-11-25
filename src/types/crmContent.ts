@@ -167,6 +167,8 @@ export interface Sheet {
   highlights: string;
   alternatives: string;
   complements: string;
+  /** Ofertas y packs reales del producto; Pau no ofrece otros. */
+  offers?: string;
   category?: string | null;
   storeId?: string | null;
   active: boolean;
@@ -183,6 +185,7 @@ export interface SheetInput {
   highlights?: string;
   alternatives?: string;
   complements?: string;
+  offers?: string;
 }
 
 export type SheetUpdate = Partial<SheetInput> & { active?: boolean };

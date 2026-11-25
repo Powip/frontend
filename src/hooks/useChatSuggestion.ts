@@ -47,6 +47,8 @@ export function useChatSuggestion(conversation: Conversation | undefined, window
     text: picked.text,
     /** «IA» solo si la IA redactó el texto; si no, «Reglas». */
     source: picked.source,
+    /** «paso X de Y» solo cuando el texto es el paso del guion; la IA no sigue el contador. */
+    fromStep: picked.fromStep,
     objection,
     step,
     stepCount: steps.length,

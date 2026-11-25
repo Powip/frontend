@@ -143,6 +143,7 @@ function SheetDetail({ sheet, viewAs, storeName }: { sheet: Sheet; viewAs: ViewA
       <Field label="Qué destacar" value={sheet.highlights} />
       <Field label="Alternativas" value={sheet.alternatives} />
       <Field label="Complementos" value={sheet.complements} />
+      <Field label="Ofertas y packs" value={sheet.offers ?? ""} />
       <ProductScript sheet={sheet} />
       <MaterialCards sheet={sheet} />
       <FichaCoreStock sheetId={sheet.id} linked={!!sheet.coreProductId} />

@@ -68,6 +68,10 @@ export function useMessages(id: string | null) {
     queryFn: () => listMessages(id!, { limit: 50 }),
     enabled: !!id,
     retry: false,
+    // Respaldo del SSE: si un evento se pierde (conexión caída sin aviso), el chat abierto
+    // igual muestra el mensaje de Pau en menos de 30 s, sin recargar la página.
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -337,6 +341,9 @@ export type LiveState = "live" | "reconnecting";
  * Tiempo real vía SSE con fetch (EventSource no permite header Authorization).
  * Reconecta con backoff y se aborta al desmontar.
  */
+/** Silencio máximo del SSE antes de reconectar (el servidor hace ping cada 25 s). */
+const SSE_SILENCE_MS = 60_000;
+
 export function useCrmEvents(enabled = true): LiveState {
   const qc = useQueryClient();
   const [state, setState] = useState<LiveState>("reconnecting");
@@ -369,10 +376,23 @@ export function useCrmEvents(enabled = true): LiveState {
           const event = parseCrmEvent(frame);
           if (event) applyCrmEvent(qcRef.current, event);
         });
-        for (;;) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          parser.push(decoder.decode(value, { stream: true }));
+        // El servidor manda un ping cada 25 s. Sin nada en 60 s la conexión está muerta
+        // (servicio reiniciado, red o suspensión): se corta y se reconecta.
+        let watchdog: ReturnType<typeof setTimeout> | undefined;
+        const arm = () => {
+          if (watchdog) clearTimeout(watchdog);
+          watchdog = setTimeout(() => void reader.cancel().catch(() => undefined), SSE_SILENCE_MS);
+        };
+        arm();
+        try {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            arm();
+            parser.push(decoder.decode(value, { stream: true }));
+          }
+        } finally {
+          if (watchdog) clearTimeout(watchdog);
         }
       } catch {
         if (controller.signal.aborted) return;

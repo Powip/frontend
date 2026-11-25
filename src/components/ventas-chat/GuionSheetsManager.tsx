@@ -23,11 +23,16 @@ import { SHEET_NAME_MAX, SHEET_TEXT_MAX } from "./ContentLib";
 import { ContentError, ContentLoading } from "./ContentStatus";
 import GuionMaterialList from "./GuionMaterialList";
 
-const TEXT_FIELDS: Array<{ key: "forWhom" | "highlights" | "alternatives" | "complements"; label: string }> = [
+const TEXT_FIELDS: Array<{ key: "forWhom" | "highlights" | "alternatives" | "complements" | "offers"; label: string; hint?: string }> = [
   { key: "forWhom", label: "Para quién es" },
   { key: "highlights", label: "Qué destacar" },
   { key: "alternatives", label: "Alternativas" },
   { key: "complements", label: "Complementos" },
+  {
+    key: "offers",
+    label: "Ofertas y packs",
+    hint: "Pau y la sugerencia solo ofrecen lo que escribas aquí. Ej.: Pack 3 x S/ 129. Vacío: sin packs.",
+  },
 ];
 
 interface DialogProps {
@@ -57,6 +62,7 @@ function SheetForm({ sheet, busy, onClose, onSave }: Omit<DialogProps, "open">) 
     highlights: sheet?.highlights ?? "",
     alternatives: sheet?.alternatives ?? "",
     complements: sheet?.complements ?? "",
+    offers: sheet?.offers ?? "",
   });
   const [active, setActive] = useState(sheet?.active ?? true);
   return (
@@ -100,6 +106,7 @@ function SheetForm({ sheet, busy, onClose, onSave }: Omit<DialogProps, "open">) 
             value={texts[f.key]}
             onChange={(e) => setTexts((t) => ({ ...t, [f.key]: e.target.value }))}
           />
+          {f.hint && <p className="text-xs text-muted-foreground">{f.hint}</p>}
         </div>
       ))}
       {sheet && (

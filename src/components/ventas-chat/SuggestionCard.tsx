@@ -41,7 +41,7 @@ export default function SuggestionCard({ conversationId, suggestion, text, onFil
     >
       <span className="flex items-center gap-2 text-xs font-semibold text-primary">
         <Sparkles className="h-[15px] w-[15px]" aria-hidden />
-        {suggestion.stepCount ? `Sugerencia · paso ${suggestion.step + 1} de ${suggestion.stepCount}` : "Sugerencia"}
+        {suggestion.fromStep && suggestion.stepCount ? `Sugerencia · paso ${suggestion.step + 1} de ${suggestion.stepCount}` : "Sugerencia"}
         <span className="font-normal text-muted-foreground">
           {objection
             ? "Responde la objeción del cliente"
