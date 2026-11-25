@@ -51,13 +51,15 @@ export function useCrmSounds(openConversationId: string | null) {
   const unlock = useCallback(async () => setUnlocked(await unlockSound()), []);
 
   // Navegadores bloquean el audio hasta un gesto: el primer clic lo habilita.
+  // «click» y no «pointerdown»: al habilitar, el aviso ámbar se oculta y la página sube;
+  // con pointerdown el clic que el usuario estaba dando caía en otro elemento.
   useEffect(() => {
     if (unlocked) return;
     const handler = () => void unlock();
-    window.addEventListener("pointerdown", handler, { once: true });
+    window.addEventListener("click", handler, { once: true });
     window.addEventListener("keydown", handler, { once: true });
     return () => {
-      window.removeEventListener("pointerdown", handler);
+      window.removeEventListener("click", handler);
       window.removeEventListener("keydown", handler);
     };
   }, [unlocked, unlock]);
