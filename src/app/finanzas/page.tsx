@@ -56,7 +56,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import CancellationModal, {
   CancellationReason,
 } from "@/components/modals/CancellationModal";
-import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
+import { getAvailableStatuses, getStatusLabel } from "@/utils/domain/orders-status-flow";
 import { openPrintWindow, printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 import { ReviewDialog } from "@/features/live/LiveYapeReviews";
@@ -819,7 +819,7 @@ Estado: ${sale.status}
                 {getAvailableStatuses(sale.status, sale.salesRegion).map(
                   (status) => (
                     <option key={status} value={status}>
-                      {status}
+                      {getStatusLabel(status)}
                     </option>
                   ),
                 )}
@@ -1326,7 +1326,7 @@ Estado: ${sale.status}
                             {sale.courier || "-"}
                           </TableCell>
                           <TableCell className="w-[120px] min-w-[120px]">
-                            <Badge variant="outline">{sale.withoutOrder ? "Por validar" : sale.status}</Badge>
+                            <Badge variant="outline">{sale.withoutOrder ? "Por validar" : getStatusLabel(sale.status)}</Badge>
                           </TableCell>
                           <TableCell className="w-[100px] min-w-[100px]">
                             {formatSalesMoney(sale.total, sale.currency)}
