@@ -7,6 +7,8 @@ export const AJUSTES_SECCIONES = [
   { id: "aj-plan", label: "Tu plan", text: "Precio, vendedoras incluidas y Pau." },
   { id: "aj-canales", label: "Canales y cuentas", text: "WhatsApp, Instagram, Messenger y TikTok por tienda." },
   { id: "aj-atencion", label: "Atención", text: "SLA, horario, bienvenida y reparto de chats." },
+  { id: "aj-equipo", label: "Equipo y tiendas", text: "Qué tiendas atiende cada persona, contra entrega y a quién se cuenta la venta." },
+  { id: "aj-pagos", label: "Pagos y cobros", text: "Política de pago por tienda, métodos de cobro y agencias." },
   { id: "aj-privacidad", label: "Privacidad y comentarios", text: "Teléfono oculto y respuestas a comentarios." },
   { id: "aj-llamadas", label: "Llamadas", text: "Horario y reglas para llamar por WhatsApp." },
   { id: "aj-datos", label: "Datos y anuncios", text: "Descargar base, Conversions API, públicos y resultados." },

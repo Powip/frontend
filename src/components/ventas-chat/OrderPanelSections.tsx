@@ -87,7 +87,7 @@ export function useConversationStore(conversation: Pick<Conversation, "storeId">
 
 // ---------------- Política de pagos (fila 25) ----------------
 
-function PolicyDialog({
+export function PolicyDialog({
   policy,
   onClose,
 }: {

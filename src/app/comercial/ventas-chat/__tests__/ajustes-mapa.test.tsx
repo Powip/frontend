@@ -11,7 +11,7 @@ describe("Ajustes · mapa de configuración (J1, J12)", () => {
     render(<AjustesMapa />);
     expect(screen.getAllByRole("button", { name: /^Ir a / })).toHaveLength(3);
     fireEvent.click(screen.getByRole("button", { name: "Ver todo" }));
-    expect(screen.getAllByRole("button", { name: /^Ir a / })).toHaveLength(6);
+    expect(screen.getAllByRole("button", { name: /^Ir a / })).toHaveLength(8);
     fireEvent.click(screen.getByRole("button", { name: "Ir a Canales y cuentas" }));
     expect(target.scrollIntoView).toHaveBeenCalled();
     target.remove();

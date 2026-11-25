@@ -14,6 +14,14 @@ import { MetaAudienceCard, MetaCapiCard } from "./AjustesMetaAdsCards";
 import { ChannelAccountsCard, PlanCard } from "./AjustesPlanCards";
 import { AjustesMapa, PorQuePowip } from "./AjustesMapa";
 import {
+  AttributionCard,
+  CodCard,
+  MemberStoresCard,
+  PaymentsCard,
+  StoreWelcomeCard,
+  StoresChannelsCard,
+} from "./AjustesBloqueE";
+import {
   AssignCard,
   CallsCard,
   CommentsCard,
@@ -38,6 +46,7 @@ function AjustesContent() {
           <PorQuePowip />
         </div>
         <div id="aj-canales" className="scroll-mt-4 space-y-4">
+          <StoresChannelsCard settings={data} />
           <AjustesWhatsAppCard />
           <AjustesMetaCard />
           <AjustesTikTokCard />
@@ -65,6 +74,7 @@ function AjustesContent() {
             <SlaCard settings={data} />
             <HoursCard settings={data} />
             <WelcomeCard settings={data} />
+            <StoreWelcomeCard settings={data} />
             <AssignCard settings={data} />
           </div>
           <div className="space-y-4">
@@ -75,6 +85,18 @@ function AjustesContent() {
             <div id="aj-llamadas" className="scroll-mt-4">
               <CallsCard settings={data} />
             </div>
+          </div>
+        </div>
+      )}
+      {data && (
+        <div className="grid items-start gap-4 xl:grid-cols-2">
+          <div id="aj-equipo" className="scroll-mt-4 space-y-4">
+            <MemberStoresCard settings={data} />
+            <CodCard settings={data} />
+            <AttributionCard settings={data} />
+          </div>
+          <div id="aj-pagos" className="scroll-mt-4 space-y-4">
+            <PaymentsCard />
           </div>
         </div>
       )}

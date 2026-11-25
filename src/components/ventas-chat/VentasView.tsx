@@ -15,6 +15,9 @@ import { crmError } from "@/services/crmService";
 import type { PdfDocSpec } from "@/lib/pdf/document";
 import type { SalesBoardRow, SalesBucket, SalesFilter } from "@/types/crmSalesTools";
 import { NATIVE_SELECT_CLASS, bandejaUrl, formatMoney } from "./format";
+import { useSalesBoardExtras } from "@/hooks/useCrmAjustesE";
+import type { SalesBoardExtra } from "@/types/crmAjustesE";
+import { CityCell, ExtraActions, PayShipCell } from "./VentasExtras";
 
 const CHANNEL_LABEL: Record<string, string> = {
   whatsapp: "WhatsApp",
@@ -75,7 +78,7 @@ export function salesRowPdfSpec(row: SalesBoardRow): PdfDocSpec {
   };
 }
 
-function RowActions({ row }: { row: SalesBoardRow }) {
+function RowActions({ row, extra }: { row: SalesBoardRow; extra?: SalesBoardExtra }) {
   const download = usePdfDownload();
   const refresh = useRefreshQuote();
   const [pdfBusy, setPdfBusy] = useState(false);
@@ -132,10 +135,11 @@ function RowActions({ row }: { row: SalesBoardRow }) {
           <RefreshCw className={refresh.isPending ? "animate-spin" : undefined} />
         </Button>
       )}
+      <ExtraActions row={row} extra={extra} />
       <Button asChild size="sm" variant="ghost">
         <Link href={bandejaUrl(row.conversationId)} aria-label={`Abrir chat de ${row.contactName ?? "cliente"}`}>
           <MessageSquare />
-          Chat
+          {row.channel === "whatsapp" ? "WhatsApp" : "Chat"}
         </Link>
       </Button>
     </div>
@@ -169,6 +173,10 @@ export default function VentasView() {
   const sellerName = auth?.user ? `${auth.user.name || ""} ${auth.user.surname || ""}`.trim() : undefined;
 
   const rows = data ?? [];
+  // V3: ciudad, envío y pagos vienen del Core (ms-ventas) por pedido.
+  const extras = useSalesBoardExtras(rows.map((r) => r.orderId ?? ""));
+  const extraOf = (r: SalesBoardRow) => (r.orderId ? extras.data?.[r.orderId] : undefined);
+  const extrasLoading = extras.isLoading && extras.fetchStatus !== "idle";
   const totals = useMemo(
     () => rows.reduce((acc, r) => ({ total: acc.total + (r.total ?? 0), paid: acc.paid + r.paid }), { total: 0, paid: 0 }),
     [rows],
@@ -267,6 +275,8 @@ export default function VentasView() {
               <tr>
                 <th className="px-2 py-1.5 font-medium">Documento</th>
                 <th className="px-2 py-1.5 font-medium">Cliente</th>
+                <th className="px-2 py-1.5 font-medium">Ciudad / provincia</th>
+                <th className="px-2 py-1.5 font-medium">Pago / envío</th>
                 <th className="px-2 py-1.5 font-medium">Origen</th>
                 <th className="px-2 py-1.5 font-medium">Vendedora</th>
                 <th className="px-2 py-1.5 font-medium">Fecha</th>
@@ -284,7 +294,16 @@ export default function VentasView() {
                     <span className="font-medium">{r.kind === "quote" ? "Cotización" : "Pedido"}</span>{" "}
                     <span className="text-muted-foreground">{r.number ?? r.coreId}</span>
                   </td>
-                  <td className="px-2 py-1.5">{r.contactName ?? "Sin nombre"}</td>
+                  <td className="px-2 py-1.5">
+                    {r.contactName ?? "Sin nombre"}
+                    {extraOf(r)?.phone && <span className="block text-xs text-muted-foreground">{extraOf(r)?.phone}</span>}
+                  </td>
+                  <td className="px-2 py-1.5" data-testid="row-city">
+                    <CityCell extra={extraOf(r)} loading={!!r.orderId && extrasLoading} />
+                  </td>
+                  <td className="px-2 py-1.5" data-testid="row-payship">
+                    <PayShipCell extra={extraOf(r)} loading={!!r.orderId && extrasLoading} />
+                  </td>
                   <td className="px-2 py-1.5">
                     {r.channel ? (CHANNEL_LABEL[r.channel] ?? r.channel) : "Chat"}
                   </td>
@@ -299,14 +318,14 @@ export default function VentasView() {
                     <Badge variant={BUCKET_VARIANT[r.bucket]}>{BUCKET_LABEL[r.bucket]}</Badge>
                   </td>
                   <td className="px-2 py-1.5">
-                    <RowActions row={r} />
+                    <RowActions row={r} extra={extraOf(r)} />
                   </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr className="border-t font-medium">
-                <td className="px-2 py-1.5" colSpan={5}>
+                <td className="px-2 py-1.5" colSpan={7}>
                   {rows.length} documento{rows.length === 1 ? "" : "s"}
                 </td>
                 <td className="px-2 py-1.5 text-right tabular-nums">{formatMoney(totals.total)}</td>

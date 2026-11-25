@@ -72,7 +72,7 @@ describe("Ventas · mockup 152 (V1, V3, V4, R5)", () => {
     expect(await screen.findByTestId("count-pending")).toHaveTextContent("2");
     expect(screen.getByTestId("count-cancelled")).toHaveTextContent("1");
     expect(screen.getByTestId("count-all")).toHaveTextContent("4");
-    expect(await screen.findByText("WhatsApp")).toBeInTheDocument();
+    expect((await screen.findAllByText("WhatsApp")).some((el) => el.tagName === "TD")).toBe(true);
     expect(screen.getByTestId("row-balance")).toHaveTextContent("S/ 70.00");
   });
 

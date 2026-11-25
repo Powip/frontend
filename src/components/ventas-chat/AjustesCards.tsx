@@ -7,7 +7,8 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { crmError } from "@/services/crmService";
 import { useTeamMembers, useUpdateCrmSettings } from "@/hooks/useCrmTeam";
-import type { AbsentTaskMode, AssignMode, CrmSettings, TeamPerson } from "@/types/crmTeam";
+import type { AbsentTaskMode, CrmSettings, TeamPerson } from "@/types/crmTeam";
+import type { AssignModeE, CrmSettingsE } from "@/types/crmAjustesE";
 import AjustesCard, { useDraft } from "./AjustesCard";
 
 export const MAX_MESSAGE = 600;
@@ -222,14 +223,29 @@ export function WelcomeCard({ settings }: { settings: CrmSettings }) {
   );
 }
 
-type AssignDraft = { assignMode: AssignMode; assignUsers: TeamPerson[] };
+type AssignDraft = {
+  assignMode: AssignModeE;
+  assignUsers: TeamPerson[];
+  stickySeller: boolean;
+  showPresence: boolean;
+};
+
+/** Mockup 152 › Cómo se reparten los chats. */
+const ASSIGN_OPTIONS: Array<[AssignModeE, string, string]> = [
+  ["least_load", "A la que tenga menos chats abiertos", "Recomendado"],
+  ["round_robin", "Por turnos", ""],
+  ["manual", "Libre", "Cada una toma el chat"],
+];
 
 export function AssignCard({ settings }: { settings: CrmSettings }) {
   const m = useUpdateCrmSettings();
   const members = useTeamMembers();
+  const s = settings as unknown as CrmSettingsE;
   const server: AssignDraft = {
-    assignMode: settings.assignMode,
-    assignUsers: settings.assignUsers,
+    assignMode: s.assignMode,
+    assignUsers: s.assignUsers,
+    stickySeller: s.stickySeller ?? true,
+    showPresence: s.showPresence ?? true,
   };
   const { draft, setDraft, dirty } = useDraft(server);
   const selected = new Set(draft.assignUsers.map((u) => u.userId));
@@ -245,34 +261,37 @@ export function AssignCard({ settings }: { settings: CrmSettings }) {
         ? [...c.assignUsers.filter((u) => u.userId !== p.userId), p]
         : c.assignUsers.filter((u) => u.userId !== p.userId),
     }));
-  const needsPeople = draft.assignMode === "round_robin" && draft.assignUsers.length === 0;
+  const needsPeople = draft.assignMode !== "manual" && draft.assignUsers.length === 0;
+  const save = () => {
+    const input: Record<string, unknown> = { assignMode: draft.assignMode, assignUsers: draft.assignUsers };
+    if (draft.stickySeller !== server.stickySeller) input.stickySeller = draft.stickySeller;
+    if (draft.showPresence !== server.showPresence) input.showPresence = draft.showPresence;
+    m.mutate(input as Parameters<typeof m.mutate>[0]);
+  };
   return (
     <AjustesCard
       id="assign"
       title="Reparto de chats nuevos"
-      description="Manual: los chats nuevos quedan sin asignar y alguien los toma. Por turnos: cada chat nuevo se asigna por turnos entre las personas elegidas."
+      description="Menos carga: el chat nuevo va a quien tenga menos chats abiertos. Por turnos: uno a cada persona elegida. Libre: queda sin asignar y alguien lo toma."
       canSave={dirty && !needsPeople}
       saving={m.isPending}
-      onSave={() => m.mutate({ assignMode: draft.assignMode, assignUsers: draft.assignUsers })}
+      onSave={save}
       error={errMsg(m)}
-      hint={needsPeople ? "Elige al menos una persona para repartir por turnos." : null}
+      hint={needsPeople ? "Elige al menos una persona para repartir los chats." : null}
     >
       <div role="radiogroup" aria-label="Modo de reparto" className="flex flex-wrap gap-4 text-sm">
-        {(
-          [
-            ["manual", "Manual"],
-            ["round_robin", "Por turnos"],
-          ] as const
-        ).map(([value, label]) => (
+        {ASSIGN_OPTIONS.map(([value, label, note]) => (
           <label key={value} className="flex items-center gap-1.5">
             <input
               type="radio"
               name="assign-mode"
               value={value}
+              aria-label={label}
               checked={draft.assignMode === value}
               onChange={() => setDraft((c) => ({ ...c, assignMode: value }))}
             />
             {label}
+            {note && <span className="text-xs text-muted-foreground">· {note}</span>}
           </label>
         ))}
       </div>
@@ -305,6 +324,37 @@ export function AssignCard({ settings }: { settings: CrmSettings }) {
           </div>
         </fieldset>
       )}
+      <div className="space-y-2 border-t pt-3">
+        <label className="flex items-start justify-between gap-3 text-sm">
+          <span>
+            Mantener al cliente con su vendedora
+            <span className="block text-xs text-muted-foreground">
+              Si vuelve a escribir dentro de 30 días, le toca la misma persona (si sigue en el reparto).
+            </span>
+          </span>
+          <Switch
+            aria-label="Mantener al cliente con su vendedora"
+            checked={draft.stickySeller}
+            onCheckedChange={(v) => setDraft((c) => ({ ...c, stickySeller: v }))}
+          />
+        </label>
+        <label className="flex items-start justify-between gap-3 text-sm">
+          <span>
+            Mostrar quién está viendo cada chat
+            <span className="block text-xs text-muted-foreground">
+              Evita que dos personas respondan al mismo cliente a la vez.
+            </span>
+          </span>
+          <Switch
+            aria-label="Mostrar quién está viendo cada chat"
+            checked={draft.showPresence}
+            onCheckedChange={(v) => setDraft((c) => ({ ...c, showPresence: v }))}
+          />
+        </label>
+        <p className="text-xs text-muted-foreground">
+          El tiempo máximo para responder se fija en la tarjeta «Tiempo de respuesta (SLA)».
+        </p>
+      </div>
     </AjustesCard>
   );
 }
