@@ -464,7 +464,7 @@ const soles = (n: number) => `S/ ${n.toFixed(2)}`;
 
 /** Gasto estimado del mes contra el tope (mockup 152): barra, % y aviso al 80 %. */
 export function SpendMeter({ spent, cap }: { spent: number | null; cap: number | null }) {
-  const month = new Date().toLocaleDateString("es-PE", { month: "long" });
+  const month = new Date().toLocaleDateString("es-PE", { month: "long" }).toLowerCase();
   if (spent === null) {
     return (
       <p className="text-sm text-muted-foreground" data-testid="pau-spend-meter">
