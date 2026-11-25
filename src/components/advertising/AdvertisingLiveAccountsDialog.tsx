@@ -24,18 +24,18 @@ import {
   advertisingErrorMessage,
   discoverAdvertisingAccounts,
 } from "@/services/advertisingService";
+import { AdvertisingMetaStatusFilter, MetaStatusBadge } from "./AdvertisingMetaStatusFilter";
 import {
   accountCampaignsLabel,
   accountDisableReasonLabel,
   accountStatusLabel,
   accountStatusState,
+  type MetaStatusFilter,
   matchesSearch,
   matchesStatusFilter,
-  type MetaStatusFilter,
   statusCounts,
 } from "./advertising-meta-status";
 import { providerLabel } from "./advertising-model";
-import { AdvertisingMetaStatusFilter, MetaStatusBadge } from "./AdvertisingMetaStatusFilter";
 
 interface Props {
   provider: AdvertisingProviderWire | null;
@@ -133,6 +133,12 @@ export function AdvertisingLiveAccountsDialog({
       matchesSearch(search, account.name, account.externalId),
   );
   const hiddenChosen = chosen.filter((account) => !listed.includes(account)).length;
+  // Unchecking hides the account's ads and spend everywhere; nothing is deleted.
+  const uncheckedCount = initialSelectedIds.filter(
+    (externalId) =>
+      !selectedIds.includes(externalId) &&
+      visibleAccounts.some((account) => account.externalId === externalId),
+  ).length;
   const canContinue = !!token && !!companyId && !isLoading && !loadError && !busy;
 
   return (
@@ -209,6 +215,13 @@ export function AdvertisingLiveAccountsDialog({
                 Importaremos todo el historial disponible.
               </p>
             )}
+            {uncheckedCount > 0 && (
+              <p className="text-sm text-muted-foreground">
+                {uncheckedCount === 1
+                  ? "1 cuenta desmarcada: dejará de importarse y sus anuncios y gastos se ocultarán sin borrarse. Al volver a marcarla, reaparecen."
+                  : `${uncheckedCount} cuentas desmarcadas: dejarán de importarse y sus anuncios y gastos se ocultarán sin borrarse. Al volver a marcarlas, reaparecen.`}
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
@@ -223,8 +236,8 @@ export function AdvertisingLiveAccountsDialog({
             />
             {isMeta && (
               <p className="text-xs text-muted-foreground">
-                El estado de la cuenta lo da Meta. Las campañas salen de la última lectura
-                guardada: activas son las que entregan; el resto están pausadas o archivadas.
+                El estado de la cuenta lo da Meta. Las campañas salen de la última lectura guardada:
+                activas son las que entregan; el resto están pausadas o archivadas.
               </p>
             )}
             {listed.length === 0 && (

@@ -348,6 +348,9 @@ describe("automatic advertising history import", () => {
     await user.click(await screen.findByRole("checkbox", { name: /Cuenta Lima/ }));
     await user.click(screen.getByRole("button", { name: "Continuar con 0 cuentas" }));
     expect(screen.getByText("Las cuentas dejarán de actualizarse.")).toBeVisible();
+    expect(
+      screen.getByText(/1 cuenta desmarcada: dejará de importarse .* se ocultarán sin borrarse/),
+    ).toBeVisible();
     expect(put).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Guardar cuentas" }));
     await screen.findByText("Cuentas guardadas.");

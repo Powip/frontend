@@ -252,8 +252,8 @@ function ConnectionFlow({
           </div>
           {mode === "manage" && (
             <p className="text-sm text-muted-foreground">
-              Si desmarcas una cuenta, dejará de actualizarse. Los gastos anteriores seguirán
-              visibles.
+              Si desmarcas una cuenta, dejará de importarse y sus anuncios y gastos se ocultarán sin
+              borrarse. Al volver a marcarla, reaparecen.
             </p>
           )}
           <DialogFooter>
@@ -301,7 +301,9 @@ function ConnectionFlow({
                   ))}
                 </ul>
                 <p className="mt-2 text-muted-foreground">
-                  Los gastos anteriores seguirán visibles.
+                  {isPause
+                    ? "Los gastos anteriores seguirán visibles."
+                    : "Sus anuncios y gastos se ocultarán sin borrarse. Al volver a marcarlas, reaparecen."}
                 </p>
               </div>
             )}
