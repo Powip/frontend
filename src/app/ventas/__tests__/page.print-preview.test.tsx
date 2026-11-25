@@ -1,5 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
+jest.mock("@/hooks/useChatSalesFilter", () => ({
+  useChatSalesFilter: () => ({ hasCrm: false, solo: false, checked: false, setChecked: jest.fn(), active: false }),
+}));
 jest.mock("axios", () => ({
   default: { get: jest.fn(), patch: jest.fn(), post: jest.fn() },
   get: jest.fn(),
@@ -7,8 +10,6 @@ jest.mock("axios", () => ({
   post: jest.fn(),
 }));
 
-// «Ventas del chat» consulta el CRM; aquí solo se prueba la lista del Core.
-jest.mock("@/hooks/useCrmMe", () => ({ useCrmMe: () => ({ fromServer: false }) }));
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: jest.requireMock("axios") }));
 // El aviso de WhatsApp por pedido pide su estado a wa-hub; aquí no se prueba, así que no hace llamadas.
 jest.mock("@/features/whatsapp/api/last-notices.api", () => ({

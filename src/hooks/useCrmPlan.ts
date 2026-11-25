@@ -23,8 +23,8 @@ export const planKeys = {
 
 const onError = (err: unknown) => toast.error(crmError(err).message);
 
-export function useCrmPlan() {
-  return useQuery({ queryKey: planKeys.plan, queryFn: getCrmPlan, retry: false });
+export function useCrmPlan(enabled = true) {
+  return useQuery({ queryKey: planKeys.plan, queryFn: getCrmPlan, retry: false, enabled });
 }
 
 /**

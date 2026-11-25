@@ -13,6 +13,8 @@ export interface BusinessSalesQuery extends Partial<SalesFilters> {
   includeSummary?: boolean;
   /** «Por cobrar total»: deja fuera las ventas anuladas de la lista. */
   excludeCancelled?: "yes";
+  /** «Solo ventas por chat»: solo pedidos marcados con una conversación. */
+  crmOnly?: "yes";
   checkStock?: boolean;
   sort?: "created_desc" | "updated_asc";
 }

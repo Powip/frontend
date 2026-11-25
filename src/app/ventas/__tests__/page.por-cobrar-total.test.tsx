@@ -6,6 +6,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
  * y, al hacer clic, Todas las Ventas con «Saldo pendiente: Sí», sin anuladas y el mismo rango.
  */
 
+jest.mock("@/hooks/useChatSalesFilter", () => ({
+  useChatSalesFilter: () => ({ hasCrm: false, solo: false, checked: false, setChecked: jest.fn(), active: false }),
+}));
 jest.mock("axios", () => ({
   default: { get: jest.fn(), patch: jest.fn(), post: jest.fn() },
   get: jest.fn(),

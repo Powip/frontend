@@ -109,8 +109,8 @@ import {
 } from "@/components/ventas/SalesTableFilters";
 import { Copy, MessageSquare, DollarSign } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import VentasView from "@/components/ventas-chat/VentasView";
-import { useCrmMe } from "@/hooks/useCrmMe";
+import ChatSalesNote from "@/components/ventas/ChatSalesNote";
+import { useChatSalesFilter } from "@/hooks/useChatSalesFilter";
 import CancellationModal, {
   CancellationReason,
 } from "@/components/modals/CancellationModal";
@@ -455,10 +455,7 @@ function VentasContent() {
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   const [sendingLimaId, setSendingLimaId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("pendientes");
-  // «Ventas del chat» (mockup 152): las ventas de Ventas por chat viven aquí, en el Core.
-  // Va aparte de activeTab para no pedir al Core una pestaña que no existe.
-  const [chatSalesOpen, setChatSalesOpen] = useState(false);
-  const { fromServer: hasCrm } = useCrmMe();
+  const chatFilter = useChatSalesFilter();
 
   // Filas con detalle secundario expandido (ID externo, ubicación, tracking)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -550,6 +547,7 @@ function VentasContent() {
     sort: activeTab === "pendientes" && pendientesView === "antiguos" ? "updated_asc" : "created_desc",
     kpiDateFrom, kpiDateTo,
     ...(activeTab === "todas" && todasExcludeCancelled ? { excludeCancelled: "yes" as const } : {}),
+    ...(chatFilter.active ? { crmOnly: "yes" as const } : {}),
   };
   const salesScope = JSON.stringify([scopeKey, salesQuery]);
   const pageSessionScope = `${printScope}:${salesScope}`;
@@ -2114,6 +2112,19 @@ Estado: ${sale.status}
 
   // Número de Todas: el conteo del servidor mientras su lista no está lista; después, lo que muestra
   const todasTabCount = ventas.todas.count;
+  const chatSalesNote = (
+    <ChatSalesNote
+      solo={chatFilter.solo}
+      checked={chatFilter.checked}
+      total={queryReady ? (salesPage?.total ?? 0) : null}
+      onCheckedChange={(value) => {
+        chatFilter.setChecked(value);
+        setPagePendientes(1);
+        setPageAnulados(1);
+        setPageAll(1);
+      }}
+    />
+  );
 
   if (!auth) return null;
 
@@ -2273,14 +2284,7 @@ Estado: ${sale.status}
           </div>
 
           {/* Tabs para Ventas */}
-          <Tabs
-            value={chatSalesOpen ? "chat" : activeTab}
-            className="min-w-0 w-full"
-            onValueChange={(v) => {
-              setChatSalesOpen(v === "chat");
-              if (v !== "chat") setActiveTab(v);
-            }}
-          >
+          <Tabs value={activeTab} className="min-w-0 w-full" onValueChange={setActiveTab}>
             <TabsList className="mb-4 h-auto max-w-full flex-wrap justify-start">
               <TabsTrigger value="pendientes">
                 Ventas Pendientes
@@ -2304,18 +2308,7 @@ Estado: ${sale.status}
                 </span>
                 )}
               </TabsTrigger>
-              {hasCrm && (
-                <TabsTrigger value="chat" data-testid="tab-ventas-chat">
-                  Ventas del chat
-                </TabsTrigger>
-              )}
             </TabsList>
-
-            {hasCrm && (
-              <TabsContent value="chat">
-                <VentasView />
-              </TabsContent>
-            )}
 
             {/* Tab Pendientes */}
             <TabsContent value="pendientes">
@@ -2323,8 +2316,9 @@ Estado: ${sale.status}
                 <CardHeader className="flex min-w-0 flex-col gap-4">
                   <div>
                     <CardTitle>Ventas Pendientes</CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">Los leads de Atención aparecen en Ventas cuando se confirma la compra.</p>
+                    {!chatFilter.hasCrm && <p className="mt-1 text-sm text-muted-foreground">Los leads de Atención aparecen en Ventas cuando se confirma la compra.</p>}
                   </div>
+                  {chatFilter.hasCrm && chatSalesNote}
                   <div className="flex min-w-0 w-full flex-wrap items-center gap-2 [&>button]:h-auto [&>button]:min-h-9 [&>button]:whitespace-normal">
                     <BulkStatusSelect
                       disabled={!queryReady}
@@ -2437,6 +2431,7 @@ Estado: ${sale.status}
               <Card>
                 <CardHeader className="flex min-w-0 flex-col gap-4">
                   <CardTitle>Ventas Anuladas</CardTitle>
+                  {chatFilter.hasCrm && chatSalesNote}
                   <div className="flex min-w-0 w-full flex-wrap items-center gap-2 [&>button]:h-auto [&>button]:min-h-9 [&>button]:whitespace-normal">
                     <BulkStatusSelect
                       disabled={!ventas.anuladas.ready}
@@ -2534,8 +2529,9 @@ Estado: ${sale.status}
                 <CardHeader className="flex min-w-0 flex-col gap-4">
                   <div>
                     <CardTitle>Todas las Ventas</CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">Incluye los pedidos que están en Atención al cliente.</p>
+                    {!chatFilter.hasCrm && <p className="mt-1 text-sm text-muted-foreground">Incluye los pedidos que están en Atención al cliente.</p>}
                   </div>
+                  {chatFilter.hasCrm && chatSalesNote}
                   <div className="flex min-w-0 w-full flex-wrap items-center gap-2 [&>button]:h-auto [&>button]:min-h-9 [&>button]:whitespace-normal">
                     <BulkStatusSelect
                       disabled={!ventas.todas.ready}

@@ -8,6 +8,9 @@ import { render, screen } from "@testing-library/react";
  * de la página lo trae: un cliente sin Shopify no ve una columna vacía.
  */
 
+jest.mock("@/hooks/useChatSalesFilter", () => ({
+  useChatSalesFilter: () => ({ hasCrm: false, solo: false, checked: false, setChecked: jest.fn(), active: false }),
+}));
 jest.mock("axios", () => ({
   default: { get: jest.fn(), patch: jest.fn(), post: jest.fn() },
   get: jest.fn(),

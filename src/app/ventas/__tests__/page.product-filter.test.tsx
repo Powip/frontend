@@ -9,6 +9,9 @@ import { fireEvent, render, screen, within, waitFor } from "@testing-library/rea
  * 4. Exportar manda solo las órdenes filtradas, con "Productos" completo.
  */
 
+jest.mock("@/hooks/useChatSalesFilter", () => ({
+  useChatSalesFilter: () => ({ hasCrm: false, solo: false, checked: false, setChecked: jest.fn(), active: false }),
+}));
 jest.mock("axios", () => ({
   default: { get: jest.fn(), patch: jest.fn(), post: jest.fn() },
   get: jest.fn(),
