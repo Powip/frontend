@@ -215,6 +215,12 @@ export function PedidosContent() {
   // Vuelta desde /registrar-venta (editar tipo de entrega): se vuelven a pedir los pedidos de la
   // selección para recalcular la elegibilidad con datos frescos. Ver guideReviewReturn.ts.
   const { pending: guideReturn, clear: clearGuideReturn } = useGuideReviewReturn(canFetch && !loading, loadSalesByIds);
+  // Pedidos que acaban de entrar a una guía: Preparados los saca de su selección (si no, quedan marcados
+  // con datos viejos y se cuelan en la próxima guía). `n` hace que dos guías seguidas con los mismos ids se noten.
+  const [assignedToGuide, setAssignedToGuide] = useState<{ ids: string[]; n: number } | null>(null);
+  const markAssignedToGuide = useCallback((ids: Iterable<string>) => {
+    setAssignedToGuide((prev) => ({ ids: Array.from(ids), n: (prev?.n ?? 0) + 1 }));
+  }, []);
   useEffect(() => {
     if (guideReturn) setActiveTab("preparados");
   }, [guideReturn]);
@@ -534,12 +540,14 @@ export function PedidosContent() {
         // Abre el detalle de la guía recién creada para que "Aprobar Guía"
         // quede a la vista de una — no hay que ir a buscarlo.
         const firstOrder = createGuideOrders?.[0] ?? null;
+        markAssignedToGuide(createdOrderIds);
         setCreateGuideOrders(null);
         fetchOrders();
         if (firstOrder) setGuideSale(firstOrder);
       } catch (error: any) {
         const message = error?.response?.data?.message || "Error creando guía";
         if (createdGuides.length > 0) {
+          markAssignedToGuide(createdOrderIds);
           setCreateGuideOrders((selected) => {
             const remaining = selected?.filter((order) => !createdOrderIds.has(order.id)) ?? [];
             return remaining.length > 0 ? remaining : null;
@@ -617,6 +625,7 @@ export function PedidosContent() {
             ? `${selected.length} pedido(s) agregados a la guía ${guideNumber} y listos para despacho`
             : `${selected.length} pedido(s) agregados a la guía ${guideNumber}`,
         );
+        markAssignedToGuide(selected.map((order) => order.id));
         setAddToGuideOrders(null);
         fetchOrders();
         setGuideSale(selected[0]);
@@ -920,6 +929,7 @@ export function PedidosContent() {
               actions={actions}
               guideReturn={guideReturn}
               onGuideReturnHandled={clearGuideReturn}
+              assignedToGuide={assignedToGuide}
             />
           )}
           {(activeTab === "camino" || activeTab === "despachados") && (
