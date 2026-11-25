@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { isSessionExpired } from "@/lib/sessionExpiry";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,6 +29,8 @@ export function useUnsavedChangesGuard(dirty: boolean) {
   useEffect(() => {
     if (!dirty) return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      // Sin sesión ya no se puede guardar: no frenar el paso al login.
+      if (isSessionExpired()) return;
       event.preventDefault();
       event.returnValue = "";
     };

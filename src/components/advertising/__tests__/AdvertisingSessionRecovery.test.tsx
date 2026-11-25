@@ -362,7 +362,10 @@ describe("advertising callback session recovery with the real guard and Auth pro
   ])("continues protecting the neighboring route %s", async (path) => {
     refreshFails = true;
     renderApplication(path, <span>Protected company content</span>);
-    await waitFor(() => expect(mockPush).toHaveBeenCalledWith("/login"));
+    // Sin sesión: al login, guardando la ruta para volver (ver lib/sessionExpiry).
+    await waitFor(() =>
+      expect(mockPush).toHaveBeenCalledWith(`/login?volver=${encodeURIComponent(path)}`),
+    );
     expect(screen.queryByText("Protected company content")).not.toBeInTheDocument();
     expect(callbackRequests()).toHaveLength(0);
   });

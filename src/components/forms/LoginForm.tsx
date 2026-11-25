@@ -1,6 +1,7 @@
 "use client";
 
 import axios from "axios";
+import { RETURN_PARAM, safeReturnPath } from "@/lib/sessionExpiry";
 import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -149,14 +150,19 @@ export default function LoginForm({ onAuthenticated }: LoginFormProps = {}) {
         !!authResult.company || !!authResult.user?.companyId,
         authResult.subscription?.status,
       );
+      // Ruta interna donde estaba antes de que venciera la sesión.
+      const returnPath = safeReturnPath(
+        new URLSearchParams(window.location.search).get(RETURN_PARAM),
+      );
       if (
         destination === PAYWALL_ROUTE &&
         (await resolveLoginPartnerStatus(authResult.accessToken)) === "partner"
       ) {
-        router.push("/partners");
+        router.push(returnPath && /^\/partners(?:[/?]|$)/.test(returnPath) ? returnPath : "/partners");
         return;
       }
-      router.push(destination);
+      // El gate de plan/empresa manda sobre el retorno.
+      router.push(destination === "/" && returnPath ? returnPath : destination);
     } catch (error: unknown) {
       showLoginError(loginErrorMessage(error));
     } finally {

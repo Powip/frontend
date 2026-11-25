@@ -1,4 +1,5 @@
 import axios from "axios";
+import { isExpiredSessionResponse, markSessionExpired } from "./sessionExpiry";
 import { type SessionSnapshot, tokenStore } from "./tokenStore";
 
 let refresher: (() => Promise<boolean>) | null = null;
@@ -46,7 +47,14 @@ export function requestSessionToken(session: SessionSnapshot): Promise<string | 
         typeof token === "string"
         ? token
         : null;
-    } catch {
+    } catch (error) {
+      // Un corte de red o un 5xx no es una sesión vencida: ahí no se avisa a nadie.
+      if (
+        !controller.signal.aborted &&
+        session.active &&
+        tokenStore.isCurrent(session) &&
+        isExpiredSessionResponse(error)
+      ) markSessionExpired();
       return null;
     } finally {
       if (pending === request) pending = null;
