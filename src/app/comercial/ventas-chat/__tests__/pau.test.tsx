@@ -118,9 +118,9 @@ beforeEach(() => {
 });
 
 describe("pestaña", () => {
-  it("Pau va después de Difusiones", () => {
+  it("Pau va después de Equipo, como en el mockup 152", () => {
     const labels = VENTAS_CHAT_TABS.map((t) => t.label);
-    expect(labels[labels.indexOf("Difusiones") + 1]).toBe("Pau");
+    expect(labels[labels.indexOf("Equipo") + 1]).toBe("Pau");
     expect(VENTAS_CHAT_TABS.find((t) => t.label === "Pau")?.href).toBe("/comercial/ventas-chat/pau");
   });
 });

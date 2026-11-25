@@ -185,7 +185,7 @@ beforeEach(() => {
 });
 
 describe("pestañas", () => {
-  it("Seguimientos, Difusiones y Pau van después de Embudo", () => {
+  it("siguen el orden del mockup 152 y Ventas ya no es pestaña (vive en el Core)", () => {
     expect(VENTAS_CHAT_TABS.map((t) => t.label)).toEqual([
       "Bandeja",
       "Llamadas",
@@ -193,12 +193,11 @@ describe("pestañas", () => {
       "Embudo",
       "Seguimientos",
       "Difusiones",
-      "Pau",
-      "Ficha",
-      "Ventas",
-      "Guion y material",
-      "Objeciones",
       "Equipo",
+      "Pau",
+      "Objeciones",
+      "Ficha de venta",
+      "Guion y material",
       "Auditoría",
       "Ajustes",
     ]);

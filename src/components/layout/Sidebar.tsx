@@ -66,6 +66,8 @@ import {
 } from "@/components/ui/layout/avatar";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { CrmAccountSwitch, CrmPlanTag } from "@/components/ventas-chat/CrmPlanSidebar";
+import { CRM_VIEW_EVENT, readCrmFocused } from "@/components/ventas-chat/VistaContext";
 import { useRouter, usePathname } from "next/navigation";
 import {
   SIDEBAR_ITEMS_PERMISSIONS,
@@ -103,6 +105,8 @@ interface NavigationItem {
     group?: string;
     badge?: string;
     badgeUntil?: string;
+    /** Módulo que se contrata aparte (mockup 152: «Add-on»). */
+    addon?: boolean;
   }[];
 }
 
@@ -125,6 +129,15 @@ function NavItemBadge({
   }
   return (
     <span className="ml-auto h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+  );
+}
+
+/** Etiqueta «Add-on» del mockup 152 para módulos que se contratan aparte. */
+function AddonBadge() {
+  return (
+    <span className="ml-auto shrink-0 whitespace-nowrap rounded-md bg-primary px-1.5 py-px text-[9.5px] font-bold text-white">
+      Add-on
+    </span>
   );
 }
 
@@ -206,6 +219,7 @@ export function Sidebar({ className }: SidebarProps) {
             name: "Ventas por chat",
             href: "/comercial/ventas-chat",
             icon: MessageCircle,
+            addon: true,
           },
           {
             name: "Cotizaciones",
@@ -394,19 +408,26 @@ export function Sidebar({ className }: SidebarProps) {
     [canViewCommercialLeads, canManageCommercialLeadTypes, canAccessLive],
   );
 
-  // Auto-colapsar en móviles
+  // Ventas por chat: etiqueta de plan, tipo de cuenta y vista enfocada (mockup 152).
+  const onCrm = pathname.startsWith("/comercial/ventas-chat");
+
+  // Auto-colapsar en móviles y en la vista enfocada de Ventas por chat (barra de íconos).
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 1024) {
-        setIsCollapsed(true);
-      } else {
-        setIsCollapsed(false);
-      }
+    let crmFocused = window.location.pathname.startsWith("/comercial/ventas-chat") && readCrmFocused();
+    const apply = () => setIsCollapsed(window.innerWidth < 1024 || crmFocused);
+    const handleResize = () => apply();
+    const handleView = (e: Event) => {
+      crmFocused = Boolean((e as CustomEvent<{ focused: boolean }>).detail?.focused);
+      apply();
     };
 
-    handleResize();
+    apply();
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    window.addEventListener(CRM_VIEW_EVENT, handleView);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener(CRM_VIEW_EVENT, handleView);
+    };
   }, []);
 
   // Mantener submenú abierto si el path actual es hijo
@@ -522,8 +543,9 @@ export function Sidebar({ className }: SidebarProps) {
           </div>
         ) : (
           <>
-            <Link href="/" className="flex items-center pl-3">
+            <Link href="/" className="flex items-center gap-2 pl-3">
               <PowipLogo className="w-[90px] h-auto text-primary" />
+              {onCrm && <CrmPlanTag />}
             </Link>
             <div className="flex items-center gap-1">
               {showWhatsAppBell && <WhatsAppNotificationsBell />}
@@ -633,6 +655,7 @@ export function Sidebar({ className }: SidebarProps) {
                             <span className="text-sm truncate min-w-0">
                               {child.name}
                             </span>
+                            {child.addon && <AddonBadge />}
                             <NavItemBadge
                               child={child}
                               isCurrentPage={isChildActive(pathname, child.href)}
@@ -713,6 +736,7 @@ export function Sidebar({ className }: SidebarProps) {
                                 <span className="truncate min-w-0">
                                   {child.name}
                                 </span>
+                                {child.addon && <AddonBadge />}
                                 <NavItemBadge
                                   child={child}
                                   isCurrentPage={isChildActive(pathname, child.href)}
@@ -761,6 +785,9 @@ export function Sidebar({ className }: SidebarProps) {
           })}
         </nav>
       </div>
+
+      {/* Tipo de cuenta del CRM (Core + CRM / Solo CRM), solo dentro de Ventas por chat. */}
+      {onCrm && !isCollapsed && <CrmAccountSwitch />}
 
       {/* Footer (modo claro/oscuro + usuario) */}
       <div className="space-y-3 pt-3 border-t border-gray-200 dark:border-gray-700">

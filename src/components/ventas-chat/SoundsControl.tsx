@@ -265,7 +265,14 @@ export function SoundsDialog({ onClose }: { onClose: () => void }) {
 }
 
 /** Botón «Sonidos» + aviso «Activar sonidos» mientras el navegador no deja reproducir. */
-export default function SoundsControl({ openConversationId }: { openConversationId: string | null }) {
+export default function SoundsControl({
+  openConversationId,
+  showButton = true,
+}: {
+  openConversationId: string | null;
+  /** La campanita de la cabecera (layout) ya abre «Sonidos y avisos»: aquí solo el aviso. */
+  showButton?: boolean;
+}) {
   const { prefs, unlocked, unlock } = useCrmSounds(openConversationId);
   const [open, setOpen] = useState(false);
   return (
@@ -275,9 +282,11 @@ export default function SoundsControl({ openConversationId }: { openConversation
           <BellOff /> Activar sonidos
         </Button>
       )}
-      <Button size="sm" variant="outline" aria-label="Sonidos y avisos" onClick={() => setOpen(true)}>
-        <Bell /> Sonidos
-      </Button>
+      {showButton && (
+        <Button size="sm" variant="outline" aria-label="Sonidos y avisos" onClick={() => setOpen(true)}>
+          <Bell /> Sonidos
+        </Button>
+      )}
       {open && <SoundsDialog onClose={() => setOpen(false)} />}
     </>
   );

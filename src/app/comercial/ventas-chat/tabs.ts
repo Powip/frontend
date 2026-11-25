@@ -9,7 +9,6 @@ import {
   Phone,
   Settings,
   ShieldCheck,
-  ShoppingBag,
   Sparkles,
   TriangleAlert,
   Users,
@@ -25,6 +24,7 @@ export interface VentasChatTab {
   adminOnly?: boolean;
 }
 
+// Orden del mockup 152. «Ventas» ya no es pestaña: vive en Comercial › Ventas del Core.
 export const VENTAS_CHAT_TABS: VentasChatTab[] = [
   { label: "Bandeja", href: "/comercial/ventas-chat/bandeja", icon: MessageSquare },
   { label: "Llamadas", href: "/comercial/ventas-chat/llamadas", icon: Phone },
@@ -32,12 +32,11 @@ export const VENTAS_CHAT_TABS: VentasChatTab[] = [
   { label: "Embudo", href: "/comercial/ventas-chat/embudo", icon: ChartColumn },
   { label: "Seguimientos", href: "/comercial/ventas-chat/seguimientos", icon: Bell },
   { label: "Difusiones", href: "/comercial/ventas-chat/difusiones", icon: Megaphone },
-  { label: "Pau", href: "/comercial/ventas-chat/pau", icon: Sparkles },
-  { label: "Ficha", href: "/comercial/ventas-chat/ficha", icon: Package },
-  { label: "Ventas", href: "/comercial/ventas-chat/ventas", icon: ShoppingBag },
-  { label: "Guion y material", href: "/comercial/ventas-chat/guion", icon: FileText, adminOnly: true },
-  { label: "Objeciones", href: "/comercial/ventas-chat/objeciones", icon: TriangleAlert, adminOnly: true },
   { label: "Equipo", href: "/comercial/ventas-chat/equipo", icon: Users, adminOnly: true },
+  { label: "Pau", href: "/comercial/ventas-chat/pau", icon: Sparkles },
+  { label: "Objeciones", href: "/comercial/ventas-chat/objeciones", icon: TriangleAlert, adminOnly: true },
+  { label: "Ficha de venta", href: "/comercial/ventas-chat/ficha", icon: Package },
+  { label: "Guion y material", href: "/comercial/ventas-chat/guion", icon: FileText, adminOnly: true },
   { label: "Auditoría", href: "/comercial/ventas-chat/auditoria", icon: ShieldCheck, adminOnly: true },
   { label: "Ajustes", href: "/comercial/ventas-chat/ajustes", icon: Settings, adminOnly: true },
 ];

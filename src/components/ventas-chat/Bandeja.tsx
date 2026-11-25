@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Maximize2, MessageCircle, Minimize2 } from "lucide-react";
+import { MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCrmEvents } from "@/hooks/useCrmChat";
 import { useCrmMe } from "@/hooks/useCrmMe";
@@ -11,6 +11,7 @@ import InboxIndicators, { type InboxIndicator } from "./InboxIndicators";
 import MyDay from "./MyDay";
 import ChatPanel from "./ChatPanel";
 import SoundsControl from "./SoundsControl";
+import { useVista } from "./VistaContext";
 
 export default function Bandeja() {
   const router = useRouter();
@@ -28,19 +29,8 @@ export default function Bandeja() {
     },
     [router, pathname],
   );
-  // Vista enfocada (lista + chat, sin indicadores) o completa. Se recuerda por navegador.
-  const [focused, setFocused] = useState(false);
-  useEffect(() => {
-    try {
-      setFocused(localStorage.getItem("crm_mode") === "focus");
-    } catch {}
-  }, []);
-  const setMode = (focus: boolean) => {
-    setFocused(focus);
-    try {
-      localStorage.setItem("crm_mode", focus ? "focus" : "full");
-    } catch {}
-  };
+  // Vista enfocada o completa: la elige el control de la cabecera (layout).
+  const { focused } = useVista();
   const live = useCrmEvents();
   const [indicator, setIndicator] = useState<InboxIndicator | null>(null);
   const { stores } = useCrmMe();
@@ -51,16 +41,7 @@ export default function Bandeja() {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-end gap-3">
-        <SoundsControl openConversationId={selectedId} />
-        <button
-          type="button"
-          data-testid={focused ? "setfull" : "setfocus"}
-          onClick={() => setMode(!focused)}
-          className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
-        >
-          {focused ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-          {focused ? "Vista completa" : "Vista enfocada"}
-        </button>
+        <SoundsControl openConversationId={selectedId} showButton={false} />
         {stores.length > 1 && (
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             Tienda
@@ -103,7 +84,15 @@ export default function Bandeja() {
 
       {/* Alto del mockup 152: la bandeja ocupa toda la ventana (mín. 780 px) y cada columna
           tiene su propio scroll; en celular, el alto visible menos la cabecera. */}
-      <div className="grid h-[calc(100dvh-190px)] min-h-[420px] overflow-hidden rounded-2xl border bg-card shadow-sm md:h-[max(780px,calc(100vh-30px))] md:grid-cols-[330px_minmax(0,1fr)]">
+      <div
+        className={cn(
+          "grid h-[calc(100dvh-190px)] min-h-[420px] overflow-hidden rounded-2xl border bg-card shadow-sm",
+          // Vista enfocada: el chat toma todo el alto bajo la franja de pestañas (mockup: 100vh − 92px).
+          focused
+            ? "md:h-[calc(100vh-92px)] md:grid-cols-[300px_minmax(0,1fr)]"
+            : "md:h-[max(780px,calc(100vh-30px))] md:grid-cols-[330px_minmax(0,1fr)]",
+        )}
+      >
         <div className={cn("min-h-0 border-r", selectedId ? "hidden md:block" : "block")}>
           <ConversationList
             selectedId={selectedId}

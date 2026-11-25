@@ -50,7 +50,7 @@ describe("Ventas por chat · pestañas por rol", () => {
   it("el administrador ve todas las pestañas", () => {
     wrap(<VentasChatLayout>x</VentasChatLayout>);
     const nav = screen.getByRole("navigation", { name: "Secciones de Ventas por chat" });
-    for (const label of ["Bandeja", "Ficha", "Guion y material", "Objeciones", "Equipo", "Auditoría", "Ajustes"]) {
+    for (const label of ["Bandeja", "Ficha de venta", "Guion y material", "Objeciones", "Equipo", "Auditoría", "Ajustes"]) {
       expect(nav).toHaveTextContent(label);
     }
   });
@@ -59,7 +59,7 @@ describe("Ventas por chat · pestañas por rol", () => {
     mockRole = "VENTAS";
     wrap(<VentasChatLayout>x</VentasChatLayout>);
     expect(screen.getByRole("link", { name: "Bandeja" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Ficha" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ficha de venta" })).toBeInTheDocument();
     for (const label of ["Guion y material", "Objeciones", "Equipo", "Auditoría", "Ajustes"]) {
       expect(screen.queryByRole("link", { name: label })).not.toBeInTheDocument();
     }

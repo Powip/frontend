@@ -106,6 +106,8 @@ import {
 } from "@/components/ventas/SalesTableFilters";
 import { Copy, MessageSquare, DollarSign } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import VentasView from "@/components/ventas-chat/VentasView";
+import { useCrmMe } from "@/hooks/useCrmMe";
 import CancellationModal, {
   CancellationReason,
 } from "@/components/modals/CancellationModal";
@@ -439,6 +441,10 @@ function VentasContent() {
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   const [sendingLimaId, setSendingLimaId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("pendientes");
+  // «Ventas del chat» (mockup 152): las ventas de Ventas por chat viven aquí, en el Core.
+  // Va aparte de activeTab para no pedir al Core una pestaña que no existe.
+  const [chatSalesOpen, setChatSalesOpen] = useState(false);
+  const { fromServer: hasCrm } = useCrmMe();
 
   // Filas con detalle secundario expandido (ID externo, ubicación, tracking)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -2205,9 +2211,12 @@ Estado: ${sale.status}
 
           {/* Tabs para Ventas */}
           <Tabs
-            value={activeTab}
+            value={chatSalesOpen ? "chat" : activeTab}
             className="min-w-0 w-full"
-            onValueChange={setActiveTab}
+            onValueChange={(v) => {
+              setChatSalesOpen(v === "chat");
+              if (v !== "chat") setActiveTab(v);
+            }}
           >
             <TabsList className="mb-4 h-auto max-w-full flex-wrap justify-start">
               <TabsTrigger value="pendientes">
@@ -2232,7 +2241,18 @@ Estado: ${sale.status}
                 </span>
                 )}
               </TabsTrigger>
+              {hasCrm && (
+                <TabsTrigger value="chat" data-testid="tab-ventas-chat">
+                  Ventas del chat
+                </TabsTrigger>
+              )}
             </TabsList>
+
+            {hasCrm && (
+              <TabsContent value="chat">
+                <VentasView />
+              </TabsContent>
+            )}
 
             {/* Tab Pendientes */}
             <TabsContent value="pendientes">
