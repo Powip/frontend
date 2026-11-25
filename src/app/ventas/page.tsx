@@ -148,7 +148,7 @@ import {
   reassignSeller,
 } from "@/services/atencionClienteService";
 import ReassignSellerModal from "@/components/modals/ReassignSellerModal";
-import { UserPen } from "lucide-react";
+import { UserPen, Instagram, Facebook, MessageCircle } from "lucide-react";
 
 /* -----------------------------------------
    Types
@@ -181,6 +181,9 @@ export interface Sale extends UnitAssignmentState {
   commercialCommittedAt?: string | null;
   subEstadoCc?: SubEstadoCc | null;
   canalOrigen?: string | null;
+  /** Canal de venta (WHATSAPP, INSTAGRAM, FACEBOOK…) y conversación del chat si la venta viene de un chat. */
+  salesChannel?: string | null;
+  conversationId?: string | null;
   currency?: string | null;
   commercialStage?: "LEAD" | "SALE" | null;
   commercialLeadId?: string | null;
@@ -285,6 +288,35 @@ function ReprogramadoChip({ sale }: { sale: Pick<Sale, "status" | "callStatus" |
    Mapper
 ----------------------------------------- */
 
+const CHANNEL_LABELS: Record<string, string> = {
+  WHATSAPP: "WhatsApp",
+  INSTAGRAM: "Instagram",
+  FACEBOOK: "Facebook",
+  TIENDA_FISICA: "Tienda física",
+  MARKETPLACE: "Marketplace",
+  MERCADOLIBRE: "Mercado Libre",
+  WEB: "Web",
+  OTRO: "Otro",
+};
+
+/** Origen de la venta como en el mockup: icono del canal + nombre. Ventas del chat se marcan en verde. */
+function OrigenChip({ sale }: { sale: Sale }) {
+  const key = (sale.salesChannel ?? "").toUpperCase();
+  const label = CHANNEL_LABELS[key] ?? (key ? key : "—");
+  const Icon = key === "WHATSAPP" ? MessageCircle : key === "INSTAGRAM" ? Instagram : key === "FACEBOOK" ? Facebook : MessageSquare;
+  const fromChat = Boolean(sale.conversationId);
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+        fromChat ? "bg-teal-500/10 text-teal-700 dark:text-teal-400" : "bg-muted text-muted-foreground"
+      }`}
+    >
+      {key ? <Icon className="h-3 w-3" /> : null}
+      {label}
+    </span>
+  );
+}
+
 const attentionOf = (sale: Sale) =>
   paymentAttention({ awaitingApproval: sale.awaitingApprovalSummary.amount, debt: sale.pendingPayment });
 
@@ -304,6 +336,8 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     commercialCommittedAt: order.commercialCommittedAt,
     subEstadoCc: order.subEstadoCc,
     canalOrigen: order.canalOrigen,
+    salesChannel: order.salesChannel,
+    conversationId: order.conversationId,
     currency: order.currency, commercialStage: order.commercialStage, commercialLeadId: order.commercialLeadId, commercialStockState: order.commercialStockState,
     stockState: order.stockState ?? null,
     storeId: order.storeId,
@@ -1637,6 +1671,7 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell>
                     <span className="inline-flex flex-wrap items-center gap-1">
+                      <OrigenChip sale={sale} />
                       <SourceBadge source={sale.externalSource} />
                       <ShopifyCancelledBadge cancelledAt={sale.shopifyCancelledAt} reason={sale.shopifyCancelReason} />
                     </span>
@@ -1936,6 +1971,7 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell>
                     <span className="inline-flex flex-wrap items-center gap-1">
+                      <OrigenChip sale={sale} />
                       <SourceBadge source={sale.externalSource} />
                       <ShopifyCancelledBadge cancelledAt={sale.shopifyCancelledAt} reason={sale.shopifyCancelReason} />
                     </span>
@@ -2133,17 +2169,23 @@ Estado: ${sale.status}
         <main className="min-w-0 flex-1 p-3 sm:p-6 space-y-6 overflow-auto">
           <HeaderConfig
             title="Ventas"
-            description="Gestión de ventas pendientes y anuladas — todo en un solo panel."
+            description={
+              chatFilter.solo
+                ? "Mismo módulo de Core, en tu cuenta Solo CRM: ves las ventas del chat, cobros y saldos. Despacho y SUNAT llegan con Core."
+                : "Gestión de ventas pendientes y anuladas — todo en un solo panel."
+            }
           >
-            <Button
-              variant="outline"
-              className="h-auto min-h-9 w-full max-w-full whitespace-normal text-center lg:w-auto"
-              disabled={!importStore}
-              onClick={() => { if (importStore) setImportModalOpen(true); }}
-            >
-              <UploadCloud className="h-4 w-4 mr-2" />
-              {importStore ? `Importar Excel a ${importStore.name}` : "Selecciona una tienda para importar"}
-            </Button>
+            {!chatFilter.solo && (
+              <Button
+                variant="outline"
+                className="h-auto min-h-9 w-full max-w-full whitespace-normal text-center lg:w-auto"
+                disabled={!importStore}
+                onClick={() => { if (importStore) setImportModalOpen(true); }}
+              >
+                <UploadCloud className="h-4 w-4 mr-2" />
+                {importStore ? `Importar Excel a ${importStore.name}` : "Selecciona una tienda para importar"}
+              </Button>
+            )}
             <Link href="/registrar-venta" className="w-full lg:w-auto">
               <Button
                 size="lg"
