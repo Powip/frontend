@@ -6,10 +6,11 @@ import { getInventoryRules, type StockControlMode } from "@/services/warehousesS
 
 /**
  * FEAT-24 C-D3 — control de stock de la empresa (reglas de inventario, `stockControl`). Misma caché que la sección de
- * reglas. Mientras carga o si no se puede leer, `estricto`: el comportamiento de antes (no se ofrece dejar el físico
- * en negativo; si el servidor pide confirmación, igual se muestra).
+ * reglas. Mientras carga o si no se puede leer, `null` (no se sabe): la pantalla no bloquea ni pide confirmación por
+ * adelantado y decide el servidor (en flexible responde 409 `STOCK_NEGATIVO_CONFIRMAR` y ahí se muestra la casilla; en
+ * estricto, su error de siempre). Así una empresa flexible no queda frenada porque falló la lectura de las reglas.
  */
-export function useStockControl(): StockControlMode {
+export function useStockControl(): StockControlMode | null {
   const { auth } = useAuth();
   const companyId = auth?.company?.id;
   const query = useQuery({
@@ -19,5 +20,6 @@ export function useStockControl(): StockControlMode {
     retry: false,
     staleTime: 5 * 60_000,
   });
-  return query.data?.stockControl === "flexible" ? "flexible" : "estricto";
+  const mode = query.data?.stockControl;
+  return mode === "flexible" || mode === "estricto" ? mode : null;
 }

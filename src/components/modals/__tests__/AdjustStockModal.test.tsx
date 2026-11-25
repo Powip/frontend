@@ -84,13 +84,21 @@ describe("AdjustStockModal (FEAT-24 H0)", () => {
     expect(screen.getByRole("button", { name: "Confirmar ajuste" })).toBeDisabled();
   });
 
-  it("si no se pueden leer las reglas, se trata como estricto", async () => {
+  it("si no se pueden leer las reglas, no bloquea ni pide por adelantado: decide el servidor", async () => {
     jest.mocked(getInventoryRules).mockRejectedValue(new Error("503"));
+    jest.mocked(adjustStock).mockRejectedValueOnce({
+      response: { status: 409, data: { statusCode: 409, code: "STOCK_NEGATIVO_CONFIRMAR", message: "La salida deja el físico en −1." } },
+    });
     setup();
     await rulesLoaded();
     choose("Salida", "11", "robo");
-    expect(screen.getByText(/control de stock estricto/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Confirmar ajuste" })).toBeDisabled();
+    expect(screen.queryByText(/control de stock estricto/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar ajuste" }));
+    await waitFor(() => expect(adjustStock).toHaveBeenCalledWith({ inventoryItemId: "item-1", direction: "OUT", quantity: 11, reason: "robo" }));
+    // Empresa flexible: el 409 con code trae la casilla.
+    expect(await screen.findByText("La salida deja el físico en −1.")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox")).toBeInTheDocument();
   });
 
   it("flexible: una salida que deja negativo pide la casilla y manda allowNegative (FEAT-24 C-D3)", async () => {
@@ -197,6 +205,54 @@ describe("AdjustStockModal (FEAT-24 H0)", () => {
     fireEvent.change(screen.getByLabelText("Cantidad real"), { target: { value: "0" } });
     expect(screen.getByText("Salida de 10")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Confirmar ajuste" })).toBeEnabled();
+  });
+
+  it("«Fijar en» con más de 10.000 de diferencia (desde un físico negativo) no deja confirmar", async () => {
+    setup({ physicalStock: -200 });
+    await rulesLoaded();
+    choose("Fijar en", "9900", "error_registro");
+    expect(screen.getByText("La cantidad máxima por variante y almacén es 10,000 unidades.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirmar ajuste" })).toBeDisabled();
+  });
+
+  it("«Fijar en»: si el servidor pide confirmar un negativo, el físico de la pantalla estaba viejo: no ofrece confirmar, avisa, refresca y cierra", async () => {
+    jest.mocked(getInventoryRules).mockResolvedValue(rules("flexible"));
+    jest.mocked(adjustStock).mockRejectedValueOnce({
+      response: { status: 409, data: { statusCode: 409, code: "STOCK_NEGATIVO_CONFIRMAR", message: "La salida deja el físico en −5." } },
+    });
+    const { onSuccess, onClose } = setup({ physicalStock: 10 });
+    await rulesLoaded();
+    choose("Fijar en", "3", "error_registro");
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar ajuste" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("El físico cambió desde que abriste esta ventana")));
+    expect(adjustStock).toHaveBeenCalledTimes(1);
+    expect(jest.mocked(adjustStock).mock.calls[0][0]).not.toHaveProperty("allowNegative");
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(onSuccess).toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("«Fijar en»: si el resultado no es lo fijado (alguien movió el físico), avisa en vez de dar por bueno", async () => {
+    jest.mocked(adjustStock).mockResolvedValueOnce({ inventoryItemId: "item-1", quantity: 4, reservedQuantity: 0, reservedWithoutStock: 0 });
+    setup({ physicalStock: 10 });
+    await rulesLoaded();
+    choose("Fijar en", "6", "error_registro");
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar ajuste" }));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(expect.stringContaining("quedó en 4, no en 6")));
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("mientras se envía, el tipo de ajuste y la cantidad quedan deshabilitados", async () => {
+    let resolve: (value: Awaited<ReturnType<typeof adjustStock>>) => void = () => {};
+    jest.mocked(adjustStock).mockReturnValueOnce(new Promise((done) => (resolve = done)));
+    setup();
+    await rulesLoaded();
+    choose("Entrada", "3", "dano");
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar ajuste" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Salida" })).toBeDisabled());
+    expect(screen.getByLabelText("Cantidad")).toBeDisabled();
+    resolve({ inventoryItemId: "item-1", quantity: 13, reservedQuantity: 0, reservedWithoutStock: 0 });
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
   });
 
   it("«Fijar en» con más de 1.000 unidades de diferencia pide confirmar la cantidad", async () => {

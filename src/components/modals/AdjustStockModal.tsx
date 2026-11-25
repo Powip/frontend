@@ -67,9 +67,12 @@ export default function AdjustStockModal({ open, item, onClose, onSuccess }: Pro
   const validAmount = mode === "SET" ? target !== null && !targetTooBig && !unchanged : isInteger && typed >= 1;
   const next = validAmount ? (direction === "IN" ? physical + amount : physical - amount) : physical;
   const goesNegative = validAmount && direction === "OUT" && next < 0;
+  // Con el modo sin cargar (null) no se bloquea ni se pide por adelantado: decide el servidor (409 con code → casilla).
   const strictBlocked = goesNegative && stockControl === "estricto" && !serverConfirm;
-  const needsNegativeConfirm = (goesNegative && !strictBlocked) || serverConfirm !== null;
-  const exceedsMax = targetTooBig || (validAmount && direction === "IN" && next > MAX_ITEM_UNITS);
+  const needsNegativeConfirm = (goesNegative && stockControl === "flexible") || serverConfirm !== null;
+  // El servidor acepta hasta 10.000 por movimiento (también la diferencia de «Fijar en», p. ej. de −200 a 9.900).
+  const exceedsMax =
+    targetTooBig || (validAmount && (amount > MAX_ITEM_UNITS || (direction === "IN" && next > MAX_ITEM_UNITS)));
   const reservedWithoutStock = validAmount && !strictBlocked ? Math.max(0, reserved - Math.max(next, 0)) : 0;
   const trimmedNote = note.trim();
   const noteMissing = reason === "otro" && !trimmedNote;
@@ -105,7 +108,7 @@ export default function AdjustStockModal({ open, item, onClose, onSuccess }: Pro
     if (!canSubmit) return;
     setIsSubmitting(true);
     try {
-      await adjustStock({
+      const result = await adjustStock({
         inventoryItemId: item.inventoryItemId,
         direction,
         quantity: amount,
@@ -113,11 +116,27 @@ export default function AdjustStockModal({ open, item, onClose, onSuccess }: Pro
         ...(trimmedNote ? { note: trimmedNote } : {}),
         ...(needsNegativeConfirm && negativeConfirmed ? { allowNegative: true as const } : {}),
       });
-      toast.success(`Stock de "${item.productName}" ajustado`);
+      // «Fijar en» manda la diferencia contra el físico de la pantalla: si alguien lo movió mientras tanto, el
+      // resultado no es lo fijado y se avisa (no se corrige solo).
+      if (mode === "SET" && target !== null && result?.quantity !== undefined && result.quantity !== target) {
+        toast.warning(
+          `El físico cambió mientras ajustabas: se registró ${direction === "IN" ? "una entrada" : "una salida"} de ${amount} y quedó en ${formatSignedStock(result.quantity)}, no en ${target}. Revisa y vuelve a fijar si hace falta.`,
+        );
+      } else {
+        toast.success(`Stock de "${item.productName}" ajustado`);
+      }
       onSuccess?.();
       handleClose();
     } catch (error) {
-      if (isNegativeStockConfirmError(error)) {
+      if (isNegativeStockConfirmError(error) && mode === "SET") {
+        // «Fijar en» nunca deja negativo con el dato de la pantalla: este 409 prueba que el físico cambió. No se ofrece
+        // confirmar esa diferencia vieja; se refresca la lista y se cierra para volver a fijar con el dato nuevo.
+        toast.error(
+          "El físico cambió desde que abriste esta ventana (hubo ventas o ajustes) y no se registró nada. Vuelve a abrir «Ajustar stock» para fijar con el dato actualizado.",
+        );
+        onSuccess?.();
+        handleClose();
+      } else if (isNegativeStockConfirmError(error)) {
         setConfirmingLarge(false);
         setNegativeConfirmed(false);
         setServerConfirm(negativeStockConfirmMessage(error));
@@ -171,6 +190,7 @@ export default function AdjustStockModal({ open, item, onClose, onSuccess }: Pro
                 variant={mode === value ? "default" : "outline"}
                 aria-pressed={mode === value}
                 className="flex-1"
+                disabled={isSubmitting}
                 onClick={() => {
                   setMode(value);
                   resetConfirmations();
@@ -189,6 +209,7 @@ export default function AdjustStockModal({ open, item, onClose, onSuccess }: Pro
               min={mode === "SET" ? 0 : 1}
               max={MAX_ITEM_UNITS}
               value={quantity}
+              disabled={isSubmitting}
               onChange={(event) => {
                 setQuantity(event.target.value);
                 resetConfirmations();
@@ -205,6 +226,7 @@ export default function AdjustStockModal({ open, item, onClose, onSuccess }: Pro
               id="adjust-reason"
               className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
               value={reason}
+              disabled={isSubmitting}
               onChange={(event) => setReason(event.target.value as AdjustmentReason | "")}
             >
               <option value="">Elige un motivo</option>
@@ -218,7 +240,7 @@ export default function AdjustStockModal({ open, item, onClose, onSuccess }: Pro
 
           <div className="space-y-1">
             <Label htmlFor="adjust-note">Nota {reason === "otro" ? "(obligatoria)" : "(opcional)"}</Label>
-            <Textarea id="adjust-note" maxLength={300} value={note} onChange={(event) => setNote(event.target.value)} />
+            <Textarea id="adjust-note" maxLength={300} value={note} disabled={isSubmitting} onChange={(event) => setNote(event.target.value)} />
           </div>
 
           {mode === "SET" && validAmount ? (

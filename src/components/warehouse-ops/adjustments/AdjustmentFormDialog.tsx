@@ -306,7 +306,9 @@ export default function AdjustmentFormDialog({ companyId, canSeeCosts, onClose, 
             Si supera el umbral de aprobación de tu empresa, queda <b>pendiente de aprobación</b> y el stock no se mueve hasta que el Administrador lo apruebe.{" "}
             {stockControl === "flexible"
               ? "Una salida que deja el físico en negativo pide tu confirmación."
-              : "Una salida nunca deja el físico en negativo."}
+              : stockControl === "estricto"
+                ? "Una salida nunca deja el físico en negativo."
+                : null}
           </span>
         </div>
 
