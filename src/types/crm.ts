@@ -527,7 +527,67 @@ export interface PauSettings {
   knowledge: string;
   monthlyTokenCap: number | null;
   hasProvider: boolean;
+  /** Configuración ampliada (mockup 152, P4–P9). Falta si el servidor es anterior. */
+  config?: PauConfig;
 }
+
+export type PauPhase = 0 | 1 | 2 | 3;
+export type PauChannelKey = "whatsapp" | "instagram" | "messenger" | "comments";
+export type PauCapability =
+  | "createOrder"
+  | "powipLink"
+  | "deposit"
+  | "collectBalance"
+  | "documents"
+  | "catalog"
+  | "material"
+  | "discounts";
+export type PauModelTask = "chat" | "audio" | "summary";
+
+export interface PauConfig {
+  /** Fase por tienda (`storeId` → fase); sin fase propia, `phase`. */
+  phases: Record<string, PauPhase>;
+  phase: PauPhase;
+  channels: Record<PauChannelKey, boolean>;
+  offHours: "answer" | "absence";
+  personality: {
+    treatment: "tu" | "usted";
+    warmth: "formal" | "cercano" | "muy";
+    emojis: "no" | "pocos" | "varios";
+    firmness: "suave" | "estandar" | "firme";
+    greeting: string;
+    farewell: string;
+    brandWords: string;
+    avoidWords: string;
+    forbiddenTopics: string;
+    collectionDays: "LV" | "LS";
+    collectionFrom: string;
+    collectionTo: string;
+  };
+  capabilities: Record<PauCapability, boolean>;
+  reminders: Array<{ after: string; text: string }>;
+  handoff: {
+    asksPerson: boolean;
+    complaint: boolean;
+    afterFailedAttempts: number;
+    amountOver: number;
+    codRisk: boolean;
+    wholesale: boolean;
+  };
+  providers: {
+    order: string[];
+    timeoutSeconds: number;
+    allFail: "handoff" | "holding";
+    monthlyCapSoles: number | null;
+    capAction: "copilot" | "pause" | "notify";
+    modelByTask: Partial<Record<PauModelTask, string>>;
+  };
+}
+
+/** Cambio parcial: el servidor mezcla con lo guardado. */
+export type PauConfigInput = {
+  [K in keyof PauConfig]?: PauConfig[K] extends unknown[] ? PauConfig[K] : PauConfig[K] extends object ? Partial<PauConfig[K]> : PauConfig[K];
+};
 
 export interface PauSettingsInput {
   mode?: PauMode;
@@ -537,6 +597,7 @@ export interface PauSettingsInput {
   knowledge?: string;
   /** null quita el tope. */
   monthlyTokenCap?: number | null;
+  config?: PauConfigInput;
 }
 
 export type PauProviderKind = "anthropic" | "openai" | "openai_compatible";
@@ -588,6 +649,15 @@ export interface PauUsage {
   outputTokens: number;
   totalTokens: number;
   monthlyTokenCap: number | null;
+  /** Uso del mes por proveedor y modelo. Falta si el servidor es anterior. */
+  byProvider?: Array<{
+    providerId: string | null;
+    label: string;
+    model: string;
+    tasks: number;
+    messages: number;
+    tokens: number;
+  }>;
   byKind: Array<{
     kind: PauUsageKind;
     calls: number;

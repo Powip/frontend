@@ -22,6 +22,13 @@ import PauProviderDialog from "./PauProviderDialog";
 import { PauTrainingSection } from "./PauTrainingSection";
 import { SandboxSection, UsageSection } from "./PauUsageSandbox";
 import {
+  CapabilitiesSection,
+  PersonalitySection,
+  PhaseChannelsSection,
+  ProviderRulesSection,
+  UsageByProviderSection,
+} from "./PauConfigSections";
+import {
   PAU_INSTRUCTIONS_MAX,
   PAU_KNOWLEDGE_MAX,
   PAU_MODE_LABEL,
@@ -448,49 +455,6 @@ function PauSummary({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-/** «Qué puede hacer»: lo que Pau hace hoy por su cuenta y cuándo pasa a una persona. */
-function PermissionsSection() {
-  const can = [
-    "Consultar precio, stock y envío a Core (nunca los inventa)",
-    "Armar el pedido y crearlo en Comercial › Ventas",
-    "Enviar el POWIP Link de pago",
-    "Enviar fotos y testimonios del producto",
-    "Seguir el guion «Venta en 1 minuto» de la tienda",
-  ];
-  const handoff = [
-    "Le falta un dato que no está en la ficha o en el guion",
-    "El cliente pide hablar con una persona",
-    "Alguien del equipo escribe en ese chat",
-    "No puede usar ningún proveedor de IA",
-  ];
-  return (
-    <div className="grid items-start gap-4 md:grid-cols-2">
-      <section aria-labelledby="pau-perm-h" className="space-y-2 rounded-xl border bg-card p-4">
-        <h2 id="pau-perm-h" className="text-base font-semibold">Lo que Pau puede hacer sola</h2>
-        <ul className="space-y-1.5 text-sm">
-          {can.map((c) => (
-            <li key={c} className="flex gap-2">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden /> {c}
-            </li>
-          ))}
-        </ul>
-        <p className="text-xs text-muted-foreground">Pau no da descuentos: si piden rebaja, pasa la conversación a una persona.</p>
-      </section>
-      <section aria-labelledby="pau-handoff-h" className="space-y-2 rounded-xl border bg-card p-4">
-        <h2 id="pau-handoff-h" className="text-base font-semibold">Cuándo pasa a una persona</h2>
-        <ul className="space-y-1.5 text-sm">
-          {handoff.map((c) => (
-            <li key={c} className="flex gap-2">
-              <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden /> {c}
-            </li>
-          ))}
-        </ul>
-        <p className="text-xs text-muted-foreground">En la bandeja verás «Pau pidió ayuda».</p>
-      </section>
-    </div>
-  );
-}
-
 /** Pestaña Pau: agente de ventas con IA de cada negocio. */
 export default function PauView({ defaultTab = "modo" }: { defaultTab?: PauTab }) {
   const { isAdmin } = useCrmMe();
@@ -520,17 +484,33 @@ export default function PauView({ defaultTab = "modo" }: { defaultTab?: PauTab }
         ))}
       </div>
       <div role="tabpanel" className="space-y-4">
-        {current === "modo" && <ModeSection isAdmin={isAdmin} />}
+        {current === "modo" && (
+          <>
+            <ModeSection isAdmin={isAdmin} />
+            {isAdmin && <PhaseChannelsSection />}
+          </>
+        )}
         {current === "pers" && (
           <>
+            <PersonalitySection />
             <KnowledgeSection />
             <SandboxSection />
           </>
         )}
-        {current === "perm" && <PermissionsSection />}
-        {current === "prov" && <ProvidersSection />}
+        {current === "perm" && <CapabilitiesSection />}
+        {current === "prov" && (
+          <>
+            <ProvidersSection />
+            <ProviderRulesSection />
+          </>
+        )}
         {current === "apr" && <PauTrainingSection />}
-        {current === "cons" && <UsageSection />}
+        {current === "cons" && (
+          <>
+            <UsageSection />
+            <UsageByProviderSection />
+          </>
+        )}
       </div>
     </div>
   );
