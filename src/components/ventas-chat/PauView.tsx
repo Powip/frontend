@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useCrmMe } from "@/hooks/useCrmMe";
+import { usePauLearning } from "@/hooks/useCrmPauLearning";
 import { crmError } from "@/services/crmService";
 import {
   usePauProviderActions,
@@ -19,6 +20,7 @@ import type { PauMode, PauProvider } from "@/types/crm";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import ConfirmDialog from "./ConfirmDialog";
 import PauProviderDialog from "./PauProviderDialog";
+import { PauAprende } from "./PauAprende";
 import { PauTrainingSection } from "./PauTrainingSection";
 import { SandboxSection, UsageSection } from "./PauUsageSandbox";
 import {
@@ -457,10 +459,13 @@ function PauSummary({ isAdmin }: { isAdmin: boolean }) {
 
 /** Pestaña Pau: agente de ventas con IA de cada negocio. */
 export default function PauView({ defaultTab = "modo" }: { defaultTab?: PauTab }) {
-  const { isAdmin } = useCrmMe();
+  const { isAdmin, level } = useCrmMe();
   const [tab, setTab] = useState<PauTab>(defaultTab);
-  const tabs = PAU_TABS.filter((t) => isAdmin || !t.admin);
+  // «Aprende» también lo revisa la supervisora (mockup 152); el resto de la configuración es del administrador.
+  const tabs = PAU_TABS.filter((t) => isAdmin || !t.admin || (t.key === "apr" && level === "supervisor"));
   const current = tabs.some((t) => t.key === tab) ? tab : "modo";
+  const canReview = tabs.some((t) => t.key === "apr");
+  const pendingCount = usePauLearning(canReview).data?.pending.length ?? 0;
   return (
     <div className="mx-auto max-w-5xl space-y-4">
       <PauSummary isAdmin={isAdmin} />
@@ -480,6 +485,14 @@ export default function PauView({ defaultTab = "modo" }: { defaultTab?: PauTab }
             )}
           >
             {t.label}
+            {t.key === "apr" && pendingCount > 0 && (
+              <span
+                className="ml-1.5 rounded-full bg-primary/10 px-1.5 py-0.5 text-xs font-semibold text-primary"
+                aria-label={`${pendingCount} por aprobar`}
+              >
+                {pendingCount}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -504,7 +517,12 @@ export default function PauView({ defaultTab = "modo" }: { defaultTab?: PauTab }
             <ProviderRulesSection />
           </>
         )}
-        {current === "apr" && <PauTrainingSection />}
+        {current === "apr" && (
+          <>
+            <PauAprende />
+            {isAdmin && <PauTrainingSection />}
+          </>
+        )}
         {current === "cons" && (
           <>
             <UsageSection />
