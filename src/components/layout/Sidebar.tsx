@@ -65,7 +65,6 @@ import {
 } from "@/components/ui/layout/avatar";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { CrmAccountSwitch, CrmPlanTag } from "@/components/ventas-chat/CrmPlanSidebar";
 import { CRM_VIEW_EVENT, readCrmFocused } from "@/components/ventas-chat/VistaContext";
 import { useRouter, usePathname } from "next/navigation";
 import {
@@ -408,9 +407,6 @@ export function Sidebar({ className }: SidebarProps) {
     [canViewCommercialLeads, canManageCommercialLeadTypes, canAccessLive],
   );
 
-  // Ventas por chat: etiqueta de plan, tipo de cuenta y vista enfocada (mockup 152).
-  const onCrm = pathname.startsWith("/comercial/ventas-chat");
-
   // Auto-colapsar en móviles y en la vista enfocada de Ventas por chat (barra de íconos).
   useEffect(() => {
     let crmFocused = window.location.pathname.startsWith("/comercial/ventas-chat") && readCrmFocused();
@@ -545,7 +541,6 @@ export function Sidebar({ className }: SidebarProps) {
           <>
             <Link href="/" className="flex items-center gap-2 pl-3">
               <PowipLogo className="w-[90px] h-auto text-primary" />
-              {onCrm && <CrmPlanTag />}
             </Link>
             <div className="flex items-center gap-1">
               {showWhatsAppBell && <WhatsAppNotificationsBell />}
@@ -785,9 +780,6 @@ export function Sidebar({ className }: SidebarProps) {
           })}
         </nav>
       </div>
-
-      {/* Tipo de cuenta del CRM (Core + CRM / Solo CRM), solo dentro de Ventas por chat. */}
-      {onCrm && !isCollapsed && <CrmAccountSwitch />}
 
       {/* Footer (modo claro/oscuro + usuario) */}
       <div className="space-y-3 pt-3 border-t border-gray-200 dark:border-gray-700">
