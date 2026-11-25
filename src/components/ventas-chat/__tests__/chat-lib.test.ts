@@ -65,7 +65,7 @@ describe("envío y ventana", () => {
 
   it("el despacho depende de la hora de corte de Lima", () => {
     expect(dispatchText({ cutoffTime: "16:00" }, new Date(NOW))).toBe("Despacho hoy si confirma antes de 16:00");
-    expect(dispatchText({ cutoffTime: "09:00" }, new Date(NOW))).toBe("Despacho mañana");
+    expect(dispatchText({ cutoffTime: "09:00" }, new Date(NOW))).toBe("Despacho mañana a primera hora");
     expect(dispatchText({ cutoffTime: "" }, new Date(NOW))).toBeNull();
   });
 });

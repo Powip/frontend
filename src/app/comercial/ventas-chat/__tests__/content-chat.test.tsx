@@ -310,7 +310,7 @@ describe("Chat · pantalla del mockup 152", () => {
   it("dispatchText usa la hora de Lima contra la hora de corte", () => {
     // 15:00 UTC = 10:00 en Lima; 20:00 UTC = 15:00 en Lima.
     expect(dispatchText(RULES, new Date("2026-11-23T15:00:00.000Z"))).toBe("Despacho hoy si confirma antes de 13:00");
-    expect(dispatchText(RULES, new Date("2026-11-23T20:00:00.000Z"))).toBe("Despacho mañana");
+    expect(dispatchText(RULES, new Date("2026-11-23T20:00:00.000Z"))).toBe("Despacho mañana a primera hora");
     expect(dispatchText({ cutoffTime: "" })).toBeNull();
   });
 

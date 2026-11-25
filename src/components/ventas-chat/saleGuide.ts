@@ -66,7 +66,7 @@ function limaMinutes(now: Date): number {
   return h * 60 + m;
 }
 
-/** «Despacho hoy» antes de la hora de corte de Lima; si ya pasó, «Despacho mañana». */
+/** «Despacho hoy» antes de la hora de corte de Lima; si ya pasó, «Despacho mañana a primera hora». */
 export function dispatchText(
   rules: Pick<ScriptClosingRules, "cutoffTime"> | undefined,
   now = new Date(),
@@ -74,7 +74,7 @@ export function dispatchText(
   const match = rules?.cutoffTime?.match(/^(\d{1,2}):(\d{2})$/);
   if (!match) return null;
   const cutoff = Number(match[1]) * 60 + Number(match[2]);
-  return limaMinutes(now) < cutoff ? `Despacho hoy si confirma antes de ${rules?.cutoffTime}` : "Despacho mañana";
+  return limaMinutes(now) < cutoff ? `Despacho hoy si confirma antes de ${rules?.cutoffTime}` : "Despacho mañana a primera hora";
 }
 
 /** Paso actual del guion (0 = primero), acotado a los pasos que existen. */
