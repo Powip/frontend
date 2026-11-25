@@ -527,7 +527,7 @@ function PauSummary({ isAdmin }: { isAdmin: boolean }) {
         <Sparkles className="h-5 w-5" aria-hidden />
       </span>
       <div className="min-w-0 flex-1">
-        <b className="block">Pau · agente de ventas y cobranzas</b>
+        <b className="block">Pau · agente de ventas que cotiza</b>
         <span className="block text-xs text-muted-foreground" data-testid="pau-summary">
           {modes}
           {isAdmin && ` · ${ok} proveedor${ok === 1 ? "" : "es"} de IA conectado${ok === 1 ? "" : "s"}`}
