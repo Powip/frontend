@@ -131,6 +131,8 @@ const summary = (over: Partial<InboxSummary> = {}): InboxSummary => ({
   unassigned: 4,
   pauHelp: 0,
   thinking: 2,
+  closed: 5,
+  payments: 1,
   ...over,
 });
 const tpl = (over: Partial<Template> = {}): Template => ({
@@ -208,11 +210,17 @@ describe("Indicadores de la Bandeja", () => {
     expect(strip.getByRole("button", { name: /Sin responder/ })).toHaveTextContent("3");
     expect(strip.getByRole("button", { name: /Sin responder/ })).toHaveTextContent("2 tuyas");
     expect(strip.getByRole("button", { name: /Fuera de tiempo/ })).toHaveTextContent("Esperan más de 15 min");
-    // Mockup 152: Sin asignar, Pau pidió ayuda y Lo están pensando son chips de la lista.
-    const chips = within(screen.getByRole("group", { name: "Más filtros" }));
+    // Mockup 152: los demás filtros son chips de la lista, cada uno con su contador.
+    const chips = within(screen.getByRole("group", { name: "Filtros" }));
+    expect(chips.getByRole("button", { name: /Abiertos/ })).toHaveTextContent("10");
+    expect(chips.getByRole("button", { name: /Pagos/ })).toHaveTextContent("1");
     expect(chips.getByRole("button", { name: /Sin asignar/ })).toHaveTextContent("4");
-    expect(chips.getByRole("button", { name: /Pau pidió ayuda/ })).toHaveTextContent("0");
+    expect(chips.getByRole("button", { name: /Pau necesita ayuda/ })).toHaveTextContent("0");
     expect(chips.getByRole("button", { name: /Lo están pensando/ })).toHaveTextContent("2");
+    expect(chips.getByRole("button", { name: /Cerrados/ })).toHaveTextContent("5");
+    // «Pau aprendió esto» solo lo ve quien aprueba (supervisora o administrador).
+    expect(chips.queryByRole("button", { name: /Pau aprendió esto/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Más filtros" })).not.toBeInTheDocument();
   });
 
   it("al hacer clic filtra la lista con el parámetro y otro clic lo quita", async () => {
@@ -232,24 +240,29 @@ describe("Indicadores de la Bandeja", () => {
 
   it.each([
     ["Fuera de tiempo", { overSla: true }],
-    ["Pau pidió ayuda", { pauHelp: true }],
+    ["Pau necesita ayuda", { pauHelp: true }],
     ["Lo están pensando", { thinking: true }],
     ["Sin asignar", { assigned: "unassigned" }],
   ])("«%s» envía su filtro", async (name, expected) => {
     setup();
     const strip = await screen.findByRole("group", { name: "Indicadores de la bandeja" });
-    const chips = screen.getByRole("group", { name: "Más filtros" });
+    const chips = screen.getByRole("group", { name: "Filtros" });
     const box = within(strip).queryByRole("button", { name: new RegExp(name) }) ? strip : chips;
     fireEvent.click(within(box).getByRole("button", { name: new RegExp(name) }));
     await waitFor(() => expect(lastListParams()).toMatchObject(expected));
   });
 
-  it("con todo en cero muestra «Todo al día»", async () => {
-    s.getInboxSummary.mockResolvedValue(
-      summary({ unanswered: 0, overSla: 0, mineUnanswered: 0, unassigned: 0, pauHelp: 0, thinking: 0 }),
-    );
+  it("«Pagos» pide chats con pago por resolver y «Cerrados» los cerrados", async () => {
     setup();
-    expect(await screen.findByText("Todo al día")).toBeInTheDocument();
+    const chips = within(await screen.findByRole("group", { name: "Filtros" }));
+    fireEvent.click(chips.getByRole("button", { name: /Pagos/ }));
+    await waitFor(() => expect(lastListParams()).toMatchObject({ payments: true, status: "open" }));
+    expect(chips.getByRole("button", { name: /Pagos/ })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(chips.getByRole("button", { name: /Cerrados/ }));
+    await waitFor(() => expect(lastListParams()).toMatchObject({ status: "closed" }));
+    expect(lastListParams()).not.toHaveProperty("payments");
+    fireEvent.click(chips.getByRole("button", { name: /Abiertos/ }));
+    await waitFor(() => expect(lastListParams()).toMatchObject({ status: "open" }));
   });
 
   it("«Links por pagar» y «Cobrado hoy por chat» van como tarjetas KPI", async () => {

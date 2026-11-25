@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Clock, HelpCircle, Loader2, MessageCircle, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +9,7 @@ import { crmError } from "@/services/crmService";
 import { NATIVE_SELECT_CLASS } from "./format";
 import { useConversations, useInboxSummary } from "@/hooks/useCrmChat";
 import { useCrmMe } from "@/hooks/useCrmMe";
+import { usePauLearning } from "@/hooks/useCrmPauLearning";
 import type { AssignedFilter, ConversationChannel, ConversationStatus } from "@/types/crm";
 import ChannelBadge from "./ChannelBadge";
 import ConversationPills from "./ConversationPills";
@@ -18,16 +20,6 @@ import { formatWait, initials, waitMinutes, waitTone } from "./conversationWait"
 import { PresenceFlag, usePresenceViewers } from "./Presence";
 
 export const CRM_UNREACHABLE = "No se pudo conectar con el servicio de chat";
-
-const STATUS_OPTIONS: Array<{ value: ConversationStatus; label: string }> = [
-  { value: "open", label: "Abiertas" },
-  { value: "closed", label: "Cerradas" },
-];
-const ASSIGNED_OPTIONS: Array<{ value: AssignedFilter; label: string }> = [
-  { value: "all", label: "Todas" },
-  { value: "me", label: "Mías" },
-  { value: "unassigned", label: "Sin asignar" },
-];
 
 /** «Comentarios» filtra chats que nacieron de un comentario en Facebook o Instagram. */
 type ChannelFilter = ConversationChannel | "all" | "comments";
@@ -41,37 +33,40 @@ const CHANNEL_OPTIONS: Array<{ value: ChannelFilter; label: string }> = [
   { value: "comments", label: "Comentarios" },
 ];
 
-function Segmented<T extends string>({
-  options,
-  value,
-  onChange,
-  label,
-}: {
-  options: Array<{ value: T; label: string }>;
-  value: T;
-  onChange: (v: T) => void;
-  label: string;
-}) {
-  return (
-    // Chips del mockup 152: píldoras pequeñas, la elegida en teal.
-    <div role="group" aria-label={label} className="flex flex-wrap gap-1">
-      {options.map((o) => (
-        <button
-          key={o.value}
-          type="button"
-          aria-pressed={o.value === value}
-          onClick={() => onChange(o.value)}
-          className={cn(
-            "rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
-            o.value === value
-              ? "border-teal-600 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-300"
-              : "bg-card text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
+/** Chips de la lista (mockup 152): cada uno filtra y muestra su contador. */
+type ListChip = "open" | "payments" | InboxIndicator | "learned" | "closed";
+
+const CHIPS: Array<{ key: ListChip; label: string; tone?: "red" | "pur" }> = [
+  { key: "open", label: "Abiertos" },
+  { key: "payments", label: "Pagos" },
+  { key: "unanswered", label: "Sin responder" },
+  { key: "overSla", label: "Fuera de tiempo", tone: "red" },
+  { key: "unassigned", label: "Sin asignar" },
+  { key: "pauHelp", label: "Pau necesita ayuda", tone: "pur" },
+  { key: "learned", label: "Pau aprendió esto", tone: "pur" },
+  { key: "thinking", label: "Lo están pensando" },
+  { key: "closed", label: "Cerrados" },
+];
+
+const INDICATOR_KEYS: ReadonlySet<ListChip> = new Set<InboxIndicator>([
+  "unanswered",
+  "overSla",
+  "unassigned",
+  "pauHelp",
+  "thinking",
+]);
+
+/** Contador seguro: lo que no sea un número se muestra como 0. */
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+
+function chipClass(on: boolean, tone?: "red" | "pur") {
+  return cn(
+    "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
+    tone === "pur" && "border-primary/35",
+    !on && "bg-card text-muted-foreground hover:text-foreground",
+    on && !tone && "border-teal-600 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-300",
+    on && tone === "red" && "border-red-600 bg-red-50 text-red-700 dark:border-red-400 dark:bg-red-950/40 dark:text-red-300",
+    on && tone === "pur" && "bg-primary/10 text-primary",
   );
 }
 
@@ -83,6 +78,8 @@ interface Props {
   onIndicatorChange?: (next: InboxIndicator | null) => void;
   /** Tienda elegida en la Bandeja; sin valor = todas. */
   storeId?: string;
+  /** Cambia la tienda (el selector vive en la lista, como en el mockup). */
+  onStoreChange?: (storeId: string) => void;
 }
 
 export default function ConversationList({
@@ -91,12 +88,16 @@ export default function ConversationList({
   indicator = null,
   onIndicatorChange,
   storeId,
+  onStoreChange,
 }: Props) {
-  const { phoneMasked, stores } = useCrmMe();
-  const slaMinutes = useInboxSummary().data?.slaMinutes ?? 15;
+  const router = useRouter();
+  const { phoneMasked, stores, isSupervisor } = useCrmMe();
+  const summary = useInboxSummary(storeId).data;
+  const slaMinutes = summary?.slaMinutes ?? 15;
+  // «Pau aprendió esto» = respuestas por aprobar; solo quien aprueba ve el chip.
+  const learnedPending = usePauLearning(isSupervisor).data?.pending.length ?? 0;
   const storeName = (id?: string | null) => (id ? stores.find((st) => st.id === id)?.name : undefined);
-  const [status, setStatus] = useState<ConversationStatus>("open");
-  const [assigned, setAssigned] = useState<AssignedFilter>("all");
+  const [base, setBase] = useState<"open" | "payments" | "closed">("open");
   const [channel, setChannel] = useState<ChannelFilter>("all");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -108,14 +109,38 @@ export default function ConversationList({
 
   // Con un indicador activo, manda su filtro y la lista muestra solo chats abiertos.
   const extra = indicator ? INDICATOR_PARAMS[indicator] : {};
-  const effStatus: ConversationStatus = indicator ? "open" : status;
-  const effAssigned: AssignedFilter = extra.assigned ?? assigned;
-  const clearIndicator = () => onIndicatorChange?.(null);
+  const effStatus: ConversationStatus = indicator || base !== "closed" ? "open" : "closed";
+  const effAssigned: AssignedFilter = extra.assigned ?? "all";
+  const active: ListChip = indicator ?? base;
+  const counts: Record<ListChip, number | undefined> = {
+    open: summary?.open,
+    payments: summary?.payments,
+    unanswered: summary?.unanswered,
+    overSla: summary?.overSla,
+    unassigned: summary?.unassigned,
+    pauHelp: summary?.pauHelp,
+    learned: learnedPending,
+    thinking: summary?.thinking,
+    closed: summary?.closed,
+  };
+  const pick = (key: ListChip) => {
+    if (key === "learned") {
+      router.push("/comercial/ventas-chat/pau?tab=apr");
+      return;
+    }
+    if (INDICATOR_KEYS.has(key)) {
+      onIndicatorChange?.(key as InboxIndicator);
+      return;
+    }
+    onIndicatorChange?.(null);
+    setBase(key as "open" | "payments" | "closed");
+  };
 
   const { data, isLoading, isError, error, refetch, isFetching } = useConversations({
     ...extra,
     status: effStatus,
     assigned: effAssigned,
+    ...(!indicator && base === "payments" ? { payments: true } : {}),
     search,
     ...(channel === "all" ? {} : channel === "comments" ? { comments: true } : { channel }),
     ...(storeId ? { storeId } : {}),
@@ -133,40 +158,53 @@ export default function ConversationList({
           type="search"
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="Buscar por nombre o teléfono"
+          placeholder="Buscar cliente o teléfono"
           aria-label="Buscar conversación"
         />
-        <Segmented
-          label="Estado"
-          options={STATUS_OPTIONS}
-          value={effStatus}
-          onChange={(v) => {
-            clearIndicator();
-            setStatus(v);
-          }}
-        />
-        <Segmented
-          label="Asignación"
-          options={ASSIGNED_OPTIONS}
-          value={effAssigned}
-          onChange={(v) => {
-            if (indicator === "unassigned") clearIndicator();
-            setAssigned(v);
-          }}
-        />
-        {/* Mockup 152: el canal es un selector, no una fila de botones. */}
-        <select
-          aria-label="Canal"
-          value={channel}
-          onChange={(e) => setChannel(e.target.value as ChannelFilter)}
-          className={cn(NATIVE_SELECT_CLASS, "py-1.5 text-[13px]")}
-        >
-          {CHANNEL_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.value === "all" ? "Todos los canales" : o.label}
-            </option>
+        {/* Mockup 152: tienda y canal en selectores, uno al lado del otro. */}
+        <div className="flex gap-2">
+          {stores.length > 1 && onStoreChange && (
+            <select
+              aria-label="Tienda"
+              value={storeId ?? ""}
+              onChange={(e) => onStoreChange(e.target.value)}
+              className={cn(NATIVE_SELECT_CLASS, "min-w-0 flex-1 py-1.5 text-[13px]")}
+            >
+              <option value="">Todas las tiendas</option>
+              {stores.map((st) => (
+                <option key={st.id} value={st.id}>
+                  {st.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <select
+            aria-label="Canal"
+            value={channel}
+            onChange={(e) => setChannel(e.target.value as ChannelFilter)}
+            className={cn(NATIVE_SELECT_CLASS, "min-w-0 flex-1 py-1.5 text-[13px]")}
+          >
+            {CHANNEL_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.value === "all" ? "Todos los canales" : o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div role="group" aria-label="Filtros" className="flex flex-wrap gap-1">
+          {CHIPS.filter((c) => c.key !== "learned" || isSupervisor).map((c) => (
+            <button
+              key={c.key}
+              type="button"
+              aria-pressed={c.key === active}
+              onClick={() => pick(c.key)}
+              className={chipClass(c.key === active, c.tone)}
+            >
+              {c.label}
+              <span className="ml-1 font-bold tabular-nums">{num(counts[c.key])}</span>
+            </button>
           ))}
-        </select>
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto" aria-busy={isFetching}>

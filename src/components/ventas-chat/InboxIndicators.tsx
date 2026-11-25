@@ -1,5 +1,4 @@
 "use client";
-import { CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useInboxSummary } from "@/hooks/useCrmChat";
 import type { ConversationListParams, InboxSummary } from "@/types/crm";
@@ -54,12 +53,6 @@ export default function InboxIndicators({ active, onChange, storeId }: Props) {
       tone: "text-orange-600 dark:text-orange-400",
     },
   ];
-  // Filtros que el mockup deja en la lista y no en tarjetas.
-  const chips: Array<{ key: InboxIndicator; label: string; count: number }> = [
-    { key: "unassigned", label: "Sin asignar", count: n(d.unassigned) },
-    { key: "pauHelp", label: "Pau pidió ayuda", count: n(d.pauHelp) },
-    { key: "thinking", label: "Lo están pensando", count: n(d.thinking) },
-  ];
   const links = n(d.pendingLinks);
   const linksAmount = n(d.pendingLinksAmount);
   const collected = n(d.collectedToday);
@@ -95,27 +88,6 @@ export default function InboxIndicators({ active, onChange, storeId }: Props) {
           tone={collected > 0 ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}
           detail={`${collectedCount} ${collectedCount === 1 ? "pedido pagado" : "pedidos pagados"} por link`}
         />
-      </div>
-      <div role="group" aria-label="Más filtros" className="flex flex-wrap items-center gap-1.5">
-        {chips.map((c) => (
-          <button
-            key={c.key}
-            type="button"
-            aria-pressed={active === c.key}
-            onClick={() => onChange(active === c.key ? null : c.key)}
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-0.5 text-xs text-muted-foreground hover:bg-accent/50",
-              active === c.key && "border-primary bg-accent text-foreground",
-            )}
-          >
-            <b className={cn(c.count > 0 && "text-amber-700 dark:text-amber-400")}>{c.count}</b> {c.label}
-          </button>
-        ))}
-        {cards.every((c) => c.count === 0) && chips.every((c) => c.count === 0) && (
-          <span role="status" className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
-            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> Todo al día
-          </span>
-        )}
       </div>
     </div>
   );

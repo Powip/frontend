@@ -114,6 +114,8 @@ export interface ConversationListParams {
   overSla?: boolean;
   pauHelp?: boolean;
   thinking?: boolean;
+  /** Comprobante por validar o el último rechazado (chip «Pagos»). */
+  payments?: boolean;
   /** Solo chats que nacieron de un comentario público. */
   comments?: boolean;
   tag?: string;
@@ -133,6 +135,9 @@ export interface InboxSummary {
   unassigned: number;
   pauHelp: number;
   thinking: number;
+  /** Chats cerrados y chats abiertos con un pago por resolver (chips de la lista). */
+  closed?: number;
+  payments?: number;
   /** POWIP Links sin pagar y su monto. */
   pendingLinks?: number;
   pendingLinksAmount?: number;

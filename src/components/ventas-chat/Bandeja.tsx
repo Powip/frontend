@@ -5,7 +5,6 @@ import { MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCrmEvents } from "@/hooks/useCrmChat";
 import { useCrmMe } from "@/hooks/useCrmMe";
-import { NATIVE_SELECT_CLASS } from "./format";
 import ConversationList from "./ConversationList";
 import InboxIndicators, { type InboxIndicator } from "./InboxIndicators";
 import MyDay from "./MyDay";
@@ -41,23 +40,6 @@ export default function Bandeja() {
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-end gap-3">
-        {stores.length > 1 && (
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            Tienda
-            <select
-              value={storeId ?? ""}
-              onChange={(e) => setStoreChoice(e.target.value)}
-              className={cn(NATIVE_SELECT_CLASS, "w-auto min-w-40")}
-            >
-              <option value="">Todas las tiendas</option>
-              {stores.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
         <span
           role="status"
           className={cn(
@@ -101,6 +83,7 @@ export default function Bandeja() {
             indicator={indicator}
             onIndicatorChange={setIndicator}
             storeId={storeId}
+            onStoreChange={setStoreChoice}
           />
         </div>
         <div className={cn("min-h-0", selectedId ? "block" : "hidden md:block")}>

@@ -67,6 +67,7 @@ export async function listConversations(
   if (params.overSla) query.overSla = "true";
   if (params.pauHelp) query.pauHelp = "true";
   if (params.thinking) query.thinking = "true";
+  if (params.payments) query.payments = "true";
   if (params.comments) query.comments = "true";
   if (params.tag?.trim()) query.tag = params.tag.trim();
   if (params.storeId) query.storeId = params.storeId;
