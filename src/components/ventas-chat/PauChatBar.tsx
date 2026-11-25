@@ -78,7 +78,8 @@ export default function PauChatBar({ conversation, text, onFill, windowOpen }: P
       {showBar && (
       <div className="flex flex-wrap items-center gap-2 rounded-md border bg-muted/40 px-2 py-1.5">
         <Sparkles className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-        <span className="min-w-0 flex-1 text-xs font-medium" data-testid="pau-status">
+        {/* Ancho mínimo: con poco espacio bajan los botones, no se aplasta el texto. */}
+        <span className="min-w-[12rem] flex-1 text-xs font-medium" data-testid="pau-status">
           {suggest.isPending
             ? "Pau está escribiendo…"
             : !auto
