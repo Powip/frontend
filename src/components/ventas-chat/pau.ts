@@ -10,6 +10,7 @@ export const PAU_KNOWLEDGE_MAX = 40000;
 export const PAU_MIN_CAP = 1000;
 export const ANTHROPIC_DEFAULT_MODEL = "claude-opus-5-5";
 
+/** Nombres y textos del mockup 152 (Pau › Quién vende). */
 export const PAU_MODE_OPTIONS: Array<{
   value: PauMode;
   title: string;
@@ -17,27 +18,35 @@ export const PAU_MODE_OPTIONS: Array<{
 }> = [
   {
     value: "off",
-    title: "Apagado",
-    description: "Pau no participa. Atiende solo tu equipo.",
+    title: "Solo CRM",
+    description: "Pau no escribe ni sugiere. Tu equipo atiende todo. No necesita llaves de IA.",
   },
   {
     value: "copilot",
     title: "Copiloto",
     description:
-      "Pau sugiere respuestas a la vendedora con un botón en el chat. Tú revisas y envías.",
+      "Pau sugiere la respuesta con datos del producto y arma el pedido. La vendedora decide y envía.",
   },
   {
     value: "auto",
-    title: "Pau responde solo",
+    title: "Pau vende y cobra",
     description:
-      "Pau responde al cliente por WhatsApp sin que nadie lo apruebe, y además puede sugerir respuestas.",
+      "Pau atiende, vende y cobra sola por WhatsApp, y también sugiere. Pasa a una persona cuando corresponde.",
   },
 ];
 
+/** Modo de Pau en una tienda: el suyo o, si no tiene, el general. */
+export function storeMode(
+  s: { mode: PauMode; storeModes?: Record<string, PauMode> },
+  storeId: string | null | undefined,
+): PauMode {
+  return (storeId && s.storeModes?.[storeId]) || s.mode;
+}
+
 export const PAU_MODE_LABEL: Record<PauMode, string> = {
-  off: "Apagado",
+  off: "Solo CRM",
   copilot: "Copiloto",
-  auto: "Pau responde solo",
+  auto: "Pau vende y cobra",
 };
 
 export const PROVIDER_LABEL: Record<PauProviderKind, string> = {

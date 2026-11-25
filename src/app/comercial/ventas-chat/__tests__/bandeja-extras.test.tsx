@@ -207,10 +207,12 @@ describe("Indicadores de la Bandeja", () => {
     const strip = within(await screen.findByRole("group", { name: "Indicadores de la bandeja" }));
     expect(strip.getByRole("button", { name: /Sin responder/ })).toHaveTextContent("3");
     expect(strip.getByRole("button", { name: /Sin responder/ })).toHaveTextContent("2 tuyas");
-    expect(strip.getByRole("button", { name: /Fuera de tiempo/ })).toHaveTextContent("más de 15 min");
-    expect(strip.getByRole("button", { name: /Sin asignar/ })).toHaveTextContent("4");
-    expect(strip.getByRole("button", { name: /Pau pidió ayuda/ })).toHaveTextContent("0");
-    expect(strip.getByRole("button", { name: /Lo están pensando/ })).toHaveTextContent("2");
+    expect(strip.getByRole("button", { name: /Fuera de tiempo/ })).toHaveTextContent("Esperan más de 15 min");
+    // Mockup 152: Sin asignar, Pau pidió ayuda y Lo están pensando son chips de la lista.
+    const chips = within(screen.getByRole("group", { name: "Más filtros" }));
+    expect(chips.getByRole("button", { name: /Sin asignar/ })).toHaveTextContent("4");
+    expect(chips.getByRole("button", { name: /Pau pidió ayuda/ })).toHaveTextContent("0");
+    expect(chips.getByRole("button", { name: /Lo están pensando/ })).toHaveTextContent("2");
   });
 
   it("al hacer clic filtra la lista con el parámetro y otro clic lo quita", async () => {
@@ -235,8 +237,10 @@ describe("Indicadores de la Bandeja", () => {
     ["Sin asignar", { assigned: "unassigned" }],
   ])("«%s» envía su filtro", async (name, expected) => {
     setup();
-    const strip = within(await screen.findByRole("group", { name: "Indicadores de la bandeja" }));
-    fireEvent.click(strip.getByRole("button", { name: new RegExp(name) }));
+    const strip = await screen.findByRole("group", { name: "Indicadores de la bandeja" });
+    const chips = screen.getByRole("group", { name: "Más filtros" });
+    const box = within(strip).queryByRole("button", { name: new RegExp(name) }) ? strip : chips;
+    fireEvent.click(within(box).getByRole("button", { name: new RegExp(name) }));
     await waitFor(() => expect(lastListParams()).toMatchObject(expected));
   });
 
@@ -246,18 +250,17 @@ describe("Indicadores de la Bandeja", () => {
     );
     setup();
     expect(await screen.findByText("Todo al día")).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Indicadores de la bandeja" })).not.toBeInTheDocument();
   });
 
-  it("«Links por cobrar» y «Cobrado hoy» van como tarjetas KPI", async () => {
+  it("«Links por pagar» y «Cobrado hoy por chat» van como tarjetas KPI", async () => {
     s.getInboxSummary.mockResolvedValue(
       summary({ pendingLinks: 2, pendingLinksAmount: 150, collectedToday: 80 }),
     );
     setup();
-    const cobros = within(await screen.findByRole("group", { name: "Cobros del chat" }));
-    expect(cobros.getByText("Links por cobrar").parentElement).toHaveTextContent("2");
-    expect(cobros.getByText("Links por cobrar").parentElement).toHaveTextContent("S/ 150.00");
-    expect(cobros.getByText("Cobrado hoy").parentElement).toHaveTextContent("S/ 80.00");
+    const cobros = within(await screen.findByRole("group", { name: "Indicadores de la bandeja" }));
+    expect(cobros.getByText("Links por pagar").parentElement).toHaveTextContent("2");
+    expect(cobros.getByText("Links por pagar").parentElement).toHaveTextContent("S/ 150.00");
+    expect(cobros.getByText("Cobrado hoy por chat").parentElement).toHaveTextContent("S/ 80.00");
   });
 
   it("si el resumen falla no pinta la franja", async () => {

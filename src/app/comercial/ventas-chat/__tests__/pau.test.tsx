@@ -1,13 +1,15 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import PauView from "@/components/ventas-chat/PauView";
+import PauView, { type PauTab } from "@/components/ventas-chat/PauView";
 import { VENTAS_CHAT_TABS } from "@/app/comercial/ventas-chat/tabs";
 import { describeToolCall } from "@/components/ventas-chat/pau";
+import { resetCrmMeCache } from "@/hooks/useCrmMe";
 import * as svc from "@/services/crmService";
 import type { PauProvider, PauSettings, PauUsage } from "@/types/crm";
 
 let mockRole = "ADMIN";
+let mockStores: Array<{ id: string; name: string }> = [];
 jest.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
     auth: { accessToken: "t", user: { id: "u1", name: "Jairo", role: mockRole }, company: { id: "co1" } },
@@ -28,6 +30,7 @@ jest.mock("@/lib/axiosAuth", () => ({
 jest.mock("sonner", () => ({ toast: { error: jest.fn(), success: jest.fn() } }));
 jest.mock("@/services/crmService", () => ({
   ...jest.requireActual("@/services/crmService"),
+  getCrmMe: jest.fn(),
   getPauSettings: jest.fn(),
   updatePauSettings: jest.fn(),
   listPauProviders: jest.fn(),
@@ -86,11 +89,12 @@ const USAGE: PauUsage = {
   ],
 };
 
+let mockTab: PauTab = "modo";
 function setup() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <PauView />
+      <PauView defaultTab={mockTab} />
     </QueryClientProvider>,
   );
 }
@@ -98,6 +102,14 @@ function setup() {
 beforeEach(() => {
   jest.clearAllMocks();
   mockRole = "ADMIN";
+  mockTab = "modo";
+  mockStores = [];
+  resetCrmMeCache();
+  s.getCrmMe.mockImplementation(async () => ({
+    level: mockRole === "ADMIN" ? "admin" : "agent",
+    stores: mockStores,
+    phoneMasked: false,
+  }) as Awaited<ReturnType<typeof svc.getCrmMe>>);
   s.getPauSettings.mockResolvedValue(settings());
   s.updatePauSettings.mockImplementation(async (input) => settings(input as Partial<PauSettings>));
   s.listPauProviders.mockResolvedValue([provider()]);
@@ -122,18 +134,18 @@ describe("Pau · quién atiende", () => {
 
   it("elegir «Pau responde solo» pide confirmación y luego hace PATCH", async () => {
     setup();
-    fireEvent.click(await screen.findByRole("radio", { name: /Pau responde solo/ }));
+    fireEvent.click(await screen.findByRole("radio", { name: /Pau vende y cobra/ }));
     expect(s.updatePauSettings).not.toHaveBeenCalled();
     const dialog = await screen.findByRole("alertdialog");
     expect(within(dialog).getByText(/clientes reales por WhatsApp/)).toBeInTheDocument();
     expect(within(dialog).getByText(/pasa el chat a una persona/i)).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Sí, que responda solo" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sí, que venda sola" }));
     await waitFor(() => expect(s.updatePauSettings).toHaveBeenCalledWith({ mode: "auto" }));
   });
 
   it("cancelar la confirmación no cambia nada", async () => {
     setup();
-    fireEvent.click(await screen.findByRole("radio", { name: /Pau responde solo/ }));
+    fireEvent.click(await screen.findByRole("radio", { name: /Pau vende y cobra/ }));
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
     expect(s.updatePauSettings).not.toHaveBeenCalled();
@@ -145,9 +157,9 @@ describe("Pau · quién atiende", () => {
     setup();
     const copilot = await screen.findByRole("radio", { name: /Copiloto/ });
     expect(copilot).toBeDisabled();
-    expect(screen.getByRole("radio", { name: /Pau responde solo/ })).toBeDisabled();
-    expect(screen.getByRole("radio", { name: /Apagado/ })).not.toBeDisabled();
-    expect(screen.getByRole("link", { name: "Proveedores de IA" })).toHaveAttribute("href", "#pau-proveedores");
+    expect(screen.getByRole("radio", { name: /Pau vende y cobra/ })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: /Solo CRM/ })).not.toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Proveedores de IA");
   });
 });
 
@@ -159,7 +171,7 @@ describe("Pau · no administrador", () => {
     expect(await screen.findByTestId("pau-current-mode")).toHaveTextContent("Copiloto");
     expect(screen.getByText("Solo un administrador puede configurar a Pau.")).toBeInTheDocument();
     expect(screen.queryByRole("radio")).not.toBeInTheDocument();
-    expect(screen.queryByText("Proveedores de IA")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Proveedores de IA" })).not.toBeInTheDocument();
     expect(s.listPauProviders).not.toHaveBeenCalled();
     expect(s.getPauUsage).not.toHaveBeenCalled();
     expect(s.pauSandbox).not.toHaveBeenCalled();
@@ -167,6 +179,10 @@ describe("Pau · no administrador", () => {
 });
 
 describe("Pau · proveedores", () => {
+  beforeEach(() => {
+    mockTab = "prov";
+  });
+
   it("lista con llave enmascarada, modelo, predeterminado y última prueba", async () => {
     setup();
     const row = await screen.findByTestId("provider-row");
@@ -288,6 +304,10 @@ describe("Pau · proveedores", () => {
 });
 
 describe("Pau · instrucciones y conocimiento", () => {
+  beforeEach(() => {
+    mockTab = "pers";
+  });
+
   it("Guardar se activa solo con cambios, muestra contador y envía lo cambiado", async () => {
     setup();
     const save = await screen.findByRole("button", { name: "Guardar" });
@@ -307,6 +327,10 @@ describe("Pau · instrucciones y conocimiento", () => {
 });
 
 describe("Pau · consumo", () => {
+  beforeEach(() => {
+    mockTab = "cons";
+  });
+
   it("muestra tokens, llamadas, desglose, barra contra el tope y fija/quita el tope", async () => {
     setup();
     const stats = await screen.findAllByTestId("usage-stat");
@@ -337,6 +361,10 @@ describe("Pau · consumo", () => {
 });
 
 describe("Pau · probar a Pau", () => {
+  beforeEach(() => {
+    mockTab = "pers";
+  });
+
   it("envía el historial completo en cada turno y pinta acciones y modelo", async () => {
     s.pauSandbox
       .mockResolvedValueOnce({ text: "Hola, ¿en qué te ayudo?", refused: false, model: "claude-opus-5-5", toolCalls: [] })

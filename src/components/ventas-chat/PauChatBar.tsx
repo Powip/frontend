@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { HelpCircle, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSuggestPauReply, usePauSettings } from "@/hooks/useCrmPau";
+import { storeMode } from "./pau";
 import { useMessages, useUpdateConversation } from "@/hooks/useCrmChat";
 import type { Conversation } from "@/types/crm";
 import ConfirmDialog from "./ConfirmDialog";
@@ -32,7 +33,8 @@ export default function PauChatBar({ conversation, text, onFill, windowOpen }: P
   const textRef = useRef(text);
   textRef.current = text;
 
-  const mode = settings.data?.mode;
+  // Modo de la tienda de este chat; sin modo propio, el general.
+  const mode = settings.data ? storeMode(settings.data, conversation.storeId) : undefined;
   const showBar = !!mode && mode !== "off";
   // Con Pau apagado solo se pinta si pidió ayuda: ahí aún sirve enseñarle la respuesta.
   if (!showBar && !conversation.pauHelpReason) return null;

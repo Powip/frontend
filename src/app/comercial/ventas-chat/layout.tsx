@@ -18,10 +18,11 @@ export default function VentasChatLayout({ children }: { children: ReactNode }) 
         <p className="text-sm text-muted-foreground">
           Atiende y vende por WhatsApp, Messenger, Instagram y TikTok desde Powip.
         </p>
-        {/* Control segmentado (mockup 152): pastillas con ícono dentro de una franja suave. */}
+        {/* Control segmentado (mockup 152): pastillas con ícono dentro de una franja suave.
+            En escritorio las pestañas bajan a otra fila (sin scroll horizontal), como el mockup v8. */}
         <nav
           aria-label="Secciones de Ventas por chat"
-          className="mx-auto mt-2 flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border bg-muted p-1"
+          className="mx-auto mt-2 flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border bg-muted p-1 md:flex-wrap md:justify-center md:gap-y-1 md:overflow-visible"
         >
           {tabs.map((t) => {
             const active = pathname === t.href || pathname.startsWith(`${t.href}/`);

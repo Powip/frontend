@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, Info, Loader2, Lock, Pencil, Plus, Trash2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, Loader2, Lock, Pencil, Plus, Sparkles, Trash2, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -27,32 +27,40 @@ import {
   PAU_MODE_LABEL,
   PAU_MODE_OPTIONS,
   PROVIDER_LABEL,
+  storeMode,
 } from "./pau";
 import { relativeTime } from "./format";
 
 function ModeSection({ isAdmin }: { isAdmin: boolean }) {
   const settings = usePauSettings();
   const update = useUpdatePauSettings();
-  const [confirmAuto, setConfirmAuto] = useState(false);
+  const { stores } = useCrmMe();
+  // Tienda a la que se le pide confirmar «Pau vende y cobra» ("" = todas las tiendas).
+  const [confirmAuto, setConfirmAuto] = useState<string | null>(null);
   const s = settings.data;
   const err = settings.isError ? crmError(settings.error) : null;
+  // Sin tiendas conocidas se configura el modo general, como una sola tienda.
+  const targets = stores.length ? stores : [{ id: "", name: "Todas las tiendas" }];
 
-  const choose = (mode: PauMode) => {
-    if (!s || mode === s.mode || update.isPending) return;
+  const save = (storeId: string, mode: PauMode) =>
+    update.mutate(storeId ? { storeModes: { [storeId]: mode } } : { mode });
+
+  const choose = (storeId: string, mode: PauMode) => {
+    if (!s || update.isPending) return;
+    const current = storeId ? storeMode(s, storeId) : s.mode;
+    if (mode === current) return;
     if (mode === "auto") {
-      setConfirmAuto(true);
+      setConfirmAuto(storeId);
       return;
     }
-    update.mutate({ mode });
+    save(storeId, mode);
   };
 
   return (
-    <section aria-labelledby="pau-quien" className="space-y-3 rounded-md border bg-card p-4">
+    <section aria-labelledby="pau-quien" className="space-y-3">
       <div>
-        <h2 id="pau-quien" className="text-base font-semibold">Quién atiende</h2>
-        <p className="text-sm text-muted-foreground">
-          Elige cómo participa Pau en los chats de WhatsApp.
-        </p>
+        <h2 id="pau-quien" className="text-base font-semibold">Quién vende</h2>
+        <p className="text-sm text-muted-foreground">El negocio decide quién vende en cada tienda.</p>
       </div>
       {settings.isLoading && (
         <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -70,7 +78,14 @@ function ModeSection({ isAdmin }: { isAdmin: boolean }) {
       {s && !isAdmin && (
         <div className="space-y-2">
           <p className="text-sm" data-testid="pau-current-mode">
-            Modo actual: <strong>{PAU_MODE_LABEL[s.mode]}</strong>
+            Modo actual:{" "}
+            {targets.map((t, i) => (
+              <span key={t.id || "all"}>
+                {i > 0 && " · "}
+                {stores.length > 1 && `${t.name}: `}
+                <strong>{PAU_MODE_LABEL[t.id ? storeMode(s, t.id) : s.mode]}</strong>
+              </span>
+            ))}
           </p>
           <p role="status" className="flex items-center gap-2 rounded-md border bg-muted p-3 text-sm text-muted-foreground">
             <Lock className="h-4 w-4 shrink-0" /> Solo un administrador puede configurar a Pau.
@@ -86,52 +101,62 @@ function ModeSection({ isAdmin }: { isAdmin: boolean }) {
             >
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
-                Para encender a Pau primero conecta un proveedor de IA en{" "}
-                <a href="#pau-proveedores" className="font-medium underline">
-                  Proveedores de IA
-                </a>
-                .
+                Para encender a Pau primero conecta un proveedor de IA en la pestaña{" "}
+                <strong>Proveedores de IA</strong>.
               </span>
             </p>
           )}
-          <div role="radiogroup" aria-label="Quién atiende" className="grid gap-2 md:grid-cols-3">
-            {PAU_MODE_OPTIONS.map((o) => {
-              const checked = s.mode === o.value;
-              const blocked = o.value !== "off" && !s.hasProvider;
-              return (
-                <button
-                  key={o.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={checked}
-                  disabled={blocked || update.isPending}
-                  onClick={() => choose(o.value)}
-                  className={cn(
-                    "flex flex-col items-start gap-1 rounded-md border p-3 text-left transition-colors",
-                    "hover:bg-accent/50 disabled:cursor-not-allowed disabled:opacity-50",
-                    checked && "border-primary bg-accent",
-                  )}
+          {targets.map((t) => {
+            const current = t.id ? storeMode(s, t.id) : s.mode;
+            return (
+              <div key={t.id || "all"} className="space-y-2 rounded-xl border bg-card p-4">
+                <h3 className="text-sm font-semibold">{t.name}</h3>
+                <div
+                  role="radiogroup"
+                  aria-label={`Quién vende en ${t.name}`}
+                  className="grid gap-2 md:grid-cols-3"
                 >
-                  <span className="flex items-center gap-2 text-sm font-semibold">
-                    {o.title}
-                    {checked && <CheckCircle2 className="h-4 w-4 text-primary" aria-hidden />}
-                  </span>
-                  <span className="text-xs text-muted-foreground">{o.description}</span>
-                </button>
-              );
-            })}
-          </div>
+                  {PAU_MODE_OPTIONS.map((o) => {
+                    const checked = current === o.value;
+                    const blocked = o.value !== "off" && !s.hasProvider;
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={checked}
+                        disabled={blocked || update.isPending}
+                        onClick={() => choose(t.id, o.value)}
+                        className={cn(
+                          "flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors",
+                          "hover:bg-accent/50 disabled:cursor-not-allowed disabled:opacity-50",
+                          checked && "border-primary bg-accent",
+                        )}
+                      >
+                        <span className="flex items-center gap-2 text-sm font-semibold">
+                          {o.title}
+                          {checked && <CheckCircle2 className="h-4 w-4 text-primary" aria-hidden />}
+                        </span>
+                        <span className="text-xs text-muted-foreground">{o.description}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </>
       )}
       <ConfirmDialog
-        open={confirmAuto}
-        title="¿Dejar que Pau responda solo?"
+        open={confirmAuto !== null}
+        title="¿Dejar que Pau venda y cobre sola?"
         description="Pau escribirá a clientes reales por WhatsApp sin que nadie apruebe cada mensaje. Pasa el chat a una persona cuando le falta un dato, cuando pide ayuda o cuando alguien del equipo envía un mensaje en ese chat; en la bandeja verás «Pau pidió ayuda». Puedes tomar cualquier chat o apagar a Pau cuando quieras."
-        confirmLabel="Sí, que responda solo"
-        onCancel={() => setConfirmAuto(false)}
+        confirmLabel="Sí, que venda sola"
+        onCancel={() => setConfirmAuto(null)}
         onConfirm={() => {
-          setConfirmAuto(false);
-          update.mutate({ mode: "auto" });
+          const id = confirmAuto ?? "";
+          setConfirmAuto(null);
+          save(id, "auto");
         }}
       />
     </section>
@@ -384,21 +409,129 @@ function KnowledgeSection() {
   );
 }
 
-/** Pestaña Pau: agente de ventas con IA de cada negocio. */
-export default function PauView() {
-  const { isAdmin } = useCrmMe();
+export type PauTab = "modo" | "pers" | "perm" | "prov" | "apr" | "cons";
+
+const PAU_TABS: Array<{ key: PauTab; label: string; admin: boolean }> = [
+  { key: "modo", label: "Quién vende", admin: false },
+  { key: "pers", label: "Personalidad", admin: true },
+  { key: "perm", label: "Qué puede hacer", admin: true },
+  { key: "prov", label: "Proveedores de IA", admin: true },
+  { key: "apr", label: "Aprende", admin: true },
+  { key: "cons", label: "Consumo", admin: true },
+];
+
+/** Encabezado del mockup 152: modo de cada tienda y proveedores conectados. */
+function PauSummary({ isAdmin }: { isAdmin: boolean }) {
+  const s = usePauSettings().data;
+  // Solo administrador lee los proveedores; la vendedora no ve el conteo.
+  const providers = usePauProviders(isAdmin).data;
+  const { stores } = useCrmMe();
+  if (!s) return null;
+  const ok = Array.isArray(providers) ? providers.length : 0;
+  const modes = stores.length
+    ? stores.map((t) => `${t.name}: ${PAU_MODE_LABEL[storeMode(s, t.id)]}`).join(" · ")
+    : PAU_MODE_LABEL[s.mode];
   return (
-    <div className="mx-auto max-w-4xl space-y-4">
-      <ModeSection isAdmin={isAdmin} />
-      {isAdmin && (
-        <>
-          <ProvidersSection />
-          <KnowledgeSection />
-          <PauTrainingSection />
-          <UsageSection />
-          <SandboxSection />
-        </>
-      )}
+    <div className="flex items-center gap-3 rounded-2xl border bg-card p-4 shadow-sm">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+        <Sparkles className="h-5 w-5" aria-hidden />
+      </span>
+      <div className="min-w-0 flex-1">
+        <b className="block">Pau · agente de ventas y cobranzas</b>
+        <span className="block text-xs text-muted-foreground" data-testid="pau-summary">
+          {modes}
+          {isAdmin && ` · ${ok} proveedor${ok === 1 ? "" : "es"} de IA conectado${ok === 1 ? "" : "s"}`}
+        </span>
+      </div>
+      <Badge className="shrink-0 bg-primary/10 text-primary hover:bg-primary/10">Incluido en tu plan</Badge>
+    </div>
+  );
+}
+
+/** «Qué puede hacer»: lo que Pau hace hoy por su cuenta y cuándo pasa a una persona. */
+function PermissionsSection() {
+  const can = [
+    "Consultar precio, stock y envío a Core (nunca los inventa)",
+    "Armar el pedido y crearlo en Comercial › Ventas",
+    "Enviar el POWIP Link de pago",
+    "Enviar fotos y testimonios del producto",
+    "Seguir el guion «Venta en 1 minuto» de la tienda",
+  ];
+  const handoff = [
+    "Le falta un dato que no está en la ficha o en el guion",
+    "El cliente pide hablar con una persona",
+    "Alguien del equipo escribe en ese chat",
+    "No puede usar ningún proveedor de IA",
+  ];
+  return (
+    <div className="grid items-start gap-4 md:grid-cols-2">
+      <section aria-labelledby="pau-perm-h" className="space-y-2 rounded-xl border bg-card p-4">
+        <h2 id="pau-perm-h" className="text-base font-semibold">Lo que Pau puede hacer sola</h2>
+        <ul className="space-y-1.5 text-sm">
+          {can.map((c) => (
+            <li key={c} className="flex gap-2">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden /> {c}
+            </li>
+          ))}
+        </ul>
+        <p className="text-xs text-muted-foreground">Pau no da descuentos: si piden rebaja, pasa la conversación a una persona.</p>
+      </section>
+      <section aria-labelledby="pau-handoff-h" className="space-y-2 rounded-xl border bg-card p-4">
+        <h2 id="pau-handoff-h" className="text-base font-semibold">Cuándo pasa a una persona</h2>
+        <ul className="space-y-1.5 text-sm">
+          {handoff.map((c) => (
+            <li key={c} className="flex gap-2">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden /> {c}
+            </li>
+          ))}
+        </ul>
+        <p className="text-xs text-muted-foreground">En la bandeja verás «Pau pidió ayuda».</p>
+      </section>
+    </div>
+  );
+}
+
+/** Pestaña Pau: agente de ventas con IA de cada negocio. */
+export default function PauView({ defaultTab = "modo" }: { defaultTab?: PauTab }) {
+  const { isAdmin } = useCrmMe();
+  const [tab, setTab] = useState<PauTab>(defaultTab);
+  const tabs = PAU_TABS.filter((t) => isAdmin || !t.admin);
+  const current = tabs.some((t) => t.key === tab) ? tab : "modo";
+  return (
+    <div className="mx-auto max-w-5xl space-y-4">
+      <PauSummary isAdmin={isAdmin} />
+      <div role="tablist" aria-label="Secciones de Pau" className="flex flex-wrap gap-1 border-b">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            aria-selected={current === t.key}
+            onClick={() => setTab(t.key)}
+            className={cn(
+              "-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+              current === t.key
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" className="space-y-4">
+        {current === "modo" && <ModeSection isAdmin={isAdmin} />}
+        {current === "pers" && (
+          <>
+            <KnowledgeSection />
+            <SandboxSection />
+          </>
+        )}
+        {current === "perm" && <PermissionsSection />}
+        {current === "prov" && <ProvidersSection />}
+        {current === "apr" && <PauTrainingSection />}
+        {current === "cons" && <UsageSection />}
+      </div>
     </div>
   );
 }

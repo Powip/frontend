@@ -275,3 +275,40 @@ export interface TikTokOAuthResult {
   account: TikTokAccount;
   webhook: TikTokWebhookResult;
 }
+
+// --- Mi día (ventas de hoy por vendedora; Pau cuenta como vendedora) ---
+
+export type TeamDayState = "paid" | "deposit" | "on_delivery" | "to_validate";
+
+export interface TeamDayOrder {
+  orderId: string;
+  orderNumber: string | null;
+  storeId: string | null;
+  conversationId: string | null;
+  customerName: string | null;
+  sellerId: string;
+  sellerName: string;
+  units: number;
+  total: number;
+  paid: number;
+  pending: number;
+  state: TeamDayState;
+  createdAt: string;
+}
+
+export interface TeamDay {
+  /** userId de la vendedora, `pau` o `all`. */
+  who: string;
+  goal: number;
+  count: number;
+  units: number;
+  billed: number;
+  collectedFull: number;
+  deposits: number;
+  depositOrders: number;
+  pending: number;
+  pendingToValidate: number;
+  pendingOnDelivery: number;
+  sellers: TeamPerson[];
+  orders: TeamDayOrder[];
+}

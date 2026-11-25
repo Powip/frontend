@@ -37,63 +37,37 @@ export default function InboxIndicators({ active, onChange, storeId }: Props) {
   if (!d) return null;
 
   const sla = n(d.slaMinutes);
-  const items: Array<{ key: InboxIndicator; label: string; count: number; hint?: string; tone: string }> = [
+  // Las 4 tarjetas del mockup 152; las dos primeras filtran la lista.
+  const cards: Array<{ key: InboxIndicator; label: string; count: number; hint: string; tone: string }> = [
     {
       key: "unanswered",
       label: "Sin responder",
       count: n(d.unanswered),
-      hint: n(d.mineUnanswered) > 0 ? `${n(d.mineUnanswered)} tuyas` : undefined,
+      hint: n(d.mineUnanswered) > 0 ? `${n(d.mineUnanswered)} tuyas` : "Clientes esperando a una vendedora",
       tone: "text-red-600 dark:text-red-400",
     },
     {
       key: "overSla",
       label: "Fuera de tiempo",
       count: n(d.overSla),
-      hint: sla > 0 ? `más de ${sla} min` : undefined,
+      hint: sla > 0 ? `Esperan más de ${sla} min` : "Esperan más de lo acordado",
       tone: "text-orange-600 dark:text-orange-400",
     },
-    { key: "unassigned", label: "Sin asignar", count: n(d.unassigned), tone: "text-foreground" },
-    { key: "pauHelp", label: "Pau pidió ayuda", count: n(d.pauHelp), tone: "text-amber-700 dark:text-amber-400" },
-    { key: "thinking", label: "Lo están pensando", count: n(d.thinking), tone: "text-amber-700 dark:text-amber-400" },
   ];
-  const allZero = items.every((i) => i.count === 0);
-  // Cobros de los POWIP Link del chat; solo se muestran si el servidor los envía.
-  const hasSales = typeof d.pendingLinks === "number" || typeof d.collectedToday === "number";
-  const sales = hasSales ? (
-    <div role="group" aria-label="Cobros del chat" className="grid grid-cols-2 gap-2">
-      <KpiCard
-        label="Links por cobrar"
-        value={n(d.pendingLinks)}
-        tone={n(d.pendingLinks) > 0 ? "text-primary" : "text-muted-foreground"}
-        detail={n(d.pendingLinksAmount) > 0 ? money(n(d.pendingLinksAmount)) : "POWIP Link"}
-      />
-      <KpiCard
-        label="Cobrado hoy"
-        value={money(n(d.collectedToday))}
-        tone={n(d.collectedToday) > 0 ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}
-        detail="POWIP Link"
-      />
-    </div>
-  ) : null;
-
-  if (allZero && !active) {
-    return (
-      <div className={cn("grid gap-2", sales && "lg:grid-cols-[5fr_2fr] lg:items-stretch")}>
-        <p
-          role="status"
-          className="flex items-center gap-2 rounded-xl border bg-card px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400"
-        >
-          <CheckCircle2 className="h-4 w-4" aria-hidden /> Todo al día
-        </p>
-        {sales}
-      </div>
-    );
-  }
+  // Filtros que el mockup deja en la lista y no en tarjetas.
+  const chips: Array<{ key: InboxIndicator; label: string; count: number }> = [
+    { key: "unassigned", label: "Sin asignar", count: n(d.unassigned) },
+    { key: "pauHelp", label: "Pau pidió ayuda", count: n(d.pauHelp) },
+    { key: "thinking", label: "Lo están pensando", count: n(d.thinking) },
+  ];
+  const links = n(d.pendingLinks);
+  const linksAmount = n(d.pendingLinksAmount);
+  const collected = n(d.collectedToday);
 
   return (
-    <div className={cn("grid gap-2", sales && "lg:grid-cols-[5fr_2fr]")}>
-      <div role="group" aria-label="Indicadores de la bandeja" className="grid grid-cols-2 gap-2 md:grid-cols-5">
-        {items.map((i) => (
+    <div className="space-y-2">
+      <div role="group" aria-label="Indicadores de la bandeja" className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        {cards.map((i) => (
           <button
             key={i.key}
             type="button"
@@ -108,8 +82,40 @@ export default function InboxIndicators({ active, onChange, storeId }: Props) {
             <KpiBody label={i.label} value={i.count} tone={i.count > 0 ? i.tone : "text-muted-foreground"} detail={i.hint} />
           </button>
         ))}
+        <KpiCard
+          label="Links por pagar"
+          value={links}
+          tone={links > 0 ? "text-teal-700 dark:text-teal-400" : "text-muted-foreground"}
+          detail={`${money(linksAmount)} en carritos abiertos`}
+        />
+        <KpiCard
+          label="Cobrado hoy por chat"
+          value={money(collected)}
+          tone={collected > 0 ? "text-emerald-700 dark:text-emerald-400" : "text-muted-foreground"}
+          detail="Pedidos pagados por link"
+        />
       </div>
-      {sales}
+      <div role="group" aria-label="Más filtros" className="flex flex-wrap items-center gap-1.5">
+        {chips.map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            aria-pressed={active === c.key}
+            onClick={() => onChange(active === c.key ? null : c.key)}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-full border bg-card px-2.5 py-0.5 text-xs text-muted-foreground hover:bg-accent/50",
+              active === c.key && "border-primary bg-accent text-foreground",
+            )}
+          >
+            <b className={cn(c.count > 0 && "text-amber-700 dark:text-amber-400")}>{c.count}</b> {c.label}
+          </button>
+        ))}
+        {cards.every((c) => c.count === 0) && chips.every((c) => c.count === 0) && (
+          <span role="status" className="inline-flex items-center gap-1 text-xs text-emerald-700 dark:text-emerald-400">
+            <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> Todo al día
+          </span>
+        )}
+      </div>
     </div>
   );
 }

@@ -36,7 +36,7 @@ interface Props {
 
 /** Barra «Guion» y panel «Respuestas» sobre la caja de mensaje. Nada se envía solo. */
 export default function ContentChatBar({ conversation, text, onFill, windowOpen, compact = false }: Props) {
-  const script = useScript();
+  const script = useScript(true, conversation.storeId);
   const objections = useObjections();
   const general = useGeneralMaterials();
   const update = useUpdateConversation(conversation.id);

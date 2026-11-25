@@ -8,6 +8,8 @@ import { temperatureOf } from "@/components/ventas-chat/temperature";
 import type { Conversation } from "@/types/crm";
 import type { ObjectionDetection } from "@/types/crmSalesTools";
 import { useChatCart } from "./useChatCart";
+import { usePauSettings } from "./useCrmPau";
+import { storeMode } from "@/components/ventas-chat/pau";
 import { useGeneralMaterials, useRegisterObjectionUse, useScript } from "./useCrmContent";
 import { useDetectObjection } from "./useCrmSalesTools";
 
@@ -21,14 +23,20 @@ function objectionOf(detected: ObjectionDetection | undefined): Objection | null
 export function useChatSuggestion(conversation: Conversation | undefined, windowOpen: boolean) {
   const id = conversation?.id ?? null;
   const trigger = conversation?.lastInboundAt ?? null;
-  const steps = useScript().data?.steps ?? [];
+  const steps = useScript(true, conversation?.storeId).data?.steps ?? [];
   const materials = useGeneralMaterials().data ?? [];
   const registerUse = useRegisterObjectionUse(id ?? "");
   const { lowStock } = useChatCart(id);
-  const detected = useDetectObjection(id, trigger, windowOpen).data;
+  // Pau apagado (o modo aún sin leer): sin sugerencias ni detección de objeciones.
+  // Copiloto y «Pau responde solo» sí sugieren.
+  // Manda el modo de la tienda del chat; sin modo propio, el general.
+  const pau = usePauSettings().data;
+  const mode = pau ? storeMode(pau, conversation?.storeId) : undefined;
+  const pauOn = !!mode && mode !== "off";
+  const detected = useDetectObjection(id, trigger, windowOpen && pauOn).data;
   const objection = objectionOf(detected);
   const [dropped, setDropped] = useState<string | null>(null);
-  if (!conversation || !windowOpen || conversation.status === "closed") return null;
+  if (!pauOn || !conversation || !windowOpen || conversation.status === "closed") return null;
 
   const step = steps.length ? currentStep(conversation, steps) : 0;
   const key = `${id}:${trigger ?? ""}:${step}`;

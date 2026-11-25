@@ -12,6 +12,7 @@ import {
   connectTikTokOAuth,
   deleteMetaAccount,
   deleteTikTokAccount,
+  getTeamDay,
   getTeamStats,
   listMetaAccounts,
   listTikTokAccounts,
@@ -31,6 +32,7 @@ import type {
 
 export const teamKeys = {
   stats: (days: number) => ["crm", "team", "stats", days] as const,
+  day: (who: string) => ["crm", "team", "day", who] as const,
   allStats: ["crm", "team", "stats"] as const,
   members: ["crm", "team", "members"] as const,
   audit: ["crm", "audit"] as const,
@@ -47,6 +49,16 @@ export function useTeamStats(days: TeamDays) {
   return useQuery({
     queryKey: teamKeys.stats(days),
     queryFn: () => getTeamStats(days),
+    retry: false,
+    refetchInterval: 60_000,
+  });
+}
+
+/** Mi día: ventas de hoy de una vendedora, de Pau o de todo el equipo. Se refresca cada 60 s. */
+export function useTeamDay(userId?: string) {
+  return useQuery({
+    queryKey: teamKeys.day(userId ?? "me"),
+    queryFn: () => getTeamDay(userId),
     retry: false,
     refetchInterval: 60_000,
   });

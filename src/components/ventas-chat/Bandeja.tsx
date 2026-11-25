@@ -8,6 +8,7 @@ import { useCrmMe } from "@/hooks/useCrmMe";
 import { NATIVE_SELECT_CLASS } from "./format";
 import ConversationList from "./ConversationList";
 import InboxIndicators, { type InboxIndicator } from "./InboxIndicators";
+import MyDay from "./MyDay";
 import ChatPanel from "./ChatPanel";
 import SoundsControl from "./SoundsControl";
 
@@ -94,11 +95,15 @@ export default function Bandeja() {
         </span>
       </div>
 
+      <MyDay onOpenChat={(id) => select(id)} compact={focused} />
+
       {!focused && (
         <InboxIndicators active={indicator} onChange={setIndicator} storeId={storeId} />
       )}
 
-      <div className="grid h-[calc(100vh-14rem)] min-h-[420px] overflow-hidden rounded-lg border bg-card md:grid-cols-[340px_1fr]">
+      {/* Alto del mockup 152: la bandeja ocupa toda la ventana (mín. 780 px) y cada columna
+          tiene su propio scroll; en celular, el alto visible menos la cabecera. */}
+      <div className="grid h-[calc(100dvh-190px)] min-h-[420px] overflow-hidden rounded-2xl border bg-card shadow-sm md:h-[max(780px,calc(100vh-30px))] md:grid-cols-[330px_minmax(0,1fr)]">
         <div className={cn("min-h-0 border-r", selectedId ? "hidden md:block" : "block")}>
           <ConversationList
             selectedId={selectedId}

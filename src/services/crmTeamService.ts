@@ -19,6 +19,7 @@ import type {
   CreateExportInput,
   ExportLogItem,
   ExportSheet,
+  TeamDay,
   TeamDays,
   TeamPerson,
   TeamStats,
@@ -30,6 +31,13 @@ const BASE = `${API.crm}/crm`;
 
 export async function getTeamStats(days: TeamDays): Promise<TeamStats> {
   return (await axiosAuth.get<TeamStats>(`${BASE}/team/stats`, { params: { days } })).data;
+}
+
+/** Ventas de hoy. La vendedora solo recibe lo suyo; el supervisor elige (`all` = todo el equipo). */
+export async function getTeamDay(userId?: string): Promise<TeamDay> {
+  return (
+    await axiosAuth.get<TeamDay>(`${BASE}/team/day`, { params: userId ? { userId } : undefined })
+  ).data;
 }
 
 export async function listTeamMembers(): Promise<TeamPerson[]> {

@@ -285,6 +285,18 @@ describe("Chat · guion y respuestas", () => {
 });
 
 describe("Chat · pantalla del mockup 152", () => {
+  // La sugerencia solo existe con Pau encendido (Copiloto o «Pau responde solo»).
+  beforeEach(() => {
+    s.getPauSettings.mockResolvedValue({
+      mode: "copilot",
+      storeModes: {},
+      instructions: "",
+      knowledge: "",
+      monthlyTokenCap: null,
+      hasProvider: true,
+    });
+  });
+
   const RULES = { cutoffTime: "13:00", lastUnits: 3, instantReply: true, promo: "2x1 en polos hoy" };
 
   it("windowHoursLeft redondea hacia arriba y da 0 si cerró", () => {

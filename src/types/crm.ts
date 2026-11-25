@@ -517,7 +517,10 @@ export interface BroadcastInput {
 export type PauMode = "off" | "copilot" | "auto";
 
 export interface PauSettings {
+  /** Modo de las tiendas sin modo propio. */
   mode: PauMode;
+  /** Modo por tienda (`storeId` → modo); manda sobre `mode`. */
+  storeModes?: Record<string, PauMode>;
   instructions: string;
   knowledge: string;
   monthlyTokenCap: number | null;
@@ -526,6 +529,8 @@ export interface PauSettings {
 
 export interface PauSettingsInput {
   mode?: PauMode;
+  /** Se mezcla con lo guardado: solo cambian las tiendas enviadas. */
+  storeModes?: Record<string, PauMode>;
   instructions?: string;
   knowledge?: string;
   /** null quita el tope. */

@@ -29,7 +29,8 @@ interface FillProps {
 
 /** Barra «Venta en 1 minuto»: pasos del guion numerados, hechos y actual. */
 export function SaleStepsBar({ conversation, text, onFill, windowOpen }: FillProps) {
-  const script = useScript();
+  // Guion de la tienda del chat (sin guion propio, el de la empresa o la metodología).
+  const script = useScript(true, conversation.storeId);
   const update = useUpdateConversation(conversation.id);
   const { lowStock } = useChatCart(conversation.id);
   const [pending, setPending] = useState<number | null>(null);
@@ -131,7 +132,7 @@ export function QuickChips({
   onInsert: (text: string) => void;
   disabled: boolean;
 }) {
-  const script = useScript();
+  const script = useScript(true, conversation.storeId);
   const steps = script.data?.steps ?? [];
   const cur = steps.length ? currentStep(conversation, steps) : 0;
   const chip =
