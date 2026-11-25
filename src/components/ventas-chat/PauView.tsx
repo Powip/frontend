@@ -1,6 +1,21 @@
 "use client";
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, Info, Loader2, Lock, Pencil, Plus, Sparkles, Trash2, XCircle } from "lucide-react";
+import {
+  AlertTriangle,
+  Bot,
+  CheckCircle2,
+  Info,
+  Loader2,
+  Lock,
+  MessageSquare,
+  Pencil,
+  Plus,
+  Sparkles,
+  Store,
+  Trash2,
+  XCircle,
+  type LucideIcon,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -27,6 +42,7 @@ import {
   CapabilitiesSection,
   PersonalitySection,
   PhaseChannelsSection,
+  StorePhaseSection,
   ProviderRulesSection,
   UsageByProviderSection,
 } from "./PauConfigSections";
@@ -40,16 +56,68 @@ import {
 } from "./pau";
 import { relativeTime } from "./format";
 
-function ModeSection({ isAdmin }: { isAdmin: boolean }) {
+const MODE_ICON: Record<PauMode, LucideIcon> = { off: MessageSquare, copilot: Sparkles, auto: Bot };
+
+type StoreTarget = { id: string; name: string };
+
+/** Tiendas que se configuran; sin tiendas conocidas, el modo general como una sola tienda. */
+function useStoreTargets(): StoreTarget[] {
+  const { stores } = useCrmMe();
+  return stores.length ? stores : [{ id: "", name: "Todas las tiendas" }];
+}
+
+/**
+ * Selector de tienda (KUNCA, LIVII…): Pau se configura por tienda, una a la vez,
+ * en lugar de apilar todas las tiendas en una sola página.
+ */
+function StorePicker({
+  targets,
+  value,
+  onChange,
+}: {
+  targets: StoreTarget[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  if (targets.length < 2) return null;
+  return (
+    <div role="tablist" aria-label="Tienda a configurar" className="flex flex-wrap items-center gap-2">
+      <span className="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <Store className="h-3.5 w-3.5" aria-hidden /> Tienda
+      </span>
+      {targets.map((t) => (
+        <button
+          key={t.id || "all"}
+          type="button"
+          role="tab"
+          aria-selected={value === t.id}
+          onClick={() => onChange(t.id)}
+          className={cn(
+            "rounded-full border px-3 py-1 text-sm font-medium transition-colors",
+            value === t.id
+              ? "border-primary bg-primary/10 text-primary"
+              : "bg-card text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {t.name}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function ModeSection({ isAdmin, storeId }: { isAdmin: boolean; storeId: string }) {
   const settings = usePauSettings();
   const update = useUpdatePauSettings();
   const { stores } = useCrmMe();
-  // Tienda a la que se le pide confirmar «Pau vende y cobra» ("" = todas las tiendas).
+  const allTargets = useStoreTargets();
+  // Tienda a la que se le pide confirmar «Pau atiende y cotiza» ("" = todas las tiendas).
   const [confirmAuto, setConfirmAuto] = useState<string | null>(null);
   const s = settings.data;
   const err = settings.isError ? crmError(settings.error) : null;
-  // Sin tiendas conocidas se configura el modo general, como una sola tienda.
-  const targets = stores.length ? stores : [{ id: "", name: "Todas las tiendas" }];
+  // El administrador configura la tienda elegida; la vendedora ve el modo de todas.
+  const selected = allTargets.filter((t) => t.id === storeId);
+  const targets = isAdmin && selected.length ? selected : allTargets;
 
   const save = (storeId: string, mode: PauMode) =>
     update.mutate(storeId ? { storeModes: { [storeId]: mode } } : { mode });
@@ -68,8 +136,7 @@ function ModeSection({ isAdmin }: { isAdmin: boolean }) {
   return (
     <section aria-labelledby="pau-quien" className="space-y-3">
       <div>
-        <h2 id="pau-quien" className="text-base font-semibold">Quién vende</h2>
-        <p className="text-sm text-muted-foreground">El negocio decide quién vende en cada tienda.</p>
+        <h2 id="pau-quien" className="sr-only">Quién vende</h2>
       </div>
       {settings.isLoading && (
         <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -118,15 +185,19 @@ function ModeSection({ isAdmin }: { isAdmin: boolean }) {
           {targets.map((t) => {
             const current = t.id ? storeMode(s, t.id) : s.mode;
             return (
-              <div key={t.id || "all"} className="space-y-2 rounded-xl border bg-card p-4">
-                <h3 className="text-sm font-semibold">{t.name}</h3>
+              <div key={t.id || "all"} className="space-y-4 rounded-2xl border bg-card p-5 shadow-sm" data-testid="pau-store-card">
+                <div>
+                  <h3 className="text-base font-semibold uppercase tracking-wide">{t.name}</h3>
+                  <p className="text-xs text-muted-foreground">El negocio decide quién vende en cada tienda</p>
+                </div>
                 <div
                   role="radiogroup"
                   aria-label={`Quién vende en ${t.name}`}
-                  className="grid gap-2 md:grid-cols-3"
+                  className="grid gap-3 md:grid-cols-3"
                 >
                   {PAU_MODE_OPTIONS.map((o) => {
                     const checked = current === o.value;
+                    const Icon = MODE_ICON[o.value];
                     const blocked = o.value !== "off" && !s.hasProvider;
                     return (
                       <button
@@ -137,11 +208,20 @@ function ModeSection({ isAdmin }: { isAdmin: boolean }) {
                         disabled={blocked || update.isPending}
                         onClick={() => choose(t.id, o.value)}
                         className={cn(
-                          "flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors",
+                          "flex flex-col items-start gap-1.5 rounded-xl border p-4 text-left transition-colors",
                           "hover:bg-accent/50 disabled:cursor-not-allowed disabled:opacity-50",
                           checked && "border-primary bg-accent",
                         )}
                       >
+                        <span
+                          aria-hidden
+                          className={cn(
+                            "mb-1 grid h-8 w-8 place-items-center rounded-lg",
+                            checked ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+                          )}
+                        >
+                          <Icon className="h-4 w-4" />
+                        </span>
                         <span className="flex items-center gap-2 text-sm font-semibold">
                           {o.title}
                           {checked && <CheckCircle2 className="h-4 w-4 text-primary" aria-hidden />}
@@ -151,6 +231,7 @@ function ModeSection({ isAdmin }: { isAdmin: boolean }) {
                     );
                   })}
                 </div>
+                <StorePhaseSection storeId={t.id} storeName={t.name} />
               </div>
             );
           })}
@@ -158,9 +239,9 @@ function ModeSection({ isAdmin }: { isAdmin: boolean }) {
       )}
       <ConfirmDialog
         open={confirmAuto !== null}
-        title="¿Dejar que Pau venda y cobre sola?"
-        description="Pau escribirá a clientes reales por WhatsApp sin que nadie apruebe cada mensaje. Pasa el chat a una persona cuando le falta un dato, cuando pide ayuda o cuando alguien del equipo envía un mensaje en ese chat; en la bandeja verás «Pau pidió ayuda». Puedes tomar cualquier chat o apagar a Pau cuando quieras."
-        confirmLabel="Sí, que venda sola"
+        title="¿Dejar que Pau atienda y cotice sola?"
+        description="Pau escribirá a clientes reales sin que nadie apruebe cada mensaje. Llega hasta la cotización: no confirma la venta ni cobra. Pasa el chat a una persona al enviar la cotización, cuando le falta un dato, cuando pide ayuda o cuando alguien del equipo envía un mensaje en ese chat; en la bandeja verás «Pau pidió ayuda». Puedes tomar cualquier chat o apagar a Pau cuando quieras."
+        confirmLabel="Sí, que cotice sola"
         onCancel={() => setConfirmAuto(null)}
         onConfirm={() => {
           const id = confirmAuto ?? "";
@@ -466,8 +547,13 @@ export default function PauView({ defaultTab = "modo" }: { defaultTab?: PauTab }
   const current = tabs.some((t) => t.key === tab) ? tab : "modo";
   const canReview = tabs.some((t) => t.key === "apr");
   const pendingCount = usePauLearning(canReview).data?.pending.length ?? 0;
+  const targets = useStoreTargets();
+  const [storeChoice, setStoreChoice] = useState("");
+  // Tienda elegida en «Quién vende»; por defecto la primera (KUNCA, LIVII…).
+  const storeId = targets.some((t) => t.id === storeChoice) ? storeChoice : targets[0].id;
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
+    // Sección propia de Pau a todo el ancho (mockup 152), no una columna centrada.
+    <div className="w-full space-y-4" data-testid="pau-view">
       <PauSummary isAdmin={isAdmin} />
       <div role="tablist" aria-label="Secciones de Pau" className="flex flex-wrap gap-1 border-b">
         {tabs.map((t) => (
@@ -497,9 +583,15 @@ export default function PauView({ defaultTab = "modo" }: { defaultTab?: PauTab }
         ))}
       </div>
       <div role="tabpanel" className="space-y-4">
+        {current !== "modo" && targets.length > 1 && (
+          <p className="text-xs text-muted-foreground" data-testid="pau-all-stores">
+            Esta configuración vale para todas las tiendas. Quién vende y la fase se eligen por tienda en «Quién vende».
+          </p>
+        )}
         {current === "modo" && (
           <>
-            <ModeSection isAdmin={isAdmin} />
+            {isAdmin && <StorePicker targets={targets} value={storeId} onChange={setStoreChoice} />}
+            <ModeSection isAdmin={isAdmin} storeId={storeId} />
             {isAdmin && <PhaseChannelsSection />}
           </>
         )}

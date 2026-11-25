@@ -25,12 +25,12 @@ export const PAU_PHASES: Array<{ value: PauPhase; title: string; description: st
   {
     value: 2,
     title: "Fase 2 · Ventas simples",
-    description: "Cierra sola ventas con pago completo. Adelantos y casos especiales pasan a persona.",
+    description: "Cotiza sola consultas simples. Casos especiales pasan a persona.",
   },
   {
     value: 3,
     title: "Fase 3 · Autonomía",
-    description: "Vende y cobra sola según lo que el negocio permita en «Qué puede hacer».",
+    description: "Cotiza sola todo lo que el negocio permita. El cierre y el cobro los hace una persona.",
   },
 ];
 
@@ -40,6 +40,10 @@ const CHANNELS: Array<{ key: PauChannelKey; label: string; badge: ConversationCh
   { key: "messenger", label: "Messenger", badge: "messenger" },
   { key: "comments", label: "Comentarios", badge: "instagram", hint: "En comentarios públicos solo responde la vendedora" },
 ];
+
+/** Pau solo cotiza (decisión de Jairo, 25-nov): cerrar y cobrar lo hace siempre una persona. */
+const CLOSING: PauCapability[] = ["createOrder", "powipLink", "deposit", "collectBalance"];
+const CLOSING_HINT = "Lo hace una persona: Pau solo cotiza y pasa el chat";
 
 const CAPABILITIES: Array<{ key: PauCapability; label: string; hint?: string }> = [
   { key: "createOrder", label: "Crear el pedido en Comercial › Ventas" },
@@ -153,52 +157,58 @@ function Loading() {
   );
 }
 
-/** P4–P6: fase por tienda, canales donde responde Pau y qué hace fuera del horario. */
-export function PhaseChannelsSection() {
+/**
+ * P4: fase de Pau en una tienda. Va dentro de la tarjeta de esa tienda en «Quién vende»
+ * (mockup 152: «FASE DE PAU EN KUNCA»).
+ */
+export function StorePhaseSection({ storeId, storeName }: { storeId: string; storeName: string }) {
   const { config, loading, save, saving } = useConfig();
-  const { stores } = useCrmMe();
   if (loading) return <Loading />;
   if (!config) return null;
-  const targets = stores.length ? stores : [{ id: "", name: "Todas las tiendas" }];
-  const phaseOf = (id: string): PauPhase => (id && config.phases[id] !== undefined ? config.phases[id] : config.phase);
+  const current: PauPhase =
+    storeId && config.phases[storeId] !== undefined ? config.phases[storeId] : config.phase;
+  return (
+    <div className="space-y-2" data-testid="pau-store-phase">
+      <h4 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Fase de Pau en {storeName}
+      </h4>
+      <div role="radiogroup" aria-label={`Fase de Pau en ${storeName}`} className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {PAU_PHASES.map((p) => {
+          const checked = current === p.value;
+          return (
+            <button
+              key={p.value}
+              type="button"
+              role="radio"
+              aria-checked={checked}
+              disabled={saving}
+              onClick={() =>
+                !checked && save(storeId ? { phases: { [storeId]: p.value } } : { phase: p.value }, "Fase guardada")
+              }
+              className={cn(
+                "flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors hover:bg-accent/50",
+                checked && "border-teal-600 bg-teal-50 dark:bg-teal-950/40",
+              )}
+            >
+              <span className="text-sm font-semibold">{p.title}</span>
+              <span className="text-xs text-muted-foreground">{p.description}</span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-xs text-muted-foreground">Piloto recomendado: empezar en Fase 0 y subir según resultados.</p>
+    </div>
+  );
+}
+
+/** P5–P6: canales donde responde Pau y qué hace fuera del horario (para todas las tiendas). */
+export function PhaseChannelsSection() {
+  const { config, loading, save, saving } = useConfig();
+  if (loading) return <Loading />;
+  if (!config) return null;
   return (
     <>
-      <Card
-        id="pau-fases"
-        title="Fase de adopción"
-        subtitle="De copiloto a autónomo: sube de fase cuando confíes en cómo vende Pau en cada tienda."
-      >
-        {targets.map((t) => (
-          <div key={t.id || "all"} className="space-y-2">
-            <h3 className="text-sm font-semibold">{t.name}</h3>
-            <div role="radiogroup" aria-label={`Fase de Pau en ${t.name}`} className="grid gap-2 md:grid-cols-4">
-              {PAU_PHASES.map((p) => {
-                const checked = phaseOf(t.id) === p.value;
-                return (
-                  <button
-                    key={p.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={checked}
-                    disabled={saving}
-                    onClick={() =>
-                      !checked && save(t.id ? { phases: { [t.id]: p.value } } : { phase: p.value }, "Fase guardada")
-                    }
-                    className={cn(
-                      "flex flex-col items-start gap-1 rounded-lg border p-3 text-left transition-colors hover:bg-accent/50",
-                      checked && "border-primary bg-accent",
-                    )}
-                  >
-                    <span className="text-sm font-semibold">{p.title}</span>
-                    <span className="text-xs text-muted-foreground">{p.description}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </Card>
-      <Card id="pau-canales" title="Canales donde responde Pau">
+      <Card id="pau-canales" title="Canales donde responde Pau" subtitle="Para todas las tiendas. El CRM atiende WhatsApp, Instagram y Messenger.">
         <div>
           {CHANNELS.map((c) => (
             <Row
@@ -218,16 +228,6 @@ export function PhaseChannelsSection() {
               />
             </Row>
           ))}
-          <Row
-            label={
-              <span className="flex items-center gap-2">
-                <ChannelBadge channel="tiktok" /> TikTok
-              </span>
-            }
-            hint="La API de mensajes de TikTok está en beta. Se activa cuando esté disponible en Perú"
-          >
-            <Badge variant="secondary">Próximamente</Badge>
-          </Row>
           <Row label="Fuera del horario de atención">
             <select
               aria-label="Fuera del horario de atención"
@@ -380,11 +380,11 @@ export function CapabilitiesSection() {
       <Card id="pau-perm-h" title="Lo que Pau puede hacer sola">
         <div>
           {CAPABILITIES.map((c) => (
-            <Row key={c.key} label={c.label} hint={c.hint}>
+            <Row key={c.key} label={c.label} hint={CLOSING.includes(c.key) ? CLOSING_HINT : c.hint}>
               <Switch
                 aria-label={c.label}
-                checked={config.capabilities[c.key]}
-                disabled={saving}
+                checked={CLOSING.includes(c.key) ? false : config.capabilities[c.key]}
+                disabled={saving || CLOSING.includes(c.key)}
                 onCheckedChange={(v) => save({ capabilities: { [c.key]: v } }, "Permisos guardados")}
               />
             </Row>

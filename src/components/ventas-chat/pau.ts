@@ -29,9 +29,9 @@ export const PAU_MODE_OPTIONS: Array<{
   },
   {
     value: "auto",
-    title: "Pau vende y cobra",
+    title: "Pau atiende y cotiza",
     description:
-      "Pau atiende, vende y cobra sola por WhatsApp, y también sugiere. Pasa a una persona cuando corresponde.",
+      "Pau atiende y cotiza sola por chat. Con la cotización enviada pasa el chat a una persona, que cierra la venta y cobra.",
   },
 ];
 
@@ -46,7 +46,7 @@ export function storeMode(
 export const PAU_MODE_LABEL: Record<PauMode, string> = {
   off: "Solo CRM",
   copilot: "Copiloto",
-  auto: "Pau vende y cobra",
+  auto: "Pau atiende y cotiza",
 };
 
 export const PROVIDER_LABEL: Record<PauProviderKind, string> = {

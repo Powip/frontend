@@ -138,23 +138,28 @@ beforeEach(() => {
 });
 
 describe("Pau · fase y canales (P4–P6)", () => {
-  it("fase por tienda: guarda solo la tienda tocada", async () => {
+  it("fase por tienda: se elige la tienda y guarda solo la tienda tocada", async () => {
     setup("modo");
+    // Una tienda a la vez: primero KUNCA; LIVII se elige en el selector de tienda.
+    const kunca = await screen.findByRole("radiogroup", { name: "Fase de Pau en KUNCA" });
+    expect(within(kunca).getByRole("radio", { name: /Fase 2/ })).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("radiogroup", { name: "Fase de Pau en LIVII" })).not.toBeInTheDocument();
+    const picker = screen.getByRole("tablist", { name: "Tienda a configurar" });
+    fireEvent.click(within(picker).getByRole("tab", { name: "LIVII" }));
     const livii = await screen.findByRole("radiogroup", { name: "Fase de Pau en LIVII" });
     expect(within(livii).getByRole("radio", { name: /Fase 3/ })).toHaveAttribute("aria-checked", "true");
-    const kunca = screen.getByRole("radiogroup", { name: "Fase de Pau en KUNCA" });
-    expect(within(kunca).getByRole("radio", { name: /Fase 2/ })).toHaveAttribute("aria-checked", "true");
     fireEvent.click(within(livii).getByRole("radio", { name: /Fase 0/ }));
     await waitFor(() => expect(s.updatePauSettings).toHaveBeenCalledWith({ config: { phases: { st2: 0 } } }));
   });
 
-  it("apagar Instagram y TikTok como próximamente", async () => {
+  it("apagar Instagram; TikTok no se muestra (el CRM es solo WhatsApp y Meta)", async () => {
     setup("modo");
     fireEvent.click(await screen.findByRole("switch", { name: "Instagram" }));
     await waitFor(() =>
       expect(s.updatePauSettings).toHaveBeenCalledWith({ config: { channels: { instagram: false } } }),
     );
-    expect(screen.getByText("Próximamente")).toBeInTheDocument();
+    expect(screen.queryByText("Próximamente")).not.toBeInTheDocument();
+    expect(screen.queryByText("TikTok")).not.toBeInTheDocument();
   });
 
   it("la vendedora no ve fases ni canales", async () => {
@@ -182,6 +187,22 @@ describe("Pau · personalidad (P7)", () => {
 });
 
 describe("Pau · qué puede hacer (P8)", () => {
+  it("Pau solo cotiza: crear pedido, link de pago, adelanto y cobro quedan apagados y bloqueados (25-nov)", async () => {
+    setup("perm");
+    for (const name of [
+      "Crear el pedido en Comercial › Ventas",
+      "Enviar el POWIP Link de pago",
+      "Ofrecer pagar solo el adelanto (según la política de la tienda)",
+      "Cobrar adelantos y saldos pendientes",
+    ]) {
+      const sw = await screen.findByRole("switch", { name });
+      expect(sw).toBeDisabled();
+      expect(sw).not.toBeChecked();
+    }
+    expect(screen.getAllByText("Lo hace una persona: Pau solo cotiza y pasa el chat")).toHaveLength(4);
+    expect(screen.getByRole("switch", { name: "Enviar fotos y testimonios" })).toBeEnabled();
+  });
+
   it("switch de permiso y monto para pasar a persona", async () => {
     setup("perm");
     fireEvent.click(await screen.findByRole("switch", { name: "Dar descuentos" }));
