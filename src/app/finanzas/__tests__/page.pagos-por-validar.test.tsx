@@ -320,6 +320,90 @@ describe("Finanzas › Pagos por validar (FEAT-33 B1)", () => {
     expect(screen.queryByText("ORD-153866")).not.toBeInTheDocument();
   });
 
+  it("CRM · Pau: lists Pau-validated receipts, also under Todos, and the boss accepts there", async () => {
+    asReviewer();
+    const pauReceipt = {
+      id: "rcpt-1",
+      conversationId: "conv-1",
+      orderId: null,
+      orderNumber: null,
+      quotationId: null,
+      status: "porval",
+      method: "YAPE",
+      methodLabel: "Yape",
+      amount: 129,
+      operationNumber: "00123456",
+      mime: "image/png",
+      fileName: "yape.png",
+      hasFile: true,
+      destination: "local",
+      coreError: null,
+      uploadedByName: "Pau",
+      reviewedByName: null,
+      reviewNote: null,
+      reviewedAt: null,
+      createdAt: "2026-11-25T15:00:00Z",
+      validatedBy: "pau",
+      pauChecks: {
+        read: { isReceipt: true, amount: 129, date: "2026-11-25", destination: "*** 321", holder: null, operationNumber: "00123456", method: "Yape" },
+        expected: 129,
+        isReceipt: true,
+        amountMatch: true,
+        dateRecent: true,
+        destinationOk: true,
+        operationUnique: true,
+        passed: true,
+        failed: [],
+      },
+      pauSale: { id: "sale-1", items: "2 polos negros talla M", total: 129, customerName: "Ana Pérez", district: "Surco", status: "por_validar" },
+    };
+    mockQueue([manualOrder()]);
+    const base = mockedAxios.get.getMockImplementation()!;
+    mockedAxios.get.mockImplementation((url: string, config?: { params?: Record<string, string> }) =>
+      url.includes("/receipts/queue")
+        ? (expect(config?.params).toEqual({ status: "porval", validatedBy: "pau" }), Promise.resolve({ data: { items: [pauReceipt] } }))
+        : base(url, config),
+    );
+    mockedAxios.patch.mockResolvedValue({ data: { ...pauReceipt, status: "aprobado" } });
+    render(<FinanzasPage />);
+    expect(await screen.findByRole("tab", { name: "Pagos por validar (2)" })).toBeInTheDocument();
+    // «Todos» también trae las ventas de Pau.
+    expect(await screen.findByText("Ana Pérez")).toBeInTheDocument();
+    expect(screen.getByText("ORD-153900")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "CRM · Pau" }));
+    expect(screen.getByRole("button", { name: "CRM · Pau" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("ORD-153900")).not.toBeInTheDocument();
+    const card = screen.getByTestId("crm-pau-receipt");
+    expect(within(card).getByText("Validado por Pau")).toBeInTheDocument();
+    expect(within(card).getByText("Monto igual a la venta")).toBeInTheDocument();
+    fireEvent.click(within(card).getByRole("button", { name: "Aceptar pago" }));
+    await waitFor(() =>
+      expect(mockedAxios.patch).toHaveBeenCalledWith(expect.stringContaining("/receipts/rcpt-1/review"), { approve: true }),
+    );
+  });
+
+  it("CRM · Pau: rejecting sends the reason", async () => {
+    asReviewer();
+    mockQueue([]);
+    const base = mockedAxios.get.getMockImplementation()!;
+    mockedAxios.get.mockImplementation((url: string, config?: unknown) =>
+      url.includes("/receipts/queue")
+        ? Promise.resolve({ data: { items: [{ id: "rcpt-2", amount: 129, methodLabel: "Yape", hasFile: false, operationNumber: null, pauChecks: null, pauSale: null, validatedBy: "pau" }] } })
+        : base(url, config),
+    );
+    mockedAxios.patch.mockResolvedValue({ data: {} });
+    mockSearch = "origen=pau";
+    render(<FinanzasPage />);
+    const card = await screen.findByTestId("crm-pau-receipt");
+    fireEvent.click(within(card).getByRole("button", { name: "Rechazar" }));
+    fireEvent.click(within(card).getByRole("radio", { name: "Monto distinto" }));
+    fireEvent.click(within(card).getByRole("button", { name: "Rechazar y avisar" }));
+    await waitFor(() =>
+      expect(mockedAxios.patch).toHaveBeenCalledWith(expect.stringContaining("/receipts/rcpt-2/review"), { approve: false, reason: "monto" }),
+    );
+  });
+
   it("opens already filtered from the Live console link", async () => {
     mockSearch = "tab=pagos&origen=live";
     mockQueue([liveOrder(), manualOrder()]);

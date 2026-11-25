@@ -134,18 +134,18 @@ describe("Pau · quién atiende", () => {
 
   it("elegir «Pau responde solo» pide confirmación y luego hace PATCH", async () => {
     setup();
-    fireEvent.click(await screen.findByRole("radio", { name: /Pau atiende y cotiza/ }));
+    fireEvent.click(await screen.findByRole("radio", { name: /Pau vende y cobra/ }));
     expect(s.updatePauSettings).not.toHaveBeenCalled();
     const dialog = await screen.findByRole("alertdialog");
-    expect(within(dialog).getByText(/no confirma la venta ni cobra/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Finanzas da el visto final/)).toBeInTheDocument();
     expect(within(dialog).getByText(/pasa el chat a una persona/i)).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Sí, que cotice sola" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sí, que venda sola" }));
     await waitFor(() => expect(s.updatePauSettings).toHaveBeenCalledWith({ mode: "auto" }));
   });
 
   it("cancelar la confirmación no cambia nada", async () => {
     setup();
-    fireEvent.click(await screen.findByRole("radio", { name: /Pau atiende y cotiza/ }));
+    fireEvent.click(await screen.findByRole("radio", { name: /Pau vende y cobra/ }));
     const dialog = await screen.findByRole("alertdialog");
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
     expect(s.updatePauSettings).not.toHaveBeenCalled();
@@ -157,7 +157,7 @@ describe("Pau · quién atiende", () => {
     setup();
     const copilot = await screen.findByRole("radio", { name: /Copiloto/ });
     expect(copilot).toBeDisabled();
-    expect(screen.getByRole("radio", { name: /Pau atiende y cotiza/ })).toBeDisabled();
+    expect(screen.getByRole("radio", { name: /Pau vende y cobra/ })).toBeDisabled();
     expect(screen.getByRole("radio", { name: /Solo CRM/ })).not.toBeDisabled();
     expect(screen.getByRole("alert")).toHaveTextContent("Proveedores de IA");
   });

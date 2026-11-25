@@ -547,7 +547,7 @@ export type PauCapability =
   | "catalog"
   | "material"
   | "discounts";
-export type PauModelTask = "chat" | "audio" | "summary";
+export type PauModelTask = "chat" | "audio" | "summary" | "image";
 
 export interface PauConfig {
   /** Fase por tienda (`storeId` → fase); sin fase propia, `phase`. */

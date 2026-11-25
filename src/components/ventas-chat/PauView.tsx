@@ -111,7 +111,7 @@ function ModeSection({ isAdmin, storeId }: { isAdmin: boolean; storeId: string }
   const update = useUpdatePauSettings();
   const { stores } = useCrmMe();
   const allTargets = useStoreTargets();
-  // Tienda a la que se le pide confirmar «Pau atiende y cotiza» ("" = todas las tiendas).
+  // Tienda a la que se le pide confirmar «Pau vende y cobra» ("" = todas las tiendas).
   const [confirmAuto, setConfirmAuto] = useState<string | null>(null);
   const s = settings.data;
   const err = settings.isError ? crmError(settings.error) : null;
@@ -239,9 +239,9 @@ function ModeSection({ isAdmin, storeId }: { isAdmin: boolean; storeId: string }
       )}
       <ConfirmDialog
         open={confirmAuto !== null}
-        title="¿Dejar que Pau atienda y cotice sola?"
-        description="Pau escribirá a clientes reales sin que nadie apruebe cada mensaje. Llega hasta la cotización: no confirma la venta ni cobra. Pasa el chat a una persona al enviar la cotización, cuando le falta un dato, cuando pide ayuda o cuando alguien del equipo envía un mensaje en ese chat; en la bandeja verás «Pau pidió ayuda». Puedes tomar cualquier chat o apagar a Pau cuando quieras."
-        confirmLabel="Sí, que cotice sola"
+        title="¿Dejar que Pau venda y cobre sola?"
+        description="Pau escribirá a clientes reales sin que nadie apruebe cada mensaje. Cierra la venta, pide los datos de envío y el comprobante, y lo revisa; Finanzas da el visto final. Nunca inventa precios ni stock, y solo da descuentos dentro de tu permiso. Pasa el chat a una persona en reclamos, salud, pedidos por mayor, cuando le falta un dato, cuando pide ayuda o cuando alguien del equipo envía un mensaje en ese chat; en la bandeja verás «Pau pidió ayuda». Puedes tomar cualquier chat o apagar a Pau cuando quieras."
+        confirmLabel="Sí, que venda sola"
         onCancel={() => setConfirmAuto(null)}
         onConfirm={() => {
           const id = confirmAuto ?? "";
@@ -527,7 +527,7 @@ function PauSummary({ isAdmin }: { isAdmin: boolean }) {
         <Sparkles className="h-5 w-5" aria-hidden />
       </span>
       <div className="min-w-0 flex-1">
-        <b className="block">Pau · agente de ventas que cotiza</b>
+        <b className="block">Pau · agente de ventas y cobranzas</b>
         <span className="block text-xs text-muted-foreground" data-testid="pau-summary">
           {modes}
           {isAdmin && ` · ${ok} proveedor${ok === 1 ? "" : "es"} de IA conectado${ok === 1 ? "" : "s"}`}

@@ -63,6 +63,7 @@ import { ReviewDialog } from "@/features/live/LiveYapeReviews";
 import { canReviewLivePayments, getLiveYapeReviews } from "@/features/live/liveService";
 import type { LiveYapeReview } from "@/features/live/types";
 import LeadPaymentsTab from "@/components/finanzas/LeadPaymentsTab";
+import { CrmPauReceiptsSection, useCrmPauReceipts } from "@/components/finanzas/CrmPauReceipts";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
 import { saleReceiptUrl, type UnitAssignmentState } from "@/services/saleTrackingService";
@@ -150,11 +151,13 @@ export interface Sale extends UnitAssignmentState {
   isLive: boolean;
 }
 
-type PaymentOrigin = "todos" | "live" | "otros";
+type PaymentOrigin = "todos" | "live" | "otros" | "pau";
 const PAYMENT_ORIGINS: [PaymentOrigin, string][] = [
   ["todos", "Todos"],
   ["live", "POWIP Live y Link"],
   ["otros", "Otros orígenes"],
+  // Ventas que Pau cerró en el CRM con el comprobante ya revisado por Pau (25-nov).
+  ["pau", "CRM · Pau"],
 ];
 const prettyOrigin = (value?: string | null) =>
   value ? value.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase()) : "—";
@@ -303,7 +306,7 @@ function FinanzasContent() {
   });
   const [paymentOrigin, setPaymentOrigin] = useState<PaymentOrigin>(() => {
     const requested = searchParams.get("origen");
-    return requested === "live" || requested === "otros" ? requested : "todos";
+    return requested === "live" || requested === "otros" || requested === "pau" ? requested : "todos";
   });
   const [liveDecision, setLiveDecision] = useState<{
     storeId: string;
@@ -327,6 +330,9 @@ function FinanzasContent() {
     },
     retry: false,
   });
+  // 2do filtro de las ventas de Pau: el comprobante ya pasó el 1er filtro de Pau en el CRM.
+  const crmPauQuery = useCrmPauReceipts(canFetch);
+  const crmPauReceipts = crmPauQuery.data ?? [];
   // FEAT-33 A9/D4: el detalle Yape (operación y plazo) de cada comprobante Live en revisión.
   const canReviewLive = canReviewLivePayments(auth?.user);
   const liveReviewsQuery = useQuery({
@@ -1027,7 +1033,9 @@ Estado: ${sale.status}
   }, [sales, filtersPagosPendientes]);
   const pagosPorValidar = useMemo(
     () =>
-      paymentOrigin === "todos"
+      paymentOrigin === "pau"
+        ? []
+        : paymentOrigin === "todos"
         ? pagosPendientes
         : pagosPendientes.filter((sale) => (paymentOrigin === "live") === sale.isLive),
     [pagosPendientes, paymentOrigin],
@@ -1070,7 +1078,7 @@ Estado: ${sale.status}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="mb-4">
               <TabsTrigger value="pagosPendientes">
-                Pagos por validar ({pagosPendientes.length})
+                Pagos por validar ({pagosPendientes.length + crmPauReceipts.length})
               </TabsTrigger>
               <TabsTrigger value="entregados">
                 Entregados ({entregados.length})
@@ -1136,6 +1144,18 @@ Estado: ${sale.status}
                   </div>
                 </CardHeader>
                 <CardContent>
+                  {(paymentOrigin === "todos" || paymentOrigin === "pau") && (
+                    <CrmPauReceiptsSection
+                      receipts={crmPauReceipts}
+                      loading={crmPauQuery.isLoading}
+                      error={paymentOrigin === "pau" && crmPauQuery.isError}
+                    />
+                  )}
+                  {paymentOrigin === "pau" && !crmPauQuery.isLoading && !crmPauQuery.isError && crmPauReceipts.length === 0 && (
+                    <p className="py-6 text-center text-muted-foreground">No hay ventas de Pau por validar</p>
+                  )}
+                  {paymentOrigin !== "pau" && (
+                  <>
                   <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                     Comprueba cada ingreso en la cuenta del negocio. El comprobante queda pendiente hasta que lo valides o rechaces; en POWIP Live el stock sigue reservado mientras tanto.
                   </p>
@@ -1346,6 +1366,8 @@ Estado: ${sale.status}
                       )}
                     </TableBody>
                   </Table>
+                  </>
+                  )}
                 </CardContent>
                 <Pagination
                   currentPage={1}

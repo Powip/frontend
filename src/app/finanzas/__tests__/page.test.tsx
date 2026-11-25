@@ -233,7 +233,8 @@ describe('FinanzasPage — fetchOrders (merge con leads-cod)', () => {
 
     render(<FinanzasPage />);
 
-    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledTimes(3));
+    // La 4ta llamada es la cola «CRM · Pau» de ms-crm (comprobantes que Pau ya revisó).
+    await waitFor(() => expect(mockedAxios.get.mock.calls.filter(([url]) => !String(url).includes('/receipts/queue'))).toHaveLength(3));
 
     expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/store/store-1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/store/store-1/leads-cod', expect.objectContaining({ signal: expect.any(AbortSignal) }));

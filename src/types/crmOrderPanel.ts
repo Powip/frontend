@@ -185,7 +185,54 @@ export interface PaymentReceipt {
   reviewNote: string | null;
   reviewedAt: string | null;
   createdAt: string;
+  /** "pau" si Pau leyó el comprobante y pasó su 1er filtro (venta completa, 25-nov). */
+  validatedBy?: string | null;
+  pauChecks?: PauReceiptChecks | null;
+  rejectReason?: ReceiptRejectReason | null;
+  /** Venta que Pau cerró en el chat. */
+  pauSale?: { id: string; items: string; total: number; customerName: string | null; district: string | null; status: string } | null;
 }
+
+export type PauReceiptCheck = "isReceipt" | "amountMatch" | "dateRecent" | "destinationOk" | "operationUnique";
+
+/** Lo que Pau leyó del comprobante y cada chequeo del 1er filtro. */
+export interface PauReceiptChecks {
+  read: {
+    isReceipt: boolean;
+    amount: number | null;
+    date: string | null;
+    destination: string | null;
+    holder: string | null;
+    operationNumber: string | null;
+    method: string | null;
+  };
+  expected: number | null;
+  isReceipt: boolean;
+  amountMatch: boolean;
+  dateRecent: boolean;
+  destinationOk: boolean;
+  operationUnique: boolean;
+  passed: boolean;
+  failed: PauReceiptCheck[];
+  model?: string;
+}
+
+export const PAU_CHECK_LABEL: Record<PauReceiptCheck, string> = {
+  isReceipt: "Es un comprobante",
+  amountMatch: "Monto igual a la venta",
+  dateRecent: "Fecha reciente",
+  destinationOk: "Destino es cuenta del negocio",
+  operationUnique: "N° de operación no usado",
+};
+
+/** Motivos de rechazo de Finanzas (mockup 152). */
+export type ReceiptRejectReason = "no_llego" | "monto" | "repetido" | "ilegible";
+export const RECEIPT_REJECT_REASONS: [ReceiptRejectReason, string][] = [
+  ["no_llego", "No llegó el pago"],
+  ["monto", "Monto distinto"],
+  ["repetido", "Comprobante repetido"],
+  ["ilegible", "Ilegible o incompleto"],
+];
 
 export interface UploadReceiptInput {
   method: ReceiptMethod;

@@ -187,7 +187,7 @@ describe("Pau · personalidad (P7)", () => {
 });
 
 describe("Pau · qué puede hacer (P8)", () => {
-  it("Pau solo cotiza: crear pedido, link de pago, adelanto y cobro quedan apagados y bloqueados (25-nov)", async () => {
+  it("Pau vende completo: crear pedido, link de pago, adelanto y cobro se pueden activar (25-nov)", async () => {
     setup("perm");
     for (const name of [
       "Crear el pedido en Comercial › Ventas",
@@ -195,12 +195,9 @@ describe("Pau · qué puede hacer (P8)", () => {
       "Ofrecer pagar solo el adelanto (según la política de la tienda)",
       "Cobrar adelantos y saldos pendientes",
     ]) {
-      const sw = await screen.findByRole("switch", { name });
-      expect(sw).toBeDisabled();
-      expect(sw).not.toBeChecked();
+      expect(await screen.findByRole("switch", { name })).toBeEnabled();
     }
-    expect(screen.getAllByText("Lo hace una persona: Pau solo cotiza y pasa el chat")).toHaveLength(4);
-    expect(screen.getByRole("switch", { name: "Enviar fotos y testimonios" })).toBeEnabled();
+    expect(screen.queryByText(/Pau solo cotiza/)).not.toBeInTheDocument();
   });
 
   it("switch de permiso y monto para pasar a persona", async () => {

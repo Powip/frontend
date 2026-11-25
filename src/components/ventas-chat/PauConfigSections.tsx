@@ -25,12 +25,12 @@ export const PAU_PHASES: Array<{ value: PauPhase; title: string; description: st
   {
     value: 2,
     title: "Fase 2 · Ventas simples",
-    description: "Cotiza sola consultas simples. Casos especiales pasan a persona.",
+    description: "Cierra sola ventas con pago completo. Adelantos y casos especiales pasan a persona.",
   },
   {
     value: 3,
     title: "Fase 3 · Autonomía",
-    description: "Cotiza sola todo lo que el negocio permita. El cierre y el cobro los hace una persona.",
+    description: "Vende y cobra sola según lo que el negocio permita en «Qué puede hacer».",
   },
 ];
 
@@ -41,9 +41,6 @@ const CHANNELS: Array<{ key: PauChannelKey; label: string; badge: ConversationCh
   { key: "comments", label: "Comentarios", badge: "instagram", hint: "En comentarios públicos solo responde la vendedora" },
 ];
 
-/** Pau solo cotiza (decisión de Jairo, 25-nov): cerrar y cobrar lo hace siempre una persona. */
-const CLOSING: PauCapability[] = ["createOrder", "powipLink", "deposit", "collectBalance"];
-const CLOSING_HINT = "Lo hace una persona: Pau solo cotiza y pasa el chat";
 
 const CAPABILITIES: Array<{ key: PauCapability; label: string; hint?: string }> = [
   { key: "createOrder", label: "Crear el pedido en Comercial › Ventas" },
@@ -81,6 +78,7 @@ const MODEL_TASKS: Array<{ key: PauModelTask; label: string }> = [
   { key: "chat", label: "Conversar y vender" },
   { key: "audio", label: "Transcribir notas de voz y llamadas" },
   { key: "summary", label: "Resumir llamadas y aprendizajes" },
+  { key: "image", label: "Leer comprobantes de pago (imagen o PDF)" },
 ];
 
 function useConfig() {
@@ -380,11 +378,11 @@ export function CapabilitiesSection() {
       <Card id="pau-perm-h" title="Lo que Pau puede hacer sola">
         <div>
           {CAPABILITIES.map((c) => (
-            <Row key={c.key} label={c.label} hint={CLOSING.includes(c.key) ? CLOSING_HINT : c.hint}>
+            <Row key={c.key} label={c.label} hint={c.hint}>
               <Switch
                 aria-label={c.label}
-                checked={CLOSING.includes(c.key) ? false : config.capabilities[c.key]}
-                disabled={saving || CLOSING.includes(c.key)}
+                checked={config.capabilities[c.key]}
+                disabled={saving}
                 onCheckedChange={(v) => save({ capabilities: { [c.key]: v } }, "Permisos guardados")}
               />
             </Row>

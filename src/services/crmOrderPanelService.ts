@@ -10,6 +10,7 @@ import type {
   EvaluateResponse,
   PaymentReceipt,
   PromosResponse,
+  ReceiptRejectReason,
   ReceiptStatus,
   SavePolicyInput,
   SimulatePaymentInput,
@@ -95,9 +96,11 @@ export async function simulatePayment(conversationId: string, input: SimulatePay
   return (await axiosAuth.post<PaymentReceipt>(`${conv(conversationId)}/simulate-payment`, input)).data;
 }
 
-export async function listFinanceQueue(status: ReceiptStatus = "porval"): Promise<PaymentReceipt[]> {
+export async function listFinanceQueue(status: ReceiptStatus = "porval", validatedBy?: "pau"): Promise<PaymentReceipt[]> {
   return (
-    await axiosAuth.get<{ items: PaymentReceipt[] }>(`${PANEL}/receipts/queue`, { params: { status } })
+    await axiosAuth.get<{ items: PaymentReceipt[] }>(`${PANEL}/receipts/queue`, {
+      params: { status, ...(validatedBy ? { validatedBy } : {}) },
+    })
   ).data.items;
 }
 
@@ -107,11 +110,17 @@ export async function getReceiptFile(id: string): Promise<Blob> {
   ).data;
 }
 
-export async function reviewReceipt(id: string, approve: boolean, note?: string): Promise<PaymentReceipt> {
+export async function reviewReceipt(
+  id: string,
+  approve: boolean,
+  note?: string,
+  reason?: ReceiptRejectReason,
+): Promise<PaymentReceipt> {
   return (
     await axiosAuth.patch<PaymentReceipt>(`${PANEL}/receipts/${encodeURIComponent(id)}/review`, {
       approve,
       ...(note ? { note } : {}),
+      ...(reason ? { reason } : {}),
     })
   ).data;
 }
