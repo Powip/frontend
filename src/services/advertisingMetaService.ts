@@ -20,6 +20,8 @@ export interface MetaCoverage {
   provisionalDays: number;
   lastSuccessfulAt: string | null;
   lastErrorCode: string | null;
+  /** When the last read ran (successful or not); with lastErrorCode it says since when Meta refused. */
+  lastAttemptAt?: string | null;
   reconciliation?: MetaSpendReconciliation;
 }
 export interface MetaSpendReconciliation {
@@ -91,6 +93,8 @@ export interface MetaCatalogAccount {
   manageUrl: string;
   coverage: MetaCoverage;
   historyImport: MetaModuleJob | null;
+  /** «Comenzar importación» was pressed and the account is still chosen; only these refresh. */
+  importRequested?: boolean;
 }
 export interface MetaModuleJob {
   accountId: string;
@@ -103,6 +107,8 @@ export interface MetaModuleJob {
   retryCount: number;
   errorCode: string | null;
   updatedAt: string;
+  /** Earliest time the worker tries again (after a Meta rate limit: until when it waits). */
+  nextAttemptAt?: string | null;
 }
 export interface MetaAttribution {
   windows: string[];

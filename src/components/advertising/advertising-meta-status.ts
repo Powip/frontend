@@ -93,11 +93,50 @@ export function accountCampaignsLabel(
     minute: "2-digit",
     timeZone: "America/Lima",
   }).format(new Date(campaigns.updatedAt));
+  // total = campaigns Meta returned (active, paused, archived; Meta never returns deleted ones).
+  const stopped = campaigns.total - campaigns.active;
   const count =
-    campaigns.active > 0
-      ? `${campaigns.active} de ${campaigns.total} campañas activas`
-      : `Sin campañas activas (0 de ${campaigns.total})`;
+    campaigns.total === 0
+      ? "Meta no devolvió campañas (las borradas no se cuentan)"
+      : campaigns.active > 0
+        ? `${campaigns.active} de ${campaigns.total} campañas activas`
+        : `Ninguna campaña activa · ${stopped} ${stopped === 1 ? "pausada o archivada" : "pausadas o archivadas"}`;
   return `${count} · lectura del ${when}`;
+}
+
+const limaTime = (value: string) =>
+  new Intl.DateTimeFormat("es-PE", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Lima",
+  }).format(new Date(value));
+
+interface RateLimitedAccountWire {
+  coverage?: { lastAttemptAt?: string | null } | null;
+  historyImport?: { nextAttemptAt?: string | null } | null;
+}
+
+/** Says since when Meta refused and from when we try again (only accounts being imported). */
+export function metaRateLimitLabel(
+  accounts: RateLimitedAccountWire[],
+  now: number = Date.now(),
+): string {
+  const since = accounts
+    .map((account) => account.coverage?.lastAttemptAt)
+    .filter((value): value is string => !!value)
+    .sort()[0];
+  const retry = accounts
+    .map((account) => account.historyImport?.nextAttemptAt)
+    .filter((value): value is string => !!value)
+    .sort()
+    .at(-1);
+  const parts = ["Meta limitó la actualización"];
+  if (since) parts.push(`desde ${limaTime(since)}`);
+  if (retry && Date.parse(retry) > now) parts.push(`· reintento desde ${limaTime(retry)}`);
+  else parts.push("· ya puedes volver a pulsar «Actualizar Meta»");
+  return parts.join(" ");
 }
 
 /** Campaign, ad set and ad `effective_status`: ACTIVE delivers; any other documented value does not. */

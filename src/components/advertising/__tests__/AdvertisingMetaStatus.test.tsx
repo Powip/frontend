@@ -9,6 +9,7 @@ import { AdvertisingLiveAccountsDialog } from "../AdvertisingLiveAccountsDialog"
 import { AdvertisingStartImport } from "../AdvertisingStartImport";
 import {
   accountCampaignsLabel,
+  metaRateLimitLabel,
   accountDisableReasonLabel,
   accountStatusLabel,
   accountStatusState,
@@ -83,7 +84,35 @@ describe("Meta status helpers", () => {
     );
     expect(
       accountCampaignsLabel({ known: true, active: 0, total: 2, updatedAt: "2026-11-25T15:00:00Z" }),
-    ).toMatch(/^Sin campañas activas \(0 de 2\)/);
+    ).toMatch(/^Ninguna campaña activa · 2 pausadas o archivadas · lectura del /);
+    expect(
+      accountCampaignsLabel({ known: true, active: 0, total: 0, updatedAt: "2026-11-25T15:00:00Z" }),
+    ).toMatch(/^Meta no devolvió campañas \(las borradas no se cuentan\)/);
+    expect(
+      accountCampaignsLabel({ known: true, active: 3, total: 5, updatedAt: "2026-11-25T15:00:00Z" }),
+    ).toMatch(/^3 de 5 campañas activas/);
+  });
+
+  it("says since when Meta limited and from when it retries", () => {
+    const now = Date.parse("2026-11-25T19:00:00Z");
+    const waiting = metaRateLimitLabel(
+      [
+        {
+          coverage: { lastAttemptAt: "2026-11-25T18:56:00Z" },
+          historyImport: { nextAttemptAt: "2026-11-25T19:45:00Z" },
+        },
+      ],
+      now,
+    );
+    expect(waiting).toMatch(/^Meta limitó la actualización desde .*· reintento desde /);
+    expect(waiting).toContain("01:56");
+    expect(waiting).toContain("02:45");
+    expect(
+      metaRateLimitLabel(
+        [{ coverage: { lastAttemptAt: "2026-11-25T18:56:00Z" }, historyImport: null }],
+        now,
+      ),
+    ).toMatch(/ya puedes volver a pulsar «Actualizar Meta»$/);
   });
 
   it("maps effective_status and searches without accents", () => {
@@ -120,7 +149,7 @@ describe("Elige tus cuentas", () => {
       "true",
     );
     expect(screen.getByText("Estado desconocido (código 777)")).toBeVisible();
-    expect(screen.getByText(/Sin campañas activas \(0 de 2\)/)).toBeVisible();
+    expect(screen.getByText(/Ninguna campaña activa · 2 pausadas o archivadas/)).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Activas (2)" }));
     expect(screen.getByRole("checkbox", { name: /Cuenta Lima/ })).toBeVisible();

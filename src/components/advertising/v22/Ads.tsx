@@ -86,7 +86,7 @@ import { AdvertisingAdDetail } from "./AdDetail";
 import { AdThumbnail } from "./Thumbnail";
 import { AdvertisingDataNotice } from "./DataNotice";
 import { advertisingSectionHref } from "../advertising-sections";
-import { effectiveStatusState, matchesSearch } from "../advertising-meta-status";
+import { effectiveStatusState, matchesSearch, metaRateLimitLabel } from "../advertising-meta-status";
 import { MetaStatusBadge } from "../AdvertisingMetaStatusFilter";
 
 const LEVELS: Array<{ value: AdsLevel; label: string }> = [
@@ -488,10 +488,14 @@ export function AdvertisingAds() {
       setSaving(false);
     }
   }
+  // Only accounts being imported are refreshed; old errors of never-imported accounts never clear.
+  const refreshedAccounts = catalog.data?.accounts.filter(
+    (account) => account.importRequested !== false,
+  );
   const lastSync =
     (catalog.data as typeof catalog.data & { lastSyncedAt?: string | null })?.lastSyncedAt ??
-    catalog.data?.accounts
-      .map(
+    refreshedAccounts
+      ?.map(
         (account) =>
           (
             account as typeof account & {
@@ -505,9 +509,11 @@ export function AdvertisingAds() {
       .filter((date): date is string => !!date)
       .sort()[0] ??
     null;
-  const metaRateLimited = catalog.data?.accounts.some(
+  const rateLimitedAccounts = (refreshedAccounts ?? []).filter(
     (account) => account.coverage?.lastErrorCode === "PROVIDER_RATE",
   );
+  const metaRateLimited = rateLimitedAccounts.length > 0;
+  const rateLimitLabel = metaRateLimitLabel(rateLimitedAccounts);
   const syncAge = lastSync
     ? Math.max(0, Math.floor((Date.now() - Date.parse(lastSync)) / 60_000))
     : null;
@@ -650,7 +656,7 @@ export function AdvertisingAds() {
           {syncedLabel
             ? `Datos de Meta al ${syncedLabel} · ${syncAge !== null && syncAge < 60 ? `hace ${syncAge} min` : `hace ${Math.floor((syncAge ?? 0) / 60)} h`}`
             : catalog.data ? "Aún no hay una sincronización correcta registrada" : "Consultando catálogo guardado…"}
-          {metaRateLimited && <span className="font-medium text-amber-800 dark:text-amber-300">· actualización limitada por Meta</span>}
+          {metaRateLimited && <span className="font-medium text-amber-800 dark:text-amber-300">· {rateLimitLabel}</span>}
         </p>
         <Button
           size="sm"

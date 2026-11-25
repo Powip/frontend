@@ -223,8 +223,8 @@ export function AdvertisingLiveAccountsDialog({
             />
             {isMeta && (
               <p className="text-xs text-muted-foreground">
-                El estado de la cuenta lo da Meta. Las campañas activas salen de la última
-                importación.
+                El estado de la cuenta lo da Meta. Las campañas salen de la última lectura
+                guardada: activas son las que entregan; el resto están pausadas o archivadas.
               </p>
             )}
             {listed.length === 0 && (
