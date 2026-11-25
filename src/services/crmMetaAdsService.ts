@@ -6,8 +6,12 @@ const BASE = `${API.crm}/crm/meta-ads`;
 export type AudienceSegment = "bought_90d" | "lost_price" | "thinking" | "unpaid_link_7d";
 
 export interface MetaAdsSettings {
-  pixelId: string | null;
-  effectivePixelId: string | null;
+  /** Cuenta de WhatsApp Business conectada; de ella sale el dataset de Meta. */
+  wabaId: string | null;
+  /** Dataset de la WABA (POST /{waba-id}/dataset). No se escribe a mano. */
+  datasetId: string | null;
+  /** Por qué no hay dataset, en palabras simples. */
+  datasetError: string | null;
   capiEnabled: boolean;
   defaultAdAccountId: string | null;
   adsTokenConfigured: boolean;
@@ -16,7 +20,6 @@ export interface MetaAdsSettings {
 }
 
 export interface MetaAdsSettingsInput {
-  pixelId?: string | null;
   capiEnabled?: boolean;
   defaultAdAccountId?: string | null;
 }
@@ -88,6 +91,8 @@ export interface ConversationAdSignal {
     sentAt: string | null;
     lastError: string | null;
   }>;
+  /** Si una venta de este chat se enviaría a Meta y por qué. */
+  capi: { willSend: boolean; reason: string };
 }
 
 /** Solo administrador (403 si no). */

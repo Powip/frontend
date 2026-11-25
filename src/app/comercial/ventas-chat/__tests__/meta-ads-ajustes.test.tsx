@@ -40,8 +40,9 @@ jest.mock("@/services/crmMetaAdsService", () => ({
 const m = svc as jest.Mocked<typeof svc>;
 
 const settings = (over: Partial<svc.MetaAdsSettings> = {}): svc.MetaAdsSettings => ({
-  pixelId: null,
-  effectivePixelId: "PIX-ENV",
+  wabaId: "W1",
+  datasetId: "DS1",
+  datasetError: null,
   capiEnabled: true,
   defaultAdAccountId: null,
   adsTokenConfigured: true,
@@ -74,31 +75,38 @@ beforeEach(() => {
 });
 
 describe("MetaCapiCard", () => {
-  it("guarda pixel y switch, y rechaza pixel con letras", async () => {
-    m.updateMetaAdsSettings.mockResolvedValue(settings({ pixelId: "999" }));
+  it("muestra el dataset de la WABA sin campo para pegar ids y guarda el switch", async () => {
+    m.updateMetaAdsSettings.mockResolvedValue(settings({ capiEnabled: false }));
     m.listCapiEvents.mockResolvedValue([
       { id: "e1", conversationId: "c1", orderNumber: "P-10", value: 150, currency: "PEN", status: "sent", attempts: 1, lastError: null, sentAt: "2026-11-20T15:00:00Z", createdAt: "2026-11-20T15:00:00Z" },
     ]);
     renderWith(<MetaCapiCard />);
-    const pixel = await screen.findByLabelText(/Pixel o dataset/);
+    const dataset = await screen.findByTestId("capi-dataset");
+    expect(dataset).toHaveTextContent("WABA W1");
+    expect(dataset).toHaveTextContent("DS1");
+    expect(screen.queryByRole("textbox")).toBeNull();
     const log = await screen.findByTestId("capi-log");
     expect(within(log).getByText("P-10")).toBeInTheDocument();
     expect(within(log).getByText("Enviado")).toBeInTheDocument();
-    fireEvent.change(pixel, { target: { value: "12ab" } });
-    expect(screen.getByText("El pixel es solo números.")).toBeInTheDocument();
-    fireEvent.change(pixel, { target: { value: "999" } });
     fireEvent.click(screen.getByRole("switch"));
     fireEvent.click(screen.getByRole("button", { name: /Guardar/ }));
-    await waitFor(() =>
-      expect(m.updateMetaAdsSettings).toHaveBeenCalledWith({ pixelId: "999", capiEnabled: false }),
-    );
+    await waitFor(() => expect(m.updateMetaAdsSettings).toHaveBeenCalledWith({ capiEnabled: false }));
   });
 
-  it("dice qué clave falta en el servidor", async () => {
-    m.getMetaAdsSettings.mockResolvedValue(settings({ capiTokenConfigured: false, effectivePixelId: null, simulated: false }));
+  it("explica por qué no hay dataset y qué clave falta", async () => {
+    m.getMetaAdsSettings.mockResolvedValue(
+      settings({
+        wabaId: null,
+        datasetId: null,
+        datasetError: "Conecta tu WhatsApp Business: el dataset de Meta sale de esa cuenta.",
+        capiTokenConfigured: false,
+        simulated: false,
+      }),
+    );
     renderWith(<MetaCapiCard />);
-    expect(await screen.findByText(/META_CAPI_ACCESS_TOKEN/)).toBeInTheDocument();
-    expect(screen.getByText(/META_CAPI_PIXEL_ID/)).toBeInTheDocument();
+    expect(await screen.findByText(/Conecta tu WhatsApp Business/)).toBeInTheDocument();
+    expect(screen.getByText(/META_CAPI_ACCESS_TOKEN/)).toBeInTheDocument();
+    expect(screen.queryByText(/META_CAPI_PIXEL_ID/)).toBeNull();
   });
 });
 
@@ -180,14 +188,27 @@ describe("ChatAdSignalSection", () => {
       fromAd: true,
       ad: { headline: "Polos 2x1", sourceId: "AD1", sourceType: "ad", at: "2026-11-20T10:00:00Z" },
       purchases: [{ orderNumber: "P-10", value: 150, currency: "PEN", status: "failed", sentAt: null, lastError: "token" }],
+      capi: { willSend: true, reason: "Trae el id de clic del anuncio (ctwa_clid): la venta se envía a Meta." },
     });
     renderWith(<ChatAdSignalSection conversation={conv} />);
     const box = await screen.findByTestId("chat-ad-signal");
     expect(within(box).getByText("Polos 2x1")).toBeInTheDocument();
     expect(within(box).getByText("Falló")).toBeInTheDocument();
   });
-  it("se oculta si el chat no vino de un anuncio", async () => {
-    m.getConversationAdSignal.mockResolvedValue({ fromAd: false, ad: null, purchases: [] });
+  it("explica en la ficha por qué un chat sin anuncio no se envía", async () => {
+    m.getConversationAdSignal.mockResolvedValue({
+      fromAd: false,
+      ad: null,
+      purchases: [],
+      capi: { willSend: false, reason: "El chat no vino de un anuncio: sus ventas no se envían a Meta." },
+    });
+    renderWith(<ChatAdSignalSection conversation={conv} />);
+    const box = await screen.findByTestId("chat-ad-signal");
+    expect(within(box).getByTestId("chat-ad-signal-reason")).toHaveTextContent(/no vino de un anuncio/);
+    expect(within(box).queryByText(/Llegó por el anuncio/)).toBeNull();
+  });
+  it("se oculta si el servidor no da motivo y el chat no vino de un anuncio", async () => {
+    m.getConversationAdSignal.mockResolvedValue({ fromAd: false, ad: null, purchases: [], capi: { willSend: false, reason: "" } });
     renderWith(<ChatAdSignalSection conversation={conv} />);
     await waitFor(() => expect(m.getConversationAdSignal).toHaveBeenCalled());
     expect(screen.queryByTestId("chat-ad-signal")).toBeNull();

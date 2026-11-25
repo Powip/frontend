@@ -63,7 +63,6 @@ export function CapiStatusBadge({ status }: { status: CapiEventItem["status"] })
 function MissingKeys({ settings }: { settings: MetaAdsSettings }) {
   const missing = [
     !settings.capiTokenConfigured && "META_CAPI_ACCESS_TOKEN",
-    !settings.effectivePixelId && "META_CAPI_PIXEL_ID",
   ].filter(Boolean) as string[];
   if (settings.simulated) {
     return (
@@ -80,17 +79,18 @@ function MissingKeys({ settings }: { settings: MetaAdsSettings }) {
   );
 }
 
-/** Pixel y Conversions API: cada pedido verificado de un chat que vino de un anuncio se manda como Purchase. */
+/**
+ * Conversions API: cada pedido verificado de un chat que vino de un anuncio se manda como Purchase
+ * al dataset de la cuenta de WhatsApp Business. El dataset no se escribe a mano.
+ */
 export function MetaCapiCard() {
   const settings = useMetaAdsSettings();
   const events = useCapiEvents();
   const update = useUpdateMetaAdsSettings();
   const server = {
-    pixelId: settings.data?.pixelId ?? "",
     capiEnabled: settings.data?.capiEnabled ?? true,
   };
   const { draft, setDraft, dirty } = useDraft(server);
-  const pixelValid = /^\d{0,30}$/.test(draft.pixelId.trim());
 
   if (settings.isLoading) {
     return (
@@ -119,12 +119,9 @@ export function MetaCapiCard() {
           anuncios para ventas y no solo para mensajes.
         </>
       }
-      canSave={dirty && pixelValid}
+      canSave={dirty}
       saving={update.isPending}
-      hint={!pixelValid ? "El pixel es solo números." : null}
-      onSave={() =>
-        update.mutate({ pixelId: draft.pixelId.trim() || null, capiEnabled: draft.capiEnabled })
-      }
+      onSave={() => update.mutate({ capiEnabled: draft.capiEnabled })}
     >
       <div className="flex items-center gap-2">
         <Switch
@@ -134,22 +131,18 @@ export function MetaCapiCard() {
         />
         <Label htmlFor="capi-enabled">Enviar ventas a Meta</Label>
       </div>
-      <div className="space-y-1">
-        <Label htmlFor="capi-pixel" className="text-xs">
-          Pixel o dataset de Meta (opcional)
-        </Label>
-        <Input
-          id="capi-pixel"
-          inputMode="numeric"
-          className="max-w-xs"
-          placeholder={settings.data.effectivePixelId ?? "123456789012345"}
-          value={draft.pixelId}
-          onChange={(e) => setDraft((c) => ({ ...c, pixelId: e.target.value }))}
-        />
-        <p className="text-xs text-muted-foreground">
-          Vacío usa el pixel del servidor
-          {settings.data.effectivePixelId && !draft.pixelId ? ` (${settings.data.effectivePixelId})` : ""}.
-        </p>
+      <div className="space-y-1" data-testid="capi-dataset">
+        <p className="text-xs font-medium">Dataset de Meta</p>
+        {settings.data.datasetId ? (
+          <p className="text-xs text-muted-foreground">
+            Sale de tu WhatsApp Business (WABA {settings.data.wabaId}): dataset{" "}
+            <span className="font-mono">{settings.data.datasetId}</span>. No hace falta pegar ningún id.
+          </p>
+        ) : (
+          <p className="text-xs text-amber-700">
+            {settings.data.datasetError ?? "Aún no hay dataset de Meta para tu WhatsApp Business."}
+          </p>
+        )}
       </div>
       <MissingKeys settings={settings.data} />
 

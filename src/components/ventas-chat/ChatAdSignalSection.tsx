@@ -8,11 +8,28 @@ const money = (value: number, currency: string) =>
 
 /**
  * «Señal a Meta» en el panel del chat: de qué anuncio llegó el cliente y si sus compras se
- * informaron a Meta (Conversions API). Oculta si el chat no vino de un anuncio.
+ * informaron a Meta (Conversions API). Si el chat no vino de un anuncio, solo explica por qué
+ * sus ventas no se envían.
  */
 export default function ChatAdSignalSection({ conversation }: { conversation: Conversation }) {
   const { data } = useConversationAdSignal(conversation.id);
-  if (!data?.fromAd) return null;
+  if (!data) return null;
+  const reason = data.capi?.reason ? (
+    <p className="text-xs text-muted-foreground" data-testid="chat-ad-signal-reason">
+      {data.capi.reason}
+    </p>
+  ) : null;
+  if (!data.fromAd) {
+    if (!reason) return null;
+    return (
+      <section className="space-y-1.5" aria-label="Señal a Meta" data-testid="chat-ad-signal">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Señal a Meta
+        </h3>
+        {reason}
+      </section>
+    );
+  }
   return (
     <section className="space-y-1.5" aria-label="Señal a Meta" data-testid="chat-ad-signal">
       <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -22,6 +39,7 @@ export default function ChatAdSignalSection({ conversation }: { conversation: Co
         Llegó por el anuncio{" "}
         <span className="font-medium">{data.ad?.headline || data.ad?.sourceId || "sin nombre"}</span>
       </p>
+      {reason}
       {data.purchases.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           Aún no compra. Cuando se verifique su pedido, la venta se informa a Meta.
