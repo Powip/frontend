@@ -13,10 +13,10 @@ import { isMaskedPhone, telHref } from "@/lib/crmPhone";
 import { crmError } from "@/services/crmService";
 import { useCrmEvents } from "@/hooks/useCrmChat";
 import { useCallMode } from "@/hooks/useCallMode";
-import { useCallPermission } from "@/hooks/useCallSessions";
+import { useCallPermission, useCallSessionStats } from "@/hooks/useCallSessions";
 import { useCallMutations, useCallProspects, useCallStats, useCalls } from "@/hooks/useCrmCalls";
 import { useTaskMutations, useTasks } from "@/hooks/useCrmPlanning";
-import type { Call, CallDays } from "@/types/crmCalls";
+import type { Call, CallDays, CallStats } from "@/types/crmCalls";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import CallDialog from "./CallDialog";
 import ConfirmDialog from "./ConfirmDialog";
@@ -31,7 +31,7 @@ import {
   callContact,
   formatCallDuration,
 } from "./calls";
-import { bandejaUrl, showPhone } from "./format";
+import { bandejaUrl, formatMoney, showPhone } from "./format";
 
 function Segmented<T extends string | number>({
   label,
@@ -67,14 +67,34 @@ const MINE_OPTIONS = [
   { value: "all" as const, label: "Todas" },
 ];
 
-function Kpi({ label, value, hint, testId }: { label: string; value: string | number; hint?: string; testId: string }) {
+function Kpi({
+  label,
+  value,
+  hint,
+  testId,
+  tone,
+}: {
+  label: string;
+  value: string | number;
+  hint?: string;
+  testId: string;
+  tone?: string;
+}) {
   return (
-    <div className="rounded-md border bg-card p-3" data-testid={testId}>
-      <p className="text-2xl font-semibold tabular-nums">{value}</p>
-      <p className="text-xs font-medium">{label}</p>
+    <div className="rounded-lg border bg-card p-4" data-testid={testId}>
+      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className={cn("text-2xl font-semibold tabular-nums", tone)}>{value}</p>
       {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   );
+}
+
+/** «2 min 10 s» para el promedio por llamada. */
+function avgLabel(seconds: number): string {
+  if (!seconds) return "Sin llamadas contestadas";
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `Promedio ${m ? `${m} min ` : ""}${s} s por llamada`;
 }
 
 function ErrorBox({ error, onRetry }: { error: unknown; onRetry: () => void }) {
@@ -117,8 +137,12 @@ function CallLink({ phone }: { phone: string | null | undefined }) {
   );
 }
 
+const PERIOD_LABEL: Record<CallDays, string> = { 1: "hoy", 7: "en 7 días", 30: "en 30 días" };
+
 function Stats({ days }: { days: CallDays }) {
   const stats = useCallStats(days);
+  // Llamadas reales por WhatsApp: promedio y minutos que cobra Meta.
+  const live = useCallSessionStats(days);
   if (stats.isLoading) {
     return (
       <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -127,20 +151,32 @@ function Stats({ days }: { days: CallDays }) {
     );
   }
   if (stats.isError) return <ErrorBox error={stats.error} onRetry={() => stats.refetch()} />;
-  const s = stats.data;
+  const s = stats.data as (CallStats & { soldAmount?: number }) | undefined;
   if (!s) return null;
+  const avg = live.data?.avgSeconds || (s.answered ? Math.round((s.totalMinutes * 60) / s.answered) : 0);
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-5" data-testid="call-kpis">
-      <Kpi testId="kpi-calls" label="Llamadas" value={s.calls} />
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="call-kpis">
       <Kpi
-        testId="kpi-answered"
-        label="Contestadas"
-        value={s.answered}
-        hint={`${answeredPercent(s.calls, s.answered)} % de las llamadas`}
+        testId="kpi-calls"
+        label={`Llamadas ${PERIOD_LABEL[days]}`}
+        value={s.calls}
+        hint={`${s.answered} contestadas (${answeredPercent(s.calls, s.answered)} %)`}
       />
-      <Kpi testId="kpi-sold" label="Ventas por llamada" value={s.sold} />
-      <Kpi testId="kpi-callback" label="Volver a llamar" value={s.callback} />
-      <Kpi testId="kpi-minutes" label="Minutos en llamada" value={s.totalMinutes} />
+      <Kpi
+        testId="kpi-sold"
+        label="Ventas por llamada"
+        value={s.sold}
+        tone="text-emerald-600 dark:text-emerald-400"
+        hint={`${formatMoney(s.soldAmount ?? 0)} cobrado durante la llamada`}
+      />
+      <Kpi testId="kpi-minutes" label="Tiempo en llamada" value={`${s.totalMinutes} min`} hint={avgLabel(avg)} />
+      <Kpi
+        testId="kpi-meta"
+        label="Minutos que cobra Meta"
+        value={`${live.data?.metaMinutes ?? 0} min`}
+        tone="text-amber-600 dark:text-amber-400"
+        hint="Solo llamadas que hace la vendedora"
+      />
     </div>
   );
 }
@@ -184,7 +220,7 @@ function QueueRow({
         <CallLink phone={contactPhone} />
         {conversationId && (
           <Button type="button" size="sm" variant="outline" onClick={() => onOpenChat(conversationId)}>
-            <MessageCircle /> Abrir chat
+            <MessageCircle /> Chat
           </Button>
         )}
         <Button type="button" size="sm" variant="outline" onClick={() => onResult(item)}>
@@ -235,7 +271,7 @@ function CallRow({
       <div className="flex flex-wrap gap-2 pt-1">
         {call.conversationId && (
           <Button type="button" size="sm" variant="outline" onClick={() => onOpenChat(call.conversationId!)}>
-            <MessageCircle /> Abrir chat
+            <MessageCircle /> Chat
           </Button>
         )}
         {canDelete && (
@@ -314,7 +350,7 @@ export default function LlamadasView() {
       <Stats days={days} />
 
       <div className="grid gap-5 lg:grid-cols-2">
-        <section aria-label="Cola de llamadas" className="space-y-2">
+        <section aria-label="Cola de llamadas" className="space-y-2 rounded-lg border bg-card p-4">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-sm font-semibold">Cola de llamadas</h2>
             <Badge variant="secondary">{queue.length}</Badge>
@@ -359,9 +395,12 @@ export default function LlamadasView() {
           </ul>
         </section>
 
-        <section aria-label="Historial de llamadas" className="space-y-2">
+        <section aria-label="Historial de llamadas" className="space-y-2 rounded-lg border bg-card p-4">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-semibold">Historial</h2>
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold">{days === 1 ? "Llamadas de hoy" : `Llamadas ${PERIOD_LABEL[days]}`}</h2>
+              <p className="text-xs text-muted-foreground">Resultado, duración y notas de cada llamada.</p>
+            </div>
             <span className="ml-auto">
               <Segmented label="Historial de" options={MINE_OPTIONS} value={historyOwner} onChange={setHistoryOwner} />
             </span>

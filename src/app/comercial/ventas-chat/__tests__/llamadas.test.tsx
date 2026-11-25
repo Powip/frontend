@@ -143,12 +143,13 @@ describe("Pestaña Llamadas", () => {
 
   it("muestra los KPIs y cambia de periodo", async () => {
     setup();
-    expect(await screen.findByTestId("kpi-calls")).toHaveTextContent("10");
-    expect(screen.getByTestId("kpi-answered")).toHaveTextContent("7");
-    expect(screen.getByTestId("kpi-answered")).toHaveTextContent("70 %");
+    expect(await screen.findByTestId("kpi-calls")).toHaveTextContent("Llamadas hoy10");
+    expect(screen.getByTestId("kpi-calls")).toHaveTextContent("7 contestadas (70 %)");
     expect(screen.getByTestId("kpi-sold")).toHaveTextContent("2");
-    expect(screen.getByTestId("kpi-callback")).toHaveTextContent("3");
-    expect(screen.getByTestId("kpi-minutes")).toHaveTextContent("42");
+    expect(screen.getByTestId("kpi-sold")).toHaveTextContent(/S\/\s?0(\.00)? cobrado/);
+    expect(screen.getByTestId("kpi-minutes")).toHaveTextContent("42 min");
+    expect(screen.getByTestId("kpi-minutes")).toHaveTextContent("Promedio 6 min 0 s por llamada");
+    expect(screen.getByTestId("kpi-meta")).toHaveTextContent("Minutos que cobra Meta0 min");
     expect(c.getCallStats).toHaveBeenCalledWith(1);
     fireEvent.click(within(screen.getByRole("group", { name: "Periodo" })).getByRole("button", { name: "7 días" }));
     await waitFor(() => expect(c.getCallStats).toHaveBeenCalledWith(7));
@@ -163,7 +164,7 @@ describe("Pestaña Llamadas", () => {
     expect(s.listTasks).toHaveBeenCalledWith({ assigned: "me", status: "pending" });
     expect(within(rows[0]).getByText("Llamar para cerrar")).toBeInTheDocument();
     expect(within(rows[0]).getByRole("link", { name: /Llamar/ })).toHaveAttribute("href", "tel:+51999111222");
-    fireEvent.click(within(rows[0]).getByRole("button", { name: "Abrir chat" }));
+    fireEvent.click(within(rows[0]).getByRole("button", { name: "Chat" }));
     expect(mockPush).toHaveBeenCalledWith("/comercial/ventas-chat/bandeja?c=c1");
   });
 
@@ -234,7 +235,7 @@ describe("Pestaña Llamadas", () => {
     expect(within(row).getByText("Vendido")).toBeInTheDocument();
     expect(row).toHaveTextContent("Hecha · 2 min 10 s · Jairo");
     expect(within(row).getByText("Compró 2 unidades")).toBeInTheDocument();
-    fireEvent.click(within(row).getByRole("button", { name: "Abrir chat" }));
+    fireEvent.click(within(row).getByRole("button", { name: "Chat" }));
     expect(mockPush).toHaveBeenCalledWith("/comercial/ventas-chat/bandeja?c=c1");
     fireEvent.click(within(row).getByRole("button", { name: "Eliminar llamada con Ana Pérez" }));
     expect(c.deleteCall).not.toHaveBeenCalled();
