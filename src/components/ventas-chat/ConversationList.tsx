@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { crmError } from "@/services/crmService";
+import { NATIVE_SELECT_CLASS } from "./format";
 import { useConversations } from "@/hooks/useCrmChat";
 import { useCrmMe } from "@/hooks/useCrmMe";
 import type { AssignedFilter, ConversationChannel, ConversationStatus } from "@/types/crm";
@@ -49,18 +50,23 @@ function Segmented<T extends string>({
   label: string;
 }) {
   return (
+    // Chips del mockup 152: píldoras pequeñas, la elegida en teal.
     <div role="group" aria-label={label} className="flex flex-wrap gap-1">
       {options.map((o) => (
-        <Button
+        <button
           key={o.value}
           type="button"
-          size="sm"
-          variant={o.value === value ? "default" : "outline"}
           aria-pressed={o.value === value}
           onClick={() => onChange(o.value)}
+          className={cn(
+            "rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors",
+            o.value === value
+              ? "border-teal-600 bg-teal-50 text-teal-700 dark:border-teal-400 dark:bg-teal-950/40 dark:text-teal-300"
+              : "bg-card text-muted-foreground hover:text-foreground",
+          )}
         >
           {o.label}
-        </Button>
+        </button>
       ))}
     </div>
   );
@@ -142,7 +148,19 @@ export default function ConversationList({
             setAssigned(v);
           }}
         />
-        <Segmented label="Canal" options={CHANNEL_OPTIONS} value={channel} onChange={setChannel} />
+        {/* Mockup 152: el canal es un selector, no una fila de botones. */}
+        <select
+          aria-label="Canal"
+          value={channel}
+          onChange={(e) => setChannel(e.target.value as ChannelFilter)}
+          className={cn(NATIVE_SELECT_CLASS, "py-1.5 text-[13px]")}
+        >
+          {CHANNEL_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.value === "all" ? "Todos los canales" : o.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto" aria-busy={isFetching}>
@@ -236,7 +254,8 @@ export default function ConversationList({
                 )}
                 {c.assignedUserName && (
                   <span className="text-[11px] text-muted-foreground">
-                    Asignada a {c.assignedUserName}
+                    {/* Si el nombre es un correo, solo la parte antes de @ (el mockup muestra nombres). */}
+                    Asignada a {c.assignedUserName.split("@")[0]}
                   </span>
                 )}
               </button>

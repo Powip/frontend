@@ -447,24 +447,23 @@ describe("Bandeja · canales Messenger e Instagram", () => {
     expect(await screen.findByText("Luz Mora")).toBeInTheDocument();
     expect(screen.getByTestId("channel-badge")).toHaveTextContent("Instagram");
     expect(s.listConversations.mock.calls[0][0]).not.toHaveProperty("channel");
-    const group = screen.getByRole("group", { name: "Canal" });
-    expect(within(group).getByRole("button", { name: "Todos" })).toHaveAttribute("aria-pressed", "true");
-    fireEvent.click(within(group).getByRole("button", { name: "Messenger" }));
+    const canal = screen.getByRole("combobox", { name: "Canal" });
+    expect(canal).toHaveValue("all");
+    fireEvent.change(canal, { target: { value: "messenger" } });
     await waitFor(() =>
       expect(s.listConversations).toHaveBeenLastCalledWith(
         expect.objectContaining({ channel: "messenger" }),
         expect.anything(),
       ),
     );
-    fireEvent.click(within(group).getByRole("button", { name: "Todos" }));
+    fireEvent.change(canal, { target: { value: "all" } });
     await waitFor(() => expect(s.listConversations.mock.calls.at(-1)?.[0]).not.toHaveProperty("channel"));
   });
 
   it("el filtro Comentarios pide solo chats nacidos de un comentario, de cualquier red", async () => {
     setup(ig());
     expect(await screen.findByText("Luz Mora")).toBeInTheDocument();
-    const group = screen.getByRole("group", { name: "Canal" });
-    fireEvent.click(within(group).getByRole("button", { name: "Comentarios" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Canal" }), { target: { value: "comments" } });
     await waitFor(() =>
       expect(s.listConversations).toHaveBeenLastCalledWith(
         expect.objectContaining({ comments: true }),
