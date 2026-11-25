@@ -20,7 +20,7 @@ function GuionBody() {
     <div className="space-y-4">
       {script.isLoading && <ContentLoading label="Cargando guion…" />}
       {script.isError && <ContentError error={script.error} onRetry={() => script.refetch()} />}
-      {script.data && <GuionEditor key={script.data.version} script={script.data} />}
+      {isAdmin && <GuionEditor />}
       {script.data && <GuionPlaybook script={script.data} editable={isAdmin} />}
       <GuionReads enabled={isAdmin} />
 

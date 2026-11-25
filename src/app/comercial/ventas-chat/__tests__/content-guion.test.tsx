@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import GuionView from "@/components/ventas-chat/GuionView";
 import * as content from "@/services/crmContentService";
 import type { Material, Script, Sheet } from "@/types/crmContent";
+import { resetCrmMeCache } from "@/hooks/useCrmMe";
 
 jest.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
@@ -23,6 +24,7 @@ jest.mock("@/services/crmContentService", () => ({
   getScript: jest.fn(),
   saveScript: jest.fn(),
   saveScriptPlaybook: jest.fn(),
+  saveScriptOverride: jest.fn(),
   getScriptReads: jest.fn(),
   listMaterials: jest.fn(),
   createMaterial: jest.fn(),
@@ -31,7 +33,13 @@ jest.mock("@/services/crmContentService", () => ({
   listSheets: jest.fn(),
   createSheet: jest.fn(),
 }));
+jest.mock("@/services/crmService", () => ({
+  ...jest.requireActual("@/services/crmService"),
+  getCrmMe: jest.fn(),
+}));
 const c = content as jest.Mocked<typeof content>;
+const crm = jest.requireMock("@/services/crmService") as { getCrmMe: jest.Mock };
+let mockStores: Array<{ id: string; name: string }> = [];
 
 const script = (over: Partial<Script> = {}): Script => ({
   steps: [
@@ -85,6 +93,9 @@ const setup = () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockStores = [];
+  resetCrmMeCache();
+  crm.getCrmMe.mockImplementation(async () => ({ level: "admin", stores: mockStores, phoneMasked: false }));
   c.getScript.mockResolvedValue(script());
   c.getScriptReads.mockResolvedValue({
     version: 2,
@@ -101,6 +112,73 @@ beforeEach(() => {
   c.saveScriptPlaybook.mockResolvedValue(script());
 });
 
+describe("Guion por tienda, categoría y producto", () => {
+  beforeEach(() => {
+    mockStores = [
+      { id: "kunca", name: "KUNCA" },
+      { id: "livii", name: "LIVII" },
+    ];
+  });
+
+  it("pide el guion de la tienda elegida y guarda con su tienda", async () => {
+    setup();
+    await waitFor(() => expect(c.getScript).toHaveBeenCalledWith("kunca"));
+    fireEvent.change(await screen.findByLabelText("Tienda"), { target: { value: "livii" } });
+    await waitFor(() => expect(c.getScript).toHaveBeenCalledWith("livii"));
+    await screen.findByLabelText("Mensaje", { selector: "#gs-msg-0" });
+    fireEvent.click(screen.getByRole("button", { name: "Guardar y avisar a las vendedoras" }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Guardar versión" }));
+    await waitFor(() => expect(c.saveScript).toHaveBeenCalled());
+    expect(c.saveScript.mock.calls[0][0]).toMatchObject({ storeId: "livii" });
+  });
+
+  it("avisa cuando rige la metodología POWIP", async () => {
+    c.getScript.mockResolvedValue(script({ isMethodology: true, version: 0 }));
+    setup();
+    expect(await screen.findByTestId("guion-version")).toHaveTextContent("metodología POWIP");
+  });
+
+  it("producto: hereda de su categoría y solo envía lo escrito", async () => {
+    c.getScript.mockResolvedValue(
+      script({ overrides: { "cat:kunca:Polos": { "1": { message: "Polos a S/ 45", question: "" } } } }),
+    );
+    c.listSheets.mockResolvedValue([sheet({ id: "11111111-1111-4111-8111-111111111111", storeId: "kunca", category: "Polos" })]);
+    c.saveScriptOverride.mockResolvedValue(script({ version: 3 }));
+    setup();
+    fireEvent.change(await screen.findByLabelText("Aplicar a"), { target: { value: "prod" } });
+    const steps = await screen.findAllByTestId("guion-override-step");
+    expect(steps[0]).toHaveTextContent("Hereda de General");
+    expect(steps[1]).toHaveTextContent("Hereda de Categoría Polos");
+    expect(within(steps[1]).getByLabelText("Qué dice la vendedora")).toHaveAttribute("placeholder", "Polos a S/ 45");
+    fireEvent.change(within(steps[0]).getByLabelText("Qué dice la vendedora"), { target: { value: "Hola, este polo vuela" } });
+    expect(steps[0]).toHaveTextContent("Personalizado");
+    fireEvent.click(screen.getByRole("button", { name: "Guardar y avisar a las vendedoras" }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Guardar versión" }));
+    await waitFor(() =>
+      expect(c.saveScriptOverride).toHaveBeenCalledWith({
+        key: "prod:11111111-1111-4111-8111-111111111111",
+        steps: [
+          { index: 0, message: "Hola, este polo vuela", question: "" },
+          { index: 1, message: "", question: "" },
+        ],
+      }),
+    );
+  });
+
+  it("categoría: «Volver a heredar» limpia el paso", async () => {
+    c.getScript.mockResolvedValue(
+      script({ overrides: { "cat:kunca:Polos": { "0": { message: "Hola polos", question: "" } } } }),
+    );
+    c.listSheets.mockResolvedValue([sheet({ storeId: "kunca", category: "Polos" })]);
+    setup();
+    fireEvent.change(await screen.findByLabelText("Aplicar a"), { target: { value: "cat" } });
+    const first = (await screen.findAllByTestId("guion-override-step"))[0];
+    expect(within(first).getByLabelText("Qué dice la vendedora")).toHaveValue("Hola polos");
+    fireEvent.click(within(first).getByRole("button", { name: "Volver a heredar" }));
+    expect(first).toHaveTextContent("Hereda de General");
+  });
+});
+
 describe("Guion y material", () => {
   it("muestra versión, quién y cuándo, y el texto de ayuda sobre Pau", async () => {
     setup();
@@ -115,7 +193,7 @@ describe("Guion y material", () => {
     await screen.findByLabelText("Mensaje", { selector: "#gs-msg-0" });
     fireEvent.change(screen.getByLabelText("¿Qué cambió? (opcional)"), { target: { value: "Se ajustó el saludo" } });
     fireEvent.change(document.getElementById("gs-name-0") as HTMLInputElement, { target: { value: "Bienvenida" } });
-    fireEvent.click(screen.getByRole("button", { name: "Guardar nueva versión" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar y avisar a las vendedoras" }));
     expect(c.saveScript).not.toHaveBeenCalled();
     const dialog = await screen.findByRole("alertdialog");
     expect(dialog).toHaveTextContent(/verán un aviso/);
@@ -137,7 +215,7 @@ describe("Guion y material", () => {
     const steps = screen.getAllByTestId("guion-step");
     expect(within(steps[0]).getByLabelText("Nombre del paso")).toHaveValue("Precio");
     expect(within(steps[1]).getByLabelText("Nombre del paso")).toHaveValue("Saludo");
-    fireEvent.click(screen.getByRole("button", { name: "Guardar nueva versión" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar y avisar a las vendedoras" }));
     fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Guardar versión" }));
     await waitFor(() => expect(c.saveScript).toHaveBeenCalled());
     const sent = c.saveScript.mock.calls[0][0];
@@ -160,7 +238,7 @@ describe("Guion y material", () => {
     setup();
     await screen.findByRole("button", { name: "Añadir paso" });
     fireEvent.click(screen.getByRole("button", { name: "Añadir paso" }));
-    expect(screen.getByRole("button", { name: "Guardar nueva versión" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Guardar y avisar a las vendedoras" })).toBeDisabled();
   });
 
   it("tabla «¿Leyeron el último guion?»", async () => {

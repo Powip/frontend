@@ -19,6 +19,7 @@ import {
   proposeObjection,
   registerObjectionUse,
   saveScript,
+  saveScriptOverride,
   saveScriptPlaybook,
   updateMaterial,
   updateObjection,
@@ -31,6 +32,7 @@ import type {
   ObjectionUpdate,
   Script,
   ScriptInput,
+  ScriptOverrideInput,
   ScriptPlaybookInput,
   SheetInput,
   SheetUpdate,
@@ -39,6 +41,8 @@ import type {
 export const contentKeys = {
   all: ["crm", "content"] as const,
   script: ["crm", "content", "script"] as const,
+  /** Guion de una tienda (`""` = el de la empresa). */
+  scriptFor: (storeId?: string | null) => ["crm", "content", "script", storeId ?? ""] as const,
   scriptReads: ["crm", "content", "script-reads"] as const,
   objections: ["crm", "content", "objections"] as const,
   objectionStats: (days: number) => ["crm", "content", "objection-stats", days] as const,
@@ -51,8 +55,35 @@ const onError = (err: unknown) => toast.error(crmContentError(err).message);
 // --- Guion ---
 
 /** Lectura abierta a cualquier usuario. */
-export function useScript(enabled = true) {
-  return useQuery({ queryKey: contentKeys.script, queryFn: getScript, enabled, retry: false, staleTime: 30_000 });
+export function useScript(enabled = true, storeId?: string | null) {
+  return useQuery({
+    queryKey: contentKeys.scriptFor(storeId),
+    queryFn: () => getScript(storeId),
+    enabled,
+    retry: false,
+    staleTime: 30_000,
+  });
+}
+
+/** Guarda el guion devuelto y refresca el de las demás tiendas (heredan o cambió la versión). */
+function keepScript(qc: ReturnType<typeof useQueryClient>, script: Script) {
+  qc.setQueryData<Script>(contentKeys.scriptFor(script.storeId), script);
+  qc.invalidateQueries({
+    queryKey: contentKeys.script,
+    predicate: (q) => q.queryKey[3] !== (script.storeId ?? ""),
+  });
+}
+
+export function useSaveScriptOverride() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ScriptOverrideInput) => saveScriptOverride(input),
+    onSuccess: (script) => {
+      keepScript(qc, script);
+      qc.invalidateQueries({ queryKey: contentKeys.scriptReads });
+    },
+    onError,
+  });
 }
 
 export function useSaveScript() {
@@ -60,7 +91,7 @@ export function useSaveScript() {
   return useMutation({
     mutationFn: (input: ScriptInput) => saveScript(input),
     onSuccess: (script) => {
-      qc.setQueryData<Script>(contentKeys.script, script);
+      keepScript(qc, script);
       qc.invalidateQueries({ queryKey: contentKeys.scriptReads });
     },
     onError,
@@ -72,7 +103,7 @@ export function useSaveScriptPlaybook() {
   return useMutation({
     mutationFn: (input: ScriptPlaybookInput) => saveScriptPlaybook(input),
     onSuccess: (script) => {
-      qc.setQueryData<Script>(contentKeys.script, script);
+      keepScript(qc, script);
       toast.success("Guion guardado");
     },
     onError,
@@ -83,7 +114,7 @@ export function useMarkScriptRead() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => markScriptRead(),
-    onSuccess: (script) => qc.setQueryData<Script>(contentKeys.script, script),
+    onSuccess: (script) => keepScript(qc, script),
     onError,
   });
 }

@@ -42,11 +42,32 @@ export interface Script {
   updatedAt: string | null;
   updatedByName: string | null;
   myReadVersion: number;
+  /** Tienda pedida (`null` = guion general de la empresa). */
+  storeId?: string | null;
+  /** La tienda no tiene pasos propios: usa los de la empresa. */
+  inheritsGeneral?: boolean;
+  /** Nadie escribió pasos: rige la metodología POWIP. */
+  isMethodology?: boolean;
+  /** Pasos propios por categoría (`cat:<tienda>:<categoría>`) o producto (`prod:<ficha>`); clave = índice del paso. */
+  overrides?: Record<string, Record<string, ScriptStepOverride>>;
+}
+
+/** Texto propio de un paso; vacío = hereda. */
+export interface ScriptStepOverride {
+  message: string;
+  question: string;
 }
 
 export interface ScriptInput {
   steps: ScriptStep[];
   note?: string;
+  /** Guion general de esta tienda; sin tienda, el de la empresa. */
+  storeId?: string;
+}
+
+export interface ScriptOverrideInput {
+  key: string;
+  steps: Array<{ index: number; message: string; question: string }>;
 }
 
 export interface ScriptRead {
@@ -138,6 +159,8 @@ export interface Sheet {
   highlights: string;
   alternatives: string;
   complements: string;
+  category?: string | null;
+  storeId?: string | null;
   active: boolean;
   materials: Material[];
   updatedAt: string;

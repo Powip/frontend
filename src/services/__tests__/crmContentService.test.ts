@@ -9,6 +9,7 @@ import {
   getObjectionStats,
   getScript,
   getScriptReads,
+  saveScriptOverride,
   listMaterials,
   listObjections,
   listSheets,
@@ -41,6 +42,11 @@ describe("crmContentService · guion", () => {
   it("lee, guarda (PUT) y marca leído", async () => {
     await getScript();
     expect(http.get).toHaveBeenLastCalledWith(`${B}/content/script`);
+    await getScript("kunca");
+    expect(http.get).toHaveBeenLastCalledWith(`${B}/content/script`, { params: { storeId: "kunca" } });
+    const ov = { key: "cat:kunca:Polos", steps: [{ index: 0, message: "Hola", question: "" }] };
+    await saveScriptOverride(ov);
+    expect(http.put).toHaveBeenCalledWith(`${B}/content/script/override`, ov);
     const input = { steps: [{ name: "Saludo", message: "Hola {nombre}", question: "¿Qué buscas?" }], note: "Nuevo" };
     await saveScript(input);
     expect(http.put).toHaveBeenCalledWith(`${B}/content/script`, input);

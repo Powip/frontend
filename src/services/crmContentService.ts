@@ -10,6 +10,7 @@ import type {
   ObjectionUpdate,
   Script,
   ScriptInput,
+  ScriptOverrideInput,
   ScriptPlaybookInput,
   ScriptReads,
   Sheet,
@@ -22,8 +23,9 @@ const enc = encodeURIComponent;
 
 // --- Guion ---
 
-export async function getScript(): Promise<Script> {
-  return (await axiosAuth.get<Script>(`${BASE}/content/script`)).data;
+export async function getScript(storeId?: string | null): Promise<Script> {
+  const url = `${BASE}/content/script`;
+  return (await (storeId ? axiosAuth.get<Script>(url, { params: { storeId } }) : axiosAuth.get<Script>(url))).data;
 }
 
 /** Solo administrador. Sube la versión. */
@@ -32,6 +34,11 @@ export async function saveScript(input: ScriptInput): Promise<Script> {
 }
 
 /** Solo administrador: temperatura y reglas de cierre (no cambia la versión del guion). */
+/** Pasos propios de una categoría o producto; vacíos vuelven a heredar. */
+export async function saveScriptOverride(input: ScriptOverrideInput): Promise<Script> {
+  return (await axiosAuth.put<Script>(`${BASE}/content/script/override`, input)).data;
+}
+
 export async function saveScriptPlaybook(input: ScriptPlaybookInput): Promise<Script> {
   return (await axiosAuth.patch<Script>(`${BASE}/content/script/playbook`, input)).data;
 }
