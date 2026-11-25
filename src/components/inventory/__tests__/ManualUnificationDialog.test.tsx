@@ -165,6 +165,33 @@ describe("ManualUnificationDialog (FEAT-24 H11)", () => {
     expect(toast.success).toHaveBeenCalledWith("«Polo azul Shopify» se unió a «Polo Azul».");
   });
 
+  it("«Contar ahora» por debajo de lo reservado avisa en ámbar y deja seguir (FEAT-24 C-D2)", async () => {
+    mockStock.mockResolvedValue([
+      { variant_id: "v-madre", quantity: -215, reserved_quantity: 173, available: 0, inventories: [{ inventory_id: "inv-1", inventory_name: "Principal", store_id: null, quantity: -215, reserved_quantity: 173 }] },
+      { variant_id: "v-otra", quantity: -8, reserved_quantity: 5, available: 0, inventories: [{ inventory_id: "inv-1", inventory_name: "Principal", store_id: null, quantity: -8, reserved_quantity: 5 }] },
+    ]);
+    const user = userEvent.setup();
+    renderDialog();
+    await pickBoth(user);
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    await user.click(screen.getByRole("radio", { name: /Contar ahora/ }));
+    await user.type(screen.getByLabelText(/Cantidad contada/), "25");
+
+    const aviso = "Quedan 153 unidades reservadas sin stock: las reservas pasan a la variante que queda.";
+    expect(await screen.findByText(aviso)).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Vista previa/ }));
+    // En la confirmación se repite el aviso.
+    expect(screen.getByText(aviso)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Aplicar unificación" }));
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledWith({
+      originVariantId: "v-otra",
+      targetVariantId: "v-madre",
+      stockMode: "count",
+      countedQuantity: 25,
+    }));
+  });
+
   it("con «Sumar ambos» no manda cantidad y muestra el stock resultante", async () => {
     const user = userEvent.setup();
     renderDialog();

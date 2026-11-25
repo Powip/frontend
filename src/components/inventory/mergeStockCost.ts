@@ -2,8 +2,10 @@ import type { VariantStock } from "@/services/inventoryItems.service";
 import type { MergeStockMode } from "@/services/reconciliationTask.service";
 
 // FEAT-17 Anexo E — reglas del paso 3 del modal de Unificar (stock y costo),
-// sin React para poder testearlas solas. ms-logistics vuelve a validar el
-// piso de reservas al aplicar (puede entrar una reserva en el medio).
+// sin React para poder testearlas solas. FEAT-24 C-D2: la cantidad final puede
+// quedar por debajo de lo reservado (contar o unificar refleja la realidad).
+// ms-logistics ya no sube el físico hasta lo reservado: deja lo elegido y pasa
+// las reservas a la variante que queda. Aquí solo se avisa, nunca se bloquea.
 
 export type MergeCostChoice = "winner" | "loser" | "custom";
 
@@ -32,6 +34,8 @@ export interface MergeWarehouseRow {
 export interface MergeStockValidation {
   finalQuantity: number | null;
   error: string | null;
+  // FEAT-24 C-D2: aviso que no bloquea (reservado mayor que la cantidad final).
+  warning: string | null;
 }
 
 export interface MergeCostResolution {
@@ -53,6 +57,13 @@ export const COUNT_MULTI_WAREHOUSE_MESSAGE =
 
 export function totalReserved(sides: MergeStockSides): number {
   return sides.winnerReserved + sides.loserReserved;
+}
+
+// FEAT-24 C-D2: mismo texto en la bandeja y en la unión manual.
+export function reservedWithoutStockWarning(withoutStock: number): string {
+  return withoutStock === 1
+    ? "Queda 1 unidad reservada sin stock: las reservas pasan a la variante que queda."
+    : `Quedan ${withoutStock} unidades reservadas sin stock: las reservas pasan a la variante que queda.`;
 }
 
 // FEAT-24 H1-A: misma definición que ms-products y ms-logistics. Cuenta los
@@ -129,10 +140,10 @@ export function validateMergeStock(
   countedRaw: string,
   rows: MergeWarehouseRow[] = [],
 ): MergeStockValidation {
-  if (!mode) return { finalQuantity: null, error: null };
+  if (!mode) return { finalQuantity: null, error: null, warning: null };
 
   if (mode === "count" && !countAllowed(sides)) {
-    return { finalQuantity: null, error: COUNT_MULTI_WAREHOUSE_MESSAGE };
+    return { finalQuantity: null, error: COUNT_MULTI_WAREHOUSE_MESSAGE, warning: null };
   }
 
   let finalQuantity: number;
@@ -145,6 +156,7 @@ export function validateMergeStock(
           countedRaw.trim() === ""
             ? null
             : "Ingresa un número entero entre 0 y 10,000",
+        warning: null,
       };
     }
     finalQuantity = counted;
@@ -157,7 +169,7 @@ export function validateMergeStock(
   // El tope es por variante y almacén: con varios almacenes y sus filas se
   // compara la mayor fila resultante, no el agregado. Sin filas (o con un solo
   // almacén) se usa `finalQuantity` (falla cerrado). El piso de reservas de
-  // abajo se queda agregado: nunca bloquea de más.
+  // abajo se queda agregado (y solo avisa).
   const perWarehouse = sides.warehouseCount > 1 && rows.length > 0 && mode !== "count";
   const capQuantity = perWarehouse
     ? Math.max(
@@ -170,17 +182,16 @@ export function validateMergeStock(
     return {
       finalQuantity,
       error: "El resultado supera el máximo de 10,000 unidades por variante y almacén.",
+      warning: null,
     };
   }
 
   const reserved = totalReserved(sides);
-  if (finalQuantity < reserved) {
-    return {
-      finalQuantity,
-      error: `Hay ${reserved} unidades reservadas en pedidos; la cantidad no puede ser menor`,
-    };
-  }
-  return { finalQuantity, error: null };
+  return {
+    finalQuantity,
+    error: null,
+    warning: finalQuantity < reserved ? reservedWithoutStockWarning(reserved - finalQuantity) : null,
+  };
 }
 
 export function resolveMergeCost(

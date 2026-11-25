@@ -57,26 +57,30 @@ describe("unificationRules (FEAT-24 H11)", () => {
 
   describe("validación del modo de stock", () => {
     it("sin modo no se puede seguir", () => {
-      expect(validateUnificationStock(null, "", null)).toEqual({ finalQuantity: null, error: null, valid: false });
+      expect(validateUnificationStock(null, "", null)).toEqual({ finalQuantity: null, error: null, warning: null, valid: false });
     });
 
     it("«Contar ahora» sin cantidad no se puede seguir (sin error a la vista) y con una inválida avisa", () => {
-      expect(validateUnificationStock("count", "  ", null)).toEqual({ finalQuantity: null, error: null, valid: false });
+      expect(validateUnificationStock("count", "  ", null)).toEqual({ finalQuantity: null, error: null, warning: null, valid: false });
       expect(validateUnificationStock("count", "2.5", null).error).toBe("Ingresa un número entero entre 0 y 10,000");
       expect(validateUnificationStock("count", "10001", null).valid).toBe(false);
     });
 
     it("«Contar ahora» con cantidad es válido, también sin el stock leído (el servidor valida el resto)", () => {
-      expect(validateUnificationStock("count", "7", null)).toEqual({ finalQuantity: 7, error: null, valid: true });
+      expect(validateUnificationStock("count", "7", null)).toEqual({ finalQuantity: 7, error: null, warning: null, valid: true });
       expect(validateUnificationStock("count", "0", { sides: sides(), rows: [] })).toMatchObject({ finalQuantity: 0, valid: true });
     });
 
-    it("con el stock leído aplica el piso de reservas y calcula el resultado de cada modo", () => {
-      expect(validateUnificationStock("sum", "", { sides: sides(), rows: [] })).toMatchObject({ finalQuantity: 8, valid: true });
+    it("con el stock leído calcula el resultado de cada modo; si quedan reservas sin stock avisa y sigue siendo válido (FEAT-24 C-D2)", () => {
+      expect(validateUnificationStock("sum", "", { sides: sides(), rows: [] })).toMatchObject({ finalQuantity: 8, valid: true, warning: null });
       expect(validateUnificationStock("winner", "", { sides: sides(), rows: [] })).toMatchObject({ finalQuantity: 5, valid: true });
       const reserved = validateUnificationStock("count", "1", { sides: sides({ winnerReserved: 2, loserReserved: 1 }), rows: [] });
-      expect(reserved.valid).toBe(false);
-      expect(reserved.error).toMatch(/3 unidades reservadas/);
+      expect(reserved).toEqual({
+        finalQuantity: 1,
+        error: null,
+        warning: "Quedan 2 unidades reservadas sin stock: las reservas pasan a la variante que queda.",
+        valid: true,
+      });
     });
   });
 

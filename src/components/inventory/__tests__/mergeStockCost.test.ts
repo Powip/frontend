@@ -27,17 +27,17 @@ describe('mergeStockCost', () => {
   });
 
   it('sin modo elegido no hay cantidad ni error', () => {
-    expect(validateMergeStock(null, sides, '')).toEqual({ finalQuantity: null, error: null });
+    expect(validateMergeStock(null, sides, '')).toEqual({ finalQuantity: null, error: null, warning: null });
   });
 
   it('winner = cantidad de la madre; sum = suma', () => {
-    expect(validateMergeStock('winner', sides, '')).toEqual({ finalQuantity: 10, error: null });
-    expect(validateMergeStock('sum', sides, '')).toEqual({ finalQuantity: 15, error: null });
+    expect(validateMergeStock('winner', sides, '')).toEqual({ finalQuantity: 10, error: null, warning: null });
+    expect(validateMergeStock('sum', sides, '')).toEqual({ finalQuantity: 15, error: null, warning: null });
   });
 
   it('count usa lo ingresado; vacío no es error todavía', () => {
-    expect(validateMergeStock('count', sides, '12')).toEqual({ finalQuantity: 12, error: null });
-    expect(validateMergeStock('count', sides, '')).toEqual({ finalQuantity: null, error: null });
+    expect(validateMergeStock('count', sides, '12')).toEqual({ finalQuantity: 12, error: null, warning: null });
+    expect(validateMergeStock('count', sides, '')).toEqual({ finalQuantity: null, error: null, warning: null });
   });
 
   it('count inválido muestra error de formato', () => {
@@ -50,21 +50,43 @@ describe('mergeStockCost', () => {
   it('un resultado mayor que 10.000 es error en cualquier modo (FEAT-24 H0)', () => {
     const big = { winnerQuantity: 6_000, winnerReserved: 0, loserQuantity: 5_000, loserReserved: 0, warehouseCount: 1 };
     const message = 'El resultado supera el máximo de 10,000 unidades por variante y almacén.';
-    expect(validateMergeStock('sum', big, '')).toEqual({ finalQuantity: 11_000, error: message });
+    expect(validateMergeStock('sum', big, '')).toEqual({ finalQuantity: 11_000, error: message, warning: null });
     expect(validateMergeStock('winner', { ...big, winnerQuantity: 10_001 }, '').error).toBe(message);
     expect(validateMergeStock('count', big, '10000').error).toBeNull();
     expect(validateMergeStock('count', big, '10001').error).toBe('Ingresa un número entero entre 0 y 10,000');
   });
 
-  it('cantidad final menor que las reservas totales es error', () => {
+  it('cantidad final menor que las reservas totales avisa, no bloquea (FEAT-24 C-D2)', () => {
+    expect(validateMergeStock('count', sides, '1')).toEqual({
+      finalQuantity: 1,
+      error: null,
+      warning: 'Quedan 2 unidades reservadas sin stock: las reservas pasan a la variante que queda.',
+    });
     expect(validateMergeStock('count', sides, '2')).toEqual({
       finalQuantity: 2,
-      error: 'Hay 3 unidades reservadas en pedidos; la cantidad no puede ser menor',
+      error: null,
+      warning: 'Queda 1 unidad reservada sin stock: las reservas pasan a la variante que queda.',
     });
-    expect(
-      validateMergeStock('winner', { ...sides, winnerQuantity: 2 }, '').error,
-    ).toBe('Hay 3 unidades reservadas en pedidos; la cantidad no puede ser menor');
-    expect(validateMergeStock('count', sides, '3').error).toBeNull();
+    const winner = validateMergeStock('winner', { ...sides, winnerQuantity: 0 }, '');
+    expect(winner.error).toBeNull();
+    expect(winner.warning).toMatch(/^Quedan 3 unidades reservadas sin stock/);
+    // Igual o más que lo reservado: sin aviso.
+    expect(validateMergeStock('count', sides, '3')).toEqual({ finalQuantity: 3, error: null, warning: null });
+  });
+
+  it('el caso de Aranni: contar 25 con 178 reservadas deja 25 y avisa por 153', () => {
+    const aranni: MergeStockSides = {
+      winnerQuantity: -215,
+      winnerReserved: 173,
+      loserQuantity: -8,
+      loserReserved: 5,
+      warehouseCount: 1,
+    };
+    expect(validateMergeStock('count', aranni, '25')).toEqual({
+      finalQuantity: 25,
+      error: null,
+      warning: 'Quedan 153 unidades reservadas sin stock: las reservas pasan a la variante que queda.',
+    });
   });
 
   it('parseCountedQuantity acepta enteros 0..10.000 (FEAT-24 H0)', () => {
@@ -133,6 +155,7 @@ describe('conteo físico y almacenes (FEAT-24 H1-A)', () => {
     expect(validateMergeStock('count', multi, '12')).toEqual({
       finalQuantity: null,
       error: COUNT_MULTI_WAREHOUSE_MESSAGE,
+      warning: null,
     });
     expect(validateMergeStock('count', multi, '').error).toBe(COUNT_MULTI_WAREHOUSE_MESSAGE);
     expect(COUNT_MULTI_WAREHOUSE_MESSAGE).toBe(
@@ -142,14 +165,15 @@ describe('conteo físico y almacenes (FEAT-24 H1-A)', () => {
 
   it('con más de un almacén, "winner" y "sum" siguen siendo válidos', () => {
     const multi = { ...sides, warehouseCount: 2 };
-    expect(validateMergeStock('winner', multi, '')).toEqual({ finalQuantity: 10, error: null });
-    expect(validateMergeStock('sum', multi, '')).toEqual({ finalQuantity: 15, error: null });
+    expect(validateMergeStock('winner', multi, '')).toEqual({ finalQuantity: 10, error: null, warning: null });
+    expect(validateMergeStock('sum', multi, '')).toEqual({ finalQuantity: 15, error: null, warning: null });
   });
 
   it('con un almacén, count sigue validando como antes', () => {
     expect(validateMergeStock('count', { ...sides, warehouseCount: 1 }, '12')).toEqual({
       finalQuantity: 12,
       error: null,
+      warning: null,
     });
   });
 
@@ -177,8 +201,8 @@ describe('conteo físico y almacenes (FEAT-24 H1-A)', () => {
         loserReserved: 0,
         warehouseCount: 2,
       };
-      expect(validateMergeStock('winner', multi, '', rows)).toEqual({ finalQuantity: 12_000, error: null });
-      expect(validateMergeStock('sum', multi, '', rows)).toEqual({ finalQuantity: 16_000, error: null });
+      expect(validateMergeStock('winner', multi, '', rows)).toEqual({ finalQuantity: 12_000, error: null, warning: null });
+      expect(validateMergeStock('sum', multi, '', rows)).toEqual({ finalQuantity: 16_000, error: null, warning: null });
     });
 
     it('6.000 + 5.000 en el MISMO almacén sigue siendo error', () => {
@@ -190,7 +214,7 @@ describe('conteo físico y almacenes (FEAT-24 H1-A)', () => {
         loserReserved: 0,
         warehouseCount: 1,
       };
-      expect(validateMergeStock('sum', single, '', rows)).toEqual({ finalQuantity: 11_000, error: TOPE });
+      expect(validateMergeStock('sum', single, '', rows)).toEqual({ finalQuantity: 11_000, error: TOPE, warning: null });
       // varios almacenes, pero la suma de UNA fila pasa del tope
       const multi: MergeStockSides = {
         winnerQuantity: 6_100,
@@ -213,7 +237,7 @@ describe('conteo físico y almacenes (FEAT-24 H1-A)', () => {
         warehouseCount: 2,
       };
       const rows = [row('inv-a', 10_001, 0), row('inv-b', 5, 0)];
-      expect(validateMergeStock('winner', multi, '', rows)).toEqual({ finalQuantity: 10_006, error: TOPE });
+      expect(validateMergeStock('winner', multi, '', rows)).toEqual({ finalQuantity: 10_006, error: TOPE, warning: null });
     });
 
     it('con varios almacenes pero sin filas falla cerrado: usa el agregado', () => {
@@ -240,7 +264,7 @@ describe('conteo físico y almacenes (FEAT-24 H1-A)', () => {
       expect(validateMergeStock('sum', single, '').error).toBe(TOPE);
     });
 
-    it('el piso de reservas sigue siendo agregado', () => {
+    it('el aviso de reservas sigue siendo agregado (y no bloquea)', () => {
       const multi: MergeStockSides = {
         winnerQuantity: 6,
         winnerReserved: 4,
@@ -249,9 +273,11 @@ describe('conteo físico y almacenes (FEAT-24 H1-A)', () => {
         warehouseCount: 2,
       };
       const rows = [row('inv-a', 3, 0), row('inv-b', 3, 0)];
-      expect(validateMergeStock('winner', multi, '', rows).error).toBe(
-        'Hay 8 unidades reservadas en pedidos; la cantidad no puede ser menor',
-      );
+      expect(validateMergeStock('winner', multi, '', rows)).toEqual({
+        finalQuantity: 6,
+        error: null,
+        warning: 'Quedan 2 unidades reservadas sin stock: las reservas pasan a la variante que queda.',
+      });
     });
   });
 

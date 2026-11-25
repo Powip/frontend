@@ -140,6 +140,8 @@ export interface UnificationStockCheck {
   finalQuantity: number | null;
   /** Error para mostrar (no se muestra nada mientras falta elegir o escribir). */
   error: string | null;
+  /** Aviso que no bloquea (FEAT-24 C-D2: quedan reservas sin stock). */
+  warning: string | null;
   /** ¿Se puede pasar al paso siguiente? */
   valid: boolean;
 }
@@ -147,23 +149,28 @@ export interface UnificationStockCheck {
 /**
  * Valida el modo de stock. `count` exige una cantidad entera de 0 a 10.000 (y
  * con otro modo no se manda). Con el stock leído se aplican además las reglas
- * de la bandeja (tope por almacén, piso de reservas, conteo en un solo
- * almacén); sin él, solo el formato: el servidor valida el resto.
+ * de la bandeja (tope por almacén, conteo en un solo almacén, aviso si quedan
+ * reservas sin stock); sin él, solo el formato: el servidor valida el resto.
  */
 export function validateUnificationStock(
   mode: UnificationStockMode | null,
   countedRaw: string,
   stock: { sides: MergeStockSides; rows: MergeWarehouseRow[] } | null,
 ): UnificationStockCheck {
-  if (!mode) return { finalQuantity: null, error: null, valid: false };
+  if (!mode) return { finalQuantity: null, error: null, warning: null, valid: false };
   if (mode === "count") {
-    if (countedRaw.trim() === "") return { finalQuantity: null, error: null, valid: false };
+    if (countedRaw.trim() === "") return { finalQuantity: null, error: null, warning: null, valid: false };
     if (parseCountedQuantity(countedRaw) === null) {
-      return { finalQuantity: null, error: "Ingresa un número entero entre 0 y 10,000", valid: false };
+      return { finalQuantity: null, error: "Ingresa un número entero entre 0 y 10,000", warning: null, valid: false };
     }
   }
   if (!stock) {
-    return { finalQuantity: mode === "count" ? parseCountedQuantity(countedRaw) : null, error: null, valid: true };
+    return {
+      finalQuantity: mode === "count" ? parseCountedQuantity(countedRaw) : null,
+      error: null,
+      warning: null,
+      valid: true,
+    };
   }
   const result = validateMergeStock(mode, stock.sides, countedRaw, stock.rows);
   return { ...result, valid: result.error === null && result.finalQuantity !== null };

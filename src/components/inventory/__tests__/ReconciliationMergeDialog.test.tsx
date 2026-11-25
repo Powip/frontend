@@ -759,7 +759,7 @@ describe('ReconciliationMergeDialog', () => {
       );
     });
 
-    it('conteo físico menor que las reservas muestra el error y bloquea; con 12 manda count', async () => {
+    it('conteo físico menor que las reservas avisa y deja aplicar (FEAT-24 C-D2): manda count con lo contado', async () => {
       renderDialog(makePairTask());
       await screen.findAllByRole('radio');
       const user = userEvent.setup();
@@ -768,19 +768,18 @@ describe('ReconciliationMergeDialog', () => {
       await user.click(await screen.findByRole('radio', { name: /conteo físico/i }));
       const input = screen.getByLabelText(/cantidad contada/i);
       await user.type(input, '2');
-      expect(screen.getByRole('alert')).toHaveTextContent(
-        'Hay 3 unidades reservadas en pedidos; la cantidad no puede ser menor',
-      );
-      expect(screen.getByRole('button', { name: /aplicar unificación/i })).toBeDisabled();
-
-      await user.clear(input);
-      await user.type(input, '12');
-      await user.click(screen.getByRole('button', { name: /aplicar unificación/i }));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      expect(
+        screen.getByText('Queda 1 unidad reservada sin stock: las reservas pasan a la variante que queda.'),
+      ).toBeInTheDocument();
+      const apply = screen.getByRole('button', { name: /aplicar unificación/i });
+      expect(apply).toBeEnabled();
+      await user.click(apply);
 
       await waitFor(() =>
         expect(mockResolveMerge).toHaveBeenCalledWith('task-pair-1', 'variant-b', ['variant-a'], {
           stockMode: 'count',
-          countedQuantity: 12,
+          countedQuantity: 2,
           priceBase: 30,
         }),
       );
