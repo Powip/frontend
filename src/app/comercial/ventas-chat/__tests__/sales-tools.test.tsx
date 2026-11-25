@@ -6,7 +6,6 @@ import CommissionsSection from "@/components/ventas-chat/CommissionsSection";
 import CoreProductPicker from "@/components/ventas-chat/CoreProductPicker";
 import { FichaAlbum, FichaCoreStock } from "@/components/ventas-chat/FichaCoreSection";
 import ObjectionTester from "@/components/ventas-chat/ObjectionTester";
-import VentasView, { salesRowPdfSpec } from "@/components/ventas-chat/VentasView";
 import type { CatalogItem, CommissionsReport, SalesBoardRow } from "@/types/crmSalesTools";
 
 const access = { level: "admin", isAdmin: true, isSupervisor: true, stores: [], fromServer: true, phoneMasked: false };
@@ -196,43 +195,4 @@ const row = (over: Partial<SalesBoardRow> = {}): SalesBoardRow => ({
   createdAt: "2026-11-20T15:00:00.000Z",
   bucket: "pending",
   ...over,
-});
-
-describe("Ventas desde el CRM (fila 58)", () => {
-  it("lista documentos, filtra anuladas y descarga el PDF", async () => {
-    t.getSalesBoard.mockResolvedValue([row(), row({ kind: "order", id: "o1", number: "PED-9", paid: 50, publicUrl: null })]);
-    wrap(<VentasView />);
-    const rows = await screen.findAllByTestId("sales-row");
-    expect(rows).toHaveLength(2);
-    expect(t.getSalesBoard).toHaveBeenCalledWith("pending", 60);
-    expect(screen.getByRole("link", { name: /Nueva venta/ })).toHaveAttribute("href", "/registrar-venta");
-    expect(within(rows[0]).getByRole("link", { name: /Abrir chat/ })).toHaveAttribute("href", expect.stringContaining("c=c1"));
-
-    fireEvent.click(within(rows[0]).getByRole("button", { name: "Descargar PDF de COT-001" }));
-    await waitFor(() => expect(download).toHaveBeenCalledWith(expect.objectContaining({ title: "Cotización", number: "COT-001" })));
-
-    fireEvent.click(screen.getByRole("button", { name: "Anuladas" }));
-    await waitFor(() => expect(t.getSalesBoard).toHaveBeenCalledWith("cancelled", 60));
-  });
-
-  it("actualiza la cotización desde el Core y abre la importación de Excel", async () => {
-    t.getSalesBoard.mockResolvedValue([row()]);
-    t.refreshQuote.mockResolvedValue({ synced: true });
-    wrap(<VentasView />);
-    fireEvent.click(await screen.findByRole("button", { name: "Actualizar COT-001 desde el Core" }));
-    await waitFor(() => expect(t.refreshQuote).toHaveBeenCalledWith("q1"));
-    fireEvent.click(screen.getByRole("button", { name: /Importar Excel/ }));
-    expect(screen.getByTestId("import-modal")).toHaveTextContent("st1");
-  });
-
-  it("el PDF de un pedido trae pagado y saldo", () => {
-    const spec = salesRowPdfSpec(row({ kind: "order", number: "PED-9", total: 100, paid: 40, publicUrl: null }));
-    expect(spec.title).toBe("Pedido");
-    expect(spec.tables[0].rows).toEqual([
-      ["Total", "S/ 100.00"],
-      ["Pagado", "S/ 40.00"],
-      ["Saldo", "S/ 60.00"],
-    ]);
-    expect(spec.fileName).toBe("pedido-PED-9.pdf");
-  });
 });

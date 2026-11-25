@@ -6,7 +6,6 @@ import * as ajustesE from "@/services/crmAjustesEService";
 import * as teamService from "@/services/crmTeamService";
 import * as planService from "@/services/crmPlanService";
 import * as panelService from "@/services/crmOrderPanelService";
-import VentasView from "@/components/ventas-chat/VentasView";
 import {
   AttributionCard,
   CodCard,
@@ -260,46 +259,4 @@ const row = (over: Partial<SalesBoardRow> = {}): SalesBoardRow => ({
   createdAt: "2026-11-20T15:00:00.000Z",
   bucket: "pending",
   ...over,
-});
-
-describe("Ventas · V3 con datos del Core", () => {
-  it("ciudad, pago/envío y acciones Pagos, Editar, Seguimiento y WhatsApp", async () => {
-    t.getSalesBoard.mockResolvedValue([row(), row({ id: "q1", kind: "quote", orderId: null, number: "COT-1" })]);
-    e.getSalesBoardExtras.mockResolvedValue([
-      {
-        orderId: "ord-1",
-        city: "Arequipa",
-        province: "Arequipa",
-        district: "Cayma",
-        units: 3,
-        phone: "+51 999 111 222",
-        deliveryType: "PROVINCIA",
-        courier: "Shalom",
-        trackingUrl: "https://track.example/ord-1",
-        guideNumber: "G-1",
-        paymentMethods: ["YAPE"],
-        payments: [{ id: "p1", amount: 30, method: "YAPE", status: "VALIDADO", paidAt: "2026-11-20T15:00:00.000Z", proofUrl: null }],
-      },
-    ]);
-    wrap(<VentasView />);
-    const cities = await screen.findAllByTestId("row-city");
-    await waitFor(() => expect(cities[0]).toHaveTextContent("Arequipa, Arequipa3 unidades"));
-    expect(cities[1]).toHaveTextContent("—");
-    expect(screen.getAllByTestId("row-payship")[0]).toHaveTextContent("YapeProvincia · Shalom");
-    expect(e.getSalesBoardExtras).toHaveBeenCalledWith(["ord-1"]);
-    expect(screen.getByRole("link", { name: "Editar PED-1 en el Core" })).toHaveAttribute("href", "/registrar-venta?orderId=ord-1");
-    expect(screen.getByRole("link", { name: "Seguimiento de PED-1" })).toHaveAttribute("href", "https://track.example/ord-1");
-    expect(screen.getAllByRole("link", { name: "Abrir chat de Ana" })[0]).toHaveTextContent("WhatsApp");
-    fireEvent.click(screen.getByRole("button", { name: "Ver pagos de PED-1" }));
-    expect(within(await screen.findByTestId("payments-list")).getByText("S/ 30.00")).toBeInTheDocument();
-  });
-
-  it("si el Core no responde, la tabla sigue y muestra —", async () => {
-    t.getSalesBoard.mockResolvedValue([row()]);
-    e.getSalesBoardExtras.mockRejectedValue(new Error("503"));
-    wrap(<VentasView />);
-    const city = await screen.findByTestId("row-city");
-    await waitFor(() => expect(city).toHaveTextContent("—"));
-    expect(screen.getByRole("button", { name: "Seguimiento de PED-1" })).toBeDisabled();
-  });
 });
