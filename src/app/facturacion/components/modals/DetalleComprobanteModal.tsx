@@ -1,7 +1,7 @@
 "use client";
 
 import { Download, Link2, Loader2, Mail, MessageCircle, Receipt, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { ProximamenteButton } from "@/app/facturacion/components/ProximamenteButton";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,15 @@ import {
   TAX_DOCUMENT_STATUSES,
   type TaxDocumentStatus,
 } from "@/features/sunat/shared/types/sunat.types";
+import {
+  getTaxDocumentWhatsAppErrorCode,
+  TAX_DOCUMENT_WHATSAPP_ERRORS,
+} from "@/features/sunat/sunat-document/api/tax-document-whatsapp.api";
 import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-document-pdf";
+import {
+  useSendTaxDocumentWhatsApp,
+  useTaxDocumentWhatsAppAvailability,
+} from "@/features/sunat/sunat-document/hooks/use-tax-document-whatsapp";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { getDocumentTypeLabel } from "@/features/sunat/sunat-document/utils/get-document-type-label";
 import { formatDateTime } from "@/utils/date";
@@ -60,6 +68,20 @@ export default function DetalleComprobanteModal({
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const { mutateAsync: downloadSunatDocumentPdf } = useSunatDocumentPdf();
+
+  const rowIsFinal =
+    row?.taxDocument?.cdrStatus === "ACCEPTED" ||
+    row?.taxDocument?.cdrStatus === "ACCEPTED_WITH_OBSERVATION";
+
+  // Own WhatsApp Business number (Cloud API) → Powip sends the PDF; otherwise wa.me with text.
+  const { data: whatsAppAvailability, isLoading: checkingWhatsApp } =
+    useTaxDocumentWhatsAppAvailability(isOpen && rowIsFinal);
+  const { mutateAsync: sendTaxDocumentWhatsApp, isPending: sendingWhatsApp } =
+    useSendTaxDocumentWhatsApp();
+  // Blocks a second click before React re-renders the disabled button.
+  const sendingRef = useRef(false);
+
+  const canSendPdf = whatsAppAvailability?.connected === true;
 
   if (!row) {
     return null;
@@ -98,7 +120,7 @@ export default function DetalleComprobanteModal({
 
   const isFinal = status === "ACCEPTED" || status === "ACCEPTED_WITH_OBSERVATION";
 
-  const shareWhatsApp = () => {
+  const openWhatsAppWithText = () => {
     const phone = sale.customer.phoneNumber?.replace(/\D/g, "");
 
     if (!phone) {
@@ -122,6 +144,68 @@ export default function DetalleComprobanteModal({
     window.open(`https://wa.me/${phone}?text=${message}`, "_blank", "noopener,noreferrer");
 
     onAction?.(sale.id, "wa");
+  };
+
+  const sendPdfByWhatsApp = async () => {
+    if (!taxDocument || sendingRef.current) {
+      return;
+    }
+
+    const phone = sale.customer.phoneNumber?.replace(/\D/g, "");
+
+    if (!phone) {
+      toast.error("Esta venta no tiene un teléfono de contacto registrado");
+      return;
+    }
+
+    sendingRef.current = true;
+
+    try {
+      const result = await sendTaxDocumentWhatsApp({
+        sunatDocumentId: taxDocument.id,
+        to: phone,
+        customerName: sale.customer.fullName ?? undefined,
+      });
+
+      toast.success(
+        result.deduplicated
+          ? "Este comprobante ya se envió por WhatsApp hace un momento"
+          : `PDF enviado por WhatsApp a +${result.to}`,
+      );
+
+      onAction?.(sale.id, "wa");
+    } catch (error) {
+      const code = getTaxDocumentWhatsAppErrorCode(error);
+
+      if (code === TAX_DOCUMENT_WHATSAPP_ERRORS.OWN_NUMBER_NOT_CONNECTED) {
+        toast.info(
+          "Tu número de WhatsApp ya no está conectado: se abrirá WhatsApp con el texto, sin el PDF",
+        );
+        openWhatsAppWithText();
+      } else if (code === TAX_DOCUMENT_WHATSAPP_ERRORS.TEMPLATE_NOT_APPROVED) {
+        toast.error(
+          "El cliente no escribió en las últimas 24 h y la plantilla «comprobante_pdf» aún no está aprobada por Meta",
+        );
+      } else if (code === TAX_DOCUMENT_WHATSAPP_ERRORS.SEND_IN_PROGRESS) {
+        toast.info("El comprobante ya se está enviando");
+      } else if (code === TAX_DOCUMENT_WHATSAPP_ERRORS.INVALID_RECIPIENT) {
+        toast.error("El teléfono del cliente no es un número de WhatsApp válido");
+      } else {
+        console.error("Error sending tax document by WhatsApp:", error);
+        toast.error("No se pudo enviar el comprobante por WhatsApp");
+      }
+    } finally {
+      sendingRef.current = false;
+    }
+  };
+
+  const shareWhatsApp = () => {
+    if (canSendPdf) {
+      void sendPdfByWhatsApp();
+      return;
+    }
+
+    openWhatsAppWithText();
   };
 
   const downloadPdf = async () => {
@@ -299,9 +383,19 @@ export default function DetalleComprobanteModal({
             <div className="mt-2 text-sm font-semibold">Compartir con el cliente</div>
 
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" className="justify-start gap-2" onClick={shareWhatsApp}>
-                <MessageCircle className="h-4 w-4 text-green-600" />
-                WhatsApp
+              <Button
+                variant="outline"
+                className="justify-start gap-2"
+                disabled={sendingWhatsApp || checkingWhatsApp}
+                onClick={shareWhatsApp}
+                data-testid="compartir-whatsapp"
+              >
+                {sendingWhatsApp ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MessageCircle className="h-4 w-4 text-green-600" />
+                )}
+                {canSendPdf ? "Enviar PDF por WhatsApp" : "WhatsApp"}
               </Button>
 
               <Button
@@ -340,6 +434,18 @@ export default function DetalleComprobanteModal({
                 className="col-span-2 justify-start"
               />
             </div>
+
+            {!checkingWhatsApp && (
+              <p className="text-xs text-muted-foreground" data-testid="aviso-whatsapp">
+                {canSendPdf
+                  ? `WhatsApp: Powip enviará el PDF al cliente desde tu número${
+                      whatsAppAvailability?.businessPhoneNumber
+                        ? ` +${whatsAppAvailability.businessPhoneNumber}`
+                        : ""
+                    }.`
+                  : "WhatsApp: tu empresa no tiene un número de WhatsApp Business conectado. Se abrirá WhatsApp con el texto del comprobante, sin el PDF."}
+              </p>
+            )}
 
             <div className="mt-2 flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => onGenerarNota(row)}>

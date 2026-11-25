@@ -22,6 +22,7 @@ import DetalleComprobanteModal from "@/app/facturacion/components/modals/Detalle
 import EmitirComprobanteModal from "@/app/facturacion/components/modals/EmitirComprobanteModal";
 import LoteEmisionModal from "@/app/facturacion/components/modals/LoteEmisionModal";
 import RechazadoModal from "@/app/facturacion/components/modals/RechazadoModal";
+import { getNumeroComprobanteEmitido } from "@/app/facturacion/lib/numero-comprobante";
 import { PdfPreviewDialog } from "@/components/pdf/PdfPreviewDialog";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { Badge } from "@/components/ui/badge";
@@ -766,6 +767,7 @@ export function TaxDocumentsTab({
 
                   <TableHead>Fecha</TableHead>
                   <TableHead>Venta / ID</TableHead>
+                  <TableHead className="whitespace-nowrap">N° comprobante</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead className="text-right">Total</TableHead>
@@ -778,7 +780,7 @@ export function TaxDocumentsTab({
               <TableBody>
                 {filteredRows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="h-40 text-center text-muted-foreground">
+                    <TableCell colSpan={10} className="h-40 text-center text-muted-foreground">
                       {loading
                         ? "Cargando ventas..."
                         : "No hay comprobantes que coincidan con el filtro"}
@@ -813,6 +815,13 @@ export function TaxDocumentsTab({
                           <div className="text-[10px] text-muted-foreground">
                             {documentNumber ?? `ID ${row.sale.id.substring(0, 8)}`}
                           </div>
+                        </TableCell>
+
+                        <TableCell
+                          className="whitespace-nowrap font-mono text-xs"
+                          data-testid="numero-comprobante"
+                        >
+                          {getNumeroComprobanteEmitido(row)}
                         </TableCell>
 
                         <TableCell>
