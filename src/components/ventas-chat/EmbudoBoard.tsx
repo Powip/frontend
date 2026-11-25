@@ -9,22 +9,27 @@ import { cn } from "@/lib/utils";
 import { crmError } from "@/services/crmService";
 import { useCrmEvents } from "@/hooks/useCrmChat";
 import { useCrmMe } from "@/hooks/useCrmMe";
-import { useBoard, useMoveCard, usePipelines } from "@/hooks/useCrmPlanning";
-import type { AssignedFilter, BoardColumn, Conversation, Stage } from "@/types/crm";
+import { useMoveCard, usePipelines } from "@/hooks/useCrmPlanning";
+import { useTeamMembers } from "@/hooks/useCrmTeam";
+import type { AssignedFilter, Conversation, Stage } from "@/types/crm";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import LiveIndicator from "./LiveIndicator";
 import LostReasonDialog from "./LostReasonDialog";
 import PipelineEditorDialog from "./PipelineEditorDialog";
-import { NATIVE_SELECT_CLASS, bandejaUrl, contactLabel, relativeTime } from "./format";
+import { NATIVE_SELECT_CLASS, bandejaUrl, contactLabel, formatMoney, relativeTime } from "./format";
+import { isAutoStage, useEmbudoBoard, type EmbudoColumn } from "./embudoData";
 
-const ASSIGNED_OPTIONS: Array<{ value: AssignedFilter; label: string }> = [
-  { value: "all", label: "Todas" },
-  { value: "me", label: "Mías" },
-  { value: "unassigned", label: "Sin asignar" },
-];
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("");
+}
 
 interface CardProps {
-  conversation: Conversation;
+  conversation: Conversation & { dealValue?: number | null };
   stage: Stage;
   stages: Stage[];
   onOpen: (id: string) => void;
@@ -32,8 +37,10 @@ interface CardProps {
 }
 
 function CardBody({ conversation: c, stage, stages, onOpen, onMove }: CardProps) {
-  const { phoneMasked } = useCrmMe();
+  const { phoneMasked, isAdmin } = useCrmMe();
   const name = contactLabel(c, phoneMasked);
+  // Venta y Entregado los mueve el sistema; solo el administrador los corrige a mano.
+  const targets = stages.filter((s) => s.id !== stage.id && (isAdmin || !isAutoStage(s.kind)));
   return (
     <>
       <button
@@ -42,8 +49,23 @@ function CardBody({ conversation: c, stage, stages, onOpen, onMove }: CardProps)
         className="block w-full text-left"
         aria-label={`Abrir conversación de ${name}`}
       >
-        <span className="flex items-center justify-between gap-2">
-          <span className="break-words sm:truncate font-medium">{name}</span>
+        <span className="flex items-center gap-2">
+          <span
+            aria-hidden
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#4C2FB5]/10 text-[11px] font-semibold text-[#4C2FB5] dark:text-violet-300"
+          >
+            {initials(name)}
+          </span>
+          <span className="min-w-0 flex-1 break-words sm:truncate font-medium">{name}</span>
+          {c.assignedUserName && (
+            <span
+              title={c.assignedUserName}
+              className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
+            >
+              <span aria-hidden>{initials(c.assignedUserName)}</span>
+              <span className="sr-only">{c.assignedUserName}</span>
+            </span>
+          )}
           {c.unreadCount > 0 && (
             <span
               aria-label={`${c.unreadCount} sin leer`}
@@ -58,11 +80,16 @@ function CardBody({ conversation: c, stage, stages, onOpen, onMove }: CardProps)
         </span>
       </button>
       <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-[11px] text-muted-foreground">
-        <span>{relativeTime(c.lastMessageAt) || "—"}</span>
-        <span>· {c.assignedUserName ? c.assignedUserName : "Sin asignar"}</span>
+        <span className="font-semibold text-foreground tabular-nums" data-testid="card-value">
+          {c.dealValue != null ? formatMoney(c.dealValue) : "Sin cotización"}
+        </span>
+        <span>· {relativeTime(c.lastMessageAt) || "—"}</span>
+        {!c.assignedUserName && <span>· Sin asignar</span>}
       </p>
       {stage.kind === "lost" && c.lostReason && (
-        <p className="mt-1 text-[11px] text-muted-foreground">Motivo: {c.lostReason}</p>
+        <p className="mt-1 inline-block rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
+          Motivo: {c.lostReason}
+        </p>
       )}
       <select
         aria-label={`Mover a… (${name})`}
@@ -76,9 +103,7 @@ function CardBody({ conversation: c, stage, stages, onOpen, onMove }: CardProps)
         <option value="" disabled>
           Mover a…
         </option>
-        {stages
-          .filter((s) => s.id !== stage.id)
-          .map((s) => (
+        {targets.map((s) => (
             <option key={s.id} value={s.id}>
               {s.name}
             </option>
@@ -94,29 +119,36 @@ function Column({
   onOpen,
   onMove,
 }: {
-  column: BoardColumn;
+  column: EmbudoColumn;
   stages: Stage[];
   onOpen: (id: string) => void;
   onMove: (conversation: Conversation, stage: Stage) => void;
 }) {
   const { stage, total, conversations } = column;
+  const auto = isAutoStage(stage.kind);
   return (
     <section
       aria-label={`Etapa ${stage.name}`}
       className="flex w-72 shrink-0 flex-col rounded-lg border bg-muted/30"
     >
-      <header className="flex items-center gap-2 border-b p-2.5">
-        <span
-          aria-hidden
-          className="h-2.5 w-2.5 shrink-0 rounded-full"
-          style={{ backgroundColor: stage.color }}
-        />
-        <h3 className="min-w-0 flex-1 break-words sm:truncate text-sm font-semibold">{stage.name}</h3>
-        <Badge variant="secondary" aria-label={`${total} conversaciones`}>
-          {total}
-        </Badge>
+      <header className="border-b p-2.5">
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden
+            className="h-2.5 w-2.5 shrink-0 rounded-full"
+            style={{ backgroundColor: stage.color }}
+          />
+          <h3 className="min-w-0 flex-1 break-words sm:truncate text-sm font-semibold">{stage.name}</h3>
+          <Badge variant="secondary" aria-label={`${total} conversaciones`}>
+            {total}
+          </Badge>
+        </div>
+        <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground" data-testid="stage-amount">
+          {formatMoney(column.amount ?? 0)}
+          {auto ? " · lo mueve el sistema" : ""}
+        </p>
       </header>
-      <Droppable droppableId={stage.id}>
+      <Droppable droppableId={stage.id} isDropDisabled={auto}>
         {(provided, snapshot) => (
           <div
             ref={provided.innerRef}
@@ -153,7 +185,7 @@ function Column({
             {provided.placeholder}
             {conversations.length === 0 && (
               <p className="py-3 text-center text-xs text-muted-foreground">
-                Sin conversaciones
+                Ningún chat en esta etapa
               </p>
             )}
             {total > conversations.length && (
@@ -174,7 +206,11 @@ export default function EmbudoBoard() {
   const live = useCrmEvents();
   const pipelinesQuery = usePipelines();
   const [pipelineId, setPipelineId] = useState<string | null>(null);
-  const [assigned, setAssigned] = useState<AssignedFilter>("all");
+  // "" = todas, "me", "unassigned" o el id de una vendedora.
+  const [seller, setSeller] = useState("");
+  const assigned: AssignedFilter = seller === "me" || seller === "unassigned" ? seller : "all";
+  const sellerId = seller && seller !== "me" && seller !== "unassigned" ? seller : undefined;
+  const members = useTeamMembers();
   const { stores, phoneMasked } = useCrmMe();
   const [storeChoice, setStoreChoice] = useState("");
   const storeId = stores.some((s) => s.id === storeChoice) ? storeChoice : undefined;
@@ -188,7 +224,7 @@ export default function EmbudoBoard() {
     pipelines?.find((p) => p.id === pipelineId) ??
     pipelines?.find((p) => p.isDefault) ??
     pipelines?.[0];
-  const boardQuery = useBoard(active?.id ?? null, assigned, storeId);
+  const boardQuery = useEmbudoBoard(active?.id ?? null, assigned, storeId, sellerId);
   const move = useMoveCard(active?.id ?? null, assigned, storeId);
 
   const board = boardQuery.data;
@@ -207,7 +243,7 @@ export default function EmbudoBoard() {
       .flatMap((c) => c.conversations)
       .find((c) => c.id === result.draggableId);
     const stage = stages.find((s) => s.id === to);
-    if (conversation && stage) requestMove(conversation, stage);
+    if (conversation && stage && !isAutoStage(stage.kind)) requestMove(conversation, stage);
   };
 
   const err = pipelinesQuery.isError
@@ -252,20 +288,21 @@ export default function EmbudoBoard() {
             </select>
           </label>
         )}
-        <div role="group" aria-label="Asignación" className="flex gap-1">
-          {ASSIGNED_OPTIONS.map((o) => (
-            <Button
-              key={o.value}
-              type="button"
-              size="sm"
-              variant={o.value === assigned ? "default" : "outline"}
-              aria-pressed={o.value === assigned}
-              onClick={() => setAssigned(o.value)}
-            >
-              {o.label}
-            </Button>
+        <select
+          aria-label="Vendedora"
+          value={seller}
+          onChange={(e) => setSeller(e.target.value)}
+          className={cn(NATIVE_SELECT_CLASS, "w-auto min-w-44")}
+        >
+          <option value="">Todas las vendedoras</option>
+          <option value="me">Mis chats</option>
+          <option value="unassigned">Sin asignar</option>
+          {(members.data ?? []).map((p) => (
+            <option key={p.userId} value={p.userId}>
+              {p.userName}
+            </option>
           ))}
-        </div>
+        </select>
         <Button
           type="button"
           size="sm"
@@ -302,6 +339,9 @@ export default function EmbudoBoard() {
 
       {board && (
         <DragDropContext onDragEnd={onDragEnd}>
+          <p className="text-xs text-muted-foreground">
+            Arrastra la tarjeta para cambiar la etapa. Venta y Entregado los mueve el sistema al confirmarse el pago y la entrega.
+          </p>
           <div className="flex items-start gap-3 overflow-x-auto pb-2" data-testid="board">
             {board.columns.map((col) => (
               <Column

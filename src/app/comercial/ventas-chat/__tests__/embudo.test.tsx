@@ -122,12 +122,33 @@ describe("Embudo", () => {
     expect(card.getByText(/Jairo/)).toBeInTheDocument();
     expect(card.getByLabelText("1 conversaciones")).toBeInTheDocument();
     expect(s.getBoard).toHaveBeenCalledWith("p1", "all", undefined);
+    expect(within(column("Ganado")).getByTestId("stage-amount")).toHaveTextContent("lo mueve el sistema");
+    expect(within(column("Nuevo")).getByTestId("stage-amount")).not.toHaveTextContent("lo mueve el sistema");
   });
 
-  it("el filtro Mías vuelve a pedir el tablero con assigned=me", async () => {
+  it("filtrar por vendedora pide el tablero con userId", async () => {
+    const ax = (await import("@/lib/axiosAuth")).default as unknown as { get: jest.Mock };
+    ax.get.mockImplementation(async (url: string) =>
+      url.endsWith("/team/members")
+        ? { data: { items: [{ userId: "u9", userName: "Rosa" }] } }
+        : { data: board() },
+    );
     setup();
     await screen.findByText("Ana Pérez");
-    fireEvent.click(screen.getByRole("button", { name: "Mías" }));
+    const sel = screen.getByRole("combobox", { name: "Vendedora" });
+    await within(sel).findByRole("option", { name: "Rosa" });
+    fireEvent.change(sel, { target: { value: "u9" } });
+    await waitFor(() =>
+      expect(ax.get).toHaveBeenCalledWith(expect.stringContaining("/crm/pipelines/p1/board"), {
+        params: { assigned: "all", userId: "u9" },
+      }),
+    );
+  });
+
+  it("el filtro Mis chats vuelve a pedir el tablero con assigned=me", async () => {
+    setup();
+    await screen.findByText("Ana Pérez");
+    fireEvent.change(screen.getByRole("combobox", { name: "Vendedora" }), { target: { value: "me" } });
     await waitFor(() => expect(s.getBoard).toHaveBeenCalledWith("p1", "me", undefined));
   });
 
