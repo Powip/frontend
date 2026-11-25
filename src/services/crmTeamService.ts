@@ -9,6 +9,9 @@ import type {
   ConnectMetaAccountInput,
   ConnectWabaResult,
   CompleteEmbeddedSignupInput,
+  CompleteMetaLoginResult,
+  MetaChannel,
+  MetaLoginConfig,
   EmbeddedSignupConfig,
   MetaAccount,
   TikTokAccount,
@@ -175,6 +178,27 @@ export async function connectMetaAccount(input: ConnectMetaAccountInput): Promis
       pageId: input.pageId,
       ...(input.name ? { name: input.name } : {}),
       accessToken: input.accessToken,
+    })
+  ).data.data;
+}
+
+/** Datos públicos para abrir «Conectar con Facebook» de Instagram y Messenger (sin secretos). */
+export async function getMetaLoginConfig(): Promise<MetaLoginConfig> {
+  return (await axiosAuth.get<MetaLoginConfig>(`${META_ACCOUNTS()}/login/config`)).data;
+}
+
+/**
+ * Canjea el `code` de «Conectar con Facebook». ms-integrations guarda la página (Messenger) y su
+ * Instagram vinculado y suscribe la página al webhook. 503 sin claves, 422 si Meta lo rechaza.
+ */
+export async function completeMetaLogin(input: {
+  code: string;
+  channels?: MetaChannel[];
+}): Promise<CompleteMetaLoginResult> {
+  return (
+    await axiosAuth.post<{ status: string; data: CompleteMetaLoginResult }>(`${META_ACCOUNTS()}/login`, {
+      code: input.code,
+      ...(input.channels?.length ? { channels: input.channels } : {}),
     })
   ).data.data;
 }

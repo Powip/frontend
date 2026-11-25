@@ -68,6 +68,8 @@ export interface ConnectionViewProps {
   pricing: ResourceState<WhatsAppPricing>;
   usage: ResourceState<WhatsAppUsageSummary>;
   signupAvailable: boolean;
+  /** Qué falta para habilitar «Conectar con Facebook» (por defecto, el texto genérico). */
+  signupUnavailableReason?: string;
   mutations: ConnectionMutations;
   initialSignup?: { storeId: string; phase: SignupPhase } | null;
   onRetry?: () => void;
@@ -91,6 +93,7 @@ export function ConnectionView({
   pricing,
   usage,
   signupAvailable,
+  signupUnavailableReason,
   mutations,
   initialSignup = null,
   onRetry,
@@ -281,7 +284,7 @@ export function ConnectionView({
           storeName={signupStore.name}
           mode="api"
           blockedReason={combineBlockReasons(
-            signupAvailable ? null : SIGNUP_UNAVAILABLE_REASON,
+            signupAvailable ? null : (signupUnavailableReason ?? SIGNUP_UNAVAILABLE_REASON),
             pending(mutations.startSignup),
             connectionPermission,
           )}

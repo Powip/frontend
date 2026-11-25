@@ -33,6 +33,8 @@ jest.mock("@/services/crmTeamService", () => ({
   connectCustomWaba: jest.fn(),
   getEmbeddedSignupConfig: jest.fn(),
   completeEmbeddedSignup: jest.fn(),
+  getMetaLoginConfig: jest.fn(),
+  completeMetaLogin: jest.fn(),
   listMetaAccounts: jest.fn(),
   connectMetaAccount: jest.fn(),
   deleteMetaAccount: jest.fn(),
@@ -43,6 +45,10 @@ jest.mock("@/services/crmTeamService", () => ({
   goToExternalUrl: jest.fn(),
   getExportLog: jest.fn(),
   createExport: jest.fn(),
+}));
+jest.mock("@/services/crmPlanService", () => ({
+  ...jest.requireActual("@/services/crmPlanService"),
+  connectChannelAccount: jest.fn(),
 }));
 const mockDownload = jest.fn();
 jest.mock("xlsx", () => ({
@@ -55,6 +61,8 @@ jest.mock("xlsx", () => ({
   writeFile: (...args: unknown[]) => mockDownload(...args),
 }));
 const team = teamService as jest.Mocked<typeof teamService>;
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const plan = require("@/services/crmPlanService") as jest.Mocked<typeof import("@/services/crmPlanService")>;
 const crm = crmService as jest.Mocked<typeof crmService>;
 
 const settings = (over: Partial<CrmSettings> = {}): CrmSettings => ({
@@ -104,6 +112,15 @@ beforeEach(() => {
     apiVersion: "v26.0",
     simulated: false,
   });
+  team.getMetaLoginConfig.mockResolvedValue({
+    enabled: false,
+    appId: null,
+    configId: null,
+    apiVersion: "v26.0",
+    simulated: false,
+    missing: ["META_MESSAGING_LOGIN_CONFIG_ID"],
+  });
+  plan.connectChannelAccount.mockResolvedValue({} as never);
   window.history.replaceState(null, "", "/comercial/ventas-chat/ajustes");
   team.updateCrmSettings.mockImplementation(async (input) => settings(input));
   team.listTeamMembers.mockResolvedValue([
@@ -402,7 +419,7 @@ describe("Ajustes · WhatsApp del negocio", () => {
     team.connectCustomWaba.mockResolvedValue({ status: "success", message: "ok", data: undefined } as never);
     setup();
     await screen.findByLabelText("Token de acceso");
-    fireEvent.change(screen.getByLabelText("Tienda"), { target: { value: "s1" } });
+    fireEvent.change(within(card("whatsapp")).getByLabelText("Tienda"), { target: { value: "s1" } });
     fireEvent.click(screen.getByLabelText("Usar como número de toda la empresa"));
     fill();
     fireEvent.click(saveBtn("whatsapp", "Conectar número"));
@@ -418,7 +435,7 @@ describe("Ajustes · WhatsApp del negocio", () => {
     expect(await screen.findByTestId("embedded-signup-disabled")).toHaveTextContent(
       "WHATSAPP_META_EMBEDDED_SIGNUP_CONFIG_ID",
     );
-    expect(screen.getByRole("button", { name: "Conectar con Facebook" })).toBeDisabled();
+    expect(within(card("whatsapp")).getByRole("button", { name: "Conectar con Facebook" })).toBeDisabled();
   });
 
   it("con el simulador conecta por Embedded Signup en la tienda elegida", async () => {
@@ -445,7 +462,7 @@ describe("Ajustes · WhatsApp del negocio", () => {
       },
     });
     setup();
-    const btn = await screen.findByRole("button", { name: "Conectar con Facebook" });
+    const btn = await within(card("whatsapp")).findByRole("button", { name: "Conectar con Facebook" });
     await waitFor(() => expect(btn).toBeEnabled());
     fireEvent.click(btn);
     await waitFor(() =>
@@ -469,7 +486,7 @@ describe("Ajustes · WhatsApp del negocio", () => {
       }),
     );
     setup();
-    const btn = await screen.findByRole("button", { name: "Conectar con Facebook" });
+    const btn = await within(card("whatsapp")).findByRole("button", { name: "Conectar con Facebook" });
     await waitFor(() => expect(btn).toBeEnabled());
     fireEvent.click(btn);
     expect(await within(card("whatsapp")).findByRole("alert")).toHaveTextContent("Meta no respondió");
@@ -579,6 +596,131 @@ describe("Ajustes · Instagram y Messenger", () => {
     expect(await within(card("meta")).findByRole("alert")).toHaveTextContent("Meta rechazó el token");
     expect(screen.getByLabelText("Token de acceso de la página")).toHaveValue("");
     expect(screen.getByLabelText("ID de la página de Facebook")).toHaveValue("777");
+  });
+
+  it("tras conectar con datos manuales registra la cuenta en el CRM con la tienda elegida", async () => {
+    team.connectMetaAccount.mockResolvedValue(
+      account({ channel: "messenger", accountId: "555", pageId: "777", name: "Mi página" }),
+    );
+    setup();
+    await screen.findByLabelText("Token de acceso de la página");
+    fill();
+    fireEvent.click(saveBtn("meta", "Conectar cuenta"));
+    await waitFor(() =>
+      expect(plan.connectChannelAccount).toHaveBeenCalledWith({
+        channel: "messenger",
+        accountId: "555",
+        name: "Mi página",
+        storeId: "s2",
+      }),
+    );
+  });
+
+  it("sin app de Meta deshabilita «Conectar con Facebook» y dice qué variable falta", async () => {
+    setup();
+    expect(await screen.findByTestId("meta-login-disabled")).toHaveTextContent("META_MESSAGING_LOGIN_CONFIG_ID");
+    expect(within(card("meta")).getByRole("button", { name: "Conectar con Facebook" })).toBeDisabled();
+  });
+
+  it("con el simulador conecta página e Instagram sin pegar datos y les pone la tienda", async () => {
+    team.getMetaLoginConfig.mockResolvedValue({
+      enabled: true,
+      appId: "app",
+      configId: "cfg",
+      apiVersion: "v26.0",
+      simulated: true,
+      missing: [],
+    });
+    team.completeMetaLogin.mockResolvedValue({
+      accounts: [
+        account({ id: "m1", channel: "messenger", accountId: "page-1", pageId: "page-1", name: "Mi página" }),
+        account({ id: "i1", channel: "instagram", accountId: "ig-1", pageId: "page-1", name: "@mitienda" }),
+      ],
+      pages: [{ pageId: "page-1", pageName: "Mi página", subscribed: true }],
+    });
+    setup();
+    fireEvent.change(await screen.findByLabelText("Tienda", { selector: "#meta-store" }), {
+      target: { value: "s1" },
+    });
+    const btn = await within(card("meta")).findByRole("button", { name: "Conectar con Facebook" });
+    await waitFor(() => expect(btn).toBeEnabled());
+    fireEvent.click(btn);
+    await waitFor(() =>
+      expect(team.completeMetaLogin).toHaveBeenCalledWith({
+        code: "SIMULATED_CODE",
+        channels: ["instagram", "messenger"],
+      }),
+    );
+    expect(
+      await within(card("meta")).findByText(/Cuenta conectada: Messenger · Mi página, Instagram · @mitienda/),
+    ).toBeInTheDocument();
+    expect(plan.connectChannelAccount).toHaveBeenCalledWith({
+      channel: "messenger",
+      accountId: "page-1",
+      name: "Mi página",
+      storeId: "s1",
+    });
+    expect(plan.connectChannelAccount).toHaveBeenCalledWith({
+      channel: "instagram",
+      accountId: "ig-1",
+      name: "@mitienda",
+      storeId: "s1",
+    });
+  });
+
+  it("solo Instagram y una página que falla: avisa sin perder lo conectado", async () => {
+    team.getMetaLoginConfig.mockResolvedValue({
+      enabled: true,
+      appId: "app",
+      configId: "cfg",
+      apiVersion: "v26.0",
+      simulated: true,
+      missing: [],
+    });
+    team.completeMetaLogin.mockResolvedValue({
+      accounts: [account({ id: "i1", channel: "instagram", accountId: "ig-1", pageId: "page-1", name: "@mitienda" })],
+      pages: [
+        { pageId: "page-1", pageName: "Mi página", subscribed: true },
+        { pageId: "page-2", pageName: "Otra", subscribed: false, error: "Meta rechazó la suscripción" },
+      ],
+    });
+    setup();
+    fireEvent.change(await screen.findByLabelText("Qué conectar"), { target: { value: "instagram" } });
+    const btn = await within(card("meta")).findByRole("button", { name: "Conectar con Facebook" });
+    await waitFor(() => expect(btn).toBeEnabled());
+    fireEvent.click(btn);
+    await waitFor(() =>
+      expect(team.completeMetaLogin).toHaveBeenCalledWith({ code: "SIMULATED_CODE", channels: ["instagram"] }),
+    );
+    expect(await screen.findByTestId("meta-login-warnings")).toHaveTextContent(
+      "Página Otra: Meta rechazó la suscripción",
+    );
+    expect(within(card("meta")).getByText(/Cuenta conectada: Instagram · @mitienda/)).toBeInTheDocument();
+  });
+
+  it("si Meta rechaza el código muestra el error", async () => {
+    team.getMetaLoginConfig.mockResolvedValue({
+      enabled: true,
+      appId: "app",
+      configId: "cfg",
+      apiVersion: "v26.0",
+      simulated: true,
+      missing: [],
+    });
+    team.completeMetaLogin.mockRejectedValue(
+      Object.assign(new Error("x"), {
+        isAxiosError: true,
+        response: { status: 422, data: { message: "Meta rechazó el código de inicio de sesión" } },
+      }),
+    );
+    setup();
+    const btn = await within(card("meta")).findByRole("button", { name: "Conectar con Facebook" });
+    await waitFor(() => expect(btn).toBeEnabled());
+    fireEvent.click(btn);
+    expect(await within(card("meta")).findByRole("alert")).toHaveTextContent(
+      "Meta rechazó el código de inicio de sesión",
+    );
+    expect(plan.connectChannelAccount).not.toHaveBeenCalled();
   });
 
   it("eliminar pide confirmación y llama al endpoint con el id", async () => {

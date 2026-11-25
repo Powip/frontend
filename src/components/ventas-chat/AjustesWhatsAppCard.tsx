@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
@@ -17,6 +16,7 @@ import type { EmbeddedSignupConfig } from "@/types/crmTeam";
 import { useTemplates } from "@/hooks/useCrmEngagement";
 import type { Template } from "@/types/crm";
 import AjustesCard from "./AjustesCard";
+import ConnectWithFacebookBox from "./ConnectWithFacebookBox";
 
 const EMPTY = { wabaId: "", phoneNumberId: "", businessPhoneNumber: "", accessToken: "" };
 
@@ -184,35 +184,20 @@ export default function AjustesWhatsAppCard() {
           Usar como número de toda la empresa
         </label>
       </div>
-      <div className="space-y-2 rounded-md border p-3" data-testid="embedded-signup">
-        <p className="text-xs font-medium">Conectar con Facebook</p>
-        <p className="text-xs text-muted-foreground">
-          Abre la ventana de Meta, elige o crea la cuenta de WhatsApp Business y el número. Powip
-          guarda la conexión solo.
-        </p>
-        {signupConfig && !signupConfig.enabled && (
-          <p className="text-xs text-muted-foreground" data-testid="embedded-signup-disabled">
-            Falta configurar la app de Meta en el servidor (WHATSAPP_META_APP_ID,
-            WHATSAPP_META_APP_SECRET y WHATSAPP_META_EMBEDDED_SIGNUP_CONFIG_ID). Mientras tanto usa
-            los datos manuales.
-          </p>
-        )}
-        {signupConfigError && (
-          <p className="text-xs text-destructive">
-            No se pudo leer la configuración: {signupConfigError}
-          </p>
-        )}
-        {signupConfig?.simulated && (
-          <p className="text-xs text-muted-foreground">Modo simulador local: no se abre Meta.</p>
-        )}
-        <Button
-          type="button"
-          onClick={() => void connectWithFacebook()}
-          disabled={!signupConfig?.enabled || !storeId || signingUp || saving}
-        >
-          {signingUp ? "Conectando…" : "Conectar con Facebook"}
-        </Button>
-      </div>
+      <ConnectWithFacebookBox
+        testId="embedded-signup"
+        help="Abre la ventana de Meta, elige o crea la cuenta de WhatsApp Business y el número. Powip guarda la conexión solo."
+        config={signupConfig}
+        configError={signupConfigError}
+        fallbackMissing={[
+          "WHATSAPP_META_APP_ID",
+          "WHATSAPP_META_APP_SECRET",
+          "WHATSAPP_META_EMBEDDED_SIGNUP_CONFIG_ID",
+        ]}
+        busy={signingUp}
+        disabled={!storeId || saving}
+        onConnect={() => void connectWithFacebook()}
+      />
       <p className="text-xs font-medium">O con datos manuales</p>
       <form
         className="grid gap-3 sm:grid-cols-2"

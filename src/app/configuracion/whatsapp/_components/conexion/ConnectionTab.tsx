@@ -37,7 +37,9 @@ import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp
 import type { WhatsAppTemplate } from "@/features/whatsapp/models/template.model";
 import { resolveEffectivePermissions } from "@/features/whatsapp/utils/whatsapp-permissions.util";
 import { ConnectionView } from "./ConnectionView";
-import type { ConnectionMutations } from "./connection-types";
+import { signupUnavailableReason, type ConnectionMutations } from "./connection-types";
+import { launchEmbeddedSignup } from "@/lib/metaEmbeddedSignup";
+import { completeEmbeddedSignup, getEmbeddedSignupConfig } from "@/services/crmTeamService";
 import {
   getWhatsAppStatus,
   getWhatsAppAccounts,
@@ -271,6 +273,18 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
     accountState.kind === "ready" ? (accountState.data?.id ?? null) : null;
 
   // Mutaciones reales conectadas a los botones de la interfaz
+  const signupConfigQuery = useQuery({
+    queryKey: ["whatsapp", "embedded-signup-config"],
+    queryFn: getEmbeddedSignupConfig,
+    retry: false,
+    staleTime: 60_000,
+  });
+  const hasLocalTestWaba =
+    process.env.NODE_ENV !== "production" &&
+    !!LOCAL_TEST_WABA.wabaId &&
+    !!LOCAL_TEST_WABA.phoneNumberId &&
+    !!LOCAL_TEST_WABA.accessToken;
+  const signupAvailable = Boolean(signupConfigQuery.data?.enabled) || hasLocalTestWaba;
   const mutations: ConnectionMutations = {
     refresh: async (accountId) => {
       const id = accountId || currentAccountId();
@@ -338,8 +352,21 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       await queryClient.invalidateQueries({ queryKey: assistedKey });
     },
     startSignup: async () => {
-      // PENDIENTE (C-06): reemplazar por el Embedded Signup de Meta (FB.login con code).
-      // Mientras tanto, solo en desarrollo local se conecta con la WABA de prueba de .env.local.
+      // Embedded Signup de Meta (FB.login con config_id y code), el mismo que usa Ventas por chat.
+      const config = signupConfigQuery.data;
+      if (config?.enabled) {
+        if (!activeStoreId) throw new Error("Elige una tienda antes de conectar.");
+        const shared = await launchEmbeddedSignup(config);
+        await completeEmbeddedSignup({
+          storeId: activeStoreId,
+          code: shared.code,
+          ...(shared.wabaId ? { wabaId: shared.wabaId } : {}),
+          ...(shared.phoneNumberId ? { phoneNumberId: shared.phoneNumberId } : {}),
+        });
+        await reloadAfterChange();
+        return;
+      }
+      // Sin app de Meta configurada: solo en desarrollo local se conecta con la WABA de prueba de .env.local.
       const hasLocalTestWaba =
         !!LOCAL_TEST_WABA.wabaId && !!LOCAL_TEST_WABA.phoneNumberId && !!LOCAL_TEST_WABA.accessToken;
 
@@ -383,7 +410,8 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       assistedQueue={assistedQueue}
       pricing={pricing}
       usage={usage}
-      signupAvailable={true}
+      signupAvailable={signupAvailable}
+      signupUnavailableReason={signupUnavailableReason(signupConfigQuery.data?.missing)}
       mutations={mutations}
       onRetry={retryAll}
     />

@@ -73,6 +73,9 @@ import {
   windowClosedNotice,
 } from "./format";
 
+/** Canales donde la vendedora puede mandar una foto desde el chat. */
+const IMAGE_CHANNELS = ["whatsapp", "messenger", "instagram"];
+
 function StatusMark({ message }: { message: Message }) {
   if (message.direction !== "out") return null;
   const label = STATUS_LABEL[message.status];
@@ -526,7 +529,7 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
             className="min-h-0 resize-none"
           />
           <ContentChatBar conversation={conversation} text={text} onFill={setText} windowOpen={canType} compact />
-          {conversation.channel === "whatsapp" && (
+          {IMAGE_CHANNELS.includes(conversation.channel) && (
             <SendImageButton conversationId={conversation.id} disabled={!canType || closed} />
           )}
           <Button onClick={submit} disabled={!canType || !text.trim()} aria-label="Enviar mensaje">

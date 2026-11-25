@@ -167,3 +167,27 @@ export async function launchEmbeddedSignup(
     window.removeEventListener("message", onMessage);
   }
 }
+
+/**
+ * «Conectar con Facebook» para Instagram y Messenger (Facebook Login for Business).
+ * Abre FB.login con la configuración de la app (config_id en lugar de scope) y devuelve el `code`
+ * que canjea ms-integrations. En modo simulador no abre Meta y devuelve el code fijo.
+ * https://developers.facebook.com/documentation/facebook-login/facebook-login-for-business
+ */
+export async function launchFacebookLogin(config: EmbeddedSignupLaunchConfig): Promise<string> {
+  if (config.simulated) return SIMULATED_EMBEDDED_SIGNUP_CODE;
+  if (!config.appId || !config.configId) {
+    throw new Error("Falta configurar la app de Meta para «Conectar con Facebook».");
+  }
+  const fb = await loadFacebookSdk(config.appId, config.apiVersion);
+  return new Promise<string>((resolve, reject) => {
+    fb.login(
+      (response) => {
+        const value = response.authResponse?.code;
+        if (value) resolve(value);
+        else reject(new EmbeddedSignupCancelledError());
+      },
+      { config_id: config.configId, response_type: "code", override_default_response_type: true },
+    );
+  });
+}

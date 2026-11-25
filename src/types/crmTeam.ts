@@ -207,6 +207,23 @@ export interface EmbeddedSignupConfig {
   apiVersion: string;
   /** true cuando ms-integrations apunta a un simulador local en vez de Meta. */
   simulated: boolean;
+  /** Variables del servidor que faltan para habilitar el botón (solo nombres). */
+  missing?: string[];
+}
+
+/** «Conectar con Facebook» de Instagram y Messenger: misma forma que la de WhatsApp. */
+export type MetaLoginConfig = EmbeddedSignupConfig;
+
+export interface MetaLoginPageResult {
+  pageId: string;
+  pageName: string | null;
+  subscribed: boolean;
+  error?: string;
+}
+
+export interface CompleteMetaLoginResult {
+  accounts: MetaAccount[];
+  pages: MetaLoginPageResult[];
 }
 
 export interface CompleteEmbeddedSignupInput {

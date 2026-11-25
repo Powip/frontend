@@ -29,6 +29,12 @@ export const CONNECTION_PENDING_REASON =
 export const SIGNUP_UNAVAILABLE_REASON =
   "Falta configurar la app de Meta (Tech Provider, config_id y dominio permitido) y el servicio de conexión de POWIP. No se abrió ninguna ventana de Meta.";
 
+/** Motivo exacto cuando el servidor dice qué variables faltan (solo nombres, nunca valores). */
+export function signupUnavailableReason(missing?: string[] | null): string {
+  if (!missing?.length) return SIGNUP_UNAVAILABLE_REASON;
+  return `Falta configurar en el servidor: ${missing.join(", ")}. No se abrió ninguna ventana de Meta.`;
+}
+
 export type ActionState =
   | { kind: "idle" }
   | { kind: "pending" }

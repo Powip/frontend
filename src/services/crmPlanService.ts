@@ -62,6 +62,16 @@ export async function listChannelAccounts(): Promise<ChannelAccount[]> {
   return (await axiosAuth.get<ChannelAccount[]>(CHANNELS)).data;
 }
 
+/** Alta o reconexión de una cuenta con su tienda (tras «Conectar con Facebook»). Solo admin. */
+export async function connectChannelAccount(input: {
+  channel: string;
+  accountId: string;
+  name?: string;
+  storeId?: string | null;
+}): Promise<ChannelAccount & { movedConversations?: number; created?: boolean }> {
+  return (await axiosAuth.post(CHANNELS, input)).data;
+}
+
 export async function updateChannelAccount(
   id: string,
   input: UpdateChannelAccountInput,
