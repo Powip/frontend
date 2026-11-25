@@ -99,10 +99,13 @@ export function PreparadosTab({
   actions,
   guideReturn,
   onGuideReturnHandled,
+  assignedToGuide,
 }: OperationsTabProps & {
   /** Vuelta desde /registrar-venta: se restaura la selección y, solo si el pedido se guardó, se reabre la revisión. */
   guideReturn?: GuideReviewReturn | null;
   onGuideReturnHandled?: () => void;
+  /** Pedidos que acaban de entrar a una guía: se quitan de la selección para que no vuelvan a otra guía. */
+  assignedToGuide?: { ids: string[]; n: number } | null;
 }) {
   const selection = usePedidosSelection(data.sales);
   const [guideReview, setGuideReview] = useState<{ ids: string[]; updatedId: string | null } | null>(null);
@@ -119,6 +122,11 @@ export function PreparadosTab({
     onGuideReturnHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guideReturn]);
+
+  useEffect(() => {
+    if (assignedToGuide) selection.removeMany(assignedToGuide.ids);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignedToGuide]);
 
   // Los datos de la página (frescos) van al final para que ganen sobre los de la selección (posiblemente viejos).
   // FEAT-31: «N° Externo» solo se dibuja si algún pedido de la pestaña lo trae.
