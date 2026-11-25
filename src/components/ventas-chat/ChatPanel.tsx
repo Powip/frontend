@@ -38,6 +38,7 @@ import ChatHeader from "./ChatHeader";
 import { CallBubble, isCallNote } from "./CallBubble";
 import WhatsAppCallButton from "./WhatsAppCallButton";
 import ClientOrderPanel from "./ClientOrderPanel";
+import { useVista } from "./VistaContext";
 import { isWhatsAppMedia, WhatsAppMedia } from "./WhatsAppMedia";
 import { SendImageButton } from "./SendImageButton";
 import { appendLine } from "./quotes";
@@ -190,6 +191,12 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
   const { auth } = useAuth();
   const companyId = auth?.company?.id;
   const [panelOpen, setPanelOpen] = useState(false);
+  // Vista enfocada: el panel derecho empieza plegado como riel de íconos (mockup 152).
+  const { focused } = useVista();
+  const [railCollapsed, setRailCollapsed] = useState(focused);
+  const collapsedRail = focused && railCollapsed;
+  // Al cambiar de vista, el panel vuelve a su forma: plegado en enfocada, abierto en completa.
+  useEffect(() => setRailCollapsed(focused), [focused]);
   const { isSupervisor } = useCrmMe();
   const me = {
     id: auth?.user.id,
@@ -517,13 +524,14 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
     </div>
     <aside
       aria-label="Cliente y pedido"
-      className="hidden w-[22rem] shrink-0 border-l xl:block"
+      className={cn("hidden shrink-0 border-l xl:block", collapsedRail ? "w-16" : "w-[22rem]")}
     >
       <ClientOrderPanel
         conversation={conversation}
         companyId={companyId}
         client={clientQuery}
         onInsertMessage={insertInMessage}
+        rail={focused ? { collapsed: railCollapsed, onCollapsedChange: setRailCollapsed } : undefined}
       />
     </aside>
     {templateOpen && <TemplateDialog conversation={conversation} onClose={() => setTemplateOpen(false)} />}

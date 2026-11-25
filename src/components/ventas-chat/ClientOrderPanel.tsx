@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient, type UseQueryResult } from "@tanstack/react-query";
-import { AlertCircle, ExternalLink, Loader2, Plus, UserPlus } from "lucide-react";
+import { AlertCircle, ExternalLink, ListChecks, Loader2, Plus, ShoppingCart, User, UserPlus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -31,6 +31,7 @@ import {
   ReceiptsSection,
 } from "./OrderPanelSections";
 import { CRM_UNREACHABLE } from "./ConversationList";
+import { StoreBadge, useStoreName } from "./ChatHeader";
 import {
   abrirPedidoUrl,
   crearPedidoUrl,
@@ -48,6 +49,11 @@ interface Props {
   client: Pick<UseQueryResult<Client | null>, "data" | "isLoading" | "isError" | "refetch">;
   /** Deja un texto en la caja del chat (sin enviarlo). */
   onInsertMessage?: (text: string) => void;
+  /**
+   * Vista enfocada (mockup 152): el panel puede plegarse a un riel de íconos.
+   * Tocar una pestaña lo abre en ella; tocar la pestaña abierta lo pliega.
+   */
+  rail?: { collapsed: boolean; onCollapsedChange: (collapsed: boolean) => void };
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
@@ -265,10 +271,10 @@ function OrdersSection({ conversation }: { conversation: Conversation }) {
 
 type PanelTab = "pedido" | "cliente" | "seguimiento";
 
-const PANEL_TABS: { id: PanelTab; label: string }[] = [
-  { id: "pedido", label: "Pedido" },
-  { id: "cliente", label: "Cliente" },
-  { id: "seguimiento", label: "Seguimiento" },
+const PANEL_TABS: { id: PanelTab; label: string; icon: typeof User }[] = [
+  { id: "pedido", label: "Pedido", icon: ShoppingCart },
+  { id: "cliente", label: "Cliente", icon: User },
+  { id: "seguimiento", label: "Seguimiento", icon: ListChecks },
 ];
 
 /** Panel «Cliente y pedido» de la conversación: pestañas Pedido, Cliente y Seguimiento (mockup 152). */
@@ -276,6 +282,34 @@ export default function ClientOrderPanel(props: Props) {
   const router = useRouter();
   const { conversation } = props;
   const [tab, setTab] = useState<PanelTab>("pedido");
+  const storeName = useStoreName(conversation.storeId);
+  const { rail } = props;
+  const collapsed = !!rail?.collapsed;
+  const choose = (id: PanelTab) => {
+    if (rail && !collapsed && id === tab) return rail.onCollapsedChange(true);
+    setTab(id);
+    if (rail && collapsed) rail.onCollapsedChange(false);
+  };
+  if (collapsed) {
+    return (
+      <div role="tablist" aria-label="Panel del chat" aria-orientation="vertical" className="flex flex-col gap-1 p-1.5" data-testid="client-order-rail">
+        {PANEL_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={false}
+            title={`Abrir ${t.label}`}
+            onClick={() => choose(t.id)}
+            className="flex flex-col items-center gap-1 rounded-lg px-0.5 py-2.5 text-[10px] font-semibold text-muted-foreground hover:bg-teal-50 hover:text-teal-700 dark:hover:bg-teal-950/40 dark:hover:text-teal-300"
+          >
+            <t.icon className="h-4 w-4" aria-hidden />
+            {t.label}
+          </button>
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="client-order-panel">
       <div role="tablist" aria-label="Panel del chat" className="flex shrink-0 border-b px-2">
@@ -287,7 +321,8 @@ export default function ClientOrderPanel(props: Props) {
             id={`panel-tab-${t.id}`}
             aria-selected={tab === t.id}
             aria-controls={`panel-${t.id}`}
-            onClick={() => setTab(t.id)}
+            title={rail && tab === t.id ? "Tocar de nuevo para plegar el panel" : undefined}
+            onClick={() => choose(t.id)}
             className={cn(
               "-mb-px flex-1 border-b-2 px-2 py-2.5 text-sm font-semibold transition-colors",
               tab === t.id
@@ -307,6 +342,11 @@ export default function ClientOrderPanel(props: Props) {
       >
         {tab === "pedido" && (
           <>
+            {storeName && (
+              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                Pedido de la tienda <StoreBadge name={storeName} />
+              </p>
+            )}
             <PedidoLinkSection
               conversation={conversation}
               client={props.client.data}
