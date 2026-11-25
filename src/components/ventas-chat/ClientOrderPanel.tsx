@@ -30,6 +30,7 @@ import {
   PaymentPolicySection,
   ReceiptsSection,
 } from "./OrderPanelSections";
+import { ChatHistorySection } from "./ChatHistorySection";
 import { CRM_UNREACHABLE } from "./ConversationList";
 import { StoreBadge, useStoreName } from "./ChatHeader";
 import {
@@ -380,6 +381,7 @@ export default function ClientOrderPanel(props: Props) {
             <PipelineSection conversation={conversation} />
             <TasksSection conversation={conversation} />
             <FollowupsSection conversation={conversation} />
+            <ChatHistorySection conversation={conversation} />
             <StageRulesSection conversation={conversation} />
             <ChatCallsSection conversation={conversation} />
           </>
