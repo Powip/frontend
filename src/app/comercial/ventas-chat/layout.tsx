@@ -55,8 +55,11 @@ function VentasChatShell({ children }: { children: ReactNode }) {
       aria-label="Secciones de Ventas por chat"
       className={cn(
         "flex w-fit max-w-full gap-1 overflow-x-auto rounded-xl border bg-muted p-1 md:flex-wrap md:gap-y-1 md:overflow-visible",
-        focused ? "min-w-0 flex-1 md:justify-start" : "mx-auto md:justify-center",
+        // Vista completa: tope de 72rem para que en pantallas anchas (1920) también queden
+        // 2 filas parejas, como el mockup, y no una franja larga de punta a punta.
+        focused ? "min-w-0 flex-1 md:justify-start" : "mx-auto md:max-w-[min(100%,72rem)] md:justify-center",
       )}
+      data-testid="crm-nav"
     >
       {tabs.map((t) => {
         const active = pathname === t.href || pathname.startsWith(`${t.href}/`);

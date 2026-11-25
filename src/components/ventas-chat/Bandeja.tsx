@@ -66,17 +66,26 @@ export default function Bandeja() {
       <SoundsControl openConversationId={selectedId} showButton={false} />
 
       {/* Alto del mockup 152: la bandeja ocupa toda la ventana (mín. 780 px) y cada columna
-          tiene su propio scroll; en celular, el alto visible menos la cabecera. */}
+          tiene su propio scroll; en celular, el alto visible menos la cabecera.
+          Vista completa bajo 1400 px (mockup: @media max-width:1400px): lista y chat de 680 px
+          y el panel Pedido/Cliente baja a todo el ancho, para que el chat no quede angosto. */}
       <div
         className={cn(
           "grid h-[calc(100dvh-190px)] min-h-[420px] overflow-hidden rounded-2xl border bg-card shadow-sm",
           // Vista enfocada: el chat toma todo el alto bajo la franja de pestañas (mockup: 100vh − 92px).
           focused
             ? "md:h-[calc(100vh-92px)] md:grid-cols-[300px_minmax(0,1fr)]"
-            : "md:h-[max(780px,calc(100vh-30px))] md:grid-cols-[330px_minmax(0,1fr)]",
+            : "md:h-auto md:min-h-0 md:grid-cols-[300px_minmax(0,1fr)] min-[87.5rem]:h-[max(780px,calc(100vh-30px))] min-[87.5rem]:grid-cols-[330px_minmax(0,1fr)]",
         )}
+        data-testid="inbox-grid"
       >
-        <div className={cn("min-h-0 border-r", selectedId ? "hidden md:block" : "block")}>
+        <div
+          className={cn(
+            "min-h-0 border-r",
+            selectedId ? "hidden md:block" : "block",
+            !focused && "md:h-[680px] min-[87.5rem]:h-auto",
+          )}
+        >
           <ConversationList
             selectedId={selectedId}
             onSelect={select}
@@ -86,7 +95,14 @@ export default function Bandeja() {
             onStoreChange={setStoreChoice}
           />
         </div>
-        <div className={cn("min-h-0", selectedId ? "block" : "hidden md:block")}>
+        <div
+          className={cn(
+            "min-h-0",
+            selectedId ? "block" : "hidden md:block",
+            // Con chat abierto, el chat y su panel se acomodan en la grilla de la bandeja.
+            !focused && (selectedId ? "md:contents min-[87.5rem]:block" : "md:h-[680px] min-[87.5rem]:h-auto"),
+          )}
+        >
           {selectedId ? (
             <ChatPanel
               key={selectedId}

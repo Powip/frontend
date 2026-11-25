@@ -155,10 +155,13 @@ export default function ChatHeader({
   conversation,
   onBack,
   onOpenPanel,
+  panelButtonClassName = "xl:hidden",
 }: {
   conversation: Conversation;
   onBack: () => void;
   onOpenPanel: () => void;
+  /** Dónde se oculta el botón del panel (cuando el panel ya se ve en pantalla). */
+  panelButtonClassName?: string;
 }) {
   const router = useRouter();
   const { auth } = useAuth();
@@ -213,7 +216,7 @@ export default function ChatHeader({
         <Button
           size="icon-sm"
           variant="outline"
-          className="xl:hidden"
+          className={panelButtonClassName}
           aria-label="Cliente y pedido"
           onClick={onOpenPanel}
         >

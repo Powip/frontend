@@ -303,9 +303,20 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
   const canCall = canTemplate && !!callPermission.data?.canCall;
 
   return (
-    <div className="flex h-full min-h-0">
-    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-      <ChatHeader conversation={conversation} onBack={onBack} onOpenPanel={() => setPanelOpen(true)} />
+    <div className={cn("flex h-full min-h-0", !focused && "md:contents min-[87.5rem]:flex")}>
+    <div
+      className={cn(
+        "flex h-full min-h-0 min-w-0 flex-1 flex-col",
+        !focused && "md:h-[680px] min-[87.5rem]:h-full",
+      )}
+      data-testid="chat-column"
+    >
+      <ChatHeader
+        conversation={conversation}
+        onBack={onBack}
+        onOpenPanel={() => setPanelOpen(true)}
+        panelButtonClassName={focused ? "xl:hidden" : "md:hidden"}
+      />
 
       {conversation.resumeAt && (
         <div
@@ -424,15 +435,16 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
           {!isNote && <QuickChips conversation={conversation} client={clientQuery.data} onInsert={insertInMessage} disabled={!windowOpen} />}
         </div>
         {!isNote && readOnlyOther && (
-          <div role="status" className="mb-2 flex flex-wrap items-center gap-2 rounded-md border bg-muted p-2 text-xs text-muted-foreground">
+          <div role="status" className="mb-2 flex items-center gap-2 rounded-md border bg-muted px-2 py-1 text-xs text-muted-foreground">
             <Lock className="size-3.5 shrink-0" aria-hidden="true" />
-            <span className="min-w-0 flex-1">
+            <span className="min-w-0 flex-1 truncate" title="Este chat es de otra persona: puedes verlo, pero no escribir en él.">
               Este chat es de otra persona: puedes verlo, pero no escribir en él.
             </span>
             <Button
               type="button"
               size="sm"
               variant="outline"
+              className="h-7 shrink-0"
               disabled={update.isPending || !me.id}
               onClick={() => update.mutate({ assignedUserId: me.id ?? null })}
             >
@@ -528,7 +540,14 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
     </div>
     <aside
       aria-label="Cliente y pedido"
-      className={cn("hidden shrink-0 border-l xl:block", collapsedRail ? "w-16" : "w-[22rem]")}
+      className={cn(
+        "hidden shrink-0",
+        focused
+          ? cn("border-l xl:block", collapsedRail ? "w-16" : "w-[22rem]")
+          : // Vista completa: bajo 1400 px el panel va debajo, a todo el ancho (mockup 152).
+            "md:col-span-2 md:block md:border-t min-[87.5rem]:col-span-1 min-[87.5rem]:w-[22.5rem] min-[87.5rem]:border-l min-[87.5rem]:border-t-0",
+      )}
+      data-testid="chat-side-panel"
     >
       <ClientOrderPanel
         conversation={conversation}
@@ -540,7 +559,7 @@ export default function ChatPanel({ conversationId, onBack }: Props) {
     </aside>
     {templateOpen && <TemplateDialog conversation={conversation} onClose={() => setTemplateOpen(false)} />}
     <Sheet open={panelOpen} onOpenChange={setPanelOpen}>
-      <SheetContent side="right" className="w-full max-w-sm p-0 xl:hidden">
+      <SheetContent side="right" className={cn("w-full max-w-sm p-0", focused ? "xl:hidden" : "md:hidden")}>
         <SheetHeader className="border-b p-3">
           <SheetTitle className="text-base">Cliente y pedido</SheetTitle>
           <SheetDescription className="sr-only">
