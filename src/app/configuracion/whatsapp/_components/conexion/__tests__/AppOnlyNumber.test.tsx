@@ -81,6 +81,12 @@ describe("Tienda con «Solo app»", () => {
     expect(screen.getByText(/envíalos desde el WhatsApp de \+51987000111/i)).toBeInTheDocument();
   });
 
+  it("la contingencia no dice que «Solo app» está sin definir", () => {
+    render(view({ contingency: { kind: "ready", data: null } }));
+    expect(screen.getByText("Sin número de respaldo informado.")).toBeInTheDocument();
+    expect(screen.queryByText(/solo app todavía no está definido/i)).not.toBeInTheDocument();
+  });
+
   it("conecta un número solo con la app, con tienda o vendedora", async () => {
     const user = userEvent.setup();
     const connectAppOnly = jest.fn().mockResolvedValue(undefined);
