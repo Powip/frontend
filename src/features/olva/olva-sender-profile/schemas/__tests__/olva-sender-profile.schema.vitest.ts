@@ -6,7 +6,8 @@ import {
 
 const validValues = {
   label: "Almacén principal",
-  ruc: "20616141971",
+  documentType: "ruc",
+  documentNumber: "20616141971",
   email: "remitente@empresa.com",
   firstNames: "Maria Fernanda",
   lastName: "Quispe Rojas",
@@ -34,19 +35,19 @@ describe("createOlvaSenderProfileSchema", () => {
       ...validValues,
       label: "  Almacén  ",
       email: " remitente@empresa.com ",
-      ruc: " 20616141971 ",
+      documentNumber: " 20616141971 ",
     });
 
     expect(result.label).toBe("Almacén");
     expect(result.email).toBe("remitente@empresa.com");
-    expect(result.ruc).toBe("20616141971");
+    expect(result.documentNumber).toBe("20616141971");
   });
 
   it("reports one required message per empty field, not two", () => {
     const errors = errorsOf({
       ...validValues,
       label: "",
-      ruc: "",
+      documentNumber: "",
       email: "",
       firstNames: "",
       lastName: "",
@@ -54,7 +55,7 @@ describe("createOlvaSenderProfileSchema", () => {
 
     expect(errors).toEqual({
       label: "El nombre del remitente es obligatorio",
-      ruc: "El RUC es obligatorio",
+      documentNumber: "El RUC es obligatorio",
       email: "El correo es obligatorio",
       firstNames: "Los nombres son obligatorios",
       lastName: "El apellido es obligatorio",
@@ -62,7 +63,39 @@ describe("createOlvaSenderProfileSchema", () => {
   });
 
   it("rejects an RUC with a wrong check digit", () => {
-    expect(errorsOf({ ...validValues, ruc: "20616141972" }).ruc).toBe("El RUC no es válido");
+    expect(errorsOf({ ...validValues, documentNumber: "20616141972" }).documentNumber).toBe(
+      "El RUC no es válido",
+    );
+  });
+
+  describe("DNI or RUC (FEAT-35)", () => {
+    const dni = { ...validValues, documentType: "dni" };
+
+    it("a DNI takes 8 digits", () => {
+      expect(
+        createOlvaSenderProfileSchema.safeParse({ ...dni, documentNumber: "45678912" }).success,
+      ).toBe(true);
+    });
+
+    it("a DNI rejects 11 digits (that is a RUC)", () => {
+      expect(errorsOf({ ...dni, documentNumber: "20616141971" }).documentNumber).toBe(
+        "El DNI debe tener 8 dígitos",
+      );
+    });
+
+    it("a RUC rejects 8 digits (that is a DNI)", () => {
+      expect(errorsOf({ ...validValues, documentNumber: "45678912" }).documentNumber).toBe(
+        "El RUC no es válido",
+      );
+    });
+
+    it("an empty DNI says DNI", () => {
+      expect(errorsOf({ ...dni, documentNumber: "" }).documentNumber).toBe("El DNI es obligatorio");
+    });
+
+    it("only DNI and RUC are document types", () => {
+      expect(errorsOf({ ...validValues, documentType: "ce" }).documentType).toBe("Elige DNI o RUC");
+    });
   });
 
   it("rejects a malformed email", () => {
@@ -94,7 +127,8 @@ describe("createOlvaSenderProfileSchema", () => {
 });
 
 describe("updateOlvaSenderProfileSchema", () => {
-  it("does not accept a RUC: it cannot be changed", () => {
-    expect("ruc" in updateOlvaSenderProfileSchema.shape).toBe(false);
+  it("does not accept a document: it cannot be changed", () => {
+    expect("documentNumber" in updateOlvaSenderProfileSchema.shape).toBe(false);
+    expect("documentType" in updateOlvaSenderProfileSchema.shape).toBe(false);
   });
 });

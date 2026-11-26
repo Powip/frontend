@@ -45,8 +45,8 @@ export function CreateOlvaSenderProfileDialog({
         <DialogHeader>
           <DialogTitle>Nuevo remitente</DialogTitle>
           <DialogDescription>
-            Es la empresa que figura como remitente en las guías de Olva. Verificamos el RUC con
-            Olva antes de guardarlo.
+            Es quien figura como remitente en las guías de Olva: una empresa (RUC) o una persona
+            (DNI). Verificamos el documento con Olva antes de guardarlo.
           </DialogDescription>
         </DialogHeader>
 

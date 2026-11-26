@@ -20,10 +20,13 @@ const CREATE_FIELDS = new Set<string>(Object.keys(createOlvaSenderProfileSchema.
 
 /** Business error codes that are caused by one specific input. */
 const FIELD_BY_CODE: Partial<Record<OlvaSenderProfileErrorCode, CreateField>> = {
-  [OLVA_SENDER_PROFILE_ERROR_CODES.INVALID_RUC]: "ruc",
-  [OLVA_SENDER_PROFILE_ERROR_CODES.DUPLICATE_RUC]: "ruc",
-  [OLVA_SENDER_PROFILE_ERROR_CODES.RUC_NOT_FOUND_IN_OLVA]: "ruc",
-  [OLVA_SENDER_PROFILE_ERROR_CODES.RUC_NOT_ACTIVE]: "ruc",
+  [OLVA_SENDER_PROFILE_ERROR_CODES.INVALID_RUC]: "documentNumber",
+  [OLVA_SENDER_PROFILE_ERROR_CODES.DUPLICATE_RUC]: "documentNumber",
+  [OLVA_SENDER_PROFILE_ERROR_CODES.RUC_NOT_FOUND_IN_OLVA]: "documentNumber",
+  [OLVA_SENDER_PROFILE_ERROR_CODES.RUC_NOT_ACTIVE]: "documentNumber",
+  [OLVA_SENDER_PROFILE_ERROR_CODES.INVALID_DNI]: "documentNumber",
+  [OLVA_SENDER_PROFILE_ERROR_CODES.DUPLICATE_DNI]: "documentNumber",
+  [OLVA_SENDER_PROFILE_ERROR_CODES.DNI_NOT_FOUND_IN_OLVA]: "documentNumber",
 };
 
 function isCreateField(field: string): field is CreateField {

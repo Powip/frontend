@@ -2,7 +2,7 @@
 
 import { Loader2 } from "lucide-react";
 import type { BaseSyntheticEvent } from "react";
-import type { UseFormReturn } from "react-hook-form";
+import { type UseFormReturn, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -33,6 +33,8 @@ export function CreateOlvaSenderProfileForm({
   isSubmitting = false,
   isDefaultLocked = false,
 }: CreateOlvaSenderProfileFormProps) {
+  const documentType = useWatch({ control: form.control, name: "documentType" });
+
   return (
     <Form {...form}>
       <form onSubmit={onSubmit} noValidate className="grid gap-6" aria-busy={isSubmitting}>
@@ -70,7 +72,7 @@ export function CreateOlvaSenderProfileForm({
             {isSubmitting ? (
               <>
                 <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
-                Verificando RUC...
+                Verificando {documentType === "dni" ? "DNI" : "RUC"}...
               </>
             ) : (
               "Crear remitente"

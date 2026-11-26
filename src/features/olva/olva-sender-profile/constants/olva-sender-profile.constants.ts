@@ -18,6 +18,15 @@ export type OlvaSenderDocumentType =
 /** A Peruvian RUC is always 11 digits. */
 export const OLVA_RUC_LENGTH = 11;
 
+/** A Peruvian DNI is always 8 digits. */
+export const OLVA_DNI_LENGTH = 8;
+
+/** How many digits each document has, to size the input. */
+export const OLVA_SENDER_DOCUMENT_LENGTHS: Record<OlvaSenderDocumentType, number> = {
+  [OLVA_SENDER_DOCUMENT_TYPES.DNI]: OLVA_DNI_LENGTH,
+  [OLVA_SENDER_DOCUMENT_TYPES.RUC]: OLVA_RUC_LENGTH,
+};
+
 export const OLVA_SENDER_LABEL_MAX_LENGTH = 100;
 export const OLVA_SENDER_EMAIL_MAX_LENGTH = 255;
 export const OLVA_SENDER_PHONE_MIN_LENGTH = 6;

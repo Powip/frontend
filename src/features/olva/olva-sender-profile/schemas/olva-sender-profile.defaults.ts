@@ -8,7 +8,8 @@ import type {
 export const createOlvaSenderProfileDefaultValues: DefaultValues<CreateOlvaSenderProfileFormValues> =
   {
     label: "",
-    ruc: "",
+    documentType: "ruc",
+    documentNumber: "",
     email: "",
     firstNames: "",
     lastName: "",

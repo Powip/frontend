@@ -18,7 +18,8 @@ vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: toastError } }
 const profile = toOlvaSenderProfile({
   id: "sender-profile-001",
   label: "Almacén principal",
-  ruc: "20616141971",
+  documentType: "ruc",
+  documentNumber: "20616141971",
   email: "remitente@empresa.com",
   firstNames: "Maria Fernanda",
   lastName: "Quispe Rojas",
@@ -53,7 +54,7 @@ function renderForm(onSuccess = vi.fn(), options: { forceDefault?: boolean } = {
 
 function fillValidValues(form: ReturnType<typeof renderForm>["result"]["current"]["form"]) {
   form.setValue("label", " Almacén principal ");
-  form.setValue("ruc", "20616141971");
+  form.setValue("documentNumber", "20616141971");
   form.setValue("email", "remitente@empresa.com");
   form.setValue("firstNames", "Maria Fernanda");
   form.setValue("lastName", "Quispe Rojas");
@@ -70,7 +71,9 @@ describe("useCreateOlvaSenderProfileForm", () => {
     await act(() => result.current.submit());
 
     expect(createOlvaSenderProfile).not.toHaveBeenCalled();
-    expect(result.current.form.formState.errors.ruc?.message).toBe("El RUC es obligatorio");
+    expect(result.current.form.formState.errors.documentNumber?.message).toBe(
+      "El RUC es obligatorio",
+    );
   });
 
   it("sends the mapped DTO, then resets and notifies on success", async () => {
@@ -116,7 +119,7 @@ describe("useCreateOlvaSenderProfileForm", () => {
     expect(createOlvaSenderProfile.mock.calls[0][0]).toMatchObject({ isDefault: false });
   });
 
-  it("pins a duplicate RUC to the ruc field and keeps the user's input", async () => {
+  it("pins a duplicate RUC to the document number field and keeps the user's input", async () => {
     createOlvaSenderProfile.mockRejectedValue(
       buildBusinessError(409, "SENDER_PROFILE_DUPLICATE_RUC"),
     );
@@ -126,11 +129,11 @@ describe("useCreateOlvaSenderProfileForm", () => {
     await act(() => result.current.submit());
 
     await waitFor(() =>
-      expect(result.current.form.formState.errors.ruc?.message).toBe(
+      expect(result.current.form.formState.errors.documentNumber?.message).toBe(
         "Ya tienes un remitente registrado con ese RUC.",
       ),
     );
-    expect(result.current.form.getValues("ruc")).toBe("20616141971");
+    expect(result.current.form.getValues("documentNumber")).toBe("20616141971");
     expect(onSuccess).not.toHaveBeenCalled();
     expect(toastError).toHaveBeenCalledOnce();
   });

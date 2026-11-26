@@ -82,9 +82,52 @@ describe("CreateOlvaSenderProfileDialog", () => {
 
     await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
     expect(createOlvaSenderProfile.mock.calls[0][0]).toMatchObject({
-      ruc: "20616141971",
+      documentType: "ruc",
+      documentNumber: "20616141971",
       isDefault: true,
     });
+  });
+
+  it("offers DNI or RUC; a person registers by DNI (FEAT-35)", async () => {
+    const { user, onOpenChange } = renderDialog();
+
+    expect(screen.getByRole("radio", { name: /RUC/ })).toBeChecked();
+    await user.click(screen.getByRole("radio", { name: /DNI/ }));
+
+    await user.type(screen.getByLabelText("Nombre del remitente"), "Venta por catálogo");
+    await user.type(screen.getByLabelText("DNI"), "456789123");
+    // 8 digits at most: the ninth is not taken
+    expect(screen.getByLabelText("DNI")).toHaveValue("45678912");
+    await user.type(screen.getByLabelText("Nombres"), "Maria Fernanda");
+    await user.type(screen.getByLabelText("Apellido"), "Quispe Rojas");
+    await user.type(screen.getByLabelText("Correo"), "remitente@empresa.com");
+    await user.click(screen.getByRole("button", { name: "Crear remitente" }));
+
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(createOlvaSenderProfile.mock.calls[0][0]).toMatchObject({
+      documentType: "dni",
+      documentNumber: "45678912",
+    });
+  });
+
+  it("a duplicate DNI shows under the DNI input", async () => {
+    createOlvaSenderProfile.mockRejectedValue(
+      buildBusinessError(409, "SENDER_PROFILE_DUPLICATE_DNI"),
+    );
+    const { user } = renderDialog();
+
+    await user.click(screen.getByRole("radio", { name: /DNI/ }));
+    await user.type(screen.getByLabelText("Nombre del remitente"), "Venta por catálogo");
+    await user.type(screen.getByLabelText("DNI"), "45678912");
+    await user.type(screen.getByLabelText("Nombres"), "Maria Fernanda");
+    await user.type(screen.getByLabelText("Apellido"), "Quispe Rojas");
+    await user.type(screen.getByLabelText("Correo"), "remitente@empresa.com");
+    await user.click(screen.getByRole("button", { name: "Crear remitente" }));
+
+    expect(
+      await screen.findByText("Ya tienes un remitente registrado con ese DNI."),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("DNI")).toHaveAttribute("aria-invalid", "true");
   });
 
   it("shows a duplicate RUC under the RUC input and keeps the dialog open", async () => {

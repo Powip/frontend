@@ -6,7 +6,8 @@ import { toOlvaSenderProfile } from "../to-olva-sender-profile";
 
 const values: CreateOlvaSenderProfileFormValues = {
   label: "Almacén principal",
-  ruc: "20616141971",
+  documentType: "ruc",
+  documentNumber: "20616141971",
   email: "remitente@empresa.com",
   firstNames: "Maria Fernanda",
   lastName: "Quispe Rojas",
@@ -16,13 +17,17 @@ const values: CreateOlvaSenderProfileFormValues = {
 
 describe("toCreateOlvaSenderProfileRequestDto", () => {
   it("sends the document as documentType + documentNumber (FEAT-35), the rest as is", () => {
-    const { ruc: _ruc, ...rest } = values;
+    expect(toCreateOlvaSenderProfileRequestDto(values)).toEqual(values);
+  });
 
-    expect(toCreateOlvaSenderProfileRequestDto(values)).toEqual({
-      ...rest,
-      documentType: "ruc",
-      documentNumber: "20616141971",
+  it("a person ships by DNI", () => {
+    const dto = toCreateOlvaSenderProfileRequestDto({
+      ...values,
+      documentType: "dni",
+      documentNumber: "45678912",
     });
+
+    expect(dto).toMatchObject({ documentType: "dni", documentNumber: "45678912" });
   });
 
   it("omits an empty phone, because the backend validates it when present", () => {
