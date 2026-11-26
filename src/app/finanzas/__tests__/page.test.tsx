@@ -94,6 +94,8 @@ jest.mock('@/components/modals/CustomerServiceModal', () => ({
   __esModule: true,
   default: () => null,
 }));
+// The resend button has its own test; here it would consume the mocked HTTP calls.
+jest.mock('@/components/facturacion/ReenviarPdfWhatsAppButton', () => ({ ReenviarPdfWhatsAppButton: () => null }));
 jest.mock('@/components/modals/CommentsTimelineModal', () => ({
   __esModule: true,
   default: () => null,
@@ -233,7 +235,8 @@ describe('FinanzasPage — fetchOrders (merge con leads-cod)', () => {
 
     render(<FinanzasPage />);
 
-    await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledTimes(3));
+    // Las otras llamadas son del CRM (ms-crm): el acceso de la empresa y, si lo tiene, la cola «CRM · Pau».
+    await waitFor(() => expect(mockedAxios.get.mock.calls.filter(([url]) => !/\/receipts\/queue|\/crm\/access/.test(String(url)))).toHaveLength(3));
 
     expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/store/store-1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/store/store-1/leads-cod', expect.objectContaining({ signal: expect.any(AbortSignal) }));

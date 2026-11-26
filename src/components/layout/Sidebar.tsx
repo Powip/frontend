@@ -47,6 +47,7 @@ import {
   LayoutList,
   Plug,
   Radio,
+  MessageCircle,
   ScanLine,
   Smartphone,
   Barcode,
@@ -64,6 +65,8 @@ import {
 } from "@/components/ui/layout/avatar";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCrmAccess } from "@/hooks/useCrmPlan";
+import { CRM_VIEW_EVENT, readCrmFocused } from "@/components/ventas-chat/VistaContext";
 import { useRouter, usePathname } from "next/navigation";
 import {
   SIDEBAR_ITEMS_PERMISSIONS,
@@ -80,6 +83,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
+import { WhatsAppNotificationsBell } from "@/components/whatsapp/WhatsAppNotificationsBell";
+import { isCompanyAdminRole } from "@/lib/purchaseOrders";
 import PowipLogoMini from "./logo-mini";
 import PowipLogo from "./logo";
 
@@ -98,6 +104,8 @@ interface NavigationItem {
     group?: string;
     badge?: string;
     badgeUntil?: string;
+    /** Módulo que se contrata aparte (mockup 152: «Add-on»). */
+    addon?: boolean;
   }[];
 }
 
@@ -123,6 +131,15 @@ function NavItemBadge({
   );
 }
 
+/** Etiqueta «Add-on» del mockup 152 para módulos que se contratan aparte. */
+function AddonBadge() {
+  return (
+    <span className="ml-auto shrink-0 whitespace-nowrap rounded-md bg-primary px-1.5 py-px text-[9.5px] font-bold text-white">
+      Add-on
+    </span>
+  );
+}
+
 // El módulo de inventario tiene una ruta por pestaña (/inventario/stock, /movimientos, /unificacion):
 // su entrada del menú sigue activa en cualquiera de ellas. El resto de entradas compara la ruta exacta.
 const SECTION_ROOTS = ["/inventario"];
@@ -143,6 +160,10 @@ export function Sidebar({ className }: SidebarProps) {
     gcTime: 0,
   });
   const canAccessLive = liveAccess.isSuccess && liveAccess.data?.available === true;
+  // «Ventas por chat» solo con acceso confirmado por ms-crm (correo permitido y pago); si la
+  // consulta falla o tarda, el menú no lo muestra.
+  const crmAccess = useCrmAccess(!!auth?.company?.id);
+  const canAccessCrm = crmAccess.isSuccess && crmAccess.data?.allowed === true;
   const commercialAccess = useQuery({
     queryKey: ["commercial-leads-capabilities", auth?.user.id, auth?.company?.id, auth?.user.role, auth?.user.permissions],
     queryFn: getCommercialLeadCapabilities,
@@ -197,6 +218,16 @@ export function Sidebar({ className }: SidebarProps) {
             href: "/ventas",
             icon: ShoppingCart,
           },
+          ...(canAccessCrm
+            ? [
+                {
+                  name: "Ventas por chat",
+                  href: "/comercial/ventas-chat",
+                  icon: MessageCircle,
+                  addon: true,
+                },
+              ]
+            : []),
           {
             name: "Cotizaciones",
             href: "/cotizaciones",
@@ -311,6 +342,13 @@ export function Sidebar({ className }: SidebarProps) {
         children: [
           { name: "Usuarios y roles", href: "/usuarios", icon: UserCog },
           { name: "Configuración", href: "/configuracion", icon: Settings },
+          {
+            name: "WhatsApp",
+            href: "/configuracion/whatsapp",
+            icon: WhatsAppIcon,
+            badge: "Nuevo",
+            badgeUntil: "2026-12-08",
+          },
         ],
       },
       {
@@ -375,22 +413,26 @@ export function Sidebar({ className }: SidebarProps) {
         href: "/superadmin",
       },
     ],
-    [canViewCommercialLeads, canManageCommercialLeadTypes, canAccessLive],
+    [canViewCommercialLeads, canManageCommercialLeadTypes, canAccessLive, canAccessCrm],
   );
 
-  // Auto-colapsar en móviles
+  // Auto-colapsar en móviles y en la vista enfocada de Ventas por chat (barra de íconos).
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 1024) {
-        setIsCollapsed(true);
-      } else {
-        setIsCollapsed(false);
-      }
+    let crmFocused = window.location.pathname.startsWith("/comercial/ventas-chat") && readCrmFocused();
+    const apply = () => setIsCollapsed(window.innerWidth < 1024 || crmFocused);
+    const handleResize = () => apply();
+    const handleView = (e: Event) => {
+      crmFocused = Boolean((e as CustomEvent<{ focused: boolean }>).detail?.focused);
+      apply();
     };
 
-    handleResize();
+    apply();
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    window.addEventListener(CRM_VIEW_EVENT, handleView);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener(CRM_VIEW_EVENT, handleView);
+    };
   }, []);
 
   // Mantener submenú abierto si el path actual es hijo
@@ -419,6 +461,8 @@ export function Sidebar({ className }: SidebarProps) {
 
   // FEAT-24 H8-D5: al rol COURIER solo le queda su portal (Modo almacén); el resto del menú se le cierra.
   const courierOnly = isCourierRole(auth?.user.role);
+  // Campanita de alertas de WhatsApp (X5): solo administradores mientras C-28 no defina otro permiso.
+  const showWhatsAppBell = isCompanyAdminRole(auth?.user.role);
 
   // Filtrar navegación por permisos y mostrar Superadmin solo a autorizados
   const filteredNavigation = navigation
@@ -492,6 +536,7 @@ export function Sidebar({ className }: SidebarProps) {
             >
               <PowipLogoMini className="size-6 text-primary" />
             </Link>
+            {showWhatsAppBell && <WhatsAppNotificationsBell />}
             <Button
               variant="ghost"
               size="icon"
@@ -503,17 +548,20 @@ export function Sidebar({ className }: SidebarProps) {
           </div>
         ) : (
           <>
-            <Link href="/" className="flex items-center pl-3">
+            <Link href="/" className="flex items-center gap-2 pl-3">
               <PowipLogo className="w-[90px] h-auto text-primary" />
             </Link>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className="h-7 w-7"
-            >
-              <Menu className="h-4 w-4 text-primary" />
-            </Button>
+            <div className="flex items-center gap-1">
+              {showWhatsAppBell && <WhatsAppNotificationsBell />}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsCollapsed(!isCollapsed)}
+                className="h-7 w-7"
+              >
+                <Menu className="h-4 w-4 text-primary" />
+              </Button>
+            </div>
           </>
         )}
       </div>
@@ -611,6 +659,7 @@ export function Sidebar({ className }: SidebarProps) {
                             <span className="text-sm truncate min-w-0">
                               {child.name}
                             </span>
+                            {child.addon && <AddonBadge />}
                             <NavItemBadge
                               child={child}
                               isCurrentPage={isChildActive(pathname, child.href)}
@@ -691,6 +740,7 @@ export function Sidebar({ className }: SidebarProps) {
                                 <span className="truncate min-w-0">
                                   {child.name}
                                 </span>
+                                {child.addon && <AddonBadge />}
                                 <NavItemBadge
                                   child={child}
                                   isCurrentPage={isChildActive(pathname, child.href)}

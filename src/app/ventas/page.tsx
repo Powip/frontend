@@ -89,6 +89,12 @@ import ImportSalesModal from "@/components/modals/ImportSalesModal";
 import { orderDetailButtonClassName } from "@/components/orders/OrderDetailModal";
 import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
+import { WhatsAppLastNoticeIndicator } from "@/components/whatsapp/WhatsAppLastNoticeIndicator";
+import {
+  parseWhatsAppLastNotice,
+  type WhatsAppLastNotice,
+} from "@/features/whatsapp/utils/last-notice.util";
+import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 import CreateGuideModal, {
   CreateGuideData,
 } from "@/components/modals/CreateGuideModal";
@@ -103,6 +109,8 @@ import {
 } from "@/components/ventas/SalesTableFilters";
 import { Copy, MessageSquare, DollarSign } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import ChatSalesNote from "@/components/ventas/ChatSalesNote";
+import { useChatSalesFilter } from "@/hooks/useChatSalesFilter";
 import CancellationModal, {
   CancellationReason,
 } from "@/components/modals/CancellationModal";
@@ -140,7 +148,7 @@ import {
   reassignSeller,
 } from "@/services/atencionClienteService";
 import ReassignSellerModal from "@/components/modals/ReassignSellerModal";
-import { UserPen } from "lucide-react";
+import { UserPen, Instagram, Facebook, MessageCircle } from "lucide-react";
 
 /* -----------------------------------------
    Types
@@ -173,6 +181,9 @@ export interface Sale extends UnitAssignmentState {
   commercialCommittedAt?: string | null;
   subEstadoCc?: SubEstadoCc | null;
   canalOrigen?: string | null;
+  /** Canal de venta (WHATSAPP, INSTAGRAM, FACEBOOK…) y conversación del chat si la venta viene de un chat. */
+  salesChannel?: string | null;
+  conversationId?: string | null;
   currency?: string | null;
   commercialStage?: "LEAD" | "SALE" | null;
   commercialLeadId?: string | null;
@@ -181,6 +192,7 @@ export interface Sale extends UnitAssignmentState {
   stockState?: string | null;
 
   id: string;
+  waLastNotice?: WhatsAppLastNotice | null;
   storeId: string;
   inventoryId?: string | null;
   stockStoreId?: string | null;
@@ -276,6 +288,35 @@ function ReprogramadoChip({ sale }: { sale: Pick<Sale, "status" | "callStatus" |
    Mapper
 ----------------------------------------- */
 
+const CHANNEL_LABELS: Record<string, string> = {
+  WHATSAPP: "WhatsApp",
+  INSTAGRAM: "Instagram",
+  FACEBOOK: "Facebook",
+  TIENDA_FISICA: "Tienda física",
+  MARKETPLACE: "Marketplace",
+  MERCADOLIBRE: "Mercado Libre",
+  WEB: "Web",
+  OTRO: "Otro",
+};
+
+/** Origen de la venta como en el mockup: icono del canal + nombre. Ventas del chat se marcan en verde. */
+function OrigenChip({ sale }: { sale: Sale }) {
+  const key = (sale.salesChannel ?? "").toUpperCase();
+  const label = CHANNEL_LABELS[key] ?? (key ? key : "—");
+  const Icon = key === "WHATSAPP" ? MessageCircle : key === "INSTAGRAM" ? Instagram : key === "FACEBOOK" ? Facebook : MessageSquare;
+  const fromChat = Boolean(sale.conversationId);
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+        fromChat ? "bg-teal-500/10 text-teal-700 dark:text-teal-400" : "bg-muted text-muted-foreground"
+      }`}
+    >
+      {key ? <Icon className="h-3 w-3" /> : null}
+      {label}
+    </span>
+  );
+}
+
 const attentionOf = (sale: Sale) =>
   paymentAttention({ awaitingApproval: sale.awaitingApprovalSummary.amount, debt: sale.pendingPayment });
 
@@ -289,11 +330,14 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
 
   return {
     id: order.id,
+    waLastNotice: parseWhatsAppLastNotice(order.waLastNotice),
     salesOperationalEligible: order.salesOperationalEligible,
     shopifyCommercialGate: order.shopifyCommercialGate,
     commercialCommittedAt: order.commercialCommittedAt,
     subEstadoCc: order.subEstadoCc,
     canalOrigen: order.canalOrigen,
+    salesChannel: order.salesChannel,
+    conversationId: order.conversationId,
     currency: order.currency, commercialStage: order.commercialStage, commercialLeadId: order.commercialLeadId, commercialStockState: order.commercialStockState,
     stockState: order.stockState ?? null,
     storeId: order.storeId,
@@ -445,6 +489,7 @@ function VentasContent() {
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   const [sendingLimaId, setSendingLimaId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("pendientes");
+  const chatFilter = useChatSalesFilter();
 
   // Filas con detalle secundario expandido (ID externo, ubicación, tracking)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -536,6 +581,7 @@ function VentasContent() {
     sort: activeTab === "pendientes" && pendientesView === "antiguos" ? "updated_asc" : "created_desc",
     kpiDateFrom, kpiDateTo,
     ...(activeTab === "todas" && todasExcludeCancelled ? { excludeCancelled: "yes" as const } : {}),
+    ...(chatFilter.active ? { crmOnly: "yes" as const } : {}),
   };
   const salesScope = JSON.stringify([scopeKey, salesQuery]);
   const pageSessionScope = `${printScope}:${salesScope}`;
@@ -1625,6 +1671,7 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell>
                     <span className="inline-flex flex-wrap items-center gap-1">
+                      <OrigenChip sale={sale} />
                       <SourceBadge source={sale.externalSource} />
                       <ShopifyCancelledBadge cancelledAt={sale.shopifyCancelledAt} reason={sale.shopifyCancelReason} />
                     </span>
@@ -1694,7 +1741,7 @@ Estado: ${sale.status}
                       <Button
                         size="icon"
                         variant="outline"
-                        className="bg-green-500 hover:bg-green-600 text-white border-green-600"
+                        className="relative bg-green-500 hover:bg-green-600 text-white border-green-600"
                         title="WhatsApp"
                         onClick={() =>
                           handleWhatsApp(
@@ -1705,6 +1752,7 @@ Estado: ${sale.status}
                         }
                       >
                         <WhatsAppIcon className="h-4 w-4" />
+                        <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} orderId={sale.id} />
                       </Button>
                       <Button
                         size="icon"
@@ -1923,6 +1971,7 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell>
                     <span className="inline-flex flex-wrap items-center gap-1">
+                      <OrigenChip sale={sale} />
                       <SourceBadge source={sale.externalSource} />
                       <ShopifyCancelledBadge cancelledAt={sale.shopifyCancelledAt} reason={sale.shopifyCancelReason} />
                     </span>
@@ -1959,7 +2008,7 @@ Estado: ${sale.status}
                       <Button
                         size="icon"
                         variant="outline"
-                        className="bg-green-500 hover:bg-green-600 text-white border-green-600"
+                        className="relative bg-green-500 hover:bg-green-600 text-white border-green-600"
                         title="WhatsApp"
                         onClick={() =>
                           handleWhatsApp(
@@ -1970,6 +2019,7 @@ Estado: ${sale.status}
                         }
                       >
                         <WhatsAppIcon className="h-4 w-4" />
+                        <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} orderId={sale.id} />
                       </Button>
                       <Button
                         size="icon"
@@ -2098,6 +2148,19 @@ Estado: ${sale.status}
 
   // Número de Todas: el conteo del servidor mientras su lista no está lista; después, lo que muestra
   const todasTabCount = ventas.todas.count;
+  const chatSalesNote = (
+    <ChatSalesNote
+      solo={chatFilter.solo}
+      checked={chatFilter.checked}
+      total={queryReady ? (salesPage?.total ?? 0) : null}
+      onCheckedChange={(value) => {
+        chatFilter.setChecked(value);
+        setPagePendientes(1);
+        setPageAnulados(1);
+        setPageAll(1);
+      }}
+    />
+  );
 
   if (!auth) return null;
 
@@ -2257,11 +2320,7 @@ Estado: ${sale.status}
           </div>
 
           {/* Tabs para Ventas */}
-          <Tabs
-            value={activeTab}
-            className="min-w-0 w-full"
-            onValueChange={setActiveTab}
-          >
+          <Tabs value={activeTab} className="min-w-0 w-full" onValueChange={setActiveTab}>
             <TabsList className="mb-4 h-auto max-w-full flex-wrap justify-start">
               <TabsTrigger value="pendientes">
                 Ventas Pendientes
@@ -2293,8 +2352,9 @@ Estado: ${sale.status}
                 <CardHeader className="flex min-w-0 flex-col gap-4">
                   <div>
                     <CardTitle>Ventas Pendientes</CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">Los leads de Atención aparecen en Ventas cuando se confirma la compra.</p>
+                    {!chatFilter.hasCrm && <p className="mt-1 text-sm text-muted-foreground">Los leads de Atención aparecen en Ventas cuando se confirma la compra.</p>}
                   </div>
+                  {chatFilter.hasCrm && chatSalesNote}
                   <div className="flex min-w-0 w-full flex-wrap items-center gap-2 [&>button]:h-auto [&>button]:min-h-9 [&>button]:whitespace-normal">
                     <BulkStatusSelect
                       disabled={!queryReady}
@@ -2407,6 +2467,7 @@ Estado: ${sale.status}
               <Card>
                 <CardHeader className="flex min-w-0 flex-col gap-4">
                   <CardTitle>Ventas Anuladas</CardTitle>
+                  {chatFilter.hasCrm && chatSalesNote}
                   <div className="flex min-w-0 w-full flex-wrap items-center gap-2 [&>button]:h-auto [&>button]:min-h-9 [&>button]:whitespace-normal">
                     <BulkStatusSelect
                       disabled={!ventas.anuladas.ready}
@@ -2504,8 +2565,9 @@ Estado: ${sale.status}
                 <CardHeader className="flex min-w-0 flex-col gap-4">
                   <div>
                     <CardTitle>Todas las Ventas</CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">Incluye los pedidos que están en Atención al cliente.</p>
+                    {!chatFilter.hasCrm && <p className="mt-1 text-sm text-muted-foreground">Incluye los pedidos que están en Atención al cliente.</p>}
                   </div>
+                  {chatFilter.hasCrm && chatSalesNote}
                   <div className="flex min-w-0 w-full flex-wrap items-center gap-2 [&>button]:h-auto [&>button]:min-h-9 [&>button]:whitespace-normal">
                     <BulkStatusSelect
                       disabled={!ventas.todas.ready}

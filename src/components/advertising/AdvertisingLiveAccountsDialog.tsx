@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,6 +24,17 @@ import {
   advertisingErrorMessage,
   discoverAdvertisingAccounts,
 } from "@/services/advertisingService";
+import { AdvertisingMetaStatusFilter, MetaStatusBadge } from "./AdvertisingMetaStatusFilter";
+import {
+  accountCampaignsLabel,
+  accountDisableReasonLabel,
+  accountStatusLabel,
+  accountStatusState,
+  type MetaStatusFilter,
+  matchesSearch,
+  matchesStatusFilter,
+  statusCounts,
+} from "./advertising-meta-status";
 import { providerLabel } from "./advertising-model";
 
 interface Props {
@@ -57,6 +68,8 @@ export function AdvertisingLiveAccountsDialog({
   const [attempt, setAttempt] = useState(0);
   const [review, setReview] = useState(false);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<MetaStatusFilter>("all");
+  const [search, setSearch] = useState("");
   const selectionKey = JSON.stringify(initialSelectedIds);
   const discoveryKey = JSON.stringify([provider, companyId, token, selectionKey, attempt]);
 
@@ -109,6 +122,23 @@ export function AdvertisingLiveAccountsDialog({
   );
   const selectedIds = chosen.map((account) => account.externalId);
   const isLoading = loading || !current;
+  const isMeta = provider === "meta";
+  const counts = useMemo(
+    () => statusCounts(visibleAccounts, (account) => accountStatusState(account.metaStatus)),
+    [visibleAccounts],
+  );
+  const listed = visibleAccounts.filter(
+    (account) =>
+      (!isMeta || matchesStatusFilter(accountStatusState(account.metaStatus), statusFilter)) &&
+      matchesSearch(search, account.name, account.externalId),
+  );
+  const hiddenChosen = chosen.filter((account) => !listed.includes(account)).length;
+  // Unchecking hides the account's ads and spend everywhere; nothing is deleted.
+  const uncheckedCount = initialSelectedIds.filter(
+    (externalId) =>
+      !selectedIds.includes(externalId) &&
+      visibleAccounts.some((account) => account.externalId === externalId),
+  ).length;
   const canContinue = !!token && !!companyId && !isLoading && !loadError && !busy;
 
   return (
@@ -185,11 +215,47 @@ export function AdvertisingLiveAccountsDialog({
                 Importaremos todo el historial disponible.
               </p>
             )}
+            {uncheckedCount > 0 && (
+              <p className="text-sm text-muted-foreground">
+                {uncheckedCount === 1
+                  ? "1 cuenta desmarcada: dejará de importarse y sus anuncios y gastos se ocultarán sin borrarse. Al volver a marcarla, reaparecen."
+                  : `${uncheckedCount} cuentas desmarcadas: dejarán de importarse y sus anuncios y gastos se ocultarán sin borrarse. Al volver a marcarlas, reaparecen.`}
+              </p>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
+            <AdvertisingMetaStatusFilter
+              label="Cuentas publicitarias"
+              showStatus={isMeta}
+              filter={statusFilter}
+              onFilter={setStatusFilter}
+              query={search}
+              onQuery={setSearch}
+              counts={counts}
+            />
+            {isMeta && (
+              <p className="text-xs text-muted-foreground">
+                El estado de la cuenta lo da Meta. Las campañas salen de la última lectura guardada:
+                activas son las que entregan; el resto están pausadas o archivadas.
+              </p>
+            )}
+            {listed.length === 0 && (
+              <p className="text-sm text-muted-foreground">
+                Ninguna cuenta coincide con el filtro.
+              </p>
+            )}
+            {hiddenChosen > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {hiddenChosen}{" "}
+                {hiddenChosen === 1
+                  ? "cuenta elegida está oculta"
+                  : "cuentas elegidas están ocultas"}{" "}
+                por el filtro.
+              </p>
+            )}
             <div className="space-y-2">
-              {visibleAccounts.map((account, index) => (
+              {listed.map((account, index) => (
                 <Label
                   key={account.externalId}
                   htmlFor={`${id}-${index}`}
@@ -211,11 +277,29 @@ export function AdvertisingLiveAccountsDialog({
                       )
                     }
                   />
-                  <span className="min-w-0 space-y-1">
-                    <span className="block text-sm font-medium">{account.name}</span>
+                  <span className="min-w-0 flex-1 space-y-1">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium">{account.name}</span>
+                      {isMeta && (
+                        <MetaStatusBadge
+                          state={accountStatusState(account.metaStatus)}
+                          label={accountStatusLabel(account.metaStatus)}
+                        />
+                      )}
+                    </span>
                     <span className="block break-all text-xs font-normal text-muted-foreground">
                       ID {account.externalId} · {account.currency} · {account.timeZone}
                     </span>
+                    {isMeta && accountDisableReasonLabel(account.metaStatus) && (
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        {accountDisableReasonLabel(account.metaStatus)}
+                      </span>
+                    )}
+                    {isMeta && (
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        {accountCampaignsLabel(account.campaigns)}
+                      </span>
+                    )}
                     {!advertisingAccountSelectable(account) && (
                       <span className="block text-xs font-normal text-muted-foreground">
                         {account.selectionBlockedReason === "linked-other-company"

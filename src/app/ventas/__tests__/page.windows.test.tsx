@@ -11,6 +11,9 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
  *    aunque el período sea más viejo que lo bajado.
  */
 
+jest.mock("@/hooks/useChatSalesFilter", () => ({
+  useChatSalesFilter: () => ({ hasCrm: false, solo: false, checked: false, setChecked: jest.fn(), active: false }),
+}));
 jest.mock("axios", () => ({
   default: { get: jest.fn(), patch: jest.fn(), post: jest.fn() },
   get: jest.fn(),

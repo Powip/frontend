@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 /**
  * Botón $ de un pedido POWIP Live (FEAT-33 B1/D4): abre el validador Yape del pedido, el mismo
@@ -78,13 +79,17 @@ test.each([
   "a Live order opens its Yape validator (%p → %s)",
   async (user, expected) => {
     mockUser = user;
+    // El modal consulta el acceso al CRM con React Query (pagos de Pau): necesita su proveedor.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
-      <PaymentVerificationModal
-        open
-        onClose={jest.fn()}
-        orderId="order-1"
-        orderNumber="ORD-1"
-      />,
+      <QueryClientProvider client={client}>
+        <PaymentVerificationModal
+          open
+          onClose={jest.fn()}
+          orderId="order-1"
+          orderNumber="ORD-1"
+        />
+      </QueryClientProvider>,
     );
     expect(
       await screen.findByText(`Validador Yape order-1 · ${expected}`),

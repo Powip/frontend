@@ -7,5 +7,6 @@ export const API = {
     courier: process.env.NEXT_PUBLIC_API_COURIER!,
     inventory: process.env.NEXT_PUBLIC_API_INVENTORY!,
     sunat: process.env.NEXT_PUBLIC_API_SUNAT!,
+    crm: (process.env.NEXT_PUBLIC_API_CRM ?? "http://localhost:3012").replace(/\/+$/, ""),
     partners: (process.env.NEXT_PUBLIC_API_PARTNERS ?? "").replace(/\/+$/, ""),
 }

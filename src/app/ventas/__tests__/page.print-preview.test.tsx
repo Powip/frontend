@@ -1,5 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
+jest.mock("@/hooks/useChatSalesFilter", () => ({
+  useChatSalesFilter: () => ({ hasCrm: false, solo: false, checked: false, setChecked: jest.fn(), active: false }),
+}));
 jest.mock("axios", () => ({
   default: { get: jest.fn(), patch: jest.fn(), post: jest.fn() },
   get: jest.fn(),
@@ -8,6 +11,12 @@ jest.mock("axios", () => ({
 }));
 
 jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: jest.requireMock("axios") }));
+// El aviso de WhatsApp por pedido pide su estado a wa-hub; aquí no se prueba, así que no hace llamadas.
+jest.mock("@/features/whatsapp/api/last-notices.api", () => ({
+  requestWhatsAppLastNotice: jest.fn(),
+  readWhatsAppLastNotice: jest.fn(() => null),
+  subscribeWhatsAppLastNotice: jest.fn(() => () => {}),
+}));
 jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: "company-1:business:store-1,store-2", storeIds: ["store-1", "store-2"] }) }));
 // Referencia estable: después de una acción, la vista recarga invalidando las consultas del negocio.
 const mockInvalidate = jest.fn();

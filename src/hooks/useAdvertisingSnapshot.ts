@@ -50,7 +50,10 @@ export function useAdvertisingSnapshot({
       if (!enabled || query.state.error) return false;
       return query.state.data?.accounts.some(
         (account) =>
-          account.historyImport?.status === "queued" || account.historyImport?.status === "running",
+          account.historyImport?.status === "queued" ||
+          account.historyImport?.status === "running" ||
+          (!!account.importRequestedAt &&
+            ["pending", "running", "retrying"].includes(account.adImport?.status ?? "")),
       )
         ? 5_000
         : false;

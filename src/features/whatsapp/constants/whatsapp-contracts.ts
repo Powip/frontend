@@ -1,0 +1,222 @@
+import { WHATSAPP_CONTRACT_STATUSES } from "../enums/whatsapp.enums";
+import type { WhatsAppContract } from "../models/contract.model";
+
+const { CONFIRMED, PROPOSED_IN_SPEC, PROPOSED, UNDEFINED } = WHATSAPP_CONTRACT_STATUSES;
+
+export const WHATSAPP_CONTRACTS = {
+  companyStores: {
+    id: "C-E1",
+    label: "Tiendas de la empresa",
+    status: CONFIRMED,
+    evidence: "src/contexts/AuthContext.tsx",
+  },
+  companyCouriers: {
+    id: "C-E2",
+    label: "Couriers de la empresa",
+    status: CONFIRMED,
+    evidence: "src/services/courierService.ts",
+  },
+  companySalesChannels: {
+    id: "C-E3",
+    label: "Canales de venta de la empresa",
+    status: CONFIRMED,
+    evidence: "src/contexts/AuthContext.tsx",
+  },
+  customerServiceAgents: {
+    id: "C-E4",
+    label: "Asesoras de Gestión CC",
+    status: CONFIRMED,
+    evidence: "src/services/agentesService.ts",
+  },
+  orderEvidence: {
+    id: "C-E5",
+    label: "Evidencia del pedido",
+    status: CONFIRMED,
+    evidence: "src/components/orders/OrderEvidenceSection.tsx",
+  },
+  orderCustomerServiceAgent: {
+    id: "C-E6",
+    label: "Asesora dueña del pedido",
+    status: CONFIRMED,
+    evidence: "src/interfaces/IOrder.ts",
+  },
+  shippingTypes: {
+    id: "C-E8",
+    label: "Tipos de envío del pedido",
+    status: CONFIRMED,
+    evidence: "src/constants/operationsDomain.ts",
+  },
+  legacyTrackingLink: {
+    id: "C-E7",
+    label: "Link de rastreo actual por número de pedido",
+    status: CONFIRMED,
+    evidence: "src/components/modals/CustomerServiceModal.tsx",
+  },
+  serviceBaseUrl: {
+    id: "C-00.1",
+    label: "Servicio y URL base del módulo WhatsApp",
+    status: UNDEFINED,
+    evidence: null,
+  },
+  connectionStatus: {
+    id: "C-01",
+    label: "Estado de conexión",
+    status: PROPOSED,
+    evidence: null,
+  },
+  accounts: {
+    id: "C-02",
+    label: "Números por tienda",
+    status: PROPOSED_IN_SPEC,
+    evidence: null,
+  },
+  embeddedSignup: {
+    id: "C-06",
+    label: "Conexión con Meta (Embedded Signup)",
+    status: PROPOSED,
+    evidence: null,
+  },
+  testMessage: {
+    id: "C-07",
+    label: "Mensaje de prueba",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/connection-ops.api.ts",
+  },
+  usageAndPricing: {
+    id: "C-08/C-09",
+    label: "Uso del mes y tarifas de Meta",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/connection-ops.api.ts",
+  },
+  contingency: {
+    id: "C-10/C-11",
+    label: "Contingencia y bandeja de envío asistido",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/connection-ops.api.ts",
+  },
+  templates: {
+    id: "C-12",
+    label: "Plantillas",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/templates.api.ts",
+  },
+  templateCatalog: {
+    id: "C-13/C-14",
+    label: "Catálogo del editor y pedidos de ejemplo",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/template-catalog.api.ts",
+  },
+  rules: {
+    id: "C-16",
+    label: "Avisos automáticos",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/rules.api.ts",
+  },
+  settings: {
+    id: "C-18",
+    label: "Horario, datos faltantes y respuesta automática",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/settings.api.ts",
+  },
+  upcomingQueue: {
+    id: "C-20",
+    label: "Próximas 24 horas",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/queue.api.ts",
+  },
+  campaigns: {
+    id: "C-21",
+    label: "Envíos programados",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/campaigns.api.ts",
+  },
+  threads: {
+    id: "C-22",
+    label: "Conversaciones",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/threads.api.ts",
+  },
+  quickReplies: {
+    id: "C-23",
+    label: "Respuestas rápidas",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/threads.api.ts",
+  },
+  messages: {
+    id: "C-24",
+    label: "Historial de envíos",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/queue.api.ts",
+  },
+  optOuts: {
+    id: "C-25",
+    label: "Bajas",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/optouts.api.ts",
+  },
+  alerts: {
+    id: "C-26",
+    label: "Alertas de salud",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/settings-ops.api.ts",
+  },
+  auditLog: {
+    id: "C-27",
+    label: "Registro de cambios",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/settings-ops.api.ts",
+  },
+  permissions: {
+    id: "C-28",
+    label: "Permisos por rol",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/settings-ops.api.ts",
+  },
+  realtime: {
+    id: "C-00.9",
+    label: "Tiempo real (GET /wa/events)",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/hooks/use-whatsapp-realtime.ts",
+  },
+  publicTracking: {
+    id: "C-30",
+    label: "Página pública de seguimiento",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/public-tracking.api.ts",
+  },
+  lastNotices: {
+    id: "C-29",
+    label: "Último aviso por pedido",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/last-notices.api.ts",
+  },
+  inAppNotifications: {
+    id: "C-31",
+    label: "Campanita de notificaciones",
+    status: CONFIRMED,
+    evidence: "src/features/whatsapp/api/settings-ops.api.ts",
+  },
+} as const satisfies Record<string, WhatsAppContract>;
+
+export type WhatsAppContractKey = keyof typeof WHATSAPP_CONTRACTS;
+
+export function getWhatsAppContract(key: WhatsAppContractKey): WhatsAppContract {
+  return WHATSAPP_CONTRACTS[key];
+}
+
+export function isWhatsAppContractAvailable(key: WhatsAppContractKey): boolean {
+  return WHATSAPP_CONTRACTS[key].status === CONFIRMED;
+}
+
+export class WhatsAppContractUnavailableError extends Error {
+  constructor(readonly contractKey: WhatsAppContractKey) {
+    super(`El contrato ${WHATSAPP_CONTRACTS[contractKey].id} todavía no está disponible.`);
+    this.name = "WhatsAppContractUnavailableError";
+  }
+}
+
+export function assertWhatsAppContractAvailable(key: WhatsAppContractKey): void {
+  if (!isWhatsAppContractAvailable(key)) {
+    throw new WhatsAppContractUnavailableError(key);
+  }
+}

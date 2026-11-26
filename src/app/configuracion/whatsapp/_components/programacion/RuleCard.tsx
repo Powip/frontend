@@ -1,0 +1,621 @@
+"use client";
+
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Clock3 } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useForm, useWatch } from "react-hook-form";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { BlockedActionButton } from "@/components/whatsapp/BlockedActionButton";
+import { WaCallout } from "@/components/whatsapp/ui/WaCallout";
+import { WaInput } from "@/components/whatsapp/ui/WaInput";
+import {
+  waButton,
+  waCheckbox,
+  waDialogBody,
+  waDialogContent,
+  waDialogFooter,
+  waDialogHeader,
+  waDialogTitle,
+  waField,
+  waInput,
+  waLabel,
+  waSelectTrigger,
+  waSwitch,
+} from "@/components/whatsapp/ui/wa-classes";
+import {
+  getRuleDefinition,
+  WHATSAPP_RULE_WHEN_MODE_LABELS,
+} from "@/features/whatsapp/constants/whatsapp-scheduling-catalog";
+import { WHATSAPP_TEMPLATE_STATUS_LABELS } from "@/features/whatsapp/constants/whatsapp-template-catalog";
+import {
+  WHATSAPP_RULE_DATE_MODES,
+  WHATSAPP_RULE_WHEN_MODES,
+  WHATSAPP_TEMPLATE_STATUSES,
+  type WhatsAppRuleWhenMode,
+} from "@/features/whatsapp/enums/whatsapp.enums";
+import { toRuleConfigValues } from "@/features/whatsapp/mappers/to-scheduling-form-values.mapper";
+import type { WhatsAppResourceState } from "@/features/whatsapp/models/resource-state.model";
+import type {
+  WhatsAppRule,
+  WhatsAppRuleUpdate,
+  WhatsAppSaveRule,
+} from "@/features/whatsapp/models/rule.model";
+import type { WhatsAppScopeCatalogs } from "@/features/whatsapp/models/scope-catalog.model";
+import type { WhatsAppTemplate } from "@/features/whatsapp/models/template.model";
+import {
+  createRuleConfigSchema,
+  type RuleConfigValues,
+} from "@/features/whatsapp/schemas/rule-config.schema";
+import { describeRuleScope, describeRuleWhen } from "@/features/whatsapp/utils/rule-summary.util";
+import { cn } from "@/lib/utils";
+import { RuleScopeFields } from "./RuleScopeFields";
+import { RULE_ICONS } from "./rule-icons";
+import { buildScopeLabels } from "./scope-labels";
+
+const WHEN_VALUE_DEFAULTS: Partial<
+  Record<WhatsAppRuleWhenMode, { field: keyof RuleConfigValues; value: string }>
+> = {
+  [WHATSAPP_RULE_WHEN_MODES.DELAY_MINUTES]: { field: "delayMinutes", value: "30" },
+  [WHATSAPP_RULE_WHEN_MODES.FIXED_TIME]: { field: "fixedTime", value: "09:00" },
+  [WHATSAPP_RULE_WHEN_MODES.HOURS_BEFORE_DELIVERY]: { field: "hoursBefore", value: "24" },
+};
+
+export interface RuleActivationRequest {
+  rule: WhatsAppRule;
+  mode: "activate" | "count";
+  hasUnsavedChanges: boolean;
+  scopeSummary: string;
+}
+
+interface RuleCardProps {
+  rule: WhatsAppRule;
+  templates: WhatsAppResourceState<WhatsAppTemplate[]>;
+  catalogs: WhatsAppScopeCatalogs;
+  canManage: boolean;
+  canPersist: boolean;
+  persistenceNoteId: string;
+  highlighted: boolean;
+  preselectTemplateId: string | null;
+  onRequestActivation: (request: RuleActivationRequest) => void;
+  onRequestDeactivation: (rule: WhatsAppRule) => void;
+  onPreviewTemplate: (template: WhatsAppTemplate) => void;
+  onSave?: WhatsAppSaveRule;
+}
+
+function toWhen(values: RuleConfigValues) {
+  return {
+    mode: values.whenMode,
+    minutes: values.delayMinutes ? Number(values.delayMinutes) : null,
+    time: values.fixedTime || null,
+    hours: values.hoursBefore ? Number(values.hoursBefore) : null,
+  };
+}
+/** Campo del backend (C-16) → campo del formulario, para pintar errores 422. */
+const BACKEND_FIELD_TO_FORM: Record<string, keyof RuleConfigValues> = {
+  templateId: "templateId",
+  "when.mode": "whenMode",
+  "when.minutes": "delayMinutes",
+  "when.time": "fixedTime",
+  "when.hours": "hoursBefore",
+  "reminder.hours": "reminderHours",
+  "scope.from": "from",
+  "scope.to": "to",
+  "scope.maxOrderAgeDays": "maxOrderAgeDays",
+};
+
+function toRuleUpdate(values: RuleConfigValues, supportsReminder: boolean): WhatsAppRuleUpdate {
+  const mode = values.whenMode;
+  const isRange = values.dateMode === WHATSAPP_RULE_DATE_MODES.RANGE;
+  return {
+    templateId: values.templateId || null,
+    when: {
+      mode,
+      minutes: mode === WHATSAPP_RULE_WHEN_MODES.DELAY_MINUTES ? Number(values.delayMinutes) : null,
+      time: mode === WHATSAPP_RULE_WHEN_MODES.FIXED_TIME ? values.fixedTime : null,
+      hours:
+        mode === WHATSAPP_RULE_WHEN_MODES.HOURS_BEFORE_DELIVERY ? Number(values.hoursBefore) : null,
+    },
+    reminder: supportsReminder
+      ? { enabled: values.reminderEnabled, hours: Number(values.reminderHours) || 48 }
+      : null,
+    scope: {
+      dateMode: values.dateMode,
+      from: isRange ? values.from || null : null,
+      to: isRange ? values.to || null : null,
+      maxOrderAgeDays: Number(values.maxOrderAgeDays),
+      storeIds: [...values.storeIds],
+      salesChannels: [...values.salesChannels],
+      shippingTypes: [...values.shippingTypes],
+      courierIds: [...values.courierIds],
+    },
+  };
+}
+
+export function RuleCard({
+  rule,
+  templates,
+  catalogs,
+  canManage,
+  canPersist,
+  persistenceNoteId,
+  highlighted,
+  preselectTemplateId,
+  onRequestActivation,
+  onRequestDeactivation,
+  onPreviewTemplate,
+  onSave,
+}: RuleCardProps) {
+  const definition = getRuleDefinition(rule.key);
+  const supportsReminder = rule.reminder !== null || (definition?.supportsReminder ?? false);
+  const schema = useMemo(
+    () => createRuleConfigSchema({ allowedWhenModes: rule.allowedWhenModes, supportsReminder }),
+    [rule.allowedWhenModes, supportsReminder],
+  );
+  const form = useForm<RuleConfigValues>({
+    resolver: zodResolver(schema),
+    defaultValues: toRuleConfigValues(rule),
+    mode: "onTouched",
+  });
+  const { isDirty } = form.formState;
+  const values = useWatch({ control: form.control }) as RuleConfigValues;
+  const [confirmDiscardOpen, setConfirmDiscardOpen] = useState(false);
+  const [preselectedNote, setPreselectedNote] = useState(false);
+  const containerRef = useRef<HTMLElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const preselectApplied = useRef(false);
+  const headingId = useId();
+  const readOnly = !canManage;
+
+    const [saving, setSaving] = useState(false);
+
+  const handleSave = form.handleSubmit(async (formValues) => {
+    if (!onSave || saving) return;
+    setSaving(true);
+    try {
+      const result = await onSave(rule, toRuleUpdate(formValues, supportsReminder));
+      if (result.ok) {
+        form.reset(formValues);
+        setPreselectedNote(false);
+        return;
+      }
+      for (const [field, message] of Object.entries(result.fieldErrors ?? {})) {
+        const name = BACKEND_FIELD_TO_FORM[field];
+        if (name) form.setError(name, { message });
+      }
+    } finally {
+      setSaving(false);
+    }
+  });
+
+  useEffect(() => {
+    if (!form.formState.isDirty) form.reset(toRuleConfigValues(rule));
+  }, [rule, form]);
+
+  useEffect(() => {
+    if (!highlighted) return;
+    containerRef.current?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    headingRef.current?.focus();
+  }, [highlighted]);
+
+  const templateList = useMemo(
+    () => (templates.kind === "ready" ? templates.data : []),
+    [templates],
+  );
+  const selectedTemplate =
+    templateList.find((template) => template.id === values.templateId) ?? null;
+
+  useEffect(() => {
+    if (preselectApplied.current || !preselectTemplateId || readOnly) return;
+    const target = templateList.find((template) => template.id === preselectTemplateId);
+    if (!target || target.status !== WHATSAPP_TEMPLATE_STATUSES.APPROVED) return;
+    preselectApplied.current = true;
+    if (form.getValues("templateId") !== target.id) {
+      form.setValue("templateId", target.id, { shouldDirty: true });
+      setPreselectedNote(true);
+    }
+  }, [preselectTemplateId, templateList, readOnly, form]);
+
+  const keepsApprovedVersion =
+    rule.active &&
+    selectedTemplate?.status === WHATSAPP_TEMPLATE_STATUSES.PENDING &&
+    !!selectedTemplate.approvedVersion;
+  const blockedMessage =
+    rule.blockedReason ??
+    (selectedTemplate &&
+    selectedTemplate.status !== WHATSAPP_TEMPLATE_STATUSES.APPROVED &&
+    !keepsApprovedVersion
+      ? `La plantilla ${selectedTemplate.name} está ${WHATSAPP_TEMPLATE_STATUS_LABELS[
+          selectedTemplate.status
+        ].toLowerCase()} en Meta. Podrás activar este aviso cuando esté aprobada.`
+      : null);
+
+  const scopeSummary = describeRuleScope(
+    {
+      dateMode: values.dateMode,
+      from: values.from || null,
+      to: values.to || null,
+      maxOrderAgeDays: Number(values.maxOrderAgeDays) || 0,
+      storeIds: values.storeIds,
+      salesChannels: values.salesChannels,
+      shippingTypes: values.shippingTypes,
+      courierIds: values.courierIds,
+    },
+    buildScopeLabels(catalogs),
+  );
+
+  const requestActivation = (mode: "activate" | "count") =>
+    onRequestActivation({ rule, mode, hasUnsavedChanges: isDirty, scopeSummary });
+
+  const handleWhenModeChange = (mode: WhatsAppRuleWhenMode) => {
+    form.setValue("whenMode", mode, { shouldDirty: true, shouldValidate: true });
+    const fallback = WHEN_VALUE_DEFAULTS[mode];
+    if (fallback && !form.getValues(fallback.field)) {
+      form.setValue(fallback.field, fallback.value as never, { shouldDirty: true });
+    }
+  };
+
+  const RuleIcon = RULE_ICONS[rule.key] ?? Clock3;
+  const stats = rule.stats;
+  const monthlyCost = stats?.estimatedMonthly?.pen ?? null;
+
+  return (
+    <article
+      ref={containerRef}
+      aria-labelledby={headingId}
+      data-rule-key={rule.key}
+      data-highlighted={highlighted ? "true" : undefined}
+      className={cn(
+        "flex min-w-0 flex-col gap-3 rounded-[14px] border border-wa-border bg-wa-surface px-[18px] py-4 transition-[border-color]",
+        rule.active && "border-[color-mix(in_srgb,var(--wa-whatsapp)_45%,var(--wa-border))]",
+        highlighted && "outline-2 outline-solid outline-offset-2 outline-wa-primary",
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <span
+          className={cn(
+            "grid size-9 shrink-0 place-items-center rounded-[10px]",
+            rule.active
+              ? "bg-wa-whatsapp-soft text-wa-whatsapp-dark"
+              : "bg-wa-surface-2 text-wa-muted",
+          )}
+        >
+          <RuleIcon className="size-[18px]" aria-hidden="true" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h4
+            id={headingId}
+            ref={headingRef}
+            tabIndex={-1}
+            className="m-0 text-[15px] font-semibold outline-none"
+          >
+            {rule.label}
+          </h4>
+          {rule.triggerLabel && (
+            <p className="m-0 text-xs text-wa-muted">Se dispara: {rule.triggerLabel}</p>
+          )}
+        </div>
+        <Switch
+          className={waSwitch}
+          checked={rule.active}
+          disabled={readOnly || (!rule.active && !!blockedMessage)}
+          aria-label={`${rule.active ? "Desactivar" : "Activar"} aviso ${rule.label}`}
+          onCheckedChange={(checked) => {
+            if (checked) requestActivation("activate");
+            else onRequestDeactivation(rule);
+          }}
+        />
+      </div>
+
+      {blockedMessage && (
+        <WaCallout tone="amber" icon={Clock3} compact>
+          {blockedMessage}
+        </WaCallout>
+      )}
+
+      {keepsApprovedVersion && selectedTemplate && (
+        <WaCallout compact>
+          Meta está revisando cambios de {selectedTemplate.name}; mientras tanto se sigue enviando
+          la versión aprobada.
+        </WaCallout>
+      )}
+
+      {preselectedNote && (
+        <div role="status">
+          <WaCallout tone="teal" compact>
+            Plantilla preseleccionada desde Plantillas. Todavía no se guardó ni se activó.
+          </WaCallout>
+        </div>
+      )}
+
+      <Form {...form}>
+        <form
+          noValidate
+          className="flex flex-col gap-3"
+          onSubmit={(event) => event.preventDefault()}
+        >
+          <fieldset disabled={readOnly} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
+            <legend className="sr-only">Configuración del aviso {rule.label}</legend>
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="templateId"
+                render={({ field }) => (
+                  <FormItem className={waField}>
+                    <FormLabel className={waLabel}>Plantilla</FormLabel>
+                    <Select
+                      value={field.value || undefined}
+                      onValueChange={(value) => {
+                        if (!value || value === field.value) return;
+                        field.onChange(value);
+                        setPreselectedNote(false);
+                      }}
+                      disabled={readOnly || templates.kind !== "ready"}
+                    >
+                      <FormControl>
+                        <SelectTrigger className={waSelectTrigger} onBlur={field.onBlur}>
+                          <SelectValue
+                            placeholder={
+                              templates.kind === "ready"
+                                ? "Elige una plantilla"
+                                : "Plantillas pendientes de integración"
+                            }
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {templateList.map((template) => (
+                          <SelectItem
+                            key={template.id}
+                            value={template.id}
+                            disabled={template.status !== WHATSAPP_TEMPLATE_STATUSES.APPROVED}
+                          >
+                            {template.name}
+                            {template.status !== WHATSAPP_TEMPLATE_STATUSES.APPROVED &&
+                              ` (${WHATSAPP_TEMPLATE_STATUS_LABELS[template.status].toLowerCase()})`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage className="text-xs text-wa-red" />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="whenMode"
+                render={({ field }) => (
+                  <FormItem className={waField}>
+                    <FormLabel className={waLabel}>Cuándo enviar</FormLabel>
+                    <Select
+                      value={field.value}
+                      onValueChange={(value) => {
+                        if (!value || value === field.value) return;
+                        handleWhenModeChange(value as WhatsAppRuleWhenMode);
+                      }}
+                      disabled={readOnly}
+                    >
+                      <FormControl>
+                        <SelectTrigger className={waSelectTrigger} onBlur={field.onBlur}>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {rule.allowedWhenModes.map((mode) => (
+                          <SelectItem key={mode} value={mode}>
+                            {WHATSAPP_RULE_WHEN_MODE_LABELS[mode]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage className="text-xs text-wa-red" />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {values.whenMode === WHATSAPP_RULE_WHEN_MODES.DELAY_MINUTES && (
+              <FormField
+                control={form.control}
+                name="delayMinutes"
+                render={({ field }) => (
+                  <FormItem className={cn(waField, "sm:w-[calc(50%-5px)]")}>
+                    <FormLabel className={waLabel}>Minutos después</FormLabel>
+                    <FormControl>
+                      <WaInput {...field} inputMode="numeric" className={cn(waInput, "wa-num")} />
+                    </FormControl>
+                    <FormMessage className="text-xs text-wa-red" />
+                  </FormItem>
+                )}
+              />
+            )}
+            {values.whenMode === WHATSAPP_RULE_WHEN_MODES.FIXED_TIME && (
+              <FormField
+                control={form.control}
+                name="fixedTime"
+                render={({ field }) => (
+                  <FormItem className={cn(waField, "sm:w-[calc(50%-5px)]")}>
+                    <FormLabel className={waLabel}>Hora (Lima)</FormLabel>
+                    <FormControl>
+                      <WaInput {...field} type="time" className={cn(waInput, "wa-num")} />
+                    </FormControl>
+                    <FormMessage className="text-xs text-wa-red" />
+                  </FormItem>
+                )}
+              />
+            )}
+            {values.whenMode === WHATSAPP_RULE_WHEN_MODES.HOURS_BEFORE_DELIVERY && (
+              <FormField
+                control={form.control}
+                name="hoursBefore"
+                render={({ field }) => (
+                  <FormItem className={cn(waField, "sm:w-[calc(50%-5px)]")}>
+                    <FormLabel className={waLabel}>Horas antes de la entrega estimada</FormLabel>
+                    <FormControl>
+                      <WaInput {...field} inputMode="numeric" className={cn(waInput, "wa-num")} />
+                    </FormControl>
+                    <FormMessage className="text-xs text-wa-red" />
+                  </FormItem>
+                )}
+              />
+            )}
+
+            {supportsReminder && (
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <FormField
+                  control={form.control}
+                  name="reminderEnabled"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center gap-2 space-y-0">
+                      <FormControl>
+                        <Checkbox
+                          className={waCheckbox}
+                          checked={field.value}
+                          onCheckedChange={(checked) =>
+                            form.setValue("reminderEnabled", checked === true, {
+                              shouldDirty: true,
+                            })
+                          }
+                        />
+                      </FormControl>
+                      <FormLabel className="text-xs font-normal text-wa-fg">
+                        Recordar si no lo recoge
+                      </FormLabel>
+                    </FormItem>
+                  )}
+                />
+                {values.reminderEnabled && (
+                  <FormField
+                    control={form.control}
+                    name="reminderHours"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col gap-1 space-y-0">
+                        <span className="flex items-center gap-1.5">
+                          <span aria-hidden="true">en</span>
+                          <FormLabel className="sr-only">Después de (horas)</FormLabel>
+                          <FormControl>
+                            <WaInput
+                              {...field}
+                              inputMode="numeric"
+                              className={cn(waInput, "wa-num w-14 px-2 py-1 text-center")}
+                            />
+                          </FormControl>
+                          <span aria-hidden="true">horas</span>
+                        </span>
+                        <FormMessage className="text-xs text-wa-red" />
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </div>
+            )}
+
+            <RuleScopeFields
+              catalogs={catalogs}
+              summary={scopeSummary}
+              readOnly={readOnly}
+              onRequestCount={() => requestActivation("count")}
+            />
+          </fieldset>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-wa-border pt-2.5 text-xs text-wa-muted">
+            <span>{describeRuleWhen(toWhen(values))} · respeta horario</span>
+            <span className="wa-num">
+              {rule.active
+                ? [
+                    stats?.sentToday !== null && stats?.sentToday !== undefined
+                      ? `${stats.sentToday} hoy`
+                      : null,
+                    monthlyCost ? `≈ S/ ${monthlyCost}/mes` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || "Activo"
+                : "Apagado"}
+            </span>
+            <Button
+              type="button"
+              className={waButton({ variant: "ghost", size: "sm" })}
+              disabled={!selectedTemplate}
+              onClick={() => selectedTemplate && onPreviewTemplate(selectedTemplate)}
+            >
+              Ver mensaje
+            </Button>
+          </div>
+
+          {canManage && isDirty && (
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                className={waButton({ size: "sm" })}
+                onClick={() => setConfirmDiscardOpen(true)}
+              >
+                Descartar cambios
+              </Button>
+                <BlockedActionButton
+                  className={waButton({ variant: "primary", size: "sm" })}
+                  blocked={!canPersist || !onSave || saving}
+                  blockedReasonId={persistenceNoteId}
+                  onClick={() => void handleSave()}
+                >
+                  {saving ? "Guardando…" : "Guardar cambios"}
+                </BlockedActionButton>
+            </div>
+          )}
+        </form>
+      </Form>
+
+      <AlertDialog open={confirmDiscardOpen} onOpenChange={setConfirmDiscardOpen}>
+        <AlertDialogContent className={cn(waDialogContent, "sm:max-w-[440px]")}>
+          <AlertDialogHeader className={waDialogHeader}>
+            <AlertDialogTitle className={waDialogTitle}>
+              ¿Descartar los cambios de «{rule.label}»?
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <div className={waDialogBody}>
+            <AlertDialogDescription className="m-0 text-sm text-wa-muted">
+              Volverás a la configuración guardada de este aviso.
+            </AlertDialogDescription>
+          </div>
+          <AlertDialogFooter className={waDialogFooter}>
+            <AlertDialogCancel className={waButton()}>Seguir editando</AlertDialogCancel>
+            <AlertDialogAction
+              className={waButton({ variant: "solid-danger" })}
+              onClick={() => {
+                form.reset(toRuleConfigValues(rule));
+                setPreselectedNote(false);
+              }}
+            >
+              Descartar cambios
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </article>
+  );
+}

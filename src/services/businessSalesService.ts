@@ -13,6 +13,8 @@ export interface BusinessSalesQuery extends Partial<SalesFilters> {
   includeSummary?: boolean;
   /** «Por cobrar total»: deja fuera las ventas anuladas de la lista. */
   excludeCancelled?: "yes";
+  /** «Solo ventas por chat»: solo pedidos marcados con una conversación. */
+  crmOnly?: "yes";
   checkStock?: boolean;
   sort?: "created_desc" | "updated_asc";
 }
@@ -20,6 +22,8 @@ export interface BusinessSalesQuery extends Partial<SalesFilters> {
 export interface BusinessSalesOrder extends OrderHeader {
   /** Server confirmation eligibility for Sales; physical mutations still validate stock separately. */
   salesOperationalEligible?: boolean;
+  /** Conversación del chat que originó la venta (null si no viene de un chat). */
+  conversationId?: string | null;
 }
 
 export interface BusinessSalesPage {

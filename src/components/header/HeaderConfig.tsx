@@ -19,6 +19,7 @@ export function HeaderConfig({ title, description, children }: Props) {
     "/configuracion/tiendas",
     "/configuracion/editar-usuario",
     "/configuracion/empresa",
+    "/configuracion/whatsapp",
   ];
 
   const shouldShowBackButton = showBackButtonRoutes.includes(pathname);

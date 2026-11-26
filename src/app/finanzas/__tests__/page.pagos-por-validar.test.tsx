@@ -75,6 +75,8 @@ jest.mock("@/components/modals/CustomerServiceModal", () => ({
   __esModule: true,
   default: () => null,
 }));
+// The resend button has its own test; here it would consume the mocked HTTP calls.
+jest.mock("@/components/facturacion/ReenviarPdfWhatsAppButton", () => ({ ReenviarPdfWhatsAppButton: () => null }));
 jest.mock("@/components/modals/CommentsTimelineModal", () => ({
   __esModule: true,
   default: () => null,
@@ -199,6 +201,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   scopedStoreIds = ["store-1"];
   mockSearch = "";
+  crmAllowed = true;
   mockUseAuth.mockReturnValue(
     MOCK_AUTH as unknown as ReturnType<typeof useAuth>,
   );
@@ -245,8 +248,12 @@ const review = {
     hasProof: false,
   },
 };
+// Acceso al CRM de la empresa: sin él, Finanzas no pide la cola del CRM ni muestra «CRM · Pau».
+let crmAllowed = true;
 function mockQueue(orders: OrderHeader[], reviews: unknown[] = []) {
   mockedAxios.get.mockImplementation((url: string) => {
+    if (url.includes("/crm/access"))
+      return Promise.resolve({ data: { allowed: crmAllowed, level: null, crm: crmAllowed, pau: crmAllowed, until: null, source: null } });
     if (url.includes("/yape/reviews"))
       return Promise.resolve({
         data: { reviews, serverNow: "2026-11-24T12:00:00Z" },
@@ -318,6 +325,149 @@ describe("Finanzas › Pagos por validar (FEAT-33 B1)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Otros orígenes" }));
     expect(screen.getByText("ORD-153900")).toBeInTheDocument();
     expect(screen.queryByText("ORD-153866")).not.toBeInTheDocument();
+  });
+
+  it("CRM · Pau: lists Pau-validated receipts, also under Todos, and the boss accepts there", async () => {
+    asReviewer();
+    const pauReceipt = {
+      id: "rcpt-1",
+      conversationId: "conv-1",
+      orderId: null,
+      orderNumber: null,
+      quotationId: null,
+      status: "porval",
+      method: "YAPE",
+      methodLabel: "Yape",
+      amount: 129,
+      operationNumber: "00123456",
+      mime: "image/png",
+      fileName: "yape.png",
+      hasFile: true,
+      destination: "local",
+      coreError: null,
+      uploadedByName: "Pau",
+      reviewedByName: null,
+      reviewNote: null,
+      reviewedAt: null,
+      createdAt: "2026-11-25T15:00:00Z",
+      validatedBy: "pau",
+      pauChecks: {
+        read: { isReceipt: true, amount: 129, date: "2026-11-25", destination: "*** 321", holder: null, operationNumber: "00123456", method: "Yape" },
+        expected: 129,
+        isReceipt: true,
+        amountMatch: true,
+        dateRecent: true,
+        destinationOk: true,
+        operationUnique: true,
+        passed: true,
+        failed: [],
+      },
+      pauSale: { id: "sale-1", items: "2 polos negros talla M", total: 129, customerName: "Ana Pérez", district: "Surco", status: "por_validar" },
+    };
+    mockQueue([manualOrder()]);
+    const base = mockedAxios.get.getMockImplementation()!;
+    mockedAxios.get.mockImplementation((url: string, config?: { params?: Record<string, string> }) =>
+      url.includes("/receipts/queue")
+        ? (expect(config?.params).toEqual({ status: "porval", validatedBy: "pau" }), Promise.resolve({ data: { items: [pauReceipt] } }))
+        : base(url, config),
+    );
+    mockedAxios.patch.mockResolvedValue({ data: { ...pauReceipt, status: "aprobado" } });
+    render(<FinanzasPage />);
+    expect(await screen.findByRole("tab", { name: "Pagos por validar (2)" })).toBeInTheDocument();
+    // «Todos» también trae las ventas de Pau.
+    expect(await screen.findByText("Ana Pérez")).toBeInTheDocument();
+    expect(screen.getByText("ORD-153900")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "CRM · Pau" }));
+    expect(screen.getByRole("button", { name: "CRM · Pau" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("ORD-153900")).not.toBeInTheDocument();
+    // La venta del chat es una fila de la misma tabla, sin apartado propio.
+    expect(screen.getAllByRole("table")).toHaveLength(1);
+    const card = screen.getByText("Ana Pérez").closest("tr") as HTMLElement;
+    expect(within(card).getByText("CRM · Pau")).toBeInTheDocument();
+    expect(within(card).getByText("Validado por Pau")).toBeInTheDocument();
+    expect(within(card).getByText("5 de 5 controles de Pau")).toBeInTheDocument();
+    fireEvent.click(within(card).getByRole("button", { name: "Aceptar pago" }));
+    await waitFor(() =>
+      expect(mockedAxios.patch).toHaveBeenCalledWith(expect.stringContaining("/receipts/rcpt-1/review"), { approve: true }),
+    );
+  });
+
+  it("without CRM access: does not ask the CRM queue, shows no CRM warning and no «CRM · Pau» filter", async () => {
+    asReviewer();
+    crmAllowed = false;
+    mockQueue([manualOrder()]);
+    render(<FinanzasPage />);
+    expect(await screen.findByText("ORD-153900")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(mockedAxios.get).toHaveBeenCalledWith(expect.stringContaining("/crm/access")),
+    );
+    expect(mockedAxios.get).not.toHaveBeenCalledWith(expect.stringContaining("/receipts/queue"), expect.anything());
+    expect(screen.queryByText("No se pudieron cargar los comprobantes del CRM.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "CRM · Pau" })).not.toBeInTheDocument();
+  });
+
+  it("with CRM access: a failed CRM queue shows the warning", async () => {
+    asReviewer();
+    mockQueue([manualOrder()]);
+    render(<FinanzasPage />);
+    expect(await screen.findByText("No se pudieron cargar los comprobantes del CRM.")).toBeInTheDocument();
+  });
+
+  it("CRM · Pau: rejecting sends the reason", async () => {
+    asReviewer();
+    mockQueue([]);
+    const base = mockedAxios.get.getMockImplementation()!;
+    mockedAxios.get.mockImplementation((url: string, config?: unknown) =>
+      url.includes("/receipts/queue")
+        ? Promise.resolve({ data: { items: [{ id: "rcpt-2", amount: 129, methodLabel: "Yape", hasFile: false, operationNumber: null, pauChecks: null, pauSale: null, validatedBy: "pau" }] } })
+        : base(url, config),
+    );
+    mockedAxios.patch.mockResolvedValue({ data: {} });
+    mockSearch = "origen=pau";
+    render(<FinanzasPage />);
+    const card = (await screen.findByText("Cliente del chat")).closest("tr") as HTMLElement;
+    fireEvent.click(within(card).getByRole("button", { name: "Rechazar" }));
+    const dialog = await screen.findByRole("dialog", { name: "Rechazar comprobante" });
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Monto distinto" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Rechazar y avisar" }));
+    await waitFor(() =>
+      expect(mockedAxios.patch).toHaveBeenCalledWith(expect.stringContaining("/receipts/rcpt-2/review"), { approve: false, reason: "monto" }),
+    );
+  });
+
+  it("a chat sale with its order and its CRM receipt is one row and counts once", async () => {
+    asReviewer();
+    const pauOrder = makeOrderHeader({
+      id: "order-pau",
+      orderNumber: "ORD-000012",
+      externalSource: "crm_pau",
+      status: "INCOMPLETE",
+    } as Partial<OrderHeader>);
+    mockQueue([pauOrder, manualOrder()]);
+    const base = mockedAxios.get.getMockImplementation()!;
+    mockedAxios.get.mockImplementation((url: string, config?: unknown) =>
+      url.includes("/receipts/queue")
+        ? Promise.resolve({ data: { items: [{ id: "rcpt-3", orderId: "order-pau", amount: 100, methodLabel: "Yape", hasFile: false, pauChecks: null, pauSale: null, validatedBy: "pau" }] } })
+        : base(url, config),
+    );
+    render(<FinanzasPage />);
+    expect(await screen.findByRole("tab", { name: "Pagos por validar (2)" })).toBeInTheDocument();
+    expect(await screen.findByText("Validado por Pau")).toBeInTheDocument();
+    expect(screen.getAllByText("ORD-000012")).toHaveLength(1);
+    expect(within(rowOf("ORD-000012")).getByText("CRM · Pau")).toBeInTheDocument();
+    // Con pedido en el Core, el pago de Pau se aprueba en «Gestionar Pagos» (el modal lo manda al CRM, 4b34f994);
+    // «Aceptar pago» en la fila queda solo para el comprobante de Pau sin pedido.
+    expect(within(rowOf("ORD-000012")).getByRole("button", { name: /Gestionar Pagos/ })).toBeInTheDocument();
+    expect(within(rowOf("ORD-000012")).queryByRole("button", { name: "Aceptar pago" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Otros orígenes" }));
+    expect(screen.queryByText("ORD-000012")).not.toBeInTheDocument();
+    expect(screen.getByText("ORD-153900")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "CRM · Pau" }));
+    expect(screen.getByText("ORD-000012")).toBeInTheDocument();
+    expect(screen.queryByText("ORD-153900")).not.toBeInTheDocument();
   });
 
   it("opens already filtered from the Live console link", async () => {

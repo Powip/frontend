@@ -60,7 +60,9 @@ import {
   ArrowRightLeft,
   FileText,
   Zap,
+  MessagesSquare,
 } from "lucide-react";
+import OrderChatConversation, { useOrderConversation } from "@/components/orders/OrderChatConversation";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { ShalomStatusBadge } from "@/components/tracking/ShalomStatusBadge";
 import { SHALOM_STEPS, SHALOM_STEP_ICONS } from "@/components/tracking/useShalomLiveStatus";
@@ -119,6 +121,7 @@ import { printOrderLabel, type OrderReceipt } from "@/utils/printOrderLabel";
 import { downloadNotaVentaPdf } from "@/utils/downloadNotaVentaPdf";
 import { GoogleMapsUrlField } from "@/components/shared/GoogleMapsUrlField";
 import { OrderEvidenceSection } from "@/components/orders/OrderEvidenceSection";
+import { OrderWhatsAppMessages } from "@/components/whatsapp/OrderWhatsAppMessages";
 import { channelLabel, saleOriginLabel } from "@/utils/saleLabels";
 import { historyActor, historyAuthor, isRawHistoryCode } from "@/lib/orderHistory";
 
@@ -280,6 +283,8 @@ export default function CustomerServiceModal({
   // Pestañas del modal unificado + estado crudo de la orden (para Vendedor,
   // selector de estado, y como `order` de ReassignDeliveryModal).
   const [tab, setTab] = useState("resumen");
+  const orderChat = useOrderConversation(orderId, open);
+  const hasOrderChat = !!orderChat.data?.conversation;
   const [orderHeader, setOrderHeader] = useState<OrderHeader | null>(null);
   // FEAT-24 H12: guía de remisión remitente (SUNAT) del pedido.
   const [greOpen, setGreOpen] = useState(false);
@@ -1102,6 +1107,9 @@ export default function CustomerServiceModal({
                       <TabsTrigger disabled={isPendingPurchase} value="reasignacion" className="whitespace-nowrap">
                         <Repeat className="h-4 w-4 mr-1.5" /> Reasignación
                       </TabsTrigger>
+                      <TabsTrigger value="conversacion" className="whitespace-nowrap">
+                        <MessagesSquare className="h-4 w-4 mr-1.5" /> Conversación
+                      </TabsTrigger>
                     </TabsList>
                   </div>
 
@@ -1304,6 +1312,18 @@ export default function CustomerServiceModal({
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                       <h3 className="font-semibold text-lg">Cliente</h3>
                       <div className="flex flex-wrap gap-1">
+                        {hasOrderChat && (
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="h-9 w-9 text-primary"
+                            onClick={() => setTab("conversacion")}
+                            title="Ver conversación"
+                            aria-label="Ver conversación"
+                          >
+                            <MessagesSquare className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button
                           size="icon"
                           variant="outline"
@@ -2975,6 +2995,8 @@ export default function CustomerServiceModal({
                     );
                   })()}
 
+                  <OrderWhatsAppMessages orderId={orderId} />
+
                   {/* Acciones — calca la lista de botones full-width del
                       mockup (icono + label, alineados a la izquierda). Cada
                       una reusa una acción real que ya existe en el modal;
@@ -3175,6 +3197,10 @@ export default function CustomerServiceModal({
                     >
                       Gestionar pagos
                     </Button>
+                  </TabsContent>
+
+                  <TabsContent value="conversacion" className="pt-3">
+                    {tab === "conversacion" && <OrderChatConversation orderId={orderId} enabled={open} link={orderChat} />}
                   </TabsContent>
 
                   <TabsContent value="reasignacion" className="pt-3 space-y-3.5">

@@ -17,6 +17,7 @@ import {
   advertisingErrorMessage,
   advertisingErrorStatus,
   advertisingSelectionConflictCode,
+  discoverAdvertisingAccounts,
   importAdvertisingHistory,
   pauseAdvertisingUpdates,
   selectAdvertisingAccounts,
@@ -29,6 +30,7 @@ import { AdvertisingEffectiveSpend } from "./AdvertisingEffectiveSpend";
 import { AdvertisingLiveAccountsDialog } from "./AdvertisingLiveAccountsDialog";
 import { AdvertisingManualReview } from "./AdvertisingManualReview";
 import { AdvertisingModuleSummary } from "./AdvertisingModuleSummary";
+import { AdvertisingStartImport } from "./AdvertisingStartImport";
 import { advertisingHistoryNotice } from "./advertising-history";
 import { snapshotFromWire } from "./advertising-model";
 
@@ -81,6 +83,17 @@ export function AdvertisingLivePanel({
 }: Props) {
   const queryClient = useQueryClient();
   const query = useAdvertisingSnapshot({ token, actorId, companyId, from, to });
+  // Read-only: Meta account_status plus local campaign counts. It never queues an import.
+  const loadMetaStatuses = useMemo(
+    () =>
+      token && companyId
+        ? (signal: AbortSignal) =>
+            discoverAdvertisingAccounts(token, companyId, "meta", signal).then(
+              (result) => result.accounts,
+            )
+        : undefined,
+    [token, companyId],
+  );
   const [dialogProvider, setDialogProvider] = useState<AdvertisingProviderWire | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -209,10 +222,16 @@ export function AdvertisingLivePanel({
       if (mounted.current) {
         setDialogProvider(null);
         historyNoticeSnapshot.current = wire;
+        const started = result.imports.filter(
+          (job): job is Exclude<typeof job, { status: "not_requested" }> =>
+            job.status !== "not_requested",
+        );
         setNotice(
-          result.selectedCount > 0
-            ? advertisingHistoryNotice(result.imports)
-            : "Cuentas guardadas.",
+          result.selectedCount === 0
+            ? "Cuentas guardadas."
+            : started.length
+              ? advertisingHistoryNotice(started)
+              : "Cuentas guardadas. Marca las que quieres importar y pulsa «Comenzar importación».",
         );
         if (result.selectedCount > 0) onAccountsSelected?.();
       }
@@ -261,6 +280,31 @@ export function AdvertisingLivePanel({
           providers.length
             ? advertisingHistoryNotice(results.flatMap((result) => result.imports))
             : "No hay cuentas activas para actualizar.",
+        );
+      }
+    } catch (failure: unknown) {
+      if (mounted.current) setError(advertisingErrorMessage(failure));
+    } finally {
+      if (mounted.current) {
+        await query.refetch();
+        setPending(null);
+      }
+    }
+  }
+
+  async function startImport(accountIds: string[]) {
+    if (!token || !companyId || !wire || pending || !accountIds.length) return;
+    setPending("start");
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await importAdvertisingHistory(token, companyId, "meta", accountIds);
+      if (mounted.current) {
+        historyNoticeSnapshot.current = wire;
+        setNotice(
+          `Importación iniciada para ${result.imports.length} ${
+            result.imports.length === 1 ? "cuenta" : "cuentas"
+          }. Puedes seguir el avance abajo.`,
         );
       }
     } catch (failure: unknown) {
@@ -432,7 +476,9 @@ export function AdvertisingLivePanel({
               ? "Abriendo la conexión…"
               : pending === "pause"
                 ? "Pausando actualizaciones…"
-                : "Actualizando datos…"}
+                : pending === "start"
+                  ? "Comenzando importación…"
+                  : "Actualizando datos…"}
           </p>
         )}
         {manage && wire.accounts.some((account) => account.enabled && !account.disconnectedAt) && (
@@ -445,6 +491,15 @@ export function AdvertisingLivePanel({
             <RefreshCw aria-hidden="true" />
             Actualizar gasto
           </Button>
+        )}
+        {wire.providers.meta.status === "connected" && (
+          <AdvertisingStartImport
+            accounts={wire.accounts}
+            canManage={manage}
+            busy={pending !== null || query.isFetching}
+            onStart={(accountIds) => void startImport(accountIds)}
+            loadStatuses={loadMetaStatuses}
+          />
         )}
         {!manage && Object.values(wire.providers).some((provider) => provider.available) && (
           <p className="text-xs text-muted-foreground">

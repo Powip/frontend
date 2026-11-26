@@ -2,6 +2,7 @@
 import Header from "@/components/header/Header";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Card, CardContent } from "@/components/ui/card";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { useAuth } from "@/contexts/AuthContext";
 import { Building2, Store, User, Blocks, CreditCard, Warehouse } from "lucide-react";
 import Link from "next/link";
@@ -63,6 +64,14 @@ export default function ConfiguracionPage() {
       href: "/configuracion/integraciones",
       color: "text-indigo-600",
       bgColor: "bg-indigo-50",
+    },
+    {
+      title: "Notificaciones por WhatsApp",
+      description: "Avisos de envío por WhatsApp y conversaciones con tus clientes",
+      icon: WhatsAppIcon,
+      href: "/configuracion/whatsapp",
+      color: "text-emerald-600",
+      bgColor: "bg-emerald-50",
     },
   ];
 
