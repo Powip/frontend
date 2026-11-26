@@ -59,6 +59,13 @@ jest.mock("@/components/tracking/EvaOrderTrackingView", () => ({
   default: () => null,
 }));
 
+jest.mock("@/components/couriers/OlvaOrderTrackingView", () => ({
+  __esModule: true,
+  default: ({ orders }: { orders: { orderNumber: string }[] }) => (
+    <div data-testid="olva-tracking-panel">{orders.map((o) => o.orderNumber).join(",")}</div>
+  ),
+}));
+
 jest.mock("@/components/tracking/useShalomLiveStatus", () => ({
   useShalomLiveStatuses: () => ({
     liveStatuses: {},
@@ -104,6 +111,7 @@ jest.mock("axios", () => {
 });
 
 import axios from "axios";
+import { fetchCouriers } from "@/services/courierService";
 import CourierTrackingView from "../CourierTrackingView";
 
 const mockedGet = (axios as unknown as { get: jest.Mock }).get;
@@ -489,5 +497,54 @@ describe("CourierTrackingView — columna Clave según saldo y comprobante", () 
 
     await waitFor(() => expect(keyInput("PED-CON-SALDO").value).toBe("7391"));
     expect(lockedKey("PED-CON-SALDO")).toBeUndefined();
+  });
+});
+
+describe("CourierTrackingView — Olva integrado (FEAT-35)", () => {
+  const olvaOrder = {
+    ...order("o-olva", "PED-OLVA-1", "2026-09-18T12:00:00", "2026-09-18T12:00:00"),
+    courier: "Olva Courier",
+    olvaShipmentId: "0b1f6a52-5d0e-4c8b-9c5e-3a1d2e4f5a6b",
+    olvaStatus: "IN_TRANSIT",
+    externalTrackingNumber: "1234567-26",
+  };
+
+  beforeEach(() => {
+    (fetchCouriers as jest.Mock).mockResolvedValue([{ name: "Olva" }, { name: "Olva Courier" }]);
+    mockedGet.mockImplementation((url: string) => {
+      if (url.includes("/shipping-guides/store/")) return Promise.resolve({ data: guides });
+      if (url.includes("/order-header/store/")) {
+        return Promise.resolve({ data: [...orders, olvaOrder] });
+      }
+      return Promise.resolve({ data: [] });
+    });
+  });
+
+  afterEach(() => {
+    (fetchCouriers as jest.Mock).mockImplementation(() => Promise.resolve([{ name: "Olva" }]));
+  });
+
+  it("«Todos» muestra el estado de Olva guardado en el pedido", async () => {
+    render(<CourierTrackingView />);
+
+    await waitFor(() => expect(renderedOrderNumbers()).toContain("PED-OLVA-1"));
+    const row = screen
+      .getAllByRole("row")
+      .find((r) => within(r).queryAllByRole("cell")[0]?.textContent === "PED-OLVA-1");
+    expect(row && within(row).getByText("En tránsito")).toBeInTheDocument();
+  });
+
+  it("la pestaña de Olva Courier suma el panel de Olva con sus pedidos; la de un Olva manual no", async () => {
+    const user = userEvent.setup();
+    render(<CourierTrackingView />);
+
+    await user.click(await screen.findByRole("tab", { name: "Olva Courier" }));
+    expect(await screen.findByTestId("olva-tracking-panel")).toHaveTextContent("PED-OLVA-1");
+
+    await user.click(screen.getByRole("tab", { name: "Olva" }));
+    await waitFor(() =>
+      expect(screen.getByRole("tabpanel")).toHaveTextContent("PED-VENTA-RECIENTE"),
+    );
+    expect(screen.queryByTestId("olva-tracking-panel")).not.toBeInTheDocument();
   });
 });

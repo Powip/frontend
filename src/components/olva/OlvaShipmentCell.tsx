@@ -45,6 +45,7 @@ import {
   isOlvaPagoEfectivoPayment,
 } from "./send-to-olva/utils/olva-payment-guards";
 import { openOlvaLabel } from "./send-to-olva/utils/open-olva-label";
+import { olvaStatusBadgeVariant } from "./utils/olva-status-badge-variant";
 
 const S = OLVA_SHIPMENT_STATUSES;
 
@@ -58,16 +59,6 @@ const FOLLOWED_STATUSES: readonly OlvaShipmentStatus[] = [
 const PAYMENT_STATUSES: readonly OlvaShipmentStatus[] = [S.PENDING_PAYMENT, S.PAYMENT_EXPIRED];
 /** No guide at Olva: nothing to print. */
 const WITHOUT_LABEL: readonly OlvaShipmentStatus[] = [S.SUBMITTING, S.FAILED, S.DISCARDED, S.DRAFT];
-const DANGER: readonly OlvaShipmentStatus[] = [S.FAILED, S.REJECTED, S.INCIDENT, S.RETURNED];
-const WAITING: readonly OlvaShipmentStatus[] = [
-  S.SUBMITTING,
-  S.PENDING_PAYMENT,
-  S.PAYMENT_EXPIRED,
-  S.DISCARDED,
-  S.DRAFT,
-  S.UNKNOWN,
-];
-
 const COUNTDOWN_TICK_MS = 30_000;
 
 interface OlvaShipmentCellProps {
@@ -113,7 +104,7 @@ function OlvaShipmentCellBody({
   return (
     <div className="grid gap-1.5 text-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={badgeVariantOf(status)} title={current.statusDetail ?? undefined}>
+        <Badge variant={olvaStatusBadgeVariant(status)} title={current.statusDetail ?? undefined}>
           {getOlvaShipmentStatusLabel(status)}
         </Badge>
         {current.trackingNumber ? (
@@ -155,12 +146,6 @@ function OlvaShipmentCellBody({
       ) : null}
     </div>
   );
-}
-
-function badgeVariantOf(status: OlvaShipmentStatus) {
-  if (DANGER.includes(status)) return "destructive" as const;
-  if (WAITING.includes(status)) return "secondary" as const;
-  return "default" as const;
 }
 
 function LabelButton({

@@ -84,12 +84,19 @@ import ShalomDocumentModal from "@/components/modals/ShalomDocumentModal";
 import ShalomOrderTrackingView from "@/components/tracking/ShalomOrderTrackingView";
 import AliclikOrderTrackingView from "@/components/tracking/AliclikOrderTrackingView";
 import EvaOrderTrackingView from "@/components/tracking/EvaOrderTrackingView";
+import OlvaOrderTrackingView from "@/components/couriers/OlvaOrderTrackingView";
+import { OLVA_SHIPMENT_STATUS_LABELS } from "@/features/olva/olva-shipment/constants/olva-shipment.constants";
 import { getPendingPayment, isShippingKeyLocked, trackingUrlFor } from "@/app/centro-envios/components/shipmentUtils";
 import { fetchCouriers } from "@/services/courierService";
 import { getEvaCredentials } from "@/services/evaService";
 import { getAliclikCredentials } from "@/services/aliclikService";
 import { OrderHeader } from "@/interfaces/IOrder";
-import { isAliclikCourier, isEvaCourier, isShalomCourier } from "@/utils/courierNormalizer";
+import {
+  isAliclikCourier,
+  isEvaCourier,
+  isOlvaCourier,
+  isShalomCourier,
+} from "@/utils/courierNormalizer";
 import { isOrderTrackable } from "@/utils/domain/courier-tracking";
 import { formatShalomSyncedAt } from "@/components/tracking/shalomSyncedAt";
 import { useShalomLiveStatuses, SHALOM_STEP_STYLES, SHALOM_STEP_ICONS } from "@/components/tracking/useShalomLiveStatus";
@@ -531,11 +538,12 @@ export default function CourierTrackingView() {
     const hasEva = dispatchedOrders.some(
       (o) => isEvaCourier(o.courier) || isEvaCourier(o.shippingOffice),
     );
+    const hasOlva = dispatchedOrders.some((o) => isOlvaCourier(o.courier) && !!o.olvaStatus);
 
     const map = new Map<string, { key: string; sourceLabel: string; label: string }>();
     const addAll = (
       active: boolean,
-      source: "shalom" | "aliclik" | "eva",
+      source: "shalom" | "aliclik" | "eva" | "olva",
       sourceLabel: string,
       labels: Record<string, string>,
     ) => {
@@ -548,6 +556,7 @@ export default function CourierTrackingView() {
     addAll(hasShalom, "shalom", "Shalom", SHALOM_STATUS_LABELS);
     addAll(hasAliclik, "aliclik", "Aliclik", ALICLIK_STATUS_LABELS);
     addAll(hasEva, "eva", "EVA", EVA_STATUS_LABEL);
+    addAll(hasOlva, "olva", "Olva", OLVA_SHIPMENT_STATUS_LABELS);
 
     return Array.from(map.values()).sort(
       (a, b) => a.sourceLabel.localeCompare(b.sourceLabel) || a.label.localeCompare(b.label),
@@ -911,6 +920,13 @@ export default function CourierTrackingView() {
 
           {otherCouriers.map((c) => (
             <TabsContent key={c} value={courierTabValue(c)}>
+              {/* FEAT-35: Olva Courier conserva su tabla (tracking y costo a mano) y suma el
+                  estado de los envíos registrados desde Powip */}
+              {isOlvaCourier(c) && (
+                <OlvaOrderTrackingView
+                  orders={dispatchedOrders.filter((o) => courierLabel(o) === c)}
+                />
+              )}
               <CourierOrdersTab
                 courierName={c}
                 dispatchedOrders={dispatchedOrders}
