@@ -55,6 +55,20 @@ describe("ventas", () => {
     expect(costoPedido(pedido({ items: [{ lineKind: "PRODUCT", quantity: 2, unitCost: null }] }))).toBeNull();
   });
 
+  it("con costo parcial en las líneas queda sin costo (la cabecera es la suma parcial)", () => {
+    expect(
+      costoPedido(
+        pedido({
+          costAmount: "30.00",
+          items: [
+            { lineKind: "PRODUCT", quantity: 1, unitCost: 30 },
+            { lineKind: "PRODUCT", quantity: 1, unitCost: null },
+          ],
+        }),
+      ),
+    ).toBeNull();
+  });
+
   it("en tránsito incluye EN_ENVIO y ASIGNADO_A_GUIA", () => {
     expect(estaEnTransito(pedido({ status: "EN_ENVIO" }))).toBe(true);
     expect(estaEnTransito(pedido({ status: "ASIGNADO_A_GUIA" }))).toBe(true);

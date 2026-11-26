@@ -76,12 +76,20 @@ export function unidadesPedido(pedido: PedidoAdmin): number {
   return lineasProducto(pedido).reduce((s, linea) => s + num(linea.quantity), 0);
 }
 
-/** Costo de producto del pedido, o null si no hay ninguno cargado. */
+/**
+ * Costo de producto del pedido, o null («sin costo»):
+ * - todas las líneas con costo → Σ costo de las líneas;
+ * - ninguna línea con costo y cabecera > 0 → la cabecera (pedidos viejos, con el costo solo en `costAmount`);
+ * - costo parcial en las líneas → null: la cabecera ya no sirve, porque ms-ventas la recalcula como Σ de las líneas
+ *   (las que no tienen costo suman 0) y daría un costo menor al real sin avisar (FEAT-34 2.3).
+ */
 export function costoPedido(pedido: PedidoAdmin): number | null {
   const lineas = lineasProducto(pedido);
-  if (lineas.length > 0 && lineas.every((linea) => num(linea.unitCost) > 0)) {
+  const conCosto = lineas.filter((linea) => num(linea.unitCost) > 0);
+  if (lineas.length > 0 && conCosto.length === lineas.length) {
     return lineas.reduce((s, linea) => s + num(linea.unitCost) * num(linea.quantity), 0);
   }
+  if (conCosto.length > 0) return null;
   const cabecera = num(pedido.costAmount);
   return cabecera > 0 ? cabecera : null;
 }
@@ -100,7 +108,7 @@ export function costoDudosoLinea(linea: LineaPedido): boolean {
 /** El costo del pedido es dudoso: alguna línea con costo ≥ precio o, si el costo es el de la cabecera, ≥ el total. */
 export function costoDudosoPedido(pedido: PedidoAdmin): boolean {
   const lineas = lineasProducto(pedido);
-  if (lineas.length > 0 && lineas.every((linea) => num(linea.unitCost) > 0)) {
+  if (lineas.some((linea) => num(linea.unitCost) > 0)) {
     return lineas.some(costoDudosoLinea);
   }
   const cabecera = num(pedido.costAmount);
