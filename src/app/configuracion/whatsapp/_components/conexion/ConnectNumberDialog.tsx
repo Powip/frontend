@@ -24,7 +24,10 @@ import {
   waInput,
   waLabel,
 } from "@/components/whatsapp/ui/wa-classes";
-import { SIGNUP_REQUIREMENTS } from "@/features/whatsapp/constants/whatsapp-connection-catalog";
+import {
+  COEX_SIGNUP_REQUIREMENTS,
+  SIGNUP_REQUIREMENTS,
+} from "@/features/whatsapp/constants/whatsapp-connection-catalog";
 import type { WhatsAppAgentOption } from "@/features/whatsapp/models/conversation.model";
 import { cn } from "@/lib/utils";
 import {
@@ -246,16 +249,19 @@ export function ConnectNumberDialog({
             crear o elegir tu cuenta de WhatsApp Business.
           </p>
           <ul className="m-0 flex list-none flex-col gap-2 p-0 text-xs">
-            {SIGNUP_REQUIREMENTS.map((requirement) => (
-              <li key={requirement} className="flex items-center gap-2.5">
-                <Check className="size-[18px] shrink-0 text-wa-green" aria-hidden="true" />
-                {requirement}
-              </li>
-            ))}
+            {(mode === "coex" ? COEX_SIGNUP_REQUIREMENTS : SIGNUP_REQUIREMENTS).map(
+              (requirement) => (
+                <li key={requirement} className="flex items-center gap-2.5">
+                  <Check className="size-[18px] shrink-0 text-wa-green" aria-hidden="true" />
+                  {requirement}
+                </li>
+              ),
+            )}
           </ul>
           <p className="m-0 text-xs text-wa-muted">
-            Los pasos 2 y 3 (elegir el número, el nombre visible y el código por SMS o llamada)
-            ocurren en la ventana de Meta, no en POWIP.
+            {mode === "coex"
+              ? "Los pasos 2 y 3 (elegir el número y confirmarlo) ocurren en la ventana de Meta y en la app del celular, no en POWIP."
+              : "Los pasos 2 y 3 (elegir el número, el nombre visible y el código por SMS o llamada) ocurren en la ventana de Meta, no en POWIP."}
           </p>
 
           {reconnect && (

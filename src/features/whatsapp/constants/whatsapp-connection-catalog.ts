@@ -115,6 +115,13 @@ export const ASSISTED_STATUS_LABELS: Record<WhatsAppAssistedStatus, string> = {
   [WHATSAPP_ASSISTED_STATUSES.DISCARDED]: "Descartado",
 };
 
+/** «API + app»: el número sigue en el celular; no hay código por SMS. */
+export const COEX_SIGNUP_REQUIREMENTS = [
+  "El número ya en uso en la app WhatsApp Business del celular (versión 2.24.17 o superior).",
+  "Ese celular a mano para confirmar la conexión desde la app.",
+  "Un método de pago en Meta para el costo de los mensajes.",
+];
+
 export const SIGNUP_REQUIREMENTS = [
   "Un número que no esté usando la app de WhatsApp normal.",
   "Acceso a ese número para recibir un código por SMS o llamada.",
