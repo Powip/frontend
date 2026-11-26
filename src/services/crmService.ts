@@ -16,6 +16,7 @@ import type {
   ConversationChannel,
   ConversationFollowup,
   CreateTaskInput,
+  InboxFilters,
   InboxSummary,
   SendTemplateInput,
   Pipeline,
@@ -73,6 +74,8 @@ export async function listConversations(
   if (params.comments) query.comments = "true";
   if (params.tag?.trim()) query.tag = params.tag.trim();
   if (params.storeId) query.storeId = params.storeId;
+  if (params.channelAccountId) query.channelAccountId = params.channelAccountId;
+  if (params.assignedUserId) query.assignedUserId = params.assignedUserId;
   return (
     await axiosAuth.get<ConversationListResponse>(`${BASE}/conversations`, {
       params: query,
@@ -176,6 +179,14 @@ export async function sendConversationTemplate(
 }
 
 /** Conteos de los indicadores de la Bandeja. */
+/** Números de WhatsApp y vendedoras con chats, para filtrar la Bandeja. */
+export async function getInboxFilters(storeId?: string): Promise<InboxFilters> {
+  const res = await axiosAuth.get<InboxFilters>(`${BASE}/inbox/filters`, {
+    params: storeId ? { storeId } : {},
+  });
+  return { numbers: res.data?.numbers ?? [], sellers: res.data?.sellers ?? [] };
+}
+
 export async function getInboxSummary(storeId?: string): Promise<InboxSummary> {
   const url = `${BASE}/inbox/summary`;
   const res = storeId

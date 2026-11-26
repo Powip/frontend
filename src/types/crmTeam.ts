@@ -193,10 +193,15 @@ export interface ConnectWabaInput {
   storeId: string;
   wabaId: string;
   phoneNumberId: string;
-  businessPhoneNumber: string;
+  /** Opcional: ms-integrations lee el número de Meta; el escrito solo se compara. */
+  businessPhoneNumber?: string;
   accessToken: string;
   /** Guarda el número como el de toda la empresa (respaldo de las tiendas sin número propio). */
   asCompanyDefault?: boolean;
+  /** La persona aceptó que un número sin coexistencia deja la app del celular. */
+  confirmNoCoexistence?: boolean;
+  /** La persona aceptó guardar el número de Meta cuando el escrito no coincide (409). */
+  confirmPhoneFromMeta?: boolean;
 }
 
 /** Lo que el navegador necesita para abrir el Embedded Signup de Meta (sin secretos). */
@@ -232,6 +237,25 @@ export interface CompleteEmbeddedSignupInput {
   wabaId?: string;
   phoneNumberId?: string;
   asCompanyDefault?: boolean;
+  /** Número que sigue en la app WhatsApp Business del celular (coexistencia). */
+  coexistence?: boolean;
+  /** La persona aceptó que un número sin coexistencia deja la app del celular. */
+  confirmNoCoexistence?: boolean;
+  /** Número que la persona dice que conecta: solo se conecta si Meta lo compartió. */
+  expectedPhoneNumber?: string;
+  /** Todas las WABA que avisó la ventana de Meta (`waba_ids`). */
+  wabaIds?: string[];
+  /** La persona aceptó mover el número de otra tienda o reemplazar el de la empresa. */
+  confirmReassign?: boolean;
+}
+
+/** Segundo paso de «Conectar con Facebook»: el número elegido de la lista o una confirmación. */
+export interface SelectEmbeddedSignupPhoneInput {
+  storeId: string;
+  selectionId: string;
+  phoneNumberId?: string;
+  confirmNoCoexistence?: boolean;
+  confirmReassign?: boolean;
 }
 
 export interface ConnectWabaResult {

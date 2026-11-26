@@ -151,9 +151,18 @@ function Bubble({
           <p className="mb-0.5 text-[11px] opacity-80">
             {message.senderName ? `Automático · ${message.senderName}` : "Automático"}
           </p>
+        ) : message.origin === "phone" ? (
+          <p data-testid="origin-phone" className="mb-0.5 text-[11px] font-medium opacity-80">
+            Enviado desde el celular
+          </p>
         ) : (
           out &&
           message.senderName && <p className="mb-0.5 text-[11px] opacity-80">{message.senderName}</p>
+        )}
+        {message.origin === "history" && (
+          <p data-testid="origin-history" className="mb-0.5 text-[11px] font-medium opacity-70">
+            Historial del celular
+          </p>
         )}
         {conversation && isSocialChannel(conversation) && SOCIAL_TYPES.has(message.type) && (message.type !== "image" || message.mediaUrl) ? (
           <SocialContent message={message} conversation={conversation} />

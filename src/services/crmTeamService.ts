@@ -10,6 +10,7 @@ import type {
   ConnectWabaResult,
   CompleteEmbeddedSignupInput,
   CompleteMetaLoginResult,
+  SelectEmbeddedSignupPhoneInput,
   MetaChannel,
   MetaLoginConfig,
   EmbeddedSignupConfig,
@@ -105,9 +106,11 @@ export async function connectCustomWaba(input: ConnectWabaInput): Promise<Connec
       {
         wabaId: input.wabaId,
         phoneNumberId: input.phoneNumberId,
-        businessPhoneNumber: input.businessPhoneNumber,
+        ...(input.businessPhoneNumber ? { businessPhoneNumber: input.businessPhoneNumber } : {}),
         accessToken: input.accessToken,
         ...(input.asCompanyDefault ? { asCompanyDefault: true } : {}),
+        ...(input.confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
+        ...(input.confirmPhoneFromMeta ? { confirmPhoneFromMeta: true } : {}),
       },
     )
   ).data;
@@ -137,6 +140,32 @@ export async function completeEmbeddedSignup(
         ...(input.wabaId ? { wabaId: input.wabaId } : {}),
         ...(input.phoneNumberId ? { phoneNumberId: input.phoneNumberId } : {}),
         ...(input.asCompanyDefault ? { asCompanyDefault: true } : {}),
+        ...(input.coexistence ? { coexistence: true } : {}),
+        ...(input.confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
+        ...(input.expectedPhoneNumber?.trim() ? { expectedPhoneNumber: input.expectedPhoneNumber.trim() } : {}),
+        ...(input.wabaIds?.length ? { wabaIds: input.wabaIds } : {}),
+        ...(input.confirmReassign ? { confirmReassign: true } : {}),
+      },
+    )
+  ).data;
+}
+
+/**
+ * Segundo paso cuando Meta compartió varios números (409 PHONE_SELECTION_REQUIRED) o falta
+ * una confirmación: conecta el número elegido. El `code` de Meta no se vuelve a usar; el
+ * token queda en el servidor y el navegador solo manda el `selectionId`.
+ */
+export async function selectEmbeddedSignupPhone(
+  input: SelectEmbeddedSignupPhoneInput,
+): Promise<ConnectWabaResult> {
+  return (
+    await axiosAuth.post<ConnectWabaResult>(
+      `${API.integrations}/whatsapp/onboarding/${encodeURIComponent(input.storeId)}/embedded-signup/select`,
+      {
+        selectionId: input.selectionId,
+        ...(input.phoneNumberId ? { phoneNumberId: input.phoneNumberId } : {}),
+        ...(input.confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
+        ...(input.confirmReassign ? { confirmReassign: true } : {}),
       },
     )
   ).data;

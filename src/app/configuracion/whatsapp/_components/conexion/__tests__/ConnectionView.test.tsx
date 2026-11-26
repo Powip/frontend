@@ -195,7 +195,10 @@ describe("Números por tienda y Embedded Signup", () => {
     expect(view.onStoreChange).toHaveBeenCalledWith("store-nova");
     await user.click(within(stores).getByRole("button", { name: "Conectar número de KUNCA" }));
     const dialog = screen.getByRole("dialog", { name: "Conectar número de KUNCA" });
-    expect(within(dialog).queryByRole("textbox")).not.toBeInTheDocument();
+    // Sin credenciales ni SMS: el único campo es el número opcional que se va a conectar.
+    expect(within(dialog).getAllByRole("textbox")).toEqual([
+      within(dialog).getByLabelText("Número que vas a conectar (opcional)"),
+    ]);
     expect(dialog).toHaveTextContent(/ocurren en la ventana de Meta, no en POWIP/);
     const start = within(dialog).getByRole("button", { name: "Continuar con Facebook" });
     expect(start).toHaveAttribute("aria-disabled", "true");
@@ -218,7 +221,12 @@ describe("Números por tienda y Embedded Signup", () => {
     );
     await user.click(screen.getByRole("button", { name: "Conectar número de KUNCA" }));
     await user.click(screen.getByRole("button", { name: "Continuar con Facebook" }));
-    expect(startSignup).toHaveBeenCalledWith({ storeId: "store-kunca", mode: "api" });
+    // Número dedicado: antes de abrir Meta se avisa que deja la app del celular.
+    expect(startSignup).not.toHaveBeenCalled();
+    await user.click(await screen.findByRole("button", { name: "Sí, continuar" }));
+    expect(startSignup).toHaveBeenCalledWith(
+      expect.objectContaining({ storeId: "store-kunca", mode: "api", confirmNoCoexistence: true }),
+    );
     expect(await screen.findByRole("alert")).toHaveTextContent("Cerraste la ventana de Meta.");
     expect(screen.queryByText(/POWIP confirmó la conexión/)).not.toBeInTheDocument();
   });

@@ -17,8 +17,15 @@ export interface ConnectWabaPayload {
   wabaId: string;
   phoneNumberId: string;
   accessToken: string;
-  businessPhoneNumber: string;
-  storeId: string
+  /** Opcional: ms-integrations lee el número de Meta; el escrito solo se compara. */
+  businessPhoneNumber?: string;
+  storeId: string;
+  /** Guardar como número de toda la empresa (lo usan las tiendas sin número propio). */
+  asCompanyDefault?: boolean;
+  /** La persona aceptó que un número sin coexistencia deja la app del celular. */
+  confirmNoCoexistence?: boolean;
+  /** La persona aceptó guardar el número de Meta cuando el escrito no coincide. */
+  confirmPhoneFromMeta?: boolean;
 }
 
 export async function connectCustomWaba(token: string, payload: ConnectWabaPayload) {

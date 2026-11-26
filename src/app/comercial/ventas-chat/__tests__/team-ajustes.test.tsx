@@ -415,6 +415,56 @@ describe("Ajustes · WhatsApp del negocio", () => {
     expect(screen.getByLabelText(/ID del número/)).toHaveValue("333444");
   });
 
+  it("si el número escrito no es el de Meta muestra ambos y reenvía guardando el de Meta", async () => {
+    team.connectCustomWaba
+      .mockRejectedValueOnce(
+        Object.assign(new Error("x"), {
+          isAxiosError: true,
+          response: {
+            status: 409,
+            data: {
+              code: "WHATSAPP.PHONE_NUMBER_MISMATCH",
+              message: "El número que escribiste no es el de este Phone number ID.",
+              details: { typedPhoneNumber: "51999888777", metaPhoneNumber: "51923101193" },
+            },
+          },
+        }),
+      )
+      .mockResolvedValueOnce({
+        status: "success",
+        message: "ok",
+        data: { businessPhoneNumber: "51923101193" },
+      } as never);
+    setup();
+    await screen.findByLabelText("Token de acceso");
+    fill();
+    fireEvent.click(saveBtn("whatsapp", "Conectar número"));
+
+    expect(await screen.findByText("El número no coincide con Meta")).toBeInTheDocument();
+    expect(screen.getByText("+51999888777")).toBeInTheDocument();
+    expect(screen.getByText("+51923101193")).toBeInTheDocument();
+    expect(team.connectCustomWaba).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Usar +51923101193" }));
+    await waitFor(() => expect(team.connectCustomWaba).toHaveBeenCalledTimes(2));
+    expect(team.connectCustomWaba.mock.calls[1][0]).toMatchObject({
+      confirmPhoneFromMeta: true,
+      accessToken: "EAAB-secreto",
+    });
+    expect(await screen.findByText(/Número conectado: 51923101193/)).toBeInTheDocument();
+  });
+
+  it("conecta sin escribir el número (Powip lo lee de Meta)", async () => {
+    team.connectCustomWaba.mockResolvedValue({ status: "success", message: "ok", data: undefined } as never);
+    setup();
+    await screen.findByLabelText("Token de acceso");
+    fill();
+    fireEvent.change(screen.getByLabelText(/Número de WhatsApp del negocio/), { target: { value: "" } });
+    fireEvent.click(saveBtn("whatsapp", "Conectar número"));
+    await waitFor(() => expect(team.connectCustomWaba).toHaveBeenCalledTimes(1));
+    expect(team.connectCustomWaba.mock.calls[0][0]).not.toHaveProperty("businessPhoneNumber");
+  });
+
   it("envía la tienda elegida y la opción de toda la empresa", async () => {
     team.connectCustomWaba.mockResolvedValue({ status: "success", message: "ok", data: undefined } as never);
     setup();

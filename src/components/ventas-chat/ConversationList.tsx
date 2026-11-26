@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { crmError } from "@/services/crmService";
 import { NATIVE_SELECT_CLASS } from "./format";
-import { useConversations, useInboxSummary } from "@/hooks/useCrmChat";
+import { useConversations, useInboxFilters, useInboxSummary } from "@/hooks/useCrmChat";
 import { useCrmMe } from "@/hooks/useCrmMe";
 import { usePauLearning } from "@/hooks/useCrmPauLearning";
 import type { AssignedFilter, ConversationChannel, ConversationStatus } from "@/types/crm";
@@ -92,7 +92,8 @@ export default function ConversationList({
   onStoreChange,
 }: Props) {
   const router = useRouter();
-  const { phoneMasked, stores, isSupervisor } = useCrmMe();
+  const { phoneMasked, stores, isSupervisor, level } = useCrmMe();
+  const isAgent = level === "agent";
   const summary = useInboxSummary(storeId).data;
   const slaMinutes = summary?.slaMinutes ?? 15;
   // «Pau aprendió esto» = respuestas por aprobar; solo quien aprueba ve el chip.
@@ -102,6 +103,16 @@ export default function ConversationList({
   const [channel, setChannel] = useState<ChannelFilter>("all");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
+  // Varios números por tienda: la vendedora ve por defecto sus chats; el jefe ve todo y filtra.
+  const [agentScope, setAgentScope] = useState<"mine" | "all">("mine");
+  const [numberId, setNumberId] = useState("");
+  const [sellerId, setSellerId] = useState("");
+  const filters = useInboxFilters(storeId).data;
+  const numbers = filters?.numbers ?? [];
+  const sellers = filters?.sellers ?? [];
+  const manyNumbers = numbers.length > 1;
+  const effNumberId = numbers.some((n) => n.channelAccountId === numberId) ? numberId : "";
+  const effSellerId = isSupervisor && sellers.some((s) => s.userId === sellerId) ? sellerId : "";
 
   useEffect(() => {
     const t = setTimeout(() => setSearch(searchInput), 350);
@@ -111,7 +122,8 @@ export default function ConversationList({
   // Con un indicador activo, manda su filtro y la lista muestra solo chats abiertos.
   const extra = indicator ? INDICATOR_PARAMS[indicator] : {};
   const effStatus: ConversationStatus = indicator || base !== "closed" ? "open" : "closed";
-  const effAssigned: AssignedFilter = extra.assigned ?? "all";
+  const effAssigned: AssignedFilter =
+    extra.assigned ?? (isAgent && agentScope === "mine" ? "me" : "all");
   const active: ListChip = indicator ?? base;
   const counts: Record<ListChip, number | undefined> = {
     open: summary?.open,
@@ -145,6 +157,8 @@ export default function ConversationList({
     search,
     ...(channel === "all" ? {} : channel === "comments" ? { comments: true } : { channel }),
     ...(storeId ? { storeId } : {}),
+    ...(effNumberId ? { channelAccountId: effNumberId } : {}),
+    ...(effSellerId ? { assignedUserId: effSellerId } : {}),
   });
 
   const items = data?.items ?? [];
@@ -192,6 +206,51 @@ export default function ConversationList({
             ))}
           </select>
         </div>
+        {(isAgent || manyNumbers || (isSupervisor && sellers.length > 0)) && (
+          <div className="flex gap-2" data-testid="number-filters">
+            {isAgent && (
+              <select
+                aria-label="Ver chats"
+                value={agentScope}
+                onChange={(e) => setAgentScope(e.target.value as "mine" | "all")}
+                className={cn(NATIVE_SELECT_CLASS, "min-w-0 flex-1 py-1.5 text-[13px]")}
+              >
+                <option value="mine">Mis chats</option>
+                <option value="all">Todos los chats</option>
+              </select>
+            )}
+            {manyNumbers && (
+              <select
+                aria-label="Número"
+                value={effNumberId}
+                onChange={(e) => setNumberId(e.target.value)}
+                className={cn(NATIVE_SELECT_CLASS, "min-w-0 flex-1 py-1.5 text-[13px]")}
+              >
+                <option value="">Todos los números</option>
+                {numbers.map((n) => (
+                  <option key={n.channelAccountId} value={n.channelAccountId}>
+                    {n.businessPhone ?? "Número sin dato"}
+                  </option>
+                ))}
+              </select>
+            )}
+            {isSupervisor && sellers.length > 0 && (
+              <select
+                aria-label="Vendedora"
+                value={effSellerId}
+                onChange={(e) => setSellerId(e.target.value)}
+                className={cn(NATIVE_SELECT_CLASS, "min-w-0 flex-1 py-1.5 text-[13px]")}
+              >
+                <option value="">Todas las vendedoras</option>
+                {sellers.map((s) => (
+                  <option key={s.userId} value={s.userId}>
+                    {(s.name ?? "Sin nombre").split("@")[0]}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+        )}
         {/* B5: aviso de pedidos COD que van a Gestión CC (dato de ms-ventas). */}
         <CodNote storeIds={storeId ? [storeId] : stores.map((st) => st.id)} />
         <div role="group" aria-label="Filtros" className="flex flex-wrap gap-1">
@@ -278,6 +337,15 @@ export default function ConversationList({
                 <span className="flex flex-wrap items-center gap-1">
                   <ConversationPills conversation={c} />
                   {store && <StoreBadge name={store} />}
+                  {manyNumbers && c.businessPhone && (
+                    <span
+                      data-testid="conv-number"
+                      title="Número de la tienda"
+                      className="rounded-full border border-primary/30 bg-primary/5 px-1.5 text-[10px] font-medium text-primary"
+                    >
+                      {c.businessPhone}
+                    </span>
+                  )}
                 </span>
                 <PresenceFlag viewers={viewers[c.id]} />
                 {c.pauHelpReason && (

@@ -25,6 +25,9 @@ export interface Conversation {
   status: ConversationStatus;
   assignedUserId: string | null;
   assignedUserName: string | null;
+  /** WhatsApp: número de la tienda por el que entra y sale el chat (varios números por tienda). */
+  channelAccountId?: string | null;
+  businessPhone?: string | null;
   /** Cliente de Core vinculado (null = aún sin vincular). */
   clientId: string | null;
   unreadCount: number;
@@ -99,6 +102,14 @@ export interface Message {
   transcript?: string | null;
   /** Comentario oculto al público (teléfono o insulto). No se borra. */
   hiddenAt?: string | null;
+  /** Coexistencia: «phone» = enviado desde la app del celular; «history» = historial importado. */
+  origin?: "phone" | "history" | null;
+}
+
+/** Números de WhatsApp y vendedoras con chats (filtros de la Bandeja). */
+export interface InboxFilters {
+  numbers: Array<{ channelAccountId: string; businessPhone: string | null; storeId: string | null; conversations: number }>;
+  sellers: Array<{ userId: string; name: string | null }>;
 }
 
 export type AssignedFilter = "all" | "me" | "unassigned";
@@ -121,6 +132,9 @@ export interface ConversationListParams {
   tag?: string;
   /** Sin valor = todas las tiendas. */
   storeId?: string;
+  /** Varios números por tienda: un número o una vendedora. */
+  channelAccountId?: string;
+  assignedUserId?: string;
   page?: number;
   limit?: number;
 }

@@ -17,6 +17,7 @@ import {
 import type {
   WhatsAppAccount,
   WhatsAppAssistedQueue,
+  WhatsAppCoexistenceState,
   WhatsAppConnectionStatus,
   WhatsAppContingencySettings,
   WhatsAppPricing,
@@ -47,7 +48,9 @@ import {
   SIGNUP_UNAVAILABLE_REASON,
 } from "./connection-types";
 import { MessagingCostSection } from "./MessagingCostSection";
+import { ManualNumberDialog } from "./ManualNumberDialog";
 import { StoreNumbersSection } from "./StoreNumbersSection";
+import { type AddNumberMode, StoreWhatsAppNumbersSection } from "./StoreWhatsAppNumbersSection";
 import { TestMessageSection } from "./TestMessageSection";
 
 export interface ConnectionViewProps {
@@ -71,6 +74,8 @@ export interface ConnectionViewProps {
   /** Qué falta para habilitar «Conectar con Facebook» (por defecto, el texto genérico). */
   signupUnavailableReason?: string;
   mutations: ConnectionMutations;
+  /** Números conectados con coexistencia (siguen en la app del celular). */
+  coexistence?: WhatsAppCoexistenceState[];
   initialSignup?: { storeId: string; phase: SignupPhase } | null;
   onRetry?: () => void;
 }
@@ -95,12 +100,15 @@ export function ConnectionView({
   signupAvailable,
   signupUnavailableReason,
   mutations,
+  coexistence = [],
   initialSignup = null,
   onRetry,
 }: ConnectionViewProps) {
-  const [signup, setSignup] = useState<{ storeId: string; phase?: SignupPhase } | null>(
-    initialSignup,
-  );
+  const [signup, setSignup] = useState<{
+    storeId: string;
+    phase?: SignupPhase;
+    mode?: AddNumberMode;
+  } | null>(initialSignup);
   const [testRun, setTestRun] = useState<WhatsAppTestRun | null>(initialTestRun);
   const refreshTest = mutations.refreshTest;
   const testInProgress =
@@ -213,6 +221,18 @@ export function ConnectionView({
         changeType={mutations.changeType}
       />
 
+      <StoreWhatsAppNumbersSection
+        key={`numbers-${store.id}`}
+        storeName={store.name}
+        accounts={accounts}
+        agents={agents}
+        coexistence={coexistence}
+        now={now}
+        blockedReason={connectionPermission}
+        mutations={mutations}
+        onAdd={(mode) => setSignup({ storeId: store.id, mode })}
+      />
+
       <div className="grid grid-cols-1 items-start gap-5 min-[1050px]:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
         <ConnectedNumberSection
           key={`number-${store.id}`}
@@ -278,18 +298,29 @@ export function ConnectionView({
 
       <MessagingCostSection pricing={pricing} usage={usage} now={now} onRetry={onRetry} />
 
-      {signup && signupStore && (
+      {signup && signupStore && signup.mode === "manual" && (
+        <ManualNumberDialog
+          storeId={signupStore.id}
+          storeName={signupStore.name}
+          connectManual={mutations.connectManual}
+          agents={agents.kind === "ready" ? agents.data : []}
+          onClose={() => setSignup(null)}
+        />
+      )}
+      {signup && signupStore && signup.mode !== "manual" && (
         <ConnectNumberDialog
           storeId={signupStore.id}
           storeName={signupStore.name}
-          mode="api"
+          mode={signup.mode === "coex" ? "coex" : "api"}
           blockedReason={combineBlockReasons(
             signupAvailable ? null : (signupUnavailableReason ?? SIGNUP_UNAVAILABLE_REASON),
             pending(mutations.startSignup),
             connectionPermission,
           )}
           startSignup={signupAvailable ? mutations.startSignup : undefined}
+          selectSignupPhone={signupAvailable ? mutations.selectSignupPhone : undefined}
           initialPhase={signup.phase}
+          agents={agents.kind === "ready" ? agents.data : []}
           onClose={() => setSignup(null)}
         />
       )}
