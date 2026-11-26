@@ -1,26 +1,24 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { listWhatsAppTemplates } from "@/features/whatsapp/api/templates.api";
 import {
   actOnWhatsAppAssistedItem,
   assignWhatsAppNumber,
-  listWhatsAppCoexistence,
-  setPrimaryWhatsAppNumber,
-  syncWhatsAppAppData,
   getWhatsAppContingency,
   getWhatsAppPricing,
   getWhatsAppTestRunStatus,
   getWhatsAppUsage,
   listWhatsAppAssistedQueue,
+  listWhatsAppCoexistence,
   sendWhatsAppAccountTest,
+  setPrimaryWhatsAppNumber,
+  syncWhatsAppAppData,
   updateWhatsAppContingency,
 } from "@/features/whatsapp/api/connection-ops.api";
 import { getMyWhatsAppPermissions, grantedCodes } from "@/features/whatsapp/api/settings-ops.api";
-import { useWhatsAppStoreAgents } from "@/features/whatsapp/hooks/use-whatsapp-store-agents";
-import type { ContingencyValues } from "@/features/whatsapp/schemas/connection.schema";
+import { listWhatsAppTemplates } from "@/features/whatsapp/api/templates.api";
 import { isWhatsAppContractAvailable } from "@/features/whatsapp/constants/whatsapp-contracts";
 import {
   WHATSAPP_CONNECTION_STATES,
@@ -28,6 +26,7 @@ import {
   type WhatsAppConnectionState,
   type WhatsAppConnectionType,
 } from "@/features/whatsapp/enums/whatsapp.enums";
+import { useWhatsAppStoreAgents } from "@/features/whatsapp/hooks/use-whatsapp-store-agents";
 import { toWhatsAppTemplate } from "@/features/whatsapp/mappers/to-whatsapp-template.mapper";
 import type {
   WhatsAppAssistedQueue,
@@ -39,13 +38,8 @@ import type {
 } from "@/features/whatsapp/models/connection.model";
 import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp/models/resource-state.model";
 import type { WhatsAppTemplate } from "@/features/whatsapp/models/template.model";
+import type { ContingencyValues } from "@/features/whatsapp/schemas/connection.schema";
 import { resolveEffectivePermissions } from "@/features/whatsapp/utils/whatsapp-permissions.util";
-import { ConnectionView } from "./ConnectionView";
-import {
-  signupUnavailableReason,
-  type ConnectionMutations,
-  type NumberRoleChoice,
-} from "./connection-types";
 import { launchEmbeddedSignup } from "@/lib/metaEmbeddedSignup";
 import {
   completeEmbeddedSignup,
@@ -53,17 +47,23 @@ import {
   selectEmbeddedSignupPhone,
 } from "@/services/crmTeamService";
 import {
-  getWhatsAppStatus,
-  getWhatsAppAccounts,
-  refreshWhatsAppAccount,
-  disconnectWhatsAppAccount,
-  updateWhatsAppAccount,
   connectCustomWaba,
+  disconnectWhatsAppAccount,
+  getWhatsAppAccounts,
+  getWhatsAppStatus,
+  refreshWhatsAppAccount,
 } from "@/services/whatsappService";
+import { ConnectionView } from "./ConnectionView";
+import {
+  type ConnectionMutations,
+  type NumberRoleChoice,
+  signupUnavailableReason,
+} from "./connection-types";
 
 interface ConnectionTabProps {
   canManage: boolean;
 }
+
 import { WHATSAPP_PERMISSION_CODES } from "@/features/whatsapp/enums/whatsapp.enums";
 
 /**
@@ -254,7 +254,7 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
 
       const rawList: any[] = Array.isArray(accountsRes)
         ? accountsRes
-        : (accountsRes as any)?.items ?? [];
+        : ((accountsRes as any)?.items ?? []);
       const accountsArray = rawList.map(normalizeAccount);
       const currentAccount = accountsArray[0] ?? null;
 
@@ -330,12 +330,6 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       await disconnectWhatsAppAccount(token, id);
       await reloadAfterChange();
     },
-    changeType: async ({ accountId, connectionType }) => {
-      const id = accountId || currentAccountId();
-      if (!id) return;
-      await updateWhatsAppAccount(token, id, connectionType);
-      await reloadAfterChange();
-    },
     // C-07 · envío de prueba por la cuenta conectada; luego se consulta su estado.
     sendTest: async ({ accountId, phone, templateId }): Promise<WhatsAppTestRun> => {
       if (!activeStoreId) throw new Error("Elige una tienda.");
@@ -395,7 +389,13 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       await syncWhatsAppAppData(accountId);
       await queryClient.invalidateQueries({ queryKey: ["whatsapp", "coexistence"] });
     },
-    connectManual: async ({ role, seller, confirmNoCoexistence, confirmPhoneFromMeta, ...input }) => {
+    connectManual: async ({
+      role,
+      seller,
+      confirmNoCoexistence,
+      confirmPhoneFromMeta,
+      ...input
+    }) => {
       const saved = await connectCustomWaba(token, {
         ...input,
         ...(role === "company" ? { asCompanyDefault: true } : {}),
@@ -406,7 +406,10 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       await reloadAfterChange();
     },
     startSignup: async (
-      { mode, role, seller, confirmNoCoexistence, expectedPhoneNumber } = { storeId: "", mode: "api" },
+      { mode, role, seller, confirmNoCoexistence, expectedPhoneNumber } = {
+        storeId: "",
+        mode: "api",
+      },
     ) => {
       // Embedded Signup de Meta (FB.login con config_id y code), el mismo que usa Ventas por chat.
       // mode "coex": el número sigue en la app WhatsApp Business del celular (coexistencia).
@@ -432,7 +435,9 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       }
       // Sin app de Meta configurada: solo en desarrollo local se conecta con la WABA de prueba de .env.local.
       const hasLocalTestWaba =
-        !!LOCAL_TEST_WABA.wabaId && !!LOCAL_TEST_WABA.phoneNumberId && !!LOCAL_TEST_WABA.accessToken;
+        !!LOCAL_TEST_WABA.wabaId &&
+        !!LOCAL_TEST_WABA.phoneNumberId &&
+        !!LOCAL_TEST_WABA.accessToken;
 
       if (process.env.NODE_ENV === "production" || !hasLocalTestWaba) {
         throw new Error(
@@ -453,7 +458,15 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       await reloadAfterChange();
     },
     // Segundo paso de «Conectar con Facebook»: número elegido o confirmación, sin abrir Meta.
-    selectSignupPhone: async ({ storeId, selectionId, phoneNumberId, role, seller, confirmNoCoexistence, confirmReassign }) => {
+    selectSignupPhone: async ({
+      storeId,
+      selectionId,
+      phoneNumberId,
+      role,
+      seller,
+      confirmNoCoexistence,
+      confirmReassign,
+    }) => {
       const saved = await selectEmbeddedSignupPhone({
         storeId,
         selectionId,

@@ -63,34 +63,12 @@ export async function getWhatsAppAccounts(token: string, storeId: string) {
   }
 }
 
-export async function updateWhatsAppAccount(
-  token: string, 
-  accountId: string, 
-  connectionType: string, 
-  ifMatchVersion?: number
-) {
-  const headers: Record<string, string> = { 
-    Authorization: `Bearer ${token}` 
-  };
-  
-  if (ifMatchVersion !== undefined) {
-    headers["if-match"] = ifMatchVersion.toString();
-  }
-
-  const response = await axios.put(
-    `${API_URL}/wa/accounts/${accountId}`,
-    { connectionType },
-    { headers }
-  );
-  return response.data;
-}
-
 export async function refreshWhatsAppAccount(token: string, accountId: string) {
   try {
     const response = await axios.post(
       `${API_URL}/wa/accounts/${accountId}/refresh`,
       {},
-      { headers: { Authorization: `Bearer ${token}` } }
+      { headers: { Authorization: `Bearer ${token}` } },
     );
     return response.data;
   } catch (error) {
@@ -104,7 +82,7 @@ export async function disconnectWhatsAppAccount(token: string, accountId: string
   const response = await axios.post(
     `${API_URL}/wa/accounts/${accountId}/disconnect`,
     {},
-    { headers: { Authorization: `Bearer ${token}` } }
+    { headers: { Authorization: `Bearer ${token}` } },
   );
   return response.data;
 }

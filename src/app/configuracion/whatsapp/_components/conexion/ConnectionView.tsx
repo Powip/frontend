@@ -47,8 +47,8 @@ import {
   type ConnectionMutations,
   SIGNUP_UNAVAILABLE_REASON,
 } from "./connection-types";
-import { MessagingCostSection } from "./MessagingCostSection";
 import { ManualNumberDialog } from "./ManualNumberDialog";
+import { MessagingCostSection } from "./MessagingCostSection";
 import { StoreNumbersSection } from "./StoreNumbersSection";
 import { type AddNumberMode, StoreWhatsAppNumbersSection } from "./StoreWhatsAppNumbersSection";
 import { TestMessageSection } from "./TestMessageSection";
@@ -212,14 +212,7 @@ export function ConnectionView({
         </p>
       </div>
 
-      <ConnectionTypeSection
-        key={`type-${store.id}`}
-        storeName={store.name}
-        status={status}
-        accountId={accountData?.id ?? null}
-        blockedReason={combineBlockReasons(pending(mutations.changeType), connectionPermission)}
-        changeType={mutations.changeType}
-      />
+      <ConnectionTypeSection key={`type-${store.id}`} storeName={store.name} status={status} />
 
       <StoreWhatsAppNumbersSection
         key={`numbers-${store.id}`}

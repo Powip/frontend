@@ -32,10 +32,12 @@ import {
   waDialogTitle,
   waSelectTriggerSm,
 } from "@/components/whatsapp/ui/wa-classes";
+import { getConnectionTypeDefinition } from "@/features/whatsapp/constants/whatsapp-connection-catalog";
 import type {
   WhatsAppAccount,
   WhatsAppCoexistenceState,
 } from "@/features/whatsapp/models/connection.model";
+
 import type { WhatsAppAgentOption } from "@/features/whatsapp/models/conversation.model";
 import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp/models/resource-state.model";
 import { cn } from "@/lib/utils";
@@ -158,6 +160,9 @@ export function StoreWhatsAppNumbersSection({
                   <span className="block text-xs text-wa-muted">
                     {[
                       account.verifiedName,
+                      account.connectionType
+                        ? getConnectionTypeDefinition(account.connectionType).title
+                        : null,
                       account.isCompanyDefault ? "Número de la empresa" : null,
                     ]
                       .filter(Boolean)

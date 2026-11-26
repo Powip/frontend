@@ -1,5 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { WHATSAPP_CONNECTION_TYPES } from "@/features/whatsapp/enums/whatsapp.enums";
 import { resolveEffectivePermissions } from "@/features/whatsapp/utils/whatsapp-permissions.util";
 import {
   accountsFixture,
@@ -89,21 +90,61 @@ describe("Conexión sin backend", () => {
 });
 
 describe("Tipo de conexión", () => {
-  it("separa la selección local del tipo real y pide confirmación", async () => {
-    const user = userEvent.setup({ delay: null });
-    render(<ConnectionView {...connected()} />);
-    const types = section("Tipo de conexión");
-    expect(within(types).getByRole("radio", { name: /API oficial de WhatsApp/ })).toBeChecked();
-    await user.click(within(types).getByRole("radio", { name: /API \+ app WhatsApp Business/ }));
-    const dialog = await screen.findByRole("alertdialog");
-    expect(dialog).toHaveTextContent(/volver a conectar el número con Meta/);
-    expect(within(dialog).getByRole("button", { name: "Cambiar" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
+  const card = (name: RegExp) =>
+    within(section("Tipo de conexión")).getByRole("listitem", { name });
+
+  it.each([
+    [WHATSAPP_CONNECTION_TYPES.API, /API oficial de WhatsApp/, "Conectado · API oficial"],
+    [
+      WHATSAPP_CONNECTION_TYPES.COEXISTENCE,
+      /API \+ app WhatsApp Business/,
+      "Conectado · API + app Business",
+    ],
+  ])("marca el tipo real (%s) sin ofrecer cambiarlo", (connectionType, name, label) => {
+    render(
+      <ConnectionView
+        {...connected({
+          status: { kind: "ready", data: { ...connectedStatusFixture, connectionType } },
+        })}
+      />,
     );
-    await user.click(within(dialog).getByRole("button", { name: "Cancelar" }));
-    expect(within(types).getByRole("radio", { name: /API oficial de WhatsApp/ })).toBeChecked();
-    expect(screen.getByText("Conectado · API oficial")).toBeInTheDocument();
+    const types = section("Tipo de conexión");
+    expect(card(name)).toHaveAttribute("aria-current", "true");
+    expect(
+      within(types)
+        .getAllByRole("listitem", { current: true })
+        .filter((item) => item.hasAttribute("aria-labelledby")),
+    ).toHaveLength(1);
+    expect(within(types).queryByRole("radio")).not.toBeInTheDocument();
+    expect(within(types).queryByRole("button", { name: "Cambiar" })).not.toBeInTheDocument();
+    expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
+  it("muestra «Solo app» en construcción y sin poder elegirla", () => {
+    render(<ConnectionView {...connected()} />);
+    const appOnly = card(/Solo app WhatsApp Business/);
+    expect(appOnly).toHaveTextContent("En construcción");
+    expect(appOnly).toHaveAttribute("aria-disabled", "true");
+    expect(appOnly).not.toHaveAttribute("aria-current");
+  });
+
+  it("muestra el tipo de cada número de la tienda", () => {
+    const [first] = accountsFixture;
+    render(
+      <ConnectionView
+        {...connected({
+          accounts: {
+            kind: "ready",
+            data: [
+              { ...first, id: "n1", phoneNumberId: "n1", connectionType: "coex" },
+              { ...first, id: "n2", phoneNumberId: "n2", connectionType: "api", isPrimary: false },
+            ],
+          },
+        })}
+      />,
+    );
+    expect(screen.getByTestId("wa-number-n1")).toHaveTextContent("API + app WhatsApp Business");
+    expect(screen.getByTestId("wa-number-n2")).toHaveTextContent("API oficial de WhatsApp");
   });
 });
 

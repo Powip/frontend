@@ -19,7 +19,6 @@ export interface ConnectionTypeDefinition {
   advantages: string[];
   limitations: string[];
   statusLabel: string;
-  changeEffect: string;
 }
 
 export const CONNECTION_TYPE_DEFINITIONS: ConnectionTypeDefinition[] = [
@@ -31,8 +30,6 @@ export const CONNECTION_TYPE_DEFINITIONS: ConnectionTypeDefinition[] = [
     advantages: ["Envío automático y programado.", "Estados enviado, entregado y leído."],
     limitations: ["Ese número deja de funcionar en la app del celular."],
     statusLabel: "Conectado · API oficial",
-    changeEffect:
-      "Hay que conectar un número dedicado con Meta. El número deja de funcionar en la app del celular.",
   },
   {
     value: WHATSAPP_CONNECTION_TYPES.COEXISTENCE,
@@ -49,8 +46,6 @@ export const CONNECTION_TYPE_DEFINITIONS: ConnectionTypeDefinition[] = [
       "Requiere app v2.24.17 o superior.",
     ],
     statusLabel: "Conectado · API + app Business",
-    changeEffect:
-      "Hay que volver a conectar el número con Meta eligiendo la opción de la app WhatsApp Business.",
   },
   {
     value: WHATSAPP_CONNECTION_TYPES.APP_MANUAL,
@@ -60,8 +55,6 @@ export const CONNECTION_TYPE_DEFINITIONS: ConnectionTypeDefinition[] = [
     advantages: ["Sin costo de Meta.", "Se mide quién abre el rastreo."],
     limitations: ["Una persona debe tocar «Enviar».", "Sin estados entregado ni leído."],
     statusLabel: "Solo envío asistido",
-    changeEffect:
-      "Los avisos dejarán de salir solos: tu equipo tendrá que enviarlos desde la bandeja de envío asistido.",
   },
 ];
 

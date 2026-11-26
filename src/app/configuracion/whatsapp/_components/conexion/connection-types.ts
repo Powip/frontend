@@ -1,12 +1,7 @@
-import type { WhatsAppConnectionType } from "@/features/whatsapp/enums/whatsapp.enums";
 import type { WhatsAppTestRun } from "@/features/whatsapp/models/connection.model";
 import type { ContingencyValues } from "@/features/whatsapp/schemas/connection.schema";
 
 export interface ConnectionMutations {
-  changeType?: (input: {
-    accountId: string;
-    connectionType: WhatsAppConnectionType;
-  }) => Promise<void>;
   refresh?: (accountId: string) => Promise<void>;
   disconnect?: (accountId: string) => Promise<void>;
   sendTest?: (input: {
