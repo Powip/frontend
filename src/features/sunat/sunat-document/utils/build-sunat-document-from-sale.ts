@@ -11,7 +11,7 @@ import {
 } from "../enums/sunat-document.enums";
 import type { CreateSunatDocumentsFormValues } from "../schemas/create-sunat-documents.schema";
 import { calculateSunatDocumentTotals } from "./calculate-sunat-document-totals";
-import { markGiftCandidates } from "./gift-lines";
+import { rememberSaleAmounts } from "./gift-lines";
 import { NUEVO_RUS_TAX_TYPE } from "./nuevo-rus";
 
 export interface BuildSunatDocumentOptions {
@@ -253,7 +253,7 @@ function createItems(sale: Order, taxRegime: SunatTaxRegime | null | undefined):
   // Gifts (isGift, price 0 or 100% discount) are only marked here: the user
   // chooses on screen how they go (31 promoción / 13 aparte). Until then they
   // stay as the sale had them.
-  const productItems = markGiftCandidates(saleProductItems, sale, taxRegime);
+  const productItems = rememberSaleAmounts(saleProductItems, sale, taxRegime);
 
   const shippingRawTotal = Number(sale.shippingTotal ?? 0);
 

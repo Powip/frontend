@@ -112,6 +112,7 @@ describe("regalo marcado en la venta (isGift con giftValue)", () => {
     expect(request.items[0]).not.toHaveProperty("referenceUnitValue");
     expect(request.items[1].referenceUnitValue).toBeCloseTo(25.4237, 4);
     expect(request.items[1]).not.toHaveProperty("giftOrigin");
+    expect(request.items[1]).not.toHaveProperty("giftSale");
   });
 
   it("volver a «no es regalo» restaura la línea y no manda valor referencial", () => {
