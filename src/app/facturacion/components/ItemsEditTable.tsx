@@ -201,7 +201,10 @@ export function ItemsEditTable() {
                 P. Unit. <span className="font-normal text-muted-foreground">(sin IGV)</span>
               </TableHead>
 
-              <TableHead className="w-24">Descuento</TableHead>
+              <TableHead className="w-24">
+                Descuento{" "}
+                <span className="block font-normal text-muted-foreground">(S/ sin IGV)</span>
+              </TableHead>
 
               <TableHead className="w-28 text-right">
                 Importe <span className="font-normal text-muted-foreground">(con IGV)</span>

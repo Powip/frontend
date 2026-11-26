@@ -9,6 +9,7 @@ import { GiftChoicePanel } from "@/app/facturacion/components/GiftChoicePanel";
 import { IssuerSelectField } from "@/app/facturacion/components/IssuerSelectField";
 import { ItemsEditTable } from "@/app/facturacion/components/ItemsEditTable";
 import { VerifyIdentityButton } from "@/app/facturacion/components/VerifyIdentityButton";
+import { ZeroValueLinesAlert } from "@/app/facturacion/components/ZeroValueLinesAlert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -50,10 +51,7 @@ import { toCreateSunatDocumentsRequestDto } from "@/features/sunat/sunat-documen
 import type { CreateSunatDocumentsFormValues } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { createSunatDocumentsSchema } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { buildSunatDocumentFromSale } from "@/features/sunat/sunat-document/utils/build-sunat-document-from-sale";
-import {
-  describeLinesWithoutValue,
-  findLinesWithoutValue,
-} from "@/features/sunat/sunat-document/utils/find-lines-without-value";
+import { findLinesWithoutValue } from "@/features/sunat/sunat-document/utils/find-lines-without-value";
 import { getEmissionErrorMessage } from "@/features/sunat/sunat-document/utils/get-emission-error-message";
 import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
 import type { SunatDocumentSequence } from "@/features/sunat/sunat-document-sequence/models/sunat-document-sequence";
@@ -647,20 +645,7 @@ export default function EmitirComprobanteModal({
                       )}
                     />
 
-                    {linesWithoutValue.length > 0 && (
-                      <div
-                        role="alert"
-                        className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm dark:border-red-900 dark:bg-red-950/40"
-                      >
-                        <span className="font-semibold">
-                          No se puede emitir: {describeLinesWithoutValue(linesWithoutValue)}{" "}
-                          {linesWithoutValue.length === 1 ? "queda" : "quedan"} en S/ 0.00.{" "}
-                        </span>
-                        SUNAT rechaza el comprobante completo cuando una línea no tiene valor (error
-                        3105) y el número se pierde. Ponle su valor a esa línea o quítala con el
-                        ícono de papelera. Si es un regalo, elige arriba cómo mandarlo.
-                      </div>
-                    )}
+                    <ZeroValueLinesAlert />
 
                     <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm">
                       <div className="flex justify-between text-muted-foreground">
