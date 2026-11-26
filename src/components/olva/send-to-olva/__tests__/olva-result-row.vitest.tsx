@@ -208,11 +208,10 @@ describe("OlvaResultRow", () => {
     expect(screen.getByText("Este pedido ya tiene un envío de Olva activo.")).toBeInTheDocument();
   });
 
-  it("warns never to resend what Olva registered but could not be saved", () => {
-    renderRow(buildBulkResult([{ key: "order-1", status: "registered_not_saved" }]).results[0]);
+  it("an order Olva did not confirm is being verified: never register it again", () => {
+    renderRow(buildBulkResult([{ key: "order-1", status: "unknown" }]).results[0]);
 
-    expect(screen.getByText("Registrado sin guardar")).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent("No lo envíes de nuevo");
-    expect(screen.getByText("999999999999")).toBeInTheDocument();
+    expect(screen.getByText("Verificando con Olva")).toBeInTheDocument();
+    expect(screen.getByText(/No lo registres de nuevo/)).toBeInTheDocument();
   });
 });

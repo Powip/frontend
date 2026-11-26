@@ -214,9 +214,9 @@ export const PartialFailure: Story = {
 };
 
 /** Registered at Olva but not saved: it must never be offered for resending. */
-export const RegisteredNotSaved: Story = {
+export const OutcomeUnknown: Story = {
   args: { orders: [firstOrder] },
-  parameters: { msw: { handlers: sendToOlvaHandlers.registeredNotSaved } },
+  parameters: { msw: { handlers: sendToOlvaHandlers.unknown } },
   play: async () => {
     await fillLot(1);
     await clickWhenReady(await screen.findByRole("button", { name: "Registrar 1 envío en Olva" }));

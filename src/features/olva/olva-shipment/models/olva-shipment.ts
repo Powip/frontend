@@ -62,6 +62,10 @@ export interface OlvaShipmentSummary {
   trackingNumber: string | null;
   registrationNumber: string | null;
   status: OlvaShipmentStatus;
+  /** Olva's own text for the status (e.g. "DEVUELTO"). */
+  statusDetail: string | null;
+  /** Why the registration failed, or why it waits for a manual review. */
+  failureReason: string | null;
   cost: number;
   igv: number;
   senderEmail: string;

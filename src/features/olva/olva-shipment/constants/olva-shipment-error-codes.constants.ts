@@ -18,10 +18,23 @@ export const OLVA_SHIPMENT_ERROR_CODES = {
    * answers 503 with this code; the user can retry or pick another payment method (Niubiz).
    */
   PAYMENT_PROVIDER_UNAVAILABLE: "PAYMENT_PROVIDER_UNAVAILABLE",
-  /** Olva registered the shipment but we could not save it: do NOT retry, it would duplicate. */
-  NOT_PERSISTED: "SHIPMENT_NOT_PERSISTED",
   /** Olva refused this item of a bulk request. */
   REJECTED_BY_OLVA: "SHIPMENT_REJECTED_BY_OLVA",
+  /** The Powip order does not exist in this company (FEAT-35). */
+  ORDER_NOT_FOUND: "SHIPMENT_ORDER_NOT_FOUND",
+  /** The order cannot be dispatched (cancelled, not paid, ...) (FEAT-35). */
+  ORDER_NOT_DISPATCHABLE: "SHIPMENT_ORDER_NOT_DISPATCHABLE",
+  /** Sales could not be asked about the order: try again in a moment (FEAT-35). */
+  ORDER_NOT_VERIFIED: "SHIPMENT_ORDER_NOT_VERIFIED",
+  /** The item was not sent to Olva (FEAT-35). */
+  NOT_SENT: "SHIPMENT_NOT_SENT",
+  /** «Reintentar» only applies to a registration Olva did not confirm (SUBMITTING) (FEAT-35). */
+  NOT_RETRYABLE: "SHIPMENT_NOT_RETRYABLE",
+  /**
+   * Olva has not confirmed for more than an hour: check the guide at Olva, then retry with
+   * `confirmed: true` (FEAT-35).
+   */
+  MANUAL_REVIEW: "SHIPMENT_MANUAL_REVIEW",
 } as const;
 
 export type OlvaShipmentErrorCode = ValueOf<typeof OLVA_SHIPMENT_ERROR_CODES>;

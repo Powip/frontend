@@ -19,6 +19,8 @@ export function buildOlvaShipmentListItemResponse(
     trackingNumber: "123456789012",
     registrationNumber: "REG-1",
     status: "REGISTERED",
+    statusDetail: null,
+    failureReason: null,
     cost: 12.5,
     igv: 2.25,
     senderEmail: "tienda@example.com",
@@ -123,33 +125,27 @@ export function buildBulkCreatedItemResponse(itemKey: string): OlvaBulkShipmentI
       externalRef: { orderId: itemKey, guideId: null },
     }),
     label: LABEL,
-    registeredInOlva: null,
     error: null,
   };
 }
 
-export function buildBulkNotSavedItemResponse(itemKey: string): OlvaBulkShipmentItemResponseDto {
+/** Olva did not confirm: the reserved shipment (SUBMITTING) is being verified. Never resend it. */
+export function buildBulkUnknownItemResponse(itemKey: string): OlvaBulkShipmentItemResponseDto {
   return {
     itemKey,
-    status: "registered_not_saved",
-    shipment: null,
-    label: LABEL,
-    registeredInOlva: {
-      id: "olva-9",
-      registrationNumber: "REG-9",
-      trackingNumber: "999999999999",
-      status: "PENDING_PAYMENT",
-      cost: 10,
-      igv: null,
-      payment: {
-        method: "niubiz",
-        sessionKey: "session-1",
-        merchantId: "merchant-1",
-        checkoutScriptUrl: "https://checkout.test/niubiz.js",
-        expiresAt: "2026-10-30T00:00:00.000Z",
-      },
-    },
-    error: { code: "SHIPMENT_NOT_PERSISTED", message: "No se pudo guardar" },
+    status: "unknown",
+    shipment: buildOlvaShipmentResponse({
+      id: `id-${itemKey}`,
+      internalId: null,
+      trackingNumber: null,
+      registrationNumber: null,
+      status: "SUBMITTING",
+      cost: 0,
+      igv: 0,
+      externalRef: { orderId: itemKey, guideId: null },
+    }),
+    label: null,
+    error: { code: "OLVA_OUTCOME_UNKNOWN", message: "No pudimos confirmar si Olva lo registró" },
   };
 }
 
@@ -163,7 +159,6 @@ export function buildBulkFailedItemResponse(
     status: "failed",
     shipment,
     label: null,
-    registeredInOlva: null,
     error: { code, message: "Rechazado" },
   };
 }
@@ -177,7 +172,7 @@ export function buildBulkCreateShipmentsResponse(
     summary: {
       total: results.length,
       created: count("created"),
-      registeredNotSaved: count("registered_not_saved"),
+      unknown: count("unknown"),
       failed: count("failed"),
     },
     results,

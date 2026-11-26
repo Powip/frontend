@@ -16,7 +16,7 @@ import { getOlvaShipmentErrorMessage } from "../utils/olva-shipment-error.util";
  * to see what happened to each. Only a failure of the WHOLE call (plan, rate limit, timeout)
  * rejects.
  *
- * There is no idempotency key: do not resend items that are `created` or `registered_not_saved`
+ * Each order is stored before it goes to Olva: do not resend items that are `created` or `unknown_saved`
  * (use `getRetryableOlvaBulkItems`). The mutation never retries by itself.
  */
 export function useBulkCreateOlvaShipments(): UseMutationResult<

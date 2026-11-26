@@ -214,4 +214,72 @@ describe("olva-shipment mappers", () => {
 
     expect(dto).not.toHaveProperty("externalRef");
   });
+
+  describe("FEAT-35", () => {
+    it("maps Olva's status text, the failure reason and the stored PagoEfectivo payment", () => {
+      const shipment = toOlvaShipment(
+        buildOlvaShipmentResponse({
+          status: "PAYMENT_EXPIRED",
+          statusDetail: "PAGO VENCIDO",
+          failureReason: null,
+          payment: {
+            method: "pagoefectivo",
+            amount: 21.3,
+            currency: "PEN",
+            cipCode: "CIP-123",
+            url: "https://pago.test/1",
+            expiresAt: "2026-11-27T15:00:00.000Z",
+            paid: false,
+            expired: true,
+          },
+        }),
+      );
+
+      expect(shipment.statusDetail).toBe("PAGO VENCIDO");
+      expect(shipment.failureReason).toBeNull();
+      expect(shipment.payment).toEqual({
+        method: "pagoefectivo",
+        amount: 21.3,
+        currency: "PEN",
+        cipCode: "CIP-123",
+        url: "https://pago.test/1",
+        expiresAt: new Date("2026-11-27T15:00:00.000Z"),
+        paid: false,
+        expired: true,
+      });
+    });
+
+    it("keeps why a registration is waiting for manual review", () => {
+      const shipment = toOlvaShipment(
+        buildOlvaShipmentResponse({
+          status: "SUBMITTING",
+          failureReason: "Revisión manual: Olva no confirmó el registro",
+        }),
+      );
+
+      expect(shipment.status).toBe("SUBMITTING");
+      expect(shipment.failureReason).toBe("Revisión manual: Olva no confirmó el registro");
+    });
+
+    it("sends the agency's name of a store pickup (kept for the order), never for a home delivery", () => {
+      const pickup = toCreateOlvaShipmentRequestDto(
+        buildCreateOlvaShipmentInput({
+          destination: { agencyCode: "AG-1", agencyLabel: "  Agencia Arequipa Centro " },
+        } as never),
+      );
+      const blank = toCreateOlvaShipmentRequestDto(
+        buildCreateOlvaShipmentInput({
+          destination: { agencyCode: "AG-1", agencyLabel: " " },
+        } as never),
+      );
+      const home = toCreateOlvaShipmentRequestDto(buildCreateOlvaHomeDeliveryInput());
+
+      expect(pickup.destination).toEqual({
+        agencyCode: "AG-1",
+        agencyLabel: "Agencia Arequipa Centro",
+      });
+      expect(blank.destination).toEqual({ agencyCode: "AG-1" });
+      expect(home.destination).not.toHaveProperty("agencyLabel");
+    });
+  });
 });

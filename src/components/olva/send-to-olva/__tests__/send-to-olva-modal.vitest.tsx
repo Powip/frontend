@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { toOlvaStandardSize } from "@/features/olva/olva-catalog/mappers/to-olva-standard-size";
@@ -318,9 +318,9 @@ describe("SendToOlvaModal", () => {
     expect(screen.getByRole("button", { name: "Registrar 1 envío en Olva" })).toBeEnabled();
   });
 
-  it("never offers to resend an order that Olva registered but could not be saved", async () => {
+  it("never offers to resend an order Olva did not confirm (it is being verified)", async () => {
     services.bulkCreateOlvaShipments.mockResolvedValueOnce(
-      buildBulkResult([{ key: "order-1", status: "registered_not_saved" }]),
+      buildBulkResult([{ key: "order-1", status: "unknown" }]),
     );
 
     const { user } = renderModal();
@@ -329,9 +329,7 @@ describe("SendToOlvaModal", () => {
     await chooseAgency(user, 0);
     await user.click(screen.getByRole("button", { name: "Registrar 1 envío en Olva" }));
 
-    const alert = await screen.findByRole("alert");
-
-    expect(within(alert).getByText(/No lo envíes de nuevo/)).toBeInTheDocument();
+    expect(await screen.findByText(/No lo registres de nuevo/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Corregir y reintentar/ })).not.toBeInTheDocument();
   });
 

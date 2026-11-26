@@ -1,7 +1,11 @@
+import type { OlvaSenderDocumentType } from "../constants/olva-sender-profile.constants";
+
 export interface OlvaSenderProfile {
   id: string;
   label: string;
-  ruc: string;
+  /** RUC for a business, DNI for a person (FEAT-35). */
+  documentType: OlvaSenderDocumentType;
+  documentNumber: string;
   email: string;
 
   firstNames: string | null;

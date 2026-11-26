@@ -4,7 +4,7 @@ import type { OlvaBulkShipmentResult } from "@/features/olva/olva-shipment/model
 /**
  * The orders still worth showing in the form after a round: the ones with no result yet and the
  * ones that failed with nothing registered (and whose order is not already taken). Never
- * `created`, never `registered_not_saved` (it exists at Olva: sending it again would duplicate it).
+ * `created`, never `unknown` (it may exist at Olva: it is retried as a shipment, not resent).
  */
 export function getOlvaUnresolvedItemKeys(
   itemKeys: readonly string[],

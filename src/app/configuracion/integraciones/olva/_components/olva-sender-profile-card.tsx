@@ -27,7 +27,7 @@ export function OlvaSenderProfileCard({ profile, onArchive }: OlvaSenderProfileC
         <div className="min-w-0">
           <p className="truncate font-medium">{profile.label}</p>
           <p className="truncate text-sm text-muted-foreground">
-            RUC {profile.ruc}
+            {profile.documentType === "dni" ? "DNI" : "RUC"} {profile.documentNumber}
             {profile.businessName ? ` · ${profile.businessName}` : ""}
           </p>
         </div>

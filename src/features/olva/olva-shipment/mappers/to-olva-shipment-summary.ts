@@ -8,6 +8,8 @@ export function toOlvaShipmentSummary(dto: OlvaShipmentListItemResponseDto): Olv
     trackingNumber: dto.trackingNumber,
     registrationNumber: dto.registrationNumber,
     status: dto.status,
+    statusDetail: dto.statusDetail ?? null,
+    failureReason: dto.failureReason ?? null,
     cost: dto.cost,
     igv: dto.igv,
     senderEmail: dto.senderEmail,

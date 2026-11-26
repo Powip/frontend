@@ -8,8 +8,8 @@ import type { OlvaBulkShipmentResult } from "../models/olva-bulk-shipment-result
  *
  * Never included, on purpose:
  * - `created`: it is done.
- * - `registered_not_saved`: it exists at Olva and may be charged; sending it again would
- *   duplicate it.
+ * - `unknown`: it may exist at Olva; the backend keeps verifying it. It is retried as a shipment
+ *   (`useRetryOlvaShipment`), never resent as a new item.
  */
 export function getRetryableOlvaBulkItems(
   items: readonly BulkOlvaShipmentItemInput[],

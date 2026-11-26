@@ -1,7 +1,6 @@
 import { OLVA_BULK_ITEM_STATUSES } from "../constants/olva-shipment.constants";
 import type { OlvaBulkShipmentItemResponseDto } from "../dto/bulk-create-olva-shipments-response.dto";
 import type { OlvaBulkShipmentResult } from "../models/olva-bulk-shipment-result";
-import { toOlvaRegisteredInOlva } from "./to-olva-registered-in-olva";
 import { toOlvaShipment } from "./to-olva-shipment";
 import { toOlvaShipmentLabel } from "./to-olva-shipment-label";
 
@@ -27,16 +26,15 @@ export function toOlvaBulkShipmentResult(
       };
     }
 
-    case OLVA_BULK_ITEM_STATUSES.REGISTERED_NOT_SAVED: {
-      if (!dto.registeredInOlva) {
-        throw new Error(`Lote inválido: "${dto.itemKey}" registrado sin datos de Olva`);
+    case OLVA_BULK_ITEM_STATUSES.UNKNOWN: {
+      if (!dto.shipment || !dto.error) {
+        throw new Error(`Lote inválido: "${dto.itemKey}" sin confirmar y sin su envío reservado`);
       }
-
       return {
-        status: "registered_not_saved",
+        status: "unknown",
         itemKey: dto.itemKey,
-        registeredInOlva: toOlvaRegisteredInOlva(dto.registeredInOlva),
-        label,
+        shipment: toOlvaShipment(dto.shipment),
+        error: { ...dto.error },
       };
     }
 

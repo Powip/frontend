@@ -38,20 +38,20 @@ export function OlvaResultsPanel({
   onPrintOlvaLabels,
   onShareWhatsApp,
 }: OlvaResultsPanelProps) {
-  const { created, registeredNotSaved, failed } = splitOlvaBulkResults(results);
+  const { created, unknown, failed } = splitOlvaBulkResults(results);
   const createdOrders = created.flatMap((result) => {
     const order = ordersById.get(result.itemKey);
 
     return order ? [order] : [];
   });
 
-  const olvaLabelCount = created.length + registeredNotSaved.length;
+  const olvaLabelCount = created.length;
 
   return (
     <div className="grid gap-4">
       <p className="text-sm" aria-live="polite">
         <span className="font-semibold">{created.length}</span> creados
-        {registeredNotSaved.length > 0 ? `, ${registeredNotSaved.length} sin guardar` : ""}
+        {unknown.length > 0 ? `, ${unknown.length} verificándose con Olva` : ""}
         {failed.length > 0 ? `, ${failed.length} con error` : ""}. Costo total:{" "}
         <span className="font-semibold">
           {formatOlvaAmount(getOlvaResultsCost(results), OLVA_CURRENCIES.PEN)}

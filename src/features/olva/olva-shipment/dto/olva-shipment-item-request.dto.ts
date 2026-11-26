@@ -24,6 +24,8 @@ export interface OlvaShipmentOriginRequestDto {
 /** Store pickup (deliveryType O, the default): the recipient collects it at an agency. */
 export interface OlvaStorePickupDestinationRequestDto {
   agencyCode: string;
+  /** The agency's name as the store saw it, kept for the order; never sent to Olva (FEAT-35). */
+  agencyLabel?: string;
 }
 
 /** Home delivery (deliveryType D): a place from the ubigeo catalog plus where to knock. */

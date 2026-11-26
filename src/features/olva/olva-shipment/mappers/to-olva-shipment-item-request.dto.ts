@@ -60,6 +60,10 @@ export function toOlvaShipmentItemRequestDto(
     ...common,
     destination: {
       agencyCode: input.destination.agencyCode.trim(),
+      // Shown on the order's tracking; a blank one is not sent
+      ...(input.destination.agencyLabel?.trim()
+        ? { agencyLabel: input.destination.agencyLabel.trim() }
+        : {}),
     } satisfies OlvaStorePickupDestinationRequestDto,
   };
 }

@@ -9,7 +9,8 @@ export interface CollectedOlvaLabels {
 }
 
 /**
- * The Olva label of every shipment that exists in Olva (created, or registered but not saved).
+ * The Olva label of every shipment Olva registered (`created`). One still being verified has no
+ * guide yet, so it has no label.
  * The label that came with the creation answer is used as it is; otherwise Olva is asked for it.
  * One label that cannot be obtained does not stop the others.
  */
@@ -19,12 +20,9 @@ export async function collectOlvaLabels(
 ): Promise<CollectedOlvaLabels> {
   const settled = await Promise.all(
     results.map(async (result) => {
-      if (result.status === "failed") return null;
-
+      if (result.status !== "created") return null;
       if (result.label) return { itemKey: result.itemKey, label: result.label };
-
-      const shipmentId =
-        result.status === "created" ? result.shipment.id : result.registeredInOlva.id;
+      const shipmentId = result.shipment.id;
 
       try {
         return { itemKey: result.itemKey, label: await fetchLabel(shipmentId) };

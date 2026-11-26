@@ -1,8 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { OLVA_SHIPMENT_STATUSES } from "../../shared/constants/olva-enums.constants";
 import { OLVA_SHIPMENT_STATUS_LABELS } from "../constants/olva-shipment.constants";
 import { canRegenerateOlvaPaymentLink } from "../utils/can-regenerate-olva-payment-link";
-import { createOlvaIdempotencyKey } from "../utils/create-olva-idempotency-key";
 import { getOlvaShipmentStatusLabel } from "../utils/get-olva-shipment-status-label";
 import { isOlvaShipmentFinal } from "../utils/is-olva-shipment-final";
 import { normalizeOlvaShipmentFilters } from "../utils/normalize-olva-shipment-filters";
@@ -24,36 +23,6 @@ describe("olva-shipment utils", () => {
     for (const status of Object.values(OLVA_SHIPMENT_STATUSES)) {
       expect(getOlvaShipmentStatusLabel(status)).toBe(OLVA_SHIPMENT_STATUS_LABELS[status]);
     }
-  });
-
-  describe("createOlvaIdempotencyKey", () => {
-    const UUID_V4 = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-
-    afterEach(() => vi.unstubAllGlobals());
-
-    it("creates distinct v4 UUIDs", () => {
-      const [a, b] = [createOlvaIdempotencyKey(), createOlvaIdempotencyKey()];
-
-      expect(a).toMatch(UUID_V4);
-      expect(a).not.toBe(b);
-    });
-
-    it("still works when crypto.randomUUID is missing (insecure contexts, jsdom)", () => {
-      vi.stubGlobal("crypto", {
-        getRandomValues: (bytes: Uint8Array) => bytes.map((_, index) => index * 7),
-      });
-
-      expect(createOlvaIdempotencyKey()).toMatch(UUID_V4);
-    });
-
-    it("still works without any crypto at all", () => {
-      vi.stubGlobal("crypto", undefined);
-
-      const [a, b] = [createOlvaIdempotencyKey(), createOlvaIdempotencyKey()];
-
-      expect(a).toMatch(UUID_V4);
-      expect(a).not.toBe(b);
-    });
   });
 
   it("normalizes filters", () => {

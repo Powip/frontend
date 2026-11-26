@@ -84,7 +84,8 @@ describe("useCreateOlvaSenderProfileForm", () => {
     expect(createOlvaSenderProfile).toHaveBeenCalledOnce();
     expect(createOlvaSenderProfile.mock.calls[0][0]).toEqual({
       label: "Almacén principal",
-      ruc: "20616141971",
+      documentType: "ruc",
+      documentNumber: "20616141971",
       email: "remitente@empresa.com",
       firstNames: "Maria Fernanda",
       lastName: "Quispe Rojas",

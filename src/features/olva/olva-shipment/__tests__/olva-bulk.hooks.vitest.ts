@@ -8,8 +8,8 @@ import {
   buildBulkCreatedItemResponse,
   buildBulkCreateShipmentsResponse,
   buildBulkFailedItemResponse,
-  buildBulkNotSavedItemResponse,
   buildBulkOlvaShipmentItemInput,
+  buildBulkUnknownItemResponse,
   buildOlvaShipmentResponse,
 } from "../test-utils/olva-shipment.fixtures";
 
@@ -71,10 +71,10 @@ describe("useBulkCreateOlvaShipments", () => {
     expect(toast.success).toHaveBeenCalledTimes(1);
 
     service.bulkCreateOlvaShipments.mockResolvedValueOnce(
-      resultOf([buildBulkNotSavedItemResponse("A")]),
+      resultOf([buildBulkUnknownItemResponse("A")]),
     );
     await result.current.mutateAsync(input);
-    expect(toast.error).toHaveBeenCalledWith(expect.stringContaining("No los envíes de nuevo"));
+    expect(toast.warning).toHaveBeenCalledWith(expect.stringContaining("no lo registres de nuevo"));
   });
 
   it("an unknown outcome refreshes the lists and explains what to do; nothing is retried", async () => {

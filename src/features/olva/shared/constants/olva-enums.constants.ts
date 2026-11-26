@@ -5,6 +5,12 @@ import type { ValueOf } from "../types/value-of.type";
 // and keep the wire values readable in network tools.
 
 export const OLVA_SHIPMENT_STATUSES = {
+  /** Reserved by Powip and being registered at Olva; holds the order (FEAT-35). */
+  SUBMITTING: "SUBMITTING",
+  /** Olva refused the registration; releases the order (FEAT-35). */
+  FAILED: "FAILED",
+  /** The store discarded a shipment whose payment expired; releases the order (FEAT-35). */
+  DISCARDED: "DISCARDED",
   DRAFT: "DRAFT",
   PENDING_PAYMENT: "PENDING_PAYMENT",
   PAYMENT_EXPIRED: "PAYMENT_EXPIRED",
@@ -15,6 +21,8 @@ export const OLVA_SHIPMENT_STATUSES = {
   DELIVERED: "DELIVERED",
   RETURNED: "RETURNED",
   REJECTED: "REJECTED",
+  /** Olva reports a problem with the package; the order does not move (FEAT-35). */
+  INCIDENT: "INCIDENT",
   UNKNOWN: "UNKNOWN",
 } as const;
 

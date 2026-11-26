@@ -3,8 +3,8 @@ import {
   buildBulkCreatedItemResponse,
   buildBulkCreateShipmentsResponse,
   buildBulkFailedItemResponse,
-  buildBulkNotSavedItemResponse,
   buildBulkOlvaShipmentItemInput,
+  buildBulkUnknownItemResponse,
   buildOlvaShipmentResponse,
 } from "../test-utils/olva-shipment.fixtures";
 
@@ -47,7 +47,7 @@ describe("bulkCreateOlvaShipments", () => {
     post.mockResolvedValue({
       data: buildBulkCreateShipmentsResponse([
         buildBulkCreatedItemResponse("A"),
-        buildBulkNotSavedItemResponse("B"),
+        buildBulkUnknownItemResponse("B"),
         buildBulkFailedItemResponse("C", "SHIPMENT_ALREADY_EXISTS", holder),
         buildBulkFailedItemResponse("D"),
       ]),
@@ -55,18 +55,28 @@ describe("bulkCreateOlvaShipments", () => {
 
     const { summary, results } = await bulkCreateOlvaShipments({ items: [] });
 
-    expect(summary).toEqual({ total: 4, created: 1, registeredNotSaved: 1, failed: 2 });
+    expect(summary).toEqual({ total: 4, created: 1, unknown: 1, failed: 2 });
     expect(results.map((r) => r.itemKey)).toEqual(["A", "B", "C", "D"]);
 
-    const [created, notSaved, existing, rejected] = results;
+    const [created, unknown, existing, rejected] = results;
 
     expect(created.status === "created" && created.shipment.createdAt).toBeInstanceOf(Date);
     expect(created.status === "created" && created.label?.filename).toBe("guia.pdf");
-    expect(
-      notSaved.status === "registered_not_saved" && notSaved.registeredInOlva.payment?.expiresAt,
-    ).toEqual(new Date("2026-10-30T00:00:00.000Z"));
+    // Olva did not confirm: the reserved shipment comes back, to retry it (never resend the item)
+    expect(unknown.status === "unknown" && unknown.shipment.status).toBe("SUBMITTING");
+    expect(unknown.status === "unknown" && unknown.error.code).toBe("OLVA_OUTCOME_UNKNOWN");
     expect(existing.status === "failed" && existing.existingShipment?.id).toBe("holder");
     expect(rejected.status === "failed" && rejected.existingShipment).toBeNull();
+  });
+
+  it("an unknown item without its reserved shipment breaks the contract", async () => {
+    post.mockResolvedValue({
+      data: buildBulkCreateShipmentsResponse([
+        { ...buildBulkUnknownItemResponse("A"), shipment: null },
+      ]),
+    });
+
+    await expect(bulkCreateOlvaShipments({ items: [] })).rejects.toThrow('"A"');
   });
 
   it("fails loudly on an answer that breaks the contract", async () => {

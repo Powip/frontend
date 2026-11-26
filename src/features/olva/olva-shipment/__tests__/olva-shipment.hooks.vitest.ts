@@ -1,5 +1,6 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildOlvaAxiosError } from "../../shared/test-utils/axios-error";
 import { createQueryClientWrapper } from "../../shared/test-utils/create-query-client-wrapper";
 import { buildCreateOlvaShipmentInput } from "../test-utils/olva-shipment.fixtures";
 
@@ -9,18 +10,22 @@ const service = vi.hoisted(() => ({
   getOlvaShipment: vi.fn(),
   getOlvaShipmentLabel: vi.fn(),
   regenerateOlvaShipmentPaymentLink: vi.fn(),
+  retryOlvaShipment: vi.fn(),
+  discardOlvaShipment: vi.fn(),
 }));
-const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+const toast = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn() }));
 
 vi.mock("../services/olva-shipment.service", () => service);
 vi.mock("sonner", () => ({ toast }));
 
 import { useCreateOlvaShipment } from "../hooks/use-create-olva-shipment";
+import { useDiscardOlvaShipment } from "../hooks/use-discard-olva-shipment";
 import { useOlvaShipment } from "../hooks/use-olva-shipment";
 import { useOlvaShipmentByOrder } from "../hooks/use-olva-shipment-by-order";
 import { useOlvaShipmentLabel } from "../hooks/use-olva-shipment-label";
 import { useOlvaShipments } from "../hooks/use-olva-shipments";
 import { useRegenerateOlvaShipmentPaymentLink } from "../hooks/use-regenerate-olva-shipment-payment-link";
+import { useRetryOlvaShipment } from "../hooks/use-retry-olva-shipment";
 import { olvaShipmentKeys } from "../keys/olva-shipment.keys";
 
 const createdShipment = {
@@ -100,10 +105,9 @@ describe("olva-shipment hooks", () => {
     vi.useRealTimers();
   });
 
-  it("reuses the idempotency key after a failure and renews it after a success", async () => {
+  it("creates with the form input as is and keeps the heavy label out of the cache", async () => {
     service.createOlvaShipment
       .mockRejectedValueOnce(new Error("timeout"))
-      .mockResolvedValueOnce(createdShipment)
       .mockResolvedValueOnce(createdShipment);
     const { wrapper, queryClient } = createQueryClientWrapper();
     const { result } = renderHook(() => useCreateOlvaShipment(), { wrapper });
@@ -111,36 +115,14 @@ describe("olva-shipment hooks", () => {
 
     await expect(result.current.mutateAsync(input)).rejects.toThrow("timeout");
     await result.current.mutateAsync(input);
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    await result.current.mutateAsync(input);
 
-    const keys = service.createOlvaShipment.mock.calls.map(
-      ([variables]) => variables.idempotencyKey,
-    );
-
-    expect(keys[0]).toBe(keys[1]);
-    expect(keys[2]).not.toBe(keys[0]);
+    expect(service.createOlvaShipment.mock.calls.map(([variables]) => variables)).toEqual([
+      input,
+      input,
+    ]);
     expect(toast.error).toHaveBeenCalledTimes(1);
-    expect(toast.success).toHaveBeenCalledTimes(2);
-    // The heavy label is not cached with the detail
+    expect(toast.success).toHaveBeenCalledTimes(1);
     expect(queryClient.getQueryData(olvaShipmentKeys.detail("s-1"))).not.toHaveProperty("label");
-  });
-
-  it("reset() starts a new idempotency key", async () => {
-    service.createOlvaShipment.mockRejectedValue(new Error("boom"));
-    const { wrapper } = createQueryClientWrapper();
-    const { result } = renderHook(() => useCreateOlvaShipment(), { wrapper });
-    const input = buildCreateOlvaShipmentInput();
-
-    await expect(result.current.mutateAsync(input)).rejects.toThrow();
-    result.current.reset();
-    await expect(result.current.mutateAsync(input)).rejects.toThrow();
-
-    const [first, second] = service.createOlvaShipment.mock.calls.map(
-      ([variables]) => variables.idempotencyKey,
-    );
-
-    expect(first).not.toBe(second);
   });
 
   it("regenerating the payment link updates the cached detail", async () => {
@@ -157,6 +139,78 @@ describe("olva-shipment hooks", () => {
     expect(service.regenerateOlvaShipmentPaymentLink.mock.calls[0][0]).toBe("s-1");
     expect(queryClient.getQueryData(olvaShipmentKeys.detail("s-1"))).toMatchObject({
       status: "PENDING_PAYMENT",
+    });
+  });
+
+  describe("retry and discard (FEAT-35)", () => {
+    it("retry sends the confirmation, caches the shipment it answers and refreshes the lists", async () => {
+      service.retryOlvaShipment.mockResolvedValue({
+        status: "created",
+        itemKey: "s-1",
+        shipment: { id: "s-1", status: "PENDING_PAYMENT" },
+        label: null,
+      });
+      const { wrapper, queryClient } = createQueryClientWrapper();
+      const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+      const { result } = renderHook(() => useRetryOlvaShipment(), { wrapper });
+
+      result.current.mutate({ id: "s-1", confirmed: true });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(service.retryOlvaShipment.mock.calls[0][0]).toEqual({ id: "s-1", confirmed: true });
+      expect(queryClient.getQueryData(olvaShipmentKeys.detail("s-1"))).toMatchObject({
+        status: "PENDING_PAYMENT",
+      });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: olvaShipmentKeys.lists() });
+      expect(toast.success).toHaveBeenCalledTimes(1);
+    });
+
+    it("retry that Olva still does not confirm warns instead of celebrating", async () => {
+      service.retryOlvaShipment.mockResolvedValue({
+        status: "unknown",
+        itemKey: "s-1",
+        shipment: { id: "s-1", status: "SUBMITTING" },
+        error: { code: "OLVA_OUTCOME_UNKNOWN", message: "x" },
+      });
+      const { wrapper } = createQueryClientWrapper();
+      const { result } = renderHook(() => useRetryOlvaShipment(), { wrapper });
+
+      result.current.mutate({ id: "s-1" });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(toast.warning).toHaveBeenCalledTimes(1);
+      expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it("a manual review is left to the screen (it asks the user to confirm), not toasted", async () => {
+      service.retryOlvaShipment.mockRejectedValue(
+        buildOlvaAxiosError(409, {
+          details: { code: "SHIPMENT_MANUAL_REVIEW", shipmentId: "s-1" },
+        }),
+      );
+      const { wrapper } = createQueryClientWrapper();
+      const { result } = renderHook(() => useRetryOlvaShipment(), { wrapper });
+
+      result.current.mutate({ id: "s-1" });
+
+      await waitFor(() => expect(result.current.isError).toBe(true));
+      expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it("discard caches the discarded shipment and refreshes the lists", async () => {
+      service.discardOlvaShipment.mockResolvedValue({ id: "s-1", status: "DISCARDED" });
+      const { wrapper, queryClient } = createQueryClientWrapper();
+      const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+      const { result } = renderHook(() => useDiscardOlvaShipment(), { wrapper });
+
+      result.current.mutate("s-1");
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(service.discardOlvaShipment.mock.calls[0][0]).toBe("s-1");
+      expect(queryClient.getQueryData(olvaShipmentKeys.detail("s-1"))).toMatchObject({
+        status: "DISCARDED",
+      });
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: olvaShipmentKeys.lists() });
     });
   });
 });

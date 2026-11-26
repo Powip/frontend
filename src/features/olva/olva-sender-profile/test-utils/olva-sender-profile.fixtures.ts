@@ -8,7 +8,8 @@ export function buildOlvaSenderProfileResponse(
   return {
     id: "sender-profile-001",
     label: "Almacén principal",
-    ruc: "20616141971",
+    documentType: "ruc",
+    documentNumber: "20616141971",
     email: "remitente@empresa.com",
     firstNames: "Maria Fernanda",
     lastName: "Quispe Rojas",
@@ -28,7 +29,8 @@ export function buildOlvaSenderProfileList(): OlvaSenderProfileResponseDto[] {
     buildOlvaSenderProfileResponse({
       id: "sender-profile-002",
       label: "Tienda Miraflores",
-      ruc: "20123456786",
+      documentType: "ruc",
+      documentNumber: "20123456786",
       businessName: null,
       firstNames: null,
       lastName: null,

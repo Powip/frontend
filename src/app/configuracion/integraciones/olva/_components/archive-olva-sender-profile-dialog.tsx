@@ -51,9 +51,11 @@ export function ArchiveOlvaSenderProfileDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Eliminar remitente</AlertDialogTitle>
           <AlertDialogDescription>
-            {profile ? `“${profile.label}” (RUC ${profile.ruc}) ` : ""}dejará de estar disponible
-            para generar guías con Olva. Las guías que ya registraste con este remitente no se
-            modifican.
+            {profile
+              ? `“${profile.label}” (${profile.documentType === "dni" ? "DNI" : "RUC"} ${profile.documentNumber}) `
+              : ""}
+            dejará de estar disponible para generar guías con Olva. Las guías que ya registraste con
+            este remitente no se modifican.
           </AlertDialogDescription>
         </AlertDialogHeader>
 

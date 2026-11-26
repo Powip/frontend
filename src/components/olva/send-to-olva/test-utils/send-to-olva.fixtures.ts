@@ -14,7 +14,7 @@ import { toOlvaShipmentSummary } from "@/features/olva/olva-shipment/mappers/to-
 import {
   buildBulkCreatedItemResponse,
   buildBulkFailedItemResponse,
-  buildBulkNotSavedItemResponse,
+  buildBulkUnknownItemResponse,
   buildOlvaShipmentListItemResponse,
 } from "@/features/olva/olva-shipment/test-utils/olva-shipment.fixtures";
 import type { OlvaShipmentStatus } from "@/features/olva/shared/constants/olva-enums.constants";
@@ -99,11 +99,11 @@ export const buildShipmentSummary = (orderId: string, status: OlvaShipmentStatus
   );
 
 export function buildBulkResult(
-  items: { key: string; status: "created" | "failed" | "registered_not_saved"; code?: string }[],
+  items: { key: string; status: "created" | "failed" | "unknown"; code?: string }[],
 ) {
   const results = items.map(({ key, status, code }) => {
     if (status === "created") return buildBulkCreatedItemResponse(key);
-    if (status === "registered_not_saved") return buildBulkNotSavedItemResponse(key);
+    if (status === "unknown") return buildBulkUnknownItemResponse(key);
 
     return buildBulkFailedItemResponse(key, code);
   });
@@ -112,8 +112,7 @@ export function buildBulkResult(
     summary: {
       total: results.length,
       created: results.filter((result) => result.status === "created").length,
-      registeredNotSaved: results.filter((result) => result.status === "registered_not_saved")
-        .length,
+      unknown: results.filter((result) => result.status === "unknown").length,
       failed: results.filter((result) => result.status === "failed").length,
     },
     results,

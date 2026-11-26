@@ -5,7 +5,8 @@ export function toOlvaSenderProfile(dto: OlvaSenderProfileResponseDto): OlvaSend
   return {
     id: dto.id,
     label: dto.label,
-    ruc: dto.ruc,
+    documentType: dto.documentType,
+    documentNumber: dto.documentNumber,
     email: dto.email,
 
     firstNames: dto.firstNames,

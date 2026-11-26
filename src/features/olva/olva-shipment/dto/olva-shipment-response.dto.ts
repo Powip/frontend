@@ -74,6 +74,10 @@ export interface OlvaShipmentListItemResponseDto {
   trackingNumber: string | null;
   registrationNumber: string | null;
   status: OlvaShipmentStatus;
+  /** Olva's own text for the status (e.g. "DEVUELTO"). */
+  statusDetail: string | null;
+  /** Why the registration failed (Olva's reason, or a manual-review note). */
+  failureReason: string | null;
   cost: number;
   igv: number;
   senderEmail: string;
@@ -88,7 +92,8 @@ export interface OlvaShipmentListItemResponseDto {
   updatedAt: string;
 }
 
-// GET /olva/shipments/:id and POST /olva/shipments/:id/payment-link
+// GET /olva/shipments/:id, POST /olva/shipments/:id/payment-link and /discard. The payment is the
+// live one while Olva waits for it, otherwise the PagoEfectivo payment stored at registration.
 export interface OlvaShipmentResponseDto extends OlvaShipmentListItemResponseDto {
   securityPin: string | null;
   payment: OlvaShipmentPaymentResponseDto | null;

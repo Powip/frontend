@@ -43,6 +43,8 @@ export interface OlvaStorePickupInput {
   deliveryType?: typeof OLVA_DELIVERY_TYPES.STORE_PICKUP;
   destination: {
     agencyCode: string;
+    /** The agency's name as the picker showed it, kept for the order (FEAT-35). */
+    agencyLabel?: string;
   };
   whoPays?: OlvaWhoPays;
   paymentMethod?: OlvaPaymentMethod;
@@ -79,8 +81,8 @@ export type CreateOlvaShipmentInput = CreateOlvaShipmentItemInput & {
   confirm?: boolean;
 };
 
-export interface CreateOlvaShipmentVariables {
-  input: CreateOlvaShipmentInput;
-  /** Same key = same shipment, even if the request is repeated (see `useCreateOlvaShipment`). */
-  idempotencyKey: string;
+/** POST /olva/shipments/:id/retry: `confirmed` once the store checked the guide is not at Olva. */
+export interface RetryOlvaShipmentVariables {
+  id: string;
+  confirmed?: boolean;
 }

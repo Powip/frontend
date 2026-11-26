@@ -5,7 +5,6 @@ import { useState } from "react";
 import { toast } from "sonner";
 import type { OrderDetail } from "@/components/modals/GuideDetailsModal";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatOlvaAmount } from "@/features/olva/olva-quote/utils/format-olva-amount";
@@ -89,33 +88,33 @@ export function OlvaResultRow({ result, order, onShareWhatsApp }: OlvaResultRowP
     );
   }
 
-  const shipment = live.data ?? created;
-  const registered = result.status === "registered_not_saved" ? result.registeredInOlva : null;
-  const trackingNumber = shipment?.trackingNumber ?? registered?.trackingNumber ?? null;
-  const cost = shipment?.cost ?? registered?.cost ?? 0;
-  const payment = shipment?.payment ?? registered?.payment ?? null;
-  const status = shipment?.status ?? registered?.status;
-  const registrationNumber = shipment?.registrationNumber ?? registered?.registrationNumber;
+  if (result.status === "unknown") {
+    return (
+      <li className="grid gap-2 rounded-md border p-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-medium">{title}</span>
+          <Badge variant="secondary">Verificando con Olva</Badge>
+        </div>
+        <p className="text-sm">
+          Olva no confirmó el registro todavía. No lo registres de nuevo: se confirma solo en unos
+          minutos.
+        </p>
+      </li>
+    );
+  }
 
+  const shipment = live.data ?? created;
+  const trackingNumber = shipment?.trackingNumber ?? null;
+  const cost = shipment?.cost ?? 0;
+  const payment = shipment?.payment ?? null;
+  const status = shipment?.status;
+  const registrationNumber = shipment?.registrationNumber;
   return (
     <li className="grid gap-2 rounded-md border p-3">
       <div className="flex items-center justify-between gap-2">
         <span className="font-medium">{title}</span>
-        {registered ? (
-          <Badge variant="destructive">Registrado sin guardar</Badge>
-        ) : (
-          <Badge>{status ? getOlvaShipmentStatusLabel(status) : "Creado"}</Badge>
-        )}
+        <Badge>{status ? getOlvaShipmentStatusLabel(status) : "Creado"}</Badge>
       </div>
-
-      {registered ? (
-        <Alert variant="destructive">
-          <AlertDescription>
-            {OLVA_SHIPMENT_ERROR_MESSAGES[OLVA_SHIPMENT_ERROR_CODES.NOT_PERSISTED]}
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
       <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
         <div>
           <dt className="text-muted-foreground text-xs">Seguimiento</dt>

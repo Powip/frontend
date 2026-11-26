@@ -10,7 +10,7 @@ import type { OlvaBulkShipmentItemResponseDto } from "@/features/olva/olva-shipm
 import {
   buildBulkCreatedItemResponse,
   buildBulkFailedItemResponse,
-  buildBulkNotSavedItemResponse,
+  buildBulkUnknownItemResponse,
   buildOlvaShipmentListItemResponse,
 } from "@/features/olva/olva-shipment/test-utils/olva-shipment.fixtures";
 
@@ -26,7 +26,7 @@ function summarize(results: OlvaBulkShipmentItemResponseDto[]) {
   return {
     total: results.length,
     created: count("created"),
-    registeredNotSaved: count("registered_not_saved"),
+    unknown: count("unknown"),
     failed: count("failed"),
   };
 }
@@ -131,10 +131,10 @@ export const sendToOlvaHandlers = {
   ],
 
   /** Olva registered the order but it could not be saved here: money may be charged. */
-  registeredNotSaved: [
+  unknown: [
     ...referenceData,
     shipmentsPage([]),
-    bulkHandler((key) => buildBulkNotSavedItemResponse(key)),
+    bulkHandler((key) => buildBulkUnknownItemResponse(key)),
   ],
 
   /** The whole call fails (Olva down): nothing was registered, the form stays. */

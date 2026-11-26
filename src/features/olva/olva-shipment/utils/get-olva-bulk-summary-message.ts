@@ -13,13 +13,15 @@ const plural = (count: number, one: string, many: string) => `${count} ${count =
 export function getOlvaBulkSummaryMessage(
   summary: OlvaBulkCreateShipmentsResult["summary"],
 ): OlvaBulkSummaryMessage {
-  const { total, created, registeredNotSaved, failed } = summary;
-
-  // The worst case first: money may have been charged for something we cannot show
-  if (registeredNotSaved > 0) {
+  const { total, created, unknown, failed } = summary;
+  // First what must not be done twice: those may already exist at Olva
+  if (unknown > 0) {
     return {
-      tone: "error",
-      message: `${plural(registeredNotSaved, "envío se registró", "envíos se registraron")} en Olva pero no se pudo guardar. No los envíes de nuevo: contacta a soporte.`,
+      tone: "warning",
+      message:
+        unknown === 1
+          ? "1 envío se está verificando con Olva: no lo registres de nuevo. Se confirma solo o con «Reintentar»."
+          : `${unknown} envíos se están verificando con Olva: no los registres de nuevo. Se confirman solos o con «Reintentar».`,
     };
   }
 

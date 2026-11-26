@@ -1,13 +1,13 @@
 import type {
   OlvaBulkShipmentCreated,
   OlvaBulkShipmentFailed,
-  OlvaBulkShipmentRegisteredNotSaved,
   OlvaBulkShipmentResult,
+  OlvaBulkShipmentUnknown,
 } from "../models/olva-bulk-shipment-result";
 
 export interface SplitOlvaBulkResults {
   created: OlvaBulkShipmentCreated[];
-  registeredNotSaved: OlvaBulkShipmentRegisteredNotSaved[];
+  unknown: OlvaBulkShipmentUnknown[];
   failed: OlvaBulkShipmentFailed[];
 }
 
@@ -15,11 +15,11 @@ export interface SplitOlvaBulkResults {
 export function splitOlvaBulkResults(
   results: readonly OlvaBulkShipmentResult[],
 ): SplitOlvaBulkResults {
-  const split: SplitOlvaBulkResults = { created: [], registeredNotSaved: [], failed: [] };
+  const split: SplitOlvaBulkResults = { created: [], unknown: [], failed: [] };
 
   for (const result of results) {
     if (result.status === "created") split.created.push(result);
-    else if (result.status === "registered_not_saved") split.registeredNotSaved.push(result);
+    else if (result.status === "unknown") split.unknown.push(result);
     else split.failed.push(result);
   }
 

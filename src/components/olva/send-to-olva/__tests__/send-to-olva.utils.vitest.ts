@@ -405,25 +405,25 @@ describe("lot results", () => {
   it("keeps in the form only what can still be sent", () => {
     const { results } = buildBulkResult([
       { key: "created", status: "created" },
-      { key: "notSaved", status: "registered_not_saved" },
+      { key: "verifying", status: "unknown" },
       { key: "taken", status: "failed", code: "SHIPMENT_ALREADY_EXISTS" },
       { key: "rejected", status: "failed" },
     ]);
 
     expect(
-      getOlvaUnresolvedItemKeys(["created", "notSaved", "taken", "rejected", "unsent"], results),
+      getOlvaUnresolvedItemKeys(["created", "verifying", "taken", "rejected", "unsent"], results),
     ).toEqual(["rejected", "unsent"]);
   });
 
   it("adds up the real cost of what Olva registered", () => {
     const { results } = buildBulkResult([
       { key: "a", status: "created" },
-      { key: "b", status: "registered_not_saved" },
+      { key: "b", status: "unknown" },
       { key: "c", status: "failed" },
     ]);
 
-    // created: 12.5, registered_not_saved: 10, failed: nothing
-    expect(getOlvaResultsCost(results)).toBe(22.5);
+    // created: 12.5; one being verified has no cost yet; failed: nothing
+    expect(getOlvaResultsCost(results)).toBe(12.5);
   });
 
   it("sends the form as it is, without an unset sender", () => {

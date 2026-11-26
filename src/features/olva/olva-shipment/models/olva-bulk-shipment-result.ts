@@ -1,5 +1,4 @@
-import type { OlvaShipmentStatus } from "../../shared/constants/olva-enums.constants";
-import type { OlvaShipment, OlvaShipmentPayment } from "./olva-shipment";
+import type { OlvaShipment } from "./olva-shipment";
 import type { OlvaShipmentLabel } from "./olva-shipment-label";
 
 export interface OlvaBulkItemError {
@@ -7,17 +6,6 @@ export interface OlvaBulkItemError {
   code: string;
   message: string;
   details?: unknown;
-}
-
-/** The ids by which Olva knows a shipment that could not be stored here. */
-export interface OlvaRegisteredInOlva {
-  id: string;
-  registrationNumber: string | null;
-  trackingNumber: string | null;
-  status: OlvaShipmentStatus;
-  cost: number;
-  igv: number | null;
-  payment: OlvaShipmentPayment | null;
 }
 
 interface OlvaBulkItemIdentity {
@@ -33,34 +21,35 @@ export interface OlvaBulkShipmentCreated extends OlvaBulkItemIdentity {
 }
 
 /**
- * Registered at Olva but not saved here. It exists and may be charged: NEVER send it again.
- * Show `registeredInOlva` (and the label) so the user can follow it up.
+ * Olva did not confirm the registration: it may exist at Olva. `shipment` is the reserved row
+ * (SUBMITTING) the backend keeps verifying with the same key. NEVER send the item again: retry
+ * the shipment instead (`useRetryOlvaShipment`).
  */
-export interface OlvaBulkShipmentRegisteredNotSaved extends OlvaBulkItemIdentity {
-  status: "registered_not_saved";
-  registeredInOlva: OlvaRegisteredInOlva;
-  label: OlvaShipmentLabel | null;
+export interface OlvaBulkShipmentUnknown extends OlvaBulkItemIdentity {
+  status: "unknown";
+  shipment: OlvaShipment;
+  error: OlvaBulkItemError;
 }
 
 /** Nothing was registered. Safe to fix and resend, unless the order already has a shipment. */
 export interface OlvaBulkShipmentFailed extends OlvaBulkItemIdentity {
   status: "failed";
   error: OlvaBulkItemError;
-  /** With SHIPMENT_ALREADY_EXISTS: the shipment that already holds the order. */
+  /** With SHIPMENT_ALREADY_EXISTS: the shipment that already holds the order; else the FAILED one. */
   existingShipment: OlvaShipment | null;
 }
 
 /** Narrow it with `result.status`. */
 export type OlvaBulkShipmentResult =
   | OlvaBulkShipmentCreated
-  | OlvaBulkShipmentRegisteredNotSaved
+  | OlvaBulkShipmentUnknown
   | OlvaBulkShipmentFailed;
 
 export interface OlvaBulkCreateShipmentsResult {
   summary: {
     total: number;
     created: number;
-    registeredNotSaved: number;
+    unknown: number;
     failed: number;
   };
   /** One per shipment sent, in request order. */

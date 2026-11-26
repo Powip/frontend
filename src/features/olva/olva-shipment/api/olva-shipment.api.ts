@@ -1,8 +1,10 @@
 import axiosAuth from "@/lib/axiosAuth";
 import { OLVA_API_BASE_URL } from "../../shared/constants/olva-api.constants";
-import { OLVA_IDEMPOTENCY_KEY_HEADER } from "../constants/olva-shipment.constants";
 import type { BulkCreateOlvaShipmentsRequestDto } from "../dto/bulk-create-olva-shipments-request.dto";
-import type { BulkCreateOlvaShipmentsResponseDto } from "../dto/bulk-create-olva-shipments-response.dto";
+import type {
+  BulkCreateOlvaShipmentsResponseDto,
+  OlvaBulkShipmentItemResponseDto,
+} from "../dto/bulk-create-olva-shipments-response.dto";
 import type { CreateOlvaShipmentRequestDto } from "../dto/create-olva-shipment-request.dto";
 import type { ListOlvaShipmentsQueryDto } from "../dto/list-olva-shipments-query.dto";
 import type { ListOlvaShipmentsResponseDto } from "../dto/list-olva-shipments-response.dto";
@@ -18,24 +20,21 @@ function shipmentPath(id: string): string {
   return `${OLVA_SHIPMENTS_BASE}/${encodeURIComponent(id)}`;
 }
 
-// POST /olva/shipments -> 201 (with the label). The idempotency key makes a repeated request
-// (double click, retry after a timeout) answer with the same shipment instead of a second one.
+// POST /olva/shipments -> 201 (with the label). The backend stores the shipment before calling
+// Olva and keys it itself, so a repeated request for the same order answers 409 ALREADY_EXISTS.
 export async function createOlvaShipmentApi(
   requestDto: CreateOlvaShipmentRequestDto,
-  idempotencyKey: string,
 ): Promise<CreateOlvaShipmentResponseDto> {
   const { data } = await axiosAuth.post<CreateOlvaShipmentResponseDto>(
     OLVA_SHIPMENTS_BASE,
     requestDto,
-    { headers: { [OLVA_IDEMPOTENCY_KEY_HEADER]: idempotencyKey } },
   );
-
   return data;
 }
 
-// POST /olva/shipments/bulk -> 200 even when some items fail (see `results[].status`). No
-// idempotency key: Olva does not isolate the items of a lot by it; duplicates are prevented by
-// `externalRef.orderId`. A failure of the WHOLE call (plan, rate limit, timeout) is an HTTP error.
+// POST /olva/shipments/bulk -> 200 even when some items fail (see `results[].status`). Each order is
+// stored before it goes to Olva, so `externalRef.orderId` can never get two shipments. A failure of
+// the WHOLE call (plan, rate limit, timeout) is an HTTP error.
 export async function bulkCreateOlvaShipmentsApi(
   requestDto: BulkCreateOlvaShipmentsRequestDto,
 ): Promise<BulkCreateOlvaShipmentsResponseDto> {
@@ -73,6 +72,27 @@ export async function regenerateOlvaShipmentPaymentLinkApi(
     `${shipmentPath(id)}/payment-link`,
   );
 
+  return data;
+}
+
+// POST /olva/shipments/:id/retry -> 200, one item of the lot (409 SHIPMENT_NOT_RETRYABLE unless
+// SUBMITTING; 409 SHIPMENT_MANUAL_REVIEW past an hour without `confirmed: true`)
+export async function retryOlvaShipmentApi(
+  id: string,
+  confirmed: boolean,
+): Promise<OlvaBulkShipmentItemResponseDto> {
+  const { data } = await axiosAuth.post<OlvaBulkShipmentItemResponseDto>(
+    `${shipmentPath(id)}/retry`,
+    {
+      confirmed,
+    },
+  );
+  return data;
+}
+
+// POST /olva/shipments/:id/discard -> 200 (409 unless PAYMENT_EXPIRED). Releases the order.
+export async function discardOlvaShipmentApi(id: string): Promise<OlvaShipmentResponseDto> {
+  const { data } = await axiosAuth.post<OlvaShipmentResponseDto>(`${shipmentPath(id)}/discard`);
   return data;
 }
 

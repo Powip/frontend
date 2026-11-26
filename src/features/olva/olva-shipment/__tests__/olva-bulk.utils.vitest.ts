@@ -16,11 +16,11 @@ const created = (itemKey: string): OlvaBulkShipmentResult => ({
   label: null,
   shipment: {} as never,
 });
-const notSaved = (itemKey: string): OlvaBulkShipmentResult => ({
-  status: "registered_not_saved",
+const unknown = (itemKey: string): OlvaBulkShipmentResult => ({
+  status: "unknown",
   itemKey,
-  label: null,
-  registeredInOlva: {} as never,
+  shipment: {} as never,
+  error: { code: "OLVA_OUTCOME_UNKNOWN", message: "x" },
 });
 const failed = (itemKey: string, code: string): OlvaBulkShipmentResult => ({
   status: "failed",
@@ -33,21 +33,21 @@ describe("olva bulk utils", () => {
   it("splits results by status keeping order", () => {
     const {
       created: c,
-      registeredNotSaved,
+      unknown: u,
       failed: f,
-    } = splitOlvaBulkResults([failed("1", "X"), created("2"), notSaved("3"), created("4")]);
+    } = splitOlvaBulkResults([failed("1", "X"), created("2"), unknown("3"), created("4")]);
 
     expect(c.map((r) => r.itemKey)).toEqual(["2", "4"]);
-    expect(registeredNotSaved.map((r) => r.itemKey)).toEqual(["3"]);
+    expect(u.map((r) => r.itemKey)).toEqual(["3"]);
     expect(f.map((r) => r.itemKey)).toEqual(["1"]);
   });
 
-  it("only failed items whose order is free can be resent; never created or not-saved", () => {
+  it("only failed items whose order is free can be resent; never created or unknown", () => {
     const items = ["A", "B", "C", "D"].map((key) => buildBulkOlvaShipmentItemInput(key));
 
     const retryable = getRetryableOlvaBulkItems(items, [
       created("A"),
-      notSaved("B"),
+      unknown("B"),
       failed("C", "SHIPMENT_ALREADY_EXISTS"),
       failed("D", "SHIPMENT_ORIGIN_DOES_NOT_ACCEPT_PAYMENT"),
     ]);
@@ -79,30 +79,27 @@ describe("olva bulk utils", () => {
   });
 
   it.each([
+    [{ total: 3, created: 3, unknown: 0, failed: 0 }, "success", "3 envíos creados correctamente."],
+    [{ total: 1, created: 1, unknown: 0, failed: 0 }, "success", "1 envío creado correctamente."],
     [
-      { total: 3, created: 3, registeredNotSaved: 0, failed: 0 },
-      "success",
-      "3 envíos creados correctamente.",
-    ],
-    [
-      { total: 1, created: 1, registeredNotSaved: 0, failed: 0 },
-      "success",
-      "1 envío creado correctamente.",
-    ],
-    [
-      { total: 3, created: 2, registeredNotSaved: 0, failed: 1 },
+      { total: 3, created: 2, unknown: 0, failed: 1 },
       "warning",
       "2 de 3 envíos creados. 1 falló: corrígelos y reenvíalos.",
     ],
     [
-      { total: 2, created: 0, registeredNotSaved: 0, failed: 2 },
+      { total: 2, created: 0, unknown: 0, failed: 2 },
       "error",
       "No se pudo crear ningún envío. Revisa los errores e intenta de nuevo.",
     ],
     [
-      { total: 2, created: 1, registeredNotSaved: 1, failed: 0 },
-      "error",
-      "1 envío se registró en Olva pero no se pudo guardar. No los envíes de nuevo: contacta a soporte.",
+      { total: 2, created: 1, unknown: 1, failed: 0 },
+      "warning",
+      "1 envío se está verificando con Olva: no lo registres de nuevo. Se confirma solo o con «Reintentar».",
+    ],
+    [
+      { total: 3, created: 0, unknown: 2, failed: 1 },
+      "warning",
+      "2 envíos se están verificando con Olva: no los registres de nuevo. Se confirman solos o con «Reintentar».",
     ],
   ])("summarizes %j", (summary, tone, message) => {
     expect(getOlvaBulkSummaryMessage(summary)).toEqual({ tone, message });

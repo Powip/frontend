@@ -55,7 +55,8 @@ export function SendToOlvaBody({
   const { submit, isSubmitting } = useSendToOlvaSubmit({
     onResult: ({ summary, results }) => {
       phase.showResults(results);
-      if (summary.created + summary.registeredNotSaved > 0) onSuccess?.();
+      // A shipment being verified already holds its order too: the guide must refresh
+      if (summary.created + summary.unknown > 0) onSuccess?.();
     },
   });
   const printing = useOlvaPrintOrders({

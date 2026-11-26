@@ -4,8 +4,6 @@ import type { OlvaBulkShipmentResult } from "@/features/olva/olva-shipment/model
 export function getOlvaResultsCost(results: readonly OlvaBulkShipmentResult[]): number {
   return results.reduce((total, result) => {
     if (result.status === "created") return total + result.shipment.cost;
-    if (result.status === "registered_not_saved") return total + result.registeredInOlva.cost;
-
     return total;
   }, 0);
 }
