@@ -20,6 +20,7 @@ import {
   isGiftOnlyDocument,
   toReferenceUnitValue,
 } from "@/features/sunat/sunat-document/utils/gift-lines";
+import { isNuevoRus } from "@/features/sunat/sunat-profile/utils/tax-regime";
 import { cn } from "@/lib/utils";
 
 const OPTIONS: Record<Exclude<GiftMode, "none">, { title: string; help: string }> = {
@@ -38,10 +39,10 @@ function soles(value: number): string {
 }
 
 /** Normal price per unit (with IGV) the user types for a gift. */
-function NormalPriceInput({ index }: { index: number }) {
+function NormalPriceInput({ index, taxRegime }: { index: number; taxRegime?: string }) {
   const { control, setValue } = useFormContext<CreateSunatDocumentsFormValues>();
   const item = useWatch({ control, name: `documents.0.items.${index}` });
-  const normal = getGiftNormalUnitPrice(item);
+  const normal = getGiftNormalUnitPrice(item, taxRegime);
   const [text, setText] = useState(normal ? normal.toFixed(2) : "");
 
   useEffect(() => {
@@ -62,7 +63,7 @@ function NormalPriceInput({ index }: { index: number }) {
         setText(event.target.value);
         setValue(
           `documents.0.items.${index}.referenceUnitValue`,
-          toReferenceUnitValue(Number(event.target.value) || 0),
+          toReferenceUnitValue(Number(event.target.value) || 0, taxRegime),
           { shouldDirty: true, shouldValidate: true },
         );
       }}
@@ -77,7 +78,7 @@ function NormalPriceInput({ index }: { index: number }) {
  * declared as valor referencial (without IGV) while the charge stays S/ 0.00.
  * A gift-only document can only go as «regalo aparte» (13).
  */
-export function GiftChoicePanel() {
+export function GiftChoicePanel({ taxRegime }: { taxRegime?: string } = {}) {
   const { control, getValues, setValue } = useFormContext<CreateSunatDocumentsFormValues>();
   const items = useWatch({ control, name: "documents.0.items" }) ?? [];
 
@@ -86,9 +87,11 @@ export function GiftChoicePanel() {
   }
 
   const mode = getCurrentGiftMode(items);
-  const allowed = getAllowedGiftModes(items);
+  const allowed = getAllowedGiftModes(items, taxRegime);
   const giftOnly = isGiftOnlyDocument(items);
-  const companyIgv = getCompanyPaidGiftIgv(items);
+  const companyIgv = getCompanyPaidGiftIgv(items, taxRegime);
+  // Nuevo RUS: gifts go only as «regalo de promoción» (31), with no IGV.
+  const nuevoRus = isNuevoRus(taxRegime);
 
   function choose(next: GiftMode) {
     setValue("documents.0.items", applyGiftMode(getValues("documents.0.items"), next), {
@@ -107,9 +110,17 @@ export function GiftChoicePanel() {
         Hay regalos en tu pedido: ¿cómo los quieres mandar?
       </p>
 
-      {giftOnly && (
+      {giftOnly && !nuevoRus && (
         <p className="text-xs text-muted-foreground">
           El comprobante es solo de regalos (S/ 0.00): va como regalo aparte.
+        </p>
+      )}
+
+      {nuevoRus && (
+        <p className="text-xs text-muted-foreground">
+          {giftOnly
+            ? "Este RUC está en el Nuevo RUS: un comprobante solo de regalos no se puede emitir (el regalo aparte lleva IGV)."
+            : "Este RUC está en el Nuevo RUS: los regalos van como regalo de promoción, sin IGV."}
         </p>
       )}
 
@@ -138,7 +149,7 @@ export function GiftChoicePanel() {
         })}
       </div>
 
-      {mode === GIFT_MODES.NONE ? (
+      {mode === GIFT_MODES.NONE && allowed.length === 0 ? null : mode === GIFT_MODES.NONE ? (
         <p className="text-xs text-muted-foreground">
           Elige una opción. Sin elegir, el regalo queda en S/ 0.00 y no se puede emitir.
         </p>
@@ -156,13 +167,16 @@ export function GiftChoicePanel() {
                 </span>
 
                 <span className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <label htmlFor={`gift-normal-price-${index}`}>Precio normal c/u (con IGV)</label>
-                  <NormalPriceInput index={index} />
+                  <label htmlFor={`gift-normal-price-${index}`}>
+                    {nuevoRus ? "Precio normal c/u" : "Precio normal c/u (con IGV)"}
+                  </label>
+                  <NormalPriceInput index={index} taxRegime={taxRegime} />
                 </span>
 
                 {getGiftLineValue(item) > 0 ? (
                   <span className="w-full text-xs text-muted-foreground">
-                    Valor referencial {soles(getGiftLineValue(item))} sin IGV · se cobra S/ 0.00
+                    Valor referencial {soles(getGiftLineValue(item))}
+                    {nuevoRus ? "" : " sin IGV"} · se cobra S/ 0.00
                   </span>
                 ) : (
                   <span className="w-full text-xs font-medium text-red-600">
