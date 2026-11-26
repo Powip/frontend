@@ -65,6 +65,7 @@ interface ConnectNumberDialogProps {
 }
 
 const STEP_LABELS = ["Inicia sesión con Meta", "Elige el número", "Verifica el código"];
+const COEX_STEP_LABELS = ["Inicia sesión con Meta", "Elige el número", "Confirma en el celular"];
 
 export function ConnectNumberDialog({
   storeId,
@@ -223,7 +224,7 @@ export function ConnectNumberDialog({
         </DialogHeader>
         <div className={cn(waDialogBody, "flex flex-col gap-3.5 overflow-y-auto")}>
           <ol className="m-0 mb-1.5 flex list-none gap-2 p-0" aria-label="Pasos de la conexión">
-            {STEP_LABELS.map((label, index) => (
+            {(mode === "coex" ? COEX_STEP_LABELS : STEP_LABELS).map((label, index) => (
               <li
                 key={label}
                 className={cn(
