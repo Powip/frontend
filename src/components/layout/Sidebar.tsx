@@ -74,6 +74,7 @@ import {
   hasRouteAccess,
   isAccessGatedRoute,
   isCourierRole,
+  canSeeWhatsAppTab,
 } from "@/config/permissions.config";
 import {
   DropdownMenu,
@@ -462,7 +463,8 @@ export function Sidebar({ className }: SidebarProps) {
   // FEAT-24 H8-D5: al rol COURIER solo le queda su portal (Modo almacén); el resto del menú se le cierra.
   const courierOnly = isCourierRole(auth?.user.role);
   // Campanita de alertas de WhatsApp (X5): solo administradores mientras C-28 no defina otro permiso.
-  const showWhatsAppBell = isCompanyAdminRole(auth?.user.role);
+  // Además es un acceso a la pestaña de WhatsApp: solo para quien puede abrirla.
+  const showWhatsAppBell = isCompanyAdminRole(auth?.user.role) && canSeeWhatsAppTab(auth?.user.email);
 
   // Filtrar navegación por permisos y mostrar Superadmin solo a autorizados
   const filteredNavigation = navigation
