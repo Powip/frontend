@@ -119,6 +119,11 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                     menú cuando tenga respaldo en el servidor.
                   </Aviso>
                 )}
+                {ubicacion.enMenu && ubicacion.pagina.soloNavegador && (
+                  <Aviso tono="warn" className="mb-4" titulo="Los datos de esta sección se guardan solo en este navegador">
+                    Otro usuario u otra computadora no los ve, y se pierden si se borran los datos del navegador.
+                  </Aviso>
+                )}
               </>
             )}
             {children}
