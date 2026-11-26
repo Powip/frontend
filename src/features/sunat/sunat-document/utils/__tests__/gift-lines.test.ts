@@ -13,6 +13,7 @@ import {
   getCompanyPaidGiftIgv,
   getGiftNormalUnitPrice,
   getGiftsWithoutPrice,
+  isGiftCandidate,
   toReferenceUnitValue,
 } from "../gift-lines";
 
@@ -196,19 +197,15 @@ describe("solo regalos (S/ 0.00)", () => {
 describe("envío gratis (línea de envío con descuento igual a su precio)", () => {
   const order = sale([polo], { shippingTotal: 10, discountTotal: 10 } as Partial<Order>);
 
-  it("no es un regalo: no se marca ni cambia con la opción elegida", () => {
+  it("no es un regalo: no sale en el comprobante ni cambia con la opción elegida", () => {
     const document = issue(order, GIFT_MODES.APARTE);
-    const delivery = document.items.find((item) => item.sku === "DELIVERY");
 
-    expect(delivery?.taxType).toBe("10");
-    expect(delivery?.giftOrigin).toBeUndefined();
-    expect(getAllowedGiftModes(buildSunatDocumentFromSale(order).items)).toEqual(["31", "13"]);
+    expect(document.items.find((item) => item.sku === "DELIVERY")).toBeUndefined();
+    expect(buildSunatDocumentFromSale(order).items.some(isGiftCandidate)).toBe(false);
   });
 
-  it("sigue bloqueado como hoy (línea en S/ 0.00)", () => {
-    expect(findLinesWithoutValue(issue(order, GIFT_MODES.NONE).items)).toEqual([
-      { lineNumber: 2, productName: "Servicio de entrega" },
-    ]);
+  it("ya no bloquea la emisión (no queda ninguna línea en S/ 0.00)", () => {
+    expect(findLinesWithoutValue(issue(order, GIFT_MODES.NONE).items)).toEqual([]);
   });
 });
 

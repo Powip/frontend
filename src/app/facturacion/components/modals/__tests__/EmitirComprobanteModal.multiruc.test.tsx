@@ -188,13 +188,22 @@ describe("EmitirComprobanteModal — validar antes de enviar a SUNAT", () => {
     expect(mutateAsync).not.toHaveBeenCalled();
   });
 
-  it("el envío gratis (envío con descuento igual a su precio) tampoco se puede emitir", async () => {
+  it("el envío gratis no va en el comprobante y no bloquea la emisión", async () => {
     renderModal("p1", withItems([product], { shippingTotal: 10, discountTotal: 10 }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      /«Servicio de entrega» queda en S\/ 0.00/,
-    );
-    expect(screen.getByRole("button", { name: /Emitir a SUNAT/i })).toBeDisabled();
+    await screen.findByLabelText("Descuento de Kit");
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Servicio de entrega")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Emitir a SUNAT/i }));
+
+    await waitFor(() => expect(mutateAsync).toHaveBeenCalledTimes(1));
+    const sent = mutateAsync.mock.calls[0][0].documents[0];
+    // Solo el producto, y el total es lo que el cliente pagó.
+    expect(sent.items).toHaveLength(1);
+    expect(sent.items[0].sku).toBe("SKU-1");
+    expect(sent.totals.grandTotal).toBe(118);
   });
 
   it("al quitar la línea en cero se puede emitir", async () => {

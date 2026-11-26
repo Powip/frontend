@@ -245,6 +245,14 @@ function createItems(sale: Order): SunatItem[] {
     return productItems;
   }
 
+  // Envío gratis: el descuento cubre todo el envío y el cliente no pagó nada
+  // por él. No va en el comprobante: una línea en S/ 0.00 la rechaza SUNAT
+  // (error 3105) y los totales no cambian sin ella. El envío con cobro, aunque
+  // tenga un descuento parcial, sigue yendo como línea.
+  if (shippingDiscountCents >= shippingGrossCents) {
+    return productItems;
+  }
+
   const shippingTaxType = productItems.some(
     (item) => item.taxType === SUNAT_TAX_AFFECTATION_TYPES.GRAVADO,
   )

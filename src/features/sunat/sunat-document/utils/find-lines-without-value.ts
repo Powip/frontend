@@ -42,8 +42,8 @@ export function getLineValue(item: LineAmounts): number {
  * price - line discount, at 2 decimals). When that value is 0.00 it rejects
  * the WHOLE document, and a rejected document has already spent its number.
  * It happens with ordinary sales: a gift at price 0, a product with a 100%
- * discount, or free shipping stored as a shipping line whose discount equals
- * its price.
+ * discount, or a line edited down to 0 on screen. Free shipping never gets
+ * here: the builder leaves the fully discounted shipping line out.
  *
  * The backend refuses these too (`SUNAT_DOCUMENT_LINE_WITHOUT_VALUE`); this
  * lets the screen say it before sending, with the same rounding.
