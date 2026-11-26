@@ -40,6 +40,8 @@ export interface WhatsAppRule {
   triggerLabel: string | null;
   templateId: string | null;
   active: boolean;
+  /** La tienda usa un número «Solo app»: el aviso queda para enviarse a mano. */
+  manualSend?: boolean;
   blockedReason: string | null;
   when: WhatsAppRuleWhen;
   allowedWhenModes: WhatsAppRuleWhenMode[];
@@ -85,5 +87,8 @@ export type WhatsAppSaveRule = (
 ) => Promise<WhatsAppRuleMutationResult>;
 
 /** Resuelven true si la acción se completó (para cerrar el diálogo). */
-export type WhatsAppActivateRule = (rule: WhatsAppRule, includeExisting: boolean) => Promise<boolean>;
+export type WhatsAppActivateRule = (
+  rule: WhatsAppRule,
+  includeExisting: boolean,
+) => Promise<boolean>;
 export type WhatsAppDeactivateRule = (rule: WhatsAppRule) => Promise<boolean>;

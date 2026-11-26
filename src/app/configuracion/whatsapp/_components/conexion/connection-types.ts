@@ -42,6 +42,14 @@ export interface ConnectionMutations {
       businessPhoneNumber?: string;
     } & NumberRoleChoice,
   ) => Promise<void>;
+  /** «Solo app»: guarda el número que vive solo en el celular. No consulta a Meta. */
+  connectAppOnly?: (input: {
+    storeId: string;
+    phoneNumber: string;
+    role: "store" | "seller";
+    seller: { id: string; name: string } | null;
+    confirmReassign?: boolean;
+  }) => Promise<void>;
   assignNumber?: (input: {
     accountId: string;
     userId: string | null;

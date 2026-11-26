@@ -21,6 +21,14 @@ export interface ConnectionTypeDefinition {
   statusLabel: string;
 }
 
+/** What an app-only number cannot do. Shown wherever the person chooses or sees that type. */
+export const APP_ONLY_LIMITATIONS = [
+  "No envía solo: una persona abre cada mensaje y toca «Enviar».",
+  "No recibe mensajes en Powip.",
+  "Sin Bandeja ni Pau.",
+  "Sin estados entregado ni leído.",
+];
+
 export const CONNECTION_TYPE_DEFINITIONS: ConnectionTypeDefinition[] = [
   {
     value: WHATSAPP_CONNECTION_TYPES.API,
@@ -50,11 +58,12 @@ export const CONNECTION_TYPE_DEFINITIONS: ConnectionTypeDefinition[] = [
   {
     value: WHATSAPP_CONNECTION_TYPES.APP_MANUAL,
     title: "Solo app WhatsApp Business",
-    badge: "Contingencia",
-    summary: "Número sin API. POWIP arma el mensaje; la asesora lo envía con un toque.",
-    advantages: ["Sin costo de Meta.", "Se mide quién abre el rastreo."],
-    limitations: ["Una persona debe tocar «Enviar».", "Sin estados entregado ni leído."],
-    statusLabel: "Solo envío asistido",
+    badge: "Envío manual",
+    summary:
+      "El número vive solo en la app del celular. Powip deja el mensaje escrito y una persona lo envía.",
+    advantages: ["Sin Meta ni costo por mensaje.", "El número sigue igual en el celular."],
+    limitations: APP_ONLY_LIMITATIONS,
+    statusLabel: "Solo app Business · envío manual",
   },
 ];
 

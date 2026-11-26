@@ -12,6 +12,7 @@ import { WaDot, WaPill } from "@/components/whatsapp/ui/WaPill";
 import { waSelectTrigger } from "@/components/whatsapp/ui/wa-classes";
 import {
   WHATSAPP_CONNECTION_STATES,
+  WHATSAPP_CONNECTION_TYPES,
   WHATSAPP_PERMISSION_CODES,
 } from "@/features/whatsapp/enums/whatsapp.enums";
 import type {
@@ -37,6 +38,7 @@ import {
   getPermissionBlockReason,
 } from "@/features/whatsapp/utils/whatsapp-permissions.util";
 import { cn } from "@/lib/utils";
+import { AppOnlyNumberDialog } from "./AppOnlyNumberDialog";
 import { AssistedQueueSection } from "./AssistedQueueSection";
 import { ConnectedNumberSection } from "./ConnectedNumberSection";
 import { ConnectionTypeSection } from "./ConnectionTypeSection";
@@ -167,6 +169,12 @@ export function ConnectionView({
   }
 
   const signupStore = signup ? stores.find((item) => item.id === signup.storeId) : null;
+  const appOnlyPhone =
+    accountData?.connectionType === WHATSAPP_CONNECTION_TYPES.APP_MANUAL ? accountData.phone : null;
+  const isAppOnly = accountData?.connectionType === WHATSAPP_CONNECTION_TYPES.APP_MANUAL;
+  const storeSendsByApi =
+    accounts.kind === "ready" &&
+    accounts.data.some((item) => item.connectionType !== WHATSAPP_CONNECTION_TYPES.APP_MANUAL);
 
   return (
     <div className="flex min-w-0 flex-col gap-5">
@@ -240,17 +248,19 @@ export function ConnectionView({
           onConnect={() => setSignup({ storeId: store.id })}
           onRetry={onRetry}
         />
-        <TestMessageSection
-          key={`test-${store.id}`}
-          accountId={accountData?.id ?? null}
-          templates={templates}
-          storeId={store.id}
-          testRun={testRun}
-          now={now}
-          blockedReason={combineBlockReasons(pending(mutations.sendTest), connectionPermission)}
-          sendTest={mutations.sendTest}
-          onTestStarted={setTestRun}
-        />
+        {!isAppOnly && (
+          <TestMessageSection
+            key={`test-${store.id}`}
+            accountId={accountData?.id ?? null}
+            templates={templates}
+            storeId={store.id}
+            testRun={testRun}
+            now={now}
+            blockedReason={combineBlockReasons(pending(mutations.sendTest), connectionPermission)}
+            sendTest={mutations.sendTest}
+            onTestStarted={setTestRun}
+          />
+        )}
       </div>
 
       <StoreNumbersSection
@@ -284,6 +294,7 @@ export function ConnectionView({
               getPermissionBlockReason(effectivePermissions, WHATSAPP_PERMISSION_CODES.REPLY),
             )}
             mutations={mutations}
+            appOnlyPhone={appOnlyPhone}
             onRetry={onRetry}
           />
         }
@@ -291,6 +302,16 @@ export function ConnectionView({
 
       <MessagingCostSection pricing={pricing} usage={usage} now={now} onRetry={onRetry} />
 
+      {signup && signupStore && signup.mode === "app" && (
+        <AppOnlyNumberDialog
+          storeId={signupStore.id}
+          storeName={signupStore.name}
+          connectAppOnly={mutations.connectAppOnly}
+          agents={agents.kind === "ready" ? agents.data : []}
+          storeSendsByApi={storeSendsByApi}
+          onClose={() => setSignup(null)}
+        />
+      )}
       {signup && signupStore && signup.mode === "manual" && (
         <ManualNumberDialog
           storeId={signupStore.id}
@@ -300,7 +321,7 @@ export function ConnectionView({
           onClose={() => setSignup(null)}
         />
       )}
-      {signup && signupStore && signup.mode !== "manual" && (
+      {signup && signupStore && signup.mode !== "manual" && signup.mode !== "app" && (
         <ConnectNumberDialog
           storeId={signupStore.id}
           storeName={signupStore.name}

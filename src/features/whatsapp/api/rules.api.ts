@@ -21,6 +21,7 @@ export interface WhatsAppRuleDto {
   triggerLabel: string | null;
   templateId: string | null;
   active: boolean;
+  manualSend?: boolean;
   blockedReason: WhatsAppRuleBlockedReasonCode | null;
   when: WhatsAppRuleWhen;
   allowedWhenModes: WhatsAppRuleWhenMode[];

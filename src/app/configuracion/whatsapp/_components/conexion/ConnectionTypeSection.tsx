@@ -28,9 +28,6 @@ const TYPE_PRESENTATION: Record<WhatsAppConnectionType, { icon: LucideIcon; tone
   [WHATSAPP_CONNECTION_TYPES.APP_MANUAL]: { icon: UserRound, tone: "warn" },
 };
 
-/** Types POWIP cannot connect yet: shown, never selectable. */
-const UNDER_CONSTRUCTION: WhatsAppConnectionType[] = [WHATSAPP_CONNECTION_TYPES.APP_MANUAL];
-
 function TypeCard({
   definition,
   current,
@@ -40,16 +37,13 @@ function TypeCard({
 }) {
   const titleId = useId();
   const { icon: Icon, tone } = TYPE_PRESENTATION[definition.value];
-  const pending = UNDER_CONSTRUCTION.includes(definition.value);
   return (
     <li
       aria-labelledby={titleId}
       aria-current={current ? "true" : undefined}
-      aria-disabled={pending ? "true" : undefined}
       className={cn(
         "relative flex min-w-0 flex-col gap-2 rounded-[14px] border-[1.5px] border-wa-border bg-wa-surface p-4",
         current && "border-wa-whatsapp bg-wa-whatsapp-soft",
-        pending && "border-dashed bg-wa-surface-2",
       )}
     >
       <span className="flex items-center justify-between gap-2">
@@ -63,11 +57,7 @@ function TypeCard({
               En uso
             </WaPill>
           )}
-          {pending ? (
-            <WaPill tone="warn">En construcción</WaPill>
-          ) : (
-            <WaPill tone={tone}>{definition.badge}</WaPill>
-          )}
+          <WaPill tone={tone}>{definition.badge}</WaPill>
         </span>
       </span>
       <span id={titleId} className="text-[15px] font-semibold text-wa-fg">
@@ -113,7 +103,7 @@ export function ConnectionTypeSection({ storeName, status }: ConnectionTypeSecti
             ? `Así se conecta el número principal de ${storeName}. El tipo actual se mostrará cuando POWIP informe la conexión de la tienda.`
             : !connected
               ? `Conecta un número de ${storeName} para ver su tipo.`
-              : `Así está conectado hoy el número principal de ${storeName}. El tipo depende de cómo se conectó con Meta: para cambiarlo hay que volver a conectar el número.`
+              : `Así está conectado hoy el número principal de ${storeName}. El tipo depende de cómo se agregó el número: para cambiarlo hay que volver a agregarlo.`
         }
       />
       <ul className="grid grid-cols-1 gap-3.5 min-[1050px]:grid-cols-3">

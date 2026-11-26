@@ -21,6 +21,7 @@ export function toWhatsAppRule(dto: WhatsAppRuleDto): WhatsAppRule {
     triggerLabel: dto.triggerLabel,
     templateId: dto.templateId,
     active: dto.active,
+    manualSend: !!dto.manualSend,
     blockedReason: dto.blockedReason ? BLOCKED_REASON_TEXT[dto.blockedReason] : null,
     when: { ...dto.when },
     allowedWhenModes: [...dto.allowedWhenModes],

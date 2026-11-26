@@ -105,6 +105,8 @@ export function StoreNumbersSection({
                     <WaPill tone="warn">Nombre en revisión</WaPill>
                   ) : rejected ? (
                     <WaPill tone="err">Meta rechazó el nombre</WaPill>
+                  ) : row.account.connectionType === "app_manual" ? (
+                    <WaPill tone="warn">Envío manual</WaPill>
                   ) : (
                     <WaPill tone="ok">
                       <WaDot className="size-1.5 shadow-none" />
@@ -114,11 +116,13 @@ export function StoreNumbersSection({
                 {row.kind === "not-connected" && <WaPill>Sin conectar</WaPill>}
                 {row.kind === "connected" && (
                   <span className="wa-num min-w-[150px] text-xs text-wa-muted">
-                    {inReview
-                      ? "Puedes enviar mientras Meta revisa el nombre"
-                      : row.account.messagesThisMonth === null
-                        ? "Mensajes del mes sin dato"
-                        : `${row.account.messagesThisMonth.toLocaleString("es-PE")} mensajes este mes`}
+                    {row.account.connectionType === "app_manual"
+                      ? "Powip no envía solo"
+                      : inReview
+                        ? "Puedes enviar mientras Meta revisa el nombre"
+                        : row.account.messagesThisMonth === null
+                          ? "Mensajes del mes sin dato"
+                          : `${row.account.messagesThisMonth.toLocaleString("es-PE")} mensajes este mes`}
                   </span>
                 )}
                 {row.kind === "not-connected" && (

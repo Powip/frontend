@@ -236,6 +236,8 @@ interface AssistedQueueSectionProps {
     "markAssistedOpened" | "markAssistedSent" | "discardAssisted"
   >;
   onRetry?: () => void;
+  /** Número «Solo app» principal de la tienda: desde él se envían los avisos. */
+  appOnlyPhone?: string | null;
 }
 
 export function AssistedQueueSection({
@@ -244,6 +246,7 @@ export function AssistedQueueSection({
   blockedReason,
   mutations,
   onRetry,
+  appOnlyPhone,
 }: AssistedQueueSectionProps) {
   const reasonId = useId();
   const [discarding, setDiscarding] = useState<WhatsAppAssistedItem | null>(null);
@@ -261,14 +264,18 @@ export function AssistedQueueSection({
       <WhatsAppResourceState
         state={queue}
         pendingTitle="Bandeja pendiente de integración"
-        pendingDescription="Los avisos aparecerán aquí cuando la contingencia esté activa y POWIP los genere."
+        pendingDescription={
+          appOnlyPhone
+            ? "Los avisos de la tienda aparecerán aquí cuando Powip los genere."
+            : "Los avisos aparecerán aquí cuando la contingencia esté activa y POWIP los genere."
+        }
         loadingLabel="Cargando la bandeja"
         errorTitle="No se pudo cargar la bandeja"
         onRetry={onRetry}
         isEmpty={(data) => data.items.length === 0}
         empty={
           <p className="m-0 text-[13px] text-wa-muted">
-            {contingencyActive === false
+            {contingencyActive === false && !appOnlyPhone
               ? "No hay mensajes por enviar. La bandeja se llena cuando la contingencia está activa."
               : "No hay mensajes por enviar."}
           </p>
@@ -302,9 +309,11 @@ export function AssistedQueueSection({
         )}
       </WhatsAppResourceState>
       <p className="m-0 text-xs text-wa-muted">
-        El mensaje se abre en el celular con el texto y el link de rastreo listos. Abrir WhatsApp no
-        confirma el envío: la fila cambia recién cuando tocas «Ya lo envié» y POWIP lo registra. En
-        contingencia no hay estados de entrega ni de lectura.
+        {appOnlyPhone
+          ? `Abre cada aviso y envíalos desde el WhatsApp de ${appOnlyPhone}. `
+          : "El mensaje se abre en el celular con el texto y el link de rastreo listos. "}
+        Abrir WhatsApp no confirma el envío: la fila cambia recién cuando tocas «Ya lo envié» y
+        POWIP lo registra. No hay estados de entrega ni de lectura.
       </p>
       {discarding && (
         <DiscardDialog

@@ -1,6 +1,6 @@
 "use client";
 
-import { History, Plus, Smartphone, Star } from "lucide-react";
+import { History, Plus, Smartphone, Star, UserRound } from "lucide-react";
 import { useId, useState } from "react";
 import {
   AlertDialog,
@@ -46,7 +46,7 @@ import { type ActionState, type ConnectionMutations, errorMessage } from "./conn
 /** Valor del selector para «sin vendedora»: el número es de la tienda. */
 const STORE_OWNED = "__store__";
 
-export type AddNumberMode = "api" | "coex" | "manual";
+export type AddNumberMode = "api" | "coex" | "manual" | "app";
 
 interface StoreWhatsAppNumbersSectionProps {
   storeName: string;
@@ -320,6 +320,15 @@ export function StoreWhatsAppNumbersSection({
         </Button>
         <Button
           type="button"
+          className={waButton({ size: "sm" })}
+          disabled={blocked}
+          onClick={() => onAdd("app")}
+        >
+          <UserRound aria-hidden="true" />
+          Agregar número solo app
+        </Button>
+        <Button
+          type="button"
           className={waButton({ size: "sm", variant: "ghost" })}
           disabled={blocked}
           onClick={() => onAdd("manual")}
@@ -343,7 +352,9 @@ export function StoreWhatsAppNumbersSection({
           <div className={cn(waDialogBody, "space-y-3")}>
             <AlertDialogDescription className="m-0 text-sm text-wa-muted">
               Solo se desconecta este número. Los otros números de {storeName} siguen funcionando.
-              Sus chats se conservan en la Bandeja.
+              {toDisconnect?.connectionType === "app_manual"
+                ? " El número sigue igual en el celular."
+                : " Sus chats se conservan en la Bandeja."}
             </AlertDialogDescription>
           </div>
           <AlertDialogFooter className={waDialogFooter}>

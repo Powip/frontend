@@ -6,6 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   actOnWhatsAppAssistedItem,
   assignWhatsAppNumber,
+  connectAppOnlyWhatsAppNumber,
   getWhatsAppContingency,
   getWhatsAppPricing,
   getWhatsAppTestRunStatus,
@@ -376,6 +377,18 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
     discardAssisted: async ({ itemId, reason }) => {
       await actOnWhatsAppAssistedItem(itemId, "discard", reason);
       await queryClient.invalidateQueries({ queryKey: assistedKey });
+    },
+    connectAppOnly: async ({ role, seller, ...input }) => {
+      const saved = await connectAppOnlyWhatsAppNumber({
+        ...input,
+        ...(role === "seller" && seller
+          ? { assignedUserId: seller.id, assignedUserName: seller.name }
+          : {}),
+      });
+      // «Número principal de la tienda»: envía (a mano) los avisos de la tienda.
+      if (role === "store") await setPrimaryWhatsAppNumber(saved.id);
+      await reloadAfterChange();
+      await queryClient.invalidateQueries({ queryKey: ["whatsapp", "assisted-queue"] });
     },
     assignNumber: async ({ accountId, userId, userName }) => {
       await assignWhatsAppNumber(accountId, { userId, userName });

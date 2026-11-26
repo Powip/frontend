@@ -120,12 +120,14 @@ describe("Tipo de conexión", () => {
     expect(screen.getByText(label)).toBeInTheDocument();
   });
 
-  it("muestra «Solo app» en construcción y sin poder elegirla", () => {
+  it("explica lo que «Solo app» no hace", () => {
     render(<ConnectionView {...connected()} />);
     const appOnly = card(/Solo app WhatsApp Business/);
-    expect(appOnly).toHaveTextContent("En construcción");
-    expect(appOnly).toHaveAttribute("aria-disabled", "true");
-    expect(appOnly).not.toHaveAttribute("aria-current");
+    expect(appOnly).not.toHaveTextContent("En construcción");
+    expect(appOnly).not.toHaveAttribute("aria-disabled");
+    expect(appOnly).toHaveTextContent("No envía solo");
+    expect(appOnly).toHaveTextContent("No recibe mensajes en Powip");
+    expect(appOnly).toHaveTextContent("Sin Bandeja ni Pau");
   });
 
   it("muestra el tipo de cada número de la tienda", () => {
