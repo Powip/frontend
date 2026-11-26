@@ -14,6 +14,7 @@ import {
   WHATSAPP_CONNECTION_STATES,
   WHATSAPP_CONNECTION_TYPES,
   WHATSAPP_PERMISSION_CODES,
+  type WhatsAppConnectionType,
 } from "@/features/whatsapp/enums/whatsapp.enums";
 import type {
   WhatsAppAccount,
@@ -40,6 +41,7 @@ import {
 import { cn } from "@/lib/utils";
 import { AppOnlyNumberDialog } from "./AppOnlyNumberDialog";
 import { AssistedQueueSection } from "./AssistedQueueSection";
+import { ChangeConnectionTypeDialog } from "./ChangeConnectionTypeDialog";
 import { ConnectedNumberSection } from "./ConnectedNumberSection";
 import { ConnectionTypeSection } from "./ConnectionTypeSection";
 import { ConnectNumberDialog, type SignupPhase } from "./ConnectNumberDialog";
@@ -111,6 +113,17 @@ export function ConnectionView({
     phase?: SignupPhase;
     mode?: AddNumberMode;
   } | null>(initialSignup);
+  // Cambio de modo pedido desde las tarjetas «Tipo de conexión».
+  const [change, setChange] = useState<{ storeId: string; target: WhatsAppConnectionType } | null>(
+    null,
+  );
+  const [reconnect, setReconnect] = useState<{
+    storeId: string;
+    mode: "api" | "coex";
+    phone: string;
+    isCompanyDefault: boolean;
+  } | null>(null);
+  const [typeNotice, setTypeNotice] = useState<{ storeId: string; text: string } | null>(null);
   const [testRun, setTestRun] = useState<WhatsAppTestRun | null>(initialTestRun);
   const refreshTest = mutations.refreshTest;
   const testInProgress =
@@ -181,6 +194,34 @@ export function ConnectionView({
   const storeSendsByApi =
     !!principal && principal.connectionType !== WHATSAPP_CONNECTION_TYPES.APP_MANUAL;
 
+  const numbers = accounts.kind === "ready" ? accounts.data : [];
+  const changeCandidates =
+    change?.storeId === store.id
+      ? numbers.filter((item) => item.connectionType !== change.target)
+      : [];
+  const requestChange = (target: WhatsAppConnectionType) => {
+    setChange(null);
+    if (numbers.length === 0) {
+      setTypeNotice({
+        storeId: store.id,
+        text: `Todavía no hay un número conectado en ${store.name}. Elige cómo conectarlo abajo, en «Números de ${store.name}».`,
+      });
+      return;
+    }
+    if (numbers.every((item) => item.connectionType === target)) {
+      setTypeNotice({
+        storeId: store.id,
+        text:
+          numbers.length === 1
+            ? "El número ya está conectado así."
+            : "Todos los números ya están conectados así.",
+      });
+      return;
+    }
+    setTypeNotice(null);
+    setChange({ storeId: store.id, target });
+  };
+
   return (
     <div className="flex min-w-0 flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-2.5">
@@ -225,7 +266,14 @@ export function ConnectionView({
         </p>
       </div>
 
-      <ConnectionTypeSection key={`type-${store.id}`} storeName={store.name} status={status} />
+      <ConnectionTypeSection
+        key={`type-${store.id}`}
+        storeName={store.name}
+        status={status}
+        onSelect={accounts.kind === "ready" ? requestChange : undefined}
+        blockedReason={connectionPermission}
+        notice={typeNotice?.storeId === store.id ? typeNotice.text : null}
+      />
 
       <StoreWhatsAppNumbersSection
         key={`numbers-${store.id}`}
@@ -307,6 +355,48 @@ export function ConnectionView({
 
       <MessagingCostSection pricing={pricing} usage={usage} now={now} onRetry={onRetry} />
 
+      {change && changeCandidates.length > 0 && (
+        <ChangeConnectionTypeDialog
+          storeName={store.name}
+          target={change.target}
+          candidates={changeCandidates}
+          askWhich={numbers.length > 1}
+          switchToApp={mutations.switchToApp}
+          onReconnect={(item) => {
+            setChange(null);
+            if (!item.phone?.startsWith("+")) {
+              setTypeNotice({
+                storeId: store.id,
+                text: "Powip no tiene el teléfono de este número. Toca «Actualizar» y vuelve a intentar.",
+              });
+              return;
+            }
+            setReconnect({
+              storeId: store.id,
+              mode: change.target === WHATSAPP_CONNECTION_TYPES.COEXISTENCE ? "coex" : "api",
+              phone: item.phone,
+              isCompanyDefault: !!item.isCompanyDefault,
+            });
+          }}
+          onClose={() => setChange(null)}
+        />
+      )}
+      {reconnect?.storeId === store.id && (
+        <ConnectNumberDialog
+          storeId={store.id}
+          storeName={store.name}
+          mode={reconnect.mode}
+          reconnect={reconnect}
+          blockedReason={combineBlockReasons(
+            signupAvailable ? null : (signupUnavailableReason ?? SIGNUP_UNAVAILABLE_REASON),
+            pending(mutations.startSignup),
+            connectionPermission,
+          )}
+          startSignup={signupAvailable ? mutations.startSignup : undefined}
+          selectSignupPhone={signupAvailable ? mutations.selectSignupPhone : undefined}
+          onClose={() => setReconnect(null)}
+        />
+      )}
       {signup && signupStore && signup.mode === "app" && (
         <AppOnlyNumberDialog
           storeId={signupStore.id}

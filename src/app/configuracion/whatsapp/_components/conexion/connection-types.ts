@@ -17,6 +17,8 @@ export interface ConnectionMutations {
       mode: "api" | "coex";
       /** Número que la persona dice que conecta (opcional): Powip no adivina cuál es. */
       expectedPhoneNumber?: string;
+      /** Reconexión: el número conserva su vendedora y su marca de principal. */
+      keepRole?: boolean;
     } & NumberRoleChoice,
   ) => Promise<void>;
   /**
@@ -29,8 +31,11 @@ export interface ConnectionMutations {
       selectionId: string;
       phoneNumberId?: string;
       confirmReassign?: boolean;
+      keepRole?: boolean;
     } & NumberRoleChoice,
   ) => Promise<void>;
+  /** Pasa un número conectado a «Solo app» (Powip olvida la llave de Meta). */
+  switchToApp?: (accountId: string) => Promise<void>;
   /** Alta manual: suma un número a la tienda con los datos de WhatsApp Manager. */
   connectManual?: (
     input: {

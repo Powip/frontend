@@ -42,6 +42,11 @@ export async function connectAppOnlyWhatsAppNumber(input: {
   return data;
 }
 
+/** Pasa un número conectado a «Solo app»: Powip deja de enviar y recibir con él. */
+export async function switchWhatsAppNumberToAppOnly(accountId: string): Promise<void> {
+  await axiosAuth.post(`${BASE}/accounts/${encodeURIComponent(accountId)}/switch-to-app`, {});
+}
+
 /** Número principal de la tienda: el que envía los avisos automáticos. */
 export async function setPrimaryWhatsAppNumber(accountId: string): Promise<void> {
   await axiosAuth.post(`${BASE}/accounts/${encodeURIComponent(accountId)}/primary`, {});

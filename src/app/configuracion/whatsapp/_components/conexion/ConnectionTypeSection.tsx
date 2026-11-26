@@ -20,6 +20,12 @@ import { cn } from "@/lib/utils";
 interface ConnectionTypeSectionProps {
   storeName: string;
   status: ResourceState<WhatsAppConnectionStatus>;
+  /** Tocar una tarjeta pide cambiar el modo; la marca solo sigue al modo guardado. */
+  onSelect?: (type: WhatsAppConnectionType) => void;
+  /** Por qué no se puede cambiar (permiso o integración pendiente). */
+  blockedReason?: string | null;
+  /** Respuesta al toque cuando no hay nada que cambiar. */
+  notice?: string | null;
 }
 
 const TYPE_PRESENTATION: Record<WhatsAppConnectionType, { icon: LucideIcon; tone: WaTone }> = {
@@ -31,9 +37,11 @@ const TYPE_PRESENTATION: Record<WhatsAppConnectionType, { icon: LucideIcon; tone
 function TypeCard({
   definition,
   current,
+  onSelect,
 }: {
   definition: ConnectionTypeDefinition;
   current: boolean;
+  onSelect?: () => void;
 }) {
   const titleId = useId();
   const { icon: Icon, tone } = TYPE_PRESENTATION[definition.value];
@@ -41,50 +49,67 @@ function TypeCard({
     <li
       aria-labelledby={titleId}
       aria-current={current ? "true" : undefined}
-      className={cn(
-        "relative flex min-w-0 flex-col gap-2 rounded-[14px] border-[1.5px] border-wa-border bg-wa-surface p-4",
-        current && "border-wa-whatsapp bg-wa-whatsapp-soft",
-      )}
+      className="flex min-w-0"
     >
-      <span className="flex items-center justify-between gap-2">
-        <span className="grid size-9 place-items-center rounded-[10px] border border-wa-border bg-wa-surface-2 text-wa-whatsapp-dark">
-          <Icon className="size-[18px]" aria-hidden="true" />
-        </span>
-        <span className="flex flex-wrap items-center justify-end gap-1.5">
-          {current && (
-            <WaPill tone="ok">
-              <Check className="size-3" aria-hidden="true" />
-              En uso
-            </WaPill>
-          )}
-          <WaPill tone={tone}>{definition.badge}</WaPill>
-        </span>
-      </span>
-      <span id={titleId} className="text-[15px] font-semibold text-wa-fg">
-        {definition.title}
-      </span>
-      <span className="text-[13px] text-wa-muted">{definition.summary}</span>
-      <span className="mt-1 flex flex-col gap-1 text-[12.5px] text-wa-fg">
-        <span className="sr-only">Ventajas:</span>
-        {definition.advantages.map((item) => (
-          <span key={item} className="flex items-start gap-1.5">
-            <Check className="mt-[3px] size-3.5 shrink-0 text-wa-green" aria-hidden="true" />
-            {item}
+      <button
+        type="button"
+        aria-labelledby={titleId}
+        aria-pressed={current}
+        disabled={!onSelect}
+        onClick={onSelect}
+        className={cn(
+          "flex w-full min-w-0 flex-col gap-2 rounded-[14px] border-[1.5px] border-wa-border bg-wa-surface p-4 text-left",
+          "enabled:cursor-pointer enabled:hover:border-wa-whatsapp",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wa-whatsapp",
+          current && "border-wa-whatsapp bg-wa-whatsapp-soft",
+        )}
+      >
+        <span className="flex items-center justify-between gap-2">
+          <span className="grid size-9 place-items-center rounded-[10px] border border-wa-border bg-wa-surface-2 text-wa-whatsapp-dark">
+            <Icon className="size-[18px]" aria-hidden="true" />
           </span>
-        ))}
-        <span className="sr-only">Limitaciones:</span>
-        {definition.limitations.map((item) => (
-          <span key={item} className="flex items-start gap-1.5">
-            <X className="mt-[3px] size-3.5 shrink-0 text-wa-red" aria-hidden="true" />
-            {item}
+          <span className="flex flex-wrap items-center justify-end gap-1.5">
+            {current && (
+              <WaPill tone="ok">
+                <Check className="size-3" aria-hidden="true" />
+                En uso
+              </WaPill>
+            )}
+            <WaPill tone={tone}>{definition.badge}</WaPill>
           </span>
-        ))}
-      </span>
+        </span>
+        <span id={titleId} className="text-[15px] font-semibold text-wa-fg">
+          {definition.title}
+        </span>
+        <span className="text-[13px] text-wa-muted">{definition.summary}</span>
+        <span className="mt-1 flex flex-col gap-1 text-[12.5px] text-wa-fg">
+          <span className="sr-only">Ventajas:</span>
+          {definition.advantages.map((item) => (
+            <span key={item} className="flex items-start gap-1.5">
+              <Check className="mt-[3px] size-3.5 shrink-0 text-wa-green" aria-hidden="true" />
+              {item}
+            </span>
+          ))}
+          <span className="sr-only">Limitaciones:</span>
+          {definition.limitations.map((item) => (
+            <span key={item} className="flex items-start gap-1.5">
+              <X className="mt-[3px] size-3.5 shrink-0 text-wa-red" aria-hidden="true" />
+              {item}
+            </span>
+          ))}
+        </span>
+      </button>
     </li>
   );
 }
 
-export function ConnectionTypeSection({ storeName, status }: ConnectionTypeSectionProps) {
+export function ConnectionTypeSection({
+  storeName,
+  status,
+  onSelect,
+  blockedReason,
+  notice,
+}: ConnectionTypeSectionProps) {
   const ready = status.kind === "ready" ? status.data : null;
   const connected =
     ready !== null &&
@@ -103,7 +128,7 @@ export function ConnectionTypeSection({ storeName, status }: ConnectionTypeSecti
             ? `Así se conecta el número principal de ${storeName}. El tipo actual se mostrará cuando POWIP informe la conexión de la tienda.`
             : !connected
               ? `Conecta un número de ${storeName} para ver su tipo.`
-              : `Así está conectado hoy el número principal de ${storeName}. El tipo depende de cómo se agregó el número: para cambiarlo hay que volver a agregarlo.`
+              : `Así está conectado hoy el número principal de ${storeName}. Para cambiar el modo, toca otra tarjeta.`
         }
       />
       <ul className="grid grid-cols-1 gap-3.5 min-[1050px]:grid-cols-3">
@@ -112,9 +137,14 @@ export function ConnectionTypeSection({ storeName, status }: ConnectionTypeSecti
             key={definition.value}
             definition={definition}
             current={current === definition.value}
+            onSelect={onSelect && !blockedReason ? () => onSelect(definition.value) : undefined}
           />
         ))}
       </ul>
+      {blockedReason && <p className="m-0 mt-3 text-xs text-wa-muted">{blockedReason}</p>}
+      <p role="status" className="m-0 mt-3 text-[13px] text-wa-fg empty:hidden">
+        {notice}
+      </p>
     </WaCard>
   );
 }

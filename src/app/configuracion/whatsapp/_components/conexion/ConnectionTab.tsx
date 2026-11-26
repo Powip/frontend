@@ -15,6 +15,7 @@ import {
   listWhatsAppCoexistence,
   sendWhatsAppAccountTest,
   setPrimaryWhatsAppNumber,
+  switchWhatsAppNumberToAppOnly,
   syncWhatsAppAppData,
   updateWhatsAppContingency,
 } from "@/features/whatsapp/api/connection-ops.api";
@@ -41,7 +42,6 @@ import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp
 import type { WhatsAppTemplate } from "@/features/whatsapp/models/template.model";
 import type { ContingencyValues } from "@/features/whatsapp/schemas/connection.schema";
 import { resolveEffectivePermissions } from "@/features/whatsapp/utils/whatsapp-permissions.util";
-import { useViewedStore } from "../viewed-store-context";
 import { launchEmbeddedSignup } from "@/lib/metaEmbeddedSignup";
 import {
   completeEmbeddedSignup,
@@ -55,6 +55,7 @@ import {
   getWhatsAppStatus,
   refreshWhatsAppAccount,
 } from "@/services/whatsappService";
+import { useViewedStore } from "../viewed-store-context";
 import { ConnectionView } from "./ConnectionView";
 import {
   type ConnectionMutations,
@@ -398,6 +399,11 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       await reloadAfterChange();
       await queryClient.invalidateQueries({ queryKey: ["whatsapp", "assisted-queue"] });
     },
+    switchToApp: async (accountId) => {
+      await switchWhatsAppNumberToAppOnly(accountId);
+      await reloadAfterChange();
+      await queryClient.invalidateQueries({ queryKey: ["whatsapp", "assisted-queue"] });
+    },
     assignNumber: async ({ accountId, userId, userName }) => {
       await assignWhatsAppNumber(accountId, { userId, userName });
       await reloadAfterChange();
@@ -427,7 +433,7 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       await reloadAfterChange();
     },
     startSignup: async (
-      { mode, role, seller, confirmNoCoexistence, expectedPhoneNumber } = {
+      { mode, role, seller, confirmNoCoexistence, expectedPhoneNumber, keepRole } = {
         storeId: "",
         mode: "api",
       },
@@ -450,7 +456,7 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
           ...(confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
           ...(expectedPhoneNumber ? { expectedPhoneNumber } : {}),
         });
-        await applyNumberRole(saved?.data?.id, { role, seller });
+        if (!keepRole) await applyNumberRole(saved?.data?.id, { role, seller });
         await reloadAfterChange();
         return;
       }
@@ -460,7 +466,8 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
         !!LOCAL_TEST_WABA.phoneNumberId &&
         !!LOCAL_TEST_WABA.accessToken;
 
-      if (process.env.NODE_ENV === "production" || !hasLocalTestWaba) {
+      // La WABA de prueba es otro número: nunca sirve para cambiar el modo de uno conectado.
+      if (keepRole || process.env.NODE_ENV === "production" || !hasLocalTestWaba) {
         throw new Error(
           "La conexión con Meta (Embedded Signup) todavía no está disponible. Configura la WABA de prueba en .env.local para desarrollo.",
         );
@@ -487,6 +494,7 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
       seller,
       confirmNoCoexistence,
       confirmReassign,
+      keepRole,
     }) => {
       const saved = await selectEmbeddedSignupPhone({
         storeId,
@@ -495,7 +503,7 @@ export function ConnectionTab({ canManage }: ConnectionTabProps) {
         ...(confirmNoCoexistence ? { confirmNoCoexistence: true } : {}),
         ...(confirmReassign ? { confirmReassign: true } : {}),
       });
-      await applyNumberRole(saved?.data?.id, { role, seller });
+      if (!keepRole) await applyNumberRole(saved?.data?.id, { role, seller });
       await reloadAfterChange();
     },
   };
