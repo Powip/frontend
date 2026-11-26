@@ -43,6 +43,16 @@ export const SUNAT_TAX_AFFECTATION_TYPES = {
   INAFECTO: "30",
   EXPORTACION: "40",
   GRATUITO: "21",
+  /**
+   * Catálogo 07 código 13: «regalo aparte» (retiro gravado). El cliente no
+   * paga nada y la empresa asume el IGV del valor referencial.
+   */
+  REGALO_APARTE: "13",
+  /**
+   * Catálogo 07 código 31: «regalo de promoción» (bonificación). Va con la
+   * compra, es igual para todos los que compran lo mismo y no lleva IGV.
+   */
+  REGALO_PROMOCION: "31",
 } as const;
 
 export type SunatTaxAffectationType =

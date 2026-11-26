@@ -1,3 +1,5 @@
+import { getGiftLineValue, isGiftTaxType } from "./gift-lines";
+
 /**
  * A document line whose sale value ends up at S/ 0.00 once its discount is
  * subtracted.
@@ -13,6 +15,23 @@ interface LineAmounts {
   quantity: number;
   unitPrice: number;
   discountAmount: number;
+  taxType?: string;
+  /** Gift (13/31) only: its value is the valor referencial, not the price. */
+  referenceUnitValue?: number;
+}
+
+/**
+ * Sale value SUNAT checks for the line, at 2 decimals. A gift (13/31) is
+ * charged 0 and is worth its valor referencial × quantity.
+ */
+export function getLineValue(item: LineAmounts): number {
+  if (isGiftTaxType(item.taxType)) {
+    return getGiftLineValue(item);
+  }
+
+  const subtotal = (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
+
+  return Number((subtotal - (Number(item.discountAmount) || 0)).toFixed(2));
 }
 
 /**
@@ -23,16 +42,15 @@ interface LineAmounts {
  * price - line discount, at 2 decimals). When that value is 0.00 it rejects
  * the WHOLE document, and a rejected document has already spent its number.
  * It happens with ordinary sales: a gift at price 0, a product with a 100%
- * discount, or free shipping stored as a shipping line whose discount equals
- * its price.
+ * discount, or a line edited down to 0 on screen. Free shipping never gets
+ * here: the builder leaves the fully discounted shipping line out.
  *
  * The backend refuses these too (`SUNAT_DOCUMENT_LINE_WITHOUT_VALUE`); this
  * lets the screen say it before sending, with the same rounding.
  */
 export function findLinesWithoutValue(items: LineAmounts[]): LineWithoutValue[] {
   return items.flatMap((item, index) => {
-    const subtotal = (Number(item.quantity) || 0) * (Number(item.unitPrice) || 0);
-    const lineValue = Number((subtotal - (Number(item.discountAmount) || 0)).toFixed(2));
+    const lineValue = getLineValue(item);
 
     return lineValue > 0 ? [] : [{ lineNumber: index + 1, productName: item.productName }];
   });

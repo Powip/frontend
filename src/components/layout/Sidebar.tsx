@@ -1,5 +1,6 @@
 "use client";
 import Image from "next/image";
+import { PAGINAS_FUERA_DE_MENU, SECCIONES_ADMIN } from "@/app/administracion/_components/secciones";
 import Link from "next/link";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -25,7 +26,6 @@ import {
   BarChart2,
   Headphones,
   Settings,
-  FileSearch,
   Tags,
   MapPin,
   PackagePlus,
@@ -33,16 +33,11 @@ import {
   History,
   ChevronDown,
   ChevronUp,
-  Activity,
   FileSpreadsheet,
   Wallet,
   Zap,
-  CalendarClock,
   Megaphone,
-  PackageX,
   Landmark,
-  PiggyBank,
-  CalendarRange,
   Handshake,
   LayoutList,
   Plug,
@@ -74,6 +69,7 @@ import {
   hasRouteAccess,
   isAccessGatedRoute,
   isCourierRole,
+  canSeeWhatsAppTab,
 } from "@/config/permissions.config";
 import {
   DropdownMenu,
@@ -143,8 +139,23 @@ function AddonBadge() {
 // El módulo de inventario tiene una ruta por pestaña (/inventario/stock, /movimientos, /unificacion):
 // su entrada del menú sigue activa en cualquiera de ellas. El resto de entradas compara la ruta exacta.
 const SECTION_ROOTS = ["/inventario"];
+
+// Administración (FEAT-34): cada entrada es una sección con varias subpestañas; sigue activa en cualquiera de ellas.
+const ADMIN_SECCION_DE = new Map<string, string>(
+  [
+    ...SECCIONES_ADMIN.flatMap((seccion) => seccion.paginas.map((p) => [p.href, seccion.paginas[0].href] as const)),
+    ...PAGINAS_FUERA_DE_MENU.map((p) => {
+      const seccion = SECCIONES_ADMIN.find((s) => s.id === p.seccion);
+      return [p.href, seccion?.paginas[0].href ?? p.href] as const;
+    }),
+  ],
+);
+
 export function isChildActive(pathname: string, href: string) {
-  return pathname === href || (SECTION_ROOTS.includes(href) && pathname.startsWith(`${href}/`));
+  if (pathname === href) return true;
+  if (SECTION_ROOTS.includes(href) && pathname.startsWith(`${href}/`)) return true;
+  const raizAdmin = ADMIN_SECCION_DE.get(pathname);
+  return raizAdmin !== undefined && raizAdmin === href;
 }
 
 export function Sidebar({ className }: SidebarProps) {
@@ -354,42 +365,13 @@ export function Sidebar({ className }: SidebarProps) {
       {
         name: "Administración",
         icon: BarChart2,
+        // FEAT-34: las 5 secciones de Administración; cada una abre su primera subpestaña.
         children: [
-          { name: "Reporte rápido", href: "/administracion/reporte", icon: Zap },
-          { name: "Resumen", href: "/administracion/resumen", icon: BarChart },
-          { name: "Control diario", href: "/administracion/diario", icon: CalendarClock },
-          {
-            name: "Gastos & Costos",
-            href: "/administracion/gastos",
-            icon: DollarSign,
-          },
-          {
-            name: "Utilidad & Margen",
-            href: "/administracion/utilidad",
-            icon: Activity,
-          },
-          {
-            name: "Canales & Marketplaces",
-            href: "/administracion/canales",
-            icon: Building2,
-          },
+          { name: "Resultados", href: "/administracion/resumen", icon: BarChart },
+          { name: "Ventas", href: "/administracion/reporte", icon: Zap },
+          { name: "Costos", href: "/administracion/gastos", icon: DollarSign },
           { name: "Inversión publicitaria", href: "/administracion/pauta", icon: Megaphone },
-          {
-            name: "Punto de Equilibrio",
-            href: "/administracion/equilibrio",
-            icon: FileSearch,
-          },
-          {
-            name: "Margen x Producto",
-            href: "/administracion/margen-producto",
-            icon: Tags,
-          },
-          { name: "Merma", href: "/administracion/merma", icon: PackageX },
-          { name: "Cuentas x Cobrar/Pagar", href: "/administracion/cuentas", icon: Wallet },
-          { name: "Flujo de Caja", href: "/administracion/flujo", icon: Landmark },
-          { name: "Liquidaciones", href: "/administracion/liquidaciones", icon: Truck },
-          { name: "Capital & ROI", href: "/administracion/capital", icon: PiggyBank },
-          { name: "Resumen Anual", href: "/administracion/anual", icon: CalendarRange },
+          { name: "Caja", href: "/administracion/flujo", icon: Landmark },
         ],
       },
       {
@@ -440,7 +422,9 @@ export function Sidebar({ className }: SidebarProps) {
     const activeSubmenu = navigation.find((item) =>
       item.children?.some(
         (child) =>
-          pathname === child.href || pathname.startsWith(child.href + "/"),
+          pathname === child.href ||
+          pathname.startsWith(child.href + "/") ||
+          isChildActive(pathname, child.href),
       ),
     );
     if (activeSubmenu) {
@@ -462,7 +446,8 @@ export function Sidebar({ className }: SidebarProps) {
   // FEAT-24 H8-D5: al rol COURIER solo le queda su portal (Modo almacén); el resto del menú se le cierra.
   const courierOnly = isCourierRole(auth?.user.role);
   // Campanita de alertas de WhatsApp (X5): solo administradores mientras C-28 no defina otro permiso.
-  const showWhatsAppBell = isCompanyAdminRole(auth?.user.role);
+  // Además es un acceso a la pestaña de WhatsApp: solo para quien puede abrirla.
+  const showWhatsAppBell = isCompanyAdminRole(auth?.user.role) && canSeeWhatsAppTab(auth?.user.email);
 
   // Filtrar navegación por permisos y mostrar Superadmin solo a autorizados
   const filteredNavigation = navigation

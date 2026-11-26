@@ -1,5 +1,6 @@
 import type { SunatProfileResponseDto } from "../dto/sunat-profile-response.dto";
 import type { SunatProfile } from "../models/sunat-profile";
+import { toSunatTaxRegime } from "../utils/tax-regime";
 
 export function toSunatProfile(dto: SunatProfileResponseDto): SunatProfile {
   return {
@@ -16,6 +17,7 @@ export function toSunatProfile(dto: SunatProfileResponseDto): SunatProfile {
     ubigeo: dto.ubigeo,
     address: dto.address,
     establishmentCode: dto.establishmentCode,
+    taxRegime: toSunatTaxRegime(dto.taxRegime),
 
     logoUrl: dto.logoUrl,
 

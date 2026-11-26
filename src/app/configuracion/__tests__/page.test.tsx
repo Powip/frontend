@@ -6,8 +6,8 @@ jest.mock("@/contexts/AuthContext", () => ({ useAuth: jest.fn() }));
 jest.mock("@/components/header/HeaderConfig", () => ({ HeaderConfig: () => null }));
 jest.mock("../_components/HelpSection", () => ({ HelpHeaderLink: () => null, HelpSection: () => null }));
 
-const asRole = (role: string) =>
-  jest.mocked(useAuth).mockReturnValue({ auth: { user: { role } } } as unknown as ReturnType<typeof useAuth>);
+const asRole = (role: string, email?: string) =>
+  jest.mocked(useAuth).mockReturnValue({ auth: { user: { role, email } } } as unknown as ReturnType<typeof useAuth>);
 
 describe("Configuración (hub)", () => {
   it("el administrador ve 'Empresa' y 'Plan y facturación'", () => {
@@ -32,5 +32,15 @@ describe("Configuración (hub)", () => {
     asRole("OPERACIONES");
     render(<ConfiguracionPage />);
     expect(screen.queryByText("Usuarios y almacenes")).not.toBeInTheDocument();
+  });
+
+  it("solo joel@aranni.com.pe ve la tarjeta de WhatsApp", () => {
+    asRole("ADMINISTRADOR", "joel@aranni.com.pe");
+    const { unmount } = render(<ConfiguracionPage />);
+    expect(screen.getByText("Notificaciones por WhatsApp").closest("a")).toHaveAttribute("href", "/configuracion/whatsapp");
+    unmount();
+    asRole("ADMINISTRADOR", "demo@tienda.pe");
+    render(<ConfiguracionPage />);
+    expect(screen.queryByText("Notificaciones por WhatsApp")).not.toBeInTheDocument();
   });
 });

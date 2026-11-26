@@ -1,5 +1,6 @@
 import type { Order } from "@/features/sales/models/order";
 import { IGV_RATE } from "@/features/sunat/shared/constants/sunat.constants";
+import { isNuevoRus, type SunatTaxRegime } from "@/features/sunat/sunat-profile/utils/tax-regime";
 import { COUNTRY_CODES } from "../../shared/enums/sunat.enums";
 import {
   CURRENCIES,
@@ -10,6 +11,13 @@ import {
 } from "../enums/sunat-document.enums";
 import type { CreateSunatDocumentsFormValues } from "../schemas/create-sunat-documents.schema";
 import { calculateSunatDocumentTotals } from "./calculate-sunat-document-totals";
+import { markGiftCandidates } from "./gift-lines";
+import { NUEVO_RUS_TAX_TYPE } from "./nuevo-rus";
+
+export interface BuildSunatDocumentOptions {
+  /** Regime of the issuer that signs the document. Missing means GENERAL. */
+  taxRegime?: SunatTaxRegime | null;
+}
 
 type SunatDocument = CreateSunatDocumentsFormValues["documents"][number];
 
@@ -21,7 +29,12 @@ function roundCurrency(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function getDocumentTypeFromSale(sale: Order): SunatDocument["taxDocumentType"] {
+function getDocumentTypeFromSale(sale: Order, nuevoRus: boolean): SunatDocument["taxDocumentType"] {
+  // A Nuevo RUS issuer cannot issue facturas, even to a customer with RUC.
+  if (nuevoRus) {
+    return SUNAT_DOCUMENT_TYPES.SALES_RECEIPT;
+  }
+
   return sale.customer?.documentType === "RUC"
     ? SUNAT_DOCUMENT_TYPES.INVOICE
     : SUNAT_DOCUMENT_TYPES.SALES_RECEIPT;
@@ -186,9 +199,13 @@ function getUnallocatedDiscountCents(sale: Order, lineDiscountCents: number[]): 
   return Math.max(0, toCents(sale.discountTotal) - allocated);
 }
 
-function createItems(sale: Order): SunatItem[] {
+function createItems(sale: Order, taxRegime: SunatTaxRegime | null | undefined): SunatItem[] {
   const pricesIncludeTax = sale.taxMode === "INCLUIDO";
-  const taxType = SUNAT_TAX_AFFECTATION_TYPES.GRAVADO;
+  const nuevoRus = isNuevoRus(taxRegime);
+  // Nuevo RUS: no IGV on the boleta. The line is not GRAVADO, so
+  // toNetLineAmounts keeps the price as charged (no / 1.18) and the total
+  // stays what the customer paid.
+  const taxType = nuevoRus ? NUEVO_RUS_TAX_TYPE : SUNAT_TAX_AFFECTATION_TYPES.GRAVADO;
 
   // Importes de la venta, en centavos y en bruto (tal como se cobraron).
   const grossLineCents = sale.items.map((item) =>
@@ -210,7 +227,7 @@ function createItems(sale: Order): SunatItem[] {
     grossLineCents.map((gross, index) => gross - ownDiscountCents[index]),
   );
 
-  const productItems: SunatItem[] = sale.items.map((item, index) => {
+  const saleProductItems: SunatItem[] = sale.items.map((item, index) => {
     const quantity = Number(item.quantity) || 0;
     const rawUnitPrice = Number(item.unitPrice) || 0;
     const { unitPrice, subtotal, discountAmount } = toNetLineAmounts(
@@ -233,17 +250,30 @@ function createItems(sale: Order): SunatItem[] {
     };
   });
 
+  // Gifts (isGift, price 0 or 100% discount) are only marked here: the user
+  // chooses on screen how they go (31 promoción / 13 aparte). Until then they
+  // stay as the sale had them.
+  const productItems = markGiftCandidates(saleProductItems, sale, taxRegime);
+
   const shippingRawTotal = Number(sale.shippingTotal ?? 0);
 
   if (shippingRawTotal <= 0) {
     return productItems;
   }
 
-  const shippingTaxType = productItems.some(
-    (item) => item.taxType === SUNAT_TAX_AFFECTATION_TYPES.GRAVADO,
-  )
-    ? SUNAT_TAX_AFFECTATION_TYPES.GRAVADO
-    : SUNAT_TAX_AFFECTATION_TYPES.INAFECTO;
+  // Envío gratis: el descuento cubre todo el envío y el cliente no pagó nada
+  // por él. No va en el comprobante: una línea en S/ 0.00 la rechaza SUNAT
+  // (error 3105) y los totales no cambian sin ella. El envío con cobro, aunque
+  // tenga un descuento parcial, sigue yendo como línea.
+  if (shippingDiscountCents >= shippingGrossCents) {
+    return productItems;
+  }
+
+  const shippingTaxType = nuevoRus
+    ? NUEVO_RUS_TAX_TYPE
+    : productItems.some((item) => item.taxType === SUNAT_TAX_AFFECTATION_TYPES.GRAVADO)
+      ? SUNAT_TAX_AFFECTATION_TYPES.GRAVADO
+      : SUNAT_TAX_AFFECTATION_TYPES.INAFECTO;
 
   // Shipping is always quantity 1, so there's no per-unit-vs-line rounding
   // difference to worry about here — but routing it through the same
@@ -293,10 +323,13 @@ function calculateTotals(items: SunatItem[]) {
   };
 }
 
-export function buildSunatDocumentFromSale(sale: Order): SunatDocument {
-  const taxDocumentType = getDocumentTypeFromSale(sale);
+export function buildSunatDocumentFromSale(
+  sale: Order,
+  options: BuildSunatDocumentOptions = {},
+): SunatDocument {
+  const taxDocumentType = getDocumentTypeFromSale(sale, isNuevoRus(options.taxRegime));
 
-  const items = calculateItemSubtotals(createItems(sale));
+  const items = calculateItemSubtotals(createItems(sale, options.taxRegime));
 
   return {
     orderId: String(sale.id),

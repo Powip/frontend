@@ -3,6 +3,8 @@
 import { MessagesSquare } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import { canSeeWhatsAppTab } from "@/config/permissions.config";
+import { useAuth } from "@/contexts/AuthContext";
 import { getWhatsAppConversationsByOrder } from "@/features/whatsapp/api/threads.api";
 import { isWhatsAppContractAvailable } from "@/features/whatsapp/constants/whatsapp-contracts";
 import type { WhatsAppConversationDetail } from "@/features/whatsapp/models/conversation.model";
@@ -20,12 +22,15 @@ interface OrderWhatsAppMessagesViewProps {
   threads: ResourceState<WhatsAppConversationDetail[]>;
   now?: Date;
   onRetry?: () => void;
+  /** «Abrir conversación» lleva a la pestaña de WhatsApp: se oculta a quien no puede abrirla. */
+  canOpenConversation?: boolean;
 }
 
 export function OrderWhatsAppMessagesView({
   threads,
   now,
   onRetry,
+  canOpenConversation = true,
 }: OrderWhatsAppMessagesViewProps) {
   return (
     <section
@@ -71,13 +76,15 @@ export function OrderWhatsAppMessagesView({
                         </span>
                       )}
                     </span>
-                    <Link
-                      href={buildConversationHref(thread.id)}
-                      className="text-sm font-medium text-primary underline-offset-2 hover:underline"
-                    >
-                      Abrir conversación
-                      <span className="sr-only"> con {thread.phone}</span>
-                    </Link>
+                    {canOpenConversation && (
+                      <Link
+                        href={buildConversationHref(thread.id)}
+                        className="text-sm font-medium text-primary underline-offset-2 hover:underline"
+                      >
+                        Abrir conversación
+                        <span className="sr-only"> con {thread.phone}</span>
+                      </Link>
+                    )}
                   </div>
                   <WhatsAppThread
                     messages={thread.messages}
@@ -98,6 +105,7 @@ const PENDING = { kind: "pending-integration" } as const;
 const NO_STORE_NAMES: ReadonlyMap<string, string> = new Map();
 
 export function OrderWhatsAppMessages({ orderId }: { orderId: string | null | undefined }) {
+  const { auth } = useAuth();
   const available = isWhatsAppContractAvailable("threads");
   const [threads, setThreads] = useState<ResourceState<WhatsAppConversationDetail[]>>(
     available ? { kind: "loading" } : PENDING,
@@ -125,5 +133,11 @@ export function OrderWhatsAppMessages({ orderId }: { orderId: string | null | un
   }, [orderId, available, attempt]);
 
   if (!orderId) return null;
-  return <OrderWhatsAppMessagesView threads={threads} onRetry={retry} />;
+  return (
+    <OrderWhatsAppMessagesView
+      threads={threads}
+      onRetry={retry}
+      canOpenConversation={canSeeWhatsAppTab(auth?.user?.email)}
+    />
+  );
 }

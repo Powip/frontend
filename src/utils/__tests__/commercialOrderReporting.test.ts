@@ -1,9 +1,5 @@
 import { isCommercialSale } from "../commercialOrderReporting";
-import {
-  soloEntregados,
-  enTransito,
-  paidAmount,
-} from "@/app/administracion/_lib/realData";
+import { estaEnTransito, pagadoPedido, soloVentas } from "@/app/administracion/_lib/ventas";
 import { mapOrderToFunnelBucket } from "@/services/cierreDiaProductosService";
 it("excludes explicit Leads while preserving legacy NULL and classified sales", () => {
   expect(isCommercialSale({ commercialStage: "LEAD" })).toBe(false);
@@ -17,9 +13,9 @@ it("does not count a paid/delivered Lead in delivered sales or transit receivabl
     status: "ENTREGADO",
     payments: [{ status: "PAID", amount: 100 }],
   };
-  expect(soloEntregados([lead, { status: "ENTREGADO" }])).toHaveLength(1);
-  expect(enTransito([{ ...lead, status: "EN_ENVIO" }])).toHaveLength(0);
-  expect(paidAmount(lead)).toBe(100);
+  expect(soloVentas([lead, { status: "ENTREGADO" }])).toHaveLength(1);
+  expect(estaEnTransito({ ...lead, status: "EN_ENVIO" })).toBe(false);
+  expect(pagadoPedido(lead)).toBe(100);
 });
 it("does not infer commercial confirmation from imported operative status or a scheduled callback", () => {
   expect(
