@@ -72,6 +72,8 @@ jest.mock('@/lib/axiosAuth', () => ({
 }));
 
 // Cola de comprobantes de Pau: no es parte de estos tests (y no debe contar como GET del pedido).
+// Empresa con acceso al CRM: el modal solo busca pagos de Pau si lo tiene (sin llamada HTTP extra aquí).
+jest.mock('@/hooks/useCrmPlan', () => ({ useCrmAccess: () => ({ data: { allowed: true } }) }));
 jest.mock('@/services/crmOrderPanelService', () => ({
   listFinanceQueue: jest.fn(async () => []),
   reviewCorePayment: jest.fn(async () => null),

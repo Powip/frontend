@@ -235,8 +235,8 @@ describe('FinanzasPage — fetchOrders (merge con leads-cod)', () => {
 
     render(<FinanzasPage />);
 
-    // La 4ta llamada es la cola «CRM · Pau» de ms-crm (comprobantes que Pau ya revisó).
-    await waitFor(() => expect(mockedAxios.get.mock.calls.filter(([url]) => !String(url).includes('/receipts/queue'))).toHaveLength(3));
+    // Las otras llamadas son del CRM (ms-crm): el acceso de la empresa y, si lo tiene, la cola «CRM · Pau».
+    await waitFor(() => expect(mockedAxios.get.mock.calls.filter(([url]) => !/\/receipts\/queue|\/crm\/access/.test(String(url)))).toHaveLength(3));
 
     expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/store/store-1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/store/store-1/leads-cod', expect.objectContaining({ signal: expect.any(AbortSignal) }));

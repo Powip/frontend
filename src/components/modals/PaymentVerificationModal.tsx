@@ -37,6 +37,7 @@ import axiosAuth from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import { reviewCorePayment, updateCorePaymentReceiptAmount, listFinanceQueue } from "@/services/crmOrderPanelService";
 import { CRM_PAU_QUEUE_KEY } from "@/components/finanzas/CrmPauReceipts";
+import { useCrmAccess } from "@/hooks/useCrmPlan";
 import { useQuery } from "@tanstack/react-query";
 import {
   getLeadPaymentCapabilities,
@@ -164,10 +165,12 @@ export default function PaymentVerificationModal({
   const [isLoading, setIsLoading] = useState(false);
   const [orderDetailOpen, setOrderDetailOpen] = useState(false);
   // Pagos del Core que vienen de un comprobante de Pau: se decide por el id del pago, no por texto.
+  // Solo empresas con acceso al CRM lo consultan; sin acceso, ningún pago es de Pau.
+  const crmAllowed = useCrmAccess(open).data?.allowed === true;
   const pauReceiptsQuery = useQuery({
     queryKey: CRM_PAU_QUEUE_KEY,
     queryFn: () => listFinanceQueue("porval", "pau"),
-    enabled: open,
+    enabled: open && crmAllowed,
     retry: false,
     staleTime: 15_000,
   });

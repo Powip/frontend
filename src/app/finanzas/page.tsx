@@ -34,6 +34,7 @@ import { useBusinessScope } from "@/contexts/BusinessScopeContext";
 import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
 import { useBusinessOrders } from "@/hooks/useBusinessOrders";
 import { useBusinessGuides } from "@/hooks/useBusinessGuides";
+import { useCrmAccess } from "@/hooks/useCrmPlan";
 import {
   OrderDetailButton,
   OrderDetailModalProvider,
@@ -374,7 +375,10 @@ function FinanzasContent() {
     retry: false,
   });
   // 2do filtro de las ventas de Pau: el comprobante ya pasó el 1er filtro de Pau en el CRM.
-  const crmPauQuery = useCrmPauReceipts(canFetch);
+  // Solo empresas con acceso al CRM piden su cola: al resto no le sale el aviso de error del CRM.
+  const crmAccess = useCrmAccess(canFetch);
+  const crmAllowed = crmAccess.data?.allowed === true;
+  const crmPauQuery = useCrmPauReceipts(canFetch && crmAllowed);
   const crmPauReceipts = crmPauQuery.data;
   const receiptsBySaleId = useMemo(() => {
     const map = new Map<string, PaymentReceipt[]>();
@@ -1178,7 +1182,7 @@ Estado: ${sale.status}
                       Todos los comprobantes del negocio en un solo lugar, también los de POWIP Live, POWIP Link y las ventas que Pau cerró en el chat.
                     </p>
                     <div className="mt-3 flex flex-wrap gap-1" aria-label="Origen de la venta">
-                      {PAYMENT_ORIGINS.map(([value, label]) => (
+                      {PAYMENT_ORIGINS.filter(([value]) => value !== "pau" || crmAllowed).map(([value, label]) => (
                         <Button
                           key={value}
                           size="sm"
@@ -1224,7 +1228,7 @@ Estado: ${sale.status}
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {crmPauQuery.isError && (paymentOrigin === "todos" || paymentOrigin === "pau") && (
+                  {crmAllowed && crmPauQuery.isError && (paymentOrigin === "todos" || paymentOrigin === "pau") && (
                     <p role="alert" className="mb-4 text-sm text-muted-foreground">
                       No se pudieron cargar los comprobantes del CRM.
                     </p>

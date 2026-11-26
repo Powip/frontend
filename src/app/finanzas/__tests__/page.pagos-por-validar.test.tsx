@@ -201,6 +201,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   scopedStoreIds = ["store-1"];
   mockSearch = "";
+  crmAllowed = true;
   mockUseAuth.mockReturnValue(
     MOCK_AUTH as unknown as ReturnType<typeof useAuth>,
   );
@@ -247,8 +248,12 @@ const review = {
     hasProof: false,
   },
 };
+// Acceso al CRM de la empresa: sin él, Finanzas no pide la cola del CRM ni muestra «CRM · Pau».
+let crmAllowed = true;
 function mockQueue(orders: OrderHeader[], reviews: unknown[] = []) {
   mockedAxios.get.mockImplementation((url: string) => {
+    if (url.includes("/crm/access"))
+      return Promise.resolve({ data: { allowed: crmAllowed, level: null, crm: crmAllowed, pau: crmAllowed, until: null, source: null } });
     if (url.includes("/yape/reviews"))
       return Promise.resolve({
         data: { reviews, serverNow: "2026-11-24T12:00:00Z" },
@@ -388,6 +393,27 @@ describe("Finanzas › Pagos por validar (FEAT-33 B1)", () => {
     );
   });
 
+  it("without CRM access: does not ask the CRM queue, shows no CRM warning and no «CRM · Pau» filter", async () => {
+    asReviewer();
+    crmAllowed = false;
+    mockQueue([manualOrder()]);
+    render(<FinanzasPage />);
+    expect(await screen.findByText("ORD-153900")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(mockedAxios.get).toHaveBeenCalledWith(expect.stringContaining("/crm/access")),
+    );
+    expect(mockedAxios.get).not.toHaveBeenCalledWith(expect.stringContaining("/receipts/queue"), expect.anything());
+    expect(screen.queryByText("No se pudieron cargar los comprobantes del CRM.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "CRM · Pau" })).not.toBeInTheDocument();
+  });
+
+  it("with CRM access: a failed CRM queue shows the warning", async () => {
+    asReviewer();
+    mockQueue([manualOrder()]);
+    render(<FinanzasPage />);
+    expect(await screen.findByText("No se pudieron cargar los comprobantes del CRM.")).toBeInTheDocument();
+  });
+
   it("CRM · Pau: rejecting sends the reason", async () => {
     asReviewer();
     mockQueue([]);
@@ -430,8 +456,10 @@ describe("Finanzas › Pagos por validar (FEAT-33 B1)", () => {
     expect(await screen.findByText("Validado por Pau")).toBeInTheDocument();
     expect(screen.getAllByText("ORD-000012")).toHaveLength(1);
     expect(within(rowOf("ORD-000012")).getByText("CRM · Pau")).toBeInTheDocument();
-    expect(within(rowOf("ORD-000012")).getByRole("button", { name: "Aceptar pago" })).toBeInTheDocument();
-    expect(within(rowOf("ORD-000012")).queryByRole("button", { name: /Gestionar Pagos/ })).not.toBeInTheDocument();
+    // Con pedido en el Core, el pago de Pau se aprueba en «Gestionar Pagos» (el modal lo manda al CRM, 4b34f994);
+    // «Aceptar pago» en la fila queda solo para el comprobante de Pau sin pedido.
+    expect(within(rowOf("ORD-000012")).getByRole("button", { name: /Gestionar Pagos/ })).toBeInTheDocument();
+    expect(within(rowOf("ORD-000012")).queryByRole("button", { name: "Aceptar pago" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Otros orígenes" }));
     expect(screen.queryByText("ORD-000012")).not.toBeInTheDocument();
