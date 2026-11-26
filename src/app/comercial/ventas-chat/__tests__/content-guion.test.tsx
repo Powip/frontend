@@ -379,6 +379,7 @@ describe("Guion y material", () => {
         highlights: "",
         alternatives: "",
         complements: "",
+        offers: "",
       }),
     );
   });
