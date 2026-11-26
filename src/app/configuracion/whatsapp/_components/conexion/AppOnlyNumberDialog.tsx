@@ -104,7 +104,7 @@ export function AppOnlyNumberDialog({
               </li>
             ))}
           </ul>
-          {storeSendsByApi && (
+          {storeSendsByApi && role === "store" && (
             <p className="m-0 rounded-[10px] border border-wa-border bg-wa-surface-2 p-3 text-[13px]">
               {storeName} ya envía por la API. Si este número queda como principal, los avisos
               dejarán de salir solos y pasarán a la bandeja de envío asistido.

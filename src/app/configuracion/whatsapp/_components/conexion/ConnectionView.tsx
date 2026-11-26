@@ -172,9 +172,14 @@ export function ConnectionView({
   const appOnlyPhone =
     accountData?.connectionType === WHATSAPP_CONNECTION_TYPES.APP_MANUAL ? accountData.phone : null;
   const isAppOnly = accountData?.connectionType === WHATSAPP_CONNECTION_TYPES.APP_MANUAL;
+  // El principal es el que envía los avisos de la tienda.
+  const principal =
+    accounts.kind === "ready"
+      ? (accounts.data.find((item) => item.isPrimary ?? item.role === "principal") ??
+        accounts.data[0])
+      : undefined;
   const storeSendsByApi =
-    accounts.kind === "ready" &&
-    accounts.data.some((item) => item.connectionType !== WHATSAPP_CONNECTION_TYPES.APP_MANUAL);
+    !!principal && principal.connectionType !== WHATSAPP_CONNECTION_TYPES.APP_MANUAL;
 
   return (
     <div className="flex min-w-0 flex-col gap-5">

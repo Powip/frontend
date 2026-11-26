@@ -115,6 +115,21 @@ describe("Tienda con «Solo app»", () => {
     expect(screen.getByRole("dialog")).toHaveTextContent("dejarán de salir solos");
   });
 
+  it("no avisa si el principal ya es solo app o el número es de una vendedora", async () => {
+    const user = userEvent.setup();
+    const apiSecondary = { ...accountsFixture[0], id: "cred-api", isPrimary: false };
+    render(
+      view({
+        mutations: { connectAppOnly: jest.fn() },
+        accounts: { kind: "ready", data: [appAccount, apiSecondary] },
+      }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Agregar número solo app" }));
+
+    expect(screen.getByRole("dialog")).not.toHaveTextContent("dejarán de salir solos");
+  });
+
   it("pregunta antes de mover un número que está en otra tienda", async () => {
     const user = userEvent.setup();
     const connectAppOnly = jest
