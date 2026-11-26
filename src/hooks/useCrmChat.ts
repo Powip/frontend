@@ -23,6 +23,7 @@ import {
   crmError,
   getConversation,
   getConversationClient,
+  getInboxFilters,
   getInboxSummary,
   listConversationFollowups,
   listConversationOrders,
@@ -213,6 +214,17 @@ export function useInboxSummary(storeId?: string) {
     queryFn: () => getInboxSummary(storeId),
     retry: false,
     refetchInterval: 60_000,
+  });
+}
+
+/** Números de WhatsApp y vendedoras con chats (filtros de la Bandeja para el jefe). */
+export function useInboxFilters(storeId?: string, enabled = true) {
+  return useQuery({
+    queryKey: [...crmKeys.summary, "filters", storeId ?? "all"],
+    queryFn: () => getInboxFilters(storeId),
+    enabled,
+    retry: false,
+    staleTime: 60_000,
   });
 }
 

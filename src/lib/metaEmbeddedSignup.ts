@@ -10,6 +10,8 @@
  */
 
 export const SIMULATED_EMBEDDED_SIGNUP_CODE = "SIMULATED_CODE";
+/** featureType de Meta para «número que ya usa en el celular» (coexistencia). */
+export const COEXISTENCE_FEATURE_TYPE = "whatsapp_business_app_onboarding";
 const SDK_URL = "https://connect.facebook.net/es_LA/sdk.js";
 const SDK_SCRIPT_ID = "facebook-jssdk";
 
@@ -130,6 +132,7 @@ export function parseEmbeddedSignupMessage(
 /** Opens the Embedded Signup popup and resolves with the code and the shared ids. */
 export async function launchEmbeddedSignup(
   config: EmbeddedSignupLaunchConfig,
+  options: { coexistence?: boolean } = {},
 ): Promise<EmbeddedSignupResult> {
   if (config.simulated) {
     return { code: SIMULATED_EMBEDDED_SIGNUP_CODE };
@@ -158,7 +161,12 @@ export async function launchEmbeddedSignup(
           config_id: config.configId,
           response_type: "code",
           override_default_response_type: true,
-          extras: { setup: {}, featureType: "", sessionInfoVersion: "3" },
+          // Coexistencia: el número sigue en la app WhatsApp Business del celular.
+          extras: {
+            setup: {},
+            featureType: options.coexistence ? COEXISTENCE_FEATURE_TYPE : "",
+            sessionInfoVersion: "3",
+          },
         },
       );
     });

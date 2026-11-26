@@ -9,6 +9,7 @@ import {
 import type {
   WhatsAppAssistedItem,
   WhatsAppAssistedQueue,
+  WhatsAppCoexistenceState,
   WhatsAppContingencySettings,
   WhatsAppContingencyTriggers,
   WhatsAppPricing,
@@ -18,6 +19,41 @@ import type {
 } from "../models/connection.model";
 
 const BASE = `${API.integrations}/wa`;
+
+// ───────── Varios números por tienda ─────────
+
+/** Vendedora del número. userId null lo devuelve a la tienda. */
+export async function assignWhatsAppNumber(
+  accountId: string,
+  input: { userId: string | null; userName: string | null },
+): Promise<void> {
+  await axiosAuth.put(`${BASE}/accounts/${encodeURIComponent(accountId)}/assignment`, input);
+}
+
+/** Número principal de la tienda: el que envía los avisos automáticos. */
+export async function setPrimaryWhatsAppNumber(accountId: string): Promise<void> {
+  await axiosAuth.post(`${BASE}/accounts/${encodeURIComponent(accountId)}/primary`, {});
+}
+
+/** Coexistencia de los números de la empresa (los que siguen en la app del celular). */
+export async function listWhatsAppCoexistence(): Promise<WhatsAppCoexistenceState[]> {
+  const { data } = await axiosAuth.get<{ items?: WhatsAppCoexistenceState[] }>(`${BASE}/accounts/coexistence`);
+  return data?.items ?? [];
+}
+
+/** Pide a Meta los contactos y el historial del celular (una sola vez, dentro de 24 h). */
+export async function syncWhatsAppAppData(accountId: string): Promise<WhatsAppCoexistenceState> {
+  try {
+    const { data } = await axiosAuth.post<WhatsAppCoexistenceState>(
+      `${BASE}/accounts/${encodeURIComponent(accountId)}/sync-app-data`,
+      {},
+    );
+    return data;
+  } catch (error) {
+    const message = (error as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+    throw typeof message === "string" && message ? new Error(message) : error;
+  }
+}
 
 const toDate = (value: string | null | undefined): Date | null => {
   if (!value) return null;

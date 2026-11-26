@@ -29,7 +29,14 @@ export interface WhatsAppAccountUsage {
 export interface WhatsAppAccount {
   id: string;
   storeId: string;
-  role: "principal" | "contingencia";
+  role: "principal" | "secundario" | "contingencia";
+  /** El principal envía los avisos automáticos de la tienda. */
+  isPrimary?: boolean;
+  /** true = número de la empresa que la tienda usa porque no tiene uno propio. */
+  isCompanyDefault?: boolean;
+  /** Vendedora que atiende este número en el CRM; null = el número es de la tienda. */
+  assignedUserId?: string | null;
+  assignedUserName?: string | null;
   connectionType: WhatsAppConnectionType | null;
   phone: string | null;
   verifiedName: string | null;
@@ -45,6 +52,19 @@ export interface WhatsAppAccount {
   messagesThisMonth: number | null;
   lastSyncedAt: Date | null;
   version: number;
+}
+
+/** Número conectado con coexistencia: historial y contactos se piden una vez, dentro de 24 h. */
+export interface WhatsAppCoexistenceState {
+  credentialId: string;
+  phoneNumberId: string;
+  onboardedAt: string;
+  contactsRequestedAt: string | null;
+  historyRequestedAt: string | null;
+  historyStatus: "requested" | "importing" | "done" | "declined" | null;
+  historyProgress: number | null;
+  syncDeadline: string;
+  canSync: boolean;
 }
 
 export interface WhatsAppTestRun {
