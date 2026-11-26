@@ -1,4 +1,5 @@
 import {
+  costoDudosoPedido,
   costoPedido,
   delPeriodo,
   esVenta,
@@ -100,5 +101,23 @@ describe("ventas", () => {
     expect(porCanal.get("WEB")?.pedidos).toBe(1);
     const porDia = ventasPorDia([pedido(), pedido({ created_at: "2026-11-11T15:00:00.000Z" })]);
     expect([...porDia.keys()].sort()).toEqual(["2026-11-10", "2026-11-11"]);
+  });
+});
+
+describe("costo dudoso", () => {
+  it("marca la venta cuyo costo de línea es igual o mayor que el precio", () => {
+    const r = resumirVentas([
+      { status: "ENTREGADO", grandTotal: 100, items: [{ lineKind: "PRODUCT", quantity: 1, unitPrice: 100, unitCost: 100 }] },
+      { status: "ENTREGADO", grandTotal: 100, items: [{ lineKind: "PRODUCT", quantity: 1, unitPrice: 100, unitCost: 40 }] },
+      { status: "ENTREGADO", grandTotal: 50, items: [{ lineKind: "PRODUCT", quantity: 1, unitPrice: 50 }] },
+    ]);
+    expect(r.costoDudoso).toEqual({ pedidos: 1, monto: 100 });
+    expect(r.costo).toBe(140);
+    expect(r.sinCosto.pedidos).toBe(1);
+  });
+
+  it("con costo de cabecera compara contra el total del pedido", () => {
+    expect(costoDudosoPedido({ status: "ENTREGADO", grandTotal: 80, costAmount: 90, items: [] })).toBe(true);
+    expect(costoDudosoPedido({ status: "ENTREGADO", grandTotal: 80, costAmount: 30, items: [] })).toBe(false);
   });
 });

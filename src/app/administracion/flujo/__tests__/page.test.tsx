@@ -43,6 +43,7 @@ function res(v: {
       costo,
       comisiones,
       sinCosto: { pedidos: 0, monto: 0 },
+      costoDudoso: { pedidos: 0, monto: 0 },
       coberturaCosto: ventas > 0 ? 1 : null,
       ticketPromedio: null,
     },

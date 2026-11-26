@@ -86,6 +86,28 @@ export function costoPedido(pedido: PedidoAdmin): number | null {
   return cabecera > 0 ? cabecera : null;
 }
 
+/**
+ * Costo dudoso: el costo de la línea es igual o mayor que su precio de lista. Casi siempre es el precio de venta
+ * guardado como «precio base» de la variante (la sincronización de Shopify lo hacía hasta el 17-11-2026): medido el
+ * 26-11 en prod, el 92 % del costo de noviembre estaba así. Se cuenta igual (es lo que hay cargado) y se avisa.
+ */
+export function costoDudosoLinea(linea: LineaPedido): boolean {
+  const costo = num(linea.unitCost);
+  const precio = num(linea.unitPrice);
+  return costo > 0 && precio > 0 && costo >= precio;
+}
+
+/** El costo del pedido es dudoso: alguna línea con costo ≥ precio o, si el costo es el de la cabecera, ≥ el total. */
+export function costoDudosoPedido(pedido: PedidoAdmin): boolean {
+  const lineas = lineasProducto(pedido);
+  if (lineas.length > 0 && lineas.every((linea) => num(linea.unitCost) > 0)) {
+    return lineas.some(costoDudosoLinea);
+  }
+  const cabecera = num(pedido.costAmount);
+  const total = montoVenta(pedido);
+  return cabecera > 0 && total > 0 && cabecera >= total;
+}
+
 export function pagadoPedido(pedido: PedidoAdmin): number {
   return (pedido.payments ?? [])
     .filter((pago) => pago.status === "PAID")
@@ -131,6 +153,8 @@ export interface ResumenVentas {
   costo: number;
   comisiones: number;
   sinCosto: { pedidos: number; monto: number };
+  /** Ventas con costo dudoso (`costoDudosoPedido`) y lo que se vendió en ellas. */
+  costoDudoso: { pedidos: number; monto: number };
   /** Fracción del monto vendido que tiene costo (0..1), null si no hay ventas. */
   coberturaCosto: number | null;
   ticketPromedio: number | null;
@@ -144,6 +168,8 @@ export function resumirVentas(pedidos: PedidoAdmin[] | null | undefined): Resume
   let comisiones = 0;
   let sinCostoPedidos = 0;
   let sinCostoMonto = 0;
+  let dudosoPedidos = 0;
+  let dudosoMonto = 0;
   for (const venta of ventas) {
     const total = montoVenta(venta);
     monto += total;
@@ -155,6 +181,10 @@ export function resumirVentas(pedidos: PedidoAdmin[] | null | undefined): Resume
       sinCostoMonto += total;
     } else {
       costo += c;
+      if (costoDudosoPedido(venta)) {
+        dudosoPedidos += 1;
+        dudosoMonto += total;
+      }
     }
   }
   return {
@@ -164,6 +194,7 @@ export function resumirVentas(pedidos: PedidoAdmin[] | null | undefined): Resume
     costo,
     comisiones,
     sinCosto: { pedidos: sinCostoPedidos, monto: sinCostoMonto },
+    costoDudoso: { pedidos: dudosoPedidos, monto: dudosoMonto },
     coberturaCosto: monto > 0 ? (monto - sinCostoMonto) / monto : null,
     ticketPromedio: ventas.length > 0 ? monto / ventas.length : null,
   };

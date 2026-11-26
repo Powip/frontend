@@ -76,25 +76,52 @@ export function Aviso({
 /**
  * Aviso de ventas sin costo cargado (FEAT-34 C1): sin costo, la utilidad y los márgenes salen más altos de lo real.
  */
-export function AvisoCostos({
-  costo,
-  className,
-}: {
-  costo: { cobertura: number | null; sinCostoPedidos: number; sinCostoMonto: number };
-  className?: string;
-}) {
-  if (costo.sinCostoPedidos === 0 || costo.cobertura === null) return null;
-  const faltante = 1 - costo.cobertura;
-  return (
-    <Aviso
-      tono={faltante >= 0.2 ? "bad" : "warn"}
-      className={className}
-      titulo={`${costo.sinCostoPedidos.toLocaleString("es-PE")} ${costo.sinCostoPedidos === 1 ? "venta no tiene" : "ventas no tienen"} costo cargado (${formatPercent(faltante)} de lo vendido, ${formatSoles(costo.sinCostoMonto)})`}
-    >
-      La utilidad y los márgenes de esta pantalla están sobreestimados. Carga el precio de compra de esos productos en
-      el catálogo para que las próximas ventas lo traigan.
-    </Aviso>
-  );
+export interface CostoParaAviso {
+  cobertura: number | null;
+  sinCostoPedidos: number;
+  sinCostoMonto: number;
+  dudosoPedidos?: number;
+  /** Fracción de lo vendido (0..1) que está en ventas con costo dudoso. */
+  dudosoParte?: number | null;
+}
+
+/**
+ * Avisos de costo (obligatorio donde haya costo, margen o utilidad): ventas sin costo (utilidad sobreestimada) y
+ * ventas con costo igual o mayor que el precio (casi siempre el precio de venta guardado como precio base:
+ * utilidad subestimada).
+ */
+export function AvisoCostos({ costo, className }: { costo: CostoParaAviso; className?: string }) {
+  const avisos: ReactNode[] = [];
+  if (costo.sinCostoPedidos > 0 && costo.cobertura !== null) {
+    const faltante = 1 - costo.cobertura;
+    avisos.push(
+      <Aviso
+        key="sin-costo"
+        tono={faltante >= 0.2 ? "bad" : "warn"}
+        titulo={`${costo.sinCostoPedidos.toLocaleString("es-PE")} ${costo.sinCostoPedidos === 1 ? "venta no tiene" : "ventas no tienen"} costo cargado (${formatPercent(faltante)} de lo vendido, ${formatSoles(costo.sinCostoMonto)})`}
+      >
+        La utilidad y los márgenes de esta pantalla están sobreestimados. Carga el precio de compra de esos productos en
+        el catálogo para que las próximas ventas lo traigan.
+      </Aviso>,
+    );
+  }
+  const dudosos = costo.dudosoPedidos ?? 0;
+  if (dudosos > 0) {
+    const parte = costo.dudosoParte ?? null;
+    avisos.push(
+      <Aviso
+        key="dudoso"
+        tono={parte === null || parte >= 0.2 ? "bad" : "warn"}
+        titulo={`En ${dudosos.toLocaleString("es-PE")} ${dudosos === 1 ? "venta" : "ventas"} el costo cargado es igual o mayor que el precio${parte !== null ? ` (${formatPercent(parte)} de lo vendido)` : ""}`}
+      >
+        Casi siempre es el precio de venta guardado como «precio base» del producto (pasó con los productos traídos de
+        Shopify hasta el 17 de noviembre). Con ese costo, la utilidad y los márgenes salen más bajos de lo que son.
+        Corrige el precio base en Productos; las ventas ya hechas conservan el costo con el que se registraron.
+      </Aviso>,
+    );
+  }
+  if (avisos.length === 0) return null;
+  return <div className={cn("space-y-2", className)}>{avisos}</div>;
 }
 
 // ---- Bloques de datos -----------------------------------------------------------------------

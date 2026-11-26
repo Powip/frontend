@@ -89,6 +89,7 @@ describe("calcularResultados", () => {
     expect(r.puntoEquilibrio.unidades).toBe(Math.ceil(300 / 53));
     expect(r.retornoPublicidad).toBeCloseTo(11.8);
     expect(r.costoPublicidadPorVenta).toBe(100);
+    expect(r.costo).toMatchObject({ dudosoPedidos: 0, dudosoMonto: 0, dudosoParte: 0 });
   });
 
   it("sin ventas no inventa márgenes ni punto de equilibrio", () => {

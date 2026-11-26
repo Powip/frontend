@@ -34,6 +34,7 @@ function res({ ventas = 0, costo = 0, fijos = 0 }: { ventas?: number; costo?: nu
       costo,
       comisiones: 0,
       sinCosto: { pedidos: 0, monto: 0 },
+      costoDudoso: { pedidos: 0, monto: 0 },
       coberturaCosto: ventas > 0 ? 1 : null,
       ticketPromedio: null,
     },

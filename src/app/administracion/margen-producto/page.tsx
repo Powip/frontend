@@ -32,9 +32,10 @@ import {
   PanelError,
   PanelSkeleton,
   SIN_DATO,
+  type CostoParaAviso,
 } from "../_components/ui";
 import { useResultadosPeriodo } from "../_lib/useResultados";
-import { type LineaPedido, num, type PedidoAdmin, soloVentas } from "../_lib/ventas";
+import { costoDudosoLinea, type LineaPedido, num, type PedidoAdmin, soloVentas } from "../_lib/ventas";
 
 type Linea = LineaPedido & { attributes?: Record<string, unknown> | null };
 
@@ -66,7 +67,7 @@ interface MargenPeriodo {
   costoTotal: number;
   margen: number;
   margenPct: number | null;
-  costo: { cobertura: number | null; sinCostoPedidos: number; sinCostoMonto: number };
+  costo: CostoParaAviso;
   skuSinCosto: number;
   skuParciales: number;
 }
@@ -85,7 +86,9 @@ function calcularMargen(pedidos: PedidoAdmin[]): MargenPeriodo {
     Omit<FilaProducto, "precioPromedio" | "costoUnitario" | "margen" | "margenPct" | "estadoCosto">
   >();
   const pedidosSinCosto = new Set<string>();
+  const pedidosDudosos = new Set<string>();
   let sinCostoMonto = 0;
+  let dudosoMonto = 0;
 
   soloVentas(pedidos).forEach((pedido, indice) => {
     for (const linea of (pedido.items ?? []) as Linea[]) {
@@ -113,6 +116,10 @@ function calcularMargen(pedidos: PedidoAdmin[]): MargenPeriodo {
         fila.unidadesConCosto += cantidad;
         fila.ventasConCosto += subtotal;
         fila.costoTotal += costo * cantidad;
+        if (costoDudosoLinea(linea)) {
+          pedidosDudosos.add(pedido.id ?? `pedido-${indice}`);
+          dudosoMonto += subtotal;
+        }
       } else {
         pedidosSinCosto.add(pedido.id ?? `pedido-${indice}`);
         sinCostoMonto += subtotal;
@@ -153,6 +160,8 @@ function calcularMargen(pedidos: PedidoAdmin[]): MargenPeriodo {
       cobertura: ventas > 0 ? (ventas - sinCostoMonto) / ventas : null,
       sinCostoPedidos: pedidosSinCosto.size,
       sinCostoMonto,
+      dudosoPedidos: pedidosDudosos.size,
+      dudosoParte: ventas > 0 ? dudosoMonto / ventas : null,
     },
     skuSinCosto: filas.filter((f) => f.estadoCosto === "sin_costo").length,
     skuParciales: filas.filter((f) => f.estadoCosto === "parcial").length,

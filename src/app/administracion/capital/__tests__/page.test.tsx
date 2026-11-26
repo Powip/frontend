@@ -22,6 +22,7 @@ function res(ventas: number, costo: number, fijos: number): Resultados {
       costo,
       comisiones: 0,
       sinCosto: { pedidos: 0, monto: 0 },
+      costoDudoso: { pedidos: 0, monto: 0 },
       coberturaCosto: ventas > 0 ? 1 : null,
       ticketPromedio: null,
     },

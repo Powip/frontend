@@ -117,7 +117,16 @@ export interface Resultados {
   margenOperativo: number | null;
   /** Ventas necesarias para cubrir los gastos fijos con el margen de contribución actual. */
   puntoEquilibrio: { ventas: number | null; unidades: number | null; avance: number | null };
-  costo: { cobertura: number | null; sinCostoPedidos: number; sinCostoMonto: number };
+  costo: {
+    cobertura: number | null;
+    sinCostoPedidos: number;
+    sinCostoMonto: number;
+    /** Ventas con costo igual o mayor que el precio (ver `costoDudosoPedido`). */
+    dudosoPedidos: number;
+    dudosoMonto: number;
+    /** Fracción de las ventas (0..1) con costo dudoso. */
+    dudosoParte: number | null;
+  };
   ticketPromedio: number | null;
   /** Publicidad ÷ ventas entregadas. */
   costoPublicidadPorVenta: number | null;
@@ -182,6 +191,9 @@ export function calcularResultados(e: EntradaResultados): Resultados {
       cobertura: e.ventas.coberturaCosto,
       sinCostoPedidos: e.ventas.sinCosto.pedidos,
       sinCostoMonto: e.ventas.sinCosto.monto,
+      dudosoPedidos: e.ventas.costoDudoso.pedidos,
+      dudosoMonto: e.ventas.costoDudoso.monto,
+      dudosoParte: fraccionDe(e.ventas.costoDudoso.monto, ventas),
     },
     ticketPromedio: e.ventas.ticketPromedio,
     costoPublicidadPorVenta: publicidadTotal > 0 && e.ventas.pedidos > 0 ? publicidadTotal / e.ventas.pedidos : null,
