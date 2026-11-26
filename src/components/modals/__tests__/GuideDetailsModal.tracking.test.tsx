@@ -37,6 +37,11 @@ jest.mock("@/components/olva/send-to-olva/SendToOlvaModal", () => ({
   __esModule: true,
   default: () => null,
 }));
+jest.mock("@/components/olva/OlvaOrderShipmentCell", () => ({
+  OlvaOrderShipmentCell: ({ guideId, orderId }: { guideId: string; orderId: string }) => (
+    <span data-testid="olva-order-shipment">{`${guideId}:${orderId}`}</span>
+  ),
+}));
 jest.mock("@/components/aliclik/SendToAliclikGuideModal", () => ({
   __esModule: true,
   default: () => null,
@@ -420,6 +425,20 @@ describe("GuideDetailsModal: etiqueta oficial de envío Shalom", () => {
         shippingCode: "EFGH",
       }),
     ]);
+  });
+
+  it("muestra el envío Olva de cada pedido solo en una guía de Olva", async () => {
+    const view = setup(receipt(), { ...guide, courierName: "Olva Courier" });
+
+    expect(await screen.findByTestId("olva-order-shipment")).toHaveTextContent("guide-1:order-1");
+
+    view.unmount();
+    setup(receipt(), { ...guide, courierName: "EVA" });
+
+    expect(
+      await screen.findByRole("button", { name: "Imprimir etiqueta de envío" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByTestId("olva-order-shipment")).not.toBeInTheDocument();
   });
 
   it.each(["Olva Courier", "EVA", null])(

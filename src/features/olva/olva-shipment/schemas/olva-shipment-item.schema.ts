@@ -78,6 +78,8 @@ export const olvaShipmentItemFields = {
   // `ubigeoCode` + `address` + `reference` for home delivery. `getOlvaShipmentItemIssues` checks it.
   destination: z.object({
     agencyCode: optionalText,
+    // The agency's name as the picker showed it, kept for the order (store pickup only)
+    agencyLabel: optionalText,
     ubigeoCode: optionalText,
     address: optionalText,
     reference: optionalText,
@@ -323,7 +325,10 @@ export function narrowOlvaShipmentDelivery(
 
   return {
     deliveryType: item.deliveryType,
-    destination: { agencyCode: destination.agencyCode },
+    destination: {
+      agencyCode: destination.agencyCode,
+      ...(destination.agencyLabel ? { agencyLabel: destination.agencyLabel } : {}),
+    },
     whoPays: item.whoPays,
     paymentMethod,
     pin: item.pin,

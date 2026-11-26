@@ -66,6 +66,7 @@ import SendToAliclikGuideModal from "@/components/aliclik/SendToAliclikGuideModa
 import SendToEvaGuideModal from "@/components/eva/SendToEvaGuideModal";
 import SendToOlvaModal from "@/components/olva/send-to-olva/SendToOlvaModal";
 import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
+import { OlvaOrderShipmentCell } from "@/components/olva/OlvaOrderShipmentCell";
 import { FileSpreadsheet } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { shouldDisplayNote } from "@/lib/logFilters";
@@ -1703,6 +1704,13 @@ export default function GuideDetailsModal({
                                   </span>
                                 )}
                               </div>
+
+                              {/* Envío Olva (FEAT-35): estado, pago, reintento y descarte */}
+                              {guide && isOlvaCourier(guide.courierName) && (
+                                <div onClick={(e) => e.stopPropagation()}>
+                                  <OlvaOrderShipmentCell guideId={guide.id} orderId={order.id} />
+                                </div>
+                              )}
 
                               {/* Botón Eliminar Pedido */}
                               {guide?.status !== "ENTREGADA" &&

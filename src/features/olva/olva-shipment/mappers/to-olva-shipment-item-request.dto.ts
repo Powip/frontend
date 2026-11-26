@@ -7,6 +7,9 @@ import type {
 } from "../dto/olva-shipment-item-request.dto";
 import type { CreateOlvaShipmentItemInput } from "../models/create-olva-shipment-input";
 
+/** What the backend keeps of an agency's name (ms-integrations rejects a longer one). */
+const OLVA_AGENCY_LABEL_MAX_LENGTH = 200;
+
 /**
  * One shipment -> the part of the body that describes it (single create and bulk items).
  * The backend schemas are strict and reject blank optionals, so every nested block is compacted.
@@ -62,7 +65,11 @@ export function toOlvaShipmentItemRequestDto(
       agencyCode: input.destination.agencyCode.trim(),
       // Shown on the order's tracking; a blank one is not sent
       ...(input.destination.agencyLabel?.trim()
-        ? { agencyLabel: input.destination.agencyLabel.trim() }
+        ? {
+            agencyLabel: input.destination.agencyLabel
+              .trim()
+              .slice(0, OLVA_AGENCY_LABEL_MAX_LENGTH),
+          }
         : {}),
     } satisfies OlvaStorePickupDestinationRequestDto,
   };

@@ -8,18 +8,26 @@ import { buildOlvaShipmentResponse } from "@/features/olva/olva-shipment/test-ut
 import { OlvaResultRow } from "../components/OlvaResultRow";
 import { buildBulkResult, buildOrderDetail } from "../test-utils/send-to-olva.fixtures";
 
-const { getOlvaShipment, getOlvaShipmentLabel, openOlvaLabel, regenerateOlvaShipmentPaymentLink } =
-  vi.hoisted(() => ({
-    getOlvaShipment: vi.fn(),
-    getOlvaShipmentLabel: vi.fn(),
-    openOlvaLabel: vi.fn(),
-    regenerateOlvaShipmentPaymentLink: vi.fn(),
-  }));
+const {
+  getOlvaShipment,
+  getOlvaShipmentLabel,
+  openOlvaLabel,
+  regenerateOlvaShipmentPaymentLink,
+  retryOlvaShipment,
+} = vi.hoisted(() => ({
+  getOlvaShipment: vi.fn(),
+  getOlvaShipmentLabel: vi.fn(),
+  openOlvaLabel: vi.fn(),
+  regenerateOlvaShipmentPaymentLink: vi.fn(),
+  retryOlvaShipment: vi.fn(),
+}));
 
 vi.mock("@/features/olva/olva-shipment/services/olva-shipment.service", () => ({
   getOlvaShipment,
   getOlvaShipmentLabel,
   regenerateOlvaShipmentPaymentLink,
+  retryOlvaShipment,
+  discardOlvaShipment: vi.fn(),
 }));
 vi.mock("../utils/open-olva-label", () => ({ openOlvaLabel }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }));
@@ -208,10 +216,20 @@ describe("OlvaResultRow", () => {
     expect(screen.getByText("Este pedido ya tiene un envío de Olva activo.")).toBeInTheDocument();
   });
 
-  it("an order Olva did not confirm is being verified: never register it again", () => {
-    renderRow(buildBulkResult([{ key: "order-1", status: "unknown" }]).results[0]);
+  it("an order Olva did not confirm (OLVA_OUTCOME_UNKNOWN) is being verified: retry it, never register it again", async () => {
+    const result = buildBulkResult([{ key: "order-1", status: "unknown" }]).results[0];
+    if (result.status !== "unknown") throw new Error("expected an unknown result");
+    retryOlvaShipment.mockResolvedValue(result);
 
-    expect(screen.getByText("Verificando con Olva")).toBeInTheDocument();
-    expect(screen.getByText(/No lo registres de nuevo/)).toBeInTheDocument();
+    const { user } = renderRow(result);
+
+    expect(screen.getByText(/Verificando con Olva/)).toBeInTheDocument();
+    expect(screen.getByText(/no lo registres de nuevo/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Costo/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Reintentar" }));
+
+    await waitFor(() => expect(retryOlvaShipment).toHaveBeenCalled());
+    expect(retryOlvaShipment.mock.calls[0][0]).toEqual({ id: result.shipment.id });
   });
 });

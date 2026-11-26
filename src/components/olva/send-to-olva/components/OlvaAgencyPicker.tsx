@@ -18,10 +18,13 @@ interface OlvaAgencyPickerProps {
 /**
  * Picks the pickup agency (store pickup only) by narrowing down the place. The
  * department/province/district are screen state only (they are not sent); the form keeps just
- * the agency code. A home delivery has no agency: see `OlvaUbigeoPicker`.
+ * the agency code and its name. A home delivery has no agency: see `OlvaUbigeoPicker`.
  */
+const toAgencyOptionLabel = (agency: { name: string; address: string }) =>
+  `${agency.name} — ${agency.address}`;
+
 export function OlvaAgencyPicker({ index, customer }: OlvaAgencyPickerProps) {
-  const { control } = useFormContext<SendToOlvaFormValues>();
+  const { control, setValue } = useFormContext<SendToOlvaFormValues>();
   const queryClient = useQueryClient();
   const cascade = useOlvaAgencyCascade({
     department: [customer?.city, customer?.province],
@@ -65,7 +68,7 @@ export function OlvaAgencyPicker({ index, customer }: OlvaAgencyPickerProps) {
                 value={typeof field.value === "string" ? field.value : ""}
                 options={agencies.map((agency) => ({
                   value: agency.code,
-                  label: `${agency.name} — ${agency.address}`,
+                  label: toAgencyOptionLabel(agency),
                 }))}
                 placeholder={
                   cascade.province ? "Elige una agencia" : "Elige departamento y provincia"
@@ -81,6 +84,11 @@ export function OlvaAgencyPicker({ index, customer }: OlvaAgencyPickerProps) {
                   if (agency) {
                     queryClient.setQueryData(olvaAgencyQueries.detail(code).queryKey, agency);
                   }
+                  // Its name as shown here travels with the shipment: the order's tracking shows it
+                  setValue(
+                    `items.${index}.destination.agencyLabel`,
+                    agency ? toAgencyOptionLabel(agency) : "",
+                  );
                   field.onChange(code);
                 }}
               />

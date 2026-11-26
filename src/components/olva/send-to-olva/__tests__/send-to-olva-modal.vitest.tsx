@@ -45,6 +45,8 @@ vi.mock("@/features/olva/olva-shipment/services/olva-shipment.service", () => ({
   regenerateOlvaShipmentPaymentLink: services.regenerateOlvaShipmentPaymentLink,
   bulkCreateOlvaShipments: services.bulkCreateOlvaShipments,
   getOlvaShipmentLabel: services.getOlvaShipmentLabel,
+  retryOlvaShipment: vi.fn(),
+  discardOlvaShipment: vi.fn(),
 }));
 vi.mock("@/features/olva/olva-catalog/services/olva-catalog.service", () => ({
   getOlvaHeadquarters: services.getOlvaHeadquarters,
@@ -474,11 +476,9 @@ describe("SendToOlvaModal home delivery", () => {
 
     const [pickup, home] = services.bulkCreateOlvaShipments.mock.calls[0][0].items;
 
-    expect(pickup).toMatchObject({
-      deliveryType: "O",
-      whoPays: "STORE",
-      destination: { agencyCode: "LIM01" },
-    });
+    expect(pickup).toMatchObject({ deliveryType: "O", whoPays: "STORE" });
+    // The agency's name as the picker showed it travels too: the order's tracking shows it
+    expect(pickup.destination).toEqual({ agencyCode: "LIM01", agencyLabel: AGENCY_OPTION });
     expect(home).toMatchObject({
       deliveryType: "D",
       whoPays: "ONLINE",

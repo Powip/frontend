@@ -27,6 +27,26 @@ describe("shipment item rules (mirror of the backend)", () => {
     expect(data?.externalRef).toEqual({ orderId: "PED-1", guideId: undefined });
   });
 
+  it("keeps the agency's name of a store pickup for the order, and drops a blank one", () => {
+    const named = createOlvaShipmentSchema.safeParse({
+      ...valid,
+      destination: {
+        agencyCode: "LIM01",
+        agencyLabel: "Agencia Lima Centro — Jr. de la Unión 100",
+      },
+    });
+    const blank = createOlvaShipmentSchema.safeParse({
+      ...valid,
+      destination: { agencyCode: "LIM01", agencyLabel: "" },
+    });
+
+    expect(named.data?.destination).toEqual({
+      agencyCode: "LIM01",
+      agencyLabel: "Agencia Lima Centro — Jr. de la Unión 100",
+    });
+    expect(blank.data?.destination).toEqual({ agencyCode: "LIM01" });
+  });
+
   it("drops the order reference when its id is blank", () => {
     const { data } = createOlvaShipmentSchema.safeParse({
       ...valid,

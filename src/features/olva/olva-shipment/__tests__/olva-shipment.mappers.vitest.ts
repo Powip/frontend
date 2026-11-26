@@ -281,5 +281,15 @@ describe("olva-shipment mappers", () => {
       expect(blank.destination).toEqual({ agencyCode: "AG-1" });
       expect(home.destination).not.toHaveProperty("agencyLabel");
     });
+
+    it("cuts the agency's name to the 200 characters the backend keeps", () => {
+      const dto = toCreateOlvaShipmentRequestDto(
+        buildCreateOlvaShipmentInput({
+          destination: { agencyCode: "AG-1", agencyLabel: `Agencia ${"x".repeat(300)}` },
+        } as never),
+      );
+
+      expect((dto.destination as { agencyLabel?: string }).agencyLabel).toHaveLength(200);
+    });
   });
 });

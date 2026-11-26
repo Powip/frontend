@@ -45,6 +45,7 @@ export function orderToOlvaFormItem(
     origin: { headquarterId },
     destination: {
       agencyCode: "",
+      agencyLabel: "",
       ubigeoCode: "",
       address: customer?.address ?? "",
       reference: "",

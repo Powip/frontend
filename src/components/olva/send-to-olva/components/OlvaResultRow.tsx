@@ -1,32 +1,17 @@
 "use client";
 
-import { ExternalLink, FileText, Loader2 } from "lucide-react";
-import { useState } from "react";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
 import type { OrderDetail } from "@/components/modals/GuideDetailsModal";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { formatOlvaAmount } from "@/features/olva/olva-quote/utils/format-olva-amount";
 import { OLVA_SHIPMENT_ERROR_CODES } from "@/features/olva/olva-shipment/constants/olva-shipment-error-codes.constants";
-import { useOlvaShipment } from "@/features/olva/olva-shipment/hooks/use-olva-shipment";
-import { useRegenerateOlvaShipmentPaymentLink } from "@/features/olva/olva-shipment/hooks/use-regenerate-olva-shipment-payment-link";
 import type { OlvaBulkShipmentResult } from "@/features/olva/olva-shipment/models/olva-bulk-shipment-result";
-import type { OlvaShipmentLabel } from "@/features/olva/olva-shipment/models/olva-shipment-label";
-import { getOlvaShipmentLabel } from "@/features/olva/olva-shipment/services/olva-shipment.service";
-import { canRegenerateOlvaPaymentLink } from "@/features/olva/olva-shipment/utils/can-regenerate-olva-payment-link";
-import { getOlvaShipmentStatusLabel } from "@/features/olva/olva-shipment/utils/get-olva-shipment-status-label";
-import {
-  getOlvaShipmentErrorMessage,
-  OLVA_SHIPMENT_ERROR_MESSAGES,
-} from "@/features/olva/olva-shipment/utils/olva-shipment-error.util";
-import {
-  OLVA_CURRENCIES,
-  OLVA_SHIPMENT_STATUSES,
-} from "@/features/olva/shared/constants/olva-enums.constants";
-import { isOlvaNiubizPayment, isOlvaPagoEfectivoPayment } from "../utils/olva-payment-guards";
-import { openOlvaLabel } from "../utils/open-olva-label";
-import { OlvaNiubizCheckoutButton } from "./OlvaNiubizCheckoutButton";
+import { olvaShipmentQueries } from "@/features/olva/olva-shipment/queries/olva-shipment.queries";
+import { OLVA_SHIPMENT_ERROR_MESSAGES } from "@/features/olva/olva-shipment/utils/olva-shipment-error.util";
+import { OLVA_CURRENCIES } from "@/features/olva/shared/constants/olva-enums.constants";
+import { OlvaShipmentCell } from "../../OlvaShipmentCell";
 
 interface OlvaResultRowProps {
   result: OlvaBulkShipmentResult;
@@ -36,37 +21,17 @@ interface OlvaResultRowProps {
 
 const formatCost = (cost: number) => formatOlvaAmount(cost, OLVA_CURRENCIES.PEN);
 
-/** What happened to one order of the lot, and what can be done next with it. */
+/**
+ * What happened to one order of the lot, and what can be done next with it. The shipment itself
+ * (status, label, payment, retry) is `OlvaShipmentCell`, the same one the guide shows.
+ */
 export function OlvaResultRow({ result, order, onShareWhatsApp }: OlvaResultRowProps) {
-  const [isOpeningLabel, setIsOpeningLabel] = useState(false);
-  const regeneratePaymentLink = useRegenerateOlvaShipmentPaymentLink();
-  const created = result.status === "created" ? result.shipment : null;
-  // While the shipment waits for payment (or its link expired) follow it: it re-reads itself every
-  // few seconds until paid, and a regenerated link lands in the same cache entry
-  const isAwaitingPayment =
-    created?.status === OLVA_SHIPMENT_STATUSES.PENDING_PAYMENT ||
-    created?.status === OLVA_SHIPMENT_STATUSES.PAYMENT_EXPIRED;
-  const live = useOlvaShipment(isAwaitingPayment ? created?.id : null);
+  // What the cell learned since (paid, new tracking number), read from the cache it fills
+  const { data: live } = useQuery({
+    ...olvaShipmentQueries.detail(result.status === "created" ? result.shipment.id : null),
+    enabled: false,
+  });
   const title = order ? `Pedido ${order.orderNumber}` : `Pedido ${result.itemKey}`;
-
-  const openLabel = async (label: OlvaShipmentLabel | null, shipmentId: string | undefined) => {
-    setIsOpeningLabel(true);
-
-    try {
-      // The label only comes with the creation answer; if it is gone, Olva can still serve it
-      const resolved = label ?? (shipmentId ? await getOlvaShipmentLabel(shipmentId) : null);
-
-      if (!resolved) {
-        toast.error("No hay rótulo disponible para este envío.");
-      } else if (!openOlvaLabel(resolved)) {
-        toast.error("El navegador bloqueó la ventana del rótulo. Permite las ventanas emergentes.");
-      }
-    } catch (error) {
-      toast.error(getOlvaShipmentErrorMessage(error));
-    } finally {
-      setIsOpeningLabel(false);
-    }
-  };
 
   if (result.status === "failed") {
     const message = OLVA_SHIPMENT_ERROR_MESSAGES[result.error.code] ?? result.error.message;
@@ -88,55 +53,29 @@ export function OlvaResultRow({ result, order, onShareWhatsApp }: OlvaResultRowP
     );
   }
 
+  // OLVA_OUTCOME_UNKNOWN: the reserved shipment (SUBMITTING), retried from the cell, never resent
   if (result.status === "unknown") {
     return (
       <li className="grid gap-2 rounded-md border p-3">
-        <div className="flex items-center justify-between gap-2">
-          <span className="font-medium">{title}</span>
-          <Badge variant="secondary">Verificando con Olva</Badge>
-        </div>
-        <p className="text-sm">
-          Olva no confirmó el registro todavía. No lo registres de nuevo: se confirma solo en unos
-          minutos.
-        </p>
+        <span className="font-medium">{title}</span>
+        <OlvaShipmentCell shipment={result.shipment} />
       </li>
     );
   }
 
-  const shipment = live.data ?? created;
-  const trackingNumber = shipment?.trackingNumber ?? null;
-  const cost = shipment?.cost ?? 0;
-  const payment = shipment?.payment ?? null;
-  const status = shipment?.status;
-  const registrationNumber = shipment?.registrationNumber;
+  const { shipment } = result;
+
   return (
     <li className="grid gap-2 rounded-md border p-3">
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium">{title}</span>
-        <Badge>{status ? getOlvaShipmentStatusLabel(status) : "Creado"}</Badge>
-      </div>
+      <span className="font-medium">{title}</span>
+      <OlvaShipmentCell shipment={shipment} label={result.label} />
+
       <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
         <div>
-          <dt className="text-muted-foreground text-xs">Seguimiento</dt>
-          <dd>{trackingNumber ?? "—"}</dd>
-        </div>
-        <div>
           <dt className="text-muted-foreground text-xs">Costo</dt>
-          <dd>{formatCost(cost)}</dd>
+          <dd>{formatCost(shipment.cost)}</dd>
         </div>
-        {payment && isOlvaPagoEfectivoPayment(payment) && payment.cipCode ? (
-          <div>
-            <dt className="text-muted-foreground text-xs">Código CIP</dt>
-            <dd>{payment.cipCode}</dd>
-          </div>
-        ) : null}
-        {payment?.paid ? (
-          <div>
-            <dt className="text-muted-foreground text-xs">Pago</dt>
-            <dd>Pagado</dd>
-          </div>
-        ) : null}
-        {shipment?.securityPin ? (
+        {shipment.securityPin ? (
           <div>
             <dt className="text-muted-foreground text-xs">PIN de recojo</dt>
             <dd>{shipment.securityPin}</dd>
@@ -144,59 +83,20 @@ export function OlvaResultRow({ result, order, onShareWhatsApp }: OlvaResultRowP
         ) : null}
       </dl>
 
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={isOpeningLabel}
-          onClick={() => openLabel(result.label, shipment?.id)}
-        >
-          {isOpeningLabel ? (
-            <Loader2 className="mr-1 size-4 animate-spin" />
-          ) : (
-            <FileText className="mr-1 size-4" />
-          )}
-          Rótulo Olva
-        </Button>
-        {payment && isOlvaPagoEfectivoPayment(payment) && payment.url ? (
-          <Button type="button" size="sm" variant="outline" asChild>
-            <a href={payment.url} target="_blank" rel="noopener noreferrer">
-              <ExternalLink className="mr-1 size-4" />
-              Link de pago
-            </a>
-          </Button>
-        ) : null}
-        {payment && isOlvaNiubizPayment(payment) ? (
-          <OlvaNiubizCheckoutButton payment={payment} registrationNumber={registrationNumber} />
-        ) : null}
-        {shipment && canRegenerateOlvaPaymentLink(shipment.status) ? (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={regeneratePaymentLink.isPending}
-            onClick={() => regeneratePaymentLink.mutate(shipment.id)}
-          >
-            {regeneratePaymentLink.isPending ? (
-              <Loader2 className="mr-1 size-4 animate-spin" />
-            ) : null}
-            Generar nuevo pago
-          </Button>
-        ) : null}
-        {order && shipment ? (
+      {order ? (
+        <div className="flex flex-wrap gap-2">
           <Button
             type="button"
             size="sm"
             variant="outline"
             title="Enviar seguimiento por WhatsApp"
-            onClick={() => onShareWhatsApp(order, trackingNumber)}
+            onClick={() => onShareWhatsApp(order, (live ?? shipment).trackingNumber)}
           >
             <WhatsAppIcon className="mr-1 size-4" />
             WhatsApp
           </Button>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </li>
   );
 }
