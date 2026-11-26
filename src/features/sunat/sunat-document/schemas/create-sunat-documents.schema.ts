@@ -48,6 +48,20 @@ const sunatDocumentLineItemSchema = z.object({
       unitPrice: z.number(),
       discountAmount: z.number(),
       taxType: z.enum(SUNAT_TAX_AFFECTATION_TYPES),
+      suggestedValue: z.number().optional(),
+    })
+    .optional(),
+
+  /**
+   * Solo pantalla, nunca se envía: lo que la venta traía en esta línea (sin
+   * IGV), para sugerir el precio normal de un regalo.
+   */
+  giftSale: z
+    .object({
+      unitPrice: z.number(),
+      discountAmount: z.number(),
+      isGift: z.boolean(),
+      referenceUnitValue: z.number().optional(),
     })
     .optional(),
 });

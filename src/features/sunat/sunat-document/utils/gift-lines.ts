@@ -35,9 +35,49 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-/** A line that can be sent as a gift: it was marked when the order was read. */
-export function isGiftCandidate(item: Pick<SunatItem, "giftOrigin">): boolean {
-  return item.giftOrigin !== undefined;
+/** The shipping line the builder adds: it is never a gift. */
+const SHIPPING_SKU = "DELIVERY";
+
+type CandidateItem = Pick<
+  SunatItem,
+  "sku" | "quantity" | "unitPrice" | "discountAmount" | "taxType" | "giftSale"
+>;
+
+/**
+ * A line that can be sent as a gift, judged by what it holds NOW, so editing
+ * price or discount on screen adds or removes it:
+ * - it is already going as a gift (13/31);
+ * - its value is S/ 0.00 (price 0 or 100% discount);
+ * - the sale marked it as a gift and its amounts were not changed.
+ */
+export function isGiftCandidate(item: CandidateItem): boolean {
+  if (item.sku === SHIPPING_SKU) {
+    return false;
+  }
+
+  if (isGiftTaxType(item.taxType)) {
+    return true;
+  }
+
+  const quantity = Number(item.quantity) || 0;
+
+  // An empty quantity is a field being typed, not a gift.
+  if (quantity <= 0) {
+    return false;
+  }
+
+  const unitPrice = Number(item.unitPrice) || 0;
+  const discountAmount = Number(item.discountAmount) || 0;
+
+  if (Number((quantity * unitPrice - discountAmount).toFixed(2)) <= 0) {
+    return true;
+  }
+
+  const sale = item.giftSale;
+
+  return (
+    sale?.isGift === true && sale.unitPrice === unitPrice && sale.discountAmount === discountAmount
+  );
 }
 
 export function hasGiftCandidates(items: readonly SunatItem[]): boolean {
@@ -70,37 +110,79 @@ export function getAllowedGiftModes(
     : [GIFT_MODES.PROMOCION, GIFT_MODES.APARTE];
 }
 
+/** The option every candidate line is going with; `none` if any is left out. */
 export function getCurrentGiftMode(items: readonly SunatItem[]): GiftMode {
-  const gift = items.find((item) => isGiftCandidate(item) && isGiftTaxType(item.taxType));
+  const candidates = items.filter(isGiftCandidate);
+  const mode = candidates[0]?.taxType;
 
-  return (gift?.taxType as GiftMode | undefined) ?? GIFT_MODES.NONE;
+  return isGiftTaxType(mode) && candidates.every((item) => item.taxType === mode)
+    ? (mode as GiftMode)
+    : GIFT_MODES.NONE;
 }
 
 /**
- * Sends the candidate lines as gifts (`mode` 13/31) or back as the sale had
- * them (`none`). A gift is charged nothing: price, subtotal and discount go
- * to 0, so its discount never reaches the document's discount total, and
- * SUNAT gets its value through `referenceUnitValue`.
+ * Suggested valor referencial (without IGV) when the user has not typed one:
+ * the sale's gift value, else the line's own price (100% discount), else the
+ * price the sale had (line edited down to 0). Never a half-typed amount.
+ */
+function suggestReferenceUnitValue(item: SunatItem): number | undefined {
+  const suggested = item.giftSale?.referenceUnitValue || item.unitPrice || item.giftSale?.unitPrice;
+
+  return suggested && suggested > 0 ? suggested : undefined;
+}
+
+/**
+ * Sends the candidate lines as gifts (`mode` 13/31) or back as they were
+ * before choosing (`none`). A gift is charged nothing: price, subtotal and
+ * discount go to 0, so its discount never reaches the document's discount
+ * total, and SUNAT gets its value through `referenceUnitValue`. A normal
+ * price typed by the user survives; a suggested one is computed again.
  */
 export function applyGiftMode(items: readonly SunatItem[], mode: GiftMode): SunatItem[] {
   return items.map((item) => {
-    const origin = item.giftOrigin;
-
-    if (!origin) {
-      return item;
-    }
-
     if (mode === GIFT_MODES.NONE) {
+      const origin = item.giftOrigin;
+
+      if (!origin) {
+        return item;
+      }
+
       return {
         ...item,
         taxType: origin.taxType,
         unitPrice: origin.unitPrice,
         subtotal: Math.max(0, item.quantity * origin.unitPrice),
         discountAmount: origin.discountAmount,
+        referenceUnitValue:
+          item.referenceUnitValue === origin.suggestedValue ? undefined : item.referenceUnitValue,
+        giftOrigin: undefined,
       };
     }
 
-    return { ...item, taxType: mode, unitPrice: 0, subtotal: 0, discountAmount: 0 };
+    if (!isGiftCandidate(item)) {
+      return item;
+    }
+
+    if (item.giftOrigin) {
+      return { ...item, taxType: mode };
+    }
+
+    const suggestedValue = item.referenceUnitValue ? undefined : suggestReferenceUnitValue(item);
+
+    return {
+      ...item,
+      taxType: mode,
+      unitPrice: 0,
+      subtotal: 0,
+      discountAmount: 0,
+      referenceUnitValue: item.referenceUnitValue ?? suggestedValue,
+      giftOrigin: {
+        unitPrice: item.unitPrice,
+        discountAmount: item.discountAmount,
+        taxType: item.taxType,
+        suggestedValue,
+      },
+    };
   });
 }
 
@@ -152,19 +234,12 @@ export function getGiftsWithoutPrice(items: readonly SunatItem[]): SunatItem[] {
 }
 
 /**
- * Marks the product lines that can go as a gift, keeping what they had so the
- * choice can be undone:
- * - a line the sale marked as a gift (`isGift`);
- * - a line at price 0;
- * - a line with a real price and a 100% discount.
- *
- * Its suggested valor referencial (without IGV) comes from the gift's normal
- * price in the sale (`giftValue`, the whole line) or from its own price when
- * it was discounted 100%. A line at price 0 without `giftValue` gets none:
- * the user must type the normal price. Shipping (free shipping included) is
- * never a gift and is not touched here.
+ * Keeps on each product line what the sale had, so that the screen can later
+ * suggest the normal price of a gift: its price and discount, whether it was
+ * marked as a gift, and the gift's value (`giftValue` is the whole line),
+ * all without IGV. Shipping is added afterwards and is never a gift.
  */
-export function markGiftCandidates(
+export function rememberSaleAmounts(
   productItems: SunatItem[],
   sale: Order,
   taxRegime?: string | null,
@@ -174,29 +249,22 @@ export function markGiftCandidates(
 
   return productItems.map((item, index) => {
     const saleItem = sale.items[index];
-    const lineValue = round2(item.quantity * item.unitPrice - item.discountAmount);
 
-    if (!saleItem || (!saleItem.isGift && lineValue > 0)) {
+    if (!saleItem) {
       return item;
     }
 
     const giftValue = Number(saleItem.giftValue) || 0;
-    let referenceUnitValue: number | undefined;
-
-    if (giftValue > 0 && item.quantity > 0) {
-      const unitValue = giftValue / item.quantity;
-      referenceUnitValue = pricesIncludeTax ? unitValue / (1 + igvRate) : unitValue;
-    } else if (item.unitPrice > 0) {
-      referenceUnitValue = item.unitPrice;
-    }
+    const unitValue = item.quantity > 0 ? giftValue / item.quantity : 0;
 
     return {
       ...item,
-      ...(referenceUnitValue ? { referenceUnitValue } : {}),
-      giftOrigin: {
+      giftSale: {
         unitPrice: item.unitPrice,
         discountAmount: item.discountAmount,
-        taxType: item.taxType,
+        isGift: Boolean(saleItem.isGift),
+        referenceUnitValue:
+          unitValue > 0 ? (pricesIncludeTax ? unitValue / (1 + igvRate) : unitValue) : undefined,
       },
     };
   });

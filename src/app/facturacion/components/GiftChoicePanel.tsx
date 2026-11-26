@@ -16,8 +16,8 @@ import {
   getGiftLineValue,
   getGiftNormalUnitPrice,
   hasGiftCandidates,
-  isGiftCandidate,
   isGiftOnlyDocument,
+  isGiftTaxType,
   toReferenceUnitValue,
 } from "@/features/sunat/sunat-document/utils/gift-lines";
 import { isNuevoRus } from "@/features/sunat/sunat-profile/utils/tax-regime";
@@ -82,6 +82,21 @@ export function GiftChoicePanel({ taxRegime }: { taxRegime?: string } = {}) {
   const { control, getValues, setValue } = useFormContext<CreateSunatDocumentsFormValues>();
   const items = useWatch({ control, name: "documents.0.items" }) ?? [];
 
+  // Removing the purchase can leave a «regalo de promoción» with nothing to
+  // go with: it goes back to unchosen.
+  const notAllowed =
+    isGiftOnlyDocument(items) && items.some((item) => item.taxType === GIFT_MODES.PROMOCION);
+
+  useEffect(() => {
+    if (notAllowed) {
+      setValue(
+        "documents.0.items",
+        applyGiftMode(getValues("documents.0.items"), GIFT_MODES.NONE),
+        { shouldDirty: true, shouldValidate: true },
+      );
+    }
+  }, [notAllowed, getValues, setValue]);
+
   if (!hasGiftCandidates(items)) {
     return null;
   }
@@ -94,7 +109,10 @@ export function GiftChoicePanel({ taxRegime }: { taxRegime?: string } = {}) {
   const nuevoRus = isNuevoRus(taxRegime);
 
   function choose(next: GiftMode) {
-    setValue("documents.0.items", applyGiftMode(getValues("documents.0.items"), next), {
+    // Touching the selected option again removes the choice.
+    const target = next === mode ? GIFT_MODES.NONE : next;
+
+    setValue("documents.0.items", applyGiftMode(getValues("documents.0.items"), target), {
       shouldDirty: true,
       shouldValidate: true,
     });
@@ -149,14 +167,18 @@ export function GiftChoicePanel({ taxRegime }: { taxRegime?: string } = {}) {
         })}
       </div>
 
-      {mode === GIFT_MODES.NONE && allowed.length === 0 ? null : mode === GIFT_MODES.NONE ? (
+      {mode === GIFT_MODES.NONE && allowed.length === 0 ? null : (
         <p className="text-xs text-muted-foreground">
-          Elige una opción. Sin elegir, el regalo queda en S/ 0.00 y no se puede emitir.
+          {mode === GIFT_MODES.NONE
+            ? "Elige una opción. Sin elegir, el regalo queda en S/ 0.00 y no se puede emitir."
+            : "Para quitar la elección y volver a editar la línea, toca la opción marcada."}
         </p>
-      ) : (
+      )}
+
+      {items.some((item) => isGiftTaxType(item.taxType)) && (
         <div className="space-y-2">
           {items.map((item, index) =>
-            isGiftCandidate(item) ? (
+            isGiftTaxType(item.taxType) ? (
               <div
                 // biome-ignore lint/suspicious/noArrayIndexKey: lines have no id; order is stable here
                 key={index}
