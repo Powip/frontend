@@ -169,6 +169,9 @@ describe("Reglas de stock y recepciones en /warehouses (FEAT-24 H2-F)", () => {
       // FEAT-24 H13 y H5-L: días de cobertura y de aviso de vencimiento, 30 por defecto.
       defaultCoverageDays: 30,
       expiryAlertDays: 30,
+      // FEAT-24 C-D3/C-D4: flexible por defecto; sin dato, «por defecto» = nunca.
+      stockControl: "flexible",
+      defaultReleaseAfterDays: null,
     });
     expect(axiosAuth.get).toHaveBeenCalledWith(`${BASE}/inventory-rules`);
 
@@ -180,6 +183,8 @@ describe("Reglas de stock y recepciones en /warehouses (FEAT-24 H2-F)", () => {
       allowPurchaseToCourier: false,
       defaultCoverageDays: 30,
       expiryAlertDays: 30,
+      stockControl: "flexible",
+      defaultReleaseAfterDays: null,
     });
     expect(axiosAuth.put).toHaveBeenCalledWith(`${BASE}/inventory-rules`, { releaseAfterDays: 7, pickingRequired: true });
   });
@@ -190,7 +195,16 @@ describe("Reglas de stock y recepciones en /warehouses (FEAT-24 H2-F)", () => {
     });
     await expect(
       saveInventoryRules({ releaseAfterDays: null, pickingRequired: false, igvAffected: false, allowPurchaseToCourier: true }),
-    ).resolves.toEqual({ releaseAfterDays: null, pickingRequired: false, igvAffected: false, allowPurchaseToCourier: true, defaultCoverageDays: 30, expiryAlertDays: 30 });
+    ).resolves.toEqual({
+      releaseAfterDays: null,
+      pickingRequired: false,
+      igvAffected: false,
+      allowPurchaseToCourier: true,
+      defaultCoverageDays: 30,
+      expiryAlertDays: 30,
+      stockControl: "flexible",
+      defaultReleaseAfterDays: null,
+    });
     expect(axiosAuth.put).toHaveBeenCalledWith(`${BASE}/inventory-rules`, {
       releaseAfterDays: null,
       pickingRequired: false,
@@ -205,6 +219,31 @@ describe("Reglas de stock y recepciones en /warehouses (FEAT-24 H2-F)", () => {
     jest.mocked(axiosAuth.put).mockResolvedValue({ data: { releaseAfterDays: null, pickingRequired: false, expiryAlertDays: 60 } });
     await expect(saveInventoryRules({ releaseAfterDays: null, pickingRequired: false, expiryAlertDays: 60 })).resolves.toMatchObject({ expiryAlertDays: 60 });
     expect(axiosAuth.put).toHaveBeenLastCalledWith(`${BASE}/inventory-rules`, { releaseAfterDays: null, pickingRequired: false, expiryAlertDays: 60 });
+  });
+
+  it("FEAT-24 C-D3/C-D4: lee el control de stock y el vencimiento por defecto; manda stockControl y 0 = nunca", async () => {
+    jest.mocked(axiosAuth.get).mockResolvedValue({
+      data: { releaseAfterDays: 0, pickingRequired: false, stockControl: "estricto", defaultReleaseAfterDays: 30 },
+    });
+    await expect(getInventoryRules()).resolves.toMatchObject({
+      releaseAfterDays: 0,
+      stockControl: "estricto",
+      defaultReleaseAfterDays: 30,
+    });
+    // Un valor raro se lee como flexible / nunca.
+    jest.mocked(axiosAuth.get).mockResolvedValue({
+      data: { releaseAfterDays: null, pickingRequired: false, stockControl: "otro", defaultReleaseAfterDays: 0 },
+    });
+    await expect(getInventoryRules()).resolves.toMatchObject({ stockControl: "flexible", defaultReleaseAfterDays: null });
+
+    jest.mocked(axiosAuth.put).mockResolvedValue({ data: { releaseAfterDays: 0, pickingRequired: false, stockControl: "estricto" } });
+    await saveInventoryRules({ releaseAfterDays: 0, pickingRequired: false, stockControl: "estricto", defaultReleaseAfterDays: 30 });
+    // `defaultReleaseAfterDays` es de solo lectura: no viaja.
+    expect(axiosAuth.put).toHaveBeenLastCalledWith(`${BASE}/inventory-rules`, {
+      releaseAfterDays: 0,
+      pickingRequired: false,
+      stockControl: "estricto",
+    });
   });
 
   it("lista las recepciones por estado y recibe una con POST .../receive", async () => {

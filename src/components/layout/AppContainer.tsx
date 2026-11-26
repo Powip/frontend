@@ -58,6 +58,7 @@ function ScopedAppContainer({ children }: { children: React.ReactNode }) {
     "/rastreo",
     "/c/",
     "/onboarding",
+    "/p/",
     "/pasate-a-flow",
     "/cuenta-suspendida",
     // FEAT-24 H6-D: el modo almacén tiene su propio layout móvil.
@@ -73,11 +74,16 @@ function ScopedAppContainer({ children }: { children: React.ReactNode }) {
     <AuthGuard>
       <div className="flex h-screen overflow-hidden">
         {!hideSidebar && <Sidebar />}
-        <main className="min-w-0 flex-1 bg-gray-light overflow-auto">
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-gray-light">
           {!hideSidebar && <FlowMigrationBanner />}
           {!hideSidebar && <GreCredentialsNotice />}
           {!hideSidebar && isBusinessScopeRoute(pathname) && <BusinessScopeBar />}
-          <Fragment key={viewKey}>{children}</Fragment>
+          {/* Único scroll del contenido: la barra de empresa queda fija arriba. Las páginas que piden
+              h-screen ocupan solo el alto que queda, para no sumar otro scroll. «relative» evita que los
+              elementos absolutos hagan scrollear el documento. */}
+          <div data-testid="app-scroll" className="relative min-h-0 flex-1 overflow-auto [&>.h-screen]:h-full [&>.min-h-screen]:min-h-full">
+            <Fragment key={viewKey}>{children}</Fragment>
+          </div>
         </main>
       </div>
     </AuthGuard>

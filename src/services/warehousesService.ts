@@ -88,10 +88,24 @@ export interface ReservationRuleInput {
   active: boolean;
 }
 
+/**
+ * FEAT-24 C-D3: `flexible` (por defecto) deja registrar salidas que llevan el físico a negativo, con confirmación
+ * (`allowNegative`), y los traslados no se frenan por las reservas; `estricto` no deja bajar de 0 ni trasladar más que
+ * el disponible.
+ */
+export type StockControlMode = "flexible" | "estricto";
+
 export interface InventoryRules {
-  /** Días sin despachar para liberar la reserva; `null` = nunca. */
+  /**
+   * Días sin despachar para liberar la reserva (FEAT-24 C-D4): `null` = el valor por defecto de Powip
+   * (`defaultReleaseAfterDays`), `0` = nunca, 1..365 = esos días.
+   */
   releaseAfterDays: number | null;
   pickingRequired: boolean;
+  /** FEAT-24 C-D3: control de stock de la empresa. Al leer siempre viene (`flexible` por defecto); al guardar, si falta, queda como estaba. */
+  stockControl?: StockControlMode;
+  /** FEAT-24 C-D4: lo que vale hoy «por defecto» (`null` = nunca). Solo lectura: no se manda al guardar. */
+  defaultReleaseAfterDays?: number | null;
   /**
    * FEAT-24 H3: la empresa está afecta al IGV (por defecto sí). Si no, las órdenes de compra no separan IGV y
    * el costo es lo pagado. Al guardar, si falta, queda como estaba.
@@ -112,12 +126,20 @@ export interface InventoryRules {
 }
 
 /** Lo que devuelve el GET: todas las reglas con su valor por defecto. */
-export type InventoryRulesView = Required<Omit<InventoryRules, "defaultCoverageDays" | "expiryAlertDays">> &
-  Pick<InventoryRules, "defaultCoverageDays" | "expiryAlertDays">;
+export type InventoryRulesView = Required<
+  Omit<InventoryRules, "defaultCoverageDays" | "expiryAlertDays" | "stockControl" | "defaultReleaseAfterDays">
+> &
+  Pick<InventoryRules, "defaultCoverageDays" | "expiryAlertDays" | "stockControl" | "defaultReleaseAfterDays">;
 
 const coverageDays = (value: unknown): number => {
   const days = Number(value);
   return Number.isInteger(days) && days >= 1 && days <= 365 ? days : DEFAULT_COVERAGE_DAYS;
+};
+
+/** `defaultReleaseAfterDays`: 1..365 o `null` (nunca). */
+const releaseDays = (value: unknown): number | null => {
+  const days = Number(value);
+  return value !== null && value !== undefined && Number.isInteger(days) && days >= 1 && days <= 365 ? days : null;
 };
 
 /** Lo que devolvió ms-logistics, con los valores por defecto de cada regla. */
@@ -129,6 +151,8 @@ function inventoryRulesFrom(data: Partial<InventoryRules> | undefined): Inventor
     allowPurchaseToCourier: data?.allowPurchaseToCourier === true,
     defaultCoverageDays: coverageDays(data?.defaultCoverageDays),
     expiryAlertDays: coverageDays(data?.expiryAlertDays),
+    stockControl: data?.stockControl === "estricto" ? "estricto" : "flexible",
+    defaultReleaseAfterDays: releaseDays(data?.defaultReleaseAfterDays),
   };
 }
 
@@ -188,11 +212,15 @@ export async function getInventoryRules(): Promise<InventoryRulesView> {
   return inventoryRulesFrom(data);
 }
 
-/** Solo Administrador (403 al resto). Las reglas de compras y los días de cobertura se mandan solo si vienen. */
+/**
+ * Solo Administrador (403 al resto). Las reglas de compras, los días de cobertura y el control de stock se mandan
+ * solo si vienen. `defaultReleaseAfterDays` es de solo lectura: nunca se manda.
+ */
 export async function saveInventoryRules(rules: InventoryRules): Promise<InventoryRulesView> {
   const { data } = await axiosAuth.put<InventoryRules>(`${base()}/inventory-rules`, {
     releaseAfterDays: rules.releaseAfterDays,
     pickingRequired: rules.pickingRequired,
+    ...(rules.stockControl !== undefined ? { stockControl: rules.stockControl } : {}),
     ...(rules.igvAffected !== undefined ? { igvAffected: rules.igvAffected } : {}),
     ...(rules.allowPurchaseToCourier !== undefined ? { allowPurchaseToCourier: rules.allowPurchaseToCourier } : {}),
     ...(rules.defaultCoverageDays !== undefined ? { defaultCoverageDays: rules.defaultCoverageDays } : {}),

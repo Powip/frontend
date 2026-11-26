@@ -1,5 +1,11 @@
 import type { AdsRow } from "@/services/advertisingV22Service";
-import { catalogChannels, isActiveAd, lastSpendLabel, sortAdItems } from "../ads-list-model";
+import {
+  catalogChannels,
+  isActiveAd,
+  isInactiveAd,
+  lastSpendLabel,
+  sortAdItems,
+} from "../ads-list-model";
 const ad = (id: string, status = "ACTIVE", date?: string, spend = "10") => ({
   row: {
     id,
@@ -65,4 +71,12 @@ it("uses catalog destinations and actual Meta results without borrowing a sales 
     }),
   ]).toEqual(["messages", "web"]);
   expect([...catalogChannels({ ...row, objective: "OUTCOME_ENGAGEMENT" })]).toEqual(["other"]);
+});
+it("counts only rows with a Meta status other than ACTIVE as inactive; unknown stays out", () => {
+  expect(isInactiveAd(ad("on").row)).toBe(false);
+  expect(isInactiveAd(ad("paused", "PAUSED").row)).toBe(true);
+  expect(isInactiveAd(ad("inherited", "CAMPAIGN_PAUSED").row)).toBe(true);
+  expect(isInactiveAd({ ...ad("none").row, status: null, effectiveStatus: null } as AdsRow)).toBe(
+    false,
+  );
 });

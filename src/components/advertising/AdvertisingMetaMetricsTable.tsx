@@ -19,6 +19,18 @@ import {
   advertisingMetaExtraColumns,
   type advertisingMetaTableValues,
 } from "./advertising-meta-table-model";
+import { effectiveStatusState } from "./advertising-meta-status";
+import { MetaStatusBadge } from "./AdvertisingMetaStatusFilter";
+import { metaStatusLabel } from "./v22/model";
+
+function RowMetaStatus({ row }: { row: MetaCatalogRow }) {
+  return (
+    <MetaStatusBadge
+      state={effectiveStatusState(row.effectiveStatus ?? row.status)}
+      label={`Meta: ${metaStatusLabel(row)}`}
+    />
+  );
+}
 
 export function AdvertisingMetaMetricsTable({
   rows,
@@ -79,6 +91,7 @@ export function AdvertisingMetaMetricsTable({
                 <TableRow key={`${row.accountId}:${row.id}`}>
                   <TableCell className="max-w-72 whitespace-normal">
                     <p className="font-medium break-words">{row.name}</p>
+                    <RowMetaStatus row={row} />
                     <p className="text-xs text-muted-foreground">
                       {accountName(row)} · {row.currency}
                       {row.store
@@ -140,6 +153,7 @@ export function AdvertisingMetaMetricsTable({
             >
               <div>
                 <p className="text-sm font-medium break-words">{row.name}</p>
+                <RowMetaStatus row={row} />
                 <p className="text-xs text-muted-foreground">
                   {accountName(row)} · {row.currency} · {values.resultType}
                 </p>

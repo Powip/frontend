@@ -35,8 +35,18 @@ import {
   type AdjustmentForm,
   type AdjustmentType,
 } from "@/lib/warehouseOps";
+import {
+  STRICT_NEGATIVE_MESSAGE,
+  formatSignedStock,
+  isNegativeStockConfirmError,
+  negativeAfterExit,
+  negativeStockConfirmMessage,
+} from "@/lib/stockControl";
+import { useStockControl } from "@/hooks/useStockControl";
+import { getStockByVariants } from "@/services/inventoryItems.service";
 import { getVariantCosts } from "@/services/purchasesService";
 import { createAdjustment, type AdjustmentReasonCode, type StockAdjustmentDoc } from "@/services/warehouseOpsService";
+import NegativeStockConfirm from "@/components/inventory/NegativeStockConfirm";
 import { ErrorBox, SELECT_CLASS } from "../OpsBits";
 import { useCompanyWarehouses } from "@/hooks/useCompanyWarehouses";
 import VariantLinePicker from "../VariantLinePicker";
@@ -46,6 +56,11 @@ import VariantLinePicker from "../VariantLinePicker";
 // Bajo el umbral de la empresa se aplica al guardar; sobre el umbral queda
 // pendiente y el stock no se mueve hasta que el Administrador lo apruebe. Cada
 // apertura tiene su `operationId`: reintentar no lo duplica.
+// FEAT-24 C-D3 — con control de stock flexible, si alguna salida deja el físico
+// en negativo se pide una casilla general y se manda `allowNegative`; en
+// estricto, no se deja registrar. Si el servidor igual pide confirmar (409
+// `STOCK_NEGATIVO_CONFIRMAR`), se muestra su mensaje, la casilla y el reintento
+// lleva otra clave.
 
 const TYPES: AdjustmentType[] = ["merma", "negativo", "positivo"];
 
@@ -59,10 +74,13 @@ interface Props {
 export default function AdjustmentFormDialog({ companyId, canSeeCosts, onClose, onSaved }: Props) {
   const scope = useMyWarehouses();
   const { warehouses, query: warehousesQuery } = useCompanyWarehouses();
+  const stockControl = useStockControl();
   const [form, setForm] = useState<AdjustmentForm>(() => emptyAdjustmentForm());
-  const [operationId] = useState(() => newOperationId());
+  const [operationId, setOperationId] = useState(() => newOperationId());
   const [touched, setTouched] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const [negativeConfirmed, setNegativeConfirmed] = useState(false);
+  const [serverConfirm, setServerConfirm] = useState<string | null>(null);
 
   const options = useMemo(() => scope.operable(warehouses.filter((warehouse) => warehouse.status)), [scope, warehouses]);
   const variantIds = useMemo(() => [...new Set(form.lines.map((line) => line.variantId))].sort(), [form.lines]);
@@ -77,20 +95,47 @@ export default function AdjustmentFormDialog({ companyId, canSeeCosts, onClose, 
     staleTime: 60_000,
     retry: false,
   });
+  // FEAT-24 C-D3: el físico de hoy en el almacén elegido, para saber qué salida lo deja en negativo.
+  const stockQuery = useQuery({
+    queryKey: ["adjustment-form-stock", companyId, variantIds],
+    queryFn: () => getStockByVariants(variantIds),
+    enabled: direction === "OUT" && Boolean(form.inventoryId) && variantIds.length > 0,
+    staleTime: 15_000,
+    retry: false,
+  });
+  const negativeLines = useMemo(() => {
+    if (direction !== "OUT" || !form.inventoryId || !stockQuery.data) return new Map<string, number>();
+    const physical = new Map<string, number>();
+    for (const row of stockQuery.data)
+      physical.set(row.variant_id, row.inventories?.find((inv) => inv.inventory_id === form.inventoryId)?.quantity ?? 0);
+    return negativeAfterExit(
+      form.lines.map((line) => ({ variantId: line.variantId, quantity: parseQuantity(line.quantity, 1) ?? 0 })),
+      physical,
+    );
+  }, [direction, form.inventoryId, form.lines, stockQuery.data]);
+  const strictBlocked = stockControl === "estricto" && negativeLines.size > 0 && !serverConfirm;
+  const needsNegativeConfirm = (stockControl === "flexible" && negativeLines.size > 0) || serverConfirm !== null;
   const value = useMemo(() => {
     if (!canSeeCosts || !costsQuery.data) return null;
     const cost = new Map(costsQuery.data.map((row) => [row.variantId, row.averageCost]));
     return form.lines.reduce((sum, line) => sum + (parseQuantity(line.quantity, 0) ?? 0) * (cost.get(line.variantId) ?? 0), 0);
   }, [canSeeCosts, costsQuery.data, form.lines]);
 
-  const problem = adjustmentFormProblem(form);
+  const problem =
+    adjustmentFormProblem(form) ??
+    (needsNegativeConfirm && !negativeConfirmed ? "Confirma las salidas que dejan el físico en negativo." : null);
   const change = (patch: Partial<AdjustmentForm>) => {
     setServerError(null);
+    // Otro almacén, tipo o líneas: lo confirmado ya no es lo mismo.
+    if (patch.lines !== undefined || patch.type !== undefined || patch.inventoryId !== undefined) {
+      setNegativeConfirmed(false);
+      setServerConfirm(null);
+    }
     setForm((current) => ({ ...current, ...patch }));
   };
 
   const save = useMutation({
-    mutationFn: () => createAdjustment(buildAdjustmentBody(form, operationId)),
+    mutationFn: () => createAdjustment(buildAdjustmentBody(form, operationId, needsNegativeConfirm && negativeConfirmed)),
     onSuccess: ({ adjustment, duplicate }) => {
       if (duplicate) toast.info(`${adjustment.number} ya estaba registrado.`);
       else if (adjustment.status === "pendiente_aprobacion")
@@ -98,7 +143,16 @@ export default function AdjustmentFormDialog({ companyId, canSeeCosts, onClose, 
       else toast.success(`${adjustment.number} · ${ADJUSTMENT_STATUS_LABEL[adjustment.status] ?? adjustment.status}`);
       onSaved(adjustment);
     },
-    onError: (error) => setServerError(opsErrorMessage(error, "No se pudo registrar el ajuste. Inténtalo de nuevo.")),
+    onError: (error) => {
+      if (isNegativeStockConfirmError(error)) {
+        // El intento rechazado no quedó registrado: el que sigue, con la confirmación, lleva otra clave.
+        setOperationId(newOperationId());
+        setNegativeConfirmed(false);
+        setServerConfirm(negativeStockConfirmMessage(error));
+        return;
+      }
+      setServerError(opsErrorMessage(error, "No se pudo registrar el ajuste. Inténtalo de nuevo."));
+    },
   });
   const busy = save.isPending;
 
@@ -213,6 +267,9 @@ export default function AdjustmentFormDialog({ companyId, canSeeCosts, onClose, 
                     />
                   ) : null}
                 </div>
+                {negativeLines.has(line.variantId) ? (
+                  <span className="text-xs font-medium text-destructive">Queda en {formatSignedStock(negativeLines.get(line.variantId) ?? 0)}</span>
+                ) : null}
                 <Input
                   aria-label={`Cantidad: ${line.label}`}
                   className="w-24 text-right"
@@ -246,11 +303,26 @@ export default function AdjustmentFormDialog({ companyId, canSeeCosts, onClose, 
         <div className="flex gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
           <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
           <span>
-            Si supera el umbral de aprobación de tu empresa, queda <b>pendiente de aprobación</b> y el stock no se mueve hasta que el Administrador lo apruebe.
-            Una salida nunca deja el físico en negativo.
+            Si supera el umbral de aprobación de tu empresa, queda <b>pendiente de aprobación</b> y el stock no se mueve hasta que el Administrador lo apruebe.{" "}
+            {stockControl === "flexible"
+              ? "Una salida que deja el físico en negativo pide tu confirmación."
+              : stockControl === "estricto"
+                ? "Una salida nunca deja el físico en negativo."
+                : null}
           </span>
         </div>
 
+        {strictBlocked ? <ErrorBox>{STRICT_NEGATIVE_MESSAGE}</ErrorBox> : null}
+        {needsNegativeConfirm ? (
+          <NegativeStockConfirm
+            id="aj-allow-negative"
+            message={serverConfirm}
+            label="Confirmo las salidas que dejan el físico en negativo"
+            checked={negativeConfirmed}
+            disabled={busy}
+            onCheckedChange={setNegativeConfirmed}
+          />
+        ) : null}
         {touched && problem ? <ErrorBox>{problem}</ErrorBox> : null}
         <ErrorBox>{serverError}</ErrorBox>
 
@@ -263,7 +335,7 @@ export default function AdjustmentFormDialog({ companyId, canSeeCosts, onClose, 
             disabled={busy}
             onClick={() => {
               setTouched(true);
-              if (problem) return;
+              if (problem || strictBlocked) return;
               save.mutate();
             }}
           >

@@ -8,6 +8,7 @@ import {
 } from "../enums/sunat-document.enums";
 import type { SunatDocument, SunatDocumentItem } from "../models/sunat-document.model";
 import { calculateSunatDocumentTotals, roundCurrency } from "./calculate-sunat-document-totals";
+import { isGiftTaxType } from "./gift-lines";
 
 const ACTIVE_STATUSES: readonly string[] = ["PENDING", "ACCEPTED", "ACCEPTED_WITH_OBSERVATION"];
 
@@ -53,8 +54,11 @@ function amountLine(
   amount: number,
   description: string,
 ): SunatDocumentItem {
+  // A gift line (13/31) has no charged amount: the amount credited takes the
+  // affectation of the first charged line.
   const taxType =
-    original.taxDocumentPayload.items[0]?.taxType ?? SUNAT_TAX_AFFECTATION_TYPES.GRAVADO;
+    original.taxDocumentPayload.items.find((item) => !isGiftTaxType(item.taxType))?.taxType ??
+    SUNAT_TAX_AFFECTATION_TYPES.GRAVADO;
   const net = taxType === SUNAT_TAX_AFFECTATION_TYPES.GRAVADO ? amount / (1 + IGV_RATE) : amount;
 
   return {
@@ -119,6 +123,10 @@ export function buildCreditNoteRequest(
       discountAmount: item.discountAmount,
       unitCode: item.unitCode,
       taxType: item.taxType,
+      // A gift keeps its valor referencial, or SUNAT has no value for the line.
+      ...(isGiftTaxType(item.taxType) && item.referenceUnitValue !== undefined
+        ? { referenceUnitValue: item.referenceUnitValue }
+        : {}),
     })),
   };
 }

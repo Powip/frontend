@@ -45,6 +45,7 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/compras": ["__INVENTORY_ROLE__"],
   "/registrar-compra": ["__INVENTORY_ROLE__"],
   "/ventas": [],
+  "/comercial/ventas-chat": [],
   "/cotizaciones": [],
   "/leads-comerciales": ["VIEW_LEADS", "MANAGE_LEADS", "MANAGE_LEAD_TYPES"],
   "/metricas/leads": ["VIEW_LEADS", "MANAGE_LEADS"],
@@ -93,6 +94,7 @@ export const SIDEBAR_ITEMS_PERMISSIONS: Record<string, string> = {
   "Crear Productos": "",
   Almacén: "",
   Ventas: "",
+  "Ventas por chat": "",
   Cotizaciones: "",
   "Registrar venta": "",
   Operaciones: "",
@@ -166,6 +168,18 @@ export const canEditInventory = (user?: RouteAccessUser): boolean =>
 export const canSeeProductCosts = (user?: RouteAccessUser): boolean => canEditInventory(user);
 
 /**
+ * FEAT-32 M3 (spec §6.13, `promociones.gestionar`) — ¿puede crear, editar, pausar o eliminar promociones?
+ * Administrador u Operaciones, igual que ms-ventas (`canManagePromos` de `src/promos/promo-access.ts`).
+ */
+export const canManagePromotions = (user?: RouteAccessUser): boolean => canEditInventory(user);
+
+/**
+ * FEAT-32 M5 (spec §7.15) — ¿puede crear y editar packs y aprobar los de creadoras? Administrador u Operaciones,
+ * igual que ms-products (escribir en `/packs`).
+ */
+export const canManagePacks = (user?: RouteAccessUser): boolean => canEditInventory(user);
+
+/**
  * FEAT-24 H8-D5 — rol COURIER: el personal del courier, con su almacén asignado. Su portal es /almacen: ve el
  * stock, cuenta, recibe traslados y ve la conciliación de su almacén. Todo lo demás se le cierra (menú y
  * rutas): el backend igual valida, pero las rutas viejas siguen la regla de H6 y le dejarían ver todo.
@@ -184,7 +198,31 @@ const COURIER_ROUTES = [COURIER_HOME, "/sin-plan", "/cuenta-suspendida"];
 export const isCourierRoute = (pathname: string): boolean =>
   COURIER_ROUTES.some((route) => underRoute(pathname, route)) && !COURIER_BLOCKED_ROUTES.some((route) => underRoute(pathname, route));
 
+/** Pestaña de notificaciones por WhatsApp (Configuración › WhatsApp): menú, tarjeta, campanita y ruta. */
+export const WHATSAPP_TAB_ROUTE = "/configuracion/whatsapp";
+
+/**
+ * Misma regla que CRM_ACCESS_EMAILS en ms-crm: lista de correos separada por comas; sin variable (o vacía)
+ * solo entra joel@aranni.com.pe y "*" la abre a todos. Orden de Jairo (26-nov). Solo oculta la pestaña:
+ * los avisos automáticos, el envío de comprobantes y las integraciones no dependen de esta lista.
+ */
+export const DEFAULT_WHATSAPP_ACCESS_EMAILS = "joel@aranni.com.pe";
+
+export const canSeeWhatsAppTab = (
+  email?: string | null,
+  raw: string | undefined = process.env.NEXT_PUBLIC_WHATSAPP_ACCESS_EMAILS,
+): boolean => {
+  const list = (raw?.trim() ? raw : DEFAULT_WHATSAPP_ACCESS_EMAILS)
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+  if (list.includes("*")) return true;
+  return !!email && list.includes(email.trim().toLowerCase());
+};
+
 export const hasRouteAccess = (pathname: string, user: RouteAccessUser | undefined): boolean => {
+  // Va antes que superadmin a propósito: los demás superadmins tampoco ven esta pestaña.
+  if (underRoute(pathname, WHATSAPP_TAB_ROUTE) && !canSeeWhatsAppTab(user?.email)) return false;
   if (isSuperadmin(user?.email)) return true;
   if (isCourierRole(user?.role)) return isCourierRoute(pathname);
   const requiredPermissions = getRoutePermissions(pathname);
@@ -194,7 +232,7 @@ export const hasRouteAccess = (pathname: string, user: RouteAccessUser | undefin
 };
 
 // Rutas por permiso cuyo enlace del sidebar se oculta a quien no puede abrirlas.
-const SIDEBAR_HIDDEN_WITHOUT_ACCESS = ["/finanzas", "/administracion"];
+const SIDEBAR_HIDDEN_WITHOUT_ACCESS = ["/finanzas", "/administracion", WHATSAPP_TAB_ROUTE];
 
 /**
  * ¿El sidebar debe ocultar el enlace de esta ruta a quien no puede abrirla? Sí para las que se deciden

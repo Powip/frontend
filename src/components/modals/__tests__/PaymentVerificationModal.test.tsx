@@ -35,7 +35,7 @@
  *   comprobar que YA NO se llama al aprobar.
  */
 
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render as rtlRender, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { GATEWAY } from '@/lib/gateway';
 let mockCanLegacyRecord = true;
@@ -69,6 +69,15 @@ jest.mock('@/lib/axiosAuth', () => ({
     patch: jest.fn(),
     put: jest.fn(),
   },
+}));
+
+// Cola de comprobantes de Pau: no es parte de estos tests (y no debe contar como GET del pedido).
+// Empresa con acceso al CRM: el modal solo busca pagos de Pau si lo tiene (sin llamada HTTP extra aquí).
+jest.mock('@/hooks/useCrmPlan', () => ({ useCrmAccess: () => ({ data: { allowed: true } }) }));
+jest.mock('@/services/crmOrderPanelService', () => ({
+  listFinanceQueue: jest.fn(async () => []),
+  reviewCorePayment: jest.fn(async () => null),
+  updateCorePaymentReceiptAmount: jest.fn(async () => undefined),
 }));
 
 jest.mock('sonner', () => ({
@@ -157,6 +166,18 @@ import axiosAuth from '@/lib/axiosAuth';
 import { toast } from 'sonner';
 import { usePathname } from 'next/navigation';
 import PaymentVerificationModal from '../PaymentVerificationModal';
+import { listFinanceQueue, reviewCorePayment } from '@/services/crmOrderPanelService';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+// render envuelto en QueryClientProvider (el modal usa react-query). rerender conserva el proveedor.
+const render = (ui: React.ReactElement, opts?: Parameters<typeof rtlRender>[1]) => {
+  const result = rtlRender(withQuery(ui), opts);
+  return { ...result, rerender: (next: React.ReactElement) => result.rerender(withQuery(next)) };
+};
+
+const withQuery = (ui: React.ReactElement) => (
+  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>
+);
 
 process.env.NEXT_PUBLIC_API_VENTAS = 'http://ventas';
 
@@ -255,6 +276,25 @@ describe('PaymentVerificationModal — aprobación de pagos', () => {
       ),
     );
     await waitFor(() => expect(onPaymentUpdated).toHaveBeenCalled());
+  });
+
+  it('pago de Pau (su id está en la cola de comprobantes de Pau): aprobar va por CRM y no por Ventas', async () => {
+    (listFinanceQueue as jest.Mock).mockResolvedValue([{ id: 'receipt-1', corePaymentId: 'payment-1' }]);
+    (reviewCorePayment as jest.Mock).mockResolvedValueOnce({ id: 'receipt-1', status: 'aprobado' });
+    mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData(null) });
+
+    try {
+      renderModal({ onPaymentUpdated: jest.fn() });
+      await waitFor(() => expect(listFinanceQueue).toHaveBeenCalled());
+      await act(async () => {});
+
+      await userEvent.click(await screen.findByRole('button', { name: /aprobar/i }));
+
+      await waitFor(() => expect(reviewCorePayment).toHaveBeenCalledWith('payment-1', true));
+      expect(mockedAxiosAuth.patch).not.toHaveBeenCalledWith('http://ventas/payments/payments/payment-1/approve');
+    } finally {
+      (listFinanceQueue as jest.Mock).mockResolvedValue([]);
+    }
   });
 });
 

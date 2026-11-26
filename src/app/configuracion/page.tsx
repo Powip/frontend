@@ -2,6 +2,8 @@
 import Header from "@/components/header/Header";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Card, CardContent } from "@/components/ui/card";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
+import { canSeeWhatsAppTab, WHATSAPP_TAB_ROUTE } from "@/config/permissions.config";
 import { useAuth } from "@/contexts/AuthContext";
 import { Building2, Store, User, Blocks, CreditCard, Warehouse } from "lucide-react";
 import Link from "next/link";
@@ -64,6 +66,18 @@ export default function ConfiguracionPage() {
       color: "text-indigo-600",
       bgColor: "bg-indigo-50",
     },
+    ...(canSeeWhatsAppTab(auth?.user?.email)
+      ? [
+          {
+            title: "Notificaciones por WhatsApp",
+            description: "Avisos de envío por WhatsApp y conversaciones con tus clientes",
+            icon: WhatsAppIcon,
+            href: WHATSAPP_TAB_ROUTE,
+            color: "text-emerald-600",
+            bgColor: "bg-emerald-50",
+          },
+        ]
+      : []),
   ];
 
   return (

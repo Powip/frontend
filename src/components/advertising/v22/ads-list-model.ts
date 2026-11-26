@@ -20,6 +20,19 @@ export function catalogChannels(row: AdsRow): Set<string> {
   }
   return channels.size ? channels : new Set(["other"]);
 }
+/**
+ * Inactive = Meta sent a documented effective_status other than ACTIVE
+ * (https://developers.facebook.com/docs/marketing-api/reference/adgroup/). Missing status is unknown.
+ */
+export function isInactiveAd(row: AdsRow) {
+  const value = row.effectiveStatus ?? row.status;
+  return !!value && !isActiveAd(row);
+}
+
+export function hasMetaObjectStatus(row: Pick<AdsRow, "level">) {
+  return row.level === "campaign" || row.level === "adset" || row.level === "ad";
+}
+
 export function isActiveAd(row: AdsRow) {
   return !isMetaPaused(row) && (row.effectiveStatus ?? row.status) === "ACTIVE";
 }

@@ -15,6 +15,9 @@ export interface SunatProfileResponseDto {
   address: string;
   establishmentCode: string;
 
+  /** Missing in responses from an ms-sunat without the column: GENERAL. */
+  taxRegime?: string;
+
   logoUrl: string;
 
   certificateSubject: string;

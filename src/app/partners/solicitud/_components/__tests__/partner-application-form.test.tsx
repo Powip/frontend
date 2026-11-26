@@ -59,7 +59,7 @@ beforeEach(() => {
 
 describe("PartnerApplicationForm", () => {
   it("valida los campos obligatorios antes de enviar", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderForm();
 
     await user.click(screen.getByRole("button", { name: /enviar solicitud/i }));
@@ -73,7 +73,7 @@ describe("PartnerApplicationForm", () => {
   });
 
   it("rechaza un teléfono con caracteres que no son de un número", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderForm();
 
     await user.type(screen.getByLabelText(/teléfono/i), "llamame");
@@ -84,7 +84,7 @@ describe("PartnerApplicationForm", () => {
 
   it("no exige código de país en el teléfono: esa regla la decide el backend", async () => {
     mockSubmitApi.mockResolvedValue({ applicationReference: "APP-1", status: "APPLIED" });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderForm();
 
     await user.type(screen.getByLabelText(/^correo$/i), "partner@example.com");
@@ -106,7 +106,7 @@ describe("PartnerApplicationForm", () => {
     "acepta cualquier código ISO de dos letras (%s) y lo envía en mayúsculas",
     async (typed, sent) => {
       mockSubmitApi.mockResolvedValue({ applicationReference: "APP-1", status: "APPLIED" });
-      const user = userEvent.setup();
+      const user = userEvent.setup({ delay: null });
       renderForm();
 
       await user.type(screen.getByLabelText(/^correo$/i), "partner@example.com");
@@ -122,7 +122,7 @@ describe("PartnerApplicationForm", () => {
   );
 
   it("rechaza un país que no es un código de dos letras", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderForm();
 
     await user.type(screen.getByLabelText(/^país$/i), "P1");
@@ -140,7 +140,7 @@ describe("PartnerApplicationForm", () => {
         details: { fields: { phone: 'must match "^[+0-9() .-]{7,30}$"' } },
       }),
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderForm();
 
     await fillForm(user);
@@ -155,7 +155,7 @@ describe("PartnerApplicationForm", () => {
 
   it("envía el payload del contrato y muestra la referencia devuelta", async () => {
     mockSubmitApi.mockResolvedValue({ applicationReference: "APP-2026-000001", status: "APPLIED" });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderForm();
 
     await fillForm(user);
@@ -180,7 +180,7 @@ describe("PartnerApplicationForm", () => {
       applicationReference: "APP-2026-000002",
       status: "APPLIED",
     });
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     renderForm();
 
     await fillForm(user);

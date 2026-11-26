@@ -11,10 +11,23 @@ import { Switch } from "@/components/ui/switch";
 import { warehouseErrorMessage } from "@/components/forms/warehouseUi";
 import { hasAdminAccess } from "@/config/permissions.config";
 import { useAuth } from "@/contexts/AuthContext";
-import { inventoryRulesChanged, parseReleaseDays, releaseDaysToText } from "@/lib/stockRules";
+import {
+  STOCK_CONTROL_HELP,
+  STOCK_CONTROL_LABEL,
+  defaultReleaseText,
+  inventoryRulesChanged,
+  releaseAfterDaysFrom,
+  releaseFormFrom,
+  type ReleaseMode,
+} from "@/lib/stockRules";
 import { DEFAULT_COVERAGE_DAYS, parseDays } from "@/lib/suggestedPurchase";
 import { DEFAULT_EXPIRY_ALERT_DAYS } from "@/lib/lots";
-import { getInventoryRules, saveInventoryRules, type InventoryRules } from "@/services/warehousesService";
+import {
+  getInventoryRules,
+  saveInventoryRules,
+  type InventoryRules,
+  type StockControlMode,
+} from "@/services/warehousesService";
 
 // FEAT-24 H2-F — Configuración › Tiendas y almacenes › «Reglas de inventario»:
 // liberar reservas viejas y exigir el picking con escaneo. Solo un administrador edita.
@@ -22,10 +35,14 @@ import { getInventoryRules, saveInventoryRules, type InventoryRules } from "@/se
 // y si se puede comprar directo a un almacén courier.
 // FEAT-24 H13 — suma los días de venta que cubre el pedido sugerido.
 // FEAT-24 H5-L — suma los días de aviso de vencimiento de los lotes.
+// FEAT-24 C-D3/C-D4 — suma el control de stock (flexible/estricto) y el vencimiento de
+// reservas pasa a «Por defecto de Powip / Nunca / N días».
 
 interface Form {
+  releaseMode: ReleaseMode;
   releaseDays: string;
   pickingRequired: boolean;
+  stockControl: StockControlMode;
   igvAffected: boolean;
   allowPurchaseToCourier: boolean;
   /** FEAT-24 H13: días de cobertura objetivo, como se tipean. */
@@ -51,14 +68,16 @@ export default function InventoryRulesSection() {
   const [edited, setEdited] = useState<Form | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   const form: Form = edited ?? {
-    releaseDays: releaseDaysToText(saved?.releaseAfterDays ?? null),
+    ...releaseFormFrom(saved?.releaseAfterDays ?? null),
     pickingRequired: saved?.pickingRequired ?? false,
+    stockControl: saved?.stockControl ?? "flexible",
     igvAffected: saved?.igvAffected ?? true,
     allowPurchaseToCourier: saved?.allowPurchaseToCourier ?? false,
     coverageDays: String(savedCoverageDays),
     expiryAlertDays: String(savedExpiryAlertDays),
   };
-  const parsed = parseReleaseDays(form.releaseDays);
+  const parsed = releaseAfterDaysFrom(form);
+  const defaultRelease = defaultReleaseText(saved?.defaultReleaseAfterDays);
   const coverageDays = parseDays(form.coverageDays);
   const expiryAlertDays = parseDays(form.expiryAlertDays);
   const dirty =
@@ -99,7 +118,9 @@ export default function InventoryRulesSection() {
         <h3 id="inventory-rules-title" className="text-lg font-medium">
           Reglas de inventario
         </h3>
-        <p className="text-sm text-muted-foreground">Cómo se cuidan las reservas y el despacho de los pedidos, y cómo se registran las compras.</p>
+        <p className="text-sm text-muted-foreground">
+          Cómo se cuidan el stock, las reservas y el despacho de los pedidos, y cómo se registran las compras.
+        </p>
         {!isAdmin ? <p className="mt-1 text-xs text-muted-foreground">Solo un administrador puede cambiar estas reglas.</p> : null}
       </div>
 
@@ -116,28 +137,81 @@ export default function InventoryRulesSection() {
       ) : (
         <>
           <div className="grid gap-6 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="release-after-days">Liberar reservas sin despachar después de</Label>
-              <div className="flex items-center gap-2">
+            <fieldset className="space-y-2" aria-describedby="stock-control-help">
+              <legend className="text-sm font-medium">Control de stock</legend>
+              {(["flexible", "estricto"] as const).map((mode) => (
+                <label key={mode} className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="stock-control"
+                    className="h-4 w-4 accent-primary"
+                    checked={form.stockControl === mode}
+                    disabled={disabled}
+                    onChange={() => change({ stockControl: mode })}
+                  />
+                  {STOCK_CONTROL_LABEL[mode]}
+                  {mode === "flexible" ? <span className="text-xs text-muted-foreground">(por defecto)</span> : null}
+                </label>
+              ))}
+              <p id="stock-control-help" className="text-xs text-muted-foreground">
+                {STOCK_CONTROL_HELP[form.stockControl]}
+              </p>
+            </fieldset>
+
+            <fieldset className="space-y-2" aria-describedby="release-after-days-help">
+              <legend className="text-sm font-medium">Liberar reservas sin despachar</legend>
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="release-mode"
+                  className="h-4 w-4 accent-primary"
+                  checked={form.releaseMode === "default"}
+                  disabled={disabled}
+                  onChange={() => change({ releaseMode: "default" })}
+                />
+                Por defecto de Powip ({defaultRelease})
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="release-mode"
+                  className="h-4 w-4 accent-primary"
+                  checked={form.releaseMode === "never"}
+                  disabled={disabled}
+                  onChange={() => change({ releaseMode: "never" })}
+                />
+                Nunca
+              </label>
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <label className="flex cursor-pointer items-center gap-2">
+                  <input
+                    type="radio"
+                    name="release-mode"
+                    className="h-4 w-4 accent-primary"
+                    checked={form.releaseMode === "days"}
+                    disabled={disabled}
+                    onChange={() => change({ releaseMode: "days" })}
+                  />
+                  Después de
+                </label>
                 <Input
                   id="release-after-days"
+                  aria-label="Días para liberar las reservas"
                   inputMode="numeric"
                   autoComplete="off"
                   className="w-24"
-                  placeholder="Nunca"
                   value={form.releaseDays}
                   disabled={disabled}
                   aria-invalid={!parsed.ok || undefined}
-                  aria-describedby="release-after-days-help"
-                  onChange={(e) => change({ releaseDays: e.target.value })}
+                  onChange={(e) => change({ releaseMode: "days", releaseDays: e.target.value })}
                 />
-                <span className="text-sm">días</span>
+                <span>días</span>
               </div>
               <p id="release-after-days-help" className="text-xs text-muted-foreground">
-                Vacío = nunca (de 1 a 365 días). El pedido no se anula: pasa a «Sin reserva» para que Operaciones decida.
+                De 1 a 365 días. El pedido no se anula: pasa a «Sin reserva» para que Operaciones decida.
               </p>
               {!parsed.ok ? <p className="text-xs text-destructive">{parsed.error}</p> : null}
-            </div>
+            </fieldset>
 
             <div className="space-y-2">
               <div className="flex items-center gap-3">
@@ -278,6 +352,7 @@ export default function InventoryRulesSection() {
                   save.mutate({
                     releaseAfterDays: parsed.value,
                     pickingRequired: form.pickingRequired,
+                    stockControl: form.stockControl,
                     igvAffected: form.igvAffected,
                     allowPurchaseToCourier: form.allowPurchaseToCourier,
                     // Solo si cambió: sin el campo, el servidor lo deja como estaba.

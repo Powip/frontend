@@ -14,7 +14,7 @@ import {
   Search,
   Zap,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ALL_ISSUERS } from "@/app/facturacion/components/IssuerFilterSelect";
 import { IssuerLabel } from "@/app/facturacion/components/IssuerLabel";
@@ -22,6 +22,11 @@ import DetalleComprobanteModal from "@/app/facturacion/components/modals/Detalle
 import EmitirComprobanteModal from "@/app/facturacion/components/modals/EmitirComprobanteModal";
 import LoteEmisionModal from "@/app/facturacion/components/modals/LoteEmisionModal";
 import RechazadoModal from "@/app/facturacion/components/modals/RechazadoModal";
+import {
+  descargarPdfYAbrirChat,
+  enviarPdfPorWhatsApp,
+} from "@/app/facturacion/lib/enviar-pdf-whatsapp";
+import { getNumeroComprobanteEmitido } from "@/app/facturacion/lib/numero-comprobante";
 import { PdfPreviewDialog } from "@/components/pdf/PdfPreviewDialog";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +63,10 @@ import {
 import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-document-pdf";
 import { useSunatDocumentsBulkPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-documents-bulk-pdf";
 import { useSunatDocumentsBulkPdfZip } from "@/features/sunat/sunat-document/hooks/use-sunat-documents-bulk-pdf-zip";
+import {
+  useSendTaxDocumentWhatsApp,
+  useTaxDocumentWhatsAppAvailability,
+} from "@/features/sunat/sunat-document/hooks/use-tax-document-whatsapp";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import {
   computeTaxDocumentKpis,
@@ -237,6 +246,16 @@ export function TaxDocumentsTab({
   const [page, setPage] = useState(1);
 
   const [sentMap, setSentMap] = useState<SentMap>({});
+
+  // Own WhatsApp Business number (Cloud API) → the row icon sends the PDF, like Ver / Compartir.
+  const hasAcceptedRows = rows.some((row) => isAcceptedStatus(getRowStatus(row)));
+  const { data: whatsAppAvailability, isLoading: checkingWhatsApp } =
+    useTaxDocumentWhatsAppAvailability(hasAcceptedRows);
+  const { mutateAsync: sendTaxDocumentWhatsApp } = useSendTaxDocumentWhatsApp();
+  const canSendPdf = whatsAppAvailability?.connected === true;
+  // Document being sent from a row; the ref blocks a double click before React re-renders.
+  const [sendingWhatsAppId, setSendingWhatsAppId] = useState<string | null>(null);
+  const sendingWhatsAppRef = useRef(false);
   const [emitirRow, setEmitirRow] = useState<TaxDocumentRow | null>(null);
   const [detalleRow, setDetalleRow] = useState<TaxDocumentRow | null>(null);
   const [rechazadoRow, setRechazadoRow] = useState<TaxDocumentRow | null>(null);
@@ -379,6 +398,60 @@ export function TaxDocumentsTab({
     }
   };
 
+  const markWhatsAppSent = (row: TaxDocumentRow) => {
+    setSentMap((previous) => ({
+      ...previous,
+      [row.sale.id]: {
+        ...previous[row.sale.id],
+        wa: true,
+      },
+    }));
+  };
+
+  const openWhatsAppWithText = (row: TaxDocumentRow, whatsappUrl: string) => {
+    markWhatsAppSent(row);
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+  };
+
+  const sendPdfByWhatsApp = async (row: TaxDocumentRow, whatsappUrl: string) => {
+    const taxDocument = row.taxDocument;
+
+    if (!taxDocument || sendingWhatsAppRef.current) {
+      return;
+    }
+
+    sendingWhatsAppRef.current = true;
+    setSendingWhatsAppId(taxDocument.id);
+
+    try {
+      await enviarPdfPorWhatsApp({
+        send: sendTaxDocumentWhatsApp,
+        sunatDocumentId: taxDocument.id,
+        phone: row.sale.customer.phoneNumber,
+        customerName: row.sale.customer.fullName,
+        onSent: () => markWhatsAppSent(row),
+        onFallbackToText: () => void downloadPdfAndOpenChat(row, whatsappUrl),
+      });
+    } finally {
+      sendingWhatsAppRef.current = false;
+      setSendingWhatsAppId(null);
+    }
+  };
+
+  // Without own number: download the PDF and open the chat so the seller attaches it.
+  const downloadPdfAndOpenChat = async (row: TaxDocumentRow, whatsappUrl: string) => {
+    if (!row.taxDocument) {
+      openWhatsAppWithText(row, whatsappUrl);
+      return;
+    }
+
+    await descargarPdfYAbrirChat({
+      download: fetchTaxDocumentPdf,
+      sunatDocumentId: row.taxDocument.id,
+      openChat: () => openWhatsAppWithText(row, whatsappUrl),
+    });
+  };
+
   const handleWhatsApp = (row: TaxDocumentRow) => {
     const whatsappUrl = buildWhatsAppUrl(
       row.sale.customer.phoneNumber,
@@ -390,15 +463,12 @@ export function TaxDocumentsTab({
       return;
     }
 
-    setSentMap((previous) => ({
-      ...previous,
-      [row.sale.id]: {
-        ...previous[row.sale.id],
-        wa: true,
-      },
-    }));
+    if (canSendPdf && row.taxDocument) {
+      void sendPdfByWhatsApp(row, whatsappUrl);
+      return;
+    }
 
-    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+    void downloadPdfAndOpenChat(row, whatsappUrl);
   };
 
   const getDistributionIcons = (row: TaxDocumentRow) => {
@@ -413,6 +483,8 @@ export function TaxDocumentsTab({
     const sent = sentMap[row.sale.id] ?? {};
     const isThisRowLoadingPdf = loadingPdfId === row.taxDocument?.id;
     const hasValidPhone = Boolean(buildWhatsAppUrl(row.sale.customer.phoneNumber));
+    const isThisRowSendingWhatsApp =
+      Boolean(row.taxDocument) && sendingWhatsAppId === row.taxDocument?.id;
 
     return (
       <div className="flex items-center justify-center gap-1">
@@ -422,19 +494,31 @@ export function TaxDocumentsTab({
             variant="ghost"
             size="icon"
             className="h-8 w-8"
-            title={hasValidPhone ? "Enviar por WhatsApp" : "Teléfono no válido"}
+            title={
+              !hasValidPhone
+                ? "Teléfono no válido"
+                : canSendPdf
+                  ? "Enviar PDF por WhatsApp desde tu número"
+                  : "Descargar PDF y abrir el chat del cliente (tu empresa no tiene número de WhatsApp Business conectado: adjunta el PDF en el chat)"
+            }
+            disabled={checkingWhatsApp || isThisRowSendingWhatsApp}
             onClick={() => handleWhatsApp(row)}
+            data-testid={`fila-whatsapp-${row.sale.id}`}
           >
-            <WhatsAppIcon
-              className={cn(
-                "h-4 w-4",
-                sent.wa
-                  ? "text-green-600"
-                  : hasValidPhone
-                    ? "text-muted-foreground/50"
-                    : "text-muted-foreground/20",
-              )}
-            />
+            {isThisRowSendingWhatsApp ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <WhatsAppIcon
+                className={cn(
+                  "h-4 w-4",
+                  sent.wa
+                    ? "text-green-600"
+                    : hasValidPhone
+                      ? "text-muted-foreground/50"
+                      : "text-muted-foreground/20",
+                )}
+              />
+            )}
           </Button>
         )}
 
@@ -766,6 +850,7 @@ export function TaxDocumentsTab({
 
                   <TableHead>Fecha</TableHead>
                   <TableHead>Venta / ID</TableHead>
+                  <TableHead className="whitespace-nowrap">N° comprobante</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Tipo</TableHead>
                   <TableHead className="text-right">Total</TableHead>
@@ -778,7 +863,7 @@ export function TaxDocumentsTab({
               <TableBody>
                 {filteredRows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="h-40 text-center text-muted-foreground">
+                    <TableCell colSpan={10} className="h-40 text-center text-muted-foreground">
                       {loading
                         ? "Cargando ventas..."
                         : "No hay comprobantes que coincidan con el filtro"}
@@ -813,6 +898,13 @@ export function TaxDocumentsTab({
                           <div className="text-[10px] text-muted-foreground">
                             {documentNumber ?? `ID ${row.sale.id.substring(0, 8)}`}
                           </div>
+                        </TableCell>
+
+                        <TableCell
+                          className="whitespace-nowrap font-mono text-xs"
+                          data-testid="numero-comprobante"
+                        >
+                          {getNumeroComprobanteEmitido(row)}
                         </TableCell>
 
                         <TableCell>

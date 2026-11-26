@@ -2,14 +2,16 @@
 
 import { FlaskConical, KeyRound, Lock } from "lucide-react";
 import type { GreSettings } from "@/features/sunat/despatch-advice/types/despatch-advice.types";
-import { GRE_NOT_ENABLED_NOTICE, GRE_PILOT_NOTICE } from "@/features/sunat/despatch-advice/utils/gre-form";
+import { GRE_NOT_ENABLED_NOTICE, GRE_PILOT_NOTICE, greBlockedByList } from "@/features/sunat/despatch-advice/utils/gre-form";
 
 // FEAT-24 H12-D6 — aviso de modo de pruebas de la guía de remisión. Se muestra
 // mientras ms-sunat no envía a SUNAT (sin conexión o contra un simulador) o
 // mientras la empresa no tenga credenciales GRE. SUNAT no tiene beta REST para
 // la GRE: el modo de pruebas es un simulador o no enviar nada. Con SUNAT
 // producción, ms-sunat solo deja emitir a las empresas habilitadas
-// (enabledForCompany; si no, 403 GRE_NO_HABILITADA).
+// (enabledForCompany). Con autoEnableByCredentials, una empresa no habilitada
+// solo tiene que cargar sus credenciales: se le muestra ese aviso, no «todavía
+// no está habilitada» (que queda para el modo solo lista, 403 GRE_NO_HABILITADA).
 
 interface Props {
   settings: GreSettings | undefined;
@@ -34,7 +36,7 @@ export function greModeNotice(
       title: "Guías de remisión en modo de pruebas.",
       body: `Las guías van a un entorno de pruebas, no a SUNAT, y no sirven para trasladar mercadería. ${GRE_PILOT_NOTICE}`,
     };
-  if (!settings.enabledForCompany)
+  if (greBlockedByList(settings))
     return {
       tone: "disabled",
       title: GRE_NOT_ENABLED_NOTICE,
@@ -43,11 +45,13 @@ export function greModeNotice(
   const configured = sunatProfileId
     ? settings.profiles.some((profile) => profile.sunatProfileId === sunatProfileId && profile.configured)
     : settings.profiles.some((profile) => profile.isActive && profile.configured);
-  if (!configured)
+  if (!configured || !settings.enabledForCompany)
     return {
       tone: "credentials",
-      title: sunatProfileId ? "Este RUC no tiene credenciales GRE." : "Falta configurar las credenciales GRE.",
-      body: `Carga el client_id y el client_secret de SOL en Facturación › Certificado Digital. ${GRE_PILOT_NOTICE}`,
+      title: sunatProfileId && settings.enabledForCompany ? "Este RUC no tiene credenciales GRE." : "Falta configurar las credenciales GRE.",
+      body: `Carga el client_id y el client_secret de SOL en Facturación › Certificado Digital. ${
+        settings.autoEnableByCredentials ? "Con las credenciales completas, la emisión se habilita sola." : GRE_PILOT_NOTICE
+      }`,
     };
   return null;
 }

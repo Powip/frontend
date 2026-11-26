@@ -29,6 +29,12 @@ import {
 } from "@/services/advertisingMetaService";
 import { advertisingErrorMessage, advertisingErrorStatus } from "@/services/advertisingService";
 import { AdvertisingMetaMetricsTable } from "./AdvertisingMetaMetricsTable";
+import {
+  AdvertisingMetaStatusFilter,
+  META_STATUS_OPTIONS_FEMININE,
+  META_STATUS_OPTIONS_MASCULINE,
+} from "./AdvertisingMetaStatusFilter";
+import type { MetaStatusFilter } from "./advertising-meta-status";
 import { useAdvertisingStoreFilter } from "./AdvertisingStoreFilterContext";
 import { businessResult } from "./advertising-business-results";
 import { metaCoverageLabel, metaResultCostLabel, validMetaPeriod } from "./advertising-meta-model";
@@ -83,6 +89,16 @@ export function AdvertisingMetaCatalogPanel({
   const [sortBy, setSortBy] = useState<MetaCatalogSort>("results");
   const [page, setPage] = useState(1);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [deliveryStatus, setDeliveryStatus] = useState<MetaStatusFilter>("all");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput.trim());
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
   const [selected, setSelected] = useState<MetaCatalogRow | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -104,6 +120,8 @@ export function AdvertisingMetaCatalogPanel({
     resultType,
     sortBy,
     sortOrder: sortBy === "costPerResult" ? "asc" : "desc",
+    deliveryStatus,
+    search: search || undefined,
     page,
     pageSize: 50,
     storeId,
@@ -394,6 +412,20 @@ export function AdvertisingMetaCatalogPanel({
           ))}
         </section>
       ) : null}
+      <AdvertisingMetaStatusFilter
+        label={TITLES[props.level]}
+        options={
+          props.level === "campaign" ? META_STATUS_OPTIONS_FEMININE : META_STATUS_OPTIONS_MASCULINE
+        }
+        filter={deliveryStatus}
+        onFilter={(value) => {
+          setDeliveryStatus(value);
+          setSelected(null);
+          setPage(1);
+        }}
+        query={searchInput}
+        onQuery={setSearchInput}
+      />
       {query.isError ? (
         <Card>
           <CardContent className="space-y-3 pt-5">

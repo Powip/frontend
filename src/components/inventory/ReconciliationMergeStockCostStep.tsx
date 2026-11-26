@@ -167,6 +167,12 @@ export function ReconciliationMergeStockCostStep({
             {stockValidation.error}
           </p>
         )}
+        {/* FEAT-24 C-D2: avisa, no bloquea. */}
+        {stockValidation.warning && (
+          <p role="status" className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            {stockValidation.warning}
+          </p>
+        )}
       </fieldset>
 
       <fieldset className="space-y-2 rounded-lg border p-4">

@@ -19,6 +19,7 @@ import { GoogleTagManager } from "@next/third-parties/google";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
 import AppContainer from "@/components/layout/AppContainer";
+import SessionExpiredDialog from "@/components/auth/SessionExpiredDialog";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import QueryProvider from "@/components/providers/QueryProvider";
 
@@ -55,6 +56,7 @@ export default function RootLayout({
         <ThemeProvider>
           <QueryProvider>
             <AuthProvider>
+              <SessionExpiredDialog />
               <AppContainer>{children}</AppContainer>
               <Toaster position="top-right" richColors />
             </AuthProvider>

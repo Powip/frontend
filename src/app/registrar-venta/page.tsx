@@ -37,14 +37,36 @@ import CartLines from "@/components/registrar-venta/CartLines";
 import ProductSearchMatrix from "@/components/registrar-venta/ProductSearchMatrix";
 import SalePackResults from "@/components/registrar-venta/SalePackResults";
 import { addPackLine } from "@/lib/packs/salePack";
-import type { PackView } from "@/services/packsService";
+import { findPackForVariant, packTypeOf, type PackView } from "@/services/packsService";
+import ChoosePackPicker from "@/components/registrar-venta/ChoosePackPicker";
+import {
+  addChosenPackLine,
+  changePackChoice,
+  isChooseLine,
+  lineChoiceVariantIds,
+  linesWithIncompleteChoice,
+  loadedPackChoice,
+  picksFromLine,
+  type ChosenPack,
+  type UnitPicks,
+} from "@/lib/packs/choosePack";
 import {
   hasSaleChannelSelection,
   SaleChannelField,
 } from "@/components/registrar-venta/SaleChannelField";
 import { SaleOriginField } from "@/components/registrar-venta/SaleOriginField";
+import {
+  crmSalePayload,
+  linkSaleToConversation,
+  parseCrmSaleContext,
+  pickWhatsappChannel,
+} from "@/components/registrar-venta/crmSaleContext";
+import { toLocalPhone } from "@/lib/crmPhone";
 import SuggestionsPanel from "@/components/registrar-venta/SuggestionsPanel";
-import PromoGiftsPanel from "@/components/registrar-venta/PromoGiftsPanel";
+import SaleSuggestions from "@/components/registrar-venta/SaleSuggestions";
+import SaleGiftLines from "@/components/registrar-venta/SaleGiftLines";
+import SalePromoTotals from "@/components/registrar-venta/SalePromoTotals";
+import BundleVariantPicker from "@/components/registrar-venta/BundleVariantPicker";
 import { useSaleOrigin } from "@/components/registrar-venta/useSaleOrigin";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,7 +90,7 @@ import { DeliveryType, OrderType, type SalesChannel } from "@/enum/Order.enum";
 import { ShalomAgencyField } from "@/components/shalom/ShalomAgencyField";
 import type { ShalomAgencyOption } from "@/services/shalomService";
 import { usePacksEngine } from "@/hooks/usePacksEngine";
-import { usePromoGifts } from "@/hooks/usePromoGifts";
+import { useSaleEngine } from "@/hooks/useSaleEngine";
 import { useSuggestedPrices } from "@/hooks/useSuggestedPrices";
 import { useCompanyCouriers } from "@/hooks/useCompanyCouriers";
 import type { Client, ClientType, DocumentType } from "@/interfaces/ICliente";
@@ -87,7 +109,8 @@ import ubigeos from "@/utils/json/ubigeos.json";
 import { bumpProductFrequency, getProductFrequencies } from "@/utils/productFrequency";
 import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
 import { resolveBundleVariant } from "@/utils/resolveBundleVariant";
-import { buildOrderItem, getOrderItemPricing } from "./orderItemPricing";
+import { buildOrderItem, getOrderItemPricing, loadedPromoTrace } from "./orderItemPricing";
+import { linesWithoutSku } from "./saleEnginePricing";
 import { VerifyIdentityButton } from "@/app/facturacion/components/VerifyIdentityButton";
 import {
   isClientDocumentRequired,
@@ -261,6 +284,11 @@ function RegistrarVentaContent() {
     !rawReturnTo.includes("\\")
       ? rawReturnTo
       : null;
+  // Venta iniciada desde un chat del CRM (solo para pedidos nuevos y sin Lead).
+  const crmCtx = useMemo(
+    () => (orderId || leadId ? null : parseCrmSaleContext(searchParams)),
+    [searchParams, orderId, leadId],
+  );
 
   /* ---------------- Cliente ---------------- */
   const [clientFound, setClientFound] = useState<Client | null>(null);
@@ -502,6 +530,45 @@ function RegistrarVentaContent() {
     fixedId: orderData?.salesChannelId,
   });
 
+  // CRM: prellenar cliente por el teléfono del chat (una sola vez).
+  const crmClientPrefilled = useRef(false);
+  useEffect(() => {
+    if (!crmCtx?.phone || !companyId || crmClientPrefilled.current) return;
+    crmClientPrefilled.current = true;
+    setClientForm((prev) => ({ ...prev, phoneNumber: toLocalPhone(crmCtx.phone) }));
+    setLoadingClient(true);
+    fetchClientByPhone(companyId, toLocalPhone(crmCtx.phone))
+      .then((client) => {
+        if (client) {
+          setClientFound(client);
+          setSearchState("found");
+          setOriginalClient(client);
+        } else {
+          setClientFound(null);
+          setSearchState("not_found");
+        }
+      })
+      .catch(() => {
+        setSearchState("error");
+        toast.error("No se pudo buscar el cliente. Intenta de nuevo.");
+      })
+      .finally(() => setLoadingClient(false));
+  }, [crmCtx, companyId]);
+
+  // CRM: canal de venta WhatsApp, solo si se puede elegir sin ambigüedad.
+  const crmChannelApplied = useRef(false);
+  useEffect(() => {
+    if (!crmCtx || crmChannelApplied.current || !saleContext.data || !origin.storeId) return;
+    crmChannelApplied.current = true;
+    const pick = pickWhatsappChannel(storeChannels, salesChannels);
+    if (!pick) return;
+    setOrderDetails((current) =>
+      current.salesChannel || current.salesChannelId
+        ? current
+        : { ...current, salesChannelId: pick.id, salesChannel: pick.type },
+    );
+  }, [crmCtx, saleContext.data, origin.storeId, storeChannels, salesChannels]);
+
   useEffect(() => {
     const request = ++leadRequestRef.current;
     setCommercialLead(null);
@@ -697,6 +764,9 @@ function RegistrarVentaContent() {
         discount: totalDiscount, // informativo/legado; buildOrderItem deriva el descuento del precio de cierre
         packId: null,
         packComponents: item.packComponents ?? null,
+        ...loadedPromoTrace(item, netUnit),
+        // FEAT-32 M6b: pack «a elegir»: su combinación (`packKey`) se reenvía mientras no se cambie la elección.
+        ...loadedPackChoice(item),
       };
     });
     setCart(mappedCart);
@@ -859,8 +929,13 @@ function RegistrarVentaContent() {
   /* ---------------- Packs & Promos (solo UI) ---------------- */
   const isAdmin = isSuperadmin(auth?.user?.email) || hasAdminAccess(auth?.user?.role);
   const { packs: localPacks } = usePacks();
-  // FEAT-24 H9: los regalos (GIFT) ya no salen del navegador; los evalúa el backend (usePromoGifts).
-  const packs = useMemo(() => localPacks.filter((pack) => pack.type !== "GIFT"), [localPacks]);
+  // FEAT-24 H9: los regalos (GIFT) ya no salen del navegador. FEAT-32 M6a: en la venta nueva tampoco el
+  // volumen (VOLUME): regalo y volumen los calcula el motor de ms-ventas (useSaleEngine).
+  const saleEngineOn = !orderId && !leadId;
+  const packs = useMemo(
+    () => localPacks.filter((pack) => pack.type !== "GIFT" && !(saleEngineOn && pack.type === "VOLUME")),
+    [localPacks, saleEngineOn],
+  );
 
   const getVariantsForProduct = useCallback(
     async (productName: string) => {
@@ -886,9 +961,30 @@ function RegistrarVentaContent() {
     getVariantsForProduct,
   });
 
-  // FEAT-24 H9: precio sugerido por la lista de la tienda y el canal, y regalos que suma el backend.
+  // FEAT-24 H9: precio sugerido por la lista de la tienda y el canal. FEAT-32 M6a: en la venta nueva el
+  // motor de promociones manda en las líneas elegibles (precio de lista, promo, regalo y sugerencias).
   useSuggestedPrices({ cart, setCart, storeId: origin.storeId, channel: orderDetails.salesChannel });
-  const promoGifts = usePromoGifts({ cart, storeId: origin.storeId, channel: orderDetails.salesChannel, enabled: !orderId && !leadId });
+  const saleEngine = useSaleEngine({
+    cart,
+    setCart,
+    storeId: origin.storeId,
+    channel: orderDetails.salesChannel,
+    inventoryId: selectedInventory,
+    enabled: saleEngineOn,
+  });
+  const saleCart = saleEngine.cart;
+  const [bundlePick, setBundlePick] = useState<BundleProductRef | null>(null);
+  // FEAT-32 M6b: «Elige talla y color» de un pack «a elegir» (agregar, o «Cambiar variantes» de una línea).
+  // Solo en la venta nueva y en la edición de un pedido: al confirmar un Lead ms-ventas no lo vende.
+  const chooseEnabled = !leadId;
+  const [choosing, setChoosing] = useState<{
+    key: number;
+    pack: PackView;
+    lineId: string | null;
+    initialPicks: UnitPicks | null;
+    keepVariantIds?: ReadonlySet<string>;
+  } | null>(null);
+  const choosingSeq = useRef(0);
 
   const qtyInCartByVariant = useCallback(
     (variantId: string) =>
@@ -925,6 +1021,10 @@ function RegistrarVentaContent() {
       let variant: InventoryItemForSale | null;
       if ("variantId" in item) {
         variant = await resolveBundleVariant(item, scope);
+      } else if (saleEngineOn) {
+        // FEAT-32 M6a (§6.18): el vendedor elige la variante; ya no se toma sola la de más stock.
+        setBundlePick(item);
+        return;
       } else {
         const variants = await getVariantsForProduct(item.productKey);
         variant = variants.reduce<InventoryItemForSale | null>(
@@ -1422,6 +1522,14 @@ function RegistrarVentaContent() {
 
       const sellerDisplayName = `${auth?.user?.name || ""} ${auth?.user?.surname || ""}`.trim();
 
+      // FEAT-32 M6a: si el motor está recalculando se espera su precio; si cambia el total, se muestra antes.
+      const settled = await saleEngine.settle();
+      if (!isCurrentEditor()) return;
+      if (settled.changed) {
+        toast.warning("Las promociones cambiaron el total. Revísalo y vuelve a registrar el pedido.");
+        return;
+      }
+
       const payload = {
         // --- Comprobante ---
         receiptType: "BOLETA",
@@ -1458,7 +1566,7 @@ function RegistrarVentaContent() {
         customerId: activeClient.id,
 
         // --- Ítems ---
-        items: cart.map(buildOrderItem),
+        items: settled.cart.map(buildOrderItem),
 
         // The selected condition exists even when no payment has been collected.
         paymentCondition: leadId ? leadCollectionCondition : (["CONTRA_ENTREGA", "CONTRAENTREGA"].includes(paymentMethod) ? "COD" : "PREPAID"),
@@ -1511,7 +1619,7 @@ function RegistrarVentaContent() {
           return;
         }
         if (!orderId) {
-          let createPayload: Record<string, unknown> = payload;
+          let createPayload: Record<string, unknown> = { ...payload, ...crmSalePayload(crmCtx) };
           if (cart.some((item) => isTracked(item.trackingMode))) {
             const operationId = crypto.randomUUID();
             createPayload = { ...payload, operationId };
@@ -1530,6 +1638,7 @@ function RegistrarVentaContent() {
             toast.warning("La venta se registró, pero la agencia de recojo no se guardó. Indícala al editar el pedido o en la guía.");
           }
           const createdAsLead = response.data.commercialStage === "LEAD";
+          if (crmCtx) await linkSaleToConversation(crmCtx, { id: createdOrderId, orderNumber: response.data.orderNumber });
           const recordedLabel = createdAsLead ? "Lead registrado" : "Venta registrada";
 
           let proofFailed = false;
@@ -1576,6 +1685,7 @@ function RegistrarVentaContent() {
           }
           if (proofFailed) return;
           notifyCommercialChange(companyId, response.data.commercialLeadId);
+          if (crmCtx) { resetForm(); router.push(crmCtx.returnTo); return; }
           if (createdAsLead) { router.push(response.data.commercialLeadId ? commercialLeadHref(response.data.commercialLeadId) : "/leads-comerciales"); resetForm(); return; }
           setReceiptOrderId(createdOrderId);
           setReceiptOpen(true);
@@ -1800,9 +1910,55 @@ function RegistrarVentaContent() {
   };
 
   // FEAT-24 H9: un pack va con su variante; ms-ventas lo expande por componentes al reservar.
+  // FEAT-32 M6b: el «a elegir» pide antes la talla y el color de cada unidad.
   const addPackToCart = (pack: PackView) => {
+    if (packTypeOf(pack) === "CHOOSE") {
+      if (chooseEnabled) setChoosing({ key: ++choosingSeq.current, pack, lineId: null, initialPicks: null });
+      return;
+    }
     setProductFrequencies(bumpProductFrequency(companyId, pack.name));
     setCart((prev) => addPackLine(prev, pack));
+  };
+
+  // FEAT-32 M6b: «Cambiar variantes» de una línea de un «a elegir» (la cargada de un pedido se busca por su variante).
+  const openChoiceEditor = async (lineId: string) => {
+    const line = cart.find((entry) => entry.id === lineId);
+    if (!line || !isChooseLine(line)) return;
+    const session = tokenStore.snapshot();
+    try {
+      const pack = await findPackForVariant(line.variantId, {
+        productId: line.choosePack?.packProductId,
+        sku: line.sku,
+        name: line.productName,
+      });
+      if (!editorActive.current || !tokenStore.isCurrent(session)) return;
+      if (!pack || packTypeOf(pack) !== "CHOOSE") {
+        toast.error(`No se encontró el pack a elegir «${line.productName}».`);
+        return;
+      }
+      setChoosing({
+        key: ++choosingSeq.current,
+        pack,
+        lineId,
+        initialPicks: picksFromLine(pack, line),
+        keepVariantIds: lineChoiceVariantIds(line),
+      });
+    } catch {
+      if (editorActive.current && tokenStore.isCurrent(session)) toast.error("No se pudo cargar el pack. Intenta de nuevo.");
+    }
+  };
+
+  const confirmPackChoice = (chosen: ChosenPack) => {
+    if (!choosing) return;
+    const { pack, lineId } = choosing;
+    if (lineId) {
+      setCart((prev) => changePackChoice(prev, lineId, pack, chosen));
+    } else {
+      setProductFrequencies(bumpProductFrequency(companyId, pack.name));
+      setCart((prev) => addChosenPackLine(prev, pack, chosen));
+      toast.success(`${pack.name} agregado`);
+    }
+    setChoosing(null);
   };
 
   const addVariantQty = (product: InventoryItemForSale, qty: number) => {
@@ -1952,12 +2108,12 @@ function RegistrarVentaContent() {
   /* ---------------- Totales ---------------- */
   // El bruto debe coincidir con lo enviado al backend, incluso cuando un
   // precio manual supera el PVP, para no compensar descuentos de otras líneas.
-  const subtotalBruto = cart.reduce(
+  const subtotalBruto = saleCart.reduce(
     (acc, p) => acc + getOrderItemPricing(p).unitPrice * p.quantity,
     0,
   );
-  // Subtotal neto (precio de cierre real, después de descuentos/packs)
-  const subtotal = cart.reduce((acc, p) => acc + p.price * p.quantity, 0);
+  // Subtotal neto (precio de cierre real, después de descuentos/packs; FEAT-32 M6a: el neto del motor)
+  const subtotal = saleCart.reduce((acc, p) => acc + (p.lineTotal ?? p.price * p.quantity), 0);
   // Total de descuentos por item, derivado (bruto - neto)
   const totalItemDiscounts = Math.max(0, subtotalBruto - subtotal);
   // Si INCLUIDO, los precios ya incluyen impuestos
@@ -1971,6 +2127,10 @@ function RegistrarVentaContent() {
 
   const hasValidCart =
     cart.length > 0 && cart.every((item) => item.quantity > 0 && item.price >= 0);
+  // FEAT-32 M6a (§5.10): en la venta nueva toda línea lleva SKU.
+  const linesMissingSku = saleEngineOn ? linesWithoutSku(cart) : [];
+  // FEAT-32 M6b (§7.17): un pack «a elegir» sin la talla y el color de cada unidad no se puede registrar.
+  const linesMissingChoice = linesWithIncompleteChoice(cart);
 
   // La agencia de recojo solo se puede guardar al registrar una venta nueva o en pedidos que ya
   // tienen entrega propia; un pedido antiguo sin entrega propia no la admite.
@@ -2035,12 +2195,16 @@ function RegistrarVentaContent() {
     !!orderDetails.closingChannel &&
     hasValidDelivery &&
     hasValidPayments &&
+    !linesMissingSku.length &&
+    !linesMissingChoice.length &&
     !packsEngine.pvsOpen;
 
   const checklist = [
     { ok: origin.hasStore, msg: "Selecciona la tienda de la venta" },
     { ok: origin.hasInventory, msg: "Selecciona el almacén de salida" },
     { ok: hasValidCart, msg: "Agrega al menos un producto al carrito" },
+    ...(linesMissingSku.length ? [{ ok: false, msg: `Hay productos sin SKU: ${linesMissingSku.map((line) => line.productName).join(", ")}` }] : []),
+    ...(linesMissingChoice.length ? [{ ok: false, msg: `Elige talla y color de ${linesMissingChoice.map((line) => line.productName).join(", ")}` }] : []),
     ...(cart.some((line) => isTracked(line.trackingMode)) ? [{ ok: !validateSaleUnits(cart), msg: validateSaleUnits(cart) || "IMEI/series seleccionados" }] : []),
     {
       ok: hasValidClient,
@@ -2098,7 +2262,7 @@ function RegistrarVentaContent() {
                 Volver
               </Button>
             ) : (
-              <Link href={returnTo ?? "/ventas"}>
+              <Link href={returnTo ?? crmCtx?.returnTo ?? "/ventas"}>
                 <Button variant="outline" size="sm" className="rounded-full">
                   <ArrowLeft className="h-4 w-4 mr-1" />
                   Volver
@@ -2896,6 +3060,7 @@ function RegistrarVentaContent() {
                       query={productQuery}
                       inventoryId={selectedInventory}
                       disabled={isSubmitting}
+                      chooseEnabled={chooseEnabled}
                       qtyInCartByVariant={qtyInCartByVariant}
                       onAddPack={addPackToCart}
                     />
@@ -2917,8 +3082,16 @@ function RegistrarVentaContent() {
               </Card>
             </div>
             <div className="space-y-6 min-w-0">
-              {/* Sugerencias para cerrar */}
+              {/* Sugerencias para cerrar (FEAT-32 M6a: las del motor; debajo, las de bundles anteriores) */}
+              <SaleSuggestions
+                enabled={saleEngine.enabled}
+                suggestions={saleEngine.suggestions}
+                hasProducts={cart.length > 0}
+                failed={saleEngine.failed}
+                onAddPack={saleEngine.addPack}
+              >
               <SuggestionsPanel
+                embedded={saleEngine.enabled}
                 packs={packs}
                 channel={orderDetails.salesChannel}
                 storeId={origin.storeId}
@@ -2933,6 +3106,29 @@ function RegistrarVentaContent() {
                 onAutoFillVolume={handleAutoFillVolume}
                 onAutoAddBundleItem={handleAutoAddBundleItem}
               />
+              </SaleSuggestions>
+              <BundleVariantPicker
+                item={bundlePick}
+                inventoryId={selectedInventory}
+                loadVariants={getVariantsForProduct}
+                onPick={(variant) => {
+                  addToCart(variant);
+                  toast.success(`${variant.productName} agregado`);
+                }}
+                onClose={() => setBundlePick(null)}
+              />
+              {choosing && (
+                <ChoosePackPicker
+                  key={choosing.key}
+                  pack={choosing.pack}
+                  inventoryId={selectedInventory}
+                  initialPicks={choosing.initialPicks}
+                  keepVariantIds={choosing.keepVariantIds}
+                  confirmLabel={choosing.lineId ? "Guardar cambios" : "Agregar al pedido"}
+                  onConfirm={confirmPackChoice}
+                  onClose={() => setChoosing(null)}
+                />
+              )}
 
               {/* Carrito */}
               <Card>
@@ -2946,7 +3142,7 @@ function RegistrarVentaContent() {
                 </CardHeader>
                 <CardContent>
                   <CartLines
-                    cart={cart}
+                    cart={saleCart}
                     packs={packs}
                     appliedPacks={packsEngine.appliedPacks}
                     isAdmin={isAdmin}
@@ -2969,8 +3165,9 @@ function RegistrarVentaContent() {
                     onChooseGift={handleChooseGift}
                     onChangeGift={packsEngine.changeGift}
                     onGiftCancel={packsEngine.giftCancel}
+                    onChangeChoice={(lineId) => { void openChoiceEditor(lineId); }}
                   />
-                  <div className="mt-3"><PromoGiftsPanel gifts={promoGifts.gifts} failed={promoGifts.failed} /></div>
+                  <div className="mt-3"><SaleGiftLines gifts={saleEngine.gifts} skipped={saleEngine.skippedGifts} /></div>
                   {orderData && <SaleUnitLifecycleActions key={orderData.id} order={orderData} onUpdated={() => { void loadOrder(); }} />}
                   {orderData && <SaleAssignmentStatus order={orderData} onRefresh={(saved) => setCart((lines) => lines.map((line) => {
                     const units = saved.items.flatMap((item) => item.units ?? []).filter((unit) => line.unitIds?.includes(unit.id));
@@ -3615,6 +3812,9 @@ function RegistrarVentaContent() {
               {/* Resumen */}
               <Card className="lg:sticky lg:top-6">
                 <CardContent className="pt-6 text-sm space-y-1">
+                  {saleEngine.enabled && !saleEngine.failed ? (
+                    <SalePromoTotals lines={saleCart} moneyPrefix={moneyPrefix} pending={saleEngine.pending} />
+                  ) : (<>
                   <div className="flex justify-between py-0.5 text-muted-foreground">
                     <span>Importe productos</span>
                     <span className="text-foreground">{moneyPrefix} {subtotalBruto.toFixed(2)}</span>
@@ -3629,6 +3829,7 @@ function RegistrarVentaContent() {
                     <span>Sub total</span>
                     <span className="text-foreground">{moneyPrefix} {subtotal.toFixed(2)}</span>
                   </div>
+                  </>)}
                   {taxMode === "AUTOMATICO" && (
                     <div className="flex justify-between py-0.5 text-muted-foreground">
                       <span>IGV 18%</span>

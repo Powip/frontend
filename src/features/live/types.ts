@@ -28,6 +28,14 @@ export interface LiveConfig {
   advisorId?: string;
   advisorName?: string;
   advisors?: { id: string; name: string; code: string; commission?: boolean }[];
+  /** FEAT-33 B5: cómo ve el comprador el catálogo. El logo llega como URL firmada. */
+  appearance?: LiveAppearanceConfig;
+}
+export interface LiveAppearanceConfig {
+  theme?: "dark" | "light";
+  color?: string;
+  displayName?: string;
+  logoUrl?: string | null;
 }
 export interface LiveSession {
   id: string;
@@ -44,6 +52,8 @@ export interface LiveProduct {
   name: string;
   sku: string;
   imageUrl?: string | null;
+  /** FEAT-32 M7: foto PROPIA de la variante (la de su color), sin caer en la del producto. */
+  variantImageUrl?: string | null;
   variantLabel?: string | null;
   attributes?: Record<string, string>;
   regularPrice: number;
@@ -52,6 +62,24 @@ export interface LiveProduct {
   maxPerCustomer: number | null;
   remainingLimit?: number | null;
   enabled: boolean;
+  /**
+   * FEAT-32 M7 — contenido del producto en la vitrina (igual en todas sus variantes). En `/live`, `photos` son
+   * las hasta 3 fotos del live; en `/catalogo`, las del Catálogo web. Ausente si ms-products no respondió.
+   */
+  content?: LiveProductContent;
+}
+/** FEAT-32 M7 — lo que trae la tarjeta en el catálogo público (liviano: se consulta cada 5 s). */
+export interface LiveProductContent {
+  title: string;
+  shortDescription: string;
+  photos: string[];
+}
+/** FEAT-32 M7 — detalle del producto en la vitrina (`GET live/public/:storeId/products/:productId/content`). */
+export interface LiveProductContentDetail extends LiveProductContent {
+  productId: string;
+  /** Ya saneado por ms-products (lista blanca); el front lo vuelve a sanear antes de mostrarlo. */
+  descriptionHtml: string;
+  features: string[];
 }
 export interface LiveCustomer {
   id?: string;
@@ -79,6 +107,9 @@ export interface LiveReservation {
   ownerId?: string | null;
   createdAt: string;
   type: "TIMED" | "ACCUMULATED";
+  /** FEAT-33 L7b: regalo de una promo del live (a S/ 0; no cuenta en los topes). */
+  isGift?: boolean;
+  promoId?: string | null;
 }
 export interface LiveTrustedCustomer extends LiveCustomer {
   id: string;
@@ -122,6 +153,8 @@ export interface LiveConsoleData {
   session: LiveSession | null;
   products: LiveProduct[];
   reservations: LiveReservation[];
+  /** Clientes que entraron al live de esta tienda (FEAT-33 D3: buscar para marcar de confianza). */
+  customers?: LiveTrustedCustomer[];
   trustedCustomers: LiveTrustedCustomer[];
   metrics: LiveMetrics;
   paymentMethods: LivePaymentMethod[];
@@ -147,8 +180,49 @@ export interface LivePublicOrder {
     unitPrice: number;
   }[];
 }
+/** FEAT-33 L7b: volumen y regalo de POWIP Live que ve cada producto. */
+export interface LivePromoOffer {
+  volumes: Array<{
+    id: string;
+    name: string;
+    minQty: number;
+    maxQty: number | null;
+    packPrice: number;
+    variantIds: string[];
+  }>;
+  gifts: Array<{ id: string; name: string; minAmount: number | null; giftName: string }>;
+}
+/** FEAT-33 L7b: el carrito (apartados sin pago) con el motor de promociones. */
+export interface LiveCartPromos {
+  discount: number;
+  lines: Array<{ reservationId: string; promoDiscount: number; lineTotal: number; promoId: string; promoLabel: string }>;
+  gift: { promoId: string; name: string; giftName: string } | null;
+  suggestions: Array<
+    | { kind: "VOLUME"; promoId: string; missing: number; text: string }
+    | { kind: "GIFT"; promoId: string; missingAmount: number; text: string }
+  >;
+}
+/** Línea de la cotización; con promos del live trae el neto, el descuento y el regalo a S/ 0. */
+export interface LiveQuoteItem {
+  variantId: string;
+  name: string;
+  sku: string;
+  quantity: number;
+  unitPrice: number;
+  regularPrice?: number;
+  lineTotal?: number;
+  promoDiscount?: number;
+  promoId?: string | null;
+  promoLabel?: string | null;
+  isGift?: boolean;
+}
 export interface LivePublicData {
   channel?: "LIVE" | "WHATSAPP";
+  /** FEAT-33 L7b: solo en POWIP Live (null en /catalogo y links). */
+  promos?: LivePromoOffer | null;
+  cartPromos?: LiveCartPromos | null;
+  /** FEAT-33 C5: la creadora del link está en vivo (su live, con precios live). */
+  creatorLive?: { name: string } | null;
   deliveryOptions?: StoreDeliveryOption[];
   deliveryMethods?: LiveDeliveryMethod[];
   store: { id: string; name: string; logoUrl?: string | null };
@@ -182,7 +256,7 @@ export interface LivePurchaseInput extends LiveQuoteInput {
 export interface LiveQuote {
   quoteId: string;
   expiresAt: string;
-  items?: { variantId: string; name: string; sku: string; quantity: number; unitPrice: number }[];
+  items?: LiveQuoteItem[];
   serverNow?: string;
   subtotal: number;
   shipping: number;
@@ -288,4 +362,116 @@ export interface LiveReadiness {
     ready: boolean;
     message: string;
   }[];
+}
+
+/** FEAT-33 C1: acuerdo de comisión con cada creadora o vendedor (nunca por producto). */
+export type LiveAgreement =
+  | { type: "PERCENT"; percent: number }
+  | { type: "PER_UNIT"; amount: number }
+  | { type: "RESELLER"; percent: number }
+  | { type: "VOLUME"; period: "MONTH" | "LIVE"; tiers: { from: number; percent: number }[] };
+export interface LiveSellerStats {
+  sales: number;
+  units: number;
+  orders: number;
+  earned: number;
+  pendingConfirmation: number;
+  paid: number;
+  toPay: number;
+}
+/** FEAT-33 L5b: acceso de la creadora a su portal (lo que ve el negocio). */
+export interface LiveSellerAccess {
+  status: "INVITED" | "ACTIVE" | "PAUSED";
+  hasPassword: boolean;
+  lastLoginAt: string | null;
+  locked: boolean;
+  lockedUntil: string | null;
+  pendingLink: { kind: "INVITE" | "RESET"; expiresAt: string } | null;
+}
+export interface LiveSeller {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  social: string | null;
+  code: string;
+  userId: string | null;
+  status: "ACTIVE" | "REMOVED";
+  agreement: LiveAgreement;
+  createdAt: string;
+  productIds: string[];
+  stats: LiveSellerStats;
+  /** null = todavía no tiene acceso al portal. */
+  access?: LiveSellerAccess | null;
+  /** C5: está en vivo con su link. */
+  onAir?: boolean;
+}
+export interface LiveSellersData {
+  sellers: LiveSeller[];
+  /** Asesoras de la configuración que todavía no venden por comisión. */
+  advisors: { id: string; name: string; code: string }[];
+  kpis: { sales: number; earned: number; toPay: number; pendingConfirmation: number; sellers: number };
+  suggestedAgreement: LiveAgreement;
+}
+export interface LiveSellerSaleLine {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  createdAt: string;
+  quantity: number;
+  paid: number;
+  state: "CONFIRMED" | "PENDING" | "VOID";
+  commission: number;
+  customer: string;
+  product: string;
+}
+export interface LiveSellerSales {
+  seller: Omit<LiveSeller, "productIds" | "stats">;
+  stats: LiveSellerStats;
+  lines: LiveSellerSaleLine[];
+  payouts: { id: string; amount: number; note: string | null; paidAt: string }[];
+}
+export interface LiveSellerInput {
+  name: string;
+  email?: string;
+  phone?: string;
+  social?: string;
+  agreement: LiveAgreement;
+  productIds: string[];
+  fromAdvisorId?: string;
+}
+
+/* FEAT-33 L5b: portal de la creadora. */
+export interface LiveSellerPortalSession {
+  token: string;
+  expiresAt: string;
+  seller: { name: string };
+}
+export interface LiveSellerPortalMe {
+  seller: {
+    name: string;
+    social: string | null;
+    code: string;
+    agreement: LiveAgreement;
+    /** C5: «Estoy en vivo»; se apaga solo en `onAirUntil` (8 h). */
+    onAir?: boolean;
+    onAirUntil?: string | null;
+  };
+  store: { name: string; slug: string };
+  stats: LiveSellerStats;
+  today: { units: number; orders: number };
+  lastPayoutAt: string | null;
+}
+export interface LiveSellerPortalProduct {
+  productId: string;
+  name: string;
+  imageUrl: string | null;
+  regularPrice: number;
+  livePrice: number;
+  available: number;
+}
+export interface LiveSellerPortalSales {
+  stats: LiveSellerStats;
+  lines: LiveSellerSaleLine[];
+  payouts: { amount: number; paidAt: string }[];
 }

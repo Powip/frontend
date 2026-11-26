@@ -14,12 +14,12 @@ type OpeningInput = {
 type OpeningAction = "config" | "products";
 export type LiveConfigTarget = "yape" | "shipping" | "purchases";
 type CheckCode = LiveReadiness["checks"][number]["code"];
-const CHECKS: Record<CheckCode, { label: string; action: OpeningAction | null; button: string }> = {
-  YAPE: { label: "Yape", action: "config", button: "Configurar Yape" },
-  PRODUCTS: { label: "Productos y precios", action: "products", button: "Agregar productos" },
-  STOCK: { label: "Stock disponible", action: "products", button: "Revisar stock" },
-  SHIPPING: { label: "Envío", action: "config", button: "Configurar envío" },
-  CUSTOMER_REVIEW: { label: "Revisión de datos", action: null, button: "" },
+const CHECKS: Record<CheckCode, { label: string; action: OpeningAction | null }> = {
+  YAPE: { label: "Yape", action: "config" },
+  PRODUCTS: { label: "Productos y precios", action: "products" },
+  STOCK: { label: "Stock disponible", action: "products" },
+  SHIPPING: { label: "Envío", action: "config" },
+  CUSTOMER_REVIEW: { label: "Revisión de datos", action: null },
 };
 
 export function getLiveOpeningStatus({
@@ -160,6 +160,7 @@ export default function LiveReadinessPanel({
                     variant="outline"
                     className="mt-3"
                     disabled={busy}
+                    aria-label={`Resolver ${detail.label}`}
                     aria-describedby={messageId}
                     onClick={() =>
                       detail.action === "config"
@@ -167,7 +168,7 @@ export default function LiveReadinessPanel({
                         : onProducts()
                     }
                   >
-                    {detail.button}
+                    Resolver →
                   </Button>
                 ) : null}
               </li>

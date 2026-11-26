@@ -11,6 +11,10 @@ export interface BusinessSalesQuery extends Partial<SalesFilters> {
   kpiDateFrom?: string;
   kpiDateTo?: string;
   includeSummary?: boolean;
+  /** «Por cobrar total»: deja fuera las ventas anuladas de la lista. */
+  excludeCancelled?: "yes";
+  /** «Solo ventas por chat»: solo pedidos marcados con una conversación. */
+  crmOnly?: "yes";
   checkStock?: boolean;
   sort?: "created_desc" | "updated_asc";
 }
@@ -18,6 +22,8 @@ export interface BusinessSalesQuery extends Partial<SalesFilters> {
 export interface BusinessSalesOrder extends OrderHeader {
   /** Server confirmation eligibility for Sales; physical mutations still validate stock separately. */
   salesOperationalEligible?: boolean;
+  /** Conversación del chat que originó la venta (null si no viene de un chat). */
+  conversationId?: string | null;
 }
 
 export interface BusinessSalesPage {
@@ -30,6 +36,8 @@ export interface BusinessSalesPage {
     pendientes: number;
     anuladas: number;
     amounts: { currency: string | null; paid: number; pending: number }[];
+    /** Saldo y cantidad de ventas con saldo > 0 (sin anuladas) del rango de KPIs, por moneda. */
+    pendingTotal?: { currency: string | null; pending: number; count: number }[];
   } | null;
   metadata?: { couriers: string[]; statuses: string[]; channels: string[]; products?: { value: string; label: string }[] };
 }

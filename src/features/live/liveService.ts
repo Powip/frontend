@@ -2,16 +2,22 @@ import axios from "axios";
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
 import type {
+  LiveAgreement,
   LiveCheckout,
   LiveConfig,
   LiveConsoleData,
   LiveCustomer,
   LiveProduct,
+  LiveProductContentDetail,
   LivePublicData,
   LivePurchaseInput,
   LiveQuote,
   LiveQuoteInput,
   LiveReservation,
+  LiveSeller,
+  LiveSellerInput,
+  LiveSellerSales,
+  LiveSellersData,
   LiveSession,
 } from "./types";
 
@@ -55,9 +61,32 @@ export async function getLiveConsole(storeId: string, signal?: AbortSignal) {
 }
 export async function getLiveCatalog(storeId: string, search = "", signal?: AbortSignal) {
   return (
-    await axiosAuth.get<{ products: LiveProduct[]; serverNow: string }>(
-      `${adminPath(storeId)}/catalog`,
-      { params: { search }, signal },
+    await axiosAuth.get<{
+      products: LiveProduct[];
+      /** FEAT-33 A10: almacén de la tienda del que sale el stock. */
+      inventory?: { id: string; name: string };
+      serverNow: string;
+    }>(`${adminPath(storeId)}/catalog`, { params: { search }, signal })
+  ).data;
+}
+/** FEAT-33 A10: la tienda no tiene un único almacén activo; la pantalla ofrece ir a Inventario. */
+export function isLiveWarehouseRequired(error: unknown): boolean {
+  return axios.isAxiosError(error) && error.response?.data?.code === "LIVE_WAREHOUSE_REQUIRED";
+}
+/** FEAT-33 B2: varias variantes con un solo precio live y un solo máximo (todo o nada). */
+export async function updateLiveProducts(
+  storeId: string,
+  input: {
+    variantIds: string[];
+    livePrice?: number;
+    maxPerCustomer?: number | null;
+    enabled?: boolean;
+  },
+) {
+  return (
+    await axiosAuth.put<{ products: LiveProduct[]; serverNow: string }>(
+      `${adminPath(storeId)}/products`,
+      input,
     )
   ).data;
 }
@@ -66,6 +95,24 @@ export async function updateLiveConfig(storeId: string, input: Partial<LiveConfi
     await axiosAuth.patch<{ config: LiveConfig; serverNow: string }>(
       `${adminPath(storeId)}/config`,
       input,
+    )
+  ).data;
+}
+/** FEAT-33 B5: logo del catálogo (el servidor revisa tipo, peso y que sea cuadrado). */
+export async function uploadLiveLogo(storeId: string, file: File) {
+  const body = new FormData();
+  body.append("file", file);
+  return (
+    await axiosAuth.post<{ config: LiveConfig; serverNow: string }>(
+      `${adminPath(storeId)}/appearance/logo`,
+      body,
+    )
+  ).data;
+}
+export async function removeLiveLogo(storeId: string) {
+  return (
+    await axiosAuth.delete<{ config: LiveConfig; serverNow: string }>(
+      `${adminPath(storeId)}/appearance/logo`,
     )
   ).data;
 }
@@ -89,6 +136,20 @@ export async function updateLiveProduct(
     )
   ).data;
 }
+/**
+ * FEAT-32 M7 — qué variantes de un producto están publicadas en el live de la tienda (ficha › Canales). JWT;
+ * 403 si el rol no lee Live o la tienda no es de la empresa (la ficha muestra entonces «Se maneja en Live»).
+ */
+export async function getLiveProductsStatus(storeId: string, variantIds: string[], signal?: AbortSignal) {
+  const { data } = await axiosAuth.post<{ enabledVariantIds: string[] }>(
+    `${adminPath(storeId)}/products/status`,
+    { variantIds: variantIds.slice(0, 500) },
+    { signal },
+  );
+  if (!data || !Array.isArray(data.enabledVariantIds))
+    throw new Error("No se pudo leer el estado del live.");
+  return data;
+}
 export async function releaseLiveReservation(storeId: string, id: string) {
   await axiosAuth.post(`${adminPath(storeId)}/reservations/${encodeURIComponent(id)}/release`, {});
 }
@@ -98,16 +159,127 @@ export async function saveLiveTrustedCustomer(storeId: string, clientId: string)
     {},
   );
 }
+/** FEAT-33 D3: marca de confianza un WhatsApp aunque todavía no haya entrado al live. */
+export async function addLiveTrustedCustomer(storeId: string, input: { name: string; phone: string }) {
+  return (
+    await axiosAuth.post<{ customer: { id: string; name: string; phone: string } }>(
+      `${adminPath(storeId)}/trusted-customers`,
+      input,
+    )
+  ).data;
+}
 export async function removeLiveTrustedCustomer(storeId: string, clientId: string) {
   await axiosAuth.delete(`${adminPath(storeId)}/trusted-customers/${encodeURIComponent(clientId)}`);
 }
 export async function getPublicLive(storeId: string, visitor: string, signal?: AbortSignal) {
-  return (
+  const data = (
     await axios.get<LivePublicData>(publicPath(storeId), {
       ...anonymousOptions(visitor),
       ...(signal ? { signal } : {}),
-      params: { channel: liveEntryContext().channel },
+      params: liveCatalogParams(),
     })
+  ).data;
+  rememberCreatorLive(!!data.creatorLive);
+  return data;
+}
+/** FEAT-33 C2: con el link de una creadora (`?a=`/`?v=`) el catálogo trae solo sus productos. */
+function liveCatalogParams() {
+  const entry = liveEntryContext();
+  return {
+    channel: entry.channel,
+    ...(entry.advisorCode ? { a: entry.advisorCode } : {}),
+    ...(entry.sellerCode ? { v: entry.sellerCode } : {}),
+  };
+}
+
+/* FEAT-33 L5a (C1/C2): vendedores por comisión. */
+const sellersPath = (storeId: string) => `${adminPath(storeId)}/sellers`;
+export async function getLiveSellers(storeId: string) {
+  return (await axiosAuth.get<LiveSellersData>(sellersPath(storeId))).data;
+}
+export async function createLiveSeller(storeId: string, input: LiveSellerInput) {
+  return (await axiosAuth.post<LiveSeller>(sellersPath(storeId), input)).data;
+}
+export async function updateLiveSellerAgreement(storeId: string, sellerId: string, agreement: LiveAgreement) {
+  return (
+    await axiosAuth.put<LiveSeller>(`${sellersPath(storeId)}/${encodeURIComponent(sellerId)}/agreement`, agreement)
+  ).data;
+}
+export async function updateLiveSellerProducts(storeId: string, sellerId: string, productIds: string[]) {
+  return (
+    await axiosAuth.put<LiveSeller>(`${sellersPath(storeId)}/${encodeURIComponent(sellerId)}/products`, {
+      productIds,
+    })
+  ).data;
+}
+export async function getLiveSellerSales(storeId: string, sellerId: string) {
+  return (
+    await axiosAuth.get<LiveSellerSales>(`${sellersPath(storeId)}/${encodeURIComponent(sellerId)}/sales`)
+  ).data;
+}
+export async function payLiveSellerCommission(
+  storeId: string,
+  sellerId: string,
+  input: { amount: number; note?: string },
+) {
+  return (
+    await axiosAuth.post<LiveSeller>(`${sellersPath(storeId)}/${encodeURIComponent(sellerId)}/payouts`, input)
+  ).data;
+}
+export async function updateLiveSeller(
+  storeId: string,
+  sellerId: string,
+  input: { email?: string; phone?: string; social?: string; name?: string; status?: "ACTIVE" | "REMOVED" },
+) {
+  return (await axiosAuth.patch<LiveSeller>(`${sellersPath(storeId)}/${encodeURIComponent(sellerId)}`, input)).data;
+}
+/** L5b: enlace de invitación (7 días) o de restablecer (1 hora). El token llega una sola vez. */
+export async function issueLiveSellerLink(storeId: string, sellerId: string, kind: "invite" | "reset") {
+  return (
+    await axiosAuth.post<{ token: string; kind: "INVITE" | "RESET"; expiresAt: string }>(
+      `${sellersPath(storeId)}/${encodeURIComponent(sellerId)}/access/${kind}`,
+    )
+  ).data;
+}
+export async function changeLiveSellerAccess(
+  storeId: string,
+  sellerId: string,
+  action: "pause" | "resume" | "unlock" | "remove",
+) {
+  const path = `${sellersPath(storeId)}/${encodeURIComponent(sellerId)}/access`;
+  return (
+    action === "remove"
+      ? await axiosAuth.delete<{ access: null }>(path)
+      : await axiosAuth.post<{ access: import("./types").LiveSellerAccess }>(`${path}/${action}`)
+  ).data;
+}
+export async function updateLiveSuggestedAgreement(storeId: string, agreement: LiveAgreement) {
+  return (
+    await axiosAuth.put<{ suggestedAgreement: LiveAgreement }>(
+      `${sellersPath(storeId)}/suggested-agreement`,
+      agreement,
+    )
+  ).data;
+}
+/**
+ * FEAT-32 M7 — detalle del producto en la vitrina (fotos, descripciones y características), al abrir «Ver
+ * detalle»; nunca en el polling. 404 si no está en la vitrina, 503 si ms-products no responde.
+ */
+export async function getPublicLiveProductContent(
+  storeId: string,
+  visitor: string,
+  productId: string,
+  signal?: AbortSignal,
+) {
+  return (
+    await axios.get<LiveProductContentDetail>(
+      `${publicPath(storeId)}/products/${encodeURIComponent(productId)}/content`,
+      {
+        ...anonymousOptions(visitor),
+        ...(signal ? { signal } : {}),
+        params: { channel: liveEntryContext().channel },
+      },
+    )
   ).data;
 }
 export async function reserveLiveProduct(
@@ -123,7 +295,8 @@ export async function reserveLiveProduct(
   return (
     await axios.post<{ reservation: LiveReservation; serverNow: string }>(
       `${publicPath(storeId)}/reservations`,
-      { ...input, channel: liveEntryContext().channel },
+      // FEAT-33 C5: con el código del link, el servidor sabe si es el live de la creadora.
+      { ...input, ...liveEntryContext() },
       anonymousOptions(visitor),
     )
   ).data;
@@ -358,11 +531,23 @@ export async function uploadLiveYapeProof(
     )
   ).data;
 }
-export async function getLiveYapeReviews(storeId: string, signal?: AbortSignal) {
+/** FEAT-33 D4: valida pagos Live el Administrador o quien tiene el permiso de Finanzas (igual que ms-ventas). */
+export function canReviewLivePayments(
+  user?: { role?: string | null; permissions?: readonly string[] | null } | null,
+) {
+  return (
+    user?.role?.trim().toUpperCase() === "ADMINISTRADOR" ||
+    Boolean(user?.permissions?.includes("VIEW_FINANCES"))
+  );
+}
+/** FEAT-33 B1: la única cola de pagos es Finanzas › Pagos por validar, ya filtrada a POWIP Live y Link. */
+export const LIVE_PAYMENTS_HREF = "/finanzas?tab=pagos&origen=live";
+/** Sin `orderId` es la cola (solo lo que espera una decisión); con `orderId`, la historia de ese pedido. */
+export async function getLiveYapeReviews(storeId: string, signal?: AbortSignal, orderId?: string) {
   return (
     await axiosAuth.get<{ reviews: import("./types").LiveYapeReview[]; serverNow: string }>(
       `${adminPath(storeId)}/yape/reviews`,
-      { signal },
+      orderId ? { signal, params: { orderId } } : { signal },
     )
   ).data;
 }
@@ -438,15 +623,25 @@ export function liveBuyerLabel(status?: string): string {
   );
 }
 
+let creatorOnAir = false;
+/** FEAT-33 C5: lo marca cada lectura del catálogo: la creadora del link está en vivo. */
+export function rememberCreatorLive(onAir: boolean) {
+  creatorOnAir = onAir;
+}
+
 export function liveEntryContext() {
   if (typeof window === "undefined") return { channel: "LIVE" as const };
   const query = new URLSearchParams(window.location.search);
+  const advisorCode = query.get("a") || undefined;
+  const sellerCode = query.get("v") || undefined;
+  // FEAT-33 A12/D2: el link de asesora o creadora (…/live?a=CÓDIGO) y el formato viejo /catalogo son POWIP Link,
+  // salvo que la creadora del link esté en vivo (C5): entonces es su live, con el precio live.
+  const link = window.location.pathname.startsWith("/catalogo") || query.has("a");
   return {
-    channel: window.location.pathname.startsWith("/catalogo")
-      ? ("WHATSAPP" as const)
-      : ("LIVE" as const),
-    advisorCode: query.get("a") || undefined,
-    sellerCode: query.get("v") || undefined,
+    channel:
+      link && !(creatorOnAir && (advisorCode || sellerCode)) ? ("WHATSAPP" as const) : ("LIVE" as const),
+    advisorCode,
+    sellerCode,
   };
 }
 

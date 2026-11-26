@@ -20,9 +20,15 @@ const profile = (sunatProfileId: string, configured: boolean) => ({
   updatedAt: null,
 });
 
-const settings = (sunatConnection: GreSettings["sunatConnection"], configured = true, enabledForCompany = true): GreSettings => ({
+const settings = (
+  sunatConnection: GreSettings["sunatConnection"],
+  configured = true,
+  enabledForCompany = true,
+  autoEnableByCredentials = true,
+): GreSettings => ({
   sunatConnection,
   enabledForCompany,
+  autoEnableByCredentials,
   profiles: [profile("p-1", configured), profile("p-2", false)],
 });
 
@@ -45,9 +51,17 @@ describe("GreModeBanner", () => {
     expect(screen.getByTestId("gre-mode-banner")).toHaveTextContent("no sirven para trasladar mercadería");
   });
 
-  it("con SUNAT producción y la empresa no habilitada dice que todavía no está habilitada", () => {
-    render(<GreModeBanner settings={settings("SUNAT_PRODUCTION", true, false)} />);
+  it("modo solo lista: con SUNAT producción y la empresa fuera de la lista dice que todavía no está habilitada", () => {
+    render(<GreModeBanner settings={settings("SUNAT_PRODUCTION", true, false, false)} />);
     expect(screen.getByTestId("gre-mode-banner")).toHaveTextContent("La guía de remisión electrónica todavía no está habilitada para tu empresa.");
+  });
+
+  it("habilitación automática: sin credenciales y no habilitada pide cargarlas, no dice «todavía no está habilitada»", () => {
+    render(<GreModeBanner settings={settings("SUNAT_PRODUCTION", false, false, true)} />);
+    const banner = screen.getByTestId("gre-mode-banner");
+    expect(banner).toHaveTextContent("Falta configurar las credenciales GRE.");
+    expect(banner).not.toHaveTextContent("todavía no está habilitada");
+    expect(banner).toHaveTextContent("Con las credenciales completas, la emisión se habilita sola.");
   });
 
   it("con SUNAT pero sin credenciales (o el RUC elegido sin ellas) pide cargarlas", () => {

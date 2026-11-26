@@ -55,6 +55,43 @@ export interface CartItem {
   priceSource?: "catalog" | "list" | "manual";
   /** FEAT-24 H9: si la línea es un pack, su contenido (snapshot del pedido). */
   packComponents?: PackComponentSnapshot[] | null;
+  /** FEAT-32 M6a: precio del canal por unidad antes de promos (motor de la venta nueva o lo que trajo el pedido). */
+  listPrice?: number | null;
+  /** FEAT-32 M6a: promo aplicada a la línea (campaña, volumen o regalo). */
+  promoId?: string | null;
+  /** FEAT-32 M6a: descuento de promos de la línea entera (parte del descuento total). */
+  promoDiscountAmount?: number | null;
+  /** FEAT-32 M6a, solo líneas con precio del motor: etiquetas («Cyber Wow», «Volumen: …»). */
+  promoLabels?: string[];
+  /** FEAT-32 M6a, solo líneas con precio del motor: precio de promo por unidad (base del descuento manual). */
+  promoUnitPrice?: number;
+  /** FEAT-32 M6a, solo líneas con precio del motor: neto de la línea al céntimo (promo y descuento manual). */
+  lineTotal?: number;
+  /** FEAT-32 M6a, pedido cargado: cantidad y precio a los que se refiere su promo; si cambian, la promo no se reenvía. */
+  promoTraceFor?: { quantity: number; price: number } | null;
+  /** FEAT-32 M6b, pack «a elegir»: la variante elegida de cada componente (se manda en una línea nueva o cambiada). */
+  packChoice?: PackChoiceEntry[] | null;
+  /** FEAT-32 M6b, pedido cargado: clave de la combinación; se reenvía tal cual mientras no se cambie la elección. */
+  packKey?: string | null;
+  /** FEAT-32 M6b: la línea es de un pack «a elegir» (para reabrir «Cambiar variantes» y validar la elección). */
+  choosePack?: ChoosePackRef | null;
+}
+
+/** FEAT-32 M6b — elección de un componente de un pack «a elegir» (`packChoice` de ms-ventas). */
+export interface PackChoiceEntry {
+  /** Posición del componente (`PackView.choiceComponents[].slot`). */
+  slot: number;
+  variantId: string;
+  /** Unidades del componente con esta variante; las de un componente suman su cantidad. */
+  quantity: number;
+}
+
+/** FEAT-32 M6b — pack «a elegir» de una línea: producto del pack y unidades de cada componente. */
+export interface ChoosePackRef {
+  /** Producto del pack (`PackView.id`); `null` en una línea cargada de un pedido (se busca por la variante). */
+  packProductId: string | null;
+  /** Componentes con sus unidades; vacío en una línea cargada (su elección es la de `packKey`). */
+  slots: Array<{ slot: number; quantity: number }>;
 }
 
 /** FEAT-24 H9 — componente de un pack en una línea de pedido (`order_items.pack_components`). */
@@ -184,6 +221,12 @@ export interface OrderItem {
   packComponents?: PackComponentSnapshot[] | null;
   /** FEAT-24 H12: unidades ya cambiadas por otra variante. */
   exchangedQuantity?: number | null;
+  /** FEAT-32 M6a: origen del precio (los decimales pueden llegar como texto). */
+  listPrice?: string | number | null;
+  promoId?: string | null;
+  promoDiscountAmount?: string | number | null;
+  /** FEAT-32 M6b: clave de la combinación de un pack «a elegir» (`null` en las demás líneas). */
+  packKey?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -206,6 +249,7 @@ export interface OrderPayment {
 ----------------------------------------- */
 export interface OrderHeader extends UnitAssignmentState {
   id: string;
+  waLastNotice?: unknown;
   currency?: string | null;
   commercialStage?: "LEAD" | "SALE" | null;
   commercialLeadId?: string | null;
@@ -251,6 +295,8 @@ export interface OrderHeader extends UnitAssignmentState {
   taxTotal: string;
   shippingTotal: string;
   discountTotal: string;
+  /** FEAT-32 M6a: «Descuentos por promociones» (parte de `discountTotal`; el comprobante lo trae en `totals`). */
+  promoDiscountTotal?: string | number | null;
   grandTotal: string;
   status: OrderStatus;
   salesRegion: "LIMA" | "PROVINCIA";

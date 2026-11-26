@@ -37,6 +37,11 @@ import {
   type CreateSunatProfileFormValues,
   createSunatProfileSchema,
 } from "@/features/sunat/sunat-profile/schemas/create-sunat-profile.schema";
+import {
+  DEFAULT_SUNAT_TAX_REGIME,
+  SUNAT_TAX_REGIME_LABELS,
+  SUNAT_TAX_REGIMES,
+} from "@/features/sunat/sunat-profile/utils/tax-regime";
 
 interface CertificadoUploadModalProps {
   isOpen: boolean;
@@ -199,6 +204,38 @@ export default function CertificadoUploadModal({
                           <SelectItem value="PE">Perú</SelectItem>
 
                           <SelectItem value="EC">Ecuador</SelectItem>
+                        </SelectContent>
+                      </Select>
+
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* taxRegime: Nuevo RUS only issues boletas, without IGV */}
+                <FormField
+                  control={form.control}
+                  name="taxRegime"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Régimen tributario</FormLabel>
+
+                      <Select
+                        value={field.value ?? DEFAULT_SUNAT_TAX_REGIME}
+                        onValueChange={field.onChange}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecciona el régimen" />
+                          </SelectTrigger>
+                        </FormControl>
+
+                        <SelectContent>
+                          {Object.values(SUNAT_TAX_REGIMES).map((value) => (
+                            <SelectItem key={value} value={value}>
+                              {SUNAT_TAX_REGIME_LABELS[value]}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
 

@@ -35,6 +35,8 @@ jest.mock("@/services/catalogProductService", () => ({
 }));
 jest.mock("@/services/businessInventoryItemsService", () => ({ fetchBusinessInventoryItems: jest.fn() }));
 jest.mock("@/services/uploadService", () => ({ uploadImage: jest.fn() }));
+// FEAT-32 M1: la pestaña Contenido tiene su propio test; acá solo que se abre desde General.
+jest.mock("@/components/catalog/ficha/FichaContentTab", () => ({ __esModule: true, default: ({ productId }: { productId: string }) => <div data-testid="content-tab">contenido de {productId}</div> }));
 jest.mock("@/components/labels/PrintLabelsDialog", () => ({
   PrintLabelsDialog: ({ source }: { source: { productIds: string[]; title?: string } }) => <div>etiquetas de {source.productIds.join(",")} · {source.title}</div>,
 }));
@@ -45,8 +47,17 @@ jest.mock("@/components/compras/supplier-prices/FichaSupplierPrices", () => ({
     <div data-testid="supplier-prices">{variants.map((variant) => `${variant.id}=${variant.label}`).join(", ")}{linkOrders ? " · con enlaces" : ""}</div>
   ),
 }));
-// FEAT-24 H9: la pestaña Pack tiene su propio test.
-jest.mock("@/components/packs/PackFichaTab", () => ({ __esModule: true, default: () => <div data-testid="pack-tab">componentes del pack</div> }));
+// FEAT-24 H9 / FEAT-32 M5: las pestañas del pack y su ventana tienen su propio test; acá, el pack que llega.
+let mockPack: Partial<import("@/services/packsService").PackView> | undefined;
+jest.mock("@/components/packs/PackFichaTab", () => ({
+  __esModule: true,
+  default: () => <div data-testid="pack-tab">componentes del pack</div>,
+  PackStockTab: () => <div data-testid="pack-stock-tab">disponible calculado</div>,
+  usePack: () => ({ data: mockPack, refetch: jest.fn() }),
+}));
+jest.mock("@/components/packs/PackFormDialog", () => ({
+  PackFormDialog: ({ pack }: { pack: { name: string } }) => <div role="dialog">ventana de {pack.name}</div>,
+}));
 jest.mock("@/components/inventory/MovementHistoryTable", () => ({
   MovementHistoryTable: ({ variants, title }: { variants?: Array<{ id: string; label: string }>; title?: string }) => (
     <div data-testid="kardex">{title}: {variants?.map((variant) => `${variant.id}=${variant.label}`).join(", ")}</div>
@@ -97,18 +108,84 @@ describe("Ficha del producto en pestañas (FEAT-24 H4-D)", () => {
     expect(screen.getByRole("link", { name: "Editar opciones y precios" })).toHaveAttribute("href", "/productos?edit=v1");
   });
 
+  it("FEAT-32 M1: General ya no edita foto ni descripción y lleva a la pestaña Contenido (que queda montada)", async () => {
+    const user = userEvent.setup();
+    renderFicha();
+    expect(await screen.findByText(/ahora están en la pestaña/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Descripción")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Foto principal")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("content-tab")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Ir a Contenido →" }));
+    expect(screen.getByRole("tab", { name: /Contenido/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByTestId("content-tab")).toHaveTextContent("contenido de p1");
+    await user.click(screen.getByRole("tab", { name: "General" }));
+    // Sigue montada (no pierde el borrador), oculta por `data-[state=inactive]:hidden`.
+    expect(screen.getByTestId("content-tab").closest('[role="tabpanel"]')).toHaveAttribute("data-state", "inactive");
+  });
+
   it("precio de compra por proveedor: recibe las variantes del producto (FEAT-24 H13-D4)", async () => {
     renderFicha();
     expect(await screen.findByTestId("supplier-prices")).toHaveTextContent("v1=Talla: S (POL0001-S), v2=Talla: M (POL0001-M) · con enlaces");
   });
 
-  it("un pack tiene su pestaña Pack y no muestra el precio de compra por proveedor (FEAT-24 H9 + H13)", async () => {
-    jest.mocked(getCatalogProduct).mockResolvedValue({ ...POLO, name: "Pack Verano", type: "pack", externalSource: null });
-    jest.mocked(getProductVariants).mockResolvedValue([{ id: "pk1", sku: "INT-PK", companySku: "PK-VER", barcode: "", attributeValues: { Title: "Default Title" }, isActive: true }]);
-    renderFicha();
-    expect(await screen.findByRole("heading", { name: "Pack Verano" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "Pack" })).toBeInTheDocument();
-    expect(screen.queryByTestId("supplier-prices")).not.toBeInTheDocument();
+  describe("ficha de un pack (FEAT-24 H9 + H13, FEAT-32 M5 §7.15)", () => {
+    beforeEach(() => {
+      mockPack = {
+        id: "p1", name: "Pack Verano", price: 90, packType: "FIXED",
+        components: [
+          { variantId: "v-a", quantity: 1, productId: "pa", productName: "Blusa", sku: "BLU", attributeValues: {}, imageUrl: null, active: true },
+          { variantId: "v-b", quantity: 1, productId: "pb", productName: "Short", sku: "SHO", attributeValues: {}, imageUrl: null, active: true },
+        ],
+        choiceComponents: [],
+      };
+      jest.mocked(getCatalogProduct).mockResolvedValue({ ...POLO, name: "Pack Verano", type: "pack", externalSource: null });
+      jest.mocked(getProductVariants).mockResolvedValue([{ id: "pk1", sku: "INT-PK", companySku: "PK-VER", barcode: "", attributeValues: { Title: "Default Title" }, isActive: true }]);
+    });
+    afterEach(() => { mockPack = undefined; });
+
+    it("aviso «Este producto es un pack» con «Editar pack»; «Componentes (N)» en lugar de Variantes; sin precio de compra por proveedor", async () => {
+      const user = userEvent.setup();
+      renderFicha();
+      expect(await screen.findByRole("heading", { name: "Pack Verano" })).toBeInTheDocument();
+      const note = screen.getByRole("note");
+      expect(note).toHaveTextContent("Este producto es un pack fijo. Sus componentes, su tipo y su precio se cambian en «Editar pack».");
+      expect(screen.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["General", "Componentes (2)", "ContenidoNuevo", "Stock por almacén", "Canales", "Historial"]);
+      expect(screen.queryByRole("link", { name: "Editar opciones y precios" })).not.toBeInTheDocument();
+      expect(screen.queryByTestId("supplier-prices")).not.toBeInTheDocument();
+
+      await user.click(within(note).getByRole("button", { name: "Editar pack" }));
+      expect(screen.getByRole("dialog")).toHaveTextContent("ventana de Pack Verano");
+    });
+
+    it("General: el precio es de solo lectura (se cambia en «Editar pack»); SKU y código de barras de su variante, sin costo propio", async () => {
+      renderFicha();
+      await screen.findByRole("heading", { name: "Pack Verano" });
+      expect(screen.getByTestId("ficha-pack-price")).toHaveTextContent("S/ 90.00");
+      expect(screen.getByText("Solo lectura: el precio del pack se cambia en «Editar pack». El precio por canal se ve en Canales.")).toBeInTheDocument();
+      expect(screen.queryByLabelText(/precio/i)).not.toBeInTheDocument();
+      expect(screen.getByLabelText("SKU")).toHaveValue("PK-VER");
+      expect(screen.getByLabelText("Código de barras")).toBeInTheDocument();
+      expect(getVariantCosts).not.toHaveBeenCalled();
+    });
+
+    it("Componentes y Stock por almacén muestran lo del pack (componentes y disponible calculado)", async () => {
+      const user = userEvent.setup();
+      renderFicha();
+      await user.click(await screen.findByRole("tab", { name: "Componentes (2)" }));
+      expect(screen.getByTestId("pack-tab")).toBeInTheDocument();
+      await user.click(screen.getByRole("tab", { name: "Stock por almacén" }));
+      expect(screen.getByTestId("pack-stock-tab")).toBeInTheDocument();
+    });
+
+    it("un pack «a elegir» lo dice en el aviso; sin permiso para gestionar packs no hay «Editar pack»", async () => {
+      mockPack = { ...mockPack, packType: "CHOOSE", components: [], choiceComponents: [{ slot: 0, productId: "pj", productName: "Jean", quantity: 2, variants: [] }] };
+      role = "VENTAS";
+      renderFicha();
+      await screen.findByRole("heading", { name: "Pack Verano" });
+      expect(screen.getByRole("note")).toHaveTextContent("Este producto es un pack a elegir.");
+      expect(screen.getByRole("tab", { name: "Componentes (1)" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Editar pack" })).not.toBeInTheDocument();
+    });
   });
 
   it("General: guarda solo lo que cambió (categoría, unidad de compra y factor)", async () => {

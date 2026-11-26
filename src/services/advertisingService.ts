@@ -1,5 +1,9 @@
 import axios from "axios";
 import type { EffectiveAdvertisingSpendWire } from "@/types/advertisingEffective";
+import type {
+  MetaAccountCampaignsWire,
+  MetaAccountStatusWire,
+} from "@/components/advertising/advertising-meta-status";
 
 export type AdvertisingProviderWire = "meta" | "tiktok";
 export type AdvertisingConnectionStatusWire =
@@ -45,6 +49,25 @@ export interface AdvertisingAccountWire {
   updatedAt: string | null;
   historyImport?: AdvertisingHistoryImportState | null;
   disconnectedAt?: string | null;
+  /** When «Comenzar importación» was last pressed; null = never started (no automatic import). */
+  importRequestedAt?: string | null;
+  /** Per-ad Meta import progress. */
+  adImport?: AdvertisingAdImportWire | null;
+}
+
+export interface AdvertisingAdImportWire {
+  status: "pending" | "running" | "retrying" | "succeeded" | "failed" | "paused";
+  completedWindows: number;
+  totalWindows: number;
+  errorCode: string | null;
+  nextAttemptAt: string | null;
+  updatedAt: string | null;
+}
+
+/** Selecting a Meta account no longer imports it; the backend reports it as not requested. */
+export interface AdvertisingNotRequestedImport {
+  accountId: string;
+  status: "not_requested";
 }
 
 export interface AdvertisingDayWire {
@@ -152,6 +175,10 @@ export interface AdvertisingDiscoveredAccount {
   enabled?: boolean;
   selectable?: boolean;
   selectionBlockedReason?: "linked-other-company" | "metadata-changed" | null;
+  /** Meta only: account_status as read now. Absent for TikTok. */
+  metaStatus?: MetaAccountStatusWire;
+  /** Meta only: campaigns from the local catalog; separate from the account status. */
+  campaigns?: MetaAccountCampaignsWire;
 }
 
 export function advertisingAccountSelectable(account: AdvertisingDiscoveredAccount): boolean {
@@ -366,8 +393,14 @@ export async function selectAdvertisingAccounts(
   companyId: string,
   provider: AdvertisingProviderWire,
   payload: AdvertisingSelectionPayload,
-): Promise<{ selectedCount: number; imports: AdvertisingHistoryImport[] }> {
-  const response = await axios.put<{ selectedCount: number; imports: AdvertisingHistoryImport[] }>(
+): Promise<{
+  selectedCount: number;
+  imports: Array<AdvertisingHistoryImport | AdvertisingNotRequestedImport>;
+}> {
+  const response = await axios.put<{
+    selectedCount: number;
+    imports: Array<AdvertisingHistoryImport | AdvertisingNotRequestedImport>;
+  }>(
     `${providerUrl(companyId, provider)}/accounts`,
     { externalIds: payload.externalIds },
     requestOptions(token),
@@ -379,10 +412,11 @@ export async function importAdvertisingHistory(
   token: string,
   companyId: string,
   provider: AdvertisingProviderWire,
+  accountIds?: string[],
 ): Promise<{ imports: AdvertisingHistoryImport[] }> {
   const response = await axios.post<{ imports: AdvertisingHistoryImport[] }>(
     `${providerUrl(companyId, provider)}/history-import`,
-    {},
+    accountIds?.length ? { accountIds } : {},
     requestOptions(token),
   );
   return response.data;
@@ -562,6 +596,8 @@ export function advertisingErrorMessage(failure: unknown): string {
   switch (advertisingErrorStatus(failure)) {
     case 401:
       return "Vuelve a iniciar sesión para continuar.";
+    case 400:
+      return "Las cuentas elegidas no son válidas. Revisa la selección e inténtalo de nuevo.";
     case 403:
       return "No tienes permiso para continuar.";
     case 409: {
@@ -572,6 +608,8 @@ export function advertisingErrorMessage(failure: unknown): string {
     }
     case 429:
       return "Espera un momento e inténtalo de nuevo.";
+    case 502:
+      return "Meta devolvió datos incompletos. Espera unos minutos e inténtalo de nuevo.";
     case 503:
       return "Publicidad no está disponible. Inténtalo de nuevo.";
     default:

@@ -191,7 +191,8 @@ export default function PautaPorCanalPage() {
       <div className="rounded-lg border bg-amber-50/60 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 p-3.5 text-xs text-amber-800 dark:text-amber-300 flex gap-2.5">
         <span>🎯</span>
         <p>
-          Estos registros se guardan en este navegador y se usan en tus reportes. No se comparten con otros usuarios.
+          Registro manual: se guarda solo en este navegador y no entra en los cálculos. No se comparte con otros
+          usuarios.
         </p>
       </div>
 

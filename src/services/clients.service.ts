@@ -5,6 +5,18 @@ import axios from "axios";
 
 const API_VENTAS = GATEWAY.ventas;
 
+export interface ClientHistory {
+  purchases: number;
+  rejections: number;
+  /** Total entregado, sin envío. */
+  spent: number;
+  lastPurchaseAt: string | null;
+}
+
+export async function fetchClientHistory(clientId: string): Promise<ClientHistory> {
+  return (await axiosAuth.get<ClientHistory>(`${API_VENTAS}/clients/${clientId}/history`)).data;
+}
+
 export async function fetchClientByPhone(
   companyId: string,
   phone: string

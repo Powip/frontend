@@ -8,6 +8,7 @@ import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
 import { isPublicLiveRoute } from "@/lib/liveRoutes";
 import { resolveSubscriptionRedirect } from "@/lib/subscriptionGate";
 import { resolveBusinessQuestionsRedirect } from "@/lib/businessQuestionsGate";
+import { loginUrl, wasManualLogout } from "@/lib/sessionExpiry";
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -21,6 +22,7 @@ const PUBLIC_ROUTES = [
   "/rastreo",
   "/c/",
   "/onboarding",
+  "/p/",
 ];
 
 /**
@@ -82,7 +84,10 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   useEffect(() => {
     // Si no está cargando, no hay auth, y NO es ruta pública -> login
     if (!loading && !auth && !isPublicRoute) {
-      router.push("/login");
+      // Quien llegó sin sesión vuelve a esta página al entrar; tras «Cerrar sesión», no.
+      router.push(
+        wasManualLogout() ? "/login" : loginUrl(`${window.location.pathname}${window.location.search}`),
+      );
       return;
     }
     if (gateRedirect) {

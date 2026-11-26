@@ -1,9 +1,10 @@
 "use client";
 
 import { Download, Link2, Loader2, Mail, MessageCircle, Receipt, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { ProximamenteButton } from "@/app/facturacion/components/ProximamenteButton";
+import { descargarPdfYAbrirChat, enviarPdfPorWhatsApp } from "@/app/facturacion/lib/enviar-pdf-whatsapp";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,6 +26,10 @@ import {
   type TaxDocumentStatus,
 } from "@/features/sunat/shared/types/sunat.types";
 import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-document-pdf";
+import {
+  useSendTaxDocumentWhatsApp,
+  useTaxDocumentWhatsAppAvailability,
+} from "@/features/sunat/sunat-document/hooks/use-tax-document-whatsapp";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { getDocumentTypeLabel } from "@/features/sunat/sunat-document/utils/get-document-type-label";
 import { formatDateTime } from "@/utils/date";
@@ -60,6 +65,20 @@ export default function DetalleComprobanteModal({
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const { mutateAsync: downloadSunatDocumentPdf } = useSunatDocumentPdf();
+
+  const rowIsFinal =
+    row?.taxDocument?.cdrStatus === "ACCEPTED" ||
+    row?.taxDocument?.cdrStatus === "ACCEPTED_WITH_OBSERVATION";
+
+  // Own WhatsApp Business number (Cloud API) → Powip sends the PDF; otherwise wa.me with text.
+  const { data: whatsAppAvailability, isLoading: checkingWhatsApp } =
+    useTaxDocumentWhatsAppAvailability(isOpen && rowIsFinal);
+  const { mutateAsync: sendTaxDocumentWhatsApp, isPending: sendingWhatsApp } =
+    useSendTaxDocumentWhatsApp();
+  // Blocks a second click before React re-renders the disabled button.
+  const sendingRef = useRef(false);
+
+  const canSendPdf = whatsAppAvailability?.connected === true;
 
   if (!row) {
     return null;
@@ -98,7 +117,7 @@ export default function DetalleComprobanteModal({
 
   const isFinal = status === "ACCEPTED" || status === "ACCEPTED_WITH_OBSERVATION";
 
-  const shareWhatsApp = () => {
+  const openWhatsAppWithText = () => {
     const phone = sale.customer.phoneNumber?.replace(/\D/g, "");
 
     if (!phone) {
@@ -122,6 +141,50 @@ export default function DetalleComprobanteModal({
     window.open(`https://wa.me/${phone}?text=${message}`, "_blank", "noopener,noreferrer");
 
     onAction?.(sale.id, "wa");
+  };
+
+  const sendPdfByWhatsApp = async () => {
+    if (!taxDocument || sendingRef.current) {
+      return;
+    }
+
+    sendingRef.current = true;
+
+    try {
+      await enviarPdfPorWhatsApp({
+        send: sendTaxDocumentWhatsApp,
+        sunatDocumentId: taxDocument.id,
+        phone: sale.customer.phoneNumber,
+        customerName: sale.customer.fullName,
+        onSent: () => onAction?.(sale.id, "wa"),
+        onFallbackToText: () => void downloadPdfAndOpenChat(),
+      });
+    } finally {
+      sendingRef.current = false;
+    }
+  };
+
+  // Without own number: download the PDF and open the chat so the seller attaches it.
+  const downloadPdfAndOpenChat = async () => {
+    if (!taxDocument || !sale.customer.phoneNumber?.replace(/\D/g, "")) {
+      openWhatsAppWithText();
+      return;
+    }
+
+    await descargarPdfYAbrirChat({
+      download: downloadSunatDocumentPdf,
+      sunatDocumentId: taxDocument.id,
+      openChat: openWhatsAppWithText,
+    });
+  };
+
+  const shareWhatsApp = () => {
+    if (canSendPdf) {
+      void sendPdfByWhatsApp();
+      return;
+    }
+
+    void downloadPdfAndOpenChat();
   };
 
   const downloadPdf = async () => {
@@ -299,9 +362,19 @@ export default function DetalleComprobanteModal({
             <div className="mt-2 text-sm font-semibold">Compartir con el cliente</div>
 
             <div className="grid grid-cols-2 gap-2">
-              <Button variant="outline" className="justify-start gap-2" onClick={shareWhatsApp}>
-                <MessageCircle className="h-4 w-4 text-green-600" />
-                WhatsApp
+              <Button
+                variant="outline"
+                className="justify-start gap-2"
+                disabled={sendingWhatsApp || checkingWhatsApp}
+                onClick={shareWhatsApp}
+                data-testid="compartir-whatsapp"
+              >
+                {sendingWhatsApp ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MessageCircle className="h-4 w-4 text-green-600" />
+                )}
+                {canSendPdf ? "Enviar PDF por WhatsApp" : "WhatsApp"}
               </Button>
 
               <Button
@@ -340,6 +413,18 @@ export default function DetalleComprobanteModal({
                 className="col-span-2 justify-start"
               />
             </div>
+
+            {!checkingWhatsApp && (
+              <p className="text-xs text-muted-foreground" data-testid="aviso-whatsapp">
+                {canSendPdf
+                  ? `WhatsApp: Powip enviará el PDF al cliente desde tu número${
+                      whatsAppAvailability?.businessPhoneNumber
+                        ? ` +${whatsAppAvailability.businessPhoneNumber}`
+                        : ""
+                    }.`
+                  : "WhatsApp: tu empresa no tiene un número de WhatsApp Business conectado. Se descargará el PDF y se abrirá el chat del cliente para que lo adjuntes."}
+              </p>
+            )}
 
             <div className="mt-2 flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={() => onGenerarNota(row)}>

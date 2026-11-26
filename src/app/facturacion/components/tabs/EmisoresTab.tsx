@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { ExtraRucSlotsCard } from "@/app/facturacion/components/ExtraRucSlotsCard";
 import { EstablishmentCodeModal } from "@/app/facturacion/components/modals/EstablishmentCodeModal";
+import { TaxRegimeModal } from "@/app/facturacion/components/modals/TaxRegimeModal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,6 +30,7 @@ import {
   getSunatProfileErrorMessage,
   isRucLimitError,
 } from "@/features/sunat/sunat-profile/utils/sunat-profile-error.util";
+import { isNuevoRus } from "@/features/sunat/sunat-profile/utils/tax-regime";
 
 interface EmisoresTabProps {
   comprobanteRows: TaxDocumentRow[];
@@ -55,6 +57,7 @@ export function EmisoresTab({
   onRepay,
 }: EmisoresTabProps) {
   const [editingCode, setEditingCode] = useState<SunatProfile | null>(null);
+  const [editingRegime, setEditingRegime] = useState<SunatProfile | null>(null);
   const { data: profiles = [], isLoading } = useSunatProfiles();
   const setDefaultProfile = useSetDefaultSunatProfile();
   const deactivateProfile = useDeactivateSunatProfile();
@@ -146,6 +149,7 @@ export function EmisoresTab({
                       activateProfile.mutate(profile.id);
                     }}
                     onDeactivate={() => deactivateProfile.mutate(profile.id)}
+                    onEditTaxRegime={() => setEditingRegime(profile)}
                     isMakingDefault={setDefaultProfile.isPending}
                     isChangingActive={activateProfile.isPending || deactivateProfile.isPending}
                   />
@@ -164,6 +168,8 @@ export function EmisoresTab({
       <ExtraRucSlotsCard onRepay={onRepay} />
 
       <EstablishmentCodeModal profile={editingCode} onClose={() => setEditingCode(null)} />
+
+      <TaxRegimeModal profile={editingRegime} onClose={() => setEditingRegime(null)} />
     </div>
   );
 }
@@ -176,6 +182,7 @@ function EmisorRow(props: {
   onEditEstablishmentCode: () => void;
   onActivate: () => void;
   onDeactivate: () => void;
+  onEditTaxRegime: () => void;
   isMakingDefault: boolean;
   isChangingActive: boolean;
 }) {
@@ -230,6 +237,21 @@ function EmisorRow(props: {
             onClick={props.onEditEstablishmentCode}
           >
             Editar código
+          </Button>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+          <span>
+            {isNuevoRus(profile.taxRegime)
+              ? "Nuevo RUS · solo boletas, sin IGV"
+              : "Régimen general"}
+          </span>
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto p-0 text-xs"
+            onClick={props.onEditTaxRegime}
+          >
+            Cambiar régimen
           </Button>
         </div>
       </TableCell>

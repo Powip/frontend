@@ -1,73 +1,65 @@
 "use client";
 
-/** Courier balances come from explicit Finance confirmations and persistent settlements.
- * Manual accounts remain notes stored on this device, separate from courier accounting.
+/**
+ * Cuentas por cobrar y pagar (FEAT-34: C7, M8). Fuera del menú hasta tener backend (D6).
+ *
+ * Por cobrar:
+ * - Saldo en calle: pedidos hoy en tránsito (ASIGNADO_A_GUIA + EN_ENVIO + DESPACHADO, últimos 90 días) menos lo ya
+ *   pagado, por courier (`usePedidosEnTransito`, calculado en ms-ventas; acá se juntan las grafías de un mismo
+ *   courier). Antes solo DESPACHADO (~25 % del saldo real).
+ * - Cobros confirmados que el courier todavía no liquidó (`courierSettlementBalances`, ms-courier).
+ * - Otras cuentas registradas a mano (solo en este navegador).
+ * Por pagar: solo lo registrado a mano (solo en este navegador).
+ *
+ * Es una foto de hoy: no depende del periodo elegido. Ya no hay «vencidas» ni «próximas»: el vencimiento es texto
+ * libre y esas secciones salían siempre vacías.
  */
 
-import Link from "next/link";
-import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format, subDays } from "date-fns";
-import { useAuth } from "@/contexts/AuthContext";
-import { getOrdersByCompany } from "@/api/Ventas";
-import { enTransito, paidAmount } from "../_lib/realData";
-import { useCuentasManualCobrar, useCuentasManualPagar, useCuentasHistorial } from "../_lib/cuentasStorage";
-import { getCourierSettlements, settlementMoney } from "@/services/courierSettlementsService";
-import { courierSettlementBalances } from "../_lib/courierSettlementBalances";
-import { MESES_LARGOS } from "../_mock/data";
-import { fmtMoney } from "../_lib/format";
-import { NivelPill } from "../_components/nivel";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Check } from "lucide-react";
+import { Check, Plus } from "lucide-react";
+import Link from "next/link";
+import { type FormEvent, type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
+import { getCourierSettlements, settlementMoney } from "@/services/courierSettlementsService";
 import { cn } from "@/lib/utils";
+import { NivelPill } from "../_components/nivel";
+import {
+  AdminTable,
+  Aviso,
+  claseBotonPrimario,
+  claseBotonSecundario,
+  claseInput,
+  formatNumber,
+  formatSoles,
+  formatSolesDecimales,
+  KpiCard,
+  PanelCard,
+  PanelEmpty,
+  PanelError,
+  PanelSkeleton,
+  SIN_DATO,
+} from "../_components/ui";
+import { courierSettlementBalances } from "../_lib/courierSettlementBalances";
+import {
+  type CuentaManual,
+  saldoEnCallePorCourier,
+  totalCuentas,
+  useCuentasHistorial,
+  useCuentasManualCobrar,
+  useCuentasManualPagar,
+} from "../_lib/cuentasStorage";
+import { etiquetaMes, partes } from "../_lib/periodo";
+import { DIAS_EN_TRANSITO, useAdminContexto, usePedidosEnTransito } from "../_lib/useResultados";
 
-interface CuentaLocal {
-  id: string;
-  icono: string;
-  concepto: string;
-  descripcion: string;
-  monto: number;
-  vencimiento: string;
-  urgencia: "rojo" | "ambar" | "azul";
-  auto: boolean;
-}
+type TipoCuenta = "cobrar" | "pagar";
 
-const STALE = 5 * 60 * 1000;
-
-function mesLabel(m: string) {
-  const [y, mm] = m.split("-");
-  return `${MESES_LARGOS[Number(mm) - 1]} ${y}`;
-}
+const FORM_VACIO = { tipo: "pagar" as TipoCuenta, concepto: "", descripcion: "", monto: "", vencimiento: "" };
 
 export default function CuentasPage() {
   const { auth } = useAuth();
-  const companyId = auth?.company?.id ?? "";
-
-  const hoy = new Date();
-  const desde = format(subDays(hoy, 90), "yyyy-MM-dd");
-  const hasta = format(hoy, "yyyy-MM-dd");
-
-  const { data: orders = [], isLoading } = useQuery({
-    queryKey: ["admin-cuentas-orders", companyId, desde, hasta],
-    queryFn: () => getOrdersByCompany(companyId, desde, hasta),
-    enabled: !!companyId,
-    staleTime: STALE,
-  });
-
-  const [cobrarManual, setCobrarManual] = useCuentasManualCobrar(companyId);
-  const [pagarManual, setPagarManual] = useCuentasManualPagar(companyId);
-  const [historial, setHistorial] = useCuentasHistorial(companyId);
-  const [tab, setTab] = useState<"abiertas" | "historial">("abiertas");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [dialogTipo, setDialogTipo] = useState<"cobrar" | "pagar">("cobrar");
-  const [form, setForm] = useState({ concepto: "", descripcion: "", monto: 0, vencimiento: "" });
+  const { companyId, hoy } = useAdminContexto();
+  const transito = usePedidosEnTransito();
 
   const settlementQuery = useQuery({
     queryKey: ["courier-settlements", companyId, auth?.user?.id],
@@ -75,221 +67,402 @@ export default function CuentasPage() {
     enabled: !!companyId && !!auth?.user?.id,
     retry: false,
   });
-  const courierBalances = useMemo(
+  const balances = useMemo(
     () => courierSettlementBalances(settlementQuery.data?.collections ?? []),
     [settlementQuery.data],
   );
-  const cobrarAuto = useMemo((): CuentaLocal[] => {
-    const transito = enTransito(orders as any[]).filter((o) => !o.currency || o.currency === "PEN");
-    const monto = transito.reduce((sum, order) => sum + Math.max(0, Number(order.grandTotal || 0) - paidAmount(order)), 0);
-    return monto > 0 ? [{
-      id: "__transito__", icono: "🚚", concepto: "Saldos COD en tránsito (PEN)",
-      descripcion: `${transito.length} pedidos pendientes de entrega; cobro por confirmar`,
-      monto, vencimiento: "En tránsito", urgencia: "azul", auto: true,
-    }] : [];
-  }, [orders]);
+  const porLiquidarPen = balances.filter((b) => b.currency === "PEN").reduce((s, b) => s + b.remainingAmount, 0);
+  const otrasMonedas = [...new Set(balances.filter((b) => b.currency !== "PEN").map((b) => b.currency))];
 
-  const cobrar = [...cobrarAuto, ...cobrarManual];
-  const pagar = pagarManual;
+  const [cobrarManual, setCobrarManual] = useCuentasManualCobrar(companyId);
+  const [pagarManual, setPagarManual] = useCuentasManualPagar(companyId);
+  const [historial, setHistorial] = useCuentasHistorial(companyId);
+  const [vista, setVista] = useState<"abiertas" | "historial">("abiertas");
+  const [form, setForm] = useState<typeof FORM_VACIO | null>(null);
 
-  const totCobrar = cobrar.reduce((a, c) => a + c.monto, 0);
-  const totPagar = pagar.reduce((a, c) => a + c.monto, 0);
-  const neto = totCobrar - totPagar;
+  const porCourier = useMemo(() => saldoEnCallePorCourier(transito.porCourier), [transito.porCourier]);
+  const totalCobrarManual = totalCuentas(cobrarManual);
+  const totalPagar = totalCuentas(pagarManual);
 
-  const vencidas = [...cobrar, ...pagar].filter((c) => c.urgencia === "rojo");
-  const proximas = [...cobrar, ...pagar].filter((c) => c.urgencia === "ambar");
-
-  function confirmar(tipo: "cobrar" | "pagar", item: CuentaLocal) {
-    if (item.auto) return;
-    if (tipo === "cobrar") setCobrarManual((prev) => prev.filter((c) => c.id !== item.id));
-    else setPagarManual((prev) => prev.filter((c) => c.id !== item.id));
+  function marcar(tipo: TipoCuenta, cuenta: CuentaManual) {
+    if (tipo === "cobrar") setCobrarManual((prev) => prev.filter((c) => c.id !== cuenta.id));
+    else setPagarManual((prev) => prev.filter((c) => c.id !== cuenta.id));
     setHistorial((prev) => [
-      { id: `h-${Date.now()}`, mes: format(hoy, "yyyy-MM"), tipo: tipo === "cobrar" ? "ingreso" : "egreso", concepto: item.concepto, monto: item.monto },
+      {
+        id: `h-${Date.now()}`,
+        mes: hoy.slice(0, 7),
+        tipo: tipo === "cobrar" ? "ingreso" : "egreso",
+        concepto: cuenta.concepto,
+        monto: cuenta.monto,
+      },
       ...prev,
     ]);
-    toast.success(`${tipo === "cobrar" ? "Cobrado" : "Pagado"} · ${fmtMoney(item.monto)} · guardado en este dispositivo`);
+    toast.success(`${tipo === "cobrar" ? "Cobrado" : "Pagado"}: ${formatSolesDecimales(cuenta.monto)}`);
   }
 
-  function handleAdd() {
-    if (!form.concepto.trim() || form.monto <= 0) {
-      toast.error("Completa concepto y monto");
+  function agregar(evento: FormEvent) {
+    evento.preventDefault();
+    if (!form) return;
+    const monto = Number(form.monto.replace(",", "."));
+    if (!form.concepto.trim() || !Number.isFinite(monto) || monto <= 0) {
+      toast.error("Completa el concepto y un monto mayor a 0");
       return;
     }
-    const item: CuentaLocal = {
+    const cuenta: CuentaManual = {
       id: `m-${Date.now()}`,
-      icono: dialogTipo === "cobrar" ? "💵" : "💸",
-      concepto: form.concepto,
-      descripcion: form.descripcion || "Cuenta manual",
-      monto: form.monto,
-      vencimiento: form.vencimiento || "Registrado",
-      urgencia: "azul",
-      auto: false,
+      concepto: form.concepto.trim(),
+      descripcion: form.descripcion.trim(),
+      monto,
+      vencimiento: form.vencimiento.trim(),
     };
-    if (dialogTipo === "cobrar") setCobrarManual((prev) => [...prev, item]);
-    else setPagarManual((prev) => [...prev, item]);
-    setDialogOpen(false);
-    setForm({ concepto: "", descripcion: "", monto: 0, vencimiento: "" });
-    toast.success("Cuenta agregada");
+    if (form.tipo === "cobrar") setCobrarManual((prev) => [...prev, cuenta]);
+    else setPagarManual((prev) => [...prev, cuenta]);
+    setForm(null);
+    toast.success("Cuenta agregada en este navegador");
   }
 
   const historialOrdenado = useMemo(() => [...historial].sort((a, b) => b.mes.localeCompare(a.mes)), [historial]);
-  const ingTotal = historial.filter((m) => m.tipo === "ingreso").reduce((a, m) => a + m.monto, 0);
-  const egTotal = historial.filter((m) => m.tipo === "egreso").reduce((a, m) => a + m.monto, 0);
-
-  if (isLoading) {
-    return <div className="p-8 space-y-4">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32 rounded-xl" />)}</div>;
-  }
+  const cobrado = historial.filter((m) => m.tipo === "ingreso").reduce((s, m) => s + m.monto, 0);
+  const pagado = historial.filter((m) => m.tipo === "egreso").reduce((s, m) => s + m.monto, 0);
 
   return (
-    <div className="p-8 space-y-6">
-      <Card className="bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-500/10 dark:to-teal-500/10 border-emerald-200 dark:border-emerald-500/30">
-        <CardContent className="pt-5 flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 uppercase">Cuentas manuales y saldos en tránsito (PEN)</p>
-            <p className={cn("text-3xl font-bold font-mono mt-1", neto >= 0 ? "text-emerald-700 dark:text-emerald-300" : "text-destructive")}>{neto >= 0 ? "+" : ""}{fmtMoney(neto)}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">Por cobrar {fmtMoney(totCobrar)} − Por pagar {fmtMoney(totPagar)} · excluye liquidaciones de courier</p>
-          </div>
-          <div className="flex gap-3">
-            <div className="bg-emerald-100 dark:bg-emerald-500/15 rounded-xl px-5 py-3 text-center">
-              <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 tracking-wide">POR COBRAR</p>
-              <p className="text-xl font-bold font-mono text-emerald-700 dark:text-emerald-300">{fmtMoney(totCobrar)}</p>
-            </div>
-            <div className="bg-red-100 dark:bg-red-500/15 rounded-xl px-5 py-3 text-center">
-              <p className="text-[10px] font-bold text-red-700 dark:text-red-300 tracking-wide">POR PAGAR</p>
-              <p className="text-xl font-bold font-mono text-red-700 dark:text-red-300">{fmtMoney(totPagar)}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="space-y-3.5">
+      <p className="text-xs text-pc-text-muted">
+        Foto de hoy: no depende del periodo elegido arriba.
+      </p>
 
-      <Card>
-        <CardHeader><CardTitle className="text-sm">Cobros confirmados pendientes de liquidar</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-xs text-muted-foreground">Saldos del courier al negocio, separados por moneda. Los depósitos en revisión siguen pendientes hasta su aprobación.</p>
-          {settlementQuery.isPending ? <p role="status">Consultando liquidaciones…</p> : settlementQuery.isError ? (
-            <div role="alert"><p>No se pudieron verificar los saldos del courier.</p><Button variant="outline" onClick={() => settlementQuery.refetch()}>Reintentar</Button></div>
-          ) : courierBalances.length === 0 ? <p>No hay saldos pendientes entre los cobros confirmados. Los cobros aún por verificar se revisan en Liquidaciones.</p> : courierBalances.map((balance) => (
-            <div key={balance.key} className="flex justify-between gap-4 rounded border p-3">
-              <div><p className="font-medium">{balance.courierName}</p><p className="text-xs text-muted-foreground">{balance.collections} cobros · en revisión {settlementMoney(balance.reservedAmount, balance.currency)}</p></div>
-              <span className="font-mono">{settlementMoney(balance.remainingAmount, balance.currency)}</span>
-            </div>
-          ))}
-          <Button asChild variant="outline"><Link href="/operaciones/liquidaciones">Revisar liquidaciones y comprobantes</Link></Button>
-        </CardContent>
-      </Card>
-
-      <div className="rounded-lg border bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 p-3.5 text-xs text-amber-800 dark:text-amber-300">
-        Las cuentas manuales y su historial se guardan solo en este dispositivo. No registran pagos ni liquidaciones. Los saldos en tránsito todavía requieren confirmar la entrega y el cobro.
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <KpiCard
+          label="En calle"
+          loading={transito.cargando}
+          value={formatSoles(transito.saldo)}
+          sub={`${formatNumber(transito.pedidos)} pedidos en tránsito, lo que falta cobrar`}
+        />
+        <KpiCard
+          label="Courier por liquidar"
+          loading={settlementQuery.isLoading}
+          value={settlementQuery.isError ? SIN_DATO : formatSoles(porLiquidarPen)}
+          sub={
+            settlementQuery.isError
+              ? "No se pudo consultar"
+              : `Cobros confirmados que el courier aún no deposita${otrasMonedas.length ? ` (además en ${otrasMonedas.join(", ")})` : ""}`
+          }
+        />
+        <KpiCard
+          label="Otras por cobrar"
+          value={formatSoles(totalCobrarManual)}
+          sub="Registro manual de este navegador"
+        />
+        <KpiCard label="Por pagar" value={formatSoles(totalPagar)} sub="Registro manual de este navegador" />
       </div>
 
-      {vencidas.length > 0 && (
-        <div className="rounded-lg border bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30 p-3.5 text-sm text-red-800 dark:text-red-300">
-          🔴 <b>{vencidas.length} cuenta{vencidas.length > 1 ? "s" : ""} vencida{vencidas.length > 1 ? "s" : ""}:</b> {vencidas.map((v) => `${v.concepto} (${fmtMoney(v.monto)})`).join(" · ")}.
-        </div>
-      )}
-      {proximas.length > 0 && (
-        <div className="rounded-lg border bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 p-3.5 text-sm text-amber-800 dark:text-amber-300">
-          ⚠️ <b>{proximas.length} próxima{proximas.length > 1 ? "s" : ""} a vencer:</b> {proximas.map((v) => `${v.concepto} (${fmtMoney(v.monto)})`).join(" · ")}.
-        </div>
-      )}
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[3fr_2fr]">
+        <PanelCard
+          titulo="Saldo en calle por courier"
+          subtitulo={`Pedidos asignados a guía, en envío o despachados, creados en los últimos ${DIAS_EN_TRANSITO} días. Lo pagado por adelantado no suma.`}
+        >
+          {transito.error ? (
+            <PanelError error={transito.error as Error} />
+          ) : transito.cargando ? (
+            <PanelSkeleton variant="tabla" label="saldo en calle" />
+          ) : (
+            <AdminTable
+              caption="Saldo por cobrar de los pedidos en tránsito, por courier"
+              emptyMessage="No hay pedidos en tránsito"
+              rows={porCourier}
+              getRowKey={(fila) => fila.clave}
+              columns={[
+                { id: "courier", header: "Courier", align: "left", cell: (fila) => fila.courier, sortValue: (fila) => fila.courier },
+                { id: "pedidos", header: "Pedidos", cell: (fila) => formatNumber(fila.pedidos), sortValue: (fila) => fila.pedidos },
+                { id: "conSaldo", header: "Con saldo", cell: (fila) => formatNumber(fila.conSaldo), sortValue: (fila) => fila.conSaldo },
+                { id: "saldo", header: "Por cobrar", cell: (fila) => formatSoles(fila.saldo), sortValue: (fila) => fila.saldo },
+              ]}
+              footer={{
+                courier: "Total",
+                pedidos: formatNumber(transito.pedidos),
+                conSaldo: formatNumber(porCourier.reduce((s, f) => s + f.conSaldo, 0)),
+                saldo: formatSoles(transito.saldo),
+              }}
+            />
+          )}
+          <p className="mt-2 text-[11px] text-pc-text-muted">
+            Hay pedidos que quedan «en envío» por meses porque nadie los cerró: si el saldo parece alto, revísalos en
+            Operaciones.
+          </p>
+        </PanelCard>
 
-      <div className="inline-flex bg-muted rounded-lg p-1 gap-1">
-        <button onClick={() => setTab("abiertas")} className={cn("px-3 py-1.5 rounded-md text-xs font-semibold", tab === "abiertas" ? "bg-background shadow-sm" : "text-muted-foreground")}>Abiertas</button>
-        <button onClick={() => setTab("historial")} className={cn("px-3 py-1.5 rounded-md text-xs font-semibold", tab === "historial" ? "bg-background shadow-sm" : "text-muted-foreground")}>Historial</button>
+        <PanelCard
+          titulo="Cobrado por el courier, sin liquidar"
+          subtitulo="Cobros confirmados que el courier todavía te debe, por moneda. Los depósitos en revisión siguen pendientes hasta aprobarse."
+          acciones={
+            <Link href="/operaciones/liquidaciones" className={claseBotonSecundario}>
+              Ver liquidaciones
+            </Link>
+          }
+        >
+          {settlementQuery.isLoading ? (
+            <PanelSkeleton variant="tabla" label="liquidaciones de courier" />
+          ) : settlementQuery.isError ? (
+            <div className="space-y-2">
+              <Aviso tono="bad">No se pudieron consultar los saldos del courier.</Aviso>
+              <button type="button" className={claseBotonSecundario} onClick={() => settlementQuery.refetch()}>
+                Reintentar
+              </button>
+            </div>
+          ) : balances.length === 0 ? (
+            <PanelEmpty mensaje="No hay cobros confirmados pendientes de liquidar" />
+          ) : (
+            <ul className="space-y-2">
+              {balances.map((balance) => (
+                <li
+                  key={balance.key}
+                  className="flex items-start justify-between gap-3 rounded-xl border border-pc-border-soft px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-pc-text">{balance.courierName}</p>
+                    <p className="text-xs text-pc-text-muted">
+                      {formatNumber(balance.collections)} cobros · en revisión{" "}
+                      {settlementMoney(balance.reservedAmount, balance.currency)}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-sm font-bold tabular-nums text-pc-text">
+                    {settlementMoney(balance.remainingAmount, balance.currency)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </PanelCard>
       </div>
 
-      {tab === "abiertas" ? (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-sm">💵 Por cobrar</CardTitle>
-              <Button size="sm" variant="outline" onClick={() => { setDialogTipo("cobrar"); setDialogOpen(true); }}><Plus className="h-3.5 w-3.5 mr-1" /> Agregar</Button>
-            </CardHeader>
-            <CardContent className="space-y-2.5">
-              {cobrar.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Nada pendiente por cobrar.</p>}
-              {cobrar.map((c) => <CuentaCard key={c.id} item={c} tono="emerald" onConfirmar={() => confirmar("cobrar", c)} accionLabel="Cobrado" />)}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle className="text-sm">💸 Por pagar</CardTitle>
-              <Button size="sm" variant="outline" onClick={() => { setDialogTipo("pagar"); setDialogOpen(true); }}><Plus className="h-3.5 w-3.5 mr-1" /> Agregar</Button>
-            </CardHeader>
-            <CardContent className="space-y-2.5">
-              {pagar.length === 0 && <p className="text-sm text-muted-foreground text-center py-6">Nada pendiente por pagar registrado manualmente.</p>}
-              {pagar.map((c) => <CuentaCard key={c.id} item={c} tono="red" onConfirmar={() => confirmar("pagar", c)} accionLabel="Pagado" />)}
-            </CardContent>
-          </Card>
-        </div>
-      ) : (
-        <Card>
-          <CardHeader><CardTitle className="text-sm">Historial de movimientos <span className="text-xs font-normal text-muted-foreground">guardado en este dispositivo</span></CardTitle></CardHeader>
-          <CardContent className="overflow-x-auto">
-            {historialOrdenado.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Sin movimientos confirmados todavía.</p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow><TableHead>Mes</TableHead><TableHead>Tipo</TableHead><TableHead>Concepto</TableHead><TableHead className="text-right">Monto</TableHead></TableRow>
-                </TableHeader>
-                <TableBody>
-                  {historialOrdenado.map((m) => (
-                    <TableRow key={m.id}>
-                      <TableCell>{mesLabel(m.mes)}</TableCell>
-                      <TableCell><NivelPill nivel={m.tipo === "ingreso" ? "verde" : "rojo"}>{m.tipo === "ingreso" ? "Ingreso" : "Egreso"}</NivelPill></TableCell>
-                      <TableCell className="font-medium">{m.concepto}</TableCell>
-                      <TableCell className={cn("text-right font-mono", m.tipo === "ingreso" ? "text-emerald-600" : "text-destructive")}>{m.tipo === "ingreso" ? "+" : "−"}{fmtMoney(m.monto)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-                <TableFooter>
-                  <TableRow className="bg-primary/10 font-bold">
-                    <TableCell colSpan={3}>NETO · +{fmtMoney(ingTotal)} cobrado / −{fmtMoney(egTotal)} pagado</TableCell>
-                    <TableCell className="text-right font-mono">{ingTotal - egTotal >= 0 ? "+" : "−"}{fmtMoney(Math.abs(ingTotal - egTotal))}</TableCell>
-                  </TableRow>
-                </TableFooter>
-              </Table>
+      <PanelCard
+        titulo="Registro manual"
+        subtitulo="Cuentas que anotas a mano. Se guardan solo en este navegador: otro usuario u otra computadora no las ve."
+        acciones={
+          <>
+            <div role="group" aria-label="Ver cuentas" className="inline-flex rounded-lg border border-pc-border p-0.5">
+              {(
+                [
+                  ["abiertas", "Abiertas"],
+                  ["historial", "Historial"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={vista === id}
+                  onClick={() => setVista(id)}
+                  className={cn(
+                    "rounded-md px-2.5 py-1 text-xs font-semibold outline-none focus-visible:ring-2 focus-visible:ring-pc-primary",
+                    vista === id ? "bg-pc-primary text-pc-on-fill" : "text-pc-text-muted hover:text-pc-primary",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {!form && (
+              <button type="button" className={claseBotonPrimario} onClick={() => setForm({ ...FORM_VACIO })}>
+                <Plus className="h-3.5 w-3.5" aria-hidden />
+                Agregar cuenta
+              </button>
             )}
-          </CardContent>
-        </Card>
-      )}
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Agregar cuenta por {dialogTipo === "cobrar" ? "cobrar" : "pagar"}</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1.5"><Label className="text-xs">Concepto</Label><Input value={form.concepto} onChange={(e) => setForm((f) => ({ ...f, concepto: e.target.value }))} /></div>
-            <div className="space-y-1.5"><Label className="text-xs">Descripción</Label><Input value={form.descripcion} onChange={(e) => setForm((f) => ({ ...f, descripcion: e.target.value }))} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5"><Label className="text-xs">Monto S/</Label><Input type="number" value={form.monto || ""} onChange={(e) => setForm((f) => ({ ...f, monto: Number(e.target.value) || 0 }))} /></div>
-              <div className="space-y-1.5"><Label className="text-xs">Vencimiento / estado</Label><Input value={form.vencimiento} onChange={(e) => setForm((f) => ({ ...f, vencimiento: e.target.value }))} placeholder="Ej: Vence 30 mayo" /></div>
+          </>
+        }
+      >
+        {form && (
+          <form
+            onSubmit={agregar}
+            aria-label="Agregar cuenta"
+            className="mb-4 grid grid-cols-1 gap-3 rounded-xl border border-pc-border-soft bg-pc-surface-muted p-3 sm:grid-cols-2 lg:grid-cols-5"
+          >
+            <Campo label="Tipo" id="cuenta-tipo">
+              <select
+                id="cuenta-tipo"
+                className={cn(claseInput, "w-full")}
+                value={form.tipo}
+                onChange={(e) => setForm({ ...form, tipo: e.target.value as TipoCuenta })}
+              >
+                <option value="pagar">Por pagar</option>
+                <option value="cobrar">Por cobrar</option>
+              </select>
+            </Campo>
+            <Campo label="Concepto" id="cuenta-concepto">
+              <input
+                id="cuenta-concepto"
+                className={cn(claseInput, "w-full")}
+                value={form.concepto}
+                onChange={(e) => setForm({ ...form, concepto: e.target.value })}
+              />
+            </Campo>
+            <Campo label="Detalle" id="cuenta-detalle">
+              <input
+                id="cuenta-detalle"
+                className={cn(claseInput, "w-full")}
+                value={form.descripcion}
+                onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
+              />
+            </Campo>
+            <Campo label="Monto (S/)" id="cuenta-monto">
+              <input
+                id="cuenta-monto"
+                type="number"
+                min="0"
+                step="any"
+                inputMode="decimal"
+                className={cn(claseInput, "w-full")}
+                value={form.monto}
+                onChange={(e) => setForm({ ...form, monto: e.target.value })}
+              />
+            </Campo>
+            <Campo label="Vencimiento o nota" id="cuenta-vencimiento">
+              <input
+                id="cuenta-vencimiento"
+                placeholder="Ej: a fin de mes"
+                className={cn(claseInput, "w-full")}
+                value={form.vencimiento}
+                onChange={(e) => setForm({ ...form, vencimiento: e.target.value })}
+              />
+            </Campo>
+            <div className="flex flex-wrap gap-2 sm:col-span-2 lg:col-span-5">
+              <button type="submit" className={claseBotonPrimario}>
+                Guardar
+              </button>
+              <button type="button" className={claseBotonSecundario} onClick={() => setForm(null)}>
+                Cancelar
+              </button>
             </div>
+          </form>
+        )}
+
+        {vista === "abiertas" ? (
+          <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
+            <ListaCuentas
+              titulo="Por cobrar"
+              tipo="cobrar"
+              cuentas={cobrarManual}
+              onMarcar={(c) => marcar("cobrar", c)}
+            />
+            <ListaCuentas titulo="Por pagar" tipo="pagar" cuentas={pagarManual} onMarcar={(c) => marcar("pagar", c)} />
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleAdd}>Guardar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        ) : (
+          <AdminTable
+            caption="Historial de cuentas marcadas como cobradas o pagadas"
+            emptyMessage="Todavía no marcaste ninguna cuenta como cobrada o pagada"
+            rows={historialOrdenado}
+            getRowKey={(m) => m.id}
+            columns={[
+              {
+                id: "mes",
+                header: "Mes",
+                align: "left",
+                cell: (m) => {
+                  const [a, mes] = partes(`${m.mes}-01`);
+                  return <span className="capitalize">{etiquetaMes(a, mes, true)}</span>;
+                },
+                sortValue: (m) => m.mes,
+              },
+              {
+                id: "tipo",
+                header: "Tipo",
+                align: "left",
+                cell: (m) => (
+                  <NivelPill nivel={m.tipo === "ingreso" ? "verde" : "rojo"}>
+                    {m.tipo === "ingreso" ? "Cobrado" : "Pagado"}
+                  </NivelPill>
+                ),
+              },
+              { id: "concepto", header: "Concepto", align: "left", cell: (m) => m.concepto },
+              {
+                id: "monto",
+                header: "Monto",
+                cell: (m) => (
+                  <span className={m.tipo === "ingreso" ? "text-pc-ok" : "text-pc-bad"}>
+                    {m.tipo === "ingreso" ? "+" : "−"}
+                    {formatSolesDecimales(m.monto)}
+                  </span>
+                ),
+                sortValue: (m) => (m.tipo === "ingreso" ? m.monto : -m.monto),
+              },
+            ]}
+            footer={{
+              mes: "Neto",
+              concepto: `Cobrado ${formatSoles(cobrado)} · pagado ${formatSoles(pagado)}`,
+              monto: formatSolesDecimales(cobrado - pagado),
+            }}
+          />
+        )}
+      </PanelCard>
     </div>
   );
 }
 
-function CuentaCard({ item, tono, onConfirmar, accionLabel }: { item: CuentaLocal; tono: "emerald" | "red"; onConfirmar: () => void; accionLabel: string }) {
+function Campo({ label, id, children }: { label: string; id: string; children: ReactNode }) {
   return (
-    <div className="flex items-center gap-3 rounded-lg border p-3">
-      <span className="text-xl w-8 text-center shrink-0">{item.icono}</span>
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold truncate">{item.concepto}</p>
-        <p className="text-xs text-muted-foreground truncate">{item.descripcion} {item.auto && "· Auto"}</p>
-      </div>
-      <div className="text-right shrink-0">
-        <p className={cn("font-bold font-mono text-sm", tono === "emerald" ? "text-emerald-600" : "text-destructive")}>{fmtMoney(item.monto)}</p>
-        <NivelPill nivel={item.urgencia} className="mt-0.5">{item.vencimiento}</NivelPill>
-        {item.auto ? <Button asChild size="sm" variant="outline" className="mt-1.5"><Link href="/registrar-venta">Revisar pedidos</Link></Button> : <Button size="sm" variant={tono === "emerald" ? "default" : "outline"} className="mt-1.5 h-6 text-[11px] px-2" onClick={onConfirmar}>
-          <Check className="h-3 w-3 mr-1" /> {accionLabel}
-        </Button>}
-      </div>
+    <div className="flex min-w-0 flex-col gap-1">
+      <label htmlFor={id} className="text-xs font-semibold text-pc-text-muted">
+        {label}
+      </label>
+      {children}
     </div>
+  );
+}
+
+function ListaCuentas({
+  titulo,
+  tipo,
+  cuentas,
+  onMarcar,
+}: {
+  titulo: string;
+  tipo: TipoCuenta;
+  cuentas: CuentaManual[];
+  onMarcar: (cuenta: CuentaManual) => void;
+}) {
+  return (
+    <section aria-label={`${titulo} (registro manual)`} className="min-w-0">
+      <h4 className="mb-2 flex items-baseline justify-between gap-2 text-xs font-bold uppercase tracking-[0.08em] text-pc-text-muted">
+        {titulo}
+        <span className="tabular-nums text-pc-text">{formatSoles(totalCuentas(cuentas))}</span>
+      </h4>
+      {cuentas.length === 0 ? (
+        <PanelEmpty mensaje={tipo === "cobrar" ? "Nada anotado por cobrar" : "Nada anotado por pagar"} />
+      ) : (
+        <ul className="space-y-2">
+          {cuentas.map((cuenta) => (
+            <li
+              key={cuenta.id}
+              className="flex items-center gap-3 rounded-xl border border-pc-border-soft px-3 py-2"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-pc-text">{cuenta.concepto}</p>
+                {(cuenta.descripcion || cuenta.vencimiento) && (
+                  <p className="truncate text-xs text-pc-text-muted">
+                    {[cuenta.descripcion, cuenta.vencimiento].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+              </div>
+              <span
+                className={cn(
+                  "shrink-0 text-sm font-bold tabular-nums",
+                  tipo === "cobrar" ? "text-pc-ok" : "text-pc-bad",
+                )}
+              >
+                {formatSolesDecimales(cuenta.monto)}
+              </span>
+              <button
+                type="button"
+                className={claseBotonSecundario}
+                onClick={() => onMarcar(cuenta)}
+                aria-label={`Marcar ${cuenta.concepto} como ${tipo === "cobrar" ? "cobrada" : "pagada"}`}
+              >
+                <Check className="h-3.5 w-3.5" aria-hidden />
+                {tipo === "cobrar" ? "Cobrado" : "Pagado"}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

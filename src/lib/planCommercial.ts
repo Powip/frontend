@@ -96,11 +96,12 @@ export const ADDON_CARDS: AddOnCard[] = [
   },
   {
     key: "crm",
-    code: null,
+    code: "crm",
     name: "CRM chat",
     icon: MessageCircle,
     where: "Comercial › CRM chat",
     price: 79,
+    note: "Precio provisional",
     tag: "Tus vendedoras atienden WhatsApp, Instagram y Facebook en una sola bandeja y cierran en 1 minuto.",
     bullets: [
       "Varios números de WhatsApp, Instagram y Facebook en una bandeja",
@@ -109,6 +110,23 @@ export const ADDON_CARDS: AddOnCard[] = [
       "Llamadas desde el navegador con resumen y objeciones por IA",
     ],
     roi: "Dos ventas más al día con ticket de S/ 80 son S/ 4,800 más al mes, por S/ 79.",
+  },
+  {
+    key: "crm_pau",
+    code: "crm_pau",
+    name: "CRM chat + Pau",
+    icon: Bot,
+    where: "Comercial › Ventas por chat",
+    price: 119,
+    note: "Precio provisional",
+    tag: "El CRM chat con Pau, la vendedora con IA que responde, cotiza y cobra por ti.",
+    bullets: [
+      "Todo lo del CRM chat",
+      "Pau responde sola o sugiere respuestas a tus vendedoras",
+      "Entrenamiento y examen de Pau con tu guion y tus fichas",
+      "Se activa cuando se confirma el pago",
+    ],
+    roi: null,
   },
   {
     key: "live",

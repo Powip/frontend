@@ -74,7 +74,7 @@ const CHANNEL_LABELS: Record<StoreChannelType, string> = {
   OTHER: "Otro",
 };
 const CHANNEL_OPTIONS = Object.entries(CHANNEL_LABELS) as Array<[StoreChannelType, string]>;
-const DEFAULT_COLOR = "#7C3AED";
+const DEFAULT_COLOR = "#4C2FB5"; // Azul persa del brandbook
 const emptyChannel = (): CreateStoreSalesChannel => ({
   type: "WHATSAPP",
   label: "",

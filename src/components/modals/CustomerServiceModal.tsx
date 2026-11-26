@@ -60,7 +60,9 @@ import {
   ArrowRightLeft,
   FileText,
   Zap,
+  MessagesSquare,
 } from "lucide-react";
+import OrderChatConversation, { useOrderConversation } from "@/components/orders/OrderChatConversation";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { ShalomStatusBadge } from "@/components/tracking/ShalomStatusBadge";
 import { SHALOM_STEPS, SHALOM_STEP_ICONS } from "@/components/tracking/useShalomLiveStatus";
@@ -119,6 +121,9 @@ import { printOrderLabel, type OrderReceipt } from "@/utils/printOrderLabel";
 import { downloadNotaVentaPdf } from "@/utils/downloadNotaVentaPdf";
 import { GoogleMapsUrlField } from "@/components/shared/GoogleMapsUrlField";
 import { OrderEvidenceSection } from "@/components/orders/OrderEvidenceSection";
+import { OrderWhatsAppMessages } from "@/components/whatsapp/OrderWhatsAppMessages";
+import { channelLabel, saleOriginLabel } from "@/utils/saleLabels";
+import { historyActor, historyAuthor, isRawHistoryCode } from "@/lib/orderHistory";
 
 type CustomerServiceReceipt = Omit<OrderReceipt, "items"> & {
   items: (OrderReceipt["items"][number] & {
@@ -135,6 +140,8 @@ interface LogEntry {
   userId: string | null;
   userName?: string | null;
   isSystemGenerated?: boolean;
+  /** FEAT-33 A7: `actor` (CUSTOMER | SYSTEM | USER) y, en entradas viejas de Live, el código de la acción. */
+  data?: { actor?: string; action?: string } | null;
 }
 
 // Labels legibles para shippingGuide.status — mismos valores que ya
@@ -276,6 +283,8 @@ export default function CustomerServiceModal({
   // Pestañas del modal unificado + estado crudo de la orden (para Vendedor,
   // selector de estado, y como `order` de ReassignDeliveryModal).
   const [tab, setTab] = useState("resumen");
+  const orderChat = useOrderConversation(orderId, open);
+  const hasOrderChat = !!orderChat.data?.conversation;
   const [orderHeader, setOrderHeader] = useState<OrderHeader | null>(null);
   // FEAT-24 H12: guía de remisión remitente (SUNAT) del pedido.
   const [greOpen, setGreOpen] = useState(false);
@@ -965,6 +974,8 @@ export default function CustomerServiceModal({
     ? formatSalesMoney(value, orderHeader?.currency)
     : `S/${value.toFixed(2)}`;
   const isConfirmed = receipt?.status === "LLAMADO";
+  // FEAT-33 A5/A7: venta que entró por POWIP Live o POWIP Link.
+  const isLiveSale = receipt ? saleOriginLabel(receipt) !== null || ["POWIP_LIVE", "POWIP_LINK"].includes(receipt.closingChannel ?? "") : false;
   const isScheduledDelivery =
     !!receipt?.externalSource && receipt?.callStatus === "SCHEDULED";
   const customerNotes = orderHeader?.customerNotes ?? receipt?.customerNotes;
@@ -984,7 +995,7 @@ export default function CustomerServiceModal({
     !!subEstadoCc;
 
   // Más reciente primero
-  const displayLogs = [...logs].reverse();
+  const displayLogs = logs.filter((log) => !isRawHistoryCode(log)).reverse();
 
   const storeName = auth?.company?.stores?.find(
     (s) => s.id === orderHeader?.storeId,
@@ -1050,7 +1061,7 @@ export default function CustomerServiceModal({
                         Vendedor: {orderHeader?.sellerName || "—"}
                       </div>
                       <div className="text-sm text-muted-foreground">
-                        Origen: {(receipt.salesChannel || "—").replace(/_/g, " ")}
+                        Origen: {saleOriginLabel(receipt) ?? channelLabel(receipt.salesChannel)}
                         {storeName ? ` · ${storeName}` : ""}
                       </div>
                     </div>
@@ -1096,6 +1107,9 @@ export default function CustomerServiceModal({
                       <TabsTrigger disabled={isPendingPurchase} value="reasignacion" className="whitespace-nowrap">
                         <Repeat className="h-4 w-4 mr-1.5" /> Reasignación
                       </TabsTrigger>
+                      <TabsTrigger value="conversacion" className="whitespace-nowrap">
+                        <MessagesSquare className="h-4 w-4 mr-1.5" /> Conversación
+                      </TabsTrigger>
                     </TabsList>
                   </div>
 
@@ -1138,6 +1152,7 @@ export default function CustomerServiceModal({
                       {receipt.items.map((item, i) => (
                         <div
                           key={i}
+                          data-testid="detalle-linea"
                           className="border border-border rounded-md p-3 bg-muted"
                         >
                           <div className="flex items-center justify-between gap-2 mb-1">
@@ -1183,9 +1198,19 @@ export default function CustomerServiceModal({
                               <strong>{detailMoney(item.unitPrice)}</strong>
                             </span>
                           </div>
+                          {/* FEAT-33 A5: precio de venta por unidad cuando hubo descuento en la línea. */}
+                          {Number(item.discountAmount) > 0 && item.quantity > 0 ? (
+                            <div
+                              data-testid="detalle-precio-venta"
+                              className="flex justify-between text-sm text-red-600"
+                            >
+                              <span>{isLiveSale ? "Precio live" : "Precio con descuento"}</span>
+                              <span>{detailMoney(Math.round((Number(item.subtotal) / item.quantity) * 100) / 100)} c/u</span>
+                            </div>
+                          ) : null}
                           <div className="flex justify-between text-sm font-medium mt-1 pt-1 border-t border-border">
                             <span>Sub Total:</span>
-                            <span className="text-primary">
+                            <span data-testid="detalle-subtotal" className="text-primary">
                               {detailMoney(item.subtotal)}
                             </span>
                           </div>
@@ -1245,25 +1270,26 @@ export default function CustomerServiceModal({
                       Resumen de Pagos
                     </h3>
                     <div className="space-y-2 text-sm">
-                      <div className="flex justify-between">
+                      {/* FEAT-33 A5: Productos − Descuentos + IGV + Envío = Total, en ese orden. */}
+                      <div data-testid="resumen-fila" className="flex justify-between">
                         <span>Productos:</span>
                         <span>{detailMoney(receipt.totals.productsTotal)}</span>
                       </div>
-                      <div className="flex justify-between">
+                      <div data-testid="resumen-fila" className="flex justify-between text-muted-foreground">
+                        <span>{isLiveSale ? "Descuentos (precio live):" : "Descuentos:"}</span>
+                        <span>−{detailMoney(receipt.totals.discountTotal)}</span>
+                      </div>
+                      <div data-testid="resumen-fila" className="flex justify-between">
                         <span>IGV 18%:</span>
                         <span>{detailMoney(receipt.totals.taxTotal)}</span>
                       </div>
-                      <div className="flex justify-between">
+                      <div data-testid="resumen-fila" className="flex justify-between">
                         <span>Envío:</span>
                         <span>{detailMoney(receipt.totals.shippingTotal)}</span>
                       </div>
-                      <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
+                      <div data-testid="resumen-fila" className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
                         <span>Total:</span>
                         <span>{detailMoney(receipt.totals.grandTotal)}</span>
-                      </div>
-                      <div className="flex justify-between text-muted-foreground">
-                        <span>Descuentos:</span>
-                        <span>{detailMoney(receipt.totals.discountTotal)}</span>
                       </div>
                       <div className="flex justify-between text-green-600 font-medium">
                         <span>Adelanto:</span>
@@ -1286,6 +1312,18 @@ export default function CustomerServiceModal({
                     <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
                       <h3 className="font-semibold text-lg">Cliente</h3>
                       <div className="flex flex-wrap gap-1">
+                        {hasOrderChat && (
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="h-9 w-9 text-primary"
+                            onClick={() => setTab("conversacion")}
+                            title="Ver conversación"
+                            aria-label="Ver conversación"
+                          >
+                            <MessagesSquare className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button
                           size="icon"
                           variant="outline"
@@ -1502,7 +1540,7 @@ export default function CustomerServiceModal({
                           Canal Venta:{" "}
                         </span>
                         <span className="font-medium">
-                          {receipt.salesChannel || "-"}
+                          {channelLabel(receipt.salesChannel)}
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
@@ -1529,7 +1567,7 @@ export default function CustomerServiceModal({
                           Canal Cierre:{" "}
                         </span>
                         <span className="font-medium">
-                          {receipt.closingChannel || "-"}
+                          {channelLabel(receipt.closingChannel)}
                         </span>
                       </div>
                       <div className="flex items-center gap-1">
@@ -2207,6 +2245,7 @@ export default function CustomerServiceModal({
                           {displayLogs.map((log) => (
                             <div
                               key={log.id}
+                              data-testid="historial-entrada"
                               className={`snap-start rounded-md p-2 ${log.isSystemGenerated ? "bg-muted/30 border border-muted" : "bg-primary/10 border border-primary/20"}`}
                             >
                               <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground mb-1">
@@ -2214,9 +2253,15 @@ export default function CustomerServiceModal({
                                   <Clock className="h-3 w-3" />
                                   <span>{formatLogDate(log.timestamp)}</span>
                                   <span
-                                    className={`px-1 py-0.5 rounded text-xs ${log.isSystemGenerated ? "bg-muted" : "bg-primary/20 text-primary"}`}
+                                    data-testid="historial-actor"
+                                    className={`px-1 py-0.5 rounded text-xs ${historyActor(log) === "Cliente" ? "bg-violet-100 text-violet-700" : historyActor(log) ? "bg-muted" : "bg-primary/20 text-primary"}`}
                                   >
-                                    {log.isSystemGenerated ? (
+                                    {historyActor(log) === "Cliente" ? (
+                                      <>
+                                        <User className="h-2 w-2 inline mr-0.5" />{" "}
+                                        Cliente
+                                      </>
+                                    ) : historyActor(log) ? (
                                       <>
                                         <Settings className="h-2 w-2 inline mr-0.5" />{" "}
                                         Sistema
@@ -2227,10 +2272,10 @@ export default function CustomerServiceModal({
                                     )}
                                   </span>
                                 </div>
-                                {log.userName && (
+                                {historyAuthor(log) && (
                                   <div className="flex items-center gap-1 text-xs font-medium">
                                     <User className="h-3 w-3" />
-                                    <span>{log.userName}</span>
+                                    <span>{historyAuthor(log)}</span>
                                   </div>
                                 )}
                               </div>
@@ -2950,6 +2995,8 @@ export default function CustomerServiceModal({
                     );
                   })()}
 
+                  <OrderWhatsAppMessages orderId={orderId} />
+
                   {/* Acciones — calca la lista de botones full-width del
                       mockup (icono + label, alineados a la izquierda). Cada
                       una reusa una acción real que ya existe en el modal;
@@ -3150,6 +3197,10 @@ export default function CustomerServiceModal({
                     >
                       Gestionar pagos
                     </Button>
+                  </TabsContent>
+
+                  <TabsContent value="conversacion" className="pt-3">
+                    {tab === "conversacion" && <OrderChatConversation orderId={orderId} enabled={open} link={orderChat} />}
                   </TabsContent>
 
                   <TabsContent value="reasignacion" className="pt-3 space-y-3.5">

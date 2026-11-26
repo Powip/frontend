@@ -81,12 +81,13 @@ export default function LiveYapeReviews({
     }
     let hasSnapshot = false;
     const reader = createLivePolling<Awaited<ReturnType<typeof getLiveYapeReviews>>>({
-      load: (signal) => getLiveYapeReviews(storeId, signal),
+      load: (signal) => getLiveYapeReviews(storeId, signal, orderId),
       intervalMs: 15000,
       onData: (result) => {
         hasSnapshot = true;
         setSnapshot({
           storeId,
+          // Respaldo por si el servidor todavía no filtra por pedido.
           reviews: orderId ? result.reviews.filter((r) => r.orderId === orderId) : result.reviews,
           error: "",
         });
@@ -128,15 +129,16 @@ export default function LiveYapeReviews({
   if (!canReview)
     return (
       <LiveEmpty>
-        Para validar pagos Yape necesitas el rol Administrador vigente de tu negocio.
+        Para validar pagos Yape necesitas el rol Administrador o el permiso de Finanzas de tu
+        negocio.
       </LiveEmpty>
     );
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm leading-relaxed text-amber-900">
-        Esta es la misma cola de pagos de Finanzas, filtrada a POWIP Live y POWIP Link. Comprueba
-        cada ingreso en la cuenta Yape del negocio. Un comprobante enviado por el cliente permanece
-        pendiente hasta que tu equipo valide o rechace el pago.
+        Es el mismo registro de Finanzas › Pagos por validar: lo que valides o rechaces aquí queda
+        igual allá. Comprueba cada ingreso en la cuenta Yape del negocio; mientras tanto el stock
+        sigue reservado.
       </div>
       {error ? <LiveErrorBanner message={error} onRetry={() => void load()} /> : null}
       {noticeText ? (
@@ -181,7 +183,11 @@ export default function LiveYapeReviews({
                     Datos por revisar: {review.reviewFlags.join(" · ")}
                   </p>
                 ) : null}
-                {review.manualPayment?.overdue ? (
+                {review.orderStatus === "ANULADO" ? (
+                  <p className="inline-flex rounded-lg bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">
+                    Pedido anulado · comprobante cerrado
+                  </p>
+                ) : review.manualPayment?.overdue ? (
                   <p className="inline-flex items-center gap-2 rounded-lg bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-900">
                     <AlertTriangle className="h-4 w-4" />
                     Plazo de revisión vencido · requiere una decisión
@@ -193,8 +199,8 @@ export default function LiveYapeReviews({
                   </p>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
-                  {review.manualPayment?.status === "UNDER_REVIEW" &&
-                  review.buyerStatus !== "CANCELLED" ? (
+                  {review.orderStatus === "ANULADO" ? null : review.manualPayment?.status ===
+                      "UNDER_REVIEW" && review.buyerStatus !== "CANCELLED" ? (
                     <>
                       <Button
                         size="sm"
@@ -276,7 +282,15 @@ export default function LiveYapeReviews({
   );
 }
 
-function ReviewDialog({
+/** FEAT-33 A9/D7: el cliente ve este motivo en la página de su pedido. */
+const REJECTION_REASONS = [
+  "No encontramos el ingreso",
+  "El monto no coincide",
+  "El número de operación ya se usó",
+  "Otro",
+] as const;
+
+export function ReviewDialog({
   storeId,
   review,
   decision,
@@ -293,6 +307,10 @@ function ReviewDialog({
   const [proofLoading, setProofLoading] = useState(true);
   const [operation, setOperation] = useState(review.manualPayment?.operationNumber || "");
   const [reason, setReason] = useState("");
+  const [choice, setChoice] = useState<string>(REJECTION_REASONS[0]);
+  const decisionReason =
+    decision === "reject" && choice !== "Otro" ? choice : reason.trim();
+  const ready = decision === "approve" ? Boolean(operation.trim()) : decisionReason.length >= 3;
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -330,13 +348,8 @@ function ReviewDialog({
     };
   }, [storeId, review.checkoutId, review.manualPayment?.hasProof, decision]);
   async function submit() {
-    if (
-      lock.current ||
-      !confirmed ||
-      (decision === "approve" ? !operation.trim() : reason.trim().length < 3)
-    )
-      return;
-    const selection = `${storeId}/${review.checkoutId}/${decision}/${operation.trim()}/${reason.trim()}`;
+    if (lock.current || !confirmed || !ready) return;
+    const selection = `${storeId}/${review.checkoutId}/${decision}/${operation.trim()}/${decisionReason}`;
     const id = command.current?.selection === selection ? command.current.key : crypto.randomUUID();
     command.current = { selection, key: id };
     lock.current = true;
@@ -349,7 +362,7 @@ function ReviewDialog({
         decision,
         decision === "approve"
           ? { operationNumber: operation.trim(), idempotencyKey: id }
-          : { reason: reason.trim(), idempotencyKey: id },
+          : { reason: decisionReason, idempotencyKey: id },
       );
       if (active.current) onComplete(result);
     } catch (cause) {
@@ -447,6 +460,44 @@ function ReviewDialog({
                 Comprueba que el monto y la operación figuran en la cuenta Yape del negocio.
               </span>
             </label>
+          ) : decision === "reject" ? (
+            <div className="grid gap-3">
+              <div className="grid gap-2 text-sm">
+                <label htmlFor="yape-rejection-choice" className="font-medium">
+                  Motivo del rechazo
+                </label>
+                <select
+                  id="yape-rejection-choice"
+                  aria-describedby="yape-rejection-help"
+                  className="h-10 rounded-md border bg-background px-3 text-sm"
+                  disabled={busy}
+                  value={choice}
+                  onChange={(event) => setChoice(event.target.value)}
+                >
+                  {REJECTION_REASONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <p id="yape-rejection-help" className="text-xs text-muted-foreground">
+                  El cliente lo ve en la página de su pedido y puede enviar otro comprobante.
+                </p>
+              </div>
+              {choice === "Otro" ? (
+                <label htmlFor="yape-rejection-reason" className="grid gap-2 text-sm font-medium">
+                  Cuéntale al cliente qué pasó
+                  <Input
+                    id="yape-rejection-reason"
+                    maxLength={500}
+                    disabled={busy}
+                    required
+                    value={reason}
+                    onChange={(event) => setReason(event.target.value)}
+                  />
+                </label>
+              ) : null}
+            </div>
           ) : (
             <label htmlFor="yape-rejection-reason" className="grid gap-2 text-sm font-medium">
               Motivo para el cliente
@@ -483,11 +534,7 @@ function ReviewDialog({
             <Button
               type="submit"
               variant={decision === "approve" ? "default" : "destructive"}
-              disabled={
-                busy ||
-                !confirmed ||
-                (decision === "approve" ? !operation.trim() : reason.trim().length < 3)
-              }
+              disabled={busy || !confirmed || !ready}
             >
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
               {decision === "approve"

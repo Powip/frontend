@@ -110,11 +110,11 @@ describe("Canales concretos de una tienda", () => {
     );
   });
   it.each([
-    { id: "foreign", color: "#7C3AED", is_legacy: false },
+    { id: "foreign", color: "#4C2FB5", is_legacy: false },
     { id: storeId, color: "url(secret)", is_legacy: false },
   ])("rejects unsafe or foreign presentation responses", async (data) => {
     jest.mocked(axiosAuth.patch).mockResolvedValue({ data });
-    await expect(updateStorePresentation(storeId, "#7C3AED")).rejects.toThrow();
+    await expect(updateStorePresentation(storeId, "#4C2FB5")).rejects.toThrow();
   });
   it("keeps raw errors and credentials out of displayed messages", () => {
     const failure = {

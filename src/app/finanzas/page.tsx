@@ -1,4 +1,5 @@
 "use client";
+import { saleSourceKey } from "@/utils/saleLabels";
 import { commercialLeadHref } from "@/utils/commercialOrders";
 import { toWhatsAppDigits } from "@/lib/phone";
 import { formatSalesMoney } from "@/utils/salesMoney";
@@ -33,12 +34,14 @@ import { useBusinessScope } from "@/contexts/BusinessScopeContext";
 import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
 import { useBusinessOrders } from "@/hooks/useBusinessOrders";
 import { useBusinessGuides } from "@/hooks/useBusinessGuides";
+import { useCrmAccess } from "@/hooks/useCrmPlan";
 import {
   OrderDetailButton,
   OrderDetailModalProvider,
 } from "@/components/orders/OrderDetailModal";
 import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
+import { ReenviarPdfWhatsAppButton } from "@/components/facturacion/ReenviarPdfWhatsAppButton";
 import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
@@ -55,11 +58,15 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import CancellationModal, {
   CancellationReason,
 } from "@/components/modals/CancellationModal";
-import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
+import { getAvailableStatuses, getStatusLabel } from "@/utils/domain/orders-status-flow";
 import { openPrintWindow, printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
-import LiveYapeReviews from "@/features/live/LiveYapeReviews";
+import { ReviewDialog } from "@/features/live/LiveYapeReviews";
+import { canReviewLivePayments, getLiveYapeReviews } from "@/features/live/liveService";
+import type { LiveYapeReview } from "@/features/live/types";
 import LeadPaymentsTab from "@/components/finanzas/LeadPaymentsTab";
+import { CrmPauActions, CrmPauDetail, useCrmPauReceipts } from "@/components/finanzas/CrmPauReceipts";
+import type { PaymentReceipt } from "@/types/crmOrderPanel";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
 import { saleReceiptUrl, type UnitAssignmentState } from "@/services/saleTrackingService";
@@ -142,6 +149,32 @@ export interface Sale extends UnitAssignmentState {
   externalSource?: string | null;
   externalId?: string | null;
   subEstadoCc?: SubEstadoCc | null;
+  /** FEAT-33 B1: origen de la venta para el filtro de Pagos por validar. */
+  origin: string;
+  isLive: boolean;
+  /** Venta que Pau cerró en el chat del CRM. */
+  isCrm: boolean;
+  /** Comprobante del CRM cuya venta no está entre los pedidos cargados. */
+  withoutOrder?: boolean;
+}
+
+const CRM_ORIGIN = "CRM · Pau";
+
+type PaymentOrigin = "todos" | "live" | "otros" | "pau";
+const PAYMENT_ORIGINS: [PaymentOrigin, string][] = [
+  ["todos", "Todos"],
+  ["live", "POWIP Live y Link"],
+  ["otros", "Otros orígenes"],
+  // Ventas que Pau cerró en el CRM: son un origen más de la misma tabla (25-nov).
+  ["pau", CRM_ORIGIN],
+];
+const prettyOrigin = (value?: string | null) =>
+  value ? value.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase()) : "—";
+function saleOrigin(order: OrderHeader) {
+  if (order.externalSource === "POWIP_LIVE")
+    return order.closingChannel === "POWIP_LINK" ? "POWIP Link" : "POWIP Live";
+  if (order.externalSource === "crm_pau") return CRM_ORIGIN;
+  return prettyOrigin(order.externalSource || order.salesChannel);
 }
 
 /** Forma mínima de una guía de ms-courier usada solo para enriquecer la tabla. */
@@ -215,9 +248,45 @@ function mapOrderToSale(order: OrderHeader): Sale {
         ? (pendingPayments[0].created_at?.toString() ?? null)
         : null,
     sellerName: order.sellerName ?? null,
-    externalSource: order.externalSource ?? null,
+    externalSource: saleSourceKey(order),
     externalId: order.externalId ?? null,
     subEstadoCc: order.subEstadoCc ?? null,
+    origin: saleOrigin(order),
+    isLive: order.externalSource === "POWIP_LIVE",
+    isCrm: order.externalSource === "crm_pau",
+  };
+}
+
+/** Fila para un comprobante del CRM sin pedido a la vista: no se inventan datos que no trae. */
+function receiptToSale(receipt: PaymentReceipt): Sale {
+  const total = Number(receipt.pauSale?.total ?? receipt.amount);
+  return {
+    id: receipt.orderId ?? `crm-receipt:${receipt.id}`,
+    storeId: "",
+    orderNumber: receipt.orderNumber ?? "Sin pedido",
+    clientName: receipt.pauSale?.customerName ?? "Cliente del chat",
+    phoneNumber: "",
+    date: receipt.createdAt ? new Date(receipt.createdAt).toLocaleDateString("es-AR") : "",
+    total,
+    status: "PENDIENTE",
+    paymentMethod: receipt.method,
+    deliveryType: "—",
+    salesRegion: "" as Sale["salesRegion"],
+    district: receipt.pauSale?.district ?? "",
+    address: "",
+    advancePayment: 0,
+    pendingPayment: total,
+    courier: null,
+    hasPendingPayments: true,
+    pendingPaymentsCount: 1,
+    pendingPaymentsAmount: Number(receipt.amount),
+    city: receipt.pauSale?.district ?? "",
+    paymentCreatedAt: receipt.createdAt ?? null,
+    sellerName: "Pau",
+    origin: CRM_ORIGIN,
+    isLive: false,
+    isCrm: true,
+    withoutOrder: true,
   };
 }
 
@@ -274,6 +343,20 @@ function FinanzasContent() {
   const searchParams = useSearchParams();
   const requestedLeadId = searchParams.get("leadId") ?? "";
   const [leadPaymentsOpen, setLeadPaymentsOpen] = useState(searchParams.get("tab") === "anticiposLeads");
+  // FEAT-33 B1: la consola de Live abre `?tab=pagos&origen=live`, ya filtrado.
+  const [activeTab, setActiveTab] = useState(() => {
+    const requested = searchParams.get("tab");
+    return requested === "entregados" || requested === "liquidacionesCourier" ? requested : "pagosPendientes";
+  });
+  const [paymentOrigin, setPaymentOrigin] = useState<PaymentOrigin>(() => {
+    const requested = searchParams.get("origen");
+    return requested === "live" || requested === "otros" || requested === "pau" ? requested : "todos";
+  });
+  const [liveDecision, setLiveDecision] = useState<{
+    storeId: string;
+    review: LiveYapeReview;
+    decision: "approve" | "reject";
+  } | null>(null);
 
   const { storeIds, canFetch, scopeKey } = useBusinessScope();
   const ordersQuery = useBusinessOrders(undefined, undefined, {includeCcLeads: true, includeCommercialLeads: true});
@@ -291,6 +374,47 @@ function FinanzasContent() {
     },
     retry: false,
   });
+  // 2do filtro de las ventas de Pau: el comprobante ya pasó el 1er filtro de Pau en el CRM.
+  // Solo empresas con acceso al CRM piden su cola: al resto no le sale el aviso de error del CRM.
+  const crmAccess = useCrmAccess(canFetch);
+  const crmAllowed = crmAccess.data?.allowed === true;
+  const crmPauQuery = useCrmPauReceipts(canFetch && crmAllowed);
+  const crmPauReceipts = crmPauQuery.data;
+  const receiptsBySaleId = useMemo(() => {
+    const map = new Map<string, PaymentReceipt[]>();
+    for (const receipt of crmPauReceipts ?? []) {
+      const key = receipt.orderId ?? `crm-receipt:${receipt.id}`;
+      map.set(key, [...(map.get(key) ?? []), receipt]);
+    }
+    return map;
+  }, [crmPauReceipts]);
+  // FEAT-33 A9/D4: el detalle Yape (operación y plazo) de cada comprobante Live en revisión.
+  const canReviewLive = canReviewLivePayments(auth?.user);
+  const liveReviewsQuery = useQuery({
+    queryKey: ["finance-live-reviews", scopeKey],
+    enabled: canFetch && canReviewLive,
+    queryFn: async ({ signal }) => {
+      const results = await Promise.allSettled(
+        storeIds.map((storeId) =>
+          getLiveYapeReviews(storeId, signal).then((result) =>
+            result.reviews.map((review) => ({ storeId, review })),
+          ),
+        ),
+      );
+      return results.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+    },
+    retry: false,
+  });
+  const liveReviewByOrder = useMemo(
+    () =>
+      new Map(
+        (liveReviewsQuery.data ?? []).flatMap((entry) =>
+          entry.review.orderId ? [[entry.review.orderId, entry] as const] : [],
+        ),
+      ),
+    [liveReviewsQuery.data],
+  );
+  const refetchLiveReviews = liveReviewsQuery.refetch;
   const loading = ordersQuery.loading || (canFetch && leadsQuery.isPending) || guidesQuery.loading;
   const loadError = ordersQuery.error || leadsQuery.isError;
   const sales = useMemo(() => {
@@ -700,7 +824,7 @@ Estado: ${sale.status}
                 {getAvailableStatuses(sale.status, sale.salesRegion).map(
                   (status) => (
                     <option key={status} value={status}>
-                      {status}
+                      {getStatusLabel(status)}
                     </option>
                   ),
                 )}
@@ -732,6 +856,11 @@ Estado: ${sale.status}
                 >
                   <WhatsAppIcon className="h-4 w-4" />
                 </Button>
+                <ReenviarPdfWhatsAppButton
+                  orderId={sale.id}
+                  phone={sale.phoneNumber}
+                  customerName={sale.clientName}
+                />
                 <Button
                   size="icon"
                   variant="outline"
@@ -918,6 +1047,11 @@ Estado: ${sale.status}
                 >
                   <WhatsAppIcon className="h-4 w-4" />
                 </Button>
+                <ReenviarPdfWhatsAppButton
+                  orderId={sale.id}
+                  phone={sale.phoneNumber}
+                  customerName={sale.clientName}
+                />
                 <Button
                   size="icon"
                   variant="outline"
@@ -951,17 +1085,45 @@ Estado: ${sale.status}
   ----------------------------------------- */
 
   // Ventas con pagos pendientes de aprobación
+  // Una fila por venta: si el CRM tiene su comprobante, se usa la misma fila (nunca dos).
   const pagosPendientes = useMemo(() => {
     const filtered = sales.filter(
       (s) =>
-        s.hasPendingPayments &&
+        receiptsBySaleId.has(s.id) ||
+        (s.hasPendingPayments &&
         (s.commercialStage === "LEAD" ? s.status !== "ANULADO" : !PAGOS_PENDIENTES_EXCLUDED_STATUSES.includes(s.status)) &&
         // Una venta confirmada por el vendedor (SALE) conserva su subestado de CC hasta que CC
         // confirma el despacho; su pago ya es de una venta real y /ventas lo muestra.
-        (s.commercialStage === "LEAD" || s.commercialStage === "SALE" || !s.subEstadoCc || CC_CONFIRMED_SUBESTADOS.includes(s.subEstadoCc)),
+        (s.commercialStage === "LEAD" || s.commercialStage === "SALE" || !s.subEstadoCc || CC_CONFIRMED_SUBESTADOS.includes(s.subEstadoCc))),
     );
-    return applyFilters(filtered, filtersPagosPendientes);
-  }, [sales, filtersPagosPendientes]);
+    const listed = new Set(filtered.map((s) => s.id));
+    const rows: Sale[] = filtered.map((s) => {
+      const receipts = receiptsBySaleId.get(s.id);
+      if (!receipts) return s;
+      return {
+        ...s,
+        origin: CRM_ORIGIN,
+        isCrm: true,
+        pendingPaymentsCount: s.pendingPaymentsCount || receipts.length,
+        pendingPaymentsAmount: s.pendingPaymentsAmount || receipts.reduce((sum, r) => sum + Number(r.amount), 0),
+        paymentCreatedAt: s.paymentCreatedAt ?? receipts[0].createdAt ?? null,
+      };
+    });
+    for (const [key, receipts] of receiptsBySaleId) {
+      if (!listed.has(key)) rows.push(receiptToSale(receipts[0]));
+    }
+    return applyFilters(rows, filtersPagosPendientes);
+  }, [sales, receiptsBySaleId, filtersPagosPendientes]);
+  const pagosPorValidar = useMemo(
+    () =>
+      pagosPendientes.filter((sale) =>
+        paymentOrigin === "todos" ? true
+          : paymentOrigin === "live" ? sale.isLive
+          : paymentOrigin === "pau" ? sale.isCrm
+          : !sale.isLive && !sale.isCrm,
+      ),
+    [pagosPendientes, paymentOrigin],
+  );
 
   const entregados = useMemo(() => {
     const statusFiltered = sales.filter(
@@ -997,11 +1159,10 @@ Estado: ${sale.status}
           ) : loadError ? (
             <div role="alert" className="space-y-3"><p>No se pudieron cargar los datos de Finanzas del alcance seleccionado.</p><Button onClick={fetchOrders}>Reintentar</Button></div>
           ) : (
-          <Tabs defaultValue="pagosPendientes" className="w-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="mb-4">
-              <TabsTrigger value="validacionLive">Validación de pagos · POWIP Live</TabsTrigger>
               <TabsTrigger value="pagosPendientes">
-                Pagos Pendientes ({pagosPendientes.length})
+                Pagos por validar ({pagosPendientes.length})
               </TabsTrigger>
               <TabsTrigger value="entregados">
                 Entregados ({entregados.length})
@@ -1011,31 +1172,43 @@ Estado: ${sale.status}
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="validacionLive">{storeIds.length ? storeIds.map(id => <LiveYapeReviews key={id} storeId={id} canReview={auth?.user?.role?.toUpperCase() === "ADMINISTRADOR"} onUpdated={fetchOrders}/>) : <p>Selecciona una tienda.</p>}</TabsContent>
-            {/* Tab Pagos Pendientes */}
+            {/* Tab Pagos por validar (FEAT-33 B1: la única cola de pagos del negocio) */}
             <TabsContent value="pagosPendientes">
               <Card>
                 <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                   <div>
-                    <CardTitle>Pagos Pendientes de Aprobación</CardTitle>
+                    <CardTitle>Pagos por validar</CardTitle>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Ventas con comprobantes de pago por verificar
+                      Todos los comprobantes del negocio en un solo lugar, también los de POWIP Live, POWIP Link y las ventas que Pau cerró en el chat.
                     </p>
+                    <div className="mt-3 flex flex-wrap gap-1" aria-label="Origen de la venta">
+                      {PAYMENT_ORIGINS.filter(([value]) => value !== "pau" || crmAllowed).map(([value, label]) => (
+                        <Button
+                          key={value}
+                          size="sm"
+                          variant={paymentOrigin === value ? "default" : "outline"}
+                          aria-pressed={paymentOrigin === value}
+                          onClick={() => setPaymentOrigin(value)}
+                        >
+                          {label}
+                        </Button>
+                      ))}
+                    </div>
                   </div>
                   <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
                     <Button
                       variant="outline"
                       className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
                       disabled={
-                        pagosPendientes.filter((s) => selectedSaleIds.has(s.id))
+                        pagosPorValidar.filter((s) => selectedSaleIds.has(s.id))
                           .length === 0
                       }
-                      onClick={() => handleBulkWhatsApp(pagosPendientes)}
+                      onClick={() => handleBulkWhatsApp(pagosPorValidar)}
                     >
                       <WhatsAppIcon className="h-4 w-4 mr-2" />
                       WhatsApp Masivo (
                       {
-                        pagosPendientes.filter((s) => selectedSaleIds.has(s.id))
+                        pagosPorValidar.filter((s) => selectedSaleIds.has(s.id))
                           .length
                       }
                       )
@@ -1045,7 +1218,7 @@ Estado: ${sale.status}
                         variant="outline"
                         className="w-full lg:w-auto"
                         onClick={() =>
-                          handleExportExcel(pagosPendientes, "pagos_pendientes")
+                          handleExportExcel(pagosPorValidar, "pagos_por_validar")
                         }
                       >
                         <Download className="h-4 w-4 mr-2" />
@@ -1055,6 +1228,14 @@ Estado: ${sale.status}
                   </div>
                 </CardHeader>
                 <CardContent>
+                  {crmAllowed && crmPauQuery.isError && (paymentOrigin === "todos" || paymentOrigin === "pau") && (
+                    <p role="alert" className="mb-4 text-sm text-muted-foreground">
+                      No se pudieron cargar los comprobantes del CRM.
+                    </p>
+                  )}
+                  <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    Comprueba cada ingreso en la cuenta del negocio. El comprobante queda pendiente hasta que lo valides o rechaces; en POWIP Live el stock sigue reservado mientras tanto.
+                  </p>
                   <SalesTableFilters
                     filters={filtersPagosPendientes}
                     onFiltersChange={setFiltersPagosPendientes}
@@ -1067,6 +1248,9 @@ Estado: ${sale.status}
                         </TableHead>
                         <TableHead className="w-[100px] min-w-[100px]">
                           ID Externo
+                        </TableHead>
+                        <TableHead className="w-[110px] min-w-[110px]">
+                          Origen
                         </TableHead>
                         <TableHead className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-20 bg-background border-r">
                           Cliente
@@ -1110,7 +1294,11 @@ Estado: ${sale.status}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {pagosPendientes.map((sale) => (
+                      {pagosPorValidar.map((sale) => {
+                        const live = sale.isLive ? liveReviewByOrder.get(sale.id) : undefined;
+                        const manual = live?.review.manualPayment;
+                        const receipts = receiptsBySaleId.get(sale.id);
+                        return (
                         <TableRow key={sale.id}>
                           <TableCell className="font-medium w-[100px] min-w-[100px]">
                             {sale.orderNumber}
@@ -1119,22 +1307,32 @@ Estado: ${sale.status}
                           <TableCell className="w-[100px] min-w-[100px] text-xs text-muted-foreground truncate max-w-[100px]">
                             {sale.externalId || "-"}
                           </TableCell>
+                          <TableCell className="w-[110px] min-w-[110px]">
+                            <Badge variant="outline" className={sale.isLive ? "border-violet-200 bg-violet-50 text-violet-700" : undefined}>
+                              {sale.origin}
+                            </Badge>
+                          </TableCell>
                           <TableCell className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-10 bg-background border-r">
                             {sale.clientName}
+                            {receipts?.[0].pauSale?.items && (
+                              <span className="block text-xs text-muted-foreground">{receipts[0].pauSale.items}</span>
+                            )}
                           </TableCell>
                           <TableCell className="lg:sticky lg:left-[160px] w-[120px] min-w-[120px] lg:z-10 bg-background border-r">
-                            {sale.phoneNumber}
+                            {sale.phoneNumber || "-"}
                           </TableCell>
                           <TableCell className="w-[100px] min-w-[100px]">
-                            <Badge
-                              variant={
-                                sale.salesRegion === "LIMA"
-                                  ? "default"
-                                  : "secondary"
-                              }
-                            >
-                              {sale.salesRegion}
-                            </Badge>
+                            {sale.salesRegion ? (
+                              <Badge
+                                variant={
+                                  sale.salesRegion === "LIMA"
+                                    ? "default"
+                                    : "secondary"
+                                }
+                              >
+                                {sale.salesRegion}
+                              </Badge>
+                            ) : "-"}
                           </TableCell>
                           <TableCell className="w-[120px] min-w-[120px]">
                             {sale.city || "-"}
@@ -1143,7 +1341,7 @@ Estado: ${sale.status}
                             {sale.courier || "-"}
                           </TableCell>
                           <TableCell className="w-[120px] min-w-[120px]">
-                            <Badge variant="outline">{sale.status}</Badge>
+                            <Badge variant="outline">{sale.withoutOrder ? "Por validar" : getStatusLabel(sale.status)}</Badge>
                           </TableCell>
                           <TableCell className="w-[100px] min-w-[100px]">
                             {formatSalesMoney(sale.total, sale.currency)}
@@ -1155,6 +1353,21 @@ Estado: ${sale.status}
                           </TableCell>
                           <TableCell className="font-medium text-amber-600 w-[140px] min-w-[140px]">
                             {formatSalesMoney(sale.pendingPaymentsAmount, sale.currency)}
+                            {manual ? (
+                              <div className="mt-1 space-y-1 text-xs font-normal text-foreground">
+                                <p>Operación {manual.operationNumber || "sin número"}</p>
+                                {manual.overdue ? (
+                                  <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-900">
+                                    Plazo vencido · requiere una decisión
+                                  </span>
+                                ) : manual.reviewDeadlineAt ? (
+                                  <p className="text-muted-foreground">
+                                    Revisar hasta {new Date(manual.reviewDeadlineAt).toLocaleString("es-PE")}
+                                  </p>
+                                ) : null}
+                              </div>
+                            ) : null}
+                            {receipts?.map((receipt) => <CrmPauDetail key={receipt.id} receipt={receipt} />)}
                           </TableCell>
                           <TableCell className="w-[120px] min-w-[120px] text-xs">
                             {sale.sellerName || "—"}
@@ -1167,14 +1380,16 @@ Estado: ${sale.status}
                               : "-"}
                           </TableCell>
                           <TableCell className="w-[100px] min-w-[100px]">
-                            <OrderDetailButton
-                              orderId={sale.id}
-                              orderNumber={sale.orderNumber}
-                            />
+                            {sale.withoutOrder && !receipts?.[0].orderId ? "-" : (
+                              <OrderDetailButton
+                                orderId={sale.id}
+                                orderNumber={sale.orderNumber}
+                              />
+                            )}
                           </TableCell>
                           <TableCell className="text-right lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-10 bg-background border-l">
-                            <div className="flex gap-1 justify-end">
-                              <Button
+                            <div className={receipts ? "ml-auto flex max-w-[130px] flex-wrap justify-end gap-1" : "flex gap-1 justify-end"}>
+                              {sale.phoneNumber && <Button
                                 size="icon"
                                 variant="outline"
                                 className="bg-green-500 hover:bg-green-600 text-white border-green-600"
@@ -1190,29 +1405,58 @@ Estado: ${sale.status}
                                 }
                               >
                                 <WhatsAppIcon className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                className="bg-amber-500 hover:bg-amber-600 text-white"
-                                onClick={() => {
-                                  setSelectedSaleForPayment(sale);
-                                  setPaymentModalOpen(true);
-                                }}
-                              >
-                                <DollarSign className="h-4 w-4 mr-1" />
-                                Gestionar Pagos
-                              </Button>
+                              </Button>}
+                              {!sale.withoutOrder && (
+                                <ReenviarPdfWhatsAppButton
+                                  orderId={sale.id}
+                                  phone={sale.phoneNumber}
+                                  customerName={sale.clientName}
+                                />
+                              )}
+                              {receipts && sale.withoutOrder ? (
+                                // Solo comprobante de Pau sin pedido: no hay pedido que abrir en Gestionar Pagos.
+                                receipts.map((receipt) => <CrmPauActions key={receipt.id} receipt={receipt} onReviewed={fetchOrders} />)
+                              ) : live && canReviewLive && manual?.status === "UNDER_REVIEW" ? (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    onClick={() => setLiveDecision({ ...live, decision: "approve" })}
+                                  >
+                                    Revisar y validar
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => setLiveDecision({ ...live, decision: "reject" })}
+                                  >
+                                    Rechazar comprobante
+                                  </Button>
+                                </>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  className="bg-amber-500 hover:bg-amber-600 text-white"
+                                  onClick={() => {
+                                    setSelectedSaleForPayment(sale);
+                                    setPaymentModalOpen(true);
+                                  }}
+                                >
+                                  <DollarSign className="h-4 w-4 mr-1" />
+                                  Gestionar Pagos
+                                </Button>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
-                      ))}
-                      {pagosPendientes.length === 0 && (
+                        );
+                      })}
+                      {pagosPorValidar.length === 0 && (
                         <TableRow>
                           <TableCell
-                            colSpan={13}
+                            colSpan={16}
                             className="text-center text-muted-foreground py-6"
                           >
-                            No hay pagos pendientes de aprobación
+                            {paymentOrigin === "pau" ? "No hay ventas de Pau por validar" : "No hay pagos pendientes de aprobación"}
                           </TableCell>
                         </TableRow>
                       )}
@@ -1221,8 +1465,8 @@ Estado: ${sale.status}
                 </CardContent>
                 <Pagination
                   currentPage={1}
-                  totalPages={Math.ceil(pagosPendientes.length / 10) || 1}
-                  totalItems={pagosPendientes.length}
+                  totalPages={Math.ceil(pagosPorValidar.length / 10) || 1}
+                  totalItems={pagosPorValidar.length}
                   itemsPerPage={10}
                   onPageChange={() => {}}
                   itemName="ventas"
@@ -1346,9 +1590,31 @@ Estado: ${sale.status}
           }}
           orderId={selectedSaleForPayment?.id || ""}
           orderNumber={selectedSaleForPayment?.orderNumber || ""}
-          onPaymentUpdated={fetchOrders}
+          onPaymentUpdated={() => {
+            fetchOrders();
+            void refetchLiveReviews();
+          }}
           canApprove={true}
         />
+        {liveDecision ? (
+          <ReviewDialog
+            key={`${liveDecision.storeId}/${liveDecision.review.checkoutId}/${liveDecision.decision}`}
+            storeId={liveDecision.storeId}
+            review={liveDecision.review}
+            decision={liveDecision.decision}
+            onClose={() => setLiveDecision(null)}
+            onComplete={() => {
+              toast.success(
+                liveDecision.decision === "approve"
+                  ? "Pago validado. El pedido ya figura como pagado."
+                  : "Comprobante rechazado. El cliente verá el motivo en su pedido.",
+              );
+              setLiveDecision(null);
+              fetchOrders();
+              void refetchLiveReviews();
+            }}
+          />
+        ) : null}
       </div>
     </OrderDetailModalProvider>
   );

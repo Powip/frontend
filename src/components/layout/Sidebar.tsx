@@ -1,5 +1,6 @@
 "use client";
 import Image from "next/image";
+import { PAGINAS_FUERA_DE_MENU, SECCIONES_ADMIN } from "@/app/administracion/_components/secciones";
 import Link from "next/link";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -25,7 +26,6 @@ import {
   BarChart2,
   Headphones,
   Settings,
-  FileSearch,
   Tags,
   MapPin,
   PackagePlus,
@@ -33,24 +33,19 @@ import {
   History,
   ChevronDown,
   ChevronUp,
-  Activity,
   FileSpreadsheet,
   Wallet,
   Zap,
-  CalendarClock,
   Megaphone,
-  PackageX,
   Landmark,
-  PiggyBank,
-  CalendarRange,
   Handshake,
   LayoutList,
   Plug,
   Radio,
+  MessageCircle,
   ScanLine,
   Smartphone,
   Barcode,
-  Boxes,
   BadgeDollarSign,
 } from "lucide-react";
 
@@ -65,6 +60,8 @@ import {
 } from "@/components/ui/layout/avatar";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCrmAccess } from "@/hooks/useCrmPlan";
+import { CRM_VIEW_EVENT, readCrmFocused } from "@/components/ventas-chat/VistaContext";
 import { useRouter, usePathname } from "next/navigation";
 import {
   SIDEBAR_ITEMS_PERMISSIONS,
@@ -72,6 +69,7 @@ import {
   hasRouteAccess,
   isAccessGatedRoute,
   isCourierRole,
+  canSeeWhatsAppTab,
 } from "@/config/permissions.config";
 import {
   DropdownMenu,
@@ -81,6 +79,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
+import { WhatsAppNotificationsBell } from "@/components/whatsapp/WhatsAppNotificationsBell";
+import { isCompanyAdminRole } from "@/lib/purchaseOrders";
 import PowipLogoMini from "./logo-mini";
 import PowipLogo from "./logo";
 
@@ -99,6 +100,8 @@ interface NavigationItem {
     group?: string;
     badge?: string;
     badgeUntil?: string;
+    /** Módulo que se contrata aparte (mockup 152: «Add-on»). */
+    addon?: boolean;
   }[];
 }
 
@@ -124,11 +127,35 @@ function NavItemBadge({
   );
 }
 
+/** Etiqueta «Add-on» del mockup 152 para módulos que se contratan aparte. */
+function AddonBadge() {
+  return (
+    <span className="ml-auto shrink-0 whitespace-nowrap rounded-md bg-primary px-1.5 py-px text-[9.5px] font-bold text-white">
+      Add-on
+    </span>
+  );
+}
+
 // El módulo de inventario tiene una ruta por pestaña (/inventario/stock, /movimientos, /unificacion):
 // su entrada del menú sigue activa en cualquiera de ellas. El resto de entradas compara la ruta exacta.
 const SECTION_ROOTS = ["/inventario"];
+
+// Administración (FEAT-34): cada entrada es una sección con varias subpestañas; sigue activa en cualquiera de ellas.
+const ADMIN_SECCION_DE = new Map<string, string>(
+  [
+    ...SECCIONES_ADMIN.flatMap((seccion) => seccion.paginas.map((p) => [p.href, seccion.paginas[0].href] as const)),
+    ...PAGINAS_FUERA_DE_MENU.map((p) => {
+      const seccion = SECCIONES_ADMIN.find((s) => s.id === p.seccion);
+      return [p.href, seccion?.paginas[0].href ?? p.href] as const;
+    }),
+  ],
+);
+
 export function isChildActive(pathname: string, href: string) {
-  return pathname === href || (SECTION_ROOTS.includes(href) && pathname.startsWith(`${href}/`));
+  if (pathname === href) return true;
+  if (SECTION_ROOTS.includes(href) && pathname.startsWith(`${href}/`)) return true;
+  const raizAdmin = ADMIN_SECCION_DE.get(pathname);
+  return raizAdmin !== undefined && raizAdmin === href;
 }
 
 export function Sidebar({ className }: SidebarProps) {
@@ -144,6 +171,10 @@ export function Sidebar({ className }: SidebarProps) {
     gcTime: 0,
   });
   const canAccessLive = liveAccess.isSuccess && liveAccess.data?.available === true;
+  // «Ventas por chat» solo con acceso confirmado por ms-crm (correo permitido y pago); si la
+  // consulta falla o tarda, el menú no lo muestra.
+  const crmAccess = useCrmAccess(!!auth?.company?.id);
+  const canAccessCrm = crmAccess.isSuccess && crmAccess.data?.allowed === true;
   const commercialAccess = useQuery({
     queryKey: ["commercial-leads-capabilities", auth?.user.id, auth?.company?.id, auth?.user.role, auth?.user.permissions],
     queryFn: getCommercialLeadCapabilities,
@@ -198,6 +229,16 @@ export function Sidebar({ className }: SidebarProps) {
             href: "/ventas",
             icon: ShoppingCart,
           },
+          ...(canAccessCrm
+            ? [
+                {
+                  name: "Ventas por chat",
+                  href: "/comercial/ventas-chat",
+                  icon: MessageCircle,
+                  addon: true,
+                },
+              ]
+            : []),
           {
             name: "Cotizaciones",
             href: "/cotizaciones",
@@ -211,10 +252,12 @@ export function Sidebar({ className }: SidebarProps) {
             icon: FileText,
           },
           {
-            // FEAT-24 H9: los packs pasan a Productos › Packs; acá quedan las promociones.
-            name: "Promociones",
+            // FEAT-32 M4 (spec §7.0): packs, promociones y bundles anteriores en un solo lugar.
+            name: "Packs y promociones",
             href: "/packs-promos",
             icon: PackagePlus,
+            badge: "Nuevo",
+            badgeUntil: "2026-12-24T23:59:59-05:00",
           },
           { name: "Clientes", href: "/clientes", icon: Users },
           ...(canAccessLive ? [{ name: "POWIP Live", href: "/live", icon: Radio }] : []),
@@ -269,8 +312,7 @@ export function Sidebar({ className }: SidebarProps) {
           { name: "Lista de productos", href: "/productos", icon: Tags },
           { name: "Categorías", href: "/productos/categorias", icon: LayoutList },
           { name: "Etiquetas", href: "/productos/etiquetas", icon: Barcode },
-          // FEAT-24 H9: packs y listas de precios.
-          { name: "Packs", href: "/productos/packs", icon: Boxes },
+          // FEAT-24 H9: listas de precios. Los packs pasaron a Comercial › Packs y promociones (FEAT-32 M4).
           { name: "Listas de precios", href: "/productos/listas-precios", icon: BadgeDollarSign },
           { name: "Inventario", href: "/inventario", icon: Package },
           // FEAT-24 H6: la app del celular para el almacén (PWA instalable).
@@ -311,47 +353,25 @@ export function Sidebar({ className }: SidebarProps) {
         children: [
           { name: "Usuarios y roles", href: "/usuarios", icon: UserCog },
           { name: "Configuración", href: "/configuracion", icon: Settings },
+          {
+            name: "WhatsApp",
+            href: "/configuracion/whatsapp",
+            icon: WhatsAppIcon,
+            badge: "Nuevo",
+            badgeUntil: "2026-12-08",
+          },
         ],
       },
       {
         name: "Administración",
         icon: BarChart2,
+        // FEAT-34: las 5 secciones de Administración; cada una abre su primera subpestaña.
         children: [
-          { name: "Reporte rápido", href: "/administracion/reporte", icon: Zap },
-          { name: "Resumen", href: "/administracion/resumen", icon: BarChart },
-          { name: "Control diario", href: "/administracion/diario", icon: CalendarClock },
-          {
-            name: "Gastos & Costos",
-            href: "/administracion/gastos",
-            icon: DollarSign,
-          },
-          {
-            name: "Utilidad & Margen",
-            href: "/administracion/utilidad",
-            icon: Activity,
-          },
-          {
-            name: "Canales & Marketplaces",
-            href: "/administracion/canales",
-            icon: Building2,
-          },
+          { name: "Resultados", href: "/administracion/resumen", icon: BarChart },
+          { name: "Ventas", href: "/administracion/reporte", icon: Zap },
+          { name: "Costos", href: "/administracion/gastos", icon: DollarSign },
           { name: "Inversión publicitaria", href: "/administracion/pauta", icon: Megaphone },
-          {
-            name: "Punto de Equilibrio",
-            href: "/administracion/equilibrio",
-            icon: FileSearch,
-          },
-          {
-            name: "Margen x Producto",
-            href: "/administracion/margen-producto",
-            icon: Tags,
-          },
-          { name: "Merma", href: "/administracion/merma", icon: PackageX },
-          { name: "Cuentas x Cobrar/Pagar", href: "/administracion/cuentas", icon: Wallet },
-          { name: "Flujo de Caja", href: "/administracion/flujo", icon: Landmark },
-          { name: "Liquidaciones", href: "/administracion/liquidaciones", icon: Truck },
-          { name: "Capital & ROI", href: "/administracion/capital", icon: PiggyBank },
-          { name: "Resumen Anual", href: "/administracion/anual", icon: CalendarRange },
+          { name: "Caja", href: "/administracion/flujo", icon: Landmark },
         ],
       },
       {
@@ -375,22 +395,26 @@ export function Sidebar({ className }: SidebarProps) {
         href: "/superadmin",
       },
     ],
-    [canViewCommercialLeads, canManageCommercialLeadTypes, canAccessLive],
+    [canViewCommercialLeads, canManageCommercialLeadTypes, canAccessLive, canAccessCrm],
   );
 
-  // Auto-colapsar en móviles
+  // Auto-colapsar en móviles y en la vista enfocada de Ventas por chat (barra de íconos).
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 1024) {
-        setIsCollapsed(true);
-      } else {
-        setIsCollapsed(false);
-      }
+    let crmFocused = window.location.pathname.startsWith("/comercial/ventas-chat") && readCrmFocused();
+    const apply = () => setIsCollapsed(window.innerWidth < 1024 || crmFocused);
+    const handleResize = () => apply();
+    const handleView = (e: Event) => {
+      crmFocused = Boolean((e as CustomEvent<{ focused: boolean }>).detail?.focused);
+      apply();
     };
 
-    handleResize();
+    apply();
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    window.addEventListener(CRM_VIEW_EVENT, handleView);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener(CRM_VIEW_EVENT, handleView);
+    };
   }, []);
 
   // Mantener submenú abierto si el path actual es hijo
@@ -398,7 +422,9 @@ export function Sidebar({ className }: SidebarProps) {
     const activeSubmenu = navigation.find((item) =>
       item.children?.some(
         (child) =>
-          pathname === child.href || pathname.startsWith(child.href + "/"),
+          pathname === child.href ||
+          pathname.startsWith(child.href + "/") ||
+          isChildActive(pathname, child.href),
       ),
     );
     if (activeSubmenu) {
@@ -419,6 +445,9 @@ export function Sidebar({ className }: SidebarProps) {
 
   // FEAT-24 H8-D5: al rol COURIER solo le queda su portal (Modo almacén); el resto del menú se le cierra.
   const courierOnly = isCourierRole(auth?.user.role);
+  // Campanita de alertas de WhatsApp (X5): solo administradores mientras C-28 no defina otro permiso.
+  // Además es un acceso a la pestaña de WhatsApp: solo para quien puede abrirla.
+  const showWhatsAppBell = isCompanyAdminRole(auth?.user.role) && canSeeWhatsAppTab(auth?.user.email);
 
   // Filtrar navegación por permisos y mostrar Superadmin solo a autorizados
   const filteredNavigation = navigation
@@ -492,6 +521,7 @@ export function Sidebar({ className }: SidebarProps) {
             >
               <PowipLogoMini className="size-6 text-primary" />
             </Link>
+            {showWhatsAppBell && <WhatsAppNotificationsBell />}
             <Button
               variant="ghost"
               size="icon"
@@ -503,17 +533,20 @@ export function Sidebar({ className }: SidebarProps) {
           </div>
         ) : (
           <>
-            <Link href="/" className="flex items-center pl-3">
+            <Link href="/" className="flex items-center gap-2 pl-3">
               <PowipLogo className="w-[90px] h-auto text-primary" />
             </Link>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setIsCollapsed(!isCollapsed)}
-              className="h-7 w-7"
-            >
-              <Menu className="h-4 w-4 text-primary" />
-            </Button>
+            <div className="flex items-center gap-1">
+              {showWhatsAppBell && <WhatsAppNotificationsBell />}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsCollapsed(!isCollapsed)}
+                className="h-7 w-7"
+              >
+                <Menu className="h-4 w-4 text-primary" />
+              </Button>
+            </div>
           </>
         )}
       </div>
@@ -611,6 +644,7 @@ export function Sidebar({ className }: SidebarProps) {
                             <span className="text-sm truncate min-w-0">
                               {child.name}
                             </span>
+                            {child.addon && <AddonBadge />}
                             <NavItemBadge
                               child={child}
                               isCurrentPage={isChildActive(pathname, child.href)}
@@ -691,6 +725,7 @@ export function Sidebar({ className }: SidebarProps) {
                                 <span className="truncate min-w-0">
                                   {child.name}
                                 </span>
+                                {child.addon && <AddonBadge />}
                                 <NavItemBadge
                                   child={child}
                                   isCurrentPage={isChildActive(pathname, child.href)}

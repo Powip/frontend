@@ -1,19 +1,22 @@
 "use client";
+import type { LiveLinks } from "./liveLinks";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUsersByCompany } from "@/services/userService";
 import type { LiveConfig } from "./types";
 import { liveError } from "./liveService";
+import LiveCopyButton from "./LiveCopyButton";
 export default function LiveAdvisors({
   config,
   disabled,
   onSave,
-  catalogUrl,
+  links,
 }: {
   config: LiveConfig;
   disabled: boolean;
-  onSave: (config: LiveConfig) => void;
-  catalogUrl: string;
+  /** FEAT-33 A1: manda solo los campos de asesoras, nunca la configuración entera. */
+  onSave: (changes: Partial<LiveConfig>) => void;
+  links: LiveLinks;
 }) {
   const { auth } = useAuth(),
     [users, setUsers] = useState<{ id: string; name: string; surname?: string }[]>([]),
@@ -57,7 +60,6 @@ export default function LiveAdvisors({
             .replace(/[^a-z0-9]+/g, "-")
             .slice(0, 24)}-${user.id.slice(0, 6)}`;
           onSave({
-            ...config,
             advisorId: user.id,
             advisorName: name,
             advisors: exists
@@ -89,9 +91,9 @@ export default function LiveAdvisors({
               className="break-all text-xs text-teal-700"
               target="_blank"
               rel="noopener noreferrer"
-              href={`${catalogUrl}?a=${encodeURIComponent(a.code)}`}
+              href={links.advisorUrl(a.code)}
             >
-              {catalogUrl}?a={a.code}
+              {links.advisorUrl(a.code)}
             </a>
           </div>
           <label className="flex min-h-11 items-center gap-2 text-sm">
@@ -101,7 +103,6 @@ export default function LiveAdvisors({
               disabled={disabled}
               onChange={(e) =>
                 onSave({
-                  ...config,
                   advisors: config.advisors?.map((row) =>
                     row.id === a.id ? { ...row, commission: e.target.checked } : row,
                   ),
@@ -113,23 +114,14 @@ export default function LiveAdvisors({
           {a.commission ? (
             <a
               className="break-all text-xs text-teal-700"
-              href={`${catalogUrl.replace(/\/catalogo(?=\/|$)/, "/live")}?v=${encodeURIComponent(a.code)}`}
+              href={links.sellerUrl(a.code)}
               target="_blank"
               rel="noopener noreferrer"
             >
-              Link del vendedor: {catalogUrl.replace(/\/catalogo(?=\/|$)/, "/live")}?v={a.code}
+              Link del vendedor: {links.sellerUrl(a.code)}
             </a>
           ) : null}
-          <button
-            className="min-h-11 rounded-xl border px-3 text-sm"
-            onClick={() =>
-              void navigator.clipboard
-                .writeText(`${catalogUrl}?a=${encodeURIComponent(a.code)}`)
-                .catch(() => setError("No se pudo copiar. Selecciona el enlace."))
-            }
-          >
-            Copiar link
-          </button>
+          <LiveCopyButton text={links.advisorUrl(a.code)} label="Copiar link" />
         </div>
       ))}
     </section>

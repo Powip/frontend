@@ -30,6 +30,8 @@ const config: Config = {
     '**/*.spec.(ts|tsx)',
   ],
   testPathIgnorePatterns: ['/node_modules/', '/.next/'],
+  // Con la suite completa en paralelo, las pruebas con muchas interacciones pasan de 5 s.
+  testTimeout: 20000,
   // The standalone build contains another package.json, not source modules.
   modulePathIgnorePatterns: ['<rootDir>/.next/'],
 };

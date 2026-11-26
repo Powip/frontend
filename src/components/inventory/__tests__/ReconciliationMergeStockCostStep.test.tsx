@@ -93,14 +93,19 @@ describe('ReconciliationMergeStockCostStep', () => {
     expect(screen.getByText(/sumar ambos \(15\)/i)).toBeInTheDocument();
   });
 
-  it('conteo físico muestra el campo y el error si queda por debajo de las reservas', async () => {
+  it('conteo físico por debajo de las reservas avisa en ámbar, sin error (FEAT-24 C-D2)', async () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.click(screen.getByRole('radio', { name: /conteo físico/i }));
-    await user.type(screen.getByLabelText(/cantidad contada/i), '2');
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Hay 3 unidades reservadas en pedidos; la cantidad no puede ser menor',
+    await user.type(screen.getByLabelText(/cantidad contada/i), '1');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Quedan 2 unidades reservadas sin stock: las reservas pasan a la variante que queda.',
     );
+    expect(screen.getByTestId('merge-summary')).toHaveTextContent(/stock 10 → 1 · reservado 3/i);
+    await user.clear(screen.getByLabelText(/cantidad contada/i));
+    await user.type(screen.getByLabelText(/cantidad contada/i), '3');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
   });
 
   it('costo: la madre viene marcada; "Otro valor" muestra el campo', async () => {

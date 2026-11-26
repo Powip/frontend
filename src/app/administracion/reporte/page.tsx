@@ -1,601 +1,724 @@
 "use client";
 
-import { AdvertisingAssignedSpendV11 } from "@/components/advertising/AdvertisingAssignedSpendV11";
-import { AdvertisingBusinessMetricsPanel } from "@/components/advertising/AdvertisingBusinessMetricsPanel";
-
 /**
- * Reporte rápido — §16 doc técnica.
+ * Reporte rápido (Administración › Ventas) — FEAT-34.
  *
- * CONECTADO A DATOS REALES: Venta total, Producto (COGS), Unidades, Pedidos
- * y Envíos (costo courier) salen de `getOrdersByCompany` / `getCourierCost`
- * (mismos endpoints que Resumen). Proyección de cierre de mes y el
- * simulador what-if usan esos mismos agregados reales como semilla.
- *
- * SOLUCIÓN PUENTE (localStorage, sin backend): Publicidad, CPA y ROAS ya no
- * están en 0 — se calculan sumando la inversión que se haya registrado en
- * Pauta por canal (`usePautaEntries`, filtrada por fecha al rango del
- * periodo elegido acá). La meta mensual de la barra de progreso sale de la
- * meta anual (÷12) que se edita en Resumen Anual (`useMetasAnuales`). Ambas
- * viven en `localStorage` del navegador — no hay backend detrás todavía, así
- * que estos números están guardados solo en este dispositivo y no se
- * comparten con el resto del equipo (ver aviso en la UI). Cuando exista el
- * backend de pauta/metas, reemplazar por las queries reales.
- *
- * Alertas: reglas simples calculadas de datos reales (mismo criterio que
- * Cuentas x Cobrar/Pagar) — cobros confirmados pendientes de liquidar
- * (persistidos y separados por moneda), saldos COD en tránsito (`enTransito`), sin
- * inversión de pauta registrada este mes, y meta mensual ya superada al
- * ritmo actual. NO es el motor de alertas del doc (§17): sigue sin poder
- * avisar por tasa de confirmación (no existe ese estado de pedido) ni por
- * gastos operativos vencidos (`IGastoOperativo` no tiene campo de estado).
+ * - Números del periodo de `useResultadosPeriodo`: la misma cuenta que Resultados › Resumen. «Utilidad operativa» es
+ *   `resultados.utilidadOperativa` (antes la «GANANCIA» propia no restaba gastos fijos, merma ni comisiones).
+ * - Proyección del mes solo con el mes en curso hasta hoy: ventas y utilidad al ritmo diario × días del mes. Con otro
+ *   periodo se compara contra la meta repartida por días. Metas del año del periodo y sin valores por defecto.
+ * - Ventas calculadas en ms-ventas, contadas el día en que se ENTREGARON (D1). Envíos = flete por pedido (D9).
+ * - Cobros en calle: `usePedidosEnTransito` (con guía, en envío y despachados, últimos 90 días), ya sumado por estado
+ *   y con los que llevan más de 30 días en la calle (`/administracion/en-transito`).
+ * - Simulador sin doble conteo: gastos fijos sin publicidad, publicidad aparte, envío por pedido = envíos ÷ pedidos.
+ * - Publicidad del módulo con días cerrados (`hastaAyer`) y una sola tarjeta de costo por venta. La inversión manual
+ *   del navegador ya no se usa.
  */
 
-import { getCourierSettlements, settlementMoney } from "@/services/courierSettlementsService";
-import { courierSettlementBalances } from "../_lib/courierSettlementBalances";
 import { useQuery } from "@tanstack/react-query";
-import { differenceInCalendarDays, format, getDaysInMonth, startOfMonth, subDays } from "date-fns";
-import { Copy, Share2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Copy, RotateCcw } from "lucide-react";
+import Link from "next/link";
+import { type ReactNode, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { getCourierCost, getGastos } from "@/api/Admin";
-import { getOrdersByCompany } from "@/api/Ventas";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
-import { Skeleton } from "@/components/ui/skeleton";
+import { AdvertisingBusinessMetricsPanel } from "@/components/advertising/AdvertisingBusinessMetricsPanel";
+import { ProgressBar } from "@/components/panel-control/charts/ProgressBar";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
-import { useAuth } from "@/contexts/AuthContext";
-import { type Nivel, NivelDot } from "../_components/nivel";
-import { fmtMoney, fmtNum, fmtPct } from "../_lib/format";
-import { useMetasAnuales } from "../_lib/metasStorage";
-import { totalInvertidoEnRango, usePautaEntries } from "../_lib/pautaStorage";
+import { ESTADOS_EN_TRANSITO, type EstadoEnTransito } from "@/interfaces/IAdministracion";
+import { getCourierSettlements, settlementMoney } from "@/services/courierSettlementsService";
 import {
-  enTransito,
-  fechaOrden,
-  paidAmount,
-  soloEntregados,
-} from "../_lib/realData";
+  Aviso,
+  AvisoCostos,
+  claseBotonSecundario,
+  claseInput,
+  Dato,
+  formatNumber,
+  formatPercent,
+  formatSoles,
+  formatSolesDecimales,
+  KpiCard,
+  type LineaCascada,
+  NotaSinHistorial,
+  PanelCard,
+  PanelError,
+  PanelSkeleton,
+  SIN_DATO,
+  TablaCascada,
+} from "../_components/ui";
+import { courierSettlementBalances } from "../_lib/courierSettlementBalances";
+import { type MetasAnuales, useMetasAnuales } from "../_lib/metasStorage";
+import {
+  type DiaKey,
+  diasDelMes,
+  diasEntre,
+  etiquetaPeriodo,
+  hastaAyer,
+  inicioDeMes,
+  mesesDelPeriodo,
+  partes,
+} from "../_lib/periodo";
+import type { EstadoPublicidad } from "../_lib/publicidad";
+import type { Resultados } from "../_lib/resultados";
+import { type CoberturaFlete, notaFlete } from "../_lib/servidor";
+import { useAdminContexto, usePedidosEnTransito, useResultadosPeriodo } from "../_lib/useResultados";
 
 const STALE = 5 * 60 * 1000;
+const RUTA_METAS = "/administracion/anual";
+const RUTA_PUBLICIDAD = "/administracion/pauta";
+const RUTA_GASTOS = "/administracion/gastos";
+const RUTA_LIQUIDACIONES = "/operaciones/liquidaciones";
 
-// El rango viene del periodo general del módulo (`AdminPeriodContext`),
-// fijado desde el topbar (atajos rápidos o el selector de fecha).
-function rangoDesde(fromStr: string, toStr: string) {
-  const from = new Date(`${fromStr}T00:00:00`);
-  const to = new Date(`${toStr}T23:59:59.999`);
-  const label =
-    fromStr === toStr
-      ? format(from, "d MMM").toUpperCase()
-      : `${format(from, "d MMM").toUpperCase()} – ${format(to, "d MMM yyyy").toUpperCase()}`;
-  return { from, to, label };
+// ---- Cuentas de la página ---------------------------------------------------------------------
+
+interface ProyeccionMes {
+  diasTranscurridos: number;
+  diasMes: number;
+  ventas: number;
+  utilidad: number;
 }
 
+/**
+ * Solo con el mes en curso del 1 a hoy. Los gastos fijos ya vienen repartidos por días, así que escalar la utilidad
+ * por días del mes ÷ días transcurridos es la misma cuenta de Resumen con el mes entero.
+ */
+function proyectarMes(r: Resultados, desde: DiaKey, hasta: DiaKey, hoy: DiaKey): ProyeccionMes | null {
+  if (desde !== inicioDeMes(hoy) || hasta !== hoy) return null;
+  const [anio, mes] = partes(hoy);
+  const diasMes = diasDelMes(anio, mes);
+  const diasTranscurridos = diasEntre(desde, hoy);
+  if (diasTranscurridos <= 0) return null;
+  const factor = diasMes / diasTranscurridos;
+  return { diasTranscurridos, diasMes, ventas: r.ventas * factor, utilidad: r.utilidadOperativa * factor };
+}
+
+/** Meta anual repartida por los días del periodo (como los gastos). null si no hay meta o el periodo cruza de año. */
+function metaDelPeriodo(metaAnual: number | null, anio: number, desde: DiaKey, hasta: DiaKey): number | null {
+  if (metaAnual === null) return null;
+  const tramos = mesesDelPeriodo(desde, hasta);
+  if (tramos.length === 0 || tramos.some((t) => t.anio !== anio)) return null;
+  return tramos.reduce((s, t) => s + (metaAnual / 12) * (t.dias / t.diasMes), 0);
+}
+
+interface Supuestos {
+  /** % de cambio del precio de venta. */
+  precio: number;
+  /** % de cambio de la publicidad. */
+  publicidad: number;
+  /** Cuánto suben las unidades (%) por cada 10 % más de publicidad. */
+  respuesta: number;
+}
+
+const SUPUESTOS_INICIALES: Supuestos = { precio: 0, publicidad: 0, respuesta: 4 };
+
+interface Simulacion {
+  precioUnidad: number;
+  costoUnidad: number;
+  envioPorPedido: number;
+  tasaComision: number;
+  unidades: number;
+  ventas: number;
+  publicidad: number;
+  contribucionUnidad: number | null;
+  puntoEquilibrio: number | null;
+  utilidad: number;
+}
+
+/**
+ * Con los supuestos en cero devuelve la utilidad operativa real del periodo: misma cuenta, mismas líneas. El costo de
+ * producto es el cargado (las ventas sin costo siguen sin costo, como en Resumen).
+ */
+function simular(r: Resultados, s: Supuestos): Simulacion | null {
+  if (r.unidades <= 0 || r.pedidos <= 0) return null;
+  const precioUnidad = (r.ventas / r.unidades) * (1 + s.precio / 100);
+  const costoUnidad = r.costoProducto / r.unidades;
+  const envioPorPedido = r.envios / r.pedidos;
+  const tasaComision = r.ventas > 0 ? r.comisiones / r.ventas : 0;
+  const cambioPublicidad = r.publicidad.total > 0 ? s.publicidad / 100 : 0;
+  const factorUnidades = Math.max(0, 1 + (s.respuesta / 10) * cambioPublicidad);
+  const unidades = r.unidades * factorUnidades;
+  const pedidos = r.pedidos * factorUnidades;
+  const ventas = unidades * precioUnidad;
+  const publicidad = r.publicidad.total * (1 + cambioPublicidad);
+  const contribucion =
+    ventas - unidades * costoUnidad - r.merma - ventas * tasaComision - pedidos * envioPorPedido - publicidad;
+  const contribucionUnidad = unidades > 0 ? contribucion / unidades : null;
+  return {
+    precioUnidad,
+    costoUnidad,
+    envioPorPedido,
+    tasaComision,
+    unidades,
+    ventas,
+    publicidad,
+    contribucionUnidad,
+    puntoEquilibrio:
+      contribucionUnidad !== null && contribucionUnidad > 0 ? Math.ceil(r.gastosFijos / contribucionUnidad) : null,
+    utilidad: contribucion - r.gastosFijos,
+  };
+}
+
+function lineasReporte(r: Resultados, flete: CoberturaFlete): LineaCascada[] {
+  const nota = notaFlete(flete);
+  const lineas: LineaCascada[] = [
+    { clave: "ventas", etiqueta: "Ventas", monto: r.ventas, signo: "+" },
+    { clave: "sin_igv", etiqueta: "Ventas sin IGV", monto: r.ventasSinIgv, signo: "=", informativa: true },
+    {
+      clave: "costo",
+      etiqueta: "Costo de producto",
+      monto: r.costoProducto,
+      signo: "−",
+      nota:
+        r.costo.sinCostoPedidos > 0
+          ? `${formatNumber(r.costo.sinCostoPedidos)} ${r.costo.sinCostoPedidos === 1 ? "venta" : "ventas"} sin costo cargado: el costo real es mayor`
+          : undefined,
+    },
+  ];
+  if (r.merma > 0) lineas.push({ clave: "merma", etiqueta: "Merma", monto: r.merma, signo: "−" });
+  lineas.push(
+    { clave: "comisiones", etiqueta: "Comisiones de canal", monto: r.comisiones, signo: "−" },
+    {
+      clave: "envios",
+      etiqueta: "Envíos (flete por pedido)",
+      monto: r.envios,
+      signo: "−",
+      nota: nota?.texto,
+      notaTono: nota?.baja ? "aviso" : "info",
+    },
+    {
+      clave: "publicidad",
+      etiqueta: "Publicidad",
+      monto: r.publicidad.total,
+      signo: "−",
+      nota: r.publicidad.conectada === null ? "Sin dato de las cuentas conectadas: solo Gastos › Publicidad" : undefined,
+    },
+    { clave: "fijos", etiqueta: "Gastos fijos (repartidos por días)", monto: r.gastosFijos, signo: "−" },
+    { clave: "utilidad", etiqueta: "Utilidad operativa", monto: r.utilidadOperativa, signo: "=", total: true },
+  );
+  return lineas;
+}
+
+function textoParaCompartir(r: Resultados, etiqueta: string, flete: CoberturaFlete): string {
+  const filas = [
+    `Reporte ${etiqueta}`,
+    "",
+    `Ventas: ${formatSoles(r.ventas)} (${formatNumber(r.pedidos)} pedidos, ${formatNumber(r.unidades)} unidades)`,
+    `Costo de producto: ${formatSoles(r.costoProducto)}`,
+    `Comisiones de canal: ${formatSoles(r.comisiones)}`,
+    `Envíos (flete por pedido): ${formatSoles(r.envios)}`,
+    `Publicidad: ${formatSoles(r.publicidad.total)}`,
+    `Gastos fijos: ${formatSoles(r.gastosFijos)}`,
+    `Utilidad operativa: ${formatSoles(r.utilidadOperativa)} (margen ${formatPercent(r.margenOperativo)})`,
+  ];
+  if (r.merma > 0) filas.splice(4, 0, `Merma: ${formatSoles(r.merma)}`);
+  if (r.costo.sinCostoPedidos > 0) {
+    filas.push("", `Ojo: ${formatNumber(r.costo.sinCostoPedidos)} ventas sin costo cargado, la utilidad está sobreestimada.`);
+  }
+  const nota = notaFlete(flete);
+  if (nota?.baja) filas.push(`Ojo: ${nota.texto}.`);
+  filas.push("", "— vía Powip");
+  return filas.join("\n");
+}
+
+const NOMBRE_ESTADO_TRANSITO: Record<EstadoEnTransito, string> = {
+  ASIGNADO_A_GUIA: "Con guía asignada",
+  EN_ENVIO: "En envío",
+  DESPACHADO: "Despachado",
+};
+
+const MENSAJE_PUBLICIDAD: Partial<Record<EstadoPublicidad, string>> = {
+  sin_permiso: "No tienes permiso para ver la publicidad de la empresa.",
+  sin_cuentas: "No hay cuentas de publicidad conectadas. Conéctalas en Publicidad para ver el costo por venta.",
+  sin_servicio: "El módulo de publicidad no está disponible por ahora.",
+};
+
+// ---- Piezas -------------------------------------------------------------------------------------
+
+function FilaMeta({ etiqueta, logrado, meta }: { etiqueta: string; logrado: number; meta: number | null }) {
+  return (
+    <div>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 text-xs">
+        <span className="font-semibold text-pc-text">{etiqueta}</span>
+        {meta === null ? (
+          <span className="text-pc-text-muted">Sin meta</span>
+        ) : (
+          <span className="tabular-nums text-pc-text-muted">
+            {formatSoles(logrado)} de {formatSoles(meta)} ·{" "}
+            <b className="text-pc-text">{formatPercent(meta > 0 ? logrado / meta : null)}</b>
+          </span>
+        )}
+      </div>
+      {meta !== null && <ProgressBar logrado={Math.max(0, logrado)} meta={meta} etiqueta={`${etiqueta} contra la meta`} />}
+    </div>
+  );
+}
+
+function NotaSinMeta({ metas }: { metas: MetasAnuales }) {
+  if (metas.ventasAnual !== null && metas.profitAnual !== null) return null;
+  return (
+    <p className="text-xs text-pc-text-muted">
+      Las metas se cargan en{" "}
+      <Link href={RUTA_METAS} className="font-semibold text-pc-primary hover:underline">
+        Resultados › Resumen anual
+      </Link>
+      .
+    </p>
+  );
+}
+
+function Deslizador({
+  id,
+  etiqueta,
+  valor,
+  min,
+  max,
+  step,
+  onChange,
+  disabled,
+  ayuda,
+}: {
+  id: string;
+  etiqueta: string;
+  valor: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (valor: number) => void;
+  disabled?: boolean;
+  ayuda?: ReactNode;
+}) {
+  return (
+    <div className="space-y-1">
+      <label htmlFor={id} className="flex justify-between gap-2 text-xs font-semibold text-pc-text">
+        <span>{etiqueta}</span>
+        <span className="tabular-nums">
+          {valor > 0 ? "+" : ""}
+          {valor} %
+        </span>
+      </label>
+      <input
+        id={id}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={valor}
+        disabled={disabled}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full accent-pc-primary disabled:opacity-50"
+      />
+      {ayuda && <p className="text-[11px] text-pc-text-muted">{ayuda}</p>}
+    </div>
+  );
+}
+
+// ---- Página -------------------------------------------------------------------------------------
+
 export default function ReporteRapidoPage() {
-  const { auth } = useAuth();
   const { fromDate, toDate } = useAdminPeriod();
-  const [shareOpen, setShareOpen] = useState(false);
+  const { companyId, token, hoy } = useAdminContexto();
+  const datos = useResultadosPeriodo(fromDate, toDate);
+  const transito = usePedidosEnTransito();
+  const anioPeriodo = partes(fromDate)[0];
+  const [metas] = useMetasAnuales(companyId, anioPeriodo);
+  const [supuestos, setSupuestos] = useState<Supuestos>(SUPUESTOS_INICIALES);
 
-  const [deltaPrecio, setDeltaPrecio] = useState(0);
-  const [deltaAds, setDeltaAds] = useState(0);
-  const [tarifaCourier, setTarifaCourier] = useState(8);
-
-  const companyId = auth?.company?.id ?? "";
-  const token = auth?.accessToken ?? "";
-  const storeIds = useMemo(
-    () => (auth?.company?.stores ?? []).map((s) => s.id),
-    [auth?.company?.stores],
-  );
-
-  const hoy = new Date();
-  const [pautaEntries] = usePautaEntries(companyId);
-  const [metas] = useMetasAnuales(companyId, hoy.getFullYear());
-  // 60 días para que las alertas de courier vencido alcancen a ver
-  // liquidaciones viejas, no solo el periodo elegido en el selector general.
-  // El periodo elegido puede ser más amplio (año, trimestre) que esos 60
-  // días, así que la ventana de la consulta cubre lo que sea más ancho.
-  const ventana60d = format(subDays(hoy, 60), "yyyy-MM-dd");
-  const hoyStr = format(hoy, "yyyy-MM-dd");
-  const ordersFrom = fromDate < ventana60d ? fromDate : ventana60d;
-  const ordersTo = toDate > hoyStr ? toDate : hoyStr;
-
-  const { data: orders = [], isLoading: loadingOrders } = useQuery({
-    queryKey: ["admin-reporte-orders", companyId, ordersFrom, ordersTo],
-    queryFn: () => getOrdersByCompany(companyId, ordersFrom, ordersTo),
-    enabled: !!companyId,
-    staleTime: STALE,
-  });
-
-  const settlementQuery = useQuery({
-    queryKey: ["courier-settlements", companyId, auth?.user?.id],
+  const settlementsQ = useQuery({
+    queryKey: ["courier-settlements", companyId],
     queryFn: ({ signal }) => getCourierSettlements(companyId, signal),
-    enabled: !!companyId && !!auth?.user?.id,
-    retry: false,
-  });
-
-  const { data: gastosMes = [], isLoading: loadingGastos } = useQuery({
-    queryKey: ["admin-reporte-gastos-mes", companyId, hoyStr],
-    queryFn: () => getGastos(companyId, format(startOfMonth(hoy), "yyyy-MM-dd"), hoyStr, token),
     enabled: !!companyId && !!token,
+    retry: false,
     staleTime: STALE,
   });
 
-  const { from, to, label } = rangoDesde(fromDate, toDate);
-
-  const { data: envios = 0, isLoading: loadingCourier } = useQuery({
-    queryKey: ["admin-reporte-courier", storeIds.join(","), fromDate, toDate],
-    queryFn: () => getCourierCost(storeIds, fromDate, toDate, token),
-    enabled: storeIds.length > 0 && !!token,
-    staleTime: STALE,
-  });
-
-  const loading = loadingOrders || loadingGastos || loadingCourier;
-
-  const entregadosPeriodo = useMemo(
-    () =>
-      soloEntregados(orders as any[]).filter((o) => fechaOrden(o) >= from && fechaOrden(o) <= to),
-    [orders, from, to],
+  const r = datos.resultados;
+  const etiqueta = etiquetaPeriodo(fromDate, toDate);
+  const proyeccion = proyectarMes(r, fromDate, toDate, hoy);
+  const notaEnvios = notaFlete(datos.flete);
+  const sim = useMemo(() => simular(r, supuestos), [r, supuestos]);
+  const balancesCourier = useMemo(
+    () => courierSettlementBalances(settlementsQ.data?.collections ?? []),
+    [settlementsQ.data],
   );
+  const rangoPublicidad = hastaAyer(fromDate, toDate, hoy);
+  const publicidadCortada = !!rangoPublicidad && rangoPublicidad.hasta !== toDate;
 
-  const publicidad = useMemo(
-    () => totalInvertidoEnRango(pautaEntries, fromDate, toDate),
-    [pautaEntries, fromDate, toDate],
-  );
-
-  const data = useMemo(() => {
-    const ventaTotal = entregadosPeriodo.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
-    const producto = entregadosPeriodo.reduce((s, o) => s + Number(o.costAmount || 0), 0);
-    const unidades = entregadosPeriodo.reduce(
-      (s, o) => s + (o.itemCount || (Array.isArray(o.items) ? o.items.length : 1)),
-      0,
-    );
-    const pedidos = entregadosPeriodo.length;
-    return {
-      ventaTotal,
-      producto,
-      unidades,
-      pedidos,
-      envios: Number(envios) || 0,
-      publicidad,
-    };
-  }, [entregadosPeriodo, envios, publicidad]);
-
-  const cpa = data.pedidos > 0 ? data.publicidad / data.pedidos : 0;
-  const roas = data.publicidad > 0 ? data.ventaTotal / data.publicidad : 0;
-  const ganancia = data.ventaTotal - data.producto - data.publicidad - data.envios;
-
-  const entregadosMes = useMemo(
-    () => soloEntregados(orders as any[]).filter((o) => fechaOrden(o) >= startOfMonth(hoy)),
-    [orders, hoy],
-  );
-  const diasDelMes = getDaysInMonth(hoy);
-  const ventaMes = entregadosMes.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
-  const productoMes = entregadosMes.reduce((s, o) => s + Number(o.costAmount || 0), 0);
-  const unidadesMes = entregadosMes.reduce(
-    (s, o) => s + (o.itemCount || (Array.isArray(o.items) ? o.items.length : 1)),
-    0,
-  );
-  // INVERSION (compra de mercadería por prenda) no es gasto operativo:
-  // ya se cuenta como costo de producto (COGS) al vender.
-  const gastosFijosMes = (gastosMes as any[])
-    .filter((g) => g.categoria !== "INVERSION")
-    .reduce((s, g) => s + Number(g.monto || 0), 0);
-  const publicidadMes = useMemo(
-    () => totalInvertidoEnRango(pautaEntries, format(startOfMonth(hoy), "yyyy-MM-dd"), hoyStr),
-    [pautaEntries, hoy, hoyStr],
-  );
-
-  const metaMensual = metas.ventasAnual / 12;
-  // Proyección de cierre del periodo elegido en el selector general (no
-  // siempre "el mes en curso" — antes esta card ignoraba el filtro de
-  // arriba y siempre proyectaba el mes actual, lo que la hacía no coincidir
-  // con "VENTA TOTAL" cuando el periodo elegido era otro). Si el periodo ya
-  // terminó (to <= hoy), el factor de proyección es 1 y el estimado queda
-  // igual al real.
-  const proyeccion = useMemo(() => {
-    const diasDelPeriodo = Math.max(1, differenceInCalendarDays(to, from) + 1);
-    const hoyAcotado = hoy < to ? hoy : to;
-    const diasTranscurridosPeriodo = Math.max(1, differenceInCalendarDays(hoyAcotado, from) + 1);
-    const estVentas = Math.round((data.ventaTotal / diasTranscurridosPeriodo) * diasDelPeriodo);
-    const estGanancia = Math.round(
-      ((data.ventaTotal - data.producto - data.publicidad) / diasTranscurridosPeriodo) *
-        diasDelPeriodo,
-    );
-    const estUnidades = Math.round((data.unidades / diasTranscurridosPeriodo) * diasDelPeriodo);
-    // Meta mensual prorateada a la duración del periodo elegido, para que
-    // el % de avance tenga sentido incluso si el periodo no es "el mes".
-    const metaPeriodo = metaMensual > 0 ? (metaMensual / diasDelMes) * diasDelPeriodo : 0;
-    return {
-      diasTranscurridos: diasTranscurridosPeriodo,
-      diasDelPeriodo,
-      estVentas,
-      estGanancia,
-      estUnidades,
-      metaPeriodo,
-      pctMeta: metaPeriodo > 0 ? (estVentas / metaPeriodo) * 100 : 0,
-    };
-  }, [data, from, to, hoy, diasDelMes, metaMensual]);
-
-  const precioNetoProm = unidadesMes > 0 ? ventaMes / unidadesMes : 0;
-  const cogsProm = unidadesMes > 0 ? productoMes / unidadesMes : 0;
-
-  const sim = useMemo(() => {
-    const precio = precioNetoProm * (1 + deltaPrecio / 100);
-    const mc = precio - cogsProm - tarifaCourier;
-    const pe = mc > 0 && gastosFijosMes > 0 ? Math.ceil(gastosFijosMes / mc) : null;
-    const unidades = Math.round(unidadesMes * (1 + (deltaAds / 100) * 0.4));
-    const ventas = Math.round(unidades * precio);
-    const ads = Math.round(publicidadMes * (1 + deltaAds / 100));
-    const gananciaSim = Math.round(
-      ventas - unidades * cogsProm - unidades * tarifaCourier - ads - gastosFijosMes,
-    );
-    return { mc, pe, ventas, gananciaSim };
-  }, [
-    precioNetoProm,
-    cogsProm,
-    tarifaCourier,
-    deltaPrecio,
-    deltaAds,
-    unidadesMes,
-    gastosFijosMes,
-    publicidadMes,
-  ]);
-
-  const alertas = useMemo(() => {
-    const list: { nivel: Nivel; texto: string }[] = [];
-    if (settlementQuery.isPending || settlementQuery.isError) {
-      list.push({ nivel: "ambar", texto: settlementQuery.isError
-        ? "No se pudieron verificar los saldos del courier. Revisa Liquidaciones."
-        : "Consultando los saldos confirmados del courier…" });
-    } else {
-      for (const balance of courierSettlementBalances(settlementQuery.data?.collections ?? [])) {
-        list.push({
-          nivel: "ambar",
-          texto: `${balance.courierName}: ${settlementMoney(balance.remainingAmount, balance.currency)} de cobros confirmados pendientes de liquidar; ${settlementMoney(balance.reservedAmount, balance.currency)} en revisión. Revisa Liquidaciones.`,
-        });
-      }
-    }
-    const transito = enTransito(orders as any[]);
-    if (transito.length > 0) {
-      const monto = transito.reduce(
-        (s, o) => s + Math.max(0, Number(o.grandTotal || 0) - paidAmount(o)),
-        0,
-      );
-      if (monto > 0)
-        list.push({
-          nivel: "azul",
-          texto: `${transito.length} pedidos en tránsito con ${fmtMoney(monto)} en saldo COD por entregar.`,
-        });
-    }
-    if (publicidadMes === 0) {
-      list.push({
-        nivel: "ambar",
-        texto:
-          "No has registrado inversión manual este mes. La publicidad y sus métricas manuales no confirman el consumo del proveedor.",
-      });
-    }
-    if (proyeccion.metaPeriodo > 0 && proyeccion.estVentas >= proyeccion.metaPeriodo) {
-      list.push({
-        nivel: "verde",
-        texto: `Al ritmo actual superas tu meta para este periodo (${fmtMoney(proyeccion.metaPeriodo)}) — puedes escalar con confianza.`,
-      });
-    }
-    if (list.length === 0) {
-      list.push({
-        nivel: "verde",
-        texto: "No se detectaron alertas con los datos disponibles. Los cobros sin confirmar requieren revisión en Liquidaciones.",
-      });
-    }
-    return list;
-  }, [orders, publicidadMes, proyeccion.metaPeriodo, proyeccion.estVentas, settlementQuery.data, settlementQuery.isPending, settlementQuery.isError]);
-
-  const shareText = `📊 REPORTE ${label.toUpperCase()}\n\nVenta total: ${fmtMoney(data.ventaTotal)}\nProducto: ${fmtMoney(data.producto)}\nPublicidad manual por conciliar: ${fmtMoney(data.publicidad)}\nEnvíos: ${fmtMoney(data.envios)}\nCPA por pedido (manual): ${fmtMoney(cpa, 2)}\nGANANCIA: ${fmtMoney(ganancia)}\n\nUnidades: ${data.unidades} · Pedidos: ${data.pedidos} · Ventas / inversión manual: ${data.publicidad > 0 ? roas.toFixed(1) + "×" : "—"}\n— vía POWIP`;
-
-  const handleCopy = async () => {
+  const copiar = async () => {
     try {
-      await navigator.clipboard.writeText(shareText);
-      toast.success("Reporte copiado · pégalo en WhatsApp");
+      await navigator.clipboard.writeText(textoParaCompartir(r, etiqueta, datos.flete));
+      toast.success("Reporte copiado: pégalo en WhatsApp");
     } catch {
-      toast.error("No se pudo copiar");
+      toast.error("No se pudo copiar el reporte");
     }
   };
 
-  if (loading) {
+  if (datos.error) {
     return (
-      <div className="space-y-6 p-4 sm:p-6 lg:p-8">
-        <h2 className="text-lg font-semibold">Reporte rápido</h2>
-        <AdvertisingBusinessMetricsPanel from={fromDate} to={toDate} />
-        {["ventas", "publicidad", "proyeccion", "alertas"].map((key) => (
-          <Skeleton key={key} className="h-48 rounded-xl" />
-        ))}
+      <div className="space-y-3.5">
+        <PanelError error={datos.error instanceof Error ? datos.error : new Error(String(datos.error))} />
       </div>
     );
   }
 
+  const metaVentas = proyeccion
+    ? metas.ventasAnual !== null
+      ? metas.ventasAnual / 12
+      : null
+    : metaDelPeriodo(metas.ventasAnual, anioPeriodo, fromDate, toDate);
+  const metaUtilidad = proyeccion
+    ? metas.profitAnual !== null
+      ? metas.profitAnual / 12
+      : null
+    : metaDelPeriodo(metas.profitAnual, anioPeriodo, fromDate, toDate);
+  const cruzaAnio = partes(toDate)[0] !== anioPeriodo;
+
+  const alertas: { clave: string; tono: "info" | "warn" | "bad" | "ok"; titulo: string; texto?: ReactNode }[] = [];
+  if (settlementsQ.isError) {
+    alertas.push({
+      clave: "courier-error",
+      tono: "warn",
+      titulo: "No se pudieron revisar los cobros del courier por liquidar",
+      texto: (
+        <Link href={RUTA_LIQUIDACIONES} className="font-semibold text-pc-primary hover:underline">
+          Revisa Liquidaciones
+        </Link>
+      ),
+    });
+  }
+  for (const balance of balancesCourier) {
+    alertas.push({
+      clave: `courier-${balance.key}`,
+      tono: "warn",
+      titulo: `${balance.courierName}: ${settlementMoney(balance.remainingAmount, balance.currency)} cobrados y sin liquidar`,
+      texto: (
+        <>
+          {settlementMoney(balance.reservedAmount, balance.currency)} en revisión.{" "}
+          <Link href={RUTA_LIQUIDACIONES} className="font-semibold text-pc-primary hover:underline">
+            Revisa Liquidaciones
+          </Link>
+        </>
+      ),
+    });
+  }
+  if (!datos.cargando && r.ventas > 0 && r.utilidadOperativa < 0) {
+    alertas.push({
+      clave: "utilidad",
+      tono: "warn",
+      titulo: `La utilidad operativa del periodo es negativa (${formatSoles(r.utilidadOperativa)})`,
+      texto: "Revisa el detalle del reporte para ver qué línea pesa más.",
+    });
+  }
+  if (!datos.cargando && r.gastosFijos === 0) {
+    alertas.push({
+      clave: "sin-fijos",
+      tono: "info",
+      titulo: "No hay gastos fijos cargados para este periodo",
+      texto: (
+        <>
+          La utilidad operativa no descuenta planilla, herramientas ni otros gastos.{" "}
+          <Link href={RUTA_GASTOS} className="font-semibold text-pc-primary hover:underline">
+            Cárgalos en Costos › Gastos y costos
+          </Link>
+          .
+        </>
+      ),
+    });
+  }
+  const antiguos = transito.antiguos;
+  if (!transito.cargando && !transito.error && antiguos.pedidos > 0) {
+    alertas.push({
+      clave: "transito-antiguo",
+      tono: "info",
+      titulo: `${formatNumber(antiguos.pedidos)} ${antiguos.pedidos === 1 ? "pedido sigue" : "pedidos siguen"} en calle después de ${antiguos.dias} días`,
+      texto: `${formatSoles(antiguos.saldo)} por cobrar. Revisa si se entregaron o se devolvieron y actualiza su estado.`,
+    });
+  }
+
   return (
-    <div className="space-y-6 p-4 sm:p-6 lg:p-8">
-      <h2 className="text-lg font-semibold">Reporte rápido</h2>
-      <AdvertisingBusinessMetricsPanel from={fromDate} to={toDate} />
-      <AdvertisingAssignedSpendV11 from={fromDate} to={toDate} />
-      <details className="space-y-5 rounded-xl border border-border p-4">
-        <summary className="cursor-pointer text-sm font-medium">
-          Registros manuales y proyección
-        </summary>
-        <p className="text-xs text-muted-foreground">
-          Datos de este dispositivo. Usan el cálculo anterior y requieren conciliación.
-        </p>
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <p className="text-[10px] font-bold text-primary uppercase tracking-[0.2em]">
-              Lo que compartes a diario
-            </p>
-            <h3 className="text-lg font-bold mt-0.5">Reporte manual</h3>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              Publicidad y meta mensual: guardadas en este dispositivo (Pauta por canal / Resumen
-              Anual)
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button size="sm" onClick={() => setShareOpen(true)}>
-              <Share2 className="h-4 w-4 mr-1.5" /> Compartir
-            </Button>
-          </div>
+    <div className="space-y-3.5">
+      {!datos.cargando && <AvisoCostos costo={r.costo} />}
+      {!datos.cargando && <NotaSinHistorial cantidad={datos.servidor.calidad.entregasSinHistorial} />}
+
+      {datos.cargando ? (
+        <PanelSkeleton variant="kpis" label="resultados del periodo" />
+      ) : (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <KpiCard
+            label="Ventas"
+            value={formatSoles(r.ventas)}
+            sub={`${formatNumber(r.pedidos)} pedidos · ${formatNumber(r.unidades)} unidades`}
+          />
+          <KpiCard
+            label="Costo de producto"
+            value={formatSoles(r.costoProducto)}
+            sub={`${formatPercent(r.ventas > 0 ? r.costoProducto / r.ventas : null)} de las ventas`}
+          />
+          <KpiCard
+            label="Publicidad"
+            value={formatSoles(r.publicidad.total)}
+            sub={
+              r.publicidad.conectada === null
+                ? `Gastos › Publicidad ${formatSoles(r.publicidad.gastos)} · cuentas conectadas sin dato`
+                : `Conectada ${formatSoles(r.publicidad.conectada)} · Gastos ${formatSoles(r.publicidad.gastos)}`
+            }
+          />
+          <KpiCard
+            label="Envíos"
+            value={formatSoles(r.envios)}
+            sub={
+              <span className={notaEnvios?.baja ? "text-pc-warn" : undefined}>
+                {datos.flete.entregas > 0
+                  ? `Flete por pedido · conocido en ${formatNumber(datos.flete.conFlete)} de ${formatNumber(datos.flete.entregas)} entregas`
+                  : "Flete por pedido"}
+              </span>
+            }
+          />
+          <KpiCard label="Gastos fijos" value={formatSoles(r.gastosFijos)} sub="Del mes, repartidos por días" />
+          <KpiCard
+            label="Utilidad operativa"
+            value={<span className={r.utilidadOperativa < 0 ? "text-pc-bad" : undefined}>{formatSoles(r.utilidadOperativa)}</span>}
+            sub={`Margen ${formatPercent(r.margenOperativo)} · igual que en Resumen`}
+          />
         </div>
+      )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="space-y-6">
-            <Card className="border-2">
-              <CardContent className="pt-5">
-                <div className="font-bold text-sm tracking-wide border-b-2 border-foreground pb-2 mb-1">
-                  {label.toUpperCase()}
-                </div>
-                <ReporteRow label="VENTA TOTAL" valor={fmtMoney(data.ventaTotal)} bold />
-                <ReporteRow label="PRODUCTO" valor={fmtMoney(data.producto)} />
-                <ReporteRow label="PUBLICIDAD MANUAL" valor={fmtMoney(data.publicidad)} />
-                <ReporteRow label="ENVÍOS" valor={fmtMoney(data.envios)} />
-                <ReporteRow label="CPA por pedido (manual)" valor={fmtMoney(cpa, 2)} />
-                <div className="flex justify-between items-center bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-bold px-4 py-3 rounded-b-lg -mx-6 -mb-6 mt-2">
-                  <span>GANANCIA</span>
-                  <span className="font-mono">{fmtMoney(ganancia)}</span>
-                </div>
-                <div className="flex gap-4 mt-6 text-xs text-muted-foreground">
-                  <span>
-                    Unidades: <b className="text-foreground">{fmtNum(data.unidades)}</b>
-                  </span>
-                  <span>
-                    Pedidos: <b className="text-foreground">{fmtNum(data.pedidos)}</b>
-                  </span>
-                  <span>
-                    Ventas / inversión manual:{" "}
-                    <b className="text-foreground">
-                      {data.publicidad > 0 ? `${roas.toFixed(1)}×` : "—"}
-                    </b>
-                  </span>
-                </div>
-                {data.publicidad === 0 && (
-                  <p className="text-[10px] text-muted-foreground mt-2">
-                    Sin inversión manual registrada para este periodo. Sus métricas quedan en S/ 0 /
-                    &quot;—&quot; y no confirman el consumo del proveedor.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[3fr_2fr]">
+        <PanelCard
+          titulo={`Reporte · ${etiqueta}`}
+          subtitulo="La misma cuenta de Resultados › Resumen. Ventas con IGV, como se cobran."
+          acciones={
+            <button type="button" className={claseBotonSecundario} onClick={copiar} disabled={datos.cargando}>
+              <Copy className="h-3.5 w-3.5" aria-hidden /> Copiar para WhatsApp
+            </button>
+          }
+        >
+          {datos.cargando ? (
+            <PanelSkeleton variant="tabla" label="reporte del periodo" />
+          ) : (
+            <TablaCascada lineas={lineasReporte(r, datos.flete)} base={r.ventas} caption={`Reporte de ${etiqueta}`} />
+          )}
+        </PanelCard>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">📈 Proyección de cierre — {label}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-emerald-50 dark:bg-emerald-500/10 rounded-lg p-3 text-center">
-                    <p className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 uppercase">
-                      Total ingresos (proy.)
-                    </p>
-                    <p className="text-xl font-bold font-mono text-emerald-700 dark:text-emerald-300">
-                      {fmtMoney(proyeccion.estVentas)}
-                    </p>
-                  </div>
-                  <div className="bg-amber-50 dark:bg-amber-500/10 rounded-lg p-3 text-center">
-                    <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300 uppercase">
-                      Unidades (proy.)
-                    </p>
-                    <p className="text-xl font-bold font-mono text-amber-700 dark:text-amber-300">
-                      {fmtNum(proyeccion.estUnidades)}
-                    </p>
-                  </div>
-                </div>
-                <Progress value={Math.min(100, proyeccion.pctMeta)} />
-                <p className="text-xs text-muted-foreground">
-                  {proyeccion.diasTranscurridos >= proyeccion.diasDelPeriodo ? (
-                    <>Este periodo ({proyeccion.diasDelPeriodo} días) cerró en </>
-                  ) : (
-                    <>
-                      Al ritmo actual ({proyeccion.diasTranscurridos}/{proyeccion.diasDelPeriodo}{" "}
-                      días de este periodo) cierras en{" "}
-                    </>
-                  )}
-                  <b className="text-foreground">{fmtMoney(proyeccion.estVentas)}</b> ={" "}
-                  <b className="text-foreground">{fmtPct(proyeccion.pctMeta, 0)}</b> de tu meta para
-                  este periodo ({fmtMoney(proyeccion.metaPeriodo)}, prorateada de la meta mensual —
-                  editable en Resumen Anual) · ganancia proyectada{" "}
-                  <b className="text-emerald-600">{fmtMoney(proyeccion.estGanancia)}</b>.
+        <PanelCard
+          titulo={proyeccion ? "Proyección del mes" : "Meta del periodo"}
+          subtitulo={
+            proyeccion
+              ? `Al ritmo de los ${proyeccion.diasTranscurridos} días que van de ${proyeccion.diasMes}. Hoy cuenta aunque todavía no termina.`
+              : "La proyección del mes sale con «Este mes» (del 1 a hoy). Acá, lo logrado contra la meta repartida por días."
+          }
+        >
+          {datos.cargando ? (
+            <PanelSkeleton variant="linea" label="proyección" />
+          ) : (
+            <div className="space-y-3">
+              {proyeccion && (
+                <dl className="grid grid-cols-2 gap-3">
+                  <Dato label="Ventas al cierre" valor={formatSoles(proyeccion.ventas)} sub={`Van ${formatSoles(r.ventas)}`} />
+                  <Dato
+                    label="Utilidad operativa al cierre"
+                    valor={formatSoles(proyeccion.utilidad)}
+                    tono={proyeccion.utilidad < 0 ? "bad" : undefined}
+                    sub="Misma cuenta, con los gastos del mes entero"
+                  />
+                </dl>
+              )}
+              {cruzaAnio && !proyeccion ? (
+                <p className="text-xs text-pc-text-muted">
+                  El periodo cruza de un año a otro: elige uno dentro del mismo año para compararlo con la meta.
                 </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">🔔 Alertas — atiende esto hoy </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-0">
-                {alertas.map((a) => (
-                  <div key={a.texto} className="flex gap-2.5 py-2.5 border-b last:border-0 text-sm">
-                    <NivelDot nivel={a.nivel} className="mt-1.5" />
-                    <span>{a.texto}</span>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">
-                  🧮 Simulador · ¿qué pasa si…?{" "}
-                  <span className="text-xs font-normal text-muted-foreground">
-                    precio/COGS/unidades del mes en curso, reales
-                  </span>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label className="text-xs">
-                    Precio de venta{" "}
-                    <b>
-                      {deltaPrecio > 0 ? "+" : ""}
-                      {deltaPrecio}%
-                    </b>
-                  </Label>
-                  <input
-                    type="range"
-                    min={-20}
-                    max={20}
-                    step={1}
-                    value={deltaPrecio}
-                    onChange={(e) => setDeltaPrecio(Number(e.target.value))}
-                    className="w-full accent-primary"
+              ) : (
+                <>
+                  <FilaMeta
+                    etiqueta={proyeccion ? "Ventas al cierre vs meta del mes" : "Ventas vs meta"}
+                    logrado={proyeccion ? proyeccion.ventas : r.ventas}
+                    meta={metaVentas}
                   />
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs">
-                    Inversión manual en ADS{" "}
-                    <b>
-                      {deltaAds > 0 ? "+" : ""}
-                      {deltaAds}%
-                    </b>{" "}
-                    <span className="text-[10px] text-muted-foreground">
-                      sobre {fmtMoney(publicidadMes)} invertidos este mes (Pauta por canal) ·
-                      elasticidad estimada
-                    </span>
-                  </Label>
-                  <input
-                    type="range"
-                    min={-50}
-                    max={100}
-                    step={5}
-                    value={deltaAds}
-                    onChange={(e) => setDeltaAds(Number(e.target.value))}
-                    className="w-full accent-primary"
+                  <FilaMeta
+                    etiqueta={proyeccion ? "Utilidad al cierre vs meta del mes" : "Utilidad operativa vs meta"}
+                    logrado={proyeccion ? proyeccion.utilidad : r.utilidadOperativa}
+                    meta={metaUtilidad}
                   />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Label className="text-xs whitespace-nowrap">Tarifa courier</Label>
-                  <Input
-                    type="number"
-                    className="w-24 font-mono h-8"
-                    value={tarifaCourier}
-                    onChange={(e) => setTarifaCourier(Number(e.target.value) || 0)}
-                  />
-                  <span className="text-xs text-muted-foreground">S/ por pedido</span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 pt-1">
-                  <SimCell label="Margen contrib./u" valor={fmtMoney(sim.mc, 2)} />
-                  <SimCell label="Punto equilibrio" valor={sim.pe ? `${sim.pe} u` : "—"} />
-                  <SimCell label="Ventas estimadas" valor={fmtMoney(sim.ventas)} />
-                  <SimCell
-                    label="Ganancia estimada"
-                    valor={fmtMoney(sim.gananciaSim)}
-                    positive={sim.gananciaSim >= 0}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-
-        <Dialog open={shareOpen} onOpenChange={setShareOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Compartir reporte</DialogTitle>
-              <DialogDescription>Listo para pegar en WhatsApp</DialogDescription>
-            </DialogHeader>
-            <div className="border rounded-xl p-4 bg-card shadow-sm">
-              <div className="font-bold text-sm border-b-2 border-foreground pb-2 mb-1">
-                {label.toUpperCase()}
-              </div>
-              <ReporteRow label="VENTA TOTAL" valor={fmtMoney(data.ventaTotal)} bold />
-              <ReporteRow label="PRODUCTO" valor={fmtMoney(data.producto)} />
-              <ReporteRow label="PUBLICIDAD MANUAL" valor={fmtMoney(data.publicidad)} />
-              <ReporteRow label="ENVÍOS" valor={fmtMoney(data.envios)} />
-              <ReporteRow label="CPA por pedido (manual)" valor={fmtMoney(cpa, 2)} />
-              <div className="flex justify-between font-bold text-emerald-700 dark:text-emerald-300 pt-2">
-                <span>GANANCIA</span>
-                <span className="font-mono">{fmtMoney(ganancia)}</span>
-              </div>
+                  <NotaSinMeta metas={metas} />
+                </>
+              )}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Publicidad y meta mensual salen de lo que registraste en este dispositivo (Pauta por
-              canal / Resumen Anual) — no se sincronizan todavía con el resto del equipo. El envío
-              automático por WhatsApp llega en Fase 2.
-            </p>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShareOpen(false)}>
-                Cerrar
-              </Button>
-              <Button onClick={handleCopy}>
-                <Copy className="h-4 w-4 mr-1.5" /> Copiar texto
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </details>
-    </div>
-  );
-}
+          )}
+        </PanelCard>
+      </div>
 
-function ReporteRow({
-  label,
-  valor,
-  bold,
-  muted,
-}: {
-  label: string;
-  valor: string;
-  bold?: boolean;
-  muted?: boolean;
-}) {
-  return (
-    <div
-      className={`flex justify-between items-center py-2 border-b text-sm ${bold ? "font-bold" : ""}`}
-    >
-      <span>{label}</span>
-      <span className={`font-mono ${muted ? "text-muted-foreground text-xs" : ""}`}>{valor}</span>
-    </div>
-  );
-}
+      <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-[3fr_2fr]">
+        <PanelCard
+          titulo="Simulador · ¿qué pasa si…?"
+          subtitulo="Parte de los números reales del periodo. Con todo en cero da la utilidad operativa de arriba."
+          acciones={
+            <button
+              type="button"
+              className={claseBotonSecundario}
+              onClick={() => setSupuestos(SUPUESTOS_INICIALES)}
+              disabled={supuestos === SUPUESTOS_INICIALES}
+            >
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden /> Volver a lo real
+            </button>
+          }
+        >
+          {datos.cargando ? (
+            <PanelSkeleton variant="tabla" label="simulador" />
+          ) : !sim ? (
+            <p className="text-xs text-pc-text-muted">Sin ventas en el periodo: no hay con qué simular.</p>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Deslizador
+                  id="sim-precio"
+                  etiqueta="Precio de venta"
+                  valor={supuestos.precio}
+                  min={-20}
+                  max={20}
+                  step={1}
+                  onChange={(precio) => setSupuestos((s) => ({ ...s, precio }))}
+                  ayuda={`Hoy ${formatSolesDecimales(r.ventas / r.unidades)} por unidad`}
+                />
+                <Deslizador
+                  id="sim-publicidad"
+                  etiqueta="Publicidad"
+                  valor={supuestos.publicidad}
+                  min={-50}
+                  max={100}
+                  step={5}
+                  disabled={r.publicidad.total <= 0}
+                  onChange={(publicidad) => setSupuestos((s) => ({ ...s, publicidad }))}
+                  ayuda={
+                    r.publicidad.total > 0
+                      ? `Sobre ${formatSoles(r.publicidad.total)} del periodo`
+                      : "Sin publicidad en el periodo: este cambio no aplica"
+                  }
+                />
+              </div>
+              <div className="rounded-xl border border-pc-border bg-pc-surface-muted px-3 py-2 text-xs text-pc-text">
+                <label htmlFor="sim-respuesta" className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-semibold">Supuesto:</span> por cada 10 % más de publicidad, tus unidades suben
+                  <input
+                    id="sim-respuesta"
+                    type="number"
+                    min={0}
+                    max={10}
+                    step={0.5}
+                    value={supuestos.respuesta}
+                    onChange={(e) =>
+                      setSupuestos((s) => ({ ...s, respuesta: Math.max(0, Number(e.target.value) || 0) }))
+                    }
+                    className={`${claseInput} w-16 text-right tabular-nums`}
+                  />
+                  %
+                </label>
+                <p className="mt-1 text-pc-text-muted">
+                  No sale de tus datos: cámbialo según lo que viste en tus campañas.
+                </p>
+              </div>
+              <dl className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                <Dato label="Ventas estimadas" valor={formatSoles(sim.ventas)} sub={`${formatNumber(sim.unidades)} unidades`} />
+                <Dato
+                  label="Utilidad operativa estimada"
+                  valor={formatSoles(sim.utilidad)}
+                  tono={sim.utilidad < 0 ? "bad" : "ok"}
+                  sub={`Real ${formatSoles(r.utilidadOperativa)}`}
+                />
+                <Dato
+                  label="Contribución por unidad"
+                  valor={formatSolesDecimales(sim.contribucionUnidad)}
+                  sub="Después de costo, envío, comisión y publicidad"
+                />
+                <Dato
+                  label="Punto de equilibrio"
+                  valor={sim.puntoEquilibrio !== null ? `${formatNumber(sim.puntoEquilibrio)} u` : SIN_DATO}
+                  sub="Unidades para cubrir los gastos fijos"
+                />
+              </dl>
+              <p className="text-[11px] leading-relaxed text-pc-text-muted">
+                Con los datos del periodo: costo {formatSolesDecimales(sim.costoUnidad)} por unidad · envío{" "}
+                {formatSolesDecimales(sim.envioPorPedido)} por pedido (envíos ÷ pedidos) · comisiones{" "}
+                {formatPercent(sim.tasaComision, 1)} de las ventas · gastos fijos {formatSoles(r.gastosFijos)} · publicidad
+                simulada {formatSoles(sim.publicidad)}.
+              </p>
+            </div>
+          )}
+        </PanelCard>
 
-function SimCell({ label, valor, positive }: { label: string; valor: string; positive?: boolean }) {
-  return (
-    <div
-      className={`rounded-lg p-2.5 text-center ${positive === undefined ? "bg-muted" : positive ? "bg-emerald-50 dark:bg-emerald-500/10" : "bg-red-50 dark:bg-red-500/10"}`}
-    >
-      <p className="text-[10px] text-muted-foreground">{label}</p>
-      <p
-        className={`font-bold font-mono ${positive === undefined ? "" : positive ? "text-emerald-700 dark:text-emerald-300" : "text-destructive"}`}
+        <div className="space-y-3.5">
+          <PanelCard
+            titulo="Por cobrar en calle (contra entrega)"
+            subtitulo={`Pedidos en calle de los últimos ${diasEntre(transito.desde, transito.hasta)} días: con guía asignada, en envío o despachados. Es una foto de hoy, no depende del periodo.`}
+          >
+            {transito.cargando ? (
+              <PanelSkeleton variant="linea" label="pedidos en calle" />
+            ) : transito.error ? (
+              <p className="text-xs text-pc-text-muted">No se pudieron leer los pedidos en calle.</p>
+            ) : (
+              <div className="space-y-3">
+                <dl className="grid grid-cols-2 gap-3">
+                  <Dato label="Saldo por cobrar" valor={formatSoles(transito.saldo)} />
+                  <Dato label="Pedidos en calle" valor={formatNumber(transito.pedidos)} />
+                </dl>
+                <ul className="space-y-1 text-xs" aria-label="Pedidos en calle por estado">
+                  {ESTADOS_EN_TRANSITO.map((estado) => (
+                    <li key={estado} className="flex justify-between gap-2 border-t border-pc-border-soft pt-1">
+                      <span className="text-pc-text-muted">{NOMBRE_ESTADO_TRANSITO[estado]}</span>
+                      <span className="tabular-nums text-pc-text">
+                        {formatNumber(transito.porEstado[estado].pedidos)} · {formatSoles(transito.porEstado[estado].saldo)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </PanelCard>
+
+          <PanelCard titulo="Para atender">
+            {alertas.length === 0 ? (
+              <p className="text-xs text-pc-text-muted">Sin alertas con los datos disponibles.</p>
+            ) : (
+              <div className="space-y-2">
+                {alertas.map((a) => (
+                  <Aviso key={a.clave} tono={a.tono} titulo={a.titulo}>
+                    {a.texto}
+                  </Aviso>
+                ))}
+              </div>
+            )}
+          </PanelCard>
+        </div>
+      </div>
+
+      <PanelCard
+        titulo="Publicidad: costo por venta y retorno"
+        subtitulo={
+          rangoPublicidad
+            ? `Del módulo de publicidad, con días cerrados (${etiquetaPeriodo(rangoPublicidad.desde, rangoPublicidad.hasta)}). No incluye lo cargado en Gastos › Publicidad.`
+            : undefined
+        }
+        acciones={
+          <Link href={RUTA_PUBLICIDAD} className={claseBotonSecundario}>
+            Ver por tienda y canal
+          </Link>
+        }
       >
-        {valor}
-      </p>
+        {!rangoPublicidad ? (
+          <p className="text-xs text-pc-text-muted">
+            Los cocientes de publicidad salen con días cerrados: elige un periodo que termine ayer.
+          </p>
+        ) : MENSAJE_PUBLICIDAD[datos.publicidad.estado] ? (
+          <p className="text-xs text-pc-text-muted">{MENSAJE_PUBLICIDAD[datos.publicidad.estado]}</p>
+        ) : datos.publicidad.estado === "cargando" ? (
+          <PanelSkeleton variant="grafico" label="publicidad" />
+        ) : (
+          <div className="space-y-3">
+            {publicidadCortada && (
+              <Aviso tono="info">
+                Llega hasta ayer: hoy todavía no cierra y los cocientes de publicidad solo salen con días cerrados.
+              </Aviso>
+            )}
+            <AdvertisingBusinessMetricsPanel from={rangoPublicidad.desde} to={rangoPublicidad.hasta} />
+          </div>
+        )}
+      </PanelCard>
     </div>
   );
 }

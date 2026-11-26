@@ -1,8 +1,9 @@
 "use client";
 import LiveYapeReviews from "@/features/live/LiveYapeReviews";
+import { canReviewLivePayments } from "@/features/live/liveService";
 import {useAuth} from "@/contexts/AuthContext";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { lazy, Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import {
   Dialog,
@@ -22,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import {
   DollarSign,
+  FileText,
   Upload,
   Check,
   AlertCircle,
@@ -33,6 +35,10 @@ import {
 import axios from "axios";
 import axiosAuth from "@/lib/axiosAuth";
 import { toast } from "sonner";
+import { reviewCorePayment, updateCorePaymentReceiptAmount, listFinanceQueue } from "@/services/crmOrderPanelService";
+import { CRM_PAU_QUEUE_KEY } from "@/components/finanzas/CrmPauReceipts";
+import { useCrmAccess } from "@/hooks/useCrmPlan";
+import { useQuery } from "@tanstack/react-query";
 import {
   getLeadPaymentCapabilities,
   captureLeadPayment,
@@ -60,7 +66,11 @@ interface Payment {
   leadPaymentVersion?: number | null;
 }
 
+// Mismo detalle del pedido que abre Ventas (columna Resumen → Ver). Se reutiliza, no se copia.
+const OrderDetailModal = lazy(() => import("@/components/modals/CustomerServiceModal"));
+
 interface OrderData {
+  customerName?: string | null;
   storeId?: string;
   externalSource?: string;
   companyId?: string;
@@ -153,6 +163,21 @@ export default function PaymentVerificationModal({
   const [orderData, setOrderData] = useState<OrderData | null>(null);
   const [leadPaymentCaps, setLeadPaymentCaps] = useState<LeadPaymentCapabilities | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [orderDetailOpen, setOrderDetailOpen] = useState(false);
+  // Pagos del Core que vienen de un comprobante de Pau: se decide por el id del pago, no por texto.
+  // Solo empresas con acceso al CRM lo consultan; sin acceso, ningún pago es de Pau.
+  const crmAllowed = useCrmAccess(open).data?.allowed === true;
+  const pauReceiptsQuery = useQuery({
+    queryKey: CRM_PAU_QUEUE_KEY,
+    queryFn: () => listFinanceQueue("porval", "pau"),
+    enabled: open && crmAllowed,
+    retry: false,
+    staleTime: 15_000,
+  });
+  const pauCorePaymentIds = new Set(
+    (pauReceiptsQuery.data ?? []).map((r) => r.corePaymentId).filter((id): id is string => !!id),
+  );
+  const isPauPayment = (payment: { id: string }) => pauCorePaymentIds.has(payment.id);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [uploadingProofForId, setUploadingProofForId] = useState<string | null>(
     null,
@@ -231,6 +256,7 @@ export default function PaymentVerificationModal({
       );
       if (!isCurrentRequest()) return;
       setOrderData({
+        customerName: res.data.customer?.fullName ?? null,
         storeId: res.data.storeId,
         externalSource: res.data.externalSource,
         companyId: res.data.companyId || res.data.customer?.companyId,
@@ -416,9 +442,16 @@ export default function PaymentVerificationModal({
           version: payment.leadPaymentVersion,
         });
       } else {
-        await axiosAuth.patch(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/approve`,
-        );
+        // Pago de Pau: CRM aprueba el pago y hace sus efectos (venta cobrada, aviso, «Validado por Pau»).
+        const crmReview =
+          payment && isPauPayment(payment)
+            ? await reviewCorePayment(paymentId, true)
+            : null;
+        if (!crmReview) {
+          await axiosAuth.patch(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/approve`,
+          );
+        }
       }
       if (!currentOperation(epoch)) return;
       toast.success("Pago aprobado");
@@ -470,10 +503,16 @@ export default function PaymentVerificationModal({
           notes: "Pago rechazado",
         });
       } else {
-        await axiosAuth.patch(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/reject`,
-          { notes: "Pago rechazado" },
-        );
+        const crmReview =
+          payment && isPauPayment(payment)
+            ? await reviewCorePayment(paymentId, false, "Pago rechazado")
+            : null;
+        if (!crmReview) {
+          await axiosAuth.patch(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/reject`,
+            { notes: "Pago rechazado" },
+          );
+        }
       }
       if (!currentOperation(epoch)) return;
       toast.success("Pago rechazado");
@@ -539,6 +578,10 @@ export default function PaymentVerificationModal({
           `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}`,
           { amount: numericAmount },
         );
+        // Si el pago es de Pau, el aviso de aprobación usa el monto corregido.
+        if (payment && isPauPayment(payment)) {
+          await updateCorePaymentReceiptAmount(paymentId, numericAmount);
+        }
       }
       if (!currentOperation(epoch)) return;
       toast.success("Monto del pago actualizado");
@@ -762,7 +805,7 @@ export default function PaymentVerificationModal({
     onClose();
   };
 
-  if (orderData?.externalSource === "POWIP_LIVE" && orderData.storeId) return <Dialog open={open} onOpenChange={value => { if (!value) handleClose(); }}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>Pagos · {orderNumber}</DialogTitle></DialogHeader><LiveYapeReviews storeId={orderData.storeId} orderId={orderId} canReview={auth?.user?.role?.toUpperCase() === "ADMINISTRADOR"} onUpdated={paymentChanged}/></DialogContent></Dialog>;
+  if (orderData?.externalSource === "POWIP_LIVE" && orderData.storeId) return <Dialog open={open} onOpenChange={value => { if (!value) handleClose(); }}><DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl"><DialogHeader><DialogTitle>Pagos · {orderNumber}</DialogTitle></DialogHeader><LiveYapeReviews storeId={orderData.storeId} orderId={orderId} canReview={canReviewLivePayments(auth?.user)} onUpdated={paymentChanged}/></DialogContent></Dialog>;
   return (
     <Dialog open={open} onOpenChange={(open) => !open && handleClose()}>
       <DialogContent className="sm:max-w-[550px] max-h-[85vh] flex flex-col">
@@ -779,7 +822,32 @@ export default function PaymentVerificationModal({
             <DollarSign className="h-5 w-5 text-primary" />
             Gestión de Pagos - Orden #{orderNumber}
           </DialogTitle>
+          <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
+            <span>Cliente: {orderData?.customerName ?? "—"}</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setOrderDetailOpen(true)}
+            >
+              <FileText className="mr-1 h-4 w-4" />
+              Ver
+            </Button>
+          </div>
         </DialogHeader>
+        {/* Detalle del pedido: mismo componente que Ventas › Ver. Se abre encima y el modal de pagos
+            sigue montado, así lo escrito (monto, motivo) no se pierde al volver. */}
+        {orderDetailOpen && (
+          <Suspense fallback={null}>
+            <OrderDetailModal
+              open
+              orderId={orderId}
+              onClose={() => setOrderDetailOpen(false)}
+              onOrderUpdated={paymentChanged}
+              showTracking
+            />
+          </Suspense>
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center h-32 text-muted-foreground">

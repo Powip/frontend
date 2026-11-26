@@ -2,6 +2,7 @@
 
 import { ExternalOrderNumberCell, ExternalOrderNumberHead } from "@/components/orders/ExternalOrderNumberColumn";
 import { hasExternalOrderNumbers } from "@/lib/externalOrderNumber";
+import { WhatsAppLastNoticeIndicator } from "@/components/whatsapp/WhatsAppLastNoticeIndicator";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -98,10 +99,13 @@ export function PreparadosTab({
   actions,
   guideReturn,
   onGuideReturnHandled,
+  assignedToGuide,
 }: OperationsTabProps & {
   /** Vuelta desde /registrar-venta: se restaura la selección y, solo si el pedido se guardó, se reabre la revisión. */
   guideReturn?: GuideReviewReturn | null;
   onGuideReturnHandled?: () => void;
+  /** Pedidos que acaban de entrar a una guía: se quitan de la selección para que no vuelvan a otra guía. */
+  assignedToGuide?: { ids: string[]; n: number } | null;
 }) {
   const selection = usePedidosSelection(data.sales);
   const [guideReview, setGuideReview] = useState<{ ids: string[]; updatedId: string | null } | null>(null);
@@ -118,6 +122,11 @@ export function PreparadosTab({
     onGuideReturnHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [guideReturn]);
+
+  useEffect(() => {
+    if (assignedToGuide) selection.removeMany(assignedToGuide.ids);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [assignedToGuide]);
 
   // Los datos de la página (frescos) van al final para que ganen sobre los de la selección (posiblemente viejos).
   // FEAT-31: «N° Externo» solo se dibuja si algún pedido de la pestaña lo trae.
@@ -416,11 +425,12 @@ export function PreparadosTab({
                     <Button
                       size="icon"
                       variant="ghost"
-                      className="h-7 w-7 text-green-600 hover:text-green-700"
+                      className="relative h-7 w-7 text-green-600 hover:text-green-700"
                       title="WhatsApp"
                       onClick={() => actions.onWhatsApp(sale)}
                     >
                       <WhatsAppIcon className="h-3.5 w-3.5" />
+                      <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} orderId={sale.id} />
                     </Button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

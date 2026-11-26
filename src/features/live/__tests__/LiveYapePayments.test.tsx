@@ -130,7 +130,9 @@ test("proof submission remains under review and does not confirm delivery", asyn
     },
   });
   fireEvent.click(screen.getByRole("button", { name: "Confirmar pago" }));
-  expect(await screen.findByRole("heading", { name: "Validando tu pago" })).toBeInTheDocument();
+  // Pantalla final del mockup: «¡Listo, …!» con el estado «Validando tu pago».
+  expect(await screen.findByRole("heading", { name: "¡Listo, Cliente!" })).toBeInTheDocument();
+  expect(screen.getByText("Validando tu pago")).toBeInTheDocument();
   expect(
     screen.queryByRole("heading", { name: "Pago validado por el negocio" }),
   ).not.toBeInTheDocument();
@@ -277,7 +279,7 @@ test("settings discard a late response from the previous store", async () => {
 
 test("review controls are unavailable without financial capability", () => {
   render(<LiveYapeReviews storeId={id} canReview={false} />);
-  expect(screen.getByText(/rol Administrador vigente/)).toBeInTheDocument();
+  expect(screen.getByText(/rol Administrador o el permiso de Finanzas/)).toBeInTheDocument();
   expect(getLiveYapeReviews).not.toHaveBeenCalled();
 });
 

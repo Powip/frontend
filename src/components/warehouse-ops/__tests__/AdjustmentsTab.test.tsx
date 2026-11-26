@@ -6,6 +6,8 @@
  * 3. Anular: un pendiente, Administrador u Operaciones; uno aplicado, solo el Administrador.
  * 4. Sin rol de costos los montos salen como «••••».
  * 5. Pedir una merma: solo almacenes operables, cuerpo con kind/reason/direction y operationId estable.
+ * 6. FEAT-24 C-D3: una salida que deja el físico en negativo: en estricto no se registra; en flexible pide la
+ *    casilla y manda allowNegative; si el servidor pide confirmar (409), casilla y reintento con otra clave.
  */
 
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -14,7 +16,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { listProductVariants, listPurchasableProducts } from "@/services/purchasesService";
 import { approveAdjustment, cancelAdjustment, createAdjustment, listAdjustments, rejectAdjustment } from "@/services/warehouseOpsService";
-import { listWarehouses } from "@/services/warehousesService";
+import { getInventoryRules, listWarehouses } from "@/services/warehousesService";
+import { getStockByVariants } from "@/services/inventoryItems.service";
 import AdjustmentsTab from "../adjustments/AdjustmentsTab";
 import { adjustment, WAREHOUSES } from "./fixtures";
 
@@ -31,7 +34,13 @@ jest.mock("@/services/warehouseOpsService", () => ({
   rejectAdjustment: jest.fn(),
   cancelAdjustment: jest.fn(),
 }));
-jest.mock("@/services/warehousesService", () => ({ listWarehouses: jest.fn() }));
+jest.mock("@/services/warehousesService", () => ({ listWarehouses: jest.fn(), getInventoryRules: jest.fn() }));
+jest.mock("@/services/inventoryItems.service", () => ({ getStockByVariants: jest.fn() }));
+// Sin lotes (useLotTrackedVariants): así no sale una petición real.
+jest.mock("@/services/variantCodesService", () => ({
+  ...jest.requireActual("@/services/variantCodesService"),
+  fetchVariantsByIds: jest.fn().mockResolvedValue([]),
+}));
 jest.mock("@/services/purchasesService", () => ({ listPurchasableProducts: jest.fn(), listProductVariants: jest.fn(), getVariantCosts: jest.fn().mockResolvedValue([]) }));
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -60,7 +69,32 @@ beforeEach(() => {
   __setMyWarehouses(null);
   jest.mocked(listWarehouses).mockResolvedValue({ warehouses: WAREHOUSES, links: [] });
   jest.mocked(listAdjustments).mockImplementation(async (filters) => (filters?.status === "pendiente_aprobacion" ? [pending] : [pending, applied]));
+  jest.mocked(getInventoryRules).mockResolvedValue({ releaseAfterDays: null, pickingRequired: false, igvAffected: true, allowPurchaseToCourier: false, stockControl: "estricto" });
+  jest.mocked(getStockByVariants).mockResolvedValue([]);
 });
+
+/** Abre «Nuevo ajuste o merma» y arma una merma de `quantity` de Polo · Talla: M en Tienda Sur (w-2). */
+async function fillMerma(user: ReturnType<typeof userEvent.setup>, quantity: string) {
+  jest.mocked(listPurchasableProducts).mockResolvedValue([{ id: "p-1", name: "Polo", sku: "POLO", companySku: null, status: true, purchaseUnit: null, purchaseFactor: 1 }]);
+  jest.mocked(listProductVariants).mockResolvedValue([{ id: "v-1", sku: "POLO-M", companySku: null, attributeValues: { Talla: "M" }, isActive: true, mergedInto: null }]);
+  setup();
+  await user.click(await screen.findByRole("button", { name: "Nuevo ajuste o merma" }));
+  const dialog = await screen.findByRole("dialog");
+  await waitFor(() => expect(within(within(dialog).getByLabelText("Almacén")).getAllByRole("option").length).toBeGreaterThan(1));
+  await user.selectOptions(within(dialog).getByLabelText("Almacén"), "w-2");
+  await user.selectOptions(within(dialog).getByLabelText("Motivo"), "dano");
+  await screen.findByRole("option", { name: /Polo/ });
+  await user.selectOptions(within(dialog).getByRole("combobox", { name: "Producto" }), "p-1");
+  await user.click(within(dialog).getByRole("button", { name: "Agregar con sus variantes" }));
+  const input = await within(dialog).findByLabelText("Cantidad: Polo · Talla: M");
+  await user.clear(input);
+  await user.type(input, quantity);
+  return dialog;
+}
+
+const stockAtW2 = (quantity: number) => [
+  { variant_id: "v-1", quantity, reserved_quantity: 0, available: quantity, inventories: [{ inventory_id: "w-2", inventory_name: "Tienda Sur", store_id: null, quantity, reserved_quantity: 0 }] },
+];
 
 describe("Ajustes y mermas", () => {
   it("el Administrador aprueba desde la bandeja y el reintento usa la misma clave", async () => {
@@ -128,6 +162,72 @@ describe("Ajustes y mermas", () => {
     expect(within(tray).queryByRole("button", { name: "Aprobar" })).not.toBeInTheDocument();
     expect(within(screen.getByTestId("adjustment-AJ-0001")).getByLabelText("Costo oculto")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Anular" })).not.toBeInTheDocument();
+  });
+
+  it("estricto: una merma que deja el físico en negativo no se registra (FEAT-24 C-D3)", async () => {
+    const user = userEvent.setup();
+    jest.mocked(getStockByVariants).mockResolvedValue(stockAtW2(1));
+    const dialog = await fillMerma(user, "3");
+    expect(await within(dialog).findByText("Queda en −2")).toBeInTheDocument();
+    expect(within(dialog).getByText("Tu empresa usa control de stock estricto: la salida no puede dejar el físico en negativo.")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Registrar" }));
+    expect(createAdjustment).not.toHaveBeenCalled();
+  });
+
+  it("flexible: la merma que deja el físico en negativo pide la casilla y manda allowNegative", async () => {
+    const user = userEvent.setup();
+    jest.mocked(getInventoryRules).mockResolvedValue({ releaseAfterDays: null, pickingRequired: false, igvAffected: true, allowPurchaseToCourier: false, stockControl: "flexible" });
+    jest.mocked(getStockByVariants).mockResolvedValue(stockAtW2(1));
+    jest.mocked(createAdjustment).mockResolvedValue({ duplicate: false, adjustment: adjustment({ number: "AJ-0004", status: "aplicado" }) });
+    const dialog = await fillMerma(user, "3");
+    const box = await within(dialog).findByRole("checkbox", { name: "Confirmo las salidas que dejan el físico en negativo" });
+    expect(within(dialog).getByText("Queda en −2")).toBeInTheDocument();
+    expect(within(dialog).getByText(/Una salida que deja el físico en negativo pide tu confirmación/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Registrar" }));
+    expect(await within(dialog).findByText("Confirma las salidas que dejan el físico en negativo.")).toBeInTheDocument();
+    expect(createAdjustment).not.toHaveBeenCalled();
+    await user.click(box);
+    await user.click(within(dialog).getByRole("button", { name: "Registrar" }));
+    await waitFor(() => expect(createAdjustment).toHaveBeenCalledTimes(1));
+    expect(jest.mocked(createAdjustment).mock.calls[0][0]).toEqual({
+      inventoryId: "w-2",
+      kind: "merma",
+      reason: "dano",
+      lines: [{ variantId: "v-1", quantity: 3, direction: "OUT" }],
+      operationId: expect.any(String),
+      allowNegative: true,
+    });
+  });
+
+  it("flexible: una merma que no deja negativo no pide casilla ni manda allowNegative", async () => {
+    const user = userEvent.setup();
+    jest.mocked(getInventoryRules).mockResolvedValue({ releaseAfterDays: null, pickingRequired: false, igvAffected: true, allowPurchaseToCourier: false, stockControl: "flexible" });
+    jest.mocked(getStockByVariants).mockResolvedValue(stockAtW2(10));
+    jest.mocked(createAdjustment).mockResolvedValue({ duplicate: false, adjustment: adjustment({ number: "AJ-0005", status: "aplicado" }) });
+    const dialog = await fillMerma(user, "3");
+    await waitFor(() => expect(getStockByVariants).toHaveBeenCalled());
+    expect(within(dialog).queryByRole("checkbox")).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Registrar" }));
+    await waitFor(() => expect(createAdjustment).toHaveBeenCalledTimes(1));
+    expect(jest.mocked(createAdjustment).mock.calls[0][0]).not.toHaveProperty("allowNegative");
+  });
+
+  it("si el servidor pide confirmar (409 STOCK_NEGATIVO_CONFIRMAR), muestra su mensaje y reintenta con allowNegative y otra clave", async () => {
+    const user = userEvent.setup();
+    jest.mocked(createAdjustment)
+      .mockRejectedValueOnce(Object.assign(new Error("409"), { response: { status: 409, data: { statusCode: 409, code: "STOCK_NEGATIVO_CONFIRMAR", message: "POLO-M queda en −1: confirma para seguir." } } }))
+      .mockResolvedValueOnce({ duplicate: false, adjustment: adjustment({ number: "AJ-0006", status: "aplicado" }) });
+    const dialog = await fillMerma(user, "2");
+    await user.click(within(dialog).getByRole("button", { name: "Registrar" }));
+    expect(await within(dialog).findByText("POLO-M queda en −1: confirma para seguir.")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("checkbox", { name: "Confirmo las salidas que dejan el físico en negativo" }));
+    await user.click(within(dialog).getByRole("button", { name: "Registrar" }));
+    await waitFor(() => expect(createAdjustment).toHaveBeenCalledTimes(2));
+    const [first, second] = jest.mocked(createAdjustment).mock.calls;
+    expect(first[0]).not.toHaveProperty("allowNegative");
+    expect(second[0]).toMatchObject({ allowNegative: true });
+    expect(second[0].operationId).not.toBe(first[0].operationId);
   });
 
   it("pedir una merma: solo almacenes operables y el cuerpo con su operationId (igual al reintentar)", async () => {

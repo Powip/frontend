@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./whatsapp.css";
+@import "./crm-chat.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -240,6 +242,22 @@ input[type="number"] {
     color: black !important;
     border-color: #ccc !important;
   }
+}
+
+/* Anillo de la cuenta regresiva del aviso «Tu sesión expiró». */
+@keyframes session-countdown {
+  to {
+    stroke-dashoffset: 100;
+  }
+}
+
+/* Los toasts de error de la sesión vencida taparían el aviso (en celular, el contador). */
+body:has([data-session-expired]) [data-sonner-toaster] {
+  display: none;
+}
+
+.session-countdown-ring {
+  animation: session-countdown linear forwards;
 }
 
 /* Palpitar tipo "latido" (doble pulso) para el iso del logo en loaders */

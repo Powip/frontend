@@ -36,7 +36,12 @@ jest.mock("@/services/businessInventoryItemsService", () => ({ fetchBusinessInve
 jest.mock("@/services/uploadService", () => ({ uploadImage: jest.fn() }));
 jest.mock("@/components/labels/PrintLabelsDialog", () => ({ PrintLabelsDialog: () => null }));
 jest.mock("@/components/compras/supplier-prices/FichaSupplierPrices", () => ({ __esModule: true, default: () => null }));
-jest.mock("@/components/packs/PackFichaTab", () => ({ __esModule: true, default: () => <div>componentes del pack</div> }));
+jest.mock("@/components/packs/PackFichaTab", () => ({
+  __esModule: true,
+  default: () => <div>componentes del pack</div>,
+  PackStockTab: () => null,
+  usePack: () => ({ data: undefined, refetch: jest.fn() }),
+}));
 jest.mock("@/components/inventory/MovementHistoryTable", () => ({ MovementHistoryTable: () => null }));
 // La pestaña Lotes tiene su propio test.
 jest.mock("@/components/lots/FichaLotsTab", () => ({

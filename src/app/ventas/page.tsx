@@ -8,7 +8,9 @@ import { toWhatsAppDigits } from "@/lib/phone";
 import { formatSalesMoney } from "@/utils/salesMoney";
 import { operationalStatus, orderFinancialState } from "@/utils/orderState";
 import { shouldShowReprogramado } from "@/utils/domain/reprogramado";
-import { FinancialStatusBadge } from "@/components/shared/FinancialStatusBadge";
+import { SaleAmounts } from "@/components/shared/SaleAmounts";
+import { deliveryLabel, saleSourceKey } from "@/utils/saleLabels";
+import { paymentAttention, pendingApprovalSummary, type PendingApprovalSummary } from "@/utils/pendingApproval";
 import { StockStateBadge } from "@/components/orders/StockStateBadge";
 
 import { useSaleLifecycleRouting } from "@/hooks/useSaleLifecycleRouting";
@@ -36,6 +38,7 @@ import {
   ChevronDown,
   Package,
   FileText,
+  Wallet,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -86,6 +89,12 @@ import ImportSalesModal from "@/components/modals/ImportSalesModal";
 import { orderDetailButtonClassName } from "@/components/orders/OrderDetailModal";
 import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
+import { WhatsAppLastNoticeIndicator } from "@/components/whatsapp/WhatsAppLastNoticeIndicator";
+import {
+  parseWhatsAppLastNotice,
+  type WhatsAppLastNotice,
+} from "@/features/whatsapp/utils/last-notice.util";
+import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 import CreateGuideModal, {
   CreateGuideData,
 } from "@/components/modals/CreateGuideModal";
@@ -100,6 +109,8 @@ import {
 } from "@/components/ventas/SalesTableFilters";
 import { Copy, MessageSquare, DollarSign } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import ChatSalesNote from "@/components/ventas/ChatSalesNote";
+import { useChatSalesFilter } from "@/hooks/useChatSalesFilter";
 import CancellationModal, {
   CancellationReason,
 } from "@/components/modals/CancellationModal";
@@ -137,7 +148,7 @@ import {
   reassignSeller,
 } from "@/services/atencionClienteService";
 import ReassignSellerModal from "@/components/modals/ReassignSellerModal";
-import { UserPen } from "lucide-react";
+import { UserPen, Instagram, Facebook, MessageCircle } from "lucide-react";
 
 /* -----------------------------------------
    Types
@@ -170,6 +181,9 @@ export interface Sale extends UnitAssignmentState {
   commercialCommittedAt?: string | null;
   subEstadoCc?: SubEstadoCc | null;
   canalOrigen?: string | null;
+  /** Canal de venta (WHATSAPP, INSTAGRAM, FACEBOOK…) y conversación del chat si la venta viene de un chat. */
+  salesChannel?: string | null;
+  conversationId?: string | null;
   currency?: string | null;
   commercialStage?: "LEAD" | "SALE" | null;
   commercialLeadId?: string | null;
@@ -178,6 +192,7 @@ export interface Sale extends UnitAssignmentState {
   stockState?: string | null;
 
   id: string;
+  waLastNotice?: WhatsAppLastNotice | null;
   storeId: string;
   inventoryId?: string | null;
   stockStoreId?: string | null;
@@ -197,6 +212,8 @@ export interface Sale extends UnitAssignmentState {
   status: OrderStatus;
   paymentMethod: string;
   deliveryType: string;
+  /** FEAT-33 A6: «AGENCIA SHALOM», «AGENCIA OLVA COURIER», «DOMICILIO». */
+  deliveryLabel: string;
   salesRegion: "LIMA" | "PROVINCIA";
   district: string;
   city: string;
@@ -208,6 +225,8 @@ export interface Sale extends UnitAssignmentState {
   pendingPayment: number;
   hasStockIssue?: boolean;
   hasPendingApprovalPayments: boolean;
+  /** FEAT-33 A4/D5: lo enviado y sin validar, con su método («Yape por validar»). */
+  awaitingApprovalSummary: PendingApprovalSummary;
   /** Adelanto registrado pero sin aprobar (pagos PENDING): no resta del cobro. Alimenta el aviso previo al despacho. */
   awaitingApprovalAmount?: number;
   /** Lo que cobraría el courier hoy (total − aprobado). */
@@ -269,6 +288,38 @@ function ReprogramadoChip({ sale }: { sale: Pick<Sale, "status" | "callStatus" |
    Mapper
 ----------------------------------------- */
 
+const CHANNEL_LABELS: Record<string, string> = {
+  WHATSAPP: "WhatsApp",
+  INSTAGRAM: "Instagram",
+  FACEBOOK: "Facebook",
+  TIENDA_FISICA: "Tienda física",
+  MARKETPLACE: "Marketplace",
+  MERCADOLIBRE: "Mercado Libre",
+  WEB: "Web",
+  OTRO: "Otro",
+};
+
+/** Origen de la venta como en el mockup: icono del canal + nombre. Ventas del chat se marcan en verde. */
+function OrigenChip({ sale }: { sale: Sale }) {
+  const key = (sale.salesChannel ?? "").toUpperCase();
+  const label = CHANNEL_LABELS[key] ?? (key ? key : "—");
+  const Icon = key === "WHATSAPP" ? MessageCircle : key === "INSTAGRAM" ? Instagram : key === "FACEBOOK" ? Facebook : MessageSquare;
+  const fromChat = Boolean(sale.conversationId);
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+        fromChat ? "bg-teal-500/10 text-teal-700 dark:text-teal-400" : "bg-muted text-muted-foreground"
+      }`}
+    >
+      {key ? <Icon className="h-3 w-3" /> : null}
+      {label}
+    </span>
+  );
+}
+
+const attentionOf = (sale: Sale) =>
+  paymentAttention({ awaitingApproval: sale.awaitingApprovalSummary.amount, debt: sale.pendingPayment });
+
 function mapOrderToSale(order: BusinessSalesOrder): Sale {
   const total = Number(order.grandTotal);
   const { totalPaid: advancePayment, pendingAmount: pendingPayment } = orderFinancialState(order);
@@ -279,11 +330,14 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
 
   return {
     id: order.id,
+    waLastNotice: parseWhatsAppLastNotice(order.waLastNotice),
     salesOperationalEligible: order.salesOperationalEligible,
     shopifyCommercialGate: order.shopifyCommercialGate,
     commercialCommittedAt: order.commercialCommittedAt,
     subEstadoCc: order.subEstadoCc,
     canalOrigen: order.canalOrigen,
+    salesChannel: order.salesChannel,
+    conversationId: order.conversationId,
     currency: order.currency, commercialStage: order.commercialStage, commercialLeadId: order.commercialLeadId, commercialStockState: order.commercialStockState,
     stockState: order.stockState ?? null,
     storeId: order.storeId,
@@ -305,6 +359,7 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     paymentMethod:
       order.payments.length > 0 ? order.payments[0].paymentMethod : "—",
     deliveryType: order.deliveryType.replace("_", " "),
+    deliveryLabel: deliveryLabel(order),
     salesRegion: order.salesRegion,
     district: order.customer.district ?? "",
     city: order.customer.city ?? "",
@@ -323,6 +378,7 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     confirmedStockVersion: order.confirmedStockVersion,
     stockVersion: order.stockVersion,
     hasPendingApprovalPayments,
+    awaitingApprovalSummary: pendingApprovalSummary(order.payments),
     awaitingApprovalAmount: guideBalance.awaitingApproval,
     collectAmount: guideBalance.pending,
     externalTrackingNumber: order.externalTrackingNumber || "",
@@ -331,7 +387,7 @@ function mapOrderToSale(order: BusinessSalesOrder): Sale {
     shippingOffice: order.shippingOffice || "",
     sellerName: order.sellerName ?? null,
     items: order.items || [],
-    externalSource: order.externalSource === "POWIP_LIVE" && order.closingChannel === "POWIP_LINK" ? "POWIP_LINK" : order.externalSource ?? null,
+    externalSource: saleSourceKey(order),
     shopifyCancelledAt: order.shopifyCancelledAt ?? null,
     shopifyCancelReason: order.shopifyCancelReason ?? null,
     externalId: order.externalId ?? null,
@@ -379,6 +435,8 @@ function VentasContent() {
   const [todasWindow, setTodasWindow] = useState<DateWindow>(() => ({ fromDate: ventasRecentFrom(today), toDate: "" }));
   // Pendientes: los recientes (30 días) o los antiguos, que se bajan solo mientras están elegidos
   const [pendientesView, setPendientesView] = useState<"recientes" | "antiguos">("recientes");
+  // «Por cobrar total» abre Todas con saldo pendiente y sin anuladas; la insignia lo deja quitar
+  const [todasExcludeCancelled, setTodasExcludeCancelled] = useState(false);
 
   // Paginación para Todas las Ventas
   const [pageAll, setPageAll] = useState(1);
@@ -431,6 +489,7 @@ function VentasContent() {
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   const [sendingLimaId, setSendingLimaId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("pendientes");
+  const chatFilter = useChatSalesFilter();
 
   // Filas con detalle secundario expandido (ID externo, ubicación, tracking)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -521,6 +580,8 @@ function VentasContent() {
     limit: ITEMS_PER_PAGE,
     sort: activeTab === "pendientes" && pendientesView === "antiguos" ? "updated_asc" : "created_desc",
     kpiDateFrom, kpiDateTo,
+    ...(activeTab === "todas" && todasExcludeCancelled ? { excludeCancelled: "yes" as const } : {}),
+    ...(chatFilter.active ? { crmOnly: "yes" as const } : {}),
   };
   const salesScope = JSON.stringify([scopeKey, salesQuery]);
   const pageSessionScope = `${printScope}:${salesScope}`;
@@ -1580,20 +1641,18 @@ Estado: ${sale.status}
                   <TableCell className="text-xs">
                     <div>{sale.paymentMethod}</div>
                     <div className="text-muted-foreground">
-                      {sale.deliveryType}
+                      {sale.deliveryLabel}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs text-right tabular-nums">
-                    <div className="font-semibold">
-                      {formatSalesMoney(sale.total, sale.currency)}
-                    </div>
-                    <div className="text-green-600">
-                      Adel: {formatSalesMoney(sale.advancePayment, sale.currency)}
-                    </div>
-                    <div className="text-red-600">
-                      Debe: {formatSalesMoney(sale.pendingPayment, sale.currency)}
-                    </div>
-                    <FinancialStatusBadge pendingAmount={sale.pendingPayment} status={sale.status} />
+                    <SaleAmounts
+                      total={sale.total}
+                      advancePayment={sale.advancePayment}
+                      pendingPayment={sale.pendingPayment}
+                      awaitingApproval={sale.awaitingApprovalSummary}
+                      status={sale.status}
+                      currency={sale.currency}
+                    />
                   </TableCell>
                   <TableCell className="text-xs">
                     <span className="inline-flex items-center gap-1">
@@ -1612,6 +1671,7 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell>
                     <span className="inline-flex flex-wrap items-center gap-1">
+                      <OrigenChip sale={sale} />
                       <SourceBadge source={sale.externalSource} />
                       <ShopifyCancelledBadge cancelledAt={sale.shopifyCancelledAt} reason={sale.shopifyCancelReason} />
                     </span>
@@ -1660,15 +1720,20 @@ Estado: ${sale.status}
                           setPaymentModalOpen(true);
                         }}
                         title={
-                          sale.hasPendingApprovalPayments
+                          attentionOf(sale) === "review"
                             ? "Pagos pendientes de aprobación"
-                            : "Gestión de Pagos"
+                            : attentionOf(sale) === "balance"
+                              ? "Pedido con saldo"
+                              : "Gestión de Pagos"
                         }
                       >
                         <DollarSign className="h-4 w-4" />
-                        {sale.hasPendingApprovalPayments && (
-                          <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        {/* FEAT-33 A4: punto rojo si hay algo por validar (late) o saldo. */}
+                        {attentionOf(sale) && (
+                          <span className="absolute -top-1 -right-1 flex h-3 w-3" data-testid="payment-attention">
+                            {attentionOf(sale) === "review" ? (
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                            ) : null}
                             <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
                           </span>
                         )}
@@ -1676,7 +1741,7 @@ Estado: ${sale.status}
                       <Button
                         size="icon"
                         variant="outline"
-                        className="bg-green-500 hover:bg-green-600 text-white border-green-600"
+                        className="relative bg-green-500 hover:bg-green-600 text-white border-green-600"
                         title="WhatsApp"
                         onClick={() =>
                           handleWhatsApp(
@@ -1687,6 +1752,7 @@ Estado: ${sale.status}
                         }
                       >
                         <WhatsAppIcon className="h-4 w-4" />
+                        <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} orderId={sale.id} />
                       </Button>
                       <Button
                         size="icon"
@@ -1875,20 +1941,18 @@ Estado: ${sale.status}
                   <TableCell className="text-xs">
                     <div>{sale.paymentMethod}</div>
                     <div className="text-muted-foreground">
-                      {sale.deliveryType}
+                      {sale.deliveryLabel}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs text-right tabular-nums">
-                    <div className="font-semibold">
-                      {formatSalesMoney(sale.total, sale.currency)}
-                    </div>
-                    <div className="text-green-600">
-                      Adel: {formatSalesMoney(sale.advancePayment, sale.currency)}
-                    </div>
-                    <div className="text-red-600">
-                      Debe: {formatSalesMoney(sale.pendingPayment, sale.currency)}
-                    </div>
-                    <FinancialStatusBadge pendingAmount={sale.pendingPayment} status={sale.status} />
+                    <SaleAmounts
+                      total={sale.total}
+                      advancePayment={sale.advancePayment}
+                      pendingPayment={sale.pendingPayment}
+                      awaitingApproval={sale.awaitingApprovalSummary}
+                      status={sale.status}
+                      currency={sale.currency}
+                    />
                   </TableCell>
                   <TableCell className="text-xs">
                     <span className="inline-flex items-center gap-1">
@@ -1907,6 +1971,7 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell>
                     <span className="inline-flex flex-wrap items-center gap-1">
+                      <OrigenChip sale={sale} />
                       <SourceBadge source={sale.externalSource} />
                       <ShopifyCancelledBadge cancelledAt={sale.shopifyCancelledAt} reason={sale.shopifyCancelReason} />
                     </span>
@@ -1943,7 +2008,7 @@ Estado: ${sale.status}
                       <Button
                         size="icon"
                         variant="outline"
-                        className="bg-green-500 hover:bg-green-600 text-white border-green-600"
+                        className="relative bg-green-500 hover:bg-green-600 text-white border-green-600"
                         title="WhatsApp"
                         onClick={() =>
                           handleWhatsApp(
@@ -1954,6 +2019,7 @@ Estado: ${sale.status}
                         }
                       >
                         <WhatsAppIcon className="h-4 w-4" />
+                        <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} orderId={sale.id} />
                       </Button>
                       <Button
                         size="icon"
@@ -2039,6 +2105,16 @@ Estado: ${sale.status}
     pendientes: salesPage?.kpis?.pendientes ?? 0,
     anuladas: salesPage?.kpis?.anuladas ?? 0,
     currencyBalances: salesPage?.kpis?.amounts ?? [],
+    pendingTotal: salesPage?.kpis?.pendingTotal ?? [],
+  };
+  // Clic en «Por cobrar total»: Todas con saldo pendiente, sin anuladas y con el rango de fechas de las tarjetas
+  const showPendingTotalSales = () => {
+    setFiltersAll({ ...emptySalesFilters, hasPendingBalance: "yes" });
+    setTodasWindow({ fromDate: kpiDateFrom, toDate: kpiDateTo });
+    setTodasExcludeCancelled(true);
+    setSelectedTodasIds(new Set());
+    setPageAll(1);
+    setActiveTab("todas");
   };
   const pendientesPage = pagePendientes;
   const anuladosPage = pageAnulados;
@@ -2072,6 +2148,19 @@ Estado: ${sale.status}
 
   // Número de Todas: el conteo del servidor mientras su lista no está lista; después, lo que muestra
   const todasTabCount = ventas.todas.count;
+  const chatSalesNote = (
+    <ChatSalesNote
+      solo={chatFilter.solo}
+      checked={chatFilter.checked}
+      total={queryReady ? (salesPage?.total ?? 0) : null}
+      onCheckedChange={(value) => {
+        chatFilter.setChecked(value);
+        setPagePendientes(1);
+        setPageAnulados(1);
+        setPageAll(1);
+      }}
+    />
+  );
 
   if (!auth) return null;
 
@@ -2127,7 +2216,7 @@ Estado: ${sale.status}
               </Button>
             </div>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-4">
             <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
               <CardContent className="p-5">
                 <div className="flex items-start justify-between">
@@ -2191,14 +2280,47 @@ Estado: ${sale.status}
                 </div>
               </CardContent>
             </Card>
+
+            <Card
+              role="button"
+              tabIndex={0}
+              aria-label="Por cobrar total: ver las ventas con saldo pendiente"
+              data-testid="kpi-por-cobrar-total"
+              onClick={showPendingTotalSales}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  showPendingTotalSales();
+                }
+              }}
+              className="cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm text-muted-foreground">Por cobrar total</p>
+                    <h3 className="mt-2 text-3xl font-bold tracking-tight">
+                      {ventas.kpis.loading || ventas.kpis.error ? kpiText("") : kpis.pendingTotal.length ? kpis.pendingTotal.map((group) => <span key={group.currency ?? "UNKNOWN"} className="block">{formatSalesMoney(group.pending, group.currency)}</span>) : "0.00"}
+                    </h3>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Todas las ventas con saldo, menos anuladas
+                    </p>
+                    {!ventas.kpis.loading && !ventas.kpis.error && kpis.pendingTotal.length > 0 && (
+                      <p data-testid="kpi-por-cobrar-total-count" className="text-xs font-medium text-primary">
+                        {kpis.pendingTotal.reduce((sum, group) => sum + group.count, 0)} ventas
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Wallet className="h-5 w-5" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Tabs para Ventas */}
-          <Tabs
-            value={activeTab}
-            className="min-w-0 w-full"
-            onValueChange={setActiveTab}
-          >
+          <Tabs value={activeTab} className="min-w-0 w-full" onValueChange={setActiveTab}>
             <TabsList className="mb-4 h-auto max-w-full flex-wrap justify-start">
               <TabsTrigger value="pendientes">
                 Ventas Pendientes
@@ -2230,8 +2352,9 @@ Estado: ${sale.status}
                 <CardHeader className="flex min-w-0 flex-col gap-4">
                   <div>
                     <CardTitle>Ventas Pendientes</CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">Los leads de Atención aparecen en Ventas cuando se confirma la compra.</p>
+                    {!chatFilter.hasCrm && <p className="mt-1 text-sm text-muted-foreground">Los leads de Atención aparecen en Ventas cuando se confirma la compra.</p>}
                   </div>
+                  {chatFilter.hasCrm && chatSalesNote}
                   <div className="flex min-w-0 w-full flex-wrap items-center gap-2 [&>button]:h-auto [&>button]:min-h-9 [&>button]:whitespace-normal">
                     <BulkStatusSelect
                       disabled={!queryReady}
@@ -2344,6 +2467,7 @@ Estado: ${sale.status}
               <Card>
                 <CardHeader className="flex min-w-0 flex-col gap-4">
                   <CardTitle>Ventas Anuladas</CardTitle>
+                  {chatFilter.hasCrm && chatSalesNote}
                   <div className="flex min-w-0 w-full flex-wrap items-center gap-2 [&>button]:h-auto [&>button]:min-h-9 [&>button]:whitespace-normal">
                     <BulkStatusSelect
                       disabled={!ventas.anuladas.ready}
@@ -2441,8 +2565,9 @@ Estado: ${sale.status}
                 <CardHeader className="flex min-w-0 flex-col gap-4">
                   <div>
                     <CardTitle>Todas las Ventas</CardTitle>
-                    <p className="mt-1 text-sm text-muted-foreground">Incluye los pedidos que están en Atención al cliente.</p>
+                    {!chatFilter.hasCrm && <p className="mt-1 text-sm text-muted-foreground">Incluye los pedidos que están en Atención al cliente.</p>}
                   </div>
+                  {chatFilter.hasCrm && chatSalesNote}
                   <div className="flex min-w-0 w-full flex-wrap items-center gap-2 [&>button]:h-auto [&>button]:min-h-9 [&>button]:whitespace-normal">
                     <BulkStatusSelect
                       disabled={!ventas.todas.ready}
@@ -2526,6 +2651,18 @@ Estado: ${sale.status}
                   </div>
                 </CardHeader>
                 <CardContent>
+                  {todasExcludeCancelled && (
+                    <div className="mb-3">
+                      <button
+                        type="button"
+                        data-testid="chip-sin-anuladas"
+                        onClick={() => { setTodasExcludeCancelled(false); setPageAll(1); }}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/20"
+                      >
+                        Sin anuladas ✕
+                      </button>
+                    </div>
+                  )}
                   <SalesTableFilters
                     filters={filtersAll}
                     onFiltersChange={(newFilters) => {

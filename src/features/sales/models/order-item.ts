@@ -20,6 +20,11 @@ export interface OrderItem {
 
   isPromoItem: boolean;
 
+  /** Línea regalada en la venta (va a S/ 0). */
+  isGift?: boolean;
+  /** Precio normal del regalo, de toda la línea (precio × cantidad). */
+  giftValue?: number | null;
+
   addedByUserId: string | null;
   addedAt: Date | null;
 
