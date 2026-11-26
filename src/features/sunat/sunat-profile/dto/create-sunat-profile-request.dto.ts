@@ -1,4 +1,5 @@
 import type { CountryCode } from "../../shared/enums/sunat.enums";
+import type { SunatTaxRegime } from "../utils/tax-regime";
 
 export interface CreateSunatProfileRequestDto {
   name: string;
@@ -11,6 +12,7 @@ export interface CreateSunatProfileRequestDto {
   ubigeo: string;
   address: string;
   establishmentCode: string;
+  taxRegime: SunatTaxRegime;
 
   solUser: string;
   solPassword: string;

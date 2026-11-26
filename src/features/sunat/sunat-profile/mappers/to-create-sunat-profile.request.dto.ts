@@ -15,6 +15,7 @@ export function toCreateSunatProfileRequestDto(
     ubigeo: values.ubigeo,
     address: values.address,
     establishmentCode: values.establishmentCode,
+    taxRegime: values.taxRegime,
 
     solUser: values.solUser,
     solPassword: values.solPassword,

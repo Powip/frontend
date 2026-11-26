@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { COUNTRY_CODES } from "../../shared/enums/sunat.enums";
 import { ESTABLISHMENT_CODE_ERROR, ESTABLISHMENT_CODE_PATTERN } from "../utils/establishment-code";
+import { SUNAT_TAX_REGIMES } from "../utils/tax-regime";
 
 export const createSunatProfileSchema = z.object({
   name: z
@@ -38,6 +39,10 @@ export const createSunatProfileSchema = z.object({
     })
     .trim()
     .regex(ESTABLISHMENT_CODE_PATTERN, ESTABLISHMENT_CODE_ERROR),
+
+  taxRegime: z.enum(SUNAT_TAX_REGIMES, {
+    error: "Tax regime is required",
+  }),
 
   solUser: z.string({
     error: "SOL user is required",

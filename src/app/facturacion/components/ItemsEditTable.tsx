@@ -30,6 +30,8 @@ import {
   roundCurrency,
 } from "@/features/sunat/sunat-document/utils/calculate-sunat-document-totals";
 import { isGiftTaxType } from "@/features/sunat/sunat-document/utils/gift-lines";
+import { NUEVO_RUS_TAX_TYPE } from "@/features/sunat/sunat-document/utils/nuevo-rus";
+import { isNuevoRus } from "@/features/sunat/sunat-profile/utils/tax-regime";
 
 /**
  * `unitPrice` is deliberately stored at full (unrounded) precision when it
@@ -106,7 +108,10 @@ function formatPrice(value: unknown): string {
   return roundCurrency(num).toFixed(2);
 }
 
-export function ItemsEditTable() {
+export function ItemsEditTable({ taxRegime }: { taxRegime?: string } = {}) {
+  // Nuevo RUS: prices carry no IGV and new lines use its tax type.
+  const nuevoRus = isNuevoRus(taxRegime);
+
   const { control, register, setValue, getValues } =
     useFormContext<CreateSunatDocumentsFormValues>();
 
@@ -183,7 +188,7 @@ export function ItemsEditTable() {
       subtotal: 0,
       discountAmount: 0,
       unitCode: UNIT_CODES.UNIT,
-      taxType: SUNAT_TAX_AFFECTATION_TYPES.GRAVADO,
+      taxType: nuevoRus ? NUEVO_RUS_TAX_TYPE : SUNAT_TAX_AFFECTATION_TYPES.GRAVADO,
     });
   }
 
@@ -198,13 +203,15 @@ export function ItemsEditTable() {
               <TableHead className="w-20">Cant.</TableHead>
 
               <TableHead className="w-28">
-                P. Unit. <span className="font-normal text-muted-foreground">(sin IGV)</span>
+                P. Unit.{" "}
+                {!nuevoRus && <span className="font-normal text-muted-foreground">(sin IGV)</span>}
               </TableHead>
 
               <TableHead className="w-24">Descuento</TableHead>
 
               <TableHead className="w-28 text-right">
-                Importe <span className="font-normal text-muted-foreground">(con IGV)</span>
+                Importe{" "}
+                {!nuevoRus && <span className="font-normal text-muted-foreground">(con IGV)</span>}
               </TableHead>
 
               <TableHead className="w-8" />
